@@ -1,0 +1,96 @@
+﻿using CodeGenerator.Models;
+using System.Text.RegularExpressions;
+
+namespace CodeGenerator.Services;
+
+public class EntityExtractor
+{
+    public ParsedCommand Extract(
+        string sentence,
+        IntentType intent)
+    {
+        var result = new ParsedCommand
+        {
+            Intent = intent
+        };
+
+        if (intent == IntentType.CreateClass)
+            ExtractClassInfo(sentence, result);
+
+        return result;
+    }
+
+    private void ExtractClassInfo(string sentence, ParsedCommand command)
+    {
+        var match =
+            Regex.Match(
+                sentence,
+                @"class\s+(\w+)",
+                RegexOptions.IgnoreCase);
+
+        if (match.Success)
+            command.ClassName = match.Groups[1].Value;
+
+        var propMatch =
+            Regex.Match(
+                sentence,
+                @"properties\s+(.+)",
+                RegexOptions.IgnoreCase);
+
+        if (propMatch.Success)
+        {
+            var properties =
+                propMatch.Groups[1]
+                    .Value
+                    .Replace(" and ", ",")
+                    .Replace("AND", ",");
+            command.Properties = properties
+                .Split(',', StringSplitOptions.RemoveEmptyEntries)
+                .Select(x => x.Trim())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Select(token =>
+                {
+                    var pd = new PropertyDefinition();
+                    if (token.Contains(':'))
+                    {
+                        var parts = token.Split(new[] { ':' }, 2);
+                        pd.Name = parts[0].Trim();
+                        pd.Type = parts[1].Trim();
+                    }
+                    else
+                    {
+                        var parts = token.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                        if (parts.Length == 2)
+                        {
+                            var known = new[] { "int", "string", "bool", "datetime", "decimal", "double", "float", "long", "guid" };
+                            var p0 = parts[0].Trim().ToLowerInvariant();
+                            var p1 = parts[1].Trim().ToLowerInvariant();
+                            if (known.Contains(p0))
+                            {
+                                pd.Type = parts[0].Trim();
+                                pd.Name = parts[1].Trim();
+                            }
+                            else if (known.Contains(p1))
+                            {
+                                pd.Name = parts[0].Trim();
+                                pd.Type = parts[1].Trim();
+                            }
+                            else
+                            {
+                                pd.Name = parts[0].Trim();
+                                pd.Type = "string";
+                            }
+                        }
+                        else
+                        {
+                            pd.Name = token.Trim();
+                            pd.Type = "string";
+                        }
+                    }
+
+                    return pd;
+                })
+                .ToList();
+        }
+    }
+}

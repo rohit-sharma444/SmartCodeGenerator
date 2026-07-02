@@ -1,0 +1,545 @@
+[
+  {
+    "Intent": 5,
+    "Priority": 100,
+    "Actions": [
+      "current",
+      "active",
+      "selected"
+    ],
+    "Targets": [
+      "project"
+    ],
+    "Keywords": [],
+    "CreatedOn": "2026-06-20T09:18:46.9699617Z",
+    "IsEnabled": true
+  },
+  {
+    "Intent": 4,
+    "Priority": 90,
+    "Actions": [
+      "list",
+      "show",
+      "display",
+      "view",
+      "get"
+    ],
+    "Targets": [
+      "project",
+      "projects"
+    ],
+    "Keywords": [
+      "all",
+      "available",
+      "existing"
+    ],
+    "CreatedOn": "2026-06-20T09:18:46.9699633Z",
+    "IsEnabled": true
+  },
+  {
+    "Intent": 3,
+    "Priority": 100,
+    "Actions": [
+      "use",
+      "select",
+      "switch",
+      "open",
+      "activate"
+    ],
+    "Targets": [
+      "project"
+    ],
+    "Keywords": [],
+    "CreatedOn": "2026-06-20T09:18:46.9699659Z",
+    "IsEnabled": true
+  },
+  {
+    "Intent": 1,
+    "Priority": 100,
+    "Actions": [
+      "help"
+    ],
+    "Targets": [
+      "help"
+    ],
+    "Keywords": [],
+    "CreatedOn": "2026-06-20T09:35:45.8470609Z",
+    "IsEnabled": true
+  },
+  {
+    "Intent": 2,
+    "Priority": 100,
+    "Actions": [
+      "create",
+      "new",
+      "generate"
+    ],
+    "Targets": [
+      "project",
+      "console project",
+      "webapi project",
+      "class library",
+      "worker service",
+      "blazor project",
+      "wpf project"
+    ],
+    "Keywords": [],
+    "CreatedOn": "2026-06-20T10:10:28.701169Z",
+    "IsEnabled": true
+  },
+  {
+    "Intent": 6,
+    "Priority": 100,
+    "Actions": [
+      "create",
+      "add",
+      "generate"
+    ],
+    "Targets": [
+      "class"
+    ],
+    "Keywords": [],
+    "CreatedOn": "2026-06-20T10:10:28.7011736Z",
+    "IsEnabled": true
+  },
+  {
+    "Intent": 7,
+    "Priority": 90,
+    "Actions": [
+      "show",
+      "view",
+      "display",
+      "open"
+    ],
+    "Targets": [
+      "class"
+    ],
+    "Keywords": [],
+    "CreatedOn": "2026-06-20T10:10:28.7011771Z",
+    "IsEnabled": true
+  },
+  {
+    "Intent": 41,
+    "Priority": 90,
+    "Actions": [
+      "list",
+      "show",
+      "display"
+    ],
+    "Targets": [
+      "classes"
+    ],
+    "Keywords": [],
+    "CreatedOn": "2026-06-20T10:10:28.7011775Z",
+    "IsEnabled": true
+  },
+  {
+    "Intent": 42,
+    "Priority": 90,
+    "Actions": [
+      "list",
+      "show",
+      "display"
+    ],
+    "Targets": [
+      "classes in",
+      "classes"
+    ],
+    "Keywords": [],
+    "CreatedOn": "2026-06-20T10:10:28.7011779Z",
+    "IsEnabled": true
+  },
+  {
+    "Intent": 9,
+    "Priority": 100,
+    "Actions": [
+      "delete",
+      "remove"
+    ],
+    "Targets": [
+      "class"
+    ],
+    "Keywords": [],
+    "CreatedOn": "2026-06-20T10:10:28.7011783Z",
+    "IsEnabled": true
+  },
+  {
+    "Intent": 10,
+    "Priority": 100,
+    "Actions": [
+      "restore",
+      "recover"
+    ],
+    "Targets": [
+      "class"
+    ],
+    "Keywords": [],
+    "CreatedOn": "2026-06-20T10:10:28.7011805Z",
+    "IsEnabled": true
+  },
+  {
+    "Intent": 11,
+    "Priority": 100,
+    "Actions": [
+      "restore"
+    ],
+    "Targets": [
+      "last class"
+    ],
+    "Keywords": [],
+    "CreatedOn": "2026-06-20T10:10:28.7011925Z",
+    "IsEnabled": true
+  },
+  {
+    "Intent": 12,
+    "Priority": 90,
+    "Actions": [
+      "list",
+      "show"
+    ],
+    "Targets": [
+      "deleted classes"
+    ],
+    "Keywords": [],
+    "CreatedOn": "2026-06-20T10:10:28.701193Z",
+    "IsEnabled": true
+  },
+  {
+    "Intent": 8,
+    "Priority": 100,
+    "Actions": [
+      "rename"
+    ],
+    "Targets": [
+      "class"
+    ],
+    "Keywords": [],
+    "CreatedOn": "2026-06-20T10:10:28.7011933Z",
+    "IsEnabled": true
+  },
+  {
+    "Intent": 13,
+    "Priority": 90,
+    "Actions": [
+      "add",
+      "create",
+      "inherit",
+      "extend",
+      "derive"
+    ],
+    "Targets": [
+      "property",
+      "class"
+    ],
+    "Keywords": [],
+    "CreatedOn": "2026-06-20T10:10:28.7011947Z",
+    "IsEnabled": true
+  },
+  {
+    "Intent": 14,
+    "Priority": 100,
+    "Actions": [
+      "list",
+      "show",
+      "add",
+      "create"
+    ],
+    "Targets": [
+      "properties",
+      "property"
+    ],
+    "Keywords": [],
+    "CreatedOn": "2026-06-20T10:10:28.7011952Z",
+    "IsEnabled": true
+  },
+  {
+    "Intent": 15,
+    "Priority": 90,
+    "Actions": [
+      "delete",
+      "remove",
+      "list",
+      "show"
+    ],
+    "Targets": [
+      "property",
+      "properties"
+    ],
+    "Keywords": [],
+    "CreatedOn": "2026-06-20T10:10:28.7011955Z",
+    "IsEnabled": true
+  },
+  {
+    "Intent": 16,
+    "Priority": 100,
+    "Actions": [
+      "rename",
+      "delete",
+      "remove"
+    ],
+    "Targets": [
+      "property"
+    ],
+    "Keywords": [],
+    "CreatedOn": "2026-06-20T10:10:28.7011959Z",
+    "IsEnabled": true
+  },
+  {
+    "Intent": 17,
+    "Priority": 100,
+    "Actions": [
+      "add",
+      "create",
+      "generate",
+      "rename"
+    ],
+    "Targets": [
+      "method",
+      "property"
+    ],
+    "Keywords": [],
+    "CreatedOn": "2026-06-20T10:10:28.7011986Z",
+    "IsEnabled": true
+  },
+  {
+    "Intent": 18,
+    "Priority": 90,
+    "Actions": [
+      "list",
+      "show",
+      "add",
+      "create",
+      "generate"
+    ],
+    "Targets": [
+      "methods",
+      "method"
+    ],
+    "Keywords": [],
+    "CreatedOn": "2026-06-20T10:10:28.7011989Z",
+    "IsEnabled": true
+  },
+  {
+    "Intent": 25,
+    "Priority": 100,
+    "Actions": [
+      "create",
+      "generate"
+    ],
+    "Targets": [
+      "service",
+      "interface"
+    ],
+    "Keywords": [],
+    "CreatedOn": "2026-06-20T10:10:28.7011992Z",
+    "IsEnabled": true
+  },
+  {
+    "Intent": 26,
+    "Priority": 100,
+    "Actions": [
+      "create",
+      "generate"
+    ],
+    "Targets": [
+      "repository",
+      "service"
+    ],
+    "Keywords": [],
+    "CreatedOn": "2026-06-20T10:10:28.7011996Z",
+    "IsEnabled": true
+  },
+  {
+    "Intent": 24,
+    "Priority": 100,
+    "Actions": [
+      "create",
+      "generate"
+    ],
+    "Targets": [
+      "interface"
+    ],
+    "Keywords": [],
+    "CreatedOn": "2026-06-20T10:10:28.7012Z",
+    "IsEnabled": true
+  },
+  {
+    "Intent": 27,
+    "Priority": 100,
+    "Actions": [
+      "create",
+      "generate"
+    ],
+    "Targets": [
+      "controller",
+      "repository"
+    ],
+    "Keywords": [],
+    "CreatedOn": "2026-06-20T10:10:28.7012003Z",
+    "IsEnabled": true
+  },
+  {
+    "Intent": 28,
+    "Priority": 100,
+    "Actions": [
+      "create",
+      "generate"
+    ],
+    "Targets": [
+      "api",
+      "endpoint",
+      "controller"
+    ],
+    "Keywords": [],
+    "CreatedOn": "2026-06-20T10:10:28.7012007Z",
+    "IsEnabled": true
+  },
+  {
+    "Intent": 30,
+    "Priority": 90,
+    "Actions": [
+      "analyze"
+    ],
+    "Targets": [
+      "project",
+      "class"
+    ],
+    "Keywords": [],
+    "CreatedOn": "2026-06-20T10:10:28.7012031Z",
+    "IsEnabled": true
+  },
+  {
+    "Intent": 29,
+    "Priority": 100,
+    "Actions": [
+      "analyze",
+      "create",
+      "generate"
+    ],
+    "Targets": [
+      "class",
+      "api",
+      "endpoint"
+    ],
+    "Keywords": [],
+    "CreatedOn": "2026-06-20T10:10:28.7012035Z",
+    "IsEnabled": true
+  },
+  {
+    "Intent": 45,
+    "Priority": 90,
+    "Actions": [
+      "validate"
+    ],
+    "Targets": [
+      "project"
+    ],
+    "Keywords": [],
+    "CreatedOn": "2026-06-20T10:10:28.7012038Z",
+    "IsEnabled": true
+  },
+  {
+    "Intent": 39,
+    "Priority": 90,
+    "Actions": [
+      "generate"
+    ],
+    "Targets": [
+      "documentation",
+      "design document",
+      "project report"
+    ],
+    "Keywords": [],
+    "CreatedOn": "2026-06-20T10:10:28.7012042Z",
+    "IsEnabled": true
+  },
+  {
+    "Intent": 46,
+    "Priority": 90,
+    "Actions": [
+      "generate",
+      "validate"
+    ],
+    "Targets": [
+      "design document",
+      "architecture document",
+      "technical document",
+      "project"
+    ],
+    "Keywords": [],
+    "CreatedOn": "2026-06-20T11:27:37.8446062Z",
+    "IsEnabled": true
+  },
+  {
+    "Intent": 43,
+    "Priority": 95,
+    "Actions": [
+      "list",
+      "show",
+      "display"
+    ],
+    "Targets": [
+      "classes in"
+    ],
+    "Keywords": [],
+    "CreatedOn": "2026-06-23T14:21:00.1327271Z",
+    "IsEnabled": true
+  },
+  {
+    "Intent": 19,
+    "Priority": 90,
+    "Actions": [
+      "list",
+      "show"
+    ],
+    "Targets": [
+      "methods"
+    ],
+    "Keywords": [],
+    "CreatedOn": "2026-06-23T14:21:00.1327346Z",
+    "IsEnabled": true
+  },
+  {
+    "Intent": 31,
+    "Priority": 90,
+    "Actions": [
+      "analyze"
+    ],
+    "Targets": [
+      "project"
+    ],
+    "Keywords": [],
+    "CreatedOn": "2026-06-23T14:21:00.132742Z",
+    "IsEnabled": true
+  },
+  {
+    "Intent": 40,
+    "Priority": 90,
+    "Actions": [
+      "generate"
+    ],
+    "Targets": [
+      "documentation",
+      "design document",
+      "project report"
+    ],
+    "Keywords": [],
+    "CreatedOn": "2026-06-23T14:21:00.1327444Z",
+    "IsEnabled": true
+  },
+  {
+    "Intent": 47,
+    "Priority": 90,
+    "Actions": [
+      "generate"
+    ],
+    "Targets": [
+      "design document",
+      "architecture document",
+      "technical document"
+    ],
+    "Keywords": [],
+    "CreatedOn": "2026-06-23T14:21:00.1327447Z",
+    "IsEnabled": true
+  }
+]

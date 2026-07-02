@@ -1,0 +1,107 @@
+﻿using CodeGenerationEngine.Core;
+using CodeGenerationEngine.Models;
+using System.Diagnostics;
+
+namespace CodeGenerationEngine.Factory;
+
+
+/// <summary>
+/// Factory class responsible for creating .NET projects based on the provided project type and framework.
+/// </summary>
+public static class DotNetProjectFactory
+{
+    public static ProjectMetaData CreateProject(ProjectRequest request)
+    {
+        try
+        {
+            if (!Directory.Exists(request.OutputFolder))
+                Directory.CreateDirectory(request.OutputFolder);
+
+            var template = GetTemplate(request.ProjectType);
+
+            var arguments = $"new {template} " + $"-n {request.ProjectName} " + $"-f {request.Framework}";
+
+            var process = new Process
+            {
+                StartInfo = new ProcessStartInfo
+                {
+                    FileName = "dotnet",
+                    Arguments = arguments,
+                    WorkingDirectory = request.OutputFolder,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false
+                }
+            };
+
+            process.Start();
+
+            string output = process.StandardOutput.ReadToEnd();
+
+            string error = process.StandardError.ReadToEnd();
+
+            process.WaitForExit();
+
+            var projectPath = Path.Combine(request.OutputFolder,
+                request.ProjectName, $"{request.ProjectName}.csproj");
+
+            var packageProcess = new Process
+            {
+                StartInfo = new ProcessStartInfo
+                {
+                    FileName = "dotnet",
+                    Arguments = $"add \"{projectPath}\" package System.ComponentModel.Annotations",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false
+                }
+            };
+
+            packageProcess.Start();
+            packageProcess.WaitForExit();
+            var result = new ProjectMetaData
+            {
+                Success = process.ExitCode == 0,
+
+                ProjectPath = Path.Combine(request.OutputFolder, request.ProjectName),
+
+                Message = process.ExitCode == 0
+                        ? output
+                        : error
+            };
+
+            if (result.Success)
+            {
+                ProjectManager.Register(result);
+                ProjectManager.SaveProjects();
+            }
+
+            return result;
+        }
+        catch (Exception ex)
+        {
+            return new ProjectMetaData
+            {
+                Success = false,
+                Message = ex.Message
+            };
+        }
+    }
+
+    private static string GetTemplate(DotNetProjectType projectType)
+    {
+        return projectType switch
+        {
+            DotNetProjectType.Console => "console",
+            DotNetProjectType.ClassLibrary => "classlib",
+            DotNetProjectType.WebApi => "webapi",
+            DotNetProjectType.BlazorServer => "blazor",
+            DotNetProjectType.BlazorWebAssembly => "blazorwasm",
+            DotNetProjectType.Wpf => "wpf",
+            DotNetProjectType.WinForms => "winforms",
+            DotNetProjectType.WorkerService => "worker",
+            DotNetProjectType.Mvc => "mvc",
+            _ => throw new NotSupportedException()
+        };
+    }
+}

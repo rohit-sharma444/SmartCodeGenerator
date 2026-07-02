@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="../CodeGenerationEngine/CodeGenerationEngine.csproj" Id="9333974e-0b62-4755-b157-d9f317119cb2" />
+  <Project Path="../CodeGenerator.Tests/CodeGenerator.Tests.csproj" />
+  <Project Path="CodeGenerator.csproj" />
+</Solution>
