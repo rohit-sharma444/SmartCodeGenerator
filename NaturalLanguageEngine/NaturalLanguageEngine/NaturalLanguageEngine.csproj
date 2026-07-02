@@ -12,9 +12,4 @@
     <Compile Remove="Models\Common\Diagnostic.cs" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Folder Include="Abstractions\Semantics\" />
-    <Folder Include="Knowledge\Resources\" />
-  </ItemGroup>
-
 </Project>

@@ -12,11 +12,24 @@ using NaturalLanguageEngine.Syntax;
 /// <summary>
 /// Assembles a fully-wired <see cref="NaturalLanguageEngine.Core.NaturalLanguageEngine"/>
 /// using the built-in English knowledge base and the default analysis pipeline.
+/// Supports optional features like logging and caching.
 /// </summary>
 public sealed class EngineBuilder
 {
+    /// <summary>
+    /// Builds an engine with default options (no logging or caching).
+    /// </summary>
     public static NaturalLanguageEngine.Core.NaturalLanguageEngine BuildDefault()
+        => (NaturalLanguageEngine.Core.NaturalLanguageEngine)Build(new EngineBuilderOptions());
+
+    /// <summary>
+    /// Builds an engine with the specified configuration options.
+    /// </summary>
+    public static object Build(EngineBuilderOptions options)
     {
+        if (options == null)
+            throw new ArgumentNullException(nameof(options));
+
         // --- Knowledge base ---
         ILanguageRepository language = new LanguageRepositoryBuilder()
             .UseEnglish()
@@ -57,17 +70,27 @@ public sealed class EngineBuilder
         var intentRecognizer = new IntentRecognizer();
         var relationshipExtractor = new RelationshipExtractor();
 
-        // --- Pipeline (stages self-order by their Order property) ---
-        var pipeline = new PipelineBuilder()
+        // --- Pipeline with optional logging ---
+        var logger = options.EnableLogging ? new PipelineLogger() : null;
+
+        var pipeline = new Pipeline(logger)
             .Add(new NormalizationStage(normalizer))
             .Add(new TokenizationStage(sentenceSplitter))
             .Add(new MorphologyStage(lemmatizer, language))
             .Add(new PartOfSpeechStage(posTagger))
             .Add(new PhraseDetectionStage(phraseDetector))
             .Add(new DependencyParsingStage(dependencyParser))
-            .Add(new SemanticStage(entityRecognizer, intentRecognizer, relationshipExtractor))
-            .Build();
+            .Add(new SemanticStage(entityRecognizer, intentRecognizer, relationshipExtractor));
 
-        return new NaturalLanguageEngine.Core.NaturalLanguageEngine(pipeline);
+        var engine = new NaturalLanguageEngine.Core.NaturalLanguageEngine(pipeline);
+
+        // --- Wrap with caching if enabled ---
+        if (options.EnableCaching)
+        {
+            var analyzer = new SemanticAnalyzer(engine);
+            return new CachedSemanticAnalyzer(analyzer, options.MaxCacheSize);
+        }
+
+        return engine;
     }
 }
