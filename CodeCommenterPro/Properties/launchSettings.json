@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "CodeCommenterPro": {
+      "commandName": "Project",
+      "commandLineArgs": "scan D:\\Sage.Accounting.Commercials"
+    }
+  }
+}

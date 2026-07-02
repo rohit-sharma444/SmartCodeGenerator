@@ -1,0 +1,411 @@
+﻿namespace DocumentSearcherService;
+
+using System.Collections.Concurrent;
+using DocumentFormat.OpenXml.Packaging;
+using NPOI.HSSF.UserModel;
+using NPOI.SS.UserModel;
+using NPOI.XSSF.UserModel;
+using System.Threading.Tasks;
+using UglyToad.PdfPig;
+
+public sealed class SearchResult
+{
+    public string FilePath { get; set; } = "";
+    public string FileType { get; set; } = "";
+    public string MatchPreview { get; set; } = "";
+}
+
+public sealed class SearchSummary
+{
+    public int SkippedCount { get; set; }
+    public int ErrorCount { get; set; }
+    public string? LogPath { get; set; }
+}
+
+public static class DocumentSearcherService
+{
+    private static IEnumerable<string> GetFilesProducer(string root, HashSet<string> allowedExtensions)
+    {
+        var dirs = new Stack<string>();
+        dirs.Push(root);
+
+        while (dirs.Count > 0)
+        {
+            var dir = dirs.Pop();
+
+            string[] subDirs;
+            try
+            {
+                subDirs = Directory.GetDirectories(dir);
+            }
+            catch
+            {
+                continue;
+            }
+
+            foreach (var sd in subDirs)
+                dirs.Push(sd);
+
+            string[] files;
+            try
+            {
+                files = Directory.GetFiles(dir);
+            }
+            catch
+            {
+                continue;
+            }
+
+            foreach (var f in files)
+            {
+                string? ext = null;
+                try
+                {
+                    ext = Path.GetExtension(f);
+                }
+                catch
+                {
+                    // ignore malformed paths
+                }
+
+                if (ext != null && allowedExtensions.Contains(ext))
+                    yield return f;
+            }
+        }
+    }
+
+    public static Task<List<SearchResult>> SearchDocumentsInFolderAsync(
+        string folderPath,
+        string searchText)
+    {
+        return Task.Run(() => SearchDocumentsInFolder(folderPath, searchText));
+    }
+
+    public static List<SearchResult> SearchDocumentsInFolder(
+        string folderPath,
+        string searchText)
+    {
+        if (!Directory.Exists(folderPath))
+            throw new DirectoryNotFoundException(folderPath);
+
+        if (string.IsNullOrWhiteSpace(searchText))
+            throw new ArgumentException(nameof(searchText));
+
+        var results = new ConcurrentBag<SearchResult>();
+        var logs = new ConcurrentBag<string>();
+
+        // Allowed extensions for quick lookup
+        var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ".txt", ".pdf", ".docx", ".xlsx", ".xls" };
+
+        // Use a producer that yields files safely and feed into parallel processing
+        var filesPartitioner = System.Collections.Concurrent.Partitioner.Create(GetFilesProducer(folderPath, allowed), EnumerablePartitionerOptions.NoBuffering);
+
+        var po = new ParallelOptions { MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount) };
+
+        Parallel.ForEach(filesPartitioner, po, file =>
+        {
+            try
+            {
+                // use fast extension check
+                var ext = Path.GetExtension(file);
+                SearchResult? result = ext switch
+                {
+                    ".txt" or ".TXT" => SearchTxt(file, searchText),
+                    ".pdf" or ".PDF" => SearchPdf(file, searchText),
+                    ".docx" or ".DOCX" => SearchDocx(file, searchText),
+                    ".xls" or ".XLS" => SearchExcel(file, searchText),
+                    ".xlsx" or ".XLSX" => SearchExcel(file, searchText),
+                    _ => null
+                };
+
+                if (result != null)
+                    results.Add(result);
+            }
+            catch (Exception ex)
+            {
+                // Collect per-file error details to a log instead of writing to console
+                if (IsHarmlessException(ex))
+                {
+                    logs.Add($"{DateTime.UtcNow:o} | HARmless | {file} | {ex.GetType().FullName} | {ex.Message}");
+                }
+                else
+                {
+                    logs.Add($"{DateTime.UtcNow:o} | ERROR | {file} | {ex.GetType().FullName} | {ex.Message}\n{ex}");
+                }
+            }
+        });
+
+        // write logs to a per-search file in temp directory (if any) and collect summary
+        SearchSummary summary = new SearchSummary();
+        string? logPath = null;
+
+        if (!logs.IsEmpty)
+        {
+            try
+            {
+                logPath = Path.Combine(Path.GetTempPath(), $"DocumentSearcherService_{DateTime.UtcNow:yyyyMMdd_HHmmss}.log");
+                File.WriteAllLines(logPath, logs.OrderBy(l => l));
+
+                // compute counts
+                summary.SkippedCount = logs.Count(l => l.Contains("| HARmless |"));
+                summary.ErrorCount = logs.Count(l => l.Contains("| ERROR |"));
+                summary.LogPath = logPath;
+            }
+            catch
+            {
+                // Swallow any logging IO exceptions to avoid surfacing errors to the console
+            }
+        }
+
+        // attach last search summary for consumer
+        LastSearchSummary = summary;
+
+        return results.ToList();
+    }
+
+    // Exposed so callers (console) can show a summary line after a search
+    public static SearchSummary LastSearchSummary { get; private set; } = new SearchSummary();
+
+    private static SearchResult? SearchTxt(
+        string filePath,
+        string searchText)
+    {
+        foreach (var line in File.ReadLines(filePath))
+        {
+            if (line.Contains(searchText,
+                StringComparison.OrdinalIgnoreCase))
+            {
+                return new SearchResult
+                {
+                    FilePath = filePath,
+                    FileType = "TXT",
+                    MatchPreview = line
+                };
+            }
+        }
+
+        return null;
+    }
+
+    private static SearchResult? SearchPdf(
+        string filePath,
+        string searchText)
+    {
+        try
+        {
+            using var document = PdfDocument.Open(filePath);
+
+            foreach (var page in document.GetPages())
+            {
+                var text = page.Text;
+
+                if (text.Contains(searchText,
+                    StringComparison.OrdinalIgnoreCase))
+                {
+                    return new SearchResult
+                    {
+                        FilePath = filePath,
+                        FileType = "PDF",
+                        MatchPreview = ExtractPreview(text, searchText)
+                    };
+                }
+            }
+
+            return null;
+        }
+        catch (Exception ex) when (IsPasswordProtectedException(ex))
+        {
+            // ignore password-protected / encrypted PDFs
+            return null;
+        }
+        catch
+        {
+            throw;
+        }
+    }
+
+    private static SearchResult? SearchDocx(
+        string filePath,
+        string searchText)
+    {
+        try
+        {
+            using var document =
+                WordprocessingDocument.Open(filePath, false);
+
+            var body = document.MainDocumentPart?
+                .Document.Body?
+                .InnerText;
+
+            if (!string.IsNullOrEmpty(body) &&
+                body.Contains(searchText,
+                StringComparison.OrdinalIgnoreCase))
+            {
+                return new SearchResult
+                {
+                    FilePath = filePath,
+                    FileType = "DOCX",
+                    MatchPreview = ExtractPreview(body, searchText)
+                };
+            }
+
+            return null;
+        }
+        catch (Exception ex) when (IsPasswordProtectedException(ex))
+        {
+            // ignore password-protected / encrypted DOCX
+            return null;
+        }
+        catch
+        {
+            throw;
+        }
+    }
+
+    private static SearchResult? SearchExcel(
+        string filePath,
+        string searchText)
+    {
+        try
+        {
+            using var stream = File.OpenRead(filePath);
+
+            IWorkbook workbook =
+                filePath.EndsWith(".xls")
+                ? new HSSFWorkbook(stream)
+                : new XSSFWorkbook(stream);
+
+            for (int i = 0; i < workbook.NumberOfSheets; i++)
+            {
+                var sheet = workbook.GetSheetAt(i);
+
+                for (int rowIndex = 0;
+                     rowIndex <= sheet.LastRowNum;
+                     rowIndex++)
+                {
+                    var row = sheet.GetRow(rowIndex);
+
+                    if (row == null)
+                        continue;
+
+                    foreach (var cell in row.Cells)
+                    {
+                        var value = cell.ToString();
+
+                        if (!string.IsNullOrEmpty(value) &&
+                            value.Contains(searchText,
+                            StringComparison.OrdinalIgnoreCase))
+                        {
+                            return new SearchResult
+                            {
+                                FilePath = filePath,
+                                FileType = "EXCEL",
+                                MatchPreview = value
+                            };
+                        }
+                    }
+                }
+            }
+
+            return null;
+        }
+        catch (Exception ex) when (IsPasswordProtectedException(ex))
+        {
+            // ignore password-protected / encrypted Excel files
+            return null;
+        }
+        catch
+        {
+            throw;
+        }
+    }
+
+    private static bool IsPasswordProtectedException(Exception ex)
+    {
+        if (ex == null) return false;
+
+        // Inspect message and inner exceptions for common indicators
+        Exception? e = ex;
+        while (e != null)
+        {
+            var msg = e.Message ?? string.Empty;
+            if (msg.IndexOf("password", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                msg.IndexOf("encrypted", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                msg.IndexOf("password protected", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                msg.IndexOf("encryptedPackage", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                msg.IndexOf("The document is encrypted", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return true;
+            }
+
+            e = e.InnerException;
+        }
+
+        return false;
+    }
+
+    private static bool IsHarmlessException(Exception ex)
+    {
+        if (ex == null) return false;
+
+        Exception? e = ex;
+        while (e != null)
+        {
+            var msg = e.Message ?? string.Empty;
+
+            // Access denied / unauthorized
+            if (msg.IndexOf("access to the path", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                msg.IndexOf("access denied", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                msg.IndexOf("unauthorized", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return true;
+            }
+
+            // Password / encryption indicators
+            if (IsPasswordProtectedException(e))
+            {
+                return true;
+            }
+
+            // Common native library missing (SkiaSharp) indicator
+            if (msg.IndexOf("Could not load file or assembly 'SkiaSharp", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                msg.IndexOf("Unable to load DLL 'libSkiaSharp", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return true;
+            }
+
+            // Corrupt file / unexpected EOF
+            if (msg.IndexOf("EOF in header", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                msg.IndexOf("corrupt", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                msg.IndexOf("invalid", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return true;
+            }
+
+            e = e.InnerException;
+        }
+
+        return false;
+    }
+
+    private static string ExtractPreview(
+        string text,
+        string searchText,
+        int radius = 40)
+    {
+        int index = text.IndexOf(
+            searchText,
+            StringComparison.OrdinalIgnoreCase);
+
+        if (index < 0)
+            return "";
+
+        int start = Math.Max(0, index - radius);
+        int length = Math.Min(
+            text.Length - start,
+            searchText.Length + radius * 2);
+
+        return text.Substring(start, length)
+            .Replace(Environment.NewLine, " ");
+    }
+}
