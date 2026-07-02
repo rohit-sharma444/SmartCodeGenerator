@@ -1,0 +1,74 @@
+using DocumentSearcherService;
+
+namespace DashboardConsole
+{
+    internal class Program
+    {
+        private static async Task<int> Main(string[] args)
+        {
+            string folderPath;
+            string searchText;
+
+            if (args.Length >= 2)
+            {
+                folderPath = args[0];
+                searchText = args[1];
+            }
+            else
+            {
+                Console.WriteLine("Document Search Console");
+                Console.Write("Enter folder path: ");
+                folderPath = Console.ReadLine() ?? string.Empty;
+                Console.Write("Enter search text: ");
+                searchText = Console.ReadLine() ?? string.Empty;
+            }
+
+            if (string.IsNullOrWhiteSpace(folderPath) || string.IsNullOrWhiteSpace(searchText))
+            {
+                Console.WriteLine("Folder path and search text are required.");
+                return 1;
+            }
+
+            try
+            {
+                Console.WriteLine($"Searching folder : '{folderPath}' for text : '{searchText}'...");
+
+                var progress = new Progress<(int discovered, int processed)>(t =>
+                {
+                    Console.Write($"\rDiscovered : {t.discovered}, Processed : {t.processed}");
+                });
+
+                List<SearchResult> results = await DocumentSearcherService.DocumentSearcherService.SearchDocumentsInFolderAsync(folderPath, searchText, maxDegreeOfParallelism: null, maxFiles: null, progress: progress);
+
+                // move to next line after progress
+                Console.WriteLine();
+
+                Console.WriteLine($"Found {results.Count} result(s).");
+
+                foreach (var r in results)
+                {
+                    Console.WriteLine("----------------------------------------");
+                    Console.WriteLine($"Type: {r.FileType}");
+                    Console.WriteLine($"Path: {r.FilePath}");
+                    Console.WriteLine($"Preview: {r.MatchPreview}");
+                }
+
+                // Print summary line (skipped/errored files). Only show if any were skipped or errored.
+                var summary = DocumentSearcherService.DocumentSearcherService.LastSearchSummary;
+                if (summary != null && (summary.SkippedCount > 0 || summary.ErrorCount > 0))
+                {
+                    Console.WriteLine($"Search complete. Skipped: {summary.SkippedCount}, Errors: {summary.ErrorCount}.");
+                    if (!string.IsNullOrEmpty(summary.LogPath))
+                        Console.WriteLine($"Detailed log: {summary.LogPath}");
+                }
+
+                return 0;
+            }
+            catch (Exception)
+            {
+                //Console.WriteLine($"Error: {ex.Message}");
+                return 2;
+            }
+        }
+    }
+}

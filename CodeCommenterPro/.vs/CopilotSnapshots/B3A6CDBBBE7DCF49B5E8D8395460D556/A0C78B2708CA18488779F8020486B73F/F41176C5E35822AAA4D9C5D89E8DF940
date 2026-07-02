@@ -1,0 +1,59 @@
+﻿using CodeCommenterPro.Configuration;
+using CodeCommenterPro.Models;
+
+namespace CodeCommenterPro.Services;
+
+public class SolutionScanner
+{
+    private readonly Settings _settings;
+
+    public SolutionScanner(
+        Settings settings)
+    {
+        _settings = settings;
+    }
+
+    public CoverageReport Process(
+        string rootFolder)
+    {
+        var report =
+            new CoverageReport();
+
+        var files =
+            Directory.GetFiles(
+                rootFolder,
+                "*.cs",
+                SearchOption.AllDirectories);
+
+        report.TotalFiles = files.Length;
+
+        Parallel.ForEach(
+            files,
+            new ParallelOptions
+            {
+                MaxDegreeOfParallelism =
+                    _settings.MaxParallelism
+            },
+            file =>
+            {
+                try
+                {
+                    new FileScanner(_settings)
+                        .ProcessFile(file);
+
+                    Console.WriteLine(
+                        $"Processed: {file}");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine(
+                        $"Failed: {file}");
+
+                    Console.WriteLine(
+                        ex.Message);
+                }
+            });
+
+        return report;
+    }
+}

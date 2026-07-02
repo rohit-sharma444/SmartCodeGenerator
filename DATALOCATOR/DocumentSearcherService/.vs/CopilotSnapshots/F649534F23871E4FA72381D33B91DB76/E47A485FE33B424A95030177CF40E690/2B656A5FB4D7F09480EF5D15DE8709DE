@@ -1,0 +1,141 @@
+﻿using System.Net;
+using System.Text;
+using DocumentSearcherService;
+
+var wwwroot = Path.Combine(AppContext.BaseDirectory, "wwwroot");
+Directory.CreateDirectory(wwwroot);
+
+// copy default static files from embedded content
+File.WriteAllText(Path.Combine(wwwroot, "index.html"), DefaultFiles.IndexHtml);
+File.WriteAllText(Path.Combine(wwwroot, "app.js"), DefaultFiles.AppJs);
+
+var listener = new HttpListener();
+listener.Prefixes.Add("http://localhost:5000/");
+listener.Start();
+Console.WriteLine("Dashboard running at http://localhost:5000/");
+
+while (true)
+{
+    var ctx = await listener.GetContextAsync();
+    _ = Task.Run(async () =>
+    {
+        try
+        {
+            var req = ctx.Request;
+            var res = ctx.Response;
+
+            if (req.Url.AbsolutePath.Equals("/api/search", StringComparison.OrdinalIgnoreCase) && req.HttpMethod == "POST")
+            {
+                using var sr = new StreamReader(req.InputStream, req.ContentEncoding);
+                var body = await sr.ReadToEndAsync();
+                var data = System.Text.Json.JsonSerializer.Deserialize<SearchRequest>(body);
+
+                if (data == null || string.IsNullOrWhiteSpace(data.FolderPath) || string.IsNullOrWhiteSpace(data.SearchText))
+                {
+                    res.StatusCode = 400;
+                    var bytes = Encoding.UTF8.GetBytes("folderPath and searchText are required");
+                    res.OutputStream.Write(bytes, 0, bytes.Length);
+                    res.Close();
+                    return;
+                }
+
+                var results = await DocumentSearcherService.SearchDocumentsInFolderAsync(data.FolderPath, data.SearchText);
+                res.ContentType = "application/json";
+                var json = System.Text.Json.JsonSerializer.Serialize(results);
+                var outBytes = Encoding.UTF8.GetBytes(json);
+                res.OutputStream.Write(outBytes, 0, outBytes.Length);
+                res.Close();
+                return;
+            }
+
+            // serve static files
+            var path = req.Url.AbsolutePath.TrimStart('/');
+            if (string.IsNullOrEmpty(path)) path = "index.html";
+            var file = Path.Combine(wwwroot, path);
+            if (File.Exists(file))
+            {
+                var bytes = File.ReadAllBytes(file);
+                res.ContentType = path.EndsWith(".js") ? "application/javascript" : "text/html";
+                res.OutputStream.Write(bytes, 0, bytes.Length);
+                res.Close();
+                return;
+            }
+
+            res.StatusCode = 404;
+            var notFound = Encoding.UTF8.GetBytes("Not found");
+            res.OutputStream.Write(notFound, 0, notFound.Length);
+            res.Close();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex);
+        }
+    });
+}
+
+public record SearchRequest(string FolderPath, string SearchText);
+
+internal static class DefaultFiles
+{
+    public const string IndexHtml = @"<!doctype html>
+<html>
+  <head>
+    <meta charset=\"utf-8\" />
+    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
+    <title>Document Search Dashboard</title>
+    <style>
+      body { font-family: Arial, Helvetica, sans-serif; margin: 20px; }
+      input, button { padding: 8px; margin: 4px 0; width: 100%; }
+      pre { background:#f4f4f4; padding:10px; }
+    </style>
+  </head>
+  <body>
+    <h1>Document Search Dashboard</h1>
+    <label>Folder Path</label>
+    <input id=\"folder\" placeholder=\"C:\\\\path\\\\to\\\\documents\" />
+    <label>Search Text</label>
+    <input id=\"text\" placeholder=\"search term\" />
+    <button id=\"search\">Search</button>
+
+    <h2>Results</h2>
+    <div id=\"results\"></div>
+
+    <script src=\"/app.js\"></script>
+  </body>
+</html>";
+
+    public const string AppJs = @"document.getElementById('search').addEventListener('click', async () => {
+  const folder = document.getElementById('folder').value;
+  const text = document.getElementById('text').value;
+  const resultsDiv = document.getElementById('results');
+  resultsDiv.innerHTML = 'Searching...';
+
+  try {
+    const resp = await fetch('/api/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folderPath: folder, searchText: text })
+    });
+
+    if (!resp.ok) {
+      resultsDiv.innerText = 'Error: ' + await resp.text();
+      return;
+    }
+
+    const results = await resp.json();
+    if (!results || results.length === 0) {
+      resultsDiv.innerText = 'No matches found.';
+      return;
+    }
+
+    resultsDiv.innerHTML = '';
+    results.forEach(r => {
+      const pre = document.createElement('pre');
+      pre.innerText = `${r.FileType} | ${r.FilePath}\nPreview: ${r.MatchPreview}`;
+      resultsDiv.appendChild(pre);
+    });
+  } catch (err) {
+    resultsDiv.innerText = 'Error: ' + err;
+  }
+});";
+}

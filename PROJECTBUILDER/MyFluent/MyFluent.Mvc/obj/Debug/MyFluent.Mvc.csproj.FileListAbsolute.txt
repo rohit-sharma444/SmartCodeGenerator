@@ -1,0 +1,11 @@
+C:\Users\Shantanu\Desktop\Projects\MyFluent\MyFluent.Mvc\bin\Debug\MyFluent.Mvc.dll
+C:\Users\Shantanu\Desktop\Projects\MyFluent\MyFluent.Mvc\bin\Debug\MyFluent.Mvc.pdb
+C:\Users\Shantanu\Desktop\Projects\MyFluent\MyFluent.Mvc\bin\Debug\MyFluent.dll
+C:\Users\Shantanu\Desktop\Projects\MyFluent\MyFluent.Mvc\bin\Debug\MyFluent.pdb
+C:\Users\Shantanu\Desktop\Projects\MyFluent\MyFluent.Mvc\obj\Debug\ResolveAssemblyReference.cache
+C:\Users\Shantanu\Desktop\Projects\MyFluent\MyFluent.Mvc\obj\Debug\MyFluent.Mvc.dll
+C:\Users\Shantanu\Desktop\Projects\MyFluent\MyFluent.Mvc\obj\Debug\MyFluent.Mvc.pdb
+C:\PROJECTBUILDER\MyFluent\MyFluent.Mvc\obj\Debug\MyFluent.Mvc.csproj.AssemblyReference.cache
+C:\PROJECTBUILDER\MyFluent\MyFluent.Mvc\obj\Debug\MyFluent.Mvc.csproj.CoreCompileInputs.cache
+C:\PROJECTBUILDER\MyFluent\MyFluent.Mvc\obj\Debug\MyFluent.Mvc.dll
+C:\PROJECTBUILDER\MyFluent\MyFluent.Mvc\obj\Debug\MyFluent.Mvc.pdb

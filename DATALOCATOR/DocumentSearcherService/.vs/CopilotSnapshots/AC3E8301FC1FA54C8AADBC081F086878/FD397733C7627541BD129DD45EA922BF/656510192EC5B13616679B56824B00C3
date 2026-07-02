@@ -1,0 +1,56 @@
+﻿using DocumentSearcherService;
+
+namespace DashboardConsole
+{
+    internal class Program
+    {
+        private static async Task<int> Main(string[] args)
+        {
+            string folderPath;
+            string searchText;
+
+            if (args.Length >= 2)
+            {
+                folderPath = args[0];
+                searchText = args[1];
+            }
+            else
+            {
+                Console.WriteLine("Document Search Console");
+                Console.Write("Enter folder path: ");
+                folderPath = Console.ReadLine() ?? string.Empty;
+                Console.Write("Enter search text: ");
+                searchText = Console.ReadLine() ?? string.Empty;
+            }
+
+            if (string.IsNullOrWhiteSpace(folderPath) || string.IsNullOrWhiteSpace(searchText))
+            {
+                Console.WriteLine("Folder path and search text are required.");
+                return 1;
+            }
+
+            try
+            {
+                Console.WriteLine($"Searching '{folderPath}' for '{searchText}'...");
+                List<SearchResult> results = await DocumentSearcherService.DocumentSearcherService.SearchDocumentsInFolderAsync(folderPath, searchText);
+
+                Console.WriteLine($"Found {results.Count} result(s).");
+
+                foreach (var r in results)
+                {
+                    Console.WriteLine("----------------------------------------");
+                    Console.WriteLine($"Type: {r.FileType}");
+                    Console.WriteLine($"Path: {r.FilePath}");
+                    Console.WriteLine($"Preview: {r.MatchPreview}");
+                }
+
+                return 0;
+            }
+            catch (Exception)
+            {
+                //Console.WriteLine($"Error: {ex.Message}");
+                return 2;
+            }
+        }
+    }
+}

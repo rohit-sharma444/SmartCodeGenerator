@@ -1,0 +1,39 @@
+﻿namespace CodeCommenterPro.Roslyn;
+
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using CodeCommenterPro.Helpers;
+
+public static class PatternCommentGenerator
+{
+    public static string? Generate(SyntaxNode? node)
+    {
+        if (node == null)
+            return null;
+
+        return Generate(node.ToString());
+    }
+
+    public static string? Generate(SyntaxToken token) => Generate(token.ToString());
+
+    public static string? Generate(SyntaxTrivia trivia) => Generate(trivia.ToString());
+
+    private static string? Generate(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return null;
+
+        var rules = RuleLoader.Load();
+
+        foreach (var p in rules.Patterns)
+        {
+            if (string.IsNullOrWhiteSpace(p.Match))
+                continue;
+
+            if (text.Contains(p.Match))
+                return p.Description;
+        }
+
+        return null;
+    }
+}

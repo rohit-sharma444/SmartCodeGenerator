@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="../../CodeGenerator/CodeGenerationEngine/CodeGenerationEngine.csproj" />
+  <Project Path="SMARTEDIT.csproj" />
+</Solution>

@@ -1,0 +1,263 @@
+﻿namespace DocumentSearcherService;
+
+using System;
+using System.IO;
+using Microsoft.Office.Interop.Word;
+using iTextSharp.text.pdf;
+using iTextSharp.text.pdf.parser;
+using NPOI.HSSF.UserModel;
+using NPOI.XSSF.UserModel;
+using NPOI.SS.UserModel;
+
+public class DocumentSearcherService
+{
+    public void SearchDocumentsInFolder(string folderPath, string searchText)
+    {
+        if (string.IsNullOrEmpty(folderPath) || string.IsNullOrEmpty(searchText))
+        {
+            throw new ArgumentException("Both folderPath and searchText must be provided.");
+        }
+
+        try
+        {
+            Console.WriteLine($"Searching for '{searchText}' in all documents within the folder: {folderPath}");
+
+            // Get all .docx files
+            string[] docxFiles = Directory.GetFiles(folderPath, "*.docx", SearchOption.AllDirectories);
+
+            foreach (string file in docxFiles)
+            {
+                try
+                {
+                    SearchInDocx(file, searchText);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error processing docx file: {file}. Error: {ex.Message}");
+                }
+            }
+
+            // Get all .txt files
+            string[] txtFiles = Directory.GetFiles(folderPath, "*.txt", SearchOption.AllDirectories);
+            foreach (string file in txtFiles)
+            {
+                try
+                {
+                    SearchInTxt(file, searchText);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error processing txt file: {file}. Error: {ex.Message}");
+                }
+            }
+
+            // Get all .xls files
+            string[] xlsFiles = Directory.GetFiles(folderPath, "*.xls", SearchOption.AllDirectories);
+            foreach (string file in xlsFiles)
+            {
+                try
+                {
+                    SearchInXls(file, searchText);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error processing xls file: {file}. Error: {ex.Message}");
+                }
+            }
+
+            // Get all .xlsx files
+            string[] xlsxFiles = Directory.GetFiles(folderPath, "*.xlsx", SearchOption.AllDirectories);
+            foreach (string file in xlsxFiles)
+            {
+                try
+                {
+                    SearchInXlsx(file, searchText);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error processing xlsx file: {file}. Error: {ex.Message}");
+                }
+            }
+
+            /// Get all .doc files
+            string[] docFiles = Directory.GetFiles(folderPath, "*.doc", SearchOption.AllDirectories);
+            foreach (string file in docFiles)
+            {
+                try
+                {
+                    SearchInDoc(file, searchText);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error processing doc file: {file}. Error: {ex.Message}");
+                }
+            }
+
+            /// Get all .pdf files
+            string[] pdfFiles = Directory.GetFiles(folderPath, "*.pdf", SearchOption.AllDirectories);
+            foreach (string file in pdfFiles)
+            {
+                try
+                {
+                    SearchInPdf(file, searchText);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error processing pdf file: {file}. Error: {ex.Message}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"An error occurred: {ex.Message}");
+        }
+    }
+
+
+    private void SearchInDocx(string filePath, string searchText)
+    {
+        Application wordApp = new();
+        Document? doc = null;
+
+        try
+        {
+            doc = wordApp.Documents.Open(filePath, ReadOnly: true, Visible: false);
+            string content = doc.Content.Text;
+
+            if (!string.IsNullOrEmpty(content) &&
+                content.Contains(searchText, StringComparison.OrdinalIgnoreCase))
+            {
+                Console.WriteLine($"Found '{searchText}' in document: {filePath}");
+            }
+        }
+        finally
+        {
+            doc?.Close(false);
+            wordApp.Quit();
+        }
+    }
+
+    private void SearchInDoc(string filePath, string searchText)
+    {
+        Application wordApp = new();
+        Document? doc = null;
+
+        try
+        {
+            doc = wordApp.Documents.Open(filePath, ReadOnly: true, Visible: false);
+            string content = doc.Content.Text;
+
+            if (!string.IsNullOrEmpty(content) &&
+                content.Contains(searchText, StringComparison.OrdinalIgnoreCase))
+            {
+                Console.WriteLine($"Found '{searchText}' in document: {filePath}");
+            }
+        }
+        finally
+        {
+            doc?.Close(false);
+            wordApp.Quit();
+        }
+    }
+
+    private void SearchInPdf(string filePath, string searchText)
+    {
+        using var reader = new PdfReader(filePath);
+        for (int i = 1; i <= reader.NumberOfPages; i++)
+        {
+            var text = PdfTextExtractor.GetTextFromPage(reader, i);
+            if (!string.IsNullOrEmpty(text) &&
+                text.Contains(searchText, StringComparison.OrdinalIgnoreCase))
+            {
+                Console.WriteLine($"Found '{searchText}' in PDF document: {filePath}");
+                break;
+            }
+        }
+    }
+
+
+    private void SearchInTxt(string filePath, string searchText)
+    {
+        using var reader = new StreamReader(filePath);
+        string line;
+        int lineNumber = 1;
+
+        while ((line = reader.ReadLine()) != null)
+        {
+            if (!string.IsNullOrEmpty(line) &&
+                line.Contains(searchText, StringComparison.OrdinalIgnoreCase))
+            {
+                Console.WriteLine($"Found '{searchText}' in text file: {filePath} at line {lineNumber}");
+            }
+            lineNumber++;
+        }
+    }
+
+    private void SearchInXls(string filePath, string searchText)
+    {
+        using var workbook = new HSSFWorkbook(File.OpenRead(filePath));
+        for (int i = 0; i < workbook.NumberOfSheets; i++)
+        {
+            ISheet sheet = workbook.GetSheetAt(i);
+            for (int j = 0; j <= sheet.LastRowNum; j++)
+            {
+                IRow row = sheet.GetRow(j);
+                if (row == null || row.LastCellNum <= 0)
+                {
+                    continue;
+                }
+
+                for (int k = 0; k < row.LastCellNum; k++)
+                {
+                    ICell cell = row.GetCell(k);
+                    if (cell == null)
+                    {
+                        continue;
+                    }
+
+                    string cellValue = cell.ToString();
+                    if (!string.IsNullOrEmpty(cellValue) &&
+                        cellValue.Contains(searchText, StringComparison.OrdinalIgnoreCase))
+                    {
+                        Console.WriteLine($"Found '{searchText}' in XLS file: {filePath} at sheet {i + 1}, row {j + 1}, column {k + 1}");
+                    }
+                }
+            }
+        }
+    }
+
+    private void SearchInXlsx(string filePath, string searchText)
+    {
+        using var workbook = new XSSFWorkbook(File.OpenRead(filePath));
+        for (int i = 0; i < workbook.NumberOfSheets; i++)
+        {
+            ISheet sheet = workbook.GetSheetAt(i);
+            for (int j = 0; j <= sheet.LastRowNum; j++)
+            {
+                IRow row = sheet.GetRow(j);
+                if (row == null || row.LastCellNum <= 0)
+                {
+                    continue;
+                }
+
+                for (int k = 0; k < row.LastCellNum; k++)
+                {
+                    ICell cell = row.GetCell(k);
+                    if (cell == null)
+                    {
+                        continue;
+                    }
+
+                    string cellValue = cell.ToString();
+                    if (!string.IsNullOrEmpty(cellValue) &&
+                        cellValue.Contains(searchText, StringComparison.OrdinalIgnoreCase))
+                    {
+                        Console.WriteLine($"Found '{searchText}' in XLSX file: {filePath} at sheet {i + 1}, row {j + 1}, column {k + 1}");
+                    }
+                }
+            }
+        }
+    }
+    private static void Log(string message) 
+    => Console.WriteLine($"{DateTime.Now}: {message}");
+}

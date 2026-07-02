@@ -1,0 +1,33 @@
+﻿using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using DocumentSearcherService;
+
+var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
+
+var app = builder.Build();
+
+if (app.Environment.IsDevelopment())
+{
+    app.UseDeveloperExceptionPage();
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
+
+app.UseStaticFiles();
+
+app.MapPost("/api/search", async (SearchRequest req) =>
+{
+    if (req is null || string.IsNullOrWhiteSpace(req.FolderPath) || string.IsNullOrWhiteSpace(req.SearchText))
+        return Results.BadRequest("folderPath and searchText are required");
+
+    var results = await DocumentSearcherService.SearchDocumentsInFolderAsync(req.FolderPath, req.SearchText);
+    return Results.Ok(results);
+});
+
+app.Run();
+
+public record SearchRequest(string FolderPath, string SearchText);
