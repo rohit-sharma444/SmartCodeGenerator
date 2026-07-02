@@ -1,0 +1,222 @@
+﻿using CodeGenerationEngine.Dictionary;
+using System.Text.RegularExpressions;
+using static System.Net.Mime.MediaTypeNames;
+
+namespace CodeGenerationEngine.Core;
+
+/// <summary>
+/// Normalizes natural language commands before intent detection.
+/// Makes the generator more tolerant of user phrasing.
+/// </summary>
+public static partial class CommandParser
+{
+    private static readonly Dictionary<string, string> Synonyms =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["entity"] = "class",
+            ["model"] = "class",
+            ["object"] = "class",
+
+            ["function"] = "method",
+            ["operation"] = "method",
+
+            ["field"] = "property",
+            ["attribute"] = "property",
+
+            ["manager"] = "service",
+
+            ["endpoint"] = "api",
+
+            ["storage"] = "repository",
+            ["repo"] = "repository"
+        };
+
+    private static readonly Dictionary<string, string> CommonTypos =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["clas"] = "class",
+            ["classs"] = "class",
+            ["clss"] = "class",
+
+            ["methd"] = "method",
+            ["mthod"] = "method",
+
+            ["proprty"] = "property",
+            ["propety"] = "property",
+
+            ["servce"] = "service",
+
+            ["repositry"] = "repository",
+            ["repoistory"] = "repository",
+
+            ["contoller"] = "controller",
+
+            ["valdator"] = "validator"
+        };
+
+    private static readonly Dictionary<string, string> PhraseMappings =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["provide me a list of"] = "list",
+            ["give me a list of"] = "list",
+
+            ["show me"] = "show",
+            ["display all"] = "show",
+
+            ["what projects are available"] = "list projects",
+            ["what classes are available"] = "list classes",
+
+            ["i want to use"] = "use",
+            ["switch to"] = "use",
+            ["work on"] = "use",
+
+            ["build"] = "compile"
+        };
+
+    private static readonly HashSet<string> StopWords =
+    [
+        "please",
+        "kindly",
+        "could",
+        "would",
+        "can",
+        "you",
+        "for",
+        "me",
+        "the",
+        "a",
+        "an"
+    ];
+
+    public static string Normalize(string input)
+    {
+        if (string.IsNullOrWhiteSpace(input))
+            return string.Empty;
+
+        input = input.Trim();
+
+        input = NormalizeWhitespace(input);
+
+        input = NormalizePhrases(input);
+
+        input = FixTypos(input);
+
+        input = NormalizeSynonyms(input);
+
+        input = NormalizeVerbs(input);
+
+        input = RemoveStopWords(input);
+
+        input = NormalizePunctuation(input);
+
+        input = NormalizeWhitespace(input);
+
+        return input.Trim();
+    }
+
+    private static string NormalizeWhitespace(string input)
+    {
+        return MultipleSpacesRegex()
+            .Replace(input, " ");
+    }
+
+    private static string NormalizePunctuation(string input)
+    {
+        return input
+            .Replace(",", " ")
+            .Replace(";", " ")
+            .Replace(":", " ")
+            .Replace(".", " ")
+            .Replace("?", " ")
+            .Replace("!", " ");
+    }
+
+    private static string NormalizePhrases(string input)
+    {
+        foreach (var phrase in PhraseMappings)
+        {
+            input = Regex.Replace(
+                input,
+                Regex.Escape(phrase.Key),
+                phrase.Value,
+                RegexOptions.IgnoreCase);
+        }
+
+        return input;
+    }
+
+    private static string NormalizeSynonyms(string input)
+    {
+        foreach (var pair in Synonyms)
+        {
+            input = Regex.Replace(
+                input,
+                $@"\b{Regex.Escape(pair.Key)}\b",
+                pair.Value,
+                RegexOptions.IgnoreCase);
+        }
+
+        return input;
+    }
+
+    private static string FixTypos(string input)
+    {
+        foreach (var typo in CommonTypos)
+        {
+            input = Regex.Replace(
+                input,
+                $@"\b{Regex.Escape(typo.Key)}\b",
+                typo.Value,
+                RegexOptions.IgnoreCase);
+        }
+
+        return input;
+    }
+
+    private static string NormalizeVerbs(string input)
+    {
+        input = Regex.Replace(
+            input,
+            @"\bmake\b",
+            "create",
+            RegexOptions.IgnoreCase);
+
+        input = Regex.Replace(
+            input,
+            @"\bgenerate\b",
+            "create",
+            RegexOptions.IgnoreCase);
+
+        input = Regex.Replace(
+            input,
+            @"\bnew\b",
+            "create",
+            RegexOptions.IgnoreCase);
+
+        input = Regex.Replace(
+            input,
+            @"\bdisplay\b",
+            "show",
+            RegexOptions.IgnoreCase);
+
+        input = Regex.Replace(
+            input,
+            @"\bbuild\b",
+            "compile",
+            RegexOptions.IgnoreCase);
+
+        return input;
+    }
+
+    private static string RemoveStopWords(string input)
+    {
+        var words = input.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+        return string.Join(' ',
+            words.Where(w => !StopWords.Contains(
+                    w, StringComparer.OrdinalIgnoreCase)));
+    }
+
+    [GeneratedRegex(@"\s+")]
+    private static partial Regex MultipleSpacesRegex();
+}

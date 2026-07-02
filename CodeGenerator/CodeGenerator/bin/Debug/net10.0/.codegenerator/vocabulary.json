@@ -1,0 +1,555 @@
+[
+  {
+    "Word": "project",
+    "NormalizedWord": "project",
+    "Category": 2,
+    "Frequency": 1005,
+    "Confidence": 1
+  },
+  {
+    "Word": "myapp",
+    "NormalizedWord": "myapp",
+    "Category": 0,
+    "Frequency": 388,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "use",
+    "NormalizedWord": "use",
+    "Category": 0,
+    "Frequency": 384,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "create",
+    "NormalizedWord": "create",
+    "Category": 1,
+    "Frequency": 367,
+    "Confidence": 1
+  },
+  {
+    "Word": "clas",
+    "NormalizedWord": "clas",
+    "Category": 0,
+    "Frequency": 281,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "current",
+    "NormalizedWord": "current",
+    "Category": 0,
+    "Frequency": 254,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "string",
+    "NormalizedWord": "string",
+    "Category": 1,
+    "Frequency": 217,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "list",
+    "NormalizedWord": "list",
+    "Category": 1,
+    "Frequency": 213,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "return",
+    "NormalizedWord": "return",
+    "Category": 0,
+    "Frequency": 202,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "employee",
+    "NormalizedWord": "employee",
+    "Category": 0,
+    "Frequency": 200,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "property",
+    "NormalizedWord": "property",
+    "Category": 0,
+    "Frequency": 179,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "name",
+    "NormalizedWord": "name",
+    "Category": 0,
+    "Frequency": 151,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "generate",
+    "NormalizedWord": "create",
+    "Category": 1,
+    "Frequency": 148,
+    "Confidence": 1
+  },
+  {
+    "Word": "id",
+    "NormalizedWord": "id",
+    "Category": 0,
+    "Frequency": 147,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "int",
+    "NormalizedWord": "int",
+    "Category": 7,
+    "Frequency": 147,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "provide",
+    "NormalizedWord": "list",
+    "Category": 1,
+    "Frequency": 142,
+    "Confidence": 1
+  },
+  {
+    "Word": "show",
+    "NormalizedWord": "list",
+    "Category": 1,
+    "Frequency": 140,
+    "Confidence": 1
+  },
+  {
+    "Word": "service",
+    "NormalizedWord": "service",
+    "Category": 2,
+    "Frequency": 138,
+    "Confidence": 1
+  },
+  {
+    "Word": "build",
+    "NormalizedWord": "create",
+    "Category": 1,
+    "Frequency": 134,
+    "Confidence": 1
+  },
+  {
+    "Word": "construct",
+    "NormalizedWord": "create",
+    "Category": 1,
+    "Frequency": 134,
+    "Confidence": 1
+  },
+  {
+    "Word": "display",
+    "NormalizedWord": "list",
+    "Category": 1,
+    "Frequency": 134,
+    "Confidence": 1
+  },
+  {
+    "Word": "retrieve",
+    "NormalizedWord": "list",
+    "Category": 1,
+    "Frequency": 134,
+    "Confidence": 1
+  },
+  {
+    "Word": "entity",
+    "NormalizedWord": "class",
+    "Category": 2,
+    "Frequency": 134,
+    "Confidence": 1
+  },
+  {
+    "Word": "model",
+    "NormalizedWord": "class",
+    "Category": 2,
+    "Frequency": 134,
+    "Confidence": 1
+  },
+  {
+    "Word": "dto",
+    "NormalizedWord": "class",
+    "Category": 2,
+    "Frequency": 134,
+    "Confidence": 1
+  },
+  {
+    "Word": "repository",
+    "NormalizedWord": "repository",
+    "Category": 2,
+    "Frequency": 134,
+    "Confidence": 1
+  },
+  {
+    "Word": "controller",
+    "NormalizedWord": "controller",
+    "Category": 2,
+    "Frequency": 134,
+    "Confidence": 1
+  },
+  {
+    "Word": "solution",
+    "NormalizedWord": "project",
+    "Category": 2,
+    "Frequency": 134,
+    "Confidence": 1
+  },
+  {
+    "Word": "method",
+    "NormalizedWord": "method",
+    "Category": 0,
+    "Frequency": 115,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "save",
+    "NormalizedWord": "save",
+    "Category": 0,
+    "Frequency": 101,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "void",
+    "NormalizedWord": "void",
+    "Category": 0,
+    "Frequency": 101,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "validate",
+    "NormalizedWord": "validate",
+    "Category": 0,
+    "Frequency": 101,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "bool",
+    "NormalizedWord": "bool",
+    "Category": 7,
+    "Frequency": 101,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "curremt",
+    "NormalizedWord": "curremt",
+    "Category": 0,
+    "Frequency": 89,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "customer",
+    "NormalizedWord": "customer",
+    "Category": 0,
+    "Frequency": 83,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "help",
+    "NormalizedWord": "help",
+    "Category": 0,
+    "Frequency": 64,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "email",
+    "NormalizedWord": "email",
+    "Category": 0,
+    "Frequency": 62,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "salary",
+    "NormalizedWord": "salary",
+    "Category": 0,
+    "Frequency": 62,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "decimal",
+    "NormalizedWord": "decimal",
+    "Category": 7,
+    "Frequency": 62,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "class",
+    "NormalizedWord": "class",
+    "Category": 2,
+    "Frequency": 62,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "restore",
+    "NormalizedWord": "restore",
+    "Category": 0,
+    "Frequency": 40,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "delete",
+    "NormalizedWord": "delete",
+    "Category": 1,
+    "Frequency": 32,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "design",
+    "NormalizedWord": "design",
+    "Category": 0,
+    "Frequency": 26,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "document",
+    "NormalizedWord": "document",
+    "Category": 0,
+    "Frequency": 26,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "trader",
+    "NormalizedWord": "trader",
+    "Category": 0,
+    "Frequency": 24,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "supplier",
+    "NormalizedWord": "supplier",
+    "Category": 0,
+    "Frequency": 22,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "inherit",
+    "NormalizedWord": "inherit",
+    "Category": 0,
+    "Frequency": 22,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "analyze",
+    "NormalizedWord": "analyze",
+    "Category": 0,
+    "Frequency": 18,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "interface",
+    "NormalizedWord": "interface",
+    "Category": 0,
+    "Frequency": 16,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "iemployeeservice",
+    "NormalizedWord": "iemployeeservice",
+    "Category": 0,
+    "Frequency": 16,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "wpf",
+    "NormalizedWord": "wpf",
+    "Category": 0,
+    "Frequency": 14,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "desktopapp",
+    "NormalizedWord": "desktopapp",
+    "Category": 0,
+    "Frequency": 14,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "give",
+    "NormalizedWord": "give",
+    "Category": 0,
+    "Frequency": 8,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "created",
+    "NormalizedWord": "created",
+    "Category": 0,
+    "Frequency": 8,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "employee1",
+    "NormalizedWord": "employee1",
+    "Category": 0,
+    "Frequency": 8,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "myapp1",
+    "NormalizedWord": "myapp1",
+    "Category": 0,
+    "Frequency": 6,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "dashboard",
+    "NormalizedWord": "dashboard",
+    "Category": 0,
+    "Frequency": 6,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "find",
+    "NormalizedWord": "find",
+    "Category": 0,
+    "Frequency": 6,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "analyse",
+    "NormalizedWord": "analyse",
+    "Category": 0,
+    "Frequency": 4,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "drop",
+    "NormalizedWord": "drop",
+    "Category": 0,
+    "Frequency": 4,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "library",
+    "NormalizedWord": "library",
+    "Category": 0,
+    "Frequency": 4,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "commonlib",
+    "NormalizedWord": "commonlib",
+    "Category": 0,
+    "Frequency": 4,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "blazor",
+    "NormalizedWord": "blazor",
+    "Category": 0,
+    "Frequency": 4,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "worker",
+    "NormalizedWord": "worker",
+    "Category": 0,
+    "Frequency": 4,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "backgroundjob",
+    "NormalizedWord": "backgroundjob",
+    "Category": 0,
+    "Frequency": 4,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "deleted",
+    "NormalizedWord": "deleted",
+    "Category": 0,
+    "Frequency": 4,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "rename",
+    "NormalizedWord": "rename",
+    "Category": 0,
+    "Frequency": 4,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "code",
+    "NormalizedWord": "code",
+    "Category": 0,
+    "Frequency": 4,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "report",
+    "NormalizedWord": "report",
+    "Category": 0,
+    "Frequency": 2,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "console",
+    "NormalizedWord": "console",
+    "Category": 0,
+    "Frequency": 2,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "webapi",
+    "NormalizedWord": "webapi",
+    "Category": 0,
+    "Frequency": 2,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "tradingapi",
+    "NormalizedWord": "tradingapi",
+    "Category": 0,
+    "Frequency": 2,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "emp",
+    "NormalizedWord": "emp",
+    "Category": 0,
+    "Frequency": 2,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "eomployee",
+    "NormalizedWord": "eomployee",
+    "Category": 0,
+    "Frequency": 2,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "gene",
+    "NormalizedWord": "gene",
+    "Category": 0,
+    "Frequency": 2,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "gener",
+    "NormalizedWord": "gener",
+    "Category": 0,
+    "Frequency": 2,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "ledger",
+    "NormalizedWord": "ledger",
+    "Category": 0,
+    "Frequency": 2,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "ledger2",
+    "NormalizedWord": "ledger2",
+    "Category": 0,
+    "Frequency": 2,
+    "Confidence": 0.3
+  },
+  {
+    "Word": "agenda",
+    "NormalizedWord": "agenda",
+    "Category": 0,
+    "Frequency": 1,
+    "Confidence": 0.3
+  }
+]

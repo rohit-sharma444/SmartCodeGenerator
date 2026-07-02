@@ -1,0 +1,7 @@
+﻿# Copilot Instructions
+
+## User Preferences
+- ParsedCommand should use proper List<T> initializers (e.g., 'new List<PropertyDefinition>()') so EntityExtractor's parsed properties and inline rules are preserved.
+- Stop generation and abort processing when property or class validation fails; show error message and do not generate or save code.
+- When a proposed runtime reference fix fails, apply code changes directly to the file and ensure System.ComponentModel.DataAnnotations is explicitly added to Roslyn compilation references.
+- When generating methods, do not produce empty method bodies; instead, ask MethodBodyGenerator for the lines to place inside the method.

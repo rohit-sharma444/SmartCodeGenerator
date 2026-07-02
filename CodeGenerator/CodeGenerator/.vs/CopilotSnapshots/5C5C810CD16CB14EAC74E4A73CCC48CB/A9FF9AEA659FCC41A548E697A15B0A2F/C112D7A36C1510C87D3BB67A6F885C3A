@@ -1,0 +1,75 @@
+﻿using CodeGenerator.Models;
+using CodeGenerator.Services;
+using Microsoft.CodeAnalysis;
+using System.Reflection;
+
+var engine = new NaturalLanguageCodeEngine();
+
+while (true)
+{
+    var customer =
+        new ClassDefinition
+        {
+            Name = "Customer",
+
+            Properties =
+            {
+            new()
+            {
+                Name = "Id",
+                Type = "int"
+            },
+
+            new()
+            {
+                Name = "Name",
+                Type = "string"
+            },
+
+            new()
+            {
+                Name = "Email",
+                Type = "string"
+            }
+            },
+
+            Methods =
+            {
+            new()
+            {
+                Name = "Save",
+                ReturnType = "void"
+            },
+
+            new()
+            {
+                Name = "Validate",
+                ReturnType = "bool"
+            }
+            }
+        };
+
+    var generator = new RoslynClassGenerator();
+
+    //string code = generator.Generate(customer);
+
+    var code = engine.GenerateCode(customer.Name);
+
+    var result = Compiler.Compile(code);
+
+    if (result.Success)
+    {
+        var assembly =
+            Assembly.Load(
+                result.AssemblyBytes);
+
+        foreach (var type in assembly.GetTypes())
+        {
+            Console.WriteLine(type.Name);
+        }
+    }
+
+    var semanticModel = SemanticValidator.Validate(code);
+
+    break;
+}

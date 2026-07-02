@@ -1,0 +1,176 @@
+﻿using CodeGenerator.Models;
+using System.Text;
+using System.Linq;
+
+namespace CodeGenerator.Services;
+
+public class CodeGenerator
+{
+    public string Generate(
+        ParsedCommand command)
+    {
+        return command.Intent switch
+        {
+            IntentType.CreateClass =>
+                GenerateClass(command),
+
+            _ => "// Unsupported command"
+        };
+    }
+
+    private string GenerateClass(ParsedCommand command)
+    {
+        var sb = new StringBuilder();
+
+        sb.AppendLine($"public class {command.ClassName}");
+
+        sb.AppendLine("{");
+
+        foreach (var prop in command.Properties)
+        {
+            var name = ToPascalCase(prop.Name);
+            var type = NormalizeType(prop.Type ?? "string");
+            sb.AppendLine($"    public {type} {name} {{ get; set; }}");
+        }
+
+        sb.AppendLine("}");
+
+        return sb.ToString();
+    }
+
+    private static (string Name, string Type) ParseProperty(string input)
+    {
+        if (string.IsNullOrWhiteSpace(input))
+            return ("Property", "string");
+
+        var text = input.Trim();
+
+        // Support formats: "Name:Type", "Type Name", "Name Type", "Name"
+        // Try colon form first
+        if (text.Contains(':'))
+        {
+            var parts = text.Split(new[] { ':' }, 2);
+            var name = parts[0].Trim();
+            var type = parts[1].Trim();
+            return (ToPascalCase(name), NormalizeType(type));
+        }
+
+        var tokens = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+        // If two tokens, determine which is type based on known CLR/C# types
+        if (tokens.Length == 2)
+        {
+            var known = KnownTypes();
+            if (known.Contains(tokens[0], StringComparer.OrdinalIgnoreCase))
+            {
+                return (ToPascalCase(tokens[1]), NormalizeType(tokens[0]));
+            }
+            if (known.Contains(tokens[1], StringComparer.OrdinalIgnoreCase))
+            {
+                return (ToPascalCase(tokens[0]), NormalizeType(tokens[1]));
+            }
+            // default: treat second as type
+            return (ToPascalCase(tokens[0]), NormalizeType(tokens[1]));
+        }
+
+        // If single token, just a name - try to infer type from name
+        if (tokens.Length == 1)
+        {
+            var inferred = InferTypeFromName(tokens[0]);
+            return (ToPascalCase(tokens[0]), inferred);
+        }
+
+        // If last token is a known type, treat it as type
+        var knownTypes = KnownTypes();
+        var last = tokens.Last();
+        if (knownTypes.Contains(last, StringComparer.OrdinalIgnoreCase))
+            return (ToPascalCase(string.Join(' ', tokens.Take(tokens.Length - 1))), NormalizeType(last));
+
+        // Fallback: try to find the token "type" or "of" patterns
+        var idx = Array.FindIndex(tokens, t => t.Equals("type", StringComparison.OrdinalIgnoreCase) || t.Equals("of", StringComparison.OrdinalIgnoreCase));
+        if (idx >= 0 && idx < tokens.Length - 1)
+            return (ToPascalCase(string.Join(' ', tokens.Take(idx))), NormalizeType(tokens[idx + 1]));
+
+        // Last resort: treat first token as name and infer type from name
+        var inferredFinal = InferTypeFromName(tokens[0]);
+        return (ToPascalCase(tokens[0]), NormalizeType(inferredFinal));
+    }
+
+    private static string InferTypeFromName(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return "string";
+
+        var n = name.Trim();
+        var lower = n.ToLowerInvariant();
+
+        // Common id pattern
+        if (lower == "id" || lower.EndsWith("id") || lower.EndsWith("_id"))
+            return "int";
+
+        // Booleans
+        if (lower.StartsWith("is") || lower.StartsWith("has") || lower.StartsWith("can") || lower.StartsWith("should"))
+            return "bool";
+
+        // Date/time
+        if (lower.EndsWith("at") || lower.Contains("date") || lower.Contains("time") || lower.Contains("timestamp") || lower.EndsWith("on"))
+            return "System.DateTime";
+
+        // Numeric hints
+        if (lower.Contains("count") || lower.Contains("number") || lower.Contains("qty") || lower.Contains("quantity") || lower.Contains("age"))
+            return "int";
+
+        if (lower.Contains("price") || lower.Contains("amount") || lower.Contains("total") || lower.Contains("cost"))
+            return "decimal";
+
+        // Guid
+        if (lower.Contains("guid") || lower.Contains("uid") || lower.EndsWith("uuid"))
+            return "System.Guid";
+
+        // Email/Name/Text
+        if (lower.Contains("email") || lower.Contains("address") || lower.Contains("name") || lower.Contains("title") || lower.Contains("description") || lower.Contains("text"))
+            return "string";
+
+        // Default to string
+        return "string";
+    }
+
+    private static string NormalizeType(string type)
+    {
+        if (string.IsNullOrWhiteSpace(type))
+            return "string";
+
+        type = type.Trim();
+
+        // Map common aliases to C# keywords
+        return type.ToLower() switch
+        {
+            "int32" => "int",
+            "int64" => "long",
+            "integer" => "int",
+            "string" => "string",
+            "bool" => "bool",
+            "boolean" => "bool",
+            "datetime" => "System.DateTime",
+            "guid" => "System.Guid",
+            "double" => "double",
+            "decimal" => "decimal",
+            "float" => "float",
+            _ => type
+        };
+    }
+
+    private static IEnumerable<string> KnownTypes()
+    {
+        return new[] { "int", "string", "bool", "datetime", "guid", "double", "decimal", "float", "long", "byte", "short", "char", "object" };
+    }
+
+    private static string ToPascalCase(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return name;
+
+        var parts = name.Split(new[] { '_', ' ' }, StringSplitOptions.RemoveEmptyEntries);
+        return string.Concat(parts.Select(p => char.ToUpperInvariant(p[0]) + (p.Length > 1 ? p.Substring(1) : "")));
+    }
+}

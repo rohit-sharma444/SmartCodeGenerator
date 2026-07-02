@@ -1,0 +1,27 @@
+[
+  {
+    "Prompt": "First NLP program",
+    "Timestamp": "2026-07-01T13:38:22.2569167+00:00",
+    "Result": {
+      "Entities": [
+        {
+          "Text": "First NLP",
+          "Type": 1,
+          "Confidence": {
+            "Value": 0.6
+          },
+          "Metadata": {}
+        }
+      ],
+      "Relationships": [],
+      "Intent": {
+        "Name": "DescribeIntent",
+        "Confidence": {
+          "Value": 0.48
+        }
+      },
+      "Confidence": 0.552,
+      "Diagnostics": []
+    }
+  }
+]

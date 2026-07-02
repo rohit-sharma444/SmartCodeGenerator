@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="NaturalLanguageEngine.csproj" />
+  <Project Path="../NaturalLanguageEngine.Tests/NaturalLanguageEngine.Tests.csproj" />
+</Solution>

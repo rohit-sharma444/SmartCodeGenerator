@@ -1,0 +1,128 @@
+[
+  {
+    "Success": false,
+    "ProjectName": "",
+    "ProjectPath": "",
+    "CsProjPath": "",
+    "Message": ""
+  },
+  {
+    "Success": false,
+    "ProjectName": "",
+    "ProjectPath": "",
+    "CsProjPath": "",
+    "Message": ""
+  },
+  {
+    "Success": false,
+    "ProjectName": "",
+    "ProjectPath": "",
+    "CsProjPath": "",
+    "Message": ""
+  },
+  {
+    "Success": false,
+    "ProjectName": "",
+    "ProjectPath": "",
+    "CsProjPath": "",
+    "Message": ""
+  },
+  {
+    "Success": false,
+    "ProjectName": "",
+    "ProjectPath": "",
+    "CsProjPath": "",
+    "Message": ""
+  },
+  {
+    "Success": false,
+    "ProjectName": "",
+    "ProjectPath": "",
+    "CsProjPath": "",
+    "Message": ""
+  },
+  {
+    "Success": false,
+    "ProjectName": "",
+    "ProjectPath": "",
+    "CsProjPath": "",
+    "Message": ""
+  },
+  {
+    "Success": false,
+    "ProjectName": "",
+    "ProjectPath": "",
+    "CsProjPath": "",
+    "Message": ""
+  },
+  {
+    "Success": false,
+    "ProjectName": "",
+    "ProjectPath": "",
+    "CsProjPath": "",
+    "Message": ""
+  },
+  {
+    "Success": false,
+    "ProjectName": "",
+    "ProjectPath": "",
+    "CsProjPath": "",
+    "Message": ""
+  },
+  {
+    "Success": false,
+    "ProjectName": "",
+    "ProjectPath": "",
+    "CsProjPath": "",
+    "Message": ""
+  },
+  {
+    "Success": true,
+    "ProjectName": "Dashboard",
+    "ProjectPath": "D:\\SampleProjects\\Dashboard",
+    "CsProjPath": "D:\\SampleProjects\\Dashboard\\Dashboard.csproj",
+    "Message": "Loaded"
+  },
+  {
+    "Success": true,
+    "ProjectName": "MyApp",
+    "ProjectPath": "D:\\SampleProjects\\MyApp",
+    "CsProjPath": "D:\\SampleProjects\\MyApp\\MyApp.csproj",
+    "Message": "Loaded"
+  },
+  {
+    "Success": true,
+    "ProjectName": "MyApp1",
+    "ProjectPath": "D:\\SampleProjects\\MyApp1",
+    "CsProjPath": "D:\\SampleProjects\\MyApp1\\MyApp1.csproj",
+    "Message": "Loaded"
+  },
+  {
+    "Success": true,
+    "ProjectName": "MyApp2",
+    "ProjectPath": "D:\\SampleProjects\\MyApp2",
+    "CsProjPath": "D:\\SampleProjects\\MyApp2\\MyApp2.csproj",
+    "Message": "Loaded"
+  },
+  {
+    "Success": true,
+    "ProjectName": "MyApp3",
+    "ProjectPath": "D:\\SampleProjects\\MyApp3",
+    "CsProjPath": "D:\\SampleProjects\\MyApp3\\MyApp3.csproj",
+    "Message": "Loaded"
+  },
+  {
+    "Success": true,
+    "ProjectName": "NewProject",
+    "ProjectPath": "D:\\SampleProjects\\NewProject",
+    "CsProjPath": "D:\\SampleProjects\\NewProject\\NewProject.csproj",
+    "Message": "Loaded"
+  },
+  {
+    "Success": true,
+    "ProjectName": "",
+    "ProjectPath": "D:\\SampleProjects\\DesktopApp\\DesktopApp",
+    "CsProjPath": "",
+    "Message": "The template \u0022WPF Application\u0022 was created successfully.\r\n\r\nProcessing post-creation actions...\r\nRestoring D:\\SampleProjects\\DesktopApp\\DesktopApp\\DesktopApp.csproj:\r\n  Determining projects to restore...\r\n  Restored D:\\SampleProjects\\DesktopApp\\DesktopApp\\DesktopApp.csproj (in 94 ms).\r\nRestore succeeded.\r\n\r\n\r\n"
+  }
+]

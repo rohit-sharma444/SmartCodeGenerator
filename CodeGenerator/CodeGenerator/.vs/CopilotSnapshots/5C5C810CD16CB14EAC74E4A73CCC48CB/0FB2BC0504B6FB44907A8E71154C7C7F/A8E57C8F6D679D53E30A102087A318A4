@@ -1,0 +1,298 @@
+﻿using CodeGenerator.Models;
+using System.Text.RegularExpressions;
+using System.Linq;
+
+namespace CodeGenerator.Services;
+
+public class EntityExtractor
+{
+    public ParsedCommand Extract(
+        string sentence,
+        IntentType intent)
+    {
+        var result = new ParsedCommand
+        {
+            Intent = intent
+        };
+
+        if (intent == IntentType.CreateClass)
+            ExtractClassInfo(sentence, result);
+
+        return result;
+    }
+
+
+    private void ExtractClassInfo(
+    string sentence,
+    ParsedCommand command)
+    {
+        ExtractClassName(sentence, command);
+        ExtractProperties(sentence, command);
+        ExtractMethods(sentence, command);
+    }
+
+    private static void ExtractMethods(string sentence, ParsedCommand command)
+    {
+        // Look for a "methods" section similar to properties
+        var match = Regex.Match(sentence, @"(?:methods|functions|with methods|having methods)\s+(.+)", RegexOptions.IgnoreCase);
+        if (!match.Success)
+            return;
+
+        var section = match.Groups[1].Value
+            .Replace(" and ", ",", StringComparison.OrdinalIgnoreCase)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries)
+            .Select(t => t.Trim())
+            .Where(t => !string.IsNullOrWhiteSpace(t));
+
+        foreach (var token in section)
+        {
+            var method = ParseMethod(token);
+            if (method != null)
+                command.Methods.Add(method);
+        }
+    }
+
+    private static MethodDefinition ParseMethod(string token)
+    {
+        // support formats: "Name:ReturnType", "ReturnType Name", "Name ReturnType", "Name()", "Name returns ReturnType"
+        var m = new MethodDefinition();
+
+        if (string.IsNullOrWhiteSpace(token))
+            return null;
+
+        // Name returns Type
+        var returnsMatch = Regex.Match(token, @"^(\w+)\s+returns\s+(\w+)$", RegexOptions.IgnoreCase);
+        if (returnsMatch.Success)
+        {
+            m.Name = returnsMatch.Groups[1].Value.Trim();
+            m.ReturnType = returnsMatch.Groups[2].Value.Trim();
+            return m;
+        }
+
+        if (token.Contains(':'))
+        {
+            var parts = token.Split(':', 2);
+            m.Name = parts[0].Trim();
+            m.ReturnType = parts[1].Trim();
+            return m;
+        }
+
+        var words = token.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (words.Length == 2)
+        {
+            if (IsKnownType(words[0]))
+            {
+                m.ReturnType = words[0];
+                m.Name = words[1];
+                return m;
+            }
+            if (IsKnownType(words[1]))
+            {
+                m.Name = words[0];
+                m.ReturnType = words[1];
+                return m;
+            }
+        }
+
+        // name with parentheses => void by default
+        var parenIdx = token.IndexOf('(');
+        if (parenIdx > 0)
+        {
+            m.Name = token.Substring(0, parenIdx).Trim();
+            m.ReturnType = "void";
+            return m;
+        }
+
+        // fallback: simple name -> void
+        m.Name = token.Trim();
+        m.ReturnType = "void";
+        return m;
+    }
+
+    private static void ExtractClassName(
+    string sentence,
+    ParsedCommand command)
+    {
+        var patterns = new[]
+        {
+            @"class\s+(\w+)",
+            @"create\s+(\w+)",
+            @"generate\s+(\w+)",
+            @"entity\s+(\w+)",
+            @"model\s+(\w+)"
+        };
+
+        foreach (var pattern in patterns)
+        {
+            var match = Regex.Match(sentence, pattern, RegexOptions.IgnoreCase);
+
+            if (match.Success)
+            {
+                command.ClassName = match.Groups[1].Value;
+                return;
+            }
+        }
+    }
+
+    private static void ExtractProperties(string sentence, ParsedCommand command)
+    {
+        var propertySection = ExtractPropertySection(sentence);
+
+        if (string.IsNullOrWhiteSpace(propertySection))
+            return;
+
+        var tokens =
+            propertySection
+                .Replace(" and ", ",", StringComparison.OrdinalIgnoreCase)
+                .Split(',', StringSplitOptions.RemoveEmptyEntries);
+
+        foreach (var token in tokens)
+        {
+            var property = ParseProperty(token.Trim());
+
+            command.Properties.Add(property);
+        }
+    }
+
+    private static string ExtractPropertySection(string sentence)
+    {
+        var match = Regex.Match(sentence,
+                @"(?:properties|with|having|contains)\s+(.+)", RegexOptions.IgnoreCase);
+
+        return match.Success ? match.Groups[1].Value : string.Empty;
+    }
+
+    private static PropertyDefinition ParseProperty(string token)
+    {
+        var property = new PropertyDefinition();
+
+        if (token.Contains(':'))
+        {
+            var parts = token.Split(':', 2);
+
+            property.Name = parts[0].Trim();
+
+            property.Type = parts[1].Trim();
+
+            return property;
+        }
+
+        var words = token.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+        if (words.Length == 2)
+        {
+            if (IsKnownType(words[0]))
+            {
+                property.Type = words[0];
+                property.Name = words[1];
+                return property;
+            }
+
+            if (IsKnownType(words[1]))
+            {
+                property.Name = words[0];
+                property.Type = words[1];
+                return property;
+            }
+        }
+
+        property.Name = token;
+        property.Type = null;
+
+        return property;
+    }
+
+    private static readonly HashSet<string> KnownTypes =
+[
+    "string",
+    "int",
+    "long",
+    "short",
+    "bool",
+    "datetime",
+    "decimal",
+    "double",
+    "float",
+    "guid"
+];
+
+    private static bool IsKnownType(string value)
+        => KnownTypes.Contains(value.ToLowerInvariant());
+
+
+    //private static void ExtractClassInfo(string sentence, ParsedCommand command)
+    //{
+    //    var match =
+    //        Regex.Match(
+    //            sentence,
+    //            @"class\s+(\w+)",
+    //            RegexOptions.IgnoreCase);
+
+    //    if (match.Success)
+    //        command.ClassName = match.Groups[1].Value;
+
+    //    var propMatch =
+    //        Regex.Match(
+    //            sentence,
+    //            @"properties\s+(.+)",
+    //            RegexOptions.IgnoreCase);
+
+    //    if (propMatch.Success)
+    //    {
+    //        var properties =
+    //            propMatch.Groups[1]
+    //                .Value
+    //                .Replace(" and ", ",")
+    //                .Replace("AND", ",");
+    //        command.Properties = [.. properties
+    //            .Split(',', StringSplitOptions.RemoveEmptyEntries)
+    //            .Select(x => x.Trim())
+    //            .Where(x => !string.IsNullOrWhiteSpace(x))
+    //            .Select(token =>
+    //            {
+    //                var pd = new PropertyDefinition();
+    //                if (token.Contains(':'))
+    //                {
+    //                    var parts = token.Split([':'], 2);
+    //                    pd.Name = parts[0].Trim();
+    //                    pd.Type = parts[1].Trim();
+    //                }
+    //                else
+    //                {
+    //                    var parts = token.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+    //                    if (parts.Length == 2)
+    //                    {
+    //                        var known = new[] { "int", "string", "bool", "datetime", "decimal", "double", "float", "long", "guid" };
+    //                        var p0 = parts[0].Trim().ToLowerInvariant();
+    //                        var p1 = parts[1].Trim().ToLowerInvariant();
+    //                        if (known.Contains(p0))
+    //                        {
+    //                            pd.Type = parts[0].Trim();
+    //                            pd.Name = parts[1].Trim();
+    //                        }
+    //                        else if (known.Contains(p1))
+    //                        {
+    //                            pd.Name = parts[0].Trim();
+    //                            pd.Type = parts[1].Trim();
+    //                        }
+    //                        else
+    //                        {
+    //                            pd.Name = parts[0].Trim();
+    //                            pd.Type = "string";
+    //                        }
+    //                    }
+    //                    else
+    //                    {
+    //                        pd.Name = token.Trim();
+    //                        pd.Type = "string";
+    //                    }
+    //                }
+
+    //                // Debug: report parsing of the token
+    //                Console.WriteLine($"[EntityExtractor] token='{token}' -> Name='{pd.Name}', Type='{pd.Type}'");
+
+    //                return pd;
+    //            })];
+    //    }
+    //}
+}

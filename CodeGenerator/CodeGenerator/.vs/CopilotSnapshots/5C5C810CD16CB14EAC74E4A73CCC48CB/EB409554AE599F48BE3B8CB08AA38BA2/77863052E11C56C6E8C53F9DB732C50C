@@ -1,0 +1,8 @@
+﻿using System.Reflection.Metadata;
+
+public interface IPropertyRule
+{
+    bool IsMatch(PropertyDefinition property);
+
+    IEnumerable<string> Validate(PropertyDefinition property);
+}
