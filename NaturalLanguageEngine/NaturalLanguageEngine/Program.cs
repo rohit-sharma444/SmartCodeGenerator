@@ -1,7 +1,21 @@
+using NaturalLanguageEngine.Abstractions.Semantics;
+using NaturalLanguageEngine.Core;
 using NaturalLanguageEngine.Core.Prompts;
 using NaturalLanguageEngine.Models.Semantics;
 
-var engine = EngineBuilder.BuildDefault();
+// Build engine with logging and caching
+var options = new EngineBuilderOptions
+{
+    EnableLogging = true,
+    EnableCaching = true,
+    MaxCacheSize = 100
+};
+
+var engineObj = EngineBuilder.Build(options);
+var engine = engineObj is CachedSemanticAnalyzer cached
+    ? cached
+    : engineObj as ISemanticAnalyzer ?? throw new InvalidOperationException("Failed to build engine");
+
 var promptStore = new PromptStore();
 
 // Every prompt (sentence) analyzed in this run is appended here as JSON,
@@ -49,7 +63,19 @@ foreach (var prompt in promptsToAnalyze)
     Console.WriteLine();
 }
 
-Console.WriteLine($"Saved {promptsToAnalyze.Length} prompt(s) to {Path.GetFullPath(promptLogPath)}");
+// Display performance metrics if logging was enabled
+if (options.EnableLogging)
+{
+    Console.WriteLine("\n" + new string('=', 60));
+    Console.WriteLine("PERFORMANCE SUMMARY");
+    Console.WriteLine(new string('=', 60));
+    
+    // Note: In a real scenario, you'd extract the logger from the pipeline
+    // For now, this is a placeholder for future enhancement
+    Console.WriteLine("(Logging enabled - detailed metrics available via PipelineLogger)");
+}
+
+Console.WriteLine($"\nSaved {promptsToAnalyze.Length} prompt(s) to {Path.GetFullPath(promptLogPath)}");
 
 // Resolves the sentences to analyze for this run:
 //   1. Command-line arguments, one prompt per argument, if any were given.
