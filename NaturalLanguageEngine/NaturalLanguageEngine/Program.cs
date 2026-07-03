@@ -11,10 +11,8 @@ var options = new EngineBuilderOptions
     MaxCacheSize = 100
 };
 
-var engineObj = EngineBuilder.Build(options);
-var engine = engineObj is CachedSemanticAnalyzer cached
-    ? cached
-    : engineObj as ISemanticAnalyzer ?? throw new InvalidOperationException("Failed to build engine");
+var buildResult = EngineBuilder.Build(options);
+var engine = buildResult.Analyzer;
 
 var promptStore = new PromptStore();
 
@@ -64,15 +62,28 @@ foreach (var prompt in promptsToAnalyze)
 }
 
 // Display performance metrics if logging was enabled
-if (options.EnableLogging)
+if (buildResult.Logger != null)
 {
     Console.WriteLine("\n" + new string('=', 60));
     Console.WriteLine("PERFORMANCE SUMMARY");
     Console.WriteLine(new string('=', 60));
     
-    // Note: In a real scenario, you'd extract the logger from the pipeline
-    // For now, this is a placeholder for future enhancement
-    Console.WriteLine("(Logging enabled - detailed metrics available via PipelineLogger)");
+    var stats = buildResult.Logger.GetStats();
+    Console.WriteLine($"Total Pipeline Executions: {stats.TotalExecutions}");
+    Console.WriteLine($"Total Elapsed Time:       {stats.TotalElapsedMilliseconds}ms");
+    Console.WriteLine($"Average Time Per Run:     {stats.AverageElapsedMilliseconds:F2}ms");
+    
+    Console.WriteLine("\nPer-Stage Metrics:");
+    foreach (var stage in buildResult.Logger.GetLogs().GroupBy(l => l.StageName).OrderBy(g => g.First().Order))
+    {
+        var stageLogs = stage.ToList();
+        var totalStageTime = stageLogs.Sum(l => l.ElapsedMilliseconds);
+        var avgStageTime = stageLogs.Average(l => l.ElapsedMilliseconds);
+        Console.WriteLine($"  {stage.Key,-30} | Executions: {stageLogs.Count,4} | Total: {totalStageTime,8}ms | Avg: {avgStageTime,8:F2}ms");
+    }
+    
+    Console.WriteLine($"\nDetailed JSON Log:");
+    Console.WriteLine(buildResult.Logger.ExportAsJson());
 }
 
 Console.WriteLine($"\nSaved {promptsToAnalyze.Length} prompt(s) to {Path.GetFullPath(promptLogPath)}");
@@ -98,13 +109,11 @@ static string[] GetPrompts(string[] args)
     if (typed.Count > 0)
         return typed.ToArray();
 
+    // Fallback demo sentences
     return new[]
     {
-        "Sarah booked a flight to London tomorrow.",
-        "The big red car is very fast.",
-        "Send the report to John on Monday.",
-        "I want to buy a new computer.",
-        "Email john@example.com about the meeting at 14:30 on 2025-06-30.",
-        "Visit https://example.com for details.",
+        "The quick brown fox jumps over the lazy dog.",
+        "Machine learning algorithms process data efficiently.",
+        "Natural language processing enables computers to understand human speech."
     };
 }

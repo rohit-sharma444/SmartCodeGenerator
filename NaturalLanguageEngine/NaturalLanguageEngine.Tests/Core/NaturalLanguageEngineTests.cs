@@ -1,3 +1,5 @@
+using NaturalLanguageEngine.Abstractions.Semantics;
+using NaturalLanguageEngine.Core;
 using NaturalLanguageEngine.Models.Diagnostics;
 using NaturalLanguageEngine.Models.Semantics;
 using Xunit;
@@ -10,8 +12,7 @@ namespace NaturalLanguageEngine.Tests.Core;
 /// </summary>
 public class NaturalLanguageEngineTests
 {
-    private readonly NaturalLanguageEngine.Core.NaturalLanguageEngine _engine =
-        EngineBuilder.BuildDefault();
+    private readonly ISemanticAnalyzer _engine = EngineBuilder.BuildDefault().Analyzer;
 
     [Fact]
     public void Analyze_SimpleActiveSentence_RecognizesExpectedEntitiesIntentAndRelationships()

@@ -1,3 +1,4 @@
+using NaturalLanguageEngine.Abstractions.Semantics;
 using NaturalLanguageEngine.Core;
 using NaturalLanguageEngine.Core.Stages;
 using NaturalLanguageEngine.Knowledge.Builders;
@@ -19,13 +20,14 @@ public sealed class EngineBuilder
     /// <summary>
     /// Builds an engine with default options (no logging or caching).
     /// </summary>
-    public static NaturalLanguageEngine.Core.NaturalLanguageEngine BuildDefault()
-        => (NaturalLanguageEngine.Core.NaturalLanguageEngine)Build(new EngineBuilderOptions());
+    public static EngineBuildResult BuildDefault()
+        => Build(new EngineBuilderOptions());
 
     /// <summary>
     /// Builds an engine with the specified configuration options.
+    /// Returns both the analyzer and optional logger for runtime introspection.
     /// </summary>
-    public static object Build(EngineBuilderOptions options)
+    public static EngineBuildResult Build(EngineBuilderOptions options)
     {
         if (options == null)
             throw new ArgumentNullException(nameof(options));
@@ -85,12 +87,14 @@ public sealed class EngineBuilder
         var engine = new NaturalLanguageEngine.Core.NaturalLanguageEngine(pipeline);
 
         // --- Wrap with caching if enabled ---
-        if (options.EnableCaching)
-        {
-            var analyzer = new SemanticAnalyzer(engine);
-            return new CachedSemanticAnalyzer(analyzer, options.MaxCacheSize);
-        }
+        ISemanticAnalyzer analyzer = options.EnableCaching
+            ? new CachedSemanticAnalyzer(new SemanticAnalyzer(engine), options.MaxCacheSize)
+            : new SemanticAnalyzer(engine);
 
-        return engine;
+        return new EngineBuildResult
+        {
+            Analyzer = analyzer,
+            Logger = logger
+        };
     }
 }

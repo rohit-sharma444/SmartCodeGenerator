@@ -57,7 +57,15 @@ public sealed class PipelineLogger
     }
 
     /// <summary>
-    /// Gets statistics about the most recent execution.
+    /// Gets all captured logs (alias for GetLogs for backward compatibility).
+    /// </summary>
+    public IReadOnlyList<PipelineExecutionLog> GetAllLogs()
+    {
+        return GetLogs();
+    }
+
+    /// <summary>
+    /// Gets overall statistics for all executions.
     /// </summary>
     public PipelineExecutionStats GetStats()
     {
@@ -66,32 +74,22 @@ public sealed class PipelineLogger
             if (_logs.Count == 0)
                 return new PipelineExecutionStats();
 
-            // Group by timestamp to find the most recent execution
-            var lastExecution = _logs
-                .GroupBy(l => l.Timestamp.Date)
-                .OrderByDescending(g => g.Key)
-                .FirstOrDefault()?
-                .OrderByDescending(l => l.Timestamp)
-                .TakeWhile((log, index) => index == 0 || log.Timestamp == _logs.Last().Timestamp)
-                .ToList() ?? new List<PipelineExecutionLog>();
+            var totalMs = _logs.Sum(l => l.ElapsedMilliseconds);
+            var successCount = _logs.Count(l => l.Success);
+            var failureCount = _logs.Count(l => !l.Success);
+            var totalEntities = _logs.Sum(l => l.EntityCount);
+            var totalRelationships = _logs.Sum(l => l.RelationshipCount);
 
-            if (lastExecution.Count == 0)
-                return new PipelineExecutionStats();
-
-            var totalMs = lastExecution.Sum(l => l.ElapsedMilliseconds);
-            var successCount = lastExecution.Count(l => l.Success);
-            var failureCount = lastExecution.Count(l => !l.Success);
-            var totalEntities = lastExecution.Sum(l => l.EntityCount);
-            var totalRelationships = lastExecution.Sum(l => l.RelationshipCount);
-
-            var slowestStage = lastExecution
+            var slowestStage = _logs
                 .OrderByDescending(l => l.ElapsedMilliseconds)
                 .FirstOrDefault();
 
             return new PipelineExecutionStats
             {
+                TotalExecutions = _logs.Count,
                 TotalElapsedMilliseconds = totalMs,
-                StageCount = lastExecution.Count,
+                AverageElapsedMilliseconds = totalMs / (double)_logs.Count,
+                StageCount = _logs.GroupBy(l => l.StageName).Count(),
                 SuccessfulStages = successCount,
                 FailedStages = failureCount,
                 TotalEntitiesFound = totalEntities,
@@ -162,23 +160,57 @@ public sealed class PipelineExecutionLog
 }
 
 /// <summary>
-/// Statistics from a pipeline execution.
+/// Statistics from all pipeline executions.
 /// </summary>
 public sealed class PipelineExecutionStats
 {
+    /// <summary>
+    /// Total number of stage executions logged.
+    /// </summary>
+    public int TotalExecutions { get; set; }
+
+    /// <summary>
+    /// Combined elapsed time across all executions in milliseconds.
+    /// </summary>
     public long TotalElapsedMilliseconds { get; set; }
 
+    /// <summary>
+    /// Average elapsed time per execution in milliseconds.
+    /// </summary>
+    public double AverageElapsedMilliseconds { get; set; }
+
+    /// <summary>
+    /// Number of distinct stages executed.
+    /// </summary>
     public int StageCount { get; set; }
 
+    /// <summary>
+    /// Number of successful stage executions.
+    /// </summary>
     public int SuccessfulStages { get; set; }
 
+    /// <summary>
+    /// Number of failed stage executions.
+    /// </summary>
     public int FailedStages { get; set; }
 
+    /// <summary>
+    /// Total entities found across all executions.
+    /// </summary>
     public int TotalEntitiesFound { get; set; }
 
+    /// <summary>
+    /// Total relationships found across all executions.
+    /// </summary>
     public int TotalRelationshipsFound { get; set; }
 
+    /// <summary>
+    /// Name of the slowest stage by average execution time.
+    /// </summary>
     public string SlowestStageName { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Execution time of the slowest stage in milliseconds.
+    /// </summary>
     public long SlowestStageMs { get; set; }
 }

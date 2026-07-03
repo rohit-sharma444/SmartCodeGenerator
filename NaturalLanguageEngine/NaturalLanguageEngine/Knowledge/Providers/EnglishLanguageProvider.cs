@@ -29,15 +29,15 @@ public sealed class EnglishLanguageProvider : ILanguageProvider
             yield return Make(w, "conjunction");
 
         // Auxiliary / modal verbs
-        foreach (var w in new[] { "is", "am", "are", "was", "were", "be", "been", "being", "do", "does", "did", "have", "has", "had", "will", "would", "shall", "should", "can", "could", "may", "might", "must" })
+        foreach (var w in new[] { "is", "am", "are", "was", "were", "be", "been", "being", "do", "does", "did", "have", "has", "had", "will", "would", "shall", "should", "can", "could", "may", "might", "must", "jumps" })
             yield return Make(w, "verb");
 
         // Common verbs
-        foreach (var w in new[] { "go", "goes", "went", "make", "makes", "made", "take", "takes", "took", "see", "saw", "come", "came", "want", "wants", "wanted", "send", "sends", "sent", "give", "gives", "gave", "book", "books", "booked", "buy", "buys", "bought", "find", "found", "show", "shows", "tell", "told", "ask", "asks", "asked", "need", "needs", "needed", "like", "likes", "liked", "call", "calls", "called", "open", "opens", "opened", "close", "closes", "set", "schedule", "schedules", "scheduled", "play", "plays", "played", "create", "creates", "created", "build", "builds", "built", "run", "runs", "ran" })
+        foreach (var w in new[] { "go", "goes", "went", "make", "makes", "made", "take", "takes", "took", "see", "saw", "come", "came", "want", "wants", "wanted", "send", "sends", "sent", "give", "gives", "gave", "book", "books", "booked", "buy", "buys", "bought", "find", "found", "show", "shows", "tell", "told", "ask", "asks", "asked", "need", "needs", "needed", "like", "likes", "liked", "call", "calls", "called", "open", "opens", "opened", "close", "closes", "set", "schedule", "schedules", "scheduled", "play", "plays", "played", "create", "creates", "created", "build", "builds", "built", "run", "runs", "ran", "jumps" })
             yield return Make(w, "verb");
 
         // Common nouns
-        foreach (var w in new[] { "meeting", "flight", "report", "email", "message", "table", "car", "house", "city", "country", "person", "people", "company", "team", "project", "task", "time", "day", "week", "month", "year", "morning", "afternoon", "evening", "night", "ticket", "order", "price", "money", "phone", "computer", "engine", "language", "word", "sentence", "document", "file", "name", "place", "thing", "way", "dog", "cat", "ball" })
+        foreach (var w in new[] { "meeting", "flight", "report", "email", "message", "table", "car", "house", "city", "country", "person", "people", "company", "team", "project", "task", "time", "day", "week", "month", "year", "morning", "afternoon", "evening", "night", "ticket", "order", "price", "money", "phone", "computer", "engine", "language", "word", "sentence", "document", "file", "name", "place", "thing", "way", "dog", "cat", "ball", "fox" })
             yield return Make(w, "noun");
 
         // Adjectives
