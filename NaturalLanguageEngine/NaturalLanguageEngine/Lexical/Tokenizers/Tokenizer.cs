@@ -1,4 +1,7 @@
-﻿using NaturalLanguageEngine.Abstractions.Lexical;
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using NaturalLanguageEngine.Abstractions.Lexical;
 using NaturalLanguageEngine.Lexical.Tokenizers;
 using NaturalLanguageEngine.Models.Enums;
 using NaturalLanguageEngine.Models.Lexical;
@@ -12,8 +15,10 @@ public sealed class Tokenizer : ITokenizer
 
     public Tokenizer(ICharacterReader reader, IEnumerable<ITokenRecognizer> recognizers)
     {
-        _reader = reader;
-        _recognizers = [.. recognizers.OrderByDescending(r => r.Priority)];
+        _reader = reader ?? throw new ArgumentNullException(nameof(reader));
+        _recognizers = (recognizers ?? Enumerable.Empty<ITokenRecognizer>())
+            .OrderByDescending(r => r.Priority)
+            .ToList();
     }
 
     public IReadOnlyList<Token> Tokenize(string text)

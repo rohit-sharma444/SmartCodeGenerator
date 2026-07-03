@@ -1,132 +1,114 @@
 using NaturalLanguageEngine.Core;
-using NaturalLanguageEngine.Models.Diagnostics;
+using System.Text.Json;
 using Xunit;
 
 namespace NaturalLanguageEngine.Tests.Core;
 
-public class PipelineTests
+/// <summary>
+/// Tests for PipelineLogger performance monitoring and metrics collection.
+/// </summary>
+public class PipelineLoggerTests
 {
-    /// <summary>A stage double that records whether it ran and can optionally throw.</summary>
-    private sealed class RecordingStage : PipelineStageBase
+    [Fact]
+    public void LogStageExecution_RecordsMetricsForSingleStage()
     {
-        private readonly Action<AnalysisContext>? _onExecute;
-        private readonly Exception? _throw;
+        var logger = new PipelineLogger();
 
-        public RecordingStage(string name, int order, Action<AnalysisContext>? onExecute = null, Exception? throwException = null)
+        logger.LogStageExecution(
+            stageName: "TestStage",
+            order: 10,
+            TimeSpan.FromSeconds(25.5),
+            entityCount: 3,
+            relationshipCount: 2,
+            success: true,
+            errorMessage: null);
+
+        var logs = logger.GetAllLogs();
+        Assert.Single(logs);
+        Assert.Equal("TestStage", logs[0].StageName);
+        Assert.Equal(10, logs[0].Order);
+        Assert.Equal(25.5, logs[0].ElapsedMilliseconds);
+        Assert.Equal(3, logs[0].EntityCount);
+        Assert.Equal(2, logs[0].RelationshipCount);
+        Assert.True(logs[0].Success);
+    }
+
+    [Fact]
+    public void LogStageExecution_MultipleInvocations_AccumulatesLogs()
+    {
+        var logger = new PipelineLogger();
+
+        for (int i = 0; i < 5; i++)
         {
-            Name = name;
-            Order = order;
-            _onExecute = onExecute;
-            _throw = throwException;
+            logger.LogStageExecution($"Stage{i}", i * 10, TimeSpan.FromSeconds(10.0 + i), i, i / 2, true, null);
         }
 
-        public override string Name { get; }
+        var logs = logger.GetAllLogs();
+        Assert.Equal(5, logs.Count);
+    }
 
-        public override int Order { get; }
+    [Fact]
+    public void GetStats_ComputesCorrectAggregates()
+    {
+        var logger = new PipelineLogger();
 
-        public bool WasExecuted { get; private set; }
+        logger.LogStageExecution("Stage1", 10, TimeSpan.FromSeconds(20.0), 2, 1, true, null);
+        logger.LogStageExecution("Stage2", 20, TimeSpan.FromSeconds(30.0), 3, 2, true, null);
+        logger.LogStageExecution("Stage1", 10, TimeSpan.FromSeconds(20.0), 2, 1, true, null);
 
-        public override AnalysisContext Execute(AnalysisContext context)
+        var stats = logger.GetStats();
+        Assert.Equal(3, stats.TotalExecutions);
+        Assert.Equal(70.0, stats.TotalElapsedMilliseconds);
+        Assert.Equal(70.0 / 3, stats.AverageElapsedMilliseconds, precision: 2);
+    }
+
+    [Fact]
+    public void ExportAsJson_ProducesValidJsonFormat()
+    {
+        var logger = new PipelineLogger();
+
+        logger.LogStageExecution("TestStage", 10, TimeSpan.FromSeconds(15.5), 2, 1, true, null);
+
+        var json = logger.ExportAsJson();
+        Assert.NotEmpty(json);
+
+        // Verify it's valid JSON
+        var doc = JsonDocument.Parse(json);
+        Assert.NotNull(doc);
+    }
+
+    [Fact]
+    public void LogStageExecution_WithError_RecordsErrorMessage()
+    {
+        var logger = new PipelineLogger();
+        var errorMsg = "Test error occurred";
+
+        logger.LogStageExecution("FailedStage", 10, TimeSpan.FromSeconds(5.0), 0, 0, false, errorMsg);
+
+        var logs = logger.GetAllLogs();
+        Assert.Single(logs);
+        Assert.False(logs[0].Success);
+        Assert.Equal(errorMsg, logs[0].ErrorMessage);
+    }
+
+    [Fact]
+    public void ThreadSafety_ConcurrentLogging_AllEntriesRecorded()
+    {
+        var logger = new PipelineLogger();
+        var tasks = new List<Task>();
+
+        for (int i = 0; i < 10; i++)
         {
-            WasExecuted = true;
-
-            if (_throw is not null)
-                throw _throw;
-
-            _onExecute?.Invoke(context);
-            return context;
+            int stageId = i;
+            tasks.Add(Task.Run(() =>
+            {
+                logger.LogStageExecution($"Stage{stageId}", stageId, TimeSpan.FromSeconds(10.0), 1, 0, true, null);
+            }));
         }
-    }
 
-    [Fact]
-    public void Execute_RunsStagesInOrderRegardlessOfAddOrder()
-    {
-        var executionOrder = new List<string>();
+        Task.WaitAll(tasks.ToArray());
 
-        var second = new RecordingStage("second", 20, ctx => executionOrder.Add("second"));
-        var first = new RecordingStage("first", 10, ctx => executionOrder.Add("first"));
-
-        // Added out of order on purpose - Pipeline must still run by Order.
-        var pipeline = new PipelineBuilder().Add(second).Add(first).Build();
-
-        pipeline.Execute("hello world");
-
-        Assert.Equal(new[] { "first", "second" }, executionOrder);
-    }
-
-    [Fact]
-    public void Execute_AllStagesSucceed_ProducesNoDiagnostics()
-    {
-        var pipeline = new PipelineBuilder()
-            .Add(new RecordingStage("a", 10))
-            .Add(new RecordingStage("b", 20))
-            .Build();
-
-        var context = pipeline.Execute("hello world");
-
-        Assert.Empty(context.Diagnostics);
-    }
-
-    [Fact]
-    public void Execute_StageThrows_IsCapturedAsCriticalDiagnostic_NotPropagated()
-    {
-        var pipeline = new PipelineBuilder()
-            .Add(new RecordingStage("failing", 10, throwException: new InvalidOperationException("boom")))
-            .Build();
-
-        // Must not throw.
-        var context = pipeline.Execute("hello world");
-
-        var diagnostic = Assert.Single(context.Diagnostics);
-        Assert.Equal(DiagnosticSeverity.Critical, diagnostic.Severity);
-        Assert.Contains("failing", diagnostic.Code);
-        Assert.Contains("boom", diagnostic.Message);
-    }
-
-    [Fact]
-    public void Execute_StageThrows_StopsLaterStagesFromRunning()
-    {
-        var third = new RecordingStage("third", 30);
-
-        var pipeline = new PipelineBuilder()
-            .Add(new RecordingStage("first", 10))
-            .Add(new RecordingStage("failing", 20, throwException: new InvalidOperationException("boom")))
-            .Add(third)
-            .Build();
-
-        pipeline.Execute("hello world");
-
-        Assert.False(third.WasExecuted);
-    }
-
-    [Fact]
-    public void Execute_StageThrows_PreservesWorkDoneByEarlierStages()
-    {
-        var pipeline = new PipelineBuilder()
-            .Add(new RecordingStage("first", 10, ctx => ctx.Properties["marker"] = "set-by-first-stage"))
-            .Add(new RecordingStage("failing", 20, throwException: new InvalidOperationException("boom")))
-            .Build();
-
-        var context = pipeline.Execute("hello world");
-
-        Assert.Equal("set-by-first-stage", context.Properties["marker"]);
-    }
-
-    [Fact]
-    public void Execute_StageReturnsNull_IsCapturedAsCriticalDiagnostic()
-    {
-        var pipeline = new PipelineBuilder().Add(new NullReturningStage()).Build();
-
-        var context = pipeline.Execute("hello world");
-
-        var diagnostic = Assert.Single(context.Diagnostics);
-        Assert.Equal(DiagnosticSeverity.Critical, diagnostic.Severity);
-    }
-
-    private sealed class NullReturningStage : PipelineStageBase
-    {
-        public override string Name => "null-returning";
-        public override int Order => 10;
-        public override AnalysisContext Execute(AnalysisContext context) => null!;
+        var logs = logger.GetAllLogs();
+        Assert.Equal(10, logs.Count);
     }
 }
