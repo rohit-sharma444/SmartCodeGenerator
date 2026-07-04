@@ -17,7 +17,33 @@ entity extraction (class names, typed properties, methods, project types).
 - Replacing CodeGenerator's NLP pipeline with NLE.
 - Using NLE for entity recognition, normalization/lemmatization, or
   confidence/diagnostics surfacing. (Explicitly out of scope for this change.)
-- Modifying the `NaturalLanguageEngine` project in any way.
+- Any structural change to NLE (its pipeline, stages, or public API). The **only**
+  NLE change is a data addition to its English verb lexicon (see below).
+
+### Empirical finding driving the design (2026-07-04)
+
+Running NLE's own console (`EngineBuilder.Build`) against real CodeGenerator
+commands showed NLE's POS tagger only tags a verb as an `Action` when that verb
+is present in its lexicon (`EnglishLanguageProvider.LoadWords`, "Common verbs").
+That "compact lexicon" is missing most command verbs:
+
+| Command | NLE result as-shipped |
+|---------|-----------------------|
+| `create a Customer class` | `CreateIntent`, Action `create` (works) |
+| `add method Save to Order` | `DescribeIntent`, no Action |
+| `list projects` | no intent, `NoEntities` |
+| `generate a service for Payment` | `DescribeIntent`, no Action |
+| `delete class Foo` | `DescribeIntent`, no Action |
+| `rename class A to B` | `DescribeIntent`, no Action |
+
+Adding the missing verbs to the lexicon (verified by re-running the same
+commands) makes every command tag correctly: `AddIntent`/`ListIntent`/
+`GenerateIntent`/`DeleteIntent`/`RenameIntent`/`AnalyzeIntent`, each with the
+Action verb at 0.80 confidence. These are ordinary English verbs a
+general-purpose engine should know, so the addition improves NLE broadly rather
+than making it CodeGenerator-specific. Without this addition the action signal
+is too sparse to be worth wiring in; **the lexicon extension is a prerequisite,
+not optional.**
 
 ## Background
 
@@ -54,6 +80,23 @@ anywhere in the sentence." We do **not** claim lemmatization value, because the
 lemma is not exposed through NLE's public `SemanticResult`.
 
 ## Approach
+
+### 0. Extend NLE's verb lexicon (prerequisite)
+
+In `NaturalLanguageEngine/Knowledge/Providers/EnglishLanguageProvider.cs`, add
+the missing base/third-person/past forms of CodeGenerator's command verbs to the
+"Common verbs" array in `LoadWords()`:
+
+```
+add/adds/added, list/lists/listed, generate/generates/generated,
+delete/deletes/deleted, remove/removes/removed, rename/renames/renamed,
+analyze/analyzes/analyzed, validate/validates/validated, use/uses/used,
+restore/restores/restored
+```
+
+Verbs already present (`create`, `build`, `show`, `open`, `set`, `find`, `need`,
+`make`, `run`) are left as-is. This is a pure data addition; no NLE logic
+changes. NLE's existing xUnit test suite must still pass afterward.
 
 ### 1. Project reference & seam
 
@@ -110,11 +153,13 @@ lemma is not exposed through NLE's public `SemanticResult`.
 
 | Component | Change | Responsibility |
 |-----------|--------|----------------|
+| `NaturalLanguageEngine/Knowledge/Providers/EnglishLanguageProvider.cs` | edit | Add missing command verbs to the lexicon (prerequisite) |
 | `CodeGenerationEngine.csproj` | edit | Add `ProjectReference` to NLE |
+| `CodeGenerator.Tests.csproj` | edit | Add `ProjectReference` to CodeGenerationEngine (no reference exists yet) |
 | `Core/Nlp/NlpActionProvider.cs` | new | Isolate NLE; expose `GetPrimaryAction(string) : string?` |
 | `Core/IntentAnalyzer.cs` | edit | Resolve `nlpAction` once; add additive `GetNlpActionScore` contribution to `CalculateScore` |
 
-No other production files change. `NaturalLanguageEngine` is not modified.
+The only NLE change is the lexicon data addition above.
 
 ## Data flow
 
