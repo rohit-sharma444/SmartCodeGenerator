@@ -1,5 +1,4 @@
-﻿using CodeGenerationEngine.Core.Nlp;
-using CodeGenerationEngine.Models;
+﻿using CodeGenerationEngine.Models;
 using System.Text.RegularExpressions;
 
 namespace CodeGenerationEngine.Core;
@@ -93,17 +92,15 @@ public static class IntentAnalyzer
             "Semantic analysis");
     }
 
-    public static IntentMatch Detect(string sentence)
-        => DetectWithConfidence(sentence);
+    public static IntentMatch Detect(string sentence, string? nlpAction = null)
+        => DetectWithConfidence(sentence, nlpAction);
 
-    private static IntentMatch DetectWithConfidence(string sentence)
+    private static IntentMatch DetectWithConfidence(string sentence, string? nlpAction)
     {
         if (string.IsNullOrWhiteSpace(sentence))
             return new(IntentType.Unknown, 0, 0, "Empty input");
 
         sentence = NormalizeSentence(sentence);
-
-        var nlpAction = NlpActionProvider.GetPrimaryAction(sentence);
 
         var tokens = TextTokenizer.Tokenize(sentence)
             .Select(t => t.Normalized)

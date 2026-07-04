@@ -4,7 +4,7 @@ namespace CodeGenerationEngine.Core;
 
 public static class SemanticAnalyzer
 {
-    public static SemanticModel Analyze(string input)
+    public static SemanticModel Analyze(string input, string? nlpAction = null)
     {
         string normalized =
             CommandParser.Normalize(input);
@@ -31,7 +31,7 @@ public static class SemanticAnalyzer
         SemanticValidator.Validate(model);
 
         // Detect intent
-        var intent = IntentAnalyzer.Detect(input);
+        var intent = IntentAnalyzer.Detect(input, nlpAction);
 
         model.Intent = intent.Intent;
         model.Confidence = intent.Confidence;
