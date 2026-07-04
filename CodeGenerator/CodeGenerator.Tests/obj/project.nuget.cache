@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "N66PQDd5+d0=",
+  "dgSpecHash": "+LYysxDrXuc=",
   "success": true,
-  "projectFilePath": "D:\\DEVELOPMENT-WORK\\TOOLS\\CodeGenerator\\CodeGenerator.Tests\\CodeGenerator.Tests.csproj",
+  "projectFilePath": "D:\\PERSONAL-REPOSITORY\\CodeGenerator\\CodeGenerator.Tests\\CodeGenerator.Tests.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\admin\\.nuget\\packages\\microsoft.applicationinsights\\2.23.0\\microsoft.applicationinsights.2.23.0.nupkg.sha512",
     "C:\\Users\\admin\\.nuget\\packages\\microsoft.codecoverage\\18.0.1\\microsoft.codecoverage.18.0.1.nupkg.sha512",

@@ -1440,11 +1440,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "D:\\DEVELOPMENT-WORK\\TOOLS\\CodeGenerator\\CodeGenerator\\CodeGenerator.csproj",
+      "projectUniqueName": "D:\\PERSONAL-REPOSITORY\\CodeGenerator\\CodeGenerator\\CodeGenerator.csproj",
       "projectName": "CodeGenerator",
-      "projectPath": "D:\\DEVELOPMENT-WORK\\TOOLS\\CodeGenerator\\CodeGenerator\\CodeGenerator.csproj",
+      "projectPath": "D:\\PERSONAL-REPOSITORY\\CodeGenerator\\CodeGenerator\\CodeGenerator.csproj",
       "packagesPath": "C:\\Users\\admin\\.nuget\\packages\\",
-      "outputPath": "D:\\DEVELOPMENT-WORK\\TOOLS\\CodeGenerator\\CodeGenerator\\obj\\",
+      "outputPath": "D:\\PERSONAL-REPOSITORY\\CodeGenerator\\CodeGenerator\\obj\\",
       "projectStyle": "PackageReference",
       "fallbackFolders": [
         "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
@@ -1466,8 +1466,8 @@
           "framework": "net10.0",
           "targetAlias": "net10.0",
           "projectReferences": {
-            "D:\\DEVELOPMENT-WORK\\TOOLS\\CodeGenerator\\CodeGenerationEngine\\CodeGenerationEngine.csproj": {
-              "projectPath": "D:\\DEVELOPMENT-WORK\\TOOLS\\CodeGenerator\\CodeGenerationEngine\\CodeGenerationEngine.csproj"
+            "D:\\PERSONAL-REPOSITORY\\CodeGenerator\\CodeGenerationEngine\\CodeGenerationEngine.csproj": {
+              "projectPath": "D:\\PERSONAL-REPOSITORY\\CodeGenerator\\CodeGenerationEngine\\CodeGenerationEngine.csproj"
             }
           }
         }
