@@ -19,4 +19,8 @@
     <Folder Include="Core\" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\CodeGenerationEngine\CodeGenerationEngine.csproj" />
+  </ItemGroup>
+
 </Project>
