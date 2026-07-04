@@ -12,6 +12,7 @@ public class NlpActionProviderTests
     [DataRow("delete class Foo", "delete")]
     [DataRow("rename class A to B", "rename")]
     [DataRow("analyze class Foo", "analyze")]
+    [DataRow("validate foo", "validate")]
     public void GetPrimaryAction_CommandVerb_ReturnsLowercasedVerb(
         string input, string expected)
     {

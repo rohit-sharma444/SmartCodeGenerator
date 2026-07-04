@@ -14,6 +14,9 @@ public class IntentAnalyzerNlpTests
     [DataRow("delete class Foo", IntentType.DeleteClass)]
     [DataRow("rename class A to B", IntentType.RenameClass)]
     [DataRow("create a service for Payment", IntentType.CreateService)]
+    [DataRow("remove the class Foo", IntentType.DeleteClass)]
+    [DataRow("add property Email to Customer", IntentType.CreateProperty)]
+    [DataRow("generate a repository for Order", IntentType.CreateRepository)]
     public void Detect_CanonicalCommands_ResolveToExpectedIntent(
         string input, IntentType expected)
     {

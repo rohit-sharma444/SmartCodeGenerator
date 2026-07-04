@@ -135,11 +135,23 @@ changes. NLE's existing xUnit test suite must still pass afterward.
     `rule.Actions`, award a fixed bonus (proposed **+25**, in line with the
     existing `ContainsPhrase` action bonus of +30 / phrase bonus of +25).
   - Otherwise award 0.
-- **Additive bonus only** (confirmed decision): NLE can only *raise* a matching
-  rule's score. It never overrides keyword scoring and never rescues an
-  otherwise-`Unknown` result. If `nlpAction` is null or unrecognized, every
-  score is identical to today's behavior, so the change **cannot regress** any
-  existing command by construction.
+- **Additive bonus only** (confirmed decision): the true invariant is that each
+  individual rule's score is *monotonically non-decreasing* — `GetNlpActionScore`
+  only ever adds 0 or +25 to the rule it is scoring, never subtracts. It does
+  **not** follow that the overall arg-max pick is stable: because the bonus is
+  applied only to rules whose `Actions` contain the NLE-confirmed verb (a
+  non-uniform boost), a previously-losing rule that has the verb can overtake a
+  previously-winning rule that lacks it, shifting the selected intent. That
+  shift is the *intended* effect of this feature (it moves the pick toward the
+  intent the NLE engine's POS-confirmed verb supports), not a bug — but it means
+  the design does **not** structurally guarantee "cannot regress." For example,
+  a terse input like `validate Foo` scores 30 on keywords alone (below the
+  40-point threshold, so `Unknown` today); the NLE signal adds +25 and lifts it
+  to 55, past the threshold, into `ValidateProject`. If `nlpAction` is null or
+  unrecognized every score is unchanged from today's behavior, but when it is
+  recognized the selected intent can change. Non-regression across existing
+  commands is therefore ensured by the regression test suite
+  (`IntentAnalyzerNlpTests`), not guaranteed by construction.
 
 ### 3. Failure handling & lifecycle
 

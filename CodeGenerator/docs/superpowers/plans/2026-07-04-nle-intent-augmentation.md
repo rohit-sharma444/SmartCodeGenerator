@@ -4,7 +4,7 @@
 
 **Goal:** Use NaturalLanguageEngine's POS-tagged action verb as an additive signal that strengthens CodeGenerator's rule-based intent detection, without changing entity extraction.
 
-**Architecture:** Extend NLE's English verb lexicon so command verbs are recognized (prerequisite), reference NLE from CodeGenerationEngine, isolate NLE behind a single `NlpActionProvider` adapter, and add one purely additive scoring contribution to `IntentAnalyzer`. Additive-only means the change cannot regress existing intent detection.
+**Architecture:** Extend NLE's English verb lexicon so command verbs are recognized (prerequisite), reference NLE from CodeGenerationEngine, isolate NLE behind a single `NlpActionProvider` adapter, and add one purely additive scoring contribution to `IntentAnalyzer`. Additive-only means each rule's own score never decreases; because the bonus is applied only to verb-matching rules, the arg-max pick can still shift toward whichever rule the NLE-confirmed verb belongs to (the intended effect) — non-regression on existing commands is enforced by tests, not guaranteed by construction.
 
 **Tech Stack:** C# / .NET 10.0, Roslyn (existing), NaturalLanguageEngine (existing project), MSTest 4.0.2 (CodeGenerator.Tests), xUnit (NaturalLanguageEngine.Tests).
 
@@ -14,7 +14,7 @@
 - Target framework everywhere: `net10.0`. `Nullable` and `ImplicitUsings` are `enable`d in all touched projects.
 - The **only** permitted NLE change is the verb-lexicon data addition in Task 1. Do not alter NLE pipeline, stages, or public API.
 - NLE stays `<OutputType>Exe</OutputType>`; reference it as-is (a `NETSDK` warning about referencing an Exe is acceptable).
-- The NLE action signal is **additive only**: it may raise a matching rule's score, never override or rescue. Bonus value: **+25**.
+- The NLE action signal is **additive only**: `GetNlpActionScore` only ever adds 0 or the bonus to the rule being scored, never subtracts. This does raise a terse, otherwise sub-threshold rule (e.g. `validate Foo`, 30 points on keywords alone) past the 40-point cutoff — that is the intended value-add, not an accidental "rescue." Because the bonus is verb-selective (only rules whose `Actions` contain the NLE verb receive it), the arg-max winner can shift toward the verb-matching rule; non-regression on existing commands is verified by tests, not guaranteed by construction. Bonus value: **+25**.
 - `NlpActionProvider` is the only file in CodeGenerationEngine allowed to reference NLE types. Everything else sees a `string?`.
 - CodeGenerator.Tests uses MSTest (`[TestClass]`/`[TestMethod]`/`[DataTestMethod]`, global using is already configured). NaturalLanguageEngine.Tests uses xUnit (`[Fact]`/`[Theory]`/`using Xunit;`).
 
