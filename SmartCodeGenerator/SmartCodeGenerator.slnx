@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="../CodeGenerator/CodeGenerationEngine/CodeGenerationEngine.csproj" />
+  <Project Path="../CodeGenerator/CodeGenerator.Tests/CodeGenerator.Tests.csproj" />
+  <Project Path="../NaturalLanguageEngine/NaturalLanguageEngine.Tests/NaturalLanguageEngine.Tests.csproj" />
+  <Project Path="../NaturalLanguageEngine/NaturalLanguageEngine/NaturalLanguageEngine.csproj" />
+</Solution>
