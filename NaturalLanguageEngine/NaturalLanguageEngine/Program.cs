@@ -107,13 +107,13 @@ static string[] GetPrompts(string[] args)
         typed.Add(line);
 
     if (typed.Count > 0)
-        return typed.ToArray();
+        return [.. typed];
 
     // Fallback demo sentences
-    return new[]
-    {
+    return
+    [
         "The quick brown fox jumps over the lazy dog.",
         "Machine learning algorithms process data efficiently.",
         "Natural language processing enables computers to understand human speech."
-    };
+    ];
 }
