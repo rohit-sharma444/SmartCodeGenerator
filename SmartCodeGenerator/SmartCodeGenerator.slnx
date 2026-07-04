@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="../../../PERSONAL-REPOSITORY/CodeGenerator/CodeGenerationEngine/CodeGenerationEngine.csproj" />
+  <Project Path="../../../PERSONAL-REPOSITORY/CodeGenerator/CodeGenerator.Tests/CodeGenerator.Tests.csproj" />
+  <Project Path="../../../PERSONAL-REPOSITORY/NaturalLanguageEngine/NaturalLanguageEngine.Tests/NaturalLanguageEngine.Tests.csproj" />
+  <Project Path="../../../PERSONAL-REPOSITORY/NaturalLanguageEngine/NaturalLanguageEngine/NaturalLanguageEngine.csproj" />
+</Solution>
