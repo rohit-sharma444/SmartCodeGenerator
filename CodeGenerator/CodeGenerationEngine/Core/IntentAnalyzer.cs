@@ -1,4 +1,5 @@
-﻿using CodeGenerationEngine.Models;
+﻿using CodeGenerationEngine.Core.Nlp;
+using CodeGenerationEngine.Models;
 using System.Text.RegularExpressions;
 
 namespace CodeGenerationEngine.Core;
@@ -102,6 +103,8 @@ public static class IntentAnalyzer
 
         sentence = NormalizeSentence(sentence);
 
+        var nlpAction = NlpActionProvider.GetPrimaryAction(sentence);
+
         var tokens = TextTokenizer.Tokenize(sentence)
             .Select(t => t.Normalized)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -120,7 +123,7 @@ public static class IntentAnalyzer
 
         foreach (var rule in IntentRules.Rules)
         {
-            int score = CalculateScore(sentence, tokens, rule);
+            int score = CalculateScore(sentence, tokens, rule, nlpAction);
 
             if (score > bestScore ||
                 (score == bestScore &&
@@ -153,7 +156,7 @@ public static class IntentAnalyzer
         return sentence.Trim().ToLowerInvariant();
     }
 
-    private static int CalculateScore(string sentence, HashSet<string> tokens, IntentRule rule)
+    private static int CalculateScore(string sentence, HashSet<string> tokens, IntentRule rule, string? nlpAction)
     {
         int score = 0;
 
@@ -162,8 +165,23 @@ public static class IntentAnalyzer
         score += GetPhraseBonus(sentence, rule);
         score += GetEnglishHintScore(sentence, rule.Intent);
         score += GetContextScore(sentence, rule.Intent);
+        score += GetNlpActionScore(nlpAction, rule);
 
         return score;
+    }
+
+    // Additive only: when NLE identified a primary action verb that matches one
+    // of this rule's actions, add a fixed bonus. If NLE returned nothing (null),
+    // every rule's score is unchanged, so behavior is identical to before.
+    private static int GetNlpActionScore(string? nlpAction, IntentRule rule)
+    {
+        if (string.IsNullOrWhiteSpace(nlpAction))
+            return 0;
+
+        return rule.Actions.Any(a =>
+            string.Equals(a, nlpAction, StringComparison.OrdinalIgnoreCase))
+            ? 25
+            : 0;
     }
 
     private static int ScoreActions(
