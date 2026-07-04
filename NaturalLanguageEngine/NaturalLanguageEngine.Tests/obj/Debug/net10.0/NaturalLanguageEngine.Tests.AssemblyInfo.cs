@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("NaturalLanguageEngine.Tests")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+c4d00923d9372dfa80c16275b78207f700cdd732")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+83baf184e72207a5060a12a5973990d520e5a94f")]
 [assembly: System.Reflection.AssemblyProductAttribute("NaturalLanguageEngine.Tests")]
 [assembly: System.Reflection.AssemblyTitleAttribute("NaturalLanguageEngine.Tests")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
