@@ -40,12 +40,16 @@ public sealed class LearnedIntentMemoryTests
     {
         var mem = new LearnedIntentMemory();
         mem.Reinforce("show my widgets", IntentType.ListClasses);
+        var afterReinforce = mem.Entries.Single().Confidence;
+
         for (var i = 0; i < 5; i++)
             mem.Weaken("show my widgets", IntentType.ListClasses);
+        var afterWeaken = mem.Entries.Single().Confidence;
 
-        mem.Suggest("show my widgets", out var confidence);
-        Assert.IsTrue(confidence < LearnedIntentMemory.SuggestThreshold,
-            $"confidence {confidence}");
+        Assert.IsTrue(afterWeaken < afterReinforce,
+            $"weaken should reduce confidence: {afterReinforce} -> {afterWeaken}");
+        Assert.IsTrue(afterWeaken < LearnedIntentMemory.SuggestThreshold,
+            $"confidence {afterWeaken}");
     }
 
     [TestMethod]
