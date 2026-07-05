@@ -15,5 +15,8 @@
     <ProjectReference Include="..\CodeGenerationEngine\CodeGenerationEngine.csproj">
       <Private>True</Private>
     </ProjectReference>
+    <ProjectReference Include="..\NaturalLanguageBridge\NaturalLanguageBridge.csproj">
+      <Private>True</Private>
+    </ProjectReference>
   </ItemGroup>
 </Project>
