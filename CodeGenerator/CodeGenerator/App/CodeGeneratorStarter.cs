@@ -3,7 +3,6 @@ using CodeGenerationEngine.Models;
 using CodeGenerationEngine.Service;
 using Microsoft.CodeAnalysis;
 using NaturalLanguageBridge;
-using NaturalLanguageEngine.Models.Semantics;
 using System.Text.Json;
 
 namespace CodeGenerator.App;
@@ -112,10 +111,12 @@ internal class CodeGeneratorStarter
             // FIX #9: Improved exception handling with specific catch blocks
             try
             {
-                // NLE analyzes first, then CodeGenerator generates from the result
+                // NLE analyzes first, then CodeGenerator generates from the result.
+                // The NLE analysis is used internally only; we surface just the
+                // command's own output (e.g. the project list), not the raw
+                // SemanticResult, so no onAnalyzed callback is passed.
                 _pipeline.Handle(input, ref currentProject,
-                     _configuredRules, _workspaceRoot, r => ProjectManager.CurrentProject = r,
-                     onAnalyzed: DisplayNleAnalysis);
+                     _configuredRules, _workspaceRoot, r => ProjectManager.CurrentProject = r);
             }
             catch (ArgumentException ex)
             {
@@ -467,24 +468,6 @@ internal class CodeGeneratorStarter
         }
 
         return position;
-    }
-
-    private static void DisplayNleAnalysis(SemanticResult? analysis)
-    {
-        if (analysis is null)
-            return;
-
-        Console.ForegroundColor = ConsoleColor.DarkGray;
-        Console.WriteLine($"[NLE] intent: {analysis.Intent?.Name ?? "(none)"}");
-
-        if (analysis.Entities.Count > 0)
-        {
-            var entities = string.Join(", ",
-                analysis.Entities.Select(e => $"{e.Type}:\"{e.Text}\""));
-            Console.WriteLine($"[NLE] entities: {entities}");
-        }
-
-        Console.ResetColor();
     }
 
     private void PrintHeader()
