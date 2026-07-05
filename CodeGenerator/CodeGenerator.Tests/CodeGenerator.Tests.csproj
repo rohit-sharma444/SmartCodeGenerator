@@ -19,4 +19,9 @@
     <Folder Include="Core\" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\CodeGenerationEngine\CodeGenerationEngine.csproj" />
+    <ProjectReference Include="..\NaturalLanguageBridge\NaturalLanguageBridge.csproj" />
+  </ItemGroup>
+
 </Project>

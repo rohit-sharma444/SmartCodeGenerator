@@ -2,6 +2,8 @@ using CodeGenerationEngine.Core;
 using CodeGenerationEngine.Models;
 using CodeGenerationEngine.Service;
 using Microsoft.CodeAnalysis;
+using NaturalLanguageBridge;
+using NaturalLanguageEngine.Models.Semantics;
 using System.Text.Json;
 
 namespace CodeGenerator.App;
@@ -21,6 +23,8 @@ internal class CodeGeneratorStarter
     private int _historyIndex = -1;
     private readonly string _encryptedHistoryPath;
     private const string HISTORY_FILENAME = ".codegen_history";
+
+    private readonly NaturalLanguagePipeline _pipeline = new();
 
     internal CodeGeneratorStarter()
     {
@@ -108,9 +112,10 @@ internal class CodeGeneratorStarter
             // FIX #9: Improved exception handling with specific catch blocks
             try
             {
-                // delegate to the static CommandHandlingService
-                CommandHandlingService.ProcessInput(input, ref currentProject,
-                     _configuredRules, _workspaceRoot, r => ProjectManager.CurrentProject = r);
+                // NLE analyzes first, then CodeGenerator generates from the result
+                _pipeline.Handle(input, ref currentProject,
+                     _configuredRules, _workspaceRoot, r => ProjectManager.CurrentProject = r,
+                     onAnalyzed: DisplayNleAnalysis);
             }
             catch (ArgumentException ex)
             {
@@ -462,6 +467,24 @@ internal class CodeGeneratorStarter
         }
 
         return position;
+    }
+
+    private static void DisplayNleAnalysis(SemanticResult? analysis)
+    {
+        if (analysis is null)
+            return;
+
+        Console.ForegroundColor = ConsoleColor.DarkGray;
+        Console.WriteLine($"[NLE] intent: {analysis.Intent?.Name ?? "(none)"}");
+
+        if (analysis.Entities.Count > 0)
+        {
+            var entities = string.Join(", ",
+                analysis.Entities.Select(e => $"{e.Type}:\"{e.Text}\""));
+            Console.WriteLine($"[NLE] entities: {entities}");
+        }
+
+        Console.ResetColor();
     }
 
     private void PrintHeader()

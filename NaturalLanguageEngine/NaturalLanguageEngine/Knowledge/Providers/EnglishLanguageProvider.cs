@@ -33,7 +33,11 @@ public sealed class EnglishLanguageProvider : ILanguageProvider
             yield return Make(w, "verb");
 
         // Common verbs
-        foreach (var w in new[] { "go", "goes", "went", "make", "makes", "made", "take", "takes", "took", "see", "saw", "come", "came", "want", "wants", "wanted", "send", "sends", "sent", "give", "gives", "gave", "book", "books", "booked", "buy", "buys", "bought", "find", "found", "show", "shows", "tell", "told", "ask", "asks", "asked", "need", "needs", "needed", "like", "likes", "liked", "call", "calls", "called", "open", "opens", "opened", "close", "closes", "set", "schedule", "schedules", "scheduled", "play", "plays", "played", "create", "creates", "created", "build", "builds", "built", "run", "runs", "ran", "jumps" })
+        foreach (var w in new[] { "go", "goes", "went", "make", "makes", "made", "take", "takes", "took", "see", "saw", "come", "came", "want", "wants", "wanted", "send", "sends", "sent", "give", "gives", "gave", "book", "books", "booked", "buy", "buys", "bought", "find", "found", "show", "shows", "tell", "told", "ask", "asks", "asked", "need", "needs", "needed", "like", "likes", "liked", "call", "calls", "called", "open", "opens", "opened", "close", "closes", "set", "schedule", "schedules", "scheduled", "play", "plays", "played", "create", "creates", "created", "build", "builds", "built", "run", "runs", "ran", "jumps",
+            "add", "adds", "added", "list", "lists", "listed", "generate", "generates", "generated",
+            "delete", "deletes", "deleted", "remove", "removes", "removed", "rename", "renames", "renamed",
+            "analyze", "analyzes", "analyzed", "validate", "validates", "validated", "use", "uses", "used",
+            "restore", "restores", "restored" })
             yield return Make(w, "verb");
 
         // Common nouns

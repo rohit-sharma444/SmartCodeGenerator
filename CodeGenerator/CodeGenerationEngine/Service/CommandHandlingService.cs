@@ -32,7 +32,8 @@ public static class CommandHandlingService
         ref ProjectMetaData? currentProject,
         List<PropertyRule> configuredRules,
         string workspaceRoot,
-        Action<ProjectMetaData?> setLastCreatedProject)
+        Action<ProjectMetaData?> setLastCreatedProject,
+        string? nlpAction = null)
     {
         // The "demo" shortcut bypasses parsing entirely and prints generated code.
         if (input.Equals("demo", StringComparison.OrdinalIgnoreCase))
@@ -42,7 +43,7 @@ public static class CommandHandlingService
             return true;
         }
 
-        var command = ParseInput(input, workspaceRoot);
+        var command = ParseInput(input, workspaceRoot, nlpAction);
 
         var context = new CommandExecutionContext
         {
@@ -61,9 +62,9 @@ public static class CommandHandlingService
         return result;
     }
 
-    private static ParsedCommand ParseInput(string input, string workspaceRoot)
+    private static ParsedCommand ParseInput(string input, string workspaceRoot, string? nlpAction)
     {
-        var semantic = SemanticAnalyzer.Analyze(input);
+        var semantic = SemanticAnalyzer.Analyze(input, nlpAction);
         var intentType = Core.IntentAnalyzer.Detect(semantic);
         return EntityExtractor.Extract(semantic, intentType, workspaceRoot);
     }

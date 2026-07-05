@@ -62,29 +62,29 @@ foreach (var prompt in promptsToAnalyze)
 }
 
 // Display performance metrics if logging was enabled
-if (buildResult.Logger != null)
-{
-    Console.WriteLine("\n" + new string('=', 60));
-    Console.WriteLine("PERFORMANCE SUMMARY");
-    Console.WriteLine(new string('=', 60));
+//if (buildResult.Logger != null)
+//{
+//    Console.WriteLine("\n" + new string('=', 60));
+//    Console.WriteLine("PERFORMANCE SUMMARY");
+//    Console.WriteLine(new string('=', 60));
     
-    var stats = buildResult.Logger.GetStats();
-    Console.WriteLine($"Total Pipeline Executions: {stats.TotalExecutions}");
-    Console.WriteLine($"Total Elapsed Time:       {stats.TotalElapsedMilliseconds}ms");
-    Console.WriteLine($"Average Time Per Run:     {stats.AverageElapsedMilliseconds:F2}ms");
+//    var stats = buildResult.Logger.GetStats();
+//    Console.WriteLine($"Total Pipeline Executions: {stats.TotalExecutions}");
+//    Console.WriteLine($"Total Elapsed Time:       {stats.TotalElapsedMilliseconds}ms");
+//    Console.WriteLine($"Average Time Per Run:     {stats.AverageElapsedMilliseconds:F2}ms");
     
-    Console.WriteLine("\nPer-Stage Metrics:");
-    foreach (var stage in buildResult.Logger.GetLogs().GroupBy(l => l.StageName).OrderBy(g => g.First().Order))
-    {
-        var stageLogs = stage.ToList();
-        var totalStageTime = stageLogs.Sum(l => l.ElapsedMilliseconds);
-        var avgStageTime = stageLogs.Average(l => l.ElapsedMilliseconds);
-        Console.WriteLine($"  {stage.Key,-30} | Executions: {stageLogs.Count,4} | Total: {totalStageTime,8}ms | Avg: {avgStageTime,8:F2}ms");
-    }
+//    Console.WriteLine("\nPer-Stage Metrics:");
+//    foreach (var stage in buildResult.Logger.GetLogs().GroupBy(l => l.StageName).OrderBy(g => g.First().Order))
+//    {
+//        var stageLogs = stage.ToList();
+//        var totalStageTime = stageLogs.Sum(l => l.ElapsedMilliseconds);
+//        var avgStageTime = stageLogs.Average(l => l.ElapsedMilliseconds);
+//        Console.WriteLine($"  {stage.Key,-30} | Executions: {stageLogs.Count,4} | Total: {totalStageTime,8}ms | Avg: {avgStageTime,8:F2}ms");
+//    }
     
-    Console.WriteLine($"\nDetailed JSON Log:");
-    Console.WriteLine(buildResult.Logger.ExportAsJson());
-}
+//    Console.WriteLine($"\nDetailed JSON Log:");
+//    Console.WriteLine(buildResult.Logger.ExportAsJson());
+//}
 
 Console.WriteLine($"\nSaved {promptsToAnalyze.Length} prompt(s) to {Path.GetFullPath(promptLogPath)}");
 
