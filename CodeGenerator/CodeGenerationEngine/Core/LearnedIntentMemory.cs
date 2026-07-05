@@ -1,3 +1,4 @@
+using System.Text.Json;
 using CodeGenerationEngine.Models;
 
 namespace CodeGenerationEngine.Core;
@@ -68,6 +69,60 @@ public sealed class LearnedIntentMemory
     }
 
     public void Reset() => _entries.Clear();
+
+    public const int DecayAfterDays = 30;
+
+    public void Save(string filePath)
+    {
+        var directory = Path.GetDirectoryName(Path.GetFullPath(filePath));
+        if (!string.IsNullOrEmpty(directory))
+            Directory.CreateDirectory(directory);
+
+        var json = JsonSerializer.Serialize(
+            _entries.Values.ToList(),
+            new JsonSerializerOptions { WriteIndented = true });
+
+        File.WriteAllText(filePath, json);
+    }
+
+    public void Load(string filePath)
+    {
+        _entries.Clear();
+
+        if (!File.Exists(filePath))
+            return;
+
+        var json = File.ReadAllText(filePath);
+        if (string.IsNullOrWhiteSpace(json))
+            return;
+
+        var entries = JsonSerializer.Deserialize<List<LearnedIntentEntry>>(json)
+                      ?? new List<LearnedIntentEntry>();
+
+        foreach (var entry in entries)
+        {
+            if (string.IsNullOrEmpty(entry.Signature) || entry.Intent == IntentType.Unknown)
+                continue;
+
+            _entries[(entry.Signature, entry.Intent)] = entry;
+        }
+    }
+
+    /// <summary>
+    /// Halves the tallies of entries not used within <see cref="DecayAfterDays"/>
+    /// so stale/bad associations fade instead of compounding.
+    /// </summary>
+    public void Decay(DateTime nowUtc)
+    {
+        foreach (var entry in _entries.Values)
+        {
+            if ((nowUtc - entry.LastUsedUtc).TotalDays < DecayAfterDays)
+                continue;
+
+            entry.SuccessCount /= 2;
+            entry.FailureCount /= 2;
+        }
+    }
 
     private void Record(string sentence, IntentType intent, bool success)
     {
