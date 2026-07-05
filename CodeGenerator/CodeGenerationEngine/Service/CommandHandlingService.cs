@@ -81,7 +81,7 @@ public static class CommandHandlingService
             [IntentType.GenerateDesignDocument] = HandleGenerateDocument,
             [IntentType.AnalyzeClass] = HandleAnalyzeClass,
             [IntentType.AnalyzeProject] = HandleAnalyzeProject,
-            [IntentType.ListClasses] = _ => ProjectManager.ListClasses(),
+            [IntentType.ListClasses] = ctx => ProjectManager.ListClasses(ctx.WorkspaceRoot),
             [IntentType.ListClassesInProject] = ctx => ProjectManager.ListClassesInProject(ctx.RawInput),
             [IntentType.Help] = HandleHelp,
             [IntentType.ShowProject] = _ => ProjectManager.ShowCurrentProject(),

@@ -114,6 +114,17 @@ public static class IntentAnalyzer
                 999, 1.0, "Direct inheritance command");
         }
 
+        // "list classes" / "class list" / "show classes" style commands. Handled
+        // up front because the scored rules (loaded from an accumulated
+        // intents.json) misfire on these - "class list" was being read as
+        // CreateClass (generating a class named "List") and "list classes" lost
+        // to an unrelated intent.
+        if (TryDetectClassListing(sentence, out var listingIntent))
+        {
+            return new IntentMatch(listingIntent, 999, 1.0,
+                "Class listing command");
+        }
+
         IntentType bestIntent = IntentType.Unknown;
         int bestScore = 0;
         int bestPriority = int.MinValue;
@@ -333,6 +344,36 @@ public static class IntentAnalyzer
     // "make new class", etc. Deliberately requires a creation verb bound to the
     // "class" target, so "add method Save to class Order" (class as a target of
     // a different verb) does NOT match and stays a member-creation intent.
+    // Recognizes commands that ask for a listing of classes, in either word
+    // order, without stealing "show class Foo" (a single-class view) or
+    // "list deleted classes" (a different intent).
+    private static bool TryDetectClassListing(string sentence, out IntentType intent)
+    {
+        intent = IntentType.Unknown;
+
+        if (Regex.IsMatch(sentence, @"\bdeleted\b", RegexOptions.IgnoreCase))
+            return false;
+
+        var listsClasses =
+            // "list class" / "list classes" / "list all classes"
+            Regex.IsMatch(sentence, @"\blist\s+(?:all\s+)?class(?:es)?\b", RegexOptions.IgnoreCase)
+            // "show/display/view classes" (plural only; singular is ShowClass)
+            || Regex.IsMatch(sentence, @"\b(?:show|display|view)\s+(?:all\s+)?classes\b", RegexOptions.IgnoreCase)
+            // "class list" / "classes list"
+            || Regex.IsMatch(sentence, @"\bclass(?:es)?\s+list\b", RegexOptions.IgnoreCase);
+
+        if (!listsClasses)
+            return false;
+
+        // "list classes in <project>" / "... in project" targets a named project.
+        intent = Regex.IsMatch(sentence, @"\bclasses?\s+in\b", RegexOptions.IgnoreCase)
+                 || Regex.IsMatch(sentence, @"\bin\s+project\b", RegexOptions.IgnoreCase)
+            ? IntentType.ListClassesInProject
+            : IntentType.ListClasses;
+
+        return true;
+    }
+
     private static bool IsExplicitCreateClass(string sentence)
         => Regex.IsMatch(
             sentence,
