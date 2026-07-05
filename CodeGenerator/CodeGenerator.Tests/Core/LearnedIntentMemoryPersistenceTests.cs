@@ -61,4 +61,15 @@ public sealed class LearnedIntentMemoryPersistenceTests
 
         Assert.AreEqual(8, mem.Entries.Single().SuccessCount);
     }
+
+    [TestMethod]
+    public void Load_CorruptFile_TreatedAsEmpty()
+    {
+        var file = NewTempFile();
+        File.WriteAllText(file, "{ this is not valid json ]");
+
+        var mem = new LearnedIntentMemory();
+        mem.Load(file); // must not throw
+        Assert.AreEqual(0, mem.Entries.Count);
+    }
 }

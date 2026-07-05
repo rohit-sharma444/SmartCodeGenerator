@@ -54,4 +54,17 @@ public sealed class LearningCoordinatorTests
         Assert.IsTrue(priorEntry.FailureCount >= 1,
             $"quick-rephrase should have weakened the prior intent; failures={priorEntry.FailureCount}");
     }
+
+    [TestMethod]
+    public void CaptureThenConsult_WithSynonymousPhrasing_Matches()
+    {
+        // Captured from raw input with synonym verb "make"; consulted with "create".
+        for (var i = 0; i < 3; i++)
+            LearningCoordinator.RecordOutcome("make a doohickey", IntentType.ListClasses, success: true, command: null);
+
+        var suggestion = LearnedIntentStore.Current.Suggest("create a doohickey", out var confidence);
+
+        Assert.AreEqual(IntentType.ListClasses, suggestion,
+            $"synonym-normalized capture/consult should match; confidence={confidence}");
+    }
 }

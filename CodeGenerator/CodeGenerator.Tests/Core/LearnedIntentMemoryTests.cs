@@ -72,4 +72,12 @@ public sealed class LearnedIntentMemoryTests
         mem.Reset();
         Assert.AreEqual(0, mem.Entries.Count);
     }
+
+    [TestMethod]
+    public void Signature_FoldsSynonymsAndVerbsLikeIntentDetection()
+    {
+        Assert.AreEqual(
+            LearnedIntentMemory.Signature("create widget"),
+            LearnedIntentMemory.Signature("make widget"));
+    }
 }

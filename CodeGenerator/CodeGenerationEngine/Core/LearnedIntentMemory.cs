@@ -26,7 +26,16 @@ public sealed class LearnedIntentMemory
     /// </summary>
     public static string Signature(string sentence)
     {
-        var tokens = TextTokenizer.Tokenize(sentence ?? string.Empty)
+        if (string.IsNullOrWhiteSpace(sentence))
+            return string.Empty;
+
+        // Normalize identically to intent detection (verb-folding, synonyms, typos,
+        // stop-words) so a command captured from raw input and one consulted from
+        // already-normalized text collapse to the SAME signature. Both normalizers
+        // are idempotent, so double-applying on the consult path is harmless.
+        var normalized = EnglishLanguageModel.Normalize(CommandParser.Normalize(sentence));
+
+        var tokens = TextTokenizer.Tokenize(normalized)
             .Select(t => t.Normalized)
             .Where(n => !string.IsNullOrWhiteSpace(n))
             .Select(n => n.ToLowerInvariant())
@@ -92,12 +101,24 @@ public sealed class LearnedIntentMemory
         if (!File.Exists(filePath))
             return;
 
-        var json = File.ReadAllText(filePath);
-        if (string.IsNullOrWhiteSpace(json))
-            return;
+        List<LearnedIntentEntry>? entries;
+        try
+        {
+            var json = File.ReadAllText(filePath);
+            if (string.IsNullOrWhiteSpace(json))
+                return;
 
-        var entries = JsonSerializer.Deserialize<List<LearnedIntentEntry>>(json)
-                      ?? new List<LearnedIntentEntry>();
+            entries = JsonSerializer.Deserialize<List<LearnedIntentEntry>>(json);
+        }
+        catch (Exception)
+        {
+            // A corrupt/truncated file (e.g. a crash mid-write) must not brick
+            // startup - treat it as no learned state.
+            return;
+        }
+
+        if (entries == null)
+            return;
 
         foreach (var entry in entries)
         {
