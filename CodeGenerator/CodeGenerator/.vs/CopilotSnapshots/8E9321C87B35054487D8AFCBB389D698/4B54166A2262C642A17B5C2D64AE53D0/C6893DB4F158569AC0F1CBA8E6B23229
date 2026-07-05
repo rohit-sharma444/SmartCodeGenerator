@@ -1,4 +1,0 @@
-﻿# Copilot Instructions
-
-## User Preferences
-- ParsedCommand should use proper List<T> initializers (e.g., 'new List<PropertyDefinition>()') so EntityExtractor's parsed properties and inline rules are preserved.
