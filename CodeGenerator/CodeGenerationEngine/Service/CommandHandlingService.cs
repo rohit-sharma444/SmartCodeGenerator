@@ -57,6 +57,9 @@ public static class CommandHandlingService
 
         bool result = Dispatch(context);
 
+        // Feed the outcome back to the learning layer.
+        LearningCoordinator.RecordOutcome(input, command.Intent, result, command);
+
         // Propagate any project change made by a handler back to the caller.
         currentProject = context.CurrentProject;
         return result;
@@ -82,6 +85,8 @@ public static class CommandHandlingService
             [IntentType.AnalyzeClass] = HandleAnalyzeClass,
             [IntentType.AnalyzeProject] = HandleAnalyzeProject,
             [IntentType.ListClasses] = ctx => ProjectManager.ListClasses(ctx.WorkspaceRoot),
+            [IntentType.ShowLearning] = _ => HandleShowLearning(),
+            [IntentType.ResetLearning] = _ => HandleResetLearning(),
             [IntentType.ListClassesInProject] = ctx => ProjectManager.ListClassesInProject(ctx.RawInput),
             [IntentType.Help] = HandleHelp,
             [IntentType.ShowProject] = _ => ProjectManager.ShowCurrentProject(),
@@ -293,6 +298,39 @@ public static class CommandHandlingService
         var properties = EntityExtractor.ExtractProperties(filePath);
         foreach (var property in properties)
             Console.WriteLine($"{property.Type} {property.Name}");
+        return true;
+    }
+
+    private static bool HandleShowLearning()
+    {
+        var entries = LearnedIntentStore.Current.Entries
+            .OrderByDescending(e => e.Confidence)
+            .ToList();
+
+        if (entries.Count == 0)
+        {
+            Console.WriteLine("No learned commands yet.");
+            return true;
+        }
+
+        Console.WriteLine();
+        Console.WriteLine("Learned commands");
+        Console.WriteLine("--------------------------------");
+        foreach (var entry in entries)
+        {
+            Console.WriteLine(
+                $"{entry.Intent,-22} conf={entry.Confidence:0.00} " +
+                $"(+{entry.SuccessCount}/-{entry.FailureCount})  [{entry.Signature}]");
+        }
+        Console.WriteLine();
+        return true;
+    }
+
+    private static bool HandleResetLearning()
+    {
+        LearnedIntentStore.Current.Reset();
+        LearnedIntentStore.Save();
+        Console.WriteLine("Learned command memory cleared.");
         return true;
     }
 

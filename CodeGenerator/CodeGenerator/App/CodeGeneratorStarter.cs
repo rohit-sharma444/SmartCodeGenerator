@@ -39,6 +39,10 @@ internal class CodeGeneratorStarter
         // At startup, prefer an existing project in the workspace.
         InitializeExistingProjects();
 
+        // Load per-workspace learned intent memory. Consult/capture honor
+        // CG_NO_LEARN, but this init still loads the file regardless.
+        LearnedIntentStore.Initialize(_workspaceRoot);
+
         // Load encrypted command history from file
         LoadEncryptedCommandHistory();
     }

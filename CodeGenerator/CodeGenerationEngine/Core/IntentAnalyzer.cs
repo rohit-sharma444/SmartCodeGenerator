@@ -114,6 +114,12 @@ public static class IntentAnalyzer
                 999, 1.0, "Direct inheritance command");
         }
 
+        if (Regex.IsMatch(sentence, @"^\s*(show|list|view)\s+learning\s*$", RegexOptions.IgnoreCase))
+            return new IntentMatch(IntentType.ShowLearning, 999, 1.0, "Show learning command");
+
+        if (Regex.IsMatch(sentence, @"^\s*(reset|clear|forget)\s+learning\s*$", RegexOptions.IgnoreCase))
+            return new IntentMatch(IntentType.ResetLearning, 999, 1.0, "Reset learning command");
+
         // "list classes" / "class list" / "show classes" style commands. Handled
         // up front because the scored rules (loaded from an accumulated
         // intents.json) misfire on these - "class list" was being read as
@@ -143,8 +149,34 @@ public static class IntentAnalyzer
             }
         }
 
-        // Prevent weak accidental matches
-        if (bestScore < 40)
+        // Learned nudge: a usage-driven suggestion may add a small, capped bonus
+        // to an intent's score. The cap (LearnedIntentMemory.BonusCap = 35) is far
+        // below a deterministic guard's contribution (e.g. the +120 create-class
+        // bonus), so this only tips borderline cases and never overrides a
+        // confident base decision or an early-return guard.
+        var learnedApplied = false;
+        if (LearnedIntentStore.Enabled)
+        {
+            var suggestion = LearnedIntentStore.Current.Suggest(sentence, out var learnedConfidence);
+            if (suggestion.HasValue)
+            {
+                var bonus = (int)Math.Round(
+                    LearnedIntentMemory.BonusCap * learnedConfidence);
+
+                var suggestedScore =
+                    (suggestion.Value == bestIntent ? bestScore : 0) + bonus;
+
+                if (suggestedScore > bestScore)
+                {
+                    bestScore = suggestedScore;
+                    bestIntent = suggestion.Value;
+                    learnedApplied = true;
+                }
+            }
+        }
+
+        // Prevent weak accidental matches, but keep a confident learned suggestion.
+        if (bestScore < 40 && !learnedApplied)
         {
             bestIntent = IntentType.Unknown;
         }
