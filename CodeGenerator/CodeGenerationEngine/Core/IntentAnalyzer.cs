@@ -143,8 +143,34 @@ public static class IntentAnalyzer
             }
         }
 
-        // Prevent weak accidental matches
-        if (bestScore < 40)
+        // Learned nudge: a usage-driven suggestion may add a small, capped bonus
+        // to an intent's score. The cap (LearnedIntentMemory.BonusCap = 35) is far
+        // below a deterministic guard's contribution (e.g. the +120 create-class
+        // bonus), so this only tips borderline cases and never overrides a
+        // confident base decision or an early-return guard.
+        var learnedApplied = false;
+        if (LearnedIntentStore.Enabled)
+        {
+            var suggestion = LearnedIntentStore.Current.Suggest(sentence, out var learnedConfidence);
+            if (suggestion.HasValue)
+            {
+                var bonus = (int)Math.Round(
+                    LearnedIntentMemory.BonusCap * learnedConfidence);
+
+                var suggestedScore =
+                    (suggestion.Value == bestIntent ? bestScore : 0) + bonus;
+
+                if (suggestedScore > bestScore)
+                {
+                    bestScore = suggestedScore;
+                    bestIntent = suggestion.Value;
+                    learnedApplied = true;
+                }
+            }
+        }
+
+        // Prevent weak accidental matches, but keep a confident learned suggestion.
+        if (bestScore < 40 && !learnedApplied)
         {
             bestIntent = IntentType.Unknown;
         }
