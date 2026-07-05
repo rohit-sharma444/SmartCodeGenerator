@@ -1,4 +1,5 @@
-﻿using CodeGenerationEngine.Models;
+﻿using CodeGenerationEngine.Helper;
+using CodeGenerationEngine.Models;
 using System.Text.Json;
 
 namespace CodeGenerationEngine.Core;
@@ -102,11 +103,30 @@ public static class ProjectManager
             _projects.Clear();
             _projects.AddRange(projects);
 
-            CurrentProject = GetProjects().FirstOrDefault();
+            // Intentionally do NOT auto-select a current project here. Restoring
+            // a stale selection from a previous session silently redirects saves
+            // into an unexpected project. Selection must be an explicit user act.
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Failed to load registry: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Drops the currently selected project when it lives outside the given
+    /// workspace. A selection persisted from a previous session must not carry
+    /// over and redirect saves out of the workspace the user is now working in.
+    /// </summary>
+    public static void ClearCurrentProjectIfOutside(string workspaceRoot)
+    {
+        if (CurrentProject == null)
+            return;
+
+        if (!PathHelper.IsWithin(CurrentProject.ProjectPath, workspaceRoot) &&
+            !PathHelper.IsWithin(CurrentProject.CsProjPath, workspaceRoot))
+        {
+            CurrentProject = null;
         }
     }
 

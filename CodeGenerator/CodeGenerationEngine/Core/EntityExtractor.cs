@@ -398,14 +398,17 @@ public static class EntityExtractor
 
         var methodsText = match.Groups["methods"].Value.Trim();
 
+        // Methods can be separated by commas, semicolons, or the word "and"
+        // (e.g. "AddEmployee and EmployeeList method").
         var methodTokens = Regex.Split(
                 methodsText,
-                @"\s*(?:,|;)\s*")
+                @"\s*(?:,|;|\band\b)\s*",
+                RegexOptions.IgnoreCase)
             .Where(t => !string.IsNullOrWhiteSpace(t));
 
         foreach (var token in methodTokens)
         {
-            var method = ParseMethod(token.Trim());
+            var method = ParseMethod(CleanMethodToken(token));
 
             if (method == null)
                 continue;
@@ -419,6 +422,42 @@ public static class EntityExtractor
 
             command.Methods.Add(method);
         }
+    }
+
+    /// <summary>
+    /// Strips method-related noise words from a single method token so that
+    /// phrasings like "add EmployeeList method" or "method GetName" reduce to
+    /// the bare method name/signature that <see cref="ParseMethod"/> understands.
+    /// </summary>
+    private static string CleanMethodToken(string token)
+    {
+        if (string.IsNullOrWhiteSpace(token))
+            return string.Empty;
+
+        token = token.Trim();
+
+        // Leading verb ("add EmployeeList" -> "EmployeeList").
+        token = Regex.Replace(
+            token,
+            @"^(?:add|create|generate)\s+",
+            string.Empty,
+            RegexOptions.IgnoreCase);
+
+        // Leading "method"/"methods" keyword ("method GetName" -> "GetName").
+        token = Regex.Replace(
+            token,
+            @"^methods?\s+",
+            string.Empty,
+            RegexOptions.IgnoreCase);
+
+        // Trailing "method"/"methods" keyword ("EmployeeList method" -> "EmployeeList").
+        token = Regex.Replace(
+            token,
+            @"\s+methods?$",
+            string.Empty,
+            RegexOptions.IgnoreCase);
+
+        return token.Trim();
     }
 
     public static MethodDefinition? ParseMethod(string token)

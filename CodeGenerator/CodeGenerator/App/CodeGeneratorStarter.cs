@@ -1,4 +1,5 @@
 using CodeGenerationEngine.Core;
+using CodeGenerationEngine.Helper;
 using CodeGenerationEngine.Models;
 using CodeGenerationEngine.Service;
 using Microsoft.CodeAnalysis;
@@ -69,19 +70,39 @@ internal class CodeGeneratorStarter
     {
         var projectPath = Environment.GetEnvironmentVariable("PROJECTPATH");
 
-        if (!string.IsNullOrWhiteSpace(projectPath))
-        {
-            try
-            {
-                return Path.GetFullPath(projectPath);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Warning: Invalid PROJECTPATH '{projectPath}': {ex.Message}");
-            }
-        }
+        // When launched from Visual Studio / dotnet run the current directory is
+        // the build-output folder (bin\Debug\...). PathHelper climbs out of it to
+        // the real project/solution root so generated classes are saved somewhere
+        // visible instead of being buried under bin.
+        var resolved = PathHelper.ResolveWorkspaceRoot(
+            projectPath, Directory.GetCurrentDirectory());
 
-        return Path.GetFullPath(Directory.GetCurrentDirectory());
+        Console.WriteLine($"Workspace: {resolved}");
+        return resolved;
+    }
+
+    /// <summary>
+    /// Executes a single command non-interactively (no key-by-key editor) and
+    /// returns. Used for scripting/automation, e.g. `CodeGenerator "create ..."`.
+    /// Goes through the exact same pipeline as the interactive loop.
+    /// </summary>
+    internal bool RunOnce(string command)
+    {
+        IntentRepository.Initialize();
+
+        ProjectMetaData? currentProject = null;
+
+        try
+        {
+            var outcome = _pipeline.Handle(command, ref currentProject,
+                _configuredRules, _workspaceRoot, r => ProjectManager.CurrentProject = r);
+            return outcome.Handled;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error [{ex.GetType().Name}]: {ex.Message}");
+            return false;
+        }
     }
 
     internal void Run()
@@ -563,11 +584,17 @@ internal class CodeGeneratorStarter
                 });
             }
 
-            if (ProjectManager.CurrentProject != null)
-            {
-                Console.WriteLine($"Current Project: " +
-                    $"{Path.GetFileNameWithoutExtension(ProjectManager.CurrentProject.ProjectPath)}");
-            }
+            // Do NOT auto-select a project at startup. A leftover selection from
+            // the persisted registry (or the first project that happened to be
+            // registered) would silently capture every generated class and hide
+            // it in an unexpected folder. New classes go to the workspace until
+            // the user explicitly runs "use project X".
+            ProjectManager.CurrentProject = null;
+
+            Console.WriteLine(projects.Length > 0
+                ? $"Found {projects.Length} project(s). No project selected — " +
+                  "use 'use project <name>' to target one, or new classes save to the workspace."
+                : "No projects found. New classes save to the workspace.");
         }
         catch (Exception ex)
         {
