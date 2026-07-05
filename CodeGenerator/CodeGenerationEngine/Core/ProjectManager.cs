@@ -202,46 +202,75 @@ public static class ProjectManager
         return true;
     }
 
-    public static bool ListClasses()
+    public static bool ListClasses(string? workspaceRoot = null)
     {
         var project = ProjectManager.CurrentProject;
 
-        if (project == null)
+        // When a project is selected, list its classes. Otherwise fall back to
+        // the whole workspace so "list classes" is still useful without first
+        // running "use project X".
+        string folder;
+        string scopeLabel;
+
+        if (project != null)
         {
-            Console.WriteLine("No project selected.");
+            folder = ProjectFolderOf(project);
+            scopeLabel = Path.GetFileNameWithoutExtension(project.ProjectPath);
+        }
+        else if (!string.IsNullOrWhiteSpace(workspaceRoot) && Directory.Exists(workspaceRoot))
+        {
+            folder = workspaceRoot;
+            scopeLabel = "workspace";
+        }
+        else
+        {
+            Console.WriteLine("No project selected. Use 'use project <name>' first.");
             return false;
         }
 
-        var projectFolder = Path.GetDirectoryName(project.ProjectPath);
+        var classNames = ClassNamesIn(folder);
 
-        if (string.IsNullOrWhiteSpace(projectFolder))
-            return false;
-
-        var classFiles = Directory.GetFiles(projectFolder, "*.cs",
-                SearchOption.AllDirectories).Where(x =>
-                !x.Contains("\\bin\\") && !x.Contains("\\obj\\") &&
-                !x.Contains("DeletedClasses", StringComparison.OrdinalIgnoreCase))
-            .ToList();
-
-        if (classFiles.Count == 0)
+        if (classNames.Count == 0)
         {
             Console.WriteLine("No classes found.");
             return false;
         }
 
         Console.WriteLine();
-        Console.WriteLine($"Classes in {Path.GetFileNameWithoutExtension(project.ProjectPath)}");
+        Console.WriteLine($"Classes in {scopeLabel}");
 
         Console.WriteLine("--------------------------------");
 
-        foreach (var file in classFiles)
+        foreach (var name in classNames)
         {
-            Console.WriteLine(Path.GetFileNameWithoutExtension(file));
+            Console.WriteLine(name);
         }
 
         Console.WriteLine();
         return true;
     }
+
+    // Distinct, alphabetically ordered class (file) names under a folder,
+    // excluding build output and deleted-class backups. Same-named files across
+    // projects collapse to a single entry so the listing has no duplicates.
+    private static List<string> ClassNamesIn(string folder)
+        => Directory.GetFiles(folder, "*.cs", SearchOption.AllDirectories)
+            .Where(x =>
+                !x.Contains("\\bin\\") && !x.Contains("\\obj\\") &&
+                !x.Contains("DeletedClasses", StringComparison.OrdinalIgnoreCase))
+            .Select(Path.GetFileNameWithoutExtension)
+            .Where(n => !string.IsNullOrWhiteSpace(n))
+            .Select(n => n!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+    // ProjectPath is normally the project directory, but persisted/registered
+    // entries occasionally hold the .csproj file path - handle both.
+    private static string ProjectFolderOf(ProjectMetaData project)
+        => File.Exists(project.ProjectPath)
+            ? Path.GetDirectoryName(project.ProjectPath)!
+            : project.ProjectPath;
 
     public static bool ListClassesInProject(string input)
     {
@@ -263,27 +292,21 @@ public static class ProjectManager
 
     private static bool ListClassesForProject(ProjectMetaData project)
     {
-        var projectFolder = Path.GetDirectoryName(project.ProjectPath);
+        var projectFolder = ProjectFolderOf(project);
 
-        if (string.IsNullOrWhiteSpace(projectFolder))
+        if (string.IsNullOrWhiteSpace(projectFolder) || !Directory.Exists(projectFolder))
             return false;
 
-        var classFiles = Directory.GetFiles(projectFolder, "*.cs",
-                SearchOption.AllDirectories)
-            .Where(x => !x.Contains("\\bin\\") &&
-                !x.Contains("\\obj\\") &&
-                !x.Contains("DeletedClasses",
-                StringComparison.OrdinalIgnoreCase))
-            .ToList();
+        var classNames = ClassNamesIn(projectFolder);
 
         Console.WriteLine();
         Console.WriteLine($"Classes in {Path.GetFileNameWithoutExtension(project.ProjectPath)}");
 
         Console.WriteLine("--------------------------------");
 
-        foreach (var file in classFiles)
+        foreach (var name in classNames)
         {
-            Console.WriteLine(Path.GetFileNameWithoutExtension(file));
+            Console.WriteLine(name);
         }
 
         Console.WriteLine();

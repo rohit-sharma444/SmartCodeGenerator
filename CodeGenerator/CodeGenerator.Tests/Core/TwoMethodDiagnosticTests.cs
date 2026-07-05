@@ -38,6 +38,44 @@ public sealed class CreateClassIntentTests
             $"'{input}' should stay CreateMethod but was {intent}.");
     }
 
+    [DataTestMethod]
+    [DataRow("class list")]
+    [DataRow("list classes")]
+    [DataRow("list class")]
+    [DataRow("show classes")]
+    [DataRow("list all classes")]
+    public void ClassListingSentences_ResolveToListClasses(string input)
+    {
+        var semantic = SemanticAnalyzer.Analyze(input);
+        var intent = CodeGenerationEngine.Core.IntentAnalyzer.Detect(semantic);
+
+        Assert.AreEqual(IntentType.ListClasses, intent,
+            $"'{input}' should be ListClasses but was {intent}.");
+    }
+
+    [DataTestMethod]
+    [DataRow("list classes in MyApp")]
+    public void ListClassesInProject_ResolvesCorrectly(string input)
+    {
+        var semantic = SemanticAnalyzer.Analyze(input);
+        var intent = CodeGenerationEngine.Core.IntentAnalyzer.Detect(semantic);
+
+        Assert.AreEqual(IntentType.ListClassesInProject, intent,
+            $"'{input}' should be ListClassesInProject but was {intent}.");
+    }
+
+    [DataTestMethod]
+    [DataRow("show class Employee", IntentType.ShowClass)]
+    [DataRow("list deleted classes", IntentType.ListDeletedClasses)]
+    public void ListingGuard_DoesNotStealOtherIntents(string input, IntentType expected)
+    {
+        var semantic = SemanticAnalyzer.Analyze(input);
+        var intent = CodeGenerationEngine.Core.IntentAnalyzer.Detect(semantic);
+
+        Assert.AreEqual(expected, intent,
+            $"'{input}' should be {expected} but was {intent}.");
+    }
+
     [TestMethod]
     public void TwoMethodCreateClass_GeneratesFileWithBothMethods()
     {
