@@ -1,6 +1,0 @@
-{
-  "CreateBackups": true,
-  "GenerateHtmlReport": true,
-  "DryRun": false,
-  "RootFolder": ""
-}
