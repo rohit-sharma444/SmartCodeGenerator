@@ -1,8 +1,8 @@
 <Solution>
-  <Project Path="../../../PERSONAL-REPOSITORY/CodeGenerator/CodeGenerator/CodeGenerator.csproj" />
-  <Project Path="../../../PERSONAL-REPOSITORY/CodeGenerator/CodeGenerationEngine/CodeGenerationEngine.csproj" />
-  <Project Path="../../../PERSONAL-REPOSITORY/CodeGenerator/CodeGenerator.Tests/CodeGenerator.Tests.csproj" />
-  <Project Path="../../../PERSONAL-REPOSITORY/CodeGenerator/NaturalLanguageBridge/NaturalLanguageBridge.csproj" />
-  <Project Path="../../../PERSONAL-REPOSITORY/NaturalLanguageEngine/NaturalLanguageEngine.Tests/NaturalLanguageEngine.Tests.csproj" />
-  <Project Path="../../../PERSONAL-REPOSITORY/NaturalLanguageEngine/NaturalLanguageEngine/NaturalLanguageEngine.csproj" />
+  <Project Path="../CodeGenerator/CodeGenerator/CodeGenerator.csproj" />
+  <Project Path="../CodeGenerator/CodeGenerationEngine/CodeGenerationEngine.csproj" />
+  <Project Path="../CodeGenerator/CodeGenerator.Tests/CodeGenerator.Tests.csproj" />
+  <Project Path="../CodeGenerator/NaturalLanguageBridge/NaturalLanguageBridge.csproj" />
+  <Project Path="../NaturalLanguageEngine/NaturalLanguageEngine.Tests/NaturalLanguageEngine.Tests.csproj" />
+  <Project Path="../NaturalLanguageEngine/NaturalLanguageEngine/NaturalLanguageEngine.csproj" />
 </Solution>
