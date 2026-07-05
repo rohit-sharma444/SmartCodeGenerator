@@ -306,6 +306,14 @@ public static class IntentAnalyzer
                     score += 20;
                 if (sentence.Contains("methods"))
                     score += 20;
+
+                // An explicit "create/generate/make ... class" command IS a
+                // CreateClass, even when it also lists methods or properties in
+                // the same sentence. Without this, the "add method X and Y"
+                // clause can score higher for CreateMethod and hijack the intent
+                // so the class is never generated.
+                if (IsExplicitCreateClass(sentence))
+                    score += 120;
                 break;
 
             case IntentType.CreateService:
@@ -320,6 +328,16 @@ public static class IntentAnalyzer
 
         return score;
     }
+
+    // Matches "create class", "create a Customer class", "generate model class",
+    // "make new class", etc. Deliberately requires a creation verb bound to the
+    // "class" target, so "add method Save to class Order" (class as a target of
+    // a different verb) does NOT match and stays a member-creation intent.
+    private static bool IsExplicitCreateClass(string sentence)
+        => Regex.IsMatch(
+            sentence,
+            @"\b(create|generate|make|build|new|need)\b\s+(?:a\s+|an\s+|the\s+)?(?:[a-z][a-z0-9_]*\s+)?class\b",
+            RegexOptions.IgnoreCase);
 
     private static bool ContainsWord(
         HashSet<string> tokens,
