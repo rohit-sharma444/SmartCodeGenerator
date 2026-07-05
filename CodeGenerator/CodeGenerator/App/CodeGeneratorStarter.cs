@@ -39,6 +39,9 @@ internal class CodeGeneratorStarter
         // At startup, prefer an existing project in the workspace.
         InitializeExistingProjects();
 
+        // Load per-workspace learned intent memory (no-op cost when disabled).
+        LearnedIntentStore.Initialize(_workspaceRoot);
+
         // Load encrypted command history from file
         LoadEncryptedCommandHistory();
     }

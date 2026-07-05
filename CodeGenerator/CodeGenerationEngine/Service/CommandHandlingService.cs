@@ -57,6 +57,9 @@ public static class CommandHandlingService
 
         bool result = Dispatch(context);
 
+        // Feed the outcome back to the learning layer.
+        LearningCoordinator.RecordOutcome(input, command.Intent, result, command);
+
         // Propagate any project change made by a handler back to the caller.
         currentProject = context.CurrentProject;
         return result;
