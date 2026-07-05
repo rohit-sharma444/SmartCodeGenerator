@@ -71,6 +71,10 @@ public enum IntentType
     // Misc
     CompileProject,
     ValidateProject,
+
+    // Learning
+    ShowLearning,
+    ResetLearning,
     GenerateDesignDocument,
     GenerateRepository
 }

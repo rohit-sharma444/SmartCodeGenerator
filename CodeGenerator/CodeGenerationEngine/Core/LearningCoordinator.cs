@@ -26,6 +26,12 @@ public static class LearningCoordinator
         if (!LearnedIntentStore.Enabled || string.IsNullOrWhiteSpace(sentence))
             return;
 
+        // The learning-management commands are deterministic meta-commands; never
+        // learn them (reinforcing "reset learning" would immediately re-populate
+        // the memory the reset just cleared).
+        if (intent == IntentType.ShowLearning || intent == IntentType.ResetLearning)
+            return;
+
         var nowUtc = DateTime.UtcNow;
 
         // Quick-rephrase: a near-identical follow-up soon after the last command

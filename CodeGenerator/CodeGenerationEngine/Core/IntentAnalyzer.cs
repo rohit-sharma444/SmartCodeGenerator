@@ -114,6 +114,12 @@ public static class IntentAnalyzer
                 999, 1.0, "Direct inheritance command");
         }
 
+        if (Regex.IsMatch(sentence, @"^\s*(show|list|view)\s+learning\s*$", RegexOptions.IgnoreCase))
+            return new IntentMatch(IntentType.ShowLearning, 999, 1.0, "Show learning command");
+
+        if (Regex.IsMatch(sentence, @"^\s*(reset|clear|forget)\s+learning\s*$", RegexOptions.IgnoreCase))
+            return new IntentMatch(IntentType.ResetLearning, 999, 1.0, "Reset learning command");
+
         // "list classes" / "class list" / "show classes" style commands. Handled
         // up front because the scored rules (loaded from an accumulated
         // intents.json) misfire on these - "class list" was being read as
