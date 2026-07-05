@@ -132,7 +132,7 @@
           "Text": "My name",
           "Type": 8,
           "Confidence": {
-            "Value": 0.7
+            "Value": 0
           },
           "Metadata": {}
         },
@@ -140,7 +140,7 @@
           "Text": "is",
           "Type": 7,
           "Confidence": {
-            "Value": 0.8
+            "Value": 0
           },
           "Metadata": {}
         },
@@ -148,7 +148,7 @@
           "Text": "Rohit",
           "Type": 1,
           "Confidence": {
-            "Value": 0.6
+            "Value": 0
           },
           "Metadata": {}
         },
@@ -156,7 +156,7 @@
           "Text": "I",
           "Type": 1,
           "Confidence": {
-            "Value": 0.6
+            "Value": 0
           },
           "Metadata": {}
         },
@@ -164,7 +164,7 @@
           "Text": "studied",
           "Type": 7,
           "Confidence": {
-            "Value": 0.8
+            "Value": 0
           },
           "Metadata": {}
         },
@@ -172,7 +172,7 @@
           "Text": "College",
           "Type": 1,
           "Confidence": {
-            "Value": 0.6
+            "Value": 0
           },
           "Metadata": {}
         },
@@ -180,7 +180,7 @@
           "Text": "is",
           "Type": 7,
           "Confidence": {
-            "Value": 0.8
+            "Value": 0
           },
           "Metadata": {}
         },
@@ -188,7 +188,7 @@
           "Text": "B",
           "Type": 1,
           "Confidence": {
-            "Value": 0.6
+            "Value": 0
           },
           "Metadata": {}
         },
@@ -196,7 +196,7 @@
           "Text": "Tech",
           "Type": 1,
           "Confidence": {
-            "Value": 0.6
+            "Value": 0
           },
           "Metadata": {}
         },
@@ -204,7 +204,7 @@
           "Text": "Computer",
           "Type": 1,
           "Confidence": {
-            "Value": 0.6
+            "Value": 0
           },
           "Metadata": {}
         },
@@ -212,7 +212,7 @@
           "Text": "Science",
           "Type": 1,
           "Confidence": {
-            "Value": 0.6
+            "Value": 0
           },
           "Metadata": {}
         }
@@ -223,7 +223,7 @@
             "Text": "My name",
             "Type": 8,
             "Confidence": {
-              "Value": 0.7
+              "Value": 0
             },
             "Metadata": {}
           },
@@ -231,7 +231,7 @@
             "Text": "is",
             "Type": 7,
             "Confidence": {
-              "Value": 0.8
+              "Value": 0
             },
             "Metadata": {}
           },
@@ -242,7 +242,7 @@
             "Text": "is",
             "Type": 7,
             "Confidence": {
-              "Value": 0.8
+              "Value": 0
             },
             "Metadata": {}
           },
@@ -250,7 +250,7 @@
             "Text": "Rohit",
             "Type": 1,
             "Confidence": {
-              "Value": 0.6
+              "Value": 0
             },
             "Metadata": {}
           },
@@ -261,7 +261,7 @@
             "Text": "I",
             "Type": 1,
             "Confidence": {
-              "Value": 0.6
+              "Value": 0
             },
             "Metadata": {}
           },
@@ -269,7 +269,7 @@
             "Text": "studied",
             "Type": 7,
             "Confidence": {
-              "Value": 0.8
+              "Value": 0
             },
             "Metadata": {}
           },
@@ -280,7 +280,7 @@
             "Text": "studied",
             "Type": 7,
             "Confidence": {
-              "Value": 0.8
+              "Value": 0
             },
             "Metadata": {}
           },
@@ -288,7 +288,7 @@
             "Text": "College",
             "Type": 1,
             "Confidence": {
-              "Value": 0.6
+              "Value": 0
             },
             "Metadata": {}
           },
@@ -299,7 +299,7 @@
             "Text": "is",
             "Type": 7,
             "Confidence": {
-              "Value": 0.8
+              "Value": 0
             },
             "Metadata": {}
           },
@@ -307,7 +307,7 @@
             "Text": "B",
             "Type": 1,
             "Confidence": {
-              "Value": 0.6
+              "Value": 0
             },
             "Metadata": {}
           },
@@ -317,10 +317,280 @@
       "Intent": {
         "Name": "IsIntent",
         "Confidence": {
-          "Value": 0.8
+          "Value": 0
         }
       },
       "Confidence": 0.7181818181818181,
+      "Diagnostics": [
+        {
+          "Code": "NLE.Semantics.SyntacticRelationships",
+          "Severity": 0,
+          "Message": "Relationships were derived from a dependency parse of the sentence\u0027s phrase structure; accuracy is still limited on passive voice, coordinated subjects/objects, negation, and questions.",
+          "Position": null,
+          "Length": null
+        }
+      ]
+    }
+  },
+  {
+    "Prompt": "create a ledger class",
+    "Timestamp": "2026-07-04T18:40:29.4122593+00:00",
+    "Result": {
+      "Entities": [
+        {
+          "Text": "create",
+          "Type": 7,
+          "Confidence": {
+            "Value": 0
+          },
+          "Metadata": {}
+        }
+      ],
+      "Relationships": [],
+      "Intent": {
+        "Name": "CreateIntent",
+        "Confidence": {
+          "Value": 0
+        }
+      },
+      "Confidence": 0.8,
+      "Diagnostics": []
+    }
+  },
+  {
+    "Prompt": "Create a ledger class with properties nominalcode string, description string, amount decimal",
+    "Timestamp": "2026-07-05T04:13:46.5863177+00:00",
+    "Result": {
+      "Entities": [
+        {
+          "Text": "Create",
+          "Type": 7,
+          "Confidence": {
+            "Value": 0
+          },
+          "Metadata": {}
+        },
+        {
+          "Text": "string",
+          "Type": 7,
+          "Confidence": {
+            "Value": 0
+          },
+          "Metadata": {}
+        },
+        {
+          "Text": "string",
+          "Type": 7,
+          "Confidence": {
+            "Value": 0
+          },
+          "Metadata": {}
+        }
+      ],
+      "Relationships": [
+        {
+          "Source": {
+            "Text": "Create",
+            "Type": 7,
+            "Confidence": {
+              "Value": 0
+            },
+            "Metadata": {}
+          },
+          "Target": {
+            "Text": "string",
+            "Type": 7,
+            "Confidence": {
+              "Value": 0
+            },
+            "Metadata": {}
+          },
+          "Type": 2
+        },
+        {
+          "Source": {
+            "Text": "Create",
+            "Type": 7,
+            "Confidence": {
+              "Value": 0
+            },
+            "Metadata": {}
+          },
+          "Target": {
+            "Text": "string",
+            "Type": 7,
+            "Confidence": {
+              "Value": 0
+            },
+            "Metadata": {}
+          },
+          "Type": 2
+        }
+      ],
+      "Intent": {
+        "Name": "CreateIntent",
+        "Confidence": {
+          "Value": 0
+        }
+      },
+      "Confidence": 0.8000000000000002,
+      "Diagnostics": [
+        {
+          "Code": "NLE.Semantics.SyntacticRelationships",
+          "Severity": 0,
+          "Message": "Relationships were derived from a dependency parse of the sentence\u0027s phrase structure; accuracy is still limited on passive voice, coordinated subjects/objects, negation, and questions.",
+          "Position": null,
+          "Length": null
+        }
+      ]
+    }
+  },
+  {
+    "Prompt": "can you list down the projects.",
+    "Timestamp": "2026-07-05T04:16:35.5651166+00:00",
+    "Result": {
+      "Entities": [
+        {
+          "Text": "can",
+          "Type": 7,
+          "Confidence": {
+            "Value": 0
+          },
+          "Metadata": {}
+        },
+        {
+          "Text": "you",
+          "Type": 8,
+          "Confidence": {
+            "Value": 0
+          },
+          "Metadata": {}
+        },
+        {
+          "Text": "list",
+          "Type": 7,
+          "Confidence": {
+            "Value": 0
+          },
+          "Metadata": {}
+        }
+      ],
+      "Relationships": [
+        {
+          "Source": {
+            "Text": "can",
+            "Type": 7,
+            "Confidence": {
+              "Value": 0
+            },
+            "Metadata": {}
+          },
+          "Target": {
+            "Text": "you",
+            "Type": 8,
+            "Confidence": {
+              "Value": 0
+            },
+            "Metadata": {}
+          },
+          "Type": 2
+        }
+      ],
+      "Intent": {
+        "Name": "CanIntent",
+        "Confidence": {
+          "Value": 0
+        }
+      },
+      "Confidence": 0.78,
+      "Diagnostics": [
+        {
+          "Code": "NLE.Semantics.SyntacticRelationships",
+          "Severity": 0,
+          "Message": "Relationships were derived from a dependency parse of the sentence\u0027s phrase structure; accuracy is still limited on passive voice, coordinated subjects/objects, negation, and questions.",
+          "Position": null,
+          "Length": null
+        }
+      ]
+    }
+  },
+  {
+    "Prompt": "Create list of projects created.",
+    "Timestamp": "2026-07-05T04:20:00.9010221+00:00",
+    "Result": {
+      "Entities": [
+        {
+          "Text": "Create",
+          "Type": 7,
+          "Confidence": {
+            "Value": 0.8
+          },
+          "Metadata": {}
+        },
+        {
+          "Text": "list",
+          "Type": 7,
+          "Confidence": {
+            "Value": 0.8
+          },
+          "Metadata": {}
+        },
+        {
+          "Text": "created",
+          "Type": 7,
+          "Confidence": {
+            "Value": 0.8
+          },
+          "Metadata": {}
+        }
+      ],
+      "Relationships": [
+        {
+          "Source": {
+            "Text": "Create",
+            "Type": 7,
+            "Confidence": {
+              "Value": 0.8
+            },
+            "Metadata": {}
+          },
+          "Target": {
+            "Text": "list",
+            "Type": 7,
+            "Confidence": {
+              "Value": 0.8
+            },
+            "Metadata": {}
+          },
+          "Type": 2
+        },
+        {
+          "Source": {
+            "Text": "Create",
+            "Type": 7,
+            "Confidence": {
+              "Value": 0.8
+            },
+            "Metadata": {}
+          },
+          "Target": {
+            "Text": "created",
+            "Type": 7,
+            "Confidence": {
+              "Value": 0.8
+            },
+            "Metadata": {}
+          },
+          "Type": 2
+        }
+      ],
+      "Intent": {
+        "Name": "CreateIntent",
+        "Confidence": {
+          "Value": 0.8
+        }
+      },
+      "Confidence": 0.8000000000000002,
       "Diagnostics": [
         {
           "Code": "NLE.Semantics.SyntacticRelationships",

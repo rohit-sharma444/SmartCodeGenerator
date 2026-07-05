@@ -542,6 +542,30 @@
         "runtime": {
           "bin/placeholder/CodeGenerationEngine.dll": {}
         }
+      },
+      "NaturalLanguageBridge/1.0.0": {
+        "type": "project",
+        "framework": ".NETCoreApp,Version=v10.0",
+        "dependencies": {
+          "CodeGenerationEngine": "1.0.0",
+          "NaturalLanguageEngine": "1.0.0"
+        },
+        "compile": {
+          "bin/placeholder/NaturalLanguageBridge.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/NaturalLanguageBridge.dll": {}
+        }
+      },
+      "NaturalLanguageEngine/1.0.0": {
+        "type": "project",
+        "framework": ".NETCoreApp,Version=v10.0",
+        "compile": {
+          "bin/placeholder/NaturalLanguageEngine.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/NaturalLanguageEngine.dll": {}
+        }
       }
     }
   },
@@ -1423,6 +1447,16 @@
       "type": "project",
       "path": "../CodeGenerationEngine/CodeGenerationEngine.csproj",
       "msbuildProject": "../CodeGenerationEngine/CodeGenerationEngine.csproj"
+    },
+    "NaturalLanguageBridge/1.0.0": {
+      "type": "project",
+      "path": "../NaturalLanguageBridge/NaturalLanguageBridge.csproj",
+      "msbuildProject": "../NaturalLanguageBridge/NaturalLanguageBridge.csproj"
+    },
+    "NaturalLanguageEngine/1.0.0": {
+      "type": "project",
+      "path": "../../NaturalLanguageEngine/NaturalLanguageEngine/NaturalLanguageEngine.csproj",
+      "msbuildProject": "../../NaturalLanguageEngine/NaturalLanguageEngine/NaturalLanguageEngine.csproj"
     }
   },
   "projectFileDependencyGroups": {
@@ -1430,6 +1464,7 @@
       "CodeGenerationEngine >= 1.0.0",
       "Microsoft.CodeAnalysis >= 5.3.0",
       "Microsoft.CodeAnalysis.CSharp >= 5.3.0",
+      "NaturalLanguageBridge >= 1.0.0",
       "System.ComponentModel.Annotations >= 5.0.0"
     ]
   },
@@ -1468,6 +1503,9 @@
           "projectReferences": {
             "D:\\PERSONAL-REPOSITORY\\CodeGenerator\\CodeGenerationEngine\\CodeGenerationEngine.csproj": {
               "projectPath": "D:\\PERSONAL-REPOSITORY\\CodeGenerator\\CodeGenerationEngine\\CodeGenerationEngine.csproj"
+            },
+            "D:\\PERSONAL-REPOSITORY\\CodeGenerator\\NaturalLanguageBridge\\NaturalLanguageBridge.csproj": {
+              "projectPath": "D:\\PERSONAL-REPOSITORY\\CodeGenerator\\NaturalLanguageBridge\\NaturalLanguageBridge.csproj"
             }
           }
         }

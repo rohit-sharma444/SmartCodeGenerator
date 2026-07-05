@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("NaturalLanguageBridge")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+23d6f5465f3bab25b145f6508eaea08de611cf18")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+68d91d93db1a65b007395ae425a13a1c1fa28a9a")]
 [assembly: System.Reflection.AssemblyProductAttribute("NaturalLanguageBridge")]
 [assembly: System.Reflection.AssemblyTitleAttribute("NaturalLanguageBridge")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

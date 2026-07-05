@@ -10,7 +10,8 @@
         "dependencies": {
           "CodeGenerationEngine": "1.0.0",
           "Microsoft.CodeAnalysis": "5.3.0",
-          "Microsoft.CodeAnalysis.CSharp": "5.3.0"
+          "Microsoft.CodeAnalysis.CSharp": "5.3.0",
+          "NaturalLanguageBridge": "1.0.0"
         },
         "runtime": {
           "CodeGenerator.dll": {}
@@ -431,6 +432,26 @@
             "fileVersion": "1.0.0.0"
           }
         }
+      },
+      "NaturalLanguageBridge/1.0.0": {
+        "dependencies": {
+          "CodeGenerationEngine": "1.0.0",
+          "NaturalLanguageEngine": "1.0.0"
+        },
+        "runtime": {
+          "NaturalLanguageBridge.dll": {
+            "assemblyVersion": "1.0.0.0",
+            "fileVersion": "1.0.0.0"
+          }
+        }
+      },
+      "NaturalLanguageEngine/1.0.0": {
+        "runtime": {
+          "NaturalLanguageEngine.dll": {
+            "assemblyVersion": "1.0.0.0",
+            "fileVersion": "1.0.0.0"
+          }
+        }
       }
     }
   },
@@ -546,6 +567,16 @@
       "hashPath": "system.composition.typedparts.9.0.0.nupkg.sha512"
     },
     "CodeGenerationEngine/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "NaturalLanguageBridge/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "NaturalLanguageEngine/1.0.0": {
       "type": "project",
       "serviceable": false,
       "sha512": ""
