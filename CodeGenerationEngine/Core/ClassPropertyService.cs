@@ -59,4 +59,50 @@ public static class ClassPropertyService
             return false;
         }
     }
+
+    public static bool RemoveProperty(string workspaceRoot, string className,
+        string propertyName, out string message)
+    {
+        message = string.Empty;
+
+        try
+        {
+            var file = Directory.GetFiles(workspaceRoot, "*.cs",
+                    SearchOption.AllDirectories).FirstOrDefault(f =>
+                    Path.GetFileNameWithoutExtension(f)
+                        .Equals(className, StringComparison.OrdinalIgnoreCase));
+
+            if (file == null)
+            {
+                message = $"Class '{className}' not found.";
+                return false;
+            }
+
+            var code = File.ReadAllText(file);
+
+            // Match a whole auto-property line for the given name, e.g.
+            //   public string Sku { get; set; }
+            var pattern =
+                $@"[^\S\r\n]*public\s+[\w<>\[\],\.\?]+\s+{Regex.Escape(propertyName)}\s*\{{\s*get\s*;\s*set\s*;\s*\}}\s*\r?\n?";
+
+            var updated = Regex.Replace(code, pattern, string.Empty,
+                RegexOptions.IgnoreCase);
+
+            if (updated == code)
+            {
+                message = $"Property '{propertyName}' not found in '{className}'.";
+                return false;
+            }
+
+            File.WriteAllText(file, updated);
+
+            message = $"Property '{propertyName}' removed from '{className}'.";
+            return true;
+        }
+        catch (Exception ex)
+        {
+            message = ex.Message;
+            return false;
+        }
+    }
 }

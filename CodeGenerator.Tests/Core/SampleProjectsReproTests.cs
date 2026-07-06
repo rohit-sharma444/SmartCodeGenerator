@@ -63,7 +63,7 @@ public sealed class SampleProjectsReproTests
             (files.Length == 0 ? "<none>" : string.Join(" | ",
                 files.Select(f => f.Substring(workspace.Length)))));
 
-        Assert.IsTrue(files.Length > 0, "No Employee.cs generated at all.");
+        Assert.IsNotEmpty(files, "No Employee.cs generated at all.");
 
         var file = files[0];
         var content = File.ReadAllText(file);

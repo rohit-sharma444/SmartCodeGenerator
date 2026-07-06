@@ -99,13 +99,17 @@ public static class CommandHandlingService
             [IntentType.RenameClass] = HandleRenameClass,
             [IntentType.DeleteClass] = HandleDeleteClass,
             [IntentType.RestoreClass] = HandleRestoreClass,
+            [IntentType.RestoreLastClass] = HandleRestoreLastClass,
             [IntentType.ListDeletedClasses] = HandleListDeletedClasses,
             [IntentType.CreateMethod] = HandleCreateMethod,
             [IntentType.ListMethods] = HandleListMethods,
             [IntentType.AddValidation] = HandleAddValidation,
+            [IntentType.ShowValidation] = HandleShowValidation,
             [IntentType.GenerateValidator] = HandleGenerateValidator,
             [IntentType.CreateInterface] = HandleCreateInterface,
-            [IntentType.ListProperties] = HandleListProperties
+            [IntentType.ListProperties] = HandleListProperties,
+            [IntentType.CreateProperty] = HandleCreateProperty,
+            [IntentType.DeleteProperty] = HandleDeleteProperty
         };
 
     private static bool Dispatch(CommandExecutionContext context)
@@ -236,6 +240,21 @@ public static class CommandHandlingService
         return restored;
     }
 
+    private static bool HandleRestoreLastClass(CommandExecutionContext ctx)
+    {
+        var last = DeletedClassRegistry.GetLast(ctx.WorkspaceRoot);
+        if (last == null)
+        {
+            Console.WriteLine("No deleted classes to restore.");
+            return false;
+        }
+
+        var (restored, message) = ClassRestoreService.RestoreClass(
+            ctx.WorkspaceRoot, last.ClassName);
+        Console.WriteLine(message);
+        return restored;
+    }
+
     private static bool HandleListDeletedClasses(CommandExecutionContext ctx)
     {
         Console.WriteLine(DeletedClassListingService.GetDeletedClasses(ctx.WorkspaceRoot));
@@ -258,8 +277,16 @@ public static class CommandHandlingService
     {
         var rules = ValidationRuleParser.Parse(ctx.Command.ValidationText);
         foreach (var rule in rules)
+        {
+            if (string.IsNullOrWhiteSpace(rule.PropertyName) &&
+                !string.IsNullOrWhiteSpace(ctx.Command.PropertyName))
+                rule.PropertyName = ctx.Command.PropertyName;
             ValidationRegistry.AddRule(ctx.Command.ClassName, rule);
-        Console.WriteLine($"Validation added to {ctx.Command.ClassName}");
+        }
+        Console.WriteLine(
+            $"Validation added to {ctx.Command.ClassName}" +
+            (string.IsNullOrWhiteSpace(ctx.Command.PropertyName)
+                ? "." : $".{ctx.Command.PropertyName}"));
         return true;
     }
 
@@ -285,19 +312,81 @@ public static class CommandHandlingService
 
     private static bool HandleListProperties(CommandExecutionContext ctx)
     {
-        // Build the class file path safely with Path.Combine instead of manual
-        // string concatenation, and only when a project is actually selected.
-        var projectPath = ProjectManager.CurrentProject?.ProjectPath;
-        if (string.IsNullOrWhiteSpace(projectPath))
+        // Locate the class by name anywhere in the workspace (the old code built
+        // a path from the selected project without a ".cs" extension, so it never
+        // found the file).
+        var file = FindClassFile(ctx.WorkspaceRoot, ctx.Command.ClassName);
+        if (file == null)
         {
-            Console.WriteLine("No current project selected.");
+            Console.WriteLine($"Class '{ctx.Command.ClassName}' not found.");
             return true;
         }
 
-        var filePath = Path.Combine(ctx.WorkspaceRoot, projectPath, ctx.Command.ClassName);
-        var properties = EntityExtractor.ExtractProperties(filePath);
+        var properties = EntityExtractor.ExtractProperties(file);
+        if (properties.Count == 0)
+        {
+            Console.WriteLine($"No properties found in '{ctx.Command.ClassName}'.");
+            return true;
+        }
+
+        Console.WriteLine($"Properties in {ctx.Command.ClassName}:");
         foreach (var property in properties)
-            Console.WriteLine($"{property.Type} {property.Name}");
+            Console.WriteLine($"  {property.Type} {property.Name}");
+        return true;
+    }
+
+    private static string? FindClassFile(string workspaceRoot, string className)
+    {
+        if (string.IsNullOrWhiteSpace(className))
+            return null;
+
+        return Directory.GetFiles(workspaceRoot, "*.cs", SearchOption.AllDirectories)
+            .FirstOrDefault(f => Path.GetFileNameWithoutExtension(f)
+                .Equals(className, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool HandleCreateProperty(CommandExecutionContext ctx)
+    {
+        var ok = ClassPropertyService.AddProperty(
+            ctx.WorkspaceRoot, ctx.Command.ClassName,
+            ctx.Command.PropertyName, ctx.Command.PropertyType, out var message);
+        Console.WriteLine(message);
+        return ok;
+    }
+
+    private static bool HandleDeleteProperty(CommandExecutionContext ctx)
+    {
+        var ok = ClassPropertyService.RemoveProperty(
+            ctx.WorkspaceRoot, ctx.Command.ClassName,
+            ctx.Command.PropertyName, out var message);
+        Console.WriteLine(message);
+        return ok;
+    }
+
+    private static bool HandleShowValidation(CommandExecutionContext ctx)
+    {
+        var rules = ValidationRegistry.GetRules(ctx.Command.ClassName);
+        if (rules.Count == 0)
+        {
+            Console.WriteLine($"No validation rules for '{ctx.Command.ClassName}'.");
+            return true;
+        }
+
+        Console.WriteLine($"Validation rules for {ctx.Command.ClassName}:");
+        foreach (var rule in rules)
+        {
+            var target = string.IsNullOrWhiteSpace(rule.PropertyName)
+                ? "(class)" : rule.PropertyName;
+
+            var flags = new List<string>();
+            if (rule.Required) flags.Add("Required");
+            if (rule.IsUnique) flags.Add("Unique");
+            if (rule.MinLength.HasValue) flags.Add($"MinLength={rule.MinLength}");
+            if (rule.MaxLength.HasValue) flags.Add($"MaxLength={rule.MaxLength}");
+
+            Console.WriteLine($"  {target}: " +
+                (flags.Count > 0 ? string.Join(", ", flags) : "(no constraints)"));
+        }
         return true;
     }
 

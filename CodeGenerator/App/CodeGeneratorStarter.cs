@@ -18,9 +18,7 @@ internal class CodeGeneratorStarter
 
     private List<PropertyRule> _configuredRules = [];
     private List<string> _currentSuggestions = [];
-    private int _suggestionIndex = -1;
     private readonly List<string> _commandHistory = [];
-    private int _historyIndex = -1;
     private readonly string _encryptedHistoryPath;
     private const string HISTORY_FILENAME = ".codegen_history";
 
@@ -38,6 +36,10 @@ internal class CodeGeneratorStarter
 
         // At startup, prefer an existing project in the workspace.
         InitializeExistingProjects();
+
+        // The registry file is global; drop anything not in this workspace so
+        // projects from other workspaces don't leak into list/use/generate.
+        ProjectManager.RetainOnlyWithin(_workspaceRoot);
 
         // Load per-workspace learned intent memory. Consult/capture honor
         // CG_NO_LEARN, but this init still loads the file regardless.
@@ -423,7 +425,6 @@ internal class CodeGeneratorStarter
     private void ResetSuggestions()
     {
         _currentSuggestions.Clear();
-        _suggestionIndex = -1;
     }
 
     private static void RewriteCurrentLine(string text, int cursorPosition)

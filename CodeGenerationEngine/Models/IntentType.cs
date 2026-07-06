@@ -76,5 +76,9 @@ public enum IntentType
     ShowLearning,
     ResetLearning,
     GenerateDesignDocument,
-    GenerateRepository
+    GenerateRepository,
+
+    // Appended at the end to keep existing integer values stable (intents are
+    // persisted as integers by the learned-intent store).
+    ShowValidation
 }

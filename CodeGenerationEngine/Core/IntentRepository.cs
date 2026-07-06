@@ -25,6 +25,7 @@ public static class IntentRepository
             }
 
             LoadCache();
+            _cache ??= [];
 
             foreach (var rule in GetDefaultRules())
             {

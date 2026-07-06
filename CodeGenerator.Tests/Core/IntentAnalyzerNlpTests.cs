@@ -8,7 +8,7 @@ public class IntentAnalyzerNlpTests
 {
     // Regression: canonical commands still resolve, with the NLE verb injected
     // exactly as the runtime pipeline supplies it.
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("create a Customer class", "create", IntentType.CreateClass)]
     [DataRow("add method Save to Order", "add", IntentType.CreateMethod)]
     [DataRow("list projects", "list", IntentType.ListProjects)]

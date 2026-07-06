@@ -23,6 +23,10 @@ public sealed class ParsedCommand
 
     public List<PropertyDefinition> Properties { get; set; } = [];
 
+    // Single-property member operations (add/remove property on an existing class).
+    public string PropertyName { get; set; } = string.Empty;
+    public string PropertyType { get; set; } = "string";
+
     public List<MethodDefinition> Methods { get; set; } = [];
 
     // Validation

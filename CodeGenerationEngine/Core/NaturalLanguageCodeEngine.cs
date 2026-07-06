@@ -146,10 +146,10 @@ public static class NaturalLanguageCodeEngine
     private static void ApplyContext(ParsedCommand command)
     {
         if (string.IsNullOrWhiteSpace(command.ClassName))
-            command.ClassName = SessionContext.CurrentClass;
+            command.ClassName = SessionContext.CurrentClass ?? string.Empty;
 
         if (string.IsNullOrWhiteSpace(command.ProjectName))
-            command.ProjectName = SessionContext.CurrentProject;
+            command.ProjectName = SessionContext.CurrentProject ?? string.Empty;
     }
 
     private static void RememberContext(ParsedCommand command)

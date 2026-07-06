@@ -31,7 +31,7 @@ public sealed class LearnedIntentMemoryPersistenceTests
     {
         var mem = new LearnedIntentMemory();
         mem.Load(NewTempFile());
-        Assert.AreEqual(0, mem.Entries.Count);
+        Assert.IsEmpty(mem.Entries);
     }
 
     [TestMethod]
@@ -70,6 +70,6 @@ public sealed class LearnedIntentMemoryPersistenceTests
 
         var mem = new LearnedIntentMemory();
         mem.Load(file); // must not throw
-        Assert.AreEqual(0, mem.Entries.Count);
+        Assert.IsEmpty(mem.Entries);
     }
 }

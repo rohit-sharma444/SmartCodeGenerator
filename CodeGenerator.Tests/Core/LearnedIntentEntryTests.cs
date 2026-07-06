@@ -34,6 +34,6 @@ public sealed class LearnedIntentEntryTests
             SuccessCount = 1,
             FailureCount = 4
         };
-        Assert.IsTrue(e.Confidence < 0.3, $"confidence was {e.Confidence}");
+        Assert.IsLessThan(0.3, e.Confidence, $"confidence was {e.Confidence}");
     }
 }

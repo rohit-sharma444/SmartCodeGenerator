@@ -12,7 +12,7 @@ public static class ProjectFileUpdater
         try
         {
             var doc = XDocument.Load(csproj);
-            var ns = doc.Root?.GetDefaultNamespace();
+            var ns = doc.Root?.GetDefaultNamespace() ?? XNamespace.None;
 
             AddCompileReference(doc, ns, csproj, generatedFile);
             AddAnnotationPackage(doc, ns, code);
@@ -25,7 +25,7 @@ public static class ProjectFileUpdater
         }
     }
 
-    private static void AddCompileReference(XDocument doc, XNamespace? ns,
+    private static void AddCompileReference(XDocument doc, XNamespace ns,
         string csproj, string generatedFile)
     {
         var relative = Path.GetRelativePath(Path.GetDirectoryName(csproj)!,
@@ -52,7 +52,7 @@ public static class ProjectFileUpdater
         group.Add(new XElement(ns + "Compile", new XAttribute("Include", relative)));
     }
 
-    private static void AddAnnotationPackage(XDocument doc, XNamespace? ns, string code)
+    private static void AddAnnotationPackage(XDocument doc, XNamespace ns, string code)
     {
         if (!code.Contains("[Required]"))
             return;

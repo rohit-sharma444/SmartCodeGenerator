@@ -19,7 +19,11 @@ public static class DotNetProjectFactory
 
             var template = GetTemplate(request.ProjectType);
 
-            var arguments = $"new {template} " + $"-n {request.ProjectName} " + $"-f {request.Framework}";
+            // "-o <OutputFolder>" emits the project directly into OutputFolder.
+            // Without it, "dotnet new -n <name>" creates its own <name> subfolder,
+            // producing a doubly nested <workspace>/<name>/<name>/<name>.csproj.
+            var arguments = $"new {template} -n {request.ProjectName} " +
+                $"-o \"{request.OutputFolder}\" -f {request.Framework}";
 
             var process = new Process
             {
@@ -43,7 +47,7 @@ public static class DotNetProjectFactory
             process.WaitForExit();
 
             var projectPath = Path.Combine(request.OutputFolder,
-                request.ProjectName, $"{request.ProjectName}.csproj");
+                $"{request.ProjectName}.csproj");
 
             var packageProcess = new Process
             {
@@ -63,7 +67,13 @@ public static class DotNetProjectFactory
             {
                 Success = process.ExitCode == 0,
 
-                ProjectPath = Path.Combine(request.OutputFolder, request.ProjectName),
+                ProjectPath = request.OutputFolder,
+
+                // Without ProjectName/CsProjPath a freshly created project is
+                // invisible to 'list projects' and unselectable via 'use project'
+                // (both key on ProjectName) until the app is restarted.
+                ProjectName = request.ProjectName,
+                CsProjPath = projectPath,
 
                 Message = process.ExitCode == 0
                         ? output
