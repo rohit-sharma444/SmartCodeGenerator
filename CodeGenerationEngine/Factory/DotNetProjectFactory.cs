@@ -65,6 +65,12 @@ public static class DotNetProjectFactory
 
                 ProjectPath = Path.Combine(request.OutputFolder, request.ProjectName),
 
+                // Without ProjectName/CsProjPath a freshly created project is
+                // invisible to 'list projects' and unselectable via 'use project'
+                // (both key on ProjectName) until the app is restarted.
+                ProjectName = request.ProjectName,
+                CsProjPath = projectPath,
+
                 Message = process.ExitCode == 0
                         ? output
                         : error
