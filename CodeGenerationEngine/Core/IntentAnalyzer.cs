@@ -131,6 +131,25 @@ public static class IntentAnalyzer
                 "Class listing command");
         }
 
+        // "generate project report" is documentation generation, not creating a
+        // project literally named "report". CreateProject would otherwise win on
+        // priority over GenerateDocumentation for the shared "project" token.
+        if (Regex.IsMatch(sentence, @"\bproject\s+report\b", RegexOptions.IgnoreCase))
+        {
+            return new IntentMatch(IntentType.GenerateDocumentation, 999, 1.0,
+                "Project report command");
+        }
+
+        // "create class library <name>" is a *project*. The "class" token would
+        // otherwise score as CreateClass and generate a class named "Library".
+        if (Regex.IsMatch(sentence,
+            @"\b(create|new|generate|make|scaffold)\b.*\bclass\s+lib(rary)?\b",
+            RegexOptions.IgnoreCase))
+        {
+            return new IntentMatch(IntentType.CreateProject, 999, 1.0,
+                "Create class library command");
+        }
+
         IntentType bestIntent = IntentType.Unknown;
         int bestScore = 0;
         int bestPriority = int.MinValue;

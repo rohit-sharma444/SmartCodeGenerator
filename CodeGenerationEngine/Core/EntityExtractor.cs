@@ -1026,10 +1026,14 @@ public static class EntityExtractor
         if (string.IsNullOrWhiteSpace(value))
             return value;
 
-        var parts = Regex.Split(value.Trim(), @"[\s_\-]+");
+        var parts = Regex.Split(value.Trim(), @"[\s_\-]+")
+            .Where(p => p.Length > 0);
 
+        // Capitalize the first letter of each part but preserve the rest, so
+        // already-cased identifiers like "IRepository" or "BaseEntity" survive
+        // instead of being flattened to "Irepository" / "Baseentity".
         return string.Concat(parts.Select(p =>
-        char.ToUpperInvariant(p[0]) + p.Substring(1).ToLowerInvariant()));
+        char.ToUpperInvariant(p[0]) + p.Substring(1)));
     }
 
     private static string InferType(string propertyName)
@@ -1051,6 +1055,17 @@ public static class EntityExtractor
         var nameMatch = Regex.Match(sentence, @"project(?:\s+named|\s+called)?\s+([A-Za-z0-9_\-\.]+)", RegexOptions.IgnoreCase);
         if (nameMatch.Success)
             command.ProjectName = nameMatch.Groups[1].Value.Trim();
+        else
+        {
+            // Project types phrased without the word "project" (e.g. "create
+            // worker service MyWorker", "create class library MyLib") — take the
+            // identifier that follows the type noun so the name isn't lost.
+            var altName = Regex.Match(sentence,
+                @"\b(?:service|library|lib|app|application)\s+(?:named\s+|called\s+)?([A-Za-z_][A-Za-z0-9_\.\-]*)",
+                RegexOptions.IgnoreCase);
+            if (altName.Success)
+                command.ProjectName = altName.Groups[1].Value.Trim();
+        }
 
         var folderMatch = Regex.Match(sentence, @"\bin\s+(""[^""]+""|'[^']+'|[A-Za-z]:\\[^\s]+)", RegexOptions.IgnoreCase);
         if (folderMatch.Success)
