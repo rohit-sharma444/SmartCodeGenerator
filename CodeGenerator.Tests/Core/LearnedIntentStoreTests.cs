@@ -47,7 +47,7 @@ public sealed class LearnedIntentStoreTests
     public void UseInMemory_GivesFreshNonPersistedMemory()
     {
         LearnedIntentStore.UseInMemory();
-        Assert.AreEqual(0, LearnedIntentStore.Current.Entries.Count);
+        Assert.IsEmpty(LearnedIntentStore.Current.Entries);
         // Save is a no-op with no path; must not throw.
         LearnedIntentStore.Save();
     }

@@ -18,7 +18,7 @@ public static class ContextResolver
         foreach (var entity in model.Entities)
         {
             if (string.IsNullOrWhiteSpace(entity.ParentName))
-                entity.ParentName = model.Context.LastEntity;
+                entity.ParentName = model.Context.LastEntity ?? string.Empty;
         }
     }
 }

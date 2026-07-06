@@ -8,7 +8,7 @@ namespace CodeGenerator.Tests.Core;
 [DoNotParallelize]
 public sealed class LearningCommandsTests
 {
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("show learning", IntentType.ShowLearning)]
     [DataRow("reset learning", IntentType.ResetLearning)]
     public void LearningCommands_AreDetected(string input, IntentType expected)
@@ -35,6 +35,6 @@ public sealed class LearningCommandsTests
             workspace,
             _ => { });
 
-        Assert.AreEqual(0, LearnedIntentStore.Current.Entries.Count);
+        Assert.IsEmpty(LearnedIntentStore.Current.Entries);
     }
 }

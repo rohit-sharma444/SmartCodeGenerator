@@ -148,11 +148,11 @@ public static class RoslynClassGenerator
             if (trimmed.StartsWith("//"))
             {
                 // Represent comment as leading trivia on an empty statement
-                statements.Add(EmptyStatement().WithLeadingTrivia(TriviaList(Comment(line))));
+                statements.Add(EmptyStatement().WithLeadingTrivia(TriviaList(Comment(line ?? string.Empty))));
             }
             else if (!string.IsNullOrWhiteSpace(trimmed))
             {
-                statements.Add(ParseStatement(line));
+                statements.Add(ParseStatement(line ?? string.Empty));
             }
         }
 

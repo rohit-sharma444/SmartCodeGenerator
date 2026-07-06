@@ -25,7 +25,7 @@ public sealed class EntityExtractorMethodTests
 
         CollectionAssert.Contains(methodNames, "AddEmployee");
         CollectionAssert.Contains(methodNames, "EmployeeList");
-        Assert.AreEqual(2, command.Methods.Count,
+        Assert.HasCount(2, command.Methods,
             $"Expected 2 methods but got: [{string.Join(", ", methodNames)}]");
     }
 

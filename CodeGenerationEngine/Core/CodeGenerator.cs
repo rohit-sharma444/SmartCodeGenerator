@@ -62,7 +62,10 @@ public static class CodeGenerationEngine
 
         foreach (var property in command.Properties ?? Enumerable.Empty<PropertyDefinition>())
         {
-            var propertyName = ToPascalCase(property?.Name ?? string.Empty);
+            if (property is null)
+                continue;
+
+            var propertyName = ToPascalCase(property.Name ?? string.Empty);
             var propertyType = ResolvePropertyType(property);
 
             foreach (var rule in property.Rules)
@@ -162,8 +165,8 @@ public static class CodeGenerationEngine
                 $"    {propertyType} {propertyName} {{ get; set; }}");
         }
 
-        if (command.Properties.Count > 0 &&
-            command.Methods.Count > 0)
+        if (command.Properties is { Count: > 0 } &&
+            command.Methods is { Count: > 0 })
         {
             sb.AppendLine();
         }

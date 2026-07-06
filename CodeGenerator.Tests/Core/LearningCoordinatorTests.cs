@@ -51,7 +51,7 @@ public sealed class LearningCoordinatorTests
         var priorEntry = LearnedIntentStore.Current.Entries
             .Single(e => e.Signature == priorSignature && e.Intent == IntentType.CreateClass);
 
-        Assert.IsTrue(priorEntry.FailureCount >= 1,
+        Assert.IsGreaterThanOrEqualTo(1, priorEntry.FailureCount,
             $"quick-rephrase should have weakened the prior intent; failures={priorEntry.FailureCount}");
     }
 

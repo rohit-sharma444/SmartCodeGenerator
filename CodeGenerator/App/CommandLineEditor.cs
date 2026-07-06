@@ -219,7 +219,7 @@ internal sealed class CommandLineEditor
         // Ensure enough buffer space
         var requiredHeight = inputTop + visibleSuggestions + 2;
 
-        if (requiredHeight >= Console.BufferHeight)
+        if (requiredHeight >= Console.BufferHeight && OperatingSystem.IsWindows())
             Console.BufferHeight = requiredHeight + 20;
 
         // Clear input line

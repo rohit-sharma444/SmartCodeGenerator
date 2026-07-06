@@ -51,7 +51,7 @@ public sealed class SaveWorkspaceReproTests
         Console.WriteLine("UNDER_WORKSPACE: " + (underWorkspace.Length == 0 ? "<none>" : string.Join(", ", underWorkspace)));
         Console.WriteLine("OUTSIDE_WORKSPACE: " + (underParentOnly.Length == 0 ? "<none>" : string.Join(", ", underParentOnly)));
 
-        Assert.IsTrue(underWorkspace.Length > 0,
+        Assert.IsNotEmpty(underWorkspace,
             $"Employee.cs was NOT saved under the specified workspace '{workspace}'. " +
             $"Outside-workspace hits: [{string.Join(", ", underParentOnly)}]");
     }
@@ -107,9 +107,9 @@ public sealed class SaveWorkspaceReproTests
         Console.WriteLine("UNDER_WORKSPACE: " + (underWorkspace.Length == 0 ? "<none>" : string.Join(", ", underWorkspace)));
         Console.WriteLine("IN_STALE_PROJECT: " + (inStaleProject.Length == 0 ? "<none>" : string.Join(", ", inStaleProject)));
 
-        Assert.IsTrue(underWorkspace.Length > 0,
+        Assert.IsNotEmpty(underWorkspace,
             $"Employee.cs was NOT saved under the specified workspace '{workspace}'.");
-        Assert.IsTrue(inStaleProject.Length == 0,
+        Assert.IsEmpty(inStaleProject,
             $"Employee.cs leaked into the stale project '{staleProjectDir}'.");
     }
 
@@ -207,7 +207,7 @@ public sealed class SaveWorkspaceReproTests
         Console.WriteLine("PROJECT_DIR: " + projectDir);
         Console.WriteLine("IN_PROJECT: " + (inProject.Length == 0 ? "<none>" : string.Join(", ", inProject)));
 
-        Assert.IsTrue(inProject.Length > 0,
+        Assert.IsNotEmpty(inProject,
             "A project inside the workspace should still receive the generated class.");
     }
 
@@ -244,7 +244,7 @@ public sealed class SaveWorkspaceReproTests
         Console.WriteLine("WORKSPACE: " + workspace);
         Console.WriteLine("FOUND: " + (found.Length == 0 ? "<none>" : string.Join(", ", found)));
 
-        Assert.IsTrue(found.Length > 0,
+        Assert.IsNotEmpty(found,
             $"Employee.cs was not saved anywhere under the specified workspace '{workspace}'.");
     }
 }

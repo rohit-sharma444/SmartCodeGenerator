@@ -18,9 +18,7 @@ internal class CodeGeneratorStarter
 
     private List<PropertyRule> _configuredRules = [];
     private List<string> _currentSuggestions = [];
-    private int _suggestionIndex = -1;
     private readonly List<string> _commandHistory = [];
-    private int _historyIndex = -1;
     private readonly string _encryptedHistoryPath;
     private const string HISTORY_FILENAME = ".codegen_history";
 
@@ -423,7 +421,6 @@ internal class CodeGeneratorStarter
     private void ResetSuggestions()
     {
         _currentSuggestions.Clear();
-        _suggestionIndex = -1;
     }
 
     private static void RewriteCurrentLine(string text, int cursorPosition)

@@ -32,6 +32,6 @@ public sealed class PipelineLearningTests
 
         Assert.IsNotNull(entry,
             "ProcessInput should have recorded a CreateClass outcome for the command");
-        Assert.IsTrue(entry!.SuccessCount >= 1, $"successes={entry.SuccessCount}");
+        Assert.IsGreaterThanOrEqualTo(1, entry!.SuccessCount, $"successes={entry.SuccessCount}");
     }
 }

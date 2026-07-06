@@ -98,8 +98,9 @@ public sealed class WorkspaceRootResolutionTests
         Console.WriteLine("FILE: " + (file ?? "<none>"));
 
         Assert.IsNotNull(file, "Employee.cs was not generated in the project.");
-        Assert.IsFalse(
-            file!.Replace('\\', '/').Contains("/bin/"),
+        Assert.DoesNotContain(
+            "/bin/",
+            file!.Replace('\\', '/'),
             $"Employee.cs was buried under bin: {file}");
 
         var content = File.ReadAllText(file);

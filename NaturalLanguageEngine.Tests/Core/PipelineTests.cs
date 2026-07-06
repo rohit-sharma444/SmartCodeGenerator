@@ -92,7 +92,7 @@ public class PipelineLoggerTests
     }
 
     [Fact]
-    public void ThreadSafety_ConcurrentLogging_AllEntriesRecorded()
+    public async Task ThreadSafety_ConcurrentLogging_AllEntriesRecorded()
     {
         var logger = new PipelineLogger();
         var tasks = new List<Task>();
@@ -106,7 +106,7 @@ public class PipelineLoggerTests
             }));
         }
 
-        Task.WaitAll(tasks.ToArray());
+        await Task.WhenAll(tasks);
 
         var logs = logger.GetAllLogs();
         Assert.Equal(10, logs.Count);

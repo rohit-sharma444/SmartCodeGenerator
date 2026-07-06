@@ -95,7 +95,7 @@ public static class EntityExtractor
                 break;
         }
         if (string.IsNullOrWhiteSpace(command.ClassName))
-            command.ClassName = SessionContext.CurrentClass;
+            command.ClassName = SessionContext.CurrentClass ?? string.Empty;
         return command;
     }
 

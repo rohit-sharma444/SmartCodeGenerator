@@ -31,7 +31,7 @@ public sealed class LearnedIntentMemoryTests
         var intent = mem.Suggest("show my widgets", out var confidence);
 
         Assert.AreEqual(IntentType.ListClasses, intent);
-        Assert.IsTrue(confidence >= LearnedIntentMemory.SuggestThreshold,
+        Assert.IsGreaterThanOrEqualTo(LearnedIntentMemory.SuggestThreshold, confidence,
             $"confidence {confidence}");
     }
 
@@ -46,9 +46,9 @@ public sealed class LearnedIntentMemoryTests
             mem.Weaken("show my widgets", IntentType.ListClasses);
         var afterWeaken = mem.Entries.Single().Confidence;
 
-        Assert.IsTrue(afterWeaken < afterReinforce,
+        Assert.IsLessThan(afterReinforce, afterWeaken,
             $"weaken should reduce confidence: {afterReinforce} -> {afterWeaken}");
-        Assert.IsTrue(afterWeaken < LearnedIntentMemory.SuggestThreshold,
+        Assert.IsLessThan(LearnedIntentMemory.SuggestThreshold, afterWeaken,
             $"confidence {afterWeaken}");
     }
 
@@ -70,7 +70,7 @@ public sealed class LearnedIntentMemoryTests
         var mem = new LearnedIntentMemory();
         mem.Reinforce("x y z", IntentType.ListClasses);
         mem.Reset();
-        Assert.AreEqual(0, mem.Entries.Count);
+        Assert.IsEmpty(mem.Entries);
     }
 
     [TestMethod]

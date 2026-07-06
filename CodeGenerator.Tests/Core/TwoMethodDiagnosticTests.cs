@@ -12,7 +12,7 @@ namespace CodeGenerator.Tests.Core;
 [DoNotParallelize]
 public sealed class CreateClassIntentTests
 {
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("create class Employee and add method AddEmployee")]
     [DataRow("create class Employee and add method AddEmployee and EmployeeList method")]
     [DataRow("create a class Employee with properties EmpId int, Name string and add method AddEmployee and EmployeeList method")]
@@ -26,7 +26,7 @@ public sealed class CreateClassIntentTests
             $"'{input}' should be CreateClass but was {intent}.");
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("add method Save to Order")]
     [DataRow("create method Validate in Customer")]
     public void AddMethodSentences_StayCreateMethod(string input)
@@ -38,7 +38,7 @@ public sealed class CreateClassIntentTests
             $"'{input}' should stay CreateMethod but was {intent}.");
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("class list")]
     [DataRow("list classes")]
     [DataRow("list class")]
@@ -53,7 +53,7 @@ public sealed class CreateClassIntentTests
             $"'{input}' should be ListClasses but was {intent}.");
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("list classes in MyApp")]
     public void ListClassesInProject_ResolvesCorrectly(string input)
     {
@@ -64,7 +64,7 @@ public sealed class CreateClassIntentTests
             $"'{input}' should be ListClassesInProject but was {intent}.");
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("show class Employee", IntentType.ShowClass)]
     [DataRow("list deleted classes", IntentType.ListDeletedClasses)]
     public void ListingGuard_DoesNotStealOtherIntents(string input, IntentType expected)

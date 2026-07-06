@@ -5,7 +5,7 @@ namespace CodeGenerator.Tests.Bridge;
 [TestClass]
 public class NlpActionProviderBridgeTests
 {
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("create a Customer class", "create")]
     [DataRow("add method Save to Order", "add")]
     [DataRow("list projects", "list")]
@@ -17,7 +17,7 @@ public class NlpActionProviderBridgeTests
         Assert.AreEqual(expected, NlpActionProvider.GetPrimaryAction(input));
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("")]
     [DataRow("   ")]
     [DataRow("the big red car")]
