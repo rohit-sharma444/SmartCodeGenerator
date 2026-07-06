@@ -1,6 +1,47 @@
-# Build output
-bin/
-obj/
+# Build results
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+build/
+bld/
+[Bb]uild[Ll]og.*
 
-# Visual Studio local cache / user files
+# Visual Studio / IDE
 .vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.userprefs
+*.vsidx
+*.dtbcache.v2
+*.futdcache.v2
+
+# Test results
+[Tt]est[Rr]esult*/
+[Bb]uild[Ll]og.*
+*.testlog
+TestResults/
+
+# .NET
+project.lock.json
+project.fragment.lock.json
+artifacts/
+*.dll
+*.pdb
+*.exe
+
+# Rider
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
