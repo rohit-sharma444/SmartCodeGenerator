@@ -150,6 +150,30 @@ public static class IntentAnalyzer
                 "Create class library command");
         }
 
+        // Property/validation member commands. The scored rules otherwise pull
+        // these toward CreateClass ("add ..."), CreateProject ("generate ...")
+        // or a project lookup ("show ..."), so route them explicitly.
+        if (Regex.IsMatch(sentence, @"\b(add|create)\s+(?:a\s+|an\s+|new\s+)?property\b", RegexOptions.IgnoreCase))
+            return new IntentMatch(IntentType.CreateProperty, 999, 1.0, "Add property command");
+
+        if (Regex.IsMatch(sentence, @"\b(remove|delete|drop)\s+property\b", RegexOptions.IgnoreCase))
+            return new IntentMatch(IntentType.DeleteProperty, 999, 1.0, "Remove property command");
+
+        if (Regex.IsMatch(sentence, @"\b(list|show|view)\s+propert(?:y|ies)\b", RegexOptions.IgnoreCase))
+            return new IntentMatch(IntentType.ListProperties, 999, 1.0, "List properties command");
+
+        if (Regex.IsMatch(sentence, @"\badd\s+validation\b", RegexOptions.IgnoreCase))
+            return new IntentMatch(IntentType.AddValidation, 999, 1.0, "Add validation command");
+
+        if (Regex.IsMatch(sentence, @"\b(show|list|view)\s+validation\b", RegexOptions.IgnoreCase))
+            return new IntentMatch(IntentType.ShowValidation, 999, 1.0, "Show validation command");
+
+        // "validator" only appears in "generate validator <class>"; match the
+        // bare noun because EnglishLanguageModel.Normalize rewrites the verb
+        // "generate" to "create" before this runs.
+        if (Regex.IsMatch(sentence, @"\bvalidator\b", RegexOptions.IgnoreCase))
+            return new IntentMatch(IntentType.GenerateValidator, 999, 1.0, "Generate validator command");
+
         IntentType bestIntent = IntentType.Unknown;
         int bestScore = 0;
         int bestPriority = int.MinValue;

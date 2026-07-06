@@ -84,6 +84,10 @@ public static class EntityExtractor
                 ExtractValidationInfo(sentence, command);
                 break;
 
+            case IntentType.ShowValidation:
+                ExtractClassName(sentence, command);
+                break;
+
             case IntentType.CreateProject:
                 ExtractProjectInfo(sentence, command);
                 break;
@@ -92,6 +96,11 @@ public static class EntityExtractor
 
             case IntentType.ListProperties:
                 ExtractClassName(sentence, command);
+                break;
+
+            case IntentType.CreateProperty:
+            case IntentType.DeleteProperty:
+                ExtractPropertyInfo(sentence, command);
                 break;
         }
         if (string.IsNullOrWhiteSpace(command.ClassName))
@@ -337,16 +346,72 @@ public static class EntityExtractor
 
     public static void ExtractValidationInfo(string sentence, ParsedCommand command)
     {
-        var match = Regex.Match(sentence,
-            @"add\s+validation\s+(.+?)\s+to\s+(\w+)$",
+        // "add validation <rule> on <property> in <class>" (documented form).
+        var onIn = Regex.Match(sentence,
+            @"add\s+validation\s+(.+?)\s+on\s+([A-Za-z_]\w*)\s+in\s+([A-Za-z_]\w*)",
             RegexOptions.IgnoreCase);
 
-        if (!match.Success)
+        if (onIn.Success)
+        {
+            command.PropertyName = ToPascalCase(onIn.Groups[2].Value);
+            command.ClassName = ToPascalCase(onIn.Groups[3].Value);
+
+            // Reshape "<rule> on <property>" into the "<property> is <rule>"
+            // phrasing the rule parser understands (e.g. "Name is required").
+            var rule = onIn.Groups[1].Value.Trim();
+            command.ValidationText = $"{command.PropertyName} is {rule}";
             return;
+        }
 
-        command.ValidationText = match.Groups[1].Value.Trim();
+        // "add validation <rule> to <class>" (legacy form).
+        var to = Regex.Match(sentence,
+            @"add\s+validation\s+(.+?)\s+to\s+([A-Za-z_]\w*)\s*$",
+            RegexOptions.IgnoreCase);
 
-        command.ClassName = match.Groups[2].Value.Trim();
+        if (to.Success)
+        {
+            command.ValidationText = to.Groups[1].Value.Trim();
+            command.ClassName = ToPascalCase(to.Groups[2].Value);
+        }
+    }
+
+    // Parses single-property member commands:
+    //   "add property <name> [<type>] to <class>"
+    //   "remove property <name> from <class>"
+    public static void ExtractPropertyInfo(string sentence, ParsedCommand command)
+    {
+        // add/create property <name> <type> to/in <class>
+        var addTyped = Regex.Match(sentence,
+            @"\b(?:add|create)\s+property\s+([A-Za-z_]\w*)\s+([A-Za-z_][\w<>\[\],\.\?]*)\s+(?:to|in|on)\s+([A-Za-z_]\w*)",
+            RegexOptions.IgnoreCase);
+        if (addTyped.Success)
+        {
+            command.PropertyName = ToPascalCase(addTyped.Groups[1].Value);
+            command.PropertyType = addTyped.Groups[2].Value.Trim();
+            command.ClassName = ToPascalCase(addTyped.Groups[3].Value);
+            return;
+        }
+
+        // add/create property <name> to/in <class> (type defaults to string)
+        var addUntyped = Regex.Match(sentence,
+            @"\b(?:add|create)\s+property\s+([A-Za-z_]\w*)\s+(?:to|in|on)\s+([A-Za-z_]\w*)",
+            RegexOptions.IgnoreCase);
+        if (addUntyped.Success)
+        {
+            command.PropertyName = ToPascalCase(addUntyped.Groups[1].Value);
+            command.ClassName = ToPascalCase(addUntyped.Groups[2].Value);
+            return;
+        }
+
+        // remove/delete property <name> from <class>
+        var remove = Regex.Match(sentence,
+            @"\b(?:remove|delete|drop)\s+property\s+([A-Za-z_]\w*)\s+(?:from|of|in|on)\s+([A-Za-z_]\w*)",
+            RegexOptions.IgnoreCase);
+        if (remove.Success)
+        {
+            command.PropertyName = ToPascalCase(remove.Groups[1].Value);
+            command.ClassName = ToPascalCase(remove.Groups[2].Value);
+        }
     }
 
     public static void ExtractClassInfo(string sentence, ParsedCommand command)
@@ -567,8 +632,12 @@ public static class EntityExtractor
             // Property operations
             @"show\s+properties\s+of\s+([A-Za-z_]\w*)",
             @"list\s+properties\s+of\s+([A-Za-z_]\w*)",
+            @"(?:list|show|view)\s+propert(?:y|ies)\s+([A-Za-z_]\w*)",
             @"add\s+property\s+\w+\s+to\s+([A-Za-z_]\w*)",
             @"remove\s+property\s+\w+\s+from\s+([A-Za-z_]\w*)",
+
+            // Validation
+            @"(?:show|list|view)\s+validation\s+(?:for\s+|of\s+|on\s+)?([A-Za-z_]\w*)",
 
             // Method operations
             @"add\s+method\s+\w+\s+to\s+([A-Za-z_]\w*)",
