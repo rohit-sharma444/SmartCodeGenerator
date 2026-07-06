@@ -24,6 +24,13 @@ internal sealed class CommandLineEditor
 
     public string ReadCommand()
     {
+        // The raw key editor needs a real console for both key input and cursor
+        // control. When stdin or stdout is redirected (piping, scripting, no
+        // console) those APIs throw "handle is invalid", so fall back to plain
+        // line reading and let the app be driven non-interactively.
+        if (Console.IsInputRedirected || Console.IsOutputRedirected)
+            return ReadRedirectedLine();
+
         var buffer = new List<char>();
         var cursorPosition = 0;
 
@@ -116,6 +123,42 @@ internal sealed class CommandLineEditor
             RewriteLine(new string([.. buffer]),
                 cursorPosition, suggestions);
         }
+    }
+
+    /// <summary>
+    /// Reads a single command from redirected input (one command per line),
+    /// mirroring the history behavior of the interactive editor. Returns
+    /// "exit" at end-of-stream so the caller's loop terminates cleanly.
+    /// </summary>
+    private string ReadRedirectedLine()
+    {
+        var line = Console.ReadLine();
+
+        if (line == null)
+            return "exit";
+
+        // Echo so redirected transcripts stay readable (the prompt was already
+        // written by the caller, and ReadLine consumed the input without echo).
+        Console.WriteLine(line);
+
+        var command = line.Trim();
+
+        if (!string.IsNullOrWhiteSpace(command) &&
+            (_commandHistory.Count == 0 ||
+             !_commandHistory[^1].Equals(command)))
+        {
+            _commandHistory.Add(command);
+
+            try
+            {
+                FileEncryption.AppendEncryptedLine(_historyFile, command);
+            }
+            catch
+            {
+            }
+        }
+
+        return command;
     }
 
     private string CommitCommand(List<char> buffer)
