@@ -7,8 +7,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\NaturalLanguageEngine\NaturalLanguageEngine\NaturalLanguageEngine.csproj" />
     <ProjectReference Include="..\CodeGenerationEngine\CodeGenerationEngine.csproj" />
+    <ProjectReference Include="..\NaturalLanguageEngine\NaturalLanguageEngine.csproj" />
   </ItemGroup>
 
 </Project>
