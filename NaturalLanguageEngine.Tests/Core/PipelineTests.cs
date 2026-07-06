@@ -27,7 +27,7 @@ public class PipelineLoggerTests
         Assert.Single(logs);
         Assert.Equal("TestStage", logs[0].StageName);
         Assert.Equal(10, logs[0].Order);
-        Assert.Equal(25.5, logs[0].ElapsedMilliseconds);
+        Assert.Equal(25500L, logs[0].ElapsedMilliseconds);
         Assert.Equal(3, logs[0].EntityCount);
         Assert.Equal(2, logs[0].RelationshipCount);
         Assert.True(logs[0].Success);
@@ -58,8 +58,8 @@ public class PipelineLoggerTests
 
         var stats = logger.GetStats();
         Assert.Equal(3, stats.TotalExecutions);
-        Assert.Equal(70.0, stats.TotalElapsedMilliseconds);
-        Assert.Equal(70.0 / 3, stats.AverageElapsedMilliseconds, precision: 2);
+        Assert.Equal(70000L, stats.TotalElapsedMilliseconds);
+        Assert.Equal(70000.0 / 3, stats.AverageElapsedMilliseconds, precision: 2);
     }
 
     [Fact]
