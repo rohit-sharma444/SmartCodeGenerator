@@ -638,6 +638,7 @@ public static class EntityExtractor
 
             // Validation
             @"(?:show|list|view)\s+validation\s+(?:for\s+|of\s+|on\s+)?([A-Za-z_]\w*)",
+            @"validator\s+(?:for\s+|of\s+)?([A-Za-z_]\w*)",
 
             // Method operations
             @"add\s+method\s+\w+\s+to\s+([A-Za-z_]\w*)",
