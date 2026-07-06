@@ -37,6 +37,10 @@ internal class CodeGeneratorStarter
         // At startup, prefer an existing project in the workspace.
         InitializeExistingProjects();
 
+        // The registry file is global; drop anything not in this workspace so
+        // projects from other workspaces don't leak into list/use/generate.
+        ProjectManager.RetainOnlyWithin(_workspaceRoot);
+
         // Load per-workspace learned intent memory. Consult/capture honor
         // CG_NO_LEARN, but this init still loads the file regardless.
         LearnedIntentStore.Initialize(_workspaceRoot);

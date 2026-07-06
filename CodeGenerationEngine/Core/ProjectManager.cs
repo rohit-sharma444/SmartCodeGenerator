@@ -118,6 +118,22 @@ public static class ProjectManager
     /// workspace. A selection persisted from a previous session must not carry
     /// over and redirect saves out of the workspace the user is now working in.
     /// </summary>
+    /// <summary>
+    /// Drops registered projects that live outside the given workspace. The
+    /// registry file (ProjectManager.dat) is global, so without this a project
+    /// created in one workspace leaks into every other workspace's 'list
+    /// projects' / 'use project' and can redirect file operations to a stale
+    /// path.
+    /// </summary>
+    public static void RetainOnlyWithin(string workspaceRoot)
+    {
+        _projects.RemoveAll(p =>
+            !PathHelper.IsWithin(p.ProjectPath, workspaceRoot) &&
+            !PathHelper.IsWithin(p.CsProjPath, workspaceRoot));
+
+        ClearCurrentProjectIfOutside(workspaceRoot);
+    }
+
     public static void ClearCurrentProjectIfOutside(string workspaceRoot)
     {
         if (CurrentProject == null)

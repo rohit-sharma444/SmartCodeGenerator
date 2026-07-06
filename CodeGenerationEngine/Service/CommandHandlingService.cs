@@ -99,6 +99,7 @@ public static class CommandHandlingService
             [IntentType.RenameClass] = HandleRenameClass,
             [IntentType.DeleteClass] = HandleDeleteClass,
             [IntentType.RestoreClass] = HandleRestoreClass,
+            [IntentType.RestoreLastClass] = HandleRestoreLastClass,
             [IntentType.ListDeletedClasses] = HandleListDeletedClasses,
             [IntentType.CreateMethod] = HandleCreateMethod,
             [IntentType.ListMethods] = HandleListMethods,
@@ -235,6 +236,21 @@ public static class CommandHandlingService
     private static bool HandleRestoreClass(CommandExecutionContext ctx)
     {
         var (restored, message) = ClassRestoreService.RestoreClass(ctx.WorkspaceRoot, ctx.Command.ClassName);
+        Console.WriteLine(message);
+        return restored;
+    }
+
+    private static bool HandleRestoreLastClass(CommandExecutionContext ctx)
+    {
+        var last = DeletedClassRegistry.GetLast(ctx.WorkspaceRoot);
+        if (last == null)
+        {
+            Console.WriteLine("No deleted classes to restore.");
+            return false;
+        }
+
+        var (restored, message) = ClassRestoreService.RestoreClass(
+            ctx.WorkspaceRoot, last.ClassName);
         Console.WriteLine(message);
         return restored;
     }
