@@ -20,6 +20,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\AppScaffolding\AppScaffolding.csproj" />
     <ProjectReference Include="..\CodeGenerationEngine\CodeGenerationEngine.csproj" />
     <ProjectReference Include="..\NaturalLanguageBridge\NaturalLanguageBridge.csproj" />
   </ItemGroup>
