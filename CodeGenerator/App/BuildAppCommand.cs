@@ -47,7 +47,14 @@ internal sealed class BuildAppCommand
         {
             PrintModel(model);
             Console.Write("[a]pprove  add <name>  remove <name>  rename <old> <new>  [c]ancel > ");
-            var line = (Console.ReadLine() ?? string.Empty).Trim();
+            var input = Console.ReadLine();
+            if (input is null)   // stdin closed / EOF — treat as cancel, never busy-loop
+            {
+                Console.WriteLine("Input closed. Cancelled — nothing was generated.");
+                return;
+            }
+
+            var line = input.Trim();
 
             if (line.Length == 0)
                 continue;
