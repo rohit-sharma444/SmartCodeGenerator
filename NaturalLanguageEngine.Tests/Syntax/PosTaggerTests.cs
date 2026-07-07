@@ -63,9 +63,22 @@ public class PosTaggerTests
     }
 
     [Fact]
-    public void Tag_UnknownLowercaseWord_FallsBackToUnknown()
+    public void Tag_UnknownLowercaseWord_DefaultsToNoun()
     {
+        // Unknown word-type tokens fall back to Noun so free-form nouns
+        // (e.g. "payroll") reach the semantic layer as entities.
         var tokens = new List<TokenAnalysis> { Analysis("xylophonic") };
+
+        _tagger.Tag(tokens);
+
+        Assert.Equal(PartOfSpeech.Noun, tokens[0].PartOfSpeech);
+    }
+
+    [Fact]
+    public void Tag_UnknownNonWordToken_StaysUnknown()
+    {
+        // Punctuation/symbols must NOT become nouns.
+        var tokens = new List<TokenAnalysis> { Analysis(".", TokenType.Punctuation) };
 
         _tagger.Tag(tokens);
 
