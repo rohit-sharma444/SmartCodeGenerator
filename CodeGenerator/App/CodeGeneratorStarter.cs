@@ -23,6 +23,7 @@ internal class CodeGeneratorStarter
     private const string HISTORY_FILENAME = ".codegen_history";
 
     private readonly NaturalLanguagePipeline _pipeline = new();
+    private readonly BuildAppCommand _buildApp = new();
 
     internal CodeGeneratorStarter()
     {
@@ -100,6 +101,12 @@ internal class CodeGeneratorStarter
 
         try
         {
+            if (BuildAppCommand.IsBuildApp(command))
+            {
+                _buildApp.Handle(command, _workspaceRoot);
+                return true;
+            }
+
             var outcome = _pipeline.Handle(command, ref currentProject,
                 _configuredRules, _workspaceRoot, r => ProjectManager.CurrentProject = r);
             return outcome.Handled;
@@ -138,6 +145,12 @@ internal class CodeGeneratorStarter
             // FIX #9: Improved exception handling with specific catch blocks
             try
             {
+                if (BuildAppCommand.IsBuildApp(input))
+                {
+                    _buildApp.Handle(input, _workspaceRoot);
+                    continue;
+                }
+
                 // NLE analyzes first, then CodeGenerator generates from the result.
                 // The NLE analysis is used internally only; we surface just the
                 // command's own output (e.g. the project list), not the raw

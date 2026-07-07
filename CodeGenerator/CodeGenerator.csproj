@@ -18,5 +18,8 @@
     <ProjectReference Include="..\NaturalLanguageBridge\NaturalLanguageBridge.csproj">
       <Private>True</Private>
     </ProjectReference>
+    <ProjectReference Include="..\DomainDiscovery\DomainDiscovery.csproj">
+      <Private>True</Private>
+    </ProjectReference>
   </ItemGroup>
 </Project>
