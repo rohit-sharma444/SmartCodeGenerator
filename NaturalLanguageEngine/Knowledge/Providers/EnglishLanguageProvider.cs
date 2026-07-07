@@ -45,7 +45,7 @@ public sealed class EnglishLanguageProvider : ILanguageProvider
             yield return Make(w, "noun");
 
         // Business-domain nouns (so build app: descriptions extract entities).
-        // Includes -ing/-ed forms that the POS verb-suffix heuristic would
+        // Includes -ing gerund forms that the POS verb-suffix heuristic would
         // otherwise mis-tag as verbs (billing, shipping, accounting, ...).
         foreach (var w in new[] { "payroll", "application", "system", "employee", "employer", "salary", "wage", "invoice", "payment", "customer", "client", "supplier", "vendor", "product", "account", "transaction", "department", "manager", "timesheet", "tax", "deduction", "bonus", "benefit", "expense", "budget", "ledger", "inventory", "warehouse", "shipment", "user", "role", "permission", "contract", "subscription", "refund", "receipt", "balance", "record", "dashboard", "notification", "billing", "shipping", "accounting", "invoicing", "onboarding", "booking", "reporting", "scheduling", "pricing", "listing", "training" })
             yield return Make(w, "noun");
