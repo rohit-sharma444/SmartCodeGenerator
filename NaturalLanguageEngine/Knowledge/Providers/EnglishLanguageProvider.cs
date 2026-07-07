@@ -44,6 +44,12 @@ public sealed class EnglishLanguageProvider : ILanguageProvider
         foreach (var w in new[] { "meeting", "flight", "report", "email", "message", "table", "car", "house", "city", "country", "person", "people", "company", "team", "project", "task", "time", "day", "week", "month", "year", "morning", "afternoon", "evening", "night", "ticket", "order", "price", "money", "phone", "computer", "engine", "language", "word", "sentence", "document", "file", "name", "place", "thing", "way", "dog", "cat", "ball", "fox" })
             yield return Make(w, "noun");
 
+        // Business-domain nouns (so build app: descriptions extract entities).
+        // Includes -ing/-ed forms that the POS verb-suffix heuristic would
+        // otherwise mis-tag as verbs (billing, shipping, accounting, ...).
+        foreach (var w in new[] { "payroll", "application", "system", "employee", "employer", "salary", "wage", "invoice", "payment", "customer", "client", "supplier", "vendor", "product", "account", "transaction", "department", "manager", "timesheet", "tax", "deduction", "bonus", "benefit", "expense", "budget", "ledger", "inventory", "warehouse", "shipment", "user", "role", "permission", "contract", "subscription", "refund", "receipt", "balance", "record", "dashboard", "notification", "billing", "shipping", "accounting", "invoicing", "onboarding", "booking", "reporting", "scheduling", "pricing", "listing", "training" })
+            yield return Make(w, "noun");
+
         // Adjectives
         foreach (var w in new[] { "big", "small", "red", "blue", "green", "fast", "slow", "good", "bad", "new", "old", "high", "low", "happy", "sad", "important", "urgent", "quick", "great", "nice", "early", "late", "next", "last", "first", "second" })
             yield return Make(w, "adjective");

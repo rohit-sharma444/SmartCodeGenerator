@@ -53,6 +53,18 @@ public class PosTaggerTests
     }
 
     [Fact]
+    public void Tag_BusinessNounEndingInIng_UsesLexiconNotVerbSuffix()
+    {
+        // "billing" ends in -ing; without a lexicon entry the verb-suffix
+        // heuristic would mis-tag it as a verb. The lexicon must win.
+        var tokens = new List<TokenAnalysis> { Analysis("billing") };
+
+        _tagger.Tag(tokens);
+
+        Assert.Equal(PartOfSpeech.Noun, tokens[0].PartOfSpeech);
+    }
+
+    [Fact]
     public void Tag_NumericToken_InfersNumeral()
     {
         var tokens = new List<TokenAnalysis> { Analysis("1234", TokenType.Number) };
