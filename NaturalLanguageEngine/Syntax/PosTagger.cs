@@ -1,6 +1,7 @@
 ﻿using NaturalLanguageEngine.Abstractions.Syntax;
 using NaturalLanguageEngine.Knowledge.Repositories;
 using NaturalLanguageEngine.Models.Analysis;
+using NaturalLanguageEngine.Models.Enums;
 using NaturalLanguageEngine.Models.Lexical;
 using NaturalLanguageEngine.Models.Syntax;
 
@@ -67,8 +68,13 @@ public sealed class PosTagger : IPosTagger
         if (token.EndsWith("ed") || token.EndsWith("ing"))
             return PartOfSpeech.Verb;
 
-        // Default fallback
-        return PartOfSpeech.Unknown;
+        // Unknown word-type tokens default to Noun (the standard
+        // "unknown word ≈ noun" baseline) so free-form common nouns reach
+        // the semantic layer. Non-word tokens (punctuation, symbols) stay
+        // Unknown so they never become entities.
+        return tokens[index].Token.Type == TokenType.Word
+            ? PartOfSpeech.Noun
+            : PartOfSpeech.Unknown;
     }
 
     private PartOfSpeech Map(string? pos)
