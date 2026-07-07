@@ -116,6 +116,12 @@ project is selected.
 | `restore class <Name>` | Restore a specific deleted class. |
 | `restore last class` | Restore the most recently deleted class. |
 
+### Domain discovery
+
+| Command | Description |
+| --- | --- |
+| `build app: <description>` | Describe a system in plain English; runs [domain discovery](../DomainDiscovery/README.md), prints the recognized topic and candidate entities, and opens a review loop (`approve` / `add <name>` / `remove <name>` / `rename <old> <new>` / `cancel`). Fetches from Wikipedia the first time (cached under `.dd-cache`). |
+
 ### Utility
 
 | Command | Description |
