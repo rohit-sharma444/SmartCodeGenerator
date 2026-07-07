@@ -17,6 +17,11 @@ One trip through the CLI: read a command, branch on whether it's `build app:`,
 and either discover a domain model or analyze-and-generate code — then return to
 the prompt.
 
+![End-to-end flow](diagrams/end-to-end-flow.svg)
+
+<details>
+<summary>Mermaid source</summary>
+
 ```mermaid
 flowchart TD
     start([Start: CodeGenerator]) --> read["Read command at prompt"]
@@ -60,7 +65,14 @@ flowchart TD
     style handle fill:#1f6feb,stroke:#0b3d91,color:#fff
 ```
 
+</details>
+
 ## Component & dependency overview
+
+![Component and dependency overview](diagrams/component-overview.svg)
+
+<details>
+<summary>Mermaid source</summary>
 
 ```mermaid
 flowchart TD
@@ -135,7 +147,14 @@ flowchart TD
     style dd fill:#238636,stroke:#0f5323,color:#fff
 ```
 
+</details>
+
 **Project references** (compile-time dependencies):
+
+![Project references](diagrams/project-references.svg)
+
+<details>
+<summary>Mermaid source</summary>
 
 ```mermaid
 flowchart LR
@@ -152,9 +171,16 @@ flowchart LR
     class Roslyn,selfcontained ext
 ```
 
+</details>
+
 ## Runtime flow — command path
 
 A normal command is analyzed by NLE first, then handled by the code engine.
+
+![Command-path sequence](diagrams/command-path-sequence.svg)
+
+<details>
+<summary>Mermaid source</summary>
 
 ```mermaid
 sequenceDiagram
@@ -181,7 +207,14 @@ sequenceDiagram
     CHS-->>User: result
 ```
 
+</details>
+
 ## Runtime flow — discovery path (`build app:`)
+
+![Discovery-path sequence](diagrams/discovery-path-sequence.svg)
+
+<details>
+<summary>Mermaid source</summary>
 
 ```mermaid
 sequenceDiagram
@@ -214,10 +247,17 @@ sequenceDiagram
     end
 ```
 
+</details>
+
 ## Inside the NaturalLanguageEngine
 
 The engine runs seven ordered stages over a shared `AnalysisContext`; assembly
 lives in [`EngineBuilder`](../NaturalLanguageEngine/Core/EngineBuilder.cs).
+
+![NaturalLanguageEngine pipeline](diagrams/nle-pipeline.svg)
+
+<details>
+<summary>Mermaid source</summary>
 
 ```mermaid
 flowchart LR
@@ -230,6 +270,8 @@ flowchart LR
     dep --> sem["7. Semantic Analysis<br/>(50)"]
     sem --> result([SemanticResult:<br/>entities, relationships,<br/>intent, diagnostics])
 ```
+
+</details>
 
 ## Where things are written
 
