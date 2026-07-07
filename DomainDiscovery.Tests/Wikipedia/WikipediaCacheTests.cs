@@ -36,4 +36,29 @@ public class WikipediaCacheTests
         Assert.DoesNotContain('/', Path.GetFileName(path));
         Assert.DoesNotContain('?', Path.GetFileName(path));
     }
+
+    [Fact]
+    public void TryGet_UnreadableLockedFile_ReturnsFalse_DoesNotThrow()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "dd-cache-lock-" + Guid.NewGuid());
+        try
+        {
+            var cache = new WikipediaCache(dir);
+            cache.Put("extract:Locked", "cached body");
+            var path = cache.KeyToPath("extract:Locked");
+
+            // Hold the file open with no sharing so ReadAllText fails.
+            using var exclusive = new FileStream(
+                path, FileMode.Open, FileAccess.Read, FileShare.None);
+
+            var result = cache.TryGet("extract:Locked", out var value);
+
+            Assert.False(result);
+            Assert.Equal(string.Empty, value);
+        }
+        finally
+        {
+            if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true);
+        }
+    }
 }

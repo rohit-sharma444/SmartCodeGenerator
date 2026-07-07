@@ -23,8 +23,15 @@ public sealed class WikipediaCache
         var path = KeyToPath(key);
         if (File.Exists(path))
         {
-            value = File.ReadAllText(path);
-            return true;
+            try
+            {
+                value = File.ReadAllText(path);
+                return true;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // unreadable/locked cache entry — treat as a miss, never throw
+            }
         }
 
         value = string.Empty;
