@@ -33,6 +33,10 @@ CodeGenerationEngine
   generates/edits code (Roslyn)
 ```
 
+For a fuller picture — component/dependency graph, runtime sequence flows for
+both paths, and the NLE internal pipeline — see
+[`docs/architecture.md`](docs/architecture.md).
+
 ## Projects
 
 | Project | Description |
