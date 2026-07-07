@@ -49,7 +49,8 @@ public sealed class HttpWikipediaClient : IWikipediaClient
             }
             return hits;
         }
-        catch (JsonException)
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException
+            or KeyNotFoundException or IndexOutOfRangeException or ArgumentOutOfRangeException)
         {
             return Array.Empty<SearchHit>();
         }
@@ -74,7 +75,8 @@ public sealed class HttpWikipediaClient : IWikipediaClient
                     return extract.GetString() ?? string.Empty;
             }
         }
-        catch (JsonException)
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException
+            or KeyNotFoundException or IndexOutOfRangeException or ArgumentOutOfRangeException)
         {
             // fall through
         }
@@ -90,7 +92,8 @@ public sealed class HttpWikipediaClient : IWikipediaClient
         try
         {
             var body = _http.GetStringAsync(url).GetAwaiter().GetResult();
-            _cache.Put(key, body);
+            try { _cache.Put(key, body); }
+            catch (IOException) { /* caching is best-effort */ }
             return body;
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or InvalidOperationException)
