@@ -93,7 +93,7 @@ public sealed class HttpWikipediaClient : IWikipediaClient
         {
             var body = _http.GetStringAsync(url).GetAwaiter().GetResult();
             try { _cache.Put(key, body); }
-            catch (IOException) { /* caching is best-effort */ }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { /* caching is best-effort */ }
             return body;
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or InvalidOperationException)
