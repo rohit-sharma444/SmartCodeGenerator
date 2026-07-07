@@ -11,6 +11,55 @@ There are **two paths** through the system:
 - **Discovery path** — `build app: <description>` runs DomainDiscovery to propose
   a domain model, then an interactive review loop.
 
+## End-to-end flow
+
+One trip through the CLI: read a command, branch on whether it's `build app:`,
+and either discover a domain model or analyze-and-generate code — then return to
+the prompt.
+
+```mermaid
+flowchart TD
+    start([Start: CodeGenerator]) --> read["Read command at prompt"]
+    read --> exit{"input = exit?"}
+    exit -- yes --> quit([Save history &amp; quit])
+    exit -- no --> isbuild{"starts with<br/>build app: ?"}
+
+    %% Discovery path
+    isbuild -- yes --> desc{"description<br/>empty?"}
+    desc -- yes --> usage["Print usage"] --> read
+    desc -- no --> discover["DomainDiscoveryPipeline.Discover"]
+    discover --> nle1["NLE analyze<br/>→ seed entities"]
+    nle1 --> recog{"topic<br/>recognized?"}
+    recog -- no --> seedonly["Show seed entities only"]
+    recog -- yes --> enrich["Enrich from<br/>Wikipedia article"]
+    seedonly --> review["Review loop:<br/>print model"]
+    enrich --> review
+    review --> action{"user action"}
+    action -- "add / remove / rename" --> edit["ModelEditor<br/>updates model"] --> review
+    action -- approve --> approved([Model approved]) --> read
+    action -- "cancel / EOF" --> cancelled([Cancelled —<br/>nothing generated]) --> read
+
+    %% Command path
+    isbuild -- no --> handle["NaturalLanguagePipeline.Handle"]
+    handle --> nle2["NlpActionProvider.Analyze (NLE)<br/>→ primary action verb"]
+    nle2 --> process["CommandHandlingService.ProcessInput"]
+    process --> parse["Parse → detect intent<br/>→ extract entities"]
+    parse --> dispatch{"intent?"}
+    dispatch -- "create class / interface" --> genclass["Roslyn generate<br/>+ compile check"]
+    dispatch -- "create project" --> genproj["Scaffold .csproj"]
+    dispatch -- "add / show validation" --> val["Update ValidationRegistry"]
+    dispatch -- "analyze / list /<br/>rename / delete …" --> other["Run handler"]
+    genclass --> save["Save to workspace"]
+    genproj --> save
+    val --> record["Record outcome<br/>(learning)"]
+    other --> record
+    save --> record
+    record --> read
+
+    style discover fill:#238636,stroke:#0f5323,color:#fff
+    style handle fill:#1f6feb,stroke:#0b3d91,color:#fff
+```
+
 ## Component & dependency overview
 
 ```mermaid
