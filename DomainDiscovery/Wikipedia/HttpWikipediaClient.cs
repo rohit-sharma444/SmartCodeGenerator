@@ -23,9 +23,12 @@ public sealed class HttpWikipediaClient : IWikipediaClient
             _http.DefaultRequestHeaders.Add("User-Agent", "SmartCodeGenerator-DomainDiscovery/1.0");
     }
 
-    public IReadOnlyList<SearchHit> Search(IEnumerable<string> terms)
+    public IReadOnlyList<SearchHit> Search(string term)
     {
-        var query = string.Join(' ', terms);
+        if (string.IsNullOrWhiteSpace(term))
+            return Array.Empty<SearchHit>();
+
+        var query = term.Trim();
         var url = $"{ApiBase}?action=opensearch&limit=5&format=json&search={Uri.EscapeDataString(query)}";
 
         var json = GetCached($"search:{query}", url);

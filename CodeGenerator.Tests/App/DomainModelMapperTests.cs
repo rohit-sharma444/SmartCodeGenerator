@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using System.Linq;
 using AppScaffolding;
 using CodeGenerationEngine.Models;
@@ -8,6 +10,58 @@ namespace CodeGenerator.Tests.App;
 [TestClass]
 public class DomainModelMapperTests
 {
+    private static CandidateDomainModel ModelOf(params string[] entityNames)
+    {
+        var model = new CandidateDomainModel();
+        foreach (var name in entityNames)
+            model.Entities.Add(new CandidateEntity { Name = name });
+        return model;
+    }
+
+    [TestMethod]
+    public void ToClassDefinitions_RenamesEntities_ThatCollideWithTypesUsedByGeneratedCode()
+    {
+        // The generated Program.cs does `using System;` alongside `using GeneratedCode;`,
+        // so a class named Type/Console/Convert makes those references ambiguous (CS0104).
+        var classes = DomainModelMapper.ToClassDefinitions(
+            ModelOf("Type", "Console", "Convert", "JsonStore", "Crud"));
+
+        CollectionAssert.AreEqual(
+            new[] { "TypeItem", "ConsoleItem", "ConvertItem", "JsonStoreItem", "CrudItem" },
+            classes.Select(c => c.Name).ToList());
+    }
+
+    [TestMethod]
+    public void ToClassDefinitions_LeavesOrdinaryNamesAlone()
+    {
+        var classes = DomainModelMapper.ToClassDefinitions(ModelOf("Employee", "Payroll", "Deduction"));
+
+        CollectionAssert.AreEqual(
+            new[] { "Employee", "Payroll", "Deduction" },
+            classes.Select(c => c.Name).ToList());
+    }
+
+    [TestMethod]
+    public void ToClassDefinitions_KeepsClassNamesUnique_WhenRenamingWouldCollide()
+    {
+        // "Type" wants to become "TypeItem", but that name is already taken.
+        var classes = DomainModelMapper.ToClassDefinitions(ModelOf("Type", "TypeItem"));
+
+        var names = classes.Select(c => c.Name).ToList();
+        Assert.AreEqual(2, names.Distinct(StringComparer.OrdinalIgnoreCase).Count(),
+            "generated class names must be unique");
+        CollectionAssert.Contains(names, "TypeItem");
+    }
+
+    [TestMethod]
+    public void ToClassDefinitions_KeepsClassNamesUnique_WhenTwoEntitiesDifferOnlyByCase()
+    {
+        // Each class is written to <Name>.cs, and Windows filenames are case-insensitive.
+        var classes = DomainModelMapper.ToClassDefinitions(ModelOf("Invoice", "invoice"));
+
+        Assert.AreEqual(2, classes.Select(c => c.Name).Distinct(StringComparer.OrdinalIgnoreCase).Count());
+    }
+
     [TestMethod]
     public void ToClassDefinitions_PrependsIntId_ThenMapsFields()
     {

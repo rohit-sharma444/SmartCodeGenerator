@@ -50,12 +50,63 @@ public sealed class EnglishLanguageProvider : ILanguageProvider
         foreach (var w in new[] { "payroll", "application", "system", "employee", "employer", "salary", "wage", "invoice", "payment", "customer", "client", "supplier", "vendor", "product", "account", "transaction", "department", "manager", "timesheet", "tax", "deduction", "bonus", "benefit", "expense", "budget", "ledger", "inventory", "warehouse", "shipment", "user", "role", "permission", "contract", "subscription", "refund", "receipt", "balance", "record", "dashboard", "notification", "billing", "shipping", "accounting", "invoicing", "onboarding", "booking", "reporting", "scheduling", "pricing", "listing", "training" })
             yield return Make(w, "noun");
 
+        // Common prose verbs. Without these the POS tagger's unknown-word fallback tags them
+        // Noun, and they are frequent enough in article prose to be harvested as domain
+        // entities ("Provide", "Offer"). Base and -s forms only: -ed/-ing are covered by the
+        // verb-suffix heuristic. Words that are also domain nouns (pay, state, bill, record,
+        // access, study, cost, order, price, service, account, charge, issue) are deliberately
+        // absent — tagging those as verbs would delete the entities users actually want.
+        foreach (var w in new[] { "provide", "provides", "offer", "offers", "indicate", "indicates",
+            "outsource", "outsources", "paid", "require", "requires", "allow", "allows",
+            "involve", "involves", "consider", "considers", "describe", "describes",
+            "refer", "refers", "obtain", "obtains", "receive", "receives", "contain", "contains",
+            "become", "becomes", "remain", "remains", "occur", "occurs", "exist", "exists",
+            "appear", "appears", "seem", "seems", "apply", "applies", "determine", "determines",
+            "calculate", "calculates", "compute", "computes", "perform", "performs",
+            "maintain", "maintains", "produce", "produces", "enable", "enables",
+            "ensure", "ensures", "reduce", "reduces", "improve", "improves",
+            "operate", "operates", "represent", "represents", "identify", "identifies",
+            "define", "defines", "establish", "establishes", "develop", "develops",
+            "prepare", "prepares", "submit", "submits", "collect", "collects",
+            "distribute", "distributes", "withhold", "withholds", "deduct", "deducts",
+            "earn", "earns", "owe", "owes", "sell", "sells", "lend", "lends",
+            "borrow", "borrows", "publish", "publishes", "include", "includes",
+            "consist", "consists", "depend", "depends", "vary", "varies", "differ", "differs",
+            "begin", "begins", "continue", "continues", "serve", "serves",
+            "manage", "manages", "handle", "handles", "track", "tracks" })
+            yield return Make(w, "verb");
+
         // Adjectives
         foreach (var w in new[] { "big", "small", "red", "blue", "green", "fast", "slow", "good", "bad", "new", "old", "high", "low", "happy", "sad", "important", "urgent", "quick", "great", "nice", "early", "late", "next", "last", "first", "second" })
             yield return Make(w, "adjective");
 
+        // Descriptive adjectives frequent in encyclopedic prose (same fallback problem as the
+        // verbs above: "Gross", "Federal", "Public" were all becoming domain entities).
+        foreach (var w in new[] { "gross", "net", "federal", "financial", "physical", "public",
+            "private", "available", "accessible", "electronic", "digital", "online", "ancient",
+            "modern", "traditional", "various", "common", "similar", "specific", "general",
+            "particular", "certain", "different", "additional", "appropriate", "necessary",
+            "possible", "single", "multiple", "total", "annual", "monthly", "weekly", "daily",
+            "hourly", "direct", "indirect", "internal", "external", "personal", "professional",
+            "commercial", "legal", "standard", "typical", "primary", "main", "major", "minor",
+            "current", "previous", "future", "recent", "free", "full", "partial", "complete",
+            "actual", "able", "individual", "national", "international", "local", "regional",
+            "central", "social", "economic", "political", "cultural", "technical", "scientific",
+            "educational", "medical", "popular", "large", "wide", "long", "short",
+            "significant", "useful", "academic", "applicable", "middle" })
+            yield return Make(w, "adjective");
+
         // Adverbs
         foreach (var w in new[] { "quickly", "slowly", "very", "really", "soon", "now", "later", "today", "tomorrow", "yesterday", "here", "there", "always", "never", "often", "sometimes", "well", "badly" })
+            yield return Make(w, "adverb");
+
+        // Discourse adverbs frequent in encyclopedic prose ("Already", "Accurately").
+        foreach (var w in new[] { "already", "accurately", "abreast", "generally", "usually",
+            "typically", "commonly", "especially", "particularly", "primarily", "mainly",
+            "largely", "widely", "directly", "automatically", "manually", "approximately",
+            "additionally", "subsequently", "previously", "currently", "recently", "finally",
+            "initially", "simply", "merely", "even", "still", "together", "however",
+            "therefore", "thus", "instead", "rather" })
             yield return Make(w, "adverb");
     }
 

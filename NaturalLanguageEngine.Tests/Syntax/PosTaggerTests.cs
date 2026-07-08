@@ -30,6 +30,54 @@ public class PosTaggerTests
         Assert.Equal(expected, tokens[0].PartOfSpeech);
     }
 
+    [Theory]
+    [InlineData("provide", PartOfSpeech.Verb)]
+    [InlineData("provides", PartOfSpeech.Verb)]
+    [InlineData("offer", PartOfSpeech.Verb)]
+    [InlineData("indicate", PartOfSpeech.Verb)]
+    [InlineData("outsource", PartOfSpeech.Verb)]
+    [InlineData("paid", PartOfSpeech.Verb)]
+    [InlineData("gross", PartOfSpeech.Adjective)]
+    [InlineData("federal", PartOfSpeech.Adjective)]
+    [InlineData("financial", PartOfSpeech.Adjective)]
+    [InlineData("physical", PartOfSpeech.Adjective)]
+    [InlineData("public", PartOfSpeech.Adjective)]
+    [InlineData("available", PartOfSpeech.Adjective)]
+    [InlineData("accessible", PartOfSpeech.Adjective)]
+    [InlineData("electronic", PartOfSpeech.Adjective)]
+    [InlineData("ancient", PartOfSpeech.Adjective)]
+    [InlineData("already", PartOfSpeech.Adverb)]
+    [InlineData("accurately", PartOfSpeech.Adverb)]
+    public void Tag_CommonContentWord_IsNotMistakenForANoun(string word, PartOfSpeech expected)
+    {
+        // The unknown-word fallback tags anything it doesn't know as a Noun, which promotes
+        // frequent verbs/adjectives to domain entities downstream. The lexicon must know them.
+        var tokens = new List<TokenAnalysis> { Analysis(word) };
+
+        _tagger.Tag(tokens);
+
+        Assert.Equal(expected, tokens[0].PartOfSpeech);
+    }
+
+    [Theory]
+    [InlineData("pay")]
+    [InlineData("state")]
+    [InlineData("bill")]
+    [InlineData("record")]
+    [InlineData("access")]
+    [InlineData("study")]
+    [InlineData("cost")]
+    public void Tag_WordThatIsBothNounAndVerb_StaysANoun(string word)
+    {
+        // These carry the domain meaning in "payroll"/"invoice"/"library" articles, so
+        // tagging them as verbs would delete the entities users actually want.
+        var tokens = new List<TokenAnalysis> { Analysis(word) };
+
+        _tagger.Tag(tokens);
+
+        Assert.Equal(PartOfSpeech.Noun, tokens[0].PartOfSpeech);
+    }
+
     [Fact]
     public void Tag_UnknownCapitalizedWord_InfersNounHeuristically()
     {
