@@ -1,3 +1,4 @@
+using AppScaffolding;
 using DomainDiscovery;
 using DomainDiscovery.Model;
 using DomainDiscovery.Review;
@@ -38,10 +39,11 @@ internal sealed class BuildAppCommand
             Console.WriteLine("No topic recognized online — showing seed entities only. " +
                               "You can add entities by hand below.");
 
-        RunReviewLoop(result.Model);
+        var appName = DomainAppName.FromDescription(description);
+        RunReviewLoop(result.Model, appName, workspaceRoot);
     }
 
-    private static void RunReviewLoop(CandidateDomainModel model)
+    private static void RunReviewLoop(CandidateDomainModel model, string appName, string workspaceRoot)
     {
         while (true)
         {
@@ -66,9 +68,23 @@ internal sealed class BuildAppCommand
             {
                 case "a":
                 case "approve":
-                    Console.WriteLine($"Model approved with {model.Entities.Count} entit"
-                                      + (model.Entities.Count == 1 ? "y." : "ies.")
-                                      + " (Code generation will be added in the scaffolding phase.)");
+                    if (model.Entities.Count == 0)
+                    {
+                        Console.WriteLine("Nothing to generate — the model is empty.");
+                        return;
+                    }
+
+                    var scaffold = new AppScaffolder().Scaffold(model, appName, workspaceRoot);
+                    if (scaffold.Success)
+                    {
+                        Console.WriteLine($"Generated project at {scaffold.ProjectPath}");
+                        foreach (var file in scaffold.FilesWritten)
+                            Console.WriteLine($"  {Path.GetFileName(file)}");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"Generation failed: {scaffold.Message}");
+                    }
                     return;
 
                 case "c":

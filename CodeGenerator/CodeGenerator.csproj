@@ -21,5 +21,6 @@
     <ProjectReference Include="..\DomainDiscovery\DomainDiscovery.csproj">
       <Private>True</Private>
     </ProjectReference>
+    <ProjectReference Include="..\AppScaffolding\AppScaffolding.csproj" />
   </ItemGroup>
 </Project>
