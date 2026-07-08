@@ -11,6 +11,13 @@ namespace DomainDiscovery.Enrichment;
 /// </summary>
 public sealed class EntityHarvester : IEntityHarvester
 {
+    /// <summary>
+    /// A whole article's vocabulary is far too much to review or generate classes from, so only
+    /// the most-mentioned nouns are kept. This also strands content-word noise (adjectives,
+    /// adverbs), which prose mentions once or twice at most.
+    /// </summary>
+    public const int DefaultMaxEntities = 20;
+
     private static readonly EntityType[] EntityTypes =
     {
         EntityType.Object,
@@ -18,6 +25,14 @@ public sealed class EntityHarvester : IEntityHarvester
         EntityType.Organization,
         EntityType.Location
     };
+
+    private readonly int _maxEntities;
+
+    public EntityHarvester(int maxEntities = DefaultMaxEntities)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(maxEntities, 1);
+        _maxEntities = maxEntities;
+    }
 
     public CandidateDomainModel Harvest(SemanticResult analysis)
     {
@@ -27,8 +42,13 @@ public sealed class EntityHarvester : IEntityHarvester
         var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         foreach (var entity in analysis.Entities.Where(e => EntityTypes.Contains(e.Type)))
         {
+            // Screen the raw token as well as the normalized name: singularizing turns the
+            // stop word "does" into "Doe", which no longer matches the stop list.
+            if (StopWords.Contains(entity.Text))
+                continue;
+
             var name = NameNormalizer.ToEntityName(entity.Text);
-            if (name.Length == 0)
+            if (name.Length == 0 || StopWords.Contains(name))
                 continue;
 
             counts[name] = counts.GetValueOrDefault(name) + 1;
@@ -39,8 +59,11 @@ public sealed class EntityHarvester : IEntityHarvester
 
         var max = counts.Values.Max();
 
-        // 2. Frequency-ranked entities with normalized confidence.
-        foreach (var (name, count) in counts.OrderByDescending(kv => kv.Value).ThenBy(kv => kv.Key))
+        // 2. Frequency-ranked entities with normalized confidence, capped.
+        foreach (var (name, count) in counts
+            .OrderByDescending(kv => kv.Value)
+            .ThenBy(kv => kv.Key)
+            .Take(_maxEntities))
         {
             model.Entities.Add(new CandidateEntity
             {

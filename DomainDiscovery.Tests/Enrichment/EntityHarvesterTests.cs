@@ -26,6 +26,63 @@ public class EntityHarvesterTests
     }
 
     [Fact]
+    public void Harvest_DropsFunctionWords_ThatThePosTaggerMistookForNouns()
+    {
+        var r = new SemanticResult();
+        foreach (var noise in new[] { "as", "also", "all", "per", "other", "out", "the", "which" })
+            r.Entities.Add(Ent(noise, EntityType.Object));
+        r.Entities.Add(Ent("payroll", EntityType.Object));
+
+        var model = new EntityHarvester().Harvest(r);
+
+        Assert.Equal(new[] { "Payroll" }, model.Entities.Select(e => e.Name));
+    }
+
+    [Fact]
+    public void Harvest_CountsSingularAndPluralMentions_AsOneEntity()
+    {
+        var r = new SemanticResult();
+        r.Entities.Add(Ent("employee", EntityType.Object));
+        r.Entities.Add(Ent("employees", EntityType.Object));
+        r.Entities.Add(Ent("employees", EntityType.Object));
+        r.Entities.Add(Ent("tax", EntityType.Object));
+        r.Entities.Add(Ent("taxes", EntityType.Object));
+
+        var model = new EntityHarvester().Harvest(r);
+
+        // Employee (3 mentions) outranks Tax (2); neither appears twice.
+        Assert.Equal(new[] { "Employee", "Tax" }, model.Entities.Select(e => e.Name));
+    }
+
+    [Fact]
+    public void Harvest_CapsTheModel_KeepingTheMostFrequentEntities()
+    {
+        var r = new SemanticResult();
+        // "Signal" is mentioned twice; 30 distinct one-off nouns compete with it.
+        r.Entities.Add(Ent("signal", EntityType.Object));
+        r.Entities.Add(Ent("signal", EntityType.Object));
+        foreach (var i in Enumerable.Range(1, 30))
+            r.Entities.Add(Ent($"noise{i}", EntityType.Object));
+
+        var model = new EntityHarvester(maxEntities: 5).Harvest(r);
+
+        Assert.Equal(5, model.Entities.Count);
+        Assert.Equal("Signal", model.Entities[0].Name);
+    }
+
+    [Fact]
+    public void Harvest_DefaultCap_KeepsTheReviewLoopUsable()
+    {
+        var r = new SemanticResult();
+        foreach (var i in Enumerable.Range(1, 400))
+            r.Entities.Add(Ent($"word{i}", EntityType.Object));
+
+        var model = new EntityHarvester().Harvest(r);
+
+        Assert.InRange(model.Entities.Count, 1, 25);
+    }
+
+    [Fact]
     public void Harvest_AttachesAttributeRelationships_AsTypedFields()
     {
         var r = new SemanticResult();

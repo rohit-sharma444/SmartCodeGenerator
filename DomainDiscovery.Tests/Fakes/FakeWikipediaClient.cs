@@ -6,15 +6,21 @@ namespace DomainDiscovery.Tests.Fakes;
 /// <summary>In-memory <see cref="IWikipediaClient"/> for offline tests.</summary>
 public sealed class FakeWikipediaClient : IWikipediaClient
 {
+    /// <summary>Hits returned for any term with no entry in <see cref="HitsByTerm"/>.</summary>
     public List<SearchHit> SearchHits { get; } = new();
-    public Dictionary<string, string> Extracts { get; } = new();
-    public List<string> LastSearchTerms { get; } = new();
 
-    public IReadOnlyList<SearchHit> Search(IEnumerable<string> terms)
+    /// <summary>Per-term hits, for tests that care which term found what.</summary>
+    public Dictionary<string, List<SearchHit>> HitsByTerm { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    public Dictionary<string, string> Extracts { get; } = new();
+
+    /// <summary>Every term passed to <see cref="Search"/>, in call order.</summary>
+    public List<string> SearchedTerms { get; } = new();
+
+    public IReadOnlyList<SearchHit> Search(string term)
     {
-        LastSearchTerms.Clear();
-        LastSearchTerms.AddRange(terms);
-        return SearchHits;
+        SearchedTerms.Add(term);
+        return HitsByTerm.TryGetValue(term, out var hits) ? hits : SearchHits;
     }
 
     public string FetchExtract(string articleTitle)

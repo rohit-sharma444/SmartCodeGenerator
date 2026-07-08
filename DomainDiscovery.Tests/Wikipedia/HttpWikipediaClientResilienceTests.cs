@@ -32,7 +32,7 @@ public class HttpWikipediaClientResilienceTests
         var client = ClientReturning("{\"error\":{\"code\":\"x\",\"info\":\"y\"}}", out var dir);
         try
         {
-            IReadOnlyList<SearchHit> hits = client.Search(new[] { "Book" });
+            IReadOnlyList<SearchHit> hits = client.Search("Book");
             Assert.Empty(hits);
         }
         finally { if (Directory.Exists(dir)) Directory.Delete(dir, true); }
