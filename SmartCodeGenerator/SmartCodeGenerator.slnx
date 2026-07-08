@@ -1,7 +1,5 @@
 <Solution>
-  <Project Path="../AppScaffolding/AppScaffolding.csproj">
-    <Build Solution="Debug|*" Project="false" />
-  </Project>
+  <Project Path="../AppScaffolding/AppScaffolding.csproj" />
   <Project Path="../CodeGenerationEngine/CodeGenerationEngine.csproj" />
   <Project Path="../CodeGenerator.Tests/CodeGenerator.Tests.csproj" />
   <Project Path="../CodeGenerator/CodeGenerator.csproj" />
