@@ -14,17 +14,18 @@ public static class DomainModelMapper
         {
             var definition = new ClassDefinition { Name = entity.Name };
 
-            if (entity.Fields.Count == 0)
-            {
-                // Field-less entities get a primary key so the class isn't empty.
+            bool hasId = entity.Fields.Any(
+                f => string.Equals(f.Name, "Id", StringComparison.OrdinalIgnoreCase));
+
+            // Guarantee an int Id key for CRUD. If the entity already declares an
+            // Id field, keep it in place; otherwise prepend one. A field-less
+            // entity therefore ends up with a single int Id.
+            if (!hasId)
                 definition.Properties.Add(new PropertyDefinition { Name = "Id", Type = "int" });
-            }
-            else
-            {
-                foreach (var field in entity.Fields)
-                    definition.Properties.Add(
-                        new PropertyDefinition { Name = field.Name, Type = field.Type });
-            }
+
+            foreach (var field in entity.Fields)
+                definition.Properties.Add(
+                    new PropertyDefinition { Name = field.Name, Type = field.Type });
 
             classes.Add(definition);
         }
