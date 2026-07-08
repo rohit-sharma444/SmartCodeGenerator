@@ -38,6 +38,24 @@ public sealed class AppScaffolder
     }
 
     /// <summary>
+    /// Best-effort write of one source file into <paramref name="outputFolder"/>.
+    /// Returns the path on success, or null if it could not be written.
+    /// </summary>
+    private static string? WriteSource(string outputFolder, string fileName, string source)
+    {
+        try
+        {
+            var path = Path.Combine(outputFolder, fileName);
+            File.WriteAllText(path, source);
+            return path;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Creates a console project named <paramref name="appName"/> under
     /// <paramref name="workspaceRoot"/> (reusing it if it already exists) and
     /// writes one class per entity in <paramref name="model"/>.
@@ -65,12 +83,27 @@ public sealed class AppScaffolder
                     $"Project creation failed: {created.Message}");
         }
 
-        var written = WriteClasses(outputFolder, classes);
-        bool allWritten = written.Count == classes.Count;
+        var written = new List<string>(WriteClasses(outputFolder, classes));
+        int expected = classes.Count;
+
+        // Support files that make the project a runnable CRUD app.
+        var storePath = WriteSource(outputFolder, "JsonStore.cs", JsonStoreTemplate.Source());
+        if (storePath is not null)
+            written.Add(storePath);
+        expected++;
+
+        var programPath = WriteSource(
+            outputFolder, "Program.cs",
+            ProgramTemplate.Build(classes.Select(c => c.Name).ToList()));
+        if (programPath is not null)
+            written.Add(programPath);
+        expected++;
+
+        bool allWritten = written.Count == expected;
 
         var message = allWritten
-            ? $"Generated {written.Count} class(es)."
-            : $"Generated {written.Count} of {classes.Count} class(es); " +
+            ? $"Generated {classes.Count} class(es) + a runnable CRUD app."
+            : $"Generated {written.Count} of {expected} file(s); " +
               "some files could not be written.";
 
         return new ScaffoldResult(allWritten, outputFolder, written, message);
