@@ -87,7 +87,7 @@ public sealed class AppScaffolder
         int expected = classes.Count;
 
         // Support files that make the project a runnable CRUD app.
-        var storePath = WriteSource(outputFolder, "JsonStore.cs", JsonStoreTemplate.Source());
+        var storePath = WriteSource(outputFolder, "JsonStore.cs", JsonStoreTemplate.Source("GeneratedCode"));
         if (storePath is not null)
             written.Add(storePath);
         expected++;
