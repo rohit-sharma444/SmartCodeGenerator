@@ -17,4 +17,13 @@ public class ProgramTemplateTests
         StringAssert.Contains(source, "Crud.Run<Application>(\"Application\")");
         StringAssert.Contains(source, "static class Crud");
     }
+
+    [TestMethod]
+    public void Build_GuardsAgainstStdinEof()
+    {
+        var source = ProgramTemplate.Build(new[] { "Payroll" });
+
+        StringAssert.Contains(source, "choice is null or \"0\"");
+        StringAssert.Contains(source, "case \"0\": case null: return;");
+    }
 }

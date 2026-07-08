@@ -28,7 +28,7 @@ while (true)
     Console.WriteLine("0) Exit");
     Console.Write("> ");
     var choice = Console.ReadLine();
-    if (choice == "0")
+    if (choice is null or "0")
         break;
     switch (choice)
     {
@@ -53,7 +53,7 @@ static class Crud
                 case "2": List(store); break;
                 case "3": Edit(store); break;
                 case "4": Delete(store); break;
-                case "0": return;
+                case "0": case null: return;
             }
         }
     }
