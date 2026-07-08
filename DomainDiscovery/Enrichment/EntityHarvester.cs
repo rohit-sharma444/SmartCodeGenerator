@@ -18,6 +18,13 @@ public sealed class EntityHarvester : IEntityHarvester
     /// </summary>
     public const int DefaultMaxEntities = 20;
 
+    /// <summary>
+    /// Shortest name that can be a domain entity. Tokenizing prose leaves fragments behind
+    /// ("th" from "18th century", "d" from "D.C."), and the tagger's fallback calls them nouns.
+    /// Three letters keeps real entities such as Tax and Pay.
+    /// </summary>
+    private const int MinNameLength = 3;
+
     private static readonly EntityType[] EntityTypes =
     {
         EntityType.Object,
@@ -48,7 +55,7 @@ public sealed class EntityHarvester : IEntityHarvester
                 continue;
 
             var name = NameNormalizer.ToEntityName(entity.Text);
-            if (name.Length == 0 || StopWords.Contains(name))
+            if (name.Length < MinNameLength || StopWords.Contains(name))
                 continue;
 
             counts[name] = counts.GetValueOrDefault(name) + 1;

@@ -39,6 +39,20 @@ public class EntityHarvesterTests
     }
 
     [Fact]
+    public void Harvest_DropsTokenFragments_TooShortToBeAnEntity()
+    {
+        var r = new SemanticResult();
+        // Tokenizing "18th century" / "Washington D.C." leaves "th" and "d" behind.
+        foreach (var fragment in new[] { "th", "d", "s" })
+            r.Entities.Add(Ent(fragment, EntityType.Object));
+        r.Entities.Add(Ent("tax", EntityType.Object));   // three letters is a real entity
+
+        var model = new EntityHarvester().Harvest(r);
+
+        Assert.Equal(new[] { "Tax" }, model.Entities.Select(e => e.Name));
+    }
+
+    [Fact]
     public void Harvest_CountsSingularAndPluralMentions_AsOneEntity()
     {
         var r = new SemanticResult();
