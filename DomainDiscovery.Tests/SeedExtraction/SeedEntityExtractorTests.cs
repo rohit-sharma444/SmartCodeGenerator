@@ -38,16 +38,14 @@ public class SeedEntityExtractorTests
     }
 
     [Fact]
-    public void Extract_GivesEveryEntity_AnEditableNameField()
+    public void Extract_LeavesFieldsToTheFieldAssigner()
     {
         var result = new SemanticResult();
         result.Entities.Add(Ent("Book", EntityType.Object));
 
         var model = new SeedEntityExtractor().Extract(result);
 
-        var field = Assert.Single(model.Entities[0].Fields);
-        Assert.Equal("Name", field.Name);
-        Assert.Equal("string", field.Type);
-        Assert.Equal(Provenance.Seed, field.Provenance);
+        // Seed names drive topic recognition, so they are shaped only once the article is known.
+        Assert.Empty(model.Entities[0].Fields);
     }
 }

@@ -35,11 +35,17 @@ public sealed class DomainDiscoveryPipeline
         var analysis = _analyzer.Analyze(freeText ?? string.Empty);
         var seed = _seedExtractor.Extract(analysis);
 
+        // Recognition searches on the seed names, so shaping — which drops the entities the
+        // lexicon cannot shape — has to wait until the article has been chosen.
         var topic = _recognizer.Recognize(seed.Entities.Select(e => e.Name));
         if (!topic.IsRecognized)
+        {
+            DomainFieldAssigner.Apply(seed);
             return new DiscoveryResult(topic, seed);
+        }
 
         var enriched = _enricher.Enrich(topic, seed);
+        DomainFieldAssigner.Apply(enriched);
         return new DiscoveryResult(topic, enriched);
     }
 

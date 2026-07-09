@@ -31,14 +31,13 @@ public sealed class SeedEntityExtractor
             if (model.Entities.Any(e => string.Equals(e.Name, name, StringComparison.OrdinalIgnoreCase)))
                 continue;
 
-            model.Entities.Add(DefaultFields.ApplyTo(
-                new CandidateEntity
-                {
-                    Name = name,
-                    Provenance = Provenance.Seed,
-                    Confidence = entity.Confidence
-                },
-                Provenance.Seed));
+            // Fields are attached later, by DomainFieldAssigner, once the topic is known.
+            model.Entities.Add(new CandidateEntity
+            {
+                Name = name,
+                Provenance = Provenance.Seed,
+                Confidence = entity.Confidence
+            });
         }
 
         return model;

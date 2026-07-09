@@ -19,15 +19,30 @@ public static class ModelEditor
         "string", "int", "decimal", "bool", "DateTime"
     };
 
+    /// <summary>
+    /// Adds an entity the user named. It is shaped from <see cref="DomainFieldLexicon"/> when
+    /// that knows it, and otherwise gets the fallback <c>Name</c> column — unlike a discovered
+    /// entity, one the user asked for by name is never dropped.
+    /// </summary>
     public static bool AddEntity(CandidateDomainModel model, string name)
     {
         var normalized = NameNormalizer.ToEntityName(name);
         if (normalized.Length == 0 || Find(model, normalized) is not null)
             return false;
 
-        model.Entities.Add(DefaultFields.ApplyTo(
-            new CandidateEntity { Name = normalized, Provenance = Provenance.Seed },
-            Provenance.Seed));
+        var entity = new CandidateEntity { Name = normalized, Provenance = Provenance.Seed };
+        foreach (var shape in DomainFieldLexicon.Fields(normalized))
+            entity.Fields.Add(new CandidateField
+            {
+                Name = shape.Name,
+                Type = shape.Type,
+                Provenance = Provenance.Seed
+            });
+
+        if (entity.Fields.Count == 0)
+            DefaultFields.ApplyTo(entity, Provenance.Seed);
+
+        model.Entities.Add(entity);
         return true;
     }
 
@@ -61,9 +76,9 @@ public static class ModelEditor
     }
 
     /// <summary>
-    /// Removes <paramref name="fieldName"/> from <paramref name="entityName"/>. The default
-    /// <see cref="DefaultFields.NameField"/> cannot be removed: without it an entity scaffolds
-    /// a grid whose only column is a read-only Id, leaving nothing to type into.
+    /// Removes <paramref name="fieldName"/> from <paramref name="entityName"/>. Two fields
+    /// cannot be removed, because both leave a grid whose only column is a read-only Id:
+    /// <see cref="DefaultFields.NameField"/>, and whichever field is the entity's last.
     /// </summary>
     public static bool RemoveField(CandidateDomainModel model, string entityName, string fieldName)
     {
@@ -74,7 +89,7 @@ public static class ModelEditor
         var owner = Find(model, NameNormalizer.ToEntityName(entityName));
         var field = owner is null ? null : FindField(owner, normalized);
 
-        if (owner is null || field is null)
+        if (owner is null || field is null || owner.Fields.Count == 1)
             return false;
 
         owner.Fields.Remove(field);

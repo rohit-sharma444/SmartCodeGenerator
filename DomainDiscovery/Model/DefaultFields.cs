@@ -1,14 +1,12 @@
 namespace DomainDiscovery.Model;
 
 /// <summary>
-/// The fields every candidate entity starts with, wherever it was created.
+/// The fallback shape for an entity the <c>DomainFieldLexicon</c> does not know.
 /// </summary>
 /// <remarks>
-/// Nothing in the pipeline can mine fields from prose. The NLE never tags an entity
-/// <c>Attribute</c>, and the attribute-shaped patterns that do occur ("<i>X</i> of <i>Y</i>",
-/// possessives) resolve to adjectives and sentence fragments far too often to generate a class
-/// from. An entity with no fields scaffolds a grid whose only column is a read-only Id, so
-/// every entity gets one editable string column and the review loop is where the rest are added.
+/// Discovered entities are shaped from the lexicon and dropped when it has nothing to say about
+/// them. An entity the user names by hand is different: they have asserted it exists, so it is
+/// kept, and it needs one editable column or its grid shows nothing but a read-only Id.
 /// </remarks>
 public static class DefaultFields
 {
