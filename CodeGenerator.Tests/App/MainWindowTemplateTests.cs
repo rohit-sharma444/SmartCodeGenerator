@@ -26,6 +26,17 @@ public class MainWindowTemplateTests
     }
 
     [TestMethod]
+    public void Xaml_SelectsTheFirstTabOnStartup()
+    {
+        var xaml = MainWindowTemplate.Xaml("Payroll");
+
+        // A Selector only syncs to the collection's current item when its ItemsSource is a
+        // CollectionView. Bound to a plain ObservableCollection it selects nothing, so the
+        // app opens on an empty content area until the user clicks a tab.
+        StringAssert.Contains(xaml, "SelectedIndex=\"0\"");
+    }
+
+    [TestMethod]
     public void Xaml_ForbidsTheGridsOwnNewRow()
     {
         var xaml = MainWindowTemplate.Xaml("Payroll");

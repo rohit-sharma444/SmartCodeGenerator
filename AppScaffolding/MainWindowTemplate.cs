@@ -12,7 +12,10 @@ public static class MainWindowTemplate
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="{{appName}}" Height="600" Width="900">
-    <TabControl ItemsSource="{Binding Entities}" DisplayMemberPath="Title">
+    <!-- SelectedIndex is explicit: a Selector only follows the collection's current item
+         when its ItemsSource is a CollectionView, so bound to an ObservableCollection it
+         would open with no tab selected and a blank content area. -->
+    <TabControl ItemsSource="{Binding Entities}" DisplayMemberPath="Title" SelectedIndex="0">
         <TabControl.ContentTemplate>
             <DataTemplate>
                 <DockPanel>
