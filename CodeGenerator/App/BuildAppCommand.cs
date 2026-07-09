@@ -111,8 +111,9 @@ internal sealed class BuildAppCommand
                     Report(
                         ModelEditor.AddField(model, parts[1], spec.Name, spec.Type),
                         $"Added '{spec.Name}' to {parts[1]}.",
-                        "Could not add field (unknown entity, duplicate name, or unsupported type). "
-                        + "Types: string, int, decimal, bool, DateTime.");
+                        "Could not add field. The entity must exist; the name must be new, a valid "
+                        + "identifier, and neither 'Id' (generated) nor the entity's own name; "
+                        + "the type must be string, int, decimal, bool or DateTime.");
                     break;
 
                 case "unfield" when parts.Length >= 3:

@@ -134,6 +134,54 @@ public class ModelEditorTests
     }
 
     [Fact]
+    public void AddField_RejectsId_WhichIsGeneratedAndAssignedByReflection()
+    {
+        var model = ModelWith("Recipe");
+
+        // DomainModelMapper only prepends `int Id` when no Id field exists, so a string Id
+        // compiles — and then JsonStore.NewItem throws ArgumentException assigning an int
+        // to it the first time the user clicks Add.
+        Assert.False(ModelEditor.AddField(model, "Recipe", "Id"));
+        Assert.False(ModelEditor.AddField(model, "Recipe", "id", "string"));
+
+        Assert.Empty(model.Entities[0].Fields);
+    }
+
+    [Fact]
+    public void AddField_RejectsAFieldNamedAfterItsOwnEntity()
+    {
+        var model = ModelWith("Recipe");
+
+        // `class Recipe { public string Recipe { get; set; } }` is CS0542.
+        Assert.False(ModelEditor.AddField(model, "Recipe", "recipe"));
+
+        Assert.Empty(model.Entities[0].Fields);
+    }
+
+    [Theory]
+    [InlineData("2nd course")]
+    [InlineData("123")]
+    public void AddField_RejectsNamesCSharpCannotDeclare(string fieldName)
+    {
+        var model = ModelWith("Recipe");
+
+        // "2nd course" normalizes to "2ndCourse", which emits CS1519.
+        Assert.False(ModelEditor.AddField(model, "Recipe", fieldName));
+
+        Assert.Empty(model.Entities[0].Fields);
+    }
+
+    [Fact]
+    public void AddEntity_RejectsNamesCSharpCannotDeclare()
+    {
+        var model = new CandidateDomainModel();
+
+        Assert.False(ModelEditor.AddEntity(model, "2ndthing"));
+
+        Assert.Empty(model.Entities);
+    }
+
+    [Fact]
     public void RemoveField_RefusesToRemoveName()
     {
         var model = new CandidateDomainModel();

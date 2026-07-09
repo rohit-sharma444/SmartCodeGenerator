@@ -64,4 +64,18 @@ public class NameNormalizerTests
     [InlineData("!!!")]
     public void ToFieldName_RejectsNamesWithNoLettersOrDigits(string input)
         => Assert.Equal(string.Empty, NameNormalizer.ToFieldName(input));
+
+    [Theory]
+    [InlineData("Name")]
+    [InlineData("PrepTime")]
+    [InlineData("Line2")]
+    public void IsValidIdentifier_AcceptsAnIdentifierCSharpCanDeclare(string name)
+        => Assert.True(NameNormalizer.IsValidIdentifier(name));
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("2ndCourse")]   // a leading digit is not an identifier: CS1519
+    [InlineData("123")]
+    public void IsValidIdentifier_RejectsWhatCSharpCannotDeclare(string name)
+        => Assert.False(NameNormalizer.IsValidIdentifier(name));
 }
