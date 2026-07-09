@@ -41,10 +41,10 @@ public class DomainDiscoveryPipelineTests
     }
 
     [Fact]
-    public void Discover_NoTopic_ReturnsSeedOnly()
+    public void Discover_NoTopic_ReturnsSeedOnly_ShapedFromTheLexicon()
     {
         var analysis = new SemanticResult();
-        analysis.Entities.Add(Ent("widget", EntityType.Object));
+        analysis.Entities.Add(Ent("invoice", EntityType.Object));
         var analyzer = new StubAnalyzer(analysis);
 
         var client = new FakeWikipediaClient(); // no search hits
@@ -55,9 +55,32 @@ public class DomainDiscoveryPipelineTests
             new WikipediaTopicRecognizer(client),
             new DomainEnricher(client, analyzer, new EntityHarvester()));
 
-        var result = pipeline.Discover("manage widgets");
+        var result = pipeline.Discover("track invoices");
 
         Assert.False(result.Topic.IsRecognized);
-        Assert.Equal(new[] { "Widget" }, result.Model.Entities.Select(e => e.Name));
+        Assert.Equal(new[] { "Invoice" }, result.Model.Entities.Select(e => e.Name));
+        Assert.Equal(
+            new[] { "Number", "Amount", "DueDate", "Paid" },
+            result.Model.Entities[0].Fields.Select(f => f.Name));
+    }
+
+    [Fact]
+    public void Discover_DropsASeedEntity_TheLexiconCannotShape()
+    {
+        var analysis = new SemanticResult();
+        analysis.Entities.Add(Ent("widget", EntityType.Object));
+        var analyzer = new StubAnalyzer(analysis);
+
+        var pipeline = new DomainDiscoveryPipeline(
+            analyzer,
+            new SeedEntityExtractor(),
+            new WikipediaTopicRecognizer(new FakeWikipediaClient()),
+            new DomainEnricher(new FakeWikipediaClient(), analyzer, new EntityHarvester()));
+
+        var result = pipeline.Discover("manage widgets");
+
+        // Nothing is known about a Widget, so it would scaffold an Id-only class.
+        // The review loop's `add` is where the user asserts one anyway.
+        Assert.Empty(result.Model.Entities);
     }
 }

@@ -48,11 +48,24 @@ public class ModelEditorTests
     }
 
     [Fact]
-    public void AddEntity_GivesTheNewEntity_AnEditableNameField()
+    public void AddEntity_ShapesAKnownEntity_FromTheLexicon()
     {
         var model = new CandidateDomainModel();
 
         Assert.True(ModelEditor.AddEntity(model, "loan"));
+
+        Assert.Equal(
+            new[] { "BorrowedOn", "DueDate", "Returned" },
+            model.Entities[0].Fields.Select(f => f.Name));
+    }
+
+    [Fact]
+    public void AddEntity_GivesAnUnknownEntity_TheFallbackNameField()
+    {
+        var model = new CandidateDomainModel();
+
+        // The lexicon has nothing to say about Widget, but the user asked for it by name.
+        Assert.True(ModelEditor.AddEntity(model, "widget"));
 
         var field = Assert.Single(model.Entities[0].Fields);
         Assert.Equal("Name", field.Name);
@@ -112,25 +125,37 @@ public class ModelEditorTests
     {
         var model = ModelWith("Recipe");
         Assert.True(ModelEditor.AddField(model, "Recipe", "title"));
+        Assert.True(ModelEditor.AddField(model, "Recipe", "difficulty"));
 
         Assert.True(ModelEditor.RemoveField(model, "recipe", "TITLE"));
         Assert.False(ModelEditor.RemoveField(model, "Recipe", "title"));  // already gone
 
-        Assert.Empty(model.Entities[0].Fields);
+        Assert.Equal(new[] { "Difficulty" }, model.Entities[0].Fields.Select(f => f.Name));
     }
 
     [Fact]
     public void RemoveField_RefusesToRemoveName()
     {
         var model = new CandidateDomainModel();
-        Assert.True(ModelEditor.AddEntity(model, "Recipe"));
+        Assert.True(ModelEditor.AddEntity(model, "widget"));
 
         // Without Name an entity scaffolds a grid whose only column is a read-only Id,
         // leaving the user nothing to type into.
-        Assert.False(ModelEditor.RemoveField(model, "Recipe", "Name"));
-        Assert.False(ModelEditor.RemoveField(model, "Recipe", "name"));
+        Assert.False(ModelEditor.RemoveField(model, "widget", "Name"));
+        Assert.False(ModelEditor.RemoveField(model, "widget", "name"));
 
         var field = Assert.Single(model.Entities[0].Fields);
         Assert.Equal("Name", field.Name);
+    }
+
+    [Fact]
+    public void RemoveField_RefusesToRemoveTheEntitysLastField()
+    {
+        var model = new CandidateDomainModel();
+        Assert.True(ModelEditor.AddEntity(model, "author"));   // lexicon shape: FullName only
+
+        // Not called Name, but stripping it leaves the same uneditable grid.
+        Assert.False(ModelEditor.RemoveField(model, "Author", "FullName"));
+        Assert.Single(model.Entities[0].Fields);
     }
 }

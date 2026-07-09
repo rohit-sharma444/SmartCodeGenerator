@@ -88,18 +88,16 @@ public sealed class EntityHarvester : IEntityHarvester
             .ThenBy(kv => kv.Key)
             .Take(_maxEntities))
         {
-            model.Entities.Add(DefaultFields.ApplyTo(
-                new CandidateEntity
-                {
-                    Name = name,
-                    Provenance = Provenance.Wiki,
-                    Confidence = (double)count / max
-                },
-                Provenance.Wiki));
+            model.Entities.Add(new CandidateEntity
+            {
+                Name = name,
+                Provenance = Provenance.Wiki,
+                Confidence = (double)count / max
+            });
         }
 
-        // Fields are not harvested. The NLE never tags an entity Attribute, so the
-        // relationship-walk that used to live here could never fire; see DefaultFields.
+        // Fields are not harvested from prose; DomainFieldAssigner attaches them from the
+        // lexicon afterwards, and drops the nouns it cannot shape.
         return model;
     }
 }

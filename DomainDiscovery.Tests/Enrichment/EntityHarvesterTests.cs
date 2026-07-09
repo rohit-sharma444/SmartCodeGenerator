@@ -160,7 +160,7 @@ public class EntityHarvesterTests
     }
 
     [Fact]
-    public void Harvest_GivesEveryEntity_AnEditableNameField()
+    public void Harvest_LeavesFieldsToTheFieldAssigner()
     {
         var r = new SemanticResult();
         r.Entities.Add(Ent("loan", EntityType.Object));
@@ -168,10 +168,7 @@ public class EntityHarvesterTests
 
         var model = new EntityHarvester().Harvest(r);
 
-        // Without it a scaffolded grid shows nothing but a read-only Id.
-        var field = Assert.Single(Assert.Single(model.Entities).Fields);
-        Assert.Equal("Name", field.Name);
-        Assert.Equal("string", field.Type);
-        Assert.Equal(Provenance.Wiki, field.Provenance);
+        // Prose carries no field information; DomainFieldAssigner shapes the entity later.
+        Assert.Empty(Assert.Single(model.Entities).Fields);
     }
 }
