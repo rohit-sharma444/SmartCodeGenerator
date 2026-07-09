@@ -118,4 +118,19 @@ public class ModelEditorTests
 
         Assert.Empty(model.Entities[0].Fields);
     }
+
+    [Fact]
+    public void RemoveField_RefusesToRemoveName()
+    {
+        var model = new CandidateDomainModel();
+        Assert.True(ModelEditor.AddEntity(model, "Recipe"));
+
+        // Without Name an entity scaffolds a grid whose only column is a read-only Id,
+        // leaving the user nothing to type into.
+        Assert.False(ModelEditor.RemoveField(model, "Recipe", "Name"));
+        Assert.False(ModelEditor.RemoveField(model, "Recipe", "name"));
+
+        var field = Assert.Single(model.Entities[0].Fields);
+        Assert.Equal("Name", field.Name);
+    }
 }

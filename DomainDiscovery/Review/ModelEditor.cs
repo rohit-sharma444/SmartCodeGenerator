@@ -60,13 +60,19 @@ public static class ModelEditor
         return true;
     }
 
-    /// <summary>Removes <paramref name="fieldName"/> from <paramref name="entityName"/>.</summary>
+    /// <summary>
+    /// Removes <paramref name="fieldName"/> from <paramref name="entityName"/>. The default
+    /// <see cref="DefaultFields.NameField"/> cannot be removed: without it an entity scaffolds
+    /// a grid whose only column is a read-only Id, leaving nothing to type into.
+    /// </summary>
     public static bool RemoveField(CandidateDomainModel model, string entityName, string fieldName)
     {
+        var normalized = NameNormalizer.ToFieldName(fieldName);
+        if (string.Equals(normalized, DefaultFields.NameField, StringComparison.OrdinalIgnoreCase))
+            return false;
+
         var owner = Find(model, NameNormalizer.ToEntityName(entityName));
-        var field = owner is null
-            ? null
-            : FindField(owner, NameNormalizer.ToFieldName(fieldName));
+        var field = owner is null ? null : FindField(owner, normalized);
 
         if (owner is null || field is null)
             return false;

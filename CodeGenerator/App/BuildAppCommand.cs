@@ -119,7 +119,7 @@ internal sealed class BuildAppCommand
                     Report(
                         ModelEditor.RemoveField(model, parts[1], parts[2]),
                         $"Removed '{parts[2]}' from {parts[1]}.",
-                        "No such field.");
+                        "Could not remove field (no such field, or Name, which every entity keeps).");
                     break;
 
                 default:
