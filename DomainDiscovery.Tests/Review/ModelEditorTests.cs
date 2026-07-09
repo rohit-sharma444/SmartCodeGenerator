@@ -46,4 +46,76 @@ public class ModelEditorTests
 
         Assert.Equal(new[] { "Publication", "Loan" }, model.Entities.Select(e => e.Name));
     }
+
+    [Fact]
+    public void AddEntity_GivesTheNewEntity_AnEditableNameField()
+    {
+        var model = new CandidateDomainModel();
+
+        Assert.True(ModelEditor.AddEntity(model, "loan"));
+
+        var field = Assert.Single(model.Entities[0].Fields);
+        Assert.Equal("Name", field.Name);
+        Assert.Equal("string", field.Type);
+    }
+
+    [Fact]
+    public void AddField_InfersTheType_FromTheFieldName()
+    {
+        var model = ModelWith("Recipe");
+
+        Assert.True(ModelEditor.AddField(model, "Recipe", "prep time"));
+
+        var field = Assert.Single(model.Entities[0].Fields);
+        Assert.Equal("PrepTime", field.Name);
+        Assert.Equal("DateTime", field.Type);
+        Assert.Equal(Provenance.Seed, field.Provenance);
+    }
+
+    [Fact]
+    public void AddField_AcceptsAnExplicitType_WhenInferenceWouldGuessWrong()
+    {
+        var model = ModelWith("Recipe");
+
+        Assert.True(ModelEditor.AddField(model, "Recipe", "servings", "int"));
+
+        var field = Assert.Single(model.Entities[0].Fields);
+        Assert.Equal("Servings", field.Name);
+        Assert.Equal("int", field.Type);
+    }
+
+    [Fact]
+    public void AddField_RejectsAnUnsupportedType()
+    {
+        var model = ModelWith("Recipe");
+
+        Assert.False(ModelEditor.AddField(model, "Recipe", "servings", "Widget"));
+        Assert.Empty(model.Entities[0].Fields);
+    }
+
+    [Fact]
+    public void AddField_RejectsUnknownEntity_DuplicateField_AndBlankName()
+    {
+        var model = ModelWith("Recipe");
+
+        Assert.False(ModelEditor.AddField(model, "Nope", "name"));
+        Assert.False(ModelEditor.AddField(model, "Recipe", "!!!"));
+
+        Assert.True(ModelEditor.AddField(model, "Recipe", "title"));
+        Assert.False(ModelEditor.AddField(model, "Recipe", "TITLE"));   // case-insensitive duplicate
+
+        Assert.Single(model.Entities[0].Fields);
+    }
+
+    [Fact]
+    public void RemoveField_RemovesMatch_CaseInsensitive()
+    {
+        var model = ModelWith("Recipe");
+        Assert.True(ModelEditor.AddField(model, "Recipe", "title"));
+
+        Assert.True(ModelEditor.RemoveField(model, "recipe", "TITLE"));
+        Assert.False(ModelEditor.RemoveField(model, "Recipe", "title"));  // already gone
+
+        Assert.Empty(model.Entities[0].Fields);
+    }
 }

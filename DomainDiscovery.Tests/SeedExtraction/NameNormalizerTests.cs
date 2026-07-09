@@ -41,4 +41,27 @@ public class NameNormalizerTests
     [Fact]
     public void ToEntityName_SingularAndPluralNormalizeToTheSameName()
         => Assert.Equal(NameNormalizer.ToEntityName("employee"), NameNormalizer.ToEntityName("Employees"));
+
+    [Theory]
+    [InlineData("name", "Name")]
+    [InlineData("prep time", "PrepTime")]
+    [InlineData("due-date", "DueDate")]
+    [InlineData("  total  amount ", "TotalAmount")]
+    public void ToFieldName_PascalCasesEveryWord(string input, string expected)
+        => Assert.Equal(expected, NameNormalizer.ToFieldName(input));
+
+    [Theory]
+    [InlineData("servings", "Servings")]
+    [InlineData("ingredients", "Ingredients")]
+    public void ToFieldName_KeepsPlurals(string input, string expected)
+        // A field may legitimately be plural; only entity names are singularized,
+        // because they become one class and one file each.
+        => Assert.Equal(expected, NameNormalizer.ToFieldName(input));
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("!!!")]
+    public void ToFieldName_RejectsNamesWithNoLettersOrDigits(string input)
+        => Assert.Equal(string.Empty, NameNormalizer.ToFieldName(input));
 }
