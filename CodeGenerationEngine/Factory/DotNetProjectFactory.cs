@@ -1,6 +1,6 @@
 ﻿using CodeGenerationEngine.Core;
+using CodeGenerationEngine.Helper;
 using CodeGenerationEngine.Models;
-using System.Diagnostics;
 
 namespace CodeGenerationEngine.Factory;
 
@@ -10,6 +10,12 @@ namespace CodeGenerationEngine.Factory;
 /// </summary>
 public static class DotNetProjectFactory
 {
+    /// <summary>
+    /// Generous enough for a cold NuGet restore on a slow link, short enough that a
+    /// wedged `dotnet` does not strand the caller forever.
+    /// </summary>
+    private static readonly TimeSpan DotNetTimeout = TimeSpan.FromMinutes(2);
+
     public static ProjectMetaData CreateProject(ProjectRequest request)
     {
         try
@@ -25,47 +31,15 @@ public static class DotNetProjectFactory
             var arguments = $"new {template} -n {request.ProjectName} " +
                 $"-o \"{request.OutputFolder}\" -f {request.Framework}";
 
-            var process = new Process
-            {
-                StartInfo = new ProcessStartInfo
-                {
-                    FileName = "dotnet",
-                    Arguments = arguments,
-                    WorkingDirectory = request.OutputFolder,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false
-                }
-            };
-
-            process.Start();
-
-            string output = process.StandardOutput.ReadToEnd();
-
-            string error = process.StandardError.ReadToEnd();
-
-            process.WaitForExit();
+            var create = ProcessRunner.Run(
+                "dotnet", arguments, request.OutputFolder, DotNetTimeout);
 
             var projectPath = Path.Combine(request.OutputFolder,
                 $"{request.ProjectName}.csproj");
 
-            var packageProcess = new Process
-            {
-                StartInfo = new ProcessStartInfo
-                {
-                    FileName = "dotnet",
-                    Arguments = $"add \"{projectPath}\" package System.ComponentModel.Annotations",
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false
-                }
-            };
-
-            packageProcess.Start();
-            packageProcess.WaitForExit();
             var result = new ProjectMetaData
             {
-                Success = process.ExitCode == 0,
+                Success = create.ExitCode == 0,
 
                 ProjectPath = request.OutputFolder,
 
@@ -75,16 +49,25 @@ public static class DotNetProjectFactory
                 ProjectName = request.ProjectName,
                 CsProjPath = projectPath,
 
-                Message = process.ExitCode == 0
-                        ? output
-                        : error
+                Message = DescribeCreate(create, template)
             };
 
-            if (result.Success)
-            {
-                ProjectManager.Register(result);
-                ProjectManager.SaveProjects();
-            }
+            if (!result.Success)
+                return result;
+
+            // Best-effort: the project is usable without it, so a failure here is
+            // reported alongside the success rather than replacing it.
+            var package = ProcessRunner.Run(
+                "dotnet",
+                $"add \"{projectPath}\" package System.ComponentModel.Annotations",
+                request.OutputFolder,
+                DotNetTimeout);
+
+            if (package.ExitCode != 0)
+                result.Message += Environment.NewLine + DescribeFailedPackageAdd(package);
+
+            ProjectManager.Register(result);
+            ProjectManager.SaveProjects();
 
             return result;
         }
@@ -96,6 +79,24 @@ public static class DotNetProjectFactory
                 Message = ex.Message
             };
         }
+    }
+
+    private static string DescribeCreate(ProcessResult create, string template)
+    {
+        if (create.TimedOut)
+            return $"`dotnet new {template}` did not finish within {DotNetTimeout.TotalMinutes:0} minutes and was cancelled.";
+
+        return create.ExitCode == 0 ? create.StandardOutput : create.StandardError;
+    }
+
+    private static string DescribeFailedPackageAdd(ProcessResult package)
+    {
+        if (package.TimedOut)
+            return $"Warning: adding System.ComponentModel.Annotations did not finish within "
+                 + $"{DotNetTimeout.TotalMinutes:0} minutes and was cancelled.";
+
+        return "Warning: adding System.ComponentModel.Annotations failed: "
+             + package.StandardError.Trim();
     }
 
     private static string GetTemplate(DotNetProjectType projectType)
