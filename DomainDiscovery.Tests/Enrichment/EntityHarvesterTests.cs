@@ -18,7 +18,7 @@ public class EntityHarvesterTests
         r.Entities.Add(Ent("loan", EntityType.Object));
         r.Entities.Add(Ent("catalog", EntityType.Object));
 
-        var model = new EntityHarvester().Harvest(r);
+        var model = new EntityHarvester(minMentions: 1).Harvest(r);
 
         Assert.Equal(new[] { "Loan", "Catalog" }, model.Entities.Select(e => e.Name));
         Assert.All(model.Entities, e => Assert.Equal(Provenance.Wiki, e.Provenance));
@@ -33,9 +33,69 @@ public class EntityHarvesterTests
             r.Entities.Add(Ent(noise, EntityType.Object));
         r.Entities.Add(Ent("payroll", EntityType.Object));
 
-        var model = new EntityHarvester().Harvest(r);
+        var model = new EntityHarvester(minMentions: 1).Harvest(r);
 
         Assert.Equal(new[] { "Payroll" }, model.Entities.Select(e => e.Name));
+    }
+
+    [Fact]
+    public void Harvest_DropsNumberWords_ThatThePosTaggerMistookForNouns()
+    {
+        var r = new SemanticResult();
+        // "One tablet ..." — frequent enough in prose to outrank real entities.
+        foreach (var number in new[] { "one", "two", "three" })
+        {
+            r.Entities.Add(Ent(number, EntityType.Object));
+            r.Entities.Add(Ent(number, EntityType.Object));
+        }
+        r.Entities.Add(Ent("ingredient", EntityType.Object));
+        r.Entities.Add(Ent("ingredient", EntityType.Object));
+
+        var model = new EntityHarvester().Harvest(r);
+
+        Assert.Equal(new[] { "Ingredient" }, model.Entities.Select(e => e.Name));
+    }
+
+    [Fact]
+    public void Harvest_IgnoresProperNouns_FoundInArticleProse()
+    {
+        var r = new SemanticResult();
+        // EntityRecognizer falls back to Person for any capitalized head noun, so an
+        // encyclopedia article's history section yields Athenaeus, Greek, Latin — never
+        // domain classes. Organizations and locations are proper nouns for the same reason.
+        foreach (var proper in new[] { "Athenaeus", "Greek" })
+        {
+            r.Entities.Add(Ent(proper, EntityType.Person));
+            r.Entities.Add(Ent(proper, EntityType.Person));
+            r.Entities.Add(Ent(proper, EntityType.Person));
+        }
+        r.Entities.Add(Ent("Acme Corp", EntityType.Organization));
+        r.Entities.Add(Ent("Acme Corp", EntityType.Organization));
+        r.Entities.Add(Ent("Babylonia", EntityType.Location));
+        r.Entities.Add(Ent("Babylonia", EntityType.Location));
+
+        r.Entities.Add(Ent("ingredient", EntityType.Object));
+        r.Entities.Add(Ent("ingredient", EntityType.Object));
+
+        var model = new EntityHarvester().Harvest(r);
+
+        Assert.Equal(new[] { "Ingredient" }, model.Entities.Select(e => e.Name));
+    }
+
+    [Fact]
+    public void Harvest_DropsNouns_MentionedOnlyOnce()
+    {
+        var r = new SemanticResult();
+        // A whole article mentions its real subjects repeatedly. A noun that appears once is
+        // passing prose ("Coquinaria", "Appetizer"), and would otherwise backfill the cap.
+        r.Entities.Add(Ent("coquinaria", EntityType.Object));
+        r.Entities.Add(Ent("appetizer", EntityType.Object));
+        r.Entities.Add(Ent("ingredient", EntityType.Object));
+        r.Entities.Add(Ent("ingredient", EntityType.Object));
+
+        var model = new EntityHarvester().Harvest(r);
+
+        Assert.Equal(new[] { "Ingredient" }, model.Entities.Select(e => e.Name));
     }
 
     [Fact]
@@ -47,7 +107,7 @@ public class EntityHarvesterTests
             r.Entities.Add(Ent(fragment, EntityType.Object));
         r.Entities.Add(Ent("tax", EntityType.Object));   // three letters is a real entity
 
-        var model = new EntityHarvester().Harvest(r);
+        var model = new EntityHarvester(minMentions: 1).Harvest(r);
 
         Assert.Equal(new[] { "Tax" }, model.Entities.Select(e => e.Name));
     }
@@ -78,7 +138,7 @@ public class EntityHarvesterTests
         foreach (var i in Enumerable.Range(1, 30))
             r.Entities.Add(Ent($"noise{i}", EntityType.Object));
 
-        var model = new EntityHarvester(maxEntities: 5).Harvest(r);
+        var model = new EntityHarvester(maxEntities: 5, minMentions: 1).Harvest(r);
 
         Assert.Equal(5, model.Entities.Count);
         Assert.Equal("Signal", model.Entities[0].Name);
@@ -89,7 +149,10 @@ public class EntityHarvesterTests
     {
         var r = new SemanticResult();
         foreach (var i in Enumerable.Range(1, 400))
+        {
             r.Entities.Add(Ent($"word{i}", EntityType.Object));
+            r.Entities.Add(Ent($"word{i}", EntityType.Object));
+        }
 
         var model = new EntityHarvester().Harvest(r);
 
@@ -106,7 +169,7 @@ public class EntityHarvesterTests
         r.Entities.Add(dueDate);
         r.Relationships.Add(new Relationship { Source = loan, Target = dueDate });
 
-        var model = new EntityHarvester().Harvest(r);
+        var model = new EntityHarvester(minMentions: 1).Harvest(r);
 
         var entity = Assert.Single(model.Entities);
         var field = Assert.Single(entity.Fields);
