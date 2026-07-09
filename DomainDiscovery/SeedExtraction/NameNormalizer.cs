@@ -26,6 +26,16 @@ public static class NameNormalizer
     }
 
     /// <summary>
+    /// Whether <paramref name="name"/> is something C# can declare as a type or member name.
+    /// The normalizers strip punctuation but cannot stop a name starting with a digit
+    /// ("2nd course" -> "2ndCourse"), which emits CS1519 in the generated class.
+    /// </summary>
+    public static bool IsValidIdentifier(string name)
+        => !string.IsNullOrEmpty(name)
+           && (char.IsLetter(name[0]) || name[0] == '_')
+           && name.All(c => char.IsLetterOrDigit(c) || c == '_');
+
+    /// <summary>
     /// Turns <paramref name="text"/> into a PascalCase property name: every word is kept and
     /// capitalized ("prep time" -> "PrepTime"). Unlike <see cref="ToEntityName"/> this keeps
     /// plurals, since a field may legitimately be one ("Servings", "Ingredients"), and keeps

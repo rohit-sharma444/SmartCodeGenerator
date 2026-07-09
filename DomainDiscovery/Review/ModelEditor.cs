@@ -27,7 +27,7 @@ public static class ModelEditor
     public static bool AddEntity(CandidateDomainModel model, string name)
     {
         var normalized = NameNormalizer.ToEntityName(name);
-        if (normalized.Length == 0 || Find(model, normalized) is not null)
+        if (!NameNormalizer.IsValidIdentifier(normalized) || Find(model, normalized) is not null)
             return false;
 
         var entity = new CandidateEntity { Name = normalized, Provenance = Provenance.Seed };
@@ -59,7 +59,17 @@ public static class ModelEditor
             return false;
 
         var normalized = NameNormalizer.ToFieldName(fieldName);
-        if (normalized.Length == 0 || FindField(owner, normalized) is not null)
+        if (!NameNormalizer.IsValidIdentifier(normalized) || FindField(owner, normalized) is not null)
+            return false;
+
+        // Id is generated, not declared: DomainModelMapper prepends `int Id` only when no Id
+        // field exists, so a string Id compiles and then JsonStore, which assigns Id by
+        // reflection, throws the first time the user clicks Add.
+        if (string.Equals(normalized, "Id", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        // `class Recipe { public string Recipe { get; set; } }` is CS0542.
+        if (string.Equals(normalized, owner.Name, StringComparison.OrdinalIgnoreCase))
             return false;
 
         var resolved = type ?? TypeInference.Infer(normalized);
