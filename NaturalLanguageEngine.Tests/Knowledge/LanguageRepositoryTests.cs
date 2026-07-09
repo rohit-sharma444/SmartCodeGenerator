@@ -90,6 +90,28 @@ public class LanguageRepositoryTests
         Assert.Equal("determiner", entry.PartOfSpeech);
     }
 
+    /// <summary>
+    /// The POS tagger's verb-suffix heuristic only catches regular -ed/-ing forms, and its
+    /// unknown-word fallback tags everything else Noun. Irregular past forms therefore reach
+    /// the domain harvester as entities ("Known", "Written", "Lost" from the Recipe article).
+    /// </summary>
+    [Theory]
+    [InlineData("known")]
+    [InlineData("written")]
+    [InlineData("lost")]
+    [InlineData("made")]
+    [InlineData("given")]
+    [InlineData("built")]
+    [InlineData("began")]
+    [InlineData("understood")]
+    public void TryGetWord_IrregularVerbForm_IsTaggedVerb(string word)
+    {
+        var found = _repository.TryGetWord(word, out var entry);
+
+        Assert.True(found, $"'{word}' should be in the lexicon");
+        Assert.Equal("verb", entry.PartOfSpeech);
+    }
+
     [Fact]
     public void Constructor_NullProvider_ThrowsArgumentNullException()
         => Assert.Throws<ArgumentNullException>(() => new LanguageRepository(null!));

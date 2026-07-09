@@ -76,6 +76,19 @@ public sealed class EnglishLanguageProvider : ILanguageProvider
             "manage", "manages", "handle", "handles", "track", "tracks" })
             yield return Make(w, "verb");
 
+        // Irregular past-tense and past-participle forms. The POS verb-suffix heuristic only
+        // recognizes regular -ed/-ing, so these fall through to the unknown-word Noun fallback
+        // and are harvested as entities ("Known", "Written", "Lost"). Forms that are also
+        // ordinary nouns (left, set, put, cut, read, saw, rose, fell) are deliberately absent.
+        foreach (var w in new[] { "known", "knew", "written", "wrote", "lost", "made",
+            "given", "gave", "seen", "found", "held", "kept", "told", "brought", "sold",
+            "built", "begun", "began", "chosen", "chose", "driven", "drove", "eaten",
+            "fallen", "grown", "grew", "heard", "meant", "met", "shown", "showed",
+            "spoken", "spoke", "broken", "broke", "worn", "won", "taught", "sought",
+            "caught", "bought", "understood", "gone", "went", "done", "said", "came",
+            "took", "sang", "drank" })
+            yield return Make(w, "verb");
+
         // Adjectives
         foreach (var w in new[] { "big", "small", "red", "blue", "green", "fast", "slow", "good", "bad", "new", "old", "high", "low", "happy", "sad", "important", "urgent", "quick", "great", "nice", "early", "late", "next", "last", "first", "second" })
             yield return Make(w, "adjective");
