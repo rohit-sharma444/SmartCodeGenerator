@@ -2,6 +2,8 @@
 
 Date: 2026-07-07
 Status: Approved (pending spec review)
+Superseded in part: the console-app host described below was replaced by a foldered
+WPF desktop app — see `2026-07-08-wpf-scaffolding-design.md`.
 Area: new `DomainDiscovery` project + `CodeGenerationEngine` (scaffolding) + `CodeGenerator` (CLI) + reuses `NaturalLanguageEngine`, `NaturalLanguageBridge`
 
 ## 1. Goal

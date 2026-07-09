@@ -26,6 +26,27 @@ public static class NameNormalizer
     }
 
     /// <summary>
+    /// Turns <paramref name="text"/> into a PascalCase property name: every word is kept and
+    /// capitalized ("prep time" -> "PrepTime"). Unlike <see cref="ToEntityName"/> this keeps
+    /// plurals, since a field may legitimately be one ("Servings", "Ingredients"), and keeps
+    /// every word, since a field name is not a head noun.
+    /// </summary>
+    public static string ToFieldName(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return string.Empty;
+
+        // Split on anything that cannot appear in an identifier, so "due-date" and
+        // "prep time" both yield two words rather than one run-on.
+        var words = text.Split(
+            text.Where(c => !char.IsLetterOrDigit(c)).Distinct().ToArray(),
+            StringSplitOptions.RemoveEmptyEntries);
+
+        return string.Concat(words.Select(
+            word => char.ToUpperInvariant(word[0]) + word[1..]));
+    }
+
+    /// <summary>
     /// A deliberately small English plural-stripper for the lowercase <paramref name="word"/>.
     /// It errs towards leaving a word alone: a missed plural costs a duplicate entity, while
     /// a wrongly stripped one ("address" -> "addres") corrupts a class name.

@@ -31,12 +31,14 @@ public sealed class SeedEntityExtractor
             if (model.Entities.Any(e => string.Equals(e.Name, name, StringComparison.OrdinalIgnoreCase)))
                 continue;
 
-            model.Entities.Add(new CandidateEntity
-            {
-                Name = name,
-                Provenance = Provenance.Seed,
-                Confidence = entity.Confidence
-            });
+            model.Entities.Add(DefaultFields.ApplyTo(
+                new CandidateEntity
+                {
+                    Name = name,
+                    Provenance = Provenance.Seed,
+                    Confidence = entity.Confidence
+                },
+                Provenance.Seed));
         }
 
         return model;

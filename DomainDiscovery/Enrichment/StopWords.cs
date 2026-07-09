@@ -23,6 +23,11 @@ internal static class StopWords
         // Determiners and quantifiers
         "a", "an", "the", "all", "any", "both", "each", "either", "every", "few", "many", "more",
         "most", "much", "neither", "no", "none", "other", "same", "several", "some", "such",
+        "another",
+
+        // Cardinal numbers. "One tablet ..." is a determiner, not a domain entity, and prose
+        // repeats these often enough to rank them above real nouns.
+        "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
 
         // Pronouns
         "i", "you", "he", "she", "it", "we", "they", "me", "him", "her", "us", "them",

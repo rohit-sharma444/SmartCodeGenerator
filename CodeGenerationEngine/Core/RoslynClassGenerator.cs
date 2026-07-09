@@ -11,7 +11,12 @@ namespace CodeGenerationEngine.Core;
 /// </summary>
 public static class RoslynClassGenerator
 {
-    public static string Generate(ClassDefinition model)
+    /// <summary>
+    /// Generates C# source for <paramref name="model"/> in <paramref name="namespaceName"/>.
+    /// The default keeps the historical namespace used by the engine's `add class` commands;
+    /// app scaffolding passes a folder-matching namespace instead.
+    /// </summary>
+    public static string Generate(ClassDefinition model, string namespaceName = "GeneratedCode")
     {
         var members = new List<MemberDeclarationSyntax>();
 
@@ -29,7 +34,7 @@ public static class RoslynClassGenerator
                 .AddMembers([.. members]);
 
         var namespaceDeclaration = NamespaceDeclaration(
-                ParseName("GeneratedCode")).AddMembers(classDeclaration);
+                ParseName(namespaceName)).AddMembers(classDeclaration);
 
         var compilationUnit = CompilationUnit()
                 .AddMembers(namespaceDeclaration).NormalizeWhitespace();

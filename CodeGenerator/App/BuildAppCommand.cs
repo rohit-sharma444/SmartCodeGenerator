@@ -48,7 +48,9 @@ internal sealed class BuildAppCommand
         while (true)
         {
             PrintModel(model);
-            Console.Write("[a]pprove  add <name>  remove <name>  rename <old> <new>  [c]ancel > ");
+            Console.WriteLine("  [a]pprove   add <name>   remove <name>   rename <old> <new>");
+            Console.WriteLine("  field <entity> <name>[:<type>]   unfield <entity> <name>   [c]ancel");
+            Console.Write("> ");
             var input = Console.ReadLine();
             if (input is null)   // stdin closed / EOF — treat as cancel, never busy-loop
             {
@@ -79,7 +81,7 @@ internal sealed class BuildAppCommand
                     {
                         Console.WriteLine($"Generated project at {scaffold.ProjectPath}");
                         foreach (var file in scaffold.FilesWritten)
-                            Console.WriteLine($"  {Path.GetFileName(file)}");
+                            Console.WriteLine($"  {Path.GetRelativePath(scaffold.ProjectPath, file)}");
                     }
                     else
                     {
@@ -102,6 +104,22 @@ internal sealed class BuildAppCommand
 
                 case "rename" when parts.Length >= 3:
                     Report(ModelEditor.RenameEntity(model, parts[1], parts[2]), $"Renamed to '{parts[2]}'.", "Could not rename (missing or name in use).");
+                    break;
+
+                case "field" when parts.Length >= 3:
+                    var spec = FieldSpec.Parse(parts[2]);
+                    Report(
+                        ModelEditor.AddField(model, parts[1], spec.Name, spec.Type),
+                        $"Added '{spec.Name}' to {parts[1]}.",
+                        "Could not add field (unknown entity, duplicate name, or unsupported type). "
+                        + "Types: string, int, decimal, bool, DateTime.");
+                    break;
+
+                case "unfield" when parts.Length >= 3:
+                    Report(
+                        ModelEditor.RemoveField(model, parts[1], parts[2]),
+                        $"Removed '{parts[2]}' from {parts[1]}.",
+                        "Could not remove field (no such field, or Name, which every entity keeps).");
                     break;
 
                 default:

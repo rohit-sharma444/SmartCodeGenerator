@@ -3,7 +3,8 @@ namespace AppScaffolding;
 /// <summary>Emits the source of the generated app's generic JSON store.</summary>
 public static class JsonStoreTemplate
 {
-    public static string Source() => """
+    /// <summary>Source of <c>Data/JsonStore.cs</c> in <paramref name="namespaceName"/>.</summary>
+    public static string Source(string namespaceName) => $$"""
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -11,7 +12,7 @@ using System.Linq;
 using System.Reflection;
 using System.Text.Json;
 
-namespace GeneratedCode;
+namespace {{namespaceName}};
 
 /// <summary>JSON-backed list store keyed by an int Id. One file per type.</summary>
 public sealed class JsonStore<T> where T : new()
@@ -21,45 +22,53 @@ public sealed class JsonStore<T> where T : new()
     private readonly string _path =
         Path.Combine(AppContext.BaseDirectory, typeof(T).Name + ".json");
 
+    /// <summary>All stored records. An absent, unreadable, or corrupt file reads as empty.</summary>
     public List<T> GetAll()
     {
         if (!File.Exists(_path))
             return new List<T>();
-        return JsonSerializer.Deserialize<List<T>>(File.ReadAllText(_path)) ?? new List<T>();
+
+        try
+        {
+            return JsonSerializer.Deserialize<List<T>>(File.ReadAllText(_path)) ?? new List<T>();
+        }
+        catch (Exception ex)
+            when (ex is JsonException or IOException or UnauthorizedAccessException)
+        {
+            // A GUI has nowhere to print a stack trace: start empty rather than
+            // die before the window appears.
+            return new List<T>();
+        }
     }
 
-    public T Add(T item)
+    /// <summary>Overwrites the store with <paramref name="all"/>. False if it could not be written.</summary>
+    public bool SaveAll(List<T> all)
     {
-        var all = GetAll();
-        SetId(item, all.Count == 0 ? 1 : all.Max(GetId) + 1);
-        all.Add(item);
-        Save(all);
+        try
+        {
+            File.WriteAllText(_path, JsonSerializer.Serialize(all, Options));
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>One past the highest Id in <paramref name="existing"/>, or 1 when there are none.</summary>
+    public int NextId(IEnumerable<T> existing)
+    {
+        var ids = existing.Select(GetId).ToList();
+        return ids.Count == 0 ? 1 : ids.Max() + 1;
+    }
+
+    /// <summary>A new record with its Id already assigned.</summary>
+    public T NewItem(IEnumerable<T> existing)
+    {
+        var item = new T();
+        IdProperty.SetValue(item, NextId(existing));
         return item;
     }
-
-    public bool Update(T item)
-    {
-        var all = GetAll();
-        var id = GetId(item);
-        var index = all.FindIndex(x => GetId(x) == id);
-        if (index < 0)
-            return false;
-        all[index] = item;
-        Save(all);
-        return true;
-    }
-
-    public bool Delete(int id)
-    {
-        var all = GetAll();
-        if (all.RemoveAll(x => GetId(x) == id) == 0)
-            return false;
-        Save(all);
-        return true;
-    }
-
-    private void Save(List<T> all) =>
-        File.WriteAllText(_path, JsonSerializer.Serialize(all, Options));
 
     private static PropertyInfo IdProperty =>
         typeof(T).GetProperty("Id",
@@ -67,8 +76,6 @@ public sealed class JsonStore<T> where T : new()
             ?? throw new InvalidOperationException(typeof(T).Name + " has no Id property.");
 
     private static int GetId(T item) => (int)(IdProperty.GetValue(item) ?? 0);
-
-    private static void SetId(T item, int id) => IdProperty.SetValue(item, id);
 }
 """;
 }

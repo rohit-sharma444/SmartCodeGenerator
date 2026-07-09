@@ -13,10 +13,21 @@ public sealed class EntityHarvester : IEntityHarvester
 {
     /// <summary>
     /// A whole article's vocabulary is far too much to review or generate classes from, so only
-    /// the most-mentioned nouns are kept. This also strands content-word noise (adjectives,
-    /// adverbs), which prose mentions once or twice at most.
+    /// the most-mentioned nouns are kept.
     /// </summary>
     public const int DefaultMaxEntities = 20;
+
+    /// <summary>
+    /// Mentions a noun needs before it counts as a domain concept.
+    /// <para>
+    /// The cap alone does not strand content-word noise: a short article's counts are almost
+    /// flat (the Recipe article peaks at 13 and then everything ties at 2), so a cap of 20
+    /// admits every noun mentioned twice and lets one-off prose words ("Coquinaria",
+    /// "Appetizer") backfill whatever room is left. An article names its real subjects
+    /// repeatedly, so requiring a second mention is what actually separates them.
+    /// </para>
+    /// </summary>
+    public const int DefaultMinMentions = 2;
 
     /// <summary>
     /// Shortest name that can be a domain entity. Tokenizing prose leaves fragments behind
@@ -25,20 +36,24 @@ public sealed class EntityHarvester : IEntityHarvester
     /// </summary>
     private const int MinNameLength = 3;
 
-    private static readonly EntityType[] EntityTypes =
-    {
-        EntityType.Object,
-        EntityType.Person,
-        EntityType.Organization,
-        EntityType.Location
-    };
+    /// <summary>
+    /// Only common nouns. <c>EntityRecognizer</c> falls back to <see cref="EntityType.Person"/>
+    /// for any capitalized head noun, so an encyclopedia article's prose yields Athenaeus,
+    /// Greek, Latin, Babylonia — proper nouns naming particular things, never domain classes.
+    /// Organization and Location are excluded for the same reason.
+    /// </summary>
+    private static readonly EntityType[] EntityTypes = { EntityType.Object };
 
     private readonly int _maxEntities;
+    private readonly int _minMentions;
 
-    public EntityHarvester(int maxEntities = DefaultMaxEntities)
+    public EntityHarvester(
+        int maxEntities = DefaultMaxEntities, int minMentions = DefaultMinMentions)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(maxEntities, 1);
+        ArgumentOutOfRangeException.ThrowIfLessThan(minMentions, 1);
         _maxEntities = maxEntities;
+        _minMentions = minMentions;
     }
 
     public CandidateDomainModel Harvest(SemanticResult analysis)
@@ -66,45 +81,25 @@ public sealed class EntityHarvester : IEntityHarvester
 
         var max = counts.Values.Max();
 
-        // 2. Frequency-ranked entities with normalized confidence, capped.
+        // 2. Frequency-ranked entities with normalized confidence, floored and capped.
         foreach (var (name, count) in counts
+            .Where(kv => kv.Value >= _minMentions)
             .OrderByDescending(kv => kv.Value)
             .ThenBy(kv => kv.Key)
             .Take(_maxEntities))
         {
-            model.Entities.Add(new CandidateEntity
-            {
-                Name = name,
-                Provenance = Provenance.Wiki,
-                Confidence = (double)count / max
-            });
+            model.Entities.Add(DefaultFields.ApplyTo(
+                new CandidateEntity
+                {
+                    Name = name,
+                    Provenance = Provenance.Wiki,
+                    Confidence = (double)count / max
+                },
+                Provenance.Wiki));
         }
 
-        // 3. Attribute targets of relationships become typed fields.
-        foreach (var rel in analysis.Relationships)
-        {
-            if (rel.Source is null || rel.Target is null || rel.Target.Type != EntityType.Attribute)
-                continue;
-
-            var ownerName = NameNormalizer.ToEntityName(rel.Source.Text);
-            var owner = model.Entities.FirstOrDefault(
-                e => string.Equals(e.Name, ownerName, StringComparison.OrdinalIgnoreCase));
-            if (owner is null)
-                continue;
-
-            var fieldName = NameNormalizer.ToEntityName(rel.Target.Text);
-            if (fieldName.Length == 0
-                || owner.Fields.Any(f => string.Equals(f.Name, fieldName, StringComparison.OrdinalIgnoreCase)))
-                continue;
-
-            owner.Fields.Add(new CandidateField
-            {
-                Name = fieldName,
-                Type = TypeInference.Infer(fieldName),
-                Provenance = Provenance.Wiki
-            });
-        }
-
+        // Fields are not harvested. The NLE never tags an entity Attribute, so the
+        // relationship-walk that used to live here could never fire; see DefaultFields.
         return model;
     }
 }

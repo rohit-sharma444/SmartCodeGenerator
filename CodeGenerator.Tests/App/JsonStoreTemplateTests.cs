@@ -6,15 +6,42 @@ namespace CodeGenerator.Tests.App;
 public class JsonStoreTemplateTests
 {
     [TestMethod]
-    public void Source_EmitsGenericStoreInGeneratedCodeNamespace()
+    public void Source_EmitsGenericStoreInTheGivenNamespace()
     {
-        var source = JsonStoreTemplate.Source();
+        var source = JsonStoreTemplate.Source("Payroll.Data");
 
-        StringAssert.Contains(source, "namespace GeneratedCode");
+        StringAssert.Contains(source, "namespace Payroll.Data");
         StringAssert.Contains(source, "class JsonStore<T>");
-        StringAssert.Contains(source, "public T Add(T item)");
-        StringAssert.Contains(source, "public bool Update(T item)");
-        StringAssert.Contains(source, "public bool Delete(int id)");
         StringAssert.Contains(source, "AppContext.BaseDirectory");
+    }
+
+    [TestMethod]
+    public void Source_ExposesTheBatchEditingSurface()
+    {
+        var source = JsonStoreTemplate.Source("Payroll.Data");
+
+        StringAssert.Contains(source, "public List<T> GetAll()");
+        StringAssert.Contains(source, "public bool SaveAll(List<T> all)");
+        StringAssert.Contains(source, "public int NextId(IEnumerable<T> existing)");
+        StringAssert.Contains(source, "public T NewItem(IEnumerable<T> existing)");
+    }
+
+    [TestMethod]
+    public void Source_DropsThePerRecordConsoleSurface()
+    {
+        var source = JsonStoreTemplate.Source("Payroll.Data");
+
+        Assert.IsFalse(source.Contains("public T Add(T item)"), "Add is dead code in a grid app");
+        Assert.IsFalse(source.Contains("public bool Update(T item)"), "Update is dead code in a grid app");
+        Assert.IsFalse(source.Contains("public bool Delete(int id)"), "Delete is dead code in a grid app");
+    }
+
+    [TestMethod]
+    public void Source_SurvivesACorruptStoreInsteadOfCrashingTheWindow()
+    {
+        var source = JsonStoreTemplate.Source("Payroll.Data");
+
+        StringAssert.Contains(source, "JsonException");
+        StringAssert.Contains(source, "UnauthorizedAccessException");
     }
 }

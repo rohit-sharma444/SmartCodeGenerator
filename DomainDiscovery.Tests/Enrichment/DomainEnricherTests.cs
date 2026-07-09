@@ -17,9 +17,12 @@ public class DomainEnricherTests
         var seed = new CandidateDomainModel();
         seed.Entities.Add(new CandidateEntity { Name = "Book", Provenance = Provenance.Seed });
 
+        // Twice each: the harvester ignores nouns an article mentions only once.
         var analysis = new SemanticResult();
         analysis.Entities.Add(Ent("loan", EntityType.Object));   // new, from wiki
+        analysis.Entities.Add(Ent("loan", EntityType.Object));
         analysis.Entities.Add(Ent("book", EntityType.Object));   // dup of seed
+        analysis.Entities.Add(Ent("book", EntityType.Object));
 
         var client = new FakeWikipediaClient();
         client.Extracts["Library"] = "ignored - stub analyzer drives output";
