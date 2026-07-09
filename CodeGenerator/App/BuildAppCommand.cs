@@ -79,7 +79,7 @@ internal sealed class BuildAppCommand
                     {
                         Console.WriteLine($"Generated project at {scaffold.ProjectPath}");
                         foreach (var file in scaffold.FilesWritten)
-                            Console.WriteLine($"  {Path.GetFileName(file)}");
+                            Console.WriteLine($"  {Path.GetRelativePath(scaffold.ProjectPath, file)}");
                     }
                     else
                     {
