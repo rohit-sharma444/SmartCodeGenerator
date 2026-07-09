@@ -19,7 +19,7 @@ internal class CodeGeneratorStarter
     private List<PropertyRule> _configuredRules = [];
     private List<string> _currentSuggestions = [];
     private readonly List<string> _commandHistory = [];
-    private readonly string _encryptedHistoryPath;
+    private readonly string _historyPath;
     private const string HISTORY_FILENAME = ".codegen_history";
 
     private readonly NaturalLanguagePipeline _pipeline = new();
@@ -29,7 +29,7 @@ internal class CodeGeneratorStarter
     {
         _workspaceRoot = ResolveWorkspaceRoot();
 
-        _encryptedHistoryPath = Path.Combine(_workspaceRoot, HISTORY_FILENAME);
+        _historyPath = Path.Combine(_workspaceRoot, HISTORY_FILENAME);
 
         LoadConfiguredRules();
 
@@ -46,8 +46,7 @@ internal class CodeGeneratorStarter
         // CG_NO_LEARN, but this init still loads the file regardless.
         LearnedIntentStore.Initialize(_workspaceRoot);
 
-        // Load encrypted command history from file
-        LoadEncryptedCommandHistory();
+        LoadCommandHistory();
     }
 
     private static IReadOnlyList<CommandInfo> GetCommandHints(string input)
@@ -131,7 +130,7 @@ internal class CodeGeneratorStarter
             Console.Write("CodeGenerator >> ");
 
             var editor = new CommandLineEditor(
-                _commandHistory, _encryptedHistoryPath);
+                _commandHistory, _historyPath);
 
 
             var input = editor.ReadCommand();
@@ -620,18 +619,9 @@ internal class CodeGeneratorStarter
         }
     }
 
-    private void LoadEncryptedCommandHistory()
+    private void LoadCommandHistory()
     {
-        try
-        {
-            var decrypted = FileEncryption.ReadDecryptedLines(_encryptedHistoryPath);
-            _commandHistory.Clear();
-            _commandHistory.AddRange(decrypted);
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Warning: Failed to load command history: {ex.Message}");
-            _commandHistory.Clear();
-        }
+        _commandHistory.Clear();
+        _commandHistory.AddRange(CommandHistoryFile.ReadLines(_historyPath));
     }
 }
