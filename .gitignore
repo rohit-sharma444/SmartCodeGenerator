@@ -45,3 +45,7 @@ artifacts/
 # OS
 .DS_Store
 Thumbs.db
+
+# Smart Code Generator
+.codegen_history
+.dd-cache/

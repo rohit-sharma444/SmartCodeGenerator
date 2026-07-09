@@ -1,8 +1,6 @@
 using CodeGenerationEngine.Core;
 using CodeGenerationEngine.Helper;
 using CodeGenerationEngine.Models;
-using CodeGenerationEngine.Service;
-using Microsoft.CodeAnalysis;
 using NaturalLanguageBridge;
 using System.Text.Json;
 
@@ -17,9 +15,8 @@ internal class CodeGeneratorStarter
     private string _workspaceRoot = string.Empty;
 
     private List<PropertyRule> _configuredRules = [];
-    private List<string> _currentSuggestions = [];
     private readonly List<string> _commandHistory = [];
-    private readonly string _encryptedHistoryPath;
+    private readonly string _historyPath;
     private const string HISTORY_FILENAME = ".codegen_history";
 
     private readonly NaturalLanguagePipeline _pipeline = new();
@@ -29,7 +26,7 @@ internal class CodeGeneratorStarter
     {
         _workspaceRoot = ResolveWorkspaceRoot();
 
-        _encryptedHistoryPath = Path.Combine(_workspaceRoot, HISTORY_FILENAME);
+        _historyPath = Path.Combine(_workspaceRoot, HISTORY_FILENAME);
 
         LoadConfiguredRules();
 
@@ -46,25 +43,7 @@ internal class CodeGeneratorStarter
         // CG_NO_LEARN, but this init still loads the file regardless.
         LearnedIntentStore.Initialize(_workspaceRoot);
 
-        // Load encrypted command history from file
-        LoadEncryptedCommandHistory();
-    }
-
-    private static IReadOnlyList<CommandInfo> GetCommandHints(string input)
-    {
-        if (string.IsNullOrWhiteSpace(input))
-            return CommandDictionary.Commands.Take(10).ToList();
-
-        input = input.Trim();
-
-        return CommandDictionary.Commands
-            .Where(c =>
-                c.Command.Contains(
-                    input,
-                    StringComparison.OrdinalIgnoreCase))
-            .OrderBy(c => c.Command)
-            .Take(10)
-            .ToList();
+        LoadCommandHistory();
     }
 
     /// <summary>
@@ -131,7 +110,7 @@ internal class CodeGeneratorStarter
             Console.Write("CodeGenerator >> ");
 
             var editor = new CommandLineEditor(
-                _commandHistory, _encryptedHistoryPath);
+                _commandHistory, _historyPath);
 
 
             var input = editor.ReadCommand();
@@ -185,328 +164,6 @@ internal class CodeGeneratorStarter
                 }
             }
         }
-
-        // Save history before exiting
-        try
-        {
-            // Optional: Save any pending state
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Warning: Failed to save state on exit: {ex.Message}");
-        }
-    }
-
-    //private string ReadCommandWithHistory()
-    //{
-    //    var buffer = new List<char>();
-    //    var cursorPosition = 0;
-
-    //    _historyIndex = _commandHistory.Count;
-
-    //    _currentSuggestions.Clear();
-    //    _suggestionIndex = -1;
-
-    //    while (true)
-    //    {
-    //        var key = Console.ReadKey(intercept: true);
-
-    //        switch (key.Key)
-    //        {
-    //            case ConsoleKey.Enter:
-    //                {
-    //                    var result = new string(buffer.ToArray());
-
-    //                    Console.WriteLine();
-
-    //                    if (!string.IsNullOrWhiteSpace(result) &&
-    //                        (_commandHistory.Count == 0 ||
-    //                         !_commandHistory[^1].Equals(
-    //                             result,
-    //                             StringComparison.Ordinal)))
-    //                    {
-    //                        _commandHistory.Add(result);
-
-    //                        try
-    //                        {
-    //                            FileEncryption.AppendEncryptedLine(
-    //                                _encryptedHistoryPath,
-    //                                result);
-    //                        }
-    //                        catch
-    //                        {
-    //                            // Ignore history persistence failures
-    //                        }
-    //                    }
-
-    //                    return result;
-    //                }
-
-    //            case ConsoleKey.Tab:
-    //                {
-    //                    var currentText =
-    //                        new string(buffer.ToArray());
-
-    //                    if (_currentSuggestions.Count == 0)
-    //                    {
-    //                        _currentSuggestions =
-    //                            GetCommandHints(currentText)
-    //                                .ToList();
-
-    //                        _suggestionIndex = -1;
-    //                    }
-
-    //                    if (_currentSuggestions.Count > 0)
-    //                    {
-    //                        _suggestionIndex++;
-
-    //                        if (_suggestionIndex >=
-    //                            _currentSuggestions.Count)
-    //                        {
-    //                            _suggestionIndex = 0;
-    //                        }
-
-    //                        var suggestion =
-    //                            _currentSuggestions[
-    //                                _suggestionIndex];
-
-    //                        buffer = suggestion.ToList();
-    //                        cursorPosition = buffer.Count;
-    //                    }
-
-    //                    break;
-    //                }
-
-    //            case ConsoleKey.Escape:
-    //                {
-    //                    _currentSuggestions.Clear();
-    //                    _suggestionIndex = -1;
-    //                    break;
-    //                }
-
-    //            case ConsoleKey.LeftArrow:
-    //                {
-    //                    ResetSuggestions();
-
-    //                    if ((key.Modifiers &
-    //                         ConsoleModifiers.Control) != 0)
-    //                    {
-    //                        cursorPosition =
-    //                            FindPreviousWord(
-    //                                buffer,
-    //                                cursorPosition);
-    //                    }
-    //                    else if (cursorPosition > 0)
-    //                    {
-    //                        cursorPosition--;
-    //                    }
-
-    //                    break;
-    //                }
-
-    //            case ConsoleKey.RightArrow:
-    //                {
-    //                    ResetSuggestions();
-
-    //                    if ((key.Modifiers &
-    //                         ConsoleModifiers.Control) != 0)
-    //                    {
-    //                        cursorPosition =
-    //                            FindNextWord(
-    //                                buffer,
-    //                                cursorPosition);
-    //                    }
-    //                    else if (cursorPosition < buffer.Count)
-    //                    {
-    //                        cursorPosition++;
-    //                    }
-
-    //                    break;
-    //                }
-
-    //            case ConsoleKey.Home:
-    //                {
-    //                    ResetSuggestions();
-    //                    cursorPosition = 0;
-    //                    break;
-    //                }
-
-    //            case ConsoleKey.End:
-    //                {
-    //                    ResetSuggestions();
-    //                    cursorPosition = buffer.Count;
-    //                    break;
-    //                }
-
-    //            case ConsoleKey.Backspace:
-    //                {
-    //                    ResetSuggestions();
-
-    //                    if (cursorPosition > 0)
-    //                    {
-    //                        buffer.RemoveAt(cursorPosition - 1);
-    //                        cursorPosition--;
-    //                    }
-
-    //                    break;
-    //                }
-
-    //            case ConsoleKey.Delete:
-    //                {
-    //                    ResetSuggestions();
-
-    //                    if (cursorPosition < buffer.Count)
-    //                    {
-    //                        buffer.RemoveAt(cursorPosition);
-    //                    }
-
-    //                    break;
-    //                }
-
-    //            case ConsoleKey.UpArrow:
-    //                {
-    //                    ResetSuggestions();
-
-    //                    if (_commandHistory.Count == 0)
-    //                        break;
-
-    //                    _historyIndex =
-    //                        Math.Max(
-    //                            0,
-    //                            _historyIndex - 1);
-
-    //                    buffer =
-    //                        _commandHistory[_historyIndex]
-    //                            .ToList();
-
-    //                    cursorPosition =
-    //                        buffer.Count;
-
-    //                    break;
-    //                }
-
-    //            case ConsoleKey.DownArrow:
-    //                {
-    //                    ResetSuggestions();
-
-    //                    if (_commandHistory.Count == 0)
-    //                        break;
-
-    //                    _historyIndex =
-    //                        Math.Min(
-    //                            _commandHistory.Count,
-    //                            _historyIndex + 1);
-
-    //                    var historyText =
-    //                        _historyIndex ==
-    //                        _commandHistory.Count
-    //                            ? string.Empty
-    //                            : _commandHistory[
-    //                                _historyIndex];
-
-    //                    buffer = historyText.ToList();
-
-    //                    cursorPosition =
-    //                        buffer.Count;
-
-    //                    break;
-    //                }
-
-    //            default:
-    //                {
-    //                    if (!char.IsControl(key.KeyChar))
-    //                    {
-    //                        ResetSuggestions();
-
-    //                        buffer.Insert(
-    //                            cursorPosition,
-    //                            key.KeyChar);
-
-    //                        cursorPosition++;
-    //                    }
-
-    //                    break;
-    //                }
-    //        }
-
-    //        RewriteCurrentLine(
-    //            new string(buffer.ToArray()),
-    //            cursorPosition);
-    //    }
-    //}
-
-    private void ResetSuggestions()
-    {
-        _currentSuggestions.Clear();
-    }
-
-    private static void RewriteCurrentLine(string text, int cursorPosition)
-    {
-        const string prompt = "CodeGenerator >> ";
-
-        int currentTop = Console.CursorTop;
-
-        Console.SetCursorPosition(0, currentTop);
-        Console.Write(new string(' ', Console.BufferWidth - 1));
-        Console.SetCursorPosition(0, currentTop);
-        Console.Write(prompt);
-        Console.Write(text);
-
-        var hints = GetCommandHints(text);
-
-        if (hints.Count > 0 && !hints.Any(h =>
-                h.Command.Equals(text, StringComparison.OrdinalIgnoreCase)))
-        {
-            Console.ForegroundColor = ConsoleColor.DarkGray;
-            Console.WriteLine();
-            Console.WriteLine("Suggestions:");
-
-            foreach (var hint in hints)
-                Console.WriteLine($"  {hint}");
-
-            Console.ResetColor();
-        }
-
-        int targetLeft = prompt.Length + cursorPosition;
-
-        if (targetLeft >= Console.BufferWidth)
-            targetLeft = Console.BufferWidth - 1;
-
-        Console.SetCursorPosition(targetLeft, currentTop);
-    }
-
-    private static int FindPreviousWord(IReadOnlyList<char> buffer, int position)
-    {
-        position--;
-
-        while (position > 0 &&
-               char.IsWhiteSpace(buffer[position]))
-        {
-            position--;
-        }
-
-        while (position > 0 &&
-               !char.IsWhiteSpace(buffer[position - 1]))
-        {
-            position--;
-        }
-
-        return Math.Max(0, position);
-    }
-
-    private static int FindNextWord(IReadOnlyList<char> buffer, int position)
-    {
-        while (position < buffer.Count && !char.IsWhiteSpace(buffer[position]))
-        {
-            position++;
-        }
-
-        while (position < buffer.Count && char.IsWhiteSpace(buffer[position]))
-        {
-            position++;
-        }
-
-        return position;
     }
 
     private void PrintHeader()
@@ -520,36 +177,6 @@ internal class CodeGeneratorStarter
         Console.WriteLine("Press TAB for command suggestions.");
         Console.WriteLine("Type 'exit' to quit the application.");
         Console.WriteLine();
-    }
-
-    internal (string code, ParsedCommand parsed) BuildDemo()
-    {
-        var customer = new ClassDefinition
-        {
-            Name = "Customer",
-            Properties =
-            [
-                new PropertyDefinition { Name = "Id", Type = "int" },
-                new PropertyDefinition { Name = "Name", Type = "string" },
-                new PropertyDefinition { Name = "Email", Type = "string" }
-            ],
-            Methods = new List<MethodDefinition>
-            {
-                new MethodDefinition { Name = "Save", ReturnType = "void" },
-                new MethodDefinition { Name = "Validate", ReturnType = "bool" }
-            }
-        };
-
-        var code = RoslynClassGenerator.Generate(customer);
-        var parsed = new ParsedCommand
-        {
-            Intent = IntentType.CreateClass,
-            ClassName = customer.Name,
-            Properties = customer.Properties,
-            Methods = customer.Methods
-        };
-
-        return (code, parsed);
     }
 
     private void LoadConfiguredRules()
@@ -620,18 +247,9 @@ internal class CodeGeneratorStarter
         }
     }
 
-    private void LoadEncryptedCommandHistory()
+    private void LoadCommandHistory()
     {
-        try
-        {
-            var decrypted = FileEncryption.ReadDecryptedLines(_encryptedHistoryPath);
-            _commandHistory.Clear();
-            _commandHistory.AddRange(decrypted);
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Warning: Failed to load command history: {ex.Message}");
-            _commandHistory.Clear();
-        }
+        _commandHistory.Clear();
+        _commandHistory.AddRange(CommandHistoryFile.ReadLines(_historyPath));
     }
 }

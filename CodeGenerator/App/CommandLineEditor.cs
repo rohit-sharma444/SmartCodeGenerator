@@ -1,4 +1,5 @@
 ﻿using CodeGenerationEngine.Core;
+using CodeGenerationEngine.Helper;
 using CodeGenerationEngine.Models;
 
 namespace CodeGenerator.App;
@@ -151,10 +152,11 @@ internal sealed class CommandLineEditor
 
             try
             {
-                FileEncryption.AppendEncryptedLine(_historyFile, command);
+                CommandHistoryFile.AppendLine(_historyFile, command);
             }
-            catch
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
+                // History is a convenience; never fail a command over it.
             }
         }
 
@@ -175,12 +177,11 @@ internal sealed class CommandLineEditor
 
             try
             {
-                FileEncryption.AppendEncryptedLine(
-                    _historyFile,
-                    command);
+                CommandHistoryFile.AppendLine(_historyFile, command);
             }
-            catch
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
+                // History is a convenience; never fail a command over it.
             }
         }
 
