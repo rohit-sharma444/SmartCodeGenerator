@@ -10,22 +10,24 @@ public static class DomainModelMapper
     private const string DisambiguatingSuffix = "Item";
 
     /// <summary>
-    /// Identifiers already in scope in the generated <c>Program.cs</c>, which does
-    /// <c>using System;</c> alongside <c>using GeneratedCode;</c>. An entity class sharing one of
-    /// these names makes every use of it ambiguous (CS0104), so the entity is renamed instead.
+    /// Identifiers already in scope in the generated app's own sources. An entity class
+    /// sharing one of these names makes uses of it ambiguous, or silently binds to the
+    /// wrong type, so the entity is renamed instead.
     /// C# keywords need no guard: entity names arrive PascalCased and keywords are lowercase.
     /// </summary>
     private static readonly HashSet<string> ReservedNames = new(StringComparer.OrdinalIgnoreCase)
     {
-        // Types the generated Program.cs / JsonStore.cs reference by simple name.
-        "Console", "Convert", "Type", "TypeDescriptor", "PropertyInfo", "Crud", "JsonStore", "Program",
+        // Types the generated app declares or references by simple name.
+        "App", "Application", "MainWindow", "Window", "MainViewModel", "EntityViewModel",
+        "IEntityViewModel", "ObservableObject", "RelayCommand", "ICommand", "JsonStore",
+        "DataGrid", "TabControl", "ObservableCollection",
 
         // Commonly harvested words that are also System types.
         "Activator", "Array", "Attribute", "Buffer", "Comparer", "Convert", "Delegate",
         "Enum", "Environment", "Exception", "Guid", "Index", "Math", "Object", "Random",
         "Range", "String", "Task", "Timer", "Tuple", "Uri", "Version",
         "Boolean", "Byte", "Char", "DateTime", "Decimal", "Double", "Int16", "Int32", "Int64",
-        "Single", "TimeSpan",
+        "Single", "TimeSpan", "Type", "PropertyInfo",
 
         // System.IO / System.Collections names pulled in by the templates.
         "Directory", "File", "Path", "Stream", "Dictionary", "List", "Queue", "Stack",

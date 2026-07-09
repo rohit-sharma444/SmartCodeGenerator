@@ -21,13 +21,27 @@ public class DomainModelMapperTests
     [TestMethod]
     public void ToClassDefinitions_RenamesEntities_ThatCollideWithTypesUsedByGeneratedCode()
     {
-        // The generated Program.cs does `using System;` alongside `using GeneratedCode;`,
-        // so a class named Type/Console/Convert makes those references ambiguous (CS0104).
+        // Entities land in <App>.Models, but a name shared with a type the generated
+        // app declares or imports by simple name binds to the wrong type.
         var classes = DomainModelMapper.ToClassDefinitions(
-            ModelOf("Type", "Console", "Convert", "JsonStore", "Crud"));
+            ModelOf("Type", "Convert", "JsonStore", "Window"));
 
         CollectionAssert.AreEqual(
-            new[] { "TypeItem", "ConsoleItem", "ConvertItem", "JsonStoreItem", "CrudItem" },
+            new[] { "TypeItem", "ConvertItem", "JsonStoreItem", "WindowItem" },
+            classes.Select(c => c.Name).ToList());
+    }
+
+    [TestMethod]
+    public void ToClassDefinitions_RenamesEntitiesThatCollideWithGeneratedWpfTypes()
+    {
+        // `new EntityViewModel<EntityViewModel>(...)` would bind its type argument to
+        // the view model rather than the model, since the current namespace beats a
+        // using-imported one. `Application` is both a common noun and System.Windows.Application.
+        var classes = DomainModelMapper.ToClassDefinitions(
+            ModelOf("Application", "MainWindow", "EntityViewModel", "RelayCommand"));
+
+        CollectionAssert.AreEqual(
+            new[] { "ApplicationItem", "MainWindowItem", "EntityViewModelItem", "RelayCommandItem" },
             classes.Select(c => c.Name).ToList());
     }
 
@@ -119,12 +133,12 @@ public class DomainModelMapperTests
     {
         var model = new CandidateDomainModel();
         model.Entities.Add(new CandidateEntity { Name = "Payroll" });
-        model.Entities.Add(new CandidateEntity { Name = "Application" });
+        model.Entities.Add(new CandidateEntity { Name = "Deduction" });
 
         var classes = DomainModelMapper.ToClassDefinitions(model);
 
         CollectionAssert.AreEqual(
-            new[] { "Payroll", "Application" },
+            new[] { "Payroll", "Deduction" },
             classes.Select(c => c.Name).ToList());
     }
 }
