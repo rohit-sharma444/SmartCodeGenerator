@@ -5,46 +5,40 @@ using DomainDiscovery.Model;
 
 namespace AppScaffolding;
 
-/// <summary>Generates a .NET project and one C# class file per domain entity.</summary>
+/// <summary>Generates a WPF project and one C# class file per domain entity.</summary>
 public sealed class AppScaffolder
 {
     /// <summary>
-    /// Writes one <c>&lt;Name&gt;.cs</c> per class into <paramref name="outputFolder"/>.
-    /// Best-effort: a file that cannot be written is skipped and the rest continue.
-    /// Returns the paths successfully written.
+    /// Writes one <c>&lt;Name&gt;.cs</c> per class into <paramref name="outputFolder"/>,
+    /// declaring <paramref name="namespaceName"/>. Best-effort: a file that cannot be
+    /// written is skipped and the rest continue. Returns the paths successfully written.
     /// </summary>
     public IReadOnlyList<string> WriteClasses(
-        string outputFolder, IReadOnlyList<ClassDefinition> classes)
+        string outputFolder, IReadOnlyList<ClassDefinition> classes, string namespaceName)
     {
         Directory.CreateDirectory(outputFolder);
 
         var written = new List<string>();
         foreach (var definition in classes)
         {
-            try
-            {
-                var source = RoslynClassGenerator.Generate(definition);
-                var path = Path.Combine(outputFolder, definition.Name + ".cs");
-                File.WriteAllText(path, source);
+            var source = RoslynClassGenerator.Generate(definition, namespaceName);
+            var path = WriteSource(outputFolder, definition.Name + ".cs", source);
+            if (path is not null)
                 written.Add(path);
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                // Skip this file; remaining classes are still written.
-            }
         }
 
         return written;
     }
 
     /// <summary>
-    /// Best-effort write of one source file into <paramref name="outputFolder"/>.
-    /// Returns the path on success, or null if it could not be written.
+    /// Best-effort write of one source file into <paramref name="outputFolder"/>, creating
+    /// the folder if needed. Returns the path on success, or null if it could not be written.
     /// </summary>
     private static string? WriteSource(string outputFolder, string fileName, string source)
     {
         try
         {
+            Directory.CreateDirectory(outputFolder);
             var path = Path.Combine(outputFolder, fileName);
             File.WriteAllText(path, source);
             return path;
@@ -56,9 +50,9 @@ public sealed class AppScaffolder
     }
 
     /// <summary>
-    /// Creates a console project named <paramref name="appName"/> under
-    /// <paramref name="workspaceRoot"/> (reusing it if it already exists) and
-    /// writes one class per entity in <paramref name="model"/>.
+    /// Creates a WPF project named <paramref name="appName"/> under
+    /// <paramref name="workspaceRoot"/> (reusing it if it already exists) and writes a
+    /// foldered, runnable CRUD app over the entities in <paramref name="model"/>.
     /// </summary>
     public ScaffoldResult Scaffold(
         CandidateDomainModel model, string appName, string workspaceRoot)
@@ -73,7 +67,7 @@ public sealed class AppScaffolder
             {
                 ProjectName = appName,
                 OutputFolder = outputFolder,
-                ProjectType = DotNetProjectType.Console,
+                ProjectType = DotNetProjectType.Wpf,
                 Framework = "net10.0"
             });
 
@@ -81,28 +75,47 @@ public sealed class AppScaffolder
                 return new ScaffoldResult(
                     false, outputFolder, Array.Empty<string>(),
                     $"Project creation failed: {created.Message}");
+
+            // Only ever touches files this scaffolder just created: the reuse path
+            // above skips it, so a project the user has edited is left alone.
+            WpfProjectFixup.Apply(outputFolder);
         }
 
-        var written = new List<string>(WriteClasses(outputFolder, classes));
-        int expected = classes.Count;
+        var modelsFolder = Path.Combine(outputFolder, "Models");
+        var dataFolder = Path.Combine(outputFolder, "Data");
+        var viewModelsFolder = Path.Combine(outputFolder, "ViewModels");
+        var viewsFolder = Path.Combine(outputFolder, "Views");
 
-        // Support files that make the project a runnable CRUD app.
-        var storePath = WriteSource(outputFolder, "JsonStore.cs", JsonStoreTemplate.Source("GeneratedCode"));
-        if (storePath is not null)
-            written.Add(storePath);
-        expected++;
+        var written = new List<string>(
+            WriteClasses(modelsFolder, classes, $"{appName}.Models"));
+        var expected = classes.Count;
 
-        var programPath = WriteSource(
-            outputFolder, "Program.cs",
-            ProgramTemplate.Build(classes.Select(c => c.Name).ToList()));
-        if (programPath is not null)
-            written.Add(programPath);
-        expected++;
+        var entityNames = classes.Select(c => c.Name).ToList();
 
-        bool allWritten = written.Count == expected;
+        var files = new (string Folder, string Name, string Source)[]
+        {
+            (dataFolder, "JsonStore.cs", JsonStoreTemplate.Source($"{appName}.Data")),
+            (viewModelsFolder, "ObservableObject.cs", ViewModelTemplates.ObservableObject(appName)),
+            (viewModelsFolder, "RelayCommand.cs", ViewModelTemplates.RelayCommand(appName)),
+            (viewModelsFolder, "IEntityViewModel.cs", ViewModelTemplates.EntityViewModelInterface(appName)),
+            (viewModelsFolder, "EntityViewModel.cs", ViewModelTemplates.EntityViewModel(appName)),
+            (viewModelsFolder, "MainViewModel.cs", MainViewModelTemplate.Build(appName, entityNames)),
+            (viewsFolder, "MainWindow.xaml", MainWindowTemplate.Xaml(appName)),
+            (viewsFolder, "MainWindow.xaml.cs", MainWindowTemplate.CodeBehind(appName)),
+        };
+
+        foreach (var (folder, name, source) in files)
+        {
+            expected++;
+            var path = WriteSource(folder, name, source);
+            if (path is not null)
+                written.Add(path);
+        }
+
+        var allWritten = written.Count == expected;
 
         var message = allWritten
-            ? $"Generated {classes.Count} class(es) + a runnable CRUD app."
+            ? $"Generated {classes.Count} class(es) + a runnable WPF CRUD app."
             : $"Generated {written.Count} of {expected} file(s); " +
               "some files could not be written.";
 
