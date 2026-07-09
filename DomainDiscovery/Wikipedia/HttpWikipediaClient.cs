@@ -12,13 +12,35 @@ public sealed class HttpWikipediaClient : IWikipediaClient
 {
     private const string ApiBase = "https://en.wikipedia.org/w/api.php";
 
+    /// <summary>
+    /// Applied in place of <see cref="HttpClient"/>'s own 100-second default. Discovery
+    /// issues a search per seed name plus an extract, so an unreachable Wikipedia would
+    /// otherwise freeze `build app:` for minutes with nothing on screen.
+    /// </summary>
+    public static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(10);
+
     private readonly WikipediaCache _cache;
     private readonly HttpClient _http;
 
-    public HttpWikipediaClient(string cacheDirectory, HttpClient? http = null)
+    /// <param name="timeout">
+    /// Per-request timeout. Defaults to <see cref="DefaultTimeout"/> when this client
+    /// creates its own <see cref="HttpClient"/>; an injected client keeps whatever
+    /// timeout its owner configured unless one is passed here.
+    /// </param>
+    public HttpWikipediaClient(
+        string cacheDirectory, HttpClient? http = null, TimeSpan? timeout = null)
     {
         _cache = new WikipediaCache(cacheDirectory);
-        _http = http ?? new HttpClient();
+
+        if (http is null)
+            _http = new HttpClient { Timeout = timeout ?? DefaultTimeout };
+        else
+        {
+            _http = http;
+            if (timeout is not null)
+                _http.Timeout = timeout.Value;
+        }
+
         if (!_http.DefaultRequestHeaders.Contains("User-Agent"))
             _http.DefaultRequestHeaders.Add("User-Agent", "SmartCodeGenerator-DomainDiscovery/1.0");
     }
