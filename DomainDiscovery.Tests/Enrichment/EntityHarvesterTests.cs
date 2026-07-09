@@ -160,21 +160,18 @@ public class EntityHarvesterTests
     }
 
     [Fact]
-    public void Harvest_AttachesAttributeRelationships_AsTypedFields()
+    public void Harvest_GivesEveryEntity_AnEditableNameField()
     {
         var r = new SemanticResult();
-        var loan = Ent("loan", EntityType.Object);
-        var dueDate = Ent("due date", EntityType.Attribute);
-        r.Entities.Add(loan);
-        r.Entities.Add(dueDate);
-        r.Relationships.Add(new Relationship { Source = loan, Target = dueDate });
+        r.Entities.Add(Ent("loan", EntityType.Object));
+        r.Entities.Add(Ent("loan", EntityType.Object));
 
-        var model = new EntityHarvester(minMentions: 1).Harvest(r);
+        var model = new EntityHarvester().Harvest(r);
 
-        var entity = Assert.Single(model.Entities);
-        var field = Assert.Single(entity.Fields);
-        Assert.Equal("Date", field.Name);        // NameNormalizer takes the head word
-        Assert.Equal("DateTime", field.Type);
+        // Without it a scaffolded grid shows nothing but a read-only Id.
+        var field = Assert.Single(Assert.Single(model.Entities).Fields);
+        Assert.Equal("Name", field.Name);
+        Assert.Equal("string", field.Type);
         Assert.Equal(Provenance.Wiki, field.Provenance);
     }
 }

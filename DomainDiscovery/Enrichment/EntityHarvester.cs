@@ -88,39 +88,18 @@ public sealed class EntityHarvester : IEntityHarvester
             .ThenBy(kv => kv.Key)
             .Take(_maxEntities))
         {
-            model.Entities.Add(new CandidateEntity
-            {
-                Name = name,
-                Provenance = Provenance.Wiki,
-                Confidence = (double)count / max
-            });
+            model.Entities.Add(DefaultFields.ApplyTo(
+                new CandidateEntity
+                {
+                    Name = name,
+                    Provenance = Provenance.Wiki,
+                    Confidence = (double)count / max
+                },
+                Provenance.Wiki));
         }
 
-        // 3. Attribute targets of relationships become typed fields.
-        foreach (var rel in analysis.Relationships)
-        {
-            if (rel.Source is null || rel.Target is null || rel.Target.Type != EntityType.Attribute)
-                continue;
-
-            var ownerName = NameNormalizer.ToEntityName(rel.Source.Text);
-            var owner = model.Entities.FirstOrDefault(
-                e => string.Equals(e.Name, ownerName, StringComparison.OrdinalIgnoreCase));
-            if (owner is null)
-                continue;
-
-            var fieldName = NameNormalizer.ToEntityName(rel.Target.Text);
-            if (fieldName.Length == 0
-                || owner.Fields.Any(f => string.Equals(f.Name, fieldName, StringComparison.OrdinalIgnoreCase)))
-                continue;
-
-            owner.Fields.Add(new CandidateField
-            {
-                Name = fieldName,
-                Type = TypeInference.Infer(fieldName),
-                Provenance = Provenance.Wiki
-            });
-        }
-
+        // Fields are not harvested. The NLE never tags an entity Attribute, so the
+        // relationship-walk that used to live here could never fire; see DefaultFields.
         return model;
     }
 }

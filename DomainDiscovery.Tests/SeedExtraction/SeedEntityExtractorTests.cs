@@ -36,4 +36,18 @@ public class SeedEntityExtractorTests
 
         Assert.Single(model.Entities);
     }
+
+    [Fact]
+    public void Extract_GivesEveryEntity_AnEditableNameField()
+    {
+        var result = new SemanticResult();
+        result.Entities.Add(Ent("Book", EntityType.Object));
+
+        var model = new SeedEntityExtractor().Extract(result);
+
+        var field = Assert.Single(model.Entities[0].Fields);
+        Assert.Equal("Name", field.Name);
+        Assert.Equal("string", field.Type);
+        Assert.Equal(Provenance.Seed, field.Provenance);
+    }
 }
