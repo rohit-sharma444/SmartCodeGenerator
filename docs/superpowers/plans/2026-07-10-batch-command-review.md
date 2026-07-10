@@ -21,7 +21,7 @@
 - Every new public type and public member gets an XML `///` doc comment (issue #29 item 7). Inline comments only where they state a constraint the code cannot show.
 - Temp directories in tests follow the existing convention: `Path.Combine(Path.GetTempPath(), "<prefix>_" + Path.GetRandomFileName())`.
 - Scratch workspaces for manual end-to-end runs go under the session scratchpad directory, not `/tmp`.
-- The five-field `SemanticContext` capture/restore is implemented **once**, in `CodeGenerationEngine/Core/SemanticContextSnapshot.cs`, and used by both `BatchCommandDetector` and `WorkspaceSnapshot`. Do not inline a second copy.
+- Parsing mutates **two** process-wide singletons: `ContextManager.Current` (a `SemanticContext`, written by `SemanticAnalyzer.Analyze` via `ContextResolver.Resolve`) and the static `SessionContext` (written by `EntityExtractor.Extract` at `EntityExtractor.cs:39,:56`, read back at `:107`). Capture/restore of both is implemented **once**, in `CodeGenerationEngine/Core/ParsingStateSnapshot.cs`, and used by both `BatchCommandDetector` and `WorkspaceSnapshot`. Do not inline a second copy, and do not restore only one of the two.
 
 ## File Structure
 
@@ -31,6 +31,7 @@
 | `NaturalLanguageBridge/DetectedAction.cs` | The structured action record. |
 | `NaturalLanguageBridge/BatchCommandDetector.cs` | Sentences → `DetectedAction`s. No console, no disk. |
 | `NaturalLanguageBridge/ActionFormatter.cs` | `DetectedAction` → one display line. |
+| `CodeGenerationEngine/Core/ParsingStateSnapshot.cs` | Capture/restore both parsing singletons. Shared by detector and snapshot. |
 | `CodeGenerationEngine/Core/WorkspaceSnapshot.cs` | Capture/restore workspace, registry, in-memory context. |
 | `CodeGenerator/App/BatchCommand.cs` | Console glue: read block, review, snapshot, execute, roll back. |
 | `CodeGenerator/App/CodeGeneratorStarter.cs` | *Modified:* dispatch `batch`. |
@@ -202,142 +203,175 @@ Enter re-prompts rather than approving, and EOF cancels the batch."
 ### Task 2: DetectedAction and BatchCommandDetector
 
 **Files:**
-- Create: `CodeGenerationEngine/Core/SemanticContextSnapshot.cs`
+- Create: `CodeGenerationEngine/Core/ParsingStateSnapshot.cs`
 - Create: `NaturalLanguageBridge/DetectedAction.cs`
 - Create: `NaturalLanguageBridge/BatchCommandDetector.cs`
-- Test: `CodeGenerator.Tests/Core/SemanticContextSnapshotTests.cs`
+- Test: `CodeGenerator.Tests/Core/ParsingStateSnapshotTests.cs`
 - Test: `CodeGenerator.Tests/Bridge/BatchCommandDetectorTests.cs`
 
 **Interfaces:**
-- Consumes: `NlpActionProvider.GetPrimaryAction(string) -> string?` (existing); `CodeGenerationEngine.Core.SemanticAnalyzer.Analyze(string, string?) -> SemanticModel`; `CodeGenerationEngine.Core.IntentAnalyzer.DetectWithConfidence(SemanticModel) -> IntentMatch`; `CodeGenerationEngine.Core.EntityExtractor.Extract(SemanticModel, IntentType, string) -> ParsedCommand`; `CodeGenerationEngine.Core.ContextManager.Current -> SemanticContext`.
-- Produces: `CodeGenerationEngine.Core.SemanticContextSnapshot` with `static SemanticContextSnapshot Capture(SemanticContext)` and `void RestoreTo(SemanticContext)` — **Task 4 also consumes this**; `NaturalLanguageBridge.DetectedAction(string Sentence, IntentType Intent, double Confidence, ParsedCommand? Preview, string? Note)` with `bool IsActionable`; and `NaturalLanguageBridge.BatchCommandDetector.Detect(IEnumerable<string> lines, string workspaceRoot) -> IReadOnlyList<DetectedAction>`.
+- Consumes: `NlpActionProvider.GetPrimaryAction(string) -> string?` (existing); `CodeGenerationEngine.Core.SemanticAnalyzer.Analyze(string, string?) -> SemanticModel`; `CodeGenerationEngine.Core.IntentAnalyzer.DetectWithConfidence(SemanticModel) -> IntentMatch`; `CodeGenerationEngine.Core.EntityExtractor.Extract(SemanticModel, IntentType, string) -> ParsedCommand`; `CodeGenerationEngine.Core.ContextManager.Current -> SemanticContext`; `CodeGenerationEngine.Core.SessionContext` (static).
+- Produces: `CodeGenerationEngine.Core.ParsingStateSnapshot` with `static ParsingStateSnapshot Capture()` and `void Restore()` — **Task 4 also consumes this**; `NaturalLanguageBridge.DetectedAction(string Sentence, IntentType Intent, double Confidence, ParsedCommand? Preview, string? Note)` with `bool IsActionable`; and `NaturalLanguageBridge.BatchCommandDetector.Detect(IEnumerable<string> lines, string workspaceRoot) -> IReadOnlyList<DetectedAction>`.
 
-Background the implementer needs: `SemanticAnalyzer.Analyze` internally calls `ContextResolver.Resolve`, which writes `LastEntity` on the process-wide `ContextManager.Current`. `Detect` must therefore save and restore that context, or previewing a batch changes how the batch subsequently parses.
+Note: `IntentAnalyzer` is ambiguous — a second, unrelated `IntentAnalyzer` exists in namespace `CodeGenerationEngine.Models` (`Core/SemanticIntentAnalyzer.cs`). Fully qualify `CodeGenerationEngine.Core.IntentAnalyzer` at the call site, as existing tests already do.
 
-`SemanticContextSnapshot` is built here because detection needs it first. Task 4's `WorkspaceSnapshot` reuses the same type — do not write a second copy of the field list.
+Background the implementer needs: **parsing mutates two process-wide singletons.**
 
-- [ ] **Step 1a: Write the failing test for SemanticContextSnapshot**
+1. `SemanticAnalyzer.Analyze` calls `ContextResolver.Resolve`, which writes `LastEntity` on `ContextManager.Current`.
+2. `EntityExtractor.Extract` writes `SessionContext.CurrentClass` whenever a sentence names a class or interface (`EntityExtractor.cs:39`, `:56`) and reads it back as a fallback when a sentence names none (`:107`). `SessionContext.Clear()` is never called anywhere.
 
-Create `CodeGenerator.Tests/Core/SemanticContextSnapshotTests.cs`:
+Either leak defeats the feature. Previewing `create a Customer class` — even if the user then rejects it — would otherwise leave `SessionContext.CurrentClass = "Customer"` set permanently, so a later command that omits a class name silently resolves against a class that was never created.
+
+`ParsingStateSnapshot` is built here because detection needs it first. Task 4's `WorkspaceSnapshot` reuses the same type — do not write a second copy of the field list, and do not restore only one of the two singletons.
+
+- [ ] **Step 1a: Write the failing test for ParsingStateSnapshot**
+
+Create `CodeGenerator.Tests/Core/ParsingStateSnapshotTests.cs`:
 
 ```csharp
 using CodeGenerationEngine.Core;
-using CodeGenerationEngine.Models;
 
 namespace CodeGenerator.Tests.Core;
 
 [TestClass]
-public class SemanticContextSnapshotTests
+public class ParsingStateSnapshotTests
 {
     [TestMethod]
-    public void RestoreTo_PutsAllFiveFieldsBack()
+    public void Restore_PutsSemanticContextFieldsBack()
     {
-        var context = new SemanticContext
-        {
-            CurrentProject = "P",
-            CurrentClass = "C",
-            CurrentNamespace = "N",
-            CurrentFile = "F",
-            LastEntity = "E"
-        };
+        ContextManager.Current.CurrentProject = "P";
+        ContextManager.Current.CurrentClass = "C";
+        ContextManager.Current.CurrentNamespace = "N";
+        ContextManager.Current.CurrentFile = "F";
+        ContextManager.Current.LastEntity = "E";
 
-        var snapshot = SemanticContextSnapshot.Capture(context);
+        var snapshot = ParsingStateSnapshot.Capture();
 
-        context.CurrentProject = "changed";
-        context.CurrentClass = "changed";
-        context.CurrentNamespace = "changed";
-        context.CurrentFile = "changed";
-        context.LastEntity = "changed";
+        ContextManager.Current.CurrentProject = "changed";
+        ContextManager.Current.CurrentClass = "changed";
+        ContextManager.Current.CurrentNamespace = "changed";
+        ContextManager.Current.CurrentFile = "changed";
+        ContextManager.Current.LastEntity = "changed";
 
-        snapshot.RestoreTo(context);
+        snapshot.Restore();
 
-        Assert.AreEqual("P", context.CurrentProject);
-        Assert.AreEqual("C", context.CurrentClass);
-        Assert.AreEqual("N", context.CurrentNamespace);
-        Assert.AreEqual("F", context.CurrentFile);
-        Assert.AreEqual("E", context.LastEntity);
+        Assert.AreEqual("P", ContextManager.Current.CurrentProject);
+        Assert.AreEqual("C", ContextManager.Current.CurrentClass);
+        Assert.AreEqual("N", ContextManager.Current.CurrentNamespace);
+        Assert.AreEqual("F", ContextManager.Current.CurrentFile);
+        Assert.AreEqual("E", ContextManager.Current.LastEntity);
     }
 
     [TestMethod]
-    public void Capture_TakesACopy_NotALiveReference()
+    public void Restore_PutsSessionContextFieldsBack()
     {
-        var context = new SemanticContext { LastEntity = "original" };
+        SessionContext.CurrentProject = "P";
+        SessionContext.CurrentClass = "C";
+        SessionContext.CurrentNamespace = "N";
 
-        var snapshot = SemanticContextSnapshot.Capture(context);
-        context.LastEntity = "mutated";
-        snapshot.RestoreTo(context);
+        var snapshot = ParsingStateSnapshot.Capture();
 
-        Assert.AreEqual("original", context.LastEntity);
+        SessionContext.CurrentProject = "changed";
+        SessionContext.CurrentClass = "changed";
+        SessionContext.CurrentNamespace = "changed";
+
+        snapshot.Restore();
+
+        Assert.AreEqual("P", SessionContext.CurrentProject);
+        Assert.AreEqual("C", SessionContext.CurrentClass);
+        Assert.AreEqual("N", SessionContext.CurrentNamespace);
     }
 
     [TestMethod]
-    public void RestoreTo_RestoresNullsAsNull()
+    public void Restore_RestoresNullsAsNull()
     {
-        var context = new SemanticContext();
+        ContextManager.Current.LastEntity = null;
+        SessionContext.CurrentClass = null;
 
-        var snapshot = SemanticContextSnapshot.Capture(context);
-        context.LastEntity = "set";
-        snapshot.RestoreTo(context);
+        var snapshot = ParsingStateSnapshot.Capture();
 
-        Assert.IsNull(context.LastEntity);
+        ContextManager.Current.LastEntity = "set";
+        SessionContext.CurrentClass = "set";
+
+        snapshot.Restore();
+
+        Assert.IsNull(ContextManager.Current.LastEntity);
+        Assert.IsNull(SessionContext.CurrentClass);
     }
 }
 ```
 
-- [ ] **Step 1b: Implement SemanticContextSnapshot**
+- [ ] **Step 1b: Implement ParsingStateSnapshot**
 
-Create `CodeGenerationEngine/Core/SemanticContextSnapshot.cs`:
+Create `CodeGenerationEngine/Core/ParsingStateSnapshot.cs`:
 
 ```csharp
-using CodeGenerationEngine.Models;
-
 namespace CodeGenerationEngine.Core;
 
 /// <summary>
-/// A copy of the mutable fields of a <see cref="SemanticContext"/>, so a caller
-/// can put the process-wide context back the way it found it.
+/// A copy of the process-wide state that parsing a sentence mutates, so a caller
+/// can put it back the way it found it.
 /// </summary>
 /// <remarks>
-/// <see cref="SemanticAnalyzer.Analyze"/> mutates <see cref="ContextManager.Current"/>
-/// via <see cref="ContextResolver"/>. Two callers need to undo that: batch
-/// detection, which must not let a preview change how the batch then parses, and
-/// <see cref="WorkspaceSnapshot"/>, which must restore in-memory state on rollback.
-/// The field list lives here once so the two cannot drift apart.
+/// Two singletons are involved, and missing either one reintroduces the bug this
+/// type exists to prevent. <see cref="SemanticAnalyzer.Analyze"/> writes
+/// <c>LastEntity</c> on <see cref="ContextManager.Current"/> via
+/// <see cref="ContextResolver"/>; <see cref="EntityExtractor.Extract"/> writes
+/// <see cref="SessionContext.CurrentClass"/> and reads it back as a fallback for
+/// sentences that name no class.
+/// <para>
+/// Two callers need to undo that: batch detection, which must not let a preview
+/// change how anything afterwards parses, and <see cref="WorkspaceSnapshot"/>,
+/// which must restore in-memory state on rollback.
+/// </para>
 /// </remarks>
-public sealed class SemanticContextSnapshot
+public sealed class ParsingStateSnapshot
 {
-    private readonly string? _currentProject;
-    private readonly string? _currentClass;
-    private readonly string? _currentNamespace;
-    private readonly string? _currentFile;
-    private readonly string? _lastEntity;
+    private readonly string? _semanticProject;
+    private readonly string? _semanticClass;
+    private readonly string? _semanticNamespace;
+    private readonly string? _semanticFile;
+    private readonly string? _semanticLastEntity;
 
-    private SemanticContextSnapshot(SemanticContext context)
+    private readonly string? _sessionProject;
+    private readonly string? _sessionClass;
+    private readonly string? _sessionNamespace;
+
+    private ParsingStateSnapshot()
     {
-        _currentProject = context.CurrentProject;
-        _currentClass = context.CurrentClass;
-        _currentNamespace = context.CurrentNamespace;
-        _currentFile = context.CurrentFile;
-        _lastEntity = context.LastEntity;
+        var context = ContextManager.Current;
+        _semanticProject = context.CurrentProject;
+        _semanticClass = context.CurrentClass;
+        _semanticNamespace = context.CurrentNamespace;
+        _semanticFile = context.CurrentFile;
+        _semanticLastEntity = context.LastEntity;
+
+        _sessionProject = SessionContext.CurrentProject;
+        _sessionClass = SessionContext.CurrentClass;
+        _sessionNamespace = SessionContext.CurrentNamespace;
     }
 
-    /// <summary>Copies the current values out of <paramref name="context"/>.</summary>
-    public static SemanticContextSnapshot Capture(SemanticContext context)
-        => new(context);
+    /// <summary>Copies the current values out of both parsing singletons.</summary>
+    public static ParsingStateSnapshot Capture() => new();
 
-    /// <summary>Writes the captured values back onto <paramref name="context"/>.</summary>
-    public void RestoreTo(SemanticContext context)
+    /// <summary>Writes the captured values back onto both parsing singletons.</summary>
+    public void Restore()
     {
-        context.CurrentProject = _currentProject;
-        context.CurrentClass = _currentClass;
-        context.CurrentNamespace = _currentNamespace;
-        context.CurrentFile = _currentFile;
-        context.LastEntity = _lastEntity;
+        var context = ContextManager.Current;
+        context.CurrentProject = _semanticProject;
+        context.CurrentClass = _semanticClass;
+        context.CurrentNamespace = _semanticNamespace;
+        context.CurrentFile = _semanticFile;
+        context.LastEntity = _semanticLastEntity;
+
+        SessionContext.CurrentProject = _sessionProject;
+        SessionContext.CurrentClass = _sessionClass;
+        SessionContext.CurrentNamespace = _sessionNamespace;
     }
 }
 ```
 
-Run: `dotnet test SmartCodeGenerator/SmartCodeGenerator.slnx --filter "FullyQualifiedName~SemanticContextSnapshotTests"` — expected PASS, 3 tests.
+Run: `dotnet test SmartCodeGenerator/SmartCodeGenerator.slnx --filter "FullyQualifiedName~ParsingStateSnapshotTests"` — expected PASS, 3 tests.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -443,18 +477,34 @@ public class BatchCommandDetectorTests
         var root = NewWorkspace();
 
         ContextManager.Current.LastEntity = "SENTINEL";
-        ContextManager.Current.CurrentClass = "SentinelClass";
 
         BatchCommandDetector.Detect(
             ["create a Customer class", "add property Email to Customer"], root);
 
-        // SemanticAnalyzer.Analyze mutates the process-wide context. If detection
+        // ContextResolver.Resolve writes LastEntity during Analyze. If detection
         // leaked, execution would re-parse line 1 against line 2's entity.
         Assert.AreEqual("SENTINEL", ContextManager.Current.LastEntity);
-        Assert.AreEqual("SentinelClass", ContextManager.Current.CurrentClass);
+    }
+
+    [TestMethod]
+    public void Detect_LeavesSessionContextUnchanged()
+    {
+        var root = NewWorkspace();
+
+        SessionContext.CurrentClass = "SentinelClass";
+
+        BatchCommandDetector.Detect(["create a Customer class"], root);
+
+        // EntityExtractor.Extract sets SessionContext.CurrentClass on any
+        // create-class sentence, and nothing in the codebase ever clears it.
+        // Without the restore, merely previewing (or rejecting!) this line would
+        // make "Customer" the implicit target of every later command.
+        Assert.AreEqual("SentinelClass", SessionContext.CurrentClass);
     }
 }
 ```
+
+Both context tests must be **discriminating** — each must fail if the `finally` restore is removed. Do not assert on `ContextManager.Current.CurrentClass`: nothing in the detection path writes it, so such an assertion would pass unconditionally and guard nothing.
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -522,10 +572,12 @@ public static class BatchCommandDetector
     public static IReadOnlyList<DetectedAction> Detect(
         IEnumerable<string> lines, string workspaceRoot)
     {
-        // SemanticAnalyzer.Analyze writes LastEntity on the process-wide
-        // ContextManager.Current. Previewing must leave the process exactly as
-        // it found it, or execution re-parses line 1 against line N's entity.
-        var saved = SemanticContextSnapshot.Capture(ContextManager.Current);
+        // Parsing writes to two process-wide singletons: LastEntity on
+        // ContextManager.Current, and SessionContext.CurrentClass. Previewing
+        // must leave the process exactly as it found it, or execution re-parses
+        // line 1 against line N's entity -- and a rejected `create class Foo`
+        // still leaves Foo as the implicit target of every later command.
+        var saved = ParsingStateSnapshot.Capture();
 
         try
         {
@@ -543,7 +595,7 @@ public static class BatchCommandDetector
         }
         finally
         {
-            saved.RestoreTo(ContextManager.Current);
+            saved.Restore();
         }
     }
 
@@ -578,19 +630,20 @@ public static class BatchCommandDetector
 
 Run: `dotnet test SmartCodeGenerator/SmartCodeGenerator.slnx --filter "FullyQualifiedName~BatchCommandDetectorTests"`
 
-Expected: PASS, 7 tests.
+Expected: PASS, 8 tests.
 
 If `Detect_ActionableSentences_ResolveInInputOrder` fails on an intent value, do **not** change the implementation to match. Check the expectation against `CodeGenerator.Tests/Core/IntentAnalyzerNlpTests.cs`, which pins the canonical sentence→intent mapping, and fix the test's expectation.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add CodeGenerationEngine/Core/SemanticContextSnapshot.cs CodeGenerator.Tests/Core/SemanticContextSnapshotTests.cs NaturalLanguageBridge/DetectedAction.cs NaturalLanguageBridge/BatchCommandDetector.cs CodeGenerator.Tests/Bridge/BatchCommandDetectorTests.cs
+git add CodeGenerationEngine/Core/ParsingStateSnapshot.cs CodeGenerator.Tests/Core/ParsingStateSnapshotTests.cs NaturalLanguageBridge/DetectedAction.cs NaturalLanguageBridge/BatchCommandDetector.cs CodeGenerator.Tests/Bridge/BatchCommandDetectorTests.cs
 git commit -m "Detect the commands in a batch without executing them
 
-Detection saves and restores ContextManager.Current, because
-SemanticAnalyzer.Analyze mutates that singleton and would otherwise make a
-batch parse differently than the same commands typed one at a time."
+Parsing mutates two process-wide singletons: ContextManager.Current, via
+ContextResolver, and SessionContext, via EntityExtractor. Detection captures
+and restores both, so previewing a batch cannot change how that batch -- or
+any command after it -- subsequently parses."
 ```
 
 ---
@@ -786,7 +839,7 @@ git commit -m "Render a detected action as one review-list line"
 - Test: `CodeGenerator.Tests/Core/WorkspaceSnapshotTests.cs`
 
 **Interfaces:**
-- Consumes: `ProjectManager.CurrentProject` (get/set), `ProjectManager.LoadProject()`, `ContextManager.Current` — all existing, all in `CodeGenerationEngine.Core`. Also `SemanticContextSnapshot.Capture(SemanticContext)` / `RestoreTo(SemanticContext)` from Task 2 — use it; do not re-implement the field copy.
+- Consumes: `ProjectManager.CurrentProject` (get/set), `ProjectManager.LoadProject()` — existing, in `CodeGenerationEngine.Core`. Also `ParsingStateSnapshot.Capture()` / `Restore()` from Task 2 — use it; do not re-implement the field copy, and do not restore only one of the two singletons.
 - Produces: `CodeGenerationEngine.Core.SnapshotSizing(int FileCount, long Bytes)`; `CodeGenerationEngine.Core.WorkspaceSnapshot` with `static SnapshotSizing Measure(string)`, `static WorkspaceSnapshot Capture(string)`, `string SnapshotPath { get; }`, `void Restore()`, `void Dispose()`.
 
 This is a **new file** in `CodeGenerationEngine/Core/`; no existing file there changes. It lives here rather than in the bridge because restoring means touching `ProjectManager` and its registry.
@@ -916,19 +969,19 @@ public class WorkspaceSnapshotTests
     }
 
     [TestMethod]
-    public void Restore_RestoresInMemorySemanticContext()
+    public void Restore_RestoresBothParsingSingletons()
     {
         var root = NewWorkspace();
-        ContextManager.Current.CurrentClass = "Before";
         ContextManager.Current.LastEntity = "BeforeEntity";
+        SessionContext.CurrentClass = "BeforeClass";
 
         using var snapshot = WorkspaceSnapshot.Capture(root);
-        ContextManager.SetCurrentClass("After");
         ContextManager.Current.LastEntity = "AfterEntity";
+        SessionContext.CurrentClass = "AfterClass";
         snapshot.Restore();
 
-        Assert.AreEqual("Before", ContextManager.Current.CurrentClass);
         Assert.AreEqual("BeforeEntity", ContextManager.Current.LastEntity);
+        Assert.AreEqual("BeforeClass", SessionContext.CurrentClass);
     }
 
     [TestMethod]
@@ -1005,7 +1058,7 @@ public sealed class WorkspaceSnapshot : IDisposable
 
     private readonly string _workspaceRoot;
     private readonly ProjectMetaData? _currentProject;
-    private readonly SemanticContextSnapshot _context;
+    private readonly ParsingStateSnapshot _parsingState;
     private bool _restoreFailed;
 
     /// <summary>The temp directory holding the captured copy.</summary>
@@ -1015,12 +1068,12 @@ public sealed class WorkspaceSnapshot : IDisposable
         string workspaceRoot,
         string snapshotPath,
         ProjectMetaData? currentProject,
-        SemanticContextSnapshot context)
+        ParsingStateSnapshot parsingState)
     {
         _workspaceRoot = workspaceRoot;
         SnapshotPath = snapshotPath;
         _currentProject = currentProject;
-        _context = context;
+        _parsingState = parsingState;
     }
 
     /// <summary>
@@ -1072,7 +1125,7 @@ public sealed class WorkspaceSnapshot : IDisposable
                 workspaceRoot,
                 snapshotPath,
                 ProjectManager.CurrentProject,
-                SemanticContextSnapshot.Capture(ContextManager.Current));
+                ParsingStateSnapshot.Capture());
         }
         catch
         {
@@ -1127,7 +1180,7 @@ public sealed class WorkspaceSnapshot : IDisposable
 
             // 6 & 7. In-memory state a handler may have set.
             ProjectManager.CurrentProject = _currentProject;
-            _context.RestoreTo(ContextManager.Current);
+            _parsingState.Restore();
         }
         catch
         {

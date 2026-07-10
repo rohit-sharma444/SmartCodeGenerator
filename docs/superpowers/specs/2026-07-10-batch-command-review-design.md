@@ -64,27 +64,41 @@ Rollback has to restore all of it, so it is worth listing:
 | **Project registry** | **`AppContext.BaseDirectory/ProjectManager.dat` — outside the workspace** |
 | `ProjectManager.CurrentProject` | in-memory static |
 | **`ContextManager.Current`** | **in-memory static `SemanticContext`, mutated by `SemanticAnalyzer.Analyze`** |
+| **`SessionContext`** | **in-memory static class, mutated by `EntityExtractor.Extract`** |
 
-A workspace-only snapshot would silently miss the last three.
+A workspace-only snapshot would silently miss the last four.
 
-The context deserves special mention. `SemanticAnalyzer.Analyze` calls
-`ContextResolver.Resolve(model)`, and `model.Context` **is**
-`ContextManager.Current` — a process-wide singleton. `Resolve` writes
-`Context.LastEntity`, and later fills each entity's `ParentName` from it.
+The two contexts deserve special mention, because **parsing a sentence mutates
+process-wide state twice over**, and both leaks defeat this feature.
 
-Analysis therefore has a side effect, which matters here in a way it never did
+`SemanticAnalyzer.Analyze` calls `ContextResolver.Resolve(model)`, and
+`model.Context` **is** `ContextManager.Current` — a process-wide singleton.
+`Resolve` writes `Context.LastEntity`, and later fills each entity's
+`ParentName` from it.
+
+`EntityExtractor.Extract` writes `SessionContext.CurrentClass` whenever a
+sentence names a class or interface (`EntityExtractor.cs:39`, `:56`), and reads
+it back as a fallback when a sentence names none (`:107`). `SessionContext.Clear()`
+is never called anywhere in the codebase.
+
+Parsing therefore has side effects, which matter here in a way they never did
 for single commands:
 
-- **Detection would pollute execution.** Detecting lines 1..N leaves
-  `LastEntity` set to the last entity of line *N*. Execution then re-parses line
-  1 with that value already present, so a batch would parse differently from the
-  same commands typed one at a time.
-- **Rollback must restore it.** Executed handlers call
-  `ContextManager.SetCurrentClass` / `SetCurrentProject`.
+- **Detection would pollute everything after it.** Detecting lines 1..N leaves
+  `LastEntity` at line *N*'s entity, so executing line 1 afterwards re-parses it
+  against context that exists only because the user looked at the review list.
+  Worse, previewing `create a Customer class` — even if the user rejects it —
+  leaves `SessionContext.CurrentClass = "Customer"` set permanently, so a later
+  command that omits a class name silently resolves against a class that was
+  never created.
+- **Rollback must restore both.** Executed handlers mutate them too.
 
-`ContextManager.Current` exposes the live object with settable properties, so
-save/restore of its five fields (`CurrentProject`, `CurrentClass`,
-`CurrentNamespace`, `CurrentFile`, `LastEntity`) is straightforward.
+Both are reachable and settable: `ContextManager.Current` exposes the live
+object with settable properties (`CurrentProject`, `CurrentClass`,
+`CurrentNamespace`, `CurrentFile`, `LastEntity`), and `SessionContext` exposes
+static settable properties (`CurrentProject`, `CurrentClass`,
+`CurrentNamespace`). A single `ParsingStateSnapshot` captures and restores both,
+so the two can never drift apart.
 
 Note also that `DeleteClass` is not a true delete: `ClassDeletionService` moves
 the file to the recycle bin, and `ClassRestoreService` brings it back.
@@ -194,10 +208,11 @@ No console, no disk. Per line it runs `NlpActionProvider.GetPrimaryAction` for
 the verb, then `SemanticAnalyzer.Analyze` → `IntentAnalyzer.DetectWithConfidence`
 → `EntityExtractor.Extract`. Blank lines are dropped. Input order is preserved.
 
-`Detect` saves the five fields of `ContextManager.Current` on entry and restores
-them in a `finally`, because `SemanticAnalyzer.Analyze` mutates that singleton
-(see *Where mutable state lives*). **Previewing a batch must leave the process
-exactly as it found it**, or execution re-parses against context that only
+`Detect` captures a `ParsingStateSnapshot` on entry and restores it in a
+`finally`, because `SemanticAnalyzer.Analyze` mutates `ContextManager.Current`
+and `EntityExtractor.Extract` mutates `SessionContext` (see *Where mutable state
+lives*). **Previewing a batch must leave the process exactly as it found it**,
+or execution — and every command after it — re-parses against context that only
 exists because the user looked at the list.
 
 **Detect never throws.** A line that throws, or that resolves to
@@ -264,7 +279,7 @@ them excluded and 3,091 files with them included.
 
 **Captured beyond the workspace:** `AppContext.BaseDirectory/ProjectManager.dat`,
 stored alongside the tree, plus the in-memory `ProjectManager.CurrentProject` and
-the five fields of `ContextManager.Current`.
+a `ParsingStateSnapshot` (covering `ContextManager.Current` and `SessionContext`).
 
 `Restore()` makes the workspace match the snapshot exactly:
 
@@ -275,7 +290,8 @@ the five fields of `ContextManager.Current`.
 4. remove directories left empty,
 5. restore `ProjectManager.dat` and call `ProjectManager.LoadProject()`,
 6. reset `ProjectManager.CurrentProject` to the captured value,
-7. reset the five fields of `ContextManager.Current` to their captured values.
+7. restore the `ParsingStateSnapshot` — both `ContextManager.Current` and
+   `SessionContext`.
 
 `Capture` failing (disk full, permissions) aborts the batch **before any action
 executes**. `Restore` failing leaves the workspace in an unknown state, so the
@@ -441,9 +457,14 @@ Unit tests in `CodeGenerator.Tests/` (MSTest, matching the project):
 - **Detection over create/delete sentences writes nothing to the workspace**,
   asserted against a temp directory. This is the test that proves
   present-before-execute actually holds.
-- **Detection leaves `ContextManager.Current` byte-for-byte unchanged**, even
-  when the batch's sentences name entities. Set `LastEntity` to a sentinel
-  before `Detect`, assert it survives.
+- **Detection leaves both parsing singletons unchanged**, even when the batch's
+  sentences name entities. Set `ContextManager.Current.LastEntity` and
+  `SessionContext.CurrentClass` to sentinels before `Detect`, assert both
+  survive. Both assertions must be discriminating: `LastEntity` is written by
+  `ContextResolver.Resolve`, and `SessionContext.CurrentClass` by
+  `EntityExtractor.Extract` on any `create class` sentence. Asserting on
+  `ContextManager.Current.CurrentClass` instead would prove nothing — nothing in
+  the detection path ever writes it.
 
 **`Bridge/ActionFormatterTests`** — one case per intent family, plus the fallback.
 
@@ -458,7 +479,7 @@ case insensitivity. Empty must map to `Reprompt`, never `Approve`.
 - a directory created after capture is removed;
 - `bin`/`obj`/`.git` contents are neither captured nor disturbed by restore;
 - `ProjectManager.dat` is captured and restored;
-- `ContextManager.Current`'s five fields are captured and restored;
+- `ContextManager.Current` and `SessionContext` are captured and restored;
 - `Measure` counts exclude the excluded directories;
 - when `Restore` fails, the snapshot directory still exists.
 
