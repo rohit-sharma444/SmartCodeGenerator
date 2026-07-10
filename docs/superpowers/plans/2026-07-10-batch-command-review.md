@@ -54,7 +54,7 @@ Task order is dependency order: 1 → 2 → 3 → 4 are independent of each othe
 - Consumes: nothing.
 - Produces: `NaturalLanguageBridge.ApprovalReply` (enum: `Approve`, `Reject`, `Cancel`, `Reprompt`) and `NaturalLanguageBridge.ApprovalReplyParser.Parse(string? line) -> ApprovalReply`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `CodeGenerator.Tests/Bridge/ApprovalReplyTests.cs`:
 
@@ -116,13 +116,13 @@ public class ApprovalReplyTests
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test SmartCodeGenerator/SmartCodeGenerator.slnx --filter "FullyQualifiedName~ApprovalReplyTests"`
 
 Expected: build FAILS with `CS0246: The type or namespace name 'ApprovalReply' could not be found`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Create `NaturalLanguageBridge/ApprovalReply.cs`:
 
@@ -183,13 +183,13 @@ public static class ApprovalReplyParser
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `dotnet test SmartCodeGenerator/SmartCodeGenerator.slnx --filter "FullyQualifiedName~ApprovalReplyTests"`
 
 Expected: PASS, 16 tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add NaturalLanguageBridge/ApprovalReply.cs CodeGenerator.Tests/Bridge/ApprovalReplyTests.cs
@@ -224,7 +224,7 @@ Either leak defeats the feature. Previewing `create a Customer class` — even i
 
 `ParsingStateSnapshot` is built here because detection needs it first. Task 4's `WorkspaceSnapshot` reuses the same type — do not write a second copy of the field list, and do not restore only one of the two singletons.
 
-- [ ] **Step 1a: Write the failing test for ParsingStateSnapshot**
+- [x] **Step 1a: Write the failing test for ParsingStateSnapshot**
 
 Create `CodeGenerator.Tests/Core/ParsingStateSnapshotTests.cs`:
 
@@ -301,7 +301,7 @@ public class ParsingStateSnapshotTests
 }
 ```
 
-- [ ] **Step 1b: Implement ParsingStateSnapshot**
+- [x] **Step 1b: Implement ParsingStateSnapshot**
 
 Create `CodeGenerationEngine/Core/ParsingStateSnapshot.cs`:
 
@@ -373,7 +373,7 @@ public sealed class ParsingStateSnapshot
 
 Run: `dotnet test SmartCodeGenerator/SmartCodeGenerator.slnx --filter "FullyQualifiedName~ParsingStateSnapshotTests"` — expected PASS, 3 tests.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `CodeGenerator.Tests/Bridge/BatchCommandDetectorTests.cs`:
 
@@ -506,13 +506,13 @@ public class BatchCommandDetectorTests
 
 Both context tests must be **discriminating** — each must fail if the `finally` restore is removed. Do not assert on `ContextManager.Current.CurrentClass`: nothing in the detection path writes it, so such an assertion would pass unconditionally and guard nothing.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test SmartCodeGenerator/SmartCodeGenerator.slnx --filter "FullyQualifiedName~BatchCommandDetectorTests"`
 
 Expected: build FAILS with `CS0103: The name 'BatchCommandDetector' does not exist`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Create `NaturalLanguageBridge/DetectedAction.cs`:
 
@@ -626,7 +626,7 @@ public static class BatchCommandDetector
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `dotnet test SmartCodeGenerator/SmartCodeGenerator.slnx --filter "FullyQualifiedName~BatchCommandDetectorTests"`
 
@@ -634,7 +634,7 @@ Expected: PASS, 8 tests.
 
 If `Detect_ActionableSentences_ResolveInInputOrder` fails on an intent value, do **not** change the implementation to match. Check the expectation against `CodeGenerator.Tests/Core/IntentAnalyzerNlpTests.cs`, which pins the canonical sentence→intent mapping, and fix the test's expectation.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add CodeGenerationEngine/Core/ParsingStateSnapshot.cs CodeGenerator.Tests/Core/ParsingStateSnapshotTests.cs NaturalLanguageBridge/DetectedAction.cs NaturalLanguageBridge/BatchCommandDetector.cs CodeGenerator.Tests/Bridge/BatchCommandDetectorTests.cs
@@ -662,7 +662,7 @@ any command after it -- subsequently parses."
 
 The architecture intents each have their own dedicated, **nullable** name field (`InterfaceName`, `ServiceName`, `RepositoryName`, `ControllerName`, `ApiName`). They must each get a switch arm: a review list that prints a bare `CreateInterface` and drops `ICustomer` defeats the purpose of showing the user what is about to happen. A null name falls back to the bare intent name.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `CodeGenerator.Tests/Bridge/ActionFormatterTests.cs`:
 
@@ -786,13 +786,13 @@ public class ActionFormatterTests
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test SmartCodeGenerator/SmartCodeGenerator.slnx --filter "FullyQualifiedName~ActionFormatterTests"`
 
 Expected: build FAILS with `CS0103: The name 'ActionFormatter' does not exist`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Create `NaturalLanguageBridge/ActionFormatter.cs`:
 
@@ -860,13 +860,13 @@ public static class ActionFormatter
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `dotnet test SmartCodeGenerator/SmartCodeGenerator.slnx --filter "FullyQualifiedName~ActionFormatterTests"`
 
 Expected: PASS, 13 tests (the architecture case is a 5-row `[DataRow]`).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add NaturalLanguageBridge/ActionFormatter.cs CodeGenerator.Tests/Bridge/ActionFormatterTests.cs
@@ -887,7 +887,7 @@ git commit -m "Render a detected action as one review-list line"
 
 This is a **new file** in `CodeGenerationEngine/Core/`; no existing file there changes. It lives here rather than in the bridge because restoring means touching `ProjectManager` and its registry.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `CodeGenerator.Tests/Core/WorkspaceSnapshotTests.cs`:
 
@@ -1060,13 +1060,13 @@ public class WorkspaceSnapshotTests
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test SmartCodeGenerator/SmartCodeGenerator.slnx --filter "FullyQualifiedName~WorkspaceSnapshotTests"`
 
 Expected: build FAILS with `CS0103: The name 'WorkspaceSnapshot' does not exist`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Create `CodeGenerationEngine/Core/WorkspaceSnapshot.cs`:
 
@@ -1292,13 +1292,13 @@ public sealed class WorkspaceSnapshot : IDisposable
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `dotnet test SmartCodeGenerator/SmartCodeGenerator.slnx --filter "FullyQualifiedName~WorkspaceSnapshotTests"`
 
 Expected: PASS, 10 tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add CodeGenerationEngine/Core/WorkspaceSnapshot.cs CodeGenerator.Tests/Core/WorkspaceSnapshotTests.cs
@@ -1323,7 +1323,7 @@ snapshot directory rather than destroying the only copy."
 
 No unit tests: `CodeGenerator.Tests` cannot reference the `CodeGenerator` executable. The file is kept nearly logic-free for that reason, and is verified end-to-end in Step 4.
 
-- [ ] **Step 1: Write `BatchCommand.cs`**
+- [x] **Step 1: Write `BatchCommand.cs`**
 
 Create `CodeGenerator/App/BatchCommand.cs`:
 
@@ -1596,7 +1596,7 @@ internal sealed class BatchCommand
 }
 ```
 
-- [ ] **Step 2: Wire it into the CLI**
+- [x] **Step 2: Wire it into the CLI**
 
 In `CodeGenerator/App/CodeGeneratorStarter.cs`, add the field beside `_buildApp` (currently line 23):
 
@@ -1631,13 +1631,13 @@ Add a line to `PrintHeader()` after the TAB-suggestions line:
 
 Do **not** touch `RunOnce()`. It is the non-interactive scripting path, and a batch that prompts for approval is meaningless there.
 
-- [ ] **Step 3: Build and run the full suite**
+- [x] **Step 3: Build and run the full suite**
 
 Run: `dotnet test SmartCodeGenerator/SmartCodeGenerator.slnx`
 
 Expected: PASS. Every pre-existing test still passes — nothing in the execution path changed.
 
-- [ ] **Step 4: Verify end to end against the real CLI**
+- [x] **Step 4: Verify end to end against the real CLI**
 
 `dotnet test` does **not** refresh the CLI's `bin`, so the executable would still be the pre-change build. Rebuild first:
 
@@ -1663,7 +1663,7 @@ create a Order class
 
 Expected: two numbered actions, one `(skipped)` line for the prose. Answer `y`, `n`. Expected summary: `1 applied, 0 failed, 0 rolled back, 0 not attempted, 1 rejected, 1 unactionable.` Confirm `Customer.cs` exists and `Order.cs` does not. Type `exit`.
 
-- [ ] **Step 5: Verify rollback end to end**
+- [x] **Step 5: Verify rollback end to end**
 
 This is the check no unit test can give. In a fresh scratch workspace:
 
@@ -1692,7 +1692,7 @@ ls -la /tmp/cg_rollback
 
 Expected: no `Customer.cs`. If it is there, rollback is broken; do not proceed.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add CodeGenerator/App/BatchCommand.cs CodeGenerator/App/CodeGeneratorStarter.cs
@@ -1712,7 +1712,7 @@ approved actions, and restores the workspace if any of them fails."
 
 Issue #29 item 7 asks for comments on all classes, functions, and projects. Per the spec's decision 8 that is scoped to the files this branch touches; the remaining sweep becomes a follow-up.
 
-- [ ] **Step 1: Audit the new files for undocumented public members**
+- [x] **Step 1: Audit the new files for undocumented public members**
 
 Run:
 
@@ -1724,7 +1724,7 @@ Expected: no output. The compiler flags any public member missing a `///` commen
 
 This is a check, not a permanent project setting — do not commit a `GenerateDocumentationFile` property to any `.csproj`. Turning it on repo-wide would fail the build on the 147 files the sweep has not reached yet.
 
-- [ ] **Step 2: Document `batch` in the README**
+- [x] **Step 2: Document `batch` in the README**
 
 In `README.md`, add to the command reference:
 
@@ -1739,11 +1739,11 @@ If any approved command fails, the whole batch is rolled back and the workspace
 is restored to its pre-batch state.
 ```
 
-- [ ] **Step 3: Verify the README claim is true**
+- [x] **Step 3: Verify the README claim is true**
 
 Re-read Task 5 Step 5's result. The README says the workspace is restored; that must be what was observed, not what was intended. If rollback left anything behind, fix the code or the README — not the memory of the test.
 
-- [ ] **Step 4: Open the follow-up issue for the docs sweep**
+- [x] **Step 4: Open the follow-up issue for the docs sweep**
 
 ```bash
 gh issue create \
@@ -1765,7 +1765,7 @@ Suggested approach: one project per PR, public API surface first, enforced with
 Bundling this with #29's behaviour change would have made both unreviewable."
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add README.md
