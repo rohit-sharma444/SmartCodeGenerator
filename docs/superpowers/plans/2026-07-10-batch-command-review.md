@@ -660,6 +660,8 @@ any command after it -- subsequently parses."
 
 `ParsedCommand` carries ~25 fields, nearly all empty for any given intent. The formatter picks the salient one per intent family. Note `ParsedCommand` has `NewClassName` but there is **no** `NewPropertyName` or `NewMethodName`, so renames of those fall through to the default.
 
+The architecture intents each have their own dedicated, **nullable** name field (`InterfaceName`, `ServiceName`, `RepositoryName`, `ControllerName`, `ApiName`). They must each get a switch arm: a review list that prints a bare `CreateInterface` and drops `ICustomer` defeats the purpose of showing the user what is about to happen. A null name falls back to the bare intent name.
+
 - [ ] **Step 1: Write the failing test**
 
 Create `CodeGenerator.Tests/Bridge/ActionFormatterTests.cs`:
@@ -697,25 +699,59 @@ public class ActionFormatterTests
     }
 
     [TestMethod]
-    public void Format_RenameClass_ShowsBothNames()
+    public void Format_RenameClass_ShowsOldNameThenNewName()
     {
         var result = ActionFormatter.Format(
             Actionable(IntentType.RenameClass,
                 new ParsedCommand { ClassName = "Old", NewClassName = "New" }));
 
-        StringAssert.Contains(result, "Old");
-        StringAssert.Contains(result, "New");
+        // Direction matters: "New -> Old" would be actively misleading in a
+        // review list, and a bare Contains on each name would not catch it.
+        StringAssert.Contains(result, "Old -> New");
     }
 
     [TestMethod]
-    public void Format_PropertyIntent_ShowsNameAndType()
+    public void Format_PropertyIntent_ShowsNameThenType()
     {
         var result = ActionFormatter.Format(
             Actionable(IntentType.CreateProperty,
                 new ParsedCommand { PropertyName = "Email", PropertyType = "string" }));
 
-        StringAssert.Contains(result, "Email");
-        StringAssert.Contains(result, "string");
+        StringAssert.Contains(result, "Email : string");
+    }
+
+    [TestMethod]
+    [DataRow(IntentType.CreateInterface, "ICustomer")]
+    [DataRow(IntentType.CreateService, "PaymentService")]
+    [DataRow(IntentType.CreateRepository, "OrderRepository")]
+    [DataRow(IntentType.CreateController, "HomeController")]
+    [DataRow(IntentType.CreateApi, "BillingApi")]
+    public void Format_ArchitectureIntent_ShowsItsDedicatedName(IntentType intent, string name)
+    {
+        var command = new ParsedCommand();
+        switch (intent)
+        {
+            case IntentType.CreateInterface: command.InterfaceName = name; break;
+            case IntentType.CreateService: command.ServiceName = name; break;
+            case IntentType.CreateRepository: command.RepositoryName = name; break;
+            case IntentType.CreateController: command.ControllerName = name; break;
+            case IntentType.CreateApi: command.ApiName = name; break;
+        }
+
+        var result = ActionFormatter.Format(Actionable(intent, command));
+
+        StringAssert.StartsWith(result, intent.ToString());
+        StringAssert.Contains(result, name);
+    }
+
+    [TestMethod]
+    public void Format_ArchitectureIntentWithNoName_ShowsIntentNameAlone()
+    {
+        // The dedicated name fields are nullable; a null must not crash or print "".
+        var result = ActionFormatter.Format(
+            Actionable(IntentType.CreateInterface, new ParsedCommand { InterfaceName = null }));
+
+        Assert.AreEqual("CreateInterface", result.Trim());
     }
 
     [TestMethod]
@@ -807,6 +843,13 @@ public static class ActionFormatter
             IntentType.CreateMethod
                 or IntentType.DeleteMethod => command.MethodName,
 
+            // The architecture intents each carry their own dedicated name field.
+            IntentType.CreateInterface => command.InterfaceName ?? string.Empty,
+            IntentType.CreateService => command.ServiceName ?? string.Empty,
+            IntentType.CreateRepository => command.RepositoryName ?? string.Empty,
+            IntentType.CreateController => command.ControllerName ?? string.Empty,
+            IntentType.CreateApi => command.ApiName ?? string.Empty,
+
             _ => string.Empty
         };
 
@@ -821,7 +864,7 @@ public static class ActionFormatter
 
 Run: `dotnet test SmartCodeGenerator/SmartCodeGenerator.slnx --filter "FullyQualifiedName~ActionFormatterTests"`
 
-Expected: PASS, 7 tests.
+Expected: PASS, 13 tests (the architecture case is a 5-row `[DataRow]`).
 
 - [ ] **Step 5: Commit**
 
