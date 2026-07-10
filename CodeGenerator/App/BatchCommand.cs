@@ -27,6 +27,10 @@ internal sealed class BatchCommand
     /// visible to <c>create class Bar</c> on the next, and so rollback can put
     /// it back.
     /// </param>
+    /// <param name="configuredRules">Property-naming rules, passed through unchanged to the pipeline.</param>
+    /// <param name="workspaceRoot">The workspace directory the batch reads from and writes to.</param>
+    /// <param name="setLastCreatedProject">Callback the pipeline uses to record a newly created project.</param>
+    /// <param name="pipeline">Re-parses each approved sentence at execution time; never the stored preview.</param>
     internal void Handle(
         ref ProjectMetaData? currentProject,
         List<PropertyRule> configuredRules,
