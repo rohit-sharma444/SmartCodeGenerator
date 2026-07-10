@@ -4,7 +4,12 @@ using NaturalLanguageBridge;
 
 namespace CodeGenerator.Tests.Bridge;
 
+// The context tests below mutate the process-wide ContextManager.Current /
+// SessionContext singletons; method-level parallelization (see
+// MSTestSettings.cs) would otherwise race them against each other and against
+// ParsingStateSnapshotTests.
 [TestClass]
+[DoNotParallelize]
 public class BatchCommandDetectorTests
 {
     private static string NewWorkspace()
@@ -97,14 +102,28 @@ public class BatchCommandDetectorTests
         var root = NewWorkspace();
 
         ContextManager.Current.LastEntity = "SENTINEL";
-        ContextManager.Current.CurrentClass = "SentinelClass";
 
         BatchCommandDetector.Detect(
             ["create a Customer class", "add property Email to Customer"], root);
 
-        // SemanticAnalyzer.Analyze mutates the process-wide context. If detection
+        // ContextResolver.Resolve writes LastEntity during Analyze. If detection
         // leaked, execution would re-parse line 1 against line 2's entity.
         Assert.AreEqual("SENTINEL", ContextManager.Current.LastEntity);
-        Assert.AreEqual("SentinelClass", ContextManager.Current.CurrentClass);
+    }
+
+    [TestMethod]
+    public void Detect_LeavesSessionContextUnchanged()
+    {
+        var root = NewWorkspace();
+
+        SessionContext.CurrentClass = "SentinelClass";
+
+        BatchCommandDetector.Detect(["create a Customer class"], root);
+
+        // EntityExtractor.Extract sets SessionContext.CurrentClass on any
+        // create-class sentence, and nothing in the codebase ever clears it.
+        // Without the restore, merely previewing (or rejecting!) this line would
+        // make "Customer" the implicit target of every later command.
+        Assert.AreEqual("SentinelClass", SessionContext.CurrentClass);
     }
 }

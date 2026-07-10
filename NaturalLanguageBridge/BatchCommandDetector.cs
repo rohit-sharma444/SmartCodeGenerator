@@ -18,10 +18,12 @@ public static class BatchCommandDetector
     public static IReadOnlyList<DetectedAction> Detect(
         IEnumerable<string> lines, string workspaceRoot)
     {
-        // SemanticAnalyzer.Analyze writes LastEntity on the process-wide
-        // ContextManager.Current. Previewing must leave the process exactly as
-        // it found it, or execution re-parses line 1 against line N's entity.
-        var saved = SemanticContextSnapshot.Capture(ContextManager.Current);
+        // Parsing writes to two process-wide singletons: LastEntity on
+        // ContextManager.Current, and SessionContext.CurrentClass. Previewing
+        // must leave the process exactly as it found it, or execution re-parses
+        // line 1 against line N's entity -- and a rejected `create class Foo`
+        // still leaves Foo as the implicit target of every later command.
+        var saved = ParsingStateSnapshot.Capture();
 
         try
         {
@@ -39,7 +41,7 @@ public static class BatchCommandDetector
         }
         finally
         {
-            saved.RestoreTo(ContextManager.Current);
+            saved.Restore();
         }
     }
 
