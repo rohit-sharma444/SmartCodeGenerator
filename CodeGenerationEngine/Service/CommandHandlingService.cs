@@ -112,13 +112,24 @@ public static class CommandHandlingService
             [IntentType.DeleteProperty] = HandleDeleteProperty
         };
 
+    /// <summary>
+    /// Whether <paramref name="intent"/> has a handler and can therefore actually
+    /// run. Callers that preview commands before executing them — the batch
+    /// command — use this to avoid offering an intent that would only print
+    /// "not supported yet".
+    /// </summary>
+    public static bool IsSupported(IntentType intent) => Handlers.ContainsKey(intent);
+
     private static bool Dispatch(CommandExecutionContext context)
     {
         if (Handlers.TryGetValue(context.Command.Intent, out var handler))
             return handler(context);
 
         Console.WriteLine($"Intent '{context.Command.Intent}' is not supported yet.");
-        return true;
+
+        // Nothing ran, so this is a failure. Reporting success here would let the
+        // batch command count an unexecuted action as applied and skip its rollback.
+        return false;
     }
 
     // ----- Handlers -------------------------------------------------------
@@ -208,7 +219,9 @@ public static class CommandHandlingService
         {
             foreach (var err in classErrors)
                 Console.WriteLine(err);
-            return true;
+
+            // No class was generated, so the command failed.
+            return false;
         }
 
         return GenerateAndSave(ctx);

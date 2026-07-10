@@ -122,6 +122,12 @@ project is selected.
 | --- | --- |
 | `build app: <description>` | Describe a system in plain English; runs [domain discovery](../DomainDiscovery/README.md), prints the recognized topic and candidate entities, and opens a review loop (`approve` / `add <name>` / `remove <name>` / `rename <old> <new>` / `cancel`). Fetches from Wikipedia the first time (cached under `.dd-cache`). |
 
+### Batch
+
+| Command | Description |
+| --- | --- |
+| `batch` | Enter several commands, one per line, ending with a blank line. The CLI shows every line it detected — marking any it could not understand, and any whose command it recognizes but cannot yet run — and asks you to approve each of the rest individually; only approved commands run. If an approved command fails, the whole batch is rolled back and the workspace is restored to its pre-batch state. This restores files, the project registry and the learned-intent memory — console output already printed is not undone. If the restore itself fails, the pre-batch snapshot is kept on disk and its path is printed so you can recover by hand. |
+
 ### Utility
 
 | Command | Description |

@@ -21,6 +21,7 @@ internal class CodeGeneratorStarter
 
     private readonly NaturalLanguagePipeline _pipeline = new();
     private readonly BuildAppCommand _buildApp = new();
+    private readonly BatchCommand _batch = new();
 
     internal CodeGeneratorStarter()
     {
@@ -130,6 +131,13 @@ internal class CodeGeneratorStarter
                     continue;
                 }
 
+                if (BatchCommand.IsBatch(input))
+                {
+                    _batch.Handle(ref currentProject, _configuredRules, _workspaceRoot,
+                        r => ProjectManager.CurrentProject = r, _pipeline);
+                    continue;
+                }
+
                 // NLE analyzes first, then CodeGenerator generates from the result.
                 // The NLE analysis is used internally only; we surface just the
                 // command's own output (e.g. the project list), not the raw
@@ -175,6 +183,7 @@ internal class CodeGeneratorStarter
 
         Console.WriteLine("Type 'help' to see the complete command reference.");
         Console.WriteLine("Press TAB for command suggestions.");
+        Console.WriteLine("Type 'batch' to enter several commands and review them before they run.");
         Console.WriteLine("Type 'exit' to quit the application.");
         Console.WriteLine();
     }

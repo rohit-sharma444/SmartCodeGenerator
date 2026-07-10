@@ -1,0 +1,228 @@
+using CodeGenerationEngine.Models;
+
+namespace CodeGenerationEngine.Core;
+
+/// <summary>How much a workspace snapshot would copy.</summary>
+/// <param name="FileCount">Files that would be captured, after exclusions.</param>
+/// <param name="Bytes">Their total size in bytes.</param>
+public sealed record SnapshotSizing(int FileCount, long Bytes);
+
+/// <summary>
+/// A point-in-time copy of the workspace, the project registry, and the
+/// in-memory state a command can mutate. Used to make a batch of commands
+/// all-or-nothing: capture before the first action, restore if any fails.
+/// </summary>
+/// <remarks>
+/// Every command handler bottoms out in the filesystem, so one snapshot is
+/// generically correct for all of them — present and future — where an undo log
+/// would need a separate inverse per intent.
+/// </remarks>
+public sealed class WorkspaceSnapshot : IDisposable
+{
+    private static readonly string[] ExcludedDirectories =
+        ["bin", "obj", ".git", "TestResults", "node_modules"];
+
+    private const string WorkspaceFolder = "workspace";
+    private const string RegistryFileName = "ProjectManager.dat";
+    private const string RegistryBackupName = "ProjectManager.dat.bak";
+
+    private readonly string _workspaceRoot;
+    private readonly ProjectMetaData? _currentProject;
+    private readonly ParsingStateSnapshot _parsingState;
+    private bool _restoreFailed;
+
+    /// <summary>The temp directory holding the captured copy.</summary>
+    public string SnapshotPath { get; }
+
+    private WorkspaceSnapshot(
+        string workspaceRoot,
+        string snapshotPath,
+        ProjectMetaData? currentProject,
+        ParsingStateSnapshot parsingState)
+    {
+        _workspaceRoot = workspaceRoot;
+        SnapshotPath = snapshotPath;
+        _currentProject = currentProject;
+        _parsingState = parsingState;
+    }
+
+    /// <summary>
+    /// Counts the files a capture would copy, without copying them.
+    /// </summary>
+    public static SnapshotSizing Measure(string workspaceRoot)
+    {
+        int count = 0;
+        long bytes = 0;
+
+        foreach (var file in EnumerateIncludedFiles(workspaceRoot))
+        {
+            count++;
+            bytes += new FileInfo(file).Length;
+        }
+
+        return new SnapshotSizing(count, bytes);
+    }
+
+    /// <summary>
+    /// Copies the workspace, the project registry, and the in-memory context to
+    /// a temp directory. Throws if the copy cannot be made; the caller must then
+    /// abort before executing anything.
+    /// </summary>
+    public static WorkspaceSnapshot Capture(string workspaceRoot)
+    {
+        var snapshotPath = Path.Combine(
+            Path.GetTempPath(), "codegen_snapshot_" + Path.GetRandomFileName());
+
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(snapshotPath, WorkspaceFolder));
+
+            foreach (var file in EnumerateIncludedFiles(workspaceRoot))
+            {
+                var relative = Path.GetRelativePath(workspaceRoot, file);
+                var destination = Path.Combine(snapshotPath, WorkspaceFolder, relative);
+
+                Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+                File.Copy(file, destination, overwrite: true);
+            }
+
+            // The project registry lives next to the exe, not in the workspace.
+            var registry = Path.Combine(AppContext.BaseDirectory, RegistryFileName);
+            if (File.Exists(registry))
+                File.Copy(registry, Path.Combine(snapshotPath, RegistryBackupName), overwrite: true);
+
+            return new WorkspaceSnapshot(
+                workspaceRoot,
+                snapshotPath,
+                ProjectManager.CurrentProject,
+                ParsingStateSnapshot.Capture());
+        }
+        catch
+        {
+            TryDelete(snapshotPath);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Puts the workspace back exactly as it was. On failure the snapshot
+    /// directory is retained — see <see cref="Dispose"/>.
+    /// </summary>
+    public void Restore()
+    {
+        try
+        {
+            var capturedRoot = Path.Combine(SnapshotPath, WorkspaceFolder);
+
+            var captured = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var file in EnumerateIncludedFiles(capturedRoot))
+                captured[Path.GetRelativePath(capturedRoot, file)] = file;
+
+            // 1. Delete what the batch added. Removes `dotnet new` project trees.
+            foreach (var file in EnumerateIncludedFiles(_workspaceRoot).ToList())
+            {
+                var relative = Path.GetRelativePath(_workspaceRoot, file);
+                if (!captured.ContainsKey(relative))
+                    File.Delete(file);
+            }
+
+            // 2 & 3. Overwrite what changed, recreate what was deleted.
+            foreach (var (relative, source) in captured)
+            {
+                var destination = Path.Combine(_workspaceRoot, relative);
+                Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+                File.Copy(source, destination, overwrite: true);
+            }
+
+            // 4. Directories the batch created are now empty.
+            RemoveEmptyDirectories(_workspaceRoot, isRoot: true);
+
+            // 5. Registry file, then reload it into memory.
+            var registry = Path.Combine(AppContext.BaseDirectory, RegistryFileName);
+            var backup = Path.Combine(SnapshotPath, RegistryBackupName);
+
+            if (File.Exists(backup))
+                File.Copy(backup, registry, overwrite: true);
+            else if (File.Exists(registry))
+                File.Delete(registry);
+
+            ProjectManager.LoadProject();
+
+            // 6 & 7. In-memory state a handler may have set.
+            ProjectManager.CurrentProject = _currentProject;
+            _parsingState.Restore();
+
+            // learned.json is back, but the store that writes it is a process-wide
+            // singleton still holding what the rolled-back commands taught it. The
+            // next Save() would put all of it back on disk.
+            LearnedIntentStore.ReloadFromDisk();
+
+            // The rephrase heuristic compares against the last command executed —
+            // which, after a rollback, never happened.
+            LearningCoordinator.ResetHistory();
+        }
+        catch
+        {
+            _restoreFailed = true;
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Deletes the captured copy — unless <see cref="Restore"/> failed, in which
+    /// case it is kept so the user can recover by hand.
+    /// </summary>
+    public void Dispose()
+    {
+        if (_restoreFailed)
+            return;
+
+        TryDelete(SnapshotPath);
+    }
+
+    private static IEnumerable<string> EnumerateIncludedFiles(string directory)
+    {
+        foreach (var file in Directory.EnumerateFiles(directory))
+            yield return file;
+
+        foreach (var subdirectory in Directory.EnumerateDirectories(directory))
+        {
+            var name = Path.GetFileName(subdirectory);
+
+            if (ExcludedDirectories.Contains(name, StringComparer.OrdinalIgnoreCase))
+                continue;
+
+            foreach (var file in EnumerateIncludedFiles(subdirectory))
+                yield return file;
+        }
+    }
+
+    private static void RemoveEmptyDirectories(string directory, bool isRoot)
+    {
+        foreach (var subdirectory in Directory.EnumerateDirectories(directory).ToList())
+        {
+            var name = Path.GetFileName(subdirectory);
+
+            if (ExcludedDirectories.Contains(name, StringComparer.OrdinalIgnoreCase))
+                continue;
+
+            RemoveEmptyDirectories(subdirectory, isRoot: false);
+        }
+
+        if (!isRoot && !Directory.EnumerateFileSystemEntries(directory).Any())
+            Directory.Delete(directory);
+    }
+
+    private static void TryDelete(string directory)
+    {
+        try
+        {
+            if (Directory.Exists(directory))
+                Directory.Delete(directory, recursive: true);
+        }
+        catch
+        {
+            // A leaked temp directory is not worth failing a batch over.
+        }
+    }
+}

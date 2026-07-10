@@ -51,4 +51,32 @@ public sealed class LearnedIntentStoreTests
         // Save is a no-op with no path; must not throw.
         LearnedIntentStore.Save();
     }
+
+    [TestMethod]
+    public void ReloadFromDisk_DiscardsChangesNeverSaved()
+    {
+        var workspace = Path.Combine(Path.GetTempPath(), "cg_lis_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(workspace);
+
+        LearnedIntentStore.Initialize(workspace);
+        LearnedIntentStore.Save();
+
+        LearnedIntentStore.Current.Reinforce("show my widgets", IntentType.ListClasses);
+
+        LearnedIntentStore.ReloadFromDisk();
+
+        Assert.IsEmpty(LearnedIntentStore.Current.Entries);
+    }
+
+    [TestMethod]
+    public void ReloadFromDisk_WithNoBackingFile_LeavesMemoryAlone()
+    {
+        LearnedIntentStore.UseInMemory();
+        LearnedIntentStore.Current.Reinforce("show my widgets", IntentType.ListClasses);
+
+        // No file to reload from; wiping memory here would be data loss.
+        LearnedIntentStore.ReloadFromDisk();
+
+        Assert.IsNotEmpty(LearnedIntentStore.Current.Entries);
+    }
 }
