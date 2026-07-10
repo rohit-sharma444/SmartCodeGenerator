@@ -46,15 +46,50 @@ public static class NlpCommandMapper
         if (words.Length < 2)
             return IntentType.Unknown;
 
-        var verb = words[0];
-        var target = StripDeterminers(string.Join(' ', words.Skip(1)));
+        // Prefer NLE's semantic signal: the first Action entity's last word,
+        // mirroring NlpActionProvider.GetPrimaryAction. This is the reliable
+        // path — trust it and stop there, no positional fallback layered on
+        // top of it.
+        var actionVerb = analysis.Entities
+            .FirstOrDefault(e => e.Type == EntityType.Action)?
+            .Text.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .LastOrDefault()?
+            .ToLowerInvariant();
 
-        if (target is null)
+        if (!string.IsNullOrWhiteSpace(actionVerb))
+        {
+            var actionTarget = StripDeterminers(string.Join(' ', words.Skip(1)));
+            return actionTarget is not null && Table.TryGetValue((actionVerb, actionTarget), out var actionIntent)
+                ? actionIntent
+                : IntentType.Unknown;
+        }
+
+        // Fallback (no Action entity tagged): some corpus verbs — "current",
+        // "active", "selected", "new" — never come back as Action, so this is
+        // still load-bearing. Try the literal first word as verb first; this
+        // is exactly the old, corpus-proven behavior and covers phrases where
+        // a word like "new" is both a determiner and a legitimate verb (e.g.
+        // "new project"). Only if that fails to resolve AND the leading word
+        // is a determiner/filler, strip it and retry — this stops a leading
+        // determiner from silently becoming the verb lookup key for phrasing
+        // NLE didn't tag with an Action entity.
+        var remainder = words;
+        while (true)
+        {
+            var verb = remainder[0];
+            var target = StripDeterminers(string.Join(' ', remainder.Skip(1)));
+
+            if (target is not null && Table.TryGetValue((verb, target), out var intent))
+                return intent;
+
+            if (remainder.Length > 2 && Determiners.Contains(remainder[0]))
+            {
+                remainder = remainder.Skip(1).ToArray();
+                continue;
+            }
+
             return IntentType.Unknown;
-
-        return Table.TryGetValue((verb, target), out var intent)
-            ? intent
-            : IntentType.Unknown;
+        }
     }
 
     private static string? StripDeterminers(string? text)
@@ -74,7 +109,7 @@ public static class NlpCommandMapper
         {
             foreach (var v in verbs)
                 foreach (var g in targets)
-                    t[(v, g)] = intent; // last write wins; order rows by ascending priority
+                    t[(v, g)] = intent;
         }
 
         Add(IntentType.ListProjects, ["list", "show", "display", "view"], ["project", "projects"]);
