@@ -4,9 +4,12 @@ namespace CodeGenerator.Tests.Bridge;
 
 /// <summary>
 /// (phrase, expected intent) pairs generated from the Actions x Targets
-/// cross-product of IntentRepository.GetDefaultRules(), restricted to the 24
-/// intents that have both a rule and a dispatch handler. Copied here as a
-/// fixture so it outlives the deletion of IntentRepository in Plan 2.
+/// cross-product of IntentRepository.GetDefaultRules(), restricted to the 23
+/// intents that have both a rule and a dispatch handler and are reachable
+/// through natural language via the NLP mapper. IntentType.Help is
+/// deliberately excluded: it is a literal meta-command covered by the
+/// LiteralCommandTable, not the NLP mapper. Copied here as a fixture so it
+/// outlives the deletion of IntentRepository in Plan 2.
 /// </summary>
 internal static class IntentCorpus
 {
