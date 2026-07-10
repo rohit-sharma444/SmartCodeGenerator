@@ -36,6 +36,22 @@ public static class LearnedIntentStore
             _current.Save(_filePath);
     }
 
+    /// <summary>
+    /// Re-reads the backing file, discarding in-memory changes that were never
+    /// saved. Rollback needs this: restoring <c>learned.json</c> on disk is not
+    /// enough on its own, because the next <see cref="Save"/> writes the
+    /// un-reverted memory straight back over it. A no-op with no backing file.
+    /// </summary>
+    public static void ReloadFromDisk()
+    {
+        if (_filePath == null)
+            return;
+
+        var memory = new LearnedIntentMemory();
+        memory.Load(_filePath);
+        _current = memory;
+    }
+
     /// <summary>Test seam: fresh in-memory store with no backing file.</summary>
     public static void UseInMemory()
     {

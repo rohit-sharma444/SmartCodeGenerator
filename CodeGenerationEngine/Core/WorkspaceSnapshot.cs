@@ -151,6 +151,15 @@ public sealed class WorkspaceSnapshot : IDisposable
             // 6 & 7. In-memory state a handler may have set.
             ProjectManager.CurrentProject = _currentProject;
             _parsingState.Restore();
+
+            // learned.json is back, but the store that writes it is a process-wide
+            // singleton still holding what the rolled-back commands taught it. The
+            // next Save() would put all of it back on disk.
+            LearnedIntentStore.ReloadFromDisk();
+
+            // The rephrase heuristic compares against the last command executed —
+            // which, after a rollback, never happened.
+            LearningCoordinator.ResetHistory();
         }
         catch
         {

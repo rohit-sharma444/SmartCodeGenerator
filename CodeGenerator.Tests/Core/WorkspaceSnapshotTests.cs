@@ -1,4 +1,5 @@
 using CodeGenerationEngine.Core;
+using CodeGenerationEngine.Models;
 
 namespace CodeGenerator.Tests.Core;
 
@@ -23,6 +24,10 @@ public class WorkspaceSnapshotTests
     [TestCleanup]
     public void RemoveTempDirectories()
     {
+        // Initialize() points the process-wide store at a temp workspace we are
+        // about to delete; leave it detached from any file.
+        LearnedIntentStore.UseInMemory();
+
         foreach (var directory in _tempDirectories)
         {
             try
@@ -157,6 +162,31 @@ public class WorkspaceSnapshotTests
 
         Assert.AreEqual("BeforeEntity", ContextManager.Current.LastEntity);
         Assert.AreEqual("BeforeClass", SessionContext.CurrentClass);
+    }
+
+    [TestMethod]
+    public void Restore_DiscardsLearningRecordedDuringTheBatch()
+    {
+        var root = NewWorkspace();
+        LearnedIntentStore.Initialize(root);
+        LearnedIntentStore.Save();
+
+        using var snapshot = WorkspaceSnapshot.Capture(root);
+
+        // What an executed handler does, via LearningCoordinator.RecordOutcome.
+        LearnedIntentStore.Current.Reinforce("create a Customer class", IntentType.CreateClass);
+        LearnedIntentStore.Save();
+
+        snapshot.Restore();
+
+        // Restoring learned.json alone is not enough: the next Save() would write
+        // the un-reverted in-memory store straight back over the restored file.
+        Assert.IsEmpty(LearnedIntentStore.Current.Entries);
+
+        // Prove it survives the write that used to clobber the restored file.
+        LearnedIntentStore.Save();
+        LearnedIntentStore.Initialize(root);
+        Assert.IsEmpty(LearnedIntentStore.Current.Entries);
     }
 
     [TestMethod]
