@@ -25,11 +25,16 @@ public static class NlpCommandMapper
     // switch, activate, current, active, new, recover, ...) come back as an
     // Object entity instead, and multi-word targets are sometimes split across
     // several entities (or, for "deleted classes", the modifier "deleted" is
-    // itself tagged Action). Entity order matches word order in every case
-    // observed, so instead of keying off EntityType, this flattens every
-    // entity's text back into a single word sequence: the first word is the
-    // verb and everything after it is the target. This is robust to how NLE
-    // happened to type-tag each word.
+    // itself tagged Action). When a leading Action entity IS present, though,
+    // it reliably marks the verb, and the target noun phrase is the run of
+    // Action/Object entities that follows it: trailing arguments come back as
+    // Person entities, and a second clause's verb (e.g. "called" in "create a
+    // class called Customer") comes back as a trailing Action entity ahead of
+    // that Person. So the Action path takes everything after the verb entity,
+    // truncates at the first Person entity, and trims a trailing Action
+    // entity — leaving just the target noun phrase for the table lookup. The
+    // fallback path below (no Action entity tagged) has no such structure to
+    // lean on, so it stays purely positional.
     private static readonly Dictionary<(string Verb, string Target), IntentType> Table = Build();
 
     public static IntentType ResolveIntent(SemanticResult? analysis)
@@ -50,15 +55,30 @@ public static class NlpCommandMapper
         // mirroring NlpActionProvider.GetPrimaryAction. This is the reliable
         // path — trust it and stop there, no positional fallback layered on
         // top of it.
-        var actionVerb = analysis.Entities
-            .FirstOrDefault(e => e.Type == EntityType.Action)?
+        var actionEntity = analysis.Entities.FirstOrDefault(e => e.Type == EntityType.Action);
+        var actionVerb = actionEntity?
             .Text.Split(' ', StringSplitOptions.RemoveEmptyEntries)
             .LastOrDefault()?
             .ToLowerInvariant();
 
         if (!string.IsNullOrWhiteSpace(actionVerb))
         {
-            var actionTarget = StripDeterminers(string.Join(' ', words.Skip(1)));
+            // Target = the Action/Object span after the verb entity, stopping
+            // at the first Person entity (trailing arguments) and trimming a
+            // trailing Action entity (a second clause's verb, e.g. "called").
+            var span = analysis.Entities
+                .SkipWhile(e => e != actionEntity)
+                .Skip(1)
+                .TakeWhile(e => e.Type != EntityType.Person)
+                .ToList();
+
+            while (span.Count > 0 && span[^1].Type == EntityType.Action)
+                span.RemoveAt(span.Count - 1);
+
+            var actionTarget = span.Count == 0
+                ? null
+                : StripDeterminers(string.Join(' ', span.Select(e => e.Text)).ToLowerInvariant());
+
             return actionTarget is not null && Table.TryGetValue((actionVerb, actionTarget), out var actionIntent)
                 ? actionIntent
                 : IntentType.Unknown;
