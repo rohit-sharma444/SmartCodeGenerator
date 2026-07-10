@@ -20,6 +20,8 @@
 - Full test command: `dotnet test SmartCodeGenerator/SmartCodeGenerator.slnx`
 - Every new public type and public member gets an XML `///` doc comment (issue #29 item 7). Inline comments only where they state a constraint the code cannot show.
 - Temp directories in tests follow the existing convention: `Path.Combine(Path.GetTempPath(), "<prefix>_" + Path.GetRandomFileName())`.
+- Scratch workspaces for manual end-to-end runs go under the session scratchpad directory, not `/tmp`.
+- The five-field `SemanticContext` capture/restore is implemented **once**, in `CodeGenerationEngine/Core/SemanticContextSnapshot.cs`, and used by both `BatchCommandDetector` and `WorkspaceSnapshot`. Do not inline a second copy.
 
 ## File Structure
 
@@ -200,15 +202,142 @@ Enter re-prompts rather than approving, and EOF cancels the batch."
 ### Task 2: DetectedAction and BatchCommandDetector
 
 **Files:**
+- Create: `CodeGenerationEngine/Core/SemanticContextSnapshot.cs`
 - Create: `NaturalLanguageBridge/DetectedAction.cs`
 - Create: `NaturalLanguageBridge/BatchCommandDetector.cs`
+- Test: `CodeGenerator.Tests/Core/SemanticContextSnapshotTests.cs`
 - Test: `CodeGenerator.Tests/Bridge/BatchCommandDetectorTests.cs`
 
 **Interfaces:**
 - Consumes: `NlpActionProvider.GetPrimaryAction(string) -> string?` (existing); `CodeGenerationEngine.Core.SemanticAnalyzer.Analyze(string, string?) -> SemanticModel`; `CodeGenerationEngine.Core.IntentAnalyzer.DetectWithConfidence(SemanticModel) -> IntentMatch`; `CodeGenerationEngine.Core.EntityExtractor.Extract(SemanticModel, IntentType, string) -> ParsedCommand`; `CodeGenerationEngine.Core.ContextManager.Current -> SemanticContext`.
-- Produces: `NaturalLanguageBridge.DetectedAction(string Sentence, IntentType Intent, double Confidence, ParsedCommand? Preview, string? Note)` with `bool IsActionable`; and `NaturalLanguageBridge.BatchCommandDetector.Detect(IEnumerable<string> lines, string workspaceRoot) -> IReadOnlyList<DetectedAction>`.
+- Produces: `CodeGenerationEngine.Core.SemanticContextSnapshot` with `static SemanticContextSnapshot Capture(SemanticContext)` and `void RestoreTo(SemanticContext)` — **Task 4 also consumes this**; `NaturalLanguageBridge.DetectedAction(string Sentence, IntentType Intent, double Confidence, ParsedCommand? Preview, string? Note)` with `bool IsActionable`; and `NaturalLanguageBridge.BatchCommandDetector.Detect(IEnumerable<string> lines, string workspaceRoot) -> IReadOnlyList<DetectedAction>`.
 
 Background the implementer needs: `SemanticAnalyzer.Analyze` internally calls `ContextResolver.Resolve`, which writes `LastEntity` on the process-wide `ContextManager.Current`. `Detect` must therefore save and restore that context, or previewing a batch changes how the batch subsequently parses.
+
+`SemanticContextSnapshot` is built here because detection needs it first. Task 4's `WorkspaceSnapshot` reuses the same type — do not write a second copy of the field list.
+
+- [ ] **Step 1a: Write the failing test for SemanticContextSnapshot**
+
+Create `CodeGenerator.Tests/Core/SemanticContextSnapshotTests.cs`:
+
+```csharp
+using CodeGenerationEngine.Core;
+using CodeGenerationEngine.Models;
+
+namespace CodeGenerator.Tests.Core;
+
+[TestClass]
+public class SemanticContextSnapshotTests
+{
+    [TestMethod]
+    public void RestoreTo_PutsAllFiveFieldsBack()
+    {
+        var context = new SemanticContext
+        {
+            CurrentProject = "P",
+            CurrentClass = "C",
+            CurrentNamespace = "N",
+            CurrentFile = "F",
+            LastEntity = "E"
+        };
+
+        var snapshot = SemanticContextSnapshot.Capture(context);
+
+        context.CurrentProject = "changed";
+        context.CurrentClass = "changed";
+        context.CurrentNamespace = "changed";
+        context.CurrentFile = "changed";
+        context.LastEntity = "changed";
+
+        snapshot.RestoreTo(context);
+
+        Assert.AreEqual("P", context.CurrentProject);
+        Assert.AreEqual("C", context.CurrentClass);
+        Assert.AreEqual("N", context.CurrentNamespace);
+        Assert.AreEqual("F", context.CurrentFile);
+        Assert.AreEqual("E", context.LastEntity);
+    }
+
+    [TestMethod]
+    public void Capture_TakesACopy_NotALiveReference()
+    {
+        var context = new SemanticContext { LastEntity = "original" };
+
+        var snapshot = SemanticContextSnapshot.Capture(context);
+        context.LastEntity = "mutated";
+        snapshot.RestoreTo(context);
+
+        Assert.AreEqual("original", context.LastEntity);
+    }
+
+    [TestMethod]
+    public void RestoreTo_RestoresNullsAsNull()
+    {
+        var context = new SemanticContext();
+
+        var snapshot = SemanticContextSnapshot.Capture(context);
+        context.LastEntity = "set";
+        snapshot.RestoreTo(context);
+
+        Assert.IsNull(context.LastEntity);
+    }
+}
+```
+
+- [ ] **Step 1b: Implement SemanticContextSnapshot**
+
+Create `CodeGenerationEngine/Core/SemanticContextSnapshot.cs`:
+
+```csharp
+using CodeGenerationEngine.Models;
+
+namespace CodeGenerationEngine.Core;
+
+/// <summary>
+/// A copy of the mutable fields of a <see cref="SemanticContext"/>, so a caller
+/// can put the process-wide context back the way it found it.
+/// </summary>
+/// <remarks>
+/// <see cref="SemanticAnalyzer.Analyze"/> mutates <see cref="ContextManager.Current"/>
+/// via <see cref="ContextResolver"/>. Two callers need to undo that: batch
+/// detection, which must not let a preview change how the batch then parses, and
+/// <see cref="WorkspaceSnapshot"/>, which must restore in-memory state on rollback.
+/// The field list lives here once so the two cannot drift apart.
+/// </remarks>
+public sealed class SemanticContextSnapshot
+{
+    private readonly string? _currentProject;
+    private readonly string? _currentClass;
+    private readonly string? _currentNamespace;
+    private readonly string? _currentFile;
+    private readonly string? _lastEntity;
+
+    private SemanticContextSnapshot(SemanticContext context)
+    {
+        _currentProject = context.CurrentProject;
+        _currentClass = context.CurrentClass;
+        _currentNamespace = context.CurrentNamespace;
+        _currentFile = context.CurrentFile;
+        _lastEntity = context.LastEntity;
+    }
+
+    /// <summary>Copies the current values out of <paramref name="context"/>.</summary>
+    public static SemanticContextSnapshot Capture(SemanticContext context)
+        => new(context);
+
+    /// <summary>Writes the captured values back onto <paramref name="context"/>.</summary>
+    public void RestoreTo(SemanticContext context)
+    {
+        context.CurrentProject = _currentProject;
+        context.CurrentClass = _currentClass;
+        context.CurrentNamespace = _currentNamespace;
+        context.CurrentFile = _currentFile;
+        context.LastEntity = _lastEntity;
+    }
+}
+```
+
+Run: `dotnet test SmartCodeGenerator/SmartCodeGenerator.slnx --filter "FullyQualifiedName~SemanticContextSnapshotTests"` — expected PASS, 3 tests.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -396,7 +525,7 @@ public static class BatchCommandDetector
         // SemanticAnalyzer.Analyze writes LastEntity on the process-wide
         // ContextManager.Current. Previewing must leave the process exactly as
         // it found it, or execution re-parses line 1 against line N's entity.
-        var saved = Capture(ContextManager.Current);
+        var saved = SemanticContextSnapshot.Capture(ContextManager.Current);
 
         try
         {
@@ -414,7 +543,7 @@ public static class BatchCommandDetector
         }
         finally
         {
-            Restore(ContextManager.Current, saved);
+            saved.RestoreTo(ContextManager.Current);
         }
     }
 
@@ -442,24 +571,6 @@ public static class BatchCommandDetector
                 sentence, IntentType.Unknown, 0, null, $"parse failed: {ex.Message}");
         }
     }
-
-    private static SemanticContext Capture(SemanticContext context) => new()
-    {
-        CurrentProject = context.CurrentProject,
-        CurrentClass = context.CurrentClass,
-        CurrentNamespace = context.CurrentNamespace,
-        CurrentFile = context.CurrentFile,
-        LastEntity = context.LastEntity
-    };
-
-    private static void Restore(SemanticContext context, SemanticContext saved)
-    {
-        context.CurrentProject = saved.CurrentProject;
-        context.CurrentClass = saved.CurrentClass;
-        context.CurrentNamespace = saved.CurrentNamespace;
-        context.CurrentFile = saved.CurrentFile;
-        context.LastEntity = saved.LastEntity;
-    }
 }
 ```
 
@@ -474,7 +585,7 @@ If `Detect_ActionableSentences_ResolveInInputOrder` fails on an intent value, do
 - [ ] **Step 5: Commit**
 
 ```bash
-git add NaturalLanguageBridge/DetectedAction.cs NaturalLanguageBridge/BatchCommandDetector.cs CodeGenerator.Tests/Bridge/BatchCommandDetectorTests.cs
+git add CodeGenerationEngine/Core/SemanticContextSnapshot.cs CodeGenerator.Tests/Core/SemanticContextSnapshotTests.cs NaturalLanguageBridge/DetectedAction.cs NaturalLanguageBridge/BatchCommandDetector.cs CodeGenerator.Tests/Bridge/BatchCommandDetectorTests.cs
 git commit -m "Detect the commands in a batch without executing them
 
 Detection saves and restores ContextManager.Current, because
@@ -675,7 +786,7 @@ git commit -m "Render a detected action as one review-list line"
 - Test: `CodeGenerator.Tests/Core/WorkspaceSnapshotTests.cs`
 
 **Interfaces:**
-- Consumes: `ProjectManager.CurrentProject` (get/set), `ProjectManager.LoadProject()`, `ContextManager.Current` — all existing, all in `CodeGenerationEngine.Core`.
+- Consumes: `ProjectManager.CurrentProject` (get/set), `ProjectManager.LoadProject()`, `ContextManager.Current` — all existing, all in `CodeGenerationEngine.Core`. Also `SemanticContextSnapshot.Capture(SemanticContext)` / `RestoreTo(SemanticContext)` from Task 2 — use it; do not re-implement the field copy.
 - Produces: `CodeGenerationEngine.Core.SnapshotSizing(int FileCount, long Bytes)`; `CodeGenerationEngine.Core.WorkspaceSnapshot` with `static SnapshotSizing Measure(string)`, `static WorkspaceSnapshot Capture(string)`, `string SnapshotPath { get; }`, `void Restore()`, `void Dispose()`.
 
 This is a **new file** in `CodeGenerationEngine/Core/`; no existing file there changes. It lives here rather than in the bridge because restoring means touching `ProjectManager` and its registry.
@@ -894,7 +1005,7 @@ public sealed class WorkspaceSnapshot : IDisposable
 
     private readonly string _workspaceRoot;
     private readonly ProjectMetaData? _currentProject;
-    private readonly SemanticContext _context;
+    private readonly SemanticContextSnapshot _context;
     private bool _restoreFailed;
 
     /// <summary>The temp directory holding the captured copy.</summary>
@@ -904,7 +1015,7 @@ public sealed class WorkspaceSnapshot : IDisposable
         string workspaceRoot,
         string snapshotPath,
         ProjectMetaData? currentProject,
-        SemanticContext context)
+        SemanticContextSnapshot context)
     {
         _workspaceRoot = workspaceRoot;
         SnapshotPath = snapshotPath;
@@ -961,7 +1072,7 @@ public sealed class WorkspaceSnapshot : IDisposable
                 workspaceRoot,
                 snapshotPath,
                 ProjectManager.CurrentProject,
-                CaptureContext(ContextManager.Current));
+                SemanticContextSnapshot.Capture(ContextManager.Current));
         }
         catch
         {
@@ -1016,7 +1127,7 @@ public sealed class WorkspaceSnapshot : IDisposable
 
             // 6 & 7. In-memory state a handler may have set.
             ProjectManager.CurrentProject = _currentProject;
-            RestoreContext(ContextManager.Current, _context);
+            _context.RestoreTo(ContextManager.Current);
         }
         catch
         {
@@ -1068,24 +1179,6 @@ public sealed class WorkspaceSnapshot : IDisposable
 
         if (!isRoot && !Directory.EnumerateFileSystemEntries(directory).Any())
             Directory.Delete(directory);
-    }
-
-    private static SemanticContext CaptureContext(SemanticContext context) => new()
-    {
-        CurrentProject = context.CurrentProject,
-        CurrentClass = context.CurrentClass,
-        CurrentNamespace = context.CurrentNamespace,
-        CurrentFile = context.CurrentFile,
-        LastEntity = context.LastEntity
-    };
-
-    private static void RestoreContext(SemanticContext context, SemanticContext saved)
-    {
-        context.CurrentProject = saved.CurrentProject;
-        context.CurrentClass = saved.CurrentClass;
-        context.CurrentNamespace = saved.CurrentNamespace;
-        context.CurrentFile = saved.CurrentFile;
-        context.LastEntity = saved.LastEntity;
     }
 
     private static void TryDelete(string directory)
