@@ -118,7 +118,10 @@ public static class CommandHandlingService
             return handler(context);
 
         Console.WriteLine($"Intent '{context.Command.Intent}' is not supported yet.");
-        return true;
+
+        // Nothing ran, so this is a failure. Reporting success here would let the
+        // batch command count an unexecuted action as applied and skip its rollback.
+        return false;
     }
 
     // ----- Handlers -------------------------------------------------------
@@ -208,7 +211,9 @@ public static class CommandHandlingService
         {
             foreach (var err in classErrors)
                 Console.WriteLine(err);
-            return true;
+
+            // No class was generated, so the command failed.
+            return false;
         }
 
         return GenerateAndSave(ctx);
