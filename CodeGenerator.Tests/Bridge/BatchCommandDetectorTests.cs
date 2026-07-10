@@ -36,6 +36,34 @@ public class BatchCommandDetectorTests
     }
 
     [TestMethod]
+    public void Detect_IntentWithNoHandler_IsUnactionableWithNote()
+    {
+        var root = NewWorkspace();
+
+        // CreateRepository is a real intent that IntentAnalyzer resolves, but it
+        // has no handler. Offering it for approval would execute nothing and,
+        // before the batch learned to skip it, report the line as applied.
+        var actions = BatchCommandDetector.Detect(["create a repository for Customer"], root);
+
+        Assert.AreEqual(1, actions.Count);
+        Assert.AreEqual(IntentType.CreateRepository, actions[0].Intent);
+        Assert.IsFalse(actions[0].IsActionable);
+        Assert.IsNull(actions[0].Preview);
+        Assert.Contains("not supported", actions[0].Note!);
+    }
+
+    [TestMethod]
+    public void Detect_IntentWithAHandler_StaysActionable()
+    {
+        var root = NewWorkspace();
+
+        var actions = BatchCommandDetector.Detect(["create a Customer class"], root);
+
+        Assert.IsTrue(actions[0].IsActionable);
+        Assert.IsNull(actions[0].Note);
+    }
+
+    [TestMethod]
     public void Detect_ProseLine_IsUnactionableWithNoteAndNoPreview()
     {
         var root = NewWorkspace();

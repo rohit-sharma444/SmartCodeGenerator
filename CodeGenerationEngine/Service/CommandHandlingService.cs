@@ -112,6 +112,14 @@ public static class CommandHandlingService
             [IntentType.DeleteProperty] = HandleDeleteProperty
         };
 
+    /// <summary>
+    /// Whether <paramref name="intent"/> has a handler and can therefore actually
+    /// run. Callers that preview commands before executing them — the batch
+    /// command — use this to avoid offering an intent that would only print
+    /// "not supported yet".
+    /// </summary>
+    public static bool IsSupported(IntentType intent) => Handlers.ContainsKey(intent);
+
     private static bool Dispatch(CommandExecutionContext context)
     {
         if (Handlers.TryGetValue(context.Command.Intent, out var handler))

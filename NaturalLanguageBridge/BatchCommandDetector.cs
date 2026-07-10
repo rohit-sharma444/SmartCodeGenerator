@@ -1,5 +1,6 @@
 using CodeGenerationEngine.Core;
 using CodeGenerationEngine.Models;
+using CodeGenerationEngine.Service;
 
 namespace NaturalLanguageBridge;
 
@@ -61,6 +62,16 @@ public static class BatchCommandDetector
             {
                 return new DetectedAction(
                     sentence, IntentType.Unknown, match.Confidence, null, "not understood");
+            }
+
+            // Recognizing an intent is not the same as being able to run it: 21 of
+            // the IntentType values have no handler. Approving one would execute
+            // nothing, so list it as skipped rather than offering it.
+            if (!CommandHandlingService.IsSupported(match.Intent))
+            {
+                return new DetectedAction(
+                    sentence, match.Intent, match.Confidence, null,
+                    $"{match.Intent} is not supported yet");
             }
 
             var preview = EntityExtractor.Extract(semantic, match.Intent, workspaceRoot);

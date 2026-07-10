@@ -10,7 +10,9 @@ namespace NaturalLanguageBridge;
 /// executed, by being re-parsed against live state at execution time.
 /// </param>
 /// <param name="Intent">
-/// The detected intent. <see cref="IntentType.Unknown"/> means unactionable.
+/// The detected intent. <see cref="IntentType.Unknown"/> means unactionable, as
+/// does any intent with no handler — that one keeps its name but carries a
+/// <paramref name="Note"/>.
 /// </param>
 /// <param name="Confidence">Detection confidence, 0..1.</param>
 /// <param name="Preview">
@@ -25,6 +27,10 @@ public sealed record DetectedAction(
     ParsedCommand? Preview,
     string? Note)
 {
-    /// <summary>Whether this line may be approved and executed.</summary>
-    public bool IsActionable => Intent != IntentType.Unknown;
+    /// <summary>
+    /// Whether this line may be approved and executed. A <see cref="Note"/> is
+    /// only ever set on a line that cannot run, so it disqualifies the line even
+    /// when an intent was recognized.
+    /// </summary>
+    public bool IsActionable => Intent != IntentType.Unknown && Note is null;
 }
