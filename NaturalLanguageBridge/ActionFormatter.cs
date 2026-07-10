@@ -44,6 +44,13 @@ public static class ActionFormatter
             IntentType.CreateMethod
                 or IntentType.DeleteMethod => command.MethodName,
 
+            // The architecture intents each carry their own dedicated name field.
+            IntentType.CreateInterface => command.InterfaceName ?? string.Empty,
+            IntentType.CreateService => command.ServiceName ?? string.Empty,
+            IntentType.CreateRepository => command.RepositoryName ?? string.Empty,
+            IntentType.CreateController => command.ControllerName ?? string.Empty,
+            IntentType.CreateApi => command.ApiName ?? string.Empty,
+
             _ => string.Empty
         };
 
