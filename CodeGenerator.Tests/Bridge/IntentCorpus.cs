@@ -4,12 +4,19 @@ namespace CodeGenerator.Tests.Bridge;
 
 /// <summary>
 /// (phrase, expected intent) pairs generated from the Actions x Targets
-/// cross-product of IntentRepository.GetDefaultRules(), restricted to the 23
+/// cross-product of IntentRepository.GetDefaultRules(), restricted to the 22
 /// intents that have both a rule and a dispatch handler and are reachable
-/// through natural language via the NLP mapper. IntentType.Help is
-/// deliberately excluded: it is a literal meta-command covered by the
-/// LiteralCommandTable, not the NLP mapper. Copied here as a fixture so it
-/// outlives the deletion of IntentRepository in Plan 2.
+/// through natural language via the NLP mapper. Two intents are deliberately
+/// excluded: IntentType.Help, a literal meta-command covered by the
+/// LiteralCommandTable, not the NLP mapper; and
+/// IntentType.ListClassesInProject, whose source rule's degenerate target
+/// "classes in" normalizes (once NLE strips the trailing preposition) to the
+/// same SemanticResult as "list classes", making it indistinguishable from
+/// IntentType.ListClasses by the generic (verb, object) mapper. Resolving it
+/// requires detecting an "in &lt;projectname&gt;" argument, which is
+/// entity-extraction work for a pattern-guard path, not the generic mapper.
+/// Copied here as a fixture so it outlives the deletion of IntentRepository
+/// in Plan 2.
 /// </summary>
 internal static class IntentCorpus
 {
@@ -24,7 +31,6 @@ internal static class IntentCorpus
         (["create", "add", "generate"], ["class"], IntentType.CreateClass),
         (["show", "view", "display", "open"], ["class"], IntentType.ShowClass),
         (["list", "show", "display"], ["classes"], IntentType.ListClasses),
-        (["list", "show", "display"], ["classes in"], IntentType.ListClassesInProject),
         (["delete", "remove"], ["class"], IntentType.DeleteClass),
         (["restore", "recover"], ["class"], IntentType.RestoreClass),
         (["restore"], ["last class"], IntentType.RestoreLastClass),

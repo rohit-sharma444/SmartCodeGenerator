@@ -84,7 +84,6 @@ public static class NlpCommandMapper
         Add(IntentType.CreateClass, ["create", "add", "generate"], ["class"]);
         Add(IntentType.ShowClass, ["show", "view", "display", "open"], ["class"]);
         Add(IntentType.ListClasses, ["list", "show", "display"], ["classes"]);
-        Add(IntentType.ListClassesInProject, ["list", "show", "display"], ["classes in"]);
         Add(IntentType.DeleteClass, ["delete", "remove"], ["class"]);
         Add(IntentType.RestoreClass, ["restore", "recover"], ["class"]);
         Add(IntentType.RestoreLastClass, ["restore"], ["last class"]);
