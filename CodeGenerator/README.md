@@ -126,7 +126,7 @@ project is selected.
 
 | Command | Description |
 | --- | --- |
-| `batch` | Enter several commands, one per line, ending with a blank line. The CLI shows every line it detected — marking any it could not understand — and asks you to approve each one individually; only approved commands run. If an approved command fails, the whole batch is rolled back and the workspace is restored to its pre-batch state. This restores files and the project registry only — console output already printed is not undone. If the restore itself fails, the pre-batch snapshot is kept on disk and its path is printed so you can recover by hand. |
+| `batch` | Enter several commands, one per line, ending with a blank line. The CLI shows every line it detected — marking any it could not understand, and any whose command it recognizes but cannot yet run — and asks you to approve each of the rest individually; only approved commands run. If an approved command fails, the whole batch is rolled back and the workspace is restored to its pre-batch state. This restores files, the project registry and the learned-intent memory — console output already printed is not undone. If the restore itself fails, the pre-batch snapshot is kept on disk and its path is printed so you can recover by hand. |
 
 ### Utility
 

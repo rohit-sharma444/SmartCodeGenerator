@@ -10,14 +10,20 @@ public static class LearnedIntentStore
     private static LearnedIntentMemory _current = new();
     private static string? _filePath;
 
+    /// <summary>The active memory. Process-wide, and replaced by every reload.</summary>
     public static LearnedIntentMemory Current => _current;
 
+    /// <summary>Whether learning is on; <c>CG_NO_LEARN=1</c> turns it off.</summary>
     public static bool Enabled =>
         !string.Equals(
             Environment.GetEnvironmentVariable("CG_NO_LEARN"),
             "1",
             StringComparison.Ordinal);
 
+    /// <summary>
+    /// Points the store at <paramref name="workspaceRoot"/>'s <c>.codegen</c>
+    /// folder, loads what was learned there, and ages out stale entries.
+    /// </summary>
     public static void Initialize(string workspaceRoot)
     {
         var folder = Path.Combine(workspaceRoot, ".codegen");
@@ -30,6 +36,7 @@ public static class LearnedIntentStore
         _current = memory;
     }
 
+    /// <summary>Writes the memory to the backing file, if there is one.</summary>
     public static void Save()
     {
         if (_filePath != null)

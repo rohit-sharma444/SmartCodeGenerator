@@ -60,13 +60,19 @@ Rollback has to restore all of it, so it is worth listing:
 | Generated class files | inside `workspaceRoot` |
 | `dotnet new` project trees | inside `workspaceRoot` (via `DotNetProjectFactory`) |
 | Recycle bin (`DeletedClassRegistry`) | inside `workspaceRoot` |
-| Learning store | `<workspaceRoot>/.codegen/learned.json` |
+| Learning store | `<workspaceRoot>/.codegen/learned.json` **and** the in-memory `LearnedIntentStore.Current` that writes it |
 | **Project registry** | **`AppContext.BaseDirectory/ProjectManager.dat` — outside the workspace** |
 | `ProjectManager.CurrentProject` | in-memory static |
 | **`ContextManager.Current`** | **in-memory static `SemanticContext`, mutated by `SemanticAnalyzer.Analyze`** |
 | **`SessionContext`** | **in-memory static class, mutated by `EntityExtractor.Extract`** |
 
 A workspace-only snapshot would silently miss the last four.
+
+It would also miss the in-memory half of the learning store, which this table
+originally recorded as a file and nothing else. Restoring `learned.json` is not
+enough: `LearnedIntentStore.Current` is process-wide, survives the restore
+holding whatever the rolled-back commands taught it, and the next `Save()`
+writes all of it back. `Restore` therefore re-reads the file into memory.
 
 The two contexts deserve special mention, because **parsing a sentence mutates
 process-wide state twice over**, and both leaks defeat this feature.
@@ -143,9 +149,18 @@ write `Bar.cs` to the wrong directory.
 
 Re-parsing each approved sentence immediately before it runs — by replaying the
 raw text through the existing `NaturalLanguagePipeline.Handle` — resolves it
-against live state. It also means the execution path is **completely
-unmodified**, so none of the 40+ intent handlers in the `CommandHandlingService`
-dispatch table can regress.
+against live state. It also means no intent handler in the
+`CommandHandlingService` dispatch table has to change, so none of them can
+regress.
+
+**Amended during implementation.** The original wording claimed the execution
+path was *completely unmodified*. That turned out to be untenable: rollback
+triggers on a handler returning `false`, and two places returned `true` after
+doing nothing — `Dispatch` for the 21 `IntentType` values with no handler, and
+`HandleCreateClass` after printing validation errors. A batch counted those as
+applied and skipped its rollback. Both now report failure, and detection asks
+`CommandHandlingService.IsSupported` so an unrunnable intent is never offered
+for approval in the first place. The handlers themselves are still untouched.
 
 The cost is that the preview may differ from what runs. The design accepts this
 and mitigates it by printing the resolved target as each action executes.
