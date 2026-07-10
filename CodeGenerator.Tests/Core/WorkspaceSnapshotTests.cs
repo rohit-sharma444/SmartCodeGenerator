@@ -10,11 +10,32 @@ namespace CodeGenerator.Tests.Core;
 [DoNotParallelize]
 public class WorkspaceSnapshotTests
 {
-    private static string NewWorkspace()
+    private readonly List<string> _tempDirectories = [];
+
+    private string NewWorkspace()
     {
         var root = Path.Combine(Path.GetTempPath(), "snap_" + Path.GetRandomFileName());
         Directory.CreateDirectory(root);
+        _tempDirectories.Add(root);
         return root;
+    }
+
+    [TestCleanup]
+    public void RemoveTempDirectories()
+    {
+        foreach (var directory in _tempDirectories)
+        {
+            try
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+            catch (IOException)
+            {
+                // A leftover temp directory must never fail an otherwise green test.
+            }
+        }
+
+        _tempDirectories.Clear();
     }
 
     [TestMethod]
@@ -167,5 +188,8 @@ public class WorkspaceSnapshotTests
         // Losing the only copy of the user's code on a failed restore is the
         // worst thing this feature could do.
         Assert.IsTrue(Directory.Exists(path));
+
+        // Dispose keeps this one on purpose, so the test owns deleting it.
+        _tempDirectories.Add(path);
     }
 }
