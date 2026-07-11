@@ -44,10 +44,23 @@ public static class CommandHandlingService
         }
 
         var command = ParseInput(input, workspaceRoot, nlpAction);
+        return Execute(command, ref currentProject, configuredRules, workspaceRoot, setLastCreatedProject);
+    }
 
+    /// <summary>
+    /// Executes an already-parsed command. This is the seam: the bridge is the
+    /// producer of <see cref="ParsedCommand"/>; CodeGenerationEngine only executes.
+    /// </summary>
+    public static bool Execute(
+        ParsedCommand command,
+        ref ProjectMetaData? currentProject,
+        List<PropertyRule> configuredRules,
+        string workspaceRoot,
+        Action<ProjectMetaData?> setLastCreatedProject)
+    {
         var context = new CommandExecutionContext
         {
-            RawInput = input,
+            RawInput = command.OriginalSentence,
             Command = command,
             WorkspaceRoot = workspaceRoot,
             ConfiguredRules = configuredRules,
@@ -58,7 +71,7 @@ public static class CommandHandlingService
         bool result = Dispatch(context);
 
         // Feed the outcome back to the learning layer.
-        LearningCoordinator.RecordOutcome(input, command.Intent, result, command);
+        LearningCoordinator.RecordOutcome(command.OriginalSentence, command.Intent, result, command);
 
         // Propagate any project change made by a handler back to the caller.
         currentProject = context.CurrentProject;
@@ -69,7 +82,13 @@ public static class CommandHandlingService
     {
         var semantic = SemanticAnalyzer.Analyze(input, nlpAction);
         var intentType = Core.IntentAnalyzer.Detect(semantic);
-        return EntityExtractor.Extract(semantic, intentType, workspaceRoot);
+        var command = EntityExtractor.Extract(semantic, intentType, workspaceRoot);
+
+        // The old extractor never sets OriginalSentence, but Execute (and the
+        // handlers/learning layer it feeds) rely on it as the source of the raw
+        // input, so backfill it here for the ProcessInput path.
+        command.OriginalSentence = input;
+        return command;
     }
 
     /// <summary>
