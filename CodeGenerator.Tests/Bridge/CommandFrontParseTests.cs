@@ -56,4 +56,30 @@ public class CommandFrontParseTests
         Assert.AreEqual(IntentType.UseProject, cmd.Intent);
         Assert.AreEqual("MyApp", cmd.ProjectName);
     }
+
+    [TestMethod]
+    public void Add_validation_with_args_resolves_intent_and_fields()
+    {
+        var cmd = CommandFront.Parse(
+            "add validation Email should not be blank on Email in Customer", "");
+        Assert.AreEqual(IntentType.AddValidation, cmd.Intent);
+        Assert.AreEqual("Email", cmd.PropertyName);
+        Assert.AreEqual("Customer", cmd.ClassName);
+    }
+
+    [TestMethod]
+    public void Show_validation_with_args_resolves_intent_and_class_name()
+    {
+        var cmd = CommandFront.Parse("show validation for Customer", "");
+        Assert.AreEqual(IntentType.ShowValidation, cmd.Intent);
+        Assert.AreEqual("Customer", cmd.ClassName);
+    }
+
+    [TestMethod]
+    public void Generate_validator_resolves_intent_and_class_name()
+    {
+        var cmd = CommandFront.Parse("generate validator for Customer", "");
+        Assert.AreEqual(IntentType.GenerateValidator, cmd.Intent);
+        Assert.AreEqual("Customer", cmd.ClassName);
+    }
 }

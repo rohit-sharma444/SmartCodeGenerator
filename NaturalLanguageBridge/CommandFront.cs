@@ -24,6 +24,17 @@ public static class CommandFront
     private static readonly Regex Validator =
         new(@"\bvalidator\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    // "add validation <args>" and "show/list/view validation <args>" — the
+    // argument-bearing forms LiteralCommandTable's exact match can't cover, and
+    // the mapper has no AddValidation/ShowValidation entries for. Without these,
+    // e.g. "add validation Email should not be blank on Email in Customer" fell
+    // through to Unknown.
+    private static readonly Regex AddValidationRe =
+        new(@"\badd\s+validation\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly Regex ShowValidationRe =
+        new(@"\b(?:show|list|view)\s+validation\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     // "use project <name>" and its synonyms. The old ProjectManager.UseProject
     // sliced the sentence itself; the bridge now captures the name so the handler
     // reads a field. Kept ahead of the mapper because the mapper's UseProject rule
@@ -57,6 +68,12 @@ public static class CommandFront
                 OriginalSentence = input ?? string.Empty
             };
 
+        if (AddValidationRe.IsMatch(text))
+            return CommandEntityExtractor.Extract(input ?? string.Empty, IntentType.AddValidation, workspace);
+
+        if (ShowValidationRe.IsMatch(text))
+            return CommandEntityExtractor.Extract(input ?? string.Empty, IntentType.ShowValidation, workspace);
+
         if (Validator.IsMatch(text))
         {
             var validatorCmd = CommandEntityExtractor.Extract(input ?? string.Empty, IntentType.GenerateValidator, workspace);
@@ -64,7 +81,6 @@ public static class CommandFront
             // class name from the sentence here — exactly what HandleGenerateValidator
             // used to do with the raw input, now done in the bridge.
             CommandEntityExtractor.ExtractClassName(input ?? string.Empty, validatorCmd);
-            validatorCmd.Intent = IntentType.GenerateValidator;
             return validatorCmd;
         }
 

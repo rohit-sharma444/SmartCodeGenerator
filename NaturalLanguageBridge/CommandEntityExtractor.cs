@@ -1,8 +1,6 @@
 using CodeGenerationEngine.Core;      // CommandParser
 using CodeGenerationEngine.Models;    // ParsedCommand, IntentType, SessionContext
 using System.Text.RegularExpressions;
-using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace NaturalLanguageBridge;
 
