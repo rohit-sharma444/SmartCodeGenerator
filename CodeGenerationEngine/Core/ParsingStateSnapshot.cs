@@ -8,7 +8,7 @@ namespace CodeGenerationEngine.Core;
 /// Two singletons are involved, and missing either one reintroduces the bug this
 /// type exists to prevent. <see cref="SemanticAnalyzer.Analyze"/> writes
 /// <c>LastEntity</c> on <see cref="ContextManager.Current"/> via
-/// <see cref="ContextResolver"/>; <see cref="EntityExtractor.Extract"/> writes
+/// <see cref="ContextResolver"/>; entity extraction writes
 /// <see cref="SessionContext.CurrentClass"/> and reads it back as a fallback for
 /// sentences that name no class.
 /// <para>
