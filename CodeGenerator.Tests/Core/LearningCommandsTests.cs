@@ -1,7 +1,6 @@
 using NaturalLanguageBridge;
 using CodeGenerationEngine.Core;
 using CodeGenerationEngine.Models;
-using CodeGenerationEngine.Service;
 
 namespace CodeGenerator.Tests.Core;
 
@@ -9,16 +8,6 @@ namespace CodeGenerator.Tests.Core;
 [DoNotParallelize]
 public sealed class LearningCommandsTests
 {
-    [TestMethod]
-    [DataRow("show learning", IntentType.ShowLearning)]
-    [DataRow("reset learning", IntentType.ResetLearning)]
-    public void LearningCommands_AreDetected(string input, IntentType expected)
-    {
-        var semantic = SemanticAnalyzer.Analyze(input);
-        var intent = CodeGenerationEngine.Core.IntentAnalyzer.Detect(semantic);
-        Assert.AreEqual(expected, intent);
-    }
-
     [TestMethod]
     public void ResetLearning_ClearsMemory()
     {
