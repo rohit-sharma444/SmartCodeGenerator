@@ -1,5 +1,4 @@
 using CodeGenerationEngine.Models;
-using CodeGenerationEngine.Service;
 using NaturalLanguageEngine.Models.Semantics;
 
 namespace NaturalLanguageBridge;
@@ -23,19 +22,11 @@ public sealed class NaturalLanguagePipeline
         Action<ProjectMetaData?> setLastCreatedProject,
         Action<SemanticResult?>? onAnalyzed = null)
     {
-        var analysis = NlpActionProvider.Analyze(input);
-        onAnalyzed?.Invoke(analysis);
+        SemanticResult? captured = null;
+        bool handled = CommandFront.Run(
+            input, ref project, configuredRules, workspaceRoot, setLastCreatedProject,
+            a => { captured = a; onAnalyzed?.Invoke(a); });
 
-        var nlpAction = NlpActionProvider.GetPrimaryAction(analysis);
-
-        bool handled = CommandHandlingService.ProcessInput(
-            input,
-            ref project,
-            configuredRules,
-            workspaceRoot,
-            setLastCreatedProject,
-            nlpAction);
-
-        return new PipelineOutcome(handled, analysis);
+        return new PipelineOutcome(handled, captured);
     }
 }

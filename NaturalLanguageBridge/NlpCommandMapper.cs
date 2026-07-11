@@ -63,12 +63,33 @@ public static class NlpCommandMapper
 
         if (!string.IsNullOrWhiteSpace(actionVerb))
         {
-            // Target = the Action/Object span after the verb entity, stopping
-            // at the first Person entity (trailing arguments) and trimming a
-            // trailing Action entity (a second clause's verb, e.g. "called").
-            var span = analysis.Entities
+            var afterVerb = analysis.Entities
                 .SkipWhile(e => e != actionEntity)
                 .Skip(1)
+                .ToList();
+
+            // A Person entity immediately after the verb is usually trailing
+            // arguments ("create a repository for Customer") - but when a
+            // capitalized class/entity name is embedded ahead of the target
+            // noun ("create a Customer class"), NLE tags that embedded name as
+            // a Person entity too, landing it *before* the Object entity we
+            // actually need. Skip a leading Person run only when a real target
+            // entity (Object/Action) follows it; otherwise it's genuine
+            // trailing args on an empty target and is left alone (span below
+            // stays empty => Unknown, as before).
+            int leadingPersons = 0;
+            while (leadingPersons < afterVerb.Count && afterVerb[leadingPersons].Type == EntityType.Person)
+                leadingPersons++;
+
+            var remaining = leadingPersons > 0 && leadingPersons < afterVerb.Count
+                ? afterVerb.Skip(leadingPersons)
+                : afterVerb;
+
+            // Target = the Action/Object span after the verb entity (and any
+            // skipped embedded name), stopping at the first Person entity
+            // (trailing arguments) and trimming a trailing Action entity (a
+            // second clause's verb, e.g. "called").
+            var span = remaining
                 .TakeWhile(e => e.Type != EntityType.Person)
                 .ToList();
 

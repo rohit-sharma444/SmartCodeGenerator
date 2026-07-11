@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using CodeGenerationEngine.Models;
+using CodeGenerationEngine.Service;
 using NaturalLanguageEngine.Models.Semantics;
 
 namespace NaturalLanguageBridge;
@@ -49,5 +50,30 @@ public static class CommandFront
         SemanticResult? analysis = NlpActionProvider.Analyze(input ?? string.Empty);
         var intent = NlpCommandMapper.ResolveIntent(analysis);
         return CommandEntityExtractor.Extract(input ?? string.Empty, intent, workspace);
+    }
+
+    /// <summary>Parse then execute one command. The demo shortcut and the NLE
+    /// analysis callback (for display) live here so callers need only one entry.</summary>
+    public static bool Run(
+        string input,
+        ref ProjectMetaData? project,
+        List<PropertyRule> configuredRules,
+        string workspace,
+        Action<ProjectMetaData?> setLastCreatedProject,
+        Action<SemanticResult?>? onAnalyzed = null)
+    {
+        if ((input ?? string.Empty).Trim().Equals("demo", StringComparison.OrdinalIgnoreCase))
+        {
+            var (demoCode, _) = CommandHandlingService.BuildDemo();
+            Console.WriteLine(demoCode.Replace("//", string.Empty));
+            onAnalyzed?.Invoke(null);
+            return true;
+        }
+
+        if (onAnalyzed is not null)
+            onAnalyzed(NlpActionProvider.Analyze(input ?? string.Empty));
+
+        var command = Parse(input ?? string.Empty, workspace);
+        return CommandHandlingService.Execute(command, ref project, configuredRules, workspace, setLastCreatedProject);
     }
 }
