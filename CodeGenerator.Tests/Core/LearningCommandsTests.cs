@@ -1,3 +1,4 @@
+using NaturalLanguageBridge;
 using CodeGenerationEngine.Core;
 using CodeGenerationEngine.Models;
 using CodeGenerationEngine.Service;
@@ -28,7 +29,7 @@ public sealed class LearningCommandsTests
         Directory.CreateDirectory(workspace);
 
         ProjectMetaData? project = null;
-        CommandHandlingService.ProcessInput(
+        CommandFront.Run(
             "reset learning",
             ref project,
             new List<PropertyRule>(),

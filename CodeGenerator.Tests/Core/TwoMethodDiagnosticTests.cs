@@ -1,3 +1,4 @@
+using NaturalLanguageBridge;
 using CodeGenerationEngine.Core;
 using CodeGenerationEngine.Models;
 using CodeGenerationEngine.Service;
@@ -87,7 +88,7 @@ public sealed class CreateClassIntentTests
             "create class Employee and add method AddEmployee and EmployeeList method";
 
         ProjectMetaData? project = null;
-        var handled = CommandHandlingService.ProcessInput(
+        var handled = CommandFront.Run(
             input, ref project, new List<PropertyRule>(), workspace,
             p => ProjectManager.CurrentProject = p);
 

@@ -1,3 +1,4 @@
+using NaturalLanguageBridge;
 using CodeGenerationEngine.Core;
 using CodeGenerationEngine.Models;
 using CodeGenerationEngine.Service;
@@ -43,15 +44,16 @@ public sealed class CommandOutcomeTests
     {
         ProjectMetaData? project = null;
 
-        return CommandHandlingService.ProcessInput(
+        return CommandFront.Run(
             input, ref project, [], _workspace, _ => { });
     }
 
     [TestMethod]
     public void ProcessInput_IntentWithNoHandler_ReportsFailure()
     {
-        // IntentAnalyzer resolves this to CreateRepository, which has no entry in
-        // the dispatch table. It prints "not supported yet" and generates nothing.
+        // The bridge mapper resolves this to Unknown (CreateRepository is a dead,
+        // rule-but-no-handler intent it never reaches), so nothing is generated and
+        // the command reports failure. Either way, no handler runs.
         var handled = Process("create a repository for Customer");
 
         Assert.IsFalse(handled);
