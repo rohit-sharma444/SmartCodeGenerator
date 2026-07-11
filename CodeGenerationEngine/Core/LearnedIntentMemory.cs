@@ -29,16 +29,15 @@ public sealed class LearnedIntentMemory
         if (string.IsNullOrWhiteSpace(sentence))
             return string.Empty;
 
-        // Normalize identically to intent detection (verb-folding, synonyms, typos,
-        // stop-words) so a command captured from raw input and one consulted from
-        // already-normalized text collapse to the SAME signature. Both normalizers
-        // are idempotent, so double-applying on the consult path is harmless.
-        var normalized = EnglishLanguageModel.Normalize(CommandParser.Normalize(sentence));
+        // Normalize with the surviving command normalizer, then reduce to distinct,
+        // lower-cased, sorted tokens so phrasings differing only in word order or
+        // duplicates collapse together. (Previously also ran EnglishLanguageModel +
+        // TextTokenizer, both retired with the duplicate NLP stack.)
+        var normalized = CommandParser.Normalize(sentence);
 
-        var tokens = TextTokenizer.Tokenize(normalized)
-            .Select(t => t.Normalized)
-            .Where(n => !string.IsNullOrWhiteSpace(n))
-            .Select(n => n.ToLowerInvariant())
+        var tokens = normalized
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Select(t => t.ToLowerInvariant())
             .Distinct(StringComparer.Ordinal)
             .OrderBy(n => n, StringComparer.Ordinal);
 
