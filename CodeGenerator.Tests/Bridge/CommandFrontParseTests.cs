@@ -48,4 +48,12 @@ public class CommandFrontParseTests
         var cmd = CommandFront.Parse("create a repository for Customer", "");
         Assert.AreNotEqual(IntentType.CreateRepository, cmd.Intent);
     }
+
+    [TestMethod]
+    public void Use_project_guard_sets_project_name()
+    {
+        var cmd = CommandFront.Parse("use project MyApp", "");
+        Assert.AreEqual(IntentType.UseProject, cmd.Intent);
+        Assert.AreEqual("MyApp", cmd.ProjectName);
+    }
 }

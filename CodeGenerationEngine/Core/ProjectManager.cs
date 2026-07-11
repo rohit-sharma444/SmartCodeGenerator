@@ -184,9 +184,9 @@ public static class ProjectManager
         .OrderBy(p => p.ProjectName)];
     }
 
-    public static bool UseProject(string input)
+    public static bool UseProject(string projectRef)
     {
-        var value = input["use project ".Length..].Trim();
+        var value = (projectRef ?? string.Empty).Trim();
         bool success;
 
         if (int.TryParse(value, out var index))
@@ -288,9 +288,9 @@ public static class ProjectManager
             ? Path.GetDirectoryName(project.ProjectPath)!
             : project.ProjectPath;
 
-    public static bool ListClassesInProject(string input)
+    public static bool ListClassesInProject(string projectName)
     {
-        var projectName = input["list classes in ".Length..].Trim();
+        projectName = (projectName ?? string.Empty).Trim();
 
         var project = ProjectManager.Projects.FirstOrDefault(x =>
                       Path.GetFileNameWithoutExtension(

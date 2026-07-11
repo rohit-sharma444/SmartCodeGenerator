@@ -24,6 +24,14 @@ public static class CommandFront
     private static readonly Regex Validator =
         new(@"\bvalidator\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    // "use project <name>" and its synonyms. The old ProjectManager.UseProject
+    // sliced the sentence itself; the bridge now captures the name so the handler
+    // reads a field. Kept ahead of the mapper because the mapper's UseProject rule
+    // only covers the bare "use project" form (no name).
+    private static readonly Regex UseProjectRe =
+        new(@"^(?:use|select|switch|open|activate)\s+project\s+(?<project>.+)$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     public static ParsedCommand Parse(string input, string workspace)
     {
         var text = (input ?? string.Empty).Trim();
@@ -40,9 +48,22 @@ public static class CommandFront
                 OriginalSentence = input ?? string.Empty
             };
 
+        var useMatch = UseProjectRe.Match(text);
+        if (useMatch.Success)
+            return new ParsedCommand
+            {
+                Intent = IntentType.UseProject,
+                ProjectName = useMatch.Groups["project"].Value.Trim(),
+                OriginalSentence = input ?? string.Empty
+            };
+
         if (Validator.IsMatch(text))
         {
             var validatorCmd = CommandEntityExtractor.Extract(input ?? string.Empty, IntentType.GenerateValidator, workspace);
+            // The extractor's switch has no GenerateValidator case, so fill the
+            // class name from the sentence here — exactly what HandleGenerateValidator
+            // used to do with the raw input, now done in the bridge.
+            CommandEntityExtractor.ExtractClassName(input ?? string.Empty, validatorCmd);
             validatorCmd.Intent = IntentType.GenerateValidator;
             return validatorCmd;
         }

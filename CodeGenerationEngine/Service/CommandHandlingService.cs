@@ -106,12 +106,12 @@ public static class CommandHandlingService
             [IntentType.ListClasses] = ctx => ProjectManager.ListClasses(ctx.WorkspaceRoot),
             [IntentType.ShowLearning] = _ => HandleShowLearning(),
             [IntentType.ResetLearning] = _ => HandleResetLearning(),
-            [IntentType.ListClassesInProject] = ctx => ProjectManager.ListClassesInProject(ctx.RawInput),
+            [IntentType.ListClassesInProject] = ctx => ProjectManager.ListClassesInProject(ctx.Command.ProjectName),
             [IntentType.Help] = HandleHelp,
             [IntentType.ShowProject] = _ => ProjectManager.ShowCurrentProject(),
             [IntentType.CurrentProject] = _ => ProjectManager.ShowCurrentProject(),
             [IntentType.CreateProject] = HandleCreateProject,
-            [IntentType.UseProject] = ctx => ProjectManager.UseProject(ctx.RawInput),
+            [IntentType.UseProject] = ctx => ProjectManager.UseProject(ctx.Command.ProjectName),
             [IntentType.ListProjects] = _ => ProjectManager.ListProjects(),
             [IntentType.CreateClass] = HandleCreateClass,
             [IntentType.ShowClass] = HandleShowClass,
@@ -325,7 +325,6 @@ public static class CommandHandlingService
     private static bool HandleGenerateValidator(CommandExecutionContext ctx)
     {
         var command = ctx.Command;
-        EntityExtractor.ExtractClassName(ctx.RawInput, command);
 
         if (!string.IsNullOrWhiteSpace(command.ProjectName))
         {
