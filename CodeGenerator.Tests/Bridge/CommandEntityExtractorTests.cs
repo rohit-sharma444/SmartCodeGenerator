@@ -4,6 +4,7 @@ using NaturalLanguageBridge;
 namespace CodeGenerator.Tests.Bridge;
 
 [TestClass]
+[DoNotParallelize]
 public class CommandEntityExtractorTests
 {
     [TestMethod]

@@ -121,7 +121,7 @@ var tokens = sentence.Split(' ', StringSplitOptions.RemoveEmptyEntries);
 command.ClassName = tokens[2];
 ```
 
-4. Leave every regex, every helper body, and the `SessionContext.CurrentClass` writes exactly as they are.
+4. Leave every regex, every helper body, and the `SessionContext.CurrentClass` writes exactly as they are — with **one authorized exception** (controller + human decision, 2026-07-11): in the moved `ExtractClassName`, extend the `named` pattern to also accept `called`, i.e. `@"(?:class|entity|model|dto)\s+named\s+([A-Za-z_]\w*)"` → `@"(?:class|entity|model|dto)\s+(?:named|called)\s+([A-Za-z_]\w*)"`. The existing regex mis-parses the project's canonical phrase `create a class called Customer` as class name `Called`; this additive one-token fix makes it resolve to `Customer`. Apply it **only in the new `CommandEntityExtractor`** — the original `EntityExtractor` stays zero-diff (Task 7 deletes its `ExtractClassName` wholesale). This is why the `called` phrasing is kept as the worked example here and in Tasks 2/4/7.
 
 - [ ] **Step 2: Write the failing test**
 
