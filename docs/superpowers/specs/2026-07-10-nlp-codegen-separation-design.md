@@ -333,6 +333,53 @@ ends with a coverage number and a passing gate.
 The seven rule-but-no-handler intents stay dead. Preserving that is a
 requirement, not an oversight.
 
+## Plan 3 design (post-Plan-2)
+
+**Phase 5's "mechanical deletion" was wrong.** Plan 2's execution proved the
+"duplicate" stack is not cleanly separable: four surviving consumers still
+depend on it, so deletion is a rewire-then-delete design effort, not a `git rm`.
+Decided with the user, 2026-07-11:
+
+**Consumers to rewire off the old stack (each additive/behaviour-preserving):**
+
+1. **`BatchCommandDetector.DetectOne`** — resolves batch *preview* intent through
+   `SemanticAnalyzer`→`IntentAnalyzer`→`EntityExtractor.Extract`, while execution
+   (post-Plan-2) goes through `CommandFront`. Rewire preview onto
+   `CommandFront.Parse` so preview and execution agree and no raw text reaches
+   `CodeGenerationEngine` at runtime. The mapper produces no confidence score, so
+   **surface NLE's `SemanticResult.Confidence`** (already computed, currently
+   discarded) via `ParsedCommand.Confidence`, and read it in the preview.
+2. **`NaturalLanguageCodeEngine`** — its `ExecuteCommand(ParsedCommand)` (the live
+   code-gen path) does not re-analyse; only the **dead** `ProcessCommand` path
+   (sole caller is an old-stack test) ties it to `SemanticAnalyzer`/`IntentAnalyzer`/
+   `EntityExtractor.Extract`/`EnglishLanguageModel`. Delete `ProcessCommand`.
+3. **`LearnedIntentMemory.Signature`** — replace `EnglishLanguageModel.Normalize`
+   + `TextTokenizer.Tokenize` with `CommandParser.Normalize` (survives) + a plain
+   split. Shallow; signatures stay behaviour-equivalent.
+4. **`LearningCoordinator`** — drop the `IntentLearningEngine.Learn` call. The
+   vocabulary-learning machinery (`IntentLearningEngine`, `VocabularyRepository`,
+   `VocabularyStore`) only fed the deleted `IntentAnalyzer`'s scoring and is
+   invisible to the user (`show learning` shows intent reinforcement, not
+   vocabulary) — **delete it as vestigial.** The user-facing intent learning
+   (`LearnedIntentStore` reinforce/weaken, rephrase detection, `show/reset
+   learning`) is preserved.
+
+**Then slim & delete.** Slim `EntityExtractor` to its code/file half
+(`GenerateValidator`, `ExtractProperties(string classFile)`, `ExtractNamespace`)
+once nothing calls `Extract`; then compiler-guided delete the orphans:
+`Synonyms.cs`, `TextTokenizer`, `Tokenizer`, `IntentAnalyzer`, `SemanticAnalyzer`,
+`EnglishLanguageModel`, `EntityRecognizer`, `RelationExtractor`,
+`SemanticIntentAnalyzer` (already dead), `SemanticPipeline`, `IntentLearningEngine`,
+`VocabularyRepository`, `VocabularyStore`, plus `EntityExtractor`'s prose half.
+
+**Old-stack tests.** Delete tests of deleted internals (`IntentAnalyzer*Tests`,
+`EntityExtractorMethodTests`); the surviving behaviour is already covered by the
+bridge tests (`CommandEntityExtractorTests`, `NlpCommandMapperTests`,
+`CommandFrontParseTests`). Migrate, don't lose, any still-relevant assertion.
+
+Delivered as **one plan with staged tasks** (rewire → slim → delete → test
+cleanup); the deletion is mechanical only once the rewires land.
+
 ## Testing
 
 MSTest throughout (`CodeGenerator.Tests` runs with
