@@ -27,26 +27,6 @@ public static class CommandHandlingService
         public required Action<ProjectMetaData?> SetLastCreatedProject { get; init; }
     }
 
-    public static bool ProcessInput(
-        string input,
-        ref ProjectMetaData? currentProject,
-        List<PropertyRule> configuredRules,
-        string workspaceRoot,
-        Action<ProjectMetaData?> setLastCreatedProject,
-        string? nlpAction = null)
-    {
-        // The "demo" shortcut bypasses parsing entirely and prints generated code.
-        if (input.Equals("demo", StringComparison.OrdinalIgnoreCase))
-        {
-            var (demoCode, _) = BuildDemo();
-            Console.WriteLine(StripCommentMarkers(demoCode));
-            return true;
-        }
-
-        var command = ParseInput(input, workspaceRoot, nlpAction);
-        return Execute(command, ref currentProject, configuredRules, workspaceRoot, setLastCreatedProject);
-    }
-
     /// <summary>
     /// Executes an already-parsed command. This is the seam: the bridge is the
     /// producer of <see cref="ParsedCommand"/>; CodeGenerationEngine only executes.
@@ -76,19 +56,6 @@ public static class CommandHandlingService
         // Propagate any project change made by a handler back to the caller.
         currentProject = context.CurrentProject;
         return result;
-    }
-
-    private static ParsedCommand ParseInput(string input, string workspaceRoot, string? nlpAction)
-    {
-        var semantic = SemanticAnalyzer.Analyze(input, nlpAction);
-        var intentType = Core.IntentAnalyzer.Detect(semantic);
-        var command = EntityExtractor.Extract(semantic, intentType, workspaceRoot);
-
-        // The old extractor never sets OriginalSentence, but Execute (and the
-        // handlers/learning layer it feeds) rely on it as the source of the raw
-        // input, so backfill it here for the ProcessInput path.
-        command.OriginalSentence = input;
-        return command;
     }
 
     /// <summary>
@@ -470,8 +437,6 @@ public static class CommandHandlingService
         GeneratedCodeService.Save(ctx.Command, code, ctx.CurrentProject, ctx.WorkspaceRoot);
         return true;
     }
-
-    private static string StripCommentMarkers(string code) => code.Replace("//", string.Empty);
 
     // FIX #8: Correct path handling - store .csproj path and directory separately
     private static ProjectMetaData LoadOrCreateProject(ProjectRequest request, string workspaceRoot)
