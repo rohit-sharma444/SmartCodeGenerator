@@ -37,4 +37,27 @@ public class NlpCommandMapperTests
         var analysis = NlpActionProvider.Analyze("juggle the flamingo");
         Assert.AreEqual(IntentType.Unknown, NlpCommandMapper.ResolveIntent(analysis));
     }
+
+    [TestMethod]
+    public void Embedded_class_name_before_target_still_resolves_CreateClass()
+    {
+        // NLE tags the embedded class name as a Person entity that lands ahead
+        // of the "class" target: [Action create][Person "a Customer"][Object
+        // class][Person Name][Action string]. The mapper must skip that leading
+        // Person run to find the real target and still resolve CreateClass.
+        var analysis = NlpActionProvider.Analyze("create a Customer class with Name string");
+        Assert.AreEqual(IntentType.CreateClass, NlpCommandMapper.ResolveIntent(analysis));
+    }
+
+    [TestMethod]
+    public void Leading_person_skip_does_not_reach_a_dead_intent()
+    {
+        // "create a repository for Customer" has no target entity after the
+        // verb ([Action create][Object "a repository"][Person Customer]), so
+        // the span is a non-target Object that isn't in the table. The
+        // leading-Person skip must not over-trigger and manufacture a match;
+        // CreateRepository has no handler and must stay unreachable.
+        var analysis = NlpActionProvider.Analyze("create a repository for Customer");
+        Assert.AreEqual(IntentType.Unknown, NlpCommandMapper.ResolveIntent(analysis));
+    }
 }
