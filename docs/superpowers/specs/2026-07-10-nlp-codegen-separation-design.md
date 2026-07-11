@@ -188,12 +188,31 @@ splits into two plans**:
   additive; the existing path keeps serving every command. This is the plan that
   produces the coverage number.
 - **Plan 2 — entity extraction, cutover, deletion.** Move `EntityExtractor` to
-  the bridge and rebase it on NLE entities, flip the seam, delete the duplicate
-  stack.
+  the bridge, flip the seam, delete the duplicate stack.
 
 Plan 2 cannot be written responsibly until Plan 1 reports coverage: if the
 mapper reaches only a fraction of the 24 intents, Plan 2's shape changes. Plan 1
 is a prerequisite, not merely a first step.
+
+**Post-Plan-1 correction (2026-07-11).** The original wording above — "rebase
+`EntityExtractor` on NLE entities" — was written before Plan 1's evidence and is
+withdrawn. Plan 1's exit report
+(`.superpowers/sdd/plan-1-exit-report.md`) proved NLE's entity output is too
+lossy for *structured* extraction: multi-word targets are split across entities,
+verbs are mistyped as `Object`, every identifier collapses to `Person`, and
+trailing words (e.g. the `in` of `classes in`) are dropped without trace. That is
+survivable for the coarse `(verb, target) → IntentType` mapper (Plan 1) but not
+for reconstructing property lists, method signatures, or inheritance clauses.
+
+So Plan 2 moves `EntityExtractor` **as-is, still parsing the raw sentence with
+its proven regex**, into `NaturalLanguageBridge`; it is not rebased on NLE
+entities. The boundary rule is still satisfied: the *bridge* does the parsing,
+and `CodeGenerationEngine` only ever receives a finished `ParsedCommand` — raw
+user text no longer reaches it. NLE continues to supply the intent verb via the
+Plan 1 mapper; a small pattern-guard layer in the bridge covers the two
+residual guards Plan 1 found un-absorbable by the literal table (`\bvalidator\b`
+and `(list|show|display) classes in <project>`). This is the design fork the
+sentence "Plan 2's shape changes" anticipated.
 
 One hazard to record: `EntityExtractor.Extract` mutates
 `SessionContext.CurrentClass` as a side effect of extraction. Moving it changes
@@ -294,9 +313,13 @@ ends with a coverage number and a passing gate.
 
 ### Plan 2 — extraction, cutover, deletion (written after Plan 1 reports)
 
-3. **Move `EntityExtractor`** to the bridge, rebased on NLE entities. Preserve
-   the `SessionContext.CurrentClass` write ordering. Retire the three
-   `ctx.RawInput` handler call sites.
+3. **Move `EntityExtractor`** to the bridge, **still parsing the raw sentence
+   with its existing regex** (not rebased on NLE entities — see the post-Plan-1
+   correction above). Split off its code/file half (`GenerateValidator`,
+   `ExtractProperties(string classFile)`), which stays in `CodeGenerationEngine`.
+   Preserve the `SessionContext.CurrentClass` write ordering. Retire the three
+   `ctx.RawInput` handler call sites (`UseProject`, `ListClassesInProject`,
+   `GenerateValidator`'s `ExtractClassName`).
 4. **Flip the seam.** `ProcessInput(string, …)` → `Execute(ParsedCommand, …)`.
    Update the bridge and the two test call sites. This is the behavioural
    cutover, and it is what the coverage gate guards.
