@@ -48,7 +48,7 @@ public static class CommandFront
         var text = (input ?? string.Empty).Trim();
 
         if (LiteralCommandTable.TryResolve(text, out var literalIntent))
-            return new ParsedCommand { Intent = literalIntent, OriginalSentence = input ?? string.Empty };
+            return new ParsedCommand { Intent = literalIntent, OriginalSentence = input ?? string.Empty, Confidence = 1.0 };
 
         var classesIn = ClassesInProject.Match(text);
         if (classesIn.Success)
@@ -56,7 +56,8 @@ public static class CommandFront
             {
                 Intent = IntentType.ListClassesInProject,
                 ProjectName = classesIn.Groups["project"].Value.Trim(),
-                OriginalSentence = input ?? string.Empty
+                OriginalSentence = input ?? string.Empty,
+                Confidence = 1.0
             };
 
         var useMatch = UseProjectRe.Match(text);
@@ -65,14 +66,23 @@ public static class CommandFront
             {
                 Intent = IntentType.UseProject,
                 ProjectName = useMatch.Groups["project"].Value.Trim(),
-                OriginalSentence = input ?? string.Empty
+                OriginalSentence = input ?? string.Empty,
+                Confidence = 1.0
             };
 
         if (AddValidationRe.IsMatch(text))
-            return CommandEntityExtractor.Extract(input ?? string.Empty, IntentType.AddValidation, workspace);
+        {
+            var addValidationCmd = CommandEntityExtractor.Extract(input ?? string.Empty, IntentType.AddValidation, workspace);
+            addValidationCmd.Confidence = 1.0;
+            return addValidationCmd;
+        }
 
         if (ShowValidationRe.IsMatch(text))
-            return CommandEntityExtractor.Extract(input ?? string.Empty, IntentType.ShowValidation, workspace);
+        {
+            var showValidationCmd = CommandEntityExtractor.Extract(input ?? string.Empty, IntentType.ShowValidation, workspace);
+            showValidationCmd.Confidence = 1.0;
+            return showValidationCmd;
+        }
 
         if (Validator.IsMatch(text))
         {
@@ -81,12 +91,15 @@ public static class CommandFront
             // class name from the sentence here — exactly what HandleGenerateValidator
             // used to do with the raw input, now done in the bridge.
             CommandEntityExtractor.ExtractClassName(input ?? string.Empty, validatorCmd);
+            validatorCmd.Confidence = 1.0;
             return validatorCmd;
         }
 
         SemanticResult? analysis = NlpActionProvider.Analyze(input ?? string.Empty);
         var intent = NlpCommandMapper.ResolveIntent(analysis);
-        return CommandEntityExtractor.Extract(input ?? string.Empty, intent, workspace);
+        var command = CommandEntityExtractor.Extract(input ?? string.Empty, intent, workspace);
+        command.Confidence = analysis?.Confidence ?? 0d;
+        return command;
     }
 
     /// <summary>Parse then execute one command. The demo shortcut and the NLE

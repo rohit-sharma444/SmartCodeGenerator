@@ -50,38 +50,22 @@ public static class BatchCommandDetector
     {
         try
         {
-            var nlpAction = NlpActionProvider.GetPrimaryAction(sentence);
-            var semantic = SemanticAnalyzer.Analyze(sentence, nlpAction);
+            var command = CommandFront.Parse(sentence, workspaceRoot);
 
-            // Fully qualified: CodeGenerationEngine.Models also declares a
-            // legacy IntentAnalyzer (see SemanticIntentAnalyzer.cs), so the
-            // unqualified name is ambiguous with both usings in scope.
-            var match = CodeGenerationEngine.Core.IntentAnalyzer.DetectWithConfidence(semantic);
+            if (command.Intent == IntentType.Unknown)
+                return new DetectedAction(sentence, IntentType.Unknown, command.Confidence, null, "not understood");
 
-            if (match.Intent == IntentType.Unknown)
-            {
+            // Recognizing an intent is not the same as being able to run it.
+            if (!CommandHandlingService.IsSupported(command.Intent))
                 return new DetectedAction(
-                    sentence, IntentType.Unknown, match.Confidence, null, "not understood");
-            }
+                    sentence, command.Intent, command.Confidence, null,
+                    $"{command.Intent} is not supported yet");
 
-            // Recognizing an intent is not the same as being able to run it: 21 of
-            // the IntentType values have no handler. Approving one would execute
-            // nothing, so list it as skipped rather than offering it.
-            if (!CommandHandlingService.IsSupported(match.Intent))
-            {
-                return new DetectedAction(
-                    sentence, match.Intent, match.Confidence, null,
-                    $"{match.Intent} is not supported yet");
-            }
-
-            var preview = EntityExtractor.Extract(semantic, match.Intent, workspaceRoot);
-            return new DetectedAction(sentence, match.Intent, match.Confidence, preview, null);
+            return new DetectedAction(sentence, command.Intent, command.Confidence, command, null);
         }
         catch (Exception ex)
         {
-            // One malformed line must not destroy the batch.
-            return new DetectedAction(
-                sentence, IntentType.Unknown, 0, null, $"parse failed: {ex.Message}");
+            return new DetectedAction(sentence, IntentType.Unknown, 0, null, $"parse failed: {ex.Message}");
         }
     }
 }

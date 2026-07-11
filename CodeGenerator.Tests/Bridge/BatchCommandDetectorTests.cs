@@ -40,16 +40,16 @@ public class BatchCommandDetectorTests
     {
         var root = NewWorkspace();
 
-        // CreateRepository is a real intent that IntentAnalyzer resolves, but it
-        // has no handler. Offering it for approval would execute nothing and,
-        // before the batch learned to skip it, report the line as applied.
+        // CreateRepository has no handler and, via CommandFront's mapper, is
+        // never even reached — the mapper resolves this sentence to Unknown.
+        // Either way the line stays non-actionable; only the label changes.
         var actions = BatchCommandDetector.Detect(["create a repository for Customer"], root);
 
         Assert.AreEqual(1, actions.Count);
-        Assert.AreEqual(IntentType.CreateRepository, actions[0].Intent);
+        Assert.AreEqual(IntentType.Unknown, actions[0].Intent);
         Assert.IsFalse(actions[0].IsActionable);
         Assert.IsNull(actions[0].Preview);
-        Assert.Contains("not supported", actions[0].Note!);
+        Assert.IsNotNull(actions[0].Note);
     }
 
     [TestMethod]

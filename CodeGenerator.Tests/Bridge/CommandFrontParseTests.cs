@@ -82,4 +82,18 @@ public class CommandFrontParseTests
         Assert.AreEqual(IntentType.GenerateValidator, cmd.Intent);
         Assert.AreEqual("Customer", cmd.ClassName);
     }
+
+    [TestMethod]
+    public void Guard_command_reports_full_confidence()
+    {
+        var cmd = CommandFront.Parse("use project MyApp", "");
+        Assert.AreEqual(1.0, cmd.Confidence);
+    }
+
+    [TestMethod]
+    public void Mapper_command_carries_a_confidence()
+    {
+        var cmd = CommandFront.Parse("create a class called Customer", "");
+        Assert.IsTrue(cmd.Confidence > 0d, $"expected NLE confidence, got {cmd.Confidence}");
+    }
 }
