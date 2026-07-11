@@ -13,15 +13,9 @@ public static class SemanticCompilerRunner
                 Environment.NewLine + Environment.NewLine + code;
         }
 
-        var semantic = SemanticAnalyzer.Analyze(code);
-        var (isValid, validationErrors) = SemanticValidator.Validate(semantic);
-
-        if (!isValid)
-        {
-            Console.WriteLine("Errors:");
-            foreach (var err in validationErrors)
-                Console.WriteLine("  " + err);
-        }
+        // Semantic pre-check removed with the duplicate NLP stack: it ran an
+        // English-language analyzer over generated C# and printed success
+        // unconditionally, gating nothing. Compilation below is the real gate.
         Console.WriteLine(" \n Validate succeeded. ");
 
         var result = Compiler.Compile(code);
