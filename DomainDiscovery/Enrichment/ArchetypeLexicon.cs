@@ -16,6 +16,12 @@ public enum ShapeVerdict
     Unknown
 }
 
+/// <summary>
+/// A hypernym's verdict on a candidate, with its inferred fields. <c>Fields</c> is empty except when
+/// <c>Verdict</c> is <see cref="ShapeVerdict.Shaped"/>: an <see cref="ShapeVerdict.Abstract"/> verdict
+/// rejects the candidate outright, and <see cref="ShapeVerdict.Unknown"/> has no opinion, so neither
+/// case carries a shape.
+/// </summary>
 public readonly record struct ArchetypeResult(
     ShapeVerdict Verdict, IReadOnlyList<FieldShape> Fields);
 
@@ -83,6 +89,13 @@ public static class ArchetypeLexicon
             "branch", "area", "form", "way"
         };
 
+    /// <summary>
+    /// Resolves a head noun to its verdict and shape, without throwing or guessing. A head the table
+    /// has not seen returns <see cref="ShapeVerdict.Unknown"/>, not <see cref="ShapeVerdict.Abstract"/>—the
+    /// distinction matters because <see cref="ShapeVerdict.Abstract"/> deletes the candidate while
+    /// <see cref="ShapeVerdict.Unknown"/> offers it to the user for review. Blank input is
+    /// <see cref="ShapeVerdict.Unknown"/> for the same reason.
+    /// </summary>
     public static ArchetypeResult Resolve(string hypernymHead)
     {
         if (string.IsNullOrWhiteSpace(hypernymHead))
