@@ -151,4 +151,28 @@ public class EntityShaperTests
         Assert.Equal(new[] { "Barcode" }, model.Suggestions.Select(e => e.Name));
         Assert.Empty(model.Rejected);
     }
+
+    [Fact]
+    public void Shape_FetchesAllLeadsInOneBatchCall_NotOnePerEntity()
+    {
+        // The whole point of Task 12: a real run needed a lead per uncurated candidate, and
+        // fetching those one at a time is what drove Wikipedia to 429 after ~15 requests.
+        // EntityShaper must collect every title up front and make a single FetchLeads call.
+        _wiki.Leads["Cash register"] = "A cash register is a device for registering sales.";
+        _wiki.Leads["Kiosk"] = "A kiosk is a small booth.";
+        var model = new CandidateDomainModel();
+        model.Entities.Add(new CandidateEntity
+        {
+            Name = "CashRegister", SourceTitle = "Cash register", Provenance = Provenance.Wiki
+        });
+        model.Entities.Add(new CandidateEntity { Name = "Kiosk", Provenance = Provenance.Wiki });
+
+        Shaper.Shape(model);
+
+        Assert.Single(_wiki.FetchLeadsCalls);
+        Assert.Equal(
+            new[] { "Cash register", "Kiosk" },
+            _wiki.FetchLeadsCalls[0].OrderBy(t => t));
+        Assert.Empty(_wiki.FetchLeadCalls);
+    }
 }

@@ -54,15 +54,35 @@ public sealed class EntityShaper
     /// </summary>
     public void Shape(CandidateDomainModel model)
     {
-        foreach (var entity in model.Entities.ToList())
+        var entities = model.Entities.ToList();
+
+        // Pass 1: the curated lexicon. This must run for every entity before any lead is
+        // fetched, since an entity it fully covers needs no lead at all.
+        foreach (var entity in entities)
         {
             foreach (var shape in DomainFieldLexicon.Fields(entity.Name))
                 AddField(entity, shape.Name, shape.Type);
+        }
 
+        // Prefetch every remaining entity's lead in ONE call instead of one per entity — a
+        // real domain can leave dozens of candidates uncurated, and fetching those leads one
+        // at a time is what drove the Wikipedia API to 429 well before they were all in.
+        var titlesNeedingLeads = entities
+            .Where(e => e.Fields.Count == 0)
+            .Select(e => e.SourceTitle ?? e.Name)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var leads = _client.FetchLeads(titlesNeedingLeads);
+
+        // Pass 2: resolve the three-way verdict for anything still fieldless.
+        foreach (var entity in entities)
+        {
             if (entity.Fields.Count > 0)
                 continue;
 
-            var lead = _client.FetchLead(entity.SourceTitle ?? entity.Name);
+            var title = entity.SourceTitle ?? entity.Name;
+            var lead = leads.TryGetValue(title, out var fetchedLead) ? fetchedLead : string.Empty;
             var result = ArchetypeLexicon.Resolve(HypernymExtractor.Extract(lead));
 
             switch (result.Verdict)
