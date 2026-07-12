@@ -144,6 +144,18 @@ internal sealed class BuildAppCommand
                 : " { " + string.Join(", ", entity.Fields.Select(f => $"{f.Name}:{f.Type}")) + " }";
             Console.WriteLine($"  - {entity.Name} [{entity.Provenance}]{fields}");
         }
-        Console.WriteLine();
+
+        if (model.Suggestions.Count > 0)
+        {
+            Console.WriteLine();
+            Console.WriteLine(
+                "Also found - 'add <name>' to include: "
+                + string.Join(", ", model.Suggestions.Select(e => e.Name)));
+        }
+
+        if (model.Rejected.Count > 0)
+        {
+            Console.WriteLine("Not classes: " + string.Join(", ", model.Rejected));
+        }
     }
 }
