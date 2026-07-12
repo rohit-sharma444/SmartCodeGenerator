@@ -33,7 +33,8 @@ public class DomainDiscoveryPipelineTests
             new SeedEntityExtractor(),
             new WikipediaTopicRecognizer(client),
             new DomainEnricher(client, analyzer, new EntityHarvester()),
-            new EntityShaper(client));
+            new EntityShaper(client),
+            client);
 
         var result = pipeline.Discover("track books that members borrow");
 
@@ -55,7 +56,8 @@ public class DomainDiscoveryPipelineTests
             new SeedEntityExtractor(),
             new WikipediaTopicRecognizer(client),
             new DomainEnricher(client, analyzer, new EntityHarvester()),
-            new EntityShaper(client));
+            new EntityShaper(client),
+            client);
 
         var result = pipeline.Discover("track invoices");
 
@@ -79,7 +81,8 @@ public class DomainDiscoveryPipelineTests
             new SeedEntityExtractor(),
             new WikipediaTopicRecognizer(client),
             new DomainEnricher(client, analyzer, new EntityHarvester()),
-            new EntityShaper(client));
+            new EntityShaper(client),
+            client);
 
         var result = pipeline.Discover("manage widgets");
 
@@ -132,7 +135,8 @@ public class DomainDiscoveryPipelineTests
             new SeedEntityExtractor(),
             new WikipediaTopicRecognizer(client),
             new DomainEnricher(client, analyzer, new EntityHarvester()),
-            new EntityShaper(client));
+            new EntityShaper(client),
+            client);
 
         var result = pipeline.Discover("track registers");
 
@@ -143,5 +147,74 @@ public class DomainDiscoveryPipelineTests
 
         Assert.DoesNotContain(result.Model.Entities, e => e.Name == "System");
         Assert.Contains("System", result.Model.Rejected);
+    }
+
+    [Fact]
+    public void Discover_MinesRelationships_AfterShaping_ReceiptReferencesCustomerOneWay()
+    {
+        // Spec: docs/superpowers/specs/2026-07-12-relationships-design.md. Mining must run
+        // AFTER Shape (it needs the final class list and each class's Role) and must re-read
+        // the same article DomainEnricher already fetched — via the same IWikipediaClient the
+        // pipeline is given here.
+        var analysis = new SemanticResult();
+        analysis.Entities.Add(Ent("receipt", EntityType.Object));
+        analysis.Entities.Add(Ent("customer", EntityType.Object));
+        var analyzer = new StubAnalyzer(analysis);
+
+        var client = new FakeWikipediaClient();
+        client.SearchHits.Add(new SearchHit("Point of sale", "https://en.wikipedia.org/wiki/Point_of_sale", 0));
+
+        // Receipt (Document) and Customer (Party) are both curated in DomainFieldLexicon, so
+        // both resolve fields and Role from pass 1 of EntityShaper — no lead fetch needed for
+        // either, so the article below only has to feed the miner.
+        const string sentence = "The customer was handed a receipt by the cashier. ";
+        var article = string.Concat(Enumerable.Repeat(sentence, RelationshipMiner.MinCoOccurrences));
+        client.Extracts["Point of sale"] = article;
+
+        var pipeline = new DomainDiscoveryPipeline(
+            analyzer,
+            new SeedEntityExtractor(),
+            new WikipediaTopicRecognizer(client),
+            new DomainEnricher(client, analyzer, new EntityHarvester()),
+            new EntityShaper(client),
+            client);
+
+        var result = pipeline.Discover("track receipts given to customers");
+
+        var receipt = Assert.Single(result.Model.Entities, e => e.Name == "Receipt");
+        var customer = Assert.Single(result.Model.Entities, e => e.Name == "Customer");
+
+        Assert.Contains(receipt.Relationships, r => r.Target == "Customer" && r.Role == "references");
+        Assert.Contains(receipt.Fields, f => f.Name == "CustomerId" && f.Type == "int");
+
+        // Document (rank 4) outranks Party (rank 1): the link only goes one way.
+        Assert.Empty(customer.Relationships);
+        Assert.DoesNotContain(customer.Fields, f => f.Name == "ReceiptId");
+    }
+
+    [Fact]
+    public void Discover_NoTopic_NeverMinesRelationships_AndDoesNotCrash()
+    {
+        // The unrecognized-topic path has no article to mine at all, so it must be entirely
+        // unaffected by wiring the miner in: no crash, no relationships anywhere.
+        var analysis = new SemanticResult();
+        analysis.Entities.Add(Ent("receipt", EntityType.Object));
+        analysis.Entities.Add(Ent("customer", EntityType.Object));
+        var analyzer = new StubAnalyzer(analysis);
+
+        var client = new FakeWikipediaClient(); // no search hits => topic is never recognized
+
+        var pipeline = new DomainDiscoveryPipeline(
+            analyzer,
+            new SeedEntityExtractor(),
+            new WikipediaTopicRecognizer(client),
+            new DomainEnricher(client, analyzer, new EntityHarvester()),
+            new EntityShaper(client),
+            client);
+
+        var result = pipeline.Discover("track receipts given to customers");
+
+        Assert.False(result.Topic.IsRecognized);
+        Assert.All(result.Model.Entities, e => Assert.Empty(e.Relationships));
     }
 }

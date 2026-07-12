@@ -142,7 +142,15 @@ internal sealed class BuildAppCommand
             var fields = entity.Fields.Count == 0
                 ? string.Empty
                 : " { " + string.Join(", ", entity.Fields.Select(f => $"{f.Name}:{f.Type}")) + " }";
-            Console.WriteLine($"  - {entity.Name} [{entity.Provenance}]{fields}");
+
+            // A class with no mined relationships prints exactly as it always has; one with
+            // any gets its targets appended, so the review loop is where a user first sees
+            // that RelationshipMiner connected two of their classes.
+            var relationships = entity.Relationships.Count == 0
+                ? string.Empty
+                : "  -> " + string.Join(", ", entity.Relationships.Select(r => r.Target));
+
+            Console.WriteLine($"  - {entity.Name} [{entity.Provenance}]{fields}{relationships}");
         }
 
         if (model.Suggestions.Count > 0)
