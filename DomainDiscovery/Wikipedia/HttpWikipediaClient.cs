@@ -19,6 +19,12 @@ public sealed class HttpWikipediaClient : IWikipediaClient
     /// </summary>
     public static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(10);
 
+    /// <summary>
+    /// Between uncached requests. Shaping fetches one lead per candidate, and the API
+    /// answered ~14 rapid requests with HTTP 429 during design measurement.
+    /// </summary>
+    private static readonly TimeSpan ThrottleDelay = TimeSpan.FromMilliseconds(150);
+
     private readonly WikipediaCache _cache;
     private readonly HttpClient _http;
 
@@ -109,10 +115,85 @@ public sealed class HttpWikipediaClient : IWikipediaClient
         return string.Empty;
     }
 
+    /// <summary>
+    /// Mainspace article titles this article links to, or empty when unavailable. Link
+    /// targets are disambiguated by editors, which is why they beat raw prose nouns.
+    /// </summary>
+    public IReadOnlyList<string> FetchLinks(string articleTitle)
+    {
+        var url = $"{ApiBase}?action=query&prop=links&plnamespace=0&pllimit=500"
+                + $"&redirects=1&format=json&titles={Uri.EscapeDataString(articleTitle)}";
+
+        var json = GetCached($"links:{articleTitle}", url);
+        if (json.Length == 0)
+            return Array.Empty<string>();
+
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var pages = doc.RootElement.GetProperty("query").GetProperty("pages");
+
+            foreach (var page in pages.EnumerateObject())
+            {
+                if (!page.Value.TryGetProperty("links", out var links))
+                    continue;
+
+                var titles = new List<string>();
+                foreach (var link in links.EnumerateArray())
+                {
+                    if (link.TryGetProperty("title", out var title))
+                        titles.Add(title.GetString() ?? string.Empty);
+                }
+                return titles;
+            }
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException
+            or KeyNotFoundException or IndexOutOfRangeException or ArgumentOutOfRangeException)
+        {
+            // fall through
+        }
+
+        return Array.Empty<string>();
+    }
+
+    /// <summary>
+    /// The article's first sentence — its definition — or empty when unavailable.
+    /// </summary>
+    public string FetchLead(string articleTitle)
+    {
+        var url = $"{ApiBase}?action=query&prop=extracts&exintro=1&explaintext=1&exsentences=1"
+                + $"&redirects=1&format=json&titles={Uri.EscapeDataString(articleTitle)}";
+
+        var json = GetCached($"lead:{articleTitle}", url);
+        if (json.Length == 0)
+            return string.Empty;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var pages = doc.RootElement.GetProperty("query").GetProperty("pages");
+
+            foreach (var page in pages.EnumerateObject())
+            {
+                if (page.Value.TryGetProperty("extract", out var extract))
+                    return extract.GetString() ?? string.Empty;
+            }
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException
+            or KeyNotFoundException or IndexOutOfRangeException or ArgumentOutOfRangeException)
+        {
+            // fall through
+        }
+
+        return string.Empty;
+    }
+
     private string GetCached(string key, string url)
     {
         if (_cache.TryGet(key, out var cached))
             return cached;
+
+        Thread.Sleep(ThrottleDelay);
 
         try
         {

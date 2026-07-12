@@ -13,4 +13,15 @@ public interface IWikipediaClient
 
     /// <summary>Plain-text extract of an article, or empty string if unavailable.</summary>
     string FetchExtract(string articleTitle);
+
+    /// <summary>
+    /// Mainspace article titles this article links to, or empty when unavailable. Link
+    /// targets are disambiguated by editors, which is why they beat raw prose nouns.
+    /// </summary>
+    IReadOnlyList<string> FetchLinks(string articleTitle);
+
+    /// <summary>
+    /// The article's first sentence — its definition — or empty when unavailable.
+    /// </summary>
+    string FetchLead(string articleTitle);
 }
