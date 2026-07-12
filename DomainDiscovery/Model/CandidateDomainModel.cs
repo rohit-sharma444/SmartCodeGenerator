@@ -1,3 +1,5 @@
+using DomainDiscovery.Enrichment;
+
 namespace DomainDiscovery.Model;
 
 /// <summary>Where a discovered entity or field came from.</summary>
@@ -37,6 +39,16 @@ public sealed class CandidateEntity
     /// is already the title to look up.
     /// </summary>
     public string? SourceTitle { get; set; }
+
+    /// <summary>
+    /// What kind of thing this class is. Exists to decide which way a mined relationship
+    /// points: same-sentence co-occurrence between two classes is symmetric (it says only that
+    /// they were mentioned together), but a foreign key has a direction, and comparing two
+    /// classes' Role settles it — the higher-ranked role references the lower. Defaults to
+    /// <see cref="EntityRole.None"/>, which also means "never link this class" for anything
+    /// <see cref="Enrichment.EntityShaper"/> never assigned a Role to.
+    /// </summary>
+    public EntityRole Role { get; set; }
 }
 
 public sealed class CandidateDomainModel

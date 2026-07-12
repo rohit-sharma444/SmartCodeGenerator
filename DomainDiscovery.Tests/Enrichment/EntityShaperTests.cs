@@ -171,6 +171,46 @@ public class EntityShaperTests
     }
 
     [Fact]
+    public void Shape_ACuratedEntity_TakesTheLexiconsRole()
+    {
+        var model = ModelOf("Customer");
+
+        Shaper.Shape(model);
+
+        var customer = Assert.Single(model.Entities);
+        Assert.Equal(EntityRole.Party, customer.Role);
+    }
+
+    [Fact]
+    public void Shape_AnArchetypeShapedEntity_TakesTheArchetypesRole()
+    {
+        _wiki.Leads["Cash register"] = "A cash register is a device for registering sales.";
+        var model = new CandidateDomainModel();
+        model.Entities.Add(new CandidateEntity
+        {
+            Name = "CashRegister", SourceTitle = "Cash register", Provenance = Provenance.Wiki
+        });
+
+        Shaper.Shape(model);
+
+        var register = Assert.Single(model.Entities);
+        Assert.Equal(EntityRole.Device, register.Role);
+    }
+
+    [Fact]
+    public void Shape_ASuggestedEntity_KeepsRoleNone()
+    {
+        // Barcode has no lexicon entry and no fetchable lead, so it becomes a suggestion —
+        // neither shape source ever ran, so it must keep the default, unassigned role.
+        var model = ModelOf("Barcode");
+
+        Shaper.Shape(model);
+
+        var suggestion = Assert.Single(model.Suggestions);
+        Assert.Equal(EntityRole.None, suggestion.Role);
+    }
+
+    [Fact]
     public void Shape_FetchesAllLeadsInOneBatchCall_NotOnePerEntity()
     {
         // The whole point of Task 12: a real run needed a lead per uncurated candidate, and

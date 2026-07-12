@@ -39,6 +39,33 @@ public static class DomainFieldLexicon
     /// <summary>Whether <paramref name="entityName"/> names a domain entity we can shape.</summary>
     public static bool Knows(string entityName) => Fields(entityName).Count > 0;
 
+    /// <summary>
+    /// The curated <see cref="EntityRole"/> of <paramref name="entityName"/>, or
+    /// <see cref="EntityRole.None"/> when it is not annotated. A curated class can never
+    /// resolve an archetype (it is shaped here first, so <see cref="ArchetypeLexicon"/> never
+    /// runs for it) and its kind cannot be recovered from Wikipedia either — <c>Order</c> is a
+    /// disambiguation page with no definition at all, and it is half the strongest pair in the
+    /// Point of sale article. So every curated entity's Role must be given explicitly, the same
+    /// way its fields are.
+    /// </summary>
+    public static EntityRole Role(string entityName)
+        => Roles.TryGetValue(entityName ?? string.Empty, out var role) ? role : EntityRole.None;
+
+    /// <summary>
+    /// Whether <paramref name="entityName"/> has an explicit entry in the Role table, as
+    /// distinct from merely resolving to <see cref="EntityRole.None"/> by lookup miss. Two
+    /// curated entities (Role, Permission) are deliberately annotated None — they are not
+    /// something another class references — and that must be indistinguishable in result from
+    /// a forgotten entry only by looking at <em>presence</em>, not value. Exists solely so a
+    /// test can enumerate every curated entity and catch one added to <see cref="Entities"/>
+    /// without a matching entry here, before it silently ships role-less.
+    /// </summary>
+    public static bool HasAnnotatedRole(string entityName) => Roles.ContainsKey(entityName ?? string.Empty);
+
+    /// <summary>Every entity name this table curates, so a test can walk the full set without
+    /// hand-maintaining a duplicate list that could quietly drift out of sync.</summary>
+    public static IReadOnlyCollection<string> KnownEntityNames => Entities.Keys;
+
     private static FieldShape Text(string name) => new(name, "string");
     private static FieldShape Money(string name) => new(name, "decimal");
     private static FieldShape Count(string name) => new(name, "int");
@@ -108,5 +135,77 @@ public static class DomainFieldLexicon
             ["User"] = [Text("UserName"), Text("Email"), Flag("Active")],
             ["Role"] = [Text("Name"), Text("Description")],
             ["Permission"] = [Text("Name"), Text("Description")],
+        };
+
+    /// <summary>
+    /// Every curated entity's kind, keyed exactly as <see cref="Entities"/> is. Kept as its
+    /// own table (not folded into <see cref="FieldShape"/>) so that adding a role never touches
+    /// the field shapes, and so <see cref="HasAnnotatedRole"/> can tell "annotated None" apart
+    /// from "never annotated" by checking key presence rather than the resolved value.
+    /// </summary>
+    private static readonly Dictionary<string, EntityRole> Roles =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            // --- Party -----------------------------------------------------------------
+            ["Employee"] = EntityRole.Party,
+            ["Customer"] = EntityRole.Party,
+            ["Client"] = EntityRole.Party,
+            ["Supplier"] = EntityRole.Party,
+            ["Vendor"] = EntityRole.Party,
+            ["Member"] = EntityRole.Party,
+            ["Author"] = EntityRole.Party,
+            ["User"] = EntityRole.Party,
+
+            // --- Place -------------------------------------------------------------------
+            ["Employer"] = EntityRole.Place,
+            ["Company"] = EntityRole.Place,
+            ["Department"] = EntityRole.Place,
+            ["Library"] = EntityRole.Place,
+            ["Publisher"] = EntityRole.Place,
+            ["Warehouse"] = EntityRole.Place,
+
+            // --- Document ------------------------------------------------------------------
+            ["Recipe"] = EntityRole.Document,
+            ["Cookbook"] = EntityRole.Document,
+            ["Payroll"] = EntityRole.Document,
+            ["Timesheet"] = EntityRole.Document,
+            ["Invoice"] = EntityRole.Document,
+            ["Receipt"] = EntityRole.Document,
+            ["Budget"] = EntityRole.Document,
+            ["Order"] = EntityRole.Document,
+            ["Contract"] = EntityRole.Document,
+            ["Subscription"] = EntityRole.Document,
+            ["Shipment"] = EntityRole.Document,
+            ["Loan"] = EntityRole.Document,
+            ["Catalog"] = EntityRole.Document,
+            ["Account"] = EntityRole.Document,
+            ["Meal"] = EntityRole.Document,
+
+            // --- Transaction ---------------------------------------------------------------
+            ["Salary"] = EntityRole.Transaction,
+            ["Wage"] = EntityRole.Transaction,
+            ["Overtime"] = EntityRole.Transaction,
+            ["Deduction"] = EntityRole.Transaction,
+            ["Garnishment"] = EntityRole.Transaction,
+            ["Tax"] = EntityRole.Transaction,
+            ["Bonus"] = EntityRole.Transaction,
+            ["Income"] = EntityRole.Transaction,
+            ["Payment"] = EntityRole.Transaction,
+            ["Refund"] = EntityRole.Transaction,
+            ["Expense"] = EntityRole.Transaction,
+            ["Transaction"] = EntityRole.Transaction,
+
+            // --- Item ------------------------------------------------------------------
+            ["Ingredient"] = EntityRole.Item,
+            ["Dish"] = EntityRole.Item,
+            ["Product"] = EntityRole.Item,
+            ["Inventory"] = EntityRole.Item,
+            ["Book"] = EntityRole.Item,
+            ["Material"] = EntityRole.Item,
+            ["Benefit"] = EntityRole.Item,
+
+            // --- None: not something another class references --------------------------
+            ["Role"] = EntityRole.None,
+            ["Permission"] = EntityRole.None,
         };
 }

@@ -60,7 +60,14 @@ public sealed class EntityShaper
         // fetched, since an entity it fully covers needs no lead at all.
         foreach (var entity in entities)
         {
-            foreach (var shape in DomainFieldLexicon.Fields(entity.Name))
+            var curatedFields = DomainFieldLexicon.Fields(entity.Name);
+
+            // Role precedence mirrors field precedence exactly: the curated lexicon wins over
+            // the archetype (assigned below, in pass 2) over EntityRole.None (the default).
+            if (curatedFields.Count > 0)
+                entity.Role = DomainFieldLexicon.Role(entity.Name);
+
+            foreach (var shape in curatedFields)
                 AddField(entity, shape.Name, shape.Type);
         }
 
@@ -88,6 +95,7 @@ public sealed class EntityShaper
             switch (result.Verdict)
             {
                 case ShapeVerdict.Shaped:
+                    entity.Role = result.Role;
                     foreach (var shape in result.Fields)
                         AddField(entity, shape.Name, shape.Type);
                     break;

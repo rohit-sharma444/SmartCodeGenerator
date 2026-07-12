@@ -116,4 +116,43 @@ public class ArchetypeLexiconTests
         Assert.Equal(new[] { "Amount", "Currency" }, result.Fields.Select(f => f.Name));
         Assert.Equal("decimal", result.Fields.Single(f => f.Name == "Amount").Type);
     }
+
+    [Fact]
+    public void Resolve_Device_HasRoleDevice()
+    {
+        Assert.Equal(EntityRole.Device, ArchetypeLexicon.Resolve("device").Role);
+    }
+
+    [Fact]
+    public void Resolve_Document_HasRoleDocument()
+    {
+        Assert.Equal(EntityRole.Document, ArchetypeLexicon.Resolve("document").Role);
+    }
+
+    [Fact]
+    public void Resolve_Card_HasRoleItem()
+    {
+        // "card" shapes like a document (Number, Holder, ExpiresOn) but a credit card is
+        // something a Party carries, not something that owns a Party — it must rank as Item.
+        Assert.Equal(EntityRole.Item, ArchetypeLexicon.Resolve("card").Role);
+    }
+
+    [Fact]
+    public void Resolve_Money_HasRoleNone()
+    {
+        // Cash is not something other classes point at.
+        Assert.Equal(EntityRole.None, ArchetypeLexicon.Resolve("money").Role);
+    }
+
+    [Fact]
+    public void Resolve_AnAbstractHead_HasRoleNone()
+    {
+        Assert.Equal(EntityRole.None, ArchetypeLexicon.Resolve("group").Role);
+    }
+
+    [Fact]
+    public void Resolve_AHeadItHasNeverSeen_HasRoleNone()
+    {
+        Assert.Equal(EntityRole.None, ArchetypeLexicon.Resolve("kiosk").Role);
+    }
 }

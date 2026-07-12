@@ -21,10 +21,11 @@ public enum ShapeVerdict
 /// A hypernym's verdict on a candidate, with its inferred fields. <c>Fields</c> is empty except when
 /// <c>Verdict</c> is <see cref="ShapeVerdict.Shaped"/>: an <see cref="ShapeVerdict.Abstract"/> verdict
 /// rejects the candidate outright, and <see cref="ShapeVerdict.Unknown"/> has no opinion, so neither
-/// case carries a shape.
+/// case carries a shape. <c>Role</c> is <see cref="EntityRole.None"/> for the same two cases — a
+/// rejected or unresolved candidate has no kind for a relationship to point at.
 /// </summary>
 public readonly record struct ArchetypeResult(
-    ShapeVerdict Verdict, IReadOnlyList<FieldShape> Fields);
+    ShapeVerdict Verdict, IReadOnlyList<FieldShape> Fields, EntityRole Role);
 
 /// <summary>
 /// Maps the head noun of a definition to a field shape. This is the only curation in the
@@ -38,46 +39,46 @@ public static class ArchetypeLexicon
     private static FieldShape Money(string name) => new(name, "decimal");
     private static FieldShape When(string name) => new(name, "DateTime");
 
-    private static readonly Dictionary<string, FieldShape[]> Archetypes =
+    private static readonly Dictionary<string, (FieldShape[] Fields, EntityRole Role)> Archetypes =
         new(StringComparer.OrdinalIgnoreCase)
         {
-            ["device"] = [Text("Name"), Text("Model"), Text("SerialNumber")],
-            ["machine"] = [Text("Name"), Text("Model"), Text("SerialNumber")],
-            ["terminal"] = [Text("Name"), Text("Model"), Text("SerialNumber")],
-            ["equipment"] = [Text("Name"), Text("Model"), Text("SerialNumber")],
-            ["display"] = [Text("Name"), Text("Model"), Text("SerialNumber")],
+            ["device"] = ([Text("Name"), Text("Model"), Text("SerialNumber")], EntityRole.Device),
+            ["machine"] = ([Text("Name"), Text("Model"), Text("SerialNumber")], EntityRole.Device),
+            ["terminal"] = ([Text("Name"), Text("Model"), Text("SerialNumber")], EntityRole.Device),
+            ["equipment"] = ([Text("Name"), Text("Model"), Text("SerialNumber")], EntityRole.Device),
+            ["display"] = ([Text("Name"), Text("Model"), Text("SerialNumber")], EntityRole.Device),
 
-            ["document"] = [Text("Number"), When("IssuedOn"), Money("Total")],
-            ["record"] = [Text("Number"), When("IssuedOn"), Money("Total")],
-            ["statement"] = [Text("Number"), When("IssuedOn"), Money("Total")],
+            ["document"] = ([Text("Number"), When("IssuedOn"), Money("Total")], EntityRole.Document),
+            ["record"] = ([Text("Number"), When("IssuedOn"), Money("Total")], EntityRole.Document),
+            ["statement"] = ([Text("Number"), When("IssuedOn"), Money("Total")], EntityRole.Document),
 
-            ["person"] = [Text("FullName"), Text("Email"), Text("Phone")],
-            ["recipient"] = [Text("FullName"), Text("Email"), Text("Phone")],
-            ["buyer"] = [Text("FullName"), Text("Email"), Text("Phone")],
-            ["customer"] = [Text("FullName"), Text("Email"), Text("Phone")],
+            ["person"] = ([Text("FullName"), Text("Email"), Text("Phone")], EntityRole.Party),
+            ["recipient"] = ([Text("FullName"), Text("Email"), Text("Phone")], EntityRole.Party),
+            ["buyer"] = ([Text("FullName"), Text("Email"), Text("Phone")], EntityRole.Party),
+            ["customer"] = ([Text("FullName"), Text("Email"), Text("Phone")], EntityRole.Party),
 
-            ["business"] = [Text("Name"), Text("Address")],
-            ["organization"] = [Text("Name"), Text("Address")],
-            ["organisation"] = [Text("Name"), Text("Address")],
-            ["establishment"] = [Text("Name"), Text("Address")],
-            ["company"] = [Text("Name"), Text("Address")],
-            ["shop"] = [Text("Name"), Text("Address")],
-            ["store"] = [Text("Name"), Text("Address")],
+            ["business"] = ([Text("Name"), Text("Address")], EntityRole.Place),
+            ["organization"] = ([Text("Name"), Text("Address")], EntityRole.Place),
+            ["organisation"] = ([Text("Name"), Text("Address")], EntityRole.Place),
+            ["establishment"] = ([Text("Name"), Text("Address")], EntityRole.Place),
+            ["company"] = ([Text("Name"), Text("Address")], EntityRole.Place),
+            ["shop"] = ([Text("Name"), Text("Address")], EntityRole.Place),
+            ["store"] = ([Text("Name"), Text("Address")], EntityRole.Place),
 
-            ["item"] = [Text("Name"), Text("Sku"), Money("Price")],
-            ["product"] = [Text("Name"), Text("Sku"), Money("Price")],
-            ["good"] = [Text("Name"), Text("Sku"), Money("Price")],
-            ["goods"] = [Text("Name"), Text("Sku"), Money("Price")],
-            ["merchandise"] = [Text("Name"), Text("Sku"), Money("Price")],
+            ["item"] = ([Text("Name"), Text("Sku"), Money("Price")], EntityRole.Item),
+            ["product"] = ([Text("Name"), Text("Sku"), Money("Price")], EntityRole.Item),
+            ["good"] = ([Text("Name"), Text("Sku"), Money("Price")], EntityRole.Item),
+            ["goods"] = ([Text("Name"), Text("Sku"), Money("Price")], EntityRole.Item),
+            ["merchandise"] = ([Text("Name"), Text("Sku"), Money("Price")], EntityRole.Item),
 
-            ["payment"] = [Money("Amount"), When("OccurredOn"), Text("Method")],
-            ["transaction"] = [Money("Amount"), When("OccurredOn"), Text("Method")],
-            ["tender"] = [Money("Amount"), When("OccurredOn"), Text("Method")],
+            ["payment"] = ([Money("Amount"), When("OccurredOn"), Text("Method")], EntityRole.Transaction),
+            ["transaction"] = ([Money("Amount"), When("OccurredOn"), Text("Method")], EntityRole.Transaction),
+            ["tender"] = ([Money("Amount"), When("OccurredOn"), Text("Method")], EntityRole.Transaction),
 
-            ["card"] = [Text("Number"), Text("Holder"), When("ExpiresOn")],
+            ["card"] = ([Text("Number"), Text("Holder"), When("ExpiresOn")], EntityRole.Item),
 
-            ["money"] = [Money("Amount"), Text("Currency")],
-            ["currency"] = [Money("Amount"), Text("Currency")],
+            ["money"] = ([Money("Amount"), Text("Currency")], EntityRole.None),
+            ["currency"] = ([Money("Amount"), Text("Currency")], EntityRole.None),
         };
 
     /// <summary>
@@ -110,17 +111,17 @@ public static class ArchetypeLexicon
     public static ArchetypeResult Resolve(string hypernymHead)
     {
         if (string.IsNullOrWhiteSpace(hypernymHead))
-            return new ArchetypeResult(ShapeVerdict.Unknown, Array.Empty<FieldShape>());
+            return new ArchetypeResult(ShapeVerdict.Unknown, Array.Empty<FieldShape>(), EntityRole.None);
 
         var head = Singularize(hypernymHead);
 
-        if (Archetypes.TryGetValue(head, out var fields))
-            return new ArchetypeResult(ShapeVerdict.Shaped, fields);
+        if (Archetypes.TryGetValue(head, out var archetype))
+            return new ArchetypeResult(ShapeVerdict.Shaped, archetype.Fields, archetype.Role);
 
         if (AbstractHeads.Contains(head))
-            return new ArchetypeResult(ShapeVerdict.Abstract, Array.Empty<FieldShape>());
+            return new ArchetypeResult(ShapeVerdict.Abstract, Array.Empty<FieldShape>(), EntityRole.None);
 
-        return new ArchetypeResult(ShapeVerdict.Unknown, Array.Empty<FieldShape>());
+        return new ArchetypeResult(ShapeVerdict.Unknown, Array.Empty<FieldShape>(), EntityRole.None);
     }
 
     /// <summary>
