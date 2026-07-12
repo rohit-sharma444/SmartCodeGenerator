@@ -35,7 +35,8 @@ public class DomainFieldLexiconTests
     [Fact]
     public void EveryKnownEntity_HasAtLeastOneField()
     {
-        // A shape with no fields would be dropped by DomainFieldAssigner as if unknown.
+        // A shape with no fields would leave EntityShaper unable to tell this entity apart
+        // from one the lexicon does not know at all.
         foreach (var entity in KnownEntities)
             Assert.NotEmpty(DomainFieldLexicon.Fields(entity));
     }

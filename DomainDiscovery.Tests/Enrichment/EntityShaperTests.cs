@@ -1,0 +1,128 @@
+using DomainDiscovery.Enrichment;
+using DomainDiscovery.Model;
+using DomainDiscovery.Tests.Fakes;
+using Xunit;
+
+namespace DomainDiscovery.Tests.Enrichment;
+
+public class EntityShaperTests
+{
+    private readonly FakeWikipediaClient _wiki = new();
+
+    private EntityShaper Shaper => new(_wiki);
+
+    private static CandidateDomainModel ModelOf(params string[] names)
+    {
+        var model = new CandidateDomainModel();
+        foreach (var n in names)
+            model.Entities.Add(new CandidateEntity { Name = n, Provenance = Provenance.Wiki });
+        return model;
+    }
+
+    [Fact]
+    public void Shape_GivesAKnownEntity_ItsOwnFields()
+    {
+        var model = ModelOf("Recipe");
+
+        Shaper.Shape(model);
+
+        var recipe = Assert.Single(model.Entities);
+        Assert.Equal(
+            new[] { "Name", "Servings", "PrepMinutes", "Instructions" },
+            recipe.Fields.Select(f => f.Name));
+        Assert.Equal("int", recipe.Fields.Single(f => f.Name == "Servings").Type);
+    }
+
+    [Fact]
+    public void Shape_KeepsFieldsAlreadyOnTheEntity_AndDoesNotDuplicateThem()
+    {
+        var model = ModelOf("Recipe");
+        model.Entities[0].Fields.Add(new CandidateField
+        {
+            Name = "Name", Type = "string", Provenance = Provenance.Seed
+        });
+
+        Shaper.Shape(model);
+
+        var recipe = Assert.Single(model.Entities);
+        Assert.Single(recipe.Fields, f => f.Name == "Name");
+        Assert.Equal(Provenance.Seed, recipe.Fields.Single(f => f.Name == "Name").Provenance);
+    }
+
+    [Fact]
+    public void Shape_KeepsASeedEntity_ItCannotShape()
+    {
+        var model = new CandidateDomainModel();
+        model.Entities.Add(new CandidateEntity { Name = "Widget", Provenance = Provenance.Seed });
+
+        Shaper.Shape(model);
+
+        // The user asserted it exists, so it is never dropped and never demoted.
+        var widget = Assert.Single(model.Entities);
+        Assert.Equal(DefaultFields.NameField, Assert.Single(widget.Fields).Name);
+        Assert.Empty(model.Suggestions);
+    }
+
+    [Fact]
+    public void Shape_TheCuratedLexicon_BeatsTheArchetype()
+    {
+        // Customer is curated; its definition would otherwise shape it as a "recipient".
+        _wiki.Leads["Customer"] = "A customer is the recipient of a good.";
+        var model = ModelOf("Customer");
+
+        Shaper.Shape(model);
+
+        var customer = Assert.Single(model.Entities);
+        Assert.Equal(
+            new[] { "FullName", "Email", "Phone" },
+            customer.Fields.Select(f => f.Name));
+    }
+
+    [Fact]
+    public void Shape_ShapesAnUncuratedEntity_FromItsOwnDefinition()
+    {
+        _wiki.Leads["Cash register"] = "A cash register is a device for registering sales.";
+        var model = new CandidateDomainModel();
+        model.Entities.Add(new CandidateEntity
+        {
+            Name = "CashRegister", SourceTitle = "Cash register", Provenance = Provenance.Wiki
+        });
+
+        Shaper.Shape(model);
+
+        var register = Assert.Single(model.Entities);
+        Assert.Equal(
+            new[] { "Name", "Model", "SerialNumber" },
+            register.Fields.Select(f => f.Name));
+    }
+
+    [Fact]
+    public void Shape_RejectsAnAbstraction_AndSuggestsWhatItCannotShape()
+    {
+        // Replaces DomainFieldAssignerTests.Apply_DropsEntities_WhoseShapeIsUnknown.
+        // System is prose (an abstraction) and is rejected; Kiosk is simply unknown, so it
+        // is offered rather than deleted.
+        _wiki.Leads["System"] = "A system is a group of interacting elements.";
+        _wiki.Leads["Kiosk"] = "A kiosk is a small booth.";
+        var model = ModelOf("Recipe", "System", "Kiosk");
+
+        Shaper.Shape(model);
+
+        Assert.Equal(new[] { "Recipe" }, model.Entities.Select(e => e.Name));
+        Assert.Equal(new[] { "Kiosk" }, model.Suggestions.Select(e => e.Name));
+        Assert.Equal(new[] { "System" }, model.Rejected);
+    }
+
+    [Fact]
+    public void Shape_WhenTheLeadCannotBeFetched_SuggestsRatherThanDeletes()
+    {
+        // Offline, or a 429: we know nothing, so we must not pretend to know it is not a class.
+        var model = ModelOf("Barcode");
+
+        Shaper.Shape(model);
+
+        Assert.Empty(model.Entities);
+        Assert.Equal(new[] { "Barcode" }, model.Suggestions.Select(e => e.Name));
+        Assert.Empty(model.Rejected);
+    }
+}

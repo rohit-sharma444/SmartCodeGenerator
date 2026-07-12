@@ -32,7 +32,8 @@ public class DomainDiscoveryPipelineTests
             analyzer,
             new SeedEntityExtractor(),
             new WikipediaTopicRecognizer(client),
-            new DomainEnricher(client, analyzer, new EntityHarvester()));
+            new DomainEnricher(client, analyzer, new EntityHarvester()),
+            new EntityShaper(client));
 
         var result = pipeline.Discover("track books that members borrow");
 
@@ -53,7 +54,8 @@ public class DomainDiscoveryPipelineTests
             analyzer,
             new SeedEntityExtractor(),
             new WikipediaTopicRecognizer(client),
-            new DomainEnricher(client, analyzer, new EntityHarvester()));
+            new DomainEnricher(client, analyzer, new EntityHarvester()),
+            new EntityShaper(client));
 
         var result = pipeline.Discover("track invoices");
 
@@ -65,22 +67,27 @@ public class DomainDiscoveryPipelineTests
     }
 
     [Fact]
-    public void Discover_DropsASeedEntity_TheLexiconCannotShape()
+    public void Discover_KeepsASeedEntity_TheLexiconCannotShape_WithADefaultField()
     {
         var analysis = new SemanticResult();
         analysis.Entities.Add(Ent("widget", EntityType.Object));
         var analyzer = new StubAnalyzer(analysis);
 
+        var client = new FakeWikipediaClient();
         var pipeline = new DomainDiscoveryPipeline(
             analyzer,
             new SeedEntityExtractor(),
-            new WikipediaTopicRecognizer(new FakeWikipediaClient()),
-            new DomainEnricher(new FakeWikipediaClient(), analyzer, new EntityHarvester()));
+            new WikipediaTopicRecognizer(client),
+            new DomainEnricher(client, analyzer, new EntityHarvester()),
+            new EntityShaper(client));
 
         var result = pipeline.Discover("manage widgets");
 
-        // Nothing is known about a Widget, so it would scaffold an Id-only class.
-        // The review loop's `add` is where the user asserts one anyway.
-        Assert.Empty(result.Model.Entities);
+        // The user named Widget themselves (Provenance.Seed), so EntityShaper never drops or
+        // demotes it — nothing is known about it beyond a default Name field, but it stays.
+        var widget = Assert.Single(result.Model.Entities);
+        Assert.Equal(DefaultFields.NameField, Assert.Single(widget.Fields).Name);
+        Assert.Empty(result.Model.Suggestions);
+        Assert.Empty(result.Model.Rejected);
     }
 }
