@@ -31,9 +31,9 @@ public class JsonStoreTemplateTests
     {
         var source = JsonStoreTemplate.Source("Payroll.Data");
 
-        Assert.IsFalse(source.Contains("public T Add(T item)"), "Add is dead code in a grid app");
-        Assert.IsFalse(source.Contains("public bool Update(T item)"), "Update is dead code in a grid app");
-        Assert.IsFalse(source.Contains("public bool Delete(int id)"), "Delete is dead code in a grid app");
+        Assert.DoesNotContain("public T Add(T item)", source, "Add is dead code in a grid app");
+        Assert.DoesNotContain("public bool Update(T item)", source, "Update is dead code in a grid app");
+        Assert.DoesNotContain("public bool Delete(int id)", source, "Delete is dead code in a grid app");
     }
 
     [TestMethod]

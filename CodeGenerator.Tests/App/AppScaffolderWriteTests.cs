@@ -24,7 +24,7 @@ public class AppScaffolderWriteTests
         {
             var written = new AppScaffolder().WriteClasses(folder, OneClass(), "Payroll.Models");
 
-            Assert.AreEqual(1, written.Count);
+            Assert.HasCount(1, written);
             var file = Path.Combine(folder, "Employee.cs");
             Assert.IsTrue(File.Exists(file), "Employee.cs should exist");
 
@@ -49,7 +49,7 @@ public class AppScaffolderWriteTests
         {
             var written = new AppScaffolder().WriteClasses(nested, OneClass(), "Payroll.Models");
 
-            Assert.AreEqual(1, written.Count);
+            Assert.HasCount(1, written);
             Assert.IsTrue(File.Exists(Path.Combine(nested, "Employee.cs")));
         }
         finally

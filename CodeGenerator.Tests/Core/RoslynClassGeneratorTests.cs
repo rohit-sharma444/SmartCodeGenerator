@@ -27,6 +27,6 @@ public class RoslynClassGeneratorTests
         var source = RoslynClassGenerator.Generate(Employee(), "Payroll.Models");
 
         StringAssert.Contains(source, "namespace Payroll.Models");
-        Assert.IsFalse(source.Contains("GeneratedCode"), "the default namespace must not leak in");
+        Assert.DoesNotContain("GeneratedCode", source, "the default namespace must not leak in");
     }
 }
