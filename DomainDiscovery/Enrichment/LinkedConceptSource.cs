@@ -18,6 +18,22 @@ public static class LinkedConceptSource
     /// <summary>Longer titles are descriptions, not concepts ("Automated sales suppression device").</summary>
     public const int MaxTitleWords = 3;
 
+    /// <summary>
+    /// Returns the raw wikilink titles that survive filtering as domain concept candidates.
+    /// </summary>
+    /// <remarks>
+    /// The titles are returned un-normalized (e.g., "Cash register") because a later stage in the
+    /// pipeline transforms them into type names; normalization at this stage would destroy the
+    /// multi-word concepts that tokenization and case-folding cannot surface.
+    ///
+    /// A link title is only retained if the article's prose mentions it repeatedly (at least
+    /// <see cref="MinMentions"/> times), because articles link hundreds of things they merely
+    /// mention once in passing. Repeated mention in the prose indicates the concept is central
+    /// to the article's domain, not merely incidental.
+    /// </remarks>
+    /// <param name="linkTitles">The wikilink target titles extracted from the article.</param>
+    /// <param name="articleText">The full text of the article to check for repeated mentions.</param>
+    /// <returns>A list of link titles that meet all filtering criteria: occurrence threshold, title length, and disambiguation rules.</returns>
     public static IReadOnlyList<string> Candidates(
         IReadOnlyList<string> linkTitles, string articleText)
     {
