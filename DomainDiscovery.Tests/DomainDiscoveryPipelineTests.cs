@@ -67,7 +67,7 @@ public class DomainDiscoveryPipelineTests
     }
 
     [Fact]
-    public void Discover_KeepsASeedEntity_TheLexiconCannotShape_WithADefaultField()
+    public void Discover_MovesASeedNoun_TheLexiconAndWikipediaCannotShape_ToSuggestions()
     {
         var analysis = new SemanticResult();
         analysis.Entities.Add(Ent("widget", EntityType.Object));
@@ -83,11 +83,12 @@ public class DomainDiscoveryPipelineTests
 
         var result = pipeline.Discover("manage widgets");
 
-        // The user named Widget themselves (Provenance.Seed), so EntityShaper never drops or
-        // demotes it — nothing is known about it beyond a default Name field, but it stays.
-        var widget = Assert.Single(result.Model.Entities);
-        Assert.Equal(DefaultFields.NameField, Assert.Single(widget.Fields).Name);
-        Assert.Empty(result.Model.Suggestions);
+        // SeedEntityExtractor turned "widget" into a Provenance.Seed entity with no fields,
+        // same as every other noun in the typed phrase. The lexicon does not know it and its
+        // lead cannot be fetched (FakeWikipediaClient has no entry), so it is offered as a
+        // suggestion rather than kept as junk.
+        Assert.Empty(result.Model.Entities);
+        Assert.Equal(new[] { "Widget" }, result.Model.Suggestions.Select(e => e.Name));
         Assert.Empty(result.Model.Rejected);
     }
 }

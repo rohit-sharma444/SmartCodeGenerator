@@ -50,14 +50,40 @@ public class EntityShaperTests
     }
 
     [Fact]
-    public void Shape_KeepsASeedEntity_ItCannotShape()
+    public void Shape_MovesAnUnshapeableSeedEntity_ToSuggestions()
     {
+        // SeedEntityExtractor turns every noun in the user's typed phrase into a
+        // Provenance.Seed entity with no fields — an extracted seed is a guess like any
+        // other, so it takes the same lead-fetch / hypernym / archetype gate as everything
+        // else. Nothing shapes "Widget" here (no lexicon entry, no fetchable lead), so it is
+        // suggested rather than kept as junk or silently deleted.
         var model = new CandidateDomainModel();
         model.Entities.Add(new CandidateEntity { Name = "Widget", Provenance = Provenance.Seed });
 
         Shaper.Shape(model);
 
-        // The user asserted it exists, so it is never dropped and never demoted.
+        Assert.Empty(model.Entities);
+        Assert.Equal(new[] { "Widget" }, model.Suggestions.Select(e => e.Name));
+        Assert.Empty(model.Rejected);
+    }
+
+    [Fact]
+    public void Shape_KeepsAnEntity_ThatAlreadyHasFields()
+    {
+        // ModelEditor.AddEntity gives a hand-added entity a field (its own lexicon shape, or
+        // the fallback Name) before EntityShaper ever sees it. That existing field — not its
+        // provenance — is what exempts it from the shape gate, so it is kept even though
+        // nothing here could shape it from scratch.
+        var model = new CandidateDomainModel();
+        var entity = new CandidateEntity { Name = "Widget", Provenance = Provenance.Seed };
+        entity.Fields.Add(new CandidateField
+        {
+            Name = DefaultFields.NameField, Type = "string", Provenance = Provenance.Seed
+        });
+        model.Entities.Add(entity);
+
+        Shaper.Shape(model);
+
         var widget = Assert.Single(model.Entities);
         Assert.Equal(DefaultFields.NameField, Assert.Single(widget.Fields).Name);
         Assert.Empty(model.Suggestions);

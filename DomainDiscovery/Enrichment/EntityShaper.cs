@@ -20,6 +20,15 @@ namespace DomainDiscovery.Enrichment;
 /// signal, and unlike an allow-list it needs no curation per domain. An absent or unreadable
 /// definition means we do not know, and the candidate is offered to the user instead.
 /// </para>
+/// <para>
+/// <see cref="Provenance.Seed"/> earns no exemption from that gate. SeedEntityExtractor
+/// turns every noun in the user's typed phrase into a fieldless Seed entity — an extracted
+/// seed is a guess like any other, not an assertion, so it is shaped, rejected, or suggested
+/// exactly like a Wikipedia candidate. The only fieldless entity this method lets through
+/// unshaped is one that already carries a field: that is what an entity the user adds by
+/// hand in the review loop looks like, because <see cref="Review.ModelEditor.AddEntity"/>
+/// runs after discovery and gives it a field before Shape ever sees it.
+/// </para>
 /// </remarks>
 public sealed class EntityShaper
 {
@@ -35,8 +44,13 @@ public sealed class EntityShaper
     /// <summary>
     /// Shapes every entity in <paramref name="model"/> in place: attaches known fields, and
     /// for anything still fieldless resolves the three-way verdict — shaped, abstract
-    /// (rejected), or unknown (suggested) — except for a seed entity, which the user asserted
-    /// exists and so is never dropped or demoted, whatever the lexicon or article says.
+    /// (rejected), or unknown (suggested). A seed entity gets no exemption here: it is a noun
+    /// SeedEntityExtractor lifted straight out of the user's typed phrase, a guess like any
+    /// Wikipedia candidate, so it takes the same gate. The only fieldless-and-kept case is
+    /// impossible to reach through discovery: <see cref="Review.ModelEditor.AddEntity"/> already
+    /// gives an entity the user adds by hand a field (its own lexicon shape, or the
+    /// <see cref="DefaultFields"/> fallback) before this method ever sees it, which is what
+    /// the fields-count check below actually protects.
     /// </summary>
     public void Shape(CandidateDomainModel model)
     {
@@ -47,13 +61,6 @@ public sealed class EntityShaper
 
             if (entity.Fields.Count > 0)
                 continue;
-
-            // The user named it: they have asserted it exists. Never dropped, never demoted.
-            if (entity.Provenance == Provenance.Seed)
-            {
-                DefaultFields.ApplyTo(entity, Provenance.Seed);
-                continue;
-            }
 
             var lead = _client.FetchLead(entity.SourceTitle ?? entity.Name);
             var result = ArchetypeLexicon.Resolve(HypernymExtractor.Extract(lead));
