@@ -12,7 +12,7 @@ public sealed class FakeWikipediaClient : IWikipediaClient
     /// <summary>Per-term hits, for tests that care which term found what.</summary>
     public Dictionary<string, List<SearchHit>> HitsByTerm { get; } = new(StringComparer.OrdinalIgnoreCase);
 
-    public Dictionary<string, string> Extracts { get; } = new();
+    public Dictionary<string, string> Extracts { get; } = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Per-title link targets, for tests exercising the link-based candidate source.</summary>
     public Dictionary<string, List<string>> Links { get; } = new(StringComparer.OrdinalIgnoreCase);

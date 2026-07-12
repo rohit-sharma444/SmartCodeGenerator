@@ -105,10 +105,19 @@ public sealed class EntityShaper
         }
     }
 
-    /// <summary>Adds a field unless the entity already declares one of that name.</summary>
+    /// <summary>Adds a field unless the entity already declares one of that name, or the name
+    /// collides with the entity's own name. Mirrors <see cref="Review.ModelEditor.AddField"/>:
+    /// `class Model { public string Model { get; set; } }` is CS0542 and will not compile. That
+    /// guard is name-agnostic there because a user can type any field name; here the field comes
+    /// from an archetype shape that knows nothing about the entity's own name, so an entity such
+    /// as "Model" or "Total" resolving to a device/document archetype would otherwise emit an
+    /// uncompilable class.</summary>
     private static void AddField(CandidateEntity entity, string name, string type)
     {
         if (entity.Fields.Any(f => string.Equals(f.Name, name, StringComparison.OrdinalIgnoreCase)))
+            return;
+
+        if (string.Equals(name, entity.Name, StringComparison.OrdinalIgnoreCase))
             return;
 
         entity.Fields.Add(new CandidateField

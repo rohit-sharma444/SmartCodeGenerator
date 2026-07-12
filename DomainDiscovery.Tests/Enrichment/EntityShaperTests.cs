@@ -153,6 +153,24 @@ public class EntityShaperTests
     }
 
     [Fact]
+    public void Shape_SkipsAFieldNamedAfterItsOwnEntity_ToAvoidCS0542()
+    {
+        // ModelEditor.AddField already refuses a field whose name equals its entity's name,
+        // because `class Model { public string Model { get; set; } }` is CS0542 and would not
+        // compile. EntityShaper's archetype path is name-agnostic, so an entity that happens to
+        // be named after one of its own archetype's fields ("Model", from the device archetype)
+        // must have that one field skipped while keeping the rest.
+        _wiki.Leads["Model"] = "A model is a device for demonstrating a concept.";
+        var model = new CandidateDomainModel();
+        model.Entities.Add(new CandidateEntity { Name = "Model", Provenance = Provenance.Wiki });
+
+        Shaper.Shape(model);
+
+        var entity = Assert.Single(model.Entities);
+        Assert.Equal(new[] { "Name", "SerialNumber" }, entity.Fields.Select(f => f.Name));
+    }
+
+    [Fact]
     public void Shape_FetchesAllLeadsInOneBatchCall_NotOnePerEntity()
     {
         // The whole point of Task 12: a real run needed a lead per uncurated candidate, and

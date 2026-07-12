@@ -91,4 +91,57 @@ public class DomainDiscoveryPipelineTests
         Assert.Equal(new[] { "Widget" }, result.Model.Suggestions.Select(e => e.Name));
         Assert.Empty(result.Model.Rejected);
     }
+
+    [Fact]
+    public void Discover_EndToEnd_ShapesALinkedConcept_AndRejectsAnAbstraction()
+    {
+        // Spec: docs/superpowers/specs/2026-07-12-lexicon-gate-design.md, Testing section —
+        // "Pipeline integration with a fake client over a POS fixture: tier 1 contains
+        // CashRegister and Receipt; System, Data, Software and Business are absent." This is
+        // that test: it drives DomainEnricher -> EntityShaper together over a fixture shaped
+        // like the Point of sale article, with only the Wikipedia client faked (no network).
+        // Until now this behaviour was only proven by a manual CLI run.
+        var analysis = new SemanticResult();
+        analysis.Entities.Add(Ent("register", EntityType.Object));
+        var analyzer = new StubAnalyzer(analysis);
+
+        var client = new FakeWikipediaClient();
+        // Recognition searches on the seed name ("Register"), and must land on the topic
+        // article regardless of what the article's own prose says.
+        client.HitsByTerm["Register"] = new List<SearchHit>
+        {
+            new("Point of sale", "https://en.wikipedia.org/wiki/Point_of_sale", 0)
+        };
+
+        // The article text feeds both the prose harvester (via the same stub analyzer) and
+        // LinkedConceptSource's salience check, which requires a lowercase, twice-repeated
+        // mention of a link title before it becomes a candidate at all.
+        const string articleText =
+            "A point of sale system uses a cash register to record each sale. " +
+            "The cash register and the system are both central to retail operations.";
+        client.Extracts["Point of sale"] = articleText;
+        client.Links["Point of sale"] = new List<string> { "Cash register", "System" };
+
+        // Each linked candidate is shaped from its OWN article's definition, per the design:
+        // a device archetype for the register, an abstract head ("group") for System.
+        client.Leads["Cash register"] = "A cash register is a device for registering sales.";
+        client.Leads["System"] = "A system is a group of interacting elements.";
+
+        var pipeline = new DomainDiscoveryPipeline(
+            analyzer,
+            new SeedEntityExtractor(),
+            new WikipediaTopicRecognizer(client),
+            new DomainEnricher(client, analyzer, new EntityHarvester()),
+            new EntityShaper(client));
+
+        var result = pipeline.Discover("track registers");
+
+        var cashRegister = Assert.Single(result.Model.Entities, e => e.Name == "CashRegister");
+        Assert.Equal(
+            new[] { "Name", "Model", "SerialNumber" },
+            cashRegister.Fields.Select(f => f.Name));
+
+        Assert.DoesNotContain(result.Model.Entities, e => e.Name == "System");
+        Assert.Contains("System", result.Model.Rejected);
+    }
 }

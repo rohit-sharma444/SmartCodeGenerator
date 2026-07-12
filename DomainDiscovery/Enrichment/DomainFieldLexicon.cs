@@ -14,8 +14,15 @@ namespace DomainDiscovery.Enrichment;
 /// </para>
 /// <para>
 /// So the knowledge is curated, exactly as the English lexicon and the business-noun list
-/// already are. Knowing an entity's fields is also what makes it an entity at all: a harvested
-/// noun with no known shape ("Century", "Tablet") is prose, not a domain class.
+/// already are. That measurement is still the reason this table exists and is hand-maintained
+/// rather than derived. What curation no longer decides is whether an entity exists at all: a
+/// harvested noun with no entry here ("Century", "Tablet") used to be silently deleted as
+/// prose, which is what deleted sixteen of twenty candidates from the Point of sale article.
+/// This table is now the FIRST of two shape sources, not the only one — <see
+/// cref="ArchetypeLexicon"/> shapes anything this table does not know from the candidate's own
+/// Wikipedia definition, and only an actually abstract definition ("a system is a group of
+/// interacting elements") rejects a candidate. Absent from this table just means "look further,"
+/// never "not a class."
 /// </para>
 /// </remarks>
 public static class DomainFieldLexicon

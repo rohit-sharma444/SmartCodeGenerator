@@ -101,23 +101,17 @@ public sealed class HttpWikipediaClient : IWikipediaClient
                 + $"&titles={Uri.EscapeDataString(articleTitle)}";
 
         var json = GetCached($"extract:{articleTitle}", url);
-        if (json.Length == 0)
+
+        if (!TryParsePages(json, out var doc, out var pages))
             return string.Empty;
 
-        try
+        using (doc)
         {
-            using var doc = JsonDocument.Parse(json);
-            var pages = doc.RootElement.GetProperty("query").GetProperty("pages");
             foreach (var page in pages.EnumerateObject())
             {
                 if (page.Value.TryGetProperty("extract", out var extract))
                     return extract.GetString() ?? string.Empty;
             }
-        }
-        catch (Exception ex) when (ex is JsonException or InvalidOperationException
-            or KeyNotFoundException or IndexOutOfRangeException or ArgumentOutOfRangeException)
-        {
-            // fall through
         }
 
         return string.Empty;
@@ -133,14 +127,12 @@ public sealed class HttpWikipediaClient : IWikipediaClient
                 + $"&redirects=1&format=json&titles={Uri.EscapeDataString(articleTitle)}";
 
         var json = GetCached($"links:{articleTitle}", url);
-        if (json.Length == 0)
+
+        if (!TryParsePages(json, out var doc, out var pages))
             return Array.Empty<string>();
 
-        try
+        using (doc)
         {
-            using var doc = JsonDocument.Parse(json);
-            var pages = doc.RootElement.GetProperty("query").GetProperty("pages");
-
             foreach (var page in pages.EnumerateObject())
             {
                 if (!page.Value.TryGetProperty("links", out var links))
@@ -154,11 +146,6 @@ public sealed class HttpWikipediaClient : IWikipediaClient
                 }
                 return titles;
             }
-        }
-        catch (Exception ex) when (ex is JsonException or InvalidOperationException
-            or KeyNotFoundException or IndexOutOfRangeException or ArgumentOutOfRangeException)
-        {
-            // fall through
         }
 
         return Array.Empty<string>();
@@ -259,9 +246,26 @@ public sealed class HttpWikipediaClient : IWikipediaClient
 
         using (doc)
         {
+            if (!HasPages(doc.RootElement, out _))
+            {
+                // The body parsed but has no `pages` element at all — an error/captcha body
+                // (MediaWiki answers HTTP 200 with {"error":{...}} for readonly mode, invalid
+                // params, or some throttling), not a genuine "missing article" answer, which
+                // still carries a pages element (just one entry marked "missing"). Leave every
+                // title in this chunk uncached: a transient failure must be retried on the next
+                // run, not pinned to disk as a permanent miss for the whole chunk.
+                return;
+            }
+
+            // A chunk this small has only its own titles to resolve against, so a response that
+            // drops one into query.invalid/interwiki and returns a single page must not hand
+            // that one page's lead to every other title — only a genuinely single-title request
+            // (below) may fall back to "the one page in the response".
+            var allowSinglePageFallback = titles.Count == 1;
+
             foreach (var title in titles)
             {
-                var lead = ResolveLeadForTitle(doc.RootElement, title);
+                var lead = ResolveLeadForTitle(doc.RootElement, title, allowSinglePageFallback);
 
                 var perTitleBody = lead.Length > 0
                     ? JsonSerializer.Serialize(new
@@ -296,7 +300,11 @@ public sealed class HttpWikipediaClient : IWikipediaClient
         try
         {
             using var doc = JsonDocument.Parse(body);
-            return ResolveLeadForTitle(doc.RootElement, requestedTitle);
+            // A single-title body (the common case for an old cache entry, or a chunk of one)
+            // has exactly one page regardless of whether its "title" property lines up with
+            // requestedTitle, so the fallback is safe here: there is no OTHER title in this
+            // body it could be stolen from.
+            return ResolveLeadForTitle(doc.RootElement, requestedTitle, allowSinglePageFallback: true);
         }
         catch (Exception ex) when (ex is JsonException or InvalidOperationException
             or KeyNotFoundException or IndexOutOfRangeException or ArgumentOutOfRangeException)
@@ -309,15 +317,23 @@ public sealed class HttpWikipediaClient : IWikipediaClient
     /// Finds the extract for <paramref name="requestedTitle"/> inside a (possibly multi-page,
     /// possibly redirected/normalized) query response. The API keys pages by the FINAL title,
     /// not the one requested, so this first resolves that final title via
-    /// <see cref="ResolveFinalTitle"/> and matches on it. A single-title response (the common
-    /// case for an old cache entry, or a chunk of one) has exactly one page regardless of
-    /// whether its "title" property lines up, so that lone page is used as a fallback —
-    /// this is what let the original single-title <see cref="FetchLead"/> ignore redirects
-    /// entirely and still work.
+    /// <see cref="ResolveFinalTitle"/> and matches on it.
     /// </summary>
-    private static string ResolveLeadForTitle(JsonElement root, string requestedTitle)
+    /// <param name="allowSinglePageFallback">
+    /// When true, a response containing exactly one page is used for
+    /// <paramref name="requestedTitle"/> even if that page's own title does not match — this is
+    /// what lets a genuinely single-title request (a lone cache entry, or a chunk of one) ignore
+    /// redirects entirely and still work. It must be false for a chunk of several titles: if the
+    /// API drops one title (into query.invalid/interwiki, say) and returns just one page for the
+    /// rest, this fallback would otherwise hand that one page's lead to EVERY title in the
+    /// chunk — a different article's definition silently deciding this one's fate. With it
+    /// false, an unmatched title resolves to "" (unknown, a suggestion), never another
+    /// title's lead.
+    /// </param>
+    private static string ResolveLeadForTitle(
+        JsonElement root, string requestedTitle, bool allowSinglePageFallback)
     {
-        if (!root.TryGetProperty("query", out var query) || !query.TryGetProperty("pages", out var pages))
+        if (!HasPages(root, out var pages))
             return string.Empty;
 
         var finalTitle = ResolveFinalTitle(requestedTitle, root);
@@ -339,7 +355,8 @@ public sealed class HttpWikipediaClient : IWikipediaClient
             }
         }
 
-        var chosen = matchedByTitle ?? (pageCount == 1 ? onlyPage : null);
+        var chosen = matchedByTitle
+            ?? (allowSinglePageFallback && pageCount == 1 ? onlyPage : null);
         if (chosen is null)
             return string.Empty;
 
@@ -394,6 +411,57 @@ public sealed class HttpWikipediaClient : IWikipediaClient
             }
         }
         return null;
+    }
+
+    /// <summary>
+    /// True when <paramref name="root"/> has a <c>query.pages</c> element at all, and hands it
+    /// back via <paramref name="pages"/>. A genuinely missing article still has this element
+    /// (one page entry carrying <c>"missing"</c>); only an error/captcha body — MediaWiki can
+    /// answer HTTP 200 with <c>{"error":{...}}</c> for readonly mode, invalid params, or some
+    /// throttling — lacks <c>query</c> or <c>pages</c> entirely. Callers use this to tell a real
+    /// negative from a transient failure that must not be cached as one.
+    /// </summary>
+    private static bool HasPages(JsonElement root, out JsonElement pages)
+    {
+        if (root.TryGetProperty("query", out var query) && query.TryGetProperty("pages", out pages))
+            return true;
+
+        pages = default;
+        return false;
+    }
+
+    /// <summary>
+    /// Shared by <see cref="FetchExtract"/> and <see cref="FetchLinks"/>: parses a response body
+    /// and hands back its <c>query.pages</c> element and the owning <see cref="JsonDocument"/>
+    /// (which the caller must dispose), or false for anything unparseable or lacking a
+    /// <c>pages</c> element at all — never throws.
+    /// </summary>
+    private static bool TryParsePages(string body, out JsonDocument? doc, out JsonElement pages)
+    {
+        doc = null;
+        pages = default;
+
+        if (body.Length == 0)
+            return false;
+
+        try
+        {
+            var parsed = JsonDocument.Parse(body);
+            if (HasPages(parsed.RootElement, out pages))
+            {
+                doc = parsed;
+                return true;
+            }
+
+            parsed.Dispose();
+            pages = default;
+            return false;
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException
+            or KeyNotFoundException or IndexOutOfRangeException or ArgumentOutOfRangeException)
+        {
+            return false;
+        }
     }
 
     /// <summary>Splits a list into fixed-size slices, for the API's per-request title cap.</summary>
