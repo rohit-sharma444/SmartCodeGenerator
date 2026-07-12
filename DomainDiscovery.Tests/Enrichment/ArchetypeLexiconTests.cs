@@ -56,4 +56,64 @@ public class ArchetypeLexiconTests
     {
         Assert.Equal(ShapeVerdict.Unknown, ArchetypeLexicon.Resolve("").Verdict);
     }
+
+    [Fact]
+    public void Resolve_APluralHead_ResolvesTheSameAsItsSingular()
+    {
+        // HypernymExtractor already singularizes, but Resolve must not depend on a caller's
+        // discipline: "Self-checkouts are machines..." only stops being a suggestion because
+        // this holds on its own.
+        var result = ArchetypeLexicon.Resolve("machines");
+
+        Assert.Equal(ShapeVerdict.Shaped, result.Verdict);
+        Assert.Equal(
+            new[] { "Name", "Model", "SerialNumber" }, result.Fields.Select(f => f.Name));
+    }
+
+    [Fact]
+    public void Resolve_Business_IsNotMangledBySingularization()
+    {
+        // "business" ends in "ss", which NameNormalizer's singularizer deliberately leaves
+        // alone. A careless plural-strip would corrupt it to "busines" and lose the archetype.
+        var result = ArchetypeLexicon.Resolve("business");
+
+        Assert.Equal(ShapeVerdict.Shaped, result.Verdict);
+        Assert.Equal(new[] { "Name", "Address" }, result.Fields.Select(f => f.Name));
+    }
+
+    [Theory]
+    // Unaffected by singularization: verifies the fold-to-singular lookup does not disturb
+    // words that already resolved correctly before it existed.
+    [InlineData("goods", ShapeVerdict.Shaped)]
+    [InlineData("collection", ShapeVerdict.Abstract)]
+    [InlineData("group", ShapeVerdict.Abstract)]
+    [InlineData("class", ShapeVerdict.Unknown)]
+    public void Resolve_AfterSingularization_StillResolvesAsBefore(string head, ShapeVerdict expected)
+    {
+        Assert.Equal(expected, ArchetypeLexicon.Resolve(head).Verdict);
+    }
+
+    [Fact]
+    public void Resolve_Display_HasTheSameShapeAsDevice()
+    {
+        // Unlocks Touchscreen: "A touchscreen is a type of display that can detect touch input..."
+        var result = ArchetypeLexicon.Resolve("display");
+
+        Assert.Equal(ShapeVerdict.Shaped, result.Verdict);
+        Assert.Equal(
+            new[] { "Name", "Model", "SerialNumber" }, result.Fields.Select(f => f.Name));
+    }
+
+    [Theory]
+    [InlineData("money")]
+    [InlineData("currency")]
+    public void Resolve_MoneyAndItsSynonym_ShapeToAnAmountAndCurrency(string head)
+    {
+        // Unlocks Cash: "Cash is money in the tangible form of currency."
+        var result = ArchetypeLexicon.Resolve(head);
+
+        Assert.Equal(ShapeVerdict.Shaped, result.Verdict);
+        Assert.Equal(new[] { "Amount", "Currency" }, result.Fields.Select(f => f.Name));
+        Assert.Equal("decimal", result.Fields.Single(f => f.Name == "Amount").Type);
+    }
 }

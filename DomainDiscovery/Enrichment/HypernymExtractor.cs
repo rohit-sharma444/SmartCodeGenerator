@@ -1,3 +1,5 @@
+using DomainDiscovery.SeedExtraction;
+
 namespace DomainDiscovery.Enrichment;
 
 /// <summary>
@@ -29,8 +31,18 @@ public static class HypernymExtractor
         };
 
     /// <summary>
+    /// Words that name a container for the real head rather than the head itself: "a type of
+    /// display" is not about "type", it is about "display". Only "of" earns a second scan past
+    /// one of these — "a type that detects touch" has no second noun phrase to chase.
+    /// </summary>
+    private static readonly HashSet<string> ContainerWords =
+        new(StringComparer.OrdinalIgnoreCase)
+        { "type", "kind", "form", "sort", "variety", "class", "category" };
+
+    /// <summary>
     /// Extracts the head noun (hypernym) from a Wikipedia lead sentence.
-    /// Returns a lowercase head noun, or an empty string when the sentence defines nothing.
+    /// Returns a lowercase, singular head noun, or an empty string when the sentence defines
+    /// nothing.
     /// </summary>
     public static string Extract(string leadSentence)
     {
@@ -56,21 +68,56 @@ public static class HypernymExtractor
         if (copula < 0)
             return string.Empty;
 
-        string head = string.Empty;
+        var (head, terminator, nextIndex) = ScanHead(tokens, leadSentence, copula + 1);
 
-        for (var i = copula + 1; i < tokens.Count; i++)
+        // "a type of display" scans only as far as "type" ("of" terminates it), but "type" is
+        // a container, not a concept - the real head is whatever "of" introduces. Re-run the
+        // same scan from just past "of" and take its head instead, falling back to the
+        // container word when nothing usable follows (e.g. "a type of thing." with no phrase).
+        if (head.Length > 0
+            && ContainerWords.Contains(head)
+            && string.Equals(terminator, "of", StringComparison.OrdinalIgnoreCase))
+        {
+            var (continuedHead, _, _) = ScanHead(tokens, leadSentence, nextIndex);
+            if (continuedHead.Length > 0)
+                head = continuedHead;
+        }
+
+        // A hypernym is a concept, not a word form: "Self-checkouts are machines..." and "A
+        // computer is a machine..." define the same thing, so both must reach ArchetypeLexicon
+        // as "machine". NameNormalizer.ToEntityName already carries this singularization
+        // (deliberately conservative - "business" stays "business") and reusing it here means
+        // there is exactly one plural-stripper in the codebase, not two.
+        return Singularize(head);
+    }
+
+    /// <summary>
+    /// Scans forward from <paramref name="startIndex"/> for the head noun of one noun phrase,
+    /// applying the same determiner/terminator/participle rules <see cref="Extract"/> always
+    /// has. Returns the head captured (possibly empty), the word that stopped the scan (empty
+    /// when the scan ran out of tokens or stopped at punctuation rather than a terminator), and
+    /// the index to resume scanning from - which lets a caller re-run this for a second noun
+    /// phrase (see the "type of X" handling in <see cref="Extract"/>) without duplicating the
+    /// rules themselves.
+    /// </summary>
+    private static (string Head, string Terminator, int NextIndex) ScanHead(
+        List<(string Word, int End)> tokens, string sentence, int startIndex)
+    {
+        var head = string.Empty;
+
+        for (var i = startIndex; i < tokens.Count; i++)
         {
             var (word, end) = tokens[i];
 
             if (Determiners.Contains(word))
             {
-                if (EndsPhrase(leadSentence, end))
-                    break;
+                if (EndsPhrase(sentence, end))
+                    return (head, string.Empty, i + 1);
                 continue;
             }
 
             if (Terminators.Contains(word))
-                break;
+                return (head, word, i + 1);
 
             // A participle after the head noun modifies it rather than being it - "a document
             // acknowledging..." stops at "acknowledging" and yields "document"; "engaged in
@@ -81,18 +128,33 @@ public static class HypernymExtractor
             if (head.Length > 0 &&
                 (word.EndsWith("ing", StringComparison.OrdinalIgnoreCase) ||
                  word.EndsWith("ed", StringComparison.OrdinalIgnoreCase)))
-                break;
+                return (head, string.Empty, i);
 
             head = word;
 
             // A comma or semicolon right after the head ends the noun phrase - "a payment
             // card, usually issued by a bank" is done at "card"; whatever follows the mark
             // only modifies it rather than continuing it.
-            if (EndsPhrase(leadSentence, end))
-                break;
+            if (EndsPhrase(sentence, end))
+                return (head, string.Empty, i + 1);
         }
 
-        return head.ToLowerInvariant();
+        return (head, string.Empty, tokens.Count);
+    }
+
+    /// <summary>
+    /// Folds a plural head onto the singular form ArchetypeLexicon's table is keyed by, via the
+    /// one singularizer the codebase already has. Blank input passes through unchanged so
+    /// callers keep seeing an empty string, not a surprising non-empty one, when nothing was
+    /// captured.
+    /// </summary>
+    private static string Singularize(string head)
+    {
+        if (head.Length == 0)
+            return head;
+
+        var entityName = NameNormalizer.ToEntityName(head);
+        return entityName.Length == 0 ? head.ToLowerInvariant() : entityName.ToLowerInvariant();
     }
 
     /// <summary>

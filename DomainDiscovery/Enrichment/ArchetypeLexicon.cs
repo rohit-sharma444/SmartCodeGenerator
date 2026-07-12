@@ -1,3 +1,4 @@
+using DomainDiscovery.SeedExtraction;
 using FieldShape = DomainDiscovery.Enrichment.DomainFieldLexicon.FieldShape;
 
 namespace DomainDiscovery.Enrichment;
@@ -44,6 +45,7 @@ public static class ArchetypeLexicon
             ["machine"] = [Text("Name"), Text("Model"), Text("SerialNumber")],
             ["terminal"] = [Text("Name"), Text("Model"), Text("SerialNumber")],
             ["equipment"] = [Text("Name"), Text("Model"), Text("SerialNumber")],
+            ["display"] = [Text("Name"), Text("Model"), Text("SerialNumber")],
 
             ["document"] = [Text("Number"), When("IssuedOn"), Money("Total")],
             ["record"] = [Text("Number"), When("IssuedOn"), Money("Total")],
@@ -73,6 +75,9 @@ public static class ArchetypeLexicon
             ["tender"] = [Money("Amount"), When("OccurredOn"), Text("Method")],
 
             ["card"] = [Text("Number"), Text("Holder"), When("ExpiresOn")],
+
+            ["money"] = [Money("Amount"), Text("Currency")],
+            ["currency"] = [Money("Amount"), Text("Currency")],
         };
 
     /// <summary>
@@ -96,17 +101,38 @@ public static class ArchetypeLexicon
     /// <see cref="ShapeVerdict.Unknown"/> offers it to the user for review. Blank input is
     /// <see cref="ShapeVerdict.Unknown"/> for the same reason.
     /// </summary>
+    /// <remarks>
+    /// The table is keyed by the singular concept ("machine"), but a caller must not have to
+    /// know that: <see cref="HypernymExtractor.Extract"/> already hands this a singularized
+    /// head, and this folds a plural to the same form again regardless, so the contract holds
+    /// for any caller — not only one that happens to normalize first.
+    /// </remarks>
     public static ArchetypeResult Resolve(string hypernymHead)
     {
         if (string.IsNullOrWhiteSpace(hypernymHead))
             return new ArchetypeResult(ShapeVerdict.Unknown, Array.Empty<FieldShape>());
 
-        if (Archetypes.TryGetValue(hypernymHead, out var fields))
+        var head = Singularize(hypernymHead);
+
+        if (Archetypes.TryGetValue(head, out var fields))
             return new ArchetypeResult(ShapeVerdict.Shaped, fields);
 
-        if (AbstractHeads.Contains(hypernymHead))
+        if (AbstractHeads.Contains(head))
             return new ArchetypeResult(ShapeVerdict.Abstract, Array.Empty<FieldShape>());
 
         return new ArchetypeResult(ShapeVerdict.Unknown, Array.Empty<FieldShape>());
+    }
+
+    /// <summary>
+    /// Folds a plural head onto its singular form before the table lookup, reusing
+    /// <see cref="NameNormalizer.ToEntityName"/> rather than a second plural-stripper. It is
+    /// deliberately conservative — "business", "status" and "analysis" all end in a pattern
+    /// that looks pluralizable and are left alone — so a corrupted key never silently loses an
+    /// archetype the table does have an opinion on.
+    /// </summary>
+    private static string Singularize(string head)
+    {
+        var entityName = NameNormalizer.ToEntityName(head);
+        return entityName.Length == 0 ? head : entityName.ToLowerInvariant();
     }
 }

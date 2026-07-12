@@ -19,6 +19,10 @@ public class HypernymExtractorTests
     [InlineData("A credit card (or charge card) is a payment card, usually issued by a bank, allowing the card's users to purchase goods and services.", "card")]
     [InlineData("A merchant is a person or company engaged in trade, conducting sales through stores or online platforms.", "company")]
     [InlineData("A debit card, also known as a check card, cheque card or bank card, is a payment card that can be used in place of cash to make purchases.", "card")]
+    // Fetched 2026-07-12, from the Point of sale run that stranded these as suggestions.
+    [InlineData("Self-checkouts are machines that allow customers to complete their own transactions.", "machine")]   // after singularization
+    [InlineData("A touchscreen is a type of display that can detect touch input from a user.", "display")]
+    [InlineData("Cash is money in the tangible form of currency.", "money")]
     public void Extract_TakesTheHeadNoun_OfThePredicateNominal(string lead, string expected)
     {
         Assert.Equal(expected, HypernymExtractor.Extract(lead));
