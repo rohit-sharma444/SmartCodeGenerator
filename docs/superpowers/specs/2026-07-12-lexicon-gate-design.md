@@ -121,8 +121,19 @@ over-long ones (`Automated sales suppression device`). Names go through the exis
 `DomainDiscoveryPipeline` calls `EntityShaper.Shape(model, client)` where it currently
 calls `DomainFieldAssigner.Apply(model)`.
 
-Seed entities — the ones the user named — keep today's guarantee: never dropped, never
-demoted to a suggestion, `DefaultFields` fallback when the lexicon has nothing.
+**Amended 2026-07-12 during implementation, with the owner's approval.** This section
+originally said seed entities are never dropped or demoted. That was wrong.
+`SeedEntityExtractor` makes *every* noun in the user's typed phrase a `Provenance.Seed`
+entity with no fields, so the rule would have proposed an `Application` class for
+"develop pointofsale application" — junk the old `DomainFieldAssigner` suppressed by
+dropping what it could not shape.
+
+The rule is now: **an entity that already carries fields is kept; everything else takes the
+same gate, whatever its provenance.** That still protects the case the original rule was
+reaching for — an entity the user adds by hand goes through `ModelEditor.AddEntity`, which
+runs *after* discovery and gives it a `Name` field, so the fields check exempts it. An
+extracted seed is a guess like any other, and an unshapeable one becomes a suggestion
+rather than a silent deletion.
 
 ### What the user sees
 
