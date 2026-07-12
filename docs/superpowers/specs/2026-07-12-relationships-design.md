@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-12
 **Branch:** `Seperation`
-**Status:** Approved, not yet implemented
+**Status:** Implemented and verified end to end (2026-07-12), with two amendments recorded below
 **Follows:** `2026-07-12-lexicon-gate-design.md`
 
 ## The problem
@@ -123,12 +123,27 @@ is a disk-cache hit by then, so it costs no network.
 
 ### What the user sees
 
+> **Amended 2026-07-12, after the end-to-end run.** The mock below originally showed
+> `Receipt.CustomerId`, and the end-to-end bullet under Testing demanded it. The real run does
+> not produce it, and it is right not to: **`Customer~Receipt` co-occurs twice** in the article,
+> below `MinCoOccurrences = 3`. Receipt *is* annotated `Document` and is eligible to reference —
+> it simply never recurs with Customer often enough. This was the design's own error, not the
+> miner's: the evidence section above lists the pairs actually measured (Customer~Order 10,
+> Customer~Payment 7, Payment~PaymentTerminal 6, Order~Restaurant 5, Customer~Merchant 3) and
+> **Receipt~Customer was never among them**. The mock was written from what a POS model ought to
+> look like rather than from what the article says, and the acceptance criterion inherited the
+> mistake. Lowering the threshold to 2 to satisfy it would admit `Cash~Receipt` and
+> `Computer~Receipt` (both also 2) — the threshold is doing exactly the job it was introduced
+> for. The mock below is now the **verbatim output of a real run**.
+
 ```
 Candidate model (20 entities):
   - Customer [Wiki] { FullName:string, Email:string, Phone:string }
+  - Payment [Wiki] { Amount:decimal, PaidOn:DateTime, Method:string, CustomerId:int, PaymentTerminalId:int, CashRegisterId:int }  -> Customer, PaymentTerminal, CashRegister
   - Order [Wiki] { Reference:string, PlacedOn:DateTime, Total:decimal, CustomerId:int, RestaurantId:int }  -> Customer, Restaurant
-  - Receipt [Wiki] { Number:string, IssuedOn:DateTime, Total:decimal, CustomerId:int }  -> Customer
-  - Payment [Wiki] { Amount:decimal, PaidOn:DateTime, Method:string, PaymentTerminalId:int }  -> PaymentTerminal
+  - Receipt [Wiki] { Number:string, Amount:decimal, IssuedOn:DateTime }
+  - CashRegister [Wiki] { Name:string, Model:string, SerialNumber:string }
+  - Cash [Wiki] { Amount:decimal, Currency:string }
 ```
 
 ## Error handling
@@ -143,18 +158,38 @@ classes. Nothing that exists now can be made worse by this stage, and it must ne
   appears once is not; **`Cash` does not link to `CashRegister`** (the overlap regression);
   the cap holds; equal-rank pairs produce nothing.
 - Direction: `Receipt`(Document) ~ `Customer`(Party) yields `Receipt.CustomerId` and **not**
-  `Customer.ReceiptId`.
+  `Customer.ReceiptId`. This is over the **fixture**, where the pair is written to recur; it
+  tests which way a surviving pair points, and says nothing about whether that pair survives in
+  the real article — where it does not.
 - `RoleLexicon`/`ArchetypeLexicon`: every archetype maps to a Role; every `DomainFieldLexicon`
   entry has one (a test that enumerates the lexicon and asserts no entry is unannotated, so a
   future entry cannot silently arrive role-less).
 - Reference fields never collide with an existing field, `Id`, or the entity's own name.
 - Pipeline integration with a fake client: a shaped model comes back with relationships.
 - **End to end:** `build app: develop pointofsale application` must show `Order.CustomerId`
-  and `Receipt.CustomerId`, and must NOT show any `Cash`–`CashRegister` link. Tests passing
-  is not the claim; that output is.
+  (and `Order -> Customer, Restaurant`; `Payment -> Customer, PaymentTerminal, CashRegister`),
+  and must NOT show any `Cash`–`CashRegister` link, nor `Restaurant.CustomerId`,
+  `CashRegister.CustomerId` or `Inventory.ComputerId`. Tests passing is not the claim; that
+  output is.
+
+  `Receipt` gets **no link** and that is the correct result — see the amendment under "What the
+  user sees". The three junk links named above are the sharper criterion anyway: each one
+  *clears* `MinCoOccurrences` (5, 3 and 3 respectively) and is killed only by
+  `EntityRoleRank.CanReference`, so their absence tests the gate rather than the threshold.
+  A run was performed on 2026-07-12 and satisfies this, including the generated `Order.cs`
+  carrying a real `public int CustomerId { get; set; }`.
 
 ## Known limitation, accepted
 
 Co-occurrence is evidence of association, not of cardinality. Every link is emitted as a
 single reference field (many-to-one); a genuine many-to-many (Order ~ Product) is flattened
 to one key. The review loop remains the place to correct it, and nothing is silently deleted.
+
+**A domain with no Document or Transaction gets no links at all.** Observed on
+`build app: develop library application`: seven classes (Library, Book, Member, Librarian,
+Material, User, Computer) and zero relationships, because every one of them is a
+Party/Item/Place/Device and none may reference. This follows from the gate rather than
+violating it — the class that would carry the keys is `Loan`, and the article never yields
+it — but it means the feature is inert on such domains and the model comes back as standalone
+tables, exactly as before. Point of sale works because it happens to contain Order, Payment
+and Receipt. Worth knowing before reading a linked POS model as proof the feature generalizes.
