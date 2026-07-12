@@ -16,6 +16,9 @@ public class HypernymExtractorTests
     [InlineData("Business is the practice of making one's living.", "practice")]
     [InlineData("A tablet computer is a mobile device.", "device")]
     [InlineData("A wedding is a gathering of people.", "gathering")]
+    [InlineData("A credit card (or charge card) is a payment card, usually issued by a bank, allowing the card's users to purchase goods and services.", "card")]
+    [InlineData("A merchant is a person or company engaged in trade, conducting sales through stores or online platforms.", "company")]
+    [InlineData("A debit card, also known as a check card, cheque card or bank card, is a payment card that can be used in place of cash to make purchases.", "card")]
     public void Extract_TakesTheHeadNoun_OfThePredicateNominal(string lead, string expected)
     {
         Assert.Equal(expected, HypernymExtractor.Extract(lead));
