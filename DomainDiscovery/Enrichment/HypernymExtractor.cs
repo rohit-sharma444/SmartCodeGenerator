@@ -65,7 +65,11 @@ public static class HypernymExtractor
             if (Terminators.Contains(word))
                 break;
 
-            if (word.EndsWith("ing", StringComparison.OrdinalIgnoreCase))
+            // A participle after the head noun modifies it rather than being it - "a document
+            // acknowledging..." stops at "acknowledging" and yields "document". But before any
+            // head has been captured, an "-ing" word is the head itself - "a gathering of
+            // people" must yield "gathering", not "".
+            if (head.Length > 0 && word.EndsWith("ing", StringComparison.OrdinalIgnoreCase))
                 break;
 
             head = word;

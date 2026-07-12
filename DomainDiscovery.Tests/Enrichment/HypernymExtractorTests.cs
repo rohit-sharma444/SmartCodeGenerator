@@ -15,6 +15,7 @@ public class HypernymExtractorTests
     [InlineData("A system is a group of interacting elements.", "group")]
     [InlineData("Business is the practice of making one's living.", "practice")]
     [InlineData("A tablet computer is a mobile device.", "device")]
+    [InlineData("A wedding is a gathering of people.", "gathering")]
     public void Extract_TakesTheHeadNoun_OfThePredicateNominal(string lead, string expected)
     {
         Assert.Equal(expected, HypernymExtractor.Extract(lead));
