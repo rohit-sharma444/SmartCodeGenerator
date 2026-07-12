@@ -9,6 +9,13 @@ namespace DomainDiscovery.Enrichment;
 /// two common nouns that normalize to junk, so the harvester can never surface it, yet the
 /// article links it. A link alone is not enough — an article links hundreds of things it
 /// merely mentions — so a candidate must also be something the prose keeps talking about.
+///
+/// A title also must not name one particular thing rather than a kind of thing: a proper
+/// noun (e.g. "Microsoft") can never be a domain class, only a common noun (e.g. "Merchant")
+/// can. Wiki title-casing capitalizes every title's first word regardless of which kind it
+/// is, so the title's own spelling cannot distinguish them — but the article's prose can: a
+/// common noun is written lowercase somewhere ("the merchant bank"), while a proper noun
+/// never is. See <see cref="HasLowercaseOccurrence"/>.
 /// </remarks>
 public static class LinkedConceptSource
 {
@@ -33,7 +40,7 @@ public static class LinkedConceptSource
     /// </remarks>
     /// <param name="linkTitles">The wikilink target titles extracted from the article.</param>
     /// <param name="articleText">The full text of the article to check for repeated mentions.</param>
-    /// <returns>A list of link titles that meet all filtering criteria: occurrence threshold, title length, and disambiguation rules.</returns>
+    /// <returns>A list of link titles that meet all filtering criteria: occurrence threshold, title length, disambiguation, and proper-noun rules.</returns>
     public static IReadOnlyList<string> Candidates(
         IReadOnlyList<string> linkTitles, string articleText)
     {
@@ -60,6 +67,16 @@ public static class LinkedConceptSource
             if (words.Count(w => w.Length > 0 && char.IsUpper(w[0])) >= 2)
                 continue;
 
+            // Wiki title-casing capitalizes every title's first word regardless of whether it
+            // names a kind of thing ("Cash register") or one particular thing ("Microsoft"), so
+            // the title's own casing cannot tell the two apart. The article's prose can: a common
+            // noun gets written lowercase somewhere ("the cash register"), while a proper noun
+            // never does ("IBM", "Microsoft" always capitalized). A title names one particular
+            // thing - never a kind of thing - if the prose only ever spells it capitalized, so
+            // such a title cannot be a domain class and must be dropped.
+            if (!HasLowercaseOccurrence(articleText, title))
+                continue;
+
             if (CountOccurrences(articleText, title) >= MinMentions)
                 kept.Add(title);
         }
@@ -79,5 +96,19 @@ public static class LinkedConceptSource
         }
 
         return count;
+    }
+
+    /// <summary>
+    /// True if the article text spells the title with a lowercase first letter anywhere
+    /// ("cash register"), which only happens for a common noun; a proper noun ("Microsoft")
+    /// is always capitalized, so it never produces such an occurrence.
+    /// </summary>
+    private static bool HasLowercaseOccurrence(string text, string title)
+    {
+        if (title.Length == 0)
+            return false;
+
+        var lowerFirst = char.ToLowerInvariant(title[0]) + title[1..];
+        return text.Contains(lowerFirst, StringComparison.Ordinal);
     }
 }
