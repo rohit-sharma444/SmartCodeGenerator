@@ -232,4 +232,110 @@ public class RelationshipMinerTests
         var relationship = Assert.Single(receipt.Relationships);
         Assert.Equal("Customer", relationship.Target);
     }
+
+    [Fact]
+    public void Mine_TransactionReferencingDevice_StillLinks_PaymentGetsPaymentTerminalId()
+    {
+        // Existing behaviour that must not regress: a Transaction (rank 4) referencing a
+        // Device (rank 2, strictly lower) is exactly the "only a document or transaction
+        // carries a foreign key" rule working as intended.
+        var model = new CandidateDomainModel();
+        var payment = Entity("Payment", EntityRole.Transaction);
+        var terminal = Entity("PaymentTerminal", EntityRole.Device, sourceTitle: "Payment terminal");
+        model.Entities.Add(payment);
+        model.Entities.Add(terminal);
+
+        var article = Repeat(
+            "The payment was processed by the payment terminal.", RelationshipMiner.MinCoOccurrences);
+
+        _miner.Mine(model, article);
+
+        var relationship = Assert.Single(payment.Relationships);
+        Assert.Equal("PaymentTerminal", relationship.Target);
+        Assert.Contains(payment.Fields, f => f.Name == "PaymentTerminalId");
+        Assert.Empty(terminal.Relationships);
+    }
+
+    [Fact]
+    public void Mine_PlaceCoOccurringWithParty_GetsNoRelationship_ARestaurantDoesNotHaveOneCustomer()
+    {
+        // Real end-to-end defect: on a real run, Restaurant { Name, Address, CustomerId }
+        // pointed at Customer purely because Place (rank 2) outranked Party (rank 1). A
+        // restaurant does not have ONE customer. Only Document/Transaction may reference
+        // anything; a Place never does, no matter how often it co-occurs with a Party.
+        var model = new CandidateDomainModel();
+        var restaurant = Entity("Restaurant", EntityRole.Place);
+        var customer = Entity("Customer", EntityRole.Party);
+        model.Entities.Add(restaurant);
+        model.Entities.Add(customer);
+
+        var article = Repeat("The customer sat down in the restaurant.", 5);
+
+        _miner.Mine(model, article);
+
+        Assert.Empty(restaurant.Relationships);
+        Assert.Empty(customer.Relationships);
+        Assert.DoesNotContain(restaurant.Fields, f => f.Name == "CustomerId");
+    }
+
+    [Fact]
+    public void Mine_DeviceCoOccurringWithParty_GetsNoRelationship_ATillDoesNotHaveOneCustomer()
+    {
+        // Same real defect, Device flavour: CashRegister { ..., CustomerId } is junk - a till
+        // does not have ONE customer. Device (rank 2) outranking Party (rank 1) is not enough
+        // on its own; Device is not a referencer.
+        var model = new CandidateDomainModel();
+        var cashRegister = Entity("CashRegister", EntityRole.Device, sourceTitle: "Cash register");
+        var customer = Entity("Customer", EntityRole.Party);
+        model.Entities.Add(cashRegister);
+        model.Entities.Add(customer);
+
+        var article = Repeat("The customer paid the cash register directly.", 5);
+
+        _miner.Mine(model, article);
+
+        Assert.Empty(cashRegister.Relationships);
+        Assert.Empty(customer.Relationships);
+        Assert.DoesNotContain(cashRegister.Fields, f => f.Name == "CustomerId");
+    }
+
+    [Fact]
+    public void Mine_ItemCoOccurringWithDevice_GetsNoRelationship_InventoryDoesNotReferenceAComputer()
+    {
+        // Same real defect, Item flavour: Inventory { Sku, Quantity, ComputerId } is junk.
+        // Item (rank 3) outranking Device (rank 2) is not enough; only Document/Transaction
+        // are referencers, so Item never acquires a foreign key either.
+        var model = new CandidateDomainModel();
+        var inventory = Entity("Inventory", EntityRole.Item);
+        var computer = Entity("Computer", EntityRole.Device);
+        model.Entities.Add(inventory);
+        model.Entities.Add(computer);
+
+        var article = Repeat("The inventory was tracked by the computer.", 5);
+
+        _miner.Mine(model, article);
+
+        Assert.Empty(inventory.Relationships);
+        Assert.Empty(computer.Relationships);
+        Assert.DoesNotContain(inventory.Fields, f => f.Name == "ComputerId");
+    }
+
+    [Fact]
+    public void Mine_DocumentAndTransactionEqualRank_LinksNeitherWay()
+    {
+        // Document and Transaction deliberately share rank 4 (see EntityRoleRank remarks): a
+        // Receipt must not gain a PaymentId, nor the reverse, on rank alone.
+        var model = new CandidateDomainModel();
+        var receipt = Entity("Receipt", EntityRole.Document);
+        var payment = Entity("Payment", EntityRole.Transaction);
+        model.Entities.Add(receipt);
+        model.Entities.Add(payment);
+
+        var article = Repeat("The receipt matched the payment exactly.", 5);
+
+        _miner.Mine(model, article);
+
+        Assert.Empty(receipt.Relationships);
+        Assert.Empty(payment.Relationships);
+    }
 }

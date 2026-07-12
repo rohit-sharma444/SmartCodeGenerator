@@ -36,20 +36,36 @@ public enum EntityRole
 /// guessed or hard-coded per pair.
 /// </summary>
 /// <remarks>
-/// THE RULE THIS RANK EXISTS FOR: the higher rank references the lower — a Document or
-/// Transaction (rank 4) points at an Item (rank 3), which points at a Device or Place (rank 2),
-/// which points at a Party (rank 1). EQUAL ranks link in NEITHER direction: Device and Place
-/// intentionally share rank 2 (a Warehouse must not gain a CashRegisterId, nor the reverse),
-/// and likewise Document and Transaction share rank 4 (a Receipt must not gain a PaymentId on
-/// rank alone). Rank 0 (<see cref="EntityRole.None"/>) never links, in either direction — Cash
-/// is not a thing other classes reference. Because two roles deliberately share a rank, the
-/// rank cannot be the enum's own ordinal (which is strictly increasing by declaration order);
-/// it must be looked up from this separate table instead.
+/// <para>
+/// THE RULE THIS RANK EXISTS FOR: a Document or Transaction (rank 4) MAY point at anything of
+/// strictly lower rank — an Item (rank 3), a Device or Place (rank 2), or a Party (rank 1).
+/// EQUAL ranks link in NEITHER direction: Device and Place intentionally share rank 2 (a
+/// Warehouse must not gain a CashRegisterId, nor the reverse), and likewise Document and
+/// Transaction share rank 4 (a Receipt must not gain a PaymentId on rank alone). Rank 0
+/// (<see cref="EntityRole.None"/>) never links, in either direction — Cash is not a thing other
+/// classes reference. Because two roles deliberately share a rank, the rank cannot be the
+/// enum's own ordinal (which is strictly increasing by declaration order); it must be looked up
+/// from this separate table instead.
+/// </para>
+/// <para>
+/// RANK ALONE IS NOT ENOUGH TO DECIDE WHO REFERENCES WHOM — see <see cref="CanReference"/>.
+/// A real end-to-end run against this rank table on its own produced
+/// <c>Restaurant.CustomerId</c> (Place, rank 2, outranking Party, rank 1),
+/// <c>CashRegister.CustomerId</c> (Device outranking Party) and <c>Inventory.ComputerId</c>
+/// (Item outranking Device) — all junk: a restaurant does not have ONE customer, a till does
+/// not have ONE customer, and nothing is gained by an inventory record pointing at "the"
+/// computer. In a real schema only a document or a transaction carries a foreign key; an Item,
+/// Device, Place or Party is something other rows point AT, never something that itself points
+/// anywhere. <see cref="CanReference"/> is the explicit gate for that: the rank comparison in
+/// <see cref="RankOf"/> still decides what a qualifying referencer may point at, but it no
+/// longer decides who is allowed to be the referencer in the first place.
+/// </para>
 /// </remarks>
 public static class EntityRoleRank
 {
     /// <summary>The rank of <paramref name="role"/>, for comparing two classes' roles to decide
-    /// which one — if either — references the other. See the type-level remarks for the rule.</summary>
+    /// what a referencer (see <see cref="CanReference"/>) may point at. See the type-level
+    /// remarks for the rule.</summary>
     public static int RankOf(EntityRole role) => role switch
     {
         EntityRole.None => 0,
@@ -61,4 +77,23 @@ public static class EntityRoleRank
         EntityRole.Transaction => 4,
         _ => 0
     };
+
+    /// <summary>
+    /// Whether a class with this <see cref="EntityRole"/> is allowed to carry foreign keys at
+    /// all — i.e. to be the referencing side of a mined relationship. Only <see
+    /// cref="EntityRole.Document"/> and <see cref="EntityRole.Transaction"/> qualify.
+    /// </summary>
+    /// <remarks>
+    /// This exists because "the higher rank references the lower" is too permissive at the
+    /// bottom end: a real run gave <c>Restaurant</c> (Place) a <c>CustomerId</c> and
+    /// <c>CashRegister</c> (Device) a <c>CustomerId</c> purely because Place and Device
+    /// outrank Party — despite neither a restaurant nor a till having "a" customer. A Document
+    /// (a record of something that happened — Receipt, Invoice) or a Transaction (the event of
+    /// value changing hands — Payment, Order) is the only kind of class a real schema puts
+    /// foreign keys on; an Item, Device, Place or Party is what other rows point at, never a
+    /// pointer itself. Named and checked explicitly so this reads as "only documents and
+    /// transactions carry foreign keys" and cannot be mistaken for a general rank rule.
+    /// </remarks>
+    public static bool CanReference(EntityRole role)
+        => role is EntityRole.Document or EntityRole.Transaction;
 }

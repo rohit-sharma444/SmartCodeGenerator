@@ -57,12 +57,15 @@ public sealed class RelationshipMiner
     /// <summary>
     /// Mines <paramref name="articleText"/> for same-sentence co-occurrence between the classes
     /// already in <paramref name="model"/> and mutates it in place: a surviving pair gets a
-    /// <c>references</c> relationship and an <c>int</c> foreign-key field on whichever class's
-    /// <see cref="EntityRole"/> outranks the other (see <see cref="EntityRoleRank"/>). Never
+    /// <c>references</c> relationship and an <c>int</c> foreign-key field on whichever class
+    /// outranks the other (see <see cref="EntityRoleRank"/>) AND is itself allowed to reference
+    /// anything (see <see cref="EntityRoleRank.CanReference"/> — only <see
+    /// cref="EntityRole.Document"/> and <see cref="EntityRole.Transaction"/> qualify). Never
     /// throws, and never leaves the model in a different state than it started in unless a pair
-    /// actually clears every rule — blank text, too few mentions, equal-ranked classes and
-    /// <see cref="EntityRole.None"/> classes all fall out of the algorithm as a no-op rather
-    /// than needing a special case.
+    /// actually clears every rule — blank text, too few mentions, equal-ranked classes,
+    /// <see cref="EntityRole.None"/> classes, and a higher-ranked class that is not itself a
+    /// Document or Transaction (a Place or Device outranking a Party is not enough on its own)
+    /// all fall out of the algorithm as a no-op rather than needing a special case.
     /// </summary>
     public void Mine(CandidateDomainModel model, string articleText)
     {
@@ -166,11 +169,16 @@ public sealed class RelationshipMiner
 
     /// <summary>
     /// Turns surviving co-occurrence counts into directed (referencing -> target) proposals,
-    /// applying the threshold and the direction rule from <see cref="EntityRoleRank"/>: the
-    /// higher rank references the lower, equal ranks link neither way (Customer~Merchant, both
-    /// Party, is the honest "no relationship" rather than a guessed one), and
-    /// <see cref="EntityRole.None"/> never links regardless of how the ranks compare (rank 0
-    /// meeting rank 1 differs, but None is still never a target or a source).
+    /// applying the threshold and the direction rule from <see cref="EntityRoleRank"/>: equal
+    /// ranks link neither way (Customer~Merchant, both Party, is the honest "no relationship"
+    /// rather than a guessed one), and <see cref="EntityRole.None"/> never links regardless of
+    /// how the ranks compare (rank 0 meeting rank 1 differs, but None is still never a target or
+    /// a source). Among the unequal-rank pairs that remain, the higher rank is only proposed as
+    /// referencer when <see cref="EntityRoleRank.CanReference"/> allows it — otherwise the pair
+    /// is dropped rather than linked. Without that gate this produced <c>Restaurant.CustomerId</c>
+    /// and <c>CashRegister.CustomerId</c> on a real run: Place and Device outrank Party, but
+    /// neither a restaurant nor a till has "a" customer. Only a Document or a Transaction
+    /// carries a foreign key; the rank still says what it may point at.
     /// </summary>
     private static List<(CandidateEntity Referencing, CandidateEntity Target, int Count)> DirectedProposals(
         Dictionary<(CandidateEntity, CandidateEntity), int> pairCounts)
@@ -191,7 +199,12 @@ public sealed class RelationshipMiner
             if (rankA == rankB)
                 continue;
 
-            proposals.Add(rankA > rankB ? (a, b, count) : (b, a, count));
+            var (higher, lower) = rankA > rankB ? (a, b) : (b, a);
+
+            if (!EntityRoleRank.CanReference(higher.Role))
+                continue;
+
+            proposals.Add((higher, lower, count));
         }
 
         return proposals;

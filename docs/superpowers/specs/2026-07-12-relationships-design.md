@@ -52,6 +52,19 @@ trailing plural.
 
 ### Which way it points
 
+> **Amended 2026-07-12, during implementation.** The rule as originally written below —
+> "the higher rank references the lower" — was too permissive at the bottom end. A real
+> end-to-end run produced `Restaurant.CustomerId`, `CashRegister.CustomerId`, and
+> `Inventory.ComputerId`: junk, because Place/Device/Item outranked Party/Device
+> respectively, and the rank comparison alone was happy to wire them up. A restaurant does
+> not have *one* customer, and a till does not have *one* customer. The rank table below is
+> kept — it still decides what a qualifying class **may** point at — but a second, explicit
+> gate was added: **only a class whose Role is Document or Transaction may be a referencer at
+> all.** Everything else (Item, Device, Place, Party, None) references nothing, no matter how
+> often it co-occurs with something of lower rank. This is implemented as
+> `EntityRoleRank.CanReference(EntityRole)` in `DomainDiscovery/Enrichment/EntityRole.cs`, and
+> applied in `RelationshipMiner.DirectedProposals`.
+
 Every class carries a **Role**, and roles are ranked:
 
 | Rank | Role | Example |
@@ -62,9 +75,14 @@ Every class carries a **Role**, and roles are ranked:
 | 1 | Party | Customer, Merchant, Employee |
 | 0 | None | Cash, Bookkeeping — no links either way |
 
-**The higher rank references the lower.** Equal ranks get no link — `Customer ~ Merchant`
-(both Party) produces nothing, which is the honest answer rather than a guess. Rank 0 never
-links.
+**Only Document and Transaction may reference anything.** A qualifying referencer may point
+at any class of strictly lower rank — an Item, a Device or Place, or a Party. Equal ranks
+still get no link — `Customer ~ Merchant` (both Party) produces nothing, which is the honest
+answer rather than a guess, and `Receipt ~ Payment` (Document and Transaction, both rank 4)
+likewise produces nothing. Rank 0 (`None`) never links, on either side. Unlike the original
+rule, a Place, Device, Item or Party is never itself a referencer even when it outranks the
+other side of the pair: in a real schema, only a document or a transaction carries a foreign
+key — everything else is something other rows point *at*.
 
 This reuses knowledge the model already carries rather than inventing any: shape and
 direction come from the same judgement about what kind of thing a class is.
