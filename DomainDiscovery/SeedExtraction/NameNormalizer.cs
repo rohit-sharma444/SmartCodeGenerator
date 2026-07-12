@@ -57,6 +57,31 @@ public static class NameNormalizer
     }
 
     /// <summary>
+    /// Turns a multi-word concept into a PascalCase type name, keeping every word and
+    /// singularizing only the last ("Cash register" -> "CashRegister"). Unlike
+    /// <see cref="ToEntityName"/>, which reduces a phrase to its head noun, this preserves
+    /// compounds — a wikilink title names one concept, not a noun with modifiers.
+    /// </summary>
+    public static string ToCompoundEntityName(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return string.Empty;
+
+        var words = text
+            .Split(text.Where(c => !char.IsLetterOrDigit(c)).Distinct().ToArray(),
+                   StringSplitOptions.RemoveEmptyEntries)
+            .ToArray();
+
+        if (words.Length == 0)
+            return string.Empty;
+
+        words[^1] = Singularize(words[^1].ToLowerInvariant());
+
+        return string.Concat(words.Select(
+            w => w.Length == 0 ? w : char.ToUpperInvariant(w[0]) + w[1..].ToLowerInvariant()));
+    }
+
+    /// <summary>
     /// A deliberately small English plural-stripper for the lowercase <paramref name="word"/>.
     /// It errs towards leaving a word alone: a missed plural costs a duplicate entity, while
     /// a wrongly stripped one ("address" -> "addres") corrupts a class name.
