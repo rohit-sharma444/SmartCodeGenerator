@@ -96,4 +96,57 @@ public class WikitextStripperTests
         var result = WikitextStripper.Parse("{{unclosed [[also unclosed");
         Assert.NotNull(result.Body);
     }
+
+    [Fact]
+    public void Drops_a_file_link_whole_even_when_its_caption_contains_a_link()
+    {
+        // The naive `IndexOf("]]")` scan used to grab the INNER close, so the caption tail and a
+        // stray literal "]]" leaked into prose. Depth-counting must find the true outer close.
+        var result = WikitextStripper.Parse(
+            "[[File:till.jpg|thumb|A [[receipt]] printed by the till.]]The register.");
+
+        Assert.Equal("The register.", result.Body);
+    }
+
+    [Fact]
+    public void Recovers_a_link_nested_inside_a_dropped_file_links_caption()
+    {
+        // Decision: the File: link itself is still not prose (its caption is not shown), but the
+        // article DOES link to "receipt" from that caption, so the target must not be lost.
+        var result = WikitextStripper.Parse(
+            "[[File:till.jpg|thumb|A [[receipt]] printed by the till.]]The register.");
+
+        Assert.Equal(new[] { "receipt" }, result.Links);
+    }
+
+    [Fact]
+    public void Unwraps_an_external_link_to_its_display_text()
+    {
+        var result = WikitextStripper.Parse("Visit the [http://example.com official site].");
+        Assert.Equal("Visit the official site.", result.Body);
+    }
+
+    [Fact]
+    public void Drops_a_bare_external_link_entirely()
+    {
+        var result = WikitextStripper.Parse("Cited elsewhere.[http://example.com]");
+        Assert.Equal("Cited elsewhere.", result.Body);
+    }
+
+    [Fact]
+    public void External_links_never_contribute_to_links()
+    {
+        var result = WikitextStripper.Parse(
+            "Visit the [http://example.com official site] and read [[Receipt]].");
+        Assert.Equal(new[] { "Receipt" }, result.Links);
+    }
+
+    [Fact]
+    public void Strips_definition_list_markers_without_treating_them_as_bullets()
+    {
+        // ':' and ';' are indentation/definition markers, not enumerations: PropertyMiner must not
+        // see them as list items, unlike genuine '*'/'#' bullets.
+        var result = WikitextStripper.Parse(";Term\n:Definition of the term.");
+        Assert.Equal("Term\nDefinition of the term.", result.Body);
+    }
 }

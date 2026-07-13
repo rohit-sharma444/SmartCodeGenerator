@@ -29,8 +29,10 @@ public static class WikitextStripper
     private static readonly Regex Emphasis = new(@"'{2,5}", RegexOptions.Compiled);
     private static readonly Regex Heading = new(@"^\s*={2,6}\s*(.*?)\s*={2,6}\s*$",
         RegexOptions.Multiline | RegexOptions.Compiled);
-    private static readonly Regex ListItem = new(@"^[*#:;]+\s*", RegexOptions.Compiled);
-    private static readonly Regex BlankRun = new(@"\n{3,}", RegexOptions.Compiled);
+    private static readonly Regex ListItem = new(@"^[*#]+\s*", RegexOptions.Compiled);
+    private static readonly Regex IndentMarker = new(@"^[:;]+\s*", RegexOptions.Compiled);
+    private static readonly Regex ExternalLink =
+        new(@"\[(?:https?|ftp)://[^\s\]]+(?:\s+([^\]]*))?\]", RegexOptions.Compiled);
     private static readonly Regex SentenceEnd = new(@"(?<=[.!?])\s", RegexOptions.Compiled);
 
     /// <summary>
@@ -52,6 +54,7 @@ public static class WikitextStripper
 
             var links = new List<string>();
             text = UnwrapLinks(text, links);
+            text = ExternalLink.Replace(text, m => m.Groups[1].Success ? m.Groups[1].Value.Trim() : string.Empty);
 
             text = OtherTags.Replace(text, string.Empty);
             text = Emphasis.Replace(text, string.Empty);
@@ -59,8 +62,14 @@ public static class WikitextStripper
 
             return new StrippedArticle(NormalizeLines(text), links);
         }
-        catch (Exception ex) when (ex is ArgumentException or RegexMatchTimeoutException)
+        catch (ArgumentException)
         {
+            // None of the regexes above set a match timeout, so RegexMatchTimeoutException cannot
+            // occur here; the patterns are also all bounded (no nested quantifiers over
+            // overlapping character classes), so there is no catastrophic-backtracking exposure
+            // to guard against in the first place. What DOES throw ArgumentException in practice
+            // is a Substring computed from markup whose indices don't line up (e.g. RemoveNested
+            // or UnwrapLinks handed a string with mismatched surrogate/bracket state).
             return new StrippedArticle(string.Empty, Array.Empty<string>());
         }
     }
@@ -119,7 +128,15 @@ public static class WikitextStripper
     /// <summary>
     /// Replaces every [[target|display]] with its display text and [[target]] with its target,
     /// appending each mainspace target to <paramref name="links"/>. A File/Category/Image link is
-    /// neither prose nor a concept, so it contributes to neither output.
+    /// neither prose nor a concept, so its own text contributes to neither output.
+    /// <para>
+    /// Decision: a File/Category caption can itself carry a genuine article link — e.g. an image
+    /// caption reading "A [[receipt]] printed by the till." The caption text is still not prose
+    /// the article body shows (it stays out of <c>Body</c>), but the article DOES link to
+    /// "receipt" from there, so that nested target is still recovered into <paramref name="links"/>
+    /// by recursing into the dropped span. Only the recovered text is discarded, not the links it
+    /// found along the way.
+    /// </para>
     /// </summary>
     private static string UnwrapLinks(string text, List<string> links)
     {
@@ -136,7 +153,7 @@ public static class WikitextStripper
                 continue;
             }
 
-            var end = text.IndexOf("]]", i + 2, StringComparison.Ordinal);
+            var end = FindMatchingClose(text, i + 2);
             if (end < 0)
             {
                 // Unclosed link: keep the remaining prose rather than dropping the article's tail.
@@ -149,10 +166,18 @@ public static class WikitextStripper
 
             var pipe = inner.IndexOf('|');
             var target = (pipe < 0 ? inner : inner[..pipe]).Trim();
-            var display = (pipe < 0 ? inner : inner[(pipe + 1)..]).Trim();
+            var display = pipe < 0 ? inner : inner[(pipe + 1)..];
 
             if (NonArticlePrefixes.Any(p => target.StartsWith(p, StringComparison.OrdinalIgnoreCase)))
+            {
+                // Harvest any link nested in the dropped caption, then discard the recovered text.
+                UnwrapLinks(display, links);
                 continue;
+            }
+
+            // The display text can itself carry a nested link (rare, but seen in some captions and
+            // piped links); unwrap it too so no bracket ever leaks and its target is recorded.
+            display = UnwrapLinks(display, links).Trim();
 
             if (target.Length > 0 && seen.Add(target))
                 links.Add(target);
@@ -164,9 +189,43 @@ public static class WikitextStripper
     }
 
     /// <summary>
-    /// Trims each line, rewrites any list bullet to a single "* " marker, drops blank lines, and
-    /// collapses the result. Nesting depth is deliberately flattened: PropertyMiner cares that an
-    /// item IS a list item, not how deeply indented it was.
+    /// Finds the "]]" that closes the "[[" whose contents start at <paramref name="start"/>,
+    /// counting depth so a caption's own nested link ([[File:x|A [[receipt]] shown.]]) does not
+    /// fool the scan into stopping at the inner close.
+    /// </summary>
+    private static int FindMatchingClose(string text, int start)
+    {
+        var depth = 1;
+        var j = start;
+
+        while (j < text.Length)
+        {
+            if (string.CompareOrdinal(text, j, "[[", 0, 2) == 0)
+            {
+                depth++;
+                j += 2;
+            }
+            else if (string.CompareOrdinal(text, j, "]]", 0, 2) == 0)
+            {
+                depth--;
+                if (depth == 0)
+                    return j;
+                j += 2;
+            }
+            else
+            {
+                j++;
+            }
+        }
+
+        return -1;
+    }
+
+    /// <summary>
+    /// Trims each line, rewrites a genuine list bullet ('*'/'#') to a single "* " marker, strips
+    /// definition-list/indent markers (':'/';') back to plain prose without promoting them to
+    /// bullets, drops blank lines, and joins what remains. Nesting depth is deliberately
+    /// flattened: PropertyMiner cares that an item IS a list item, not how deeply indented it was.
     /// </summary>
     private static string NormalizeLines(string text)
     {
@@ -186,9 +245,21 @@ public static class WikitextStripper
                 continue;
             }
 
+            if (IndentMarker.IsMatch(line))
+            {
+                // ':' and ';' mark indentation/definition terms, not an enumeration — strip the
+                // marker but leave the line as ordinary prose so PropertyMiner doesn't mistake
+                // indented text for a stated property.
+                line = IndentMarker.Replace(line, string.Empty).Trim();
+                if (line.Length == 0)
+                    continue;
+            }
+
             lines.Add(line);
         }
 
-        return BlankRun.Replace(string.Join('\n', lines), "\n\n").Trim();
+        // No BlankRun collapse needed: blank lines are already filtered out above, so joining
+        // with a single '\n' can never produce more than one consecutive newline.
+        return string.Join('\n', lines).Trim();
     }
 }
