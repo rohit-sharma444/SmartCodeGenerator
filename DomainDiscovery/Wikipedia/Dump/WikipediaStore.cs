@@ -173,12 +173,19 @@ public sealed class WikipediaStore
         using var connection = Open();
         using var command = connection.CreateCommand();
 
-        // ORDER BY length keeps "Payment" ahead of "Payment terminal in Japan": the shortest
-        // title carrying the prefix is the most general concept, which is the one wanted.
+        // Rank by ARTICLE SIZE, not title length. The shortest-title rule seemed reasonable and is
+        // wrong on the real encyclopedia: measured against the full store it answers "Point" with
+        // "Pointer", "Pointcut", "Point Air" — and never surfaces "Point of sale", which the API's
+        // opensearch returned at rank 2. That noise is fatal downstream, because the topic
+        // recognizer votes on exactly these hits.
+        //
+        // opensearch ranks by an importance signal we do not have locally. Article size is the
+        // stand-in: a concept the world writes 47,000 characters about outranks a hamlet with a
+        // stub. Ordering this way reproduces opensearch's top hits closely on the terms tested.
         command.CommandText = """
             SELECT title FROM pages
             WHERE title LIKE $prefix ESCAPE '\'
-            ORDER BY LENGTH(title), title
+            ORDER BY LENGTH(payload) DESC, LENGTH(title), title
             LIMIT $limit
             """;
         command.Parameters.AddWithValue("$prefix", EscapeLike(term) + "%");

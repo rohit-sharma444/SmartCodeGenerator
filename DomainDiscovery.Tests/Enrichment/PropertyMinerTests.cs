@@ -125,6 +125,36 @@ public class PropertyMinerTests
         Assert.True(PropertyMiner.Mine(article, "Record").Count <= PropertyMiner.MaxMinedFields);
     }
 
+    // Measured against the real Invoice and Receipt articles, the prose path mined
+    // "InAncientMesopotamia", "FunctionedAsContracts", "OfGoods", "DidNotReceive" and
+    // "ForTheirAgreement" -- sentence fragments the enumeration split mid-clause, not properties.
+    // A property is a NOUN PHRASE, so a phrase opening with a preposition, a conjunction or an
+    // auxiliary verb is a fragment and is not one.
+    [Theory]
+    [InlineData("in ancient Mesopotamia")]
+    [InlineData("of goods")]
+    [InlineData("for their agreement")]
+    [InlineData("did not receive")]
+    [InlineData("that the buyer")]
+    public void Rejects_a_sentence_fragment_that_is_not_a_noun_phrase(string fragment)
+    {
+        var article = $"An invoice contains:\n* {fragment}\n* total amount";
+
+        var names = PropertyMiner.Mine(article, "Invoice").Select(f => f.Name).ToList();
+
+        Assert.Equal(new[] { "TotalAmount" }, names);
+    }
+
+    // ... but a real noun phrase that merely happens to start with a participle survives.
+    [Fact]
+    public void Keeps_a_noun_phrase_that_opens_with_a_participle()
+    {
+        var article = "An order contains:\n* agreed prices for products";
+
+        Assert.Contains(
+            PropertyMiner.Mine(article, "Order"), f => f.Name == "AgreedPricesForProducts");
+    }
+
     // The no-op contract: an article with nothing to say must leave the class exactly as
     // EntityShaper already shaped it, never worse.
     [Fact]

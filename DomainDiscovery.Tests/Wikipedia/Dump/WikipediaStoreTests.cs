@@ -86,6 +86,22 @@ public sealed class WikipediaStoreTests : IDisposable
         Assert.Equal("Payment terminal", store.ResolveTitle("Payment ter"));
     }
 
+    // The prefix match has to rank the way MediaWiki's opensearch did, or the pipeline drowns.
+    // Measured against the real store: ordering by title length answers "Point" with "Pointer",
+    // "Pointcut", "Point Air" and never surfaces "Point of sale" at all, while opensearch returns
+    // it at rank 2. Article size is the local stand-in for the importance opensearch ranks by.
+    [Fact]
+    public void PrefixSearch_ranks_the_substantial_article_above_the_obscure_one()
+    {
+        var store = NewStore();
+        store.WriteArticles([
+            new ArticleRow("Point Air", "A tiny airline.", "A stub.", []),
+            new ArticleRow("Point of sale", "The point of sale is where a sale is completed.",
+                new string('x', 5000), [])]);
+
+        Assert.Equal("Point of sale", store.PrefixSearch("Point", 5)[0]);
+    }
+
     [Fact]
     public void Remembers_the_last_page_id_so_an_import_can_resume()
     {

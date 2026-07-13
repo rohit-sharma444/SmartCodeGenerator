@@ -65,6 +65,37 @@ public static class PropertyMiner
     private static readonly Regex Gloss = new(@"\s*[\(–—\-—:,;].*$", RegexOptions.Compiled);
 
     /// <summary>
+    /// Words that cannot open a property name, because a property is a NOUN PHRASE and these open
+    /// a clause.
+    /// </summary>
+    /// <remarks>
+    /// Measured against the real articles: the prose enumeration splits a sentence on commas and
+    /// "and", which slices clauses out of the middle of it. The Invoice article yielded
+    /// "in ancient Mesopotamia" and "functioned as contracts"; Receipt yielded "for their
+    /// agreement"; Credit note yielded "did not receive". None is a property, and all of them
+    /// begin with a preposition, a conjunction, or an auxiliary verb — which is the cheapest
+    /// reliable signal that what follows is a fragment rather than a thing.
+    /// <para>
+    /// A participle is deliberately NOT in this list: "agreed prices for products" is a real
+    /// property of an order, and rejecting every -ed opener would take it with the noise.
+    /// </para>
+    /// </remarks>
+    private static readonly HashSet<string> FragmentOpeners = new(StringComparer.OrdinalIgnoreCase)
+    {
+        // Prepositions.
+        "in", "of", "for", "with", "to", "from", "by", "at", "on", "as", "into", "onto",
+        "over", "under", "between", "through", "during", "after", "before", "about",
+
+        // Conjunctions and relatives.
+        "and", "or", "but", "that", "which", "who", "whom", "whose", "when", "where", "while",
+
+        // Auxiliaries and modals — a clause, never a thing.
+        "is", "are", "was", "were", "be", "been", "being", "do", "does", "did",
+        "has", "have", "had", "can", "could", "may", "might", "must", "shall",
+        "should", "will", "would", "not",
+    };
+
+    /// <summary>
     /// The properties <paramref name="articleBody"/> states that <paramref name="entityName"/> has.
     /// Empty when the article says nothing usable — which is the common case, and is fine.
     /// Never throws.
@@ -161,6 +192,11 @@ public static class PropertyMiner
 
         var words = cleaned.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         if (words.Length is 0 or > MaxPhraseWords)
+            return null;
+
+        // A property is a noun phrase. Anything opening a clause is a fragment the enumeration
+        // split out of the middle of a sentence, and naming a field after it makes the model worse.
+        if (FragmentOpeners.Contains(words[0]))
             return null;
 
         var name = NameNormalizer.ToFieldName(cleaned);
