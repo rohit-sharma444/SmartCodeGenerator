@@ -11,7 +11,10 @@
 ## Global Constraints
 
 - **Target framework:** `net10.0`. `ImplicitUsings` and `Nullable` are `enable` in every project here.
-- **Test framework:** **xunit** (`[Fact]`, `[Theory]`, `Assert.Equal`). `DomainDiscovery.Tests` already references xunit 2.9.2. Do **not** use MSTest — that is a different test project in this repo.
+- **Test framework: it differs per test project. Match the project you are adding to; never mix.**
+  - `DomainDiscovery.Tests` → **xunit** 2.9.2 (`[Fact]`, `[Theory]`, `Assert.Equal`). Tasks 1-9.
+  - `CodeGenerator.Tests` → **MSTest** 4.0.2 (`[TestClass]`, `[TestMethod]`, `Assert.AreEqual`, `StringAssert.Contains`, `CollectionAssert.Contains`). Tasks 10-12.
+  - Verified: `CodeGenerator.Tests` holds 151 `[TestMethod]`s and references MSTest only; it has no xunit reference, so an `[Fact]` there will not even compile.
 - **Solution:** every new project must be added to `SmartCodeGenerator/SmartCodeGenerator.slnx`.
 - **Security:** `Microsoft.Data.Sqlite` 10.0.9 transitively pulls `SQLitePCLRaw.lib.e_sqlite3` 2.1.11, which has a **high-severity advisory (NU1903, GHSA-2m69-gcr7-jv3q)**. Every project that references `Microsoft.Data.Sqlite` MUST also pin `SQLitePCLRaw.bundle_e_sqlite3` version `3.0.3`, which resolves it. Verified: restore is warning-free with the pin.
 - **Dump location:** `D:\SmartCodeGenerator-Repository\Dump\enwiki-latest-pages-articles.xml.bz2`. Never modify, move, or delete it. It is already gitignored.
