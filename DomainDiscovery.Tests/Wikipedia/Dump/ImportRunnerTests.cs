@@ -4,6 +4,7 @@ using Xunit;
 
 namespace DomainDiscovery.Tests.Wikipedia.Dump;
 
+[Collection(SqliteStoreCollection.Name)]
 public sealed class ImportRunnerTests : IDisposable
 {
     private readonly string _path = Path.Combine(

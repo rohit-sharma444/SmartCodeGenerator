@@ -217,4 +217,18 @@ public class DomainDiscoveryPipelineTests
         Assert.False(result.Topic.IsRecognized);
         Assert.All(result.Model.Entities, e => Assert.Empty(e.Relationships));
     }
+
+    [Fact]
+    public void CreateDefault_falls_back_to_the_http_client_when_no_dump_store_exists()
+    {
+        var cacheDirectory = Path.Combine(Path.GetTempPath(), $"cache-{Guid.NewGuid():N}");
+        var missingStore = Path.Combine(Path.GetTempPath(), $"absent-{Guid.NewGuid():N}.db");
+
+        // Must not throw, and must not create a store: an unbuilt dump is a reason to use the
+        // network, not a reason to fail.
+        var pipeline = DomainDiscoveryPipeline.CreateDefault(cacheDirectory, missingStore);
+
+        Assert.NotNull(pipeline);
+        Assert.False(File.Exists(missingStore));
+    }
 }

@@ -3,6 +3,7 @@ using DomainDiscovery.Model;
 using DomainDiscovery.Recognition;
 using DomainDiscovery.SeedExtraction;
 using DomainDiscovery.Wikipedia;
+using DomainDiscovery.Wikipedia.Dump;
 using NaturalLanguageEngine.Abstractions.Semantics;
 
 namespace DomainDiscovery;
@@ -81,13 +82,36 @@ public sealed class DomainDiscoveryPipeline
     }
 
     /// <summary>
-    /// Builds a pipeline wired to the real Wikipedia HTTP client (cached under
-    /// <paramref name="cacheDirectory"/>) and the default NLE analyzer.
+    /// The dump store the pipeline uses when the caller names none. It is built once by
+    /// WikipediaDumpImporter and is the normal source: local, deterministic, and free of the
+    /// API's rate limit.
     /// </summary>
-    public static DomainDiscoveryPipeline CreateDefault(string cacheDirectory)
+    public const string DefaultDumpDatabasePath =
+        @"D:\SmartCodeGenerator-Repository\Dump\enwiki.db";
+
+    /// <summary>
+    /// Builds a pipeline over the local Wikipedia dump when its store exists, and over the
+    /// MediaWiki API when it does not.
+    /// </summary>
+    /// <remarks>
+    /// The dump is the intended source. <see cref="HttpWikipediaClient"/> survives only as the
+    /// answer to "the store has not been imported yet", because failing outright would leave a
+    /// fresh clone with no way to run `build app:` at all.
+    /// </remarks>
+    /// <param name="cacheDirectory">Disk cache for the HTTP fallback. Unused by the dump client.</param>
+    /// <param name="dumpDatabasePath">
+    /// The SQLite store to read. Defaults to <see cref="DefaultDumpDatabasePath"/>.
+    /// </param>
+    public static DomainDiscoveryPipeline CreateDefault(
+        string cacheDirectory, string? dumpDatabasePath = null)
     {
         var analyzer = EngineBuilder.BuildDefault().Analyzer;
-        IWikipediaClient client = new HttpWikipediaClient(cacheDirectory);
+        var databasePath = dumpDatabasePath ?? DefaultDumpDatabasePath;
+
+        IWikipediaClient client = File.Exists(databasePath)
+            ? new DumpWikipediaClient(new WikipediaStore(databasePath))
+            : new HttpWikipediaClient(cacheDirectory);
+
         var harvester = new EntityHarvester();
 
         return new DomainDiscoveryPipeline(
