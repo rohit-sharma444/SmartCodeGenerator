@@ -37,7 +37,9 @@ public static class RoslynClassGenerator
                 ParseName(namespaceName)).AddMembers(classDeclaration);
 
         var compilationUnit = CompilationUnit()
-                .AddMembers(namespaceDeclaration).NormalizeWhitespace();
+                .AddUsings([.. model.Usings.Select(u => UsingDirective(ParseName(u)))])
+                .AddMembers(namespaceDeclaration)
+                .NormalizeWhitespace();
 
         return compilationUnit.ToFullString();
     }
@@ -122,6 +124,9 @@ public static class RoslynClassGenerator
                     break;
             }
         }
+
+        // Attributes named directly on the property, alongside the rule-derived ones above.
+        attributes.AddRange(property.Attributes.Select(a => Attribute(IdentifierName(a))));
 
         if (attributes.Any())
         {
