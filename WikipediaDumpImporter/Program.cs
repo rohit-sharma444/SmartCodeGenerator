@@ -23,6 +23,11 @@ if (indexOnly)
     var clockOnly = Stopwatch.StartNew();
     var storeOnly = new WikipediaStore(databasePath);
     storeOnly.CreateSchema();
+
+    // Drop first, so this REBUILDS. CreateSearchIndexes is IF NOT EXISTS, so without this an index
+    // left by an older version of the schema would simply be kept, and the fix would silently
+    // not apply.
+    storeOnly.DropSearchIndexes();
     storeOnly.CreateSearchIndexes();
     clockOnly.Stop();
 

@@ -93,15 +93,38 @@ public sealed class WikipediaStore
     /// Builds the title and source indexes. Run once, after the import — every read is a scan
     /// until it has been.
     /// </summary>
+    /// <remarks>
+    /// <b>The PRAGMAs are what make this finish.</b> Building an index means sorting every title,
+    /// and on the default 2 MB page cache SQLite spills that sort to a temp file and merges it in
+    /// multiple passes — random I/O. Measured on the real 18 GB store: CPU sat at 2% while the disk
+    /// managed ~1.2 MB/s, and after 48 minutes it had read perhaps a fifth of the table.
+    /// <para>
+    /// The sort itself is small — 7.2M titles is a few hundred MB — so it belongs in memory. A
+    /// 1 GB cache and an in-memory temp store keep it there, and the build becomes a sequential
+    /// scan plus an in-RAM sort rather than a disk-thrashing merge.
+    /// </para>
+    /// </remarks>
     public void CreateSearchIndexes()
     {
         using var connection = Open();
         using var command = connection.CreateCommand();
 
+        // Negative cache_size is KiB rather than pages: -1000000 is ~1 GB.
+        //
+        // LENGTH(payload) is in the index ON PURPOSE, and it is not decoration. PrefixSearch ranks
+        // by article size, and without the size in the index SQLite has to fetch the ROW of every
+        // title matching the prefix just to measure it — thousands of random reads into an 18 GB
+        // table. Measured on the full store: PrefixSearch("Point") took 25 SECONDS, and the topic
+        // recognizer issues up to six of those per discovery. With the size carried in the index the
+        // query is answered from the index alone and never touches the table.
         command.CommandText = """
-            CREATE INDEX IF NOT EXISTS ix_pages_title ON pages (title);
+            PRAGMA cache_size = -1000000;
+            PRAGMA temp_store = MEMORY;
+
+            CREATE INDEX IF NOT EXISTS ix_pages_title ON pages (title, LENGTH(payload));
             CREATE INDEX IF NOT EXISTS ix_redirects_source ON redirects (source);
             """;
+        command.CommandTimeout = 0;
         command.ExecuteNonQuery();
     }
 
@@ -256,10 +279,13 @@ public sealed class WikipediaStore
         // opensearch ranks by an importance signal we do not have locally. Article size is the
         // stand-in: a concept the world writes 47,000 characters about outranks a hamlet with a
         // stub. Ordering this way reproduces opensearch's top hits closely on the terms tested.
+        // ORDER BY must name LENGTH(payload) exactly as ix_pages_title indexes it, or SQLite cannot
+        // serve the ordering from the index and falls back to reading every matching row. No
+        // secondary sort key for the same reason: it would defeat the index-only scan.
         command.CommandText = """
             SELECT title FROM pages
             WHERE title LIKE $prefix ESCAPE '\'
-            ORDER BY LENGTH(payload) DESC, LENGTH(title), title
+            ORDER BY LENGTH(payload) DESC
             LIMIT $limit
             """;
         command.Parameters.AddWithValue("$prefix", EscapeLike(term) + "%");
