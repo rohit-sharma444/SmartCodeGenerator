@@ -41,11 +41,15 @@ Console.WriteLine($"Store: {databasePath}");
 Console.WriteLine();
 
 // Measured, not estimated. The design doc predicted 1.5-2 hours on the assumption that bz2 decode
-// (23.6 MB/s) was the ceiling. It is not: the cost is per-page work, and the writer slows as the
-// table grows -- see the note on WriteArticles. Two hours in, this had done ~1.75M of ~24M pages.
-Console.WriteLine("This takes many hours, not the 1.5-2 the design doc predicted, and it gets");
-Console.WriteLine("slower as the store grows. The run is resumable: re-running after a crash or a");
-Console.WriteLine("deliberate stop continues from the last committed page id.");
+// (23.6 MB/s, and that was NATIVE bzip2 -- SharpZipLib manages ~16) was the ceiling. It is not: the
+// cost is per-page stripping, which is why the strip is spread across cores.
+Console.WriteLine("This takes hours, not the 1.5-2 the design doc predicted: the ceiling is");
+Console.WriteLine("per-page stripping, not bz2 decode. The run is resumable -- after a crash or a");
+Console.WriteLine("deliberate stop it continues from the last committed page id.");
+Console.WriteLine();
+Console.WriteLine("The search index is built at the END. If this run is killed, the store is left");
+Console.WriteLine("unindexed and every read is a table scan: re-run with --index-only to fix that");
+Console.WriteLine("without decoding the dump again.");
 Console.WriteLine();
 
 var store = new WikipediaStore(databasePath);
