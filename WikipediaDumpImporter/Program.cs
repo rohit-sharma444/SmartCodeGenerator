@@ -2,13 +2,33 @@ using System.Diagnostics;
 using DomainDiscovery.Wikipedia.Dump;
 using WikipediaDumpImporter;
 
-var dumpPath = args.Length > 0
-    ? args[0]
+// The import builds the index at the end, so a run that is KILLED leaves an unindexed store, in
+// which every read is a full table scan. This recovers it without decoding 25 GB of bz2 again.
+var indexOnly = args.Contains("--index-only", StringComparer.OrdinalIgnoreCase);
+var positional = args.Where(a => !a.StartsWith("--", StringComparison.Ordinal)).ToArray();
+
+var dumpPath = positional.Length > 0
+    ? positional[0]
     : @"D:\SmartCodeGenerator-Repository\Dump\enwiki-latest-pages-articles.xml.bz2";
 
-var databasePath = args.Length > 1
-    ? args[1]
+var databasePath = positional.Length > 1
+    ? positional[1]
     : @"D:\SmartCodeGenerator-Repository\Dump\enwiki.db";
+
+if (indexOnly)
+{
+    Console.WriteLine($"Store: {databasePath}");
+    Console.WriteLine("Building the search index over the store as it stands...");
+
+    var clockOnly = Stopwatch.StartNew();
+    var storeOnly = new WikipediaStore(databasePath);
+    storeOnly.CreateSchema();
+    storeOnly.CreateSearchIndexes();
+    clockOnly.Stop();
+
+    Console.WriteLine($"Indexed {storeOnly.ArticleCount:N0} articles in {clockOnly.Elapsed:hh\\:mm\\:ss}.");
+    return 0;
+}
 
 if (!File.Exists(dumpPath))
 {

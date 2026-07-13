@@ -40,23 +40,44 @@ public sealed class WikipediaStore
         return connection;
     }
 
+    /// <summary>
+    /// The tables, with NO index on title or source — those are built by
+    /// <see cref="CreateSearchIndexes"/> once the import has finished.
+    /// </summary>
+    /// <remarks>
+    /// <b>The missing index is the design, not an omission.</b> The first version made title the
+    /// PRIMARY KEY, which is a unique index maintained on every insert. Titles arrive in effectively
+    /// random order, so each insert landed at a random point in a B-tree that soon outgrew the page
+    /// cache: measured over a two-hour run, throughput fell from ~790 pages/s to ~180 as the store
+    /// passed 4 GB, and the full import was heading for 15-25 hours.
+    /// <para>
+    /// So the import writes into a plain rowid table — appends, which stay cheap however large it
+    /// gets — and the index is built once at the end, where SQLite can sort in bulk instead of
+    /// paying a random write per row.
+    /// </para>
+    /// <para>
+    /// NOCASE lives on the COLUMN, so it is inherited by the index built later and by every
+    /// <c>WHERE title = ...</c>, which keeps lookups case-insensitive exactly as before. The index
+    /// is deliberately NOT unique: Wikipedia titles are case-sensitive after the first character
+    /// ("AIDS" and "Aids" are different articles), so a unique NOCASE index would fail to build.
+    /// </para>
+    /// </remarks>
     public void CreateSchema()
     {
         using var connection = Open();
         using var command = connection.CreateCommand();
 
-        // NOCASE on the keys is what makes every lookup case-insensitive without a second index.
         command.CommandText = """
             PRAGMA journal_mode = WAL;
 
             CREATE TABLE IF NOT EXISTS pages (
-                title   TEXT PRIMARY KEY COLLATE NOCASE,
+                title   TEXT NOT NULL COLLATE NOCASE,
                 lead    TEXT NOT NULL,
                 payload BLOB NOT NULL
             );
 
             CREATE TABLE IF NOT EXISTS redirects (
-                source  TEXT PRIMARY KEY COLLATE NOCASE,
+                source  TEXT NOT NULL COLLATE NOCASE,
                 target  TEXT NOT NULL COLLATE NOCASE
             );
 
@@ -66,6 +87,50 @@ public sealed class WikipediaStore
             );
             """;
         command.ExecuteNonQuery();
+    }
+
+    /// <summary>
+    /// Builds the title and source indexes. Run once, after the import — every read is a scan
+    /// until it has been.
+    /// </summary>
+    public void CreateSearchIndexes()
+    {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+
+        command.CommandText = """
+            CREATE INDEX IF NOT EXISTS ix_pages_title ON pages (title);
+            CREATE INDEX IF NOT EXISTS ix_redirects_source ON redirects (source);
+            """;
+        command.ExecuteNonQuery();
+    }
+
+    /// <summary>
+    /// Drops the indexes so a resumed import writes at full speed again. Building them is cheap
+    /// relative to maintaining them across millions of random inserts.
+    /// </summary>
+    public void DropSearchIndexes()
+    {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+
+        command.CommandText = """
+            DROP INDEX IF EXISTS ix_pages_title;
+            DROP INDEX IF EXISTS ix_redirects_source;
+            """;
+        command.ExecuteNonQuery();
+    }
+
+    /// <summary>Whether the store is indexed, and so whether reads are seeks rather than scans.</summary>
+    public bool HasSearchIndexes()
+    {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+
+        command.CommandText =
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'ix_pages_title'";
+
+        return command.ExecuteScalar() is long count && count > 0;
     }
 
     public long ArticleCount
@@ -79,18 +144,15 @@ public sealed class WikipediaStore
         }
     }
 
-    /// <summary>Writes a batch in one transaction. Re-importing a title overwrites it.</summary>
+    /// <summary>
+    /// Writes a batch in one transaction — a plain append into an unindexed table, which is what
+    /// keeps the cost flat however large the store grows (see <see cref="CreateSchema"/>).
+    /// </summary>
     /// <remarks>
-    /// <b>This is what makes a full import slow, and it gets slower.</b> Measured over a 2-hour run:
-    /// throughput fell from ~790 pages/s to ~180 as the store passed 4 GB. The cause is the schema —
-    /// <c>title TEXT PRIMARY KEY</c> means rows arrive in effectively random key order, so every
-    /// insert lands at a random point in a B-tree that no longer fits in cache, and the cost climbs
-    /// with the table size.
-    /// <para>
-    /// The fix, if a full import is ever needed: import into a rowid table with no title index, and
-    /// build the index once at the end. It is a schema change, so it costs a from-scratch re-import
-    /// (the resume point would not carry over) — which is why it was not done mid-flight.
-    /// </para>
+    /// There is no unique constraint to conflict with any more, so this no longer overwrites a title
+    /// it has already seen — it would insert it twice. Nothing does: the dump names each page once,
+    /// and <c>ImportRunner</c> skips anything at or below the last committed page id when it
+    /// resumes, so no page is ever offered twice in the first place.
     /// </remarks>
     public void WriteArticles(IEnumerable<ArticleRow> rows)
     {
@@ -99,7 +161,7 @@ public sealed class WikipediaStore
         using var command = connection.CreateCommand();
 
         command.CommandText =
-            "INSERT OR REPLACE INTO pages (title, lead, payload) VALUES ($title, $lead, $payload)";
+            "INSERT INTO pages (title, lead, payload) VALUES ($title, $lead, $payload)";
 
         var title = command.Parameters.Add("$title", SqliteType.Text);
         var lead = command.Parameters.Add("$lead", SqliteType.Text);
@@ -123,7 +185,7 @@ public sealed class WikipediaStore
         using var command = connection.CreateCommand();
 
         command.CommandText =
-            "INSERT OR REPLACE INTO redirects (source, target) VALUES ($source, $target)";
+            "INSERT INTO redirects (source, target) VALUES ($source, $target)";
 
         var source = command.Parameters.Add("$source", SqliteType.Text);
         var target = command.Parameters.Add("$target", SqliteType.Text);
@@ -229,10 +291,15 @@ public sealed class WikipediaStore
         return command.ExecuteScalar() is long value ? value : 0L;
     }
 
+    /// <remarks>
+    /// LIMIT 1 because the title index is not unique: "AIDS" and "Aids" are different articles and
+    /// both are stored, but a NOCASE lookup matches either. The first row wins, deterministically.
+    /// </remarks>
     private static ArticleRow? ReadExact(SqliteConnection connection, string title)
     {
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT title, lead, payload FROM pages WHERE title = $title";
+        command.CommandText =
+            "SELECT title, lead, payload FROM pages WHERE title = $title LIMIT 1";
         command.Parameters.AddWithValue("$title", title);
 
         using var reader = command.ExecuteReader();
@@ -246,7 +313,7 @@ public sealed class WikipediaStore
     private static string? ReadRedirect(SqliteConnection connection, string source)
     {
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT target FROM redirects WHERE source = $source";
+        command.CommandText = "SELECT target FROM redirects WHERE source = $source LIMIT 1";
         command.Parameters.AddWithValue("$source", source);
         return command.ExecuteScalar() as string;
     }

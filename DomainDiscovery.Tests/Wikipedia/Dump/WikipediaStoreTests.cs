@@ -102,6 +102,57 @@ public sealed class WikipediaStoreTests : IDisposable
         Assert.Equal("Point of sale", store.PrefixSearch("Point", 5)[0]);
     }
 
+    // The title index is NOT built during the import -- that is the whole point of the schema.
+    // It is built once at the end, so the store has to answer correctly either side of that.
+    [Fact]
+    public void Reads_work_before_and_after_the_search_index_is_built()
+    {
+        var store = NewStore();
+        store.WriteArticles([new ArticleRow("Invoice", "An invoice.", "Body.", [])]);
+        store.WriteRedirects([("Bill", "Invoice")]);
+
+        Assert.False(store.HasSearchIndexes());
+        Assert.NotNull(store.Read("invoice"));
+        Assert.Equal("Invoice", store.Read("Bill")!.Title);
+
+        store.CreateSearchIndexes();
+
+        Assert.True(store.HasSearchIndexes());
+        Assert.NotNull(store.Read("invoice"));
+        Assert.Equal("Invoice", store.Read("Bill")!.Title);
+        Assert.Equal("Invoice", store.PrefixSearch("Inv", 5).Single());
+    }
+
+    [Fact]
+    public void Building_the_search_index_twice_is_harmless()
+    {
+        var store = NewStore();
+        store.WriteArticles([new ArticleRow("Invoice", "An invoice.", "Body.", [])]);
+
+        store.CreateSearchIndexes();
+        store.CreateSearchIndexes();
+
+        Assert.True(store.HasSearchIndexes());
+        Assert.NotNull(store.Read("Invoice"));
+    }
+
+    // Wikipedia titles are case-sensitive after the first character, so "AIDS" and "Aids" are
+    // different articles. The lookup is deliberately case-INsensitive, so both land and the first
+    // wins -- what must never happen is that the index build trips over them, which is exactly what
+    // a UNIQUE index on a NOCASE column would do.
+    [Fact]
+    public void Two_titles_differing_only_by_case_do_not_break_the_index_build()
+    {
+        var store = NewStore();
+        store.WriteArticles([
+            new ArticleRow("AIDS", "A disease.", "Body.", []),
+            new ArticleRow("Aids", "A helper.", "Body.", [])]);
+
+        store.CreateSearchIndexes();
+
+        Assert.NotNull(store.Read("aids"));
+    }
+
     [Fact]
     public void Remembers_the_last_page_id_so_an_import_can_resume()
     {

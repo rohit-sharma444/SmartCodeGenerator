@@ -117,6 +117,19 @@ public sealed class ImportRunnerTests : IDisposable
         Assert.NotNull(_store.Read("Article 5000"));
     }
 
+    // The import writes into an unindexed table so the inserts stay cheap, which only works if
+    // something builds the index afterwards. That is the runner's job, at the end of the run.
+    [Fact]
+    public void Builds_the_search_index_once_the_import_is_done()
+    {
+        Assert.False(_store.HasSearchIndexes());
+
+        new ImportRunner(_store).Run(Fixture());
+
+        Assert.True(_store.HasSearchIndexes());
+        Assert.NotNull(_store.Read("Invoice"));
+    }
+
     [Fact]
     public void A_page_with_unparseable_wikitext_does_not_stop_the_import()
     {

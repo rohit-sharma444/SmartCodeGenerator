@@ -55,6 +55,12 @@ public sealed class ImportRunner
     {
         var resumeFrom = _store.GetLastPageId();
 
+        // Write into an unindexed table and index it once at the end. Maintaining the title index
+        // across millions of random inserts is what dragged the first import from ~790 pages/s down
+        // to ~180; building it in one sorted pass afterwards costs a fraction of that. A resumed run
+        // drops the index the previous run left behind, for the same reason.
+        _store.DropSearchIndexes();
+
         // One core is left to the reader, which is decoding bz2 and parsing XML the whole time.
         var workers = Math.Max(1, Environment.ProcessorCount - 1);
 
@@ -99,6 +105,10 @@ public sealed class ImportRunner
         }
 
         Flush(articles, redirects, lastId);
+
+        // Until this runs, every read is a full table scan and the store is unusable in practice.
+        _progress?.Invoke("building the search index (one sorted pass over the store)...");
+        _store.CreateSearchIndexes();
 
         return new ImportStats(articleCount, redirectCount, skipped);
     }
