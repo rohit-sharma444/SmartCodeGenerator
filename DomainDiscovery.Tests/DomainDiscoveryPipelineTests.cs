@@ -63,9 +63,12 @@ public class DomainDiscoveryPipelineTests
 
         Assert.False(result.Topic.IsRecognized);
         Assert.Equal(new[] { "Invoice" }, result.Model.Entities.Select(e => e.Name));
+
+        // Curated first, in order; EntityShaper's third pass appends the Document role baseline.
+        var curated = new[] { "Number", "Amount", "DueDate", "Paid" };
         Assert.Equal(
-            new[] { "Number", "Amount", "DueDate", "Paid" },
-            result.Model.Entities[0].Fields.Select(f => f.Name));
+            curated,
+            result.Model.Entities[0].Fields.Select(f => f.Name).Take(curated.Length));
     }
 
     [Fact]
@@ -141,9 +144,12 @@ public class DomainDiscoveryPipelineTests
         var result = pipeline.Discover("track registers");
 
         var cashRegister = Assert.Single(result.Model.Entities, e => e.Name == "CashRegister");
+
+        // Archetype first, in order; the Device role baseline follows it.
+        var archetype = new[] { "Name", "Model", "SerialNumber" };
         Assert.Equal(
-            new[] { "Name", "Model", "SerialNumber" },
-            cashRegister.Fields.Select(f => f.Name));
+            archetype,
+            cashRegister.Fields.Select(f => f.Name).Take(archetype.Length));
 
         Assert.DoesNotContain(result.Model.Entities, e => e.Name == "System");
         Assert.Contains("System", result.Model.Rejected);

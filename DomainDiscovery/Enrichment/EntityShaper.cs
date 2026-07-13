@@ -111,6 +111,43 @@ public sealed class EntityShaper
                     break;
             }
         }
+
+        // Pass 3: widen every surviving class. The role template fills in the baseline its kind
+        // implies, and PropertyMiner reads the class's own article for what makes it specific.
+        //
+        // This pass runs LAST, over model.Entities rather than the local list, so a class rejected
+        // or demoted to a suggestion above is never mined: a class we decided is not a class must
+        // not acquire properties on its way out.
+        Widen(model);
+    }
+
+    /// <summary>
+    /// Adds the role baseline and the mined properties to every surviving class.
+    /// </summary>
+    /// <remarks>
+    /// Reading each class's own article is the thing the MediaWiki API's rate limit forbade — it is
+    /// one fetch per class, and a real domain has twenty. Against the dump store it is a local
+    /// seek, which is what makes this pass affordable at all.
+    /// <para>
+    /// Both sources are additive and neither can overwrite a field that is already there: precedence
+    /// runs curated, then archetype, then template, then mined, and AddField silently declines a
+    /// name already taken.
+    /// </para>
+    /// </remarks>
+    private void Widen(CandidateDomainModel model)
+    {
+        foreach (var entity in model.Entities)
+        {
+            foreach (var shape in RoleTemplate.For(entity.Role))
+                AddField(entity, shape.Name, shape.Type);
+
+            var article = _client.FetchExtract(entity.SourceTitle ?? entity.Name);
+            if (string.IsNullOrWhiteSpace(article))
+                continue;
+
+            foreach (var shape in PropertyMiner.Mine(article, entity.Name))
+                AddField(entity, shape.Name, shape.Type);
+        }
     }
 
     /// <summary>Adds a field unless the entity already declares one of that name, or the name
