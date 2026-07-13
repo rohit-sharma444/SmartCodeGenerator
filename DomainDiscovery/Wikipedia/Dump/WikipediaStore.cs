@@ -80,6 +80,18 @@ public sealed class WikipediaStore
     }
 
     /// <summary>Writes a batch in one transaction. Re-importing a title overwrites it.</summary>
+    /// <remarks>
+    /// <b>This is what makes a full import slow, and it gets slower.</b> Measured over a 2-hour run:
+    /// throughput fell from ~790 pages/s to ~180 as the store passed 4 GB. The cause is the schema —
+    /// <c>title TEXT PRIMARY KEY</c> means rows arrive in effectively random key order, so every
+    /// insert lands at a random point in a B-tree that no longer fits in cache, and the cost climbs
+    /// with the table size.
+    /// <para>
+    /// The fix, if a full import is ever needed: import into a rowid table with no title index, and
+    /// build the index once at the end. It is a schema change, so it costs a from-scratch re-import
+    /// (the resume point would not carry over) — which is why it was not done mid-flight.
+    /// </para>
+    /// </remarks>
     public void WriteArticles(IEnumerable<ArticleRow> rows)
     {
         using var connection = Open();
