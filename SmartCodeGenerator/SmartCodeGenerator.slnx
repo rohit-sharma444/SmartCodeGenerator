@@ -8,4 +8,5 @@
   <Project Path="../NaturalLanguageBridge/NaturalLanguageBridge.csproj" />
   <Project Path="../NaturalLanguageEngine.Tests/NaturalLanguageEngine.Tests.csproj" />
   <Project Path="../NaturalLanguageEngine/NaturalLanguageEngine.csproj" />
+  <Project Path="../WikipediaDumpImporter/WikipediaDumpImporter.csproj" />
 </Solution>
