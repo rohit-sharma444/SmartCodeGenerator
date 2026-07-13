@@ -97,6 +97,26 @@ public sealed class ImportRunnerTests : IDisposable
         Assert.Equal(1, stats.Redirects);
     }
 
+    // The strip runs in parallel across cores, so the batch has to be bigger than one flush to
+    // exercise it at all: every page must still land, and the resume point must still end up at
+    // the LAST id, not merely the highest one some worker happened to finish with.
+    [Fact]
+    public void Every_page_of_a_large_run_lands_and_the_resume_point_is_the_final_id()
+    {
+        var pages = Enumerable.Range(1, 5000)
+            .Select(i => new RawPage(i, $"Article {i}", 0, null, $"Article {i} is a thing."))
+            .ToList();
+
+        var stats = new ImportRunner(_store).Run(pages);
+
+        Assert.Equal(5000, stats.Articles);
+        Assert.Equal(5000, _store.ArticleCount);
+        Assert.Equal(5000, _store.GetLastPageId());
+        Assert.NotNull(_store.Read("Article 1"));
+        Assert.NotNull(_store.Read("Article 2500"));
+        Assert.NotNull(_store.Read("Article 5000"));
+    }
+
     [Fact]
     public void A_page_with_unparseable_wikitext_does_not_stop_the_import()
     {
