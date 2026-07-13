@@ -87,7 +87,7 @@ public class DomainModelMapperTests
 
         var classes = DomainModelMapper.ToClassDefinitions(model);
 
-        Assert.AreEqual(1, classes.Count);
+        Assert.HasCount(1, classes);
         Assert.AreEqual("Employee", classes[0].Name);
         CollectionAssert.AreEqual(
             new[] { "Id", "Salary", "FullName" },
@@ -123,7 +123,7 @@ public class DomainModelMapperTests
 
         var classes = DomainModelMapper.ToClassDefinitions(model);
 
-        Assert.AreEqual(1, classes[0].Properties.Count);
+        Assert.HasCount(1, classes[0].Properties);
         Assert.AreEqual("Id", classes[0].Properties[0].Name);
         Assert.AreEqual("int", classes[0].Properties[0].Type);
     }

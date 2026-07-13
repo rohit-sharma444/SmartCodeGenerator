@@ -4,9 +4,15 @@ namespace DomainDiscovery.Model;
 /// The fallback shape for an entity the <c>DomainFieldLexicon</c> does not know.
 /// </summary>
 /// <remarks>
-/// Discovered entities are shaped from the lexicon and dropped when it has nothing to say about
-/// them. An entity the user names by hand is different: they have asserted it exists, so it is
-/// kept, and it needs one editable column or its grid shows nothing but a read-only Id.
+/// A discovered entity is no longer dropped when <c>DomainFieldLexicon</c> has nothing to say
+/// about it: <see cref="DomainDiscovery.Enrichment.EntityShaper"/> falls back to the candidate's
+/// own Wikipedia definition, and only rejects it outright when that definition is itself an
+/// abstraction — otherwise it is offered to the user as a suggestion, never silently deleted.
+/// This fallback exists for exactly the opposite case: an entity the user names by hand in the
+/// review loop has no Wikipedia definition to fall back to, and unlike a discovered candidate it
+/// was never a guess — the user asserted it exists, so
+/// <see cref="DomainDiscovery.Review.ModelEditor.AddEntity"/> keeps it unconditionally and gives
+/// it this one field, or its grid would show nothing but a read-only Id.
 /// </remarks>
 public static class DefaultFields
 {

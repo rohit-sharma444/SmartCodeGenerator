@@ -35,7 +35,8 @@ public class DomainFieldLexiconTests
     [Fact]
     public void EveryKnownEntity_HasAtLeastOneField()
     {
-        // A shape with no fields would be dropped by DomainFieldAssigner as if unknown.
+        // A shape with no fields would leave EntityShaper unable to tell this entity apart
+        // from one the lexicon does not know at all.
         foreach (var entity in KnownEntities)
             Assert.NotEmpty(DomainFieldLexicon.Fields(entity));
     }
@@ -85,5 +86,27 @@ public class DomainFieldLexiconTests
             var names = DomainFieldLexicon.Fields(entity).Select(f => f.Name).ToList();
             Assert.Equal(names.Count, names.Distinct(StringComparer.OrdinalIgnoreCase).Count());
         }
+    }
+
+    [Fact]
+    public void EveryKnownEntity_HasAnAnnotatedRole()
+    {
+        // Role/Permission are legitimately EntityRole.None (they are not something another
+        // class points at), which is the same value C# gives a forgotten entry by default. So
+        // this checks presence in the Role table itself, not the resolved value — a future
+        // entity added to the field table without a matching Role entry must fail here rather
+        // than silently resolving to a default that looks identical to a deliberate None.
+        foreach (var entity in KnownEntities)
+            Assert.True(DomainFieldLexicon.HasAnnotatedRole(entity), $"{entity} has no annotated Role");
+    }
+
+    [Fact]
+    public void KnownEntities_MatchesTheLexiconsOwnEntityList()
+    {
+        // Guards the guard above: if this drifts from the lexicon's real key set, the role
+        // test could pass by only checking names nobody added yet.
+        Assert.Equal(
+            KnownEntities.OrderBy(n => n, StringComparer.OrdinalIgnoreCase),
+            DomainFieldLexicon.KnownEntityNames.OrderBy(n => n, StringComparer.OrdinalIgnoreCase));
     }
 }

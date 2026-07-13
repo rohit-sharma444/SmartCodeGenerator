@@ -96,8 +96,8 @@ public sealed class EntityHarvester : IEntityHarvester
             });
         }
 
-        // Fields are not harvested from prose; DomainFieldAssigner attaches them from the
-        // lexicon afterwards, and drops the nouns it cannot shape.
+        // Fields are not harvested from prose; EntityShaper attaches them from the lexicon
+        // (or the candidate's own definition) afterwards, and decides what survives.
         return model;
     }
 }

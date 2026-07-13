@@ -32,6 +32,6 @@ public class MainViewModelTemplateTests
         var source = MainViewModelTemplate.Build("Payroll", Array.Empty<string>());
 
         StringAssert.Contains(source, "ObservableCollection<IEntityViewModel>");
-        Assert.IsFalse(source.Contains("new EntityViewModel<"));
+        Assert.DoesNotContain("new EntityViewModel<", source);
     }
 }

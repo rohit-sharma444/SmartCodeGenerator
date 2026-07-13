@@ -1,3 +1,5 @@
+using DomainDiscovery.Enrichment;
+
 namespace DomainDiscovery.Model;
 
 /// <summary>Where a discovered entity or field came from.</summary>
@@ -30,9 +32,38 @@ public sealed class CandidateEntity
     public List<CandidateRelationship> Relationships { get; } = new();
     public Provenance Provenance { get; set; }
     public double Confidence { get; set; }
+
+    /// <summary>
+    /// The Wikipedia article this candidate came from, when its title differs from its type
+    /// name ("Cash register" -> CashRegister). Null for a prose-harvested noun, whose name
+    /// is already the title to look up.
+    /// </summary>
+    public string? SourceTitle { get; set; }
+
+    /// <summary>
+    /// What kind of thing this class is. Exists to decide which way a mined relationship
+    /// points: same-sentence co-occurrence between two classes is symmetric (it says only that
+    /// they were mentioned together), but a foreign key has a direction, and comparing two
+    /// classes' Role settles it — the higher-ranked role references the lower. Defaults to
+    /// <see cref="EntityRole.None"/>, which also means "never link this class" for anything
+    /// <see cref="Enrichment.EntityShaper"/> never assigned a Role to.
+    /// </summary>
+    public EntityRole Role { get; set; }
 }
 
 public sealed class CandidateDomainModel
 {
     public List<CandidateEntity> Entities { get; } = new();
+
+    /// <summary>
+    /// Candidates we could not shape. They are offered to the user rather than deleted:
+    /// not knowing an entity's fields is not the same as knowing it is not an entity.
+    /// </summary>
+    public List<CandidateEntity> Suggestions { get; } = new();
+
+    /// <summary>
+    /// Names rejected as prose — their definition resolved to an abstraction. Shown once,
+    /// so a missing class is explainable rather than mysterious.
+    /// </summary>
+    public List<string> Rejected { get; } = new();
 }

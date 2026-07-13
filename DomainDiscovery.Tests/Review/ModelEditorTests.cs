@@ -206,4 +206,23 @@ public class ModelEditorTests
         Assert.False(ModelEditor.RemoveField(model, "Author", "FullName"));
         Assert.Single(model.Entities[0].Fields);
     }
+
+    [Fact]
+    public void AddEntity_PromotesASuggestion_KeepingItsProvenanceAndConfidence()
+    {
+        var model = new CandidateDomainModel();
+        model.Suggestions.Add(new CandidateEntity
+        {
+            Name = "Barcode", Provenance = Provenance.Wiki, Confidence = 0.42
+        });
+
+        Assert.True(ModelEditor.AddEntity(model, "barcode"));
+
+        var barcode = Assert.Single(model.Entities);
+        Assert.Equal("Barcode", barcode.Name);
+        Assert.Equal(Provenance.Wiki, barcode.Provenance);
+        Assert.Equal(0.42, barcode.Confidence);
+        Assert.Equal(DefaultFields.NameField, Assert.Single(barcode.Fields).Name);
+        Assert.Empty(model.Suggestions);
+    }
 }

@@ -78,4 +78,22 @@ public class NameNormalizerTests
     [InlineData("123")]
     public void IsValidIdentifier_RejectsWhatCSharpCannotDeclare(string name)
         => Assert.False(NameNormalizer.IsValidIdentifier(name));
+
+    [Theory]
+    [InlineData("Cash register", "CashRegister")]
+    [InlineData("Payment terminal", "PaymentTerminal")]
+    [InlineData("Credit cards", "CreditCard")]
+    [InlineData("Receipt", "Receipt")]
+    [InlineData("self-checkout", "SelfCheckout")]
+    public void ToCompoundEntityName_KeepsEveryWord_AndSingularizesTheLast(
+        string input, string expected)
+    {
+        Assert.Equal(expected, NameNormalizer.ToCompoundEntityName(input));
+    }
+
+    [Fact]
+    public void ToCompoundEntityName_OfBlank_IsEmpty()
+    {
+        Assert.Equal(string.Empty, NameNormalizer.ToCompoundEntityName("   "));
+    }
 }

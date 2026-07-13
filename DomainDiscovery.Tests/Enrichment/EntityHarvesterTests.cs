@@ -168,7 +168,7 @@ public class EntityHarvesterTests
 
         var model = new EntityHarvester().Harvest(r);
 
-        // Prose carries no field information; DomainFieldAssigner shapes the entity later.
+        // Prose carries no field information; EntityShaper shapes the entity later.
         Assert.Empty(Assert.Single(model.Entities).Fields);
     }
 }
