@@ -3,6 +3,8 @@ using DomainDiscovery.Model;
 using DomainDiscovery.Recognition;
 using DomainDiscovery.SeedExtraction;
 using DomainDiscovery.Tests.Fakes;
+using DomainDiscovery.Wikipedia.Dump;
+using Microsoft.Data.Sqlite;
 using NaturalLanguageEngine.Models.Semantics;
 using Xunit;
 
@@ -236,5 +238,31 @@ public class DomainDiscoveryPipelineTests
 
         Assert.NotNull(pipeline);
         Assert.False(File.Exists(missingStore));
+    }
+
+    [Fact]
+    public void CreateDefault_refuses_a_store_that_has_no_search_index()
+    {
+        var cacheDirectory = Path.Combine(Path.GetTempPath(), $"cache-{Guid.NewGuid():N}");
+        var storePath = Path.Combine(Path.GetTempPath(), $"unindexed-{Guid.NewGuid():N}.db");
+
+        try
+        {
+            // Precisely what an import killed before its final step leaves behind: the rows are
+            // there, the search index is not.
+            new WikipediaStore(storePath).CreateSchema();
+
+            var error = Assert.Throws<InvalidOperationException>(
+                () => DomainDiscoveryPipeline.CreateDefault(cacheDirectory, storePath));
+
+            // The message has to carry the cure, not just the diagnosis.
+            Assert.Contains("--index-only", error.Message);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            if (File.Exists(storePath))
+                File.Delete(storePath);
+        }
     }
 }

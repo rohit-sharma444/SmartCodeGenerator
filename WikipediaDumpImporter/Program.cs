@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using DomainDiscovery;
 using DomainDiscovery.Wikipedia.Dump;
 using WikipediaDumpImporter;
 
@@ -13,7 +14,7 @@ var dumpPath = positional.Length > 0
 
 var databasePath = positional.Length > 1
     ? positional[1]
-    : @"D:\SmartCodeGenerator-Repository\Dump\enwiki.db";
+    : DomainDiscoveryPipeline.DefaultDumpDatabasePath;
 
 if (indexOnly)
 {
