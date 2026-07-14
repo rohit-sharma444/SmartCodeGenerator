@@ -59,4 +59,59 @@ public class DomainEnricherTests
         Assert.Equal("Cash register", register.SourceTitle);
         Assert.Equal(Provenance.Wiki, register.Provenance);
     }
+
+    /// <summary>
+    /// The real "Point of sale gave us a Smartphone class" failure, in miniature. Both candidate
+    /// sources reach past the domain into whatever else the article discusses, and the article's
+    /// own lead is what tells them apart.
+    /// </summary>
+    [Fact]
+    public void Enrich_DemotesALinkedConcept_TheArticlesLeadDoesNotName()
+    {
+        var wiki = new FakeWikipediaClient();
+        wiki.Extracts["Point of sale"] = string.Join('\n',
+            "The customer pays the merchant at a cash register.",
+            "A cash register records each sale and prints a receipt.",
+            "Hardware",
+            "Modern systems run on a smartphone. A smartphone can replace the terminal.");
+        wiki.Links["Point of sale"] = new List<string> { "Cash register", "Smartphone" };
+
+        var enricher = new DomainEnricher(
+            wiki, EngineBuilder.BuildDefault().Analyzer, new EntityHarvester());
+
+        var model = enricher.Enrich(
+            new TopicResult("Point of sale", "https://en.wikipedia.org/wiki/Point_of_sale", 0.5),
+            new CandidateDomainModel());
+
+        // Named where the article defines itself, so it is what the domain is made of.
+        Assert.Contains(model.Entities, e => e.Name == "CashRegister");
+
+        // Discussed, but only as hardware the thing runs on. Offered, not deleted.
+        Assert.DoesNotContain(model.Entities, e => e.Name == "Smartphone");
+        Assert.Contains(model.Suggestions, e => e.Name == "Smartphone");
+    }
+
+    [Fact]
+    public void Enrich_KeepsASeededName_EvenWhenTheLeadDoesNotNameIt()
+    {
+        // The user typed it, so it is a class because they said so.
+        var seed = new CandidateDomainModel();
+        seed.Entities.Add(new CandidateEntity { Name = "Smartphone", Provenance = Provenance.Seed });
+
+        var wiki = new FakeWikipediaClient();
+        wiki.Extracts["Point of sale"] = string.Join('\n',
+            "The customer pays the merchant at a cash register.",
+            "Hardware",
+            "Modern systems run on a smartphone. A smartphone can replace the terminal.");
+        wiki.Links["Point of sale"] = new List<string> { "Smartphone" };
+
+        var enricher = new DomainEnricher(
+            wiki, EngineBuilder.BuildDefault().Analyzer, new EntityHarvester());
+
+        var model = enricher.Enrich(
+            new TopicResult("Point of sale", "https://en.wikipedia.org/wiki/Point_of_sale", 0.5), seed);
+
+        Assert.Contains(model.Entities, e => e.Name == "Smartphone");
+        Assert.DoesNotContain(model.Suggestions, e => e.Name == "Smartphone");
+    }
 }
