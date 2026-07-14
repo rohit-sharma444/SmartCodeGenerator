@@ -32,8 +32,18 @@ public sealed class EnglishLanguageProvider : ILanguageProvider
         foreach (var w in new[] { "is", "am", "are", "was", "were", "be", "been", "being", "do", "does", "did", "have", "has", "had", "will", "would", "shall", "should", "can", "could", "may", "might", "must", "jumps" })
             yield return Make(w, "verb");
 
-        // Common verbs
-        foreach (var w in new[] { "go", "goes", "went", "make", "makes", "made", "take", "takes", "took", "see", "saw", "come", "came", "want", "wants", "wanted", "send", "sends", "sent", "give", "gives", "gave", "book", "books", "booked", "buy", "buys", "bought", "find", "found", "show", "shows", "tell", "told", "ask", "asks", "asked", "need", "needs", "needed", "like", "likes", "liked", "call", "calls", "called", "open", "opens", "opened", "close", "closes", "set", "schedule", "schedules", "scheduled", "play", "plays", "played", "create", "creates", "created", "build", "builds", "built", "run", "runs", "ran", "jumps",
+        // Common verbs.
+        //
+        // "books" is NOT here, and its absence is load-bearing. It is listed as a verb for the
+        // command language ("book a meeting", a synonym of schedule below), and the tagger looks up
+        // the surface form with no lemmatization — so the plural was tagged Verb everywhere,
+        // including in article prose. The Public library article says "books" 73 times, every one of
+        // them a noun, and EntityHarvester keeps only nouns: a library lending system came out with
+        // no Book class at all, and not even a suggestion. A command is imperative, so it says "book
+        // a flight" and never "books a flight"; prose says "libraries lend books". Keeping the base
+        // form and dropping the plural serves both. (The same reasoning already governs the prose-verb
+        // list below, which deliberately omits pay, record, order, price, ... for exactly this reason.)
+        foreach (var w in new[] { "go", "goes", "went", "make", "makes", "made", "take", "takes", "took", "see", "saw", "come", "came", "want", "wants", "wanted", "send", "sends", "sent", "give", "gives", "gave", "book", "booked", "buy", "buys", "bought", "find", "found", "show", "shows", "tell", "told", "ask", "asks", "asked", "need", "needs", "needed", "like", "likes", "liked", "call", "calls", "called", "open", "opens", "opened", "close", "closes", "set", "schedule", "schedules", "scheduled", "play", "plays", "played", "create", "creates", "created", "build", "builds", "built", "run", "runs", "ran", "jumps",
             "add", "adds", "added", "list", "lists", "listed", "generate", "generates", "generated",
             "delete", "deletes", "deleted", "remove", "removes", "removed", "rename", "renames", "renamed",
             "analyze", "analyzes", "analyzed", "validate", "validates", "validated", "use", "uses", "used",

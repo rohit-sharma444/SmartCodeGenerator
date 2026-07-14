@@ -18,7 +18,7 @@ public class PosTaggerTests
 
     [Theory]
     [InlineData("the", PartOfSpeech.Determiner)]
-    [InlineData("book", PartOfSpeech.Verb)] // only listed as a verb in the bundled lexicon
+    [InlineData("book", PartOfSpeech.Verb)] // the command language's "book a meeting"
     [InlineData("quickly", PartOfSpeech.Adverb)]
     [InlineData("is", PartOfSpeech.Verb)]
     public void Tag_DictionaryWord_UsesLexiconEntry(string word, PartOfSpeech expected)
@@ -28,6 +28,21 @@ public class PosTaggerTests
         _tagger.Tag(tokens);
 
         Assert.Equal(expected, tokens[0].PartOfSpeech);
+    }
+
+    /// <summary>
+    /// The plural is a noun, and must stay one. A command is imperative — "book a flight", never
+    /// "books a flight" — so nothing needs the verb reading, while prose ("libraries lend books")
+    /// needs the noun. Listing it as a verb cost a library domain its Book class entirely.
+    /// </summary>
+    [Fact]
+    public void Tag_TheNounPluralOfAWordThatIsAlsoAVerb_IsANoun()
+    {
+        var tokens = new List<TokenAnalysis> { Analysis("books") };
+
+        _tagger.Tag(tokens);
+
+        Assert.Equal(PartOfSpeech.Noun, tokens[0].PartOfSpeech);
     }
 
     [Theory]
