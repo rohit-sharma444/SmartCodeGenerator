@@ -46,6 +46,12 @@ public sealed class WikipediaTopicRecognizer : ITopicRecognizer
     private const double ScoreTolerance = 1e-9;
 
     /// <summary>
+    /// How many articles BESIDE the winner the domain may be read from. Each one is a full article
+    /// read and a whole domain adopted, so this is a budget, not a limit to grow.
+    /// </summary>
+    private const int MaxSupportingArticles = 3;
+
+    /// <summary>
     /// Words that carry no domain on their own. A sequence opening or closing on one of them is a
     /// fragment ("of sale", "a point"), never the name of anything, so it is not searched.
     /// </summary>
@@ -106,6 +112,11 @@ public sealed class WikipediaTopicRecognizer : ITopicRecognizer
                 // A hit is worth more the higher it ranks, and scores accumulate across the terms
                 // that found it, so agreement between terms outweighs rank.
                 candidate.Score += term.Weight / (1 + hit.Rank);
+
+                // Did the user NAME this article, or did a redirect take us here from a word that
+                // means something else? See SupportingTitlesFrom.
+                if (string.Equals(term.Text, hit.Title, StringComparison.OrdinalIgnoreCase))
+                    candidate.WasNamedOutright = true;
             }
         }
 
@@ -124,8 +135,39 @@ public sealed class WikipediaTopicRecognizer : ITopicRecognizer
         // its own, and a phrase matched outright is certainty, so the ceiling holds it at 1.
         var confidence = Math.Min(1.0, best.Score / Math.Max(1, seeds.Count));
 
-        return new TopicResult(best.Title, best.Url, confidence);
+        return new TopicResult(best.Title, best.Url, confidence)
+        {
+            SupportingTitles = SupportingTitlesFrom(candidates, best)
+        };
     }
+
+    /// <summary>
+    /// The other articles worth reading the domain out of: the ones the user NAMED, beside the
+    /// winner, best-supported first.
+    /// </summary>
+    /// <remarks>
+    /// A description usually names several concepts and only one of them can win the vote. "track
+    /// customers, payments and invoices" named three, and enriching from the winner alone threw two
+    /// away — the model had three classes where the three articles together hold fifteen.
+    /// <para>
+    /// <b>Only what the user named outright, never what a redirect led to.</b> This is the whole
+    /// safeguard, and it is not fussiness: "a lending system for a public library" resolves the word
+    /// <em>lending</em> — through an entirely reasonable editor-made redirect — to <em>Loan</em>,
+    /// the financial instrument. Enriching from it dressed a library up in Lender, Borrower,
+    /// Interest, Money and CreditCard. A library loan is not a bank loan. A redirect is a synonym of
+    /// the WORD, which is exactly what recognition wants and exactly what enrichment cannot afford:
+    /// reading a whole article means adopting a whole domain, so it must be a domain the user
+    /// actually asked for. The winner is exempt — it earned its place by the vote, however it was
+    /// resolved.
+    /// </para>
+    /// </remarks>
+    private static IReadOnlyList<string> SupportingTitlesFrom(List<Candidate> candidates, Candidate best)
+        => candidates
+            .Where(c => c != best && c.WasNamedOutright)
+            .OrderByDescending(c => c.Score)
+            .Take(MaxSupportingArticles)
+            .Select(c => c.Title)
+            .ToList();
 
     /// <summary>
     /// The winning candidate: highest score, and where several score alike, the one whose article
@@ -280,5 +322,11 @@ public sealed class WikipediaTopicRecognizer : ITopicRecognizer
         public string Title { get; } = title;
         public string Url { get; } = url;
         public double Score { get; set; }
+
+        /// <summary>
+        /// A searched term IS this article's title — the user named it, rather than a redirect
+        /// leading here from a word that means something else somewhere else.
+        /// </summary>
+        public bool WasNamedOutright { get; set; }
     }
 }

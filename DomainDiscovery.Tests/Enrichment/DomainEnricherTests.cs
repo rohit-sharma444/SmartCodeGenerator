@@ -29,9 +29,8 @@ public class DomainEnricherTests
         client.Extracts["Library"] = "ignored - stub analyzer drives output";
 
         var enricher = new DomainEnricher(client, new StubAnalyzer(analysis), new EntityHarvester());
-        var topic = new TopicResult("Library", "https://en.wikipedia.org/wiki/Library", 0.8);
 
-        var model = enricher.Enrich(topic, seed);
+        var model = enricher.Enrich("Library", seed);
 
         Assert.Equal(new[] { "Book", "Loan" }, model.Entities.Select(e => e.Name));
         Assert.Equal(Provenance.Seed, model.Entities.Single(e => e.Name == "Book").Provenance);
@@ -52,7 +51,7 @@ public class DomainEnricherTests
             wiki, EngineBuilder.BuildDefault().Analyzer, new EntityHarvester());
 
         var model = enricher.Enrich(
-            new TopicResult("Point of sale", "https://en.wikipedia.org/wiki/Point_of_sale", 0.5),
+            "Point of sale",
             new CandidateDomainModel());
 
         var register = Assert.Single(model.Entities, e => e.Name == "CashRegister");
@@ -80,7 +79,7 @@ public class DomainEnricherTests
             wiki, EngineBuilder.BuildDefault().Analyzer, new EntityHarvester());
 
         var model = enricher.Enrich(
-            new TopicResult("Point of sale", "https://en.wikipedia.org/wiki/Point_of_sale", 0.5),
+            "Point of sale",
             new CandidateDomainModel());
 
         // Named where the article defines itself, so it is what the domain is made of.
@@ -109,7 +108,7 @@ public class DomainEnricherTests
             wiki, EngineBuilder.BuildDefault().Analyzer, new EntityHarvester());
 
         var model = enricher.Enrich(
-            new TopicResult("Point of sale", "https://en.wikipedia.org/wiki/Point_of_sale", 0.5), seed);
+            "Point of sale", seed);
 
         Assert.Contains(model.Entities, e => e.Name == "Smartphone");
         Assert.DoesNotContain(model.Suggestions, e => e.Name == "Smartphone");

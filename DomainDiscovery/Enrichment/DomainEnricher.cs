@@ -22,9 +22,9 @@ public sealed class DomainEnricher : IDomainEnricher
         _harvester = harvester;
     }
 
-    public CandidateDomainModel Enrich(TopicResult topic, CandidateDomainModel seed)
+    public CandidateDomainModel Enrich(string articleTitle, CandidateDomainModel seed)
     {
-        var text = _client.FetchExtract(topic.Title);
+        var text = _client.FetchExtract(articleTitle);
         if (string.IsNullOrWhiteSpace(text))
             return seed;
 
@@ -32,7 +32,7 @@ public sealed class DomainEnricher : IDomainEnricher
 
         // Wikilinks name the multi-word concepts prose-noun frequency structurally cannot
         // see: "cash register" tokenizes into two common nouns that normalize to junk.
-        foreach (var title in LinkedConceptSource.Candidates(_client.FetchLinks(topic.Title), text))
+        foreach (var title in LinkedConceptSource.Candidates(_client.FetchLinks(articleTitle), text))
         {
             var name = NameNormalizer.ToCompoundEntityName(title);
 

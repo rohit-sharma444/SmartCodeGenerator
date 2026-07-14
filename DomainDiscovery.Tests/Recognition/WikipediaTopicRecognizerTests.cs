@@ -216,6 +216,59 @@ public class WikipediaTopicRecognizerTests
         Assert.Equal("Invoice", topic.Title);
     }
 
+    /// <summary>
+    /// A description names several concepts and only one can win the vote. The others are still the
+    /// domain, and enriching from the winner alone threw them away.
+    /// </summary>
+    [Fact]
+    public void Recognize_ReportsTheOtherArticlesTheUserNamed()
+    {
+        var client = new FakeWikipediaClient();
+        foreach (var name in new[] { "Invoice", "Payment", "Customer" })
+        {
+            client.HitsByTerm[name] = new()
+            {
+                new SearchHit(name, "https://en.wikipedia.org/wiki/" + name, 0),
+            };
+        }
+        client.Extracts["Invoice"] = "An invoice requests payment from the customer.";
+
+        var topic = new WikipediaTopicRecognizer(client)
+            .Recognize(new[] { "Invoice", "Payment", "Customer" });
+
+        Assert.Equal("Invoice", topic.Title);
+        Assert.Equal(new[] { "Payment", "Customer" }, topic.SupportingTitles);
+        Assert.Equal(new[] { "Invoice", "Payment", "Customer" }, topic.AllTitles);
+    }
+
+    /// <summary>
+    /// The safeguard, and the reason it exists. "a lending system for a public library" resolves the
+    /// word "lending" — through an entirely reasonable editor-made redirect — to Loan, the FINANCIAL
+    /// instrument, whose article dressed a library up in Lender, Borrower, Interest and CreditCard.
+    /// A redirect is a synonym of the word, which recognition wants and enrichment cannot afford:
+    /// reading a whole article means adopting a whole domain.
+    /// </summary>
+    [Fact]
+    public void Recognize_WillNotEnrichFromAnArticleAredirectLedTo_OnlyFromOnesTheUserNamed()
+    {
+        var client = new FakeWikipediaClient();
+        client.HitsByTerm["library"] = new()
+        {
+            new SearchHit("Library", "https://en.wikipedia.org/wiki/Library", 0),
+        };
+        // The user typed "lending"; the store answered with a different concept's article.
+        client.HitsByTerm["lending"] = new()
+        {
+            new SearchHit("Loan", "https://en.wikipedia.org/wiki/Loan", 0),
+        };
+        client.Extracts["Library"] = "A library lends books, and a library records each loan.";
+
+        var topic = new WikipediaTopicRecognizer(client).Recognize(new[] { "library", "lending" });
+
+        Assert.Equal("Library", topic.Title);
+        Assert.Empty(topic.SupportingTitles);
+    }
+
     [Fact]
     public void Recognize_LeavesAClearWinnerAlone_WithoutReadingAnyArticle()
     {

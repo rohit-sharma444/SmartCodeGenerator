@@ -71,14 +71,24 @@ public sealed class DomainDiscoveryPipeline
             return new DiscoveryResult(topic, seed);
         }
 
-        var enriched = _enricher.Enrich(topic, seed);
+        // A domain is not one article. A description names several concepts and only one of them
+        // can win the vote — "track customers, payments and invoices" names three — so the domain
+        // is read out of the winner AND the other articles the user named (TopicResult.AllTitles).
+        // The merge is additive, and the first article to define a class keeps it.
+        var enriched = seed;
+        foreach (var title in topic.AllTitles)
+            enriched = _enricher.Enrich(title, enriched);
+
+        // Shape ONCE, over everything, and only then mine. Shaping decides what is a class at all,
+        // and mining needs that verdict plus each class's Role — a suggested or rejected class must
+        // never acquire a relationship — so neither can be interleaved with enrichment.
         _shaper.Shape(enriched);
 
-        // Mining runs after Shape: it needs the final class list and each class's Role (a
-        // suggested or rejected class must never acquire a relationship), and it re-reads the
-        // same article DomainEnricher already fetched — a disk-cache hit by now, not a second
-        // network call (see HttpWikipediaClient.FetchExtract / WikipediaCache).
-        _relationshipMiner.Mine(enriched, _wikipediaClient.FetchExtract(topic.Title));
+        // Every article the classes came from is mined, not just the winner's: a relationship
+        // between Payee and Payment is stated in the Payment article and nowhere else. Each is a
+        // re-read of text already fetched — a disk-cache hit, or a local seek against the dump.
+        foreach (var title in topic.AllTitles)
+            _relationshipMiner.Mine(enriched, _wikipediaClient.FetchExtract(title));
 
         return new DiscoveryResult(topic, enriched);
     }
