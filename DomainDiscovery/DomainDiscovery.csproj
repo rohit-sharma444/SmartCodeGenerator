@@ -13,6 +13,10 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.9" />
     <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.3" />
+
+    <!-- Reads the bz2 dumps. Here, not only in the importer tool, because the app itself now applies
+         daily increments at startup. -->
+    <PackageReference Include="SharpZipLib" Version="1.4.2" />
   </ItemGroup>
 
 </Project>

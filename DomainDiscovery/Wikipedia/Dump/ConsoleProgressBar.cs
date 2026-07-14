@@ -1,6 +1,6 @@
 using System.Diagnostics;
 
-namespace WikipediaDumpImporter;
+namespace DomainDiscovery.Wikipedia.Dump;
 
 /// <summary>
 /// A single-line progress bar for work whose total is known: bytes downloaded, bytes decoded.

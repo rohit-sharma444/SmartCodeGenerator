@@ -1,7 +1,7 @@
 using System.Xml;
 using ICSharpCode.SharpZipLib.BZip2;
 
-namespace WikipediaDumpImporter;
+namespace DomainDiscovery.Wikipedia.Dump;
 
 /// <summary>One page exactly as the dump states it, before any filtering or stripping.</summary>
 public sealed record RawPage(
