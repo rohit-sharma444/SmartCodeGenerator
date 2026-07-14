@@ -155,6 +155,48 @@ public class PropertyMinerTests
             PropertyMiner.Mine(article, "Order"), f => f.Name == "AgreedPricesForProducts");
     }
 
+    /// <summary>
+    /// Half the containment verbs are also common nouns — a record, a list, a show, a state — and
+    /// the miner used to take the noun for the verb, then swallow the real verb into the property
+    /// name: "An inventory record contains X" yielded a field called ContainsTheQuantityHeld.
+    /// </summary>
+    [Fact]
+    public void Does_not_mistake_the_subject_noun_for_the_containment_verb()
+    {
+        var article = "An inventory record contains the quantity held and the unit cost.";
+
+        var fields = PropertyMiner.Mine(article, "Inventory").Select(f => f.Name).ToList();
+
+        Assert.Contains("QuantityHeld", fields);
+        Assert.Contains("UnitCost", fields);
+        Assert.DoesNotContain("ContainsTheQuantityHeld", fields);
+    }
+
+    [Fact]
+    public void Reads_past_a_chain_of_noun_verbs_to_the_real_one()
+    {
+        // "list" is a noun here and "includes" is the verb.
+        var article = "The shopping list includes bread and milk.";
+
+        var fields = PropertyMiner.Mine(article, "Basket").Select(f => f.Name).ToList();
+
+        Assert.Contains("Bread", fields);
+        Assert.Contains("Milk", fields);
+        Assert.DoesNotContain("IncludesBread", fields);
+    }
+
+    [Fact]
+    public void Still_reads_a_containment_verb_that_is_genuinely_the_verb()
+    {
+        // "records" is the verb, and nothing follows it that could be mistaken for one.
+        var article = "A receipt records the sales tax and the amount paid.";
+
+        var fields = PropertyMiner.Mine(article, "Receipt").Select(f => f.Name).ToList();
+
+        Assert.Contains("SalesTax", fields);
+        Assert.Contains("AmountPaid", fields);
+    }
+
     [Fact]
     public void Keeps_a_hyphenated_word_whole()
     {

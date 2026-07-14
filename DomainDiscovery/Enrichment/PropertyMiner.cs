@@ -48,13 +48,29 @@ public static class PropertyMiner
     /// The verbs an encyclopedia uses when it is about to state what something is made of. A list
     /// or enumeration NOT introduced by one of these is not evidence of anything.
     /// </summary>
+    private const string ContainmentVerb =
+        @"contains?|includes?|comprises?|consists? of|records?|shows?|lists?|carries";
+
     private static readonly Regex ContainmentLeadIn = new(
-        @"\b(contains?|contain|includes?|include|comprises?|comprise|consists? of|records?|shows?|lists?|carries|specif(?:y|ies)|states?)\b[^.]*:\s*$",
+        $@"\b(?:{ContainmentVerb}|specif(?:y|ies)|states?)\b[^.]*:\s*$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     /// <summary>The same verbs, mid-sentence, followed by the enumeration itself.</summary>
+    /// <remarks>
+    /// The lookahead is load-bearing. Half of these words are also common nouns — a record, a list,
+    /// a show — and the subject of the sentence is very often one of them: "An inventory RECORD
+    /// contains the quantity held", "The shopping LIST includes bread and milk". Matching the noun
+    /// swallows the real verb into the enumeration, and the class ends up with a property called
+    /// ContainsTheQuantityHeld.
+    /// <para>
+    /// What tells them apart needs no parser: a containment verb whose very next word is ANOTHER
+    /// containment verb is the subject, not the predicate. Blocking that match lets the engine move
+    /// on to the real verb — and it chains, so a noun pile ("the record list contains") resolves
+    /// correctly too.
+    /// </para>
+    /// </remarks>
     private static readonly Regex ProseEnumeration = new(
-        @"\b(?:contains?|includes?|comprises?|consists? of|records?|shows?|lists?|carries)\b\s+(?<items>[^.]+)\.",
+        $@"\b(?:{ContainmentVerb})\b(?!\s+(?:{ContainmentVerb})\b)\s+(?<items>[^.]+)\.",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     /// <summary>Leading articles and determiners: "the date of sale" is the DateOfSale property.</summary>
