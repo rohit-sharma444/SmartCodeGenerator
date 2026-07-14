@@ -193,21 +193,20 @@ internal class CodeGeneratorStarter
     }
 
     /// <summary>
-    /// Says how far behind the encyclopedia the local Wikipedia store has fallen, and stops there.
+    /// Says how far behind the encyclopedia the local Wikipedia store has fallen, and brings it
+    /// forward.
     /// </summary>
     /// <remarks>
-    /// <b>It reports; it does not update.</b> Catching the store up is measured in GIGABYTES —
-    /// Wikimedia's daily increments run to ~780 MB each, and a full dump is cut only twice a month,
-    /// so a store is routinely a fortnight behind and would owe some 10 GB. Applying that here, before
-    /// the user has typed a character, would hang an interactive prompt for hours on a network they
-    /// may not have — and it would change nothing they could see, because discovery reads the LEAD
-    /// SECTIONS of stable articles like Invoice and Point of sale, which a week of edits does not
-    /// touch.
+    /// <b>This costs gigabytes and hours, so it says so, and it can always be escaped.</b> Wikimedia's
+    /// daily increments run to ~780 MB each and a full dump is cut only twice a month, so a store is
+    /// routinely a fortnight behind and owes some 10 GB. That is why the size, the day count and the
+    /// progress of every day are on screen, and why Ctrl-C skips straight to the prompt: the days
+    /// already applied are kept, and the next start resumes at the one that was interrupted.
     /// <para>
-    /// So the freshness of the store is the user's decision to make, and this gives them what they
-    /// need to make it: how old it is, what it would cost, and the command that does it. The check
-    /// itself is one request with a two-second timeout, and it fails silently — being offline is the
-    /// NORMAL case for an app whose whole point is a local dump.
+    /// <b>Nothing here may stop the application from starting.</b> Being offline is the NORMAL case
+    /// for an app whose whole point is a local dump, so an unanswered check runs nothing, an
+    /// interrupted update is not an error, and a failed one leaves the store exactly as stale as it
+    /// already was. In every case the user gets their prompt.
     /// </para>
     /// </remarks>
     private static void ReportDumpStaleness()
@@ -216,38 +215,100 @@ internal class CodeGeneratorStarter
         if (!File.Exists(databasePath))
             return;
 
-        var staleness = new DumpFreshness().Check(new WikipediaStore(databasePath));
+        var store = new WikipediaStore(databasePath);
+        var staleness = new DumpFreshness().Check(store);
 
         if (staleness.StoreDate is not { } date)
             return;
 
         var cut = $"{date / 10000}-{date / 100 % 100:00}-{date % 100:00}";
 
-        if (staleness.IsStale)
-        {
-            Console.WriteLine(
-                $"Wikipedia store: cut {cut} — {staleness.PendingDays.Count} daily update(s) " +
-                $"published since (~{staleness.ApproximateGigabytes:F1} GB to apply).");
-            Console.WriteLine(
-                "  Not applied automatically: it is a large download and a long import, and the " +
-                "article leads discovery reads change very slowly.");
-            Console.WriteLine(
-                "  Each run refreshes the articles it actually reads. To bring the whole store " +
-                "forward:");
-            Console.WriteLine(
-                "    dotnet run --project WikipediaDumpImporter -c Release -- --update");
-        }
-        else if (staleness.IsCurrent)
+        if (staleness.IsCurrent)
         {
             Console.WriteLine($"Wikipedia store: cut {cut}, up to date.");
+            Console.WriteLine();
+            return;
         }
-        else
+
+        if (!staleness.IsStale)
         {
             // Wikimedia did not answer. Say so — never let silence pass for a clean bill of health.
             Console.WriteLine($"Wikipedia store: cut {cut} (could not check for updates).");
+            Console.WriteLine();
+            return;
+        }
+
+        Console.WriteLine(
+            $"Wikipedia store: cut {cut} — {staleness.PendingDays.Count} daily update(s) published " +
+            $"since (~{staleness.ApproximateGigabytes:F1} GB to download).");
+        Console.WriteLine("Applying them now. Press Ctrl-C to skip and go straight to the prompt —");
+        Console.WriteLine("every day that has fully landed is kept, and the next start resumes here.");
+        Console.WriteLine();
+
+        var result = ApplyPendingDays(store, databasePath, staleness);
+
+        Console.WriteLine();
+
+        switch (result.Outcome)
+        {
+            case StartupUpdateOutcome.Completed:
+                Console.WriteLine($"Wikipedia store: up to date ({result.DaysApplied} day(s) applied).");
+                break;
+
+            case StartupUpdateOutcome.Skipped:
+                Console.WriteLine(
+                    $"Update skipped. {result.DaysApplied} day(s) applied and kept; the store is at " +
+                    $"{store.GetDumpDate()}.");
+                break;
+
+            case StartupUpdateOutcome.Failed:
+                Console.WriteLine(
+                    $"Update stopped: {result.Failure} — {result.DaysApplied} day(s) applied and " +
+                    $"kept; the store is at {store.GetDumpDate()}. Discovery still works: it is only " +
+                    "as stale as it was.");
+                break;
         }
 
         Console.WriteLine();
+    }
+
+    /// <summary>
+    /// Runs the pending days, with Ctrl-C wired to CANCEL the update rather than kill the process —
+    /// the user pressing it wants their prompt, not the end of their application.
+    /// </summary>
+    private static StartupUpdateResult ApplyPendingDays(
+        WikipediaStore store, string databasePath, DumpStaleness staleness)
+    {
+        var working = Path.Combine(Path.GetDirectoryName(databasePath) ?? ".", "incr");
+        var updater = new IncrementalUpdater(store);
+
+        using var interrupt = new CancellationTokenSource();
+
+        void Skip(object? sender, ConsoleCancelEventArgs e)
+        {
+            // Without this the runtime tears the process down and the user loses the app they asked
+            // for, having merely declined a download.
+            e.Cancel = true;
+            interrupt.Cancel();
+
+            Console.WriteLine();
+            Console.WriteLine("Skipping the rest of the update...");
+        }
+
+        Console.CancelKeyPress += Skip;
+
+        try
+        {
+            return new StartupDumpUpdate().Run(
+                staleness,
+                (day, cancellation) => updater.UpdateDay(day, working, cancellation),
+                interrupt.Token);
+        }
+        finally
+        {
+            // Ctrl-C means Ctrl-C again from here on.
+            Console.CancelKeyPress -= Skip;
+        }
     }
 
     private void LoadConfiguredRules()

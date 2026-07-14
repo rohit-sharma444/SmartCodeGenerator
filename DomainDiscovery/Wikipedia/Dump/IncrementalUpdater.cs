@@ -1,6 +1,7 @@
-using DomainDiscovery.Wikipedia.Dump;
+using System.Net;
+using System.Net.Http.Headers;
 
-namespace WikipediaDumpImporter;
+namespace DomainDiscovery.Wikipedia.Dump;
 
 /// <summary>What applying one day's increment did.</summary>
 public sealed record IncrementStats(long Articles, long Redirects, long Skipped);
@@ -9,11 +10,12 @@ public sealed record IncrementStats(long Articles, long Redirects, long Skipped)
 /// Brings the store forward one day at a time, from Wikimedia's daily "adds-changes" dumps.
 /// </summary>
 /// <remarks>
-/// This is the expensive path, and it is opt-in for good reason: each day is ~780 MB, a store is
-/// routinely a fortnight behind, and the file carries every namespace and the full revision history
-/// of each changed page while this store keeps only the latest revision of article space. Most of
-/// what it downloads, it throws away. <see cref="ArticleRefresher"/> is the cheap path and is what
-/// runs by default — it refreshes the thirty articles a discovery actually reads.
+/// This is the expensive path: each day is ~780 MB, a store is routinely a fortnight behind, and the
+/// file carries every namespace and the full revision history of each changed page while this store
+/// keeps only the latest revision of article space. Most of what it downloads, it throws away. The app
+/// runs it at startup (see <see cref="StartupDumpUpdate"/>) having said what it will cost, and Ctrl-C
+/// escapes it; <see cref="ArticleRefresher"/> remains the cheap path, refreshing the thirty articles a
+/// discovery actually reads.
 /// <para>
 /// <b>A day at a time, committed as it goes.</b> The store's dump date is advanced only after a day
 /// has been fully applied, so a run killed on day nine of twelve keeps its first eight days and
@@ -48,42 +50,78 @@ public sealed class IncrementalUpdater
     /// Resumes a part-downloaded file rather than starting it again — 780 MB is too much to throw
     /// away over a dropped connection.
     /// </summary>
-    public void Download(int day, string destination)
+    public void Download(int day, string destination, CancellationToken cancellation = default)
     {
         var already = File.Exists(destination) ? new FileInfo(destination).Length : 0;
+        var response = Get(day, already);
 
-        using var request = new HttpRequestMessage(HttpMethod.Get, UrlFor(day));
-        if (already > 0)
-            request.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(already, null);
-
-        using var response = _http
-            .Send(request, HttpCompletionOption.ResponseHeadersRead);
-
-        // A server that ignores the Range header sends the whole file back with 200, and appending
-        // THAT to what we have would corrupt it. Start again instead.
-        var resuming = response.StatusCode == System.Net.HttpStatusCode.PartialContent;
-        if (already > 0 && !resuming)
-            already = 0;
-
-        response.EnsureSuccessStatusCode();
-
-        var total = (response.Content.Headers.ContentLength ?? 0) + already;
-
-        using var progress = new ConsoleProgressBar($"  download {day}", total, initial: already);
-        using var source = response.Content.ReadAsStream();
-        using var file = new FileStream(
-            destination, resuming ? FileMode.Append : FileMode.Create, FileAccess.Write);
-
-        var buffer = new byte[81920];
-        var written = already;
-
-        int read;
-        while ((read = source.Read(buffer, 0, buffer.Length)) > 0)
+        try
         {
-            file.Write(buffer, 0, read);
-            written += read;
-            progress.Report(written);
+            // The server will not serve a range starting where our file ENDS, which is precisely what
+            // a day downloaded in full and not yet applied asks it for. The refusal carries the file's
+            // real length, and that is the only thing telling the two causes apart: a file we already
+            // have whole (nothing to do), or a local file longer than the server's and so not its file
+            // at all (start again). Verified against the live server: 416, not a 206 with no body.
+            if (response.StatusCode == HttpStatusCode.RequestedRangeNotSatisfiable)
+            {
+                var length = response.Content.Headers.ContentRange?.Length;
+
+                if (length == already)
+                {
+                    _say($"  download {day}: already on disk in full.");
+                    return;
+                }
+
+                response.Dispose();
+                already = 0;
+                response = Get(day, 0);
+            }
+
+            // A server that ignores the Range header sends the whole file back with 200, and appending
+            // THAT to what we have would corrupt it. Start again instead.
+            var resuming = response.StatusCode == HttpStatusCode.PartialContent;
+            if (already > 0 && !resuming)
+                already = 0;
+
+            response.EnsureSuccessStatusCode();
+
+            var total = (response.Content.Headers.ContentLength ?? 0) + already;
+
+            using var progress = new ConsoleProgressBar($"  download {day}", total, initial: already);
+            using var source = response.Content.ReadAsStream();
+            using var file = new FileStream(
+                destination, resuming ? FileMode.Append : FileMode.Create, FileAccess.Write);
+
+            var buffer = new byte[81920];
+            var written = already;
+
+            int read;
+            while ((read = source.Read(buffer, 0, buffer.Length)) > 0)
+            {
+                // Interrupted. What is on disk stays on disk — the next run resumes from exactly
+                // here, and 780 MB is far too much to throw away because the user changed their mind.
+                cancellation.ThrowIfCancellationRequested();
+
+                file.Write(buffer, 0, read);
+                written += read;
+                progress.Report(written);
+            }
         }
+        finally
+        {
+            response.Dispose();
+        }
+    }
+
+    /// <summary>Asks for one day's file from <paramref name="from"/> bytes in.</summary>
+    private HttpResponseMessage Get(int day, long from)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, UrlFor(day));
+
+        if (from > 0)
+            request.Headers.Range = new RangeHeaderValue(from, null);
+
+        return _http.Send(request, HttpCompletionOption.ResponseHeadersRead);
     }
 
     /// <summary>
@@ -93,8 +131,14 @@ public sealed class IncrementalUpdater
     /// <remarks>
     /// The progress bar is driven by bytes of the COMPRESSED file consumed, which is the only total
     /// known in advance — the page count is not, and the decompressed size is not either.
+    /// <para>
+    /// <b>Cancellation is checked here, between pages, and never inside the stream.</b> BZip2InputStream
+    /// catches ANY exception thrown by the stream it is reading and treats it as end-of-input, so a
+    /// token checked down there would not stop the apply — it would silently END it, and the caller
+    /// would be told a partial day was a whole one.
+    /// </para>
     /// </remarks>
-    public IncrementStats Apply(string path)
+    public IncrementStats Apply(string path, CancellationToken cancellation = default)
     {
         var total = new FileInfo(path).Length;
 
@@ -109,6 +153,8 @@ public sealed class IncrementalUpdater
 
         foreach (var page in DumpPageReader.ReadBz2Stream(counted))
         {
+            cancellation.ThrowIfCancellationRequested();
+
             // Every namespace is in this file — talk pages, user pages, templates. The store holds
             // article space, so the rest is read and dropped.
             if (page.Namespace != 0)
@@ -155,29 +201,38 @@ public sealed class IncrementalUpdater
     /// Applies every increment published since the store's dump, oldest first, and moves the store's
     /// date forward as each one lands.
     /// </summary>
-    public void Update(IReadOnlyList<int> days, string workingDirectory)
+    public void Update(
+        IReadOnlyList<int> days, string workingDirectory, CancellationToken cancellation = default)
+    {
+        foreach (var day in days)
+            UpdateDay(day, workingDirectory, cancellation);
+    }
+
+    /// <summary>
+    /// Brings the store forward by exactly one day: downloads it, applies it, and only then records
+    /// it. Interrupting this costs that day and nothing more — the next run does it again from the
+    /// bytes already on disk.
+    /// </summary>
+    public void UpdateDay(int day, string workingDirectory, CancellationToken cancellation = default)
     {
         Directory.CreateDirectory(workingDirectory);
 
-        foreach (var day in days)
-        {
-            var file = Path.Combine(workingDirectory, $"enwiki-{day}-incr.xml.bz2");
+        var file = Path.Combine(workingDirectory, $"enwiki-{day}-incr.xml.bz2");
 
-            _say($"{day}:");
-            Download(day, file);
+        _say($"{day}:");
+        Download(day, file, cancellation);
 
-            var stats = Apply(file);
+        var stats = Apply(file, cancellation);
 
-            // Only now. A day half-applied must be applied again, not skipped.
-            _store.SetDumpDate(day);
+        // Only now. A day half-applied must be applied again, not skipped.
+        _store.SetDumpDate(day);
 
-            _say($"  applied {stats.Articles:N0} articles, {stats.Redirects:N0} redirects " +
-                 $"({stats.Skipped:N0} pages skipped). Store now at {day}.");
+        _say($"  applied {stats.Articles:N0} articles, {stats.Redirects:N0} redirects " +
+             $"({stats.Skipped:N0} pages skipped). Store now at {day}.");
 
-            // 780 MB apiece; keeping twelve of them around would cost 9 GB for nothing.
-            try { File.Delete(file); }
-            catch (IOException) { /* it is a temp file; leaving it behind is not a failure */ }
-        }
+        // 780 MB apiece; keeping twelve of them around would cost 9 GB for nothing.
+        try { File.Delete(file); }
+        catch (IOException) { /* it is a temp file; leaving it behind is not a failure */ }
     }
 
     private void Flush(List<ArticleRow> articles, List<(string From, string To)> redirects)

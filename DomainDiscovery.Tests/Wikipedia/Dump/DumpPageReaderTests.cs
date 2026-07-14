@@ -1,4 +1,4 @@
-using WikipediaDumpImporter;
+using DomainDiscovery.Wikipedia.Dump;
 using Xunit;
 
 namespace DomainDiscovery.Tests.Wikipedia.Dump;

@@ -37,14 +37,15 @@ public sealed record DumpStaleness(int? StoreDate, IReadOnlyList<int> PendingDay
 /// Asks Wikimedia which daily increments have been published since the store's dump was cut.
 /// </summary>
 /// <remarks>
-/// <b>This checks. It does not download, and it must never be made to.</b> Catching a store up is
-/// measured in gigabytes — ~780 MB per day, and a full dump is only cut twice a month, so a store is
-/// routinely a fortnight behind and would owe ~10 GB. Doing that from an interactive prompt, before
-/// the user has typed anything, would hang the app for hours on a network they may not even have.
+/// <b>This checks; it does not download.</b> Applying what it finds is <see cref="IncrementalUpdater"/>'s
+/// job, and costing it is <see cref="DumpStaleness.ApproximateGigabytes"/>'s — a store is routinely a
+/// fortnight behind and owes ~10 GB at ~780 MB a day, which is why the app shows that figure before it
+/// starts spending it, and why Ctrl-C escapes it.
 /// <para>
 /// The read is deliberately feeble: one request, a short timeout, and every failure swallowed. Being
 /// unable to reach Wikimedia is the NORMAL case for this app — the whole point of the dump is that
-/// discovery runs offline — so a failed check must be silent and must never delay startup.
+/// discovery runs offline — so a failed check must be silent and must never delay startup. It reports
+/// that it failed rather than reporting nothing to do: see <see cref="DumpStaleness.Answered"/>.
 /// </para>
 /// </remarks>
 public sealed class DumpFreshness
