@@ -226,6 +226,52 @@ public class DomainDiscoveryPipelineTests
         Assert.All(result.Model.Entities, e => Assert.Empty(e.Relationships));
     }
 
+    /// <summary>
+    /// A domain is not one article. "track customers, payments and invoices" names three, and the
+    /// pipeline used to read only whichever one won the vote — the other two were found, ranked, and
+    /// then thrown away.
+    /// </summary>
+    [Fact]
+    public void Discover_ReadsEveryArticleTheTopicNames_NotOnlyTheWinner()
+    {
+        var analysis = new SemanticResult();
+        analysis.Entities.Add(Ent("invoice", EntityType.Object));
+        analysis.Entities.Add(Ent("payment", EntityType.Object));
+
+        var client = new FakeWikipediaClient();
+        foreach (var name in new[] { "Invoice", "Payment" })
+        {
+            client.HitsByTerm[name] = new()
+            {
+                new SearchHit(name, "https://en.wikipedia.org/wiki/" + name, 0),
+            };
+        }
+
+        // Invoice wins the tie (it names Payment); Payment supports it. Each article contributes a
+        // class the other cannot: only the Payment article knows what a Payee is.
+        client.Extracts["Invoice"] = "An invoice requests payment. An invoice names the seller.";
+        client.Links["Invoice"] = new List<string> { "Seller" };
+        client.Extracts["Payment"] = "A payment is made to a payee. The payee banks the payment.";
+        client.Links["Payment"] = new List<string> { "Payee" };
+
+        var pipeline = new DomainDiscoveryPipeline(
+            new StubAnalyzer(analysis),
+            new SeedEntityExtractor(),
+            new WikipediaTopicRecognizer(client),
+            new DomainEnricher(client, new StubAnalyzer(analysis), new EntityHarvester()),
+            new EntityShaper(client),
+            client);
+
+        var result = pipeline.Discover("track invoices and payments");
+
+        Assert.Equal("Invoice", result.Topic.Title);
+        Assert.Contains("Payment", result.Topic.SupportingTitles);
+
+        // Read out of the SUPPORTING article, which the old pipeline never opened.
+        var everything = result.Model.Entities.Concat(result.Model.Suggestions).Select(e => e.Name);
+        Assert.Contains("Payee", everything);
+    }
+
     [Fact]
     public void CreateDefault_falls_back_to_the_http_client_when_no_dump_store_exists()
     {

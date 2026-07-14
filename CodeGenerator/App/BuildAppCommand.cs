@@ -33,8 +33,15 @@ internal sealed class BuildAppCommand
         DiscoveryResult result = pipeline.Discover(description);
 
         if (result.Topic.IsRecognized)
+        {
             Console.WriteLine($"Recognized topic: {result.Topic.Title} " +
                               $"(confidence {result.Topic.Confidence:P0}) — {result.Topic.ArticleUrl}");
+
+            // Where the rest of the classes came from. Without this a Borrower appearing in a
+            // library model looks like a guess, when it was read out of an article by name.
+            if (result.Topic.SupportingTitles.Count > 0)
+                Console.WriteLine("Also read: " + string.Join(", ", result.Topic.SupportingTitles));
+        }
         else
             Console.WriteLine("No topic recognized online — showing seed entities only. " +
                               "You can add entities by hand below.");
