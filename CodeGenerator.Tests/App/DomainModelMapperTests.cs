@@ -265,6 +265,6 @@ public class DomainModelMapperNavigationTests
         plain.Fields.Add(new CandidateField { Name = "Text", Type = "string" });
         model.Entities.Add(plain);
 
-        Assert.AreEqual(0, DomainModelMapper.ToClassDefinitions(model).Single().Usings.Count);
+        Assert.IsEmpty(DomainModelMapper.ToClassDefinitions(model).Single().Usings);
     }
 }

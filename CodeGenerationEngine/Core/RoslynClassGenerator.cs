@@ -74,6 +74,46 @@ public static class RoslynClassGenerator
         return true;
     }
 
+    /// <summary>
+    /// The types that are never null and so need no initializer. Anything not here, and not already
+    /// nullable, is a reference type the compiler will warn about (CS8618) unless it is given one.
+    /// </summary>
+    private static readonly HashSet<string> ValueTypes = new(StringComparer.Ordinal)
+    {
+        "bool", "byte", "sbyte", "char", "short", "ushort", "int", "uint", "long", "ulong",
+        "float", "double", "decimal", "DateTime", "DateTimeOffset", "TimeSpan", "Guid",
+    };
+
+    /// <summary>
+    /// What a non-nullable reference property must be initialized to, or null when the property
+    /// needs no initializer at all.
+    /// </summary>
+    /// <remarks>
+    /// Without this the generated app compiled with a CS8618 warning for EVERY string it declared —
+    /// 106 of them on the point-of-sale model. A scaffold that greets its user with a screenful of
+    /// warnings is a scaffold they distrust, and the fix is the one the compiler is asking for.
+    /// <para>
+    /// A string gets an empty string, which is what an unset text field means. An entity reference
+    /// is a NAVIGATION property, resolved later from the store by RelationshipResolver and legitimately
+    /// absent until then; there is nothing to construct it as, so it takes <c>null!</c> — the same
+    /// idiom EF Core's own scaffolder emits, and for the same reason.
+    /// </para>
+    /// </remarks>
+    private static ExpressionSyntax? InitializerFor(string type)
+    {
+        if (type.EndsWith('?') || ValueTypes.Contains(type))
+            return null;
+
+        return type == "string"
+            ? MemberAccessExpression(
+                SyntaxKind.SimpleMemberAccessExpression,
+                PredefinedType(Token(SyntaxKind.StringKeyword)),
+                IdentifierName("Empty"))
+            : PostfixUnaryExpression(
+                SyntaxKind.SuppressNullableWarningExpression,
+                LiteralExpression(SyntaxKind.NullLiteralExpression));
+    }
+
     private static PropertyDeclarationSyntax CreateProperty(PropertyDefinition property)
     {
         var propertyDeclaration =
@@ -86,6 +126,13 @@ public static class RoslynClassGenerator
                         .WithSemicolonToken(Token(SyntaxKind.SemicolonToken)),
                     AccessorDeclaration(SyntaxKind.SetAccessorDeclaration)
                         .WithSemicolonToken(Token(SyntaxKind.SemicolonToken)));
+
+        if (InitializerFor(property.Type) is { } initializer)
+        {
+            propertyDeclaration = propertyDeclaration
+                .WithInitializer(EqualsValueClause(initializer))
+                .WithSemicolonToken(Token(SyntaxKind.SemicolonToken));
+        }
 
         var attributes = new List<AttributeSyntax>();
 
