@@ -283,6 +283,37 @@ public class EntityShaperTests
         Assert.Contains("DeliveryDate", names);
     }
 
+    /// <summary>
+    /// The real "Merchant has a CalmlyConsidered property" failure, in miniature. An article states
+    /// what a thing IS in its lead and then spends thousands of words on its history, its examples
+    /// and its regional variants — all of which enumerate nouns, none of which are properties.
+    /// </summary>
+    [Fact]
+    public void Mines_only_the_lead_of_the_article_not_its_history_or_examples()
+    {
+        var client = new FakeWikipediaClient();
+        client.Extracts["Inventory"] = string.Join('\n',
+            "An inventory contains the quantity held and the unit cost.",
+            "Examples",
+            "A cannery's raw materials inventory includes empty cans, their lids and coils of steel.");
+
+        var model = new CandidateDomainModel();
+        model.Entities.Add(new CandidateEntity { Name = "Inventory", Provenance = Provenance.Wiki });
+
+        new EntityShaper(client).Shape(model);
+
+        var names = model.Entities.Single(e => e.Name == "Inventory").Fields.Select(f => f.Name).ToList();
+
+        Assert.Contains("QuantityHeld", names);
+        Assert.Contains("UnitCost", names);
+
+        // Real phrases, correctly parsed, and not properties of anything — they are what a cannery
+        // happens to stock.
+        Assert.DoesNotContain("EmptyCans", names);
+        Assert.DoesNotContain("Lids", names);
+        Assert.DoesNotContain("CoilsOfSteel", names);
+    }
+
     [Fact]
     public void An_entity_whose_article_says_nothing_keeps_the_shape_it_already_had()
     {

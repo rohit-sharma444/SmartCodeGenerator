@@ -155,6 +155,26 @@ public class PropertyMinerTests
             PropertyMiner.Mine(article, "Order"), f => f.Name == "AgreedPricesForProducts");
     }
 
+    [Fact]
+    public void Keeps_a_hyphenated_word_whole()
+    {
+        // The Invoice article's lead says "agreed-upon prices", and the gloss stripper used to cut
+        // at the hyphen and leave a field called "Agreed".
+        var article = "An invoice contains agreed-upon prices.";
+
+        Assert.Contains(
+            PropertyMiner.Mine(article, "Invoice"), f => f.Name == "AgreedUponPrices");
+    }
+
+    [Fact]
+    public void Still_strips_a_gloss_that_a_dash_sets_off()
+    {
+        // A dash with space around it introduces an aside; a hyphen inside a word does not.
+        var article = "An invoice contains:\n* date of issue - the day the invoice was raised";
+
+        Assert.Contains(PropertyMiner.Mine(article, "Invoice"), f => f.Name == "DateOfIssue");
+    }
+
     // The no-op contract: an article with nothing to say must leave the class exactly as
     // EntityShaper already shaped it, never worse.
     [Fact]

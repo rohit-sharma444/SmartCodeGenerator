@@ -61,8 +61,17 @@ public static class PropertyMiner
     private static readonly Regex LeadingDeterminer = new(
         @"^\s*(?:a|an|the|its|their|each|every|any)\s+", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-    /// <summary>Anything parenthetical or after a dash is a gloss, not part of the name.</summary>
-    private static readonly Regex Gloss = new(@"\s*[\(–—\-—:,;].*$", RegexOptions.Compiled);
+    /// <summary>
+    /// Anything parenthetical, or after a dash, is a gloss rather than part of the name.
+    /// </summary>
+    /// <remarks>
+    /// A gloss dash is SET OFF by whitespace ("date of issue - the day it was raised"). A plain
+    /// hyphen with no space around it is inside a word and belongs to the name: the Invoice
+    /// article's lead says "agreed-upon prices", and cutting at that hyphen left the class with a
+    /// field called "Agreed".
+    /// </remarks>
+    private static readonly Regex Gloss = new(
+        @"(?:\s*[(–—:,;]|\s+-\s+).*$", RegexOptions.Compiled);
 
     /// <summary>
     /// Words that cannot open a property name, because a property is a NOUN PHRASE and these open
