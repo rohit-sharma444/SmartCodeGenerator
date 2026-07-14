@@ -17,6 +17,13 @@ public static class DomainModelMapper
     /// </summary>
     private static readonly HashSet<string> ReservedNames = new(StringComparer.OrdinalIgnoreCase)
     {
+        // The generated app's OWN namespace segments -- <App>.Data, <App>.Models, and so on. A
+        // class may not share a name with a namespace that is in scope where it is used: MainViewModel
+        // opens with `using <App>.Data;`, so a model class called Data makes the simple name mean the
+        // namespace and the app does not compile (CS0118). Discovering "point of sale" yields exactly
+        // that class, so this is a name the real pipeline really does produce, not a hypothetical.
+        "Data", "Models", "ViewModels", "Views",
+
         // Types the generated app declares or references by simple name.
         "App", "Application", "MainWindow", "Window", "MainViewModel", "EntityViewModel",
         "IEntityViewModel", "ObservableObject", "RelayCommand", "ICommand", "JsonStore",

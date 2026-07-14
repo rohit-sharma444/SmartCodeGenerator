@@ -46,6 +46,21 @@ public class DomainModelMapperTests
     }
 
     [TestMethod]
+    public void ToClassDefinitions_RenamesEntitiesThatCollideWithTheGeneratedNamespaces()
+    {
+        // Discovering "point of sale" really does yield a class called Data, and the generated app
+        // really did fail to compile on it: MainViewModel opens with `using <App>.Data;`, so the
+        // simple name Data means the NAMESPACE there, and CS0118 says so -- 'Data' is a namespace
+        // but is used like a type.
+        var classes = DomainModelMapper.ToClassDefinitions(
+            ModelOf("Data", "Models", "ViewModels", "Views"));
+
+        CollectionAssert.AreEqual(
+            new[] { "DataItem", "ModelsItem", "ViewModelsItem", "ViewsItem" },
+            classes.Select(c => c.Name).ToList());
+    }
+
+    [TestMethod]
     public void ToClassDefinitions_LeavesOrdinaryNamesAlone()
     {
         var classes = DomainModelMapper.ToClassDefinitions(ModelOf("Employee", "Payroll", "Deduction"));

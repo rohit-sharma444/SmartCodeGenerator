@@ -111,4 +111,87 @@ public class WikipediaTopicRecognizerTests
         Assert.False(topic.IsRecognized);
         Assert.Empty(client.SearchedTerms);
     }
+
+    [Fact]
+    public void Recognize_SearchesWordSequencesFromTheDescription_NotOnlySingleSeedWords()
+    {
+        var client = new FakeWikipediaClient();
+
+        new WikipediaTopicRecognizer(client)
+            .Recognize(new[] { "Point", "Sale" }, "a point of sale system for a retail shop");
+
+        Assert.Contains("point of sale", client.SearchedTerms);
+    }
+
+    [Fact]
+    public void Recognize_SkipsWordSequencesThatOpenOrCloseOnAFunctionWord()
+    {
+        var client = new FakeWikipediaClient();
+
+        new WikipediaTopicRecognizer(client)
+            .Recognize(new[] { "Point" }, "a point of sale system");
+
+        // "of sale" and "a point" are fragments of the phrase, not names of anything.
+        Assert.DoesNotContain("of sale", client.SearchedTerms);
+        Assert.DoesNotContain("a point", client.SearchedTerms);
+    }
+
+    /// <summary>
+    /// The real "point of sale" failure, in miniature: on the full encyclopedia the seed word
+    /// "point" resolves exactly to "Point", a disambiguation page, which outscored the article the
+    /// user actually meant. The phrase names it outright.
+    /// </summary>
+    [Fact]
+    public void Recognize_PrefersTheArticleThePhraseNames_OverTheSingleWordsExactHit()
+    {
+        var client = new FakeWikipediaClient();
+        client.HitsByTerm["Point"] = new()
+        {
+            new SearchHit("Point", "https://en.wikipedia.org/wiki/Point", 0),
+            new SearchHit("Point of sale", "https://en.wikipedia.org/wiki/Point_of_sale", 2),
+        };
+        client.HitsByTerm["point of sale"] = new()
+        {
+            new SearchHit("Point of sale", "https://en.wikipedia.org/wiki/Point_of_sale", 0),
+        };
+
+        var topic = new WikipediaTopicRecognizer(client)
+            .Recognize(new[] { "Point", "Sale" }, "a point of sale system for a retail shop");
+
+        Assert.Equal("Point of sale", topic.Title);
+    }
+
+    [Fact]
+    public void Recognize_RefusesADisambiguationPage_EvenWhenItIsTheOnlyTopRankedHit()
+    {
+        var client = new FakeWikipediaClient();
+        client.HitsByTerm["Point"] = new()
+        {
+            new SearchHit("Point", "https://en.wikipedia.org/wiki/Point", 0),
+        };
+        // Exactly what the store holds for it.
+        client.Leads["Point"] = "Point or points may refer to:";
+
+        var topic = new WikipediaTopicRecognizer(client).Recognize(new[] { "Point" });
+
+        // A page that only lists other pages is never a domain, so recognizing nothing is the
+        // honest answer -- the pipeline falls back to the seed-only model.
+        Assert.False(topic.IsRecognized);
+    }
+
+    [Fact]
+    public void Recognize_KeepsAnArticleWhoseLeadMerelyMentionsWhatItRefersTo()
+    {
+        var client = new FakeWikipediaClient();
+        client.HitsByTerm["Sale"] = new()
+        {
+            new SearchHit("Point of sale", "https://en.wikipedia.org/wiki/Point_of_sale", 0),
+        };
+        client.Leads["Point of sale"] =
+            "The point of sale (POS) is the time and place at which a retail transaction is completed.";
+
+        var topic = new WikipediaTopicRecognizer(client).Recognize(new[] { "Sale" });
+
+        Assert.Equal("Point of sale", topic.Title);
+    }
 }

@@ -12,8 +12,10 @@ namespace DomainDiscovery.Tests.Recognition;
 /// <summary>
 /// Recognizer driven through the real <see cref="HttpWikipediaClient"/> against a
 /// handler that emulates MediaWiki's <c>opensearch</c> semantics: it matches article
-/// <em>titles</em> by prefix. A joined phrase such as "Payroll Application" is not a
-/// title, so it matches nothing — which is why each seed term must be searched alone.
+/// <em>titles</em> by prefix. A phrase built by joining the SEED TERMS — "Payroll
+/// Application" — is not a title, so it matches nothing, and the seed terms are still
+/// searched one at a time. (The word sequences of the user's own description are a
+/// different thing and are searched; see <see cref="WikipediaTopicRecognizer"/>.)
 /// </summary>
 public class TopicRecognitionOverOpenSearchTests
 {
@@ -22,14 +24,35 @@ public class TopicRecognitionOverOpenSearchTests
         "Payroll", "Payroll tax", "Application software", "Application",
     };
 
+    /// <summary>
+    /// Emulates the two endpoints the recognizer now uses. <c>opensearch</c> matches titles by
+    /// prefix and answers with an ARRAY; the lead lookup (<c>action=query&amp;prop=extracts</c>)
+    /// answers with an OBJECT. Serving an array to both is what the earlier fixture did, and it hid
+    /// a real never-throw violation in the client rather than exercising it.
+    /// </summary>
     private sealed class OpenSearchHandler : HttpMessageHandler
     {
+        /// <summary>Only the opensearch terms — the lead lookups are not searches.</summary>
         public List<string> Queries { get; } = new();
 
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken)
         {
-            var raw = Regex.Match(request.RequestUri!.Query, @"search=([^&]*)").Groups[1].Value;
+            var query = request.RequestUri!.Query;
+
+            var json = query.Contains("action=opensearch", StringComparison.OrdinalIgnoreCase)
+                ? OpenSearch(query)
+                : Leads();
+
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json"),
+            });
+        }
+
+        private string OpenSearch(string query)
+        {
+            var raw = Regex.Match(query, @"search=([^&]*)").Groups[1].Value;
             var search = Uri.UnescapeDataString(raw);
             Queries.Add(search);
 
@@ -38,13 +61,21 @@ public class TopicRecognitionOverOpenSearchTests
                 .ToArray();
             var urls = titles.Select(t => "https://en.wikipedia.org/wiki/" + t.Replace(' ', '_')).ToArray();
 
-            var json = JsonSerializer.Serialize(
+            return JsonSerializer.Serialize(
                 new object[] { search, titles, titles.Select(_ => string.Empty).ToArray(), urls },
                 new JsonSerializerOptions { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping });
+        }
 
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+        /// <summary>No article here is a disambiguation page, so every lead is an ordinary one.</summary>
+        private static string Leads()
+        {
+            var pages = KnownTitles.Select((title, i) => new KeyValuePair<string, object>(
+                (i + 1).ToString(),
+                new { title, extract = $"{title} is a thing." }));
+
+            return JsonSerializer.Serialize(new
             {
-                Content = new StringContent(json, Encoding.UTF8, "application/json"),
+                query = new { pages = new Dictionary<string, object>(pages) }
             });
         }
     }

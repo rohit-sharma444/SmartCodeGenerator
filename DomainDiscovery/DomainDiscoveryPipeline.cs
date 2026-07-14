@@ -59,8 +59,10 @@ public sealed class DomainDiscoveryPipeline
         var seed = _seedExtractor.Extract(analysis);
 
         // Recognition searches on the seed names, so shaping — which decides what is a domain
-        // class at all — has to wait until the article has been chosen.
-        var topic = _recognizer.Recognize(seed.Entities.Select(e => e.Name));
+        // class at all — has to wait until the article has been chosen. It gets the user's own
+        // text as well: the domain is named by a sequence of those words ("point of sale"), and no
+        // single seed name carries it.
+        var topic = _recognizer.Recognize(seed.Entities.Select(e => e.Name), freeText);
         if (!topic.IsRecognized)
         {
             // No article was found, so there is nothing to mine relationships from — leave
