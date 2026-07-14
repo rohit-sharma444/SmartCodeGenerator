@@ -56,4 +56,32 @@ public class DumpPageReaderTests
     {
         Assert.Equal(1, ReadFixture().Single(p => p.Title == "Talk:Invoice").Namespace);
     }
+
+    /// <summary>
+    /// The reader must not depend on the dump being pretty-printed. ReadElementContentAsString
+    /// already advances past the element it reads, so an outer Read() on top of it stepped over
+    /// whatever came next — harmless on Wikimedia's files, where that was only ever the whitespace
+    /// between tags, and silently destructive on a compact one: every &lt;ns&gt; was skipped, every
+    /// page defaulted to namespace 0, and TALK PAGES WOULD HAVE BEEN IMPORTED AS ARTICLES.
+    /// </summary>
+    [Fact]
+    public void Reads_a_dump_with_no_whitespace_between_its_elements()
+    {
+        var xml =
+            "<mediawiki>" +
+            "<page><title>Talk:Invoice</title><ns>1</ns><id>2</id>" +
+            "<revision><id>9</id><text xml:space=\"preserve\">Chatter.</text></revision></page>" +
+            "<page><title>Invoice</title><ns>0</ns><id>1</id>" +
+            "<revision><id>8</id><text xml:space=\"preserve\">An invoice.</text></revision></page>" +
+            "</mediawiki>";
+
+        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(xml));
+        var pages = DumpPageReader.ReadXml(stream).ToList();
+
+        Assert.Equal(2, pages.Count);
+        Assert.Equal(1, pages.Single(p => p.Title == "Talk:Invoice").Namespace);
+        Assert.Equal(0, pages.Single(p => p.Title == "Invoice").Namespace);
+        Assert.Equal(1, pages.Single(p => p.Title == "Invoice").Id);
+        Assert.Equal("An invoice.", pages.Single(p => p.Title == "Invoice").Wikitext);
+    }
 }

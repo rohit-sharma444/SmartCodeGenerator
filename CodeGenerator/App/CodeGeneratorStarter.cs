@@ -231,6 +231,11 @@ internal class CodeGeneratorStarter
             Console.WriteLine(
                 "  Not applied automatically: it is a large download and a long import, and the " +
                 "article leads discovery reads change very slowly.");
+            Console.WriteLine(
+                "  Each run refreshes the articles it actually reads. To bring the whole store " +
+                "forward:");
+            Console.WriteLine(
+                "    dotnet run --project WikipediaDumpImporter -c Release -- --update");
         }
         else if (staleness.IsCurrent)
         {
