@@ -6,6 +6,26 @@ using WikipediaDumpImporter;
 // The import builds the index at the end, so a run that is KILLED leaves an unindexed store, in
 // which every read is a full table scan. This recovers it without decoding 25 GB of bz2 again.
 var indexOnly = args.Contains("--index-only", StringComparer.OrdinalIgnoreCase);
+
+// The date the DUMP RUN started, as yyyyMMdd — not the day it was downloaded, and not the day the
+// import finished. Without it the store cannot say how old it is, and nothing can tell whether an
+// increment has already been applied to it. Err EARLY: a full dump is generated over several days,
+// so its content is older than its filename, and re-applying an increment the store already contains
+// merely overwrites a page with itself, while skipping one loses an edit for good.
+var dumpDate = args
+    .FirstOrDefault(a => a.StartsWith("--dump-date=", StringComparison.OrdinalIgnoreCase))
+    ?.Split('=', 2)[1];
+
+// Records the date against a store that already exists, and stops. This is how a store imported
+// before the date was recorded is told how old it is, without re-reading 25 GB to learn it.
+var setDateOnly = args.Any(a => a.StartsWith("--set-dump-date=", StringComparison.OrdinalIgnoreCase));
+if (setDateOnly)
+{
+    dumpDate = args
+        .First(a => a.StartsWith("--set-dump-date=", StringComparison.OrdinalIgnoreCase))
+        .Split('=', 2)[1];
+}
+
 var positional = args.Where(a => !a.StartsWith("--", StringComparison.Ordinal)).ToArray();
 
 var dumpPath = positional.Length > 0
@@ -15,6 +35,25 @@ var dumpPath = positional.Length > 0
 var databasePath = positional.Length > 1
     ? positional[1]
     : DomainDiscoveryPipeline.DefaultDumpDatabasePath;
+
+if (dumpDate is not null)
+{
+    if (!int.TryParse(dumpDate, out var recorded) || recorded is < 20010101 or > 21001231)
+    {
+        Console.Error.WriteLine($"Not a dump date (expected yyyyMMdd): {dumpDate}");
+        return 1;
+    }
+
+    var dated = new WikipediaStore(databasePath);
+    dated.CreateSchema();
+    dated.SetDumpDate(recorded);
+
+    Console.WriteLine($"Store: {databasePath}");
+    Console.WriteLine($"Dump date recorded: {recorded}.");
+
+    if (setDateOnly)
+        return 0;
+}
 
 if (indexOnly)
 {

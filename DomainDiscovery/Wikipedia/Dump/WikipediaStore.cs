@@ -299,6 +299,36 @@ public sealed class WikipediaStore
         return titles;
     }
 
+    /// <summary>
+    /// The date of the dump this store was built from, as yyyyMMdd, or null when the store predates
+    /// this being recorded and cannot say.
+    /// </summary>
+    /// <remarks>
+    /// It is the DUMP's date, not the import's: an import that takes eleven hours is no fresher at
+    /// the end than the file it read. And it should be the date the dump run STARTED, not the date
+    /// the file was published — a full dump is generated over several days, so its content is older
+    /// than its timestamp. Erring early is free: a daily increment re-applied over content it
+    /// already contains overwrites a page with itself, while one that is skipped loses an edit for
+    /// good.
+    /// </remarks>
+    public int? GetDumpDate()
+    {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT value FROM import_state WHERE key = 'dump_date'";
+        return command.ExecuteScalar() is long value ? (int)value : null;
+    }
+
+    public void SetDumpDate(int yyyyMMdd)
+    {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            "INSERT OR REPLACE INTO import_state (key, value) VALUES ('dump_date', $date)";
+        command.Parameters.AddWithValue("$date", yyyyMMdd);
+        command.ExecuteNonQuery();
+    }
+
     public void SetLastPageId(long id)
     {
         using var connection = Open();

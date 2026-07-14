@@ -1,6 +1,8 @@
 using CodeGenerationEngine.Core;
 using CodeGenerationEngine.Helper;
 using CodeGenerationEngine.Models;
+using DomainDiscovery;
+using DomainDiscovery.Wikipedia.Dump;
 using NaturalLanguageBridge;
 using System.Text.Json;
 
@@ -185,6 +187,61 @@ internal class CodeGeneratorStarter
         Console.WriteLine("Press TAB for command suggestions.");
         Console.WriteLine("Type 'batch' to enter several commands and review them before they run.");
         Console.WriteLine("Type 'exit' to quit the application.");
+        Console.WriteLine();
+
+        ReportDumpStaleness();
+    }
+
+    /// <summary>
+    /// Says how far behind the encyclopedia the local Wikipedia store has fallen, and stops there.
+    /// </summary>
+    /// <remarks>
+    /// <b>It reports; it does not update.</b> Catching the store up is measured in GIGABYTES —
+    /// Wikimedia's daily increments run to ~780 MB each, and a full dump is cut only twice a month,
+    /// so a store is routinely a fortnight behind and would owe some 10 GB. Applying that here, before
+    /// the user has typed a character, would hang an interactive prompt for hours on a network they
+    /// may not have — and it would change nothing they could see, because discovery reads the LEAD
+    /// SECTIONS of stable articles like Invoice and Point of sale, which a week of edits does not
+    /// touch.
+    /// <para>
+    /// So the freshness of the store is the user's decision to make, and this gives them what they
+    /// need to make it: how old it is, what it would cost, and the command that does it. The check
+    /// itself is one request with a two-second timeout, and it fails silently — being offline is the
+    /// NORMAL case for an app whose whole point is a local dump.
+    /// </para>
+    /// </remarks>
+    private static void ReportDumpStaleness()
+    {
+        var databasePath = DomainDiscoveryPipeline.DefaultDumpDatabasePath;
+        if (!File.Exists(databasePath))
+            return;
+
+        var staleness = new DumpFreshness().Check(new WikipediaStore(databasePath));
+
+        if (staleness.StoreDate is not { } date)
+            return;
+
+        var cut = $"{date / 10000}-{date / 100 % 100:00}-{date % 100:00}";
+
+        if (staleness.IsStale)
+        {
+            Console.WriteLine(
+                $"Wikipedia store: cut {cut} — {staleness.PendingDays.Count} daily update(s) " +
+                $"published since (~{staleness.ApproximateGigabytes:F1} GB to apply).");
+            Console.WriteLine(
+                "  Not applied automatically: it is a large download and a long import, and the " +
+                "article leads discovery reads change very slowly.");
+        }
+        else if (staleness.IsCurrent)
+        {
+            Console.WriteLine($"Wikipedia store: cut {cut}, up to date.");
+        }
+        else
+        {
+            // Wikimedia did not answer. Say so — never let silence pass for a clean bill of health.
+            Console.WriteLine($"Wikipedia store: cut {cut} (could not check for updates).");
+        }
+
         Console.WriteLine();
     }
 
