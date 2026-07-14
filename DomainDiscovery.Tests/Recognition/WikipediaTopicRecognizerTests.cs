@@ -186,6 +186,57 @@ public class WikipediaTopicRecognizerTests
     /// single class called Structure. EntityShaper already refuses System as a CLASS; a thing that
     /// cannot be a class certainly cannot be the domain.
     /// </summary>
+    /// <summary>
+    /// A tie is the normal case, not an edge case: each seed word resolves exactly to its own
+    /// article, so each scores 1.0 and nothing agrees with anything. The winner used to be whichever
+    /// word the user typed first. Now the encyclopedia settles it — of the things you named, the
+    /// domain is the one whose article talks about the others.
+    /// </summary>
+    [Fact]
+    public void Recognize_BreaksATie_ByWhichArticleTalksAboutTheOthers()
+    {
+        var client = new FakeWikipediaClient();
+        foreach (var name in new[] { "Customer", "Payment", "Invoice" })
+        {
+            client.HitsByTerm[name] = new()
+            {
+                new SearchHit(name, "https://en.wikipedia.org/wiki/" + name, 0),
+            };
+        }
+
+        // Every term scores its own article 1.0, so all three tie. Only Invoice discusses the rest.
+        client.Extracts["Invoice"] = "An invoice requests payment from the customer for goods sold.";
+        client.Extracts["Payment"] = "A payment is a transfer of money.";
+        client.Extracts["Customer"] = "A customer receives goods.";
+
+        // Customer is searched FIRST, so the old rule would have crowned it.
+        var topic = new WikipediaTopicRecognizer(client)
+            .Recognize(new[] { "Customer", "Payment", "Invoice" });
+
+        Assert.Equal("Invoice", topic.Title);
+    }
+
+    [Fact]
+    public void Recognize_LeavesAClearWinnerAlone_WithoutReadingAnyArticle()
+    {
+        var client = new FakeWikipediaClient();
+        client.HitsByTerm["Ledger"] = new()
+        {
+            new SearchHit("Accounting", "https://en.wikipedia.org/wiki/Accounting", 0),
+        };
+        client.HitsByTerm["Invoice"] = new()
+        {
+            new SearchHit("Accounting", "https://en.wikipedia.org/wiki/Accounting", 0),
+        };
+
+        var topic = new WikipediaTopicRecognizer(client).Recognize(new[] { "Ledger", "Invoice" });
+
+        Assert.Equal("Accounting", topic.Title);
+
+        // No tie, so no article needs reading — the tie-break must not cost a fetch it does not need.
+        Assert.Empty(client.FetchExtractCalls);
+    }
+
     [Fact]
     public void Recognize_RefusesATopicWhoseOwnDefinitionIsAnAbstraction()
     {

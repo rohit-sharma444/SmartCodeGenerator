@@ -42,6 +42,9 @@ public sealed class WikipediaTopicRecognizer : ITopicRecognizer
     /// <summary>Longest word sequence worth searching. Beyond this, titles stop existing.</summary>
     private const int MaxPhraseWords = 4;
 
+    /// <summary>Scores are sums of 1/(1+rank), so "the same score" is a tolerance, not equality.</summary>
+    private const double ScoreTolerance = 1e-9;
+
     /// <summary>
     /// Words that carry no domain on their own. A sequence opening or closing on one of them is a
     /// fragment ("of sale", "a point"), never the name of anything, so it is not searched.
@@ -114,9 +117,7 @@ public sealed class WikipediaTopicRecognizer : ITopicRecognizer
         if (candidates.Count == 0)
             return TopicResult.None;
 
-        // MaxBy keeps the first element on a tie, so an all-square vote falls back to the hit found
-        // by the earliest term — the longest word sequence, or failing that the head noun.
-        var best = candidates.MaxBy(c => c.Score)!;
+        var best = SelectBest(candidates);
 
         // Still measured against the seed words, so the number keeps the meaning it had: how much
         // of what the user named agrees on this article. A phrase can carry the score past that on
@@ -124,6 +125,65 @@ public sealed class WikipediaTopicRecognizer : ITopicRecognizer
         var confidence = Math.Min(1.0, best.Score / Math.Max(1, seeds.Count));
 
         return new TopicResult(best.Title, best.Url, confidence);
+    }
+
+    /// <summary>
+    /// The winning candidate: highest score, and where several score alike, the one whose article
+    /// talks about the others.
+    /// </summary>
+    /// <remarks>
+    /// A tie is the normal case, not an edge case, and it used to be settled by accident. Each seed
+    /// word usually resolves EXACTLY to its own article, so each scores 1.0 and nothing agrees with
+    /// anything; <c>MaxBy</c> keeps the first element, so the winner was whichever word the user
+    /// happened to type first. "a system to manage appointment schedules for a clinic" produced a
+    /// four-way tie between System, Appointment, Schedule and Clinic, and System won for being
+    /// first.
+    /// <para>
+    /// What settles it honestly is the encyclopedia: of the things you named, the domain is the one
+    /// its own article talks about the others in. Measured against the store, that picks Invoice out
+    /// of {Invoice, Payment, Customer}, Library out of {Library, Book, Member} and Payroll out of
+    /// {Payroll, Employee, Salary} — each of them naming both of its rivals, while the rivals name
+    /// fewer. It is the same "agreement outweighs rank" rule the score already follows, asked of the
+    /// articles instead of the search hits.
+    /// </para>
+    /// <para>
+    /// The bodies are fetched only when there IS a tie, and only for the tied candidates. Against the
+    /// dump that is a handful of local seeks.
+    /// </para>
+    /// </remarks>
+    private Candidate SelectBest(List<Candidate> candidates)
+    {
+        var top = candidates.Max(c => c.Score);
+
+        // Scores are sums of 1/(1+rank), so compare with a tolerance rather than for equality.
+        var tied = candidates.Where(c => Math.Abs(c.Score - top) < ScoreTolerance).ToList();
+
+        if (tied.Count == 1)
+            return tied[0];
+
+        // Cohesion cannot separate candidates that are all unrelated to each other — which is itself
+        // the truth about a description naming several things no article covers together. Nothing is
+        // there to choose between them, so the first still wins, and Confidence already says how
+        // little that is worth.
+        return tied
+            .Select(candidate => (Candidate: candidate, Cohesion: CohesionOf(candidate, tied)))
+            .MaxBy(scored => scored.Cohesion)
+            .Candidate;
+    }
+
+    /// <summary>
+    /// How many of the OTHER tied candidates this one's article names. The domain's article is the
+    /// one that discusses the rest of what the user asked for.
+    /// </summary>
+    private int CohesionOf(Candidate candidate, List<Candidate> tied)
+    {
+        var article = _client.FetchExtract(candidate.Title);
+        if (article.Length == 0)
+            return 0;
+
+        return tied.Count(other =>
+            !string.Equals(other.Title, candidate.Title, StringComparison.OrdinalIgnoreCase) &&
+            article.Contains(other.Title, StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>

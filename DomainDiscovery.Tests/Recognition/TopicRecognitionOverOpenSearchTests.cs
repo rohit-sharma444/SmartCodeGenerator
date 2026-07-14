@@ -42,7 +42,7 @@ public class TopicRecognitionOverOpenSearchTests
 
             var json = query.Contains("action=opensearch", StringComparison.OrdinalIgnoreCase)
                 ? OpenSearch(query)
-                : Leads();
+                : Extracts(query);
 
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
             {
@@ -66,10 +66,24 @@ public class TopicRecognitionOverOpenSearchTests
                 new JsonSerializerOptions { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping });
         }
 
-        /// <summary>No article here is a disambiguation page, so every lead is an ordinary one.</summary>
-        private static string Leads()
+        /// <summary>
+        /// Answers ONLY the titles the request asked for, as the real action API does. Returning
+        /// every known page regardless is what an earlier version did, and it was not a harmless
+        /// shortcut: the client then handed a caller some other article's text under the title it
+        /// had asked for, and a recognizer that reads an article to judge it drew its conclusion
+        /// from the wrong one.
+        /// <para>No article here is a disambiguation page, so every lead is an ordinary one.</para>
+        /// </summary>
+        private static string Extracts(string query)
         {
-            var pages = KnownTitles.Select((title, i) => new KeyValuePair<string, object>(
+            var raw = Regex.Match(query, @"titles=([^&]*)").Groups[1].Value;
+
+            var requested = Uri.UnescapeDataString(raw)
+                .Split('|', StringSplitOptions.RemoveEmptyEntries)
+                .Where(t => KnownTitles.Contains(t, StringComparer.OrdinalIgnoreCase))
+                .ToArray();
+
+            var pages = requested.Select((title, i) => new KeyValuePair<string, object>(
                 (i + 1).ToString(),
                 new { title, extract = $"{title} is a thing." }));
 
