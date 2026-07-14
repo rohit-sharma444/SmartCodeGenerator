@@ -201,6 +201,103 @@ public sealed class WikipediaStore
         transaction.Commit();
     }
 
+    /// <summary>
+    /// Remembers, per article, the revision timestamp the store currently holds — but only for the
+    /// articles something has refreshed, which is a handful, not seven million.
+    /// </summary>
+    /// <remarks>
+    /// Without this the store's only notion of "how old am I" is the dump date, which never moves.
+    /// Every run would then find the same articles edited-since-the-dump and fetch them AGAIN, having
+    /// already fetched them — the same downloads, every time, forever. Recording what was ingested
+    /// turns a repeated fetch into a comparison.
+    /// </remarks>
+    public void EnsureFreshnessTable()
+    {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+
+        command.CommandText = """
+            CREATE TABLE IF NOT EXISTS article_freshness (
+                title     TEXT PRIMARY KEY COLLATE NOCASE,
+                last_edit TEXT NOT NULL
+            );
+            """;
+        command.ExecuteNonQuery();
+    }
+
+    /// <summary>The revision timestamps the store holds, for whichever of <paramref name="titles"/>
+    /// it has ever refreshed. ISO-8601, so ordinal comparison is chronological.</summary>
+    public IReadOnlyDictionary<string, string> GetIngestedRevisions(IReadOnlyList<string> titles)
+    {
+        var ingested = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (titles.Count == 0)
+            return ingested;
+
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT last_edit FROM article_freshness WHERE title = $title";
+        var parameter = command.Parameters.Add("$title", SqliteType.Text);
+
+        foreach (var title in titles)
+        {
+            parameter.Value = title;
+            if (command.ExecuteScalar() is string lastEdit)
+                ingested[title] = lastEdit;
+        }
+
+        return ingested;
+    }
+
+    public void SetIngestedRevision(string title, string lastEdit)
+    {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            "INSERT OR REPLACE INTO article_freshness (title, last_edit) VALUES ($title, $edit)";
+        command.Parameters.AddWithValue("$title", title);
+        command.Parameters.AddWithValue("$edit", lastEdit);
+        command.ExecuteNonQuery();
+    }
+
+    /// <summary>
+    /// Replaces one article in place, or inserts it if the store has never seen it.
+    /// </summary>
+    /// <remarks>
+    /// The delete is what makes this a REPLACE. <see cref="WriteArticles"/> deliberately cannot do
+    /// it: the table carries no unique constraint on title (see <see cref="CreateSchema"/>), so an
+    /// insert alone would leave the old revision sitting beside the new one, and
+    /// <see cref="ReadExact"/> takes the first row it finds — which would be the stale one.
+    /// <para>
+    /// The delete is a seek rather than a scan only because the title index exists by now. This is
+    /// for the handful of articles a discovery run actually reads, not for bulk import, where
+    /// maintaining that index across millions of random writes is exactly what the schema avoids.
+    /// </para>
+    /// </remarks>
+    public void ReplaceArticle(ArticleRow row)
+    {
+        using var connection = Open();
+        using var transaction = connection.BeginTransaction();
+
+        using (var delete = connection.CreateCommand())
+        {
+            delete.CommandText = "DELETE FROM pages WHERE title = $title";
+            delete.Parameters.AddWithValue("$title", row.Title);
+            delete.ExecuteNonQuery();
+        }
+
+        using (var insert = connection.CreateCommand())
+        {
+            insert.CommandText =
+                "INSERT INTO pages (title, lead, payload) VALUES ($title, $lead, $payload)";
+            insert.Parameters.AddWithValue("$title", row.Title);
+            insert.Parameters.AddWithValue("$lead", row.Lead);
+            insert.Parameters.AddWithValue("$payload", Pack(row.Body, row.Links));
+            insert.ExecuteNonQuery();
+        }
+
+        transaction.Commit();
+    }
+
     public void WriteRedirects(IEnumerable<(string From, string To)> redirects)
     {
         using var connection = Open();

@@ -37,13 +37,18 @@ public sealed class DomainDiscoveryPipeline
     /// earlier than this. Pass the same client the enricher uses so this second read is a
     /// disk-cache hit, not a repeat network call.
     /// </param>
+    /// <param name="refresher">
+    /// Brings the few articles this run is about to read up to date, when the store has fallen
+    /// behind them. Optional: the HTTP client is already reading a live Wikipedia and needs none.
+    /// </param>
     public DomainDiscoveryPipeline(
         ISemanticAnalyzer analyzer,
         SeedEntityExtractor seedExtractor,
         ITopicRecognizer recognizer,
         IDomainEnricher enricher,
         EntityShaper shaper,
-        IWikipediaClient wikipediaClient)
+        IWikipediaClient wikipediaClient,
+        IArticleRefresher? refresher = null)
     {
         _analyzer = analyzer;
         _seedExtractor = seedExtractor;
@@ -51,7 +56,15 @@ public sealed class DomainDiscoveryPipeline
         _enricher = enricher;
         _shaper = shaper;
         _wikipediaClient = wikipediaClient;
+        _refresher = refresher ?? new NoArticleRefresher();
     }
+
+    /// <summary>
+    /// Freshness, bought where it can actually change an answer. A run reads some thirty articles
+    /// out of 7.2 million, so those thirty are the only ones worth updating — and they are updated
+    /// BEFORE they are read, which is the whole trick: after is too late.
+    /// </summary>
+    private readonly IArticleRefresher _refresher;
 
     public DiscoveryResult Discover(string freeText)
     {
@@ -71,6 +84,10 @@ public sealed class DomainDiscoveryPipeline
             return new DiscoveryResult(topic, seed);
         }
 
+        // Now that the topic is known, its articles are worth bringing up to date — and it has to
+        // happen HERE, before a word of them is read.
+        _refresher.Refresh(topic.AllTitles);
+
         // A domain is not one article. A description names several concepts and only one of them
         // can win the vote — "track customers, payments and invoices" names three — so the domain
         // is read out of the winner AND the other articles the user named (TopicResult.AllTitles).
@@ -78,6 +95,10 @@ public sealed class DomainDiscoveryPipeline
         var enriched = seed;
         foreach (var title in topic.AllTitles)
             enriched = _enricher.Enrich(title, enriched);
+
+        // Shaping reads each candidate class's OWN article, and the class list only exists now — so
+        // this is the earliest those articles can be named, and the last moment they can be updated.
+        _refresher.Refresh(enriched.Entities.Select(e => e.SourceTitle ?? e.Name));
 
         // Shape ONCE, over everything, and only then mine. Shaping decides what is a class at all,
         // and mining needs that verdict plus each class's Role — a suggested or rejected class must
@@ -124,15 +145,24 @@ public sealed class DomainDiscoveryPipeline
         var databasePath = dumpDatabasePath ?? DefaultDumpDatabasePath;
 
         IWikipediaClient client;
+        IArticleRefresher refresher;
+
         if (File.Exists(databasePath))
         {
             var store = new WikipediaStore(databasePath);
             RequireUsableStore(store, databasePath);
+
             client = new DumpWikipediaClient(store);
+
+            // The dump is a snapshot and drifts. Rather than haul the whole 18 GB store forward —
+            // ~780 MB per day of drift, for 7.2 million articles a run will never open — the few it
+            // does open are brought up to date as it goes.
+            refresher = new ArticleRefresher(store);
         }
         else
         {
             client = new HttpWikipediaClient(cacheDirectory);
+            refresher = new NoArticleRefresher();   // already reading a live Wikipedia
         }
 
         var harvester = new EntityHarvester();
@@ -143,7 +173,8 @@ public sealed class DomainDiscoveryPipeline
             new WikipediaTopicRecognizer(client),
             new DomainEnricher(client, analyzer, harvester),
             new EntityShaper(client),
-            client);
+            client,
+            refresher);
     }
 
     /// <summary>
