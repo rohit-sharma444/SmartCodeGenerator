@@ -49,3 +49,7 @@ Thumbs.db
 # Smart Code Generator
 .codegen_history
 .dd-cache/
+
+# Wikipedia dump and the store built from it (tens of GB; never commit)
+/Dump/
+*.db

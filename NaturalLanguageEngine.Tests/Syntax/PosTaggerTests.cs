@@ -18,7 +18,7 @@ public class PosTaggerTests
 
     [Theory]
     [InlineData("the", PartOfSpeech.Determiner)]
-    [InlineData("book", PartOfSpeech.Verb)] // only listed as a verb in the bundled lexicon
+    [InlineData("book", PartOfSpeech.Verb)] // the command language's "book a meeting"
     [InlineData("quickly", PartOfSpeech.Adverb)]
     [InlineData("is", PartOfSpeech.Verb)]
     public void Tag_DictionaryWord_UsesLexiconEntry(string word, PartOfSpeech expected)
@@ -28,6 +28,65 @@ public class PosTaggerTests
         _tagger.Tag(tokens);
 
         Assert.Equal(expected, tokens[0].PartOfSpeech);
+    }
+
+    /// <summary>
+    /// The plural of a noun that is also a command verb must stay a NOUN. A command is imperative —
+    /// "book a flight", never "books a flight" — so nothing needs the verb reading, while prose
+    /// ("libraries lend books", "the customer's needs") needs the noun. Listing "books" as a verb
+    /// cost a library domain its Book class entirely, silently.
+    /// <para>
+    /// Which words these are was measured over 4,000 dump articles: each of these is preceded by a
+    /// determiner as often as an unmistakable noun is, and a determiner never precedes a finite verb.
+    /// </para>
+    /// </summary>
+    [Theory]
+    [InlineData("books")]
+    [InlineData("needs")]
+    [InlineData("shows")]
+    [InlineData("plays")]
+    [InlineData("schedules")]
+    public void Tag_ThePluralOfANounThatIsAlsoACommandVerb_IsANoun(string word)
+    {
+        var tokens = new List<TokenAnalysis> { Analysis(word) };
+
+        _tagger.Tag(tokens);
+
+        Assert.Equal(PartOfSpeech.Noun, tokens[0].PartOfSpeech);
+    }
+
+    /// <summary>
+    /// The other half of the same rule: a word that is a verb in prose stays a verb, or the
+    /// harvester turns it into a class. "lists" reads like a domain noun and measured 0.0% noun
+    /// usage — the same as provides and includes — so it is not one.
+    /// </summary>
+    [Theory]
+    [InlineData("lists")]
+    [InlineData("provides")]
+    [InlineData("includes")]
+    [InlineData("makes")]
+    [InlineData("uses")]
+    public void Tag_AWordThatIsOnlyEverAVerbInProse_StaysAVerb(string word)
+    {
+        var tokens = new List<TokenAnalysis> { Analysis(word) };
+
+        _tagger.Tag(tokens);
+
+        Assert.Equal(PartOfSpeech.Verb, tokens[0].PartOfSpeech);
+    }
+
+    /// <summary>The base form still belongs to the command language: "book a meeting".</summary>
+    [Theory]
+    [InlineData("book")]
+    [InlineData("schedule")]
+    [InlineData("show")]
+    public void Tag_TheBaseFormOfACommandVerb_IsStillAVerb(string word)
+    {
+        var tokens = new List<TokenAnalysis> { Analysis(word) };
+
+        _tagger.Tag(tokens);
+
+        Assert.Equal(PartOfSpeech.Verb, tokens[0].PartOfSpeech);
     }
 
     [Theory]

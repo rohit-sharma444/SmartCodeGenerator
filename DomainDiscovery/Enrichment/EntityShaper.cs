@@ -111,6 +111,52 @@ public sealed class EntityShaper
                     break;
             }
         }
+
+        // Pass 3: widen every surviving class. The role template fills in the baseline its kind
+        // implies, and PropertyMiner reads the class's own article for what makes it specific.
+        //
+        // This pass runs LAST, over model.Entities rather than the local list, so a class rejected
+        // or demoted to a suggestion above is never mined: a class we decided is not a class must
+        // not acquire properties on its way out.
+        Widen(model);
+    }
+
+    /// <summary>
+    /// Adds the role baseline and the mined properties to every surviving class.
+    /// </summary>
+    /// <remarks>
+    /// Reading each class's own article is the thing the MediaWiki API's rate limit forbade — it is
+    /// one fetch per class, and a real domain has twenty. Against the dump store it is a local
+    /// seek, which is what makes this pass affordable at all.
+    /// <para>
+    /// Both sources are additive and neither can overwrite a field that is already there: precedence
+    /// runs curated, then archetype, then template, then mined, and AddField silently declines a
+    /// name already taken.
+    /// </para>
+    /// </remarks>
+    private void Widen(CandidateDomainModel model)
+    {
+        foreach (var entity in model.Entities)
+        {
+            foreach (var shape in RoleTemplate.For(entity.Role))
+                AddField(entity, shape.Name, shape.Type);
+
+            var article = _client.FetchExtract(entity.SourceTitle ?? entity.Name);
+            if (string.IsNullOrWhiteSpace(article))
+                continue;
+
+            // The LEAD, not the article. An article states what a thing IS in its lead and then
+            // spends thousands of words on its history, its examples and its regional variants —
+            // and those enumerate nouns just as readily, so the miner mined them. Measured on the
+            // real store, every junk property came from below the lead and every good one from
+            // inside it: Merchant took CalmlyConsidered from the title of a 1720 pamphlet,
+            // Inventory took EmptyCans and CoilsOfSteel from a cannery example and FIFOAndLIFO
+            // from a list of valuation methods, while Invoice's TermsOfSale and Quantities and
+            // Receipt's SalesTax all came from the first paragraph. Same reason the lead decides
+            // which classes are real — see LeadSection.
+            foreach (var shape in PropertyMiner.Mine(LeadSection.Of(article), entity.Name))
+                AddField(entity, shape.Name, shape.Type);
+        }
     }
 
     /// <summary>Adds a field unless the entity already declares one of that name, or the name

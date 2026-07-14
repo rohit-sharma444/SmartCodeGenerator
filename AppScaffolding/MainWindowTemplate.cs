@@ -68,6 +68,24 @@ public partial class MainWindow : Window
     {
         if (string.Equals(e.PropertyName, "Id", StringComparison.OrdinalIgnoreCase))
             e.Column.IsReadOnly = true;
+
+        // A navigation property has no sensible column: a DataGrid would render Customer as its
+        // type name and List<Payment> as "System.Collections.Generic.List`1[Payment]". The
+        // foreign key next to it is the editable, meaningful one.
+        if (!IsDisplayable(e.PropertyType))
+            e.Cancel = true;
+    }
+
+    private static bool IsDisplayable(Type type)
+    {
+        var underlying = Nullable.GetUnderlyingType(type) ?? type;
+
+        return underlying.IsPrimitive
+            || underlying.IsEnum
+            || underlying == typeof(string)
+            || underlying == typeof(decimal)
+            || underlying == typeof(DateTime)
+            || underlying == typeof(Guid);
     }
 }
 """;

@@ -3,6 +3,8 @@ using DomainDiscovery.Model;
 using DomainDiscovery.Recognition;
 using DomainDiscovery.SeedExtraction;
 using DomainDiscovery.Tests.Fakes;
+using DomainDiscovery.Wikipedia.Dump;
+using Microsoft.Data.Sqlite;
 using NaturalLanguageEngine.Models.Semantics;
 using Xunit;
 
@@ -63,9 +65,12 @@ public class DomainDiscoveryPipelineTests
 
         Assert.False(result.Topic.IsRecognized);
         Assert.Equal(new[] { "Invoice" }, result.Model.Entities.Select(e => e.Name));
+
+        // Curated first, in order; EntityShaper's third pass appends the Document role baseline.
+        var curated = new[] { "Number", "Amount", "DueDate", "Paid" };
         Assert.Equal(
-            new[] { "Number", "Amount", "DueDate", "Paid" },
-            result.Model.Entities[0].Fields.Select(f => f.Name));
+            curated,
+            result.Model.Entities[0].Fields.Select(f => f.Name).Take(curated.Length));
     }
 
     [Fact]
@@ -141,9 +146,12 @@ public class DomainDiscoveryPipelineTests
         var result = pipeline.Discover("track registers");
 
         var cashRegister = Assert.Single(result.Model.Entities, e => e.Name == "CashRegister");
+
+        // Archetype first, in order; the Device role baseline follows it.
+        var archetype = new[] { "Name", "Model", "SerialNumber" };
         Assert.Equal(
-            new[] { "Name", "Model", "SerialNumber" },
-            cashRegister.Fields.Select(f => f.Name));
+            archetype,
+            cashRegister.Fields.Select(f => f.Name).Take(archetype.Length));
 
         Assert.DoesNotContain(result.Model.Entities, e => e.Name == "System");
         Assert.Contains("System", result.Model.Rejected);
@@ -216,5 +224,45 @@ public class DomainDiscoveryPipelineTests
 
         Assert.False(result.Topic.IsRecognized);
         Assert.All(result.Model.Entities, e => Assert.Empty(e.Relationships));
+    }
+
+    [Fact]
+    public void CreateDefault_falls_back_to_the_http_client_when_no_dump_store_exists()
+    {
+        var cacheDirectory = Path.Combine(Path.GetTempPath(), $"cache-{Guid.NewGuid():N}");
+        var missingStore = Path.Combine(Path.GetTempPath(), $"absent-{Guid.NewGuid():N}.db");
+
+        // Must not throw, and must not create a store: an unbuilt dump is a reason to use the
+        // network, not a reason to fail.
+        var pipeline = DomainDiscoveryPipeline.CreateDefault(cacheDirectory, missingStore);
+
+        Assert.NotNull(pipeline);
+        Assert.False(File.Exists(missingStore));
+    }
+
+    [Fact]
+    public void CreateDefault_refuses_a_store_that_has_no_search_index()
+    {
+        var cacheDirectory = Path.Combine(Path.GetTempPath(), $"cache-{Guid.NewGuid():N}");
+        var storePath = Path.Combine(Path.GetTempPath(), $"unindexed-{Guid.NewGuid():N}.db");
+
+        try
+        {
+            // Precisely what an import killed before its final step leaves behind: the rows are
+            // there, the search index is not.
+            new WikipediaStore(storePath).CreateSchema();
+
+            var error = Assert.Throws<InvalidOperationException>(
+                () => DomainDiscoveryPipeline.CreateDefault(cacheDirectory, storePath));
+
+            // The message has to carry the cure, not just the diagnosis.
+            Assert.Contains("--index-only", error.Message);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            if (File.Exists(storePath))
+                File.Delete(storePath);
+        }
     }
 }

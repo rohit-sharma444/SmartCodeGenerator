@@ -46,6 +46,21 @@ public class DomainModelMapperTests
     }
 
     [TestMethod]
+    public void ToClassDefinitions_RenamesEntitiesThatCollideWithTheGeneratedNamespaces()
+    {
+        // Discovering "point of sale" really does yield a class called Data, and the generated app
+        // really did fail to compile on it: MainViewModel opens with `using <App>.Data;`, so the
+        // simple name Data means the NAMESPACE there, and CS0118 says so -- 'Data' is a namespace
+        // but is used like a type.
+        var classes = DomainModelMapper.ToClassDefinitions(
+            ModelOf("Data", "Models", "ViewModels", "Views"));
+
+        CollectionAssert.AreEqual(
+            new[] { "DataItem", "ModelsItem", "ViewModelsItem", "ViewsItem" },
+            classes.Select(c => c.Name).ToList());
+    }
+
+    [TestMethod]
     public void ToClassDefinitions_LeavesOrdinaryNamesAlone()
     {
         var classes = DomainModelMapper.ToClassDefinitions(ModelOf("Employee", "Payroll", "Deduction"));
@@ -89,9 +104,13 @@ public class DomainModelMapperTests
 
         Assert.HasCount(1, classes);
         Assert.AreEqual("Employee", classes[0].Name);
+
+        // Id first, then the domain's own fields in order. The audit fields (CreatedOn,
+        // ModifiedOn) are appended after these, so this checks the prefix rather than the
+        // whole list -- the ordering it exists to pin down is unchanged.
         CollectionAssert.AreEqual(
             new[] { "Id", "Salary", "FullName" },
-            classes[0].Properties.Select(p => p.Name).ToList());
+            classes[0].Properties.Select(p => p.Name).Take(3).ToList());
         Assert.AreEqual("int", classes[0].Properties[0].Type);
         Assert.AreEqual("decimal", classes[0].Properties[1].Type);
     }
@@ -110,9 +129,12 @@ public class DomainModelMapperTests
         var idCount = classes[0].Properties.Count(
             p => string.Equals(p.Name, "Id", StringComparison.OrdinalIgnoreCase));
         Assert.AreEqual(1, idCount);
+
+        // The entity's own Id is kept in place rather than a second one prepended; the audit
+        // fields follow the domain's fields.
         CollectionAssert.AreEqual(
             new[] { "id", "Total" },
-            classes[0].Properties.Select(p => p.Name).ToList());
+            classes[0].Properties.Select(p => p.Name).Take(2).ToList());
     }
 
     [TestMethod]
@@ -123,9 +145,13 @@ public class DomainModelMapperTests
 
         var classes = DomainModelMapper.ToClassDefinitions(model);
 
-        Assert.HasCount(1, classes[0].Properties);
+        // An entity with no fields of its own still gets a key -- and, now, the audit fields
+        // every class carries. What matters here is that the key is a leading int Id.
         Assert.AreEqual("Id", classes[0].Properties[0].Name);
         Assert.AreEqual("int", classes[0].Properties[0].Type);
+        CollectionAssert.AreEqual(
+            new[] { "Id", "CreatedOn", "ModifiedOn" },
+            classes[0].Properties.Select(p => p.Name).ToList());
     }
 
     [TestMethod]
@@ -140,5 +166,105 @@ public class DomainModelMapperTests
         CollectionAssert.AreEqual(
             new[] { "Payroll", "Deduction" },
             classes.Select(c => c.Name).ToList());
+    }
+}
+
+[TestClass]
+public class DomainModelMapperNavigationTests
+{
+    private static CandidateDomainModel OrderReferencesCustomer()
+    {
+        var model = new CandidateDomainModel();
+
+        var customer = new CandidateEntity { Name = "Customer" };
+        customer.Fields.Add(new CandidateField { Name = "FullName", Type = "string" });
+
+        var order = new CandidateEntity { Name = "Order" };
+        order.Fields.Add(new CandidateField { Name = "CustomerId", Type = "int" });
+        order.Relationships.Add(new CandidateRelationship { Target = "Customer", Role = "references" });
+
+        model.Entities.Add(customer);
+        model.Entities.Add(order);
+        return model;
+    }
+
+    [TestMethod]
+    public void Gives_the_referencing_class_a_navigation_property()
+    {
+        var order = DomainModelMapper.ToClassDefinitions(OrderReferencesCustomer())
+            .Single(c => c.Name == "Order");
+
+        var nav = order.Properties.Single(p => p.Name == "Customer");
+
+        Assert.AreEqual("Customer", nav.Type);
+        CollectionAssert.Contains(nav.Attributes, "JsonIgnore");
+    }
+
+    [TestMethod]
+    public void Gives_the_referenced_class_the_inverse_collection()
+    {
+        var customer = DomainModelMapper.ToClassDefinitions(OrderReferencesCustomer())
+            .Single(c => c.Name == "Customer");
+
+        var inverse = customer.Properties.Single(p => p.Name == "Orders");
+
+        Assert.AreEqual("List<Order>", inverse.Type);
+        CollectionAssert.Contains(inverse.Attributes, "JsonIgnore");
+    }
+
+    // JsonStore persists with System.Text.Json, and Order.Customer -> Customer.Orders -> Order is
+    // a reference cycle that throws on save. [JsonIgnore] is what keeps persistence FK-only, and
+    // it needs this using or the generated file does not compile.
+    [TestMethod]
+    public void Declares_the_using_that_JsonIgnore_needs()
+    {
+        var order = DomainModelMapper.ToClassDefinitions(OrderReferencesCustomer())
+            .Single(c => c.Name == "Order");
+
+        CollectionAssert.Contains(order.Usings, "System.Text.Json.Serialization");
+    }
+
+    [TestMethod]
+    public void Keeps_the_foreign_key_alongside_the_navigation_property()
+    {
+        var order = DomainModelMapper.ToClassDefinitions(OrderReferencesCustomer())
+            .Single(c => c.Name == "Order");
+
+        Assert.IsTrue(order.Properties.Any(p => p.Name == "CustomerId" && p.Type == "int"));
+    }
+
+    [TestMethod]
+    public void Every_class_gets_audit_fields()
+    {
+        var order = DomainModelMapper.ToClassDefinitions(OrderReferencesCustomer())
+            .Single(c => c.Name == "Order");
+
+        Assert.IsTrue(order.Properties.Any(p => p.Name == "CreatedOn" && p.Type == "DateTime"));
+        Assert.IsTrue(order.Properties.Any(p => p.Name == "ModifiedOn" && p.Type == "DateTime"));
+    }
+
+    [TestMethod]
+    public void A_relationship_to_a_class_that_did_not_survive_is_ignored()
+    {
+        var model = new CandidateDomainModel();
+        var order = new CandidateEntity { Name = "Order" };
+        order.Relationships.Add(new CandidateRelationship { Target = "Ghost", Role = "references" });
+        model.Entities.Add(order);
+
+        var definition = DomainModelMapper.ToClassDefinitions(model).Single();
+
+        // A nav property to a class that is not generated would not compile.
+        Assert.IsFalse(definition.Properties.Any(p => p.Name == "Ghost"));
+    }
+
+    [TestMethod]
+    public void A_class_with_no_relationships_declares_no_usings()
+    {
+        var model = new CandidateDomainModel();
+        var plain = new CandidateEntity { Name = "Note" };
+        plain.Fields.Add(new CandidateField { Name = "Text", Type = "string" });
+        model.Entities.Add(plain);
+
+        Assert.IsEmpty(DomainModelMapper.ToClassDefinitions(model).Single().Usings);
     }
 }

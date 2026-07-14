@@ -421,9 +421,24 @@ public sealed class HttpWikipediaClient : IWikipediaClient
     /// throttling — lacks <c>query</c> or <c>pages</c> entirely. Callers use this to tell a real
     /// negative from a transient failure that must not be cached as one.
     /// </summary>
+    /// <remarks>
+    /// The ValueKind checks are the never-throw contract, not belt-and-braces:
+    /// <see cref="JsonElement.TryGetProperty(string, out JsonElement)"/> is only "try" about the
+    /// property being absent — asked of an element that is not an object it THROWS
+    /// <see cref="InvalidOperationException"/>. A body that parses as JSON but is not an object
+    /// (opensearch answers with an array, and an error body can be anything) therefore used to
+    /// escape <see cref="FetchLeadsBatch"/>, which calls this outside any catch.
+    /// </remarks>
     private static bool HasPages(JsonElement root, out JsonElement pages)
     {
-        if (root.TryGetProperty("query", out var query) && query.TryGetProperty("pages", out pages))
+        pages = default;
+
+        if (root.ValueKind != JsonValueKind.Object)
+            return false;
+
+        if (root.TryGetProperty("query", out var query) &&
+            query.ValueKind == JsonValueKind.Object &&
+            query.TryGetProperty("pages", out pages))
             return true;
 
         pages = default;

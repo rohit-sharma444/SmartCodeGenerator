@@ -95,6 +95,7 @@ public sealed class AppScaffolder
         var files = new (string Folder, string Name, string Source)[]
         {
             (dataFolder, "JsonStore.cs", JsonStoreTemplate.Source($"{appName}.Data")),
+            (dataFolder, "RelationshipResolver.cs", RelationshipResolverTemplate.Source(appName)),
             (viewModelsFolder, "ObservableObject.cs", ViewModelTemplates.ObservableObject(appName)),
             (viewModelsFolder, "RelayCommand.cs", ViewModelTemplates.RelayCommand(appName)),
             (viewModelsFolder, "IEntityViewModel.cs", ViewModelTemplates.EntityViewModelInterface(appName)),

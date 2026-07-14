@@ -18,8 +18,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Update="Fixtures\sample-dump.xml" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\DomainDiscovery\DomainDiscovery.csproj" />
     <ProjectReference Include="..\NaturalLanguageEngine\NaturalLanguageEngine.csproj" />
+    <ProjectReference Include="..\WikipediaDumpImporter\WikipediaDumpImporter.csproj" />
   </ItemGroup>
 
 </Project>

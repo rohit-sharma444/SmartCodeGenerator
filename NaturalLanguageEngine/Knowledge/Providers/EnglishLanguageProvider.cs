@@ -32,8 +32,33 @@ public sealed class EnglishLanguageProvider : ILanguageProvider
         foreach (var w in new[] { "is", "am", "are", "was", "were", "be", "been", "being", "do", "does", "did", "have", "has", "had", "will", "would", "shall", "should", "can", "could", "may", "might", "must", "jumps" })
             yield return Make(w, "verb");
 
-        // Common verbs
-        foreach (var w in new[] { "go", "goes", "went", "make", "makes", "made", "take", "takes", "took", "see", "saw", "come", "came", "want", "wants", "wanted", "send", "sends", "sent", "give", "gives", "gave", "book", "books", "booked", "buy", "buys", "bought", "find", "found", "show", "shows", "tell", "told", "ask", "asks", "asked", "need", "needs", "needed", "like", "likes", "liked", "call", "calls", "called", "open", "opens", "opened", "close", "closes", "set", "schedule", "schedules", "scheduled", "play", "plays", "played", "create", "creates", "created", "build", "builds", "built", "run", "runs", "ran", "jumps",
+        // Common verbs, for the COMMAND language ("book a meeting", "show me the report").
+        //
+        // The -s forms of "book", "need", "show", "play" and "schedule" are deliberately ABSENT, and
+        // their absence is load-bearing. PosTagger looks up the SURFACE form with no lemmatization,
+        // so every form listed here is tagged Verb in article prose too — and EntityHarvester keeps
+        // only nouns. Listing "books" cost a public-library domain its Book class outright: the
+        // article says "books" 73 times, means the noun every time, and the class never appeared, not
+        // even as a suggestion.
+        //
+        // A command is imperative — "book a flight", never "books a flight" — so nothing needs the
+        // -s reading, while prose needs the noun ("libraries lend books", "the customer's needs").
+        // Keeping the base form and dropping the -s serves both.
+        //
+        // Which -s forms those are was MEASURED, not guessed: over 4,000 articles from the dump, the
+        // share of occurrences immediately preceded by a determiner (which can precede a noun and
+        // never a finite verb) is 0.0% for unmistakable verbs (provides, includes, requires, consists)
+        // and 7-20% for unmistakable nouns (books, libraries, prices, receipts). needs (20.7%),
+        // schedules (12.5%), plays (5.3%) and shows (5.0%) sit with the nouns. The rest sit with the
+        // verbs and stay — including "lists" (0.0%), which reads like a domain noun and simply is not
+        // one in prose. "likes" scores high only on the idiom "the likes of", and "jumps" is niche, so
+        // both stay verbs.
+        //
+        // The asymmetry is what settles the borderline cases: a verb wrongly tagged a noun becomes a
+        // spurious candidate the user can SEE and remove, while a noun wrongly tagged a verb deletes
+        // the class silently and unrecoverably. (The prose-verb list below already follows this rule,
+        // omitting pay, record, order, price, ... for exactly this reason.)
+        foreach (var w in new[] { "go", "goes", "went", "make", "makes", "made", "take", "takes", "took", "see", "saw", "come", "came", "want", "wants", "wanted", "send", "sends", "sent", "give", "gives", "gave", "book", "booked", "buy", "buys", "bought", "find", "found", "show", "tell", "told", "ask", "asks", "asked", "need", "needed", "like", "likes", "liked", "call", "calls", "called", "open", "opens", "opened", "close", "closes", "set", "schedule", "scheduled", "play", "played", "create", "creates", "created", "build", "builds", "built", "run", "runs", "ran", "jumps",
             "add", "adds", "added", "list", "lists", "listed", "generate", "generates", "generated",
             "delete", "deletes", "deleted", "remove", "removes", "removed", "rename", "renames", "renamed",
             "analyze", "analyzes", "analyzed", "validate", "validates", "validated", "use", "uses", "used",

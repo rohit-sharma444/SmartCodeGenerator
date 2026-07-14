@@ -27,9 +27,12 @@ public class EntityShaperTests
         Shaper.Shape(model);
 
         var recipe = Assert.Single(model.Entities);
-        Assert.Equal(
-            new[] { "Name", "Servings", "PrepMinutes", "Instructions" },
-            recipe.Fields.Select(f => f.Name));
+
+        // The curated fields come FIRST and in order. RoleTemplate appends its baseline after
+        // them (Shape's third pass), so this is a prefix rather than the whole list — but the
+        // precedence this test exists to pin down is still exactly asserted.
+        var curated = new[] { "Name", "Servings", "PrepMinutes", "Instructions" };
+        Assert.Equal(curated, recipe.Fields.Select(f => f.Name).Take(curated.Length));
         Assert.Equal("int", recipe.Fields.Single(f => f.Name == "Servings").Type);
     }
 
@@ -99,9 +102,10 @@ public class EntityShaperTests
         Shaper.Shape(model);
 
         var customer = Assert.Single(model.Entities);
-        Assert.Equal(
-            new[] { "FullName", "Email", "Phone" },
-            customer.Fields.Select(f => f.Name));
+
+        // Curated first, in order; the Party role template appends its baseline behind them.
+        var curated = new[] { "FullName", "Email", "Phone" };
+        Assert.Equal(curated, customer.Fields.Select(f => f.Name).Take(curated.Length));
     }
 
     [Fact]
@@ -117,9 +121,10 @@ public class EntityShaperTests
         Shaper.Shape(model);
 
         var register = Assert.Single(model.Entities);
-        Assert.Equal(
-            new[] { "Name", "Model", "SerialNumber" },
-            register.Fields.Select(f => f.Name));
+
+        // Archetype fields first, in order; the Device role template appends the rest.
+        var archetype = new[] { "Name", "Model", "SerialNumber" };
+        Assert.Equal(archetype, register.Fields.Select(f => f.Name).Take(archetype.Length));
     }
 
     [Fact]
@@ -167,7 +172,12 @@ public class EntityShaperTests
         Shaper.Shape(model);
 
         var entity = Assert.Single(model.Entities);
-        Assert.Equal(new[] { "Name", "SerialNumber" }, entity.Fields.Select(f => f.Name));
+        var names = entity.Fields.Select(f => f.Name).ToList();
+
+        // The guard now has to hold on BOTH paths: the device archetype offers a "Model" field
+        // and so does the Device role template, and neither may land on a class called Model.
+        Assert.DoesNotContain("Model", names);
+        Assert.Equal(new[] { "Name", "SerialNumber" }, names.Take(2));
     }
 
     [Fact]
@@ -232,5 +242,105 @@ public class EntityShaperTests
             new[] { "Cash register", "Kiosk" },
             _wiki.FetchLeadsCalls[0].OrderBy(t => t));
         Assert.Empty(_wiki.FetchLeadCalls);
+    }
+
+    [Fact]
+    public void Adds_the_role_template_fields_to_a_curated_entity()
+    {
+        var client = new FakeWikipediaClient();
+        var model = new CandidateDomainModel();
+        model.Entities.Add(new CandidateEntity { Name = "Invoice", Provenance = Provenance.Wiki });
+
+        new EntityShaper(client).Shape(model);
+
+        var invoice = model.Entities.Single(e => e.Name == "Invoice");
+
+        // Curated (Invoice is a Document in DomainFieldLexicon) ...
+        Assert.Contains(invoice.Fields, f => f.Name == "Number");
+        // ... plus the Document role template, which curation alone never gave it.
+        Assert.Contains(invoice.Fields, f => f.Name == "Status");
+    }
+
+    [Fact]
+    public void Mines_properties_from_the_entitys_own_article()
+    {
+        var client = new FakeWikipediaClient();
+        client.Extracts["Invoice"] = """
+            An invoice is a commercial document.
+            An invoice typically contains:
+            * shipping terms
+            * delivery date
+            """;
+
+        var model = new CandidateDomainModel();
+        model.Entities.Add(new CandidateEntity { Name = "Invoice", Provenance = Provenance.Wiki });
+
+        new EntityShaper(client).Shape(model);
+
+        var names = model.Entities.Single(e => e.Name == "Invoice").Fields.Select(f => f.Name).ToList();
+
+        Assert.Contains("ShippingTerms", names);
+        Assert.Contains("DeliveryDate", names);
+    }
+
+    /// <summary>
+    /// The real "Merchant has a CalmlyConsidered property" failure, in miniature. An article states
+    /// what a thing IS in its lead and then spends thousands of words on its history, its examples
+    /// and its regional variants — all of which enumerate nouns, none of which are properties.
+    /// </summary>
+    [Fact]
+    public void Mines_only_the_lead_of_the_article_not_its_history_or_examples()
+    {
+        var client = new FakeWikipediaClient();
+        client.Extracts["Inventory"] = string.Join('\n',
+            "An inventory contains the quantity held and the unit cost.",
+            "Examples",
+            "A cannery's raw materials inventory includes empty cans, their lids and coils of steel.");
+
+        var model = new CandidateDomainModel();
+        model.Entities.Add(new CandidateEntity { Name = "Inventory", Provenance = Provenance.Wiki });
+
+        new EntityShaper(client).Shape(model);
+
+        var names = model.Entities.Single(e => e.Name == "Inventory").Fields.Select(f => f.Name).ToList();
+
+        Assert.Contains("QuantityHeld", names);
+        Assert.Contains("UnitCost", names);
+
+        // Real phrases, correctly parsed, and not properties of anything — they are what a cannery
+        // happens to stock.
+        Assert.DoesNotContain("EmptyCans", names);
+        Assert.DoesNotContain("Lids", names);
+        Assert.DoesNotContain("CoilsOfSteel", names);
+    }
+
+    [Fact]
+    public void An_entity_whose_article_says_nothing_keeps_the_shape_it_already_had()
+    {
+        var client = new FakeWikipediaClient();
+        client.Extracts["Invoice"] = "An invoice is a commercial document. Nothing more.";
+
+        var model = new CandidateDomainModel();
+        model.Entities.Add(new CandidateEntity { Name = "Invoice", Provenance = Provenance.Wiki });
+
+        new EntityShaper(client).Shape(model);
+
+        // The no-op contract: still curated + templated, just not mined.
+        Assert.Contains(model.Entities.Single(e => e.Name == "Invoice").Fields, f => f.Name == "Number");
+    }
+
+    [Fact]
+    public void A_rejected_entity_is_never_mined()
+    {
+        var client = new FakeWikipediaClient();
+        client.Leads["System"] = "A system is a group of interacting elements.";
+
+        var model = new CandidateDomainModel();
+        model.Entities.Add(new CandidateEntity { Name = "System", Provenance = Provenance.Wiki });
+
+        new EntityShaper(client).Shape(model);
+
+        Assert.Contains("System", model.Rejected);
+        Assert.Empty(model.Entities);
     }
 }

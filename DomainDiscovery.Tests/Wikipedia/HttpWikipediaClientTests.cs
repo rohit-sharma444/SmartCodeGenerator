@@ -68,6 +68,20 @@ public class HttpWikipediaClientTests : IDisposable
     }
 
     [Fact]
+    public void FetchLeads_WhenTheResponseIsWellFormedJsonButNotAnObject_OmitsItRatherThanThrowing()
+    {
+        // A JSON ARRAY parses perfectly and then explodes on the first property read:
+        // JsonElement.TryGetProperty is only "try" about the property being ABSENT, and throws
+        // InvalidOperationException when the element is not an object. The never-throw contract
+        // has to hold for a body that is valid JSON of the wrong shape, not just for garbage.
+        var client = ClientReturning("""["Point",["Point"],[""],["https://en.wikipedia.org/wiki/Point"]]""");
+
+        var leads = client.FetchLeads(new[] { "Point" });
+
+        Assert.Empty(leads);
+    }
+
+    [Fact]
     public void FetchLeads_ReturnsCachedLeads_WithoutAnyNetworkCall()
     {
         // Every title asked for is already on disk, so a batch fetch — which would

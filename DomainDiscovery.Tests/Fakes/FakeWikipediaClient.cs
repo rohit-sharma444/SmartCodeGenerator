@@ -37,8 +37,15 @@ public sealed class FakeWikipediaClient : IWikipediaClient
         return HitsByTerm.TryGetValue(term, out var hits) ? hits : SearchHits;
     }
 
+    /// <summary>Every title passed to <see cref="FetchExtract"/>, in call order — tests use this to
+    /// prove a caller did NOT read an article it had no need to read.</summary>
+    public List<string> FetchExtractCalls { get; } = new();
+
     public string FetchExtract(string articleTitle)
-        => Extracts.TryGetValue(articleTitle, out var text) ? text : string.Empty;
+    {
+        FetchExtractCalls.Add(articleTitle);
+        return Extracts.TryGetValue(articleTitle, out var text) ? text : string.Empty;
+    }
 
     public IReadOnlyList<string> FetchLinks(string articleTitle)
         => Links.TryGetValue(articleTitle, out var links) ? links : Array.Empty<string>();
