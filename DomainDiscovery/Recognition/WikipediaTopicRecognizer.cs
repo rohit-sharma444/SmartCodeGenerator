@@ -1,5 +1,7 @@
 using System.Text.RegularExpressions;
+using DomainDiscovery.Enrichment;
 using DomainDiscovery.Model;
+using DomainDiscovery.SeedExtraction;
 using DomainDiscovery.Wikipedia;
 
 namespace DomainDiscovery.Recognition;
@@ -107,7 +109,7 @@ public sealed class WikipediaTopicRecognizer : ITopicRecognizer
         if (candidates.Count == 0)
             return TopicResult.None;
 
-        RemoveDisambiguationPages(candidates);
+        RemoveUnusableTopics(candidates);
 
         if (candidates.Count == 0)
             return TopicResult.None;
@@ -125,22 +127,59 @@ public sealed class WikipediaTopicRecognizer : ITopicRecognizer
     }
 
     /// <summary>
-    /// Drops the pages that only point at other pages. They are the failure mode of a full
-    /// encyclopedia: a one-word domain term is very often the title of a disambiguation page, which
-    /// then wins the vote outright and enriches to nothing, because it defines nothing.
+    /// Drops the candidates that cannot be a domain at all, judged by their own opening sentence.
     /// </summary>
+    /// <remarks>
+    /// Two kinds, and both are failure modes of the FULL encyclopedia rather than of the ranking:
+    /// <list type="bullet">
+    /// <item><b>Pages that only point at other pages.</b> A one-word domain term is very often the
+    /// title of a disambiguation page, which then wins the vote outright and enriches to nothing,
+    /// because it defines nothing.</item>
+    /// <item><b>Pages that define an abstraction.</b> "a system to manage appointment schedules for
+    /// a clinic" seeds the word system, which resolves exactly to <em>System</em> — systems theory —
+    /// and that tied with every other seed's exact hit and won on being first. The domain came out
+    /// as one class called Structure.</item>
+    /// </list>
+    /// The abstraction test is not a new judgement: <see cref="EntityShaper"/> already refuses
+    /// System as a CLASS, by this very lexicon, and a thing that cannot be a class certainly cannot
+    /// be the whole domain. Asking the same question here costs nothing — the leads are already
+    /// fetched for the disambiguation test.
+    /// </remarks>
     /// <remarks>
     /// One batched call, not one per candidate — the HTTP fallback pays a round trip for each, and
     /// <see cref="IWikipediaClient.FetchLeads"/> exists to keep that at one.
     /// </remarks>
-    private void RemoveDisambiguationPages(List<Candidate> candidates)
+    private void RemoveUnusableTopics(List<Candidate> candidates)
     {
         var leads = _client.FetchLeads(candidates.Select(c => c.Title).ToList());
 
         candidates.RemoveAll(candidate =>
-            leads.TryGetValue(candidate.Title, out var lead) &&
-            lead.Length > 0 &&
-            DisambiguationLead.IsMatch(lead.TrimEnd()));
+        {
+            // No lead is no evidence, and no evidence is not a reason to drop anything.
+            if (!leads.TryGetValue(candidate.Title, out var lead) || lead.Length == 0)
+                return false;
+
+            return DisambiguationLead.IsMatch(lead.TrimEnd()) || DefinesAnAbstraction(candidate.Title, lead);
+        });
+    }
+
+    /// <summary>
+    /// Whether the article's own definition makes its subject an abstraction rather than a thing.
+    /// </summary>
+    /// <remarks>
+    /// The curated lexicon outranks the archetype, exactly as it does across
+    /// <see cref="EntityShaper"/>'s passes — and that precedence is the whole reason Library
+    /// survives. "A library is a collection of books" resolves through the head "collection" to
+    /// Abstract, yet a library is precisely the sort of thing people build apps about, and
+    /// <see cref="DomainFieldLexicon"/> says so outright. Consulting the archetype alone here would
+    /// refuse every library domain.
+    /// </remarks>
+    private static bool DefinesAnAbstraction(string title, string lead)
+    {
+        if (DomainFieldLexicon.Fields(NameNormalizer.ToEntityName(title)).Count > 0)
+            return false;
+
+        return ArchetypeLexicon.Resolve(HypernymExtractor.Extract(lead)).Verdict == ShapeVerdict.Abstract;
     }
 
     /// <summary>

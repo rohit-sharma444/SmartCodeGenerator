@@ -179,6 +179,55 @@ public class WikipediaTopicRecognizerTests
         Assert.False(topic.IsRecognized);
     }
 
+    /// <summary>
+    /// The real "System" failure. "a system to manage appointment schedules for a clinic" seeds the
+    /// word system, which resolves exactly to <em>System</em> — an article about systems theory. It
+    /// tied with every other seed's exact hit and won on being first, and the domain came out as a
+    /// single class called Structure. EntityShaper already refuses System as a CLASS; a thing that
+    /// cannot be a class certainly cannot be the domain.
+    /// </summary>
+    [Fact]
+    public void Recognize_RefusesATopicWhoseOwnDefinitionIsAnAbstraction()
+    {
+        var client = new FakeWikipediaClient();
+        client.HitsByTerm["system"] = new()
+        {
+            new SearchHit("System", "https://en.wikipedia.org/wiki/System", 0),
+        };
+        client.HitsByTerm["clinic"] = new()
+        {
+            new SearchHit("Clinic", "https://en.wikipedia.org/wiki/Clinic", 0),
+        };
+        client.Leads["System"] = "A system is a group of interacting or interrelated elements that act according to a set of rules.";
+        client.Leads["Clinic"] = "A clinic is a health facility that is primarily focused on the care of outpatients.";
+
+        var topic = new WikipediaTopicRecognizer(client).Recognize(new[] { "system", "clinic" });
+
+        Assert.Equal("Clinic", topic.Title);
+    }
+
+    /// <summary>
+    /// And the limit of that rule. "A library is a collection of books" — whose head, "collection",
+    /// is an abstraction — yet a library is exactly the sort of thing people build apps about, and
+    /// DomainFieldLexicon says so. Curated knowledge outranks the archetype here for the same reason
+    /// it does in EntityShaper, which is what keeps Library a class today.
+    /// </summary>
+    [Fact]
+    public void Recognize_KeepsAnAbstractlyDefinedTopic_TheCuratedLexiconKnows()
+    {
+        var client = new FakeWikipediaClient();
+        client.HitsByTerm["library"] = new()
+        {
+            new SearchHit("Library", "https://en.wikipedia.org/wiki/Library", 0),
+        };
+        client.Leads["Library"] =
+            "A library is a collection of books, and possibly other materials and media.";
+
+        var topic = new WikipediaTopicRecognizer(client).Recognize(new[] { "library" });
+
+        Assert.Equal("Library", topic.Title);
+    }
+
     [Fact]
     public void Recognize_KeepsAnArticleWhoseLeadMerelyMentionsWhatItRefersTo()
     {
