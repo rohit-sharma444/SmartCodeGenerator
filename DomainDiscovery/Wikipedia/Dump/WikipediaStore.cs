@@ -298,6 +298,79 @@ public sealed class WikipediaStore
         transaction.Commit();
     }
 
+    /// <summary>
+    /// Replaces a batch of articles in ONE transaction. What <see cref="ReplaceArticle"/> does, at
+    /// the rate an incremental update needs: a day of edits is hundreds of thousands of pages, and a
+    /// transaction apiece would spend the whole import in fsync.
+    /// </summary>
+    public void ReplaceArticles(IEnumerable<ArticleRow> rows)
+    {
+        using var connection = Open();
+        using var transaction = connection.BeginTransaction();
+
+        using var delete = connection.CreateCommand();
+        delete.CommandText = "DELETE FROM pages WHERE title = $title";
+        var deleteTitle = delete.Parameters.Add("$title", SqliteType.Text);
+
+        using var insert = connection.CreateCommand();
+        insert.CommandText =
+            "INSERT INTO pages (title, lead, payload) VALUES ($title, $lead, $payload)";
+        var title = insert.Parameters.Add("$title", SqliteType.Text);
+        var lead = insert.Parameters.Add("$lead", SqliteType.Text);
+        var payload = insert.Parameters.Add("$payload", SqliteType.Blob);
+
+        foreach (var row in rows)
+        {
+            deleteTitle.Value = row.Title;
+            delete.ExecuteNonQuery();
+
+            title.Value = row.Title;
+            lead.Value = row.Lead;
+            payload.Value = Pack(row.Body, row.Links);
+            insert.ExecuteNonQuery();
+        }
+
+        transaction.Commit();
+    }
+
+    /// <summary>
+    /// Replaces a batch of redirects. A page that BECAME a redirect since the dump must also stop
+    /// being an article, or the store would answer with both.
+    /// </summary>
+    public void ReplaceRedirects(IEnumerable<(string From, string To)> redirects)
+    {
+        using var connection = Open();
+        using var transaction = connection.BeginTransaction();
+
+        using var deletePage = connection.CreateCommand();
+        deletePage.CommandText = "DELETE FROM pages WHERE title = $source";
+        var pageTitle = deletePage.Parameters.Add("$source", SqliteType.Text);
+
+        using var deleteRedirect = connection.CreateCommand();
+        deleteRedirect.CommandText = "DELETE FROM redirects WHERE source = $source";
+        var oldSource = deleteRedirect.Parameters.Add("$source", SqliteType.Text);
+
+        using var insert = connection.CreateCommand();
+        insert.CommandText = "INSERT INTO redirects (source, target) VALUES ($source, $target)";
+        var source = insert.Parameters.Add("$source", SqliteType.Text);
+        var target = insert.Parameters.Add("$target", SqliteType.Text);
+
+        foreach (var (from, to) in redirects)
+        {
+            pageTitle.Value = from;
+            deletePage.ExecuteNonQuery();
+
+            oldSource.Value = from;
+            deleteRedirect.ExecuteNonQuery();
+
+            source.Value = from;
+            target.Value = to;
+            insert.ExecuteNonQuery();
+        }
+
+        transaction.Commit();
+    }
+
     public void WriteRedirects(IEnumerable<(string From, string To)> redirects)
     {
         using var connection = Open();

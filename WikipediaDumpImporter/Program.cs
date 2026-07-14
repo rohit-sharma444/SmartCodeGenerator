@@ -7,6 +7,10 @@ using WikipediaDumpImporter;
 // which every read is a full table scan. This recovers it without decoding 25 GB of bz2 again.
 var indexOnly = args.Contains("--index-only", StringComparer.OrdinalIgnoreCase);
 
+// Brings the store forward through Wikimedia's daily increments. Opt-in, and loudly costed: this is
+// the expensive path, and ArticleRefresher (which runs by default, per discovery) is the cheap one.
+var update = args.Contains("--update", StringComparer.OrdinalIgnoreCase);
+
 // The date the DUMP RUN started, as yyyyMMdd — not the day it was downloaded, and not the day the
 // import finished. Without it the store cannot say how old it is, and nothing can tell whether an
 // increment has already been applied to it. Err EARLY: a full dump is generated over several days,
@@ -53,6 +57,58 @@ if (dumpDate is not null)
 
     if (setDateOnly)
         return 0;
+}
+
+if (update)
+{
+    var updateStore = new WikipediaStore(databasePath);
+    updateStore.CreateSchema();
+
+    Console.WriteLine($"Store: {databasePath}");
+
+    if (updateStore.GetDumpDate() is not { } cut)
+    {
+        Console.Error.WriteLine(
+            "This store does not know which dump it was built from, so there is no 'since' to " +
+            "update from. Record it first:  --set-dump-date=yyyyMMdd");
+        return 1;
+    }
+
+    var staleness = new DumpFreshness().Check(updateStore);
+
+    if (!staleness.Answered)
+    {
+        Console.Error.WriteLine("Could not reach Wikimedia to ask what has been published.");
+        return 1;
+    }
+
+    if (staleness.IsCurrent)
+    {
+        Console.WriteLine($"Already at {cut}. Nothing to apply.");
+        return 0;
+    }
+
+    Console.WriteLine(
+        $"Cut {cut}. {staleness.PendingDays.Count} day(s) to apply, " +
+        $"~{staleness.ApproximateGigabytes:F1} GB to download.");
+    Console.WriteLine();
+    Console.WriteLine("Each day is downloaded, applied, and deleted before the next is fetched, so");
+    Console.WriteLine("the disk never holds more than one. The store's date moves only once a day");
+    Console.WriteLine("has fully landed, so a run stopped part-way resumes where it left off rather");
+    Console.WriteLine("than starting again.");
+    Console.WriteLine();
+
+    var updateClock = Stopwatch.StartNew();
+
+    new IncrementalUpdater(updateStore).Update(
+        staleness.PendingDays,
+        Path.Combine(Path.GetDirectoryName(databasePath) ?? ".", "incr"));
+
+    updateClock.Stop();
+
+    Console.WriteLine();
+    Console.WriteLine($"Done in {updateClock.Elapsed:hh\\:mm\\:ss}. Store now at {updateStore.GetDumpDate()}.");
+    return 0;
 }
 
 if (indexOnly)
