@@ -61,6 +61,17 @@ public class DomainModelMapperTests
     }
 
     [TestMethod]
+    public void ToClassDefinitions_RenamesEntity_NamedRepository()
+    {
+        // The generated app declares a base Repository<T> in <App>.Data. An entity also
+        // called Repository would make `Repository<Repository>` bind its type argument to
+        // that base type rather than the model, so the name is reserved.
+        var classes = DomainModelMapper.ToClassDefinitions(ModelOf("Repository"));
+
+        Assert.AreEqual("RepositoryItem", classes[0].Name);
+    }
+
+    [TestMethod]
     public void ToClassDefinitions_LeavesOrdinaryNamesAlone()
     {
         var classes = DomainModelMapper.ToClassDefinitions(ModelOf("Employee", "Payroll", "Deduction"));

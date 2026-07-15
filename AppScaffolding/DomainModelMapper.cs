@@ -27,7 +27,7 @@ public static class DomainModelMapper
         // Types the generated app declares or references by simple name.
         "App", "Application", "MainWindow", "Window", "MainViewModel", "EntityViewModel",
         "IEntityViewModel", "ObservableObject", "RelayCommand", "ICommand", "JsonStore",
-        "DataGrid", "TabControl", "ObservableCollection",
+        "DataGrid", "TabControl", "ObservableCollection", "Repository",
 
         // Commonly harvested words that are also System types.
         "Activator", "Array", "Attribute", "Buffer", "Comparer", "Convert", "Delegate",
