@@ -22,6 +22,10 @@ using System.Reflection;
 namespace {{appName}}.Data;
 
 /// <summary>Typed CRUD over one entity's JSON store, keyed by an int Id.</summary>
+/// <remarks>
+/// A separate store from the app's UI path (EntityViewModel/JsonStore): both persist to the
+/// same per-type JSON file, so mixing them at runtime over one entity is last-writer-wins.
+/// </remarks>
 public abstract class Repository<T> where T : class, new()
 {
     private readonly JsonStore<T> _store = new();
