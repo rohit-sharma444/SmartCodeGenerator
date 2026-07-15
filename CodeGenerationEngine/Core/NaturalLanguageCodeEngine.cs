@@ -5,30 +5,6 @@ namespace CodeGenerationEngine.Core;
 
 public static class NaturalLanguageCodeEngine
 {
-    public static string ProcessCommand(string sentence, string workspaceRoot)
-    {
-        if (string.IsNullOrWhiteSpace(sentence))
-            return "Command cannot be empty.";
-
-        sentence = CommandParser.Normalize(sentence);
-        sentence = EnglishLanguageModel.Normalize(sentence);
-
-        //var match = IntentAnalyzer.Detect(sentence);
-        var semantic = SemanticAnalyzer.Analyze(sentence);
-
-        var intentType = Core.IntentAnalyzer.Detect(semantic);
-
-        if (intentType == IntentType.Unknown)
-            return $"Unknown command: {sentence}";
-
-        // if (match.Confidence < 0.50)
-        //     return $"Low confidence for command: {sentence}";
-
-        var command = EntityExtractor.Extract(semantic, intentType, workspaceRoot);
-
-        return ExecuteCommand(command, workspaceRoot);
-    }
-
     public static string ExecuteCommand(ParsedCommand command, string workspaceRoot)
     {
         ApplyContext(command);

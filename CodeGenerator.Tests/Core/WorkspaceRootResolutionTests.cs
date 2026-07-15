@@ -1,3 +1,4 @@
+using NaturalLanguageBridge;
 using CodeGenerationEngine.Core;
 using CodeGenerationEngine.Helper;
 using CodeGenerationEngine.Models;
@@ -86,7 +87,7 @@ public sealed class WorkspaceRootResolutionTests
             "and EmployeeList method";
 
         ProjectMetaData? project = null;
-        CommandHandlingService.ProcessInput(
+        CommandFront.Run(
             input, ref project, new List<PropertyRule>(), workspace,
             p => ProjectManager.CurrentProject = p);
 

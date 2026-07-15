@@ -1,3 +1,4 @@
+using NaturalLanguageBridge;
 using CodeGenerationEngine.Core;
 using CodeGenerationEngine.Models;
 using CodeGenerationEngine.Service;
@@ -19,7 +20,7 @@ public sealed class PipelineLearningTests
         Directory.CreateDirectory(workspace);
 
         ProjectMetaData? project = null;
-        CommandHandlingService.ProcessInput(
+        CommandFront.Run(
             "create class Widget",
             ref project,
             new List<PropertyRule>(),

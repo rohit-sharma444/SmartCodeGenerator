@@ -1,3 +1,4 @@
+using NaturalLanguageBridge;
 using CodeGenerationEngine.Core;
 using CodeGenerationEngine.Models;
 using CodeGenerationEngine.Service;
@@ -34,11 +35,11 @@ public sealed class SaveWorkspaceReproTests
 
         ProjectMetaData? currentProject = null;
 
-        CommandHandlingService.ProcessInput(
+        CommandFront.Run(
             input,
             ref currentProject,
             configuredRules: new List<PropertyRule>(),
-            workspaceRoot: workspace,
+            workspace: workspace,
             setLastCreatedProject: p => ProjectManager.CurrentProject = p);
 
         var underWorkspace = Directory.GetFiles(
@@ -91,11 +92,11 @@ public sealed class SaveWorkspaceReproTests
 
         ProjectMetaData? currentProject = null;
 
-        CommandHandlingService.ProcessInput(
+        CommandFront.Run(
             input,
             ref currentProject,
             configuredRules: new List<PropertyRule>(),
-            workspaceRoot: workspace,
+            workspace: workspace,
             setLastCreatedProject: p => ProjectManager.CurrentProject = p);
 
         var underWorkspace = Directory.GetFiles(
@@ -194,11 +195,11 @@ public sealed class SaveWorkspaceReproTests
 
         ProjectMetaData? currentProject = null;
 
-        CommandHandlingService.ProcessInput(
+        CommandFront.Run(
             input,
             ref currentProject,
             configuredRules: new List<PropertyRule>(),
-            workspaceRoot: workspace,
+            workspace: workspace,
             setLastCreatedProject: p => ProjectManager.CurrentProject = p);
 
         var inProject = Directory.GetFiles(
@@ -230,11 +231,11 @@ public sealed class SaveWorkspaceReproTests
 
         ProjectMetaData? currentProject = null;
 
-        CommandHandlingService.ProcessInput(
+        CommandFront.Run(
             input,
             ref currentProject,
             configuredRules: new List<PropertyRule>(),
-            workspaceRoot: workspace,
+            workspace: workspace,
             setLastCreatedProject: p => ProjectManager.CurrentProject = p);
 
         var found = Directory.Exists(workspace)

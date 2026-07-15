@@ -27,27 +27,20 @@ public static class CommandHandlingService
         public required Action<ProjectMetaData?> SetLastCreatedProject { get; init; }
     }
 
-    public static bool ProcessInput(
-        string input,
+    /// <summary>
+    /// Executes an already-parsed command. This is the seam: the bridge is the
+    /// producer of <see cref="ParsedCommand"/>; CodeGenerationEngine only executes.
+    /// </summary>
+    public static bool Execute(
+        ParsedCommand command,
         ref ProjectMetaData? currentProject,
         List<PropertyRule> configuredRules,
         string workspaceRoot,
-        Action<ProjectMetaData?> setLastCreatedProject,
-        string? nlpAction = null)
+        Action<ProjectMetaData?> setLastCreatedProject)
     {
-        // The "demo" shortcut bypasses parsing entirely and prints generated code.
-        if (input.Equals("demo", StringComparison.OrdinalIgnoreCase))
-        {
-            var (demoCode, _) = BuildDemo();
-            Console.WriteLine(StripCommentMarkers(demoCode));
-            return true;
-        }
-
-        var command = ParseInput(input, workspaceRoot, nlpAction);
-
         var context = new CommandExecutionContext
         {
-            RawInput = input,
+            RawInput = command.OriginalSentence,
             Command = command,
             WorkspaceRoot = workspaceRoot,
             ConfiguredRules = configuredRules,
@@ -58,18 +51,11 @@ public static class CommandHandlingService
         bool result = Dispatch(context);
 
         // Feed the outcome back to the learning layer.
-        LearningCoordinator.RecordOutcome(input, command.Intent, result, command);
+        LearningCoordinator.RecordOutcome(command.OriginalSentence, command.Intent, result, command);
 
         // Propagate any project change made by a handler back to the caller.
         currentProject = context.CurrentProject;
         return result;
-    }
-
-    private static ParsedCommand ParseInput(string input, string workspaceRoot, string? nlpAction)
-    {
-        var semantic = SemanticAnalyzer.Analyze(input, nlpAction);
-        var intentType = Core.IntentAnalyzer.Detect(semantic);
-        return EntityExtractor.Extract(semantic, intentType, workspaceRoot);
     }
 
     /// <summary>
@@ -87,12 +73,12 @@ public static class CommandHandlingService
             [IntentType.ListClasses] = ctx => ProjectManager.ListClasses(ctx.WorkspaceRoot),
             [IntentType.ShowLearning] = _ => HandleShowLearning(),
             [IntentType.ResetLearning] = _ => HandleResetLearning(),
-            [IntentType.ListClassesInProject] = ctx => ProjectManager.ListClassesInProject(ctx.RawInput),
+            [IntentType.ListClassesInProject] = ctx => ProjectManager.ListClassesInProject(ctx.Command.ProjectName),
             [IntentType.Help] = HandleHelp,
             [IntentType.ShowProject] = _ => ProjectManager.ShowCurrentProject(),
             [IntentType.CurrentProject] = _ => ProjectManager.ShowCurrentProject(),
             [IntentType.CreateProject] = HandleCreateProject,
-            [IntentType.UseProject] = ctx => ProjectManager.UseProject(ctx.RawInput),
+            [IntentType.UseProject] = ctx => ProjectManager.UseProject(ctx.Command.ProjectName),
             [IntentType.ListProjects] = _ => ProjectManager.ListProjects(),
             [IntentType.CreateClass] = HandleCreateClass,
             [IntentType.ShowClass] = HandleShowClass,
@@ -306,7 +292,6 @@ public static class CommandHandlingService
     private static bool HandleGenerateValidator(CommandExecutionContext ctx)
     {
         var command = ctx.Command;
-        EntityExtractor.ExtractClassName(ctx.RawInput, command);
 
         if (!string.IsNullOrWhiteSpace(command.ProjectName))
         {
@@ -452,8 +437,6 @@ public static class CommandHandlingService
         GeneratedCodeService.Save(ctx.Command, code, ctx.CurrentProject, ctx.WorkspaceRoot);
         return true;
     }
-
-    private static string StripCommentMarkers(string code) => code.Replace("//", string.Empty);
 
     // FIX #8: Correct path handling - store .csproj path and directory separately
     private static ProjectMetaData LoadOrCreateProject(ProjectRequest request, string workspaceRoot)

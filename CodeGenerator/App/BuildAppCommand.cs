@@ -160,6 +160,16 @@ internal sealed class BuildAppCommand
             Console.WriteLine($"  - {entity.Name} [{entity.Provenance}]{fields}{relationships}");
         }
 
+        // Every entity is scaffolded with a typed repository exposing these CRUD functions,
+        // so the review loop shows the full shape of what approval will generate.
+        if (model.Entities.Count > 0)
+        {
+            Console.WriteLine();
+            Console.WriteLine(
+                "Each entity also gets a <Entity>Repository with CRUD: "
+                + "GetAll, GetById, Create, Update, Delete");
+        }
+
         if (model.Suggestions.Count > 0)
         {
             Console.WriteLine();

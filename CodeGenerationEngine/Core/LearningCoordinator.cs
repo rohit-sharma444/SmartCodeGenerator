@@ -52,9 +52,6 @@ public static class LearningCoordinator
         else
         {
             LearnedIntentStore.Current.Reinforce(sentence, intent);
-
-            if (command != null)
-                IntentLearningEngine.Learn(sentence, command);
         }
 
         LearnedIntentStore.Save();
