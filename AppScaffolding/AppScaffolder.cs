@@ -92,10 +92,11 @@ public sealed class AppScaffolder
 
         var entityNames = classes.Select(c => c.Name).ToList();
 
-        var files = new (string Folder, string Name, string Source)[]
+        var files = new List<(string Folder, string Name, string Source)>
         {
             (dataFolder, "JsonStore.cs", JsonStoreTemplate.Source($"{appName}.Data")),
             (dataFolder, "RelationshipResolver.cs", RelationshipResolverTemplate.Source(appName)),
+            (dataFolder, "Repository.cs", RepositoryTemplate.Base(appName)),
             (viewModelsFolder, "ObservableObject.cs", ViewModelTemplates.ObservableObject(appName)),
             (viewModelsFolder, "RelayCommand.cs", ViewModelTemplates.RelayCommand(appName)),
             (viewModelsFolder, "IEntityViewModel.cs", ViewModelTemplates.EntityViewModelInterface(appName)),
@@ -104,6 +105,11 @@ public sealed class AppScaffolder
             (viewsFolder, "MainWindow.xaml", MainWindowTemplate.Xaml(appName)),
             (viewsFolder, "MainWindow.xaml.cs", MainWindowTemplate.CodeBehind(appName)),
         };
+
+        // One typed repository per entity, alongside the generic base above. Driven by the
+        // class names (post-rename), the same list MainViewModel is built from.
+        foreach (var name in entityNames)
+            files.Add((dataFolder, $"{name}Repository.cs", RepositoryTemplate.Typed(appName, name)));
 
         foreach (var (folder, name, source) in files)
         {
