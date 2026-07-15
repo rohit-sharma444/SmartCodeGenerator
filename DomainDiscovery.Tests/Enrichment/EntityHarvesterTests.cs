@@ -1,5 +1,6 @@
 using DomainDiscovery.Enrichment;
 using DomainDiscovery.Model;
+using NaturalLanguageEngine.Core;
 using NaturalLanguageEngine.Models.Semantics;
 using Xunit;
 
@@ -159,6 +160,23 @@ public class EntityHarvesterTests
         Assert.InRange(model.Entities.Count, 1, 25);
     }
 
+    /// <summary>
+    /// Driven by the REAL NLE, not a hand-built SemanticResult — which is the point. Every other
+    /// test here builds the analysis by hand and types "book" as an Object, so none of them could
+    /// ever see that the live analyzer types it as an Action. A library lending system was
+    /// generated with no Book class, and no test failed.
+    /// </summary>
+    [Fact]
+    public void Harvest_FindsANounThatIsAlsoAVerb_WhenTheRealAnalyzerReadsRealProse()
+    {
+        var analyzer = EngineBuilder.BuildDefault().Analyzer;
+
+        var model = new EntityHarvester().Harvest(analyzer.Analyze(
+            "Public libraries lend books to their members. The books are returned to the library."));
+
+        Assert.Contains(model.Entities, e => e.Name == "Book");
+    }
+
     [Fact]
     public void Harvest_LeavesFieldsToTheFieldAssigner()
     {
@@ -168,7 +186,7 @@ public class EntityHarvesterTests
 
         var model = new EntityHarvester().Harvest(r);
 
-        // Prose carries no field information; DomainFieldAssigner shapes the entity later.
+        // Prose carries no field information; EntityShaper shapes the entity later.
         Assert.Empty(Assert.Single(model.Entities).Fields);
     }
 }

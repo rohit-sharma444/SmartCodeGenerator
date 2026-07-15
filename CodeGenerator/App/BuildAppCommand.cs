@@ -33,8 +33,15 @@ internal sealed class BuildAppCommand
         DiscoveryResult result = pipeline.Discover(description);
 
         if (result.Topic.IsRecognized)
+        {
             Console.WriteLine($"Recognized topic: {result.Topic.Title} " +
                               $"(confidence {result.Topic.Confidence:P0}) — {result.Topic.ArticleUrl}");
+
+            // Where the rest of the classes came from. Without this a Borrower appearing in a
+            // library model looks like a guess, when it was read out of an article by name.
+            if (result.Topic.SupportingTitles.Count > 0)
+                Console.WriteLine("Also read: " + string.Join(", ", result.Topic.SupportingTitles));
+        }
         else
             Console.WriteLine("No topic recognized online — showing seed entities only. " +
                               "You can add entities by hand below.");
@@ -142,8 +149,28 @@ internal sealed class BuildAppCommand
             var fields = entity.Fields.Count == 0
                 ? string.Empty
                 : " { " + string.Join(", ", entity.Fields.Select(f => $"{f.Name}:{f.Type}")) + " }";
-            Console.WriteLine($"  - {entity.Name} [{entity.Provenance}]{fields}");
+
+            // A class with no mined relationships prints exactly as it always has; one with
+            // any gets its targets appended, so the review loop is where a user first sees
+            // that RelationshipMiner connected two of their classes.
+            var relationships = entity.Relationships.Count == 0
+                ? string.Empty
+                : "  -> " + string.Join(", ", entity.Relationships.Select(r => r.Target));
+
+            Console.WriteLine($"  - {entity.Name} [{entity.Provenance}]{fields}{relationships}");
         }
-        Console.WriteLine();
+
+        if (model.Suggestions.Count > 0)
+        {
+            Console.WriteLine();
+            Console.WriteLine(
+                "Also found - 'add <name>' to include: "
+                + string.Join(", ", model.Suggestions.Select(e => e.Name)));
+        }
+
+        if (model.Rejected.Count > 0)
+        {
+            Console.WriteLine("Not classes: " + string.Join(", ", model.Rejected));
+        }
     }
 }

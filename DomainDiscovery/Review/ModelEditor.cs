@@ -22,13 +22,38 @@ public static class ModelEditor
     /// <summary>
     /// Adds an entity the user named. It is shaped from <see cref="DomainFieldLexicon"/> when
     /// that knows it, and otherwise gets the fallback <c>Name</c> column — unlike a discovered
-    /// entity, one the user asked for by name is never dropped.
+    /// entity, one the user asked for by name is never dropped. If a suggestion matches the name,
+    /// it is promoted to the model as-is, keeping its provenance and confidence intact.
     /// </summary>
     public static bool AddEntity(CandidateDomainModel model, string name)
     {
         var normalized = NameNormalizer.ToEntityName(name);
         if (!NameNormalizer.IsValidIdentifier(normalized) || Find(model, normalized) is not null)
             return false;
+
+        // Promoting a suggestion is not the same as inventing an entity: keep what discovery
+        // already learned about it.
+        var suggested = model.Suggestions.FirstOrDefault(
+            e => string.Equals(e.Name, normalized, StringComparison.OrdinalIgnoreCase));
+
+        if (suggested is not null)
+        {
+            model.Suggestions.Remove(suggested);
+
+            foreach (var shape in DomainFieldLexicon.Fields(normalized))
+                suggested.Fields.Add(new CandidateField
+                {
+                    Name = shape.Name,
+                    Type = shape.Type,
+                    Provenance = suggested.Provenance
+                });
+
+            if (suggested.Fields.Count == 0)
+                DefaultFields.ApplyTo(suggested, suggested.Provenance);
+
+            model.Entities.Add(suggested);
+            return true;
+        }
 
         var entity = new CandidateEntity { Name = normalized, Provenance = Provenance.Seed };
         foreach (var shape in DomainFieldLexicon.Fields(normalized))

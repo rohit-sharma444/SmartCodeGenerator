@@ -27,7 +27,7 @@ public class BatchCommandDetectorTests
         var actions = BatchCommandDetector.Detect(
             ["create a Customer class", "delete class Foo", "list projects"], root);
 
-        Assert.AreEqual(3, actions.Count);
+        Assert.HasCount(3, actions);
         Assert.AreEqual(IntentType.CreateClass, actions[0].Intent);
         Assert.AreEqual(IntentType.DeleteClass, actions[1].Intent);
         Assert.AreEqual(IntentType.ListProjects, actions[2].Intent);
@@ -70,7 +70,7 @@ public class BatchCommandDetectorTests
 
         var actions = BatchCommandDetector.Detect(["the big red car"], root);
 
-        Assert.AreEqual(1, actions.Count);
+        Assert.HasCount(1, actions);
         Assert.IsFalse(actions[0].IsActionable);
         Assert.AreEqual(IntentType.Unknown, actions[0].Intent);
         Assert.IsNull(actions[0].Preview);
@@ -85,7 +85,7 @@ public class BatchCommandDetectorTests
         var actions = BatchCommandDetector.Detect(
             ["", "   ", "create a Customer class", ""], root);
 
-        Assert.AreEqual(1, actions.Count);
+        Assert.HasCount(1, actions);
         Assert.AreEqual("create a Customer class", actions[0].Sentence);
     }
 
@@ -108,7 +108,7 @@ public class BatchCommandDetectorTests
         var actions = BatchCommandDetector.Detect(
             ["create a Customer class", "the big red car", "delete class Foo"], root);
 
-        Assert.AreEqual(3, actions.Count);
+        Assert.HasCount(3, actions);
         Assert.AreEqual(2, actions.Count(a => a.IsActionable));
     }
 
@@ -121,7 +121,7 @@ public class BatchCommandDetectorTests
             ["create a Customer class", "delete class Foo", "create a service for Payment"], root);
 
         // The whole point of "present before execute": detection must not act.
-        Assert.AreEqual(0, Directory.GetFileSystemEntries(root).Length);
+        Assert.IsEmpty(Directory.GetFileSystemEntries(root));
     }
 
     [TestMethod]

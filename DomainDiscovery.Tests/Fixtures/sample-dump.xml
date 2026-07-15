@@ -1,0 +1,39 @@
+<mediawiki xmlns="http://www.mediawiki.org/xml/export-0.11/" version="0.11" xml:lang="en">
+  <siteinfo>
+    <sitename>Wikipedia</sitename>
+    <dbname>enwiki</dbname>
+  </siteinfo>
+  <page>
+    <title>Invoice</title>
+    <ns>0</ns>
+    <id>101</id>
+    <revision>
+      <id>900</id>
+      <text xml:space="preserve">An '''invoice''' is a [[commercial document]].
+
+An invoice typically contains:
+* invoice number
+* date of issue
+* total amount</text>
+    </revision>
+  </page>
+  <page>
+    <title>Bill (payment)</title>
+    <ns>0</ns>
+    <id>102</id>
+    <redirect title="Invoice" />
+    <revision>
+      <id>901</id>
+      <text xml:space="preserve">#REDIRECT [[Invoice]]</text>
+    </revision>
+  </page>
+  <page>
+    <title>Talk:Invoice</title>
+    <ns>1</ns>
+    <id>103</id>
+    <revision>
+      <id>902</id>
+      <text xml:space="preserve">Discussion about the invoice article.</text>
+    </revision>
+  </page>
+</mediawiki>

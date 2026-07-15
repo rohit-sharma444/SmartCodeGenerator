@@ -111,4 +111,240 @@ public class WikipediaTopicRecognizerTests
         Assert.False(topic.IsRecognized);
         Assert.Empty(client.SearchedTerms);
     }
+
+    [Fact]
+    public void Recognize_SearchesWordSequencesFromTheDescription_NotOnlySingleSeedWords()
+    {
+        var client = new FakeWikipediaClient();
+
+        new WikipediaTopicRecognizer(client)
+            .Recognize(new[] { "Point", "Sale" }, "a point of sale system for a retail shop");
+
+        Assert.Contains("point of sale", client.SearchedTerms);
+    }
+
+    [Fact]
+    public void Recognize_SkipsWordSequencesThatOpenOrCloseOnAFunctionWord()
+    {
+        var client = new FakeWikipediaClient();
+
+        new WikipediaTopicRecognizer(client)
+            .Recognize(new[] { "Point" }, "a point of sale system");
+
+        // "of sale" and "a point" are fragments of the phrase, not names of anything.
+        Assert.DoesNotContain("of sale", client.SearchedTerms);
+        Assert.DoesNotContain("a point", client.SearchedTerms);
+    }
+
+    /// <summary>
+    /// The real "point of sale" failure, in miniature: on the full encyclopedia the seed word
+    /// "point" resolves exactly to "Point", a disambiguation page, which outscored the article the
+    /// user actually meant. The phrase names it outright.
+    /// </summary>
+    [Fact]
+    public void Recognize_PrefersTheArticleThePhraseNames_OverTheSingleWordsExactHit()
+    {
+        var client = new FakeWikipediaClient();
+        client.HitsByTerm["Point"] = new()
+        {
+            new SearchHit("Point", "https://en.wikipedia.org/wiki/Point", 0),
+            new SearchHit("Point of sale", "https://en.wikipedia.org/wiki/Point_of_sale", 2),
+        };
+        client.HitsByTerm["point of sale"] = new()
+        {
+            new SearchHit("Point of sale", "https://en.wikipedia.org/wiki/Point_of_sale", 0),
+        };
+
+        var topic = new WikipediaTopicRecognizer(client)
+            .Recognize(new[] { "Point", "Sale" }, "a point of sale system for a retail shop");
+
+        Assert.Equal("Point of sale", topic.Title);
+    }
+
+    [Fact]
+    public void Recognize_RefusesADisambiguationPage_EvenWhenItIsTheOnlyTopRankedHit()
+    {
+        var client = new FakeWikipediaClient();
+        client.HitsByTerm["Point"] = new()
+        {
+            new SearchHit("Point", "https://en.wikipedia.org/wiki/Point", 0),
+        };
+        // Exactly what the store holds for it.
+        client.Leads["Point"] = "Point or points may refer to:";
+
+        var topic = new WikipediaTopicRecognizer(client).Recognize(new[] { "Point" });
+
+        // A page that only lists other pages is never a domain, so recognizing nothing is the
+        // honest answer -- the pipeline falls back to the seed-only model.
+        Assert.False(topic.IsRecognized);
+    }
+
+    /// <summary>
+    /// The real "System" failure. "a system to manage appointment schedules for a clinic" seeds the
+    /// word system, which resolves exactly to <em>System</em> — an article about systems theory. It
+    /// tied with every other seed's exact hit and won on being first, and the domain came out as a
+    /// single class called Structure. EntityShaper already refuses System as a CLASS; a thing that
+    /// cannot be a class certainly cannot be the domain.
+    /// </summary>
+    /// <summary>
+    /// A tie is the normal case, not an edge case: each seed word resolves exactly to its own
+    /// article, so each scores 1.0 and nothing agrees with anything. The winner used to be whichever
+    /// word the user typed first. Now the encyclopedia settles it — of the things you named, the
+    /// domain is the one whose article talks about the others.
+    /// </summary>
+    [Fact]
+    public void Recognize_BreaksATie_ByWhichArticleTalksAboutTheOthers()
+    {
+        var client = new FakeWikipediaClient();
+        foreach (var name in new[] { "Customer", "Payment", "Invoice" })
+        {
+            client.HitsByTerm[name] = new()
+            {
+                new SearchHit(name, "https://en.wikipedia.org/wiki/" + name, 0),
+            };
+        }
+
+        // Every term scores its own article 1.0, so all three tie. Only Invoice discusses the rest.
+        client.Extracts["Invoice"] = "An invoice requests payment from the customer for goods sold.";
+        client.Extracts["Payment"] = "A payment is a transfer of money.";
+        client.Extracts["Customer"] = "A customer receives goods.";
+
+        // Customer is searched FIRST, so the old rule would have crowned it.
+        var topic = new WikipediaTopicRecognizer(client)
+            .Recognize(new[] { "Customer", "Payment", "Invoice" });
+
+        Assert.Equal("Invoice", topic.Title);
+    }
+
+    /// <summary>
+    /// A description names several concepts and only one can win the vote. The others are still the
+    /// domain, and enriching from the winner alone threw them away.
+    /// </summary>
+    [Fact]
+    public void Recognize_ReportsTheOtherArticlesTheUserNamed()
+    {
+        var client = new FakeWikipediaClient();
+        foreach (var name in new[] { "Invoice", "Payment", "Customer" })
+        {
+            client.HitsByTerm[name] = new()
+            {
+                new SearchHit(name, "https://en.wikipedia.org/wiki/" + name, 0),
+            };
+        }
+        client.Extracts["Invoice"] = "An invoice requests payment from the customer.";
+
+        var topic = new WikipediaTopicRecognizer(client)
+            .Recognize(new[] { "Invoice", "Payment", "Customer" });
+
+        Assert.Equal("Invoice", topic.Title);
+        Assert.Equal(new[] { "Payment", "Customer" }, topic.SupportingTitles);
+        Assert.Equal(new[] { "Invoice", "Payment", "Customer" }, topic.AllTitles);
+    }
+
+    /// <summary>
+    /// The safeguard, and the reason it exists. "a lending system for a public library" resolves the
+    /// word "lending" — through an entirely reasonable editor-made redirect — to Loan, the FINANCIAL
+    /// instrument, whose article dressed a library up in Lender, Borrower, Interest and CreditCard.
+    /// A redirect is a synonym of the word, which recognition wants and enrichment cannot afford:
+    /// reading a whole article means adopting a whole domain.
+    /// </summary>
+    [Fact]
+    public void Recognize_WillNotEnrichFromAnArticleAredirectLedTo_OnlyFromOnesTheUserNamed()
+    {
+        var client = new FakeWikipediaClient();
+        client.HitsByTerm["library"] = new()
+        {
+            new SearchHit("Library", "https://en.wikipedia.org/wiki/Library", 0),
+        };
+        // The user typed "lending"; the store answered with a different concept's article.
+        client.HitsByTerm["lending"] = new()
+        {
+            new SearchHit("Loan", "https://en.wikipedia.org/wiki/Loan", 0),
+        };
+        client.Extracts["Library"] = "A library lends books, and a library records each loan.";
+
+        var topic = new WikipediaTopicRecognizer(client).Recognize(new[] { "library", "lending" });
+
+        Assert.Equal("Library", topic.Title);
+        Assert.Empty(topic.SupportingTitles);
+    }
+
+    [Fact]
+    public void Recognize_LeavesAClearWinnerAlone_WithoutReadingAnyArticle()
+    {
+        var client = new FakeWikipediaClient();
+        client.HitsByTerm["Ledger"] = new()
+        {
+            new SearchHit("Accounting", "https://en.wikipedia.org/wiki/Accounting", 0),
+        };
+        client.HitsByTerm["Invoice"] = new()
+        {
+            new SearchHit("Accounting", "https://en.wikipedia.org/wiki/Accounting", 0),
+        };
+
+        var topic = new WikipediaTopicRecognizer(client).Recognize(new[] { "Ledger", "Invoice" });
+
+        Assert.Equal("Accounting", topic.Title);
+
+        // No tie, so no article needs reading — the tie-break must not cost a fetch it does not need.
+        Assert.Empty(client.FetchExtractCalls);
+    }
+
+    [Fact]
+    public void Recognize_RefusesATopicWhoseOwnDefinitionIsAnAbstraction()
+    {
+        var client = new FakeWikipediaClient();
+        client.HitsByTerm["system"] = new()
+        {
+            new SearchHit("System", "https://en.wikipedia.org/wiki/System", 0),
+        };
+        client.HitsByTerm["clinic"] = new()
+        {
+            new SearchHit("Clinic", "https://en.wikipedia.org/wiki/Clinic", 0),
+        };
+        client.Leads["System"] = "A system is a group of interacting or interrelated elements that act according to a set of rules.";
+        client.Leads["Clinic"] = "A clinic is a health facility that is primarily focused on the care of outpatients.";
+
+        var topic = new WikipediaTopicRecognizer(client).Recognize(new[] { "system", "clinic" });
+
+        Assert.Equal("Clinic", topic.Title);
+    }
+
+    /// <summary>
+    /// And the limit of that rule. "A library is a collection of books" — whose head, "collection",
+    /// is an abstraction — yet a library is exactly the sort of thing people build apps about, and
+    /// DomainFieldLexicon says so. Curated knowledge outranks the archetype here for the same reason
+    /// it does in EntityShaper, which is what keeps Library a class today.
+    /// </summary>
+    [Fact]
+    public void Recognize_KeepsAnAbstractlyDefinedTopic_TheCuratedLexiconKnows()
+    {
+        var client = new FakeWikipediaClient();
+        client.HitsByTerm["library"] = new()
+        {
+            new SearchHit("Library", "https://en.wikipedia.org/wiki/Library", 0),
+        };
+        client.Leads["Library"] =
+            "A library is a collection of books, and possibly other materials and media.";
+
+        var topic = new WikipediaTopicRecognizer(client).Recognize(new[] { "library" });
+
+        Assert.Equal("Library", topic.Title);
+    }
+
+    [Fact]
+    public void Recognize_KeepsAnArticleWhoseLeadMerelyMentionsWhatItRefersTo()
+    {
+        var client = new FakeWikipediaClient();
+        client.HitsByTerm["Sale"] = new()
+        {
+            new SearchHit("Point of sale", "https://en.wikipedia.org/wiki/Point_of_sale", 0),
+        };
+        client.Leads["Point of sale"] =
+            "The point of sale (POS) is the time and place at which a retail transaction is completed.";
+
+        var topic = new WikipediaTopicRecognizer(client).Recognize(new[] { "Sale" });
+
+        Assert.Equal("Point of sale", topic.Title);
+    }
 }
