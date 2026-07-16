@@ -189,12 +189,13 @@ internal class CodeGeneratorStarter
         Console.WriteLine("Type 'exit' to quit the application.");
         Console.WriteLine();
 
-        ReportDumpStaleness();
+        ReportWikipediaStore();
     }
 
     /// <summary>
-    /// Says how far behind the encyclopedia the local Wikipedia store has fallen, and brings it
-    /// forward.
+    /// Reports the local Wikipedia store's state at startup — missing, up to date, or how far behind
+    /// the encyclopedia it has fallen — and, when it is merely behind, brings it forward. A missing
+    /// store is a loud warning, not an error: the app still starts on the online-API fallback.
     /// </summary>
     /// <remarks>
     /// <b>This costs gigabytes and hours, so it says so, and it can always be escaped.</b> Wikimedia's
@@ -209,11 +210,26 @@ internal class CodeGeneratorStarter
     /// already was. In every case the user gets their prompt.
     /// </para>
     /// </remarks>
-    private static void ReportDumpStaleness()
+    private static void ReportWikipediaStore()
     {
         var databasePath = DomainDiscoveryPipeline.DefaultDumpDatabasePath;
         if (!File.Exists(databasePath))
+        {
+            // The store lives in a git-ignored directory, so nothing here can protect it: an external
+            // clean, a disk-cleanup tool or a manual delete removes it, and the app would otherwise
+            // slip to the online API without a word. Say so, loudly — but do not stop. A fresh clone
+            // that never imported the store depends on exactly that fallback to run `build app:` at all.
+            Console.WriteLine($"Wikipedia store: NOT FOUND at {databasePath}.");
+            Console.WriteLine(
+                "  'build app:' will fall back to the online Wikipedia API — slower, rate-limited, and");
+            Console.WriteLine(
+                "  it needs a connection. If you had already imported the store, it has been moved or");
+            Console.WriteLine("  deleted. To (re)build it locally (a one-time import), run:");
+            Console.WriteLine();
+            Console.WriteLine("      dotnet run --project WikipediaDumpImporter -c Release");
+            Console.WriteLine();
             return;
+        }
 
         var store = new WikipediaStore(databasePath);
         var staleness = new DumpFreshness().Check(store);
