@@ -59,7 +59,8 @@ Lower-level building blocks are also public, e.g.:
 | `Service/` | `CommandHandlingService` (the dispatch façade) and `GeneratedCodeService` (persistence). |
 | `Models/` | Command, semantic, project, and validation record/DTO types. |
 | `Factory/` | `DotNetProjectFactory` — scaffolds `.csproj` projects by type. |
-| `Rules/`, `Dictionary/`, `Tokenizer/`, `Helper/` | Supporting rule definitions, synonyms, tokenization, and file/console helpers. |
+| `Rules/` | Supporting rule definitions. |
+| `Helper/` | File and console helpers. |
 
 ## Dependencies
 
