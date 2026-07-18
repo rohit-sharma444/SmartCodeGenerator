@@ -14,10 +14,13 @@ NLE, so no network access is required.
 | *(root)* | `DomainDiscoveryPipeline` end-to-end orchestration. |
 | `SeedExtraction/` | `SeedEntityExtractor` — mapping NLE results to seed entities. |
 | `Recognition/` | `WikipediaTopicRecognizer` — matching seeds to an article. |
-| `Enrichment/` | `DomainEnricher`, `EntityHarvester`, `TypeInference`. |
-| `Wikipedia/` | `WikipediaCache` and `HttpWikipediaClient` resilience (cache misses, fetch failures). |
+| `Enrichment/` | `DomainEnricher`, `EntityHarvester`, `EntityShaper`, `RelationshipMiner`, `TypeInference`. |
+| `Wikipedia/` | `WikipediaCache` and `HttpWikipediaClient` resilience (cache misses, fetch failures, timeouts). |
+| `Wikipedia/Dump/` | The offline store: `WikipediaStore` and `DumpWikipediaClient`, over small temporary databases. |
 | `Review/` | `ModelEditor` add/remove/rename edits. |
 | `Model/` | `CandidateDomainModel` behavior. |
+| `Fakes/` | `FakeWikipediaClient`, `StubAnalyzer` — the stand-ins that keep the suite offline. |
+| `Fixtures/` | `sample-dump.xml` — a small MediaWiki export, so the dump reader is tested without the 25 GB file. |
 
 ## Running
 

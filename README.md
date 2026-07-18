@@ -25,11 +25,11 @@ NaturalLanguageEngine                      DomainDiscovery
         ▼                                           ▼
 NaturalLanguageBridge                      interactive review loop
   connects the NLP result                    (approve / add / remove / rename)
-  to the generator
-        │
-        ▼
-CodeGenerationEngine
-  resolves the command and
+  to the generator                                  │
+        │                                           ▼  approve
+        ▼                                   AppScaffolding
+CodeGenerationEngine                          writes a runnable WPF
+  resolves the command and                    CRUD app over the model
   generates/edits code (Roslyn)
 ```
 
@@ -46,6 +46,8 @@ both paths, and the NLE internal pipeline — see
 | [`NaturalLanguageEngine`](NaturalLanguageEngine/README.md) | Multi-stage NLP pipeline that turns English text into entities, relationships, and intent. |
 | [`NaturalLanguageBridge`](NaturalLanguageBridge/README.md) | Wires the NLP engine to the code generator. |
 | [`DomainDiscovery`](DomainDiscovery/README.md) | Turns a plain-English system description into a candidate domain model (used by `build app:`). |
+| [`AppScaffolding`](AppScaffolding/README.md) | Turns an approved domain model into a runnable WPF CRUD app on disk (the last stage of `build app:`). |
+| [`WikipediaDumpImporter`](WikipediaDumpImporter/README.md) | One-off tool that builds the local Wikipedia store `DomainDiscovery` reads offline, and maintains it afterwards. Not part of the normal build-and-run loop. |
 | [`CodeGenerator.Tests`](CodeGenerator.Tests/README.md), [`NaturalLanguageEngine.Tests`](NaturalLanguageEngine.Tests/README.md), [`DomainDiscovery.Tests`](DomainDiscovery.Tests/README.md) | Test suites for the engine, the generator, and domain discovery. |
 
 ## Requirements
@@ -105,7 +107,13 @@ Instead of scaffolding class-by-class, describe the system and let
 build app: a library that lends books to members
 ```
 
-The CLI runs domain discovery (fetching from Wikipedia the first time; results
-are cached under `.dd-cache` in the workspace), prints the recognized topic and
-candidate entities, and drops you into a review loop where you can `approve`,
-`add <name>`, `remove <name>`, `rename <old> <new>`, or `cancel`.
+The CLI runs domain discovery, prints the recognized topic and candidate
+entities, and drops you into a review loop where you can `approve`, `add <name>`,
+`remove <name>`, `rename <old> <new>`, or `cancel`. On `approve`,
+[`AppScaffolding`](AppScaffolding/README.md) writes a runnable WPF CRUD app.
+
+Discovery reads Wikipedia from a **local store** built by
+[`WikipediaDumpImporter`](WikipediaDumpImporter/README.md) — local, deterministic,
+and free of the API's rate limit. If that store is absent (a fresh clone), it
+falls back to the live MediaWiki API, caching pages under `.dd-cache` in the
+workspace.

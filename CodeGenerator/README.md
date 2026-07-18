@@ -120,7 +120,24 @@ project is selected.
 
 | Command | Description |
 | --- | --- |
-| `build app: <description>` | Describe a system in plain English; runs [domain discovery](../DomainDiscovery/README.md), prints the recognized topic and candidate entities, and opens a review loop (`approve` / `add <name>` / `remove <name>` / `rename <old> <new>` / `cancel`). Fetches from Wikipedia the first time (cached under `.dd-cache`). |
+| `build app: <description>` | Describe a system in plain English; runs [domain discovery](../DomainDiscovery/README.md), prints the recognized topic and candidate entities, and opens a review loop. On approval, [`AppScaffolding`](../AppScaffolding/README.md) writes a runnable WPF CRUD app into the workspace. |
+
+In the review loop:
+
+| Input | Effect |
+| --- | --- |
+| `approve` \| `a` | Generate the WPF CRUD app from the model as it stands. |
+| `add <name>` | Add an entity. |
+| `remove <name>` | Remove an entity. |
+| `rename <old> <new>` | Rename an entity. |
+| `field <entity> <name>[:<type>]` | Add a field (type defaults to `string`). |
+| `unfield <entity> <name>` | Remove a field. |
+| `cancel` \| `c` | Discard the model and generate nothing. |
+
+Discovery reads Wikipedia from the local store built by
+[`WikipediaDumpImporter`](../WikipediaDumpImporter/README.md). Without that store
+it falls back to the live MediaWiki API, caching pages under `.dd-cache` in the
+workspace; the CLI warns at startup when the store is missing.
 
 ### Batch
 
