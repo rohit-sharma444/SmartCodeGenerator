@@ -50,24 +50,26 @@ public sealed class AppScaffolder
     }
 
     /// <summary>
-    /// Creates a WPF project named <paramref name="appName"/> under
-    /// <paramref name="workspaceRoot"/> (reusing it if it already exists) and writes a
-    /// foldered, runnable CRUD app over the entities in <paramref name="model"/>.
+    /// Creates a project named <c>&lt;appName&gt;&lt;target.FolderSuffix&gt;</c> under
+    /// <paramref name="workspaceRoot"/> (reusing it if present) and writes the shared model +
+    /// data core plus the front-end supplied by <paramref name="target"/>.
     /// </summary>
     public ScaffoldResult Scaffold(
-        CandidateDomainModel model, string appName, string workspaceRoot)
+        CandidateDomainModel model, string appName, string workspaceRoot, ITargetScaffolder target)
     {
         var classes = DomainModelMapper.ToClassDefinitions(model);
-        var outputFolder = Path.Combine(workspaceRoot, appName);
-        var csprojPath = Path.Combine(outputFolder, appName + ".csproj");
+
+        var projectName = appName + target.FolderSuffix;
+        var outputFolder = Path.Combine(workspaceRoot, projectName);
+        var csprojPath = Path.Combine(outputFolder, projectName + ".csproj");
 
         if (!File.Exists(csprojPath))
         {
             var created = DotNetProjectFactory.CreateProject(new ProjectRequest
             {
-                ProjectName = appName,
+                ProjectName = projectName,
                 OutputFolder = outputFolder,
-                ProjectType = DotNetProjectType.Wpf,
+                ProjectType = target.ProjectType,
                 Framework = "net10.0"
             });
 
@@ -76,40 +78,33 @@ public sealed class AppScaffolder
                     false, outputFolder, Array.Empty<string>(),
                     $"Project creation failed: {created.Message}");
 
-            // Only ever touches files this scaffolder just created: the reuse path
-            // above skips it, so a project the user has edited is left alone.
-            WpfProjectFixup.Apply(outputFolder);
+            // Only ever touches files just created: the reuse path above skips it, so a
+            // project the user has edited is left alone.
+            target.FixupProject(outputFolder);
         }
 
         var modelsFolder = Path.Combine(outputFolder, "Models");
         var dataFolder = Path.Combine(outputFolder, "Data");
-        var viewModelsFolder = Path.Combine(outputFolder, "ViewModels");
-        var viewsFolder = Path.Combine(outputFolder, "Views");
 
         var written = new List<string>(
-            WriteClasses(modelsFolder, classes, $"{appName}.Models"));
+            WriteClasses(modelsFolder, classes, $"{projectName}.Models"));
         var expected = classes.Count;
 
         var entityNames = classes.Select(c => c.Name).ToList();
 
+        // Shared, target-agnostic core: JSON store + generic base repository + one typed
+        // repository per entity.
         var files = new List<(string Folder, string Name, string Source)>
         {
-            (dataFolder, "JsonStore.cs", JsonStoreTemplate.Source($"{appName}.Data")),
-            (dataFolder, "RelationshipResolver.cs", RelationshipResolverTemplate.Source(appName)),
-            (dataFolder, "Repository.cs", RepositoryTemplate.Base(appName)),
-            (viewModelsFolder, "ObservableObject.cs", ViewModelTemplates.ObservableObject(appName)),
-            (viewModelsFolder, "RelayCommand.cs", ViewModelTemplates.RelayCommand(appName)),
-            (viewModelsFolder, "IEntityViewModel.cs", ViewModelTemplates.EntityViewModelInterface(appName)),
-            (viewModelsFolder, "EntityViewModel.cs", ViewModelTemplates.EntityViewModel(appName)),
-            (viewModelsFolder, "MainViewModel.cs", MainViewModelTemplate.Build(appName, entityNames)),
-            (viewsFolder, "MainWindow.xaml", MainWindowTemplate.Xaml(appName)),
-            (viewsFolder, "MainWindow.xaml.cs", MainWindowTemplate.CodeBehind(appName)),
+            (dataFolder, "JsonStore.cs", JsonStoreTemplate.Source($"{projectName}.Data")),
+            (dataFolder, "Repository.cs", RepositoryTemplate.Base(projectName)),
         };
-
-        // One typed repository per entity, alongside the generic base above. Driven by the
-        // class names (post-rename), the same list MainViewModel is built from.
         foreach (var name in entityNames)
-            files.Add((dataFolder, $"{name}Repository.cs", RepositoryTemplate.Typed(appName, name)));
+            files.Add((dataFolder, $"{name}Repository.cs", RepositoryTemplate.Typed(projectName, name)));
+
+        // Target-specific front-end / entry point.
+        foreach (var file in target.FrontEndFiles(projectName, entityNames))
+            files.Add((Path.Combine(outputFolder, file.RelativeFolder), file.Name, file.Source));
 
         foreach (var (folder, name, source) in files)
         {
@@ -122,10 +117,15 @@ public sealed class AppScaffolder
         var allWritten = written.Count == expected;
 
         var message = allWritten
-            ? $"Generated {classes.Count} class(es) + a runnable WPF CRUD app."
+            ? $"Generated {classes.Count} class(es) + {target.Description}."
             : $"Generated {written.Count} of {expected} file(s); " +
               "some files could not be written.";
 
         return new ScaffoldResult(allWritten, outputFolder, written, message);
     }
+
+    /// <summary>Backward-compatible overload: scaffolds the WPF target (the historical default).</summary>
+    public ScaffoldResult Scaffold(
+        CandidateDomainModel model, string appName, string workspaceRoot)
+        => Scaffold(model, appName, workspaceRoot, new Targets.WpfTarget());
 }
