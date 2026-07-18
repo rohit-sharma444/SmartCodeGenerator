@@ -34,8 +34,8 @@ internal sealed class BuildAppCommand
 
         if (result.Topic.IsRecognized)
         {
-            Console.WriteLine($"Recognized topic: {result.Topic.Title} " +
-                              $"(confidence {result.Topic.Confidence:P0}) — {result.Topic.ArticleUrl}");
+            //Console.WriteLine($"Recognized topic: {result.Topic.Title} " +
+            //                  $"(confidence {result.Topic.Confidence:P0}) — {result.Topic.ArticleUrl}");
 
             // Where the rest of the classes came from. Without this a Borrower appearing in a
             // library model looks like a guess, when it was read out of an article by name.
@@ -170,13 +170,13 @@ internal sealed class BuildAppCommand
                 + "GetAll, GetById, Create, Update, Delete");
         }
 
-        if (model.Suggestions.Count > 0)
-        {
-            Console.WriteLine();
-            Console.WriteLine(
-                "Also found - 'add <name>' to include: "
-                + string.Join(", ", model.Suggestions.Select(e => e.Name)));
-        }
+        //if (model.Suggestions.Count > 0)
+        //{
+        //    Console.WriteLine();
+        //    Console.WriteLine(
+        //        "Also found - 'add <name>' to include: "
+        //        + string.Join(", ", model.Suggestions.Select(e => e.Name)));
+        //}
 
         if (model.Rejected.Count > 0)
         {

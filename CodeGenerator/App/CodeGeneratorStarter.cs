@@ -66,7 +66,7 @@ internal class CodeGeneratorStarter
         var resolved = PathHelper.ResolveWorkspaceRoot(
             projectPath, Directory.GetCurrentDirectory());
 
-        Console.WriteLine($"Workspace: {resolved}");
+        //Console.WriteLine($"Workspace: {resolved}");
         return resolved;
     }
 
@@ -377,17 +377,8 @@ internal class CodeGeneratorStarter
                 });
             }
 
-            // Do NOT auto-select a project at startup. A leftover selection from
-            // the persisted registry (or the first project that happened to be
-            // registered) would silently capture every generated class and hide
-            // it in an unexpected folder. New classes go to the workspace until
-            // the user explicitly runs "use project X".
-            ProjectManager.CurrentProject = null;
-
             Console.WriteLine(projects.Length > 0
-                ? $"Found {projects.Length} project(s). No project selected — " +
-                  "use 'use project <name>' to target one, or new classes save to the workspace."
-                : "No projects found. New classes save to the workspace.");
+                ? $"Found {projects.Length} project(s) and {ProjectManager.CurrentProject?.ProjectName} project is selected." : "");
         }
         catch (Exception ex)
         {
