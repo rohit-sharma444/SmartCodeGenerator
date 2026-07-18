@@ -5,7 +5,8 @@ using DomainDiscovery.Model;
 
 namespace AppScaffolding;
 
-/// <summary>Generates a WPF project and one C# class file per domain entity.</summary>
+/// <summary>Generates the shared project core (Models + JsonStore + Repositories) for a domain
+/// model and delegates the project type / front-end to an <see cref="ITargetScaffolder"/>.</summary>
 public sealed class AppScaffolder
 {
     /// <summary>
