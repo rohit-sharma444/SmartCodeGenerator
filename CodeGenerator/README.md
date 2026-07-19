@@ -120,19 +120,34 @@ project is selected.
 
 | Command | Description |
 | --- | --- |
-| `build app: <description>` | Describe a system in plain English; runs [domain discovery](../DomainDiscovery/README.md), prints the recognized topic and candidate entities, and opens a review loop. On approval, [`AppScaffolding`](../AppScaffolding/README.md) writes a runnable WPF CRUD app into the workspace. |
+| `build app: <description>` | Describe a system in plain English; runs [domain discovery](../DomainDiscovery/README.md), prints the recognized topic and candidate entities, and opens a review loop. On approval you pick an output target, and [`AppScaffolding`](../AppScaffolding/README.md) writes a runnable project for it into the workspace. |
 
 In the review loop:
 
 | Input | Effect |
 | --- | --- |
-| `approve` \| `a` | Generate the WPF CRUD app from the model as it stands. |
+| `approve` \| `a` | Generate an app from the model as it stands, prompting for the output target. |
+| `approve <target>` | Generate straight to a target, skipping the prompt — one of `wpf` (default), `console`, `webapi`, `classlib`, `worker`. |
 | `add <name>` | Add an entity. |
 | `remove <name>` | Remove an entity. |
 | `rename <old> <new>` | Rename an entity. |
 | `field <entity> <name>[:<type>]` | Add a field (type defaults to `string`). |
 | `unfield <entity> <name>` | Remove a field. |
 | `cancel` \| `c` | Discard the model and generate nothing. |
+
+Every target shares the same generated core — the model classes, a JSON store,
+and a typed `<Entity>Repository` (`GetAll`/`GetById`/`Create`/`Update`/`Delete`)
+per entity — and differs only in the front end. The **console** app, for example,
+is a runnable CRUD menu over those repositories, written to a `<AppName>.Console`
+project you can `dotnet run`:
+
+```
+build app: a library that lends books to members
+approve console
+```
+
+A bare `approve` prompts for the target; a blank answer (or piped input, so
+existing scripts are unaffected) keeps the WPF default.
 
 Discovery reads Wikipedia from the local store built by
 [`WikipediaDumpImporter`](../WikipediaDumpImporter/README.md). Without that store
