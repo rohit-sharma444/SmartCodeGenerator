@@ -26,11 +26,11 @@ NaturalLanguageEngine                      DomainDiscovery
 NaturalLanguageBridge                      interactive review loop
   connects the NLP result                    (approve / add / remove / rename)
   to the generator                                  │
-        │                                           ▼  approve
+        │                                           ▼  approve <target>
         ▼                                   AppScaffolding
-CodeGenerationEngine                          writes a runnable WPF
-  resolves the command and                    CRUD app over the model
-  generates/edits code (Roslyn)
+CodeGenerationEngine                          writes a runnable app for the
+  resolves the command and                    chosen target (WPF, console,
+  generates/edits code (Roslyn)               web API, class lib, worker)
 ```
 
 For a fuller picture — component/dependency graph, runtime sequence flows for
@@ -46,7 +46,7 @@ both paths, and the NLE internal pipeline — see
 | [`NaturalLanguageEngine`](NaturalLanguageEngine/README.md) | Multi-stage NLP pipeline that turns English text into entities, relationships, and intent. |
 | [`NaturalLanguageBridge`](NaturalLanguageBridge/README.md) | Wires the NLP engine to the code generator. |
 | [`DomainDiscovery`](DomainDiscovery/README.md) | Turns a plain-English system description into a candidate domain model (used by `build app:`). |
-| [`AppScaffolding`](AppScaffolding/README.md) | Turns an approved domain model into a runnable WPF CRUD app on disk (the last stage of `build app:`). |
+| [`AppScaffolding`](AppScaffolding/README.md) | Turns an approved domain model into a runnable app on disk for the chosen target — WPF, console, web API, class library, or worker (the last stage of `build app:`). |
 | [`WikipediaDumpImporter`](WikipediaDumpImporter/README.md) | One-off tool that builds the local Wikipedia store `DomainDiscovery` reads offline, and maintains it afterwards. Not part of the normal build-and-run loop. |
 | [`CodeGenerator.Tests`](CodeGenerator.Tests/README.md), [`NaturalLanguageEngine.Tests`](NaturalLanguageEngine.Tests/README.md), [`DomainDiscovery.Tests`](DomainDiscovery.Tests/README.md) | Test suites for the engine, the generator, and domain discovery. |
 
@@ -109,8 +109,26 @@ build app: a library that lends books to members
 
 The CLI runs domain discovery, prints the recognized topic and candidate
 entities, and drops you into a review loop where you can `approve`, `add <name>`,
-`remove <name>`, `rename <old> <new>`, or `cancel`. On `approve`,
-[`AppScaffolding`](AppScaffolding/README.md) writes a runnable WPF CRUD app.
+`remove <name>`, `rename <old> <new>`, or `cancel`. On `approve`, it asks which
+kind of app to generate, then [`AppScaffolding`](AppScaffolding/README.md) writes
+a runnable project for that target.
+
+The targets are `wpf` (the default), `console`, `webapi`, `classlib`, and
+`worker`. All of them share the same generated core — the model classes, a JSON
+store, and a typed `<Entity>Repository` with `GetAll`/`GetById`/`Create`/
+`Update`/`Delete` per entity — and differ only in the front end. For example, the
+**console** app is a runnable CRUD menu: a top-level list of entities, each with
+list/add/delete backed by its repository. Pick it by answering `console` at the
+prompt, or skip the prompt with an inline target:
+
+```
+build app: a library that lends books to members
+approve console
+```
+
+This writes a `<AppName>.Console` project you can `dotnet run`. Answering with a
+blank line (or piping input, so scripts stay unchanged) keeps the original WPF
+CRUD app.
 
 Discovery reads Wikipedia from a **local store** built by
 [`WikipediaDumpImporter`](WikipediaDumpImporter/README.md) — local, deterministic,
