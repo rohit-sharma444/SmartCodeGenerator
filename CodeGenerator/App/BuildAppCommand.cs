@@ -1,4 +1,5 @@
 using AppScaffolding;
+using AppScaffolding.Targets;
 using DomainDiscovery;
 using DomainDiscovery.Model;
 using DomainDiscovery.Review;
@@ -55,7 +56,7 @@ internal sealed class BuildAppCommand
         while (true)
         {
             PrintModel(model);
-            Console.WriteLine("  [a]pprove   add <name>   remove <name>   rename <old> <new>");
+            Console.WriteLine("  [a]pprove [target]   add <name>   remove <name>   rename <old> <new>");
             Console.WriteLine("  field <entity> <name>[:<type>]   unfield <entity> <name>   [c]ancel");
             Console.Write("> ");
             var input = Console.ReadLine();
@@ -83,7 +84,15 @@ internal sealed class BuildAppCommand
                         return;
                     }
 
-                    var scaffold = new AppScaffolder().Scaffold(model, appName, workspaceRoot);
+                    var target = ResolveTarget(parts, Console.IsInputRedirected, Console.In);
+                    if (target is null)
+                    {
+                        Console.WriteLine(
+                            $"Unknown target '{parts[1]}'. Valid: {string.Join(", ", TargetScaffolders.Keys)}");
+                        break;
+                    }
+
+                    var scaffold = new AppScaffolder().Scaffold(model, appName, workspaceRoot, target);
                     if (scaffold.Success)
                     {
                         Console.WriteLine($"Generated project at {scaffold.ProjectPath}");
@@ -134,6 +143,35 @@ internal sealed class BuildAppCommand
                     Console.WriteLine("Unrecognized command.");
                     break;
             }
+        }
+    }
+
+    /// <summary>
+    /// Resolves the output target for an <c>approve</c> command. An inline
+    /// <c>approve &lt;target&gt;</c> wins (null when the key is unknown). With no inline key,
+    /// redirected input never prompts and defaults to WPF (so piped scripts are unchanged);
+    /// interactive input is prompted, blank meaning WPF, and re-prompts on an unknown key.
+    /// </summary>
+    internal static ITargetScaffolder? ResolveTarget(string[] parts, bool inputRedirected, TextReader reader)
+    {
+        if (parts.Length >= 2)
+            return TargetScaffolders.TryResolve(parts[1], out var inline) ? inline : null;
+
+        if (inputRedirected)
+            return TargetScaffolders.Default;
+
+        while (true)
+        {
+            Console.Write($"Target [{string.Join("/", TargetScaffolders.Keys)}] (default wpf): ");
+            var line = reader.ReadLine()?.Trim() ?? string.Empty;
+
+            if (line.Length == 0)
+                return TargetScaffolders.Default;
+
+            if (TargetScaffolders.TryResolve(line, out var chosen))
+                return chosen;
+
+            Console.WriteLine("Unknown target. Valid: " + string.Join(", ", TargetScaffolders.Keys));
         }
     }
 

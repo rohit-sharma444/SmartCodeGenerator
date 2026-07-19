@@ -12,8 +12,11 @@ come from](#where-the-articles-come-from).
 
 This is a class library (`net10.0`) with no console I/O. The
 [`CodeGenerator`](../CodeGenerator/README.md) CLI drives it through the
-`build app: <description>` command, and [`AppScaffolding`](../AppScaffolding/README.md)
-turns the approved result into a runnable app.
+`build app: <description>` command. Discovery is **target-agnostic** — it stops
+at the candidate model; the output kind is chosen only after the user approves,
+when [`AppScaffolding`](../AppScaffolding/README.md) turns that same model into a
+runnable app for the selected target (WPF, console, web API, class library, or
+worker).
 
 ## Pipeline
 
