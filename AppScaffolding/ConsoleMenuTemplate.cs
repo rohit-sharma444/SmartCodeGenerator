@@ -24,15 +24,17 @@ public sealed class EntityMenu<T> where T : class, new()
     {
         while (true)
         {
-            Console.WriteLine($"\n{typeof(T).Name}: [l]ist  [a]dd  [d]elete  [b]ack");
-            Console.Write("> ");
-            switch (Console.ReadLine()?.Trim().ToLowerInvariant())
+            // System.Console is fully qualified: this file's namespace ends in ".Console"
+            // for the console target, which would otherwise shadow the bare name.
+            System.Console.WriteLine($"\n{typeof(T).Name}: [l]ist  [a]dd  [d]elete  [b]ack");
+            System.Console.Write("> ");
+            switch (System.Console.ReadLine()?.Trim().ToLowerInvariant())
             {
                 case "l": List(); break;
                 case "a": Add(); break;
                 case "d": Delete(); break;
                 case "b": case "": case null: return;
-                default: Console.WriteLine("Unrecognized command."); break;
+                default: System.Console.WriteLine("Unrecognized command."); break;
             }
         }
     }
@@ -40,9 +42,9 @@ public sealed class EntityMenu<T> where T : class, new()
     private void List()
     {
         var all = _repository.GetAll();
-        if (all.Count == 0) { Console.WriteLine("(none)"); return; }
+        if (all.Count == 0) { System.Console.WriteLine("(none)"); return; }
         foreach (var item in all)
-            Console.WriteLine(Describe(item));
+            System.Console.WriteLine(Describe(item));
     }
 
     private void Add()
@@ -50,21 +52,21 @@ public sealed class EntityMenu<T> where T : class, new()
         var item = new T();
         foreach (var prop in Editable())
         {
-            Console.Write($"{prop.Name} ({prop.PropertyType.Name}): ");
-            var value = Parse(Console.ReadLine() ?? string.Empty, prop.PropertyType);
+            System.Console.Write($"{prop.Name} ({prop.PropertyType.Name}): ");
+            var value = Parse(System.Console.ReadLine() ?? string.Empty, prop.PropertyType);
             if (value is not null) prop.SetValue(item, value);
         }
         _repository.Create(item);
-        Console.WriteLine("Added.");
+        System.Console.WriteLine("Added.");
     }
 
     private void Delete()
     {
-        Console.Write("Id to delete: ");
-        if (int.TryParse(Console.ReadLine(), out var id) && _repository.Delete(id))
-            Console.WriteLine("Deleted.");
+        System.Console.Write("Id to delete: ");
+        if (int.TryParse(System.Console.ReadLine(), out var id) && _repository.Delete(id))
+            System.Console.WriteLine("Deleted.");
         else
-            Console.WriteLine("No such record.");
+            System.Console.WriteLine("No such record.");
     }
 
     // Id is repository-assigned; audit fields are set on save; navigation properties are
