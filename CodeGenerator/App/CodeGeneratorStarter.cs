@@ -156,6 +156,12 @@ internal class CodeGeneratorStarter
                 continue;
             }
 
+            if (HistoryCommand.IsHistory(input))
+            {
+                Console.WriteLine(HistoryView.Format(_commandHistory, 20));
+                continue;
+            }
+
             // FIX #9: Improved exception handling with specific catch blocks
             try
             {
