@@ -50,6 +50,13 @@ internal sealed class CommandLineEditor
             switch (key.Key)
             {
                 case ConsoleKey.Enter:
+                    // Enter is the one branch that returns before RewriteLine runs, so the
+                    // suggestion lines RewriteLine drew below the prompt must be cleared here —
+                    // otherwise they linger on screen after the command is submitted.
+                    ClearSuggestionLines();
+                    Console.SetCursorPosition(
+                        Math.Min(Prompt.Length + buffer.Count, Console.BufferWidth - 1),
+                        Math.Max(0, _inputTop));
                     return CommitCommand(buffer);
 
                 case ConsoleKey.Tab:
@@ -272,20 +279,7 @@ internal sealed class CommandLineEditor
         Console.Write(new string(' ', Console.BufferWidth - 1));
 
         // Clear previous suggestions
-        for (int i = 1; i <= _lastSuggestionCount; i++)
-        {
-            var line = inputTop + i;
-
-            if (line >= Console.BufferHeight)
-                break;
-
-            Console.SetCursorPosition(0, line);
-
-            Console.Write(
-                new string(
-                    ' ',
-                    Console.BufferWidth - 1));
-        }
+        ClearSuggestionLines();
 
         // Draw prompt + text
         Console.SetCursorPosition(0, inputTop);
@@ -360,6 +354,29 @@ internal sealed class CommandLineEditor
     {
         _suggestions.Clear();
         _suggestionIndex = -1;
+    }
+
+    /// <summary>
+    /// Blanks the suggestion lines currently drawn below the input line and forgets their count.
+    /// Shared by <see cref="RewriteLine"/> (which redraws afterwards) and the Enter path (which
+    /// returns without redrawing, so the suggestions would otherwise stay on screen).
+    /// </summary>
+    private void ClearSuggestionLines()
+    {
+        var inputTop = Math.Max(0, _inputTop);
+
+        for (int i = 1; i <= _lastSuggestionCount; i++)
+        {
+            var line = inputTop + i;
+
+            if (line >= Console.BufferHeight)
+                break;
+
+            Console.SetCursorPosition(0, line);
+            Console.Write(new string(' ', Console.BufferWidth - 1));
+        }
+
+        _lastSuggestionCount = 0;
     }
 
     private static int FindPreviousWord(
