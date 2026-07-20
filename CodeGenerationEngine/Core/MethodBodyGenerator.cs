@@ -34,7 +34,7 @@ public static class MethodBodyGenerator
             return GenerateFindBy(method);
 
         if (StartsWithAny(lower, "exists", "has"))
-            return GenerateExists();
+            return GenerateExists(method);
 
         if (StartsWithAny(lower, "count"))
             return GenerateCount(method);
@@ -49,10 +49,10 @@ public static class MethodBodyGenerator
             return GenerateCreate(className, properties);
 
         if (StartsWithAny(lower, "update", "edit", "modify"))
-            return GenerateUpdate();
+            return GenerateUpdate(method);
 
         if (StartsWithAny(lower, "delete", "remove"))
-            return GenerateDelete();
+            return GenerateDelete(method);
 
         if (StartsWithAny(lower, "get", "find", "load", "fetch"))
             return GenerateGet(method);
@@ -69,7 +69,8 @@ public static class MethodBodyGenerator
     {
         var lines = new List<string>
         {
-            "// TODO: Implement retrieval logic"
+            $"// Look up and return the {method.ReturnType} this method retrieves.",
+            "// Generated stub -- replace with the real query."
         };
 
         lines.AddRange(GenerateDefault(method.ReturnType));
@@ -151,43 +152,60 @@ public static class MethodBodyGenerator
         return lines;
     }
 
-    private static IEnumerable<string> GenerateUpdate()
+    private static IEnumerable<string> GenerateUpdate(MethodDefinition method)
     {
-        return
-        [
-            "// TODO: Update entity",
-            "// Apply changes here"
-        ];
+        var lines = new List<string>
+        {
+            "// Apply the requested changes to the target entity here.",
+            "// Generated stub -- replace with the real update."
+        };
+
+        lines.AddRange(GenerateDefault(method.ReturnType));
+
+        return lines;
     }
 
-    private static IEnumerable<string> GenerateDelete()
+    private static IEnumerable<string> GenerateDelete(MethodDefinition method)
     {
-        return
-        [
-            "// TODO: Delete entity"
-        ];
+        var lines = new List<string>
+        {
+            "// Remove the target entity here.",
+            "// Generated stub -- replace with the real delete."
+        };
+
+        lines.AddRange(GenerateDefault(method.ReturnType));
+
+        return lines;
     }
 
     #endregion
 
     #region Utility Methods
 
-    private static IEnumerable<string> GenerateExists()
+    private static IEnumerable<string> GenerateExists(MethodDefinition method)
     {
-        return
-        [
-            "// TODO: Check existence",
-            "return false;"
-        ];
+        var lines = new List<string>
+        {
+            "// Return whether a matching entity exists.",
+            "// Generated stub -- replace with the real check."
+        };
+
+        lines.AddRange(GenerateDefault(method.ReturnType));
+
+        return lines;
     }
 
     private static IEnumerable<string> GenerateCount(MethodDefinition method)
     {
-        return
-        [
-            "// TODO: Count matching records",
-            "return 0;"
-        ];
+        var lines = new List<string>
+        {
+            "// Return the number of matching records.",
+            "// Generated stub -- replace with the real count."
+        };
+
+        lines.AddRange(GenerateDefault(method.ReturnType));
+
+        return lines;
     }
 
     #endregion
