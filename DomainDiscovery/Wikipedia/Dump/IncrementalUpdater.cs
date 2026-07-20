@@ -31,12 +31,16 @@ public sealed class IncrementalUpdater
     private readonly WikipediaStore _store;
     private readonly HttpClient _http;
     private readonly Action<string> _say;
+    private readonly IStoreUpdateProgress _progress;
 
-    public IncrementalUpdater(WikipediaStore store, HttpClient? http = null, Action<string>? say = null)
+    public IncrementalUpdater(
+        WikipediaStore store, HttpClient? http = null, Action<string>? say = null,
+        IStoreUpdateProgress? progress = null)
     {
         _store = store;
         _http = http ?? new HttpClient { Timeout = TimeSpan.FromMinutes(30) };
         _say = say ?? Console.WriteLine;
+        _progress = progress ?? new ConsoleBarProgress();
 
         if (!_http.DefaultRequestHeaders.Contains("User-Agent"))
             _http.DefaultRequestHeaders.Add("User-Agent", "SmartCodeGenerator-DomainDiscovery/1.0");
@@ -87,7 +91,8 @@ public sealed class IncrementalUpdater
 
             var total = (response.Content.Headers.ContentLength ?? 0) + already;
 
-            using var progress = new ConsoleProgressBar($"  download {day}", total, initial: already);
+            _progress.BeginPhase(UpdatePhase.Download, day, total, already);
+
             using var source = response.Content.ReadAsStream();
             using var file = new FileStream(
                 destination, resuming ? FileMode.Append : FileMode.Create, FileAccess.Write);
@@ -104,8 +109,11 @@ public sealed class IncrementalUpdater
 
                 file.Write(buffer, 0, read);
                 written += read;
-                progress.Report(written);
+                _progress.Report(written);
             }
+
+            // Only on a clean finish. A cancelled phase must not snap the bar/percentage to 100%.
+            _progress.EndPhase();
         }
         finally
         {
@@ -142,9 +150,9 @@ public sealed class IncrementalUpdater
     {
         var total = new FileInfo(path).Length;
 
-        using var progress = new ConsoleProgressBar("  apply   ", total);
+        _progress.BeginPhase(UpdatePhase.Apply, day: 0, total, initial: 0);
         using var file = File.OpenRead(path);
-        using var counted = new CountingStream(file, progress.Report);
+        using var counted = new CountingStream(file, _progress.Report);
 
         long articles = 0, redirects = 0, skipped = 0;
 
@@ -193,6 +201,8 @@ public sealed class IncrementalUpdater
         }
 
         Flush(pending, pendingRedirects);
+
+        _progress.EndPhase();
 
         return new IncrementStats(articles, redirects, skipped);
     }

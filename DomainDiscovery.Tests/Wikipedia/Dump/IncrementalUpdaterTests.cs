@@ -299,6 +299,38 @@ public sealed class IncrementalUpdaterTests : IDisposable
     /// Range starting at or past the end of the file is a 416 carrying the real length. Verified
     /// against the live server on 2026-07-14: 206 from mid-file, 416 from EOF.
     /// </summary>
+    private sealed class RecordingProgress : IStoreUpdateProgress
+    {
+        public List<UpdatePhase> PhasesBegun { get; } = [];
+        public int Reports { get; private set; }
+        public bool Ended { get; private set; }
+
+        public void BeginDay(int dayIndex, int dayCount) { }
+        public void BeginPhase(UpdatePhase phase, int day, long total, long initial)
+            => PhasesBegun.Add(phase);
+        public void Report(long done) => Reports++;
+        public void EndPhase() => Ended = true;
+        public void Finish(StartupUpdateOutcome outcome, int daysApplied) { }
+    }
+
+    [Fact]
+    public void Apply_ReportsProgress_ThroughTheInjectedSink()
+    {
+        var store = NewStore();
+        var file = Increment("""
+              <page><title>Receipt</title><ns>0</ns><id>101</id>
+                <revision><id>2</id><text xml:space="preserve">A receipt records a [[Sale]].</text></revision>
+              </page>
+            """);
+
+        var progress = new RecordingProgress();
+        new IncrementalUpdater(store, say: _ => { }, progress: progress).Apply(file);
+
+        Assert.Contains(UpdatePhase.Apply, progress.PhasesBegun);
+        Assert.True(progress.Reports > 0);
+        Assert.True(progress.Ended);
+    }
+
     private sealed class StubDumpServer(byte[] body) : HttpMessageHandler
     {
         /// <summary>Where the last honoured Range request was served from.</summary>
