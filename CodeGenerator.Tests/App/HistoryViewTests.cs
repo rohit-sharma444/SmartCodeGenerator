@@ -17,8 +17,9 @@ public class HistoryViewTests
         StringAssert.Contains(text, "create project Shop");
         StringAssert.Contains(text, "2");
         StringAssert.Contains(text, "use project Shop");
-        Assert.IsTrue(
-            text.IndexOf("create project Shop") < text.IndexOf("use project Shop"),
+        Assert.IsLessThan(
+            text.IndexOf("use project Shop"),
+            text.IndexOf("create project Shop"),
             "oldest entry should be listed first");
     }
 
@@ -27,7 +28,7 @@ public class HistoryViewTests
     {
         var entries = Enumerable.Range(1, 30).Select(i => $"cmd{i}").ToList();
         var text = HistoryView.Format(entries, 20);
-        Assert.IsFalse(text.Contains("cmd10"), "older-than-window entries are omitted");
+        Assert.DoesNotContain("cmd10", text, "older-than-window entries are omitted");
         StringAssert.Contains(text, "cmd11");
         StringAssert.Contains(text, "cmd30");
     }

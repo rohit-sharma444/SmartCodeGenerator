@@ -45,7 +45,7 @@ public class BatchCommandDetectorTests
         // Either way the line stays non-actionable; only the label changes.
         var actions = BatchCommandDetector.Detect(["create a repository for Customer"], root);
 
-        Assert.AreEqual(1, actions.Count);
+        Assert.HasCount(1, actions);
         Assert.AreEqual(IntentType.Unknown, actions[0].Intent);
         Assert.IsFalse(actions[0].IsActionable);
         Assert.IsNull(actions[0].Preview);

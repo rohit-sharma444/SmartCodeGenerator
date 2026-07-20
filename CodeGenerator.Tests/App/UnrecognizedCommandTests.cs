@@ -11,7 +11,7 @@ public class UnrecognizedCommandTests
         var text = UnrecognizedCommand.Describe("zzz", []);
         StringAssert.Contains(text, "Command not recognized: 'zzz'");
         StringAssert.Contains(text, "Type 'help'");
-        Assert.IsFalse(text.Contains("Did you mean"));
+        Assert.DoesNotContain("Did you mean", text);
     }
 
     [TestMethod]

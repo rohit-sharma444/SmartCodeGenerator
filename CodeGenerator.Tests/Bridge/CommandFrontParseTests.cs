@@ -94,6 +94,6 @@ public class CommandFrontParseTests
     public void Mapper_command_carries_a_confidence()
     {
         var cmd = CommandFront.Parse("create a class called Customer", "");
-        Assert.IsTrue(cmd.Confidence > 0d, $"expected NLE confidence, got {cmd.Confidence}");
+        Assert.IsGreaterThan(0d, cmd.Confidence, $"expected NLE confidence, got {cmd.Confidence}");
     }
 }

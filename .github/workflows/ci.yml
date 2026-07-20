@@ -27,8 +27,10 @@ jobs:
       - name: Restore
         run: dotnet restore SmartCodeGenerator/SmartCodeGenerator.slnx
 
+      # -warnaserror enforces a clean build in CI only. It is deliberately not set
+      # in Directory.Build.props so local iteration is never blocked by a warning.
       - name: Build
-        run: dotnet build SmartCodeGenerator/SmartCodeGenerator.slnx -c Release --no-restore
+        run: dotnet build SmartCodeGenerator/SmartCodeGenerator.slnx -c Release --no-restore -warnaserror
 
       - name: Test
         run: dotnet test SmartCodeGenerator/SmartCodeGenerator.slnx -c Release --no-build
