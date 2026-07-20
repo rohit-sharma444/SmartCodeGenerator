@@ -124,12 +124,20 @@ old `ConsoleProgressBar` remains for the importer's own (foreground) usage and i
 ## Concurrency safety
 
 The background task **writes** to the SQLite store while a foreground `build app:` may **read** it —
-safe under WAL (one writer + many readers). But `build app:`'s `ArticleRefresher` also **writes**
-(`ReplaceArticle`), so two writers can collide with `SQLITE_BUSY`.
+safe under WAL (one writer + many readers). `build app:`'s `ArticleRefresher` also **writes**
+(`ReplaceArticle`), so two writers can meet `SQLITE_BUSY`.
 
-Mitigation: set `PRAGMA busy_timeout` in `WikipediaStore.Open()` so a blocked writer waits briefly
-(e.g. a few seconds) instead of throwing immediately. Small, targeted hardening that this feature
-makes necessary. This is the only change to `WikipediaStore`.
+**Investigation update (2026-07-20).** The original design proposed `PRAGMA busy_timeout = 5000` in
+`WikipediaStore.Open()`. That was disproved during execution: **Microsoft.Data.Sqlite 10.0.9 already
+retries a busy write** until the connection's `Default Timeout` (default **30 s**), independent of
+the native `busy_timeout` pragma. A concurrent writer already waits and succeeds against the
+unmodified store (verified empirically). A native `busy_timeout = 5000` would only *shorten* that
+ceiling from ~30 s to 5 s — the wrong direction.
+
+So the safety is real but **implicit**. The mitigation is therefore to make it **explicit**: pin
+`Default Timeout = 30` on the store's connection string, with a comment, so a future edit or a
+library default change cannot silently remove it. No native `busy_timeout`. This is the only change
+to `WikipediaStore`, and it is behavior-preserving (the pinned value equals the prior default).
 
 ## Error handling
 

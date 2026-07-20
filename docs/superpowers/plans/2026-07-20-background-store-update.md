@@ -565,125 +565,74 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 ---
 
-### Task 3: `WikipediaStore.Open()` busy-timeout
+### Task 3: Make concurrent-writer safety explicit on the store connection
 
-The background task writes to the store while a foreground `build app:` refresh may also write (`ArticleRefresher.ReplaceArticle`). Under WAL two writers otherwise collide with an immediate `SQLITE_BUSY`. A busy-timeout makes the second writer wait.
+**Revised 2026-07-20 after investigation.** The original task added `PRAGMA busy_timeout = 5000`. Investigation during execution disproved its premise: **Microsoft.Data.Sqlite 10.0.9 already retries a locked write** until the connection's `Default Timeout` (default **30 s**), independent of the native `busy_timeout` pragma. A concurrent writer already *waits and succeeds* against the unmodified `Open()` (verified empirically — the proposed RED test passed with no change). Adding `busy_timeout = 5000` would only *shorten* the effective wait ceiling from ~30 s to 5 s — the opposite of the goal.
+
+So the store's concurrent-writer safety is real but **implicit**: it rides on the library's default `Default Timeout`. This task makes it **explicit and defensive** — pin `Default Timeout = 30` on the connection string with a comment, so a future edit (or a library default change) cannot silently remove the safety net. No native `busy_timeout`. No flaky timing test — a documented rationale in the code instead, per the decision recorded in the progress ledger.
 
 **Files:**
-- Modify: `DomainDiscovery/Wikipedia/Dump/WikipediaStore.cs:36-41`
-- Test: `DomainDiscovery.Tests/Wikipedia/Dump/WikipediaStoreConcurrencyTests.cs`
+- Modify: `DomainDiscovery/Wikipedia/Dump/WikipediaStore.cs:29-34` (the constructor's `SqliteConnectionStringBuilder`)
 
 **Interfaces:**
-- No public API change. `Open()` remains private; behavior only.
+- No public API change; `Open()` is untouched. Only the connection string gains an explicit `DefaultTimeout`.
 
-- [ ] **Step 1: Write the failing concurrency test**
+- [ ] **Step 1: Pin `Default Timeout` explicitly, with rationale**
 
-`DomainDiscovery.Tests/Wikipedia/Dump/WikipediaStoreConcurrencyTests.cs`:
+In `DomainDiscovery/Wikipedia/Dump/WikipediaStore.cs`, replace the constructor (currently lines 29-34):
 
 ```csharp
-using DomainDiscovery.Wikipedia.Dump;
-using Microsoft.Data.Sqlite;
-using Xunit;
-
-namespace DomainDiscovery.Tests.Wikipedia.Dump;
-
-[Collection(SqliteStoreCollection.Name)]
-public sealed class WikipediaStoreConcurrencyTests : IDisposable
-{
-    private readonly string _path = Path.Combine(
-        Path.GetTempPath(), $"concurrency-{Guid.NewGuid():N}.db");
-
-    public void Dispose()
-    {
-        SqliteConnection.ClearAllPools();
-        if (File.Exists(_path)) File.Delete(_path);
-    }
-
-    /// <summary>
-    /// A write that arrives while another writer holds the lock must WAIT (up to the busy-timeout)
-    /// and then succeed, not throw 'database is locked' immediately. This is what lets a background
-    /// update and a foreground article refresh both write to the store.
-    /// </summary>
-    [Fact]
-    public void ConcurrentWriters_WaitForEachOther_RatherThanThrowing()
-    {
-        var store = new WikipediaStore(_path);
-        store.CreateSchema();
-        store.CreateSearchIndexes();
-
-        // Hold a write lock on a raw connection.
-        using var holder = new SqliteConnection(new SqliteConnectionStringBuilder
+    public WikipediaStore(string databasePath)
+        => _connectionString = new SqliteConnectionStringBuilder
         {
-            DataSource = _path,
+            DataSource = databasePath,
+            Mode = SqliteOpenMode.ReadWriteCreate
+        }.ToString();
+```
+
+with:
+
+```csharp
+    public WikipediaStore(string databasePath)
+        => _connectionString = new SqliteConnectionStringBuilder
+        {
+            DataSource = databasePath,
             Mode = SqliteOpenMode.ReadWriteCreate,
-        }.ToString());
-        holder.Open();
 
-        using (var begin = holder.CreateCommand())
-        {
-            begin.CommandText =
-                "BEGIN IMMEDIATE; INSERT INTO pages(title, lead, payload) VALUES('x', 'x', zeroblob(1));";
-            begin.ExecuteNonQuery();
-        }
-
-        // Another writer, through the store, must not fault while the lock is held.
-        var writer = Task.Run(() =>
-            store.ReplaceArticles([new ArticleRow("Receipt", "l", "b", [])]));
-
-        // Let the writer reach its wait, then release the lock well within the 5s busy-timeout.
-        Thread.Sleep(250);
-        using (var commit = holder.CreateCommand())
-        {
-            commit.CommandText = "COMMIT;";
-            commit.ExecuteNonQuery();
-        }
-
-        Assert.True(writer.Wait(TimeSpan.FromSeconds(10)), "the waiting writer never completed");
-        Assert.True(writer.IsCompletedSuccessfully, writer.Exception?.ToString() ?? "faulted");
-    }
-}
+            // Concurrent-writer safety, made explicit. The background startup update and a foreground
+            // article refresh can both write to this store at once; under WAL the second writer meets
+            // SQLITE_BUSY. Microsoft.Data.Sqlite retries a busy write until this timeout rather than
+            // failing at once — so a blocked writer waits (up to 30 s) and then succeeds. 30 s IS the
+            // library's current default, but it is pinned here so a future edit or a library default
+            // change cannot silently remove the safety net. A shorter value would only make blocked
+            // writers fail sooner; a native PRAGMA busy_timeout was deliberately NOT used, as it would
+            // cap this managed retry below 30 s. Batches commit sub-second, so real waits are brief.
+            DefaultTimeout = 30
+        }.ToString();
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [ ] **Step 2: Build**
 
-Run: `cd D:/SmartCodeGenerator-Repository && dotnet test DomainDiscovery.Tests --filter "FullyQualifiedName~WikipediaStoreConcurrencyTests"`
-Expected: FAIL — the store's writer connection has no busy-timeout, so `ReplaceArticles` throws `SqliteException` ("database is locked") and the task faults.
+Run: `cd D:/SmartCodeGenerator-Repository && dotnet build DomainDiscovery`
+Expected: Build succeeded. (`DefaultTimeout` is a real `SqliteConnectionStringBuilder` property in Microsoft.Data.Sqlite 10.0.9; it maps to the "Default Timeout" connection-string keyword.)
 
-- [ ] **Step 3: Add the busy-timeout to `Open()`**
-
-In `DomainDiscovery/Wikipedia/Dump/WikipediaStore.cs`, replace `Open()` (lines 36-41):
-
-```csharp
-    private SqliteConnection Open()
-    {
-        var connection = new SqliteConnection(_connectionString);
-        connection.Open();
-
-        // A writer that arrives while another holds the WAL write lock waits this long instead of
-        // failing at once with 'database is locked'. This is what lets the background startup update
-        // and a foreground article refresh both write to the store without colliding.
-        using var pragma = connection.CreateCommand();
-        pragma.CommandText = "PRAGMA busy_timeout = 5000;";
-        pragma.ExecuteNonQuery();
-
-        return connection;
-    }
-```
-
-- [ ] **Step 4: Run to verify it passes**
-
-Run: `cd D:/SmartCodeGenerator-Repository && dotnet test DomainDiscovery.Tests --filter "FullyQualifiedName~WikipediaStoreConcurrencyTests"`
-Expected: PASS.
-
-- [ ] **Step 5: Run the whole store suite to confirm no regression**
+- [ ] **Step 3: Run the whole store suite to confirm no regression**
 
 Run: `cd D:/SmartCodeGenerator-Repository && dotnet test DomainDiscovery.Tests --filter "FullyQualifiedName~WikipediaStore"`
-Expected: PASS.
+Expected: PASS — the store still opens, reads, and writes exactly as before (the value pinned equals the previous implicit default, so behavior is unchanged; this guards intent, not a behavior change).
 
-- [ ] **Step 6: Commit**
+> **No new test.** A behavioral concurrency test cannot distinguish "explicit 30 s" from "implicit 30 s" (both pass), and a timing-based one is flaky. The rationale lives in the code comment and this task; the existing store suite covers no-regression. This is the documented-note decision from the ledger.
+
+- [ ] **Step 4: Commit**
 
 ```bash
-cd D:/SmartCodeGenerator-Repository && git add DomainDiscovery/Wikipedia/Dump/WikipediaStore.cs DomainDiscovery.Tests/Wikipedia/Dump/WikipediaStoreConcurrencyTests.cs && git commit -m "Give store connections a busy-timeout so concurrent writers wait
+cd D:/SmartCodeGenerator-Repository && git add DomainDiscovery/Wikipedia/Dump/WikipediaStore.cs && git commit -m "Pin the store connection's Default Timeout so concurrent writers wait
+
+Microsoft.Data.Sqlite already retries a locked write until the connection's
+Default Timeout (30s default), so a background update and a foreground refresh
+already coexist. Pin that 30s explicitly with a rationale so a future edit
+can't silently drop the safety net. A native busy_timeout was avoided — it
+would cap the managed retry below 30s.
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ```
