@@ -149,7 +149,7 @@ public static class CommandDictionary
         {
             Category = "Class",
             Command = "list classes in <project name>",
-            Description = "Displays the class source code.",
+            Description = "Lists all classes in a project.",
             Example = "list classes in <EmployeeManagement>"
         },
         new()
@@ -195,14 +195,14 @@ public static class CommandDictionary
             Category = "RecycleBin",
             Command = "delete class <class name>",
             Description = "Moves a class to DeletedClasses.",
-            Example = "delete class <Employee?"
+            Example = "delete class <Employee>"
         },
         new()
         {
             Category = "RecycleBin",
             Command = "restore class <class name>",
             Description = "Restores a deleted class.",
-            Example = "restore class <Employee?"
+            Example = "restore class <Employee>"
         },
         new()
         {

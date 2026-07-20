@@ -1,0 +1,35 @@
+# EditorConfig for the Smart Code Generator solution.
+# Guidance for IDEs to keep new code consistent with the existing style.
+# Severities are kept at suggestion level: this repo does not run a format gate,
+# so the file must never fail a build.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = crlf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.{yml,yaml,json}]
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false
+
+[*.cs]
+indent_size = 4
+# Namespaces are file-scoped throughout the codebase (e.g. `namespace X;`).
+csharp_style_namespace_declarations = file_scoped:suggestion
+# `var` is used pervasively for locals.
+csharp_style_var_for_built_in_types = true:suggestion
+csharp_style_var_when_type_is_apparent = true:suggestion
+csharp_style_var_elsewhere = true:suggestion
+# Expression-bodied members appear widely for one-liners.
+csharp_style_expression_bodied_methods = when_on_single_line:suggestion
+csharp_style_expression_bodied_properties = true:suggestion
+# Ordering / clarity preferences already followed in the code.
+dotnet_sort_system_directives_first = true
+csharp_prefer_braces = true:suggestion
+dotnet_style_prefer_collection_expression = true:suggestion
