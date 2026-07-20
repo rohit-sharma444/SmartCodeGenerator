@@ -51,6 +51,42 @@ public class GeneratedProjectBuildTests
         }
     }
 
+    [TestMethod]
+    [TestCategory("Integration")]
+    public void GeneratedConsoleProject_WithRelationship_Builds()
+    {
+        var model = new CandidateDomainModel();
+        model.Entities.Add(new CandidateEntity
+        {
+            Name = "Customer",
+            Fields = { new CandidateField { Name = "Name", Type = "string" } }
+        });
+        var order = new CandidateEntity
+        {
+            Name = "Order",
+            Fields = { new CandidateField { Name = "Total", Type = "decimal" } }
+        };
+        order.Relationships.Add(new CandidateRelationship { Target = "Customer", Role = "references" });
+        model.Entities.Add(order);
+
+        Assert.IsTrue(TargetScaffolders.TryResolve("console", out var target));
+
+        var workspace = Path.Combine(Path.GetTempPath(), "gen_" + Path.GetRandomFileName());
+        Directory.CreateDirectory(workspace);
+        try
+        {
+            var result = new AppScaffolder().Scaffold(model, "Shop", workspace, target);
+            Assert.IsTrue(result.Success, "scaffold failed: " + result.Message);
+
+            var (exit, output) = RunDotNet($"build \"{result.ProjectPath}\" -c Release");
+            Assert.AreEqual(0, exit, $"dotnet build failed:\n{output}");
+        }
+        finally
+        {
+            TryDeleteDirectory(workspace);
+        }
+    }
+
     private static (int ExitCode, string Output) RunDotNet(string arguments)
     {
         var psi = new ProcessStartInfo("dotnet", arguments)

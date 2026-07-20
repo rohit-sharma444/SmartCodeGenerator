@@ -33,8 +33,28 @@ public class ConsoleTargetTests
 
         StringAssert.Contains(src, "using Shop.Data;");
         StringAssert.Contains(src, "using Shop.Models;");
-        StringAssert.Contains(src, "new EntityMenu<Book>(new BookRepository())");
-        StringAssert.Contains(src, "new EntityMenu<Member>(new MemberRepository())");
+        StringAssert.Contains(src, "new EntityMenu<Book>(new BookRepository(), Related)");
+        StringAssert.Contains(src, "new EntityMenu<Member>(new MemberRepository(), Related)");
+    }
+
+    [TestMethod]
+    public void Menu_OffersAPickerForForeignKeys()
+    {
+        var src = ConsoleMenuTemplate.Source("Shop");
+
+        StringAssert.Contains(src, "Func<Type, System.Collections.IEnumerable?>");
+        StringAssert.Contains(src, "TryPickForeignKey");
+    }
+
+    [TestMethod]
+    public void Program_BuildsARelatedRowsRegistryAndPassesIt()
+    {
+        var src = ConsoleProgramTemplate.Build("Shop", new[] { "Book", "Member" });
+
+        StringAssert.Contains(src, "[typeof(Book)] = () => new BookRepository().GetAll()");
+        StringAssert.Contains(src, "[typeof(Member)] = () => new MemberRepository().GetAll()");
+        StringAssert.Contains(src, "new EntityMenu<Book>(new BookRepository(), Related)");
+        StringAssert.Contains(src, "new EntityMenu<Member>(new MemberRepository(), Related)");
     }
 
     [TestMethod]
