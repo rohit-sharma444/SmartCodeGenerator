@@ -94,6 +94,13 @@ internal class CodeGeneratorStarter
 
             var outcome = _pipeline.Handle(command, ref currentProject,
                 _configuredRules, _workspaceRoot, r => ProjectManager.CurrentProject = r);
+
+            if (!outcome.Handled && !string.IsNullOrWhiteSpace(command))
+            {
+                Console.WriteLine(
+                    UnrecognizedCommand.Describe(command, CommandSuggester.Closest(command)));
+            }
+
             return outcome.Handled;
         }
         catch (Exception ex)
@@ -169,8 +176,14 @@ internal class CodeGeneratorStarter
                 // The NLE analysis is used internally only; we surface just the
                 // command's own output (e.g. the project list), not the raw
                 // SemanticResult, so no onAnalyzed callback is passed.
-                _pipeline.Handle(input, ref currentProject,
+                var outcome = _pipeline.Handle(input, ref currentProject,
                      _configuredRules, _workspaceRoot, r => ProjectManager.CurrentProject = r);
+
+                if (!outcome.Handled && !string.IsNullOrWhiteSpace(input))
+                {
+                    Console.WriteLine(
+                        UnrecognizedCommand.Describe(input, CommandSuggester.Closest(input)));
+                }
             }
             catch (ArgumentException ex)
             {
