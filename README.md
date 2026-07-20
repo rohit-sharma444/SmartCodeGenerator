@@ -80,8 +80,13 @@ PROJECTPATH=/path/to/workspace dotnet run --project CodeGenerator
 ```
 
 At the `CodeGenerator >>` prompt type `help` for all commands or `exit` to quit.
-Commands can also be passed as a single argument (`dotnet run --project
-CodeGenerator -- "create console project MyApp"`) or piped in one per line.
+Press TAB for suggestions, `history` to see recent commands, and `clear` (or
+`cls`) to wipe the screen. Commands can also be passed as a single argument
+(`dotnet run --project CodeGenerator -- "create console project MyApp"`) or piped
+in one per line.
+
+The full command list lives in [`docs/commands.md`](docs/commands.md), which is
+generated from the command catalog and kept in sync by a test.
 
 See [`CodeGenerator/README.md`](CodeGenerator/README.md) for the full command
 reference and examples, and [`NaturalLanguageEngine/README.md`](NaturalLanguageEngine/README.md)

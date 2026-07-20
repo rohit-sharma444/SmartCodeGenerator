@@ -403,4 +403,39 @@ public static class CommandDictionary
 
         return string.Join(Environment.NewLine, lines);
     }
+
+    /// <summary>
+    /// Renders the command catalog as a Markdown document, grouped by category.
+    /// This is the single source of truth for <c>docs/commands.md</c>; a test asserts
+    /// the committed file matches (regenerate with <c>UPDATE_COMMAND_DOCS=1</c>).
+    /// Uses LF line endings so the output is stable across platforms.
+    /// </summary>
+    public static string GetMarkdownReference()
+    {
+        var lines = new List<string>
+        {
+            "# Command Reference",
+            string.Empty,
+            "<!-- Generated from CommandDictionary.GetMarkdownReference(). Do not edit by hand.",
+            "     Regenerate: `UPDATE_COMMAND_DOCS=1 dotnet test CodeGenerator.Tests`. -->",
+            string.Empty
+        };
+
+        foreach (var group in Commands
+                     .OrderBy(c => c.Category)
+                     .GroupBy(c => c.Category))
+        {
+            lines.Add($"## {group.Key}");
+            lines.Add(string.Empty);
+            lines.Add("| Command | Description | Example |");
+            lines.Add("| --- | --- | --- |");
+
+            foreach (var command in group.OrderBy(c => c.Command))
+                lines.Add($"| `{command.Command}` | {command.Description} | `{command.Example}` |");
+
+            lines.Add(string.Empty);
+        }
+
+        return string.Join("\n", lines) + "\n";
+    }
 }
