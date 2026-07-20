@@ -341,6 +341,13 @@ public static class CommandDictionary
         new()
         {
             Category = "Utility",
+            Command = "cls",
+            Description = "Alias for clear (clears the screen; history is kept).",
+            Example = "cls"
+        },
+        new()
+        {
+            Category = "Utility",
             Command = "history",
             Description = "Lists the last 20 commands (not itself recorded).",
             Example = "history"
