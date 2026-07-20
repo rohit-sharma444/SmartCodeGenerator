@@ -77,8 +77,8 @@ public sealed class BackgroundStoreUpdate
     {
         if (redirected)
             return new OverallPercentProgress(
-                percent => Console.WriteLine($"  {StoreUpdateText.Updating(percent)}"),
-                (outcome, days) => Console.WriteLine($"  {StoreUpdateText.Final(outcome, days)}"));
+                percent => WriteLineSafe($"  {StoreUpdateText.Updating(percent)}"),
+                (outcome, days) => WriteLineSafe($"  {StoreUpdateText.Final(outcome, days)}"));
 
         return new OverallPercentProgress(
             percent => SetTitle(StoreUpdateText.Updating(percent)),
@@ -90,5 +90,13 @@ public sealed class BackgroundStoreUpdate
         // Setting the title can throw when no console is attached; progress is cosmetic, so swallow.
         try { Console.Title = $"CodeGenerator — {text}"; }
         catch { /* no console; nothing to show */ }
+    }
+
+    private static void WriteLineSafe(string line)
+    {
+        // A progress line is cosmetic; a failing write (e.g. a broken output pipe when a piped
+        // consumer has exited) must never abort the update. Swallow, exactly as SetTitle does.
+        try { Console.WriteLine(line); }
+        catch { /* nothing to show */ }
     }
 }

@@ -7,7 +7,10 @@ namespace DomainDiscovery.Wikipedia.Dump;
 /// </summary>
 /// <remarks>
 /// De-dupes on the integer percent, so a renderer is called at most 101 times over a whole update —
-/// which is the throttle. Every method is pure math and cannot throw into <c>CountingStream</c>.
+/// that is the throttle. Emission itself is pure arithmetic and never throws on its own; it does
+/// call the supplied renderer, whose failures are contained at the call site (<c>CountingStream</c>
+/// swallows on the apply path, and the renderers guard their own writes) — this class must not be
+/// relied on to make an unguarded renderer safe.
 /// </remarks>
 public sealed class OverallPercentProgress : IStoreUpdateProgress
 {
