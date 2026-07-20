@@ -1,0 +1,17 @@
+<Project>
+
+  <!--
+    Shared build settings for every project in the solution. Individual projects
+    only need to declare what is specific to them (e.g. <OutputType>Exe</OutputType>
+    or package references). TreatWarningsAsErrors is deliberately NOT set here so
+    local iteration is never blocked by a warning; CI enforces a clean build via
+    `-warnaserror` on the build step instead.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+</Project>
