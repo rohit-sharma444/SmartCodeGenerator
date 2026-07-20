@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # The main solution references every project (libraries, the CLI, the
+      # importer, and all three test projects) via relative paths, so restoring
+      # and testing it covers the whole repo. windows-latest is required: the
+      # scaffolder emits WPF app code and GeneratedProjectBuildTests compiles
+      # generated projects, some of which target Windows.
+      - name: Restore
+        run: dotnet restore SmartCodeGenerator/SmartCodeGenerator.slnx
+
+      - name: Build
+        run: dotnet build SmartCodeGenerator/SmartCodeGenerator.slnx -c Release --no-restore
+
+      - name: Test
+        run: dotnet test SmartCodeGenerator/SmartCodeGenerator.slnx -c Release --no-build
