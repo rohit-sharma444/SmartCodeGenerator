@@ -66,4 +66,15 @@ public class MainWindowTemplateTests
         StringAssert.Contains(source, "DataContext = new MainViewModel();");
         StringAssert.Contains(source, "e.Column.IsReadOnly = true;");
     }
+
+    [TestMethod]
+    public void CodeBehind_BuildsComboColumnsForForeignKeys()
+    {
+        var source = MainWindowTemplate.CodeBehind("Payroll");
+
+        StringAssert.Contains(source, "TryBuildRelationshipColumn");
+        StringAssert.Contains(source, "DataGridComboBoxColumn");
+        StringAssert.Contains(source, "SelectedValuePath = \"Id\"");
+        StringAssert.Contains(source, "SelectedValueBinding = new System.Windows.Data.Binding(e.PropertyName)");
+    }
 }
