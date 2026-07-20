@@ -331,6 +331,13 @@ public static class CommandDictionary
             Description = "Exits the application.",
             Example = "exit"
         },
+        new()
+        {
+            Category = "Utility",
+            Command = "clear",
+            Description = "Clears the screen (history is kept). Alias: cls.",
+            Example = "clear"
+        },
 #endregion
 
 #region "Analysis"
