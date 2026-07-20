@@ -98,8 +98,14 @@ Two edge cases the guard handles:
   The loop reprints `CodeGenerator >> `, and the next `CommandLineEditor`
   re-reads `Console.CursorTop`, so there is no stale-position artifact.
 
-History is untouched by construction: the branch `continue`s before any
-history write, and `Console.Clear()` only affects the display buffer.
+History stays intact: `CommandLineEditor` writes history *inside*
+`ReadCommand` (on Enter / at end of the redirected line), which runs **before**
+this branch, so the branch alone cannot keep `clear` out of history. The editor
+therefore excludes `clear`/`cls` from persistence in `ShouldRecordInHistory` —
+alongside blank lines and immediate duplicates — so neither the in-memory
+`↑`/`↓` list nor `.codegen_history` records the screen wipe, and `↑` after a
+`clear` recalls the previous real command. `Console.Clear()` only affects the
+display buffer.
 
 ### Discoverability — `CommandDictionary`
 

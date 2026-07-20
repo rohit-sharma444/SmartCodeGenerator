@@ -151,21 +151,7 @@ internal sealed class CommandLineEditor
 
         var command = line.Trim();
 
-        if (!string.IsNullOrWhiteSpace(command) &&
-            (_commandHistory.Count == 0 ||
-             !_commandHistory[^1].Equals(command)))
-        {
-            _commandHistory.Add(command);
-
-            try
-            {
-                CommandHistoryFile.AppendLine(_historyFile, command);
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                // History is a convenience; never fail a command over it.
-            }
-        }
+        RecordHistory(command);
 
         return command;
     }
@@ -176,24 +162,46 @@ internal sealed class CommandLineEditor
 
         Console.WriteLine();
 
-        if (!string.IsNullOrWhiteSpace(command) &&
-            (_commandHistory.Count == 0 ||
-             !_commandHistory[^1].Equals(command)))
-        {
-            _commandHistory.Add(command);
-
-            try
-            {
-                CommandHistoryFile.AppendLine(_historyFile, command);
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                // History is a convenience; never fail a command over it.
-            }
-        }
+        RecordHistory(command);
 
         return command;
     }
+
+    /// <summary>
+    /// Appends <paramref name="command"/> to the in-memory history and the
+    /// <c>.codegen_history</c> file when <see cref="ShouldRecordInHistory"/>
+    /// allows it. Shared by the interactive and redirected read paths.
+    /// </summary>
+    private void RecordHistory(string command)
+    {
+        if (!ShouldRecordInHistory(_commandHistory, command))
+            return;
+
+        _commandHistory.Add(command);
+
+        try
+        {
+            CommandHistoryFile.AppendLine(_historyFile, command);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // History is a convenience; never fail a command over it.
+        }
+    }
+
+    /// <summary>
+    /// The history-persistence policy: blank lines, an immediate repeat of the
+    /// last entry, and the transient screen-clear commands (<c>clear</c>/<c>cls</c>)
+    /// are never recorded. <c>clear</c> only wipes the display, so history — both
+    /// ↑/↓ recall and the on-disk file — must look as though it was never typed;
+    /// otherwise ↑ after a clear would surface "clear" instead of the previous
+    /// real command.
+    /// </summary>
+    internal static bool ShouldRecordInHistory(
+        IReadOnlyList<string> history, string command)
+        => !string.IsNullOrWhiteSpace(command)
+           && !ClearCommand.IsClear(command)
+           && (history.Count == 0 || !history[^1].Equals(command));
 
     private void HandleTab(
         ref List<char> buffer,
