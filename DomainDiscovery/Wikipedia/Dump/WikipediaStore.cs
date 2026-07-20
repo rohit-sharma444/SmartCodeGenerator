@@ -30,7 +30,17 @@ public sealed class WikipediaStore
         => _connectionString = new SqliteConnectionStringBuilder
         {
             DataSource = databasePath,
-            Mode = SqliteOpenMode.ReadWriteCreate
+            Mode = SqliteOpenMode.ReadWriteCreate,
+
+            // Concurrent-writer safety, made explicit. The background startup update and a foreground
+            // article refresh can both write to this store at once; under WAL the second writer meets
+            // SQLITE_BUSY. Microsoft.Data.Sqlite retries a busy write until this timeout rather than
+            // failing at once — so a blocked writer waits (up to 30 s) and then succeeds. 30 s IS the
+            // library's current default, but it is pinned here so a future edit or a library default
+            // change cannot silently remove the safety net. A shorter value would only make blocked
+            // writers fail sooner; a native PRAGMA busy_timeout was deliberately NOT used, as it would
+            // cap this managed retry below 30 s. Batches commit sub-second, so real waits are brief.
+            DefaultTimeout = 30
         }.ToString();
 
     private SqliteConnection Open()
