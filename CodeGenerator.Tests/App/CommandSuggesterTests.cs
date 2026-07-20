@@ -25,11 +25,11 @@ public class CommandSuggesterTests
 
     [TestMethod]
     public void Closest_ReturnsEmpty_ForGibberish()
-        => Assert.AreEqual(0, CommandSuggester.Closest("xyzzy plughfoo").Count);
+        => Assert.IsEmpty(CommandSuggester.Closest("xyzzy plughfoo"));
 
     [TestMethod]
     public void Closest_ReturnsEmpty_ForBlankInput()
-        => Assert.AreEqual(0, CommandSuggester.Closest("   ").Count);
+        => Assert.IsEmpty(CommandSuggester.Closest("   "));
 
     [TestMethod]
     public void Closest_ExcludesTemplatedForms_WithAngleBrackets()
