@@ -64,7 +64,11 @@ public class GeneratedProjectBuildTests
         var order = new CandidateEntity
         {
             Name = "Order",
-            Fields = { new CandidateField { Name = "Total", Type = "decimal" } }
+            Fields =
+            {
+                new CandidateField { Name = "Total", Type = "decimal" },
+                new CandidateField { Name = "CustomerId", Type = "int" }
+            }
         };
         order.Relationships.Add(new CandidateRelationship { Target = "Customer", Role = "references" });
         model.Entities.Add(order);
