@@ -47,4 +47,14 @@ public class ConsoleTargetTests
         StringAssert.Contains(src, "Repository<T>");
         StringAssert.Contains(src, "\"CreatedOn\"");   // audit fields excluded from prompts
     }
+
+    [TestMethod]
+    public void Menu_ValidatesBeforeCreate()
+    {
+        var src = ConsoleMenuTemplate.Source("Shop");
+
+        StringAssert.Contains(src, "using System.ComponentModel.DataAnnotations;");
+        StringAssert.Contains(src, "Validator.TryValidateObject");
+        StringAssert.Contains(src, "Not added.");
+    }
 }
