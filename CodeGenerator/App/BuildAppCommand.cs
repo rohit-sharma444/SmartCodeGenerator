@@ -96,8 +96,9 @@ internal sealed class BuildAppCommand
                     if (scaffold.Success)
                     {
                         Console.WriteLine($"Generated project at {scaffold.ProjectPath}");
-                        foreach (var file in scaffold.FilesWritten)
-                            Console.WriteLine($"  {Path.GetRelativePath(scaffold.ProjectPath, file)}");
+                        Console.WriteLine("");
+                        //foreach (var file in scaffold.FilesWritten)
+                        //    Console.WriteLine($"  {Path.GetRelativePath(scaffold.ProjectPath, file)}");
                     }
                     else
                     {
