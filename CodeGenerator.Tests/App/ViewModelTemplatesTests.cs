@@ -72,4 +72,14 @@ public class ViewModelTemplatesTests
         // Without CommandManager the Delete button never re-enables on selection change.
         StringAssert.Contains(source, "CommandManager.RequerySuggested");
     }
+
+    [TestMethod]
+    public void EntityViewModel_ValidatesBeforeSaving()
+    {
+        var src = ViewModelTemplates.EntityViewModel("Payroll");
+
+        StringAssert.Contains(src, "using System.ComponentModel.DataAnnotations;");
+        StringAssert.Contains(src, "Validator.TryValidateObject");
+        StringAssert.Contains(src, "Cannot save:");
+    }
 }
