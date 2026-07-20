@@ -63,13 +63,17 @@ public sealed class WikipediaTopicRecognizer : ITopicRecognizer
     };
 
     /// <summary>
-    /// A disambiguation page's lead does not describe a thing; it announces a list, and always
-    /// closes on the colon that introduces it ("Point or points may refer to:", "Sale often refers
-    /// to:"). A real lead is a sentence and ends like one, so this does not catch articles that
-    /// merely happen to say what they refer to.
+    /// A disambiguation page's lead does not describe a thing; it announces a list and closes on the
+    /// colon that introduces it. Real disambiguation leads take several forms — "Point or points may
+    /// refer to:", "Point may refer to any of the following:", "Mercury may mean:", "PIN stands for:"
+    /// — so this matches one of those disambiguation verbs followed, with no sentence break, by the
+    /// trailing colon. Requiring a colon at the very end and forbidding an intervening period keeps it
+    /// off ordinary prose that merely says what a term "refers to" ("An invoice refers to a commercial
+    /// document ... .").
     /// </summary>
     private static readonly Regex DisambiguationLead = new(
-        @"\brefers?\s+to:\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        @"\b(?:refers?\s+to|means?|stands?\s+for)\b[^.]*:\s*$",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private readonly IWikipediaClient _client;
 

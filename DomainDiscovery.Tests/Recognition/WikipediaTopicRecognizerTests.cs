@@ -347,4 +347,51 @@ public class WikipediaTopicRecognizerTests
 
         Assert.Equal("Point of sale", topic.Title);
     }
+
+    [Fact]
+    public void Recognize_RecoversRealArticle_WhenTopHitIsAnyOfTheFollowingDisambiguation()
+    {
+        var client = new FakeWikipediaClient();
+        client.HitsByTerm["Point"] = new()
+        {
+            new SearchHit("Point", "https://en.wikipedia.org/wiki/Point", 0),
+            new SearchHit("Point of sale", "https://en.wikipedia.org/wiki/Point_of_sale", 1),
+        };
+        // A disambiguation lead the OLD regex missed: it ends on "following:", not "to:".
+        client.Leads["Point"] = "Point may refer to any of the following:";
+        client.Leads["Point of sale"] =
+            "A point of sale is the time and place at which a retail transaction is completed.";
+
+        var topic = new WikipediaTopicRecognizer(client).Recognize(new[] { "Point" });
+
+        Assert.Equal("Point of sale", topic.Title);
+    }
+
+    [Fact]
+    public void Recognize_RefusesAMayMeanDisambiguation()
+    {
+        var client = new FakeWikipediaClient();
+        client.HitsByTerm["Mercury"] = new()
+        {
+            new SearchHit("Mercury", "https://en.wikipedia.org/wiki/Mercury", 0),
+        };
+        client.Leads["Mercury"] = "Mercury may mean:";
+
+        Assert.False(new WikipediaTopicRecognizer(client).Recognize(new[] { "Mercury" }).IsRecognized);
+    }
+
+    [Fact]
+    public void Recognize_KeepsARealDefinition_ThatMerelyMentionsReferTo()
+    {
+        var client = new FakeWikipediaClient();
+        client.HitsByTerm["Invoice"] = new()
+        {
+            new SearchHit("Invoice", "https://en.wikipedia.org/wiki/Invoice", 0),
+        };
+        // Prose that says "refers to" mid-sentence and ends like a real sentence (period, no colon).
+        client.Leads["Invoice"] =
+            "An invoice refers to a commercial document issued by a seller to a buyer.";
+
+        Assert.Equal("Invoice", new WikipediaTopicRecognizer(client).Recognize(new[] { "Invoice" }).Title);
+    }
 }
