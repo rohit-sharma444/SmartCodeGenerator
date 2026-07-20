@@ -269,13 +269,105 @@ public class DomainModelMapperNavigationTests
     }
 
     [TestMethod]
-    public void A_class_with_no_relationships_declares_no_usings()
+    public void A_class_with_no_relationships_declares_no_json_serialization_using()
     {
+        // No relationship means no [JsonIgnore] nav property, so JsonSerializationNamespace is not
+        // pulled in. (The class still gets System.ComponentModel.DataAnnotations from its inferred
+        // [Key]/validation attributes -- see DomainModelMapperValidationTests -- so this checks the
+        // absence of the relationship-only using rather than an empty Usings list.)
         var model = new CandidateDomainModel();
         var plain = new CandidateEntity { Name = "Note" };
         plain.Fields.Add(new CandidateField { Name = "Text", Type = "string" });
         model.Entities.Add(plain);
 
-        Assert.IsEmpty(DomainModelMapper.ToClassDefinitions(model).Single().Usings);
+        CollectionAssert.DoesNotContain(
+            DomainModelMapper.ToClassDefinitions(model).Single().Usings,
+            "System.Text.Json.Serialization");
+    }
+}
+
+[TestClass]
+public class DomainModelMapperValidationTests
+{
+    private static CandidateDomainModel EmployeeModel()
+    {
+        var model = new CandidateDomainModel();
+        var employee = new CandidateEntity { Name = "Employee" };
+        employee.Fields.Add(new CandidateField { Name = "Name", Type = "string" });
+        employee.Fields.Add(new CandidateField { Name = "WorkEmail", Type = "string" });
+        employee.Fields.Add(new CandidateField { Name = "Bio", Type = "string" });
+        employee.Fields.Add(new CandidateField { Name = "Salary", Type = "decimal" });
+        model.Entities.Add(employee);
+        return model;
+    }
+
+    private static PropertyDefinition Prop(CandidateDomainModel model, string name) =>
+        DomainModelMapper.ToClassDefinitions(model).Single()
+            .Properties.Single(p => p.Name == name);
+
+    [TestMethod]
+    public void Id_GetsKeyAttribute()
+    {
+        CollectionAssert.Contains(Prop(EmployeeModel(), "Id").Attributes, "Key");
+    }
+
+    [TestMethod]
+    public void NameField_IsRequiredAndLengthBounded()
+    {
+        var name = Prop(EmployeeModel(), "Name");
+        Assert.IsTrue(name.Rules.Any(r => r.Name == "required"), "expected [Required]");
+        Assert.IsTrue(name.Rules.Any(r => r.Name == "maxlength" && r.MaxLength == 200),
+            "expected [StringLength(200)]");
+    }
+
+    [TestMethod]
+    public void EmailField_GetsEmailAddressAttribute_AndLength()
+    {
+        var email = Prop(EmployeeModel(), "WorkEmail");
+        CollectionAssert.Contains(email.Attributes, "EmailAddress");
+        Assert.IsTrue(email.Rules.Any(r => r.Name == "maxlength" && r.MaxLength == 200));
+        Assert.IsFalse(email.Rules.Any(r => r.Name == "required"),
+            "a non-name string is not required");
+    }
+
+    [TestMethod]
+    public void PlainString_IsOnlyLengthBounded()
+    {
+        var bio = Prop(EmployeeModel(), "Bio");
+        Assert.IsTrue(bio.Rules.Any(r => r.Name == "maxlength" && r.MaxLength == 200));
+        Assert.IsFalse(bio.Rules.Any(r => r.Name == "required"));
+        Assert.IsEmpty(bio.Attributes);
+    }
+
+    [TestMethod]
+    public void NonString_NonId_IsUntouched()
+    {
+        var salary = Prop(EmployeeModel(), "Salary");
+        Assert.IsEmpty(salary.Rules);
+        Assert.IsEmpty(salary.Attributes);
+    }
+
+    [TestMethod]
+    public void ClassWithValidation_DeclaresDataAnnotationsUsing()
+    {
+        var employee = DomainModelMapper.ToClassDefinitions(EmployeeModel()).Single();
+        CollectionAssert.Contains(employee.Usings, "System.ComponentModel.DataAnnotations");
+    }
+
+    [TestMethod]
+    public void NavigationProperty_IsNotGivenValidation()
+    {
+        // Order -> Customer: the Customer nav property must keep only [JsonIgnore].
+        var model = new CandidateDomainModel();
+        model.Entities.Add(new CandidateEntity { Name = "Customer" });
+        var order = new CandidateEntity { Name = "Order" };
+        order.Relationships.Add(new CandidateRelationship { Target = "Customer", Role = "references" });
+        model.Entities.Add(order);
+
+        var nav = DomainModelMapper.ToClassDefinitions(model)
+            .Single(c => c.Name == "Order").Properties.Single(p => p.Name == "Customer");
+
+        CollectionAssert.AreEqual(new[] { "JsonIgnore" }, nav.Attributes);
+        Assert.IsEmpty(nav.Rules);
     }
 }
