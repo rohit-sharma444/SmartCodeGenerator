@@ -1,0 +1,38 @@
+using CodeGenerator.App;
+
+namespace CodeGenerator.Tests.App;
+
+[TestClass]
+public class CommandSuggesterTests
+{
+    [TestMethod]
+    [DataRow("kitten", "sitting", 3)]
+    [DataRow("create", "create", 0)]
+    [DataRow("craete", "create", 2)]
+    [DataRow("", "abc", 3)]
+    public void Distance_MatchesKnownPairs(string a, string b, int expected)
+        => Assert.AreEqual(expected, CommandSuggester.Distance(a, b));
+
+    [TestMethod]
+    public void Closest_SuggestsCreateProject_ForTransposedTypo()
+        => CollectionAssert.Contains(
+            CommandSuggester.Closest("craete project").ToList(), "create project");
+
+    [TestMethod]
+    public void Closest_SuggestsListProjects_ForMissingLetter()
+        => CollectionAssert.Contains(
+            CommandSuggester.Closest("lst projects").ToList(), "list projects");
+
+    [TestMethod]
+    public void Closest_ReturnsEmpty_ForGibberish()
+        => Assert.AreEqual(0, CommandSuggester.Closest("xyzzy plughfoo").Count);
+
+    [TestMethod]
+    public void Closest_ReturnsEmpty_ForBlankInput()
+        => Assert.AreEqual(0, CommandSuggester.Closest("   ").Count);
+
+    [TestMethod]
+    public void Closest_ExcludesTemplatedForms_WithAngleBrackets()
+        => Assert.IsFalse(
+            CommandSuggester.Closest("create class").Any(s => s.Contains('<')));
+}

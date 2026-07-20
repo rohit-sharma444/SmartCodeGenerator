@@ -191,16 +191,17 @@ internal sealed class CommandLineEditor
 
     /// <summary>
     /// The history-persistence policy: blank lines, an immediate repeat of the
-    /// last entry, and the transient screen-clear commands (<c>clear</c>/<c>cls</c>)
-    /// are never recorded. <c>clear</c> only wipes the display, so history — both
-    /// ↑/↓ recall and the on-disk file — must look as though it was never typed;
-    /// otherwise ↑ after a clear would surface "clear" instead of the previous
+    /// last entry, and the transient display commands (<c>clear</c>/<c>cls</c> and
+    /// <c>history</c>) are never recorded. Those commands only affect the screen, so
+    /// history — both ↑/↓ recall and the on-disk file — must look as though they were
+    /// never typed; otherwise ↑ after one would surface it instead of the previous
     /// real command.
     /// </summary>
     internal static bool ShouldRecordInHistory(
         IReadOnlyList<string> history, string command)
         => !string.IsNullOrWhiteSpace(command)
            && !ClearCommand.IsClear(command)
+           && !HistoryCommand.IsHistory(command)
            && (history.Count == 0 || !history[^1].Equals(command));
 
     private void HandleTab(
