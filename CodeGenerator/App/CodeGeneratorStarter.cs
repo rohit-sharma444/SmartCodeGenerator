@@ -138,8 +138,9 @@ internal class CodeGeneratorStarter
                 // background store update is NOT restarted). Skipped when output
                 // is redirected because Console.Clear() throws IOException with no
                 // console attached, and clearing a piped transcript is meaningless.
-                // History (in-memory list and .codegen_history) is untouched:
-                // we continue before any history write.
+                // History (in-memory list and .codegen_history) stays intact:
+                // CommandLineEditor never records clear/cls (see
+                // ShouldRecordInHistory), so ↑ still recalls the previous command.
                 if (!Console.IsOutputRedirected)
                 {
                     Console.Clear();
