@@ -132,6 +132,18 @@ internal class CodeGeneratorStarter
                 break;
             }
 
+            if (ClearCommand.IsClear(input))
+            {
+                // Screen-only wipe. Skipped when output is redirected because
+                // Console.Clear() throws IOException with no console attached,
+                // and clearing a piped transcript is meaningless anyway.
+                // History (in-memory list and .codegen_history) is untouched:
+                // we continue before any history write.
+                if (!Console.IsOutputRedirected)
+                    Console.Clear();
+                continue;
+            }
+
             // FIX #9: Improved exception handling with specific catch blocks
             try
             {
