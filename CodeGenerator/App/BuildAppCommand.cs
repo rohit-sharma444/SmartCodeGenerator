@@ -56,7 +56,7 @@ internal sealed class BuildAppCommand
         while (true)
         {
             PrintModel(model);
-            Console.WriteLine("  [a]pprove [target]   add <name>   remove <name>   rename <old> <new>");
+            Console.WriteLine("  [a]pprove [target] [sqlite]   add <name>   remove <name>   rename <old> <new>");
             Console.WriteLine("  field <entity> <name>[:<type>]   unfield <entity> <name>   [c]ancel");
             Console.Write("> ");
             var input = Console.ReadLine();
@@ -92,7 +92,22 @@ internal sealed class BuildAppCommand
                         break;
                     }
 
-                    var scaffold = new AppScaffolder().Scaffold(model, appName, workspaceRoot, target);
+                    var persistence = ResolvePersistence(parts);
+                    if (persistence is null)
+                    {
+                        Console.WriteLine("Unknown persistence option. Valid: json, sqlite.");
+                        break;
+                    }
+
+                    if (!IsPersistenceAllowed(target, persistence.Value))
+                    {
+                        Console.WriteLine(
+                            "SQLite persistence isn't supported for the WPF target yet — it stays JSON.");
+                        break;
+                    }
+
+                    var scaffold = new AppScaffolder()
+                        .Scaffold(model, appName, workspaceRoot, target, persistence.Value);
                     if (scaffold.Success)
                     {
                         Console.WriteLine($"Generated project at {scaffold.ProjectPath}");
@@ -177,6 +192,28 @@ internal sealed class BuildAppCommand
             Console.WriteLine("Unknown target. Valid: " + string.Join(", ", TargetScaffolders.Keys));
         }
     }
+
+    /// <summary>The persistence backend an <c>approve</c> line selects. No third token means JSON;
+    /// <c>sqlite</c>/<c>json</c> (case-insensitively) select explicitly; any other token is invalid
+    /// (returns null).</summary>
+    internal static PersistenceKind? ResolvePersistence(string[] parts)
+    {
+        if (parts.Length < 3)
+            return PersistenceKind.Json;
+
+        return parts[2].ToLowerInvariant() switch
+        {
+            "sqlite" => PersistenceKind.Sqlite,
+            "json" => PersistenceKind.Json,
+            _ => null,
+        };
+    }
+
+    /// <summary>SQLite is available for every target except WPF, whose view models read JsonStore
+    /// directly (off the shared seam).</summary>
+    internal static bool IsPersistenceAllowed(ITargetScaffolder target, PersistenceKind persistence)
+        => !(persistence == PersistenceKind.Sqlite
+             && string.Equals(target.Key, "wpf", StringComparison.OrdinalIgnoreCase));
 
     private static void Report(bool changed, string ok, string fail)
         => Console.WriteLine(changed ? ok : fail);
