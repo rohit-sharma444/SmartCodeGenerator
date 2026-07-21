@@ -147,6 +147,53 @@ public class GeneratedProjectBuildTests
         }
     }
 
+    [TestMethod]
+    [TestCategory("Integration")]
+    public void GeneratedSqliteProject_WithRelationship_SeedsAndRoundTrips()
+    {
+        var model = new CandidateDomainModel();
+        model.Entities.Add(new CandidateEntity
+        {
+            Name = "Customer",
+            Fields = { new CandidateField { Name = "Name", Type = "string" } }
+        });
+        var order = new CandidateEntity
+        {
+            Name = "Order",
+            Fields =
+            {
+                new CandidateField { Name = "Total", Type = "decimal" },
+                new CandidateField { Name = "CustomerId", Type = "int" }
+            }
+        };
+        order.Relationships.Add(new CandidateRelationship { Target = "Customer", Role = "references" });
+        model.Entities.Add(order);
+
+        Assert.IsTrue(TargetScaffolders.TryResolve("console", out var target));
+
+        var workspace = Path.Combine(Path.GetTempPath(), "gen_" + Path.GetRandomFileName());
+        Directory.CreateDirectory(workspace);
+        try
+        {
+            var result = new AppScaffolder()
+                .Scaffold(model, "Shop", workspace, target, PersistenceKind.Sqlite);
+            Assert.IsTrue(result.Success, "scaffold failed: " + result.Message);
+            Assert.IsNotNull(result.TestProjectPath, "no test project was emitted");
+
+            // Proves the feature's central design decision against real SQLite: AppDbContext maps
+            // scalar columns only (navigation/collection properties are ignored), so Order.CustomerId
+            // is a plain column with no FK constraint. The generated companion test's
+            // repository.Create(new Order()) can insert with CustomerId = 0, and SeedData can assign
+            // FKs across seeded parents, without EF Core or SQLite rejecting either.
+            var (exit, output) = RunDotNet($"test \"{result.TestProjectPath}\" -c Release");
+            Assert.AreEqual(0, exit, $"dotnet test failed (sqlite, with relationship):\n{output}");
+        }
+        finally
+        {
+            TryDeleteDirectory(workspace);
+        }
+    }
+
     private static (int ExitCode, string Output) RunDotNet(string arguments)
     {
         var psi = new ProcessStartInfo("dotnet", arguments)

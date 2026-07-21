@@ -5,10 +5,10 @@ namespace AppScaffolding;
 /// subclass per entity.
 /// </summary>
 /// <remarks>
-/// Standalone by design. The running app persists through EntityViewModel and
-/// JsonStore.SaveAll; these repositories are an additional, typed API to code against and
-/// touch none of that. They are built only on JsonStore's existing public surface
-/// (GetAll/SaveAll/NextId), so JsonStore itself is unchanged.
+/// These repositories are a typed CRUD API (GetAll/GetById/Create/Update/Delete) built entirely
+/// against the <c>IStore&lt;T&gt;</c> seam obtained from <c>StoreFactory</c>, so the same
+/// generated code works unchanged whether that seam resolves to JsonStore or, when the app was
+/// generated with the SQLite backend, EfStore.
 /// </remarks>
 public static class RepositoryTemplate
 {
@@ -24,7 +24,9 @@ namespace {{appName}}.Data;
 /// <summary>Typed CRUD over one entity's JSON store, keyed by an int Id.</summary>
 /// <remarks>
 /// Persists through the store returned by <c>StoreFactory.Create&lt;T&gt;()</c> — JSON files by
-/// default, or SQLite via EF Core when the app was generated with that backend.
+/// default, or SQLite via EF Core when the app was generated with that backend. In the JSON
+/// backend, this store shares its per-type JSON file with the UI path's <c>EntityViewModel</c>,
+/// so mixing the two at runtime is last-writer-wins.
 /// </remarks>
 public abstract class Repository<T> where T : class, new()
 {

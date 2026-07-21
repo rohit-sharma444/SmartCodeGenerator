@@ -134,7 +134,8 @@ public sealed class AppScaffolder
 
         var entityNames = classes.Select(c => c.Name).ToList();
 
-        // Shared, target-agnostic core.
+        // Shared, target-agnostic core: includes the IStore seam and StoreFactory, so every
+        // target and persistence backend shares the same typed CRUD surface.
         var files = new List<(string Folder, string Name, string Source)>
         {
             (dataFolder, "IStore.cs", StoreSeamTemplate.Source(projectName)),
