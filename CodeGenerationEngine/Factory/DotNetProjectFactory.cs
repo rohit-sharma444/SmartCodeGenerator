@@ -112,6 +112,7 @@ public static class DotNetProjectFactory
             DotNetProjectType.WinForms => "winforms",
             DotNetProjectType.WorkerService => "worker",
             DotNetProjectType.Mvc => "mvc",
+            DotNetProjectType.XUnitTest => "xunit",
             _ => throw new NotSupportedException()
         };
     }

@@ -11,5 +11,6 @@ public enum DotNetProjectType
     WinForms,
     Blazor,
     WorkerService,
-    Mvc
+    Mvc,
+    XUnitTest
 }

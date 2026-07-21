@@ -120,6 +120,8 @@ public sealed class AppScaffolder
                 written.Add(path);
         }
 
+        var testProjectPath = ScaffoldTestProject(workspaceRoot, projectName, entityNames);
+
         var allWritten = written.Count == expected;
 
         var message = allWritten
@@ -127,7 +129,88 @@ public sealed class AppScaffolder
             : $"Generated {written.Count} of {expected} file(s); " +
               "some files could not be written.";
 
-        return new ScaffoldResult(allWritten, outputFolder, written, message);
+        return new ScaffoldResult(allWritten, outputFolder, written, message, testProjectPath);
+    }
+
+    /// <summary>
+    /// Creates a sibling <c>&lt;appProject&gt;.Tests</c> xUnit project referencing the app project,
+    /// with generated CRUD + seed tests. Best-effort: returns null (leaving the app itself intact)
+    /// if the test project could not be created. The test project's TFM mirrors the app's, so a
+    /// WPF app's tests target net10.0-windows and resolve the reference.
+    /// </summary>
+    private static string? ScaffoldTestProject(
+        string workspaceRoot, string appProjectName, IReadOnlyList<string> entityNames)
+    {
+        if (entityNames.Count == 0)
+            return null;
+
+        var testProjectName = appProjectName + ".Tests";
+        var testFolder = Path.Combine(workspaceRoot, testProjectName);
+        var testCsproj = Path.Combine(testFolder, testProjectName + ".csproj");
+        var appCsproj = Path.Combine("..", appProjectName, appProjectName + ".csproj");
+
+        var framework = AppProjectFramework(workspaceRoot, appProjectName);
+
+        if (!File.Exists(testCsproj))
+        {
+            var created = DotNetProjectFactory.CreateProject(new ProjectRequest
+            {
+                ProjectName = testProjectName,
+                OutputFolder = testFolder,
+                ProjectType = DotNetProjectType.XUnitTest,
+                Framework = framework
+            });
+
+            if (!created.Success)
+                return null;
+
+            // dotnet new xunit emits a UnitTest1.cs placeholder; replace it with our tests.
+            var placeholder = Path.Combine(testFolder, "UnitTest1.cs");
+            try { if (File.Exists(placeholder)) File.Delete(placeholder); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+
+            try
+            {
+                File.WriteAllText(testCsproj,
+                    TestProjectTemplates.InjectProjectReference(File.ReadAllText(testCsproj), appCsproj));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                return null;
+            }
+        }
+
+        WriteSource(testFolder, "RepositoryRoundTripTests.cs",
+            TestProjectTemplates.RoundTripTests(appProjectName, entityNames));
+        WriteSource(testFolder, "SeedDataTests.cs",
+            TestProjectTemplates.SeedTests(appProjectName, entityNames[0]));
+        WriteSource(testFolder, "TestParallelization.cs",
+            TestProjectTemplates.DisableParallelization());
+
+        return testCsproj;
+    }
+
+    /// <summary>The app project's &lt;TargetFramework&gt;, so the test project matches it
+    /// (net10.0-windows for WPF). Falls back to net10.0 if it cannot be read.</summary>
+    private static string AppProjectFramework(string workspaceRoot, string appProjectName)
+    {
+        try
+        {
+            var csproj = File.ReadAllText(
+                Path.Combine(workspaceRoot, appProjectName, appProjectName + ".csproj"));
+            var open = csproj.IndexOf("<TargetFramework>", StringComparison.Ordinal);
+            var close = csproj.IndexOf("</TargetFramework>", StringComparison.Ordinal);
+            if (open >= 0 && close > open)
+            {
+                open += "<TargetFramework>".Length;
+                return csproj.Substring(open, close - open).Trim();
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+        }
+
+        return "net10.0";
     }
 
     /// <summary>Backward-compatible overload: scaffolds the WPF target (the historical default).</summary>
