@@ -44,4 +44,12 @@ public class JsonStoreTemplateTests
         StringAssert.Contains(source, "JsonException");
         StringAssert.Contains(source, "UnauthorizedAccessException");
     }
+
+    [TestMethod]
+    public void Source_JsonStoreImplementsIStore()
+    {
+        var source = JsonStoreTemplate.Source("Payroll.Data");
+
+        StringAssert.Contains(source, "class JsonStore<T> : IStore<T> where T : new()");
+    }
 }

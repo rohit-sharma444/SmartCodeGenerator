@@ -97,6 +97,7 @@ public sealed class AppScaffolder
         // repository per entity.
         var files = new List<(string Folder, string Name, string Source)>
         {
+            (dataFolder, "IStore.cs", StoreSeamTemplate.Source(projectName)),
             (dataFolder, "JsonStore.cs", JsonStoreTemplate.Source($"{projectName}.Data")),
             (dataFolder, "Repository.cs", RepositoryTemplate.Base(projectName)),
             (dataFolder, "SeedData.cs",
