@@ -19,6 +19,8 @@ using {{projectName}};
 using {{projectName}}.Data;
 using {{projectName}}.Models;
 
+SeedData.EnsureSeeded();
+
 // typeof(Entity) -> that entity's stored rows, so a menu can offer a picker for a foreign key.
 var repositories = new System.Collections.Generic.Dictionary<Type, Func<System.Collections.IEnumerable>>
 {

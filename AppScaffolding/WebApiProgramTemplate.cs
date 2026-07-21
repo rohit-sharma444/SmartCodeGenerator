@@ -18,6 +18,8 @@ using {{{projectName}}}.Models;
 var builder = WebApplication.CreateBuilder(args);
 var app = builder.Build();
 
+SeedData.EnsureSeeded();
+
 {{{registrations}}}
 
 app.Run();

@@ -21,6 +21,10 @@ public sealed class MainViewModel
 {
     public MainViewModel()
     {
+        // Seed sample data before the view-models load: each EntityViewModel<T> reads its own
+        // store in its constructor, so seeding after this point would leave the first run empty.
+        SeedData.EnsureSeeded();
+
         Entities = new ObservableCollection<IEntityViewModel>
         {
 {{registrations}}

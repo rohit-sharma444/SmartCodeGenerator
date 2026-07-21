@@ -91,6 +91,33 @@ public class GeneratedProjectBuildTests
         }
     }
 
+    [TestMethod]
+    [TestCategory("Integration")]
+    [DataRow("console")]
+    [DataRow("webapi")]
+    [DataRow("classlib")]
+    [DataRow("worker")]
+    public void GeneratedTestProject_BuildsAndPasses(string targetKey)
+    {
+        Assert.IsTrue(TargetScaffolders.TryResolve(targetKey, out var target));
+
+        var workspace = Path.Combine(Path.GetTempPath(), "gen_" + Path.GetRandomFileName());
+        Directory.CreateDirectory(workspace);
+        try
+        {
+            var result = new AppScaffolder().Scaffold(SampleModel(), "Sample", workspace, target);
+            Assert.IsTrue(result.Success, "scaffold failed: " + result.Message);
+            Assert.IsNotNull(result.TestProjectPath, "no test project was emitted");
+
+            var (exit, output) = RunDotNet($"test \"{result.TestProjectPath}\" -c Release");
+            Assert.AreEqual(0, exit, $"dotnet test failed for {targetKey}:\n{output}");
+        }
+        finally
+        {
+            TryDeleteDirectory(workspace);
+        }
+    }
+
     private static (int ExitCode, string Output) RunDotNet(string arguments)
     {
         var psi = new ProcessStartInfo("dotnet", arguments)
