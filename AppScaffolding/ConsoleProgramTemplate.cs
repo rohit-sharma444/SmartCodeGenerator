@@ -6,14 +6,27 @@ public static class ConsoleProgramTemplate
 {
     public static string Build(string projectName, IReadOnlyList<string> entityNames)
     {
+        var mapEntries = string.Join(",\n",
+            entityNames.Select(name =>
+                $"    [typeof({name})] = () => new {name}Repository().GetAll()"));
+
         var registrations = string.Join(",\n",
             entityNames.Select(name =>
-                $"    (\"{name}\", () => new EntityMenu<{name}>(new {name}Repository()).Run())"));
+                $"    (\"{name}\", () => new EntityMenu<{name}>(new {name}Repository(), Related).Run())"));
 
         return $$"""
 using {{projectName}};
 using {{projectName}}.Data;
 using {{projectName}}.Models;
+
+// typeof(Entity) -> that entity's stored rows, so a menu can offer a picker for a foreign key.
+var repositories = new System.Collections.Generic.Dictionary<Type, Func<System.Collections.IEnumerable>>
+{
+{{mapEntries}}
+};
+
+System.Collections.IEnumerable? Related(Type entityType) =>
+    repositories.TryGetValue(entityType, out var get) ? get() : null;
 
 var menus = new (string Name, Action Run)[]
 {

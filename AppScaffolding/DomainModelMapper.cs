@@ -52,6 +52,12 @@ public static class DomainModelMapper
     /// </summary>
     private const string JsonIgnoreAttribute = "JsonIgnore";
 
+    /// <summary>The namespace DataAnnotations attributes live in. Declared only by a class that uses one.</summary>
+    private const string DataAnnotationsNamespace = "System.ComponentModel.DataAnnotations";
+
+    /// <summary>Default upper bound for a generated string column: generous, but not unbounded.</summary>
+    private const int DefaultStringLength = 200;
+
     public static IReadOnlyList<ClassDefinition> ToClassDefinitions(CandidateDomainModel model)
     {
         var classes = new List<ClassDefinition>();
@@ -90,6 +96,7 @@ public static class DomainModelMapper
 
         AddNavigationProperties(model, classes, classNames);
         AddAuditFields(classes);
+        AddValidation(classes);
 
         return classes;
     }
@@ -177,6 +184,58 @@ public static class DomainModelMapper
                 definition.Properties.Add(new PropertyDefinition { Name = name, Type = "DateTime" });
             }
         }
+    }
+
+    /// <summary>
+    /// Adds inferred DataAnnotations to each property from its name and type: a key on Id, a
+    /// required, length-bounded name field, and length limits (plus an email/phone shape) on
+    /// strings. Declarative only -- the interactive front-ends run Validator.TryValidateObject to
+    /// enforce them. A class that gains any attribute also gains the DataAnnotations using.
+    /// </summary>
+    private static void AddValidation(List<ClassDefinition> classes)
+    {
+        foreach (var definition in classes)
+        {
+            var added = false;
+            foreach (var property in definition.Properties)
+                added |= InferValidation(property);
+
+            if (added && !definition.Usings.Contains(DataAnnotationsNamespace))
+                definition.Usings.Add(DataAnnotationsNamespace);
+        }
+    }
+
+    /// <summary>
+    /// Applies the inference rules to one property, mutating its Rules/Attributes in place, and
+    /// returns whether it added a DataAnnotations attribute. A navigation property (typed as
+    /// another class or a List&lt;&gt;) is not a string and carries no Id name, so it is left alone.
+    /// </summary>
+    private static bool InferValidation(PropertyDefinition property)
+    {
+        if (string.Equals(property.Name, "Id", StringComparison.OrdinalIgnoreCase)
+            && property.Type == "int")
+        {
+            property.Attributes.Add("Key");
+            return true;
+        }
+
+        if (property.Type != "string")
+            return false;
+
+        var isNameField = string.Equals(property.Name, "Name", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(property.Name, "Title", StringComparison.OrdinalIgnoreCase);
+
+        if (isNameField)
+            property.Rules.Add(new PropertyRule { Name = "required" });
+
+        property.Rules.Add(new PropertyRule { Name = "maxlength", MaxLength = DefaultStringLength });
+
+        if (property.Name.Contains("email", StringComparison.OrdinalIgnoreCase))
+            property.Attributes.Add("EmailAddress");
+        else if (property.Name.Contains("phone", StringComparison.OrdinalIgnoreCase))
+            property.Attributes.Add("Phone");
+
+        return true;
     }
 
     /// <summary>

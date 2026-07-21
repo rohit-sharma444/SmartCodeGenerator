@@ -231,4 +231,133 @@ public class PropertyMinerTests
         Assert.Empty(PropertyMiner.Mine("", "Invoice"));
         Assert.Empty(PropertyMiner.Mine(null!, "Invoice"));
     }
+
+    [Fact]
+    public void Mines_a_list_under_a_composition_heading_with_no_containment_lead_in()
+    {
+        // The real Invoice article states its fields under bare "Header"/"Body" headings,
+        // not a sentence ending in a colon — so the containment-lead-in source never reaches
+        // them. The composition-heading source does.
+        var article = """
+            An invoice is a commercial document.
+            History
+            Invoices are an ancient record.
+            Header
+            * Invoice number
+            * Payment due date
+            Body
+            * Subtotal
+            * Total amount due
+            """;
+
+        var names = PropertyMiner.Mine(article, "Invoice").Select(f => f.Name).ToList();
+
+        Assert.Contains("InvoiceNumber", names);
+        Assert.Contains("PaymentDueDate", names);
+        Assert.Contains("Subtotal", names);
+        Assert.Contains("TotalAmountDue", names);
+    }
+
+    [Fact]
+    public void Skips_below_lead_lists_that_are_not_under_a_composition_heading()
+    {
+        // The key precision test: History, Variations (a list of TYPES) and See also all sit
+        // below the lead as bulleted lists, and none is a property. The heading gate is what
+        // separates them from a real "Header"/"Body" field list.
+        var article = """
+            An invoice is a commercial document.
+            History
+            * Ancient Mesopotamia
+            * The Middle Ages
+            Variations
+            * Pro forma invoice
+            * Credit memo
+            See also
+            * Receipt
+            * Purchase order
+            """;
+
+        Assert.Empty(PropertyMiner.Mine(article, "Invoice"));
+    }
+
+    [Fact]
+    public void Treats_header_body_and_footer_as_composition_headings()
+    {
+        var article = """
+            A cheque is a written order to a bank.
+            Footer
+            * Signature line
+            """;
+
+        var names = PropertyMiner.Mine(article, "Cheque").Select(f => f.Name).ToList();
+
+        Assert.Contains("SignatureLine", names);
+    }
+
+    [Fact]
+    public void Does_not_mine_a_prose_enumeration_below_the_lead()
+    {
+        // The prose-enumeration source is deliberately lead-only: below the lead it mined
+        // noise (Book's "scrolls and clay tablets"). A non-composition section must stay
+        // untouched even though it contains a containment verb ("include").
+        var article = """
+            A book is a written work.
+            Media
+            Older writing media include scrolls and clay tablets.
+            """;
+
+        Assert.Empty(PropertyMiner.Mine(article, "Book"));
+    }
+
+    [Fact]
+    public void Caps_mined_fields_and_offers_composition_items_first()
+    {
+        // Nine valid composition bullets plus a lead prose enumeration. The cap is 8, and
+        // composition items are offered first, so the lead enumeration ("summary total") is
+        // pushed out entirely.
+        var article = """
+            A form is a document that includes the summary total.
+            Fields
+            * field alpha
+            * field beta
+            * field gamma
+            * field delta
+            * field epsilon
+            * field zeta
+            * field eta
+            * field theta
+            * field iota
+            """;
+
+        var fields = PropertyMiner.Mine(article, "Form");
+
+        Assert.Equal(PropertyMiner.MaxMinedFields, fields.Count);
+        Assert.DoesNotContain("SummaryTotal", fields.Select(f => f.Name));
+        Assert.Contains("FieldAlpha", fields.Select(f => f.Name));
+    }
+
+    [Fact]
+    public void Composition_heading_matches_a_whole_word_not_a_substring()
+    {
+        // "Structure of an invoice" matches via the whole word "structure"; a heading whose
+        // only near-match is a substring ("Antibody" contains "body") must NOT match.
+        var multiWord = """
+            A form is a document.
+            Structure of an invoice
+            * reference code
+            * issue date
+            """;
+        var substringOnly = """
+            An antibody is a protein.
+            Antibody
+            * heavy chain
+            * light chain
+            """;
+
+        var names = PropertyMiner.Mine(multiWord, "Form").Select(f => f.Name).ToList();
+        Assert.Contains("ReferenceCode", names);
+        Assert.Contains("IssueDate", names);
+
+        Assert.Empty(PropertyMiner.Mine(substringOnly, "Antibody"));
+    }
 }

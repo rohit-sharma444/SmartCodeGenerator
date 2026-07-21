@@ -93,6 +93,8 @@ public interface IEntityViewModel
 using System.Collections;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using System.Windows.Input;
 using {{appName}}.Data;
 
@@ -158,10 +160,23 @@ public sealed class EntityViewModel<T> : ObservableObject, IEntityViewModel wher
         Status = $"Removed a {Title}. Not saved yet.";
     }
 
-    private void Save() =>
+    private void Save()
+    {
+        foreach (var record in Records)
+        {
+            var errors = new List<ValidationResult>();
+            if (!Validator.TryValidateObject(
+                    record!, new ValidationContext(record!), errors, validateAllProperties: true))
+            {
+                Status = $"Cannot save: {errors[0].ErrorMessage}";
+                return;
+            }
+        }
+
         Status = _store.SaveAll(Records.ToList())
             ? $"Saved {Records.Count} {Title} record(s)."
             : $"Could not write {typeof(T).Name}.json.";
+    }
 }
 """;
 }

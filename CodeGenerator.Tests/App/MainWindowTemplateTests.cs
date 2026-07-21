@@ -66,4 +66,22 @@ public class MainWindowTemplateTests
         StringAssert.Contains(source, "DataContext = new MainViewModel();");
         StringAssert.Contains(source, "e.Column.IsReadOnly = true;");
     }
+
+    [TestMethod]
+    public void CodeBehind_BuildsComboColumnsForForeignKeys()
+    {
+        var source = MainWindowTemplate.CodeBehind("Payroll");
+
+        StringAssert.Contains(source, "TryBuildRelationshipColumn");
+        StringAssert.Contains(source, "DataGridComboBoxColumn");
+        StringAssert.Contains(source, "SelectedValuePath = \"Id\"");
+        StringAssert.Contains(source, "SelectedValueBinding = new System.Windows.Data.Binding(e.PropertyName)");
+
+        // The combo branch must run and return before the nav-property cancel, or every
+        // combo column would be hidden behind e.Cancel = true.
+        Assert.IsLessThan(
+            source.IndexOf("e.Cancel = true", StringComparison.Ordinal),
+            source.IndexOf("TryBuildRelationshipColumn(sender, e)", StringComparison.Ordinal),
+            "the FK combo branch must run and return before the nav-property cancel");
+    }
 }

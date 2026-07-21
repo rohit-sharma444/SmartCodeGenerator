@@ -56,11 +56,12 @@ public static class LeadSection
     }
 
     /// <summary>
-    /// A line that names a section rather than saying anything. Prose ends on punctuation — a full
-    /// stop, a colon introducing a list, a closing quote — and a heading ends on the last letter of
-    /// its last word ("Terminology", "History", "Software before the 1990s").
+    /// A line that names a section rather than saying anything. Shared with
+    /// <see cref="PropertyMiner"/>, which uses it to find composition sections below the lead.
+    /// Prose ends on punctuation — a full stop, a colon introducing a list, a closing quote —
+    /// and a heading ends on the last letter of its last word ("Terminology", "History").
     /// </summary>
-    private static bool IsHeading(string line)
+    internal static bool IsHeading(string line)
     {
         var text = line.Trim();
 

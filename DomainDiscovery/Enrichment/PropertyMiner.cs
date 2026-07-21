@@ -121,6 +121,36 @@ public static class PropertyMiner
     };
 
     /// <summary>
+    /// Section headings whose bulleted lists state what a thing is MADE OF, as opposed to its
+    /// history, its variants, or where to read next. This gate is what lets the miner reach
+    /// below the lead safely: measured on the real store, the other below-lead lists are
+    /// navigation ("See also"), type enumerations ("Variations") and history — never fields.
+    /// </summary>
+    private static readonly HashSet<string> CompositionHeadingWords =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            "format", "structure", "components", "contents", "elements", "fields",
+            "anatomy", "parts", "sections", "layout", "header", "body", "footer",
+        };
+
+    /// <summary>
+    /// True when any whole word of <paramref name="heading"/> names composition, so "Header",
+    /// "Structure of an invoice" and "Anatomy" match while "History", "Variations" and "See
+    /// also" do not. Matched on whole words so "Antibody" never counts as "body".
+    /// </summary>
+    private static bool IsCompositionHeading(string heading)
+    {
+        foreach (var word in heading.Split(
+                     (char[]?)null, StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (CompositionHeadingWords.Contains(word.Trim('(', ')', ',', '.', ':', ';', '"', '\'')))
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// The properties <paramref name="articleBody"/> states that <paramref name="entityName"/> has.
     /// Empty when the article says nothing usable — which is the common case, and is fine.
     /// Never throws.
@@ -132,9 +162,16 @@ public static class PropertyMiner
 
         try
         {
+            // The composition-list source reads the whole body (gated by heading). The two
+            // lead sources are pinned to the lead REGARDLESS of how much body the caller passed:
+            // the prose enumeration in particular mines noise from below the lead (measured:
+            // Book's "scrolls and clay tablets"), so it stays confined here.
+            var lead = LeadSection.Of(articleBody);
+
             var phrases = new List<string>();
-            phrases.AddRange(FromIntroducedLists(articleBody));
-            phrases.AddRange(FromProseEnumerations(articleBody));
+            phrases.AddRange(FromCompositionSections(articleBody));
+            phrases.AddRange(FromIntroducedLists(lead));
+            phrases.AddRange(FromProseEnumerations(lead));
 
             var fields = new List<FieldShape>();
             var taken = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -182,6 +219,32 @@ public static class PropertyMiner
 
             // A non-list line either introduces the list that follows it, or ends the one above.
             introduced = ContainmentLeadIn.IsMatch(line);
+        }
+    }
+
+    /// <summary>
+    /// Every item of every bulleted list that sits under a composition/structure heading.
+    /// Unlike <see cref="FromIntroducedLists"/> this needs no containment lead-in — the heading
+    /// IS the gate — which is what reaches the field lists an article states under a
+    /// "Format"/"Header"/"Contents" section well below the lead.
+    /// </summary>
+    private static IEnumerable<string> FromCompositionSections(string body)
+    {
+        var mining = false;
+
+        foreach (var line in body.Split('\n'))
+        {
+            if (line.StartsWith("* ", StringComparison.Ordinal))
+            {
+                if (mining)
+                    yield return line[2..];
+                continue;
+            }
+
+            // Any non-list line is either a heading — which turns mining on when it names
+            // composition and off when it does not — or a prose line, which ends the list
+            // above it (IsHeading is false, so mining goes false).
+            mining = LeadSection.IsHeading(line) && IsCompositionHeading(line);
         }
     }
 
