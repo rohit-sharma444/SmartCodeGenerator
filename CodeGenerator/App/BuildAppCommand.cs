@@ -96,6 +96,8 @@ internal sealed class BuildAppCommand
                     if (scaffold.Success)
                     {
                         Console.WriteLine($"Generated project at {scaffold.ProjectPath}");
+                        if (scaffold.TestProjectPath is not null)
+                            Console.WriteLine($"Generated test project at {scaffold.TestProjectPath} — run with `dotnet test`.");
                         Console.WriteLine("");
                         //foreach (var file in scaffold.FilesWritten)
                         //    Console.WriteLine($"  {Path.GetRelativePath(scaffold.ProjectPath, file)}");

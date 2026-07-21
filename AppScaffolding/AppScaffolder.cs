@@ -180,12 +180,15 @@ public sealed class AppScaffolder
             }
         }
 
-        WriteSource(testFolder, "RepositoryRoundTripTests.cs",
+        var roundTripPath = WriteSource(testFolder, "RepositoryRoundTripTests.cs",
             TestProjectTemplates.RoundTripTests(appProjectName, entityNames));
-        WriteSource(testFolder, "SeedDataTests.cs",
+        var seedPath = WriteSource(testFolder, "SeedDataTests.cs",
             TestProjectTemplates.SeedTests(appProjectName, entityNames[0]));
-        WriteSource(testFolder, "TestParallelization.cs",
+        var parallelizationPath = WriteSource(testFolder, "TestParallelization.cs",
             TestProjectTemplates.DisableParallelization());
+
+        if (roundTripPath is null || seedPath is null || parallelizationPath is null)
+            return null;
 
         return testCsproj;
     }
