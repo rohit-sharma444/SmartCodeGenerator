@@ -375,6 +375,9 @@ public class EntityShaperTests
         Assert.Contains("PaymentDueDate", names);
         Assert.Contains("PurchaseOrderNumber", names);
 
+        // The curated fields survive alongside the mined ones — mining is strictly additive.
+        Assert.Contains("DueDate", names);
+
         // The heading gate still excludes the type-enumeration and navigation lists.
         Assert.DoesNotContain("ProFormaInvoice", names);
         Assert.DoesNotContain("Receipt", names);

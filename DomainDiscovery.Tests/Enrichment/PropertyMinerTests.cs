@@ -335,4 +335,29 @@ public class PropertyMinerTests
         Assert.DoesNotContain("SummaryTotal", fields.Select(f => f.Name));
         Assert.Contains("FieldAlpha", fields.Select(f => f.Name));
     }
+
+    [Fact]
+    public void Composition_heading_matches_a_whole_word_not_a_substring()
+    {
+        // "Structure of an invoice" matches via the whole word "structure"; a heading whose
+        // only near-match is a substring ("Antibody" contains "body") must NOT match.
+        var multiWord = """
+            A form is a document.
+            Structure of an invoice
+            * reference code
+            * issue date
+            """;
+        var substringOnly = """
+            An antibody is a protein.
+            Antibody
+            * heavy chain
+            * light chain
+            """;
+
+        var names = PropertyMiner.Mine(multiWord, "Form").Select(f => f.Name).ToList();
+        Assert.Contains("ReferenceCode", names);
+        Assert.Contains("IssueDate", names);
+
+        Assert.Empty(PropertyMiner.Mine(substringOnly, "Antibody"));
+    }
 }

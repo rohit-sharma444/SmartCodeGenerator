@@ -181,6 +181,10 @@ correct types are a separate feature.)
 - The two existing sources produce identical output (they still see only
   `LeadSection.Of(body)`), so no current `PropertyMinerTests` assertion changes meaning.
 - No store re-import; the change reads the same `Body` already stored.
-- `build app:` output can only get *more* fields on document-like classes; the
-  `MaxMinedFields = 8` cap bounds the growth, and CI stays green under `-warnaserror`.
+- Composition-source fields are offered first into the `MaxMinedFields = 8` cap, so on
+  document-like classes they can substitute lower-precision lead-mined fragments — e.g.
+  `Invoice` now emits `InvoiceNumber`/`InvoiceDate`/`PaymentDueDate`/… in place of
+  `ItemizedListOfGoods`/`TermsOfSale`/`Quantities`/`AgreedUponPrices`. Curated and
+  role-template fields are never at risk (only other mined fields can be displaced), and
+  CI stays green under `-warnaserror`.
 ```
