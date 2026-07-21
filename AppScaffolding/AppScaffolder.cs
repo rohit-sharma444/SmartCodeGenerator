@@ -99,6 +99,7 @@ public sealed class AppScaffolder
         {
             (dataFolder, "IStore.cs", StoreSeamTemplate.Source(projectName)),
             (dataFolder, "JsonStore.cs", JsonStoreTemplate.Source($"{projectName}.Data")),
+            (dataFolder, "StoreFactory.cs", StoreFactoryTemplate.Source(projectName, PersistenceKind.Json)),
             (dataFolder, "Repository.cs", RepositoryTemplate.Base(projectName)),
             (dataFolder, "SeedData.cs",
                 SeedDataTemplate.Source(

@@ -13,7 +13,7 @@ public class RepositoryTemplateTests
         StringAssert.Contains(source, "namespace Payroll.Data");
         StringAssert.Contains(source, "abstract class Repository<T>");
         StringAssert.Contains(source, "where T : class, new()");
-        StringAssert.Contains(source, "JsonStore<T>");
+        StringAssert.Contains(source, "IStore<T> _store = StoreFactory.Create<T>();");
     }
 
     [TestMethod]

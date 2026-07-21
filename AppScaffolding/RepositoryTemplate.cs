@@ -23,12 +23,12 @@ namespace {{appName}}.Data;
 
 /// <summary>Typed CRUD over one entity's JSON store, keyed by an int Id.</summary>
 /// <remarks>
-/// A separate store from the app's UI path (EntityViewModel/JsonStore): both persist to the
-/// same per-type JSON file, so mixing them at runtime over one entity is last-writer-wins.
+/// Persists through the store returned by <c>StoreFactory.Create&lt;T&gt;()</c> — JSON files by
+/// default, or SQLite via EF Core when the app was generated with that backend.
 /// </remarks>
 public abstract class Repository<T> where T : class, new()
 {
-    private readonly JsonStore<T> _store = new();
+    private readonly IStore<T> _store = StoreFactory.Create<T>();
 
     /// <summary>Every stored record.</summary>
     public List<T> GetAll() => _store.GetAll();

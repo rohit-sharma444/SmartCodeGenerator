@@ -143,7 +143,7 @@ public static class SeedData
 
     private static void Seed<T>(Dictionary<string, List<int>> seededIds) where T : class, new()
     {
-        var store = new JsonStore<T>();
+        IStore<T> store = StoreFactory.Create<T>();
         var existing = store.GetAll();
         if (existing.Count > 0)
         {
