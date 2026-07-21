@@ -118,6 +118,35 @@ public class GeneratedProjectBuildTests
         }
     }
 
+    [TestMethod]
+    [TestCategory("Integration")]
+    [DataRow("console")]
+    [DataRow("webapi")]
+    [DataRow("worker")]
+    public void GeneratedSqliteProject_BuildsSeedsAndRoundTrips(string targetKey)
+    {
+        Assert.IsTrue(TargetScaffolders.TryResolve(targetKey, out var target));
+
+        var workspace = Path.Combine(Path.GetTempPath(), "gen_" + Path.GetRandomFileName());
+        Directory.CreateDirectory(workspace);
+        try
+        {
+            var result = new AppScaffolder()
+                .Scaffold(SampleModel(), "Sample", workspace, target, PersistenceKind.Sqlite);
+            Assert.IsTrue(result.Success, "scaffold failed: " + result.Message);
+            Assert.IsNotNull(result.TestProjectPath, "no test project was emitted");
+
+            // The generated companion tests exercise Repository + SeedData, which now route through
+            // EfStore -> SQLite. A green run proves the schema is created, seeded, and round-tripped.
+            var (exit, output) = RunDotNet($"test \"{result.TestProjectPath}\" -c Release");
+            Assert.AreEqual(0, exit, $"dotnet test failed for {targetKey} (sqlite):\n{output}");
+        }
+        finally
+        {
+            TryDeleteDirectory(workspace);
+        }
+    }
+
     private static (int ExitCode, string Output) RunDotNet(string arguments)
     {
         var psi = new ProcessStartInfo("dotnet", arguments)
