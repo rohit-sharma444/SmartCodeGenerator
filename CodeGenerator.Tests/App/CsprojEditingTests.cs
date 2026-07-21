@@ -15,9 +15,10 @@ public class CsprojEditingTests
 
         StringAssert.Contains(result,
             "<PackageReference Include=\"Microsoft.EntityFrameworkCore.Sqlite\" Version=\"10.0.10\" />");
-        Assert.IsTrue(
-            result.IndexOf("PackageReference", StringComparison.Ordinal)
-                < result.IndexOf("</Project>", StringComparison.Ordinal),
+        var closingIndex = result.IndexOf("</Project>", StringComparison.Ordinal);
+        StringAssert.Contains(
+            result.Substring(0, closingIndex),
+            "PackageReference",
             "the reference must be inside the project element");
     }
 
