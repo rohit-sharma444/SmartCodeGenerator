@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using AppScaffolding;
 using CodeGenerationEngine.Models;
@@ -46,14 +47,36 @@ public class SeedDataTemplateTests
     [TestMethod]
     public void Source_EmitsSeedCallsInOrder_AndSeedRowCount()
     {
-        var src = SeedDataTemplate.Source("Shop", new[] { "Customer", "Order" });
+        var src = SeedDataTemplate.Source("Shop", new[] { "Customer", "Order" }, new[] { "CustomerId" });
 
         StringAssert.Contains(src, "namespace Shop.Data;");
         StringAssert.Contains(src, "using Shop.Models;");
         StringAssert.Contains(src, "public const int SeedRowCount = 3;");
         StringAssert.Contains(src, "Seed<Customer>(seededIds);");
         StringAssert.Contains(src, "Seed<Order>(seededIds);");
+        StringAssert.Contains(src, "ForeignKeyFields");
         // Customer's Seed call precedes Order's.
         Assert.IsLessThan(src.IndexOf("Seed<Order>"), src.IndexOf("Seed<Customer>"));
+    }
+
+    [TestMethod]
+    public void ForeignKeyFieldNames_ReturnsOnlyRealForeignKeys_AndSourceGatesOnThem()
+    {
+        var order = Class("Order",
+            Prop("Id", "int"), Prop("CustomerId", "int"), Prop("Customer", "Customer"),
+            Prop("ExternalId", "int"));   // int ending in Id but NOT a FK (no nav sibling)
+        var customer = Class("Customer", Prop("Id", "int"), Prop("Name", "string"));
+        var classes = new System.Collections.Generic.List<ClassDefinition> { order, customer };
+
+        var fks = SeedDataTemplate.ForeignKeyFieldNames(classes);
+
+        CollectionAssert.Contains((System.Collections.ICollection)fks, "CustomerId");
+        CollectionAssert.DoesNotContain((System.Collections.ICollection)fks, "ExternalId");
+
+        var src = SeedDataTemplate.Source("Shop",
+            SeedDataTemplate.OrderByDependency(classes), fks);
+        StringAssert.Contains(src, "ForeignKeyFields.Contains(name)");
+        StringAssert.Contains(src, "\"CustomerId\"");
+        Assert.IsFalse(src.Contains("\"ExternalId\"", StringComparison.Ordinal));
     }
 }

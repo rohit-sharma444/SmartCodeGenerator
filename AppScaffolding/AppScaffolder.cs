@@ -100,7 +100,10 @@ public sealed class AppScaffolder
             (dataFolder, "JsonStore.cs", JsonStoreTemplate.Source($"{projectName}.Data")),
             (dataFolder, "Repository.cs", RepositoryTemplate.Base(projectName)),
             (dataFolder, "SeedData.cs",
-                SeedDataTemplate.Source(projectName, SeedDataTemplate.OrderByDependency(classes))),
+                SeedDataTemplate.Source(
+                    projectName,
+                    SeedDataTemplate.OrderByDependency(classes),
+                    SeedDataTemplate.ForeignKeyFieldNames(classes))),
         };
         foreach (var name in entityNames)
             files.Add((dataFolder, $"{name}Repository.cs", RepositoryTemplate.Typed(projectName, name)));

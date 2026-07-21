@@ -73,12 +73,40 @@ public static class SeedDataTemplate
         return targets;
     }
 
+    /// <summary>The field names that are genuine foreign keys across <paramref name="classes"/> —
+    /// a <c>&lt;Target&gt;Id</c> whose owner also has a nav property typed as that target. Baked
+    /// into the generated seeder so its runtime FK assignment matches the compile-time ordering
+    /// rather than treating every int named <c>...Id</c> as a foreign key.</summary>
+    public static IReadOnlyList<string> ForeignKeyFieldNames(IReadOnlyList<ClassDefinition> classes)
+    {
+        var names = new HashSet<string>(classes.Select(c => c.Name), StringComparer.OrdinalIgnoreCase);
+        var fields = new List<string>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var c in classes)
+            foreach (var target in ForeignKeyTargets(c, names))
+            {
+                var field = target + "Id";
+                if (seen.Add(field))
+                    fields.Add(field);
+            }
+        return fields;
+    }
+
     /// <summary>Source of <c>Data/SeedData.cs</c> in <paramref name="projectName"/>.Data, seeding
-    /// the entities in <paramref name="orderedEntityNames"/> order.</summary>
-    public static string Source(string projectName, IReadOnlyList<string> orderedEntityNames)
+    /// the entities in <paramref name="orderedEntityNames"/> order. <paramref name="foreignKeyFieldNames"/>
+    /// gates the generated seeder's runtime FK assignment to genuine foreign keys.</summary>
+    public static string Source(
+        string projectName,
+        IReadOnlyList<string> orderedEntityNames,
+        IReadOnlyList<string> foreignKeyFieldNames)
     {
         var seedCalls = string.Join("\n",
             orderedEntityNames.Select(n => $"        Seed<{n}>(seededIds);"));
+
+        var fkSet = foreignKeyFieldNames.Count == 0
+            ? "new(StringComparer.Ordinal)"
+            : "new(StringComparer.Ordinal) { "
+              + string.Join(", ", foreignKeyFieldNames.Select(f => $"\"{f}\"")) + " }";
 
         return $$"""
 using System;
@@ -98,6 +126,12 @@ public static class SeedData
 {
     /// <summary>Rows inserted into each empty store.</summary>
     public const int SeedRowCount = 3;
+
+    /// <summary>The field names that are genuine foreign keys — a <c>&lt;Target&gt;Id</c> whose
+    /// owner also has a nav property typed as that target. Gates the FK branch in
+    /// <see cref="SampleValue"/> so an incidental int named <c>...Id</c> with no relationship is
+    /// never wired to an unrelated entity's seeded rows.</summary>
+    private static readonly HashSet<string> ForeignKeyFields = {{fkSet}};
 
     /// <summary>Seeds every empty store, referenced entities before their referencers so a
     /// foreign key points at a row that exists.</summary>
@@ -153,7 +187,7 @@ public static class SeedData
         var name = prop.Name;
 
         // Foreign key: an int named <Target>Id -> an existing seeded <Target> row's Id.
-        if (type == typeof(int) && name.Length > 2 && name.EndsWith("Id", StringComparison.Ordinal))
+        if (type == typeof(int) && ForeignKeyFields.Contains(name))
         {
             var target = name.Substring(0, name.Length - 2);
             if (seededIds.TryGetValue(target, out var parentIds) && parentIds.Count > 0)
