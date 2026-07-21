@@ -145,16 +145,13 @@ public sealed class EntityShaper
             if (string.IsNullOrWhiteSpace(article))
                 continue;
 
-            // The LEAD, not the article. An article states what a thing IS in its lead and then
-            // spends thousands of words on its history, its examples and its regional variants —
-            // and those enumerate nouns just as readily, so the miner mined them. Measured on the
-            // real store, every junk property came from below the lead and every good one from
-            // inside it: Merchant took CalmlyConsidered from the title of a 1720 pamphlet,
-            // Inventory took EmptyCans and CoilsOfSteel from a cannery example and FIFOAndLIFO
-            // from a list of valuation methods, while Invoice's TermsOfSale and Quantities and
-            // Receipt's SalesTax all came from the first paragraph. Same reason the lead decides
-            // which classes are real — see LeadSection.
-            foreach (var shape in PropertyMiner.Mine(LeadSection.Of(article), entity.Name))
+            // The FULL article now, not just the lead. PropertyMiner scopes each of its sources
+            // itself: the containment-list and prose-enumeration sources still read only the
+            // lead (below it they mined junk — Merchant's CalmlyConsidered, Inventory's
+            // FIFOAndLIFO, Receipt's stray SalesTax neighbours), while the composition-list
+            // source reads the whole body but fires only under a "Format"/"Header"/"Contents"
+            // heading, which is where an article actually states a document's fields.
+            foreach (var shape in PropertyMiner.Mine(article, entity.Name))
                 AddField(entity, shape.Name, shape.Type);
         }
     }

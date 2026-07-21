@@ -343,4 +343,40 @@ public class EntityShaperTests
         Assert.Contains("System", model.Rejected);
         Assert.Empty(model.Entities);
     }
+
+    [Fact]
+    public void Shape_MinesFieldsFromBelowLeadCompositionSections()
+    {
+        // Invoice is curated, so it survives shaping; Widen then reads its article. The fields
+        // we assert on live BELOW the lead under a "Header" heading — unreachable until Widen
+        // passes the full body to PropertyMiner.
+        _wiki.Extracts["Invoice"] = """
+            An invoice is a commercial document issued by a seller to a buyer.
+            History
+            Invoices appear in ancient Mesopotamia.
+            Header
+            * Invoice number
+            * Payment due date
+            * Purchase order number
+            Variations
+            * Pro forma invoice
+            * Credit memo
+            See also
+            * Receipt
+            """;
+
+        var model = ModelOf("Invoice");
+        Shaper.Shape(model);
+
+        var invoice = Assert.Single(model.Entities);
+        var names = invoice.Fields.Select(f => f.Name).ToList();
+
+        // Below-lead composition fields the lead-only miner could never reach.
+        Assert.Contains("PaymentDueDate", names);
+        Assert.Contains("PurchaseOrderNumber", names);
+
+        // The heading gate still excludes the type-enumeration and navigation lists.
+        Assert.DoesNotContain("ProFormaInvoice", names);
+        Assert.DoesNotContain("Receipt", names);
+    }
 }
