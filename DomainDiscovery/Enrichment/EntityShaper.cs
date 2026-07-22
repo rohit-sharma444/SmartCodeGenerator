@@ -21,13 +21,14 @@ namespace DomainDiscovery.Enrichment;
 /// definition means we do not know, and the candidate is offered to the user instead.
 /// </para>
 /// <para>
-/// <see cref="Provenance.Seed"/> earns no exemption from that gate. SeedEntityExtractor
-/// turns every noun in the user's typed phrase into a fieldless Seed entity — an extracted
-/// seed is a guess like any other, not an assertion, so it is shaped, rejected, or suggested
-/// exactly like a Wikipedia candidate. The only fieldless entity this method lets through
-/// unshaped is one that already carries a field: that is what an entity the user adds by
-/// hand in the review loop looks like, because <see cref="Review.ModelEditor.AddEntity"/>
-/// runs after discovery and gives it a field before Shape ever sees it.
+/// <see cref="Provenance.Seed"/> earns an exemption from ONE of the three verdicts. A seed is a
+/// noun SeedEntityExtractor lifted out of the user's typed phrase, so it is shaped and rejected
+/// exactly like a Wikipedia candidate — but where the verdict is <see cref="ShapeVerdict.Unknown"/>,
+/// meaning we have no opinion, the user having named the thing is the only evidence available and
+/// the candidate is kept with <see cref="DefaultFields"/> rather than offered back to them.
+/// <see cref="ShapeVerdict.Abstract"/> still rejects it, so "system" and "application" cannot
+/// become classes this way. Without this, `build app: a hotel booking application` produced no
+/// Booking class at all.
 /// </para>
 /// </remarks>
 public sealed class EntityShaper
@@ -44,10 +45,11 @@ public sealed class EntityShaper
     /// <summary>
     /// Shapes every entity in <paramref name="model"/> in place: attaches known fields, and
     /// for anything still fieldless resolves the three-way verdict — shaped, abstract
-    /// (rejected), or unknown (suggested). A seed entity gets no exemption here: it is a noun
-    /// SeedEntityExtractor lifted straight out of the user's typed phrase, a guess like any
-    /// Wikipedia candidate, so it takes the same gate. The only fieldless-and-kept case is
-    /// impossible to reach through discovery: <see cref="Review.ModelEditor.AddEntity"/> already
+    /// (rejected), or unknown (suggested). A seed entity takes the same gate as everything else,
+    /// except that an Unknown verdict keeps it (with <see cref="DefaultFields"/>) rather than
+    /// suggesting it — the user named it, and Unknown means we have nothing to say against that.
+    /// The only other fieldless-and-kept case is impossible to reach through discovery:
+    /// <see cref="Review.ModelEditor.AddEntity"/> already
     /// gives an entity the user adds by hand a field (its own lexicon shape, or the
     /// <see cref="DefaultFields"/> fallback) before this method ever sees it, which is what
     /// the fields-count check below actually protects.
@@ -126,6 +128,16 @@ public sealed class EntityShaper
                     break;
 
                 default:
+                    // Unknown means "we have no opinion". Where we have none, the user having
+                    // typed the word IS the evidence: SeedEntityExtractor only ever produces a
+                    // Seed candidate from the description the user wrote. Abstract still
+                    // rejects above, so "system" and "application" cannot get in this way.
+                    if (entity.Provenance == Provenance.Seed)
+                    {
+                        DefaultFields.ApplyTo(entity, Provenance.Seed);
+                        break;
+                    }
+
                     model.Entities.Remove(entity);
                     model.Suggestions.Add(entity);
                     break;

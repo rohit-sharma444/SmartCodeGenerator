@@ -53,21 +53,51 @@ public class EntityShaperTests
     }
 
     [Fact]
-    public void Shape_MovesAnUnshapeableSeedEntity_ToSuggestions()
+    public void Shape_KeepsAnUnshapeableSeedEntity_BecauseTheUserNamedIt()
     {
-        // SeedEntityExtractor turns every noun in the user's typed phrase into a
-        // Provenance.Seed entity with no fields — an extracted seed is a guess like any
-        // other, so it takes the same lead-fetch / hypernym / archetype gate as everything
-        // else. Nothing shapes "Widget" here (no lexicon entry, no fetchable lead), so it is
-        // suggested rather than kept as junk or silently deleted.
+        // A Seed candidate is a noun SeedEntityExtractor lifted out of the user's own typed
+        // phrase. An Unknown verdict means "we have no opinion" — and where we have no opinion,
+        // the user having named the thing is the only evidence there is. This is why
+        // `build app: a hotel booking application` used to produce no Booking class.
         var model = new CandidateDomainModel();
         model.Entities.Add(new CandidateEntity { Name = "Widget", Provenance = Provenance.Seed });
 
         Shaper.Shape(model);
 
+        var widget = Assert.Single(model.Entities);
+        Assert.Equal("Widget", widget.Name);
+        Assert.Contains(widget.Fields, f => f.Name == "Name");
+        Assert.Empty(model.Suggestions);
+        Assert.Empty(model.Rejected);
+    }
+
+    [Fact]
+    public void Shape_StillRejectsASeedEntityWhoseDefinitionIsAnAbstraction()
+    {
+        // The exemption is for Unknown only. "System" is defined as a group of interacting
+        // elements, and no amount of the user having typed it makes it a class.
+        var model = new CandidateDomainModel();
+        model.Entities.Add(new CandidateEntity { Name = "System", Provenance = Provenance.Seed });
+        _wiki.Leads["System"] = "A system is a group of interacting elements.";
+
+        Shaper.Shape(model);
+
+        Assert.Empty(model.Entities);
+        Assert.Empty(model.Suggestions);
+        Assert.Equal(new[] { "System" }, model.Rejected);
+    }
+
+    [Fact]
+    public void Shape_StillSuggestsAnUnshapeableWikiEntity()
+    {
+        // Only a SEED gets the exemption. A noun harvested from an article is not evidence of
+        // anything the user asked for, so it is still offered rather than kept.
+        var model = ModelOf("Widget");   // ModelOf builds Provenance.Wiki entities
+
+        Shaper.Shape(model);
+
         Assert.Empty(model.Entities);
         Assert.Equal(new[] { "Widget" }, model.Suggestions.Select(e => e.Name));
-        Assert.Empty(model.Rejected);
     }
 
     [Fact]
