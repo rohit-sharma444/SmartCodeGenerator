@@ -283,8 +283,11 @@ public static class CommandDictionary
         {
             Category = "Validation",
             Command = "add validation <rule> on <property> in <class name>",
-            Description = "Adds a field-level data rule to a class. Recognized rule: 'required'.",
-            Example = "add validation required on Name in Employee"
+            Description = "Adds a field-level data rule to a class. Rules: required (or 'should not be blank'), "
+                        + "must be between <min> and <max>, length must be between <min> and <max>, "
+                        + "must be greater/less than <n>, must be a valid email, must match <regex>, "
+                        + "must be <value>, <value>, ...",
+            Example = "add validation must be between 18 and 65 on Age in Employee"
         },
         new()
         {

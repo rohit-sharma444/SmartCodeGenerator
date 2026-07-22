@@ -99,7 +99,7 @@ entity-level (rules that span multiple fields or express domain logic).
 
 | Command | Description |
 | --- | --- |
-| `add validation <Rule> on <Property> in <Class>` | Attach a **data** rule to a property — e.g. `add validation required on Name in Employee`. |
+| `add validation <Rule> on <Property> in <Class>` | Attach a **data** rule to a property — e.g. `required` (or `should not be blank`), `must be between 18 and 65`, `length must be between 2 and 50`, `must be greater than 0`, `must be a valid email`, `must match <regex>`, `must be India, USA, UK`. |
 | `add business validation <Rule> in <Class>` | Attach an entity-level **business** rule — e.g. `EndDate must be after StartDate`, `Discount must not exceed Price`, `TrackingNumber is required when Status is Shipped`. |
 | `show validation <Class>` | Show the data rules registered for a class. |
 | `show business validation <Class>` | Show the business rules registered for a class. |
@@ -111,12 +111,11 @@ self-contained unit discovered at startup, so new rule types can be added
 without changing the commands, the store, or the generator. See
 [`CodeGenerationEngine`](../CodeGenerationEngine/README.md#validation) for the design.
 
-> **Known limitation.** Only `required` is reachable through `add validation`
-> today. The command builds the rule fragment as `"<Property> is <text>"`
-> (`CommandEntityExtractor.cs`), and only `RequiredRule` matches that shape —
-> the range, length, regex, allowed-values and comparison data parsers expect
-> `<Property> must be …`, so they never fire from the CLI even though they are
-> registered and unit-tested. Business rules are unaffected.
+The rule text you type is composed into a `"<Property> <predicate>"` fragment
+before parsing, so a predicate that already carries its own verb
+(`must be between 18 and 65`) is used as-is, while a bare one (`required`) has
+`is` inserted. Naming the property yourself
+(`add validation Age must be between 18 and 65 on Age in Employee`) also works.
 
 ### Analysis
 

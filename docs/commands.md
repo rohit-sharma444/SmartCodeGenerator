@@ -116,7 +116,7 @@
 | Command | Description | Example |
 | --- | --- | --- |
 | `add business validation <rule> in <class name>` | Adds an entity-level business rule to a class. | `add business validation EndDate must be after StartDate in Booking` |
-| `add validation <rule> on <property> in <class name>` | Adds a field-level data rule to a class. Recognized rule: 'required'. | `add validation required on Name in Employee` |
+| `add validation <rule> on <property> in <class name>` | Adds a field-level data rule to a class. Rules: required (or 'should not be blank'), must be between <min> and <max>, length must be between <min> and <max>, must be greater/less than <n>, must be a valid email, must match <regex>, must be <value>, <value>, ... | `add validation must be between 18 and 65 on Age in Employee` |
 | `generate validator` | Generates a validator for a class. | `generate validator for Employee` |
 | `show business validation <class name>` | Show business rules for a class. | `show business validation Booking` |
 | `show validation <class name>` | Show data validation rules for a class. | `show validation Employee` |
