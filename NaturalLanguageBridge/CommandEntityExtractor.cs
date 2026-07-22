@@ -89,6 +89,14 @@ public static class CommandEntityExtractor
                 ExtractClassName(sentence, command);
                 break;
 
+            case IntentType.AddBusinessValidation:
+                ExtractBusinessValidationInfo(sentence, command);
+                break;
+
+            case IntentType.ShowBusinessValidation:
+                ExtractBusinessShowTarget(sentence, command);
+                break;
+
             case IntentType.CreateProject:
                 ExtractProjectInfo(sentence, command);
                 break;
@@ -281,6 +289,35 @@ public static class CommandEntityExtractor
             command.ValidationText = to.Groups[1].Value.Trim();
             command.ClassName = ToPascalCase(to.Groups[2].Value);
         }
+    }
+
+    public static void ExtractBusinessValidationInfo(string sentence, ParsedCommand command)
+    {
+        // "add business validation <rule> in|for|on <class>"
+        var withClass = Regex.Match(sentence,
+            @"add\s+business\s+validation\s+(?<rule>.+?)\s+(?:in|for|on)\s+(?<class>[A-Za-z_]\w*)\s*$",
+            RegexOptions.IgnoreCase);
+        if (withClass.Success)
+        {
+            command.ValidationText = withClass.Groups["rule"].Value.Trim();
+            command.ClassName = ToPascalCase(withClass.Groups["class"].Value);
+            return;
+        }
+
+        // "add business validation <rule>" (class comes from session context)
+        var noClass = Regex.Match(sentence,
+            @"add\s+business\s+validation\s+(?<rule>.+)$", RegexOptions.IgnoreCase);
+        if (noClass.Success)
+            command.ValidationText = noClass.Groups["rule"].Value.Trim();
+    }
+
+    public static void ExtractBusinessShowTarget(string sentence, ParsedCommand command)
+    {
+        var m = Regex.Match(sentence,
+            @"(?:show|list|view)\s+business\s+validation\s+(?:rules?\s+)?(?:for\s+)?(?<class>[A-Za-z_]\w*)",
+            RegexOptions.IgnoreCase);
+        if (m.Success)
+            command.ClassName = ToPascalCase(m.Groups["class"].Value);
     }
 
     // Parses single-property member commands:

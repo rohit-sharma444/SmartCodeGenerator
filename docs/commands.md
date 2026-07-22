@@ -88,7 +88,9 @@
 
 | Command | Description | Example |
 | --- | --- | --- |
+| `add business validation <rule> in <class name>` | Adds an entity-level business rule to a class. | `add business validation EndDate must be after StartDate in Booking` |
 | `add validation <validation> on <property> in <class name>` | Adds validation to a class. | `add validation Employee Id should not be blank on EmpID in Employee` |
 | `generate validator` | Generates a validator for a class. | `generate validator for Employee` |
+| `show business validation <class name>` | Show business rules for a class. | `show business validation Booking` |
 | `show validation ` | Show validation rules for a class. | `show validation rule for <Employee>` |
 

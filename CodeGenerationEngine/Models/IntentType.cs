@@ -80,5 +80,10 @@ public enum IntentType
 
     // Appended at the end to keep existing integer values stable (intents are
     // persisted as integers by the learned-intent store).
-    ShowValidation
+    ShowValidation,
+
+    // Business validation (entity-level). Appended last to keep persisted
+    // integer values stable.
+    AddBusinessValidation,
+    ShowBusinessValidation
 }

@@ -17,7 +17,8 @@ the engine:
 1. **Analyzes** the text into a semantic model (optionally guided by an action
    verb supplied by the NLP bridge).
 2. **Detects intent** — `CreateClass`, `CreateProject`, `AddValidation`,
-   `AnalyzeClass`, and the rest of [`IntentType`](Models/IntentType.cs).
+   `AddBusinessValidation`, `AnalyzeClass`, and the rest of
+   [`IntentType`](Models/IntentType.cs).
 3. **Extracts entities** — class/project names, properties, methods, types,
    validation rules.
 4. **Generates and persists code** using Roslyn, then runs semantic and
@@ -55,12 +56,40 @@ Lower-level building blocks are also public, e.g.:
 
 | Folder | Contents |
 | --- | --- |
-| `Core/` | Parsing, intent analysis, entity extraction, the Roslyn generators, validation, and the learning engine. |
+| `Core/` | Parsing, intent analysis, entity extraction, the Roslyn generators, the learning engine, and `Validation/` — the extensible validation rule registry (see below). |
 | `Service/` | `CommandHandlingService` (the dispatch façade) and `GeneratedCodeService` (persistence). |
 | `Models/` | Command, semantic, project, and validation record/DTO types. |
 | `Factory/` | `DotNetProjectFactory` — scaffolds `.csproj` projects by type. |
 | `Rules/` | Supporting rule definitions. |
 | `Helper/` | File and console helpers. |
+
+## Validation
+
+Two independent commands — `add validation` (data, field-level) and
+`add business validation` (business, entity-level) — sit on one extensible rule
+engine in `Core/Validation/`. The design is open for extension, closed for
+modification: a new rule type is one new file, discovered automatically.
+
+- **`IValidationRule`** — a parsed rule that knows how to `Describe()` itself
+  (for the `show …` commands) and `Emit()` its own C# check into the generated
+  `Validate()` method. `Category` is `Data` or `Business`.
+- **`IValidationRuleParser`** — recognizes one rule type's natural-language
+  phrasing (`TryParse`); `Priority` gives deterministic ordering.
+- **`ValidationRuleCatalog`** — reflection-discovers every parser in the
+  assembly, ordered by `Priority`. **Adding a validation type = drop one
+  `IValidationRule` + `IValidationRuleParser` pair into `Core/Validation/Rules/`;
+  nothing else changes** — not the catalog, the `ValidationRegistry` store, the
+  emitter, or the command handlers.
+- **`ValidationRegistry`** stores the parsed rules per class, filterable by
+  category. `ValidationEngine.EmitValidationPartial(...)` renders one `Validate()`
+  partial with a data-validation section and a business-rules section, asking
+  each stored rule to emit itself.
+
+Shipped rule types: `RequiredRule`, `LengthRangeRule`, `NumericRangeRule`,
+`GreaterThanRule`, `LessThanRule`, `RegexRule` (email + pattern),
+`AllowedValuesRule` (data); `ComparisonRule` (cross-field, e.g. `EndDate must be
+after StartDate`) and `RequiredWhenRule` (conditional) (business). Emitted code
+is verified by compiling it with Roslyn in the tests, not just string-matching.
 
 ## Dependencies
 

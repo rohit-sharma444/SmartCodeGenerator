@@ -94,11 +94,23 @@ project is selected.
 
 ### Validation
 
+Two independent kinds of rule share one engine. **Data validation** is
+field-level (constraints on a single property); **business validation** is
+entity-level (rules that span multiple fields or express domain logic).
+
 | Command | Description |
 | --- | --- |
-| `add validation <Rule> on <Property> in <Class>` | Attach a validation rule (e.g. `Required`) to a property. |
-| `show validation <Class>` | Show the validation rules registered for a class. |
-| `generate validator <Class>` | Generate a `<Class>.Validation.cs` partial with a `Validate()` method. |
+| `add validation <Rule> on <Property> in <Class>` | Attach a **data** rule to a property — e.g. `Name is required`, `Age must be between 18 and 65`, `Email must be a valid email`, `Country must be India, USA, UK`. |
+| `add business validation <Rule> in <Class>` | Attach an entity-level **business** rule — e.g. `EndDate must be after StartDate`, `Discount must not exceed Price`, `TrackingNumber is required when Status is Shipped`. |
+| `show validation <Class>` | Show the data rules registered for a class. |
+| `show business validation <Class>` | Show the business rules registered for a class. |
+| `generate validator <Class>` | Generate a `<Class>.Validation.cs` partial with a `Validate()` method containing both the data-validation and business-rule checks. |
+
+The rule set is extensible: each rule type (required, length/range, regex,
+allowed-values, cross-field comparison, conditional-required, …) is a
+self-contained unit discovered at startup, so new rule types can be added
+without changing the commands, the store, or the generator. See
+[`CodeGenerationEngine`](../CodeGenerationEngine/README.md#validation) for the design.
 
 ### Analysis
 
@@ -177,8 +189,10 @@ create class Product with properties Name string, Price decimal
 add property Sku string to Product
 list properties Product
 add method Save to Product
-add validation Required on Name in Product
+add validation Name is required on Name in Product
+add business validation Price must be greater than Cost in Product
 show validation Product
+show business validation Product
 generate validator Product
 analyze class Product
 ```

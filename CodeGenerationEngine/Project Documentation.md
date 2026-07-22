@@ -100,7 +100,7 @@ Output → File writing + feedback
 Extensibility
 
 CommandDictionary and CommandCatalog for easy addition of new commands
-Rule-based validation system (IPropertyRule, ValidationRuleParser)
+Rule-based validation system: an extensible IValidationRule / IValidationRuleParser registry discovered by ValidationRuleCatalog, covering both data rules and cross-field business rules
 Vocabulary and synonym support for natural language flexibility
 
 

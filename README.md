@@ -42,7 +42,7 @@ both paths, and the NLE internal pipeline — see
 | Project | Description |
 | --- | --- |
 | [`CodeGenerator`](CodeGenerator/README.md) | Interactive command-line front end. **Start here** for the command reference. |
-| [`CodeGenerationEngine`](CodeGenerationEngine/README.md) | Core library: intent handling, entity extraction, and the project/class/property/method/validation services (Roslyn-based generation). |
+| [`CodeGenerationEngine`](CodeGenerationEngine/README.md) | Core library: intent handling, entity extraction, and the project/class/property/method services plus data & business validation on an extensible rule registry (Roslyn-based generation). |
 | [`NaturalLanguageEngine`](NaturalLanguageEngine/README.md) | Multi-stage NLP pipeline that turns English text into entities, relationships, and intent. |
 | [`NaturalLanguageBridge`](NaturalLanguageBridge/README.md) | Wires the NLP engine to the code generator. |
 | [`DomainDiscovery`](DomainDiscovery/README.md) | Turns a plain-English system description into a candidate domain model (used by `build app:`). |
@@ -98,7 +98,8 @@ for the NLP pipeline.
 create console project Shop
 use project Shop
 create class Product with properties Name string, Price decimal
-add validation Required on Name in Product
+add validation Name is required on Name in Product
+add business validation Price must be greater than Cost in Product
 generate validator Product
 analyze class Product
 ```

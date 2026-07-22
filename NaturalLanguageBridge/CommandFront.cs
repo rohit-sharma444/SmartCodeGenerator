@@ -35,6 +35,12 @@ public static class CommandFront
     private static readonly Regex ShowValidationRe =
         new(@"\b(?:show|list|view)\s+validation\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    private static readonly Regex AddBusinessValidationRe =
+        new(@"\badd\s+business\s+validation\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly Regex ShowBusinessValidationRe =
+        new(@"\b(?:show|list|view)\s+business\s+validation\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     // "use project <name>" and its synonyms. The old ProjectManager.UseProject
     // sliced the sentence itself; the bridge now captures the name so the handler
     // reads a field. Kept ahead of the mapper because the mapper's UseProject rule
@@ -69,6 +75,20 @@ public static class CommandFront
                 OriginalSentence = input ?? string.Empty,
                 Confidence = 1.0
             };
+
+        if (AddBusinessValidationRe.IsMatch(text))
+        {
+            var cmd = CommandEntityExtractor.Extract(input ?? string.Empty, IntentType.AddBusinessValidation, workspace);
+            cmd.Confidence = 1.0;
+            return cmd;
+        }
+
+        if (ShowBusinessValidationRe.IsMatch(text))
+        {
+            var cmd = CommandEntityExtractor.Extract(input ?? string.Empty, IntentType.ShowBusinessValidation, workspace);
+            cmd.Confidence = 1.0;
+            return cmd;
+        }
 
         if (AddValidationRe.IsMatch(text))
         {
