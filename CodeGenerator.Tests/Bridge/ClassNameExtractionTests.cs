@@ -16,7 +16,7 @@ public class ClassNameExtractionTests
     private static string? ClassNameOf(string sentence) =>
         CommandFront.Parse(sentence, "").ClassName;
 
-    [DataTestMethod]
+    [TestMethod]
     // Names beginning with the article letters must survive intact.
     [DataRow("create Alpha class", "Alpha")]
     [DataRow("create Account class", "Account")]
@@ -28,7 +28,7 @@ public class ClassNameExtractionTests
     public void Class_name_keeps_its_leading_letter(string sentence, string expected) =>
         Assert.AreEqual(expected, ClassNameOf(sentence));
 
-    [DataTestMethod]
+    [TestMethod]
     // A genuine article is still dropped.
     //
     // Only "create", "generate" and "i need" appear here: ExtractClassName also
