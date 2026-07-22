@@ -33,22 +33,15 @@ public static class ClassMethodService
                 return false;
             }
 
-            var methodCode = $@"        public {returnType} {methodName}()
-                {{
-                    {GenerateBody(returnType)}
-                }}";
+            var methodCode = $@"public {returnType} {methodName}()
+{{
+{GenerateBody(returnType)}}}";
 
-            var lastBrace = code.LastIndexOf('}');
-
-            if (lastBrace < 0)
+            if (!ClassMemberEditor.TryAddMember(file, className, methodCode, out var error))
             {
-                message = "Invalid class file.";
+                message = error;
                 return false;
             }
-
-            code = code.Insert(lastBrace, methodCode);
-
-            File.WriteAllText(file, code);
 
             message = $"Method '{methodName}' added to '{className}'.";
 

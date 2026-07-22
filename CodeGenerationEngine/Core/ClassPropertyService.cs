@@ -36,19 +36,13 @@ public static class ClassPropertyService
                 return false;
             }
 
-            var propertyCode = $@"        public {propertyType} {propertyName} {{ get; set; }}";
+            var propertyCode = $@"public {propertyType} {propertyName} {{ get; set; }}";
 
-            var lastBrace = code.LastIndexOf('}');
-
-            if (lastBrace < 0)
+            if (!ClassMemberEditor.TryAddMember(file, className, propertyCode, out var error))
             {
-                message = "Invalid class file.";
+                message = error;
                 return false;
             }
-
-            code = code.Insert(lastBrace, propertyCode + Environment.NewLine);
-
-            File.WriteAllText(file, code);
 
             message = $"Property '{propertyName}' of type '{propertyType}' added to '{className}'.";
             return true;
