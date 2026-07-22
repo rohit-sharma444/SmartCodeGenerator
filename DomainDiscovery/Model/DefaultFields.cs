@@ -20,11 +20,18 @@ public static class DefaultFields
 
     /// <summary>
     /// Adds the default <c>Name</c> field to <paramref name="entity"/> unless it already
-    /// declares one. Attributed to <paramref name="provenance"/> so the review loop can
-    /// show where it came from.
+    /// declares one, or unless the entity's own name IS "Name" — <see cref="EntityShaper"/>
+    /// now calls this directly for a Seed candidate, bypassing the name-collision guard
+    /// <see cref="EntityShaper.AddField"/> otherwise applies, and a seed noun that normalizes
+    /// to "Name" would otherwise emit `class Name { public string Name { get; set; } }`,
+    /// which is CS0542 and will not compile. Attributed to <paramref name="provenance"/> so
+    /// the review loop can show where it came from.
     /// </summary>
     public static CandidateEntity ApplyTo(CandidateEntity entity, Provenance provenance)
     {
+        if (string.Equals(entity.Name, NameField, StringComparison.OrdinalIgnoreCase))
+            return entity;
+
         if (!entity.Fields.Any(
                 f => string.Equals(f.Name, NameField, StringComparison.OrdinalIgnoreCase)))
         {

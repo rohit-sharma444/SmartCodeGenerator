@@ -15,10 +15,13 @@ namespace DomainDiscovery.Enrichment;
 /// </para>
 /// <para>
 /// Shape resolves in precedence order: the curated lexicon, then the archetype implied by
-/// the candidate's own Wikipedia definition, then nothing. An abstract definition ("a
-/// system is a group of interacting elements") rejects the candidate — that is the drop
-/// signal, and unlike an allow-list it needs no curation per domain. An absent or unreadable
-/// definition means we do not know, and the candidate is offered to the user instead.
+/// the candidate's own Wikipedia definition (the head noun), then the archetype implied by
+/// the candidate's own NAME when the head has nothing to say (most commonly a disambiguation
+/// page, where no head can be extracted at all), then chaining (see <see cref="SubtypeChaining"/>),
+/// then nothing. An abstract definition ("a system is a group of interacting elements") rejects
+/// the candidate — that is the drop signal, and unlike an allow-list it needs no curation per
+/// domain. An absent or unreadable definition means we do not know, and the candidate is
+/// offered to the user instead.
 /// </para>
 /// <para>
 /// <see cref="Provenance.Seed"/> earns an exemption from ONE of the three verdicts. A seed is a
@@ -99,9 +102,26 @@ public sealed class EntityShaper
             var title = entity.SourceTitle ?? entity.Name;
             var lead = leads.TryGetValue(title, out var fetchedLead) ? fetchedLead : string.Empty;
             var head = HypernymExtractor.Extract(lead);
+            var result = ArchetypeLexicon.Resolve(head);
+
+            // The head wins when it resolves, because the article's own definition is better
+            // evidence than the candidate's name alone — "a merchant is a person" should not
+            // be overridden by whatever "merchant" might resolve to on its own. But when the
+            // head says nothing (Unknown) — most commonly because no head could be extracted
+            // at all, as on a disambiguation page ("Booking may refer to:") — the candidate's
+            // own name is still a signal ArchetypeLexicon has never been asked about: Resolve
+            // ("booking") is Event, Resolve("sale") is Transaction, Resolve("administration")
+            // is Abstract. Falling back to it here recovers exactly the candidates whose
+            // article defines nothing, without ever overriding one that does.
+            if (result.Verdict == ShapeVerdict.Unknown)
+            {
+                var ownNameResult = ArchetypeLexicon.Resolve(entity.Name);
+                if (ownNameResult.Verdict != ShapeVerdict.Unknown)
+                    result = ownNameResult;
+            }
 
             pending.Add(entity);
-            candidates.Add(new ShapeCandidate(entity.Name, head, ArchetypeLexicon.Resolve(head)));
+            candidates.Add(new ShapeCandidate(entity.Name, head, result));
         }
 
         // Pass 2b: a candidate the table has no opinion on may still be defined as one it does

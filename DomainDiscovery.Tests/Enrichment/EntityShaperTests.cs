@@ -445,4 +445,54 @@ public class EntityShaperTests
         Assert.Contains(gizmo.Fields, f => f.Name == "SerialNumber");
         Assert.DoesNotContain(model.Suggestions, e => e.Name == "Gizmo");
     }
+
+    [Fact]
+    public void Shape_ADisambiguationPageCandidate_ResolvesFromItsOwnName()
+    {
+        // "Booking may refer to:" is a disambiguation page — HypernymExtractor returns "" for
+        // it, so there is no head to resolve at all. But "booking" on its own resolves to
+        // Event via ArchetypeLexicon, and that is plainly the right shape — this is the fallback
+        // Fix 3 adds, and without it every disambiguation page died as a bare suggestion.
+        _wiki.Leads["Booking"] = "Booking may refer to:";
+        var model = ModelOf("Booking");
+
+        Shaper.Shape(model);
+
+        var booking = Assert.Single(model.Entities);
+        Assert.Equal(EntityRole.Event, booking.Role);
+        Assert.Contains(booking.Fields, f => f.Name == "StartsOn");
+        Assert.DoesNotContain(model.Suggestions, e => e.Name == "Booking");
+    }
+
+    [Fact]
+    public void Shape_ADisambiguationPageCandidate_IsRejectedWhenItsOwnNameIsAbstract()
+    {
+        // Same disambiguation shape as Booking above, but "administration" resolves to
+        // ShapeVerdict.Abstract on its own — the own-name fallback must reject exactly as the
+        // head-based path would, landing the candidate in Rejected, not kept or suggested.
+        _wiki.Leads["Administration"] = "Administration may refer to:";
+        var model = ModelOf("Administration");
+
+        Shaper.Shape(model);
+
+        Assert.Empty(model.Entities);
+        Assert.Empty(model.Suggestions);
+        Assert.Equal(new[] { "Administration" }, model.Rejected);
+    }
+
+    [Fact]
+    public void Shape_TheHeadResolution_BeatsTheOwnNameResolution()
+    {
+        // "Sale" on its own resolves to Transaction via ArchetypeLexicon, but this article
+        // defines it as a person instead. The article's own definition is better evidence than
+        // the bare word, so the head must win — proving head-beats-name precedence with a
+        // concrete pair where the two disagree.
+        _wiki.Leads["Sale"] = "A sale is a person who negotiates deals.";
+        var model = ModelOf("Sale");
+
+        Shaper.Shape(model);
+
+        var sale = Assert.Single(model.Entities);
+        Assert.Equal(EntityRole.Party, sale.Role);
+    }
 }
