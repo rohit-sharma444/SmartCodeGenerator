@@ -47,8 +47,7 @@ public static class HypernymExtractor
             "not", "often", "also", "still", "just", "very", "quite", "rather", "more",
             "most", "much", "any", "either", "neither", "sometimes", "always", "never",
             "perhaps", "maybe", "so", "such", "well", "then", "now", "here", "there",
-            "large", "small", "big", "little", "new", "old", "long", "short", "high", "low",
-            "low-cost"
+            "large", "small", "big", "little", "new", "old", "long", "short", "high", "low"
         };
 
     /// <summary>
@@ -67,6 +66,22 @@ public static class HypernymExtractor
     private static readonly HashSet<string> ContainerWords =
         new(StringComparer.OrdinalIgnoreCase)
         { "type", "kind", "form", "sort", "variety", "class", "category" };
+
+    /// <summary>
+    /// Irregular past participles that can follow a head noun and modify it, the same way an
+    /// "-ing"/"-ed" word does: "travel undertaken for work purposes" must stop at "travel", not
+    /// wander into "undertaken". A suffix rule cannot cover these the way it covers "-ing"/"-ed"
+    /// — ordinary nouns such as "chicken", "kitchen", "garden", "citizen" and "children" also end
+    /// in "-en", and treating that ending as a participle marker would strip them as modifiers of
+    /// whatever word precedes them. So the irregular forms are enumerated here instead.
+    /// </summary>
+    private static readonly HashSet<string> IrregularParticiples =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            "undertaken", "taken", "given", "written", "known", "driven", "spoken", "chosen",
+            "proven", "seen", "shown", "held", "kept", "spent", "made", "sold", "told", "built",
+            "sent", "found", "left", "brought", "bought", "taught", "thought"
+        };
 
     /// <summary>
     /// True for a word that qualifies the head noun rather than being it: an adverb (by the
@@ -173,11 +188,13 @@ public static class HypernymExtractor
             // head has been captured, a "-ing"/"-ed" word is the head itself, not a modifier of
             // it - "a gathering of people" must yield "gathering", and "an organized collection
             // of data" must let "organized" through so it can be overwritten by "collection".
-            // Also catches "-en" endings (e.g. "undertaken", "given") for past participles.
+            // Irregular past participles ("undertaken", "given", ...) are checked separately
+            // since no suffix rule can catch them without also catching ordinary nouns like
+            // "chicken" and "kitchen" (see IrregularParticiples).
             if (head.Length > 0 &&
                 (word.EndsWith("ing", StringComparison.OrdinalIgnoreCase) ||
                  word.EndsWith("ed", StringComparison.OrdinalIgnoreCase) ||
-                 word.EndsWith("en", StringComparison.OrdinalIgnoreCase)))
+                 IrregularParticiples.Contains(word)))
                 return (head, string.Empty, i);
 
             head = word;

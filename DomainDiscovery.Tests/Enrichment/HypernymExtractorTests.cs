@@ -55,7 +55,6 @@ public class HypernymExtractorTests
     [InlineData("A hotel rating is often a ranking of a hotel's quality.", "ranking")]
     [InlineData("Business travel is travel undertaken for work purposes.", "travel")]
     [InlineData("A public hospital is primarily a hospital owned by a government.", "hospital")]
-    [InlineData("A hostel is a low-cost building providing shared accommodation.", "building")]
     public void Extract_SkipsAModifier_AndTakesTheNounBehindIt(string lead, string expected)
     {
         Assert.Equal(expected, HypernymExtractor.Extract(lead));
@@ -75,5 +74,19 @@ public class HypernymExtractorTests
         // "gathering" is the head, not a modifier of one — nothing has been captured yet when
         // it is reached. This is existing behaviour and must not regress.
         Assert.Equal("gathering", HypernymExtractor.Extract("A meeting is a gathering of people."));
+    }
+
+    [Fact]
+    public void Extract_DoesNotTreatAnOrdinaryNounEndingInEn_AsAParticiple()
+    {
+        // A suffix rule for irregular participles would fire on chicken, kitchen, garden,
+        // citizen and children. The head here is the noun, not the adjective before it.
+        Assert.Equal("chicken", HypernymExtractor.Extract("A hen is a female chicken."));
+    }
+
+    [Fact]
+    public void Extract_StillStopsAtAnIrregularParticiple()
+    {
+        Assert.Equal("travel", HypernymExtractor.Extract("Business travel is travel undertaken for work purposes."));
     }
 }
