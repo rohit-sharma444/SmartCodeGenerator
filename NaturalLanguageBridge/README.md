@@ -49,6 +49,7 @@ mapper, each earning its place by a case the layers around it get wrong:
 | `list/show/display classes in <project>` | NLE drops the trailing `in`, so the mapper loses the project. |
 | `\bvalidator\b` | A bare substring match; the literal table only does whole-input equality. |
 | `add validation <args>`, `show/list/view validation <args>` | Argument-bearing forms the exact table can't cover and the mapper has no entry for — without these, `add validation Email should not be blank on Email in Customer` fell through to `Unknown`. |
+| `add business validation <args>`, `show/list/view business validation <args>` | The entity-level counterparts — argument-bearing forms the exact table can't cover and the mapper has no entry for, checked ahead of the data-validation guards — e.g. `add business validation EndDate must be after StartDate in Booking`. |
 | `use/select/switch/open/activate project <name>` | The mapper's `UseProject` rule only covers the bare form with no name. The bridge captures the name so the handler reads a field instead of slicing the sentence itself. |
 
 > **Note:** `CommandEntityExtractor` parses the **normalized raw sentence with
