@@ -64,7 +64,7 @@ public static class ArchetypeLexicon
         {
             // --- Place: somewhere a domain keeps things or does business ---
             ["institution"] = Place, ["facility"] = Place, ["building"] = Place,
-            ["establishment"] = Place, ["venue"] = Place, ["premises"] = Place,
+            ["establishment"] = Place, ["venue"] = Place,
             ["site"] = Place, ["room"] = Place, ["space"] = Place, ["department"] = Place,
             ["centre"] = Place, ["center"] = Place, ["complex"] = Place,
             ["warehouse"] = Place, ["school"] = Place, ["hospital"] = Place,
@@ -100,7 +100,7 @@ public static class ArchetypeLexicon
             ["sensor"] = Device, ["engine"] = Device, ["apparatus"] = Device,
 
             // --- Item: a thing bought, held, stocked or consumed ---
-            ["item"] = Item, ["product"] = Item, ["good"] = Item, ["goods"] = Item,
+            ["item"] = Item, ["product"] = Item, ["good"] = Item,
             ["merchandise"] = Item, ["commodity"] = Item, ["vehicle"] = Item,
             ["aircraft"] = Item, ["car"] = Item, ["truck"] = Item, ["bus"] = Item,
             ["material"] = Item, ["substance"] = Item, ["food"] = Item,
@@ -110,7 +110,7 @@ public static class ArchetypeLexicon
             ["book"] = Item, ["publication"] = Item, ["part"] = Item,
             ["piece"] = Item, ["component"] = Item, ["ingredient"] = Item,
             ["container"] = Item, ["package"] = Item, ["garment"] = Item,
-            ["fuel"] = Item, ["asset"] = Item,
+            ["fuel"] = Item,
 
             // A payment card is an Item you hold, and its own three fields beat the generic
             // Item ones, so it keeps its bespoke entry.
@@ -130,7 +130,7 @@ public static class ArchetypeLexicon
             ["loan"] = Transaction, ["sale"] = Transaction, ["purchase"] = Transaction,
             ["deposit"] = Transaction, ["withdrawal"] = Transaction, ["transfer"] = Transaction,
             ["refund"] = Transaction, ["order"] = Transaction, ["shipment"] = Transaction,
-            ["delivery"] = Transaction, ["trade"] = Transaction, ["subscription"] = Transaction,
+            ["delivery"] = Transaction, ["subscription"] = Transaction,
             ["rental"] = Transaction,
 
             // --- Event: something scheduled, between two times ---
@@ -146,6 +146,11 @@ public static class ArchetypeLexicon
             ["money"] = ([Money("Amount"), Text("Currency")], EntityRole.None),
             ["currency"] = ([Money("Amount"), Text("Currency")], EntityRole.None),
         };
+
+    // Deliberately omitted from both Archetypes and AbstractHeads: unit (no standard shape
+    // across domains), service (intangible, lacks inventory meaning), trade (equally likely
+    // to mean occupation/craft as act of exchange), and asset (usually financial/intangible,
+    // not a physical good). Omission means "we have no opinion, offer it to the user".
 
     /// <summary>
     /// Heads that name an abstraction rather than a thing. These are the drop signal that
