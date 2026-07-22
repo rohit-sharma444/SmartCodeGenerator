@@ -132,6 +132,14 @@ public sealed class EntityShaper
                     // typed the word IS the evidence: SeedEntityExtractor only ever produces a
                     // Seed candidate from the description the user wrote. Abstract still
                     // rejects above, so "system" and "application" cannot get in this way.
+                    // Note: ShapeVerdict.Unknown conflates two distinct cases: an article that
+                    // defines nothing we recognize, and a lead that could not be fetched at all
+                    // (a disambiguation page, a missing article, or a failed lookup). Before this
+                    // change the ambiguity only cost a suggestion; now a seed whose lookup merely
+                    // failed is minted as a class carrying only a Name field, indistinguishable
+                    // from a genuinely unrecognized noun. This is an accepted trade: the user
+                    // typed the word, and a visible spurious class costs one remove in the review
+                    // loop, whereas a silently missing class costs the user a class they asked for.
                     if (entity.Provenance == Provenance.Seed)
                     {
                         DefaultFields.ApplyTo(entity, Provenance.Seed);
