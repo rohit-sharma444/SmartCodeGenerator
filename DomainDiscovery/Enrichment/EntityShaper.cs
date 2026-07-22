@@ -82,7 +82,13 @@ public sealed class EntityShaper
 
         var leads = _client.FetchLeads(titlesNeedingLeads);
 
-        // Pass 2: resolve the three-way verdict for anything still fieldless.
+        // Pass 2: resolve a verdict for everything still fieldless, WITHOUT acting on any of
+        // them yet. Acting as we walked meant a candidate's fate depended on where it sat in
+        // the list, and it left chaining (below) nothing to chain to: the parent it needed may
+        // already have been removed.
+        var pending = new List<CandidateEntity>();
+        var candidates = new List<ShapeCandidate>();
+
         foreach (var entity in entities)
         {
             if (entity.Fields.Count > 0)
@@ -90,7 +96,21 @@ public sealed class EntityShaper
 
             var title = entity.SourceTitle ?? entity.Name;
             var lead = leads.TryGetValue(title, out var fetchedLead) ? fetchedLead : string.Empty;
-            var result = ArchetypeLexicon.Resolve(HypernymExtractor.Extract(lead));
+            var head = HypernymExtractor.Extract(lead);
+
+            pending.Add(entity);
+            candidates.Add(new ShapeCandidate(entity.Name, head, ArchetypeLexicon.Resolve(head)));
+        }
+
+        // Pass 2b: a candidate the table has no opinion on may still be defined as one it does
+        // — "a motel is a hotel". This needs every candidate at once, which is why it happens
+        // here and not per-entity above.
+        var resolved = SubtypeChaining.Resolve(candidates);
+
+        // Pass 2c: now act, once, on a verdict nothing further can change.
+        foreach (var entity in pending)
+        {
+            var result = resolved[entity.Name];
 
             switch (result.Verdict)
             {

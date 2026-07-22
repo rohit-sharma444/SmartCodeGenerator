@@ -382,4 +382,32 @@ public class EntityShaperTests
         Assert.DoesNotContain("ProFormaInvoice", names);
         Assert.DoesNotContain("Receipt", names);
     }
+
+    [Fact]
+    public void Shape_ACandidateDefinedAsAnotherCandidate_InheritsItsRoleAndIsKept()
+    {
+        var model = ModelOf("Hotel", "Motel");
+        _wiki.Leads["Hotel"] = "A hotel is an establishment that provides paid lodging.";
+        _wiki.Leads["Motel"] = "A motel is a hotel designed for motorists.";
+
+        Shaper.Shape(model);
+
+        var motel = model.Entities.Single(e => e.Name == "Motel");
+        Assert.Equal(EntityRole.Place, motel.Role);
+        Assert.Contains(motel.Fields, f => f.Name == "Address");
+        Assert.DoesNotContain(model.Suggestions, e => e.Name == "Motel");
+    }
+
+    [Fact]
+    public void Shape_DoesNotDependOnTheOrderCandidatesAppearIn()
+    {
+        // Chaining reads the whole model, so the subtype may be listed before its parent.
+        var model = ModelOf("Motel", "Hotel");
+        _wiki.Leads["Hotel"] = "A hotel is an establishment that provides paid lodging.";
+        _wiki.Leads["Motel"] = "A motel is a hotel designed for motorists.";
+
+        Shaper.Shape(model);
+
+        Assert.Equal(EntityRole.Place, model.Entities.Single(e => e.Name == "Motel").Role);
+    }
 }
