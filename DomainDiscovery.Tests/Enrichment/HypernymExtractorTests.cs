@@ -47,4 +47,33 @@ public class HypernymExtractorTests
     {
         Assert.Equal(string.Empty, HypernymExtractor.Extract("   "));
     }
+
+    [Theory]
+    // Each of these is a real Wikipedia lead whose head the extractor got wrong, taken from
+    // the twelve-domain census in the design spec. The word it used to return is in the
+    // second column of that census: often, undertaken, primarily, not.
+    [InlineData("A hotel rating is often a ranking of a hotel's quality.", "ranking")]
+    [InlineData("Business travel is travel undertaken for work purposes.", "travel")]
+    [InlineData("A public hospital is primarily a hospital owned by a government.", "hospital")]
+    [InlineData("A hostel is a low-cost building providing shared accommodation.", "building")]
+    public void Extract_SkipsAModifier_AndTakesTheNounBehindIt(string lead, string expected)
+    {
+        Assert.Equal(expected, HypernymExtractor.Extract(lead));
+    }
+
+    [Fact]
+    public void Extract_DoesNotReturnAConjunction_AsTheHead()
+    {
+        // "and"/"or" join phrases, they are never the thing being defined.
+        Assert.NotEqual("and", HypernymExtractor.Extract("A till is and was a drawer."));
+        Assert.NotEqual("or", HypernymExtractor.Extract("A ledger is or may be a record."));
+    }
+
+    [Fact]
+    public void Extract_StillReturnsAHeadThatMerelyLooksLikeAModifier()
+    {
+        // "gathering" is the head, not a modifier of one — nothing has been captured yet when
+        // it is reached. This is existing behaviour and must not regress.
+        Assert.Equal("gathering", HypernymExtractor.Extract("A meeting is a gathering of people."));
+    }
 }

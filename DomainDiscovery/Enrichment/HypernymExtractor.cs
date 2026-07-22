@@ -31,6 +31,35 @@ public static class HypernymExtractor
         };
 
     /// <summary>
+    /// Words that modify the head rather than being it, and which sit BEFORE it: "is often a
+    /// ranking", "is primarily a hospital", "is not a device". The scan steps over them and
+    /// keeps looking, instead of capturing the first token after the copula and stopping.
+    /// </summary>
+    /// <remarks>
+    /// Measured over twelve topic articles, these accounted for some thirty-five candidates
+    /// whose definition resolved to an adverb — "often", "primarily", "generally", "humanly",
+    /// "not" — and which therefore could never reach an archetype. Adverbs ending in "-ly" are
+    /// caught by rule (see <see cref="IsModifier"/>); this list is the ones that do not.
+    /// </remarks>
+    private static readonly HashSet<string> Modifiers =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            "not", "often", "also", "still", "just", "very", "quite", "rather", "more",
+            "most", "much", "any", "either", "neither", "sometimes", "always", "never",
+            "perhaps", "maybe", "so", "such", "well", "then", "now", "here", "there",
+            "large", "small", "big", "little", "new", "old", "long", "short", "high", "low",
+            "low-cost"
+        };
+
+    /// <summary>
+    /// Words that join phrases and so cannot be a head: "is and was a drawer". Reaching one
+    /// before any head has been captured means the phrase has not started yet, so the scan
+    /// steps over it exactly as it does a modifier.
+    /// </summary>
+    private static readonly HashSet<string> Conjunctions =
+        new(StringComparer.OrdinalIgnoreCase) { "and", "or", "but", "nor", "yet" };
+
+    /// <summary>
     /// Words that name a container for the real head rather than the head itself: "a type of
     /// display" is not about "type", it is about "display". Only "of" earns a second scan past
     /// one of these — "a type that detects touch" has no second noun phrase to chase.
@@ -38,6 +67,18 @@ public static class HypernymExtractor
     private static readonly HashSet<string> ContainerWords =
         new(StringComparer.OrdinalIgnoreCase)
         { "type", "kind", "form", "sort", "variety", "class", "category" };
+
+    /// <summary>
+    /// True for a word that qualifies the head noun rather than being it: an adverb (by the
+    /// "-ly" suffix or by the closed <see cref="Modifiers"/> list) or a conjunction. Deliberately
+    /// does NOT treat "-ing"/"-ed" words as modifiers here — <see cref="ScanHead"/> already has
+    /// a position-sensitive rule for those, and it must keep it: "a gathering of people" needs
+    /// "gathering" as the head, while "a document acknowledging receipt" needs "document".
+    /// </summary>
+    private static bool IsModifier(string word)
+        => Conjunctions.Contains(word)
+           || Modifiers.Contains(word)
+           || (word.Length > 3 && word.EndsWith("ly", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// Extracts the head noun (hypernym) from a Wikipedia lead sentence.
@@ -116,6 +157,13 @@ public static class HypernymExtractor
                 continue;
             }
 
+            // "is often a ranking", "is primarily a hospital", "is and was a drawer": step over
+            // the qualifier and keep looking for the noun. Only BEFORE a head is captured —
+            // after one, a following word is either a terminator, a participle modifying the
+            // head (handled below), or a continuation that legitimately overwrites it.
+            if (head.Length == 0 && IsModifier(word))
+                continue;
+
             if (Terminators.Contains(word))
                 return (head, word, i + 1);
 
@@ -125,9 +173,11 @@ public static class HypernymExtractor
             // head has been captured, a "-ing"/"-ed" word is the head itself, not a modifier of
             // it - "a gathering of people" must yield "gathering", and "an organized collection
             // of data" must let "organized" through so it can be overwritten by "collection".
+            // Also catches "-en" endings (e.g. "undertaken", "given") for past participles.
             if (head.Length > 0 &&
                 (word.EndsWith("ing", StringComparison.OrdinalIgnoreCase) ||
-                 word.EndsWith("ed", StringComparison.OrdinalIgnoreCase)))
+                 word.EndsWith("ed", StringComparison.OrdinalIgnoreCase) ||
+                 word.EndsWith("en", StringComparison.OrdinalIgnoreCase)))
                 return (head, string.Empty, i);
 
             head = word;
