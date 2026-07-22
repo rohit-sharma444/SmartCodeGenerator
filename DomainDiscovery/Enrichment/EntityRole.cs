@@ -28,7 +28,15 @@ public enum EntityRole
     Document,
 
     /// <summary>The event of value changing hands: Payment, Refund, Order.</summary>
-    Transaction
+    Transaction,
+
+    /// <summary>
+    /// Something scheduled that happens to somebody, somewhere, between two times: Booking,
+    /// Appointment, Reservation, Flight, Visit, Admission. Distinct from
+    /// <see cref="Transaction"/> (which has an amount and a method) and from
+    /// <see cref="Document"/> (which is a record issued about something, not the thing itself).
+    /// </summary>
+    Event
 }
 
 /// <summary>
@@ -75,13 +83,16 @@ public static class EntityRoleRank
         EntityRole.Item => 3,
         EntityRole.Document => 4,
         EntityRole.Transaction => 4,
+        EntityRole.Event => 4,
         _ => 0
     };
 
     /// <summary>
     /// Whether a class with this <see cref="EntityRole"/> is allowed to carry foreign keys at
     /// all — i.e. to be the referencing side of a mined relationship. Only <see
-    /// cref="EntityRole.Document"/> and <see cref="EntityRole.Transaction"/> qualify.
+    /// cref="EntityRole.Document"/>, <see cref="EntityRole.Transaction"/> and <see
+    /// cref="EntityRole.Event"/> qualify: a booking points at its guest and its room the same
+    /// way an invoice points at its customer.
     /// </summary>
     /// <remarks>
     /// This exists because "the higher rank references the lower" is too permissive at the
@@ -95,5 +106,5 @@ public static class EntityRoleRank
     /// transactions carry foreign keys" and cannot be mistaken for a general rank rule.
     /// </remarks>
     public static bool CanReference(EntityRole role)
-        => role is EntityRole.Document or EntityRole.Transaction;
+        => role is EntityRole.Document or EntityRole.Transaction or EntityRole.Event;
 }
