@@ -52,8 +52,12 @@ public static class HypernymExtractor
 
     /// <summary>
     /// Words that join phrases and so cannot be a head: "is and was a drawer". Reaching one
-    /// before any head has been captured means the phrase has not started yet, so the scan
-    /// steps over it exactly as it does a modifier.
+    /// BEFORE any head has been captured means the phrase has not started yet, so the scan
+    /// steps over it exactly as it does a modifier. Reaching one AFTER a head has been
+    /// captured ends the phrase instead of being skipped: "a room or area" must stop at
+    /// "room" — otherwise the second disjunct falls through to the plain "head = word"
+    /// assignment and overwrites it, which is exactly how "area" (an abstraction) used to
+    /// delete a "room" candidate outright.
     /// </summary>
     private static readonly HashSet<string> Conjunctions =
         new(StringComparer.OrdinalIgnoreCase) { "and", "or", "but", "nor", "yet" };
@@ -84,16 +88,38 @@ public static class HypernymExtractor
         };
 
     /// <summary>
+    /// Ordinary nouns that happen to end in "-ly" and so would otherwise be caught by the
+    /// blanket adverb-suffix rule in <see cref="IsModifier"/>, stripping the head right where
+    /// it sits: "a clan is a family of related people" must yield "family", not skip over it
+    /// looking for a noun that never comes. No <see cref="ArchetypeLexicon"/> key currently
+    /// ends in "-ly", so this list has not yet changed a verdict — but <see cref="SubtypeChaining"/>
+    /// needs the exact word, and a candidate defined as "an assembly of..." could otherwise
+    /// never chain to an `Assembly` class in the same model. Kept small and closed rather than
+    /// inverted (e.g. "not ending in a vowel + ly") because the false-positive rate of a looser
+    /// rule is unmeasured and a closed list is exactly as cheap to extend later.
+    /// </summary>
+    private static readonly HashSet<string> LyNouns =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            "family", "assembly", "supply", "monopoly", "anomaly", "ally", "rally", "alley",
+            "folly"
+        };
+
+    /// <summary>
     /// True for a word that qualifies the head noun rather than being it: an adverb (by the
-    /// "-ly" suffix or by the closed <see cref="Modifiers"/> list) or a conjunction. Deliberately
-    /// does NOT treat "-ing"/"-ed" words as modifiers here — <see cref="ScanHead"/> already has
-    /// a position-sensitive rule for those, and it must keep it: "a gathering of people" needs
-    /// "gathering" as the head, while "a document acknowledging receipt" needs "document".
+    /// "-ly" suffix or by the closed <see cref="Modifiers"/> list) or a conjunction. The "-ly"
+    /// suffix rule defers to <see cref="LyNouns"/> first, since that suffix alone cannot tell
+    /// "family" (a noun) from "primarily" (an adverb). Deliberately does NOT treat "-ing"/"-ed"
+    /// words as modifiers here — <see cref="ScanHead"/> already has a position-sensitive rule
+    /// for those, and it must keep it: "a gathering of people" needs "gathering" as the head,
+    /// while "a document acknowledging receipt" needs "document".
     /// </summary>
     private static bool IsModifier(string word)
         => Conjunctions.Contains(word)
            || Modifiers.Contains(word)
-           || (word.Length > 3 && word.EndsWith("ly", StringComparison.OrdinalIgnoreCase));
+           || (!LyNouns.Contains(word)
+               && word.Length > 3
+               && word.EndsWith("ly", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// Extracts the head noun (hypernym) from a Wikipedia lead sentence.
@@ -178,6 +204,13 @@ public static class HypernymExtractor
             // head (handled below), or a continuation that legitimately overwrites it.
             if (head.Length == 0 && IsModifier(word))
                 continue;
+
+            // Once a head is captured, a conjunction ends the phrase rather than being
+            // skipped over — "a room or area" must stop at "room". Without this, the word
+            // falls through to the plain "head = word" assignment below and the second
+            // disjunct silently wins.
+            if (head.Length > 0 && Conjunctions.Contains(word))
+                return (head, word, i + 1);
 
             if (Terminators.Contains(word))
                 return (head, word, i + 1);
