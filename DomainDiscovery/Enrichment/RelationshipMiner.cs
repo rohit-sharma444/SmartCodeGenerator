@@ -60,12 +60,13 @@ public sealed class RelationshipMiner
     /// <c>references</c> relationship and an <c>int</c> foreign-key field on whichever class
     /// outranks the other (see <see cref="EntityRoleRank"/>) AND is itself allowed to reference
     /// anything (see <see cref="EntityRoleRank.CanReference"/> — only <see
-    /// cref="EntityRole.Document"/> and <see cref="EntityRole.Transaction"/> qualify). Never
-    /// throws, and never leaves the model in a different state than it started in unless a pair
-    /// actually clears every rule — blank text, too few mentions, equal-ranked classes,
-    /// <see cref="EntityRole.None"/> classes, and a higher-ranked class that is not itself a
-    /// Document or Transaction (a Place or Device outranking a Party is not enough on its own)
-    /// all fall out of the algorithm as a no-op rather than needing a special case.
+    /// cref="EntityRole.Document"/>, <see cref="EntityRole.Transaction"/>, and <see
+    /// cref="EntityRole.Event"/> qualify). Never throws, and never leaves the model in a
+    /// different state than it started in unless a pair actually clears every rule — blank text,
+    /// too few mentions, equal-ranked classes, <see cref="EntityRole.None"/> classes, and a
+    /// higher-ranked class that is not itself a Document, Transaction, or Event (a Place or
+    /// Device outranking a Party is not enough on its own) all fall out of the algorithm as a
+    /// no-op rather than needing a special case.
     /// </summary>
     public void Mine(CandidateDomainModel model, string articleText)
     {
@@ -177,8 +178,8 @@ public sealed class RelationshipMiner
     /// referencer when <see cref="EntityRoleRank.CanReference"/> allows it — otherwise the pair
     /// is dropped rather than linked. Without that gate this produced <c>Restaurant.CustomerId</c>
     /// and <c>CashRegister.CustomerId</c> on a real run: Place and Device outrank Party, but
-    /// neither a restaurant nor a till has "a" customer. Only a Document or a Transaction
-    /// carries a foreign key; the rank still says what it may point at.
+    /// neither a restaurant nor a till has "a" customer. Only a Document, a Transaction, or an
+    /// Event carries a foreign key; the rank still says what it may point at.
     /// </summary>
     private static List<(CandidateEntity Referencing, CandidateEntity Target, int Count)> DirectedProposals(
         Dictionary<(CandidateEntity, CandidateEntity), int> pairCounts)
