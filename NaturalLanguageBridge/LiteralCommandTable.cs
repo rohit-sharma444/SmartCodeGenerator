@@ -23,6 +23,10 @@ public static class LiteralCommandTable
         ["show validation"] = IntentType.ShowValidation,
         ["list validation"] = IntentType.ShowValidation,
         ["view validation"] = IntentType.ShowValidation,
+        ["add business validation"] = IntentType.AddBusinessValidation,
+        ["show business validation"] = IntentType.ShowBusinessValidation,
+        ["list business validation"] = IntentType.ShowBusinessValidation,
+        ["view business validation"] = IntentType.ShowBusinessValidation,
         ["help"] = IntentType.Help,
     };
 

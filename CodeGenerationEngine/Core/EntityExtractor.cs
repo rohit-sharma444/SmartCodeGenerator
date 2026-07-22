@@ -1,3 +1,4 @@
+using CodeGenerationEngine.Core.Validation;
 using CodeGenerationEngine.Models;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -19,7 +20,7 @@ public static class EntityExtractor
             return false;
         }
 
-        var rules = ValidationRegistry.GetRules(command.ClassName);
+        var rules = ValidationRegistry.Get(command.ClassName);
 
         if (rules.Count == 0)
         {
@@ -49,7 +50,7 @@ public static class EntityExtractor
 
         var namespaceName = ExtractNamespace(classFile);
 
-        var validationCode = ValidationEngine.GenerateValidationPartial(
+        var validationCode = ValidationEngine.EmitValidationPartial(
                 namespaceName, command.ClassName, properties, rules);
 
         var validatorFile = Path.Combine(Path.GetDirectoryName(classFile)!,

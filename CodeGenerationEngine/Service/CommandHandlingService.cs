@@ -1,4 +1,5 @@
 using CodeGenerationEngine.Core;
+using CodeGenerationEngine.Core.Validation;
 using CodeGenerationEngine.Factory;
 using CodeGenerationEngine.Models;
 
@@ -91,6 +92,8 @@ public static class CommandHandlingService
             [IntentType.ListMethods] = HandleListMethods,
             [IntentType.AddValidation] = HandleAddValidation,
             [IntentType.ShowValidation] = HandleShowValidation,
+            [IntentType.AddBusinessValidation] = HandleAddBusinessValidation,
+            [IntentType.ShowBusinessValidation] = HandleShowBusinessValidation,
             [IntentType.GenerateValidator] = HandleGenerateValidator,
             [IntentType.CreateInterface] = HandleCreateInterface,
             [IntentType.ListProperties] = HandleListProperties,
@@ -274,20 +277,49 @@ public static class CommandHandlingService
 
     private static bool HandleAddValidation(CommandExecutionContext ctx)
     {
-        var rules = ValidationRuleParser.Parse(ctx.Command.ValidationText);
-        foreach (var rule in rules)
+        return AddRules(ctx, ValidationCategory.Data,
+            successPrefix: $"Validation added to {ctx.Command.ClassName}" +
+                (string.IsNullOrWhiteSpace(ctx.Command.PropertyName)
+                    ? "." : $".{ctx.Command.PropertyName}"));
+    }
+
+    // Shared by data and business add-commands: parse the rule text through the
+    // catalog for the given category and register whatever was recognized.
+    private static bool AddRules(CommandExecutionContext ctx, ValidationCategory category, string successPrefix)
+    {
+        if (string.IsNullOrWhiteSpace(ctx.Command.ClassName))
         {
-            if (string.IsNullOrWhiteSpace(rule.PropertyName) &&
-                !string.IsNullOrWhiteSpace(ctx.Command.PropertyName))
-                rule.PropertyName = ctx.Command.PropertyName;
-            ValidationRegistry.AddRule(ctx.Command.ClassName, rule);
+            Console.WriteLine("No class specified for the validation rule.");
+            return false;
         }
-        Console.WriteLine(
-            $"Validation added to {ctx.Command.ClassName}" +
-            (string.IsNullOrWhiteSpace(ctx.Command.PropertyName)
-                ? "." : $".{ctx.Command.PropertyName}"));
+
+        var parseCtx = new ValidationParseContext
+        {
+            Fragment = ctx.Command.ValidationText,
+            ClassName = ctx.Command.ClassName,
+            TargetProperty = string.IsNullOrWhiteSpace(ctx.Command.PropertyName) ? null : ctx.Command.PropertyName
+        };
+
+        var rules = ValidationRuleCatalog.Default.Parse(ctx.Command.ValidationText, category, parseCtx);
+        if (rules.Count == 0)
+        {
+            Console.WriteLine($"Could not parse a validation rule from: '{ctx.Command.ValidationText}'");
+            return false;
+        }
+
+        foreach (var rule in rules)
+            ValidationRegistry.Add(ctx.Command.ClassName, rule);
+
+        Console.WriteLine(successPrefix);
         return true;
     }
+
+    private static bool HandleAddBusinessValidation(CommandExecutionContext ctx) =>
+        AddRules(ctx, ValidationCategory.Business,
+            successPrefix: $"Business rule added to {ctx.Command.ClassName}: {ctx.Command.ValidationText}");
+
+    private static bool HandleShowBusinessValidation(CommandExecutionContext ctx) =>
+        ShowRules(ctx.Command.ClassName, ValidationCategory.Business, "Business rules");
 
     private static bool HandleGenerateValidator(CommandExecutionContext ctx)
     {
@@ -361,30 +393,21 @@ public static class CommandHandlingService
         return ok;
     }
 
-    private static bool HandleShowValidation(CommandExecutionContext ctx)
+    private static bool HandleShowValidation(CommandExecutionContext ctx) =>
+        ShowRules(ctx.Command.ClassName, ValidationCategory.Data, "Validation rules");
+
+    private static bool ShowRules(string className, ValidationCategory category, string heading)
     {
-        var rules = ValidationRegistry.GetRules(ctx.Command.ClassName);
+        var rules = ValidationRegistry.Get(className, category);
         if (rules.Count == 0)
         {
-            Console.WriteLine($"No validation rules for '{ctx.Command.ClassName}'.");
+            Console.WriteLine($"No {heading.ToLowerInvariant()} for '{className}'.");
             return true;
         }
 
-        Console.WriteLine($"Validation rules for {ctx.Command.ClassName}:");
+        Console.WriteLine($"{heading} for {className}:");
         foreach (var rule in rules)
-        {
-            var target = string.IsNullOrWhiteSpace(rule.PropertyName)
-                ? "(class)" : rule.PropertyName;
-
-            var flags = new List<string>();
-            if (rule.Required) flags.Add("Required");
-            if (rule.IsUnique) flags.Add("Unique");
-            if (rule.MinLength.HasValue) flags.Add($"MinLength={rule.MinLength}");
-            if (rule.MaxLength.HasValue) flags.Add($"MaxLength={rule.MaxLength}");
-
-            Console.WriteLine($"  {target}: " +
-                (flags.Count > 0 ? string.Join(", ", flags) : "(no constraints)"));
-        }
+            Console.WriteLine($"  {rule.Describe()}");
         return true;
     }
 

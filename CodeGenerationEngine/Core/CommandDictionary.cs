@@ -307,6 +307,20 @@ public static class CommandDictionary
             Description = "Show validation rules for a class.",
             Example = "show validation rule for <Employee>"
         },
+        new()
+        {
+            Category = "Validation",
+            Command = "add business validation <rule> in <class name>",
+            Description = "Adds an entity-level business rule to a class.",
+            Example = "add business validation EndDate must be after StartDate in Booking"
+        },
+        new()
+        {
+            Category = "Validation",
+            Command = "show business validation <class name>",
+            Description = "Show business rules for a class.",
+            Example = "show business validation Booking"
+        },
         #endregion
 
 #region "Utility"        
