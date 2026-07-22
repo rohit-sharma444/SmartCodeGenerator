@@ -595,7 +595,8 @@ public class SubtypeChainingTests
         => new(name, head, new ArchetypeResult(
             ShapeVerdict.Unknown, Array.Empty<DomainFieldLexicon.FieldShape>(), EntityRole.None));
 
-    private static ShapeCandidate Shaped(string name, string head, EntityRole role)
+    /// <summary>A candidate the archetype table already has an opinion on.</summary>
+    private static ShapeCandidate Shaped(string name, string head)
         => new(name, head, ArchetypeLexicon.Resolve(head));
 
     [Fact]
@@ -605,7 +606,7 @@ public class SubtypeChainingTests
         // "motel", but Hotel is in the model and is a Place, so Motel is one too.
         var resolved = SubtypeChaining.Resolve(new[]
         {
-            Shaped("Hotel", "establishment", EntityRole.Place),
+            Shaped("Hotel", "establishment"),
             Unknown("Motel", "hotel"),
         });
 
@@ -622,7 +623,7 @@ public class SubtypeChainingTests
         {
             Unknown("ResortHotel", "motel"),
             Unknown("Motel", "hotel"),
-            Shaped("Hotel", "establishment", EntityRole.Place),
+            Shaped("Hotel", "establishment"),
         });
 
         Assert.Equal(EntityRole.Place, resolved["ResortHotel"].Role);
@@ -667,7 +668,7 @@ public class SubtypeChainingTests
     {
         var resolved = SubtypeChaining.Resolve(new[]
         {
-            Shaped("Hotel", "establishment", EntityRole.Place),
+            Shaped("Hotel", "establishment"),
             Unknown("Motel", "hotels"),
         });
 
