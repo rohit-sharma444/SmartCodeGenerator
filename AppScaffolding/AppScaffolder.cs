@@ -9,6 +9,9 @@ namespace AppScaffolding;
 /// model and delegates the project type / front-end to an <see cref="ITargetScaffolder"/>.</summary>
 public sealed class AppScaffolder
 {
+    private const string EfCorePackageId = "Microsoft.EntityFrameworkCore.Sqlite";
+    private const string EfCorePackageVersion = "10.0.10";
+
     /// <summary>
     /// Writes one <c>&lt;Name&gt;.cs</c> per class into <paramref name="outputFolder"/>,
     /// declaring <paramref name="namespaceName"/>. Best-effort: a file that cannot be
@@ -50,6 +53,33 @@ public sealed class AppScaffolder
         }
     }
 
+    /// <summary>Best-effort insertion of the EF Core SQLite package into the app project file.
+    /// Idempotent and silent on failure — a missing package surfaces later as a build error.</summary>
+    private static void InjectEfCorePackage(string csprojPath)
+    {
+        try
+        {
+            if (!File.Exists(csprojPath))
+                return;
+
+            var updated = CsprojEditing.InjectPackageReference(
+                File.ReadAllText(csprojPath), EfCorePackageId, EfCorePackageVersion);
+            File.WriteAllText(csprojPath, updated);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+        }
+    }
+
+    /// <summary>Environment-variable name the generated AppDbContext reads for a connection-string
+    /// override: the upper-cased project name with non-alphanumerics as underscores, plus "_DB".</summary>
+    private static string EnvVarName(string projectName)
+    {
+        var chars = projectName.ToUpperInvariant()
+            .Select(c => char.IsLetterOrDigit(c) ? c : '_');
+        return new string(chars.ToArray()) + "_DB";
+    }
+
     /// <summary>
     /// Creates a project named <c>&lt;appName&gt;&lt;target.FolderSuffix&gt;</c> under
     /// <paramref name="workspaceRoot"/> (reusing it if present) and writes the shared model +
@@ -57,6 +87,14 @@ public sealed class AppScaffolder
     /// </summary>
     public ScaffoldResult Scaffold(
         CandidateDomainModel model, string appName, string workspaceRoot, ITargetScaffolder target)
+        => Scaffold(model, appName, workspaceRoot, target, PersistenceKind.Json);
+
+    /// <summary>As <see cref="Scaffold(CandidateDomainModel,string,string,ITargetScaffolder)"/>, but
+    /// persisting through the chosen <paramref name="persistence"/> backend. SQLite emits an EF Core
+    /// Data core (EfStore + AppDbContext) in place of JsonStore and adds the EF Core package.</summary>
+    public ScaffoldResult Scaffold(
+        CandidateDomainModel model, string appName, string workspaceRoot, ITargetScaffolder target,
+        PersistenceKind persistence)
     {
         var classes = DomainModelMapper.ToClassDefinitions(model);
 
@@ -84,6 +122,9 @@ public sealed class AppScaffolder
             target.FixupProject(outputFolder);
         }
 
+        if (persistence == PersistenceKind.Sqlite)
+            InjectEfCorePackage(csprojPath);
+
         var modelsFolder = Path.Combine(outputFolder, "Models");
         var dataFolder = Path.Combine(outputFolder, "Data");
 
@@ -93,11 +134,12 @@ public sealed class AppScaffolder
 
         var entityNames = classes.Select(c => c.Name).ToList();
 
-        // Shared, target-agnostic core: JSON store + generic base repository + one typed
-        // repository per entity.
+        // Shared, target-agnostic core: includes the IStore seam and StoreFactory, so every
+        // target and persistence backend shares the same typed CRUD surface.
         var files = new List<(string Folder, string Name, string Source)>
         {
-            (dataFolder, "JsonStore.cs", JsonStoreTemplate.Source($"{projectName}.Data")),
+            (dataFolder, "IStore.cs", StoreSeamTemplate.Source(projectName)),
+            (dataFolder, "StoreFactory.cs", StoreFactoryTemplate.Source(projectName, persistence)),
             (dataFolder, "Repository.cs", RepositoryTemplate.Base(projectName)),
             (dataFolder, "SeedData.cs",
                 SeedDataTemplate.Source(
@@ -105,6 +147,19 @@ public sealed class AppScaffolder
                     SeedDataTemplate.OrderByDependency(classes),
                     SeedDataTemplate.ForeignKeyFieldNames(classes))),
         };
+
+        // Persistence backend behind the seam.
+        if (persistence == PersistenceKind.Sqlite)
+        {
+            files.Add((dataFolder, "EfStore.cs", EfStoreTemplate.Source(projectName)));
+            files.Add((dataFolder, "AppDbContext.cs",
+                DbContextTemplate.Source(projectName, entityNames, EnvVarName(projectName))));
+        }
+        else
+        {
+            files.Add((dataFolder, "JsonStore.cs", JsonStoreTemplate.Source($"{projectName}.Data")));
+        }
+
         foreach (var name in entityNames)
             files.Add((dataFolder, $"{name}Repository.cs", RepositoryTemplate.Typed(projectName, name)));
 
