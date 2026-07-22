@@ -583,12 +583,14 @@ public static class CommandEntityExtractor
 
         var patterns = new[]
         {
-            // Create Class
-            @"i\s+need\s+(?:a|an)?\s*(\w+)\s+(?:class|entity|model|dto)",
-            @"create\s+(?:a|an)?\s*(\w+)\s+(?:class|entity|model|dto)",
-            @"generate\s+(?:a|an)?\s*(\w+)\s+(?:class|entity|model|dto)",
-            @"build\s+(?:a|an)?\s*(\w+)\s+(?:class|entity|model|dto)",
-            @"make\s+(?:a|an)?\s*(\w+)\s+(?:class|entity|model|dto)",
+            // Create Class. The article group requires trailing whitespace so it can
+            // only match a standalone "a"/"an": unanchored, it matched the first
+            // letter of the name itself, turning "create Alpha class" into "Lpha".
+            @"i\s+need\s+(?:an?\s+)?(\w+)\s+(?:class|entity|model|dto)",
+            @"create\s+(?:an?\s+)?(\w+)\s+(?:class|entity|model|dto)",
+            @"generate\s+(?:an?\s+)?(\w+)\s+(?:class|entity|model|dto)",
+            @"build\s+(?:an?\s+)?(\w+)\s+(?:class|entity|model|dto)",
+            @"make\s+(?:an?\s+)?(\w+)\s+(?:class|entity|model|dto)",
 
             // Named class
             @"(?:class|entity|model|dto)\s+(?:named|called)\s+([A-Za-z_]\w*)",
