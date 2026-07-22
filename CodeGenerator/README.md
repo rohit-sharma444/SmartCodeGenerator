@@ -67,7 +67,6 @@ New projects are created in `<workspace>/<Name>/<Name>.csproj`.
 | --- | --- |
 | `create class <Name>` | Create an empty class. |
 | `create class <Name> with properties <Prop> <type>, <Prop> <type>` | Create a class with properties. |
-| `create <Name> class inherit <BaseClass>` | Create a class deriving from a base class. |
 | `create interface <IName>` | Create an interface. |
 | `show class <Name>` | Print a class's source. |
 | `list classes` \| `list classes in <Project>` | List classes (whole workspace, or one project). |
@@ -90,7 +89,7 @@ project is selected.
 | Command | Description |
 | --- | --- |
 | `add method <Name> to <Class>` | Add a method to a class. |
-| `list methods <Class>` \| `show methods <Class>` | List a class's methods. |
+| `show methods <Class>` | List a class's methods. |
 
 ### Validation
 
@@ -100,7 +99,7 @@ entity-level (rules that span multiple fields or express domain logic).
 
 | Command | Description |
 | --- | --- |
-| `add validation <Rule> on <Property> in <Class>` | Attach a **data** rule to a property — e.g. `Name is required`, `Age must be between 18 and 65`, `Email must be a valid email`, `Country must be India, USA, UK`. |
+| `add validation <Rule> on <Property> in <Class>` | Attach a **data** rule to a property — e.g. `add validation required on Name in Employee`. |
 | `add business validation <Rule> in <Class>` | Attach an entity-level **business** rule — e.g. `EndDate must be after StartDate`, `Discount must not exceed Price`, `TrackingNumber is required when Status is Shipped`. |
 | `show validation <Class>` | Show the data rules registered for a class. |
 | `show business validation <Class>` | Show the business rules registered for a class. |
@@ -111,6 +110,13 @@ allowed-values, cross-field comparison, conditional-required, …) is a
 self-contained unit discovered at startup, so new rule types can be added
 without changing the commands, the store, or the generator. See
 [`CodeGenerationEngine`](../CodeGenerationEngine/README.md#validation) for the design.
+
+> **Known limitation.** Only `required` is reachable through `add validation`
+> today. The command builds the rule fragment as `"<Property> is <text>"`
+> (`CommandEntityExtractor.cs`), and only `RequiredRule` matches that shape —
+> the range, length, regex, allowed-values and comparison data parsers expect
+> `<Property> must be …`, so they never fire from the CLI even though they are
+> registered and unit-tested. Business rules are unaffected.
 
 ### Analysis
 
