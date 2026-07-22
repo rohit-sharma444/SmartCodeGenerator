@@ -96,9 +96,13 @@ something, and each entry can be attributed to that measurement.
 
 ### 2. Subtype chaining
 
-When a head resolves `Unknown` but equals (after singularization) the name or
-source title of another candidate in the same model, the candidate inherits that
-candidate's `EntityRole` and archetype fields.
+When a head resolves `Unknown` but equals (after singularization) the NAME of
+another candidate in the same model, the candidate inherits that candidate's
+`EntityRole` and archetype fields. (Name only — `ShapeCandidate` carries no source
+title, so there is nothing else to match against. This costs little in practice:
+a head is always a single lowercase word, while a source title is often
+multi-word — "Cash register", "Integrated library system" — so title matching
+would rarely fire even if it existed.)
 
 This is what turns `Motel`, `BoutiqueHotel`, `CapsuleHotel` and `ResortHotel` —
 all defined as "a hotel" — into Places, given only that `Hotel` is one. It recovers
