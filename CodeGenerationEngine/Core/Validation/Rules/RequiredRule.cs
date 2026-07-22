@@ -22,8 +22,12 @@ public sealed class RequiredRule : IValidationRule
 
 public sealed class RequiredRuleParser : IValidationRuleParser
 {
+    // "<prop> is required" plus the blank/empty/null phrasings the command catalog
+    // documented before the rule registry replaced the original if-chain.
     private static readonly Regex Pattern =
-        new(@"^(?<prop>\w+)\s+is\s+required$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        new(@"^(?<prop>\w+)\s+(?:is\s+required$"
+          + @"|(?:is|should|shall|must|can)\s*(?:not|n't)\s+be\s+(?:blank|empty|null)$)",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     public int Priority => 10;
     public ValidationCategory Category => ValidationCategory.Data;

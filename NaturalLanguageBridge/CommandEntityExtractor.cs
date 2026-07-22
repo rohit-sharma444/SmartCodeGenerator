@@ -260,6 +260,31 @@ public static class CommandEntityExtractor
             command.ControllerName = match.Groups[1].Value;
     }
 
+    // Rule fragments are "<property> <predicate>". The predicate the user types may
+    // already carry its own verb ("must be between 18 and 65", "length must be
+    // between 2 and 50"), in which case only the property name is prepended. A bare
+    // predicate ("required") needs an "is" to become a sentence. Injecting "is"
+    // unconditionally — as this used to — produced "Age is must be between 18 and 65",
+    // which no parser but RequiredRule's could ever match, leaving every other data
+    // rule type registered but unreachable from the command.
+    private static readonly string[] SelfVerbedPrefixes =
+        ["is ", "are ", "must ", "should ", "shall ", "cannot ", "can ", "has ", "have ", "length "];
+
+    private static string ComposeRuleFragment(string propertyName, string rule)
+    {
+        // "add validation Age must be between 18 and 65 on Age ..." — the property is
+        // already the subject; prepending it again would give "Age Age must be ...".
+        var firstWord = rule.Split(' ', 2)[0];
+        if (firstWord.Equals(propertyName, StringComparison.OrdinalIgnoreCase))
+            return rule;
+
+        foreach (var prefix in SelfVerbedPrefixes)
+            if (rule.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                return $"{propertyName} {rule}";
+
+        return $"{propertyName} is {rule}";
+    }
+
     public static void ExtractValidationInfo(string sentence, ParsedCommand command)
     {
         // "add validation <rule> on <property> in <class>" (documented form).
@@ -272,10 +297,10 @@ public static class CommandEntityExtractor
             command.PropertyName = ToPascalCase(onIn.Groups[2].Value);
             command.ClassName = ToPascalCase(onIn.Groups[3].Value);
 
-            // Reshape "<rule> on <property>" into the "<property> is <rule>"
-            // phrasing the rule parser understands (e.g. "Name is required").
-            var rule = onIn.Groups[1].Value.Trim();
-            command.ValidationText = $"{command.PropertyName} is {rule}";
+            // Reshape "<rule> on <property>" into the "<property> <predicate>"
+            // phrasing the rule parsers understand (e.g. "Name is required").
+            command.ValidationText = ComposeRuleFragment(
+                command.PropertyName, onIn.Groups[1].Value.Trim());
             return;
         }
 
@@ -558,12 +583,14 @@ public static class CommandEntityExtractor
 
         var patterns = new[]
         {
-            // Create Class
-            @"i\s+need\s+(?:a|an)?\s*(\w+)\s+(?:class|entity|model|dto)",
-            @"create\s+(?:a|an)?\s*(\w+)\s+(?:class|entity|model|dto)",
-            @"generate\s+(?:a|an)?\s*(\w+)\s+(?:class|entity|model|dto)",
-            @"build\s+(?:a|an)?\s*(\w+)\s+(?:class|entity|model|dto)",
-            @"make\s+(?:a|an)?\s*(\w+)\s+(?:class|entity|model|dto)",
+            // Create Class. The article group requires trailing whitespace so it can
+            // only match a standalone "a"/"an": unanchored, it matched the first
+            // letter of the name itself, turning "create Alpha class" into "Lpha".
+            @"i\s+need\s+(?:an?\s+)?(\w+)\s+(?:class|entity|model|dto)",
+            @"create\s+(?:an?\s+)?(\w+)\s+(?:class|entity|model|dto)",
+            @"generate\s+(?:an?\s+)?(\w+)\s+(?:class|entity|model|dto)",
+            @"build\s+(?:an?\s+)?(\w+)\s+(?:class|entity|model|dto)",
+            @"make\s+(?:an?\s+)?(\w+)\s+(?:class|entity|model|dto)",
 
             // Named class
             @"(?:class|entity|model|dto)\s+(?:named|called)\s+([A-Za-z_]\w*)",

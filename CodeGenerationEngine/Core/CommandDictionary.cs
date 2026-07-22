@@ -75,6 +75,13 @@ public static class CommandDictionary
         new()
         {
             Category = "Projects",
+            Command = "show project",
+            Description = "Shows the currently selected project (same as 'current project').",
+            Example = "show project"
+        },
+        new()
+        {
+            Category = "Projects",
             Command = "create console project",
             Description = "Creates a new console project.",
             Example = "create console project EmployeeManagement"
@@ -141,9 +148,9 @@ public static class CommandDictionary
         new()
         {
             Category = "Class",
-            Command = "list class",
-            Description = "Displays the class source code.",
-            Example = "list class Employee"
+            Command = "list classes",
+            Description = "Lists all classes in the current project.",
+            Example = "list classes"
         },
         new()
         {
@@ -179,13 +186,6 @@ public static class CommandDictionary
             Command = "list deleted classes",
             Description = "Lists all deleted classes.",
             Example = "list deleted classes"
-        },
-        new()
-        {
-            Category = "Class",
-            Command = "create <class name> class inherit <base class>",
-            Description = "Creates a new class that inherits from a base class.",
-            Example = "create Employee class inherit Person"
         },
 #endregion
 
@@ -266,13 +266,6 @@ public static class CommandDictionary
             Description = "Lists all methods in a class.",
             Example = "show methods of Employee"
         },
-        new()
-        {
-            Category = "Methods",
-            Command = "list methods <class name>",
-            Description = "Lists all methods in a class.",
-            Example = "list methods of Employee"
-        },
         #endregion
 
 #region "Interfaces"        
@@ -289,9 +282,12 @@ public static class CommandDictionary
         new()
         {
             Category = "Validation",
-            Command = "add validation <validation> on <property> in <class name>",
-            Description = "Adds validation to a class.",
-            Example = "add validation Employee Id should not be blank on EmpID in Employee"
+            Command = "add validation <rule> on <property> in <class name>",
+            Description = "Adds a field-level data rule to a class. Rules: required (or 'should not be blank'), "
+                        + "must be between <min> and <max>, length must be between <min> and <max>, "
+                        + "must be greater/less than <n>, must be a valid email, must match <regex>, "
+                        + "must be <value>, <value>, ...",
+            Example = "add validation must be between 18 and 65 on Age in Employee"
         },
         new()
         {
@@ -303,9 +299,9 @@ public static class CommandDictionary
         new()
         {
             Category = "Validation",
-            Command = "show validation ",
-            Description = "Show validation rules for a class.",
-            Example = "show validation rule for <Employee>"
+            Command = "show validation <class name>",
+            Description = "Show data validation rules for a class.",
+            Example = "show validation Employee"
         },
         new()
         {
@@ -330,6 +326,13 @@ public static class CommandDictionary
             Command = "help",
             Description = "Displays all available commands.",
             Example = "help"
+        },
+        new()
+        {
+            Category = "Utility",
+            Command = "batch",
+            Description = "Enter several commands, review what was detected, then run only the approved ones.",
+            Example = "batch"
         },
         new()
         {
@@ -383,12 +386,111 @@ public static class CommandDictionary
             Description = "Analyzes a specific class.",
             Example = "analyze class Employee"
         },
+#endregion
+
+#region "Documentation"
+        // All three phrasings reach the same handler and write DesignDocument.md.
         new()
         {
-            Category = "Analysis",
+            Category = "Documentation",
             Command = "generate project report",
-            Description = "Generates a report for the current project.",
+            Description = "Generates a design document for the current project.",
             Example = "generate project report"
+        },
+        new()
+        {
+            Category = "Documentation",
+            Command = "generate design document",
+            Description = "Generates a design document for the current project.",
+            Example = "generate design document"
+        },
+        new()
+        {
+            Category = "Documentation",
+            Command = "generate documentation",
+            Description = "Generates a design document for the current project.",
+            Example = "generate documentation"
+        },
+#endregion
+
+#region "Learning"
+        new()
+        {
+            Category = "Learning",
+            Command = "show learning",
+            Description = "Lists learned command signatures and their confidence. Aliases: list learning, view learning.",
+            Example = "show learning"
+        },
+        new()
+        {
+            Category = "Learning",
+            Command = "reset learning",
+            Description = "Clears the learned command memory. Aliases: clear learning, forget learning.",
+            Example = "reset learning"
+        },
+#endregion
+
+#region "Build App"
+        new()
+        {
+            Category = "Build App",
+            Command = "build app: <description>",
+            Description = "Describes a system in plain English, discovers a domain model for it, "
+                        + "then opens a review loop before any code is written.",
+            Example = "build app: a library that lends books to members"
+        },
+        // The rest of this category is only valid at the review-loop prompt that
+        // `build app:` opens, not at the main CodeGenerator prompt.
+        new()
+        {
+            Category = "Build App",
+            Command = "approve [target] [sqlite]",
+            Description = "Review loop: generates the app. Targets: wpf (default), console, webapi, classlib, worker. "
+                        + "Add 'sqlite' for EF Core persistence (JSON is the default; WPF is JSON-only). Alias: a.",
+            Example = "approve webapi sqlite"
+        },
+        new()
+        {
+            Category = "Build App",
+            Command = "add <name>",
+            Description = "Review loop: adds an entity to the candidate model.",
+            Example = "add Reservation"
+        },
+        new()
+        {
+            Category = "Build App",
+            Command = "remove <name>",
+            Description = "Review loop: removes an entity from the candidate model.",
+            Example = "remove Reservation"
+        },
+        new()
+        {
+            Category = "Build App",
+            Command = "rename <old> <new>",
+            Description = "Review loop: renames an entity in the candidate model.",
+            Example = "rename Member Borrower"
+        },
+        new()
+        {
+            Category = "Build App",
+            Command = "field <entity> <name>[:<type>]",
+            Description = "Review loop: adds a field to an entity. Omit the type to have it inferred; "
+                        + "explicit types are string, int, decimal, bool or DateTime.",
+            Example = "field Book Title:string"
+        },
+        new()
+        {
+            Category = "Build App",
+            Command = "unfield <entity> <name>",
+            Description = "Review loop: removes a field from an entity.",
+            Example = "unfield Book Title"
+        },
+        new()
+        {
+            Category = "Build App",
+            Command = "cancel",
+            Description = "Review loop: abandons the model without generating anything. Alias: c.",
+            Example = "cancel"
         },
 #endregion
     ];

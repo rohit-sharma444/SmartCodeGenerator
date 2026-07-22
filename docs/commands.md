@@ -9,22 +9,41 @@
 | --- | --- | --- |
 | `analyze class <class name>` | Analyzes a specific class. | `analyze class Employee` |
 | `analyze project` | Analyzes the current project. | `analyze project` |
-| `generate project report` | Generates a report for the current project. | `generate project report` |
+
+## Build App
+
+| Command | Description | Example |
+| --- | --- | --- |
+| `add <name>` | Review loop: adds an entity to the candidate model. | `add Reservation` |
+| `approve [target] [sqlite]` | Review loop: generates the app. Targets: wpf (default), console, webapi, classlib, worker. Add 'sqlite' for EF Core persistence (JSON is the default; WPF is JSON-only). Alias: a. | `approve webapi sqlite` |
+| `build app: <description>` | Describes a system in plain English, discovers a domain model for it, then opens a review loop before any code is written. | `build app: a library that lends books to members` |
+| `cancel` | Review loop: abandons the model without generating anything. Alias: c. | `cancel` |
+| `field <entity> <name>[:<type>]` | Review loop: adds a field to an entity. Omit the type to have it inferred; explicit types are string, int, decimal, bool or DateTime. | `field Book Title:string` |
+| `remove <name>` | Review loop: removes an entity from the candidate model. | `remove Reservation` |
+| `rename <old> <new>` | Review loop: renames an entity in the candidate model. | `rename Member Borrower` |
+| `unfield <entity> <name>` | Review loop: removes a field from an entity. | `unfield Book Title` |
 
 ## Class
 
 | Command | Description | Example |
 | --- | --- | --- |
-| `create <class name> class inherit <base class>` | Creates a new class that inherits from a base class. | `create Employee class inherit Person` |
 | `create class` | Creates a new class. | `create employee class` |
 | `create class <class name> with properties` | Creates a new class with the specified properties. | `create employee class emdcode:int, Name:string` |
 | `delete class` | Moves a class to DeletedClasses. | `delete class Employee` |
-| `list class` | Displays the class source code. | `list class Employee` |
+| `list classes` | Lists all classes in the current project. | `list classes` |
 | `list classes in <project name>` | Lists all classes in a project. | `list classes in <EmployeeManagement>` |
 | `list deleted classes` | Lists all deleted classes. | `list deleted classes` |
 | `rename class` | Rename a class. | `rename class Employee to <newclass>` |
 | `restore class` | Restores a deleted class. | `restore class Employee` |
 | `show class` | Displays the class source code. | `show class Employee` |
+
+## Documentation
+
+| Command | Description | Example |
+| --- | --- | --- |
+| `generate design document` | Generates a design document for the current project. | `generate design document` |
+| `generate documentation` | Generates a design document for the current project. | `generate documentation` |
+| `generate project report` | Generates a design document for the current project. | `generate project report` |
 
 ## Interfaces
 
@@ -32,12 +51,18 @@
 | --- | --- | --- |
 | `create interface <interface name>` | Creates a new interface. | `create interface IRepository` |
 
+## Learning
+
+| Command | Description | Example |
+| --- | --- | --- |
+| `reset learning` | Clears the learned command memory. Aliases: clear learning, forget learning. | `reset learning` |
+| `show learning` | Lists learned command signatures and their confidence. Aliases: list learning, view learning. | `show learning` |
+
 ## Methods
 
 | Command | Description | Example |
 | --- | --- | --- |
 | `add method <method name> to <class name>` | Adds a method to a class. | `add method Save to Employee` |
-| `list methods <class name>` | Lists all methods in a class. | `list methods of Employee` |
 | `show methods <class name>` | Lists all methods in a class. | `show methods of Employee` |
 
 ## Projects
@@ -53,6 +78,7 @@
 | `create wpf project` | Creates a new WPF project. | `create wpf project EmployeeManagement` |
 | `current project` | Shows the currently selected project. | `current project` |
 | `list projects` | Lists all available projects. | `list projects` |
+| `show project` | Shows the currently selected project (same as 'current project'). | `show project` |
 | `use project` | Switches the active project. | `use project EmployeeManagement` |
 
 ## Properties
@@ -77,6 +103,7 @@
 
 | Command | Description | Example |
 | --- | --- | --- |
+| `batch` | Enter several commands, review what was detected, then run only the approved ones. | `batch` |
 | `clear` | Clears the screen (history is kept). Alias: cls. | `clear` |
 | `cls` | Alias for clear (clears the screen; history is kept). | `cls` |
 | `demo` | Runs the demo workflow. | `demo` |
@@ -89,8 +116,8 @@
 | Command | Description | Example |
 | --- | --- | --- |
 | `add business validation <rule> in <class name>` | Adds an entity-level business rule to a class. | `add business validation EndDate must be after StartDate in Booking` |
-| `add validation <validation> on <property> in <class name>` | Adds validation to a class. | `add validation Employee Id should not be blank on EmpID in Employee` |
+| `add validation <rule> on <property> in <class name>` | Adds a field-level data rule to a class. Rules: required (or 'should not be blank'), must be between <min> and <max>, length must be between <min> and <max>, must be greater/less than <n>, must be a valid email, must match <regex>, must be <value>, <value>, ... | `add validation must be between 18 and 65 on Age in Employee` |
 | `generate validator` | Generates a validator for a class. | `generate validator for Employee` |
 | `show business validation <class name>` | Show business rules for a class. | `show business validation Booking` |
-| `show validation ` | Show validation rules for a class. | `show validation rule for <Employee>` |
+| `show validation <class name>` | Show data validation rules for a class. | `show validation Employee` |
 
