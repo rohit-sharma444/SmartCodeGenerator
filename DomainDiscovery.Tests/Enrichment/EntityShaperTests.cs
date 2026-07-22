@@ -386,28 +386,33 @@ public class EntityShaperTests
     [Fact]
     public void Shape_ACandidateDefinedAsAnotherCandidate_InheritsItsRoleAndIsKept()
     {
-        var model = ModelOf("Hotel", "Motel");
-        _wiki.Leads["Hotel"] = "A hotel is an establishment that provides paid lodging.";
-        _wiki.Leads["Motel"] = "A motel is a hotel designed for motorists.";
+        // "widget" is a table key (Device), but "gizmo" is not: Gizmo can only shape by
+        // chaining off Widget, so this fails outright if SubtypeChaining is ever deleted.
+        var model = ModelOf("Widget", "Gizmo");
+        _wiki.Leads["Widget"] = "A widget is a device used for demonstration.";
+        _wiki.Leads["Gizmo"] = "A gizmo is a widget of unusual design.";
 
         Shaper.Shape(model);
 
-        var motel = model.Entities.Single(e => e.Name == "Motel");
-        Assert.Equal(EntityRole.Place, motel.Role);
-        Assert.Contains(motel.Fields, f => f.Name == "Address");
-        Assert.DoesNotContain(model.Suggestions, e => e.Name == "Motel");
+        var gizmo = model.Entities.Single(e => e.Name == "Gizmo");
+        Assert.Equal(EntityRole.Device, gizmo.Role);
+        Assert.Contains(gizmo.Fields, f => f.Name == "SerialNumber");
+        Assert.DoesNotContain(model.Suggestions, e => e.Name == "Gizmo");
     }
 
     [Fact]
     public void Shape_DoesNotDependOnTheOrderCandidatesAppearIn()
     {
         // Chaining reads the whole model, so the subtype may be listed before its parent.
-        var model = ModelOf("Motel", "Hotel");
-        _wiki.Leads["Hotel"] = "A hotel is an establishment that provides paid lodging.";
-        _wiki.Leads["Motel"] = "A motel is a hotel designed for motorists.";
+        var model = ModelOf("Gizmo", "Widget");
+        _wiki.Leads["Widget"] = "A widget is a device used for demonstration.";
+        _wiki.Leads["Gizmo"] = "A gizmo is a widget of unusual design.";
 
         Shaper.Shape(model);
 
-        Assert.Equal(EntityRole.Place, model.Entities.Single(e => e.Name == "Motel").Role);
+        var gizmo = model.Entities.Single(e => e.Name == "Gizmo");
+        Assert.Equal(EntityRole.Device, gizmo.Role);
+        Assert.Contains(gizmo.Fields, f => f.Name == "SerialNumber");
+        Assert.DoesNotContain(model.Suggestions, e => e.Name == "Gizmo");
     }
 }
