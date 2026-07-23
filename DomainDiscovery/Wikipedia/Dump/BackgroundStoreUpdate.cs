@@ -40,7 +40,10 @@ public sealed class BackgroundStoreUpdate
     /// </summary>
     /// <param name="redirected">
     /// Whether output is redirected. Interactive sessions get the percentage in the console title;
-    /// piped/scripted ones get a throttled log line, since there is no title or cursor to use.
+    /// piped/scripted ones get a throttled log line on <see cref="Console.Error"/>, since there is no
+    /// title or cursor to use. Keeping it off stdout is deliberate: a consumer that parses stdout for
+    /// the prompt (a script, or the VS Code extension's REPL panel) must never see this background
+    /// chatter interleaved with the "CodeGenerator >> " prompt, or it cannot tell when input is free.
     /// </param>
     public Task Start(string databasePath, bool redirected, CancellationToken cancellation)
         => Task.Run(() =>
@@ -61,7 +64,9 @@ public sealed class BackgroundStoreUpdate
                 }
 
                 var working = Path.Combine(Path.GetDirectoryName(databasePath) ?? ".", "incr");
-                var say = redirected ? (Action<string>)Console.WriteLine : _ => { };
+                // stderr, not stdout: see the redirected-param note on Start — stdout must stay clean
+                // for prompt-parsing consumers.
+                var say = redirected ? (Action<string>)Console.Error.WriteLine : _ => { };
                 var updater = new IncrementalUpdater(store, say: say, progress: progress);
 
                 Run(staleness, progress,
@@ -94,9 +99,10 @@ public sealed class BackgroundStoreUpdate
 
     private static void WriteLineSafe(string line)
     {
-        // A progress line is cosmetic; a failing write (e.g. a broken output pipe when a piped
-        // consumer has exited) must never abort the update. Swallow, exactly as SetTitle does.
-        try { Console.WriteLine(line); }
+        // stderr, so stdout stays clean for prompt-parsing consumers (scripts / the VS Code panel).
+        // A progress line is cosmetic; a failing write (e.g. a broken pipe when a piped consumer has
+        // exited) must never abort the update. Swallow, exactly as SetTitle does.
+        try { Console.Error.WriteLine(line); }
         catch { /* nothing to show */ }
     }
 }

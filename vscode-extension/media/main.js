@@ -38,7 +38,9 @@ input.addEventListener('keydown', (e) => {
 window.addEventListener('message', (event) => {
   const msg = event.data;
   if (msg.type === 'output') {
-    append(msg.chunk.replace(/\s+$/, ''), msg.stream === 'stderr' ? 'err' : 'out');
+    // stderr carries background chatter (e.g. Wikipedia store-update progress), not errors —
+    // this CLI reports real errors on stdout. Render it muted, not alarming.
+    append(msg.chunk.replace(/\s+$/, ''), msg.stream === 'stderr' ? 'info' : 'out');
   } else if (msg.type === 'state') {
     input.disabled = msg.state === 'busy' || msg.state === 'starting' || msg.state === 'stopped';
     input.placeholder = msg.state === 'busy' ? 'working…'
