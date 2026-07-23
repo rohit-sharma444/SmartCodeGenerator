@@ -5,12 +5,16 @@
   "version": "0.0.1",
   "publisher": "smartcodegen-dev",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rohit-sharma444/SmartCodeGenerator.git"
+  },
   "engines": { "vscode": "^1.85.0" },
   "main": "./out/extension.js",
   "activationEvents": ["onView:smartcodegen.panel"],
   "contributes": {
     "viewsContainers": {
-      "panel": [
+      "activitybar": [
         { "id": "smartcodegen", "title": "SmartCodeGen", "icon": "media/icon.svg" }
       ]
     },
@@ -28,11 +32,15 @@
   "scripts": {
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "test": "node --import tsx --test test/*.test.ts"
+    "test": "node --import tsx --test test/*.test.ts",
+    "vscode:prepublish": "npm run compile",
+    "package": "vsce package --no-dependencies -o smartcodegen-vscode.vsix",
+    "install-ext": "code --install-extension smartcodegen-vscode.vsix --force"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
     "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.2.0",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0"
   }
