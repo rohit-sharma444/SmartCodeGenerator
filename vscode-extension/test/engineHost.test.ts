@@ -47,3 +47,15 @@ test('send runs a command and returns to ready', async () => {
   assert.match(text, /ran: create class Foo/);
   host.dispose();
 });
+
+test('a failed spawn transitions to stopped instead of throwing', async () => {
+  const host = new EngineHost({
+    command: 'definitely-not-a-real-binary-xyz123',
+    args: [],
+    cwd: process.cwd(),
+  });
+  host.start();
+  await waitForState(host, 'stopped');
+  assert.equal(host.state, 'stopped');
+  host.dispose();
+});

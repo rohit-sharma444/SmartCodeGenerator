@@ -55,9 +55,15 @@ export class EngineHost {
     this.child = child;
     child.stdout!.setEncoding('utf8');
     child.stderr!.setEncoding('utf8');
-    child.stdout!.on('data', (d: string) => this.handleOutput(d, 'stdout'));
-    child.stderr!.on('data', (d: string) => this.handleOutput(d, 'stderr'));
+    child.stdout!.on('data', (d: string) => { if (this.child === child) this.handleOutput(d, 'stdout'); });
+    child.stderr!.on('data', (d: string) => { if (this.child === child) this.handleOutput(d, 'stderr'); });
     child.on('exit', () => {
+      if (this.child === child) {
+        this.child = undefined;
+        this.setState('stopped');
+      }
+    });
+    child.on('error', () => {
       if (this.child === child) {
         this.child = undefined;
         this.setState('stopped');
