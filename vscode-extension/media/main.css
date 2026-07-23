@@ -9,7 +9,7 @@ body {
 .line { padding: 1px 0; }
 .line.cmd { color: var(--vscode-textLink-foreground); }
 .line.out { color: var(--vscode-foreground); }
-.line.err { color: var(--vscode-errorForeground); }
+.line.info { color: var(--vscode-descriptionForeground); }
 .line.sys { color: var(--vscode-descriptionForeground); font-style: italic; }
 #inputform { border-top: 1px solid var(--vscode-panel-border); padding: 4px; }
 #input {
