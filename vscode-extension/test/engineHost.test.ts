@@ -59,3 +59,34 @@ test('a failed spawn transitions to stopped instead of throwing', async () => {
   assert.equal(host.state, 'stopped');
   host.dispose();
 });
+
+test('stderr is tagged separately from stdout', async () => {
+  const host = makeHost();
+  const out = collect(host);
+  host.start();
+  await waitForState(host, 'ready');
+  host.send('boom');
+  await waitForState(host, 'ready');
+  const err = out.filter((o) => o.stream === 'stderr').map((o) => o.c).join('');
+  assert.match(err, /error: boom/);
+  host.dispose();
+});
+
+test('an unexpected child exit transitions to stopped', async () => {
+  const host = makeHost();
+  host.start();
+  await waitForState(host, 'ready');
+  host.send('crash');
+  await waitForState(host, 'stopped');
+  assert.equal(host.state, 'stopped');
+});
+
+test('restart re-spawns and reaches ready again', async () => {
+  const host = makeHost();
+  host.start();
+  await waitForState(host, 'ready');
+  host.restart();
+  await waitForState(host, 'ready');
+  assert.equal(host.state, 'ready');
+  host.dispose();
+});
