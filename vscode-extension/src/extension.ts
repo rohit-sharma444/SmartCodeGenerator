@@ -2,6 +2,7 @@
 import * as vscode from 'vscode';
 import { EngineHost } from './engineHost';
 import { SmartCodeGenPanel } from './panelView';
+import { ProjectSync } from './projectSync';
 
 let host: EngineHost | undefined;
 
@@ -32,6 +33,10 @@ export function activate(context: vscode.ExtensionContext): void {
     if (state === 'stopped') panel.post({ type: 'system', text: 'Engine stopped.' });
   });
 
+  // Auto-open / reveal projects and files the tool generates while a command runs.
+  const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  const projectSync = new ProjectSync(host, workspaceFolder);
+
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(SmartCodeGenPanel.viewType, panel, {
       webviewOptions: { retainContextWhenHidden: true },
@@ -42,7 +47,8 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     vscode.commands.registerCommand('smartcodegen.clearTranscript', () => panel.clear()),
     vscode.commands.registerCommand('smartcodegen.focusInput', () => panel.focusInput()),
-    { dispose: () => host?.dispose() }
+    { dispose: () => host?.dispose() },
+    projectSync,
   );
 
   // Start the engine now; the onView activation event means activate() runs when the panel is opened.
