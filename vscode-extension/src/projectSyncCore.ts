@@ -95,6 +95,12 @@ export class ProjectSyncCore {
     this.buffer.length = 0;
   }
 
+  /** Discards any in-flight buffer without acting on it — for when the engine goes down mid-command. */
+  reset(): void {
+    this.buffering = false;
+    this.buffer.length = 0;
+  }
+
   fileEvent(rawPath: string): void {
     if (!this.buffering) return;
     const path = normalize(rawPath);

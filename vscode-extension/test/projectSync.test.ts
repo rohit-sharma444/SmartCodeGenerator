@@ -93,3 +93,15 @@ test('autoOpenGenerated=false opens and reveals nothing', () => {
   assert.deepEqual(ops.opened, []);
   assert.deepEqual(ops.revealed, []);
 });
+
+test('reset() discards a stale buffer so a later commandFinished() opens nothing', () => {
+  const ops = new FakeOps();
+  const c = core(ops);
+  c.commandStarted();
+  c.fileEvent('C:/ws/App/App.csproj');
+  c.fileEvent('C:/ws/App/Program.cs');
+  c.reset();
+  c.commandFinished();
+  assert.deepEqual(ops.opened, []);
+  assert.deepEqual(ops.revealed, []);
+});

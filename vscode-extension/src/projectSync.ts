@@ -23,6 +23,7 @@ export class ProjectSync {
     const enabled = vscode.workspace
       .getConfiguration('smartcodegen')
       .get<boolean>('autoOpenGenerated', true);
+    if (!enabled) return; // opted out → skip the watcher and state subscription entirely
 
     const ops: EditorOps = {
       revealFolder: (path) =>
@@ -62,6 +63,14 @@ export class ProjectSync {
             this.flushTimer = undefined;
             core.commandFinished();
           }, FLUSH_GRACE_MS);
+        } else if (state === 'stopped') {
+          // Engine went down mid-command: discard the stale buffer instead of flushing it
+          // once the next command starts.
+          if (this.flushTimer !== undefined) {
+            clearTimeout(this.flushTimer);
+            this.flushTimer = undefined;
+          }
+          core.reset();
         }
       }),
     );
