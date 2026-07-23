@@ -155,4 +155,56 @@ public class ArchetypeLexiconTests
     {
         Assert.Equal(EntityRole.None, ArchetypeLexicon.Resolve("kiosk").Role);
     }
+
+    [Theory]
+    // One head per role, each measured to have blocked a real candidate. The counts in the
+    // comments are from the twelve-domain census in the design spec.
+    [InlineData("institution", EntityRole.Place)]      // 14 — School, Bank, Hospital
+    [InlineData("facility", EntityRole.Place)]         //  6 — Clinic, EmergencyDepartment
+    [InlineData("room", EntityRole.Place)]
+    [InlineData("professional", EntityRole.Party)]
+    [InlineData("employee", EntityRole.Party)]         //      Concierge
+    [InlineData("vehicle", EntityRole.Item)]
+    [InlineData("animal", EntityRole.Item)]            //  3 — the veterinary domain
+    [InlineData("account", EntityRole.Document)]       //  2 — the banking domain
+    [InlineData("loan", EntityRole.Transaction)]       //  2
+    [InlineData("booking", EntityRole.Event)]
+    [InlineData("appointment", EntityRole.Event)]
+    public void Resolve_AMeasuredHead_ShapesItWithItsRole(string head, EntityRole role)
+    {
+        var result = ArchetypeLexicon.Resolve(head);
+
+        Assert.Equal(ShapeVerdict.Shaped, result.Verdict);
+        Assert.Equal(role, result.Role);
+        Assert.NotEmpty(result.Fields);
+    }
+
+    [Theory]
+    // Measured heads that name an abstraction. These must REJECT, not merely fail to shape:
+    // a candidate defined as "a specialty" (Radiology, Geriatric, Psychiatric) is not a class.
+    [InlineData("provision")]
+    [InlineData("specialty")]
+    [InlineData("totality")]
+    [InlineData("risk")]
+    [InlineData("amount")]
+    [InlineData("value")]
+    public void Resolve_AMeasuredAbstraction_RejectsIt(string head)
+    {
+        Assert.Equal(ShapeVerdict.Abstract, ArchetypeLexicon.Resolve(head).Verdict);
+    }
+
+    [Fact]
+    public void Resolve_APluralOfAWidenedHead_StillShapesIt()
+    {
+        // The table is keyed singular; callers must not have to know that.
+        Assert.Equal(ShapeVerdict.Shaped, ArchetypeLexicon.Resolve("institutions").Verdict);
+    }
+
+    [Fact]
+    public void Resolve_AHeadInNeitherTable_IsStillUnknown()
+    {
+        // Widening must not turn the table into an accept-everything: an unmeasured head has
+        // no opinion attached to it, and the candidate is offered to the user, not kept.
+        Assert.Equal(ShapeVerdict.Unknown, ArchetypeLexicon.Resolve("quibblewhomp").Verdict);
+    }
 }

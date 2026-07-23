@@ -15,19 +15,23 @@ namespace DomainDiscovery.Enrichment;
 /// </para>
 /// <para>
 /// Shape resolves in precedence order: the curated lexicon, then the archetype implied by
-/// the candidate's own Wikipedia definition, then nothing. An abstract definition ("a
-/// system is a group of interacting elements") rejects the candidate — that is the drop
-/// signal, and unlike an allow-list it needs no curation per domain. An absent or unreadable
-/// definition means we do not know, and the candidate is offered to the user instead.
+/// the candidate's own Wikipedia definition (the head noun), then the archetype implied by
+/// the candidate's own NAME when the head has nothing to say (most commonly a disambiguation
+/// page, where no head can be extracted at all), then chaining (see <see cref="SubtypeChaining"/>),
+/// then nothing. An abstract definition ("a system is a group of interacting elements") rejects
+/// the candidate — that is the drop signal, and unlike an allow-list it needs no curation per
+/// domain. An absent or unreadable definition means we do not know, and the candidate is
+/// offered to the user instead.
 /// </para>
 /// <para>
-/// <see cref="Provenance.Seed"/> earns no exemption from that gate. SeedEntityExtractor
-/// turns every noun in the user's typed phrase into a fieldless Seed entity — an extracted
-/// seed is a guess like any other, not an assertion, so it is shaped, rejected, or suggested
-/// exactly like a Wikipedia candidate. The only fieldless entity this method lets through
-/// unshaped is one that already carries a field: that is what an entity the user adds by
-/// hand in the review loop looks like, because <see cref="Review.ModelEditor.AddEntity"/>
-/// runs after discovery and gives it a field before Shape ever sees it.
+/// <see cref="Provenance.Seed"/> earns an exemption from ONE of the three verdicts. A seed is a
+/// noun SeedEntityExtractor lifted out of the user's typed phrase, so it is shaped and rejected
+/// exactly like a Wikipedia candidate — but where the verdict is <see cref="ShapeVerdict.Unknown"/>,
+/// meaning we have no opinion, the user having named the thing is the only evidence available and
+/// the candidate is kept with <see cref="DefaultFields"/> rather than offered back to them.
+/// <see cref="ShapeVerdict.Abstract"/> still rejects it, so "system" and "application" cannot
+/// become classes this way. Without this, `build app: a hotel booking application` produced no
+/// Booking class at all.
 /// </para>
 /// </remarks>
 public sealed class EntityShaper
@@ -44,10 +48,11 @@ public sealed class EntityShaper
     /// <summary>
     /// Shapes every entity in <paramref name="model"/> in place: attaches known fields, and
     /// for anything still fieldless resolves the three-way verdict — shaped, abstract
-    /// (rejected), or unknown (suggested). A seed entity gets no exemption here: it is a noun
-    /// SeedEntityExtractor lifted straight out of the user's typed phrase, a guess like any
-    /// Wikipedia candidate, so it takes the same gate. The only fieldless-and-kept case is
-    /// impossible to reach through discovery: <see cref="Review.ModelEditor.AddEntity"/> already
+    /// (rejected), or unknown (suggested). A seed entity takes the same gate as everything else,
+    /// except that an Unknown verdict keeps it (with <see cref="DefaultFields"/>) rather than
+    /// suggesting it — the user named it, and Unknown means we have nothing to say against that.
+    /// The only other fieldless-and-kept case is impossible to reach through discovery:
+    /// <see cref="Review.ModelEditor.AddEntity"/> already
     /// gives an entity the user adds by hand a field (its own lexicon shape, or the
     /// <see cref="DefaultFields"/> fallback) before this method ever sees it, which is what
     /// the fields-count check below actually protects.
@@ -82,7 +87,13 @@ public sealed class EntityShaper
 
         var leads = _client.FetchLeads(titlesNeedingLeads);
 
-        // Pass 2: resolve the three-way verdict for anything still fieldless.
+        // Pass 2: resolve a verdict for everything still fieldless, WITHOUT acting on any of
+        // them yet. Acting as we walked meant a candidate's fate depended on where it sat in
+        // the list, and it left chaining (below) nothing to chain to: the parent it needed may
+        // already have been removed.
+        var pending = new List<CandidateEntity>();
+        var candidates = new List<ShapeCandidate>();
+
         foreach (var entity in entities)
         {
             if (entity.Fields.Count > 0)
@@ -90,7 +101,38 @@ public sealed class EntityShaper
 
             var title = entity.SourceTitle ?? entity.Name;
             var lead = leads.TryGetValue(title, out var fetchedLead) ? fetchedLead : string.Empty;
-            var result = ArchetypeLexicon.Resolve(HypernymExtractor.Extract(lead));
+            var head = HypernymExtractor.Extract(lead);
+            var result = ArchetypeLexicon.Resolve(head);
+
+            // The head wins when it resolves, because the article's own definition is better
+            // evidence than the candidate's name alone — "a merchant is a person" should not
+            // be overridden by whatever "merchant" might resolve to on its own. But when the
+            // head says nothing (Unknown) — most commonly because no head could be extracted
+            // at all, as on a disambiguation page ("Booking may refer to:") — the candidate's
+            // own name is still a signal ArchetypeLexicon has never been asked about: Resolve
+            // ("booking") is Event, Resolve("sale") is Transaction, Resolve("administration")
+            // is Abstract. Falling back to it here recovers exactly the candidates whose
+            // article defines nothing, without ever overriding one that does.
+            if (result.Verdict == ShapeVerdict.Unknown)
+            {
+                var ownNameResult = ArchetypeLexicon.Resolve(entity.Name);
+                if (ownNameResult.Verdict != ShapeVerdict.Unknown)
+                    result = ownNameResult;
+            }
+
+            pending.Add(entity);
+            candidates.Add(new ShapeCandidate(entity.Name, head, result));
+        }
+
+        // Pass 2b: a candidate the table has no opinion on may still be defined as one it does
+        // — "a motel is a hotel". This needs every candidate at once, which is why it happens
+        // here and not per-entity above.
+        var resolved = SubtypeChaining.Resolve(candidates);
+
+        // Pass 2c: now act, once, on a verdict nothing further can change.
+        foreach (var entity in pending)
+        {
+            var result = resolved[entity.Name];
 
             switch (result.Verdict)
             {
@@ -106,6 +148,24 @@ public sealed class EntityShaper
                     break;
 
                 default:
+                    // Unknown means "we have no opinion". Where we have none, the user having
+                    // typed the word IS the evidence: SeedEntityExtractor only ever produces a
+                    // Seed candidate from the description the user wrote. Abstract still
+                    // rejects above, so "system" and "application" cannot get in this way.
+                    // Note: ShapeVerdict.Unknown conflates two distinct cases: an article that
+                    // defines nothing we recognize, and a lead that could not be fetched at all
+                    // (a disambiguation page, a missing article, or a failed lookup). Before this
+                    // change the ambiguity only cost a suggestion; now a seed whose lookup merely
+                    // failed is minted as a class carrying only a Name field, indistinguishable
+                    // from a genuinely unrecognized noun. This is an accepted trade: the user
+                    // typed the word, and a visible spurious class costs one remove in the review
+                    // loop, whereas a silently missing class costs the user a class they asked for.
+                    if (entity.Provenance == Provenance.Seed)
+                    {
+                        DefaultFields.ApplyTo(entity, Provenance.Seed);
+                        break;
+                    }
+
                     model.Entities.Remove(entity);
                     model.Suggestions.Add(entity);
                     break;

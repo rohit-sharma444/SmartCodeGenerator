@@ -46,6 +46,9 @@ public static class RoleTemplate
             [Money("Amount"), Text("Currency"), When("OccurredOn"),
              Text("Method"), Text("Reference"), Text("Status")],
 
+        [EntityRole.Event] =
+            [Text("Reference"), When("StartsOn"), When("EndsOn"), Text("Status")],
+
         // Not a kind of thing another class references, and so not a kind of thing with a shape.
         [EntityRole.None] = [],
     };

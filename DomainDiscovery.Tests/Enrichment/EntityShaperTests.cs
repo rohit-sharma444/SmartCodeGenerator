@@ -53,21 +53,51 @@ public class EntityShaperTests
     }
 
     [Fact]
-    public void Shape_MovesAnUnshapeableSeedEntity_ToSuggestions()
+    public void Shape_KeepsAnUnshapeableSeedEntity_BecauseTheUserNamedIt()
     {
-        // SeedEntityExtractor turns every noun in the user's typed phrase into a
-        // Provenance.Seed entity with no fields — an extracted seed is a guess like any
-        // other, so it takes the same lead-fetch / hypernym / archetype gate as everything
-        // else. Nothing shapes "Widget" here (no lexicon entry, no fetchable lead), so it is
-        // suggested rather than kept as junk or silently deleted.
+        // A Seed candidate is a noun SeedEntityExtractor lifted out of the user's own typed
+        // phrase. An Unknown verdict means "we have no opinion" — and where we have no opinion,
+        // the user having named the thing is the only evidence there is. This is why
+        // `build app: a hotel booking application` used to produce no Booking class.
         var model = new CandidateDomainModel();
         model.Entities.Add(new CandidateEntity { Name = "Widget", Provenance = Provenance.Seed });
 
         Shaper.Shape(model);
 
+        var widget = Assert.Single(model.Entities);
+        Assert.Equal("Widget", widget.Name);
+        Assert.Contains(widget.Fields, f => f.Name == "Name");
+        Assert.Empty(model.Suggestions);
+        Assert.Empty(model.Rejected);
+    }
+
+    [Fact]
+    public void Shape_StillRejectsASeedEntityWhoseDefinitionIsAnAbstraction()
+    {
+        // The exemption is for Unknown only. "System" is defined as a group of interacting
+        // elements, and no amount of the user having typed it makes it a class.
+        var model = new CandidateDomainModel();
+        model.Entities.Add(new CandidateEntity { Name = "System", Provenance = Provenance.Seed });
+        _wiki.Leads["System"] = "A system is a group of interacting elements.";
+
+        Shaper.Shape(model);
+
+        Assert.Empty(model.Entities);
+        Assert.Empty(model.Suggestions);
+        Assert.Equal(new[] { "System" }, model.Rejected);
+    }
+
+    [Fact]
+    public void Shape_StillSuggestsAnUnshapeableWikiEntity()
+    {
+        // Only a SEED gets the exemption. A noun harvested from an article is not evidence of
+        // anything the user asked for, so it is still offered rather than kept.
+        var model = ModelOf("Widget");   // ModelOf builds Provenance.Wiki entities
+
+        Shaper.Shape(model);
+
         Assert.Empty(model.Entities);
         Assert.Equal(new[] { "Widget" }, model.Suggestions.Select(e => e.Name));
-        Assert.Empty(model.Rejected);
     }
 
     [Fact]
@@ -381,5 +411,88 @@ public class EntityShaperTests
         // The heading gate still excludes the type-enumeration and navigation lists.
         Assert.DoesNotContain("ProFormaInvoice", names);
         Assert.DoesNotContain("Receipt", names);
+    }
+
+    [Fact]
+    public void Shape_ACandidateDefinedAsAnotherCandidate_InheritsItsRoleAndIsKept()
+    {
+        // "widget" is a table key (Device), but "gizmo" is not: Gizmo can only shape by
+        // chaining off Widget, so this fails outright if SubtypeChaining is ever deleted.
+        var model = ModelOf("Widget", "Gizmo");
+        _wiki.Leads["Widget"] = "A widget is a device used for demonstration.";
+        _wiki.Leads["Gizmo"] = "A gizmo is a widget of unusual design.";
+
+        Shaper.Shape(model);
+
+        var gizmo = model.Entities.Single(e => e.Name == "Gizmo");
+        Assert.Equal(EntityRole.Device, gizmo.Role);
+        Assert.Contains(gizmo.Fields, f => f.Name == "SerialNumber");
+        Assert.DoesNotContain(model.Suggestions, e => e.Name == "Gizmo");
+    }
+
+    [Fact]
+    public void Shape_DoesNotDependOnTheOrderCandidatesAppearIn()
+    {
+        // Chaining reads the whole model, so the subtype may be listed before its parent.
+        var model = ModelOf("Gizmo", "Widget");
+        _wiki.Leads["Widget"] = "A widget is a device used for demonstration.";
+        _wiki.Leads["Gizmo"] = "A gizmo is a widget of unusual design.";
+
+        Shaper.Shape(model);
+
+        var gizmo = model.Entities.Single(e => e.Name == "Gizmo");
+        Assert.Equal(EntityRole.Device, gizmo.Role);
+        Assert.Contains(gizmo.Fields, f => f.Name == "SerialNumber");
+        Assert.DoesNotContain(model.Suggestions, e => e.Name == "Gizmo");
+    }
+
+    [Fact]
+    public void Shape_ADisambiguationPageCandidate_ResolvesFromItsOwnName()
+    {
+        // "Booking may refer to:" is a disambiguation page — HypernymExtractor returns "" for
+        // it, so there is no head to resolve at all. But "booking" on its own resolves to
+        // Event via ArchetypeLexicon, and that is plainly the right shape — this is the fallback
+        // Fix 3 adds, and without it every disambiguation page died as a bare suggestion.
+        _wiki.Leads["Booking"] = "Booking may refer to:";
+        var model = ModelOf("Booking");
+
+        Shaper.Shape(model);
+
+        var booking = Assert.Single(model.Entities);
+        Assert.Equal(EntityRole.Event, booking.Role);
+        Assert.Contains(booking.Fields, f => f.Name == "StartsOn");
+        Assert.DoesNotContain(model.Suggestions, e => e.Name == "Booking");
+    }
+
+    [Fact]
+    public void Shape_ADisambiguationPageCandidate_IsRejectedWhenItsOwnNameIsAbstract()
+    {
+        // Same disambiguation shape as Booking above, but "administration" resolves to
+        // ShapeVerdict.Abstract on its own — the own-name fallback must reject exactly as the
+        // head-based path would, landing the candidate in Rejected, not kept or suggested.
+        _wiki.Leads["Administration"] = "Administration may refer to:";
+        var model = ModelOf("Administration");
+
+        Shaper.Shape(model);
+
+        Assert.Empty(model.Entities);
+        Assert.Empty(model.Suggestions);
+        Assert.Equal(new[] { "Administration" }, model.Rejected);
+    }
+
+    [Fact]
+    public void Shape_TheHeadResolution_BeatsTheOwnNameResolution()
+    {
+        // "Sale" on its own resolves to Transaction via ArchetypeLexicon, but this article
+        // defines it as a person instead. The article's own definition is better evidence than
+        // the bare word, so the head must win — proving head-beats-name precedence with a
+        // concrete pair where the two disagree.
+        _wiki.Leads["Sale"] = "A sale is a person who negotiates deals.";
+        var model = ModelOf("Sale");
+
+        Shaper.Shape(model);
+
+        var sale = Assert.Single(model.Entities);
+        Assert.Equal(EntityRole.Party, sale.Role);
     }
 }

@@ -31,6 +31,38 @@ public static class HypernymExtractor
         };
 
     /// <summary>
+    /// Words that modify the head rather than being it, and which sit BEFORE it: "is often a
+    /// ranking", "is primarily a hospital", "is not a device". The scan steps over them and
+    /// keeps looking, instead of capturing the first token after the copula and stopping.
+    /// </summary>
+    /// <remarks>
+    /// Measured over twelve topic articles, these accounted for some thirty-five candidates
+    /// whose definition resolved to an adverb — "often", "primarily", "generally", "humanly",
+    /// "not" — and which therefore could never reach an archetype. Adverbs ending in "-ly" are
+    /// caught by rule (see <see cref="IsModifier"/>); this list is the ones that do not.
+    /// </remarks>
+    private static readonly HashSet<string> Modifiers =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            "not", "often", "also", "still", "just", "very", "quite", "rather", "more",
+            "most", "much", "any", "either", "neither", "sometimes", "always", "never",
+            "perhaps", "maybe", "so", "such", "well", "then", "now", "here", "there",
+            "large", "small", "big", "little", "new", "old", "long", "short", "high", "low"
+        };
+
+    /// <summary>
+    /// Words that join phrases and so cannot be a head: "is and was a drawer". Reaching one
+    /// BEFORE any head has been captured means the phrase has not started yet, so the scan
+    /// steps over it exactly as it does a modifier. Reaching one AFTER a head has been
+    /// captured ends the phrase instead of being skipped: "a room or area" must stop at
+    /// "room" — otherwise the second disjunct falls through to the plain "head = word"
+    /// assignment and overwrites it, which is exactly how "area" (an abstraction) used to
+    /// delete a "room" candidate outright.
+    /// </summary>
+    private static readonly HashSet<string> Conjunctions =
+        new(StringComparer.OrdinalIgnoreCase) { "and", "or", "but", "nor", "yet" };
+
+    /// <summary>
     /// Words that name a container for the real head rather than the head itself: "a type of
     /// display" is not about "type", it is about "display". Only "of" earns a second scan past
     /// one of these — "a type that detects touch" has no second noun phrase to chase.
@@ -38,6 +70,56 @@ public static class HypernymExtractor
     private static readonly HashSet<string> ContainerWords =
         new(StringComparer.OrdinalIgnoreCase)
         { "type", "kind", "form", "sort", "variety", "class", "category" };
+
+    /// <summary>
+    /// Irregular past participles that can follow a head noun and modify it, the same way an
+    /// "-ing"/"-ed" word does: "travel undertaken for work purposes" must stop at "travel", not
+    /// wander into "undertaken". A suffix rule cannot cover these the way it covers "-ing"/"-ed"
+    /// — ordinary nouns such as "chicken", "kitchen", "garden", "citizen" and "children" also end
+    /// in "-en", and treating that ending as a participle marker would strip them as modifiers of
+    /// whatever word precedes them. So the irregular forms are enumerated here instead.
+    /// </summary>
+    private static readonly HashSet<string> IrregularParticiples =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            "undertaken", "taken", "given", "written", "known", "driven", "spoken", "chosen",
+            "proven", "seen", "shown", "held", "kept", "spent", "made", "sold", "told", "built",
+            "sent", "found", "left", "brought", "bought", "taught", "thought"
+        };
+
+    /// <summary>
+    /// Ordinary nouns that happen to end in "-ly" and so would otherwise be caught by the
+    /// blanket adverb-suffix rule in <see cref="IsModifier"/>, stripping the head right where
+    /// it sits: "a clan is a family of related people" must yield "family", not skip over it
+    /// looking for a noun that never comes. No <see cref="ArchetypeLexicon"/> key currently
+    /// ends in "-ly", so this list has not yet changed a verdict — but <see cref="SubtypeChaining"/>
+    /// needs the exact word, and a candidate defined as "an assembly of..." could otherwise
+    /// never chain to an `Assembly` class in the same model. Kept small and closed rather than
+    /// inverted (e.g. "not ending in a vowel + ly") because the false-positive rate of a looser
+    /// rule is unmeasured and a closed list is exactly as cheap to extend later.
+    /// </summary>
+    private static readonly HashSet<string> LyNouns =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            "family", "assembly", "supply", "monopoly", "anomaly", "ally", "rally", "alley",
+            "folly"
+        };
+
+    /// <summary>
+    /// True for a word that qualifies the head noun rather than being it: an adverb (by the
+    /// "-ly" suffix or by the closed <see cref="Modifiers"/> list) or a conjunction. The "-ly"
+    /// suffix rule defers to <see cref="LyNouns"/> first, since that suffix alone cannot tell
+    /// "family" (a noun) from "primarily" (an adverb). Deliberately does NOT treat "-ing"/"-ed"
+    /// words as modifiers here — <see cref="ScanHead"/> already has a position-sensitive rule
+    /// for those, and it must keep it: "a gathering of people" needs "gathering" as the head,
+    /// while "a document acknowledging receipt" needs "document".
+    /// </summary>
+    private static bool IsModifier(string word)
+        => Conjunctions.Contains(word)
+           || Modifiers.Contains(word)
+           || (!LyNouns.Contains(word)
+               && word.Length > 3
+               && word.EndsWith("ly", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// Extracts the head noun (hypernym) from a Wikipedia lead sentence.
@@ -116,6 +198,20 @@ public static class HypernymExtractor
                 continue;
             }
 
+            // "is often a ranking", "is primarily a hospital", "is and was a drawer": step over
+            // the qualifier and keep looking for the noun. Only BEFORE a head is captured —
+            // after one, a following word is either a terminator, a participle modifying the
+            // head (handled below), or a continuation that legitimately overwrites it.
+            if (head.Length == 0 && IsModifier(word))
+                continue;
+
+            // Once a head is captured, a conjunction ends the phrase rather than being
+            // skipped over — "a room or area" must stop at "room". Without this, the word
+            // falls through to the plain "head = word" assignment below and the second
+            // disjunct silently wins.
+            if (head.Length > 0 && Conjunctions.Contains(word))
+                return (head, word, i + 1);
+
             if (Terminators.Contains(word))
                 return (head, word, i + 1);
 
@@ -125,9 +221,13 @@ public static class HypernymExtractor
             // head has been captured, a "-ing"/"-ed" word is the head itself, not a modifier of
             // it - "a gathering of people" must yield "gathering", and "an organized collection
             // of data" must let "organized" through so it can be overwritten by "collection".
+            // Irregular past participles ("undertaken", "given", ...) are checked separately
+            // since no suffix rule can catch them without also catching ordinary nouns like
+            // "chicken" and "kitchen" (see IrregularParticiples).
             if (head.Length > 0 &&
                 (word.EndsWith("ing", StringComparison.OrdinalIgnoreCase) ||
-                 word.EndsWith("ed", StringComparison.OrdinalIgnoreCase)))
+                 word.EndsWith("ed", StringComparison.OrdinalIgnoreCase) ||
+                 IrregularParticiples.Contains(word)))
                 return (head, string.Empty, i);
 
             head = word;

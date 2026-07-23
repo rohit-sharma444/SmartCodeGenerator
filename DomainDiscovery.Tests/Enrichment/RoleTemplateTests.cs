@@ -67,4 +67,35 @@ public class RoleTemplateTests
         foreach (var role in Enum.GetValues<EntityRole>())
             Assert.DoesNotContain(RoleTemplate.For(role), f => f.Name == "Id");
     }
+
+    [Fact]
+    public void For_Event_CarriesTheSchedulingBaseline()
+    {
+        var fields = RoleTemplate.For(EntityRole.Event);
+
+        Assert.Equal(
+            new[] { "Reference", "StartsOn", "EndsOn", "Status" },
+            fields.Select(f => f.Name));
+        Assert.Equal("DateTime", fields.Single(f => f.Name == "StartsOn").Type);
+        Assert.Equal("DateTime", fields.Single(f => f.Name == "EndsOn").Type);
+        Assert.Equal("string", fields.Single(f => f.Name == "Reference").Type);
+    }
+
+    [Fact]
+    public void Event_RanksWithDocumentsAndTransactions()
+    {
+        // Rank 4 is the "may hold a foreign key" tier: a Booking references a Guest (Party,
+        // rank 1) and a Room (Place, rank 2). Equal ranks link in neither direction, so an
+        // Event never acquires an InvoiceId on rank alone.
+        Assert.Equal(4, EntityRoleRank.RankOf(EntityRole.Event));
+        Assert.Equal(
+            EntityRoleRank.RankOf(EntityRole.Transaction),
+            EntityRoleRank.RankOf(EntityRole.Event));
+    }
+
+    [Fact]
+    public void Event_MayCarryForeignKeys()
+    {
+        Assert.True(EntityRoleRank.CanReference(EntityRole.Event));
+    }
 }

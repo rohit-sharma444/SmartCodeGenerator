@@ -74,7 +74,7 @@ public class DomainDiscoveryPipelineTests
     }
 
     [Fact]
-    public void Discover_MovesASeedNoun_TheLexiconAndWikipediaCannotShape_ToSuggestions()
+    public void Discover_KeepsASeedNoun_TheLexiconAndWikipediaCannotShape_BecauseTheUserNamedIt()
     {
         var analysis = new SemanticResult();
         analysis.Entities.Add(Ent("widget", EntityType.Object));
@@ -93,10 +93,13 @@ public class DomainDiscoveryPipelineTests
 
         // SeedEntityExtractor turned "widget" into a Provenance.Seed entity with no fields,
         // same as every other noun in the typed phrase. The lexicon does not know it and its
-        // lead cannot be fetched (FakeWikipediaClient has no entry), so it is offered as a
-        // suggestion rather than kept as junk.
-        Assert.Empty(result.Model.Entities);
-        Assert.Equal(new[] { "Widget" }, result.Model.Suggestions.Select(e => e.Name));
+        // lead cannot be fetched (FakeWikipediaClient has no entry), so the verdict is Unknown —
+        // and since the user typed the word themselves, EntityShaper now keeps it (with the
+        // DefaultFields "Name" field) rather than offering it back as a suggestion.
+        var widget = Assert.Single(result.Model.Entities);
+        Assert.Equal("Widget", widget.Name);
+        Assert.Contains(widget.Fields, f => f.Name == "Name");
+        Assert.Empty(result.Model.Suggestions);
         Assert.Empty(result.Model.Rejected);
     }
 
