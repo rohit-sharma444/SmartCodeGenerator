@@ -85,7 +85,14 @@ export class EngineHost {
   dispose(): void {
     const child = this.child;
     this.child = undefined;
-    if (child) child.kill();
+    if (child && child.pid !== undefined) {
+      if (process.platform === 'win32') {
+        // `dotnet run` is a launcher; kill the whole tree so the built CLI isn't orphaned.
+        spawn('taskkill', ['/pid', String(child.pid), '/t', '/f'], { stdio: 'ignore' });
+      } else {
+        child.kill();
+      }
+    }
     this.setState('stopped');
   }
 

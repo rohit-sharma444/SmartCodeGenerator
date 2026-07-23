@@ -8,7 +8,7 @@ export class SmartCodeGenPanel implements vscode.WebviewViewProvider {
 
   constructor(
     private readonly extensionUri: vscode.Uri,
-    private readonly handlers: { onSubmit: (text: string) => void }
+    private readonly handlers: { onSubmit: (text: string) => void; onReady?: () => void }
   ) {}
 
   resolveWebviewView(view: vscode.WebviewView): void {
@@ -20,6 +20,7 @@ export class SmartCodeGenPanel implements vscode.WebviewViewProvider {
     view.webview.html = this.getHtml(view.webview);
     view.webview.onDidReceiveMessage((msg: InboundMessage) => {
       if (msg.type === 'submit') this.handlers.onSubmit(msg.text);
+      else if (msg.type === 'ready') this.handlers.onReady?.();
     });
   }
 

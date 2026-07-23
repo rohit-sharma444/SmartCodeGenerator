@@ -33,11 +33,21 @@ test('real CLI: a class created by one command is visible to the next', { skip: 
 
   host.start();
   await waitForState(host, 'ready');
+  // A class created with no project selected is written straight into the
+  // workspace, but `show class` only looks inside the active project - so a
+  // project must be created and selected first for the two commands to
+  // actually share state (see CodeGenerator/README.md's example session).
+  host.send('create console project IntegrationApp');
+  await waitForState(host, 'ready');
+  host.send('use project IntegrationApp');
+  await waitForState(host, 'ready');
   host.send('create class IntegrationFoo');
   await waitForState(host, 'ready');
+  const beforeShow = out.length;
   host.send('show class IntegrationFoo');
   await waitForState(host, 'ready');
   host.dispose();
 
-  assert.match(out.join(''), /class IntegrationFoo/);
+  const showOutput = out.slice(beforeShow).join('');
+  assert.match(showOutput, /public class IntegrationFoo/);
 });

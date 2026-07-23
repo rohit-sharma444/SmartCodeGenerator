@@ -23,6 +23,7 @@ export function activate(context: vscode.ExtensionContext): void {
       }
       host!.send(text);
     },
+    onReady: () => panel.post({ type: 'state', state: host!.state }),
   });
 
   host.onOutput((chunk, stream) => panel.post({ type: 'output', chunk, stream }));
@@ -44,7 +45,7 @@ export function activate(context: vscode.ExtensionContext): void {
     { dispose: () => host?.dispose() }
   );
 
-  // Start the engine once the panel is first resolved by the user opening the view.
+  // Start the engine now; the onView activation event means activate() runs when the panel is opened.
   host.start();
 }
 
