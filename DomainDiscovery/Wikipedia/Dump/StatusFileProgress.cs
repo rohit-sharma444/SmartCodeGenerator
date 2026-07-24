@@ -49,7 +49,13 @@ public sealed class StatusFileProgress : IStoreUpdateProgress
 
     public void BeginPhase(UpdatePhase phase, int day, long total, long initial) => Safely(() =>
     {
-        _currentDay = day;
+        // IncrementalUpdater.cs:153 calls BeginPhase(Apply, day: 0, ...) with a literal zero — the
+        // apply path works from a file path and does not know the day. Only overwrite _currentDay
+        // when the caller actually knows the day, so the value learned during Download survives
+        // into Apply's publishes instead of going null for the second half of the day's progress.
+        if (day != 0)
+            _currentDay = day;
+
         _percentages.BeginPhase(phase, day, total, initial);
     });
 

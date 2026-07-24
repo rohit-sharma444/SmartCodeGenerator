@@ -109,6 +109,29 @@ public sealed class StatusFileProgressTests
     }
 
     [Fact]
+    public void CurrentDay_SurvivesTheApplyPhase_WhichAlwaysReportsDayZero()
+    {
+        // IncrementalUpdater.cs:153 calls BeginPhase(Apply, day: 0, ...) with a literal zero — the
+        // apply path works from a file path and does not know the day. The day learned during
+        // Download must survive into Apply's publishes; a naive BeginPhase overwrites _currentDay
+        // with that 0, and Apply's publishes report CurrentDay == null for the rest of the day.
+        var (progress, published, clock) = Build(pendingDays: 1);
+
+        progress.BeginDay(0, 1);
+        progress.BeginPhase(UpdatePhase.Download, 20260723, 100, 0);
+        progress.Report(50);
+        progress.EndPhase();
+
+        // Cross the publish throttle so the Apply-phase report below actually publishes.
+        clock.Advance(StatusFileProgress.PublishInterval);
+        progress.BeginPhase(UpdatePhase.Apply, 0, 100, 0);
+        progress.Report(50);
+
+        var status = published[^1];
+        Assert.Equal(20260723, status.CurrentDay);
+    }
+
+    [Fact]
     public void APublishThatThrows_NeverEscapes()
     {
         // Report is reached from CountingStream; BZip2InputStream treats any exception from the
