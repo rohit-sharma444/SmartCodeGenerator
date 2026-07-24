@@ -134,7 +134,7 @@ internal class CodeGeneratorStarter
             if (ClearCommand.IsClear(input))
             {
                 // Screen-only wipe, then redraw the header so it stays put (the
-                // background store update is NOT restarted). Skipped when output
+                // store-status report is NOT re-printed). Skipped when output
                 // is redirected because Console.Clear() throws IOException with no
                 // console attached, and clearing a piped transcript is meaningless.
                 // History (in-memory list and .codegen_history) stays intact:
@@ -221,8 +221,8 @@ internal class CodeGeneratorStarter
 
     /// <summary>
     /// Writes the title banner and command hints. Kept separate from the one-time
-    /// startup work in <see cref="PrintHeader"/> (e.g. the background store update)
-    /// so <c>clear</c> can redraw the header after wiping the screen without
+    /// startup work in <see cref="PrintHeader"/> (e.g. reporting the Wikipedia store's
+    /// status) so <c>clear</c> can redraw the header after wiping the screen without
     /// re-triggering that work.
     /// </summary>
     private static void PrintBanner()
