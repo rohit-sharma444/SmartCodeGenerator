@@ -18,11 +18,19 @@ body {
 #promptlabel {
   flex: 0 0 auto; user-select: none; white-space: pre;
   color: var(--vscode-textLink-foreground);
+  /* Deliberately larger than the transcript: this is the one element that should be findable
+     without looking for it. Sized in em so it still tracks the editor font-size setting. */
+  font-size: 1.15em; font-weight: 600;
 }
 /* Matches #input:disabled, so the label dims with the box it belongs to. */
 #promptlabel.dim { opacity: 0.6; }
 #input {
   flex: 1 1 auto; min-width: 0; box-sizing: border-box; padding: 4px;
+  /* Form controls do not inherit the page font, so state it — otherwise the text you type is
+     rendered in the browser default while the transcript above it uses the editor font.
+     Matched to the label's size; padding is left alone so the row grows only as much as the
+     text needs. */
+  font-family: inherit; font-size: 1.15em;
   background: var(--vscode-input-background); color: var(--vscode-input-foreground);
   border: 1px solid var(--vscode-input-border, transparent);
 }
