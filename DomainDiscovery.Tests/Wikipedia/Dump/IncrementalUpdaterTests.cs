@@ -346,12 +346,16 @@ public sealed class IncrementalUpdaterTests : IDisposable
     private sealed class RecordingProgress : IStoreUpdateProgress
     {
         public List<UpdatePhase> PhasesBegun { get; } = [];
+        public List<int> DaysBegun { get; } = [];
         public int Reports { get; private set; }
         public bool Ended { get; private set; }
 
         public void BeginDay(int dayIndex, int dayCount) { }
         public void BeginPhase(UpdatePhase phase, int day, long total, long initial)
-            => PhasesBegun.Add(phase);
+        {
+            PhasesBegun.Add(phase);
+            DaysBegun.Add(day);
+        }
         public void Report(long done) => Reports++;
         public void EndPhase() => Ended = true;
         public void Finish(StartupUpdateOutcome outcome, int daysApplied) { }
@@ -373,5 +377,36 @@ public sealed class IncrementalUpdaterTests : IDisposable
         Assert.Contains(UpdatePhase.Apply, progress.PhasesBegun);
         Assert.True(progress.Reports > 0);
         Assert.True(progress.Ended);
+    }
+
+    /// <summary>
+    /// Regression for findings 4+5: UpdateDay must thread the real day into Apply's BeginPhase call,
+    /// not the literal 0 Apply used to publish on its own. This exercises exactly the resume path
+    /// that used to hide the bug: the file is already on disk in full, so Download returns before it
+    /// ever calls BeginPhase, and the Apply phase is the ONLY BeginPhase call for this day.
+    /// </summary>
+    [Fact]
+    public void UpdateDay_PublishesTheRealDay_ThroughApply_EvenWhenDownloadNeverCallsBeginPhase()
+    {
+        var store = NewStore();
+        var file = Increment("""
+              <page><title>Receipt</title><ns>0</ns><id>101</id>
+                <revision><id>2</id><text xml:space="preserve">A receipt.</text></revision>
+              </page>
+            """);
+
+        var working = Path.GetDirectoryName(file)!;
+        File.Copy(file, Path.Combine(working, "enwiki-20260702-incr.xml.bz2"), overwrite: true);
+
+        var progress = new RecordingProgress();
+        var server = new StubDumpServer(File.ReadAllBytes(file));
+
+        new IncrementalUpdater(store, new HttpClient(server), say: _ => { }, progress: progress)
+            .UpdateDay(20260702, working);
+
+        // Download found the file already complete and returned without a BeginPhase call at all —
+        // so Apply's is the only one, and it must carry 20260702, not 0.
+        Assert.Equal([UpdatePhase.Apply], progress.PhasesBegun);
+        Assert.Equal([20260702], progress.DaysBegun);
     }
 }

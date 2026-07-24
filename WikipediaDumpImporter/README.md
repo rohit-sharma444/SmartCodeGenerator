@@ -122,6 +122,12 @@ run stopped part-way resumes at the day it was on.
 
 `--update` is not a status command: it is the thing that spends the 10 GB.
 
+> ⚠️ **Do not run `--update` while `SmartCodeGenWikipediaUpdater` is installed and running.** The
+> Windows Service now owns the daily increment update (see
+> [`DomainDiscovery`](../DomainDiscovery/README.md#keeping-the-store-up-to-date)) and drives the same
+> `IncrementalUpdater` over the same store and working directory — running both at once races them
+> against each other.
+
 ## Key types
 
 | Type | Where | Role |

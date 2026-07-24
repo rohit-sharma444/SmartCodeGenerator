@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <!-- EventLog is Windows-only; state that rather than suppress CA1416 under -warnaserror. -->
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <!-- Lets a non-Windows CI agent still build this project. -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <UserSecretsId>smartcodegen-wikipedia-updater</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.0" />
+    <PackageReference Include="System.Diagnostics.EventLog" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DomainDiscovery\DomainDiscovery.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="appsettings.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>
