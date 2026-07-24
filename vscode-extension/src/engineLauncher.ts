@@ -16,10 +16,16 @@ const CONFIG = 'Debug';
  * stopped" in any folder that was not the repo: `dotnet build CodeGenerator` was run against a
  * directory with no such project.
  *
- * The open workspace wins when it is itself a checkout, so opening the repo behaves exactly as
- * it always did and the setting is only consulted when it is actually needed. Returning
- * undefined rather than guessing is deliberate: the caller can then say what is wrong, which is
- * far more use than a failed build.
+ * Three sources, in descending order of how strongly they state intent:
+ *   1. the open workspace, or any folder above it — you are plainly in a checkout;
+ *   2. `smartcodegen.repositoryPath` — a path the user typed is an instruction;
+ *   3. the checkout last seen on this machine — a convenience, so that having opened the repo
+ *      once means every other folder just works without configuring anything.
+ * Each is verified before use, so a checkout that has since been moved or deleted is skipped
+ * rather than trusted.
+ *
+ * Returning undefined rather than guessing is deliberate: the caller can then say what is
+ * wrong and offer to fix it, which is far more use than a failed build.
  *
  * Only the ENGINE comes from here. The engine's working directory and `PROJECTPATH` stay on the
  * open workspace, so generated code still lands in the folder you are working in.
@@ -27,15 +33,39 @@ const CONFIG = 'Debug';
 export function resolveEngineRoot(
   workspace: string,
   configured: string | undefined,
+  remembered?: string | undefined,
 ): string | undefined {
-  if (isEngineRoot(workspace)) return workspace;
+  return findEngineRootAt(workspace)
+    ?? firstEngineRoot(configured)
+    ?? firstEngineRoot(remembered);
+}
 
-  const setting = (configured ?? '').trim();
-  return setting !== '' && isEngineRoot(setting) ? setting : undefined;
+/** A candidate path, honoured only if it really is a checkout. Blank and stale paths drop out. */
+function firstEngineRoot(candidate: string | undefined): string | undefined {
+  const trimmed = (candidate ?? '').trim();
+  return trimmed !== '' && isEngineRoot(trimmed) ? trimmed : undefined;
+}
+
+/**
+ * The checkout at `directory` or above it. Opening a subfolder of the repo — `docs`, or one of
+ * the projects — is opening the repo as far as the user is concerned, and must not demand a
+ * setting. The walk terminates at the filesystem root, where `path.dirname` becomes a fixed
+ * point.
+ */
+function findEngineRootAt(directory: string): string | undefined {
+  let current = directory.trim();
+  if (current === '') return undefined;
+
+  for (;;) {
+    if (isEngineRoot(current)) return current;
+    const parent = path.dirname(current);
+    if (parent === current) return undefined;
+    current = parent;
+  }
 }
 
 /** Whether a directory holds the engine's project file — what `dotnet build` actually needs. */
-function isEngineRoot(directory: string): boolean {
+export function isEngineRoot(directory: string): boolean {
   return directory !== ''
     && fs.existsSync(path.join(directory, PROJECT, `${PROJECT}.csproj`));
 }

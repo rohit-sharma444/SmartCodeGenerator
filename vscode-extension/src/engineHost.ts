@@ -46,14 +46,27 @@ export class EngineHost {
   private readonly readyMarker: RegExp;
   private readonly promptMarker: RegExp;
   private tail = '';
+  private args: string[];
 
   constructor(private readonly opts: EngineHostOptions) {
     this.readyMarker = opts.readyMarker ?? /CodeGenerator >>\s*$/;
     this.promptMarker = opts.promptMarker ?? DEFAULT_PROMPT_MARKER;
+    this.args = opts.args;
   }
 
   get state(): EngineState {
     return this._state;
+  }
+
+  /**
+   * Points the host at a different engine binary, applied on the next start.
+   *
+   * The checkout is not always known when the host is built: a folder that is not a checkout
+   * can have one located later, from the setting or the folder picker. Rebuilding the host
+   * would drop the panel's and ProjectSync's subscriptions, so the binary is swapped instead.
+   */
+  setArgs(args: string[]): void {
+    this.args = args;
   }
 
   onOutput(cb: OutputListener): Disposable {
@@ -70,7 +83,7 @@ export class EngineHost {
     if (this.child) return;
     this.setState('starting');
     this.tail = '';
-    const child = spawn(this.opts.command, this.opts.args, {
+    const child = spawn(this.opts.command, this.args, {
       cwd: this.opts.cwd,
       env: this.opts.env ?? process.env,
     });
