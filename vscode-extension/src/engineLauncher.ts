@@ -16,11 +16,15 @@ const CONFIG = 'Debug';
  * stopped" in any folder that was not the repo: `dotnet build CodeGenerator` was run against a
  * directory with no such project.
  *
- * Three sources, in descending order of how strongly they state intent:
+ * Four sources, in descending order of how strongly they state intent:
  *   1. the open workspace, or any folder above it — you are plainly in a checkout;
  *   2. `smartcodegen.repositoryPath` — a path the user typed is an instruction;
  *   3. the checkout last seen on this machine — a convenience, so that having opened the repo
- *      once means every other folder just works without configuring anything.
+ *      once means every other folder just works without configuring anything;
+ *   4. the checkout this extension was built from, stamped into the package at build time —
+ *      the backstop that makes a fresh install work in an unrelated folder straight away.
+ *      Without it the first three are all empty until the repo has been opened at least once,
+ *      which is exactly the "engine stopped in any other folder" the user hit.
  * Each is verified before use, so a checkout that has since been moved or deleted is skipped
  * rather than trusted.
  *
@@ -34,10 +38,38 @@ export function resolveEngineRoot(
   workspace: string,
   configured: string | undefined,
   remembered?: string | undefined,
+  stamped?: string | undefined,
 ): string | undefined {
   return findEngineRootAt(workspace)
     ?? firstEngineRoot(configured)
-    ?? firstEngineRoot(remembered);
+    ?? firstEngineRoot(remembered)
+    ?? firstEngineRoot(stamped);
+}
+
+/** Where `scripts/stamp-build-info.mjs` records the checkout, inside the packaged extension. */
+const BUILD_INFO = ['out', 'buildInfo.json'];
+
+/**
+ * The checkout this extension was built from, as recorded at build time, or undefined if the
+ * stamp is absent or unusable.
+ *
+ * The VSIX is packaged from a checkout, so that path is known at build time — and was until now
+ * simply discarded, leaving a fresh install with no way to name a checkout at all. The stamp is
+ * a build artifact (`out/` is git-ignored), so no machine-specific path is ever committed.
+ *
+ * Anything unexpected here reads as "no stamp": an extension built without the stamping step,
+ * or installed somewhere the checkout no longer exists, must still activate and ask.
+ */
+export function readStampedRoot(extensionPath: string): string | undefined {
+  try {
+    const parsed: unknown = JSON.parse(
+      fs.readFileSync(path.join(extensionPath, ...BUILD_INFO), 'utf8'),
+    );
+    const root = (parsed as { engineRoot?: unknown } | null)?.engineRoot;
+    return typeof root === 'string' ? root : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** A candidate path, honoured only if it really is a checkout. Blank and stale paths drop out. */

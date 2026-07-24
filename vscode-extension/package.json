@@ -46,7 +46,7 @@
     }
   },
   "scripts": {
-    "compile": "tsc -p ./",
+    "compile": "tsc -p ./ && node scripts/stamp-build-info.mjs",
     "watch": "tsc -watch -p ./",
     "test": "node --import tsx --test test/*.test.ts",
     "vscode:prepublish": "npm run compile",

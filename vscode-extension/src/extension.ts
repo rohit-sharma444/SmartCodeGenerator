@@ -4,7 +4,13 @@ import * as path from 'node:path';
 import { EngineHost } from './engineHost';
 import { SmartCodeGenPanel } from './panelView';
 import { ProjectSync } from './projectSync';
-import { buildEngine, isEngineRoot, resolveDebugDll, resolveEngineRoot } from './engineLauncher';
+import {
+  buildEngine,
+  isEngineRoot,
+  readStampedRoot,
+  resolveDebugDll,
+  resolveEngineRoot,
+} from './engineLauncher';
 import { dbg, LOG_PATH } from './debugLog';
 
 let host: EngineHost | undefined;
@@ -32,12 +38,21 @@ export function activate(context: vscode.ExtensionContext): void {
   // you have open — that is usually the project you are generating code into. Only the engine
   // comes from here; cwd and PROJECTPATH below stay on the workspace, so generated code lands in
   // the folder you are working in.
-  const discovered = resolveEngineRoot(
-    workspace,
-    vscode.workspace.getConfiguration('smartcodegen').get<string>('repositoryPath'),
-    context.globalState.get<string>(REMEMBERED_ROOT_KEY),
-  );
-  dbg(`engineRoot=${JSON.stringify(discovered)}`);
+  // Read once: the checkout the VSIX was built from, the backstop for a fresh install opened
+  // straight into a folder that is not the repository.
+  const stamped = readStampedRoot(context.extensionUri.fsPath);
+
+  /** Every source, re-consulted whenever one of them may have changed. */
+  const currentEngineRoot = (): string | undefined =>
+    resolveEngineRoot(
+      workspace,
+      vscode.workspace.getConfiguration('smartcodegen').get<string>('repositoryPath'),
+      context.globalState.get<string>(REMEMBERED_ROOT_KEY),
+      stamped,
+    );
+
+  const discovered = currentEngineRoot();
+  dbg(`engineRoot=${JSON.stringify(discovered)}; stamped=${JSON.stringify(stamped)}`);
 
   host = new EngineHost({
     command: 'dotnet',
@@ -158,11 +173,7 @@ export function activate(context: vscode.ExtensionContext): void {
     // for it to take effect is one more way for this to look broken.
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (!e.affectsConfiguration('smartcodegen.repositoryPath')) return;
-      const root = resolveEngineRoot(
-        workspace,
-        vscode.workspace.getConfiguration('smartcodegen').get<string>('repositoryPath'),
-        context.globalState.get<string>(REMEMBERED_ROOT_KEY),
-      );
+      const root = currentEngineRoot();
       if (root !== undefined) useEngineRoot(root);
     }),
     { dispose: () => host?.dispose() },

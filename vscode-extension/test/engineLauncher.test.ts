@@ -4,7 +4,7 @@ import assert from 'node:assert';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { resolveEngineRoot } from '../src/engineLauncher';
+import { readStampedRoot, resolveEngineRoot } from '../src/engineLauncher';
 
 /** A directory that looks like a SmartCodeGenerator checkout, as far as the launcher cares. */
 function makeRepo(): string {
@@ -91,6 +91,59 @@ test('undefined when the configured path is wrong rather than silently guessing'
 test('surrounding whitespace in the setting is tolerated', () => {
   const repo = makeRepo();
   assert.strictEqual(resolveEngineRoot(makePlainFolder(), `  ${repo}  `), repo);
+});
+
+test('the checkout the extension was built from is used when nothing else identifies one', () => {
+  // The case that actually bit: a freshly installed VSIX, opened in a folder that is not the
+  // repo, having never yet been opened in one. Workspace, setting and memory are all empty,
+  // and before this there was simply no engine — "engine stopped", with nothing to restart.
+  const repo = makeRepo();
+  assert.strictEqual(resolveEngineRoot(makePlainFolder(), undefined, undefined, repo), repo);
+});
+
+test('a remembered checkout outranks the one the extension was built from', () => {
+  // Both are conveniences, but memory records a checkout this user actually ran; the stamp
+  // only records where the VSIX happened to be packaged.
+  const remembered = makeRepo();
+  const stamped = makeRepo();
+  assert.strictEqual(
+    resolveEngineRoot(makePlainFolder(), undefined, remembered, stamped),
+    remembered,
+  );
+});
+
+test('a build-stamped checkout that has since moved is ignored, not trusted', () => {
+  // A VSIX outlives the checkout it was built from — installed on another machine, or the
+  // repo simply moved. Verified like every other candidate, so it degrades to the prompt.
+  const gone = path.join(os.tmpdir(), 'scg-stamped-but-deleted');
+  assert.strictEqual(resolveEngineRoot(makePlainFolder(), undefined, undefined, gone), undefined);
+});
+
+test('the build stamp is read from the packaged extension directory', () => {
+  const repo = makeRepo();
+  const extensionDir = makePlainFolder();
+  fs.mkdirSync(path.join(extensionDir, 'out'), { recursive: true });
+  fs.writeFileSync(
+    path.join(extensionDir, 'out', 'buildInfo.json'),
+    JSON.stringify({ engineRoot: repo }),
+  );
+
+  assert.strictEqual(readStampedRoot(extensionDir), repo);
+});
+
+test('a missing or unreadable build stamp is simply absent, never a crash', () => {
+  // An extension built without the stamping step must still activate.
+  assert.strictEqual(readStampedRoot(makePlainFolder()), undefined);
+
+  const malformed = makePlainFolder();
+  fs.mkdirSync(path.join(malformed, 'out'), { recursive: true });
+  fs.writeFileSync(path.join(malformed, 'out', 'buildInfo.json'), 'not json at all');
+  assert.strictEqual(readStampedRoot(malformed), undefined);
+
+  const wrongShape = makePlainFolder();
+  fs.mkdirSync(path.join(wrongShape, 'out'), { recursive: true });
+  fs.writeFileSync(path.join(wrongShape, 'out', 'buildInfo.json'), JSON.stringify({ engineRoot: 7 }));
+  assert.strictEqual(readStampedRoot(wrongShape), undefined);
 });
 
 test('a directory without the csproj is not a repository', () => {
