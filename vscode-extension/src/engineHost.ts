@@ -1,5 +1,6 @@
 // vscode-extension/src/engineHost.ts
 import { spawn, ChildProcess } from 'node:child_process';
+import { dbg } from './debugLog';
 
 export type EngineState = 'starting' | 'ready' | 'busy' | 'stopped';
 
@@ -100,15 +101,20 @@ export class EngineHost {
     for (const cb of this.outputListeners) cb(chunk, stream);
     if (stream === 'stdout') {
       this.tail = (this.tail + chunk).slice(-200);
-      if (this.readyMarker.test(this.tail)) {
+      const matched = this.readyMarker.test(this.tail);
+      dbg(`OUT stdout ${JSON.stringify(chunk.slice(0, 60))} tailEnd=${JSON.stringify(this.tail.slice(-45))} match=${matched}`);
+      if (matched) {
         this.tail = '';
         this.setState('ready');
       }
+    } else {
+      dbg(`OUT stderr ${JSON.stringify(chunk.slice(0, 60))}`);
     }
   }
 
   private setState(s: EngineState): void {
     if (this._state === s) return;
+    dbg(`STATE ${this._state} -> ${s}`);
     this._state = s;
     for (const cb of this.stateListeners) cb(s);
   }

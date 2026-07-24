@@ -44,8 +44,10 @@ window.addEventListener('message', (event) => {
   } else if (msg.type === 'state') {
     input.disabled = msg.state === 'busy' || msg.state === 'starting' || msg.state === 'stopped';
     input.placeholder = msg.state === 'busy' ? 'working…'
+      : msg.state === 'starting' ? 'starting engine…'
       : msg.state === 'stopped' ? 'engine stopped'
       : 'Type a command…';
+    vscode.postMessage({ type: 'dbg', text: 'received state=' + msg.state + ' -> input.disabled=' + input.disabled });
   } else if (msg.type === 'system') {
     if (msg.text === '__clear__') transcript.replaceChildren();
     else if (msg.text === '__focus__') input.focus();
@@ -53,4 +55,5 @@ window.addEventListener('message', (event) => {
   }
 });
 
+vscode.postMessage({ type: 'dbg', text: 'webview script loaded' });
 vscode.postMessage({ type: 'ready' });
