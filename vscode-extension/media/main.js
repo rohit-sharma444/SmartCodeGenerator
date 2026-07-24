@@ -1,11 +1,18 @@
 // vscode-extension/media/main.js
+import { PROMPT, echoPrefix } from './prompt.js';
+
 const vscode = acquireVsCodeApi();
 const transcript = document.getElementById('transcript');
 const form = document.getElementById('inputform');
 const input = document.getElementById('input');
+const promptLabel = document.getElementById('promptlabel');
 const history = [];
 let histIndex = -1;
 let state = 'starting';
+
+// Single source of truth: the label and the transcript echo both come from PROMPT.
+// Trailing space trimmed because the flex `gap` provides the spacing on screen.
+promptLabel.textContent = PROMPT.trimEnd();
 
 function append(text, cls) {
   const line = document.createElement('div');
@@ -21,7 +28,7 @@ form.addEventListener('submit', (e) => {
   // At the top-level prompt a blank line is noise, but as an *answer* it is meaningful and
   // often the only way forward: it ends a batch block and aborts the snapshot confirmation.
   if (text.trim() === '' && state !== 'prompting') return;
-  append('> ' + text, 'cmd');
+  append(echoPrefix(state) + text, 'cmd');
   if (text.trim() !== '') {
     history.push(text);
     histIndex = history.length;
@@ -52,6 +59,7 @@ window.addEventListener('message', (event) => {
     // enabled — and takes focus, since the answer is the only thing that unblocks it.
     state = msg.state;
     input.disabled = msg.state === 'busy' || msg.state === 'starting' || msg.state === 'stopped';
+    promptLabel.classList.toggle('dim', input.disabled);
     input.placeholder = msg.state === 'busy' ? 'working…'
       : msg.state === 'starting' ? 'starting engine…'
       : msg.state === 'stopped' ? 'engine stopped'

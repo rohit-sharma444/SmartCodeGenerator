@@ -55,15 +55,17 @@ export class SmartCodeGenPanel implements vscode.WebviewViewProvider {
 <head>
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'none'; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';" />
+    content="default-src 'none'; style-src ${webview.cspSource}; script-src 'nonce-${nonce}' ${webview.cspSource};" />
   <link href="${cssUri}" rel="stylesheet" />
 </head>
 <body>
   <div id="transcript" role="log" aria-live="polite"></div>
   <form id="inputform">
-    <input id="input" type="text" autocomplete="off" placeholder="Type a command…" />
+    <span id="promptlabel" aria-hidden="true"></span>
+    <input id="input" type="text" autocomplete="off"
+           aria-label="CodeGenerator command" placeholder="Type a command…" />
   </form>
-  <script nonce="${nonce}" src="${jsUri}"></script>
+  <script type="module" nonce="${nonce}" src="${jsUri}"></script>
 </body>
 </html>`;
   }
