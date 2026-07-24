@@ -1,7 +1,7 @@
 // vscode-extension/test/prompt.test.ts
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { PROMPT, echoPrefix, stripTrailingPrompt } from '../media/prompt.js';
+import { PROMPT, echoPrefix, isClear, stripTrailingPrompt } from '../media/prompt.js';
 
 test('PROMPT is the CLI prompt string, trailing space included', () => {
   assert.strictEqual(PROMPT, 'CodeGenerator >> ');
@@ -56,4 +56,21 @@ test('stripTrailingPrompt: the prompt in the middle (not at the end) is left alo
 
 test('stripTrailingPrompt: an empty chunk stays empty', () => {
   assert.strictEqual(stripTrailingPrompt(''), '');
+});
+
+// The panel has to recognise `clear` itself: the CLI's own handler calls Console.Clear()
+// only when stdout is NOT redirected, and under the extension it always is, so forwarding
+// the word would wipe nothing. These cases mirror CodeGenerator/App/ClearCommand.cs.
+test('isClear: both spellings, any case, surrounding space ignored', () => {
+  for (const text of ['clear', 'cls', 'CLEAR', 'Cls', '  clear  ', '\tcls\t']) {
+    assert.strictEqual(isClear(text), true, `expected ${JSON.stringify(text)} to clear`);
+  }
+});
+
+test('isClear: anything else is a command for the engine', () => {
+  // `clear all` and `clearly` matter: the CLI compares the whole trimmed line, so a
+  // prefix match here would swallow real commands the engine should have seen.
+  for (const text of ['', '   ', 'clearly', 'clear all', 'clsx', 'help', 'create Clear class']) {
+    assert.strictEqual(isClear(text), false, `expected ${JSON.stringify(text)} not to clear`);
+  }
 });
