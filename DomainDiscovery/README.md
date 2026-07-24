@@ -87,6 +87,23 @@ clone unable to run `build app:` at all. The store is built by
 > `--index-only` rebuild) killed before its last step leaves it this way; the
 > exception says what to run.
 
+## Keeping the store up to date
+
+The daily Wikipedia increments are applied by a Windows Service,
+`SmartCodeGenWikipediaUpdater`, **not** by the CodeGenerator CLI. Install it once, from an
+elevated PowerShell prompt:
+
+    .\tools\install-updater-service.ps1
+
+It checks at every machine start and then every 24 hours. Progress is published to
+`update-status.json` beside the store; milestones and failures go to the Application event log
+under the source `SmartCodeGen Wikipedia Updater`. The CLI reports both at startup.
+
+Without this service installed, nothing updates the store — the CLI will say so and repeat the
+command above.
+
+To remove it: `.\tools\uninstall-updater-service.ps1`.
+
 ## Usage
 
 ```csharp
