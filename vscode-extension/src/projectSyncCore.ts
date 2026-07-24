@@ -90,7 +90,13 @@ export class ProjectSyncCore {
     private readonly opts: ProjectSyncOptions,
   ) {}
 
+  /**
+   * Begins buffering. An already-buffering command is *resumed*, not restarted: a command that
+   * stops to ask a question goes busy -> prompting -> busy, and the files it wrote before the
+   * question must survive that second `busy`. Only `commandFinished`/`reset` end a command.
+   */
   commandStarted(): void {
+    if (this.buffering) return;
     this.buffering = true;
     this.buffer.length = 0;
   }

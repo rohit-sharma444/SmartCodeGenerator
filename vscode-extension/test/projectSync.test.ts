@@ -94,6 +94,38 @@ test('autoOpenGenerated=false opens and reveals nothing', () => {
   assert.deepEqual(ops.revealed, []);
 });
 
+// A command that stops to ask a question (build-app's review loop, batch's approvals) goes
+// busy -> prompting -> busy. That second `busy` resumes the *same* command, so the files it
+// already wrote must survive; only a genuinely new command starts from an empty buffer.
+test('a command resumed after a mid-command prompt keeps the files it already wrote', () => {
+  const ops = new FakeOps();
+  const c = core(ops);
+  c.commandStarted();                          // `build app: ...`
+  c.fileEvent('C:/ws/ShopWeb/ShopWeb.csproj'); // written before the review-loop prompt
+  c.commandStarted();                          // answer submitted — same command resumes
+  c.fileEvent('C:/ws/ShopWeb/Program.cs');
+  c.commandFinished();
+
+  assert.deepEqual(ops.revealed, ['C:/ws/ShopWeb']);
+  const openedPaths = ops.opened.map((o) => o.path);
+  assert.ok(openedPaths.includes('C:/ws/ShopWeb/ShopWeb.csproj'), 'pre-prompt file was dropped');
+  assert.ok(openedPaths.includes('C:/ws/ShopWeb/Program.cs'));
+});
+
+test('a new command after one finishes starts from an empty buffer', () => {
+  const ops = new FakeOps();
+  const c = core(ops);
+  c.commandStarted();
+  c.fileEvent('C:/ws/App/Models/Customer.cs');
+  c.commandFinished();
+  ops.opened.length = 0;
+
+  c.commandStarted();
+  c.fileEvent('C:/ws/App/Models/Order.cs');
+  c.commandFinished();
+  assert.deepEqual(ops.opened.map((o) => o.path), ['C:/ws/App/Models/Order.cs']);
+});
+
 test('reset() discards a stale buffer so a later commandFinished() opens nothing', () => {
   const ops = new FakeOps();
   const c = core(ops);

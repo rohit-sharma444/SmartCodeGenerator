@@ -2,7 +2,25 @@
 import { spawn, ChildProcess } from 'node:child_process';
 import { dbg } from './debugLog';
 
-export type EngineState = 'starting' | 'ready' | 'busy' | 'stopped';
+/**
+ * `ready` — at the top-level prompt, accepting a new command.
+ * `busy` — running; input must stay disabled.
+ * `prompting` — blocked on a *mid-command* question (batch's block reader and approval loop,
+ *   build-app's review loop). The engine cannot proceed until answered, so input must be
+ *   enabled — but the command is still in flight, which is why this isn't just `ready`.
+ */
+export type EngineState = 'starting' | 'ready' | 'busy' | 'prompting' | 'stopped';
+
+/**
+ * The prompts the CLI writes before a mid-command `Console.ReadLine()`, anchored to the end of
+ * the stream because they are written without a trailing newline:
+ *   `... `             BatchCommand.ReadBlock
+ *   `> `               BatchCommand.ConfirmSnapshotSize, BuildAppCommand.RunReviewLoop
+ *   `approve? (y/n) `  BatchCommand.CollectApprovals
+ * `CodeGenerator >> ` also ends in "> ", so the leading newline anchor matters — and the ready
+ * marker is tested first regardless. Add a pattern here whenever the CLI grows a new prompt.
+ */
+const DEFAULT_PROMPT_MARKER = /(?:^|\r?\n)(?:\.\.\.|>) $|approve\? \(y\/n\) $/;
 
 export interface Disposable {
   dispose(): void;
@@ -14,6 +32,7 @@ export interface EngineHostOptions {
   cwd: string;
   env?: NodeJS.ProcessEnv;
   readyMarker?: RegExp;
+  promptMarker?: RegExp;
 }
 
 type OutputListener = (chunk: string, stream: 'stdout' | 'stderr') => void;
@@ -25,10 +44,12 @@ export class EngineHost {
   private readonly outputListeners = new Set<OutputListener>();
   private readonly stateListeners = new Set<StateListener>();
   private readonly readyMarker: RegExp;
+  private readonly promptMarker: RegExp;
   private tail = '';
 
   constructor(private readonly opts: EngineHostOptions) {
     this.readyMarker = opts.readyMarker ?? /CodeGenerator >>\s*$/;
+    this.promptMarker = opts.promptMarker ?? DEFAULT_PROMPT_MARKER;
   }
 
   get state(): EngineState {
@@ -101,11 +122,14 @@ export class EngineHost {
     for (const cb of this.outputListeners) cb(chunk, stream);
     if (stream === 'stdout') {
       this.tail = (this.tail + chunk).slice(-200);
-      const matched = this.readyMarker.test(this.tail);
-      dbg(`OUT stdout ${JSON.stringify(chunk.slice(0, 60))} tailEnd=${JSON.stringify(this.tail.slice(-45))} match=${matched}`);
-      if (matched) {
+      // Ready wins over prompting: `CodeGenerator >> ` ends in "> " like the review-loop prompt.
+      const matched = this.readyMarker.test(this.tail) ? 'ready'
+        : this.promptMarker.test(this.tail) ? 'prompting'
+        : undefined;
+      dbg(`OUT stdout ${JSON.stringify(chunk.slice(0, 60))} tailEnd=${JSON.stringify(this.tail.slice(-45))} match=${matched ?? false}`);
+      if (matched !== undefined) {
         this.tail = '';
-        this.setState('ready');
+        this.setState(matched);
       }
     } else {
       dbg(`OUT stderr ${JSON.stringify(chunk.slice(0, 60))}`);

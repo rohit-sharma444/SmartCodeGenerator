@@ -58,6 +58,9 @@ export class ProjectSync {
             core.commandFinished();
           }
           core.commandStarted();
+        } else if (state === 'prompting') {
+          // Mid-command question: the command hasn't finished, so keep buffering and don't
+          // open anything yet — the generated project usually lands *after* the answer.
         } else if (state === 'ready') {
           this.flushTimer = setTimeout(() => {
             this.flushTimer = undefined;
