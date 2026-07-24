@@ -9,4 +9,5 @@
   <Project Path="../NaturalLanguageEngine.Tests/NaturalLanguageEngine.Tests.csproj" />
   <Project Path="../NaturalLanguageEngine/NaturalLanguageEngine.csproj" />
   <Project Path="../WikipediaDumpImporter/WikipediaDumpImporter.csproj" />
+  <Project Path="../WikipediaUpdateService/WikipediaUpdateService.csproj" />
 </Solution>
