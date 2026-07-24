@@ -36,6 +36,24 @@ export function echoPrefix(state) {
 }
 
 /**
+ * Whether a stdout line is the engine echoing back the command the panel just sent.
+ *
+ * When stdin is redirected — always, under the extension — `CommandLineEditor.ReadRedirectedLine`
+ * echoes the line it read, because `Console.ReadLine` consumes input without echo and a piped
+ * transcript would otherwise be unreadable. The prompt was already written separately, so stdout
+ * carries one line reading `CodeGenerator >> help`.
+ *
+ * The panel renders both halves itself (the gutter label, and its own echo of what you typed), so
+ * the engine's copy is pure duplication and every command would otherwise appear twice.
+ *
+ * Matched against the exact command the panel sent rather than by a `CodeGenerator >> ` prefix
+ * test, so that real output which merely happens to mention the prompt is never swallowed.
+ */
+export function isPromptEcho(line, submitted) {
+  return line.replace(/\r$/, '') === PROMPT + submitted;
+}
+
+/**
  * Whether a submitted line is the screen-clear command.
  *
  * The panel must recognise this itself rather than leaving it to the engine. The CLI does

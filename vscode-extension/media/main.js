@@ -1,5 +1,5 @@
 // vscode-extension/media/main.js
-import { PROMPT, echoPrefix, isClear, stripTrailingPrompt } from './prompt.js';
+import { PROMPT, echoPrefix, isClear, isPromptEcho, stripTrailingPrompt } from './prompt.js';
 
 const vscode = acquireVsCodeApi();
 const transcript = document.getElementById('transcript');
@@ -12,6 +12,9 @@ let state = 'starting';
 // Whether the input held focus at the moment it was disabled, so it can be handed back when
 // the engine returns. See the state handler for why this is remembered rather than assumed.
 let refocusWhenReady = false;
+// The last line handed to the engine, so its redirected-mode echo of that line can be
+// recognised and dropped instead of appearing in the transcript twice. See isPromptEcho.
+let lastSubmitted = '';
 
 // Single source of truth: the label and the transcript echo both come from PROMPT.
 // Trailing space trimmed because the flex `gap` provides the spacing on screen.
@@ -48,6 +51,7 @@ form.addEventListener('submit', (e) => {
     history.push(text);
     histIndex = history.length;
   }
+  lastSubmitted = text;
   vscode.postMessage({ type: 'submit', text });
   input.value = '';
 });
@@ -76,7 +80,17 @@ window.addEventListener('message', (event) => {
       // otherwise double up with the gutter label / echo prefix in the transcript. Strip
       // a trailing occurrence before rendering; if nothing is left, the chunk was the
       // prompt alone, so append nothing rather than a blank line.
-      const text = stripTrailingPrompt(msg.chunk).replace(/\s+$/, '');
+      // Two separate duplications to remove, both from the engine's own prompt handling:
+      //   1. the bare `CodeGenerator >> ` it writes before reading  -> stripTrailingPrompt
+      //   2. `CodeGenerator >> <command>`, its echo of the line it just read under redirection
+      //      (CommandLineEditor.ReadRedirectedLine)                 -> isPromptEcho, per line
+      // The panel renders the prompt itself, as the gutter label and as its own echo, so neither
+      // belongs in the transcript.
+      const text = stripTrailingPrompt(msg.chunk)
+        .split('\n')
+        .filter(line => !isPromptEcho(line, lastSubmitted))
+        .join('\n')
+        .replace(/\s+$/, '');
       if (text !== '') append(text, 'out');
     }
   } else if (msg.type === 'state') {

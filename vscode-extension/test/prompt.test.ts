@@ -1,7 +1,7 @@
 // vscode-extension/test/prompt.test.ts
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { PROMPT, echoPrefix, isClear, stripTrailingPrompt } from '../media/prompt.js';
+import { PROMPT, echoPrefix, isClear, isPromptEcho, stripTrailingPrompt } from '../media/prompt.js';
 
 test('PROMPT is the CLI prompt string, trailing space included', () => {
   assert.strictEqual(PROMPT, 'CodeGenerator >> ');
@@ -65,6 +65,24 @@ test('isClear: both spellings, any case, surrounding space ignored', () => {
   for (const text of ['clear', 'cls', 'CLEAR', 'Cls', '  clear  ', '\tcls\t']) {
     assert.strictEqual(isClear(text), true, `expected ${JSON.stringify(text)} to clear`);
   }
+});
+
+// Under redirection the CLI echoes the command it read (CommandLineEditor.ReadRedirectedLine),
+// so stdout carries `CodeGenerator >> help` as one line. The panel already renders that itself.
+test('isPromptEcho: the engine echoing back what we sent', () => {
+  assert.strictEqual(isPromptEcho('CodeGenerator >> help', 'help'), true);
+  assert.strictEqual(isPromptEcho('CodeGenerator >> help\r', 'help'), true, 'CRLF line ending');
+  assert.strictEqual(isPromptEcho('CodeGenerator >> ', ''), true, 'a bare prompt after a blank submit');
+});
+
+test('isPromptEcho: real output is never swallowed', () => {
+  // The decisive case: help text that MENTIONS the prompt must survive, which is why this
+  // matches the whole line against the exact command sent rather than testing for a prefix.
+  assert.strictEqual(
+    isPromptEcho("CodeGenerator >> is the prompt; type 'help' there", 'help'), false);
+  assert.strictEqual(isPromptEcho('CodeGenerator >> help', 'exit'), false, 'a different command');
+  assert.strictEqual(isPromptEcho('Created Customer.cs', 'create Customer class'), false);
+  assert.strictEqual(isPromptEcho('', 'help'), false);
 });
 
 test('isClear: anything else is a command for the engine', () => {
