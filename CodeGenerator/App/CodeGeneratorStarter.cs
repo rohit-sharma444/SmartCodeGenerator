@@ -25,9 +25,6 @@ internal class CodeGeneratorStarter
     private readonly BuildAppCommand _buildApp = new();
     private readonly BatchCommand _batch = new();
 
-    private CancellationTokenSource? _storeUpdateCts;
-    private Task? _storeUpdateTask;
-
     internal CodeGeneratorStarter()
     {
         _workspaceRoot = ResolveWorkspaceRoot();
@@ -132,12 +129,7 @@ internal class CodeGeneratorStarter
             //    continue;
 
             if (input.Equals("exit", StringComparison.OrdinalIgnoreCase))
-            {
-                // A half-done background update is safe to abandon: the store's date moved only for
-                // days that fully landed, so the next start resumes at the one in progress.
-                _storeUpdateCts?.Cancel();
                 break;
-            }
 
             if (ClearCommand.IsClear(input))
             {
@@ -224,7 +216,7 @@ internal class CodeGeneratorStarter
     {
         PrintBanner();
 
-        StartWikipediaStoreUpdate();
+        ReportWikipediaStoreStatus();
     }
 
     /// <summary>
@@ -248,12 +240,12 @@ internal class CodeGeneratorStarter
     }
 
     /// <summary>
-    /// Reports a missing store loudly (and stops), or launches the daily-increment update in the
-    /// BACKGROUND and returns at once. The prompt no longer waits on the network or on gigabytes of
-    /// downloads: progress shows in the console title (interactive) or as a throttled log line
-    /// (piped). A missing store is a warning, not an error — the app starts on the online-API fallback.
+    /// Reports a missing store loudly, or reports what the store holds and what the updater service
+    /// is doing. This method no longer <i>performs</i> any update: the Windows Service
+    /// <c>SmartCodeGenWikipediaUpdater</c> is the sole owner of that work, so the CLI never competes
+    /// with it for the store and never spends 780 MB a day of the user's connection unasked.
     /// </summary>
-    private void StartWikipediaStoreUpdate()
+    private void ReportWikipediaStoreStatus()
     {
         var databasePath = DomainDiscoveryPipeline.DefaultDumpDatabasePath;
 
@@ -275,20 +267,28 @@ internal class CodeGeneratorStarter
             return;
         }
 
-        var redirected = Console.IsOutputRedirected;
-
-        // The announcement is for a human at a terminal; a piped/scripted run gets the throttled
-        // percent lines instead, so its transcript is not padded with a line a script must skip.
-        if (!redirected)
+        int? storeDate;
+        try
         {
-            Console.WriteLine(
-                "Wikipedia store: checking for updates in the background (progress shown in the title bar).");
-            Console.WriteLine();
+            storeDate = new WikipediaStore(databasePath).GetDumpDate();
+        }
+        catch
+        {
+            // A store that cannot answer is still usable for reads; do not let a status line stop the app.
+            storeDate = null;
         }
 
-        _storeUpdateCts = new CancellationTokenSource();
-        _storeUpdateTask =
-            new BackgroundStoreUpdate().Start(databasePath, redirected, _storeUpdateCts.Token);
+        var status = new StoreUpdateStatusFile(
+            StoreUpdateStatusFile.BesideStore(databasePath)).Read();
+
+        foreach (var line in StoreStatusReport.Lines(
+            storeDate, status, UpdaterServicePresence.Detect(),
+            @".\tools\install-updater-service.ps1"))
+        {
+            Console.WriteLine(line);
+        }
+
+        Console.WriteLine();
     }
 
     private void LoadConfiguredRules()
