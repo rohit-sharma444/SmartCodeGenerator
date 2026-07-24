@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Runtime.Versioning;
 using System.ServiceProcess;
 
@@ -44,9 +45,14 @@ public static class UpdaterServicePresence
                 ? UpdaterServiceState.Running
                 : UpdaterServiceState.Stopped;
         }
-        catch (InvalidOperationException)
+        catch (InvalidOperationException ex) when (ex.InnerException is Win32Exception
+            { NativeErrorCode: 1060 }) // ERROR_SERVICE_DOES_NOT_EXIST
         {
-            // ServiceController throws this — not a "not found" exception — when the name is absent.
+            // ServiceController wraps EVERY SCM failure in InvalidOperationException — access
+            // denied, the services database locked, RPC unavailable — not only "service does not
+            // exist". Only the genuine not-found case (Win32 1060) means NotInstalled; anything
+            // else refused by the SCM falls through to the general catch below, which claims
+            // nothing, per this enum's own doc.
             return UpdaterServiceState.NotInstalled;
         }
         catch

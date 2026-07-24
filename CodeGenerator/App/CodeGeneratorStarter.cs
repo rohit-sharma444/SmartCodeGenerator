@@ -283,7 +283,7 @@ internal class CodeGeneratorStarter
 
         foreach (var line in StoreStatusReport.Lines(
             storeDate, status, UpdaterServicePresence.Detect(),
-            @".\tools\install-updater-service.ps1"))
+            @".\tools\install-updater-service.ps1", DateTimeOffset.UtcNow))
         {
             Console.WriteLine(line);
         }

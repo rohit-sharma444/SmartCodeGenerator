@@ -29,6 +29,15 @@ public sealed class UpdateWorker : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        // Load-bearing, do not delete. BackgroundService's contract is that no other host service
+        // starts until ExecuteAsync becomes asynchronous. RunOnce (below, via RunLoop) is fully
+        // synchronous up to its first await, so without this yield, Host.StartAsync would block for
+        // the whole first cycle — worst case a multi-day, multi-hour catch-up — during which
+        // WindowsServiceLifetime.OnStop has nothing to cancel: it would wait 30s, give up, and report
+        // STOPPED to the SCM while the download kept running, letting a later Start-Service launch a
+        // second instance alongside the first.
+        await Task.Yield();
+
         var storePath = _options.StorePath!;
         var workingDirectory = _options.WorkingDirectory!;
 
@@ -44,8 +53,7 @@ public sealed class UpdateWorker : BackgroundService
                 // Built once per cycle (not per day, per StartupDumpUpdate.ApplyDay's per-day call)
                 // so a multi-day catch-up reuses one WikipediaStore and one IncrementalUpdater —
                 // and so the HttpClient IncrementalUpdater owns (30-minute timeout) is not
-                // allocated and leaked once per pending day. Matches BackgroundStoreUpdate.Start,
-                // which builds it once outside its day loop for the same reason.
+                // allocated and leaked once per pending day.
                 var updater = new IncrementalUpdater(
                     new WikipediaStore(storePath), say: _ => { }, progress: progress);
 

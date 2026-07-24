@@ -50,7 +50,7 @@ public sealed class StoreUpdateCycle
         try
         {
             _status.Write(new StoreUpdateStatus(
-                StoreUpdateState.Checking, 0, 0, null, lastSuccess, null, _version));
+                StoreUpdateState.Checking, 0, 0, null, lastSuccess, null, _version, _now()));
 
             var staleness = _check();
 
@@ -81,7 +81,7 @@ public sealed class StoreUpdateCycle
             _log.Error("The update cycle broke.", failure);
 
             _status.Write(new StoreUpdateStatus(
-                StoreUpdateState.Failed, 0, 0, null, lastSuccess, failure.Message, _version));
+                StoreUpdateState.Failed, 0, 0, null, lastSuccess, failure.Message, _version, _now()));
 
             return new StartupUpdateResult(0, StartupUpdateOutcome.Failed, failure.Message);
         }
@@ -118,13 +118,13 @@ public sealed class StoreUpdateCycle
         {
             _log.Info("The store is up to date.");
             _status.Write(new StoreUpdateStatus(
-                StoreUpdateState.Idle, 100, 0, null, lastSuccess, null, _version));
+                StoreUpdateState.Idle, 100, 0, null, lastSuccess, null, _version, _now()));
         }
         else
         {
             _log.Info("Wikimedia did not answer. Nothing claimed, nothing downloaded.");
             _status.Write(new StoreUpdateStatus(
-                StoreUpdateState.Unknown, 0, 0, null, lastSuccess, null, _version));
+                StoreUpdateState.Unknown, 0, 0, null, lastSuccess, null, _version, _now()));
         }
 
         return new StartupUpdateResult(0, StartupUpdateOutcome.NothingToDo);

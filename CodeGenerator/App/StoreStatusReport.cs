@@ -9,9 +9,15 @@ namespace CodeGenerator.App;
 /// </summary>
 public static class StoreStatusReport
 {
+    /// <summary>
+    /// An <see cref="StoreUpdateState.Applying"/> snapshot older than this is treated as stale
+    /// rather than live — most likely left behind by a process that stopped without a clean finish.
+    /// </summary>
+    private static readonly TimeSpan StaleAfter = TimeSpan.FromHours(1);
+
     public static IReadOnlyList<string> Lines(
         int? storeDate, StoreUpdateStatus status, UpdaterServiceState service,
-        string installHintCommand)
+        string installHintCommand, DateTimeOffset now)
     {
         var lines = new List<string>
         {
@@ -20,7 +26,7 @@ public static class StoreStatusReport
                 : "Wikipedia store: present, but it cannot say which dump it was built from.",
         };
 
-        lines.Add(ServiceLine(service, status));
+        lines.Add(ServiceLine(service, status, now));
 
         if (status.State is StoreUpdateState.Failed && !string.IsNullOrWhiteSpace(status.LastError))
             lines.Add($"  Last update error: {status.LastError}");
@@ -40,21 +46,43 @@ public static class StoreStatusReport
         return lines;
     }
 
-    private static string ServiceLine(UpdaterServiceState service, StoreUpdateStatus status)
+    private static string ServiceLine(UpdaterServiceState service, StoreUpdateStatus status, DateTimeOffset now)
         => service switch
         {
             UpdaterServiceState.NotInstalled => "  Updater service: NOT INSTALLED.",
             UpdaterServiceState.Stopped => "  Updater service: installed, but stopped.",
             UpdaterServiceState.Unknown => "  Updater service: cannot tell.",
-            _ => $"  Updater service: running — {Activity(status)}",
+            _ => $"  Updater service: running — {Activity(status, now)}",
         };
 
-    private static string Activity(StoreUpdateStatus status) => status.State switch
+    private static string Activity(StoreUpdateStatus status, DateTimeOffset now)
     {
-        StoreUpdateState.Applying => $"updating {status.Percent}% ({status.PendingDays} day(s) pending).",
-        StoreUpdateState.Checking => "checking for new increments.",
-        StoreUpdateState.Idle => "idle.",
-        StoreUpdateState.Failed => "the last update failed.",
-        _ => "no status published yet.",
-    };
+        if (status.State is StoreUpdateState.Applying && IsStale(status, now))
+        {
+            // LastSuccessUtc records the last SUCCESS, not when this snapshot was written, so a
+            // status left behind by a killed process reads as live otherwise — printing, say, a
+            // confident "52%" for a cycle that ended hours ago.
+            return "a status over an hour old, likely left by a process that stopped; treat it as unknown.";
+        }
+
+        return status.State switch
+        {
+            StoreUpdateState.Applying => status.CurrentDay is { } day
+                ? $"applying {day} — {status.Percent}% ({status.PendingDays} day(s) pending)."
+                : $"updating {status.Percent}% ({status.PendingDays} day(s) pending).",
+            StoreUpdateState.Checking => "checking for new increments.",
+            StoreUpdateState.Idle => "idle.",
+            StoreUpdateState.Failed => "the last update failed.",
+
+            // The exact case the service's central constraint exists for: a check that got no
+            // answer must never read as a clean bill of health, or as merely "hasn't run yet".
+            StoreUpdateState.Unknown =>
+                "freshness could not be determined — Wikimedia could not be reached.",
+
+            _ => "no status published yet.",
+        };
+    }
+
+    private static bool IsStale(StoreUpdateStatus status, DateTimeOffset now)
+        => status.UpdatedUtc is { } updated && now - updated > StaleAfter;
 }

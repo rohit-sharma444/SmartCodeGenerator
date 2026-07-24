@@ -8,9 +8,15 @@ namespace WikipediaUpdateService;
 /// start, and the only record that survives the status file being overwritten.
 /// </summary>
 /// <remarks>
-/// The source is registered by the install script, because creating one needs elevation and the
-/// service runs long after that. If the source is missing, every write here fails and is swallowed:
-/// a service that cannot log must still update the store.
+/// The install script registers the source ahead of time, because creating one needs elevation and
+/// the service runs long after that. It is not the only path, though: the static
+/// <see cref="EventLog.WriteEntry(string, string, EventLogEntryType)"/> overload used below CREATES
+/// the source itself when it is missing, and this service runs as LocalSystem, which has the
+/// registry rights to do so — so a machine where the install script's registration step was skipped
+/// or failed still gets a working log, just with the first write costing a little more. The
+/// try/catch below still matters: registration and logging can both be refused (a locked security
+/// event source table, a hardened machine), and a service that cannot log must still update the
+/// store, so any failure here is swallowed rather than allowed to stop the cycle.
 /// </remarks>
 public sealed class EventLogUpdateLog : IUpdateLog
 {

@@ -146,11 +146,18 @@ public sealed class IncrementalUpdater
     /// would be told a partial day was a whole one.
     /// </para>
     /// </remarks>
-    public IncrementStats Apply(string path, CancellationToken cancellation = default)
+    /// <param name="path">The downloaded increment file to apply.</param>
+    /// <param name="day">
+    /// The day this file is for, so progress can report it. Defaults to 0 (unknown) for callers —
+    /// such as tests — that apply a file directly without going through <see cref="UpdateDay"/>,
+    /// which always passes the real day.
+    /// </param>
+    /// <param name="cancellation">Checked between pages; see the remarks above.</param>
+    public IncrementStats Apply(string path, int day = 0, CancellationToken cancellation = default)
     {
         var total = new FileInfo(path).Length;
 
-        _progress.BeginPhase(UpdatePhase.Apply, day: 0, total, initial: 0);
+        _progress.BeginPhase(UpdatePhase.Apply, day, total, initial: 0);
         using var file = File.OpenRead(path);
         using var counted = new CountingStream(file, _progress.Report);
 
@@ -232,7 +239,7 @@ public sealed class IncrementalUpdater
         _say($"{day}:");
         Download(day, file, cancellation);
 
-        var stats = Apply(file, cancellation);
+        var stats = Apply(file, day, cancellation);
 
         // Only now. A day half-applied must be applied again, not skipped.
         _store.SetDumpDate(day);

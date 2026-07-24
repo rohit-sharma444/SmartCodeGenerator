@@ -33,7 +33,10 @@ else {
 
 if (-not $KeepEventSource -and [System.Diagnostics.EventLog]::SourceExists($EventSource)) {
     Write-Host "Removing Event Log source '$EventSource'"
-    Remove-EventLog -Source $EventSource
+    # The .NET API, not Remove-EventLog: see install-updater-service.ps1 for why the cmdlet form
+    # risks shadowing Get-Service/Stop-Service/Start-Service used above via the Windows PowerShell
+    # compatibility session.
+    [System.Diagnostics.EventLog]::DeleteEventSource($EventSource)
 }
 
 Write-Host "Done. The store and its update-status.json were left in place."

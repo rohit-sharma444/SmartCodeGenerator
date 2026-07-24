@@ -95,11 +95,13 @@ elevated PowerShell prompt:
 
     .\tools\install-updater-service.ps1
 
-It checks at every machine start and then every 24 hours. Progress is published to
+It checks at machine start and roughly daily thereafter, waiting the interval between cycles rather
+than from a fixed clock — so a cycle that overruns (a multi-day catch-up) pushes the next check back
+by that much rather than risking two cycles running back to back. Progress is published to
 `update-status.json` beside the store; milestones and failures go to the Application event log
 under the source `SmartCodeGen Wikipedia Updater`. The CLI reports the dump date, service state,
 and progress from the status file at startup. The Application event log is a separate record; check
-it via Event Viewer or `Get-EventLog`.
+it via Event Viewer or `Get-WinEvent` (`Get-EventLog` is deprecated and absent from PowerShell 7).
 
 Without this service installed, nothing updates the store — the CLI will say so and repeat the
 command above.

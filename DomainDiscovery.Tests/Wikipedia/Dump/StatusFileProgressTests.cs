@@ -109,12 +109,11 @@ public sealed class StatusFileProgressTests
     }
 
     [Fact]
-    public void CurrentDay_SurvivesTheApplyPhase_WhichAlwaysReportsDayZero()
+    public void CurrentDay_ThreadsThroughTheApplyPhase_NowThatApplyKnowsTheRealDay()
     {
-        // IncrementalUpdater.cs:153 calls BeginPhase(Apply, day: 0, ...) with a literal zero — the
-        // apply path works from a file path and does not know the day. The day learned during
-        // Download must survive into Apply's publishes; a naive BeginPhase overwrites _currentDay
-        // with that 0, and Apply's publishes report CurrentDay == null for the rest of the day.
+        // IncrementalUpdater.Apply now receives its day explicitly from UpdateDay, instead of
+        // always publishing a literal zero, so BeginPhase(Apply, ...) carries the real day and
+        // StatusFileProgress no longer needs to guess or preserve a value learned earlier.
         var (progress, published, clock) = Build(pendingDays: 1);
 
         progress.BeginDay(0, 1);
@@ -124,11 +123,42 @@ public sealed class StatusFileProgressTests
 
         // Cross the publish throttle so the Apply-phase report below actually publishes.
         clock.Advance(StatusFileProgress.PublishInterval);
-        progress.BeginPhase(UpdatePhase.Apply, 0, 100, 0);
+        progress.BeginPhase(UpdatePhase.Apply, 20260723, 100, 0);
         progress.Report(50);
 
         var status = published[^1];
         Assert.Equal(20260723, status.CurrentDay);
+    }
+
+    [Fact]
+    public void CurrentDay_ReportsCorrectly_OnTheResumePath_WhenDownloadNeverPublishedAtAll()
+    {
+        // The resume path this guarded against: IncrementalUpdater.Download returns BEFORE calling
+        // BeginPhase when the day's file is already on disk in full (restart between download-
+        // complete and apply-complete). So the only BeginPhase call for this day is Apply's — it
+        // must carry the real day on its own, not rely on a Download call that never happened.
+        var (progress, published, _) = Build(pendingDays: 1);
+
+        progress.BeginDay(0, 1);
+        progress.BeginPhase(UpdatePhase.Apply, 20260724, 100, 0);
+        progress.Report(50);
+
+        var status = published[^1];
+        Assert.Equal(20260724, status.CurrentDay);
+    }
+
+    [Fact]
+    public void EveryPublish_StampsWhenItWasWritten()
+    {
+        // Finding 6: LastSuccessUtc records the last SUCCESS, not when a snapshot was written, so a
+        // reader cannot otherwise tell a live status from one left behind by a killed process.
+        var (progress, published, clock) = Build();
+
+        progress.BeginDay(0, 1);
+        progress.BeginPhase(UpdatePhase.Download, 20260718, 100, 0);
+        progress.Report(50);
+
+        Assert.Equal(clock.Now, published[^1].UpdatedUtc);
     }
 
     [Fact]

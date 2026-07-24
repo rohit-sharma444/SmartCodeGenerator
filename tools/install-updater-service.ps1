@@ -35,7 +35,14 @@ if (-not (Test-Path $exePath)) { throw "Published executable not found at $exePa
 
 if (-not [System.Diagnostics.EventLog]::SourceExists($EventSource)) {
     Write-Host "Registering Event Log source '$EventSource'"
-    New-EventLog -LogName Application -Source $EventSource
+    # The .NET API, not New-EventLog: that cmdlet does not exist natively in PowerShell 7 and pwsh
+    # proxies it through a Windows PowerShell compatibility session, which also imports proxy
+    # functions that SHADOW Get-Service/Stop-Service/Start-Service for the rest of this script (all
+    # used below). Where Windows PowerShell is absent or blocked by policy, that proxy throws, and
+    # $ErrorActionPreference = 'Stop' aborts after dotnet publish already ran and before sc.exe
+    # create — several hundred MB published, nothing installed.
+    $sourceData = New-Object System.Diagnostics.EventSourceCreationData $EventSource, 'Application'
+    [System.Diagnostics.EventLog]::CreateEventSource($sourceData)
 }
 
 $existing = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
