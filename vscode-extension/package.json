@@ -27,7 +27,17 @@
       { "command": "smartcodegen.restartEngine", "title": "SmartCodeGen: Restart Engine" },
       { "command": "smartcodegen.clearTranscript", "title": "SmartCodeGen: Clear Transcript" },
       { "command": "smartcodegen.focusInput", "title": "SmartCodeGen: Focus Input" }
-    ]
+    ],
+    "configuration": {
+      "title": "SmartCodeGen",
+      "properties": {
+        "smartcodegen.autoOpenGenerated": {
+          "type": "boolean",
+          "default": true,
+          "description": "When the tool creates or changes files, open and reveal them in the editor automatically."
+        }
+      }
+    }
   },
   "scripts": {
     "compile": "tsc -p ./",

@@ -3,7 +3,8 @@ import { EngineState } from './engineHost';
 
 export type InboundMessage =
   | { type: 'submit'; text: string }
-  | { type: 'ready' };
+  | { type: 'ready' }
+  | { type: 'dbg'; text: string };
 
 export type OutboundMessage =
   | { type: 'output'; chunk: string; stream: 'stdout' | 'stderr' }
