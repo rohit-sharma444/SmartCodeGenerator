@@ -25,12 +25,18 @@
     },
     "commands": [
       { "command": "smartcodegen.restartEngine", "title": "SmartCodeGen: Restart Engine" },
+      { "command": "smartcodegen.locateRepository", "title": "SmartCodeGen: Locate Checkout" },
       { "command": "smartcodegen.clearTranscript", "title": "SmartCodeGen: Clear Transcript" },
       { "command": "smartcodegen.focusInput", "title": "SmartCodeGen: Focus Input" }
     ],
     "configuration": {
       "title": "SmartCodeGen",
       "properties": {
+        "smartcodegen.repositoryPath": {
+          "type": "string",
+          "default": "",
+          "description": "Absolute path to your SmartCodeGenerator checkout — the folder containing the CodeGenerator project. Only needed when the folder you have open is NOT that checkout (or inside one), which is the usual case: the open folder is where generated code goes. The last checkout used is remembered automatically, so this is normally set once, or not at all. \"SmartCodeGen: Locate Checkout\" sets it for you. Takes effect immediately."
+        },
         "smartcodegen.autoOpenGenerated": {
           "type": "boolean",
           "default": true,
@@ -40,7 +46,7 @@
     }
   },
   "scripts": {
-    "compile": "tsc -p ./",
+    "compile": "tsc -p ./ && node scripts/stamp-build-info.mjs",
     "watch": "tsc -watch -p ./",
     "test": "node --import tsx --test test/*.test.ts",
     "vscode:prepublish": "npm run compile",

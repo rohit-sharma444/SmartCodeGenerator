@@ -36,6 +36,41 @@ export function echoPrefix(state) {
 }
 
 /**
+ * Whether a stdout line is the engine echoing back the command the panel just sent.
+ *
+ * When stdin is redirected — always, under the extension — `CommandLineEditor.ReadRedirectedLine`
+ * echoes the line it read, because `Console.ReadLine` consumes input without echo and a piped
+ * transcript would otherwise be unreadable. The prompt was already written separately, so stdout
+ * carries one line reading `CodeGenerator >> help`.
+ *
+ * The panel renders both halves itself (the gutter label, and its own echo of what you typed), so
+ * the engine's copy is pure duplication and every command would otherwise appear twice.
+ *
+ * Matched against the exact command the panel sent rather than by a `CodeGenerator >> ` prefix
+ * test, so that real output which merely happens to mention the prompt is never swallowed.
+ */
+export function isPromptEcho(line, submitted) {
+  return line.replace(/\r$/, '') === PROMPT + submitted;
+}
+
+/**
+ * Whether a submitted line is the screen-clear command.
+ *
+ * The panel must recognise this itself rather than leaving it to the engine. The CLI does
+ * have its own handler, but it calls `Console.Clear()` only when stdout is NOT redirected —
+ * and under the extension it always is — so the engine correctly no-ops and the panel's
+ * transcript would never be wiped.
+ *
+ * Mirrors `CodeGenerator/App/ClearCommand.cs`: trim, then a case-insensitive comparison of
+ * the WHOLE line against `clear` or `cls`. Whole-line, not a prefix — `clear all` is a
+ * command for the engine, not a request to wipe the screen.
+ */
+export function isClear(text) {
+  const trimmed = text.trim().toLowerCase();
+  return trimmed === 'clear' || trimmed === 'cls';
+}
+
+/**
  * Removes a single trailing occurrence of `PROMPT` from a raw stdout chunk.
  *
  * The engine writes its own `CodeGenerator >> ` prompt to stdout — engineHost's ready
