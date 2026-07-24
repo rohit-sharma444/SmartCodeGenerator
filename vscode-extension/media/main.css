@@ -11,9 +11,18 @@ body {
 .line.out { color: var(--vscode-foreground); }
 .line.info { color: var(--vscode-descriptionForeground); }
 .line.sys { color: var(--vscode-descriptionForeground); font-style: italic; }
-#inputform { border-top: 1px solid var(--vscode-panel-border); padding: 4px; }
+#inputform {
+  display: flex; align-items: center; gap: 6px;
+  border-top: 1px solid var(--vscode-panel-border); padding: 4px;
+}
+#promptlabel {
+  flex: 0 0 auto; user-select: none; white-space: pre;
+  color: var(--vscode-textLink-foreground);
+}
+/* Matches #input:disabled, so the label dims with the box it belongs to. */
+#promptlabel.dim { opacity: 0.6; }
 #input {
-  width: 100%; box-sizing: border-box; padding: 4px;
+  flex: 1 1 auto; min-width: 0; box-sizing: border-box; padding: 4px;
   background: var(--vscode-input-background); color: var(--vscode-input-foreground);
   border: 1px solid var(--vscode-input-border, transparent);
 }

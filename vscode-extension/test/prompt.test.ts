@@ -1,0 +1,59 @@
+// vscode-extension/test/prompt.test.ts
+import { test } from 'node:test';
+import assert from 'node:assert';
+import { PROMPT, echoPrefix, stripTrailingPrompt } from '../media/prompt.js';
+
+test('PROMPT is the CLI prompt string, trailing space included', () => {
+  assert.strictEqual(PROMPT, 'CodeGenerator >> ');
+});
+
+test('top-level submissions echo behind the full prompt', () => {
+  for (const state of ['ready', 'busy', 'starting', 'stopped']) {
+    assert.strictEqual(echoPrefix(state), 'CodeGenerator >> ');
+  }
+});
+
+test('an answer to a mid-command question keeps the bare marker', () => {
+  // While `prompting` the engine is blocked on its own question (a batch block line,
+  // `approve? (y/n)`). What the user types is an ANSWER, so echoing it behind the
+  // top-level prompt would put a command in the scrollback that was never issued.
+  assert.strictEqual(echoPrefix('prompting'), '> ');
+});
+
+test('an unknown state falls back to the top-level prompt', () => {
+  assert.strictEqual(echoPrefix('something-new'), 'CodeGenerator >> ');
+});
+
+// The engine writes its own `CodeGenerator >> ` prompt to stdout (engineHost's ready
+// detection depends on seeing it), so the raw chunk forwarded to the webview still carries
+// it. Without stripping, the transcript would double the prompt on every single command.
+test('stripTrailingPrompt: a chunk that is exactly the prompt becomes empty', () => {
+  assert.strictEqual(stripTrailingPrompt('CodeGenerator >> '), '');
+});
+
+test('stripTrailingPrompt: real output followed by the prompt keeps only the output', () => {
+  assert.strictEqual(
+    stripTrailingPrompt('ran: create class Foo\nCodeGenerator >> '),
+    'ran: create class Foo\n',
+  );
+});
+
+test('stripTrailingPrompt: a chunk with no prompt is left unchanged', () => {
+  assert.strictEqual(
+    stripTrailingPrompt('ran: create class Foo\n'),
+    'ran: create class Foo\n',
+  );
+});
+
+test('stripTrailingPrompt: the prompt in the middle (not at the end) is left alone', () => {
+  // e.g. the ready marker showed up mid-chunk because more output followed it in the same
+  // write; only a *trailing* occurrence is the artifact this function exists to remove.
+  assert.strictEqual(
+    stripTrailingPrompt('CodeGenerator >> help\n'),
+    'CodeGenerator >> help\n',
+  );
+});
+
+test('stripTrailingPrompt: an empty chunk stays empty', () => {
+  assert.strictEqual(stripTrailingPrompt(''), '');
+});

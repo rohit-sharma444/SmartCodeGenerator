@@ -9,3 +9,4 @@ tsconfig.json
 .gitignore
 **/.superpowers/**
 smartcodegen-vscode.vsix
+media/package.json
