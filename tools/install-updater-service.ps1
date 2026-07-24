@@ -43,6 +43,10 @@ if ($existing) {
     Write-Host "Service '$ServiceName' already exists; stopping and removing it first."
     if ($existing.Status -ne 'Stopped') { Stop-Service -Name $ServiceName -Force }
     sc.exe delete $ServiceName | Out-Null
+    # Heuristic: allow the Service Control Manager time to finish removing the service. If a handle
+    # to the Services database is still open (e.g., services.msc or Process Explorer on the target),
+    # the service lingers "marked for deletion" and the subsequent create fails with that message;
+    # remedy is to close that window and re-run.
     Start-Sleep -Seconds 2
 }
 
@@ -51,10 +55,12 @@ sc.exe create $ServiceName binPath= "`"$exePath`"" start= delayed-auto obj= Loca
 if ($LASTEXITCODE -ne 0) { throw "sc.exe create failed with exit code $LASTEXITCODE." }
 
 sc.exe description $ServiceName "Keeps the SmartCodeGen Wikipedia store up to date with daily increments." | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "sc.exe description failed with exit code $LASTEXITCODE." }
 
 # Restart on failure so a crash does not silently end updating: 1 min, 5 min, then 15 min,
 # with the failure count resetting after a day.
 sc.exe failure $ServiceName reset= 86400 actions= restart/60000/restart/300000/restart/900000 | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "sc.exe failure failed with exit code $LASTEXITCODE." }
 
 Write-Host "Starting service"
 Start-Service -Name $ServiceName

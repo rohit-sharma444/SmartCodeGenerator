@@ -97,7 +97,9 @@ elevated PowerShell prompt:
 
 It checks at every machine start and then every 24 hours. Progress is published to
 `update-status.json` beside the store; milestones and failures go to the Application event log
-under the source `SmartCodeGen Wikipedia Updater`. The CLI reports both at startup.
+under the source `SmartCodeGen Wikipedia Updater`. The CLI reports the dump date, service state,
+and progress from the status file at startup. The Application event log is a separate record; check
+it via Event Viewer or `Get-EventLog`.
 
 Without this service installed, nothing updates the store — the CLI will say so and repeat the
 command above.
