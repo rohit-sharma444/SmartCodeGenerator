@@ -7,6 +7,40 @@ const PROJECT = 'CodeGenerator';
 const CONFIG = 'Debug';
 
 /**
+ * The directory holding the SmartCodeGenerator checkout the engine is built from, or undefined
+ * if we cannot tell.
+ *
+ * The engine is a .NET project in this repository, so it has to be built and launched from a
+ * checkout — but the folder you have OPEN is usually the project you are generating code into,
+ * which is a different thing entirely. Conflating the two is why the panel reported "Engine
+ * stopped" in any folder that was not the repo: `dotnet build CodeGenerator` was run against a
+ * directory with no such project.
+ *
+ * The open workspace wins when it is itself a checkout, so opening the repo behaves exactly as
+ * it always did and the setting is only consulted when it is actually needed. Returning
+ * undefined rather than guessing is deliberate: the caller can then say what is wrong, which is
+ * far more use than a failed build.
+ *
+ * Only the ENGINE comes from here. The engine's working directory and `PROJECTPATH` stay on the
+ * open workspace, so generated code still lands in the folder you are working in.
+ */
+export function resolveEngineRoot(
+  workspace: string,
+  configured: string | undefined,
+): string | undefined {
+  if (isEngineRoot(workspace)) return workspace;
+
+  const setting = (configured ?? '').trim();
+  return setting !== '' && isEngineRoot(setting) ? setting : undefined;
+}
+
+/** Whether a directory holds the engine's project file — what `dotnet build` actually needs. */
+function isEngineRoot(directory: string): boolean {
+  return directory !== ''
+    && fs.existsSync(path.join(directory, PROJECT, `${PROJECT}.csproj`));
+}
+
+/**
  * Absolute path where the built CLI assembly lives (once built), or undefined if no build
  * output is present yet. Resolves the target-framework folder rather than hard-coding it.
  */

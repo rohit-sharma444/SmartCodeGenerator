@@ -31,6 +31,11 @@
     "configuration": {
       "title": "SmartCodeGen",
       "properties": {
+        "smartcodegen.repositoryPath": {
+          "type": "string",
+          "default": "",
+          "description": "Absolute path to your SmartCodeGenerator checkout — the folder containing the CodeGenerator project. Only needed when the folder you have open is NOT that checkout, which is the usual case: the open folder is where generated code goes. Ignored when the open folder is itself a checkout. Changing this needs a window reload."
+        },
         "smartcodegen.autoOpenGenerated": {
           "type": "boolean",
           "default": true,

@@ -4,7 +4,7 @@ import * as path from 'node:path';
 import { EngineHost } from './engineHost';
 import { SmartCodeGenPanel } from './panelView';
 import { ProjectSync } from './projectSync';
-import { buildEngine, resolveDebugDll } from './engineLauncher';
+import { buildEngine, resolveDebugDll, resolveEngineRoot } from './engineLauncher';
 import { dbg, LOG_PATH } from './debugLog';
 
 let host: EngineHost | undefined;
@@ -17,15 +17,27 @@ export function activate(context: vscode.ExtensionContext): void {
   const workspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
   dbg(`ACTIVATE start; workspace=${JSON.stringify(workspace)}; log=${LOG_PATH}`);
 
+  // The engine is built from a SmartCodeGenerator checkout, which is NOT necessarily the folder
+  // you have open — that is usually the project you are generating code into. Only the engine
+  // comes from here; cwd and PROJECTPATH below stay on the workspace, so generated code lands in
+  // the folder you are working in.
+  const engineRoot = resolveEngineRoot(
+    workspace,
+    vscode.workspace.getConfiguration('smartcodegen').get<string>('repositoryPath'),
+  );
+  dbg(`engineRoot=${JSON.stringify(engineRoot)}`);
+
   // Launch the built assembly directly (fast). Where it lives is known before the build; a fresh
   // clone with no build output yet falls back to the conventional path, which the build creates.
-  const dll = resolveDebugDll(workspace)
-    ?? path.join(workspace, 'CodeGenerator', 'bin', 'Debug', 'net10.0', 'CodeGenerator.dll');
+  const dll = engineRoot === undefined
+    ? undefined
+    : resolveDebugDll(engineRoot)
+      ?? path.join(engineRoot, 'CodeGenerator', 'bin', 'Debug', 'net10.0', 'CodeGenerator.dll');
   dbg(`engine dll=${JSON.stringify(dll)}`);
 
   host = new EngineHost({
     command: 'dotnet',
-    args: [dll],
+    args: [dll ?? ''],
     cwd: workspace,
     env: { ...process.env, PROJECTPATH: workspace },
   });
@@ -74,13 +86,27 @@ export function activate(context: vscode.ExtensionContext): void {
     projectSync,
   );
 
+  if (engineRoot === undefined) {
+    // Nothing to build against. Say what is actually wrong and how to fix it — attempting the
+    // build here is what used to produce a bare "Engine stopped" with no explanation.
+    panel.post({
+      type: 'system',
+      text:
+        `This folder is not a SmartCodeGenerator checkout, so there is no engine to run.\n` +
+        `Set "smartcodegen.repositoryPath" to your checkout, then reload the window ` +
+        `(Developer: Reload Window). Generated code will still go to this folder.`,
+    });
+    panel.post({ type: 'state', state: 'stopped' });
+    return;
+  }
+
   // Build the CLI (so the binary carries the current source — notably the store-update-to-stderr
   // fix a stale build lacks), then launch the fresh DLL. Building is incremental and fast once warm.
-  void buildThenStart(workspace, panel, reportState);
+  void buildThenStart(engineRoot, panel, reportState);
 }
 
 async function buildThenStart(
-  workspace: string,
+  engineRoot: string,
   panel: SmartCodeGenPanel,
   reportState: () => void,
 ): Promise<void> {
@@ -89,7 +115,7 @@ async function buildThenStart(
   panel.post({ type: 'system', text: 'Preparing the code generator (first run may take a minute)…' });
   dbg('BUILD start');
 
-  const result = await buildEngine(workspace);
+  const result = await buildEngine(engineRoot);
   building = false;
   dbg(`BUILD done ok=${result.ok} ${result.ok ? '' : JSON.stringify(result.message).slice(0, 300)}`);
 
