@@ -14,7 +14,8 @@
 
 - Verification gate is the **full solution in Release with `-warnaserror`**: `dotnet build SmartCodeGenerator/SmartCodeGenerator.slnx -c Release -warnaserror` then `dotnet test SmartCodeGenerator/SmartCodeGenerator.slnx -c Release`. A green `CodeGenerator` Debug build is **not** evidence — it hides analyzer errors and runs only one of the three test projects.
 - Run commands from the repo root `D:\SmartCodeGenerator-Repository` (the git root is the **parent** of the `SmartCodeGenerator` tool folder). There are **four** `.slnx` files; CI's is `SmartCodeGenerator/SmartCodeGenerator.slnx`, not one at the repo root.
-- Emitted C# must be verified by **compiling it** with `CodeGenerationEngine.Core.Compiler.Compile`, never by substring or `ParseText` assertions. Roslyn error-recovery makes malformed emitted code pass syntax-tree assertions.
+- Emitted C# must be verified by **compiling it** with `CodeGenerationEngine.Core.Compiler.Compile`, never by substring or `ParseText` assertions. Roslyn error-recovery makes malformed emitted code pass syntax-tree assertions. There are **no exemptions**: emitted code that references types from another generated namespace is compiled by composing stub declarations for those types (see Task 2's `EmittedSource.AssertCompiles` and Task 3's `Compose`). Substring assertions are allowed only for *non-code* facts — that a namespace is declared, that a factory arm mentions an entity.
+- **Two shared helpers exist; do not duplicate their logic.** `CodeGenerator.Tests/App/EmittedSource.cs` (created in Task 2) holds `AssertCompiles`, used by Tasks 2, 3 and 4. `TestProjectTemplates.TestSupport` (created in Task 6) is emitted **once** into the generated `<App>.Tests` project and holds `Fill`/`Placeholder`, used by both the generated round-trip tests (Task 6) and the generated validator tests (Task 7). Copy-pasting either body into a second location is a defect.
 - Generator-side tests are **MSTest** (`[TestClass]`, `[TestMethod]`, `Assert.HasCount`, `Assert.IsEmpty`) in `CodeGenerator.Tests/App/`. Code emitted into the generated app's test project is **xUnit** (`[Fact]`, `Assert.True`).
 - Generated-app namespaces: models `<App>.Models`, data `<App>.Data`, validation `<App>.Validation`.
 - Regenerated files are overwritten every run. **Only** `<Model>Validator.Custom.cs` is write-once.
@@ -253,20 +254,51 @@ The result type `Repository<T>.Create`/`Update` will return. `NotFound` stays se
 
 **Files:**
 - Create: `AppScaffolding/SaveResultTemplate.cs`
+- Create: `CodeGenerator.Tests/App/EmittedSource.cs`
 - Test: `CodeGenerator.Tests/App/SaveResultTemplateTests.cs`
 
 **Interfaces:**
-- Produces: `SaveResultTemplate.Source(string projectName) -> string`, emitting `<App>.Data.SaveResult<T>` with `Success`, `NotFound`, `Item`, `Errors`, and `AsDictionary()`.
+- Produces:
+  - `SaveResultTemplate.Source(string projectName) -> string`, emitting `<App>.Data.SaveResult<T>` with `Success`, `NotFound`, `Item`, `Errors`, and `AsDictionary()`.
+  - `EmittedSource.AssertCompiles(string source)` (internal static) — the one compile assertion, reused by Tasks 3 and 4.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Create the shared compile assertion**
+
+Create `CodeGenerator.Tests/App/EmittedSource.cs`. Tasks 2, 3 and 4 all compile emitted code; this is the single copy of that assertion.
+
+```csharp
+using System.Linq;
+using CodeGenerationEngine.Core;
+using Microsoft.CodeAnalysis;
+
+namespace CodeGenerator.Tests.App;
+
+/// <summary>Compiles emitted C# and fails with the compiler's own diagnostics.</summary>
+/// <remarks>
+/// Substring assertions cannot see the defects that matter in emitted code — Roslyn's
+/// error-recovery makes a malformed member pass a syntax-tree assertion, and an interpolated
+/// literal that breaks a string is invisible until the compiler reads it.
+/// </remarks>
+internal static class EmittedSource
+{
+    /// <summary>Asserts <paramref name="source"/> compiles with no errors.</summary>
+    public static void AssertCompiles(string source)
+    {
+        var result = Compiler.Compile(source);
+        var errors = result.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error).ToList();
+        var message = string.Join("\n", errors.Select(e => e.ToString()));
+        Assert.IsTrue(result.Success, $"Compilation failed:\n{message}");
+        Assert.IsEmpty(errors, $"Compilation errors:\n{message}");
+    }
+}
+```
+
+- [ ] **Step 2: Write the failing test**
 
 Create `CodeGenerator.Tests/App/SaveResultTemplateTests.cs`:
 
 ```csharp
-using System.Linq;
 using AppScaffolding;
-using CodeGenerationEngine.Core;
-using Microsoft.CodeAnalysis;
 
 namespace CodeGenerator.Tests.App;
 
@@ -275,19 +307,10 @@ namespace CodeGenerator.Tests.App;
 [TestClass]
 public class SaveResultTemplateTests
 {
-    private static void AssertCompiles(string source)
-    {
-        var result = Compiler.Compile(source);
-        var errors = result.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error).ToList();
-        var message = string.Join("\n", errors.Select(e => e.ToString()));
-        Assert.IsTrue(result.Success, $"Compilation failed:\n{message}");
-        Assert.IsEmpty(errors, $"Compilation errors:\n{message}");
-    }
-
     [TestMethod]
     public void Emitted_save_result_compiles()
     {
-        AssertCompiles(SaveResultTemplate.Source("Acme"));
+        EmittedSource.AssertCompiles(SaveResultTemplate.Source("Acme"));
     }
 
     [TestMethod]
@@ -298,12 +321,12 @@ public class SaveResultTemplateTests
 }
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [ ] **Step 3: Run the test to verify it fails**
 
 Run: `dotnet test SmartCodeGenerator/SmartCodeGenerator.slnx -c Release --filter SaveResultTemplateTests`
 Expected: FAIL to build — `SaveResultTemplate` does not exist.
 
-- [ ] **Step 3: Write the template**
+- [ ] **Step 4: Write the template**
 
 Create `AppScaffolding/SaveResultTemplate.cs`:
 
@@ -350,15 +373,15 @@ public sealed class SaveResult<T>
 }
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [ ] **Step 5: Run the tests to verify they pass**
 
 Run: `dotnet test SmartCodeGenerator/SmartCodeGenerator.slnx -c Release --filter SaveResultTemplateTests`
 Expected: PASS (2 tests).
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add AppScaffolding/SaveResultTemplate.cs CodeGenerator.Tests/App/SaveResultTemplateTests.cs
+git add AppScaffolding/SaveResultTemplate.cs CodeGenerator.Tests/App/EmittedSource.cs CodeGenerator.Tests/App/SaveResultTemplateTests.cs
 git commit -m "feat(scaffolding): emit SaveResult<T> for validating writes"
 ```
 
@@ -385,10 +408,7 @@ The four fixed files under `Validation/`. `ValidatorFactory` mirrors `StoreFacto
 Create `CodeGenerator.Tests/App/ValidatorTemplateTests.cs`:
 
 ```csharp
-using System.Linq;
 using AppScaffolding;
-using CodeGenerationEngine.Core;
-using Microsoft.CodeAnalysis;
 
 namespace CodeGenerator.Tests.App;
 
@@ -396,38 +416,73 @@ namespace CodeGenerator.Tests.App;
 [TestClass]
 public class ValidatorTemplateTests
 {
-    private static void AssertCompiles(string source)
-    {
-        var result = Compiler.Compile(source);
-        var errors = result.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error).ToList();
-        var message = string.Join("\n", errors.Select(e => e.ToString()));
-        Assert.IsTrue(result.Success, $"Compilation failed:\n{message}");
-        Assert.IsEmpty(errors, $"Compilation errors:\n{message}");
-    }
+    /// <summary>Flattens an emitted Validation/ file so several can be compiled together, and
+    /// supplies stubs for the generated types they reference from other namespaces.</summary>
+    private static string Flatten(string source) => source
+        .Replace("using Acme.Models;", string.Empty)
+        .Replace("using Acme.Data;", string.Empty)
+        .Replace("namespace Acme.Validation;", string.Empty);
+
+    /// <summary>The store seam StoreEntityLookup binds against, and one entity for the factory.</summary>
+    private const string Stubs = """
+using System;
+using System.Collections.Generic;
+
+public interface IStore<T> where T : class, new()
+{
+    List<T> GetAll();
+    bool SaveAll(List<T> items);
+    int NextId(List<T> items);
+}
+
+public static class StoreFactory
+{
+    public static IStore<T> Create<T>() where T : class, new() => null!;
+}
+
+public class Customer { public int Id { get; set; } }
+
+public sealed class CustomerValidator : IValidator<Customer>
+{
+    public IReadOnlyList<string> Validate(Customer item) => Array.Empty<string>();
+}
+""";
 
     [TestMethod]
     public void Validator_interface_compiles_and_declares_the_validation_namespace()
     {
         var source = ValidatorTemplate.ValidatorInterface("Acme");
         Assert.Contains("namespace Acme.Validation", source);
-        AssertCompiles(source);
+        EmittedSource.AssertCompiles(source);
     }
 
     [TestMethod]
     public void Entity_lookup_interface_compiles()
     {
-        AssertCompiles(ValidatorTemplate.EntityLookupInterface("Acme"));
+        EmittedSource.AssertCompiles(ValidatorTemplate.EntityLookupInterface("Acme"));
     }
 
     [TestMethod]
-    public void Factory_maps_every_entity_to_its_validator()
+    public void Store_entity_lookup_compiles_against_the_store_seam()
     {
-        var source = ValidatorTemplate.Factory("Acme", new[] { "Customer", "Order" });
+        EmittedSource.AssertCompiles(
+            Stubs
+            + Flatten(ValidatorTemplate.EntityLookupInterface("Acme"))
+            + Flatten(ValidatorTemplate.StoreEntityLookup("Acme")));
+    }
+
+    [TestMethod]
+    public void Factory_compiles_and_maps_every_entity_to_its_validator()
+    {
+        var source = ValidatorTemplate.Factory("Acme", new[] { "Customer" });
 
         Assert.Contains("typeof(Customer)", source);
         Assert.Contains("new CustomerValidator()", source);
-        Assert.Contains("typeof(Order)", source);
-        Assert.Contains("new OrderValidator()", source);
+
+        EmittedSource.AssertCompiles(
+            Stubs
+            + Flatten(ValidatorTemplate.ValidatorInterface("Acme"))
+            + Flatten(source));
     }
 
     [TestMethod]
@@ -441,7 +496,12 @@ public class ValidatorTemplateTests
     public void Factory_with_no_entities_still_compiles()
     {
         var source = ValidatorTemplate.Factory("Acme", System.Array.Empty<string>());
+
         Assert.Contains("NullValidator", source);
+        EmittedSource.AssertCompiles(
+            Stubs
+            + Flatten(ValidatorTemplate.ValidatorInterface("Acme"))
+            + Flatten(source));
     }
 }
 ```
@@ -451,7 +511,9 @@ public class ValidatorTemplateTests
 Run: `dotnet test SmartCodeGenerator/SmartCodeGenerator.slnx -c Release --filter ValidatorTemplateTests`
 Expected: FAIL to build — `ValidatorTemplate` does not exist.
 
-> Note: `ValidatorInterface` and `EntityLookupInterface` are compile-tested standalone. `StoreEntityLookup` and `Factory` reference `<App>.Data` and `<App>.Models` types that do not exist in isolation, so they are asserted structurally here and compile-tested for real in Task 5 and end-to-end in Task 8.
+> Every emitted file here is compiled, with stubs standing in for the `<App>.Data` and
+> `<App>.Models` types. `Assert.Contains` is used only for non-code facts (a namespace is declared,
+> a factory arm names an entity), never in place of compilation.
 
 - [ ] **Step 3: Write the template**
 
@@ -753,11 +815,8 @@ Append to `CodeGenerator.Tests/App/ValidatorTemplateTests.cs`:
 Create `CodeGenerator.Tests/App/ValidatorCompilesTests.cs`:
 
 ```csharp
-using System.Linq;
 using AppScaffolding;
-using CodeGenerationEngine.Core;
 using CodeGenerationEngine.Models;
-using Microsoft.CodeAnalysis;
 
 namespace CodeGenerator.Tests.App;
 
@@ -768,15 +827,6 @@ namespace CodeGenerator.Tests.App;
 [TestClass]
 public class ValidatorCompilesTests
 {
-    private static void AssertCompiles(string source)
-    {
-        var result = Compiler.Compile(source);
-        var errors = result.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error).ToList();
-        var message = string.Join("\n", errors.Select(e => e.ToString()));
-        Assert.IsTrue(result.Success, $"Compilation failed:\n{message}");
-        Assert.IsEmpty(errors, $"Compilation errors:\n{message}");
-    }
-
     /// <summary>The emitted validator plus everything it binds against, with namespaces flattened
     /// so one Compile call sees the lot.</summary>
     private static string Compose(
@@ -839,7 +889,7 @@ public class Customer
 }
 """;
 
-        AssertCompiles(Compose(models, definition, new[] { "Region" }));
+        EmittedSource.AssertCompiles(Compose(models, definition, new[] { "Region" }));
     }
 
     [TestMethod]
@@ -848,7 +898,7 @@ public class Customer
         var definition = new ClassDefinition { Name = "Tag" };
         definition.Properties.Add(Prop("Id", "int"));
 
-        AssertCompiles(Compose(
+        EmittedSource.AssertCompiles(Compose(
             "public class Tag { public int Id { get; set; } }",
             definition,
             System.Array.Empty<string>()));
@@ -866,7 +916,7 @@ public class Customer
         var definition = new ClassDefinition { Name = "Contact" };
         definition.Properties.AddRange(new[] { primary, backup });
 
-        AssertCompiles(Compose(
+        EmittedSource.AssertCompiles(Compose(
             "public class Contact { public string? Email { get; set; } public string? BackupEmail { get; set; } }",
             definition,
             System.Array.Empty<string>()));
@@ -1235,7 +1285,9 @@ Two traps to respect:
 
 **Interfaces:**
 - Consumes: `SaveResult<T>` (Task 2), `ValidatorFactory.Create<T>()` (Task 3)
-- Produces: `Repository<T>.Create(T) -> SaveResult<T>`, `Repository<T>.Update(T) -> SaveResult<T>`. `GetAll`, `GetById` and `Delete` are unchanged.
+- Produces:
+  - `Repository<T>.Create(T) -> SaveResult<T>`, `Repository<T>.Update(T) -> SaveResult<T>`. `GetAll`, `GetById` and `Delete` are unchanged.
+  - `TestProjectTemplates.TestSupport(string projectName) -> string`, emitting `<App>.Tests.TestSupport` with `Fill<T>(T)` and `Placeholder(string)`. Task 7 reuses both — do not duplicate them.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1410,10 +1462,30 @@ In `AppScaffolding/TestProjectTemplates.cs`, replace `RoundTrip` and add `Fill` 
         Assert.Null(repository.GetById(id));
     }
 
-    /// <summary>Populates writable properties with values that satisfy the generated rules.
-    /// A property the validator treats as an email or a phone number needs a value of that
-    /// shape, so a plain placeholder will not do.</summary>
-    private static void Fill<T>(T item)
+```
+
+Replace `Fill` with a call to the shared helper: `TestSupport.Fill(item);`. The helper itself is a
+**new emitted file**, added in the next step — do not inline a second copy of it here.
+
+- [ ] **Step 7b: Emit the shared test-support helper**
+
+Both the round-trip tests and the validator tests (Task 7) need to populate an entity with values
+that pass the generated rules, so it is emitted once. Add to `AppScaffolding/TestProjectTemplates.cs`:
+
+```csharp
+    /// <summary>Source of <c>TestSupport.cs</c>: entity population shared by the generated
+    /// round-trip and validator tests.</summary>
+    public static string TestSupport(string projectName) => $$"""
+using System;
+using System.Reflection;
+
+namespace {{projectName}}.Tests;
+
+/// <summary>Builds entities that satisfy the generated validation rules.</summary>
+internal static class TestSupport
+{
+    /// <summary>Populates every writable property with a value the validators accept.</summary>
+    public static void Fill<T>(T item)
     {
         foreach (var property in typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance))
         {
@@ -1421,13 +1493,15 @@ In `AppScaffolding/TestProjectTemplates.cs`, replace `RoundTrip` and add `Fill` 
                 continue;
 
             if (property.PropertyType == typeof(string))
-                property.SetValue(item, PlaceholderFor(property.Name));
+                property.SetValue(item, Placeholder(property.Name));
             else if (property.PropertyType == typeof(DateTime))
                 property.SetValue(item, DateTime.UtcNow);
         }
     }
 
-    private static string PlaceholderFor(string propertyName)
+    /// <summary>A value of the right shape for this property. A property the validator treats as
+    /// an email or a phone number needs a value of that shape, so a plain placeholder will not do.</summary>
+    public static string Placeholder(string propertyName)
     {
         if (propertyName.Contains("Email", StringComparison.OrdinalIgnoreCase))
             return "test@example.com";
@@ -1437,9 +1511,20 @@ In `AppScaffolding/TestProjectTemplates.cs`, replace `RoundTrip` and add `Fill` 
 
         return "Test";
     }
+}
+""";
 ```
 
-Add `using System;` to that emitted file's using block (it already emits `using System.Reflection;`).
+Then write it in `AppScaffolder.ScaffoldTestProject`, alongside the three existing `WriteSource`
+calls:
+
+```csharp
+        var supportPath = WriteSource(testFolder, "TestSupport.cs",
+            TestProjectTemplates.TestSupport(appProjectName));
+```
+
+and include `supportPath` in that method's existing null check, so a failure to write it returns
+null like the others.
 
 - [ ] **Step 8: Run the full suite**
 
@@ -1465,7 +1550,7 @@ The generated app should ship tests for its own validators. The emitter knows wh
 - Test: `CodeGenerator.Tests/App/TestProjectTemplatesTests.cs` (add cases)
 
 **Interfaces:**
-- Consumes: `ValidatorTemplate` output (Task 4), `IEntityLookup` (Task 3)
+- Consumes: `ValidatorTemplate` output (Task 4), `IEntityLookup` (Task 3), `TestSupport.Fill` (Task 6 — call it, never re-implement it)
 - Produces: `TestProjectTemplates.ValidatorTests(string projectName, string entityName, string? requiredPropertyName) -> string`
 
 - [ ] **Step 1: Write the failing test**
@@ -1521,8 +1606,6 @@ Add to `AppScaffolding/TestProjectTemplates.cs`:
 """;
 
         return $$"""
-using System;
-using System.Reflection;
 using {{projectName}}.Models;
 using {{projectName}}.Validation;
 using Xunit;
@@ -1542,16 +1625,7 @@ public class {{entityName}}ValidatorTests
     public void A_populated_{{entityName}}_is_valid()
     {
         var item = new {{entityName}}();
-        foreach (var property in typeof({{entityName}}).GetProperties(BindingFlags.Public | BindingFlags.Instance))
-        {
-            if (!property.CanWrite)
-                continue;
-
-            if (property.PropertyType == typeof(string))
-                property.SetValue(item, Placeholder(property.Name));
-            else if (property.PropertyType == typeof(DateTime))
-                property.SetValue(item, DateTime.UtcNow);
-        }
+        TestSupport.Fill(item);
 
         var errors = new {{entityName}}Validator(new AlwaysFound()).Validate(item);
 
@@ -1566,21 +1640,14 @@ public class {{entityName}}ValidatorTests
         Assert.NotEmpty(errors);
     }
 {{requiredFact}}
-
-    private static string Placeholder(string propertyName)
-    {
-        if (propertyName.Contains("Email", StringComparison.OrdinalIgnoreCase))
-            return "test@example.com";
-
-        if (propertyName.Contains("Phone", StringComparison.OrdinalIgnoreCase))
-            return "+1 555 0100";
-
-        return "Test";
-    }
 }
 """;
     }
 ```
+
+The emitted file needs only `using {{projectName}}.Models;`, `using {{projectName}}.Validation;`
+and `using Xunit;` — `TestSupport` is in the same `{{projectName}}.Tests` namespace, and the
+reflection/`DateTime` work now lives there rather than here.
 
 - [ ] **Step 4: Emit one per model**
 
