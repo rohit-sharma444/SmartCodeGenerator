@@ -16,9 +16,9 @@ public static class SeedDataTemplate
     /// </summary>
     public static IReadOnlyList<string> OrderByDependency(IReadOnlyList<ClassDefinition> classes)
     {
-        var names = new HashSet<string>(classes.Select(c => c.Name), StringComparer.OrdinalIgnoreCase);
+        var names = ForeignKeys.ClassNameSet(classes);
         var parents = classes.ToDictionary(
-            c => c.Name, c => ForeignKeyTargets(c, names), StringComparer.OrdinalIgnoreCase);
+            c => c.Name, c => ForeignKeys.TargetsOf(c, names), StringComparer.OrdinalIgnoreCase);
 
         var ordered = new List<string>();
         var placed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -51,46 +51,10 @@ public static class SeedDataTemplate
         return ordered;
     }
 
-    /// <summary>The class names this class references via a <c>&lt;Target&gt;Id</c> foreign key
-    /// whose sibling nav property is typed as that target entity.</summary>
-    private static IReadOnlyList<string> ForeignKeyTargets(ClassDefinition c, HashSet<string> allNames)
-    {
-        var targets = new List<string>();
-        foreach (var p in c.Properties)
-        {
-            if (p.Type != "int" || p.Name.Length <= 2)
-                continue;
-            if (!p.Name.EndsWith("Id", StringComparison.Ordinal)
-                || string.Equals(p.Name, "Id", StringComparison.OrdinalIgnoreCase))
-                continue;
-
-            var target = p.Name[..^2];
-            if (allNames.Contains(target)
-                && !string.Equals(target, c.Name, StringComparison.OrdinalIgnoreCase)
-                && c.Properties.Any(n => string.Equals(n.Type, target, StringComparison.Ordinal)))
-                targets.Add(target);
-        }
-        return targets;
-    }
-
-    /// <summary>The field names that are genuine foreign keys across <paramref name="classes"/> —
-    /// a <c>&lt;Target&gt;Id</c> whose owner also has a nav property typed as that target. Baked
-    /// into the generated seeder so its runtime FK assignment matches the compile-time ordering
-    /// rather than treating every int named <c>...Id</c> as a foreign key.</summary>
+    /// <summary>The field names that are genuine foreign keys across <paramref name="classes"/>.
+    /// Delegates to <see cref="ForeignKeys"/>, which the generated validators share.</summary>
     public static IReadOnlyList<string> ForeignKeyFieldNames(IReadOnlyList<ClassDefinition> classes)
-    {
-        var names = new HashSet<string>(classes.Select(c => c.Name), StringComparer.OrdinalIgnoreCase);
-        var fields = new List<string>();
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var c in classes)
-            foreach (var target in ForeignKeyTargets(c, names))
-            {
-                var field = target + "Id";
-                if (seen.Add(field))
-                    fields.Add(field);
-            }
-        return fields;
-    }
+        => ForeignKeys.FieldNames(classes);
 
     /// <summary>Source of <c>Data/SeedData.cs</c> in <paramref name="projectName"/>.Data, seeding
     /// the entities in <paramref name="orderedEntityNames"/> order. <paramref name="foreignKeyFieldNames"/>
