@@ -37,4 +37,13 @@ public class BusinessValidationRoutingTests
         var cmd = CommandFront.Parse("add validation Email should not be blank on Email in Customer", "");
         Assert.AreEqual(IntentType.AddValidation, cmd.Intent);
     }
+
+    [TestMethod]
+    public void Misspelled_business_keyword_still_routes_intent_class_and_text()
+    {
+        var cmd = CommandFront.Parse("add busniess validation Number should not be blank in Bill", "");
+        Assert.AreEqual(IntentType.AddBusinessValidation, cmd.Intent);
+        Assert.AreEqual("Bill", cmd.ClassName);
+        Assert.AreEqual("Number should not be blank", cmd.ValidationText);
+    }
 }

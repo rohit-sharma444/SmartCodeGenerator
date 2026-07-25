@@ -35,4 +35,16 @@ public class CommandSuggesterTests
     public void Closest_ExcludesTemplatedForms_WithAngleBrackets()
         => Assert.IsFalse(
             CommandSuggester.Closest("create class").Any(s => s.Contains('<')));
+
+    [TestMethod]
+    public void Closest_SuggestsTemplatedCommandPrefix_ForKeywordTypo()
+        => CollectionAssert.Contains(
+            CommandSuggester.Closest("add busniess validation Number should not be blank in Bill").ToList(),
+            "add business validation");
+
+    [TestMethod]
+    public void Closest_Suggestions_NeverContainPlaceholdersOrOptions()
+        => Assert.IsFalse(
+            CommandSuggester.Closest("add busniess validation Number in Bill")
+                .Any(s => s.Contains('<') || s.Contains('[')));
 }

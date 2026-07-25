@@ -51,7 +51,11 @@ public static class CommandFront
 
     public static ParsedCommand Parse(string input, string workspace)
     {
-        var text = (input ?? string.Empty).Trim();
+        // Correct near-miss spellings of the distinctive validation keywords up
+        // front (e.g. "busniess" -> "business") so the guards below and the
+        // extractor both see canonical text. Only those keywords are touched;
+        // entity names and rule text pass through unchanged.
+        var text = KeywordCorrector.Correct((input ?? string.Empty).Trim());
 
         if (LiteralCommandTable.TryResolve(text, out var literalIntent))
             return new ParsedCommand { Intent = literalIntent, OriginalSentence = input ?? string.Empty, Confidence = 1.0 };
@@ -78,39 +82,39 @@ public static class CommandFront
 
         if (AddBusinessValidationRe.IsMatch(text))
         {
-            var cmd = CommandEntityExtractor.Extract(input ?? string.Empty, IntentType.AddBusinessValidation, workspace);
+            var cmd = CommandEntityExtractor.Extract(text, IntentType.AddBusinessValidation, workspace);
             cmd.Confidence = 1.0;
             return cmd;
         }
 
         if (ShowBusinessValidationRe.IsMatch(text))
         {
-            var cmd = CommandEntityExtractor.Extract(input ?? string.Empty, IntentType.ShowBusinessValidation, workspace);
+            var cmd = CommandEntityExtractor.Extract(text, IntentType.ShowBusinessValidation, workspace);
             cmd.Confidence = 1.0;
             return cmd;
         }
 
         if (AddValidationRe.IsMatch(text))
         {
-            var addValidationCmd = CommandEntityExtractor.Extract(input ?? string.Empty, IntentType.AddValidation, workspace);
+            var addValidationCmd = CommandEntityExtractor.Extract(text, IntentType.AddValidation, workspace);
             addValidationCmd.Confidence = 1.0;
             return addValidationCmd;
         }
 
         if (ShowValidationRe.IsMatch(text))
         {
-            var showValidationCmd = CommandEntityExtractor.Extract(input ?? string.Empty, IntentType.ShowValidation, workspace);
+            var showValidationCmd = CommandEntityExtractor.Extract(text, IntentType.ShowValidation, workspace);
             showValidationCmd.Confidence = 1.0;
             return showValidationCmd;
         }
 
         if (Validator.IsMatch(text))
         {
-            var validatorCmd = CommandEntityExtractor.Extract(input ?? string.Empty, IntentType.GenerateValidator, workspace);
+            var validatorCmd = CommandEntityExtractor.Extract(text, IntentType.GenerateValidator, workspace);
             // The extractor's switch has no GenerateValidator case, so fill the
             // class name from the sentence here — exactly what HandleGenerateValidator
             // used to do with the raw input, now done in the bridge.
-            CommandEntityExtractor.ExtractClassName(input ?? string.Empty, validatorCmd);
+            CommandEntityExtractor.ExtractClassName(text, validatorCmd);
             validatorCmd.Confidence = 1.0;
             return validatorCmd;
         }

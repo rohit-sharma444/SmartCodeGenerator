@@ -35,10 +35,13 @@ internal static class CommandSuggester
     }
 
     /// <summary>
-    /// The closest command names to <paramref name="input"/> within
+    /// The closest command <em>prefixes</em> to <paramref name="input"/> within
     /// <paramref name="maxDistance"/> edits, best first, at most <paramref name="max"/>.
-    /// Templated forms (those with a "&lt;placeholder&gt;") are skipped — they are not
-    /// something a user types verbatim.
+    /// Each command is reduced to its literal prefix — the words before the first
+    /// "&lt;placeholder&gt;" or "[option]" — and the input's leading words are compared
+    /// against it. This lets templated commands (e.g. "add business validation
+    /// &lt;rule&gt; in &lt;class name&gt;") surface a "did you mean" for a keyword typo,
+    /// while the suggested text stays placeholder-free.
     /// </summary>
     internal static IReadOnlyList<string> Closest(string input, int max = 3, int maxDistance = 3)
     {
@@ -46,16 +49,35 @@ internal static class CommandSuggester
         if (trimmed.Length == 0)
             return [];
 
+        var inputWords = trimmed.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+
         return CommandDictionary.Commands
-            .Select(c => c.Command)
-            .Where(c => !c.Contains('<'))
+            .Select(c => LiteralPrefix(c.Command))
+            .Where(prefix => prefix.Length > 0)
             .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Select(command => (Command: command, Distance: Distance(trimmed, command)))
+            .Select(prefix => (Prefix: prefix, Distance: Distance(LeadingWords(inputWords, prefix), prefix)))
             .Where(x => x.Distance <= maxDistance)
             .OrderBy(x => x.Distance)
-            .ThenBy(x => x.Command, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(x => x.Prefix, StringComparer.OrdinalIgnoreCase)
             .Take(max)
-            .Select(x => x.Command)
+            .Select(x => x.Prefix)
             .ToList();
+    }
+
+    /// <summary>The literal words of a command name, up to the first placeholder
+    /// ("&lt;...&gt;") or bracketed option ("[...]").</summary>
+    private static string LiteralPrefix(string command)
+    {
+        var cut = command.IndexOfAny(['<', '[']);
+        return (cut < 0 ? command : command[..cut]).Trim();
+    }
+
+    /// <summary>The first N words of the input joined with spaces, where N is the
+    /// word count of <paramref name="prefix"/> — so a full sentence is compared
+    /// against a command prefix on equal footing.</summary>
+    private static string LeadingWords(string[] inputWords, string prefix)
+    {
+        var count = Math.Min(prefix.Split(' ').Length, inputWords.Length);
+        return string.Join(' ', inputWords.Take(count));
     }
 }
