@@ -125,7 +125,10 @@ public static class CommandHandlingService
 
     private static bool HandleUnknown(CommandExecutionContext ctx)
     {
-        Console.WriteLine($"Could not determine intent for input: '{ctx.RawInput}'");
+        // Report failure but stay silent: the CLI front-end owns the single
+        // user-facing "Command not recognized / did you mean" message for
+        // unrecognized input, keyed on PipelineOutcome.Recognized. Printing here
+        // too produced two messages for the same unknown command.
         return false;
     }
 

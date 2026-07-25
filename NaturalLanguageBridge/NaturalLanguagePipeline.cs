@@ -4,8 +4,11 @@ using NaturalLanguageEngine.Models.Semantics;
 namespace NaturalLanguageBridge;
 
 /// <summary>Result of orchestrating one command: whether CodeGenerator handled
-/// it, and the NLE analysis produced for it (null if NLE failed).</summary>
-public sealed record PipelineOutcome(bool Handled, SemanticResult? Analysis);
+/// it, the NLE analysis produced for it (null if NLE failed), and — distinct from
+/// Handled — whether the input was recognized as a command at all. A recognized
+/// command can still fail (Handled=false, Recognized=true); only genuinely
+/// unrecognized input is Recognized=false.</summary>
+public sealed record PipelineOutcome(bool Handled, SemanticResult? Analysis, bool Recognized);
 
 /// <summary>
 /// NLE-led entry point for a single command: analyze with NLE once, surface the
@@ -23,10 +26,10 @@ public sealed class NaturalLanguagePipeline
         Action<SemanticResult?>? onAnalyzed = null)
     {
         SemanticResult? captured = null;
-        bool handled = CommandFront.Run(
+        var result = CommandFront.RunDetailed(
             input, ref project, configuredRules, workspaceRoot, setLastCreatedProject,
             a => { captured = a; onAnalyzed?.Invoke(a); });
 
-        return new PipelineOutcome(handled, captured);
+        return new PipelineOutcome(result.Handled, captured, result.Recognized);
     }
 }

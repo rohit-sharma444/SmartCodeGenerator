@@ -92,7 +92,10 @@ internal class CodeGeneratorStarter
             var outcome = _pipeline.Handle(command, ref currentProject,
                 _configuredRules, _workspaceRoot, r => ProjectManager.CurrentProject = r);
 
-            if (!outcome.Handled && !string.IsNullOrWhiteSpace(command))
+            // Only offer the "did you mean" help for input we could not recognize.
+            // A recognized command that failed (e.g. "No project selected") has
+            // already reported its own reason; calling it unrecognized is wrong.
+            if (!outcome.Recognized && !string.IsNullOrWhiteSpace(command))
             {
                 Console.WriteLine(
                     UnrecognizedCommand.Describe(command, CommandSuggester.Closest(command)));
@@ -177,7 +180,9 @@ internal class CodeGeneratorStarter
                 var outcome = _pipeline.Handle(input, ref currentProject,
                      _configuredRules, _workspaceRoot, r => ProjectManager.CurrentProject = r);
 
-                if (!outcome.Handled && !string.IsNullOrWhiteSpace(input))
+                // See RunOnce: gate on recognition, not success, so a recognized
+                // command that failed keeps its own error and isn't mislabeled.
+                if (!outcome.Recognized && !string.IsNullOrWhiteSpace(input))
                 {
                     Console.WriteLine(
                         UnrecognizedCommand.Describe(input, CommandSuggester.Closest(input)));
