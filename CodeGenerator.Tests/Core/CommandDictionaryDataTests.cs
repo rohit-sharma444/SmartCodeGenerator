@@ -32,4 +32,14 @@ public class CommandDictionaryDataTests
                 $"Command '{command.Command}' has an empty example.");
         }
     }
+
+    [TestMethod]
+    public void HelpText_RendersEveryCommandExample()
+    {
+        var help = CommandDictionary.GetHelpText();
+
+        foreach (var command in CommandDictionary.Commands)
+            StringAssert.Contains(help, $"e.g. {command.Example}",
+                $"help output is missing the example for '{command.Command}'.");
+    }
 }
