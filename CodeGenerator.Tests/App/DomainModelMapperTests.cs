@@ -178,6 +178,15 @@ public class DomainModelMapperTests
             new[] { "Payroll", "Deduction" },
             classes.Select(c => c.Name).ToList());
     }
+
+    [TestMethod]
+    public void An_entity_named_Validation_is_renamed_to_avoid_the_namespace()
+    {
+        var classes = DomainModelMapper.ToClassDefinitions(ModelOf("Validation"));
+
+        Assert.HasCount(1, classes);
+        Assert.AreEqual("ValidationItem", classes[0].Name);
+    }
 }
 
 [TestClass]

@@ -22,12 +22,16 @@ public static class DomainModelMapper
         // opens with `using <App>.Data;`, so a model class called Data makes the simple name mean the
         // namespace and the app does not compile (CS0118). Discovering "point of sale" yields exactly
         // that class, so this is a name the real pipeline really does produce, not a hypothetical.
-        "Data", "Models", "ViewModels", "Views",
+        "Data", "Models", "ViewModels", "Views", "Validation",
 
         // Types the generated app declares or references by simple name.
         "App", "Application", "MainWindow", "Window", "MainViewModel", "EntityViewModel",
         "IEntityViewModel", "ObservableObject", "RelayCommand", "ICommand", "JsonStore",
         "DataGrid", "TabControl", "ObservableCollection", "Repository",
+
+        // Types the generated Validation/ folder and validating repository declare.
+        "IValidator", "IEntityLookup", "StoreEntityLookup", "ValidatorFactory", "NullValidator",
+        "SaveResult",
 
         // Commonly harvested words that are also System types.
         "Activator", "Array", "Attribute", "Buffer", "Comparer", "Convert", "Delegate",
