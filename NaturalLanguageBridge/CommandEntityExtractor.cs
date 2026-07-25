@@ -304,6 +304,26 @@ public static class CommandEntityExtractor
             return;
         }
 
+        // "add validation <rule> in <class>" — the "on <property>" clause omitted
+        // because the rule text already names the property (e.g. "Number should not
+        // be blank in Bill"). The fragment is passed through as-is: the rule parsers
+        // take the property from its first token, exactly as they do for the "on"
+        // form after it composes "<property> <predicate>". Tried after the "on ... in"
+        // form so the documented shape wins; the non-greedy rule keeps the class as
+        // the final token even when the rule itself contains "in".
+        var inClass = Regex.Match(sentence,
+            @"add\s+validation\s+(.+?)\s+in\s+([A-Za-z_]\w*)\s*$",
+            RegexOptions.IgnoreCase);
+
+        if (inClass.Success)
+        {
+            var ruleText = inClass.Groups[1].Value.Trim();
+            command.ClassName = ToPascalCase(inClass.Groups[2].Value);
+            command.PropertyName = ToPascalCase(ruleText.Split(' ', 2)[0]);
+            command.ValidationText = ruleText;
+            return;
+        }
+
         // "add validation <rule> to <class>" (legacy form).
         var to = Regex.Match(sentence,
             @"add\s+validation\s+(.+?)\s+to\s+([A-Za-z_]\w*)\s*$",

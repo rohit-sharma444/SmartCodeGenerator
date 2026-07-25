@@ -125,7 +125,10 @@ public static class CommandHandlingService
 
     private static bool HandleUnknown(CommandExecutionContext ctx)
     {
-        Console.WriteLine($"Could not determine intent for input: '{ctx.RawInput}'");
+        // Report failure but stay silent: the CLI front-end owns the single
+        // user-facing "Command not recognized / did you mean" message for
+        // unrecognized input, keyed on PipelineOutcome.Recognized. Printing here
+        // too produced two messages for the same unknown command.
         return false;
     }
 
@@ -332,7 +335,9 @@ public static class CommandHandlingService
                 command.OutputFolder = ProjectManager.CurrentProject.ProjectPath;
         }
 
-        return EntityExtractor.GenerateValidator(command);
+        // No selected project is fine: GenerateValidator falls back to the
+        // workspace root to locate the class and writes the validator beside it.
+        return EntityExtractor.GenerateValidator(command, ctx.WorkspaceRoot);
     }
 
     private static bool HandleCreateInterface(CommandExecutionContext ctx)

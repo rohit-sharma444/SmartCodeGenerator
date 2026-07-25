@@ -126,9 +126,28 @@ public static class CommandFront
         return command;
     }
 
+    /// <summary>Outcome of running one command: whether the action succeeded
+    /// (<paramref name="Handled"/>) and, distinctly, whether the input was a
+    /// command we understood at all (<paramref name="Recognized"/>). A recognized
+    /// command whose handler fails for a real reason ("No project selected") is
+    /// Handled=false but Recognized=true, so the CLI must not offer it the
+    /// "did you mean" help meant for genuinely unintelligible input.</summary>
+    public readonly record struct RunResult(bool Handled, bool Recognized);
+
     /// <summary>Parse then execute one command. The demo shortcut and the NLE
     /// analysis callback (for display) live here so callers need only one entry.</summary>
     public static bool Run(
+        string input,
+        ref ProjectMetaData? project,
+        List<PropertyRule> configuredRules,
+        string workspace,
+        Action<ProjectMetaData?> setLastCreatedProject,
+        Action<SemanticResult?>? onAnalyzed = null)
+        => RunDetailed(input, ref project, configuredRules, workspace, setLastCreatedProject, onAnalyzed).Handled;
+
+    /// <summary>As <see cref="Run"/>, but also reports whether the input was
+    /// recognized as a command (see <see cref="RunResult"/>).</summary>
+    public static RunResult RunDetailed(
         string input,
         ref ProjectMetaData? project,
         List<PropertyRule> configuredRules,
@@ -141,13 +160,15 @@ public static class CommandFront
             var (demoCode, _) = CommandHandlingService.BuildDemo();
             Console.WriteLine(demoCode.Replace("//", string.Empty));
             onAnalyzed?.Invoke(null);
-            return true;
+            return new RunResult(true, true);
         }
 
         if (onAnalyzed is not null)
             onAnalyzed(NlpActionProvider.Analyze(input ?? string.Empty));
 
         var command = Parse(input ?? string.Empty, workspace);
-        return CommandHandlingService.Execute(command, ref project, configuredRules, workspace, setLastCreatedProject);
+        var recognized = command.Intent != IntentType.Unknown;
+        var handled = CommandHandlingService.Execute(command, ref project, configuredRules, workspace, setLastCreatedProject);
+        return new RunResult(handled, recognized);
     }
 }
