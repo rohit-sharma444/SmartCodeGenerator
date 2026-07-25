@@ -12,7 +12,7 @@ namespace CodeGenerationEngine.Core;
 /// </summary>
 public static class EntityExtractor
 {
-    public static bool GenerateValidator(ParsedCommand command)
+    public static bool GenerateValidator(ParsedCommand command, string workspaceRoot)
     {
         if (string.IsNullOrWhiteSpace(command.ClassName))
         {
@@ -28,15 +28,23 @@ public static class EntityExtractor
             return false;
         }
 
-        var project = ProjectManager.CurrentProject;
-        if (project == null)
+        // The validator is written next to the class file, so a selected project is
+        // not required: search its path when one is selected, otherwise fall back to
+        // the workspace root. This keeps `generate validator` working on a fresh
+        // checkout, or when the current project was cleared for sitting outside the
+        // open folder.
+        var searchRoot = ProjectManager.CurrentProject?.ProjectPath;
+        if (string.IsNullOrWhiteSpace(searchRoot))
+            searchRoot = workspaceRoot;
+
+        if (string.IsNullOrWhiteSpace(searchRoot) || !Directory.Exists(searchRoot))
         {
-            Console.WriteLine("No project selected.");
+            Console.WriteLine($"Class '{command.ClassName}' not found.");
             return false;
         }
 
         var classFile = Directory
-            .EnumerateFiles(project.ProjectPath,
+            .EnumerateFiles(searchRoot,
                 $"{command.ClassName}.cs",
                 SearchOption.AllDirectories).FirstOrDefault();
 

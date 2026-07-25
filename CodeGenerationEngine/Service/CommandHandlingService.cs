@@ -332,7 +332,9 @@ public static class CommandHandlingService
                 command.OutputFolder = ProjectManager.CurrentProject.ProjectPath;
         }
 
-        return EntityExtractor.GenerateValidator(command);
+        // No selected project is fine: GenerateValidator falls back to the
+        // workspace root to locate the class and writes the validator beside it.
+        return EntityExtractor.GenerateValidator(command, ctx.WorkspaceRoot);
     }
 
     private static bool HandleCreateInterface(CommandExecutionContext ctx)
