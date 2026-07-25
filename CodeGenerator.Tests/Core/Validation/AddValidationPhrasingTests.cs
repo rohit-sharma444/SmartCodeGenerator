@@ -90,4 +90,16 @@ public class AddValidationPhrasingTests
         AssertRegistered(
             "add validation should not be blank on Name in Employee",
             "Employee", "Name is required");
+
+    /// <summary>
+    /// The rule text already names the property, so the user omits the "on
+    /// &lt;property&gt;" clause: "add validation &lt;rule&gt; in &lt;class&gt;".
+    /// Without a form for this, the class name was never extracted and the
+    /// command failed with "No class specified for the validation rule."
+    /// </summary>
+    [TestMethod]
+    public void Property_embedded_rule_without_on_clause_registers_a_rule() =>
+        AssertRegistered(
+            "add validation Number should not be blank in Bill",
+            "Bill", "Number is required");
 }
