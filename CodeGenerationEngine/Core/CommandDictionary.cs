@@ -512,9 +512,11 @@ public static class CommandDictionary
             lines.Add(new string('-', 80));
 
             foreach (var command in group.OrderBy(c => c.Command))
+            {
                 lines.Add($"{command.Command,-45} {command.Description}");
-
-            lines.Add(string.Empty);
+                lines.Add($"    e.g. {command.Example}");
+                lines.Add(string.Empty);
+            }
         }
 
         return string.Join(Environment.NewLine, lines);
