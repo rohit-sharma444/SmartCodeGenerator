@@ -182,7 +182,10 @@ wanted later, that is the follow-up.
   existing `_store` initializer. `Create` and `Update` validate first and return `SaveResult<T>`.
   `GetAll`/`GetById`/`Delete` are unchanged.
 - **`ConsoleMenuTemplate`** — drops `Validator.TryValidateObject`, prints `result.Errors`.
-- **`ViewModelTemplates`** — same substitution on the WPF save path.
+- **`ViewModelTemplates`** — the WPF save path calls `ValidatorFactory.Create<T>()` **directly**.
+  `EntityViewModel<T>.Save()` writes through `_store.SaveAll(...)` and never touches
+  `Repository<T>`, so repository-level enforcement does not reach it. WPF is the one target that
+  needs its own validator call rather than inheriting one.
 - **`WebApiProgramTemplate`** — `POST`/`PUT` return `Results.ValidationProblem` on invalid,
   `NotFound` on missing, `Created`/`NoContent` on success.
 - **`TestProjectTemplates`** — `RoundTripTests` updated for the new return type; new generated
