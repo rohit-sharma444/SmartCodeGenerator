@@ -13,8 +13,7 @@ public static class NaturalLanguageCodeEngine
         return command.Intent switch
         {
             IntentType.CreateClass or IntentType.CreateMethod or IntentType.CreateProject
-            or IntentType.CreateInterface or IntentType.CreateRepository or IntentType.CreateService
-            or IntentType.CreateController or IntentType.CreateApi
+            or IntentType.CreateInterface
                 => CodeGenerationEngine.Generate(command),
 
             IntentType.ShowClass => ClassValidator.ShowClass(command.ClassName!),
