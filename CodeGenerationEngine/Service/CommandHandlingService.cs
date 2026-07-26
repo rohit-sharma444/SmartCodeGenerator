@@ -87,6 +87,7 @@ public static class CommandHandlingService
             [IntentType.DeleteClass] = HandleDeleteClass,
             [IntentType.RestoreClass] = HandleRestoreClass,
             [IntentType.RestoreLastClass] = HandleRestoreLastClass,
+            [IntentType.ClassInherit] = HandleClassInherit,
             [IntentType.ListDeletedClasses] = HandleListDeletedClasses,
             [IntentType.CreateMethod] = HandleCreateMethod,
             [IntentType.ListMethods] = HandleListMethods,
@@ -229,6 +230,21 @@ public static class CommandHandlingService
     {
         return ClassRenameService.RenameClass(
             ctx.WorkspaceRoot, ctx.Command.ClassName, ctx.Command.NewClassName, out _);
+    }
+
+    private static bool HandleClassInherit(CommandExecutionContext ctx)
+    {
+        if (string.IsNullOrWhiteSpace(ctx.Command.BaseClass))
+        {
+            Console.WriteLine("No base class specified.");
+            return false;
+        }
+
+        var ok = ClassInheritanceService.AddInheritance(
+            ctx.WorkspaceRoot, ctx.Command.ClassName, ctx.Command.BaseClass, out var message);
+
+        Console.WriteLine(message);
+        return ok;
     }
 
     private static bool HandleDeleteClass(CommandExecutionContext ctx)

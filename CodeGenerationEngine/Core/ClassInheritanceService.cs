@@ -14,10 +14,8 @@ public static class ClassInheritanceService
     {
         message = string.Empty;
 
-        var file = Directory.GetFiles(
-                workspaceRoot,
-                $"{className}.cs",
-                SearchOption.AllDirectories)
+        var file = Directory
+            .GetFiles(workspaceRoot, $"{className}.cs", SearchOption.AllDirectories)
             .FirstOrDefault();
 
         if (file == null)
@@ -26,37 +24,41 @@ public static class ClassInheritanceService
             return false;
         }
 
-        var code = File.ReadAllText(file);
+        var root = CSharpSyntaxTree.ParseText(File.ReadAllText(file)).GetRoot();
 
-        var tree = CSharpSyntaxTree.ParseText(code);
-        var root = tree.GetRoot();
-
+        // By name: a file may hold several types, and the base type belongs to the one
+        // the user named, not to whichever is declared first.
         var classNode = root
             .DescendantNodes()
             .OfType<ClassDeclarationSyntax>()
-            .FirstOrDefault();
+            .FirstOrDefault(c => c.Identifier.Text.Equals(className, StringComparison.OrdinalIgnoreCase));
 
         if (classNode == null)
         {
-            message = "Class declaration not found.";
+            message = $"Class '{className}' not found in {Path.GetFileName(file)}.";
             return false;
         }
 
-        var updatedClass = classNode.WithBaseList(
-            SyntaxFactory.BaseList(
-                SyntaxFactory.SingletonSeparatedList<BaseTypeSyntax>(
-                    SyntaxFactory.SimpleBaseType(
-                        SyntaxFactory.ParseTypeName(baseClass)))));
+        if (classNode.BaseList is not null && classNode.BaseList.Types.Any(t =>
+                t.Type.ToString().Equals(baseClass, StringComparison.OrdinalIgnoreCase)))
+        {
+            message = $"Class '{className}' already inherits from '{baseClass}'.";
+            return false;
+        }
 
-        root = root.ReplaceNode(classNode, updatedClass);
+        var baseType = SyntaxFactory.SimpleBaseType(SyntaxFactory.ParseTypeName(baseClass));
 
-        File.WriteAllText(
-            file,
-            root.NormalizeWhitespace().ToFullString());
+        // Insert first, never append: `class Order : IAuditable, AuditableBase` is CS1722.
+        // WithBaseList used to REPLACE the list, silently dropping existing interfaces.
+        var baseList = classNode.BaseList is null
+            ? SyntaxFactory.BaseList(SyntaxFactory.SingletonSeparatedList<BaseTypeSyntax>(baseType))
+            : classNode.BaseList.WithTypes(classNode.BaseList.Types.Insert(0, baseType));
 
-        message =
-            $"Class '{className}' now inherits from '{baseClass}'.";
+        root = root.ReplaceNode(classNode, classNode.WithBaseList(baseList));
 
+        File.WriteAllText(file, root.NormalizeWhitespace().ToFullString());
+
+        message = $"Class '{className}' now inherits from '{baseClass}'.";
         return true;
     }
 }

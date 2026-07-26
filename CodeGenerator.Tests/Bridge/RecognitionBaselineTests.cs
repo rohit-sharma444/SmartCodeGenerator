@@ -42,12 +42,4 @@ public sealed class RecognitionBaselineTests
         Assert.IsFalse(CommandHandlingService.IsSupported(IntentType.RenameProperty));
     }
 
-    [TestMethod]
-    public void Inherits_on_an_existing_class_is_not_recognized_yet()
-    {
-        Assert.AreEqual(
-            IntentType.Unknown,
-            CommandFront.Parse("Order inherits AuditableBase", "").Intent);
-        Assert.IsFalse(CommandHandlingService.IsSupported(IntentType.ClassInherit));
-    }
 }

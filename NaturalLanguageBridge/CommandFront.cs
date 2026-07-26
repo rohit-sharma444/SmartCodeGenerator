@@ -49,6 +49,15 @@ public static class CommandFront
         new(@"^(?:use|select|switch|open|activate)\s+project\s+(?<project>.+)$",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    // `Order inherits AuditableBase` on an EXISTING class. Anchored whole-sentence and
+    // it cannot begin with create/generate, so `create a Customer class that inherits X`
+    // still routes to CreateClass, which sets a base type at generation time.
+    // Fields come from these groups, not from CommandEntityExtractor: Normalize maps
+    // entity/model/object -> class, which would rewrite a base type named `Entity`.
+    private static readonly Regex ClassInheritRe =
+        new(@"^(?:class\s+)?(?<class>\w+)(?:\s+class)?\s+(?:inherits?|extends|derives\s+from)\s+(?<base>\w+)$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     /// <summary>The intents the regex guards in <see cref="Parse"/> can produce.
     /// Hand-maintained: the guards are individual patterns, not a table.
     /// ADD TO THIS LIST WHEN YOU ADD A GUARD — the reachable-intent gate test
@@ -61,7 +70,8 @@ public static class CommandFront
         IntentType.ShowBusinessValidation,
         IntentType.AddValidation,
         IntentType.ShowValidation,
-        IntentType.GenerateValidator
+        IntentType.GenerateValidator,
+        IntentType.ClassInherit
     ];
 
     public static ParsedCommand Parse(string input, string workspace)
@@ -91,6 +101,17 @@ public static class CommandFront
             {
                 Intent = IntentType.UseProject,
                 ProjectName = useMatch.Groups["project"].Value.Trim(),
+                OriginalSentence = input ?? string.Empty,
+                Confidence = 1.0
+            };
+
+        var inheritMatch = ClassInheritRe.Match(text);
+        if (inheritMatch.Success)
+            return new ParsedCommand
+            {
+                Intent = IntentType.ClassInherit,
+                ClassName = inheritMatch.Groups["class"].Value.Trim(),
+                BaseClass = inheritMatch.Groups["base"].Value.Trim(),
                 OriginalSentence = input ?? string.Empty,
                 Confidence = 1.0
             };
