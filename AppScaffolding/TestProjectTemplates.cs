@@ -58,6 +58,62 @@ public class RepositoryRoundTripTests
 """;
     }
 
+    /// <summary>Source of <c><paramref name="entityName"/>ValidatorTests.cs</c>. When the model has
+    /// a required property, also asserts a blank record is rejected — otherwise the only honest
+    /// assertion is that a filled record passes.</summary>
+    public static string ValidatorTests(string projectName, string entityName, string? requiredPropertyName)
+    {
+        var requiredFact = requiredPropertyName is null ? string.Empty : $$"""
+
+
+    [Fact]
+    public void A_blank_{{entityName}}_reports_its_required_field()
+    {
+        var errors = new {{entityName}}Validator(new AlwaysFound()).Validate(new {{entityName}}());
+
+        Assert.Contains("{{requiredPropertyName}} is required.", errors);
+    }
+""";
+
+        return $$"""
+using {{projectName}}.Models;
+using {{projectName}}.Validation;
+using Xunit;
+
+namespace {{projectName}}.Tests;
+
+/// <summary>Rules generated for {{entityName}}. Uses a fake lookup so no store is needed.</summary>
+public class {{entityName}}ValidatorTests
+{
+    /// <summary>Every foreign key resolves, so only the property rules are under test.</summary>
+    private sealed class AlwaysFound : IEntityLookup
+    {
+        public bool Exists<TEntity>(int id) where TEntity : class, new() => true;
+    }
+
+    [Fact]
+    public void A_populated_{{entityName}}_is_valid()
+    {
+        var item = new {{entityName}}();
+        TestSupport.Fill(item);
+
+        var errors = new {{entityName}}Validator(new AlwaysFound()).Validate(item);
+
+        Assert.Empty(errors);
+    }
+
+    [Fact]
+    public void A_null_{{entityName}}_is_reported_rather_than_throwing()
+    {
+        var errors = new {{entityName}}Validator(new AlwaysFound()).Validate(null!);
+
+        Assert.NotEmpty(errors);
+    }
+{{requiredFact}}
+}
+""";
+    }
+
     /// <summary>Source of <c>TestSupport.cs</c>: entity population shared by the generated
     /// round-trip and validator tests.</summary>
     public static string TestSupport(string projectName) => $$"""

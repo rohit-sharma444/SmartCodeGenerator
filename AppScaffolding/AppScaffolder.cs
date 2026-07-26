@@ -205,7 +205,7 @@ public sealed class AppScaffolder
                 written.Add(customPath);
         }
 
-        var testProjectPath = ScaffoldTestProject(workspaceRoot, projectName, entityNames);
+        var testProjectPath = ScaffoldTestProject(workspaceRoot, projectName, classes);
 
         var allWritten = written.Count == expected;
 
@@ -224,8 +224,10 @@ public sealed class AppScaffolder
     /// WPF app's tests target net10.0-windows and resolve the reference.
     /// </summary>
     private static string? ScaffoldTestProject(
-        string workspaceRoot, string appProjectName, IReadOnlyList<string> entityNames)
+        string workspaceRoot, string appProjectName, IReadOnlyList<ClassDefinition> classes)
     {
+        var entityNames = classes.Select(c => c.Name).ToList();
+
         if (entityNames.Count == 0)
             return null;
 
@@ -277,6 +279,18 @@ public sealed class AppScaffolder
         if (roundTripPath is null || seedPath is null || parallelizationPath is null
             || supportPath is null)
             return null;
+
+        // One validator test file per model, so the generated suite covers the generated rules.
+        foreach (var definition in classes)
+        {
+            var required = definition.Properties.FirstOrDefault(p =>
+                p.Type == "string"
+                && p.Rules.Any(r => string.Equals(r.Name, "required", StringComparison.OrdinalIgnoreCase)));
+
+            if (WriteSource(testFolder, $"{definition.Name}ValidatorTests.cs",
+                    TestProjectTemplates.ValidatorTests(appProjectName, definition.Name, required?.Name)) is null)
+                return null;
+        }
 
         return testCsproj;
     }
