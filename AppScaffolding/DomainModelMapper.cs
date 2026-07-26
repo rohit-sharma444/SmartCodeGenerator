@@ -22,12 +22,16 @@ public static class DomainModelMapper
         // opens with `using <App>.Data;`, so a model class called Data makes the simple name mean the
         // namespace and the app does not compile (CS0118). Discovering "point of sale" yields exactly
         // that class, so this is a name the real pipeline really does produce, not a hypothetical.
-        "Data", "Models", "ViewModels", "Views",
+        "Data", "Models", "ViewModels", "Views", "Validation",
 
         // Types the generated app declares or references by simple name.
         "App", "Application", "MainWindow", "Window", "MainViewModel", "EntityViewModel",
         "IEntityViewModel", "ObservableObject", "RelayCommand", "ICommand", "JsonStore",
         "DataGrid", "TabControl", "ObservableCollection", "Repository",
+
+        // Types the generated Validation/ folder and validating repository declare.
+        "IValidator", "IEntityLookup", "StoreEntityLookup", "ValidatorFactory", "NullValidator",
+        "SaveResult",
 
         // Commonly harvested words that are also System types.
         "Activator", "Array", "Attribute", "Buffer", "Comparer", "Convert", "Delegate",
@@ -266,7 +270,7 @@ public static class DomainModelMapper
     /// </summary>
     private static string ToUniqueClassName(string entityName, HashSet<string> usedNames)
     {
-        var baseName = ReservedNames.Contains(entityName)
+        var baseName = ReservedNames.Contains(entityName) || IsValidatorName(entityName)
             ? entityName + DisambiguatingSuffix
             : entityName;
 
@@ -276,4 +280,20 @@ public static class DomainModelMapper
 
         return candidate;
     }
+
+    /// <summary>
+    /// Whether this name would collide with a generated validator's class name.
+    /// </summary>
+    /// <remarks>
+    /// The generated validators live in <c>&lt;App&gt;.Validation</c> and are named
+    /// <c>&lt;Model&gt;Validator</c>. C# resolves a simple name against the enclosing namespace
+    /// before any using directive, so an entity called <c>OrderValidator</c> makes
+    /// <c>typeof(OrderValidator)</c> inside ValidatorFactory bind to <em>Order's validator</em>
+    /// rather than to the model — the factory arm then never matches and the entity silently
+    /// degrades to NullValidator. Renaming the entity is the only fix that also protects the
+    /// validator's own <c>IValidator&lt;T&gt;</c> argument. A suffix cannot be expressed in
+    /// <see cref="ReservedNames"/>, hence the separate test.
+    /// </remarks>
+    private static bool IsValidatorName(string entityName) =>
+        entityName.EndsWith("Validator", StringComparison.OrdinalIgnoreCase);
 }

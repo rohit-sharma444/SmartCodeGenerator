@@ -64,6 +64,14 @@ The shared core:
     JsonStore.cs            generic JSON list store, keyed by int Id
     Repository.cs           generic base — GetAll/GetById/Create/Update/Delete
     <Entity>Repository.cs   one typed repository per entity
+    SaveResult.cs           what a validating write returns
+  Validation/
+    IValidator.cs           the seam: IReadOnlyList<string> Validate(T)
+    IEntityLookup.cs        existence checks a validator needs for foreign keys
+    StoreEntityLookup.cs    the real lookup, reading through the store
+    ValidatorFactory.cs     type → validator, mirroring StoreFactory
+    <Entity>Validator.Generated.cs   the inferred rules — REGENERATED
+    <Entity>Validator.Custom.cs      hand-written rules — written ONCE
 ```
 
 Then the target adds its front end and reconciles the `dotnet new` output:
@@ -82,6 +90,58 @@ core: it depends on `IEntityViewModel`, so `WpfTarget` contributes it rather tha
 
 The generated app persists to **one JSON file per type**, written beside the
 built executable (`AppContext.BaseDirectory`). There is no database.
+
+## Validation
+
+Each model gets its own validator, split across two files:
+
+- **`<Entity>Validator.Generated.cs`** is rewritten on every build. It carries the
+  rules `DomainModelMapper.AddValidation` already recorded on the model —
+  required, max length, email and phone shape — plus a presence check per
+  foreign key. Nothing is re-inferred here, so a model's attributes and its
+  validator cannot disagree. A `[Key]` `Id` gets no check (the store assigns it,
+  so validating it would reject every new record), and navigation properties get
+  none either. Each property's checks sit in their own `try`/`catch`, so one
+  throwing rule cannot abort the rest.
+- **`<Entity>Validator.Custom.cs`** is written **once** and never overwritten —
+  it is where your own cross-field and business rules live, and regenerating the
+  app must not discard them. It implements a `partial void ValidateCustom` hook
+  the generated half calls; because that hook is a partial method, deleting the
+  file entirely still compiles.
+
+`ValidatorFactory.Create<T>()` resolves a type to its validator, deliberately
+mirroring `StoreFactory.Create<T>()` — the front-end templates are generic over
+`T` and so cannot name `CustomerValidator` directly. A type with no generated
+validator degrades to a no-op `NullValidator<T>` rather than throwing.
+
+`Repository<T>.Create` and `Update` validate **before** touching the store and
+return `SaveResult<T>`, which keeps `NotFound` distinct from `Errors`: an
+`Update` naming an unknown Id is a different failure from one carrying an
+invalid record, and the Web API front end maps them to 404 and 400 respectively.
+`GetAll`, `GetById` and `Delete` are unchanged.
+
+Two things worth knowing:
+
+- **The WPF save path bypasses `Repository`.** `EntityViewModel<T>.Save()` writes
+  through the store directly, so repository-level enforcement never sees those
+  records; it calls `ValidatorFactory.Create<T>()` itself. This is also why
+  `EntityViewModel<T>` is constrained `where T : class, new()`.
+- **`SeedData` is deliberately not validated.** It writes through
+  `StoreFactory`/`SaveAll` rather than `Repository`, so seeding cannot be blocked
+  by a rule inferred from a model it is trying to populate.
+- **A foreign-key check reads the whole store.** `StoreEntityLookup.Exists<T>`
+  goes through `StoreFactory.Create<T>().GetAll()`, which deserializes the entire
+  JSON file (or loads the whole table). The WPF `Save()` validates every record in
+  a loop, so an app with *R* records and *F* foreign keys does *R×F* store loads
+  per save. Acceptable at the scale these apps are generated for — but if you do
+  cache, **scope the cache to a single `Validate` call**. A longer-lived cache goes
+  stale and starts rejecting valid keys: the Web API constructs each
+  `Repository<T>` once at startup, so its validator and lookup live for the whole
+  process.
+
+The generated test project gets a `<Entity>ValidatorTests.cs` per model, using a
+fake `IEntityLookup` so no store is needed, plus a shared `TestSupport` helper
+that fills an entity with values the generated rules accept.
 
 ## Shaping: why the model is not used verbatim
 

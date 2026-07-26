@@ -73,8 +73,11 @@ public class ConsoleTargetTests
     {
         var src = ConsoleMenuTemplate.Source("Shop");
 
-        StringAssert.Contains(src, "using System.ComponentModel.DataAnnotations;");
-        StringAssert.Contains(src, "Validator.TryValidateObject");
+        // Validation moved into Repository.Create, so the menu reports the SaveResult rather than
+        // running DataAnnotations itself -- one definition of the rules, not two.
+        StringAssert.Contains(src, "var result = _repository.Create(item);");
+        StringAssert.Contains(src, "if (!result.Success)");
         StringAssert.Contains(src, "Not added.");
+        Assert.DoesNotContain("Validator.TryValidateObject", src);
     }
 }

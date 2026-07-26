@@ -9,7 +9,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using System.ComponentModel.DataAnnotations;
 using {{projectName}}.Data;
 
 namespace {{projectName}};
@@ -69,17 +68,15 @@ public sealed class EntityMenu<T> where T : class, new()
             if (value is not null) prop.SetValue(item, value);
         }
 
-        var errors = new List<ValidationResult>();
-        if (!Validator.TryValidateObject(
-                item, new ValidationContext(item), errors, validateAllProperties: true))
+        var result = _repository.Create(item);
+        if (!result.Success)
         {
-            foreach (var error in errors)
-                System.Console.WriteLine("  " + error.ErrorMessage);
+            foreach (var error in result.Errors)
+                System.Console.WriteLine("  " + error);
             System.Console.WriteLine("Not added.");
             return;
         }
 
-        _repository.Create(item);
         System.Console.WriteLine("Added.");
     }
 

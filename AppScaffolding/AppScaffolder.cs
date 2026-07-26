@@ -127,6 +127,7 @@ public sealed class AppScaffolder
 
         var modelsFolder = Path.Combine(outputFolder, "Models");
         var dataFolder = Path.Combine(outputFolder, "Data");
+        var validationFolder = Path.Combine(outputFolder, "Validation");
 
         var written = new List<string>(
             WriteClasses(modelsFolder, classes, $"{projectName}.Models"));
@@ -146,6 +147,11 @@ public sealed class AppScaffolder
                     projectName,
                     SeedDataTemplate.OrderByDependency(classes),
                     SeedDataTemplate.ForeignKeyFieldNames(classes))),
+            (dataFolder, "SaveResult.cs", SaveResultTemplate.Source(projectName)),
+            (validationFolder, "IValidator.cs", ValidatorTemplate.ValidatorInterface(projectName)),
+            (validationFolder, "IEntityLookup.cs", ValidatorTemplate.EntityLookupInterface(projectName)),
+            (validationFolder, "StoreEntityLookup.cs", ValidatorTemplate.StoreEntityLookup(projectName)),
+            (validationFolder, "ValidatorFactory.cs", ValidatorTemplate.Factory(projectName, entityNames)),
         };
 
         // Persistence backend behind the seam.
@@ -163,6 +169,15 @@ public sealed class AppScaffolder
         foreach (var name in entityNames)
             files.Add((dataFolder, $"{name}Repository.cs", RepositoryTemplate.Typed(projectName, name)));
 
+        // The regenerated half of each model's validator. Foreign-key targets come from
+        // ForeignKeys.TargetsOf, so a lookup check is only ever emitted for a <Target>Id the
+        // class actually declares.
+        var classNameSet = ForeignKeys.ClassNameSet(classes);
+        foreach (var definition in classes)
+            files.Add((validationFolder, $"{definition.Name}Validator.Generated.cs",
+                ValidatorTemplate.Generated(
+                    projectName, definition, ForeignKeys.TargetsOf(definition, classNameSet))));
+
         // Target-specific front-end / entry point.
         foreach (var file in target.FrontEndFiles(projectName, entityNames))
             files.Add((Path.Combine(outputFolder, file.RelativeFolder), file.Name, file.Source));
@@ -175,7 +190,22 @@ public sealed class AppScaffolder
                 written.Add(path);
         }
 
-        var testProjectPath = ScaffoldTestProject(workspaceRoot, projectName, entityNames);
+        // Written once, never overwritten: this is where the user's own rules live, and a rebuild
+        // must not discard them. The .Generated.cs half above is refreshed every run.
+        foreach (var definition in classes)
+        {
+            var fileName = $"{definition.Name}Validator.Custom.cs";
+            if (File.Exists(Path.Combine(validationFolder, fileName)))
+                continue;
+
+            expected++;
+            var customPath = WriteSource(
+                validationFolder, fileName, ValidatorTemplate.CustomStub(projectName, definition.Name));
+            if (customPath is not null)
+                written.Add(customPath);
+        }
+
+        var testProjectPath = ScaffoldTestProject(workspaceRoot, projectName, classes);
 
         var allWritten = written.Count == expected;
 
@@ -194,8 +224,10 @@ public sealed class AppScaffolder
     /// WPF app's tests target net10.0-windows and resolve the reference.
     /// </summary>
     private static string? ScaffoldTestProject(
-        string workspaceRoot, string appProjectName, IReadOnlyList<string> entityNames)
+        string workspaceRoot, string appProjectName, IReadOnlyList<ClassDefinition> classes)
     {
+        var entityNames = classes.Select(c => c.Name).ToList();
+
         if (entityNames.Count == 0)
             return null;
 
@@ -241,9 +273,24 @@ public sealed class AppScaffolder
             TestProjectTemplates.SeedTests(appProjectName, entityNames[0]));
         var parallelizationPath = WriteSource(testFolder, "TestParallelization.cs",
             TestProjectTemplates.DisableParallelization());
+        var supportPath = WriteSource(testFolder, "TestSupport.cs",
+            TestProjectTemplates.TestSupport(appProjectName));
 
-        if (roundTripPath is null || seedPath is null || parallelizationPath is null)
+        if (roundTripPath is null || seedPath is null || parallelizationPath is null
+            || supportPath is null)
             return null;
+
+        // One validator test file per model, so the generated suite covers the generated rules.
+        foreach (var definition in classes)
+        {
+            var required = definition.Properties.FirstOrDefault(p =>
+                p.Type == "string"
+                && p.Rules.Any(r => string.Equals(r.Name, "required", StringComparison.OrdinalIgnoreCase)));
+
+            if (WriteSource(testFolder, $"{definition.Name}ValidatorTests.cs",
+                    TestProjectTemplates.ValidatorTests(appProjectName, definition.Name, required?.Name)) is null)
+                return null;
+        }
 
         return testCsproj;
     }

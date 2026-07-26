@@ -61,6 +61,21 @@ public class DomainModelMapperTests
     }
 
     [TestMethod]
+    public void ToClassDefinitions_RenamesAnyEntityWhoseNameEndsInValidator()
+    {
+        // The generated validators live in <App>.Validation and are named <Model>Validator, so an
+        // entity called OrderValidator collides with the validator generated for Order. C# resolves
+        // a simple name against the enclosing namespace first, so typeof(OrderValidator) inside
+        // ValidatorFactory would bind to Order's VALIDATOR, the arm would never match, and the
+        // entity would silently degrade to NullValidator -- no error, no validation.
+        var classes = DomainModelMapper.ToClassDefinitions(ModelOf("Order", "OrderValidator"));
+
+        CollectionAssert.AreEqual(
+            new[] { "Order", "OrderValidatorItem" },
+            classes.Select(c => c.Name).ToList());
+    }
+
+    [TestMethod]
     public void ToClassDefinitions_RenamesEntity_NamedRepository()
     {
         // The generated app declares a base Repository<T> in <App>.Data. An entity also
@@ -177,6 +192,15 @@ public class DomainModelMapperTests
         CollectionAssert.AreEqual(
             new[] { "Payroll", "Deduction" },
             classes.Select(c => c.Name).ToList());
+    }
+
+    [TestMethod]
+    public void An_entity_named_Validation_is_renamed_to_avoid_the_namespace()
+    {
+        var classes = DomainModelMapper.ToClassDefinitions(ModelOf("Validation"));
+
+        Assert.HasCount(1, classes);
+        Assert.AreEqual("ValidationItem", classes[0].Name);
     }
 }
 

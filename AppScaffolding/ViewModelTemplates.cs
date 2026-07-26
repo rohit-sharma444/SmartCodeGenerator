@@ -94,14 +94,17 @@ using System.Collections;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations;
 using System.Windows.Input;
 using {{appName}}.Data;
+using {{appName}}.Validation;
 
 namespace {{appName}}.ViewModels;
 
 /// <summary>One entity's records, edited in memory and persisted on Save.</summary>
-public sealed class EntityViewModel<T> : ObservableObject, IEntityViewModel where T : new()
+/// <remarks>T is constrained to a reference type because this view-model resolves the entity's
+/// generated validator, and ValidatorFactory.Create&lt;T&gt;() is declared `where T : class, new()`.
+/// Every entity the app generates is a class, so the constraint costs nothing.</remarks>
+public sealed class EntityViewModel<T> : ObservableObject, IEntityViewModel where T : class, new()
 {
     private readonly JsonStore<T> _store = new();
     private object? _selected;
@@ -162,13 +165,15 @@ public sealed class EntityViewModel<T> : ObservableObject, IEntityViewModel wher
 
     private void Save()
     {
+        // This path writes through _store, not Repository, so it has to run the generated
+        // validator itself -- repository-level enforcement never sees these records.
+        var validator = ValidatorFactory.Create<T>();
         foreach (var record in Records)
         {
-            var errors = new List<ValidationResult>();
-            if (!Validator.TryValidateObject(
-                    record!, new ValidationContext(record!), errors, validateAllProperties: true))
+            var errors = validator.Validate(record!);
+            if (errors.Count > 0)
             {
-                Status = $"Cannot save: {errors[0].ErrorMessage}";
+                Status = $"Cannot save: {errors[0]}";
                 return;
             }
         }

@@ -1,0 +1,64 @@
+using System.Linq;
+using CodeGenerationEngine.Core;
+using Microsoft.CodeAnalysis;
+
+namespace CodeGenerator.Tests.App;
+
+/// <summary>Compiles emitted C# and fails with the compiler's own diagnostics.</summary>
+/// <remarks>
+/// Substring assertions cannot see the defects that matter in emitted code — Roslyn's
+/// error-recovery makes a malformed member pass a syntax-tree assertion, and an interpolated
+/// literal that breaks a string is invisible until the compiler reads it.
+/// </remarks>
+internal static class EmittedSource
+{
+    /// <summary>
+    /// Flattens several emitted Validation/ files (and any other C# snippets) into one compilable
+    /// unit: strips each file's own namespace declaration and its &lt;App&gt;.Models/&lt;App&gt;.Data
+    /// using (the callers' stubs stand in for those types), then hoists every remaining
+    /// <c>using</c> directive to the front of the result. The fixture app is always named
+    /// <c>Acme</c>.
+    /// </summary>
+    /// <remarks>
+    /// A <c>using</c> directive may not follow a type declaration anywhere in a single
+    /// compilation unit (CS1529), and <c>Compiler.Compile</c> parses the whole concatenated
+    /// string as one syntax tree. Simply concatenating several files that each open with their
+    /// own <c>using</c> would therefore not compile once more than one type-bearing fragment is
+    /// joined -- this hoisting belongs here, in the test harness, precisely so the production
+    /// templates can keep plain <c>using</c> directives and bare type names, matching every
+    /// sibling template, when they are emitted stand-alone into a real generated app.
+    /// </remarks>
+    public static string Flatten(params string[] sources)
+    {
+        var usings = new List<string>();
+        var bodies = new List<string>();
+
+        foreach (var source in sources)
+        {
+            var stripped = source
+                .Replace("using Acme.Models;", string.Empty)
+                .Replace("using Acme.Data;", string.Empty)
+                .Replace("namespace Acme.Validation;", string.Empty);
+
+            foreach (var line in stripped.Split('\n'))
+            {
+                if (line.TrimStart().StartsWith("using ", StringComparison.Ordinal))
+                    usings.Add(line.Trim());
+                else
+                    bodies.Add(line);
+            }
+        }
+
+        return string.Join("\n", usings.Distinct()) + "\n" + string.Join("\n", bodies);
+    }
+
+    /// <summary>Asserts <paramref name="source"/> compiles with no errors.</summary>
+    public static void AssertCompiles(string source)
+    {
+        var result = Compiler.Compile(source);
+        var errors = result.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error).ToList();
+        var message = string.Join("\n", errors.Select(e => e.ToString()));
+        Assert.IsTrue(result.Success, $"Compilation failed:\n{message}");
+        Assert.IsEmpty(errors, $"Compilation errors:\n{message}");
+    }
+}

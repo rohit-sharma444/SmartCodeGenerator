@@ -29,11 +29,21 @@ public class RepositoryRoundTripTests
 
     private static void RoundTrip<T>(Repository<T> repository) where T : class, new()
     {
-        var created = repository.Create(new T());
-        var id = IdOf(created);
+        // A blank record no longer round-trips: the generated validators reject it. TestSupport
+        // fills it with values of the shape those rules accept.
+        var item = new T();
+        TestSupport.Fill(item);
+
+        var created = repository.Create(item);
+        Assert.True(created.Success, string.Join("; ", created.Errors));
+
+        var id = IdOf(created.Item!);
         Assert.NotEqual(0, id);
         Assert.NotNull(repository.GetById(id));
-        Assert.True(repository.Update(created));
+
+        var updated = repository.Update(created.Item!);
+        Assert.True(updated.Success, string.Join("; ", updated.Errors));
+
         Assert.True(repository.Delete(id));
         Assert.Null(repository.GetById(id));
     }
@@ -47,6 +57,103 @@ public class RepositoryRoundTripTests
 }
 """;
     }
+
+    /// <summary>Source of <c><paramref name="entityName"/>ValidatorTests.cs</c>. When the model has
+    /// a required property, also asserts a blank record is rejected — otherwise the only honest
+    /// assertion is that a filled record passes.</summary>
+    public static string ValidatorTests(string projectName, string entityName, string? requiredPropertyName)
+    {
+        var requiredFact = requiredPropertyName is null ? string.Empty : $$"""
+
+
+    [Fact]
+    public void A_blank_{{entityName}}_reports_its_required_field()
+    {
+        var errors = new {{entityName}}Validator(new AlwaysFound()).Validate(new {{entityName}}());
+
+        Assert.Contains("{{requiredPropertyName}} is required.", errors);
+    }
+""";
+
+        return $$"""
+using {{projectName}}.Models;
+using {{projectName}}.Validation;
+using Xunit;
+
+namespace {{projectName}}.Tests;
+
+/// <summary>Rules generated for {{entityName}}. Uses a fake lookup so no store is needed.</summary>
+public class {{entityName}}ValidatorTests
+{
+    /// <summary>Every foreign key resolves, so only the property rules are under test.</summary>
+    private sealed class AlwaysFound : IEntityLookup
+    {
+        public bool Exists<TEntity>(int id) where TEntity : class, new() => true;
+    }
+
+    [Fact]
+    public void A_populated_{{entityName}}_is_valid()
+    {
+        var item = new {{entityName}}();
+        TestSupport.Fill(item);
+
+        var errors = new {{entityName}}Validator(new AlwaysFound()).Validate(item);
+
+        Assert.Empty(errors);
+    }
+
+    [Fact]
+    public void A_null_{{entityName}}_is_reported_rather_than_throwing()
+    {
+        var errors = new {{entityName}}Validator(new AlwaysFound()).Validate(null!);
+
+        Assert.NotEmpty(errors);
+    }
+{{requiredFact}}
+}
+""";
+    }
+
+    /// <summary>Source of <c>TestSupport.cs</c>: entity population shared by the generated
+    /// round-trip and validator tests.</summary>
+    public static string TestSupport(string projectName) => $$"""
+using System;
+using System.Reflection;
+
+namespace {{projectName}}.Tests;
+
+/// <summary>Builds entities that satisfy the generated validation rules.</summary>
+internal static class TestSupport
+{
+    /// <summary>Populates every writable property with a value the validators accept.</summary>
+    public static void Fill<T>(T item)
+    {
+        foreach (var property in typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        {
+            if (!property.CanWrite)
+                continue;
+
+            if (property.PropertyType == typeof(string))
+                property.SetValue(item, Placeholder(property.Name));
+            else if (property.PropertyType == typeof(DateTime))
+                property.SetValue(item, DateTime.UtcNow);
+        }
+    }
+
+    /// <summary>A value of the right shape for this property. A property the validator treats as
+    /// an email or a phone number needs a value of that shape, so a plain placeholder will not do.</summary>
+    public static string Placeholder(string propertyName)
+    {
+        if (propertyName.Contains("Email", StringComparison.OrdinalIgnoreCase))
+            return "test@example.com";
+
+        if (propertyName.Contains("Phone", StringComparison.OrdinalIgnoreCase))
+            return "+1 555 0100";
+
+        return "Test";
+    }
+}
+""";
 
     /// <summary>Asserts EnsureSeeded populates the first entity's store and is idempotent.</summary>
     public static string SeedTests(string projectName, string firstEntityName) => $$"""
