@@ -8,11 +8,20 @@ namespace NaturalLanguageBridge;
 /// class, ...) are left to the "did you mean" suggester, where a wrong guess is
 /// surfaced rather than acted on. Token replacement fires only when a token is
 /// uniquely within two edits of one keyword and close in length, so argument
-/// words (entity names, rule text) are never rewritten. Stateless.
+/// words (entity names, rule text) are never rewritten. A protected list of real
+/// words that sit within the edit-distance window is also exempt. Stateless.
 /// </summary>
 public static class KeywordCorrector
 {
     private static readonly string[] Keywords = ["business", "validation", "validator"];
+
+    /// <summary>
+    /// Real words that sit within the edit-distance window of a keyword and must never
+    /// be "corrected". `validate` is two edits from `validator`, so without this it was
+    /// rewritten before recognition ran and every sentence containing it was routed to
+    /// generate-validator. A different word is not a typo.
+    /// </summary>
+    private static readonly string[] Protected = ["validate", "validates", "validated", "valid"];
 
     private const int MaxDistance = 2;
     private const int MaxLengthDelta = 2;
@@ -44,6 +53,9 @@ public static class KeywordCorrector
     private static string? CorrectToken(string token)
     {
         if (token.Length == 0)
+            return null;
+
+        if (Protected.Contains(token, StringComparer.OrdinalIgnoreCase))
             return null;
 
         var best = -1;

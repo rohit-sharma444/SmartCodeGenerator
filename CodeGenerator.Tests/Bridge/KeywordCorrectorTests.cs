@@ -57,4 +57,25 @@ public class KeywordCorrectorTests
         Assert.AreEqual("   ", KeywordCorrector.Correct("   "));
         Assert.AreEqual("", KeywordCorrector.Correct(null!));
     }
+
+    // `validate` is a real word two edits from `validator`, so the distance rule
+    // "corrected" it and CommandFront's \bvalidator\b guard swallowed the sentence.
+    [TestMethod]
+    [DataRow("validate")]
+    [DataRow("validates")]
+    [DataRow("validated")]
+    [DataRow("valid")]
+    public void Leaves_real_words_alone_even_when_they_are_near_a_keyword(string word)
+        => Assert.AreEqual(word, KeywordCorrector.Correct(word));
+
+    [TestMethod]
+    public void Leaves_a_protected_word_alone_inside_a_sentence()
+        => Assert.AreEqual("validate project", KeywordCorrector.Correct("validate project"));
+
+    // Case must not be a way around the protection.
+    [TestMethod]
+    [DataRow("Validate")]
+    [DataRow("VALIDATE")]
+    public void Protection_is_case_insensitive(string word)
+        => Assert.AreEqual(word, KeywordCorrector.Correct(word));
 }

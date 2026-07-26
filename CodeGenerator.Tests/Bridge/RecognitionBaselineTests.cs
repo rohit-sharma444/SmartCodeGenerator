@@ -18,18 +18,10 @@ namespace CodeGenerator.Tests.Bridge;
 [DoNotParallelize]
 public sealed class RecognitionBaselineTests
 {
-    // NOT Unknown, and this is the bug Task 11 fixes: CommandFront.cs:58 runs
-    // KeywordCorrector.Correct before any recognition, and `validate` is Levenshtein
-    // distance 2 from `validator` with a length delta of 1 — an "unambiguous
-    // correction". The rewritten "validator project" then hits the \bvalidator\b
-    // guard at CommandFront.cs:111. Any input containing `validate` is rerouted to
-    // generate-validator today.
     [TestMethod]
-    public void Validate_project_is_swallowed_by_the_validator_guard()
+    public void Validate_project_is_not_recognized_yet()
     {
-        Assert.AreEqual(
-            IntentType.GenerateValidator,
-            CommandFront.Parse("validate project", "").Intent);
+        Assert.AreEqual(IntentType.Unknown, CommandFront.Parse("validate project", "").Intent);
         Assert.IsFalse(CommandHandlingService.IsSupported(IntentType.ValidateProject));
     }
 
