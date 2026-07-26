@@ -31,8 +31,16 @@ public class GeneratedProjectBuildTests
     [DataRow("webapi")]
     [DataRow("classlib")]
     [DataRow("worker")]
+    [DataRow("wpf")]
     public void GeneratedProject_Builds(string targetKey)
     {
+        // wpf is TargetScaffolders.Default -- what `build app:` ships unless told otherwise -- and
+        // EntityViewModel<T> is the one place that resolves a validator outside Repository, under a
+        // `where T : class, new()` constraint. A missing constraint is CS0452, which no substring
+        // assertion can see, so the default target has to be compiled like the rest.
+        if (targetKey == "wpf" && !OperatingSystem.IsWindows())
+            Assert.Inconclusive("The WPF target needs the Windows desktop targeting pack.");
+
         Assert.IsTrue(TargetScaffolders.TryResolve(targetKey, out var target));
 
         var workspace = Path.Combine(Path.GetTempPath(), "gen_" + Path.GetRandomFileName());
@@ -182,9 +190,10 @@ public class GeneratedProjectBuildTests
 
             // Proves the feature's central design decision against real SQLite: AppDbContext maps
             // scalar columns only (navigation/collection properties are ignored), so Order.CustomerId
-            // is a plain column with no FK constraint. The generated companion test's
-            // repository.Create(new Order()) can insert with CustomerId = 0, and SeedData can assign
-            // FKs across seeded parents, without EF Core or SQLite rejecting either.
+            // is a plain column with no FK constraint. The generated companion test fills an Order
+            // via TestSupport and inserts it with CustomerId = 0 (the emitted lookup check skips a
+            // zero FK), and SeedData can assign FKs across seeded parents, without EF Core or
+            // SQLite rejecting either.
             var (exit, output) = RunDotNet($"test \"{result.TestProjectPath}\" -c Release");
             Assert.AreEqual(0, exit, $"dotnet test failed (sqlite, with relationship):\n{output}");
         }

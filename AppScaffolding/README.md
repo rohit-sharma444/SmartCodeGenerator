@@ -129,6 +129,15 @@ Two things worth knowing:
 - **`SeedData` is deliberately not validated.** It writes through
   `StoreFactory`/`SaveAll` rather than `Repository`, so seeding cannot be blocked
   by a rule inferred from a model it is trying to populate.
+- **A foreign-key check reads the whole store.** `StoreEntityLookup.Exists<T>`
+  goes through `StoreFactory.Create<T>().GetAll()`, which deserializes the entire
+  JSON file (or loads the whole table). The WPF `Save()` validates every record in
+  a loop, so an app with *R* records and *F* foreign keys does *R×F* store loads
+  per save. Acceptable at the scale these apps are generated for — but if you do
+  cache, **scope the cache to a single `Validate` call**. A longer-lived cache goes
+  stale and starts rejecting valid keys: the Web API constructs each
+  `Repository<T>` once at startup, so its validator and lookup live for the whole
+  process.
 
 The generated test project gets a `<Entity>ValidatorTests.cs` per model, using a
 fake `IEntityLookup` so no store is needed, plus a shared `TestSupport` helper

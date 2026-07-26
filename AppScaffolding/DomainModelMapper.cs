@@ -270,7 +270,7 @@ public static class DomainModelMapper
     /// </summary>
     private static string ToUniqueClassName(string entityName, HashSet<string> usedNames)
     {
-        var baseName = ReservedNames.Contains(entityName)
+        var baseName = ReservedNames.Contains(entityName) || IsValidatorName(entityName)
             ? entityName + DisambiguatingSuffix
             : entityName;
 
@@ -280,4 +280,20 @@ public static class DomainModelMapper
 
         return candidate;
     }
+
+    /// <summary>
+    /// Whether this name would collide with a generated validator's class name.
+    /// </summary>
+    /// <remarks>
+    /// The generated validators live in <c>&lt;App&gt;.Validation</c> and are named
+    /// <c>&lt;Model&gt;Validator</c>. C# resolves a simple name against the enclosing namespace
+    /// before any using directive, so an entity called <c>OrderValidator</c> makes
+    /// <c>typeof(OrderValidator)</c> inside ValidatorFactory bind to <em>Order's validator</em>
+    /// rather than to the model — the factory arm then never matches and the entity silently
+    /// degrades to NullValidator. Renaming the entity is the only fix that also protects the
+    /// validator's own <c>IValidator&lt;T&gt;</c> argument. A suffix cannot be expressed in
+    /// <see cref="ReservedNames"/>, hence the separate test.
+    /// </remarks>
+    private static bool IsValidatorName(string entityName) =>
+        entityName.EndsWith("Validator", StringComparison.OrdinalIgnoreCase);
 }

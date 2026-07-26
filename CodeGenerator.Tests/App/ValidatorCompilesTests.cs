@@ -50,11 +50,19 @@ public sealed class StoreEntityLookup : IEntityLookup
         var id = Prop("Id", "int");
         id.Attributes.Add("Key");
 
+        // Two foreign keys, not one: each target gets its own emitted block, and nothing else in
+        // the suite compiles a model that carries more than a single lookup check.
         var definition = new ClassDefinition { Name = "Customer" };
-        definition.Properties.AddRange(new[] { id, name, email, phone, Prop("RegionId", "int"), Prop("Region", "Region") });
+        definition.Properties.AddRange(new[]
+        {
+            id, name, email, phone,
+            Prop("RegionId", "int"), Prop("Region", "Region"),
+            Prop("TierId", "int"), Prop("Tier", "Tier"),
+        });
 
         var models = """
 public class Region { public int Id { get; set; } }
+public class Tier { public int Id { get; set; } }
 public class Customer
 {
     public int Id { get; set; }
@@ -63,10 +71,12 @@ public class Customer
     public string? Phone { get; set; }
     public int RegionId { get; set; }
     public Region? Region { get; set; }
+    public int TierId { get; set; }
+    public Tier? Tier { get; set; }
 }
 """;
 
-        EmittedSource.AssertCompiles(Compose(models, definition, new[] { "Region" }));
+        EmittedSource.AssertCompiles(Compose(models, definition, new[] { "Region", "Tier" }));
     }
 
     [TestMethod]
