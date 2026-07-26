@@ -118,4 +118,38 @@ public sealed class ProjectCompilerTests
             CodeGenerationEngine.Models.IntentType.ValidateProject,
             NaturalLanguageBridge.CommandFront.Parse("validate project", "").Intent);
     }
+
+    // Every console/webapi/worker app `build app:` generates has a Program.cs using
+    // top-level statements (see AppScaffolding/ConsoleProgramTemplate.cs). Compiling
+    // top-level statements as a library is CS8805, which is an error but not the
+    // user's defect -- it is an artifact of how ProjectCompiler chooses to compile.
+    [TestMethod]
+    public void A_top_level_statement_Program_does_not_report_a_spurious_error()
+    {
+        Write("Program.cs", "System.Console.WriteLine(\"hello\");");
+        Write("Customer.cs", "namespace Shop { public class Customer { public int Id { get; set; } } }");
+
+        var result = ProjectCompiler.CompileWorkspace(_workspace);
+
+        Assert.IsTrue(result.Success, result.Report());
+        Assert.AreEqual(2, result.FileCount);
+    }
+
+    // `delete class` moves the file to DeletedClasses/<Name>_<timestamp>.cs without
+    // renaming the type inside it. Re-creating a class of that name must not collide
+    // with its own deliberately-deleted predecessor as a CS0101 duplicate.
+    [TestMethod]
+    public void Skips_DeletedClasses()
+    {
+        Write("Customer.cs", "namespace Shop { public class Customer { } }");
+        var deleted = Path.Combine(_workspace, "DeletedClasses");
+        Directory.CreateDirectory(deleted);
+        File.WriteAllText(Path.Combine(deleted, "Customer_20260101120000.cs"),
+            "namespace Shop { public class Customer { } }");
+
+        var result = ProjectCompiler.CompileWorkspace(_workspace);
+
+        Assert.AreEqual(1, result.FileCount);
+        Assert.IsTrue(result.Success, result.Report());
+    }
 }

@@ -9,6 +9,7 @@
 | --- | --- | --- |
 | `analyze class <class name>` | Analyzes a specific class. | `analyze class Employee` |
 | `analyze project` | Analyzes the current project. | `analyze project` |
+| `validate project` | Compiles every .cs file in the project as one workspace and reports real errors. Aliases: check project, compile project. | `validate project` |
 
 ## Build App
 
@@ -27,6 +28,7 @@
 
 | Command | Description | Example |
 | --- | --- | --- |
+| `<class name> inherits <base class name>` | Adds a base class to a class, keeping any existing interfaces. Aliases: extends, derives from. | `Order inherits AuditableBase` |
 | `create class` | Creates a new class. | `create employee class` |
 | `create class <class name> with properties` | Creates a new class with the specified properties. | `create employee class emdcode:int, Name:string` |
 | `delete class` | Moves a class to DeletedClasses. | `delete class Employee` |
@@ -88,6 +90,7 @@
 | `add property` | Adds a property to a class. | `add property Name string to Employee` |
 | `list properties <class name>` | Lists all properties in a class. | `list properties of Employee` |
 | `remove property` | Removes a property from a class. | `remove property Name from Employee` |
+| `rename property <old> to <new> in <class name>` | Renames a property on a class. Aliases: field for property; on/of for in. | `rename property Name to FullName in Employee` |
 | `show properties <class name>` | Lists all properties in a class. | `show properties of Employee` |
 
 ## RecycleBin

@@ -187,6 +187,13 @@ public static class CommandDictionary
             Description = "Lists all deleted classes.",
             Example = "list deleted classes"
         },
+        new()
+        {
+            Category = "Class",
+            Command = "<class name> inherits <base class name>",
+            Description = "Adds a base class to a class, keeping any existing interfaces. Aliases: extends, derives from.",
+            Example = "Order inherits AuditableBase"
+        },
 #endregion
 
 #region"RecycleBin"
@@ -248,6 +255,13 @@ public static class CommandDictionary
             Command = "list properties <class name>",
             Description = "Lists all properties in a class.",
             Example = "list properties of Employee"
+        },
+        new()
+        {
+            Category = "Properties",
+            Command = "rename property <old> to <new> in <class name>",
+            Description = "Renames a property on a class. Aliases: field for property; on/of for in.",
+            Example = "rename property Name to FullName in Employee"
         },
 #endregion
 
@@ -385,6 +399,14 @@ public static class CommandDictionary
             Command = "analyze class <class name>",
             Description = "Analyzes a specific class.",
             Example = "analyze class Employee"
+        },
+        new()
+        {
+            Category = "Analysis",
+            Command = "validate project",
+            Description = "Compiles every .cs file in the project as one workspace and reports real errors. "
+                        + "Aliases: check project, compile project.",
+            Example = "validate project"
         },
 #endregion
 

@@ -61,7 +61,7 @@ public static class ProjectCompiler
 
         var files = Directory
             .GetFiles(root, "*.cs", SearchOption.AllDirectories)
-            .Where(f => !IsBuildArtifact(f))
+            .Where(f => !IsBuildArtifact(root, f))
             .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
@@ -86,7 +86,10 @@ public static class ProjectCompiler
         var result = Compiler.CompileSources(sources);
 
         var errors = result.Diagnostics
-            .Where(d => d.Severity == DiagnosticSeverity.Error)
+            // CS8805/CS5001 are artifacts of compiling as a library: a generated
+            // workspace's Program.cs uses top-level statements. Neither is the user's defect.
+            .Where(d => d.Severity == DiagnosticSeverity.Error
+                        && d.Id is not ("CS8805" or "CS5001"))
             .ToList();
 
         return new ProjectCompilationResult(
@@ -106,12 +109,26 @@ public static class ProjectCompiler
     }
 
     // bin/ and obj/ hold generated copies of the same types, which would report as
-    // CS0101 duplicates against the user's own files.
-    private static bool IsBuildArtifact(string path)
+    // CS0101 duplicates against the user's own files. DeletedClasses holds files the
+    // user deliberately moved out of the way via `delete class`, which does not rename
+    // the type inside them -- so a live class of the same name would otherwise collide
+    // with its own deleted predecessor as a CS0101. (ClassValidator.cs and
+    // ProjectManager.cs exclude the same folder for the same reason.)
+    //
+    // bin/obj are tested against the path RELATIVE to root, not the whole path, so a
+    // workspace whose own root happens to sit under a directory literally named "bin"
+    // or "obj" does not have every one of its own files excluded. Both '\' and '/' are
+    // accepted as separators since '/' is legal in a Windows path too.
+    private static bool IsBuildArtifact(string root, string path)
     {
-        var separator = Path.DirectorySeparatorChar;
+        if (path.Contains("DeletedClasses", StringComparison.OrdinalIgnoreCase))
+            return true;
 
-        return path.Contains($"{separator}bin{separator}", StringComparison.OrdinalIgnoreCase)
-            || path.Contains($"{separator}obj{separator}", StringComparison.OrdinalIgnoreCase);
+        var relative = Path.GetRelativePath(root, path);
+        var segments = relative.Split(['\\', '/'], StringSplitOptions.RemoveEmptyEntries);
+
+        return segments.Any(s =>
+            s.Equals("bin", StringComparison.OrdinalIgnoreCase) ||
+            s.Equals("obj", StringComparison.OrdinalIgnoreCase));
     }
 }
