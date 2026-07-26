@@ -200,17 +200,9 @@ public static class CodeGenerationEngine
             return "string";
 
         if (!string.IsNullOrWhiteSpace(property.Type))
-        {
-            var normalized = NormalizeType(property.Type);
-            return normalized;
-        }
+            return NormalizeType(property.Type);
 
-        var inferred = InferTypeFromName(property.Name ?? string.Empty);
-        Console.WriteLine($"[CodeGenerationEngine] Heuristic inferred '{inferred}' for name '{property.Name}'");
-
-        var final = NormalizeType(inferred);
-        Console.WriteLine($"[CodeGenerationEngine] Final normalized type for '{property.Name}' is '{final}'");
-        return final;
+        return NormalizeType(FieldTypeHeuristics.Infer(property.Name ?? string.Empty));
     }
 
     private static string NormalizeType(string type)
@@ -244,27 +236,6 @@ public static class CodeGenerationEngine
         return ["int", "string", "bool", "datetime", "guid", "double", "decimal", "float", "long", "byte", "short", "char", "object"];
     }
 
-    private static string InferTypeFromName(string name)
-    {
-        if (string.IsNullOrWhiteSpace(name))
-            return "string";
-
-        var n = name.Trim().ToLowerInvariant();
-        if ((n.EndsWith("id") && n != "id") || n.EndsWith("_id"))
-            return "int";
-        if (n.EndsWith("guid") || n.EndsWith("uuid") || n.Contains("uid"))
-            return "Guid";
-        if (n.StartsWith("is") || n.StartsWith("has") || n.StartsWith("can") || n.StartsWith("should") || n.StartsWith("was"))
-            return "bool";
-        if (n.EndsWith("date") || n.EndsWith("at") || n.EndsWith("time") || n.EndsWith("_at") || n.Contains("timestamp"))
-            return "System.DateTime";
-        if (n.EndsWith("count") || n.EndsWith("number") || n.EndsWith("qty") || n.EndsWith("quantity") || n.EndsWith("age") || n.Contains("count"))
-            return "int";
-        if (n.EndsWith("amount") || n.EndsWith("price") || n.EndsWith("total") || n.Contains("cost") || n.Contains("salary"))
-            return "decimal";
-
-        return "string";
-    }
 
     private static string ToPascalCase(string name)
     {
