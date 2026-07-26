@@ -99,7 +99,8 @@ public static class CommandHandlingService
             [IntentType.CreateInterface] = HandleCreateInterface,
             [IntentType.ListProperties] = HandleListProperties,
             [IntentType.CreateProperty] = HandleCreateProperty,
-            [IntentType.DeleteProperty] = HandleDeleteProperty
+            [IntentType.DeleteProperty] = HandleDeleteProperty,
+            [IntentType.RenameProperty] = HandleRenameProperty
         };
 
     /// <summary>
@@ -410,6 +411,29 @@ public static class CommandHandlingService
         var ok = ClassPropertyService.RemoveProperty(
             ctx.WorkspaceRoot, ctx.Command.ClassName,
             ctx.Command.PropertyName, out var message);
+        Console.WriteLine(message);
+        return ok;
+    }
+
+    private static bool HandleRenameProperty(CommandExecutionContext ctx)
+    {
+        if (string.IsNullOrWhiteSpace(ctx.Command.ClassName))
+        {
+            Console.WriteLine("No class specified for the property rename.");
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(ctx.Command.PropertyName)
+            || string.IsNullOrWhiteSpace(ctx.Command.NewPropertyName))
+        {
+            Console.WriteLine("Both the current and the new property name are required.");
+            return false;
+        }
+
+        var ok = ClassPropertyRenameService.RenameProperty(
+            ctx.WorkspaceRoot, ctx.Command.ClassName,
+            ctx.Command.PropertyName, ctx.Command.NewPropertyName, out var message);
+
         Console.WriteLine(message);
         return ok;
     }

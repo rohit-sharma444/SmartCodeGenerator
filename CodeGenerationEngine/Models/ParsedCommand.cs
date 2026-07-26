@@ -27,6 +27,9 @@ public sealed class ParsedCommand
     public string PropertyName { get; set; } = string.Empty;
     public string PropertyType { get; set; } = "string";
 
+    // Target name for `rename property <old> to <new>`.
+    public string NewPropertyName { get; set; } = string.Empty;
+
     public List<MethodDefinition> Methods { get; set; } = [];
 
     // Validation
@@ -94,6 +97,8 @@ public sealed class ParsedCommand
 
         MethodName = string.Empty;
         ReturnType = "void";
+
+        NewPropertyName = string.Empty;
 
         ValidationText = string.Empty;
 

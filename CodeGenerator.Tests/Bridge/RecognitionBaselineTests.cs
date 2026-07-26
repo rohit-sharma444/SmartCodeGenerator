@@ -33,13 +33,4 @@ public sealed class RecognitionBaselineTests
         Assert.IsFalse(CommandHandlingService.IsSupported(IntentType.ValidateProject));
     }
 
-    [TestMethod]
-    public void Rename_property_is_not_recognized_yet()
-    {
-        Assert.AreEqual(
-            IntentType.Unknown,
-            CommandFront.Parse("rename property Sku to Code in Product", "").Intent);
-        Assert.IsFalse(CommandHandlingService.IsSupported(IntentType.RenameProperty));
-    }
-
 }
