@@ -34,12 +34,24 @@ static void MapEntity<T>(WebApplication app, string route, Repository<T> reposit
 
     app.MapPost($"/{route}", (T item) =>
     {
-        repository.Create(item);
-        return Results.Created($"/{route}", item);
+        var result = repository.Create(item);
+        return result.Success
+            ? Results.Created($"/{route}", result.Item)
+            : Results.ValidationProblem(result.AsDictionary());
     });
 
+    // NotFound is kept distinct from a validation failure: an unknown Id is 404, an invalid
+    // record is 400.
     app.MapPut($"/{route}/{{id:int}}", (int id, T item) =>
-        repository.Update(item) ? Results.NoContent() : Results.NotFound());
+    {
+        var result = repository.Update(item);
+        if (result.NotFound)
+            return Results.NotFound();
+
+        return result.Success
+            ? Results.NoContent()
+            : Results.ValidationProblem(result.AsDictionary());
+    });
 
     app.MapDelete($"/{route}/{{id:int}}", (int id) =>
         repository.Delete(id) ? Results.NoContent() : Results.NotFound());

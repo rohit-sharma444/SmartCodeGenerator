@@ -78,8 +78,20 @@ public class ViewModelTemplatesTests
     {
         var src = ViewModelTemplates.EntityViewModel("Payroll");
 
-        StringAssert.Contains(src, "using System.ComponentModel.DataAnnotations;");
-        StringAssert.Contains(src, "Validator.TryValidateObject");
+        // This path writes through _store, not Repository, so repository-level enforcement never
+        // reaches it: it has to resolve and run the generated validator itself.
+        StringAssert.Contains(src, "using Payroll.Validation;");
+        StringAssert.Contains(src, "ValidatorFactory.Create<T>()");
         StringAssert.Contains(src, "Cannot save:");
+    }
+
+    [TestMethod]
+    public void EntityViewModel_constrains_T_to_a_reference_type()
+    {
+        // ValidatorFactory.Create<T>() is declared `where T : class, new()`; without the class
+        // constraint here the generated WPF app does not compile (CS0452).
+        StringAssert.Contains(
+            ViewModelTemplates.EntityViewModel("Payroll"),
+            "EntityViewModel<T> : ObservableObject, IEntityViewModel where T : class, new()");
     }
 }

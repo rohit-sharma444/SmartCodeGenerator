@@ -29,11 +29,21 @@ public class RepositoryRoundTripTests
 
     private static void RoundTrip<T>(Repository<T> repository) where T : class, new()
     {
-        var created = repository.Create(new T());
-        var id = IdOf(created);
+        // A blank record no longer round-trips: the generated validators reject it. TestSupport
+        // fills it with values of the shape those rules accept.
+        var item = new T();
+        TestSupport.Fill(item);
+
+        var created = repository.Create(item);
+        Assert.True(created.Success, string.Join("; ", created.Errors));
+
+        var id = IdOf(created.Item!);
         Assert.NotEqual(0, id);
         Assert.NotNull(repository.GetById(id));
-        Assert.True(repository.Update(created));
+
+        var updated = repository.Update(created.Item!);
+        Assert.True(updated.Success, string.Join("; ", updated.Errors));
+
         Assert.True(repository.Delete(id));
         Assert.Null(repository.GetById(id));
     }
@@ -47,6 +57,47 @@ public class RepositoryRoundTripTests
 }
 """;
     }
+
+    /// <summary>Source of <c>TestSupport.cs</c>: entity population shared by the generated
+    /// round-trip and validator tests.</summary>
+    public static string TestSupport(string projectName) => $$"""
+using System;
+using System.Reflection;
+
+namespace {{projectName}}.Tests;
+
+/// <summary>Builds entities that satisfy the generated validation rules.</summary>
+internal static class TestSupport
+{
+    /// <summary>Populates every writable property with a value the validators accept.</summary>
+    public static void Fill<T>(T item)
+    {
+        foreach (var property in typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        {
+            if (!property.CanWrite)
+                continue;
+
+            if (property.PropertyType == typeof(string))
+                property.SetValue(item, Placeholder(property.Name));
+            else if (property.PropertyType == typeof(DateTime))
+                property.SetValue(item, DateTime.UtcNow);
+        }
+    }
+
+    /// <summary>A value of the right shape for this property. A property the validator treats as
+    /// an email or a phone number needs a value of that shape, so a plain placeholder will not do.</summary>
+    public static string Placeholder(string propertyName)
+    {
+        if (propertyName.Contains("Email", StringComparison.OrdinalIgnoreCase))
+            return "test@example.com";
+
+        if (propertyName.Contains("Phone", StringComparison.OrdinalIgnoreCase))
+            return "+1 555 0100";
+
+        return "Test";
+    }
+}
+""";
 
     /// <summary>Asserts EnsureSeeded populates the first entity's store and is idempotent.</summary>
     public static string SeedTests(string projectName, string firstEntityName) => $$"""

@@ -18,6 +18,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using {{appName}}.Validation;
 
 namespace {{appName}}.Data;
 
@@ -31,6 +32,7 @@ namespace {{appName}}.Data;
 public abstract class Repository<T> where T : class, new()
 {
     private readonly IStore<T> _store = StoreFactory.Create<T>();
+    private readonly IValidator<T> _validator = ValidatorFactory.Create<T>();
 
     /// <summary>Every stored record.</summary>
     public List<T> GetAll() => _store.GetAll();
@@ -38,26 +40,41 @@ public abstract class Repository<T> where T : class, new()
     /// <summary>The record with this Id, or null when there is none.</summary>
     public T? GetById(int id) => _store.GetAll().FirstOrDefault(item => GetId(item) == id);
 
-    /// <summary>Assigns the next Id, appends the record, and persists it.</summary>
-    public T Create(T item)
+    /// <summary>Validates, then assigns the next Id, appends the record and persists it.</summary>
+    public SaveResult<T> Create(T item)
     {
+        var errors = _validator.Validate(item);
+        if (errors.Count > 0)
+            return new SaveResult<T> { Success = false, Errors = errors };
+
         var all = _store.GetAll();
         SetId(item, _store.NextId(all));
         all.Add(item);
-        _store.SaveAll(all);
-        return item;
+
+        if (!_store.SaveAll(all))
+            return new SaveResult<T> { Success = false, Errors = new[] { "Could not persist " + typeof(T).Name + "." } };
+
+        return new SaveResult<T> { Success = true, Item = item };
     }
 
-    /// <summary>Replaces the record sharing this item's Id. False when there is none.</summary>
-    public bool Update(T item)
+    /// <summary>Validates, then replaces the record sharing this item's Id.</summary>
+    public SaveResult<T> Update(T item)
     {
+        var errors = _validator.Validate(item);
+        if (errors.Count > 0)
+            return new SaveResult<T> { Success = false, Errors = errors };
+
         var all = _store.GetAll();
         var index = all.FindIndex(existing => GetId(existing) == GetId(item));
         if (index < 0)
-            return false;
+            return new SaveResult<T> { Success = false, NotFound = true };
 
         all[index] = item;
-        return _store.SaveAll(all);
+
+        if (!_store.SaveAll(all))
+            return new SaveResult<T> { Success = false, Errors = new[] { "Could not persist " + typeof(T).Name + "." } };
+
+        return new SaveResult<T> { Success = true, Item = item };
     }
 
     /// <summary>Removes the record with this Id. False when there is none.</summary>

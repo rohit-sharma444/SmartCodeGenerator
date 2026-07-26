@@ -271,8 +271,11 @@ public sealed class AppScaffolder
             TestProjectTemplates.SeedTests(appProjectName, entityNames[0]));
         var parallelizationPath = WriteSource(testFolder, "TestParallelization.cs",
             TestProjectTemplates.DisableParallelization());
+        var supportPath = WriteSource(testFolder, "TestSupport.cs",
+            TestProjectTemplates.TestSupport(appProjectName));
 
-        if (roundTripPath is null || seedPath is null || parallelizationPath is null)
+        if (roundTripPath is null || seedPath is null || parallelizationPath is null
+            || supportPath is null)
             return null;
 
         return testCsproj;
