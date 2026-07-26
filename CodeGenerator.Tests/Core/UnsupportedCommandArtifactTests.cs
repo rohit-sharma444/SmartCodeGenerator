@@ -24,7 +24,7 @@ public sealed class UnsupportedCommandArtifactTests
             new ParsedCommand { Intent = intent, ClassName = "Customer" },
             Path.GetTempPath());
 
-        Assert.DoesNotContain(code, "// Unsupported command",
+        Assert.DoesNotContain("// Unsupported command", code,
             $"{intent} still reaches CodeGenerationEngine.Generate, which returns a "
             + "comment that would be written to disk as a class file.");
     }
