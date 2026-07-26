@@ -17,6 +17,15 @@ public class TypeInferenceTests
     [InlineData("HasLateFee", "bool")]
     [InlineData("Title", "string")]
     [InlineData("Name", "string")]
+    [InlineData("Discount", "decimal")]
+    [InlineData("Isbn", "string")]
+    [InlineData("Hash", "string")]
+    [InlineData("Vat", "decimal")]
+    [InlineData("InvoiceNumber", "string")]
+    [InlineData("Number", "int")]
+    [InlineData("CustomerId", "int")]
+    [InlineData("CreatedAt", "DateTime")]
+    [InlineData("RowGuid", "Guid")]
     public void Infer_ReturnsExpectedType(string fieldName, string expected)
     {
         Assert.Equal(expected, TypeInference.Infer(fieldName));
