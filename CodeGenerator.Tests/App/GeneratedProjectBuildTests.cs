@@ -194,6 +194,67 @@ public class GeneratedProjectBuildTests
         }
     }
 
+    [TestMethod]
+    [TestCategory("Integration")]
+    public void A_generated_console_app_with_validators_builds_and_its_tests_pass()
+    {
+        // The unit suite flattens the emitted Validation/ files into one compilation unit, which
+        // strips their `using <App>.Models;` / `using <App>.Data;`. Only a real build of a real
+        // generated app proves those namespaces resolve. Customer has the required Name field and
+        // Order carries a foreign key, so the rule branch and the lookup branch are both emitted.
+        var model = new CandidateDomainModel();
+        model.Entities.Add(new CandidateEntity
+        {
+            Name = "Customer",
+            Fields =
+            {
+                new CandidateField { Name = "Name", Type = "string" },
+                new CandidateField { Name = "Email", Type = "string" },
+                new CandidateField { Name = "Phone", Type = "string" },
+            }
+        });
+        var order = new CandidateEntity
+        {
+            Name = "Order",
+            Fields =
+            {
+                new CandidateField { Name = "Total", Type = "decimal" },
+                new CandidateField { Name = "CustomerId", Type = "int" }
+            }
+        };
+        order.Relationships.Add(new CandidateRelationship { Target = "Customer", Role = "references" });
+        model.Entities.Add(order);
+
+        Assert.IsTrue(TargetScaffolders.TryResolve("console", out var target));
+
+        var workspace = Path.Combine(Path.GetTempPath(), "gen_" + Path.GetRandomFileName());
+        Directory.CreateDirectory(workspace);
+        try
+        {
+            var result = new AppScaffolder().Scaffold(model, "Shop", workspace, target);
+            Assert.IsTrue(result.Success, "scaffold failed: " + result.Message);
+
+            var validation = Path.Combine(result.ProjectPath, "Validation");
+            Assert.IsTrue(File.Exists(Path.Combine(validation, "CustomerValidator.Generated.cs")));
+            Assert.IsTrue(File.Exists(Path.Combine(validation, "CustomerValidator.Custom.cs")));
+            Assert.IsTrue(File.Exists(Path.Combine(result.ProjectPath, "Data", "SaveResult.cs")));
+
+            var (buildExit, buildOutput) = RunDotNet($"build \"{result.ProjectPath}\" -c Release");
+            Assert.AreEqual(0, buildExit, $"dotnet build failed:\n{buildOutput}");
+
+            // The generated suite now includes the per-model validator tests, so a green run also
+            // proves the emitted rules behave: a filled record passes, a blank one names its
+            // required field, and a null one is reported rather than throwing.
+            Assert.IsNotNull(result.TestProjectPath, "no test project was emitted");
+            var (testExit, testOutput) = RunDotNet($"test \"{result.TestProjectPath}\" -c Release");
+            Assert.AreEqual(0, testExit, $"dotnet test failed:\n{testOutput}");
+        }
+        finally
+        {
+            TryDeleteDirectory(workspace);
+        }
+    }
+
     private static (int ExitCode, string Output) RunDotNet(string arguments)
     {
         var psi = new ProcessStartInfo("dotnet", arguments)
