@@ -185,6 +185,23 @@ exact-match table is exactly right. New entries: `validate project`,
 `check project`, `compile project`. `CommandFront:61` returns a `ParsedCommand`
 with only `Intent` set for literal hits, which is all this command needs.
 
+**Prerequisite, found during execution (2026-07-26).** `validate project` does not
+resolve to `Unknown` today — it resolves to `GenerateValidator`, and a literal-table
+row alone cannot fix that. `CommandFront.cs:58` runs `KeywordCorrector.Correct` on
+the raw input *before* any recognition, including before the literal table.
+`KeywordCorrector` (PR #65) rewrites tokens within Levenshtein distance 2 of
+`business`/`validation`/`validator`, and `validate` → `validator` is distance
+exactly 2 with a length delta of 1 — an unambiguous "correction". The rewritten
+text then matches the `\bvalidator\b` guard at `CommandFront.cs:111`.
+
+So **every** input containing the word `validate` is silently rerouted to
+generate-validator. That is a pre-existing bug, not just an obstacle here:
+`validate` is a different word, not a misspelling of `validator`. The fix is a
+protected-word set in `KeywordCorrector` that is exempt from correction
+(`validate`, `validates`, `validated`, `valid`), which upholds the principle the
+class already documents — "argument words are never rewritten". It ships as part
+of this branch because Task 8's recognition cannot work without it.
+
 **`rename property` and `class inherit` → regex guards in `CommandFront`.** Both
 carry arguments, and argument-bearing forms are precisely what the existing
 guards exist for — `AddValidationRe`'s comment says the mapper cannot cover them.

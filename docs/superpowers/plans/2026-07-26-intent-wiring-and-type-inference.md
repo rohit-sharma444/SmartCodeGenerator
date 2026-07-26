@@ -43,23 +43,31 @@ using NaturalLanguageBridge;
 namespace CodeGenerator.Tests.Bridge;
 
 /// <summary>
-/// Baseline for the three commands this branch makes work. They are not merely
-/// unhandled — they are unrecognized: CommandFront.Parse resolves intent from
-/// LiteralCommandTable, its own regex guards, and NlpCommandMapper's table, and
-/// none of the three appears in any of them. IntentRepository's rules do not
-/// drive recognition.
+/// Baseline for the three commands this branch makes work. Two are unrecognized
+/// (Unknown); the third is worse — `validate project` is actively mis-routed to
+/// generate-validator by the keyword corrector. CommandFront.Parse resolves intent
+/// from LiteralCommandTable, its own regex guards, and NlpCommandMapper's table;
+/// IntentRepository's rules do not drive recognition.
 ///
-/// Each method here is deleted by the task that adds the corresponding
-/// recognition, and replaced by a positive assertion.
+/// Each method here is deleted by the task that changes the corresponding
+/// behaviour, and replaced by a positive assertion.
 /// </summary>
 [TestClass]
 [DoNotParallelize]
 public sealed class RecognitionBaselineTests
 {
+    // NOT Unknown, and this is the bug Task 11 fixes: CommandFront.cs:58 runs
+    // KeywordCorrector.Correct before any recognition, and `validate` is Levenshtein
+    // distance 2 from `validator` with a length delta of 1 — an "unambiguous
+    // correction". The rewritten "validator project" then hits the \bvalidator\b
+    // guard at CommandFront.cs:111. Any input containing `validate` is rerouted to
+    // generate-validator today.
     [TestMethod]
-    public void Validate_project_is_not_recognized_yet()
+    public void Validate_project_is_swallowed_by_the_validator_guard()
     {
-        Assert.AreEqual(IntentType.Unknown, CommandFront.Parse("validate project", "").Intent);
+        Assert.AreEqual(
+            IntentType.GenerateValidator,
+            CommandFront.Parse("validate project", "").Intent);
         Assert.IsFalse(CommandHandlingService.IsSupported(IntentType.ValidateProject));
     }
 
@@ -1314,6 +1322,123 @@ git commit -m "feat(engine): add 'rename property <old> to <new> in <Class>'"
 
 ---
 
+### Task 11: Stop `KeywordCorrector` rewriting real words
+
+**Numbered 11 but executed HERE, before Task 8.** Added after Task 1's
+characterization test caught the collision; the number keeps earlier task briefs
+from shifting.
+
+**Files:**
+- Modify: `NaturalLanguageBridge/KeywordCorrector.cs`
+- Modify: `CodeGenerator.Tests/Bridge/KeywordCorrectorTests.cs`
+- Modify: `CodeGenerator.Tests/Bridge/RecognitionBaselineTests.cs`
+
+**Interfaces:**
+- Produces: no signature change. `KeywordCorrector.Correct` keeps its shape; only
+  which tokens it rewrites changes.
+
+**The bug:** `KeywordCorrector.Correct` runs at `CommandFront.cs:58`, before any
+recognition. It rewrites any token within Levenshtein distance 2 of `business`,
+`validation` or `validator`, when the match is unique and the length delta is ≤2.
+`validate` → `validator` is distance exactly 2 with delta 1, and the other two
+keywords are out of range, so it qualifies as an unambiguous correction. The
+rewritten `validator project` then matches the `\bvalidator\b` guard at
+`CommandFront.cs:111`. **Every input containing the word `validate` is rerouted to
+generate-validator.** `validate` is not a misspelling of `validator`.
+
+The class already documents the principle this violates: "argument words (entity
+names, rule text) are never rewritten". A real word is not a near-miss.
+
+- [ ] **Step 1: Write the failing tests**
+
+Add to `CodeGenerator.Tests/Bridge/KeywordCorrectorTests.cs`:
+
+```csharp
+    // `validate` is a real word two edits from `validator`, so the distance rule
+    // "corrected" it and CommandFront's \bvalidator\b guard swallowed the sentence.
+    [TestMethod]
+    [DataRow("validate")]
+    [DataRow("validates")]
+    [DataRow("validated")]
+    [DataRow("valid")]
+    public void Leaves_real_words_alone_even_when_they_are_near_a_keyword(string word)
+        => Assert.AreEqual(word, KeywordCorrector.Correct(word));
+
+    [TestMethod]
+    public void Leaves_a_protected_word_alone_inside_a_sentence()
+        => Assert.AreEqual("validate project", KeywordCorrector.Correct("validate project"));
+
+    // Case must not be a way around the protection.
+    [TestMethod]
+    [DataRow("Validate")]
+    [DataRow("VALIDATE")]
+    public void Protection_is_case_insensitive(string word)
+        => Assert.AreEqual(word, KeywordCorrector.Correct(word));
+```
+
+And in `CodeGenerator.Tests/Bridge/RecognitionBaselineTests.cs`, replace
+`Validate_project_is_swallowed_by_the_validator_guard` with:
+
+```csharp
+    [TestMethod]
+    public void Validate_project_is_not_recognized_yet()
+    {
+        Assert.AreEqual(IntentType.Unknown, CommandFront.Parse("validate project", "").Intent);
+        Assert.IsFalse(CommandHandlingService.IsSupported(IntentType.ValidateProject));
+    }
+```
+
+- [ ] **Step 2: Run tests to verify they fail**
+
+Run: `dotnet test SmartCodeGenerator/SmartCodeGenerator.slnx --filter "FullyQualifiedName~KeywordCorrectorTests|FullyQualifiedName~RecognitionBaselineTests"`
+Expected: the four new `KeywordCorrectorTests` cases FAIL (`validate` comes back as
+`validator`), and `Validate_project_is_not_recognized_yet` FAILS with
+`GenerateValidator`.
+
+- [ ] **Step 3: Add the protected-word set**
+
+In `NaturalLanguageBridge/KeywordCorrector.cs`, add beside the `Keywords` field:
+
+```csharp
+    /// <summary>
+    /// Real words that sit within the edit-distance window of a keyword and must never
+    /// be "corrected". `validate` is two edits from `validator`, so without this it was
+    /// rewritten before recognition ran and every sentence containing it was routed to
+    /// generate-validator. A different word is not a typo.
+    /// </summary>
+    private static readonly string[] Protected = ["validate", "validates", "validated", "valid"];
+```
+
+and as the first check inside `CorrectToken`, after the length-0 guard:
+
+```csharp
+        if (Protected.Contains(token, StringComparer.OrdinalIgnoreCase))
+            return null;
+```
+
+Extend the class's `<summary>` to say that a protected list of real words is exempt.
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+Run: `dotnet test SmartCodeGenerator/SmartCodeGenerator.slnx --filter "FullyQualifiedName~KeywordCorrectorTests|FullyQualifiedName~RecognitionBaselineTests"`
+Expected: all PASS, including the six pre-existing `KeywordCorrectorTests` methods —
+`validater` → `validator` and `busniess` → `business` must still work.
+
+- [ ] **Step 5: Confirm no other command regressed**
+
+Run: `dotnet test SmartCodeGenerator/SmartCodeGenerator.slnx --filter "FullyQualifiedName~CodeGenerator.Tests"`
+Expected: PASS. The validation-command tests are the ones at risk; a failure there
+means a real phrasing depended on the over-eager correction.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add NaturalLanguageBridge/KeywordCorrector.cs CodeGenerator.Tests/Bridge/KeywordCorrectorTests.cs CodeGenerator.Tests/Bridge/RecognitionBaselineTests.cs
+git commit -m "fix(bridge): stop the keyword corrector rewriting 'validate' to 'validator'"
+```
+
+---
+
 ### Task 8: `validate project` — multi-file compilation, replacing the stub
 
 **Files:**
@@ -1652,6 +1777,11 @@ In `NaturalLanguageBridge/LiteralCommandTable.cs`, add to `Exact`:
         ["compile project"] = IntentType.ValidateProject,
 ```
 
+The `validate project` row only works because Task 11 stopped `KeywordCorrector`
+rewriting `validate` → `validator`. `LiteralCommandTable.TryResolve` is called with
+the CORRECTED text (`CommandFront.cs:58-60`), so without Task 11 this row can never
+match. Do not reorder them to work around it.
+
 In `CodeGenerationEngine/Service/CommandHandlingService.cs`, add to `Handlers`:
 
 ```csharp
@@ -1900,3 +2030,9 @@ findings. Do not claim completion without all three.
    implied the bool tracked whether the code compiles. It tracks whether the
    command ran, per the `Handled` = success contract; the report carries the
    verdict.
+5. **Task 11 was added mid-execution** (2026-07-26), after Task 1's
+   characterization test failed. `validate project` was not `Unknown` as the spec
+   claimed — `KeywordCorrector` rewrote `validate` → `validator` before recognition
+   ran, so the `\bvalidator\b` guard swallowed it. Fixing that pre-existing PR #65
+   bug is a prerequisite for Task 8's recognition, and is the third wrong premise
+   this branch's evidence-first checks have caught.
