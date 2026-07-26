@@ -34,7 +34,7 @@ public sealed class SaveResult<T>
     /// Messages are whole sentences rather than per-property, so they surface as top-level errors
     /// rather than being attributed to individual fields.</summary>
     public Dictionary<string, string[]> AsDictionary() =>
-        new() { [string.Empty] = Errors is null ? Array.Empty<string>() : new List<string>(Errors).ToArray() };
+        new() { [string.Empty] = Errors is null ? Array.Empty<string>() : [.. Errors] };
 }
 """;
 }
