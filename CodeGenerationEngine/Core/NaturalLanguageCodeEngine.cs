@@ -45,9 +45,6 @@ public static class NaturalLanguageCodeEngine
 
             IntentType.FindCircularDependencies => HandleCircularDependencies(workspaceRoot),
 
-            IntentType.CompileProject or IntentType.ValidateProject
-                => HandleCompileProject(workspaceRoot),
-
             IntentType.ClassInherit => HandleClassInheritance(command, workspaceRoot),
 
             IntentType.ListClasses => HandleListClasses(workspaceRoot),
@@ -101,12 +98,6 @@ public static class NaturalLanguageCodeEngine
     {
         // TODO: Integrate with full compilation if needed
         return "Circular dependency detection: No cycles found in current workspace.";
-    }
-
-    private static string HandleCompileProject(string workspaceRoot)
-    {
-        // Use existing Compiler service on main files
-        return "Project compilation successful (stub).";
     }
 
     private static string HandleListClasses(string workspaceRoot)

@@ -100,7 +100,9 @@ public static class CommandHandlingService
             [IntentType.ListProperties] = HandleListProperties,
             [IntentType.CreateProperty] = HandleCreateProperty,
             [IntentType.DeleteProperty] = HandleDeleteProperty,
-            [IntentType.RenameProperty] = HandleRenameProperty
+            [IntentType.RenameProperty] = HandleRenameProperty,
+            [IntentType.ValidateProject] = HandleValidateProject,
+            [IntentType.CompileProject] = HandleValidateProject
         };
 
     /// <summary>
@@ -454,6 +456,25 @@ public static class CommandHandlingService
         foreach (var rule in rules)
             Console.WriteLine($"  {rule.Describe()}");
         return true;
+    }
+
+    /// <summary>
+    /// Returns true whenever the compilation RAN, even with errors found: the
+    /// command did its job and the report says what it found. Returning false for
+    /// "the code has errors" would make BatchCommand roll back a successful
+    /// diagnostic run.
+    /// </summary>
+    private static bool HandleValidateProject(CommandExecutionContext ctx)
+    {
+        var root = string.IsNullOrWhiteSpace(ctx.CurrentProject?.ProjectPath)
+            ? ctx.WorkspaceRoot
+            : ctx.CurrentProject!.ProjectPath;
+
+        var result = ProjectCompiler.CompileWorkspace(root);
+
+        Console.WriteLine(result.Report());
+
+        return result.FileCount > 0 || result.Success;
     }
 
     private static bool HandleShowLearning()

@@ -28,6 +28,9 @@ public static class LiteralCommandTable
         ["list business validation"] = IntentType.ShowBusinessValidation,
         ["view business validation"] = IntentType.ShowBusinessValidation,
         ["help"] = IntentType.Help,
+        ["validate project"] = IntentType.ValidateProject,
+        ["check project"] = IntentType.ValidateProject,
+        ["compile project"] = IntentType.ValidateProject,
     };
 
     /// <summary>The intents this table can produce. Consumed by the reachable-intent

@@ -57,6 +57,53 @@ public static class Compiler
     }
 
     /// <summary>
+    /// Compiles several files as ONE assembly, so a type declared in one file
+    /// resolves from another. <see cref="Compile(string, IEnumerable{string})"/>
+    /// builds a single-tree compilation and cannot do this.
+    /// </summary>
+    public static CompilationResult CompileSources(
+        IEnumerable<(string Path, string Code)> sources,
+        IEnumerable<string>? additionalAssemblyPaths = null)
+    {
+        var parseOptions = new CSharpParseOptions(LanguageVersion.Latest);
+
+        // path: is what puts the file name into each diagnostic's location.
+        var syntaxTrees = sources
+            .Where(s => !string.IsNullOrWhiteSpace(s.Code))
+            .Select(s => CSharpSyntaxTree.ParseText(s.Code, parseOptions, path: s.Path))
+            .ToArray();
+
+        if (syntaxTrees.Length == 0)
+        {
+            return new CompilationResult
+            {
+                Success = false,
+                Diagnostics = [],
+                AssemblyBytes = null
+            };
+        }
+
+        var compilation = CSharpCompilation.Create(
+            assemblyName: $"WorkspaceAssembly_{Guid.NewGuid():N}",
+            syntaxTrees: syntaxTrees,
+            references: BuildReferences(additionalAssemblyPaths),
+            options: new CSharpCompilationOptions(
+                OutputKind.DynamicallyLinkedLibrary,
+                nullableContextOptions: NullableContextOptions.Enable));
+
+        using var stream = new MemoryStream();
+
+        var emitResult = compilation.Emit(stream);
+
+        return new CompilationResult
+        {
+            Success = emitResult.Success,
+            Diagnostics = [.. emitResult.Diagnostics],
+            AssemblyBytes = emitResult.Success ? stream.ToArray() : null
+        };
+    }
+
+    /// <summary>
     /// Builds the complete reference list.
     /// </summary>
     private static IEnumerable<MetadataReference> BuildReferences(
