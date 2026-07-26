@@ -30,6 +30,10 @@ public static class LiteralCommandTable
         ["help"] = IntentType.Help,
     };
 
+    /// <summary>The intents this table can produce. Consumed by the reachable-intent
+    /// gate test, which asserts every recognizable intent has a handler.</summary>
+    public static IReadOnlyCollection<IntentType> Intents => [.. Exact.Values.Distinct()];
+
     public static bool TryResolve(string input, out IntentType intent)
     {
         var key = (input ?? string.Empty).Trim();

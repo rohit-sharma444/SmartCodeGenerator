@@ -49,6 +49,21 @@ public static class CommandFront
         new(@"^(?:use|select|switch|open|activate)\s+project\s+(?<project>.+)$",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    /// <summary>The intents the regex guards in <see cref="Parse"/> can produce.
+    /// Hand-maintained: the guards are individual patterns, not a table.
+    /// ADD TO THIS LIST WHEN YOU ADD A GUARD — the reachable-intent gate test
+    /// reads it to check the intent has a handler behind it.</summary>
+    public static IReadOnlyCollection<IntentType> GuardedIntents { get; } =
+    [
+        IntentType.ListClassesInProject,
+        IntentType.UseProject,
+        IntentType.AddBusinessValidation,
+        IntentType.ShowBusinessValidation,
+        IntentType.AddValidation,
+        IntentType.ShowValidation,
+        IntentType.GenerateValidator
+    ];
+
     public static ParsedCommand Parse(string input, string workspace)
     {
         // Correct near-miss spellings of the distinctive validation keywords up
