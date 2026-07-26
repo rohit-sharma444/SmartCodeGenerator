@@ -8,44 +8,9 @@ namespace CodeGenerator.Tests.App;
 [TestClass]
 public class ValidatorTemplateTests
 {
-    /// <summary>
-    /// Flattens several emitted Validation/ files (and any other C# snippets) into one compilable
-    /// unit: strips each file's own namespace declaration and its &lt;App&gt;.Models/&lt;App&gt;.Data
-    /// using (the stubs below stand in for those types), then hoists every remaining
-    /// <c>using</c> directive to the front of the result.
-    /// </summary>
-    /// <remarks>
-    /// A <c>using</c> directive may not follow a type declaration anywhere in a single
-    /// compilation unit (CS1529), and <c>Compiler.Compile</c> parses the whole concatenated
-    /// string as one syntax tree. Simply concatenating several files that each open with their
-    /// own <c>using</c> would therefore not compile once more than one type-bearing fragment is
-    /// joined -- this hoisting belongs here, in the test harness, precisely so the production
-    /// templates can keep plain <c>using</c> directives and bare type names, matching every
-    /// sibling template, when they are emitted stand-alone into a real generated app.
-    /// </remarks>
-    private static string Flatten(params string[] sources)
-    {
-        var usings = new List<string>();
-        var bodies = new List<string>();
-
-        foreach (var source in sources)
-        {
-            var stripped = source
-                .Replace("using Acme.Models;", string.Empty)
-                .Replace("using Acme.Data;", string.Empty)
-                .Replace("namespace Acme.Validation;", string.Empty);
-
-            foreach (var line in stripped.Split('\n'))
-            {
-                if (line.TrimStart().StartsWith("using ", StringComparison.Ordinal))
-                    usings.Add(line.Trim());
-                else
-                    bodies.Add(line);
-            }
-        }
-
-        return string.Join("\n", usings.Distinct()) + "\n" + string.Join("\n", bodies);
-    }
+    /// <summary>Flattens emitted files into one compilable unit. See
+    /// <see cref="EmittedSource.Flatten"/> for why the hoisting lives in the harness.</summary>
+    private static string Flatten(params string[] sources) => EmittedSource.Flatten(sources);
 
     /// <summary>The store seam StoreEntityLookup binds against, and one entity for the factory.</summary>
     private const string Stubs = """
@@ -146,5 +111,106 @@ public sealed class CustomerValidator : IValidator<Customer>
 
         Assert.Contains("NullValidator", source);
         EmittedSource.AssertCompiles(Flatten(Stubs, ValidatorTemplate.ValidatorInterface("Acme"), source));
+    }
+
+    private static CodeGenerationEngine.Models.ClassDefinition ClassWith(
+        string name, params CodeGenerationEngine.Models.PropertyDefinition[] properties)
+    {
+        var definition = new CodeGenerationEngine.Models.ClassDefinition { Name = name };
+        definition.Properties.AddRange(properties);
+        return definition;
+    }
+
+    [TestMethod]
+    public void A_required_rule_emits_a_blank_check()
+    {
+        var name = new CodeGenerationEngine.Models.PropertyDefinition { Name = "Name", Type = "string" };
+        name.Rules.Add(new CodeGenerationEngine.Models.PropertyRule { Name = "required" });
+
+        var source = ValidatorTemplate.Generated(
+            "Acme", ClassWith("Customer", name), System.Array.Empty<string>());
+
+        Assert.Contains("string.IsNullOrWhiteSpace(item.Name)", source);
+        Assert.Contains("\"Name is required.\"", source);
+    }
+
+    [TestMethod]
+    public void A_maxlength_rule_emits_a_length_check_using_the_rules_value()
+    {
+        var title = new CodeGenerationEngine.Models.PropertyDefinition { Name = "Title", Type = "string" };
+        title.Rules.Add(new CodeGenerationEngine.Models.PropertyRule { Name = "maxlength", MaxLength = 120 });
+
+        var source = ValidatorTemplate.Generated(
+            "Acme", ClassWith("Book", title), System.Array.Empty<string>());
+
+        Assert.Contains("Length: > 120", source);
+        Assert.Contains("\"Title must be 120 characters or fewer.\"", source);
+    }
+
+    [TestMethod]
+    public void An_email_attribute_emits_a_shape_check()
+    {
+        var email = new CodeGenerationEngine.Models.PropertyDefinition { Name = "Email", Type = "string" };
+        email.Attributes.Add("EmailAddress");
+
+        var source = ValidatorTemplate.Generated(
+            "Acme", ClassWith("Contact", email), System.Array.Empty<string>());
+
+        Assert.Contains("\"Email is not a valid email address.\"", source);
+    }
+
+    [TestMethod]
+    public void A_phone_attribute_emits_a_shape_check()
+    {
+        var phone = new CodeGenerationEngine.Models.PropertyDefinition { Name = "Phone", Type = "string" };
+        phone.Attributes.Add("Phone");
+
+        var source = ValidatorTemplate.Generated(
+            "Acme", ClassWith("Contact", phone), System.Array.Empty<string>());
+
+        Assert.Contains("\"Phone is not a valid phone number.\"", source);
+    }
+
+    [TestMethod]
+    public void A_key_attribute_emits_no_check()
+    {
+        // The store assigns Id in Create, so validating it would reject every new record.
+        var id = new CodeGenerationEngine.Models.PropertyDefinition { Name = "Id", Type = "int" };
+        id.Attributes.Add("Key");
+
+        var source = ValidatorTemplate.Generated(
+            "Acme", ClassWith("Customer", id), System.Array.Empty<string>());
+
+        Assert.DoesNotContain("item.Id", source);
+    }
+
+    [TestMethod]
+    public void A_foreign_key_target_emits_a_lookup_check()
+    {
+        var source = ValidatorTemplate.Generated(
+            "Acme", ClassWith("Order"), new[] { "Customer" });
+
+        Assert.Contains("item.CustomerId != 0", source);
+        Assert.Contains("_lookup.Exists<Customer>(item.CustomerId)", source);
+        Assert.Contains("\"CustomerId does not refer to a known Customer.\"", source);
+    }
+
+    [TestMethod]
+    public void Every_validator_calls_the_custom_hook()
+    {
+        var source = ValidatorTemplate.Generated(
+            "Acme", ClassWith("Customer"), System.Array.Empty<string>());
+
+        Assert.Contains("ValidateCustom(item, errors);", source);
+        Assert.Contains("partial void ValidateCustom(Customer item, List<string> errors);", source);
+    }
+
+    [TestMethod]
+    public void The_custom_stub_implements_the_hook_as_a_partial_of_the_same_class()
+    {
+        var source = ValidatorTemplate.CustomStub("Acme", "Customer");
+
+        Assert.Contains("public sealed partial class CustomerValidator", source);
+        Assert.Contains("partial void ValidateCustom(Customer item, List<string> errors)", source);
     }
 }

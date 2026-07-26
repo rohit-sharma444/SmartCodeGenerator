@@ -1,3 +1,5 @@
+using CodeGenerationEngine.Models;
+
 namespace AppScaffolding;
 
 /// <summary>
@@ -108,5 +110,165 @@ internal sealed class NullValidator<T> : IValidator<T>
     public IReadOnlyList<string> Validate(T item) => Array.Empty<string>();
 }
 """;
+    }
+
+    /// <summary>Rule name recorded by DomainModelMapper for a required field.</summary>
+    private const string RequiredRule = "required";
+
+    /// <summary>Rule name recorded by DomainModelMapper for a length bound.</summary>
+    private const string MaxLengthRule = "maxlength";
+
+    /// <summary>
+    /// Source of <c>Validation/&lt;Model&gt;Validator.Generated.cs</c>: the inferred rules, plus the
+    /// call to the hand-written hook. Regenerated on every build, so nothing here may be edited.
+    /// </summary>
+    /// <remarks>
+    /// Rules are read from the Rules/Attributes that DomainModelMapper.AddValidation already
+    /// recorded, never re-inferred, so a model's attributes and its validator cannot disagree.
+    /// Each property's checks sit in their own try/catch: it scopes any locals the checks declare,
+    /// and it keeps one throwing rule from aborting the rest — the same best-effort stance
+    /// ValidationEngine.EmitSection takes.
+    /// </remarks>
+    public static string Generated(
+        string projectName, ClassDefinition definition, IReadOnlyList<string> foreignKeyTargets)
+    {
+        var blocks = new List<string>();
+
+        foreach (var property in definition.Properties)
+            if (Checks(property) is { Count: > 0 } checks)
+                blocks.Add(Block(checks));
+
+        foreach (var target in foreignKeyTargets)
+            blocks.Add(Block(new List<string>
+            {
+                $"if (item.{target}Id != 0 && !_lookup.Exists<{target}>(item.{target}Id))",
+                $"    errors.Add(\"{target}Id does not refer to a known {target}.\");",
+            }));
+
+        var body = blocks.Count == 0
+            ? "        // This model declares no inferred rules."
+            : string.Join("\n\n", blocks);
+
+        return $$"""
+using System;
+using System.Collections.Generic;
+using {{projectName}}.Models;
+
+namespace {{projectName}}.Validation;
+
+/// <summary>Inferred rules for {{definition.Name}}. REGENERATED — edit
+/// {{definition.Name}}Validator.Custom.cs instead.</summary>
+public sealed partial class {{definition.Name}}Validator : IValidator<{{definition.Name}}>
+{
+    private readonly IEntityLookup _lookup;
+
+    /// <summary>Validates against the real store.</summary>
+    public {{definition.Name}}Validator() : this(new StoreEntityLookup()) { }
+
+    /// <summary>Validates against the supplied lookup. Tests pass a fake.</summary>
+    public {{definition.Name}}Validator(IEntityLookup lookup) => _lookup = lookup;
+
+    /// <inheritdoc />
+    public IReadOnlyList<string> Validate({{definition.Name}} item)
+    {
+        var errors = new List<string>();
+        if (item is null)
+        {
+            errors.Add("{{definition.Name}} is null.");
+            return errors;
+        }
+
+{{body}}
+
+        ValidateCustom(item, errors);
+        return errors;
+    }
+
+    /// <summary>Hand-written rules, implemented in {{definition.Name}}Validator.Custom.cs.</summary>
+    partial void ValidateCustom({{definition.Name}} item, List<string> errors);
+}
+""";
+    }
+
+    /// <summary>Source of the write-once <c>Validation/&lt;Model&gt;Validator.Custom.cs</c>.</summary>
+    public static string CustomStub(string projectName, string className) => $$"""
+using System.Collections.Generic;
+using {{projectName}}.Models;
+
+namespace {{projectName}}.Validation;
+
+/// <summary>Hand-written rules for {{className}}.</summary>
+public sealed partial class {{className}}Validator
+{
+    /// <summary>Add rules the generator cannot infer — cross-field checks, business rules.
+    /// Regenerating the app never overwrites this file.</summary>
+    partial void ValidateCustom({{className}} item, List<string> errors)
+    {
+    }
+}
+""";
+
+    /// <summary>Wraps one property's (or one relationship's) checks in its own try/catch.</summary>
+    private static string Block(IReadOnlyList<string> checks)
+    {
+        var indented = string.Join("\n", checks.Select(line => "            " + line));
+        return "        try\n        {\n" + indented + "\n        }\n        catch (Exception) { }";
+    }
+
+    /// <summary>The checks for one property, from the rules DomainModelMapper recorded. A
+    /// navigation property and a [Key] Id both yield none.</summary>
+    private static List<string> Checks(PropertyDefinition property)
+    {
+        var checks = new List<string>();
+        if (property.Type != "string")
+            return checks;
+
+        var name = property.Name;
+
+        if (property.Rules.Any(r => string.Equals(r.Name, RequiredRule, StringComparison.OrdinalIgnoreCase)))
+        {
+            checks.Add($"if (string.IsNullOrWhiteSpace(item.{name}))");
+            checks.Add($"    errors.Add(\"{name} is required.\");");
+        }
+
+        var max = property.Rules
+            .FirstOrDefault(r => string.Equals(r.Name, MaxLengthRule, StringComparison.OrdinalIgnoreCase))
+            ?.MaxLength;
+
+        if (max.HasValue)
+        {
+            checks.Add($"if (item.{name} is {{ Length: > {max.Value} }})");
+            checks.Add($"    errors.Add(\"{name} must be {max.Value} characters or fewer.\");");
+        }
+
+        // Deliberately loose: these exist to match what [EmailAddress]/[Phone] already give the
+        // console and WPF front-ends, not to be authoritative format validators.
+        if (property.Attributes.Contains("EmailAddress"))
+        {
+            checks.Add($"if (!string.IsNullOrWhiteSpace(item.{name}))");
+            checks.Add("{");
+            checks.Add($"    var at = item.{name}!.IndexOf('@');");
+            checks.Add($"    if (at <= 0 || at == item.{name}!.Length - 1)");
+            checks.Add($"        errors.Add(\"{name} is not a valid email address.\");");
+            checks.Add("}");
+        }
+
+        if (property.Attributes.Contains("Phone"))
+        {
+            checks.Add($"if (!string.IsNullOrWhiteSpace(item.{name}))");
+            checks.Add("{");
+            checks.Add($"    foreach (var character in item.{name}!)");
+            checks.Add("    {");
+            checks.Add("        if (!char.IsDigit(character) && character != ' ' && character != '+'");
+            checks.Add("            && character != '-' && character != '(' && character != ')')");
+            checks.Add("        {");
+            checks.Add($"            errors.Add(\"{name} is not a valid phone number.\");");
+            checks.Add("            break;");
+            checks.Add("        }");
+            checks.Add("    }");
+            checks.Add("}");
+        }
+
+        return checks;
     }
 }
