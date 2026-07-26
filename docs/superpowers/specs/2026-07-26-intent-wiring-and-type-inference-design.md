@@ -136,8 +136,9 @@ would expose, both fixed here:
    finding the class by name. `ClassMemberEditor` (PR #56) already established
    by-name lookup as the pattern in this repo.
 2. It **replaces** the base list via `WithBaseList`, so `class Order : IAuditable`
-   silently loses `IAuditable`. It must append, and must be a no-op (reporting so)
-   when the base type is already present.
+   silently loses `IAuditable`. It must insert the new type at the head of the
+   existing list, and must be a no-op (reporting so) when the base type is
+   already present.
 
 Extraction already exists — `CommandEntityExtractor.cs:45` handles the
 `ClassInherit` case and populates `BaseClass` via `ExtractInheritanceInfo`.
@@ -195,13 +196,27 @@ which this repo's small lexicon makes unreliable.
 - `RenamePropertyRe`: `^rename\s+property\s+(?<old>\w+)\s+to\s+(?<new>\w+)(?:\s+(?:in|on|of)\s+(?<class>\w+))?$`
 - `ClassInheritRe`: `^(?:make\s+)?(?:class\s+)?(?<class>\w+)\s+(?:inherits?|extends|derives\s+from)\s+(?<base>\w+)$`
 
-Both guards sit after the existing validation guards and before the mapper, and
-both delegate field extraction to `CommandEntityExtractor.Extract` so prose
-parsing stays in the extractor, as the layering comment on `CommandFront`
-requires. `ClassInheritRe` must be anchored whole-sentence and must not begin
-with `create`/`generate`, so it cannot steal `create a Customer class that
-inherits Entity` from `CreateClass`, which already handles a base class at
-generation time.
+Both guards sit before the mapper, and both fill their fields from **their own
+capture groups** on the raw text — the precedent set by `ClassesInProject` and
+`UseProjectRe` (`CommandFront.cs:63-81`) — rather than delegating to
+`CommandEntityExtractor`.
+
+That is not a style choice. `CommandEntityExtractor.Extract` runs
+`CommandParser.Normalize` first, and `Normalize` applies a synonym table
+(`CommandParser.cs:12-31`) that rewrites `entity`, `model` and `object` → `class`
+and `field` → `property`, whole-word and case-insensitively. A base class named
+`Entity` would arrive at the extractor as the word `class`. Filling from the
+guard's groups sidesteps normalization entirely, and means `RenameProperty` needs
+no `CommandEntityExtractor` case at all.
+
+`ClassInheritRe` must be anchored whole-sentence and must not begin with
+`create`/`generate`, so it cannot steal `create a Customer class that inherits
+Entity` from `CreateClass`, which already handles a base class at generation time.
+
+One more trap the implementation must respect: appending the new base type
+produces `class Order : IAuditable, Entity`, which is **CS1722** — a base class
+must precede any interfaces. The new type is inserted at index 0, never appended.
+Only a compile assertion catches this.
 
 ### Deleted, not wired
 
