@@ -2,24 +2,54 @@
 
 **Date:** 2026-07-26
 **Branch:** `feat/intent-wiring-and-type-inference` (off `main` `cf08631`)
-**Status:** approved
+**Status:** approved (amended 2026-07-26 — see "Corrected" note under Problem 1)
 
 ## Problem
 
 Two independent defects, bundled because both are small and both are pure
 correctness gain over code that already exists.
 
-### 1. Seven commands parse successfully, then dead-end
+### 1. Three useful commands cannot be typed at all
 
-`IntentRepository` holds recognition rules for 31 intents.
-`CommandHandlingService.Handlers` (`CodeGenerationEngine/Service/CommandHandlingService.cs:66-102`)
-covers 24 of them. The remaining seven parse cleanly and then hit `Dispatch`'s
-fallback at `:117`, which prints `Intent '<X>' is not supported yet.`:
+**Corrected 2026-07-26, after the first version of this spec.** The original
+problem statement said seven intents parse cleanly and then hit `Dispatch`'s
+"not supported yet" fallback. That is wrong. They are not recognized in the
+first place.
 
-`ClassInherit`, `CreateService`, `CreateRepository`, `CreateController`,
-`CreateApi`, `RenameProperty`, `ValidateProject`
+`CommandFront.Parse` (`NaturalLanguageBridge/CommandFront.cs:52-127`) is the
+single place user text becomes a `ParsedCommand`, and it resolves intent from
+exactly three sources:
 
-The surrounding code is worse than merely absent:
+1. `LiteralCommandTable` — 8 intents, exact whole-input match;
+2. six hard-coded regex guards in `CommandFront` itself — the validation
+   commands, `generate validator`, `use project <name>`,
+   `classes in <project>`;
+3. `NlpCommandMapper.ResolveIntent` → its `(verb, target)` `Table` — 23 intents.
+
+`ResolveIntent` returns a `Table` hit or `IntentType.Unknown` and nothing else:
+no learned-intent lookup, no positional fallback beyond the table.
+
+**`IntentRepository` is not in the parse path.** It is initialized at startup
+(`CodeGenerator/App/CodeGeneratorStarter.cs:80`) and readable through
+`IntentRules`, but the only artifact derived from it is `NlpCommandMapper`'s
+hand-transcribed table — `CodeGenerator.Tests/Bridge/IntentCorpus.cs:7`
+describes itself as the cross-product of the default rules "restricted to the
+22". Its 31 rules do not drive recognition. It is a vestigial store.
+
+None of the three live sources contains `ClassInherit`, `RenameProperty`,
+`ValidateProject`, or the four `Create*` architecture intents. So
+`validate project` resolves to `Unknown` and the user is told *"Could not
+determine intent"*. The existing
+`CodeGenerator.Tests/Core/CommandOutcomeTests.cs:54-56` already documents this
+for `CreateRepository`.
+
+Consequence for this design: a `Handlers` entry alone accomplishes nothing
+user-visible. Each command needs **recognition + extraction + handler +
+implementation**.
+
+The three worth building are `ClassInherit`, `RenameProperty` and
+`ValidateProject`. The surrounding code for the rest is worse than merely
+absent:
 
 - The four architecture generators (`ServiceGenerator.cs`, `RepositoryGenerator.cs`,
   `ControllerGenerator.cs`, `ApiGenerator.cs`) emit unusable output.
@@ -38,13 +68,13 @@ The surrounding code is worse than merely absent:
   `"Project compilation successful (stub)."` — wiring it as-is ships a lie.
 - `RenameProperty` has no implementation anywhere: an enum value and a
   recognition rule, nothing else.
-- **None of the seven have entity extraction.** `CommandEntityExtractor.Extract`
-  has no `case` for any of them, so `ClassName` falls back to
-  `SessionContext.CurrentClass` and there is nowhere for a service name,
-  controller name, or new property name to come from.
+- **None of the seven has entity extraction.** `CommandEntityExtractor.Extract`
+  has no `case` for `RenameProperty` (or for the four `Create*`), so there is
+  nowhere for a new property name to come from. `ClassInherit` is the exception:
+  its case already exists at `CommandEntityExtractor.cs:45`.
 
 Nothing prevents this class of defect from recurring: no test asserts that a
-routable intent has a handler.
+recognizable intent has a handler.
 
 ### 2. Two type-inference heuristics with the same bug family
 
@@ -87,7 +117,9 @@ debug lines to the user's console for every property without an explicit type.
 
 ## Decisions
 
-Three intents are implemented properly; four are made honest.
+Three commands are made to work end to end — recognition, extraction, handler and
+implementation. The four architecture intents are left unrecognized, and the fake
+code behind them is deleted.
 
 ### Implemented
 
@@ -142,22 +174,43 @@ Rejected: shelling out to `dotnet build`. Authoritative, but slow, requires a
 selected project, and `ProcessRunnerTests` is already a known load-flake in this
 suite.
 
-### Made honest
+### Recognition
 
-`CreateService`, `CreateRepository`, `CreateController` and `CreateApi` share one
-handler that prints a specific pointer and returns `false`:
+Each of the three needs a recognition source, chosen to match how the existing
+code already splits that job.
 
-```
-'create repository Customer' isn't implemented.
-Use 'build app: <description>' — it generates real per-entity repositories,
-controllers and an API host.
-```
+**`validate project` → `LiteralCommandTable`.** It takes no arguments, so the
+exact-match table is exactly right. New entries: `validate project`,
+`check project`, `compile project`. `CommandFront:61` returns a `ParsedCommand`
+with only `Intent` set for literal hits, which is all this command needs.
 
-`false` is correct: the command did not do the thing, so `BatchCommand` must not
-count it as applied. `Recognized` stays `true`, so the CLI does not additionally
-print "did you mean".
+**`rename property` and `class inherit` → regex guards in `CommandFront`.** Both
+carry arguments, and argument-bearing forms are precisely what the existing
+guards exist for — `AddValidationRe`'s comment says the mapper cannot cover them.
+`NlpCommandMapper`'s `Table` is keyed on `(verb, target)` where target is the
+whole remainder after the verb, so `rename property Sku to Code in Product`
+cannot match a `["property"]` target except via NLE's Action-entity tagging,
+which this repo's small lexicon makes unreliable.
 
-The fake paths are then deleted so they cannot be re-wired by accident:
+- `RenamePropertyRe`: `^rename\s+property\s+(?<old>\w+)\s+to\s+(?<new>\w+)(?:\s+(?:in|on|of)\s+(?<class>\w+))?$`
+- `ClassInheritRe`: `^(?:make\s+)?(?:class\s+)?(?<class>\w+)\s+(?:inherits?|extends|derives\s+from)\s+(?<base>\w+)$`
+
+Both guards sit after the existing validation guards and before the mapper, and
+both delegate field extraction to `CommandEntityExtractor.Extract` so prose
+parsing stays in the extractor, as the layering comment on `CommandFront`
+requires. `ClassInheritRe` must be anchored whole-sentence and must not begin
+with `create`/`generate`, so it cannot steal `create a Customer class that
+inherits Entity` from `CreateClass`, which already handles a base class at
+generation time.
+
+### Deleted, not wired
+
+`CreateService`, `CreateRepository`, `CreateController` and `CreateApi` get no
+handler. They have no recognition source, so a handler — even one printing an
+honest pointer — would be unreachable dead code, and adding recognition purely
+to print a pointer is not worth the surface. What does happen is that the fake
+implementations behind them are deleted, so nobody can wire them up later
+believing they work:
 
 - delete `ServiceGenerator.cs`, `RepositoryGenerator.cs`, `ControllerGenerator.cs`,
   `ApiGenerator.cs` — zero callers remain after the switch arm below is removed;
@@ -171,23 +224,31 @@ that template already exists as `AppScaffolding.RepositoryTemplate.Typed` — wh
 `CommandHandlingService` cannot reach without inverting the dependency or moving
 the handler into the CLI layer. That is a branch of its own.
 
-Rejected: deleting the four intents from `IntentType` and `IntentRepository`.
-`IntentType` values are persisted as integers by the learned-intent store, and a
-recognized command answering with a pointer is more useful than an unrecognized
-one.
+Rejected: deleting the four intents from `IntentType`. Its values are persisted
+as integers by the learned-intent store, so removing a member renumbers the ones
+after it and corrupts existing learned data.
 
 ### The regression gate
 
-A new test in `CodeGenerator.Tests` takes the union of
+A new test in `CodeGenerator.Tests` asserts that every intent reachable from user
+input has a handler. The reachable set is the union of the three live recognition
+sources:
 
-- intents with a rule in `IntentRepository.GetAll()` (already public), and
-- intents in `NlpCommandMapper`'s verb/target table (private today — needs a
-  small public read-only accessor),
+- `LiteralCommandTable`'s values,
+- the intents produced by `CommandFront`'s regex guards,
+- `NlpCommandMapper`'s `Table` values.
 
-and asserts `CommandHandlingService.IsSupported(intent)` for each. After this
-branch that set is fully covered, so any future intent that gains a recognition
-rule without a handler fails CI. All 23 of `NlpCommandMapper`'s intents are
-already handled; the gate's only current violations are the seven above.
+Each needs a small public read-only accessor; all three collections are private
+today. The gate asserts `CommandHandlingService.IsSupported(intent)` for each.
+
+This set is **already fully handled** before this branch, so the gate is a
+regression guard, not a proof of this fix: it fails the build the next time a
+command becomes typeable without a handler behind it. That is the invariant worth
+holding, and it is the one that was never checked.
+
+Deliberately **not** gated on `IntentRepository.GetAll()`. Those rules do not
+drive recognition, so gating on them would demand handlers for intents no user
+can type.
 
 ### Field-type heuristics
 
@@ -253,8 +314,15 @@ bool-prefix rule to win over the `Fee` → `decimal` token.
   is absent.
 - `ProjectCompiler`: clean workspace, a workspace with a real diagnostic
   (asserting file and line are reported), and an empty workspace.
-- The four pointer handlers: assert the message names `build app:` and that the
-  handler returns `false`.
+- A characterization test asserting the corrected premise before anything is
+  built on it: `CommandFront.Parse("validate project", "")` and
+  `Parse("rename property Sku to Code in Product", "")` both resolve to
+  `IntentType.Unknown` today. It is deleted in the same task that adds
+  recognition, replaced by the positive assertions.
+- Recognition tests per command, asserting `Parse(...)` yields the right intent
+  **and** the right extracted fields, plus a guard that
+  `create a Customer class that inherits Entity` still resolves to `CreateClass`
+  and not to `ClassInherit`.
 - The gate test described above.
 - The conformance corpus, asserted against both heuristics.
 - Every new handler is driven end-to-end through `CommandFront.Parse` →
@@ -269,17 +337,18 @@ bool-prefix rule to win over the `Fee` → `decimal` token.
 
 ## Success criteria
 
-1. No intent with a recognition rule in `IntentRepository` or `NlpCommandMapper`
-   prints "not supported yet"; the new gate test proves it.
-2. `create <X> class inherit <Y>` adds the base type without dropping an existing
-   interface, and the result compiles.
-3. `rename property Old to New in Customer` renames the declaration in
-   `Customer` only, and the result compiles.
+1. Every intent reachable from `LiteralCommandTable`, `CommandFront`'s guards or
+   `NlpCommandMapper` has a handler; the new gate test proves it.
+2. `Order inherits Entity` adds the base type without dropping an existing
+   interface, and the result compiles. `create a Customer class that inherits
+   Entity` still routes to `CreateClass`.
+3. `rename property Sku to Code in Product` renames the declaration in
+   `Product` only, and the result compiles.
 4. `validate project` reports real Roslyn diagnostics with file and line, and
    reports success only when the workspace compiles against the runtime
    reference set. No output claims a stubbed success.
-5. `create repository Customer` names `build app:` and returns `false`; no file
-   containing `// Unsupported command` can be produced by any path.
+5. No file containing `// Unsupported command` can be produced by any path, and
+   the four fake generators are gone from the tree.
 6. `Discount` → `decimal`, `Isbn` → `string`, `InvoiceNumber` → `string`,
    `CustomerId` → `int`, `Vat` → `decimal`, `Fluid` → `string`, in **both**
    heuristics, with the corpus asserting both.
@@ -289,7 +358,12 @@ bool-prefix rule to win over the `Fee` → `decimal` token.
 ## Out of scope
 
 - Rewriting the four architecture generators to emit real code (needs the
-  handler to move to the CLI layer, where `AppScaffolding` is visible).
+  handler to move to the CLI layer, where `AppScaffolding` is visible), and
+  giving those four intents any recognition source.
+- Retiring `IntentRepository`. It is initialized at startup and persisted to
+  disk while driving nothing, which is worth addressing — but it is a separate
+  change with its own blast radius (`IntentRules`, the learned-intent store,
+  `IntentCorpus`).
 - Full workspace symbol rename for properties (needs `MSBuildWorkspace` or a
   hand-built compilation with resolved references).
 - The other unhandled-but-unroutable intents (`DeleteMethod`, `RenameMethod`,
