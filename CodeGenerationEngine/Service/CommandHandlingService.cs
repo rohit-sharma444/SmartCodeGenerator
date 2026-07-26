@@ -87,6 +87,7 @@ public static class CommandHandlingService
             [IntentType.DeleteClass] = HandleDeleteClass,
             [IntentType.RestoreClass] = HandleRestoreClass,
             [IntentType.RestoreLastClass] = HandleRestoreLastClass,
+            [IntentType.ClassInherit] = HandleClassInherit,
             [IntentType.ListDeletedClasses] = HandleListDeletedClasses,
             [IntentType.CreateMethod] = HandleCreateMethod,
             [IntentType.ListMethods] = HandleListMethods,
@@ -98,7 +99,10 @@ public static class CommandHandlingService
             [IntentType.CreateInterface] = HandleCreateInterface,
             [IntentType.ListProperties] = HandleListProperties,
             [IntentType.CreateProperty] = HandleCreateProperty,
-            [IntentType.DeleteProperty] = HandleDeleteProperty
+            [IntentType.DeleteProperty] = HandleDeleteProperty,
+            [IntentType.RenameProperty] = HandleRenameProperty,
+            [IntentType.ValidateProject] = HandleValidateProject,
+            [IntentType.CompileProject] = HandleValidateProject
         };
 
     /// <summary>
@@ -229,6 +233,21 @@ public static class CommandHandlingService
     {
         return ClassRenameService.RenameClass(
             ctx.WorkspaceRoot, ctx.Command.ClassName, ctx.Command.NewClassName, out _);
+    }
+
+    private static bool HandleClassInherit(CommandExecutionContext ctx)
+    {
+        if (string.IsNullOrWhiteSpace(ctx.Command.BaseClass))
+        {
+            Console.WriteLine("No base class specified.");
+            return false;
+        }
+
+        var ok = ClassInheritanceService.AddInheritance(
+            ctx.WorkspaceRoot, ctx.Command.ClassName, ctx.Command.BaseClass, out var message);
+
+        Console.WriteLine(message);
+        return ok;
     }
 
     private static bool HandleDeleteClass(CommandExecutionContext ctx)
@@ -398,6 +417,29 @@ public static class CommandHandlingService
         return ok;
     }
 
+    private static bool HandleRenameProperty(CommandExecutionContext ctx)
+    {
+        if (string.IsNullOrWhiteSpace(ctx.Command.ClassName))
+        {
+            Console.WriteLine("No class specified for the property rename.");
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(ctx.Command.PropertyName)
+            || string.IsNullOrWhiteSpace(ctx.Command.NewPropertyName))
+        {
+            Console.WriteLine("Both the current and the new property name are required.");
+            return false;
+        }
+
+        var ok = ClassPropertyRenameService.RenameProperty(
+            ctx.WorkspaceRoot, ctx.Command.ClassName,
+            ctx.Command.PropertyName, ctx.Command.NewPropertyName, out var message);
+
+        Console.WriteLine(message);
+        return ok;
+    }
+
     private static bool HandleShowValidation(CommandExecutionContext ctx) =>
         ShowRules(ctx.Command.ClassName, ValidationCategory.Data, "Validation rules");
 
@@ -414,6 +456,25 @@ public static class CommandHandlingService
         foreach (var rule in rules)
             Console.WriteLine($"  {rule.Describe()}");
         return true;
+    }
+
+    /// <summary>
+    /// Returns true whenever the compilation RAN, even with errors found: the
+    /// command did its job and the report says what it found. Returning false for
+    /// "the code has errors" would make BatchCommand roll back a successful
+    /// diagnostic run.
+    /// </summary>
+    private static bool HandleValidateProject(CommandExecutionContext ctx)
+    {
+        var root = string.IsNullOrWhiteSpace(ctx.CurrentProject?.ProjectPath)
+            ? ctx.WorkspaceRoot
+            : ctx.CurrentProject!.ProjectPath;
+
+        var result = ProjectCompiler.CompileWorkspace(root);
+
+        Console.WriteLine(result.Report());
+
+        return result.FileCount > 0 || result.Success;
     }
 
     private static bool HandleShowLearning()

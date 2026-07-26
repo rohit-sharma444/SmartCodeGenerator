@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using CodeGenerationEngine.Core;
 using CodeGenerationEngine.Models;
 using CodeGenerationEngine.Service;
 using NaturalLanguageEngine.Models.Semantics;
@@ -49,6 +50,39 @@ public static class CommandFront
         new(@"^(?:use|select|switch|open|activate)\s+project\s+(?<project>.+)$",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    // `Order inherits AuditableBase` on an EXISTING class. Anchored whole-sentence and
+    // it cannot begin with create/generate, so `create a Customer class that inherits X`
+    // still routes to CreateClass, which sets a base type at generation time.
+    // Fields come from these groups, not from CommandEntityExtractor: Normalize maps
+    // entity/model/object -> class, which would rewrite a base type named `Entity`.
+    private static readonly Regex ClassInheritRe =
+        new(@"^(?:class\s+)?(?<class>\w+)(?:\s+class)?\s+(?:inherits?|extends|derives\s+from)\s+(?<base>\w+)$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    // `rename property <old> to <new> in <Class>`. The mapper's Table is keyed on
+    // (verb, whole remainder), so it cannot match an argument-bearing form; and
+    // Normalize maps field -> property, so the fields come from these groups.
+    private static readonly Regex RenamePropertyRe =
+        new(@"^rename\s+(?:property|field)\s+(?<old>\w+)\s+to\s+(?<new>\w+)(?:\s+(?:in|on|of)\s+(?<class>\w+))?$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>The intents the regex guards in <see cref="Parse"/> can produce.
+    /// Hand-maintained: the guards are individual patterns, not a table.
+    /// ADD TO THIS LIST WHEN YOU ADD A GUARD — the reachable-intent gate test
+    /// reads it to check the intent has a handler behind it.</summary>
+    public static IReadOnlyCollection<IntentType> GuardedIntents { get; } =
+    [
+        IntentType.ListClassesInProject,
+        IntentType.UseProject,
+        IntentType.AddBusinessValidation,
+        IntentType.ShowBusinessValidation,
+        IntentType.AddValidation,
+        IntentType.ShowValidation,
+        IntentType.GenerateValidator,
+        IntentType.ClassInherit,
+        IntentType.RenameProperty
+    ];
+
     public static ParsedCommand Parse(string input, string workspace)
     {
         // Correct near-miss spellings of the distinctive validation keywords up
@@ -79,6 +113,36 @@ public static class CommandFront
                 OriginalSentence = input ?? string.Empty,
                 Confidence = 1.0
             };
+
+        var inheritMatch = ClassInheritRe.Match(text);
+        if (inheritMatch.Success)
+            return new ParsedCommand
+            {
+                Intent = IntentType.ClassInherit,
+                ClassName = inheritMatch.Groups["class"].Value.Trim(),
+                BaseClass = inheritMatch.Groups["base"].Value.Trim(),
+                OriginalSentence = input ?? string.Empty,
+                Confidence = 1.0
+            };
+
+        var renamePropertyMatch = RenamePropertyRe.Match(text);
+        if (renamePropertyMatch.Success)
+        {
+            var renameCmd = new ParsedCommand
+            {
+                Intent = IntentType.RenameProperty,
+                PropertyName = renamePropertyMatch.Groups["old"].Value.Trim(),
+                NewPropertyName = renamePropertyMatch.Groups["new"].Value.Trim(),
+                OriginalSentence = input ?? string.Empty,
+                Confidence = 1.0
+            };
+
+            renameCmd.ClassName = renamePropertyMatch.Groups["class"].Success
+                ? renamePropertyMatch.Groups["class"].Value.Trim()
+                : SessionContext.CurrentClass ?? string.Empty;
+
+            return renameCmd;
+        }
 
         if (AddBusinessValidationRe.IsMatch(text))
         {

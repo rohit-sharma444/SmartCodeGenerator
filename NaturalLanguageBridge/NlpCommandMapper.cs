@@ -37,6 +37,9 @@ public static class NlpCommandMapper
     // lean on, so it stays purely positional.
     private static readonly Dictionary<(string Verb, string Target), IntentType> Table = Build();
 
+    /// <summary>The intents this table can produce. See LiteralCommandTable.Intents.</summary>
+    public static IReadOnlyCollection<IntentType> MappedIntents => [.. Table.Values.Distinct()];
+
     public static IntentType ResolveIntent(SemanticResult? analysis)
     {
         if (analysis is null)
