@@ -42,9 +42,9 @@ public enum DecisionOutcome
 /// </summary>
 public sealed class DecisionRecord
 {
-    /// <summary>The candidate as it appeared at that stage — "Cash register", not CashRegister.
-    /// <see cref="Model.CandidateDomainModel"/> holds both spellings across a run, and the
-    /// report matches them canonically rather than forcing one here.</summary>
+    /// <summary>The name a user would recognize — the class name for a candidate that became one,
+    /// otherwise the text they typed. <see cref="Model.CandidateDomainModel"/> holds both
+    /// spellings across a run, and the report matches them canonically rather than forcing one here.</summary>
     public required string Name { get; init; }
 
     public required DecisionStage Stage { get; init; }

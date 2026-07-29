@@ -45,8 +45,9 @@ public sealed class SeedEntityExtractor
 
             if (model.Entities.Any(e => string.Equals(e.Name, name, StringComparison.OrdinalIgnoreCase)))
             {
-                model.Record(name, DecisionStage.SeedExtraction, DecisionOutcome.Skipped,
-                    DecisionReasons.AlreadyNamed);
+                model.Record(entity.Text, DecisionStage.SeedExtraction, DecisionOutcome.Skipped,
+                    DecisionReasons.AlreadyNamed,
+                    $"already taken by {name}");
                 continue;
             }
 
@@ -59,7 +60,7 @@ public sealed class SeedEntityExtractor
             });
 
             model.Record(name, DecisionStage.SeedExtraction, DecisionOutcome.Kept,
-                DecisionReasons.YouNamedIt, $"confidence {(double)entity.Confidence:0.00}");
+                DecisionReasons.YouNamedIt, $"confidence {(double)entity.Confidence:0.00}, from \"{entity.Text}\"");
         }
 
         return model;

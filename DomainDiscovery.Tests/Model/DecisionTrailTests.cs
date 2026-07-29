@@ -32,6 +32,7 @@ public class DecisionTrailTests
         Assert.Equal(DecisionOutcome.Kept, record.Outcome);
         Assert.Equal(DecisionReasons.YouNamedIt, record.Reason);
         Assert.Contains("0.82", record.Evidence);
+        Assert.Contains("book", record.Evidence);
     }
 
     [Fact]
@@ -60,7 +61,8 @@ public class DecisionTrailTests
         var duplicate = Assert.Single(model.Decisions,
             d => d.Reason == DecisionReasons.AlreadyNamed);
         Assert.Equal(DecisionOutcome.Skipped, duplicate.Outcome);
-        Assert.Equal("Book", duplicate.Name);
+        Assert.Equal("books", duplicate.Name);
+        Assert.Contains("already taken by Book", duplicate.Evidence);
     }
 
     [Fact]
