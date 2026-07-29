@@ -66,4 +66,33 @@ public sealed class CandidateDomainModel
     /// so a missing class is explainable rather than mysterious.
     /// </summary>
     public List<string> Rejected { get; } = new();
+
+    /// <summary>
+    /// Why each candidate met the fate it did. Append-only, and never read by scaffolding —
+    /// this is the audit trail behind the review loop's <c>why</c> verb.
+    /// </summary>
+    /// <remarks>
+    /// It lives on the model rather than in an observer because
+    /// <see cref="Enrichment.DomainEnricher"/> mutates and returns the seed model, so this one
+    /// instance already flows from seed extraction through to the review loop. A test can then
+    /// assert the trail as a value on the result rather than by intercepting a callback.
+    /// </remarks>
+    public List<DecisionRecord> Decisions { get; } = new();
+
+    /// <summary>Appends one decision. See <see cref="DecisionReasons"/> for
+    /// <paramref name="reason"/>, which must be one of those constants.</summary>
+    public void Record(
+        string name,
+        DecisionStage stage,
+        DecisionOutcome outcome,
+        string reason,
+        string? evidence = null)
+        => Decisions.Add(new DecisionRecord
+        {
+            Name = name,
+            Stage = stage,
+            Outcome = outcome,
+            Reason = reason,
+            Evidence = evidence
+        });
 }
