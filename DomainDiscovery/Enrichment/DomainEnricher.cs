@@ -37,7 +37,11 @@ public sealed class DomainEnricher : IDomainEnricher
             var name = NameNormalizer.ToCompoundEntityName(title);
 
             if (!NameNormalizer.IsValidIdentifier(name))
+            {
+                harvested.Record(title, DecisionStage.Enrichment, DecisionOutcome.Skipped,
+                    DecisionReasons.NotAUsableClassName, $"linked from {articleTitle}");
                 continue;
+            }
 
             if (harvested.Entities.Any(
                     e => string.Equals(e.Name, name, StringComparison.OrdinalIgnoreCase)))
@@ -52,7 +56,7 @@ public sealed class DomainEnricher : IDomainEnricher
             });
         }
 
-        DemoteWhatTheDefinitionDoesNotName(harvested, LeadSection.Of(text));
+        DemoteWhatTheDefinitionDoesNotName(harvested, LeadSection.Of(text), articleTitle);
 
         return Merge(seed, harvested);
     }
@@ -74,7 +78,8 @@ public sealed class DomainEnricher : IDomainEnricher
     /// <see cref="LeadSection"/> for why the lead is the signal at all.
     /// </para>
     /// </remarks>
-    private static void DemoteWhatTheDefinitionDoesNotName(CandidateDomainModel harvested, string lead)
+    private static void DemoteWhatTheDefinitionDoesNotName(
+        CandidateDomainModel harvested, string lead, string articleTitle)
     {
         if (lead.Length == 0)
             return;
@@ -89,6 +94,8 @@ public sealed class DomainEnricher : IDomainEnricher
         {
             harvested.Entities.Remove(entity);
             harvested.Suggestions.Add(entity);
+            harvested.Record(entity.Name, DecisionStage.Enrichment, DecisionOutcome.Suggested,
+                DecisionReasons.LeadDoesNotMentionIt, $"lead of \"{articleTitle}\"");
         }
     }
 
@@ -100,6 +107,11 @@ public sealed class DomainEnricher : IDomainEnricher
 
     private static CandidateDomainModel Merge(CandidateDomainModel seed, CandidateDomainModel harvested)
     {
+        // The harvested model is a DIFFERENT instance, and every enrichment decision was
+        // recorded against it. Without this line the whole stage's trail vanishes here while
+        // the entities still arrive - a loss nothing downstream can detect.
+        seed.Decisions.AddRange(harvested.Decisions);
+
         foreach (var incoming in harvested.Entities)
         {
             var existing = seed.Entities.FirstOrDefault(
@@ -124,7 +136,11 @@ public sealed class DomainEnricher : IDomainEnricher
         foreach (var suggestion in harvested.Suggestions)
         {
             if (seed.Entities.Any(e => string.Equals(e.Name, suggestion.Name, StringComparison.OrdinalIgnoreCase)))
+            {
+                seed.Record(suggestion.Name, DecisionStage.Enrichment, DecisionOutcome.Skipped,
+                    DecisionReasons.AlreadyAClassFromYourDescription);
                 continue;
+            }
 
             if (seed.Suggestions.Any(s => string.Equals(s.Name, suggestion.Name, StringComparison.OrdinalIgnoreCase)))
                 continue;
