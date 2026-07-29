@@ -70,7 +70,15 @@ public sealed class EntityShaper
             // Role precedence mirrors field precedence exactly: the curated lexicon wins over
             // the archetype (assigned below, in pass 2) over EntityRole.None (the default).
             if (curatedFields.Count > 0)
+            {
                 entity.Role = DomainFieldLexicon.Role(entity.Name);
+
+                // Pass 2 skips anything that already has fields, so a curated class gets no
+                // record at all unless it is taken here.
+                model.Record(entity.Name, DecisionStage.Shaping, DecisionOutcome.Kept,
+                    DecisionReasons.DefinedAsADomainClass,
+                    ShapingEvidence(entity.Role, head: null, source: "the curated domain lexicon"));
+            }
 
             foreach (var shape in curatedFields)
                 AddField(entity, shape.Name, shape.Type);
@@ -93,6 +101,11 @@ public sealed class EntityShaper
         // already have been removed.
         var pending = new List<CandidateEntity>();
         var candidates = new List<ShapeCandidate>();
+
+        // Pass 2c decides on `resolved[...]`, which carries no head — but the head noun is the
+        // single most useful piece of evidence a rejection can give ("its lead defines it as a
+        // process"), so it is kept here where it is still in scope.
+        var headsByName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var entity in entities)
         {
@@ -122,6 +135,7 @@ public sealed class EntityShaper
 
             pending.Add(entity);
             candidates.Add(new ShapeCandidate(entity.Name, head, result));
+            headsByName[entity.Name] = head;
         }
 
         // Pass 2b: a candidate the table has no opinion on may still be defined as one it does
@@ -133,6 +147,10 @@ public sealed class EntityShaper
         foreach (var entity in pending)
         {
             var result = resolved[entity.Name];
+            var head = headsByName.TryGetValue(entity.Name, out var found) && found.Length > 0
+                ? found
+                : null;
+            var source = entity.SourceTitle ?? entity.Name;
 
             switch (result.Verdict)
             {
@@ -140,11 +158,17 @@ public sealed class EntityShaper
                     entity.Role = result.Role;
                     foreach (var shape in result.Fields)
                         AddField(entity, shape.Name, shape.Type);
+                    model.Record(entity.Name, DecisionStage.Shaping, DecisionOutcome.Kept,
+                        DecisionReasons.DefinedAsADomainClass,
+                        ShapingEvidence(result.Role, head, source));
                     break;
 
                 case ShapeVerdict.Abstract:
                     model.Entities.Remove(entity);
                     model.Rejected.Add(entity.Name);
+                    model.Record(entity.Name, DecisionStage.Shaping, DecisionOutcome.Rejected,
+                        DecisionReasons.DefinitionResolvesToAnAbstraction,
+                        ShapingEvidence(EntityRole.None, head, source));
                     break;
 
                 default:
@@ -163,11 +187,16 @@ public sealed class EntityShaper
                     if (entity.Provenance == Provenance.Seed)
                     {
                         DefaultFields.ApplyTo(entity, Provenance.Seed);
+                        model.Record(entity.Name, DecisionStage.Shaping, DecisionOutcome.Kept,
+                            DecisionReasons.YouNamedItNoDefinitionFound);
                         break;
                     }
 
                     model.Entities.Remove(entity);
                     model.Suggestions.Add(entity);
+                    model.Record(entity.Name, DecisionStage.Shaping, DecisionOutcome.Suggested,
+                        DecisionReasons.NoDefinitionWeRecognize,
+                        ShapingEvidence(EntityRole.None, head, source));
                     break;
             }
         }
@@ -214,6 +243,26 @@ public sealed class EntityShaper
             foreach (var shape in PropertyMiner.Mine(article, entity.Name))
                 AddField(entity, shape.Name, shape.Type);
         }
+    }
+
+    /// <summary>
+    /// Composes the one line of evidence a shaping decision carries. Facts that say nothing are
+    /// left out rather than rendered empty: a rejected candidate has no role, and a candidate
+    /// whose lead could not be fetched has no head noun.
+    /// </summary>
+    private static string ShapingEvidence(EntityRole role, string? head, string source)
+    {
+        var parts = new List<string>();
+
+        if (role != EntityRole.None)
+            parts.Add($"role {role}");
+
+        if (!string.IsNullOrWhiteSpace(head))
+            parts.Add($"head noun: {head}");
+
+        parts.Add($"from \"{source}\"");
+
+        return string.Join(", ", parts);
     }
 
     /// <summary>Adds a field unless the entity already declares one of that name, or the name

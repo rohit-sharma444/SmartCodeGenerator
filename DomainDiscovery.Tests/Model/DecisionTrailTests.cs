@@ -1,5 +1,7 @@
+using DomainDiscovery;
 using DomainDiscovery.Enrichment;
 using DomainDiscovery.Model;
+using DomainDiscovery.Recognition;
 using DomainDiscovery.SeedExtraction;
 using DomainDiscovery.Tests.Fakes;
 using NaturalLanguageEngine.Core;
@@ -152,5 +154,109 @@ public class DecisionTrailTests
             d => d.Reason == DecisionReasons.AlreadyAClassFromYourDescription);
         Assert.Equal(DecisionOutcome.Skipped, dropped.Outcome);
         Assert.Empty(model.Suggestions);
+    }
+
+    private static CandidateDomainModel WikiModel(params string[] names)
+    {
+        var model = new CandidateDomainModel();
+        foreach (var name in names)
+            model.Entities.Add(new CandidateEntity { Name = name, Provenance = Provenance.Wiki });
+        return model;
+    }
+
+    [Fact]
+    public void Shaping_RecordsARejection_WithTheHeadNounThatCausedIt()
+    {
+        var wiki = new FakeWikipediaClient();
+        wiki.Leads["Administration"] = "Administration is a process of managing an organization.";
+
+        var model = WikiModel("Administration");
+        new EntityShaper(wiki).Shape(model);
+
+        var record = Assert.Single(model.Decisions,
+            d => d.Reason == DecisionReasons.DefinitionResolvesToAnAbstraction);
+        Assert.Equal("Administration", record.Name);
+        Assert.Equal(DecisionStage.Shaping, record.Stage);
+        Assert.Equal(DecisionOutcome.Rejected, record.Outcome);
+        Assert.Contains("process", record.Evidence);
+
+        // The existing collections must behave exactly as before.
+        Assert.Empty(model.Entities);
+        Assert.Contains("Administration", model.Rejected);
+    }
+
+    [Fact]
+    public void Shaping_RecordsASuggestion_WhenNoDefinitionIsRecognized()
+    {
+        var wiki = new FakeWikipediaClient();
+        wiki.Leads["Widget"] = "Widget is a widget of widgets.";
+
+        var model = WikiModel("Widget");
+        new EntityShaper(wiki).Shape(model);
+
+        var record = Assert.Single(model.Decisions,
+            d => d.Reason == DecisionReasons.NoDefinitionWeRecognize);
+        Assert.Equal(DecisionOutcome.Suggested, record.Outcome);
+        Assert.Contains(model.Suggestions, e => e.Name == "Widget");
+    }
+
+    [Fact]
+    public void Shaping_RecordsASeedKept_DespiteHavingNoDefinition()
+    {
+        var model = new CandidateDomainModel();
+        model.Entities.Add(new CandidateEntity { Name = "Widget", Provenance = Provenance.Seed });
+
+        new EntityShaper(new FakeWikipediaClient()).Shape(model);
+
+        var record = Assert.Single(model.Decisions,
+            d => d.Reason == DecisionReasons.YouNamedItNoDefinitionFound);
+        Assert.Equal(DecisionOutcome.Kept, record.Outcome);
+        Assert.Single(model.Entities);
+    }
+
+    [Fact]
+    public void Shaping_RecordsACuratedClass_WhichPassTwoNeverSees()
+    {
+        // Recipe is in the curated lexicon, so pass 1 gives it fields and pass 2 skips it.
+        // Without a record in pass 1 a curated class has no trail at all.
+        var model = WikiModel("Recipe");
+
+        new EntityShaper(new FakeWikipediaClient()).Shape(model);
+
+        var record = Assert.Single(model.Decisions,
+            d => d.Reason == DecisionReasons.DefinedAsADomainClass);
+        Assert.Equal("Recipe", record.Name);
+        Assert.Equal(DecisionOutcome.Kept, record.Outcome);
+    }
+
+    [Fact]
+    public void ASeedOnlyRun_StillCarriesItsSeedExtractionTrail()
+    {
+        // No topic recognized means enrichment never runs, and Shape is called on the seed
+        // model directly. The seed-extraction trail must survive that path too - it is the
+        // only trail such a run has.
+        var analysis = new SemanticResult();
+        analysis.Entities.Add(Ent("invoice", EntityType.Object));
+        analysis.Entities.Add(Ent("quickly", EntityType.Unknown));
+        var analyzer = new StubAnalyzer(analysis);
+
+        var client = new FakeWikipediaClient();   // no search hits, so no topic
+
+        var pipeline = new DomainDiscoveryPipeline(
+            analyzer,
+            new SeedEntityExtractor(),
+            new WikipediaTopicRecognizer(client),
+            new DomainEnricher(client, analyzer, new EntityHarvester()),
+            new EntityShaper(client),
+            client);
+
+        var result = pipeline.Discover("track invoices");
+
+        Assert.False(result.Topic.IsRecognized);
+        Assert.Contains(result.Model.Decisions,
+            d => d.Stage == DecisionStage.SeedExtraction
+                 && d.Reason == DecisionReasons.NotRecognizedAsAThing);
+        Assert.Contains(result.Model.Decisions,
+            d => d.Stage == DecisionStage.SeedExtraction && d.Outcome == DecisionOutcome.Kept);
     }
 }
