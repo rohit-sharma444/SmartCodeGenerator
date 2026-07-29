@@ -1089,8 +1089,10 @@ public class DecisionReportTests
 
         var line = DecisionReport.Summary(model).Single(l => l.StartsWith("Not classes:"));
 
+        // The reason is composed from the constant, never copied — a Global Constraint. A test
+        // holding its own copy of the phrase goes on passing after the phrase is changed.
         Assert.AreEqual(
-            "Not classes: Lending, Administration — its definition resolves to an abstraction",
+            $"Not classes: Lending, Administration — {DecisionReasons.DefinitionResolvesToAnAbstraction}",
             line);
     }
 
