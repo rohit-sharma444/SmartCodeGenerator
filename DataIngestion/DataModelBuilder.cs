@@ -28,6 +28,16 @@ public static class DataModelBuilder
     private const string ReferencesRole = "references";
 
     public static CandidateDomainModel Build(IReadOnlyList<TabularTable> tables)
+        => Build(tables, []);
+
+    /// <summary>
+    /// As <see cref="Build(IReadOnlyList{TabularTable})"/>, additionally recording why each
+    /// normalization split exists. <paramref name="applied"/> is what the user chose at the
+    /// normalization prompt — the findings that were carried out, not everything found.
+    /// </summary>
+    public static CandidateDomainModel Build(
+        IReadOnlyList<TabularTable> tables,
+        IReadOnlyList<Normalization.NormalizationFinding> applied)
     {
         var model = new CandidateDomainModel();
 
@@ -73,7 +83,48 @@ public static class DataModelBuilder
         }
 
         AddRelationships(model, entityNames);
+        RecordNormalization(model, applied);
         return model;
+    }
+
+    /// <summary>
+    /// One record per applied finding, filed under the name a user would ask about: the entity a
+    /// split created, or the column a drop removed.
+    /// </summary>
+    private static void RecordNormalization(
+        CandidateDomainModel model, IReadOnlyList<Normalization.NormalizationFinding> applied)
+    {
+        foreach (var finding in applied)
+        {
+            var evidence =
+                $"{string.Join(", ", finding.Columns)} in {finding.TableName} "
+                + $"({finding.SourceLabel})";
+
+            switch (finding.Kind)
+            {
+                case Normalization.NormalizationFindingKind.RepeatingGroup:
+                    model.Record(finding.ProposedEntity!, DecisionStage.Normalization,
+                        DecisionOutcome.Kept, DecisionReasons.ExtractedFromARepeatingGroup, evidence);
+                    break;
+
+                case Normalization.NormalizationFindingKind.NonAtomicValues:
+                    model.Record(finding.ProposedEntity!, DecisionStage.Normalization,
+                        DecisionOutcome.Kept, DecisionReasons.ExtractedFromANonAtomicColumn, evidence);
+                    break;
+
+                case Normalization.NormalizationFindingKind.FunctionalDependency:
+                    model.Record(finding.ProposedEntity!, DecisionStage.Normalization,
+                        DecisionOutcome.Kept, DecisionReasons.ExtractedFromAPartialDependency, evidence);
+                    break;
+
+                case Normalization.NormalizationFindingKind.DerivedColumn:
+                    // A drop, not an extraction — and filed under the COLUMN, since that is the name
+                    // a user would ask `why` about when it is missing from their model.
+                    model.Record(finding.Columns[0], DecisionStage.Normalization,
+                        DecisionOutcome.Rejected, DecisionReasons.DroppedAsADerivedColumn, evidence);
+                    break;
+            }
+        }
     }
 
     private static void AddFields(

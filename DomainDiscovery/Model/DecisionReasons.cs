@@ -39,6 +39,12 @@ public static class DecisionReasons
         "a column may not share its class's name";
     public const string ColumnNameIsNotAValidIdentifier = "its column name is not a usable name";
 
+    // --- Normalization ---
+    public const string ExtractedFromARepeatingGroup = "extracted from a repeating group";
+    public const string ExtractedFromANonAtomicColumn = "extracted from a column holding several values";
+    public const string ExtractedFromAPartialDependency = "extracted from a partial dependency";
+    public const string DroppedAsADerivedColumn = "dropped: it is computed from other columns";
+
     // --- Review loop ---
     public const string YouRenamedIt = "you renamed it";
 }
