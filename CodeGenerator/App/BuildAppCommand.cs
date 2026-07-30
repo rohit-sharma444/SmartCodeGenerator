@@ -57,7 +57,7 @@ internal sealed class BuildAppCommand
         {
             PrintModel(model);
             Console.WriteLine("  [a]pprove [target] [sqlite]   add <name>   remove <name>   rename <old> <new>");
-            Console.WriteLine("  field <entity> <name>[:<type>]   unfield <entity> <name>   [c]ancel");
+            Console.WriteLine("  field <entity> <name>[:<type>]   unfield <entity> <name>   why [name]   [c]ancel");
             Console.Write("> ");
             var input = Console.ReadLine();
             if (input is null)   // stdin closed / EOF — treat as cancel, never busy-loop
@@ -157,6 +157,11 @@ internal sealed class BuildAppCommand
                         "Could not remove field (no such field, or Name, which every entity keeps).");
                     break;
 
+                case "why":
+                    foreach (var whyLine in WhyLines(model, parts))
+                        Console.WriteLine(whyLine);
+                    break;
+
                 default:
                     Console.WriteLine("Unrecognized command.");
                     break;
@@ -215,6 +220,25 @@ internal sealed class BuildAppCommand
         => !(persistence == PersistenceKind.Sqlite
              && string.Equals(target.Key, "wpf", StringComparison.OrdinalIgnoreCase));
 
+    /// <summary>
+    /// The lines a <c>why [name]</c> line produces: the whole report when no name is given,
+    /// that name's trail otherwise. Internal and pure for the same reason
+    /// <see cref="ResolveTarget"/> is — the review loop itself reads the console and cannot be
+    /// driven from a test, so the decidable part is lifted out of it.
+    /// </summary>
+    /// <remarks>
+    /// The loop splits its input into at most three parts, so a two-word name arrives in
+    /// pieces and has to be put back together before it can be matched.
+    /// </remarks>
+    internal static IReadOnlyList<string> WhyLines(CandidateDomainModel model, string[] parts)
+    {
+        var name = string.Join(' ', parts.Skip(1)).Trim();
+
+        return name.Length == 0
+            ? DecisionReport.All(model)
+            : DecisionReport.ForName(model, name);
+    }
+
     private static void Report(bool changed, string ok, string fail)
         => Console.WriteLine(changed ? ok : fail);
 
@@ -248,17 +272,9 @@ internal sealed class BuildAppCommand
                 + "GetAll, GetById, Create, Update, Delete");
         }
 
-        //if (model.Suggestions.Count > 0)
-        //{
-        //    Console.WriteLine();
-        //    Console.WriteLine(
-        //        "Also found - 'add <name>' to include: "
-        //        + string.Join(", ", model.Suggestions.Select(e => e.Name)));
-        //}
-
-        if (model.Rejected.Count > 0)
-        {
-            Console.WriteLine("Not classes: " + string.Join(", ", model.Rejected));
-        }
+        // Rejections, demoted suggestions and skipped nouns, grouped by the reason each was
+        // given. This replaces a bare list of rejected names that said nothing about why.
+        foreach (var line in DecisionReport.Summary(model))
+            Console.WriteLine(line);
     }
 }
