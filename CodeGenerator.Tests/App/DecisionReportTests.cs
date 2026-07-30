@@ -85,6 +85,35 @@ public class DecisionReportTests
     }
 
     [TestMethod]
+    public void ForName_DoesNotOfferToAddSomethingThatIsAlreadyAClass()
+    {
+        // The trail is history and stays as it was, but the closing line is advice about NOW.
+        // Once the user has taken the name back, `add` would fail as a duplicate.
+        var model = new CandidateDomainModel();
+        model.Record("Collection", DecisionStage.Shaping, DecisionOutcome.Rejected,
+            DecisionReasons.DefinitionResolvesToAnAbstraction);
+        ModelEditor.AddEntity(model, "Collection");
+
+        var text = string.Join("\n", DecisionReport.ForName(model, "Collection"));
+
+        StringAssert.Contains(text, DecisionReasons.DefinitionResolvesToAnAbstraction);
+        Assert.DoesNotContain("add Collection", text, "it is a class already");
+        StringAssert.Contains(text, "in the model now");
+    }
+
+    [TestMethod]
+    public void ForName_StillOffersToAddSomethingTheModelDoesNotHave()
+    {
+        var model = new CandidateDomainModel();
+        model.Record("Collection", DecisionStage.Shaping, DecisionOutcome.Rejected,
+            DecisionReasons.DefinitionResolvesToAnAbstraction);
+
+        StringAssert.Contains(
+            string.Join("\n", DecisionReport.ForName(model, "Collection")),
+            "add Collection");
+    }
+
+    [TestMethod]
     public void ForName_SaysSoWhenNothingWasRecorded()
     {
         var lines = DecisionReport.ForName(new CandidateDomainModel(), "Nonesuch");
