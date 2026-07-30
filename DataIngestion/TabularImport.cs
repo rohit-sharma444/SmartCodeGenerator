@@ -24,6 +24,12 @@ public static class TabularImport
             if (entityName.Length == 0 || rows.ContainsKey(entityName))
                 continue;   // DataModelBuilder skipped this table for the same reason
 
+            // The FINAL field names, from the same resolution DataModelBuilder uses. Keying by the
+            // raw normalized column name instead would silently lose any column that had to be
+            // renamed off its class's name: the generated class declares OrderName, the seed row
+            // would say Order, and SeedFileWriter — which walks the class — would find nothing.
+            var fieldNames = DataModelBuilder.FieldNames(table);
+
             var imported = new List<IReadOnlyDictionary<string, string?>>();
 
             // Indexed rather than iterating the rows themselves: List.IndexOf would be O(n²) and,
@@ -36,8 +42,7 @@ public static class TabularImport
 
                 foreach (var column in table.Columns)
                 {
-                    var fieldName = NameNormalizer.ToFieldName(column.Name);
-                    if (fieldName.Length > 0)
+                    if (fieldNames.TryGetValue(column.Name, out var fieldName))
                         cells[fieldName] = table.Value(rowIndex, column.Name);
                 }
 

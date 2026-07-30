@@ -127,15 +127,41 @@ public static class DataModelBuilder
         }
     }
 
-    private static void AddFields(
-        CandidateDomainModel model, CandidateEntity entity, TabularTable table)
+    /// <summary>Why a column did or did not become a field.</summary>
+    private enum ColumnFate
     {
+        Kept,
+        RenamedOffItsClassName,
+        DroppedUnusableName,
+        DroppedGeneratedKey,
+        DroppedDuplicate
+    }
+
+    private sealed record ColumnOutcome(string Column, string? Field, string Type, ColumnFate Fate);
+
+    /// <summary>
+    /// What each of <paramref name="table"/>'s columns becomes on an entity named
+    /// <paramref name="entityName"/>: its final field name, or null if it is dropped, plus why.
+    /// </summary>
+    /// <remarks>
+    /// The single source of truth for column-to-field naming. <see cref="AddFields"/> turns these
+    /// into fields and decision records, and <see cref="FieldNames"/> exposes the same mapping to
+    /// <see cref="TabularImport"/>. They MUST agree: a seed row keyed by the raw column name while
+    /// the generated class declares the renamed one produces a class whose data silently never
+    /// loads — exactly the defect the end-to-end test caught when these were computed twice.
+    /// </remarks>
+    private static List<ColumnOutcome> ResolveColumns(TabularTable table, string entityName)
+    {
+        var outcomes = new List<ColumnOutcome>();
+
         // Every other column's normalized name. A column that has to be renamed off its own
         // class's name must not be handed a name a LATER column already owns: that column has
-        // not been added yet, so the added-fields check alone cannot see the collision coming.
+        // not been resolved yet, so the taken-names check alone cannot see the collision coming.
         var columnNames = table.Columns
             .Select(c => NameNormalizer.ToFieldName(c.Name))
             .ToList();
+
+        var taken = new List<string>();
 
         for (var i = 0; i < table.Columns.Count; i++)
         {
@@ -144,37 +170,92 @@ public static class DataModelBuilder
 
             if (!NameNormalizer.IsValidIdentifier(fieldName))
             {
-                model.Record(column.Name, DecisionStage.SeedExtraction, DecisionOutcome.Skipped,
-                    DecisionReasons.ColumnNameIsNotAValidIdentifier,
-                    $"'{column.Name}' in {table.Label}");
+                outcomes.Add(new ColumnOutcome(
+                    column.Name, null, column.Type, ColumnFate.DroppedUnusableName));
                 continue;
             }
 
             // This entity's OWN key. Dropped because DomainModelMapper prepends `int Id` itself,
             // and a read string Id compiles and then makes JsonStore throw on the first Add.
-            if (IsOwnKey(fieldName, entity.Name))
+            if (IsOwnKey(fieldName, entityName))
             {
-                model.Record(column.Name, DecisionStage.SeedExtraction, DecisionOutcome.Skipped,
-                    DecisionReasons.PrimaryKeyIsGenerated, $"'{column.Name}' in {table.Label}");
+                outcomes.Add(new ColumnOutcome(
+                    column.Name, null, column.Type, ColumnFate.DroppedGeneratedKey));
                 continue;
             }
 
             var otherColumns = columnNames.Where((_, index) => index != i);
-            var resolved = Resolve(fieldName, entity, otherColumns);
-            if (resolved is null)
-                continue;   // duplicate after normalization; the first spelling already won
+            var resolved = Resolve(fieldName, entityName, taken, otherColumns);
 
-            if (!string.Equals(resolved, fieldName, StringComparison.Ordinal))
+            if (resolved is null)
             {
-                model.Record(column.Name, DecisionStage.SeedExtraction, DecisionOutcome.Kept,
-                    DecisionReasons.ColumnWouldCollideWithItsClassName,
-                    $"'{column.Name}' in {table.Label} became {resolved}");
+                outcomes.Add(new ColumnOutcome(
+                    column.Name, null, column.Type, ColumnFate.DroppedDuplicate));
+                continue;
+            }
+
+            taken.Add(resolved);
+
+            outcomes.Add(new ColumnOutcome(
+                column.Name, resolved, column.Type,
+                string.Equals(resolved, fieldName, StringComparison.Ordinal)
+                    ? ColumnFate.Kept
+                    : ColumnFate.RenamedOffItsClassName));
+        }
+
+        return outcomes;
+    }
+
+    /// <summary>
+    /// Each of <paramref name="table"/>'s surviving columns mapped to the field name the generated
+    /// class will declare. Consumed by <see cref="TabularImport"/> so imported rows are keyed by the
+    /// same names <see cref="Build(IReadOnlyList{TabularTable})"/> puts on the model.
+    /// </summary>
+    public static IReadOnlyDictionary<string, string> FieldNames(TabularTable table)
+    {
+        var entityName = NameNormalizer.ToUserTypedEntityName(table.Name);
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var outcome in ResolveColumns(table, entityName))
+            if (outcome.Field is not null)
+                map[outcome.Column] = outcome.Field;
+
+        return map;
+    }
+
+    private static void AddFields(
+        CandidateDomainModel model, CandidateEntity entity, TabularTable table)
+    {
+        foreach (var outcome in ResolveColumns(table, entity.Name))
+        {
+            switch (outcome.Fate)
+            {
+                case ColumnFate.DroppedUnusableName:
+                    model.Record(outcome.Column, DecisionStage.SeedExtraction,
+                        DecisionOutcome.Skipped, DecisionReasons.ColumnNameIsNotAValidIdentifier,
+                        $"'{outcome.Column}' in {table.Label}");
+                    continue;
+
+                case ColumnFate.DroppedGeneratedKey:
+                    model.Record(outcome.Column, DecisionStage.SeedExtraction,
+                        DecisionOutcome.Skipped, DecisionReasons.PrimaryKeyIsGenerated,
+                        $"'{outcome.Column}' in {table.Label}");
+                    continue;
+
+                case ColumnFate.DroppedDuplicate:
+                    continue;   // the first spelling already won
+
+                case ColumnFate.RenamedOffItsClassName:
+                    model.Record(outcome.Column, DecisionStage.SeedExtraction, DecisionOutcome.Kept,
+                        DecisionReasons.ColumnWouldCollideWithItsClassName,
+                        $"'{outcome.Column}' in {table.Label} became {outcome.Field}");
+                    break;
             }
 
             entity.Fields.Add(new CandidateField
             {
-                Name = resolved,
-                Type = column.Type,
+                Name = outcome.Field!,
+                Type = outcome.Type,
                 Provenance = Provenance.Data
             });
         }
@@ -198,20 +279,23 @@ public static class DataModelBuilder
     /// two columns that normalize to the SAME name still resolve the plain way — first wins.
     /// </param>
     private static string? Resolve(
-        string fieldName, CandidateEntity entity, IEnumerable<string> otherColumns)
+        string fieldName,
+        string entityName,
+        IReadOnlyList<string> takenNames,
+        IEnumerable<string> otherColumns)
     {
-        bool Taken(string name) => entity.Fields.Any(
-            f => string.Equals(f.Name, name, StringComparison.OrdinalIgnoreCase));
+        bool Taken(string name) => takenNames.Any(
+            n => string.Equals(n, name, StringComparison.OrdinalIgnoreCase));
 
         var collidesWithClass = string.Equals(
-            fieldName, entity.Name, StringComparison.OrdinalIgnoreCase);
+            fieldName, entityName, StringComparison.OrdinalIgnoreCase);
 
         if (!collidesWithClass)
             return Taken(fieldName) ? null : fieldName;
 
         var reserved = new HashSet<string>(otherColumns, StringComparer.OrdinalIgnoreCase);
 
-        foreach (var candidate in new[] { entity.Name + NameSuffix, entity.Name + ValueSuffix })
+        foreach (var candidate in new[] { entityName + NameSuffix, entityName + ValueSuffix })
         {
             if (!Taken(candidate) && !reserved.Contains(candidate))
                 return candidate;

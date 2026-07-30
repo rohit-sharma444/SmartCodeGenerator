@@ -94,6 +94,52 @@ public class TabularImportTests
         Assert.Single(data.For("OrderItem"));
     }
 
+    /// <summary>
+    /// A column renamed off its own class's name is keyed by the RENAMED field, because that is what
+    /// the generated class declares. Keying it by the raw column name would leave SeedFileWriter --
+    /// which walks the class's properties -- unable to find the value, so the app would start with
+    /// that column silently blank on every row.
+    /// </summary>
+    [Fact]
+    public void AColumnRenamedOffItsClassName_IsKeyedByTheRenamedField()
+    {
+        var data = TabularImport.ToImportedData(
+            [Table("Products", ["Product", "Sku"], ["Hammer", "SKU-1"])]);
+
+        var row = data.For("Product")[0];
+
+        Assert.Equal("Hammer", row["ProductName"]);
+        Assert.False(row.ContainsKey("Product"));
+    }
+
+    /// <summary>A dropped key column contributes no seed value either -- the generated class has no
+    /// such property, so a row carrying it would name something that does not exist.</summary>
+    [Fact]
+    public void ADroppedKeyColumnIsNotImported()
+    {
+        var data = TabularImport.ToImportedData(
+            [Table("Orders", ["Id", "Ref"], ["7", "ORD-1"])]);
+
+        var row = data.For("Order")[0];
+
+        Assert.False(row.ContainsKey("Id"));
+        Assert.Equal("ORD-1", row["Ref"]);
+    }
+
+    /// <summary>Every key an imported row carries is a field the model actually declares. This is the
+    /// invariant SeedFileWriter depends on, stated once rather than inferred per test.</summary>
+    [Fact]
+    public void EveryImportedKeyIsAFieldTheModelDeclares()
+    {
+        var tables = new[] { Table("Products", ["Id", "Product", "Sku", "2 bad"], ["1", "Hammer", "S", "x"]) };
+
+        var declared = DataModelBuilder.Build(tables).Entities
+            .Single().Fields.Select(f => f.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var key in TabularImport.ToImportedData(tables).For("Product")[0].Keys)
+            Assert.Contains(key, declared);
+    }
+
     /// <summary>Entity names match DataModelBuilder's -- both singularize the table name, and a
     /// mismatch would silently leave the seed file unmatched to any class.</summary>
     [Fact]
