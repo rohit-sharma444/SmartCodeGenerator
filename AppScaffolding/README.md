@@ -91,6 +91,46 @@ core: it depends on `IEntityViewModel`, so `WpfTarget` contributes it rather tha
 The generated app persists to **one JSON file per type**, written beside the
 built executable (`AppContext.BaseDirectory`). There is no database.
 
+## Seeding from the user's own data
+
+`Scaffold(model, appName, workspaceRoot, target, persistence, importedData)` takes
+one more input: an `ImportedData` — entity name → rows, keyed by field name —
+produced by [`DataIngestion`](../DataIngestion/README.md) when the user built the
+app from a CSV, TXT or JSON file instead of a description. Every other overload
+passes `null`, so a description-built app is byte-for-byte what it always was.
+
+When rows are present the scaffolder adds:
+
+```
+<Project>/
+  Data/
+    Seed/
+      <Class>.json          one per entity that contributed rows
+```
+
+registered in the `.csproj` as `Content` with `CopyToOutputDirectory=PreserveNewest`
+so the app finds them beside its binary at run time, and `SeedData.cs` gains a
+second mode: **if a seed file exists, deserialize it and `store.SaveAll(rows)`;
+otherwise emit the three reflective sample rows exactly as before.** It goes
+through the `IStore<T>` seam, so JSON and SQLite persistence both work with no
+further change.
+
+Three details that are load-bearing:
+
+- **`SeedFileWriter` walks each class's FINAL property list**, not the data's keys.
+  That is what absorbs the review loop: a field the user removed simply stops being
+  written, a field they added is omitted and keeps the class's default, and no seed
+  file can ever name a property the generated class does not declare.
+- **Ids are assigned 1..N in file order at generation time**, and foreign keys
+  produced by a normalization split are already rewritten to match — so the emitted
+  JSON holds correct ints and nothing resolves keys at run time.
+- **Everything goes through `Utf8JsonWriter`**, never string concatenation, so a
+  cell containing quotes and braces stays one string instead of becoming syntax.
+
+A value that will not parse as its declared type is **omitted** rather than emitted
+as a broken literal: the user may have retyped the field in the review loop, and
+that row should still load.
+
 ## Validation
 
 Each model gets its own validator, split across two files:
@@ -165,12 +205,14 @@ in the review loop.
 
 | Type | Role |
 | --- | --- |
-| `AppScaffolder` | The entry point. `Scaffold(model, appName, workspaceRoot, target)` writes the shared core and delegates the front end to `target`; a three-arg overload defaults to WPF. `WriteClasses(...)` writes just the model classes. |
+| `AppScaffolder` | The entry point. `Scaffold(model, appName, workspaceRoot, target)` writes the shared core and delegates the front end to `target`; a three-arg overload defaults to WPF, and a six-arg one takes `ImportedData` to seed from the user's own rows. `WriteClasses(...)` writes just the model classes. |
+| `ImportedData` | Entity name → rows → field name → raw string value, plus `Notes` the caller must print (above all, that the `MaxSeedRows` cap dropped rows). Lives here rather than in `DataIngestion` because it is an *input to the scaffolder*, alongside `PersistenceKind` — and because that keeps it free of any `TabularTable` dependency, so a future SQL reader feeds the same carrier. |
+| `SeedFileWriter` | Imported rows → `(fileName, json)` pairs, projected through each class's final property list. `SeedFolderName` is the one spelling of the `Seed` folder that both this and the generated seeder use. |
 | `ITargetScaffolder` | The strategy a target implements: `Key`, `Description`, `ProjectType`, `FolderSuffix`, `FrontEndFiles(projectName, entityNames)`, and an optional `FixupProject(outputFolder)` (default no-op). |
 | `TargetScaffolders` | The registry — ordered `Keys` (`wpf, console, webapi, classlib, worker`), case-insensitive `TryResolve`, and `Default` (WPF). |
 | `GeneratedFile` | One file a target contributes: `RelativeFolder` (relative to the project root, `""` for the root), `Name`, `Source`. |
 | `WpfTarget`, `ConsoleTarget`, `WebApiTarget`, `ClassLibraryTarget`, `WorkerTarget` | The five shipped targets, under `Targets/`. |
-| `DomainModelMapper` | `CandidateDomainModel` → `ClassDefinition[]`: renaming, `Id`, audit fields, navigation properties. The interesting stage. |
+| `DomainModelMapper` | `CandidateDomainModel` → `ClassDefinition[]`: renaming, `Id`, audit fields, navigation properties. The interesting stage. An overload also yields the entity-name → class-name map, which `SeedFileWriter` needs because rows are keyed by entity while files are named for the class, and `ToUniqueClassName` can rename one (`Type` → `TypeItem`). |
 | `DomainAppName` | Free text → PascalCase project name (`"a library that lends books"` → `ALibraryThatLendsBooks`). Falls back to `GeneratedApp`; prefixes `App` when it would start with a digit. |
 | `ScaffoldResult` | `Success`, the project path, every file written, and a message. |
 | `WpfProjectFixup` | Reconciles what `dotnet new wpf` emits with the foldered layout: deletes the template's root `MainWindow` (it declares the same `x:Class`) and repoints `App.xaml`. Invoked via `WpfTarget.FixupProject`. |

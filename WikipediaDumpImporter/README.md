@@ -9,6 +9,11 @@ article's wikitext down to prose, and writes the result to
 The store is what makes `build app: <description>` work offline, deterministically,
 and without the API's rate limit.
 
+It is only needed for that **description** path. Building an app from data you
+already have — see [`DataIngestion`](../DataIngestion/README.md) — reads the model
+out of the data's own schema and makes no Wikipedia call at all, so it works with
+no store present.
+
 This is a console app (`net10.0`). It is **not** part of the normal build-and-run
 loop — you run it once to create the store, and occasionally afterwards to
 repair or update it.

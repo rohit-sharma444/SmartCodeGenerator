@@ -136,7 +136,7 @@ sources, use the constructor directly and supply your own `ISemanticAnalyzer`,
 | --- | --- |
 | `DomainDiscoveryPipeline` | Orchestrates the stages; `Discover(text)` returns a `DiscoveryResult`. `CreateDefault` wires the dump store or the HTTP fallback. |
 | `DiscoveryResult` | The recognized `TopicResult` plus the `CandidateDomainModel`. |
-| `CandidateDomainModel` / `CandidateEntity` | The output model. Each entity carries a `Provenance` (`Seed` = from the user's text, `Wiki` = harvested), fields, relationships, and a confidence. |
+| `CandidateDomainModel` / `CandidateEntity` | The output model. Each entity carries a `Provenance` (`Seed` = from the user's text, `Wiki` = harvested, `Data` = read from a data source the user supplied), fields, relationships, and a confidence. `Data` is produced by [`DataIngestion`](../DataIngestion/README.md), not by anything in this project — the type is shared so the review loop and the scaffolder see one model whichever path built it. |
 | `SeedEntityExtractor` | Maps an NLE `SemanticResult` to seed entities (nouns only — verbs and attributes inform enrichment, not entities). |
 | `WikipediaTopicRecognizer` | Matches seed names *and the user's raw text* to an article. The raw text matters: the domain is often named by a phrase (*"point of sale"*) that no single seed carries. |
 | `DomainEnricher` / `EntityHarvester` | Pull additional entities and fields from an article. |
