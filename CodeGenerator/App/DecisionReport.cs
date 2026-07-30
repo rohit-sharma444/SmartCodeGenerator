@@ -106,9 +106,12 @@ internal static class DecisionReport
 
         foreach (var record in records)
         {
-            lines.Add($"  {Label(record.Stage),-16} {record.Outcome.ToString().ToLowerInvariant(),-10} {record.Reason}");
+            lines.Add(TrailLine(Label(record.Stage), record.Outcome.ToString().ToLowerInvariant(), record.Reason));
+
+            // The evidence hangs under its reason, in the same column, with the first two
+            // blank — which only lines up if both rows are built the same way.
             if (!string.IsNullOrWhiteSpace(record.Evidence))
-                lines.Add($"  {string.Empty,-16} {string.Empty,-10} {record.Evidence}");
+                lines.Add(TrailLine(string.Empty, string.Empty, record.Evidence));
         }
 
         // The last word on a name is the one worth acting on — a name rejected at shaping is
@@ -138,7 +141,15 @@ internal static class DecisionReport
         if (model.Decisions.Count == 0)
             return new[] { "No decisions recorded." };
 
-        var lines = new List<string> { $"Decisions ({model.Decisions.Count}):" };
+        // One line per NAME, under the outcome that still stands. Counting raw records instead
+        // would print a total that never reconciles with the groups beneath it, and a candidate
+        // kept early then rejected later would be listed under both.
+        var standing = model.Decisions
+            .GroupBy(d => Canonical(d.Name), StringComparer.Ordinal)
+            .Select(g => g.Last())
+            .ToList();
+
+        var lines = new List<string> { $"Decisions ({standing.Count}):" };
 
         foreach (var outcome in new[]
                  {
@@ -146,7 +157,7 @@ internal static class DecisionReport
                      DecisionOutcome.Rejected, DecisionOutcome.Skipped
                  })
         {
-            var names = model.Decisions
+            var names = standing
                 .Where(d => d.Outcome == outcome)
                 .Select(d => d.Name)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -160,11 +171,19 @@ internal static class DecisionReport
         return lines;
     }
 
+    /// <summary>
+    /// One row of a name's trail. The widths live here rather than at each call site so the
+    /// reason column and the evidence hanging under it cannot drift apart.
+    /// </summary>
+    private static string TrailLine(string stage, string outcome, string detail)
+        => $"  {stage,-16} {outcome,-10} {detail}";
+
     private static string Label(DecisionStage stage) => stage switch
     {
         DecisionStage.SeedExtraction => "seed extraction",
         DecisionStage.Enrichment => "enrichment",
         DecisionStage.Shaping => "shaping",
+        DecisionStage.ReviewLoop => "review loop",
         _ => stage.ToString().ToLowerInvariant()
     };
 }

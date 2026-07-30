@@ -168,7 +168,17 @@ public static class ModelEditor
         if (target is null || normalizedNew.Length == 0 || Find(model, normalizedNew) is not null)
             return false;
 
+        var former = target.Name;
         target.Name = normalizedNew;
+
+        // The trail is filed under the name each stage saw, so a rename strands it: `why` on the
+        // new name would find nothing and report a discovered entity as hand-added. Recording
+        // both directions lets the user follow the rename from whichever name they remember.
+        model.Record(normalizedNew, DecisionStage.ReviewLoop, DecisionOutcome.Kept,
+            DecisionReasons.YouRenamedIt, $"renamed from \"{former}\"");
+        model.Record(former, DecisionStage.ReviewLoop, DecisionOutcome.Skipped,
+            DecisionReasons.YouRenamedIt, $"renamed to \"{normalizedNew}\"");
+
         return true;
     }
 

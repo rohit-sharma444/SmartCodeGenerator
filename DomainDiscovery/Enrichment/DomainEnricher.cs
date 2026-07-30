@@ -135,13 +135,24 @@ public sealed class DomainEnricher : IDomainEnricher
         // rather than offered back to them as a suggestion for a class they already have.
         foreach (var suggestion in harvested.Suggestions)
         {
-            if (seed.Entities.Any(e => string.Equals(e.Name, suggestion.Name, StringComparison.OrdinalIgnoreCase)))
+            var claimed = seed.Entities.FirstOrDefault(
+                e => string.Equals(e.Name, suggestion.Name, StringComparison.OrdinalIgnoreCase));
+
+            if (claimed is not null)
             {
+                // Enrich runs once per article into this same model, so by the second article
+                // the class it collides with may have come from the first rather than from the
+                // user. Saying "your description" for that one blames the wrong source.
                 seed.Record(suggestion.Name, DecisionStage.Enrichment, DecisionOutcome.Skipped,
-                    DecisionReasons.AlreadyAClassFromYourDescription);
+                    claimed.Provenance == Provenance.Seed
+                        ? DecisionReasons.AlreadyAClassFromYourDescription
+                        : DecisionReasons.AlreadyAClassFromAnEarlierArticle);
                 continue;
             }
 
+            // No record here, deliberately: an earlier article already offered this same
+            // suggestion and recorded the decision for it. A second record would double-count
+            // one candidate in the summary.
             if (seed.Suggestions.Any(s => string.Equals(s.Name, suggestion.Name, StringComparison.OrdinalIgnoreCase)))
                 continue;
 

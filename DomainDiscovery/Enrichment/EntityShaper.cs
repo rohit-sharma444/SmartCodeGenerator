@@ -70,18 +70,25 @@ public sealed class EntityShaper
             // Role precedence mirrors field precedence exactly: the curated lexicon wins over
             // the archetype (assigned below, in pass 2) over EntityRole.None (the default).
             if (curatedFields.Count > 0)
-            {
                 entity.Role = DomainFieldLexicon.Role(entity.Name);
-
-                // Pass 2 skips anything that already has fields, so a curated class gets no
-                // record at all unless it is taken here.
-                model.Record(entity.Name, DecisionStage.Shaping, DecisionOutcome.Kept,
-                    DecisionReasons.DefinedAsADomainClass,
-                    ShapingEvidence(entity.Role, head: null, source: "the curated domain lexicon"));
-            }
 
             foreach (var shape in curatedFields)
                 AddField(entity, shape.Name, shape.Type);
+
+            // Pass 2 skips anything that already has fields, so a curated class gets no record
+            // at all unless it is taken here. The condition must therefore be the one pass 2
+            // actually tests: AddField declines a field named after its own entity, so a lexicon
+            // entry offering only such a field would leave the entity with none, and recording
+            // on `curatedFields.Count > 0` would file a Kept here and then let pass 2 record a
+            // second, possibly contradictory verdict for the same entity. No lexicon entry does
+            // that today, so this is unreachable and has no test — it is written to agree with
+            // pass 2 by construction rather than by coincidence.
+            if (curatedFields.Count > 0 && entity.Fields.Count > 0)
+            {
+                model.Record(entity.Name, DecisionStage.Shaping, DecisionOutcome.Kept,
+                    DecisionReasons.DefinedAsADomainClass,
+                    ShapingEvidence(entity.Role, head: null, source: CuratedLexiconSource));
+            }
         }
 
         // Prefetch every remaining entity's lead in ONE call instead of one per entity — a
@@ -244,6 +251,12 @@ public sealed class EntityShaper
                 AddField(entity, shape.Name, shape.Type);
         }
     }
+
+    /// <summary>
+    /// Named as the source of a pass-1 decision, where the evidence is the curated lexicon
+    /// itself rather than an article. Unlike every other source, it is not a title.
+    /// </summary>
+    private const string CuratedLexiconSource = "the curated domain lexicon";
 
     /// <summary>
     /// Composes the one line of evidence a shaping decision carries. Facts that say nothing are

@@ -18,9 +18,20 @@ public static class DecisionReasons
     public const string LeadDoesNotMentionIt = "the article's lead does not mention it";
     public const string AlreadyAClassFromYourDescription = "already a class from your description";
 
+    /// <summary>
+    /// The same skip as <see cref="AlreadyAClassFromYourDescription"/>, but for a class an
+    /// EARLIER article contributed rather than one the user named. Enrichment runs once per
+    /// article and merges into the same model, so from the second article onward the thing a
+    /// candidate collides with is often not the user's description at all.
+    /// </summary>
+    public const string AlreadyAClassFromAnEarlierArticle = "already a class from an earlier article";
+
     // --- Shaping ---
     public const string DefinedAsADomainClass = "defined as a domain class";
     public const string DefinitionResolvesToAnAbstraction = "its definition resolves to an abstraction";
     public const string YouNamedItNoDefinitionFound = "you named it; no definition found";
     public const string NoDefinitionWeRecognize = "no definition we recognize";
+
+    // --- Review loop ---
+    public const string YouRenamedIt = "you renamed it";
 }
