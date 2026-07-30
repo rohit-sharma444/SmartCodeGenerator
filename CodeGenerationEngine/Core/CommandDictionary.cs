@@ -475,8 +475,10 @@ public static class CommandDictionary
         {
             Category = "Build App",
             Command = "add <name>",
-            Description = "Review loop: adds an entity to the candidate model.",
-            Example = "add Reservation"
+            Description = "Review loop: adds an entity to the candidate model. The name keeps the "
+                        + "shape you type, so a compound survives; several words become one class "
+                        + "name.",
+            Example = "add cash register"
         },
         new()
         {

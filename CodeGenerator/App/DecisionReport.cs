@@ -116,12 +116,13 @@ internal static class DecisionReport
         var final = records[^1];
 
         // `add` takes a class name, but a record may be filed under the article's spelling
-        // ("Cash register"), so the suggested command has to be given in the form the loop
-        // will actually accept. The suggestion list already holds the converted name when the
-        // candidate reached it; otherwise the same normalizer the pipeline used converts it.
+        // ("Cash register"), so the suggested command has to be given in the form the loop will
+        // actually accept. The suggestion list already holds the converted name when the
+        // candidate reached it; otherwise it goes through the SAME normalizer `add` itself uses,
+        // so that running the printed command produces exactly the name printed above it.
         var className = model.Suggestions
             .FirstOrDefault(e => Canonical(e.Name) == wanted)?.Name
-            ?? NameNormalizer.ToCompoundEntityName(final.Name);
+            ?? NameNormalizer.ToUserTypedEntityName(final.Name);
 
         if (final.Outcome == DecisionOutcome.Rejected)
             lines.Add($"  Add it anyway with: add {className}");
