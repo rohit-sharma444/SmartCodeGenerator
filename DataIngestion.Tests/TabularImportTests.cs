@@ -74,6 +74,66 @@ public class TabularImportTests
             && n.Contains((ImportedData.MaxSeedRows + 500).ToString()));
     }
 
+    /// <summary>
+    /// The cap is per entity, so truncating a parent can leave a child row pointing at a parent
+    /// that was never imported. The generated app would then show an orphan whose lookup resolves
+    /// to nothing, with no clue why. The foreign key is cleared instead — Ids are POSITIONAL, so
+    /// dropping the row itself would renumber every row after it and break every other key.
+    /// </summary>
+    [Fact]
+    public void AForeignKeyPastTheCappedParentIsCleared_NotLeftDangling()
+    {
+        var parent = new TabularTable { Name = "Orders", SourceLabel = "orders.csv" };
+        parent.Columns.Add(new TabularColumn { Name = "Ref" });
+        for (var i = 1; i <= ImportedData.MaxSeedRows + 5; i++)
+            parent.Rows.Add([$"ORD-{i}"]);
+
+        // Reverse order, so the child rows that survive the cap are the ones pointing at the
+        // parent rows that did not.
+        var child = new TabularTable { Name = "OrderItem", SourceLabel = "orders.csv" };
+        child.Columns.Add(new TabularColumn { Name = "OrderId", Type = "int" });
+        child.Columns.Add(new TabularColumn { Name = "Item" });
+        for (var i = ImportedData.MaxSeedRows + 5; i >= 1; i--)
+            child.Rows.Add([i.ToString(), "Nut"]);
+
+        var data = TabularImport.ToImportedData([parent, child]);
+
+        var parents = data.For("Order").Count;
+        var keys = data.For("OrderItem").Select(r => r["OrderId"]).ToList();
+
+        Assert.All(keys, k => Assert.True(
+            k is null || int.Parse(k) <= parents,
+            $"foreign key {k} points past the {parents} parent rows that were imported"));
+
+        // ...and the user is told, rather than left to discover blank links in the running app.
+        Assert.Contains(data.Notes, n => n.Contains("could not be linked"));
+    }
+
+    /// <summary>A foreign key naming an entity that was NOT imported is left alone — it is an
+    /// ordinary int that happens to end in "Id", not a broken reference.</summary>
+    [Fact]
+    public void AnIdColumnNamingNoImportedEntityIsUntouched()
+    {
+        var data = TabularImport.ToImportedData(
+            [Table("Orders", ["LegacyId", "Ref"], ["9999", "ORD-1"])]);
+
+        Assert.Equal("9999", data.For("Order")[0]["LegacyId"]);
+        Assert.Empty(data.Notes);
+    }
+
+    /// <summary>A table the model builder skips must not be imported either, or the carrier holds
+    /// rows for a class that will never exist.</summary>
+    [Fact]
+    public void ATableTheModelBuilderSkipsIsNotImported()
+    {
+        var table = new TabularTable { Name = "123", SourceLabel = "123.csv" };
+        table.Columns.Add(new TabularColumn { Name = "Ref" });
+        table.Rows.Add(["ORD-1"]);
+
+        Assert.Empty(DataModelBuilder.Build([table]).Entities);
+        Assert.True(TabularImport.ToImportedData([table]).IsEmpty);
+    }
+
     [Fact]
     public void ARowCountUnderTheCapProducesNoNote()
         => Assert.Empty(TabularImport.ToImportedData(

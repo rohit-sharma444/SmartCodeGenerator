@@ -21,8 +21,13 @@ public static class TabularImport
         foreach (var table in tables)
         {
             var entityName = NameNormalizer.ToUserTypedEntityName(table.Name);
-            if (entityName.Length == 0 || rows.ContainsKey(entityName))
-                continue;   // DataModelBuilder skipped this table for the same reason
+
+            // The same three guards DataModelBuilder applies, for the same reasons. They must agree:
+            // rows imported for a table the builder skipped belong to a class that will never exist.
+            if (entityName.Length == 0
+                || !NameNormalizer.IsValidIdentifier(entityName)
+                || rows.ContainsKey(entityName))
+                continue;
 
             // The FINAL field names, from the same resolution DataModelBuilder uses. Keying by the
             // raw normalized column name instead would silently lose any column that had to be
@@ -59,6 +64,72 @@ public static class TabularImport
             rows[entityName] = imported;
         }
 
+        ClearDanglingForeignKeys(rows, notes);
+
         return new ImportedData(rows, notes);
+    }
+
+    /// <summary>
+    /// Clears any foreign key pointing past the rows its target entity actually contributed.
+    /// </summary>
+    /// <remarks>
+    /// The <see cref="ImportedData.MaxSeedRows"/> cap is applied per entity, so truncating a parent
+    /// can leave a child row referencing a parent row that was never imported. Left alone, the
+    /// generated app shows an orphan whose lookup silently resolves to nothing.
+    /// <para>
+    /// The key is CLEARED rather than the row dropped, because seeded Ids are positional — assigned
+    /// 1..N in row order at generation time — so removing a row from the middle would renumber every
+    /// row after it and break every other foreign key pointing at them. A cleared key writes as an
+    /// absent value, which the generated class reads as its default.
+    /// </para>
+    /// <para>
+    /// Runs after every table is imported, not during: an extracted parent (`Customer`) is appended
+    /// AFTER the table that references it, so a forward pass would not yet know its row count.
+    /// </para>
+    /// </remarks>
+    private static void ClearDanglingForeignKeys(
+        Dictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string?>>> rows,
+        List<string> notes)
+    {
+        var cleared = 0;
+
+        foreach (var (_, entityRows) in rows)
+        {
+            foreach (var row in entityRows)
+            {
+                // Mutable in practice: every row in here was built as a Dictionary above.
+                if (row is not Dictionary<string, string?> cells)
+                    continue;
+
+                foreach (var field in cells.Keys.ToList())
+                {
+                    if (!field.EndsWith("Id", StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    var target = field[..^2];
+
+                    // Not a foreign key at all if it names no imported entity — an ordinary int
+                    // that happens to end in "Id" must be left exactly as it was read.
+                    if (target.Length == 0 || !rows.TryGetValue(target, out var targetRows))
+                        continue;
+
+                    if (!int.TryParse(cells[field], out var key))
+                        continue;
+
+                    if (key >= 1 && key <= targetRows.Count)
+                        continue;
+
+                    cells[field] = null;
+                    cleared++;
+                }
+            }
+        }
+
+        if (cleared > 0)
+        {
+            notes.Add(
+                $"{cleared} reference(s) could not be linked because the rows they pointed at fell "
+                + $"outside the first {ImportedData.MaxSeedRows} imported, and were left unset.");
+        }
     }
 }
