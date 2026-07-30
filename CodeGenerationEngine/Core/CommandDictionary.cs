@@ -461,6 +461,23 @@ public static class CommandDictionary
                         + "then opens a review loop before any code is written.",
             Example = "build app: a library that lends books to members"
         },
+        new()
+        {
+            Category = "Build App",
+            Command = "build app",
+            Description = "Starts the same flow with no description: asks whether you already have "
+                        + "data, and builds the model from it if you do.",
+            Example = "build app"
+        },
+        new()
+        {
+            Category = "Build App",
+            Command = "build app: <description> from <format> <location>",
+            Description = "Builds the model from existing data without prompting. Formats: csv, "
+                        + "txt, json (excel and sql are not in this build yet). Add 'normalize' to "
+                        + "apply every normalization change the data needs.",
+            Example = "build app: order tracking from csv D:\\data\\orders.csv normalize"
+        },
         // The rest of this category is only valid at the review-loop prompt that
         // `build app:` opens, not at the main CodeGenerator prompt.
         new()
