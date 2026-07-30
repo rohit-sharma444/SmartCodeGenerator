@@ -127,7 +127,12 @@ internal static class DecisionReport
             .FirstOrDefault(e => Canonical(e.Name) == wanted)?.Name
             ?? NameNormalizer.ToUserTypedEntityName(final.Name);
 
-        if (final.Outcome == DecisionOutcome.Rejected)
+        // The trail above is history and never changes. This last line is advice about the model
+        // as it stands, so it has to answer to the model — offering `add` for a name the user has
+        // since taken back would fail as a duplicate. Same reason Summary filters the same way.
+        if (model.Entities.Any(e => Canonical(e.Name) == wanted))
+            lines.Add("  It is a class in the model now.");
+        else if (final.Outcome == DecisionOutcome.Rejected)
             lines.Add($"  Add it anyway with: add {className}");
         else if (final.Outcome == DecisionOutcome.Suggested)
             lines.Add($"  Include it with: add {className}");
