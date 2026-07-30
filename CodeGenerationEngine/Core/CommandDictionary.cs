@@ -510,6 +510,15 @@ public static class CommandDictionary
         new()
         {
             Category = "Build App",
+            Command = "why [name]",
+            Description = "Review loop: explains what discovery decided. Bare, it reports every "
+                        + "decision grouped by outcome; with a name, it shows that name's whole "
+                        + "trail — the stage, the reason and the evidence behind each step.",
+            Example = "why Cash register"
+        },
+        new()
+        {
+            Category = "Build App",
             Command = "cancel",
             Description = "Review loop: abandons the model without generating anything. Alias: c.",
             Example = "cancel"

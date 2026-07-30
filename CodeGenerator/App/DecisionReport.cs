@@ -41,6 +41,26 @@ internal static class DecisionReport
     /// </summary>
     internal static IReadOnlyList<string> Summary(CandidateDomainModel model)
     {
+        // The log is append-only — it is history, and history is what `why` reports. A summary
+        // is not history: it describes the model as it stands right now, under the model print.
+        // So it has to answer two questions the raw log cannot.
+        //
+        // First, what does the model already contain? `add` promotes a suggestion (or overrides
+        // a rejection) without writing a decision, so an unfiltered summary goes on telling the
+        // user to add a name that is already a class — advice that now fails as a duplicate.
+        // Matched canonically, because `add Fairtrade` answers a rejection filed as "FairTrade".
+        var current = model.Entities.Select(e => Canonical(e.Name)).ToHashSet(StringComparer.Ordinal);
+
+        // Second, which of a name's decisions still stands? A candidate demoted by the lead and
+        // then found in the seed collects a Suggested record and a Skipped one; reporting both
+        // files one name under two contradictory headings in the same redraw. Only the last
+        // decision is still true.
+        var standing = model.Decisions
+            .GroupBy(d => Canonical(d.Name), StringComparer.Ordinal)
+            .Where(g => !current.Contains(g.Key))
+            .Select(g => g.Last())
+            .ToList();
+
         var lines = new List<string>();
 
         Append(DecisionOutcome.Rejected, "Not classes: ");
@@ -51,7 +71,7 @@ internal static class DecisionReport
 
         void Append(DecisionOutcome outcome, string prefix)
         {
-            var groups = model.Decisions
+            var groups = standing
                 .Where(d => d.Outcome == outcome)
                 .GroupBy(d => d.Reason, StringComparer.Ordinal);
 

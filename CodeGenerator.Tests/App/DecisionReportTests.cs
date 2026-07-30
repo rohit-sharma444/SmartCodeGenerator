@@ -120,6 +120,84 @@ public class DecisionReportTests
     }
 
     [TestMethod]
+    public void Summary_LabelsSuggestionsAndSkipsWithTheirOwnPrefixes()
+    {
+        var model = new CandidateDomainModel();
+        model.Record("Archive", DecisionStage.Enrichment, DecisionOutcome.Suggested,
+            DecisionReasons.LeadDoesNotMentionIt);
+        model.Record("tracks", DecisionStage.SeedExtraction, DecisionOutcome.Skipped,
+            DecisionReasons.NotRecognizedAsAThing);
+
+        var summary = DecisionReport.Summary(model);
+
+        // Each outcome gets its own prefix. Asserting the whole line pins the prefix, the
+        // separator and the reason at once — swapping two prefixes has to fail here.
+        Assert.AreEqual(
+            $"Also found (add <name> to include): Archive — {DecisionReasons.LeadDoesNotMentionIt}",
+            summary.Single(l => l.StartsWith("Also found")));
+
+        Assert.AreEqual(
+            $"Ignored: tracks — {DecisionReasons.NotRecognizedAsAThing}",
+            summary.Single(l => l.StartsWith("Ignored:")));
+    }
+
+    [TestMethod]
+    public void Summary_StopsAdvertisingASuggestionTheUserHasAlreadyAdded()
+    {
+        // `add` promotes a suggestion into the model but writes no decision — the log is
+        // append-only. Left unfiltered the summary goes on telling the user to add a name that
+        // is already a class, and the advice now fails as a duplicate.
+        var model = new CandidateDomainModel();
+        model.Record("LibraryMakerspace", DecisionStage.Enrichment, DecisionOutcome.Suggested,
+            DecisionReasons.LeadDoesNotMentionIt);
+        model.Entities.Add(new CandidateEntity
+        {
+            Name = "LibraryMakerspace",
+            Provenance = Provenance.Wiki
+        });
+
+        Assert.IsFalse(
+            DecisionReport.Summary(model).Any(l => l.StartsWith("Also found")),
+            "a suggestion that is now a class must not still be advertised");
+    }
+
+    [TestMethod]
+    public void Summary_DropsARejectionTheUserOverrode()
+    {
+        // Same append-only problem from the other side: `add Fairtrade` after a rejection must
+        // stop the model calling it "not a class". The spellings differ, so this only works if
+        // the live model is matched canonically.
+        var model = new CandidateDomainModel();
+        model.Record("FairTrade", DecisionStage.Shaping, DecisionOutcome.Rejected,
+            DecisionReasons.DefinitionResolvesToAnAbstraction);
+        model.Entities.Add(new CandidateEntity { Name = "Fairtrade", Provenance = Provenance.Seed });
+
+        Assert.IsEmpty(DecisionReport.Summary(model));
+    }
+
+    [TestMethod]
+    public void Summary_ReportsOnlyANamesLastDecision()
+    {
+        // Enrichment demotes a name the seed already claims, so it collects a Suggested record
+        // and then a Skipped one. Reporting both puts one name under two contradictory headings
+        // in the same redraw.
+        var model = new CandidateDomainModel();
+        model.Record("Book", DecisionStage.Enrichment, DecisionOutcome.Suggested,
+            DecisionReasons.LeadDoesNotMentionIt);
+        model.Record("Book", DecisionStage.Enrichment, DecisionOutcome.Skipped,
+            DecisionReasons.AlreadyAClassFromYourDescription);
+
+        var summary = DecisionReport.Summary(model);
+
+        Assert.IsFalse(
+            summary.Any(l => l.StartsWith("Also found")),
+            "the superseded Suggested record must not be reported");
+        StringAssert.Contains(
+            summary.Single(l => l.StartsWith("Ignored:")),
+            DecisionReasons.AlreadyAClassFromYourDescription);
+    }
+
+    [TestMethod]
     public void Summary_IsEmpty_WhenThereIsNothingToReport()
     {
         var model = new CandidateDomainModel();
