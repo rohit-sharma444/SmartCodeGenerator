@@ -294,6 +294,36 @@ public class ModelEditorTests
     }
 
     [Fact]
+    public void RenameEntity_RecordsBothDirections()
+    {
+        // Without this, the decision log still files the whole discovery trail under the OLD
+        // name, so `why <new name>` finds nothing and wrongly reports a discovered entity as
+        // hand-added. Recording both ways lets the user follow the rename from either side.
+        var model = ModelWith("Member");
+
+        Assert.True(ModelEditor.RenameEntity(model, "Member", "Borrower"));
+
+        var underNew = Assert.Single(model.Decisions, d => d.Name == "Borrower");
+        Assert.Equal(DecisionStage.ReviewLoop, underNew.Stage);
+        Assert.Equal(DecisionReasons.YouRenamedIt, underNew.Reason);
+        Assert.Contains("Member", underNew.Evidence);
+
+        var underOld = Assert.Single(model.Decisions, d => d.Name == "Member");
+        Assert.Equal(DecisionReasons.YouRenamedIt, underOld.Reason);
+        Assert.Contains("Borrower", underOld.Evidence);
+    }
+
+    [Fact]
+    public void RenameEntity_RecordsNothing_WhenItChangesNothing()
+    {
+        var model = ModelWith("Member", "Borrower");
+
+        Assert.False(ModelEditor.RenameEntity(model, "Member", "Borrower")); // name in use
+
+        Assert.Empty(model.Decisions);
+    }
+
+    [Fact]
     public void RenameEntity_KeepsACompoundNameTheUserTyped()
     {
         var model = ModelWith("Member");

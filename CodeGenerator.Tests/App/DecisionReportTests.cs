@@ -251,11 +251,66 @@ public class DecisionReportTests
     [TestMethod]
     public void All_GroupsEveryDecisionByOutcome()
     {
+        // The fixture's "lending" is kept at seed extraction and rejected at shaping, so it is
+        // reported once, as Rejected. This test previously asserted it appeared under BOTH,
+        // which is the defect that reading only each name's final outcome fixes.
         var text = string.Join("\n", DecisionReport.All(ModelWithATrail()));
 
-        StringAssert.Contains(text, "Kept (1):");
-        StringAssert.Contains(text, "Rejected (1):");
-        StringAssert.Contains(text, "Suggested (1):");
+        StringAssert.Contains(text, "Rejected (1): Lending");
+        StringAssert.Contains(text, "Suggested (1): Cash register");
+        Assert.DoesNotContain("Kept", text, "seed extraction's verdict no longer stands");
+    }
+
+    [TestMethod]
+    public void All_CountsNamesOnce_AndFilesEachUnderItsFinalOutcome()
+    {
+        // The header counted raw records while the groups counted distinct names, so the two
+        // never reconciled; and a name kept early then rejected later was listed under both.
+        var model = new CandidateDomainModel();
+        model.Record("Lending", DecisionStage.SeedExtraction, DecisionOutcome.Kept,
+            DecisionReasons.YouNamedIt);
+        model.Record("Lending", DecisionStage.Shaping, DecisionOutcome.Rejected,
+            DecisionReasons.DefinitionResolvesToAnAbstraction);
+
+        var text = string.Join("\n", DecisionReport.All(model));
+
+        StringAssert.Contains(text, "Decisions (1):");
+        StringAssert.Contains(text, "Rejected (1): Lending");
+        Assert.DoesNotContain("Kept", text, "the superseded Kept record must not be reported");
+    }
+
+    [TestMethod]
+    public void ForName_ExplainsARenamedEntity_RatherThanCallingItHandAdded()
+    {
+        var model = new CandidateDomainModel();
+        model.Record("Member", DecisionStage.SeedExtraction, DecisionOutcome.Kept,
+            DecisionReasons.YouNamedIt);
+        model.Entities.Add(new CandidateEntity { Name = "Member" });
+        ModelEditor.RenameEntity(model, "Member", "Borrower");
+
+        var text = string.Join("\n", DecisionReport.ForName(model, "Borrower"));
+
+        StringAssert.Contains(text, DecisionReasons.YouRenamedIt);
+        StringAssert.Contains(text, "Member");
+        Assert.DoesNotContain("added in the review loop", text,
+            "a renamed entity was discovered, not hand-added");
+    }
+
+    [TestMethod]
+    public void Summary_ShowsEveryNameAtTheExactCap()
+    {
+        // The boundary the cap turns on: 8 shows all 8 with no tail, 9 would cut to 8.
+        var model = new CandidateDomainModel();
+        for (var i = 1; i <= DecisionReport.MaxNamesPerGroup; i++)
+        {
+            model.Record($"Name{i}", DecisionStage.Shaping, DecisionOutcome.Rejected,
+                DecisionReasons.DefinitionResolvesToAnAbstraction);
+        }
+
+        var line = DecisionReport.Summary(model).Single(l => l.StartsWith("Not classes:"));
+
+        StringAssert.Contains(line, $"Name{DecisionReport.MaxNamesPerGroup}");
+        Assert.DoesNotContain("more — try", line, "nothing is hidden at exactly the cap");
     }
 
     [TestMethod]

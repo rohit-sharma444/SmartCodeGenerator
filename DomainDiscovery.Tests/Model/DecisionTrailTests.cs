@@ -156,6 +156,33 @@ public class DecisionTrailTests
         Assert.Empty(model.Suggestions);
     }
 
+    [Fact]
+    public void Enrichment_DistinguishesAClassAnEarlierArticleFound_FromOneTheUserNamed()
+    {
+        // Enrich runs once per article into the same model, so from the second article onward
+        // the thing a demoted candidate collides with is often not the user's description at
+        // all. Blaming "your description" for it misattributes the skip.
+        var wiki = new FakeWikipediaClient();
+        wiki.Extracts["Point of sale"] = string.Join('\n',
+            "The point of sale is where a sale is completed.",
+            "Hardware",
+            "Modern systems run on a smartphone. A smartphone can replace the terminal.");
+
+        var seed = new CandidateDomainModel();
+        seed.Entities.Add(new CandidateEntity { Name = "Smartphone", Provenance = Provenance.Wiki });
+
+        var enricher = new DomainEnricher(
+            wiki, EngineBuilder.BuildDefault().Analyzer, new EntityHarvester());
+
+        var model = enricher.Enrich("Point of sale", seed);
+
+        var dropped = Assert.Single(model.Decisions,
+            d => d.Reason == DecisionReasons.AlreadyAClassFromAnEarlierArticle);
+        Assert.Equal(DecisionOutcome.Skipped, dropped.Outcome);
+        Assert.DoesNotContain(model.Decisions,
+            d => d.Reason == DecisionReasons.AlreadyAClassFromYourDescription);
+    }
+
     private static CandidateDomainModel WikiModel(params string[] names)
     {
         var model = new CandidateDomainModel();
@@ -178,11 +205,61 @@ public class DecisionTrailTests
         Assert.Equal("Administration", record.Name);
         Assert.Equal(DecisionStage.Shaping, record.Stage);
         Assert.Equal(DecisionOutcome.Rejected, record.Outcome);
-        Assert.Contains("process", record.Evidence);
+
+        // The head noun itself, not merely a word starting with it — "process" also matches
+        // "processing" and "processor", which would let a wrong head slip through.
+        Assert.Contains("head noun: process", record.Evidence);
 
         // The existing collections must behave exactly as before.
         Assert.Empty(model.Entities);
         Assert.Contains("Administration", model.Rejected);
+    }
+
+    [Fact]
+    public void Enrichment_RecordsAWikilinkItCannotTurnIntoAClassName()
+    {
+        // A linked title that normalizes to something C# cannot declare is dropped silently
+        // otherwise — the user sees neither the class nor a reason it is missing.
+        var wiki = new FakeWikipediaClient();
+
+        // The link source only keeps a title the prose mentions lowercase at least
+        // LinkedConceptSource.MinMentions times, so the fixture has to earn its way through
+        // that filter before the recording point is even reached.
+        wiki.Extracts["Point of sale"] = string.Join('\n',
+            "The point of sale is where a sale is completed.",
+            "A 2nd course may be ordered there, and a 2nd course is billed separately.");
+        wiki.Links["Point of sale"] = new List<string> { "2nd course" };
+
+        var enricher = new DomainEnricher(
+            wiki, EngineBuilder.BuildDefault().Analyzer, new EntityHarvester());
+
+        var model = enricher.Enrich("Point of sale", new CandidateDomainModel());
+
+        var record = Assert.Single(model.Decisions,
+            d => d.Reason == DecisionReasons.NotAUsableClassName);
+        Assert.Equal("2nd course", record.Name);
+        Assert.Equal(DecisionStage.Enrichment, record.Stage);
+        Assert.Equal(DecisionOutcome.Skipped, record.Outcome);
+        Assert.Contains("Point of sale", record.Evidence);
+    }
+
+    [Fact]
+    public void Shaping_RecordsAKeep_WhenAnArchetypeShapesIt()
+    {
+        // The pass-2c Shaped route, reached through the archetype table rather than the curated
+        // lexicon that pass 1 covers.
+        var wiki = new FakeWikipediaClient();
+        wiki.Leads["Merchant"] = "A merchant is a person who trades in commodities.";
+
+        var model = WikiModel("Merchant");
+        new EntityShaper(wiki).Shape(model);
+
+        var record = Assert.Single(model.Decisions,
+            d => d.Name == "Merchant" && d.Reason == DecisionReasons.DefinedAsADomainClass);
+        Assert.Equal(DecisionStage.Shaping, record.Stage);
+        Assert.Equal(DecisionOutcome.Kept, record.Outcome);
+        Assert.Contains("head noun: person", record.Evidence);
+        Assert.Contains(model.Entities, e => e.Name == "Merchant");
     }
 
     [Fact]

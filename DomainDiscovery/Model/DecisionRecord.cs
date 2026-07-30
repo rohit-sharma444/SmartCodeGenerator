@@ -10,7 +10,14 @@ public enum DecisionStage
     Enrichment,
 
     /// <summary>Deciding, from a candidate's own definition, whether it is a domain class.</summary>
-    Shaping
+    Shaping,
+
+    /// <summary>
+    /// The user's own edits in the review loop. Discovery is over by this point, but an edit can
+    /// still change what a later `why` has to explain — a rename moves an entity away from the
+    /// name its whole trail is filed under.
+    /// </summary>
+    ReviewLoop
 }
 
 /// <summary>What became of a candidate.</summary>
