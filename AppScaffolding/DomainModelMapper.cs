@@ -63,6 +63,20 @@ public static class DomainModelMapper
     private const int DefaultStringLength = 200;
 
     public static IReadOnlyList<ClassDefinition> ToClassDefinitions(CandidateDomainModel model)
+        => ToClassDefinitions(model, out _);
+
+    /// <summary>
+    /// As <see cref="ToClassDefinitions(CandidateDomainModel)"/>, also yielding the entity-name to
+    /// class-name map this method already builds.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="SeedFileWriter"/> needs it: imported rows are keyed by ENTITY name, seed files are
+    /// named for the CLASS, and <see cref="ToUniqueClassName"/> can rename one ("Type" ->
+    /// "TypeItem"). Without the map a renamed entity's rows would be written to a file no class ever
+    /// reads, and the app would start empty with nothing to explain why.
+    /// </remarks>
+    public static IReadOnlyList<ClassDefinition> ToClassDefinitions(
+        CandidateDomainModel model, out IReadOnlyDictionary<string, string> classNames)
     {
         var classes = new List<ClassDefinition>();
 
@@ -73,12 +87,12 @@ public static class DomainModelMapper
         // a nav property must be typed by the CLASS name, and ToUniqueClassName can rename one
         // ("Type" -> "TypeItem"). Without this map a renamed target would emit an uncompilable
         // reference to a type that does not exist.
-        var classNames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var names = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var entity in model.Entities)
         {
             var className = ToUniqueClassName(entity.Name, usedNames);
-            classNames[entity.Name] = className;
+            names[entity.Name] = className;
 
             var definition = new ClassDefinition { Name = className };
 
@@ -98,10 +112,11 @@ public static class DomainModelMapper
             classes.Add(definition);
         }
 
-        AddNavigationProperties(model, classes, classNames);
+        AddNavigationProperties(model, classes, names);
         AddAuditFields(classes);
         AddValidation(classes);
 
+        classNames = names;
         return classes;
     }
 
