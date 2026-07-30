@@ -7,31 +7,38 @@ projects, classes, members, and validators on disk.
 
 ## How it fits together
 
-`CodeGenerator` (the CLI) drives two paths. Most commands generate code
-directly; `build app: <description>` instead discovers a domain model first.
+`CodeGenerator` (the CLI) drives three paths. Most commands generate code
+directly; `build app` either discovers a domain model from a description, or —
+when you already have the data — reads the model out of that data's schema.
 
 ```
                       CodeGenerator (CLI)  ← the interactive prompt you drive
                              │
-        ┌────────────────────┴─────────────────────┐
-        │                                           │
-  most commands                            build app: <description>
-        │                                           │
-        ▼                                           ▼
-NaturalLanguageEngine                      DomainDiscovery
-  analyzes English into                      discovers a candidate domain
-  entities/relationships/intent              model (NLE + Wikipedia)
-        │                                           │
-        ▼                                           ▼
-NaturalLanguageBridge                      interactive review loop
-  connects the NLP result                    (approve / add / remove / rename)
-  to the generator                                  │
-        │                                           ▼  approve <target>
-        ▼                                   AppScaffolding
-CodeGenerationEngine                          writes a runnable app for the
-  resolves the command and                    chosen target (WPF, console,
-  generates/edits code (Roslyn)               web API, class lib, worker)
+        ┌────────────────────┼───────────────────────────┬──────────────────┐
+        │                    │                           │                  │
+  most commands       build app: <description>    build app + your data
+        │                    │                           │
+        ▼                    ▼                           ▼
+NaturalLanguageEngine   DomainDiscovery            DataIngestion
+  analyzes English into   discovers a candidate      reads CSV / TXT / JSON,
+  entities/relationships  domain model               checks it for normalization
+  /intent                 (NLE + Wikipedia)          problems, and builds the
+        │                    │                       model from the schema
+        ▼                    │                           │
+NaturalLanguageBridge        └─────────┬─────────────────┘
+  connects the NLP result              ▼
+  to the generator             interactive review loop
+        │                      (approve / add / remove / rename / why)
+        ▼                              │
+CodeGenerationEngine                   ▼  approve <target>
+  resolves the command and     AppScaffolding
+  generates/edits code (Roslyn)  writes a runnable app for the chosen target
+                                 (WPF, console, web API, class lib, worker),
+                                 seeded with your imported rows
 ```
+
+Both `build app` paths converge on the same review loop and the same scaffolder,
+because both produce the same `CandidateDomainModel`.
 
 For a fuller picture — component/dependency graph, runtime sequence flows for
 both paths, and the NLE internal pipeline — see
@@ -46,9 +53,10 @@ both paths, and the NLE internal pipeline — see
 | [`NaturalLanguageEngine`](NaturalLanguageEngine/README.md) | Multi-stage NLP pipeline that turns English text into entities, relationships, and intent. |
 | [`NaturalLanguageBridge`](NaturalLanguageBridge/README.md) | Wires the NLP engine to the code generator. |
 | [`DomainDiscovery`](DomainDiscovery/README.md) | Turns a plain-English system description into a candidate domain model (used by `build app:`). |
+| [`DataIngestion`](DataIngestion/README.md) | Turns data you already have — CSV, delimited text, or JSON — into the same candidate domain model, checked for normalization problems, with the rows carried through as the generated app's seed data. |
 | [`AppScaffolding`](AppScaffolding/README.md) | Turns an approved domain model into a runnable app on disk for the chosen target — WPF, console, web API, class library, or worker (the last stage of `build app:`). |
 | [`WikipediaDumpImporter`](WikipediaDumpImporter/README.md) | One-off tool that builds the local Wikipedia store `DomainDiscovery` reads offline, and maintains it afterwards. Not part of the normal build-and-run loop. |
-| [`CodeGenerator.Tests`](CodeGenerator.Tests/README.md), [`NaturalLanguageEngine.Tests`](NaturalLanguageEngine.Tests/README.md), [`DomainDiscovery.Tests`](DomainDiscovery.Tests/README.md) | Test suites for the engine, the generator, and domain discovery. |
+| [`CodeGenerator.Tests`](CodeGenerator.Tests/README.md), [`NaturalLanguageEngine.Tests`](NaturalLanguageEngine.Tests/README.md), [`DomainDiscovery.Tests`](DomainDiscovery.Tests/README.md), [`DataIngestion.Tests`](DataIngestion.Tests/README.md) | Test suites for the engine, the generator, domain discovery, and data ingestion. |
 
 ## Requirements
 
@@ -141,3 +149,63 @@ Discovery reads Wikipedia from a **local store** built by
 and free of the API's rate limit. If that store is absent (a fresh clone), it
 falls back to the live MediaWiki API, caching pages under `.dd-cache` in the
 workspace.
+
+## Building an app from data you already have
+
+Describing a system is the right way in when you have nothing but an idea. When
+you already have the data, the data says it better: its columns are the fields,
+its values are the types, and its rows are the app's starting content. Run
+`build app` with no description and it asks:
+
+```
+CodeGenerator >> build app
+Do you have existing data? [y/N]: y
+Format [sql/excel/txt/json/csv] (c to cancel): csv
+CSV file path (c to cancel): D:\data\orders.csv
+```
+
+Answer `n` (or just press Enter) and you get the description path above,
+unchanged. Answer `y` and [`DataIngestion`](DataIngestion/README.md) reads the
+file, checks it for normalization problems, and shows what it found:
+
+```
+Read 1 table(s) from orders.csv: orders (500 rows)
+
+Normalization check on orders.csv (500 rows):
+
+  1 ! Repeating group: Item1, Item2, Item3
+        -> split into OrderItem (many per Order)
+  2 ! Partial dependency: CustomerName, CustomerCity
+        -> split into Customer (Order references it)
+
+  [n]ormalize   n <1 3> subset   [k]eep as-is   [d]etail <n>:
+```
+
+`n` applies every finding, `n 1 3` applies that subset, `k` keeps the table flat,
+and `d 2` prints the actual rows behind finding 2 — because a finding you cannot
+inspect is a finding you cannot trust. From there it is the same review loop as
+the description path, and `why OrderItem` will explain that the class came from a
+repeating group in your file.
+
+On `approve`, the generated app is **seeded with your rows**: the scaffolder writes
+`Data/Seed/<Class>.json` per entity and the generated seeder loads it on first run,
+falling back to sample rows for any entity with no imported data. Rows are capped
+at 1000 per entity, and the cap is stated rather than silent.
+
+To skip every prompt — for a script, or just to type it in one line — name the
+source inline:
+
+```
+build app: order tracking from csv D:\data\orders.csv
+build app from csv D:\data\orders.csv            # app name from the file name
+build app: orders from csv D:\data\orders.csv normalize   # apply every finding
+```
+
+`from` is recognized only at its **last** occurrence before a known format
+keyword, so a description containing the word "from" is not truncated. Redirected
+stdin never prompts, so existing piped scripts behave exactly as before and opt
+into this path explicitly with the inline form.
+
+`csv`, `txt` (delimiter sniffed) and `json` (nested arrays become child entities)
+work today. `excel` and `sql` are offered at the prompt and answered with what to
+use instead — they land in follow-on branches.

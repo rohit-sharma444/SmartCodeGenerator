@@ -138,6 +138,8 @@ before parsing, so a predicate that already carries its own verb
 | Command | Description |
 | --- | --- |
 | `build app: <description>` | Describe a system in plain English; runs [domain discovery](../DomainDiscovery/README.md), prints the recognized topic and candidate entities, and opens a review loop. On approval you pick an output target, and [`AppScaffolding`](../AppScaffolding/README.md) writes a runnable project for it into the workspace. |
+| `build app` | The same flow with no description. Interactively it asks whether you already have data and, if you do, builds the model from that data instead of from Wikipedia — see [From existing data](#from-existing-data) below. Piped, it prints usage. |
+| `build app[: <description>] from <format> <location> [normalize]` | Builds from existing data with no prompts, so it is scriptable. Formats: `csv`, `txt`, `json`. Add `normalize` to apply every normalization change the data needs. |
 
 In the review loop:
 
@@ -171,6 +173,75 @@ Discovery reads Wikipedia from the local store built by
 [`WikipediaDumpImporter`](../WikipediaDumpImporter/README.md). Without that store
 it falls back to the live MediaWiki API, caching pages under `.dd-cache` in the
 workspace; the CLI warns at startup when the store is missing.
+
+#### From existing data
+
+Guessing at Wikipedia is the wrong pipeline when the user already has the data. A
+bare `build app` at an interactive prompt therefore asks first:
+
+```
+CodeGenerator >> build app
+Do you have existing data? [y/N]: y
+Format [sql/excel/txt/json/csv] (c to cancel): csv
+CSV file path (c to cancel): D:\data\orders.csv
+```
+
+| Answer | Effect |
+| --- | --- |
+| `n`, or blank | The description path, completely unchanged. |
+| `y` | [`DataIngestion`](../DataIngestion/README.md) reads the source and builds the model from its schema — no Wikipedia call at all. |
+| `c` at any prompt | Cancels. Deliberately **not** the same as "no data": backing out must not hand you a Wikipedia build you never asked for. |
+
+A mistyped path re-asks rather than aborting, the same way an unknown target key
+does. `excel` and `sql` are on the menu but have no reader in this build; choosing
+one says so and names what to use instead, then asks again.
+
+Once the source is read, the normalization check runs:
+
+```
+Read 1 table(s) from orders.csv: orders (500 rows)
+
+Normalization check on orders.csv (500 rows):
+
+  1 ! Repeating group: Item1, Item2, Item3
+        -> split into OrderItem (many per Order)
+  2 ! Partial dependency: CustomerName, CustomerCity
+        -> split into Customer (Order references it)
+
+  [n]ormalize   n <1 3> subset   [k]eep as-is   [d]etail <n>:
+```
+
+| Input | Effect |
+| --- | --- |
+| `n` | Apply every finding. |
+| `n 1 3` | Apply that subset. An out-of-range number is reported, never silently ignored. |
+| `k` | Keep the table exactly as it is. |
+| `d <n>` | Print the rows behind finding `n` — a finding you cannot inspect is one you cannot trust, the same principle as `why`. |
+
+Then it is the ordinary review loop, with entities marked `[Data]` rather than
+`[Seed]` or `[Wiki]`, and `why <name>` able to explain a class that came from a
+normalization split. On `approve` the generated app is **seeded with your rows**:
+`Data/Seed/<Class>.json` per entity, loaded on first run, capped at 1000 rows per
+entity with the cap stated rather than silent.
+
+To skip the prompts entirely — for scripts, or just brevity — name the source
+inline:
+
+```
+build app: order tracking from csv D:\data\orders.csv
+build app from csv D:\data\orders.csv                     # app name from the file
+build app: orders from csv "C:\My Data\orders.csv" normalize
+```
+
+`from` is recognized only at its **last** occurrence followed by a known format
+keyword, so `build app: track orders from suppliers from csv D:\orders.csv` keeps
+the whole description. Quoted paths and paths containing spaces are handled.
+
+Redirected stdin **never prompts** — the precedent `ResolveTarget` set, and what
+every existing piped script depends on. A piped run with no inline source takes
+the description path exactly as before; a piped run with an inline source prints
+the findings and applies **nothing** unless `normalize` was given, so scripts stay
+deterministic.
 
 ### Batch
 

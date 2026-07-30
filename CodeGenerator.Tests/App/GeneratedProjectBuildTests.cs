@@ -1,7 +1,11 @@
 using System.Diagnostics;
 using System.IO;
+using System.Text.Json;
 using AppScaffolding;
 using AppScaffolding.Targets;
+using DataIngestion;
+using DataIngestion.Normalization;
+using DataIngestion.Schema.Readers;
 using DomainDiscovery.Model;
 
 namespace CodeGenerator.Tests.App;
@@ -257,6 +261,156 @@ public class GeneratedProjectBuildTests
             Assert.IsNotNull(result.TestProjectPath, "no test project was emitted");
             var (testExit, testOutput) = RunDotNet($"test \"{result.TestProjectPath}\" -c Release");
             Assert.AreEqual(0, testExit, $"dotnet test failed:\n{testOutput}");
+        }
+        finally
+        {
+            TryDeleteDirectory(workspace);
+        }
+    }
+
+    /// <summary>
+    /// The whole data path in one test: a CSV is read, normalized, turned into a model, scaffolded,
+    /// and the result is COMPILED. Every stage in between can produce something that parses and
+    /// still will not build -- a column named after its own class is CS0542, a seed value containing
+    /// a quote breaks the JSON, a foreign key to a class that was never generated is CS0246 -- and
+    /// none of that is visible to a substring assertion.
+    /// </summary>
+    [TestMethod]
+    [TestCategory("Integration")]
+    public void ProjectGeneratedFromACsv_BuildsAndCarriesTheData()
+    {
+        // Short root: the scratchpad path plus a generated project's nesting exceeds MAX_PATH, and
+        // MSBuild reports that as MSB3030 "file not found" on a file that is plainly there.
+        var workspace = Path.Combine(Path.GetTempPath(), "gen_" + Path.GetRandomFileName());
+        Directory.CreateDirectory(workspace);
+
+        var csv = Path.Combine(workspace, "orders.csv");
+
+        // Deliberately awkward: an Id that must be dropped, a column named after its own class,
+        // a repeating group, a partial dependency, a value carrying a quote and a brace.
+        File.WriteAllText(csv, string.Join("\n",
+            "Id,Order,CustomerName,CustomerCity,Qty,Item1,Item2",
+            "1,\"a \"\"quoted\"\" {value}\",Ada,London,2,Nut,Bolt",
+            "2,plain,Grace,York,3,Washer,",
+            "3,another,Ada,London,4,Nut,",
+            "4,more,Grace,York,5,Bolt,",
+            "5,last,Ada,London,6,Washer,Nut",
+            ""));
+
+        try
+        {
+            var tables = new CsvReader().Read(new DataSourceSpec(DataSourceKind.Csv, csv));
+
+            var findings = NormalizationAnalyzer.Analyze(tables[0]).Findings;
+            Assert.IsGreaterThanOrEqualTo(2, findings.Count,
+                "expected at least the repeating group and the partial dependency, got: "
+                + string.Join("; ", findings.Select(f => f.Headline)));
+
+            var normalized = NormalizationPlan.Apply(tables, findings);
+            var model = DataModelBuilder.Build(normalized);
+            var imported = TabularImport.ToImportedData(normalized);
+
+            Assert.IsTrue(TargetScaffolders.TryResolve("console", out var target));
+
+            var result = new AppScaffolder().Scaffold(
+                model, "Shop", workspace, target, PersistenceKind.Json, imported);
+
+            Assert.IsTrue(result.Success, "scaffold failed: " + result.Message);
+
+            // The generated project compiles. This is the assertion the others exist to enable.
+            var (exit, output) = RunDotNet($"build \"{result.ProjectPath}\" -c Release");
+            Assert.AreEqual(0, exit, $"dotnet build failed:\n{output}");
+
+            // ...and the data really is in there, as valid JSON with the awkward value intact.
+            var seedFolder = Path.Combine(result.ProjectPath, "Data", SeedFileWriter.SeedFolderName);
+            var orderSeed = Path.Combine(seedFolder, "Order.json");
+
+            Assert.IsTrue(File.Exists(orderSeed), $"no seed file at {orderSeed}");
+
+            var rows = JsonDocument.Parse(File.ReadAllText(orderSeed))
+                .RootElement.EnumerateArray().ToList();
+
+            Assert.HasCount(5, rows);
+            Assert.AreEqual(1, rows[0].GetProperty("Id").GetInt32());
+
+            // The column named after its own class was renamed, not dropped, and its hostile value
+            // survived as one string.
+            Assert.AreEqual("a \"quoted\" {value}", rows[0].GetProperty("OrderName").GetString());
+
+            // The read Id column is gone -- Id is generated, and rows[0].Id above is the generated one.
+            Assert.AreEqual(5, rows.Count(r => r.TryGetProperty("Id", out _)));
+
+            // The extracted entities were scaffolded and seeded too.
+            Assert.IsTrue(File.Exists(Path.Combine(seedFolder, "Customer.json")));
+            Assert.IsTrue(File.Exists(Path.Combine(seedFolder, "OrderItem.json")));
+
+            var customers = JsonDocument.Parse(
+                File.ReadAllText(Path.Combine(seedFolder, "Customer.json")))
+                .RootElement.EnumerateArray().ToList();
+
+            // Two distinct customers out of five order rows -- the point of the split.
+            Assert.HasCount(2, customers);
+
+            // The seed files were registered as copied-to-output content, so the app finds them
+            // beside its binary at run time. Without this the project still BUILDS and the app
+            // still starts -- just with no data -- so asserting the copy is the only way the
+            // csproj registration is covered at all.
+            var copied = Directory.GetFiles(
+                Path.Combine(result.ProjectPath, "bin"), "Order.json", SearchOption.AllDirectories);
+
+            Assert.IsNotEmpty(copied);
+        }
+        finally
+        {
+            TryDeleteDirectory(workspace);
+        }
+    }
+
+    /// <summary>
+    /// The `k` (keep as-is) path must compile too. A flat table with a repeating group left in place
+    /// produces Item1/Item2 as ordinary columns, and nothing about that may break the build.
+    /// </summary>
+    [TestMethod]
+    [TestCategory("Integration")]
+    public void ProjectGeneratedFromACsv_WithoutNormalizing_AlsoBuilds()
+    {
+        var workspace = Path.Combine(Path.GetTempPath(), "gen_" + Path.GetRandomFileName());
+        Directory.CreateDirectory(workspace);
+
+        var csv = Path.Combine(workspace, "orders.csv");
+        File.WriteAllText(csv, string.Join("\n",
+            "Ref,Item1,Item2,Placed,Paid,Total",
+            "ORD-1,Nut,Bolt,2026-01-15,yes,9.99",
+            "ORD-2,Washer,,2026-02-01,no,4.50",
+            ""));
+
+        try
+        {
+            var tables = new CsvReader().Read(new DataSourceSpec(DataSourceKind.Csv, csv));
+
+            // No findings applied: this is exactly what `k` produces.
+            var model = DataModelBuilder.Build(tables);
+            var imported = TabularImport.ToImportedData(tables);
+
+            Assert.IsTrue(TargetScaffolders.TryResolve("console", out var target));
+
+            var result = new AppScaffolder().Scaffold(
+                model, "Flat", workspace, target, PersistenceKind.Json, imported);
+
+            Assert.IsTrue(result.Success, "scaffold failed: " + result.Message);
+
+            var (exit, output) = RunDotNet($"build \"{result.ProjectPath}\" -c Release");
+            Assert.AreEqual(0, exit, $"dotnet build failed:\n{output}");
+
+            var rows = JsonDocument.Parse(File.ReadAllText(Path.Combine(
+                    result.ProjectPath, "Data", SeedFileWriter.SeedFolderName, "Order.json")))
+                .RootElement.EnumerateArray().ToList();
+
+            // Each of the five types round-tripped into JSON as itself.
+            Assert.AreEqual("Nut", rows[0].GetProperty("Item1").GetString());
+            Assert.AreEqual(9.99m, rows[0].GetProperty("Total").GetDecimal());
+            Assert.IsTrue(rows[0].GetProperty("Paid").GetBoolean());
+            Assert.AreEqual(new DateTime(2026, 1, 15), rows[0].GetProperty("Placed").GetDateTime());
         }
         finally
         {

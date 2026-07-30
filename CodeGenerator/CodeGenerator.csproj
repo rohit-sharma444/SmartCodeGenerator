@@ -23,5 +23,6 @@
       <Private>True</Private>
     </ProjectReference>
     <ProjectReference Include="..\AppScaffolding\AppScaffolding.csproj" />
+    <ProjectReference Include="..\DataIngestion\DataIngestion.csproj" />
   </ItemGroup>
 </Project>

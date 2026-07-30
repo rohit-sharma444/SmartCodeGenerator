@@ -63,6 +63,20 @@ public static class SeedDataTemplate
         string projectName,
         IReadOnlyList<string> orderedEntityNames,
         IReadOnlyList<string> foreignKeyFieldNames)
+        => Source(projectName, orderedEntityNames, foreignKeyFieldNames, []);
+
+    /// <inheritdoc cref="Source(string, IReadOnlyList{string}, IReadOnlyList{string})"/>
+    /// <param name="seededFromFile">
+    /// Class names whose starting rows were imported from the user's own data and written to
+    /// <c>Data/Seed/&lt;Class&gt;.json</c>. Empty for a description-built app, in which case the
+    /// emitted file is byte-for-byte what it has always been — a project with no imported data
+    /// must not carry a branch it can never take.
+    /// </param>
+    public static string Source(
+        string projectName,
+        IReadOnlyList<string> orderedEntityNames,
+        IReadOnlyList<string> foreignKeyFieldNames,
+        IReadOnlyList<string> seededFromFile)
     {
         var seedCalls = string.Join("\n",
             orderedEntityNames.Select(n => $"        Seed<{n}>(seededIds);"));
@@ -72,12 +86,79 @@ public static class SeedDataTemplate
             : "new(StringComparer.Ordinal) { "
               + string.Join(", ", foreignKeyFieldNames.Select(f => $"\"{f}\"")) + " }";
 
+        // Every fragment below is empty when nothing was imported, so the emitted file is exactly
+        // what it was before this feature existed. An unused using is also a warning, and CI
+        // builds with -warnaserror, so even the usings are conditional.
+        var extraUsings = seededFromFile.Count == 0
+            ? string.Empty
+            : "using System.IO;\nusing System.Text.Json;\n";
+
+        var seedFileSet = seededFromFile.Count == 0
+            ? string.Empty
+            : "\n\n"
+              + "    /// <summary>Entities whose starting rows were imported from the user's own data\n"
+              + "    /// and written to Data/Seed/&lt;Class&gt;.json. Everything else falls back to\n"
+              + "    /// generated sample rows.</summary>\n"
+              + "    private static readonly HashSet<string> SeedFiles = new(StringComparer.Ordinal)\n"
+              + "    { " + string.Join(", ", seededFromFile.Select(n => $"\"{n}\"")) + " };";
+
+        var seedFileBranch = seededFromFile.Count == 0
+            ? string.Empty
+            : """
+
+
+        // Imported rows win over sample rows. Written at generation time from the user's own data,
+        // with Ids already assigned 1..N so the foreign keys in these files resolve.
+        if (SeedFiles.Contains(typeof(T).Name) && TryLoadSeedFile<T>(out var imported))
+        {
+            store.SaveAll(imported);
+            seededIds[typeof(T).Name] = imported.Select(GetId).ToList();
+            return;
+        }
+""";
+
+        var seedFileLoader = seededFromFile.Count == 0
+            ? string.Empty
+            : """
+
+
+    /// <summary>Reads Data/Seed/&lt;T&gt;.json from beside the binary. A missing or unreadable file
+    /// is not fatal: the caller falls back to sample rows, which is better than refusing to start.</summary>
+    private static bool TryLoadSeedFile<T>(out List<T> rows) where T : class, new()
+    {
+        rows = new List<T>();
+
+        var path = Path.Combine(
+            AppContext.BaseDirectory, "Data", "SEED_FOLDER", typeof(T).Name + ".json");
+
+        if (!File.Exists(path))
+            return false;
+
+        try
+        {
+            var loaded = JsonSerializer.Deserialize<List<T>>(
+                File.ReadAllText(path),
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+            if (loaded is null || loaded.Count == 0)
+                return false;
+
+            rows = loaded;
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or JsonException)
+        {
+            return false;
+        }
+    }
+""".Replace("SEED_FOLDER", SeedFileWriter.SeedFolderName);
+
         return $$"""
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using {{projectName}}.Models;
+{{extraUsings}}using {{projectName}}.Models;
 
 namespace {{projectName}}.Data;
 
@@ -95,7 +176,7 @@ public static class SeedData
     /// owner also has a nav property typed as that target. Gates the FK branch in
     /// <see cref="SampleValue"/> so an incidental int named <c>...Id</c> with no relationship is
     /// never wired to an unrelated entity's seeded rows.</summary>
-    private static readonly HashSet<string> ForeignKeyFields = {{fkSet}};
+    private static readonly HashSet<string> ForeignKeyFields = {{fkSet}};{{seedFileSet}}
 
     /// <summary>Seeds every empty store, referenced entities before their referencers so a
     /// foreign key points at a row that exists.</summary>
@@ -114,7 +195,7 @@ public static class SeedData
             seededIds[typeof(T).Name] = existing.Select(GetId).ToList();
             return;
         }
-
+{{seedFileBranch}}
         var rows = new List<T>();
         var ids = new List<int>();
         for (var n = 1; n <= SeedRowCount; n++)
@@ -177,7 +258,7 @@ public static class SeedData
         // Navigation properties (entity types, List<>) and anything else are left at default.
         return null;
     }
-
+{{seedFileLoader}}
     private static int GetId<T>(T item)
     {
         var id = typeof(T).GetProperty("Id",

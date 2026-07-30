@@ -1,5 +1,9 @@
 using AppScaffolding;
 using AppScaffolding.Targets;
+using DataIngestion;
+using DataIngestion.Normalization;
+using DataIngestion.Schema;
+using DataIngestion.Schema.Readers;
 using DomainDiscovery;
 using DomainDiscovery.Model;
 using DomainDiscovery.Review;
@@ -13,17 +17,88 @@ namespace CodeGenerator.App;
 /// </summary>
 internal sealed class BuildAppCommand
 {
-    private const string Prefix = "build app:";
+    private const string Command = "build app";
 
+    /// <summary>
+    /// Whether <paramref name="input"/> is a build-app line. Both <c>build app: &lt;description&gt;</c>
+    /// and the bare <c>build app</c> count, the latter so a user with data need not invent a
+    /// description first.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately not a bare prefix test: "build apple tracker" and "build application" both start
+    /// with "build app". The character after the command must be a colon, whitespace, or nothing.
+    /// <para>
+    /// Widening this is safe because "build app" appears in no recognition source — not
+    /// <c>LiteralCommandTable</c>, not a <c>CommandFront</c> guard, not <c>NlpCommandMapper</c> —
+    /// only in the <c>CommandDictionary</c> help catalog. <c>CodeGeneratorStarter</c> tests this
+    /// before the pipeline runs, so nothing downstream competes for the text.
+    /// </para>
+    /// </remarks>
     public static bool IsBuildApp(string input)
-        => input.TrimStart().StartsWith(Prefix, StringComparison.OrdinalIgnoreCase);
+    {
+        var text = (input ?? string.Empty).TrimStart();
+
+        if (!text.StartsWith(Command, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        if (text.Length == Command.Length)
+            return true;
+
+        var next = text[Command.Length];
+        return next == ':' || char.IsWhiteSpace(next);
+    }
+
+    /// <summary>Everything after the command word, with an optional colon removed.</summary>
+    internal static string Tail(string input)
+    {
+        var text = (input ?? string.Empty).TrimStart();
+        if (text.Length <= Command.Length)
+            return string.Empty;
+
+        var rest = text[Command.Length..];
+        return (rest.StartsWith(':') ? rest[1..] : rest).Trim();
+    }
 
     public void Handle(string input, string workspaceRoot)
     {
-        var description = input.TrimStart()[Prefix.Length..].Trim();
+        var request = InlineDataSource.Parse(Tail(input));
+        var source = request.Source;
+        var normalize = request.Normalize;
+
+        // Redirected stdin never prompts: existing piped scripts and E2E tests feed the review loop
+        // directly, and a question at the front would break every one of them. They opt in with the
+        // inline `from <format> <location>` form instead.
+        if (source is null && !Console.IsInputRedirected)
+        {
+            var outcome = DataSourceInterview.Resolve(Console.In, Console.Out);
+
+            if (outcome.Decision == InterviewDecision.Cancelled)
+            {
+                // Not the same as "no data" — someone who backed out must not be handed a
+                // Wikipedia build they never asked for.
+                Console.WriteLine("Cancelled. Nothing was generated.");
+                return;
+            }
+
+            source = outcome.Source;
+        }
+
+        if (source is null)
+        {
+            HandleFromDescription(request.Description, workspaceRoot);
+            return;
+        }
+
+        HandleFromData(request.Description, source, normalize, workspaceRoot);
+    }
+
+    /// <summary>The unchanged path: NLE seeds, Wikipedia topic, enrichment, review loop.</summary>
+    private static void HandleFromDescription(string description, string workspaceRoot)
+    {
         if (description.Length == 0)
         {
             Console.WriteLine("Usage: build app: <description of the system you want>");
+            Console.WriteLine("   or: build app from csv <path>   (also txt, json)");
             return;
         }
 
@@ -35,9 +110,6 @@ internal sealed class BuildAppCommand
 
         if (result.Topic.IsRecognized)
         {
-            //Console.WriteLine($"Recognized topic: {result.Topic.Title} " +
-            //                  $"(confidence {result.Topic.Confidence:P0}) — {result.Topic.ArticleUrl}");
-
             // Where the rest of the classes came from. Without this a Borrower appearing in a
             // library model looks like a guess, when it was read out of an article by name.
             if (result.Topic.SupportingTitles.Count > 0)
@@ -47,11 +119,116 @@ internal sealed class BuildAppCommand
             Console.WriteLine("No topic recognized online — showing seed entities only. " +
                               "You can add entities by hand below.");
 
-        var appName = DomainAppName.FromDescription(description);
-        RunReviewLoop(result.Model, appName, workspaceRoot);
+        RunReviewLoop(
+            result.Model, DomainAppName.FromDescription(description), workspaceRoot,
+            ImportedData.None);
     }
 
-    private static void RunReviewLoop(CandidateDomainModel model, string appName, string workspaceRoot)
+    /// <summary>
+    /// The data path. No Wikipedia call at all: the schema is ground truth, so there is nothing to
+    /// recognize, enrich or shape, and the run is fast and offline.
+    /// </summary>
+    private static void HandleFromData(
+        string description, DataSourceSpec source, bool normalize, string workspaceRoot)
+    {
+        if (!DataSourceReaders.TryCreate(source.Kind, out var reader))
+        {
+            Console.WriteLine(DataSourceReaders.NotSupportedMessage(source.Kind));
+            return;
+        }
+
+        IReadOnlyList<TabularTable> tables;
+        try
+        {
+            tables = reader.Read(source);
+        }
+        catch (Exception ex) when (ex is FileNotFoundException or InvalidDataException)
+        {
+            // The reader's message already says what was wrong in the user's own terms.
+            Console.WriteLine(ex.Message);
+            return;
+        }
+
+        Console.WriteLine(
+            $"Read {tables.Count} table(s) from {tables[0].Label}: "
+            + string.Join(", ", tables.Select(t => $"{t.Name} ({t.Rows.Count} rows)")));
+
+        var report = CombineReports(tables);
+
+        foreach (var line in NormalizationPrompt.Lines(
+                     report, tables[0].Label, tables.Sum(t => t.Rows.Count)))
+        {
+            Console.WriteLine(line);
+        }
+
+        // A scripted run applies everything or nothing, so it stays deterministic; `normalize`
+        // inline is how it opts in.
+        var chosen = Console.IsInputRedirected
+            ? (normalize ? report.Findings : [])
+            : NormalizationPrompt.Choose(report, Console.In, Console.Out);
+
+        if (chosen.Count > 0)
+        {
+            tables = NormalizationPlan.Apply(tables, chosen);
+            Console.WriteLine($"Applied {chosen.Count} normalization change(s).");
+        }
+
+        // `chosen`, not nothing: every applied split gets a DecisionRecord, so `why OrderItem`
+        // in the review loop can answer for a class the user never named.
+        var model = DataModelBuilder.Build(tables, chosen);
+        var imported = TabularImport.ToImportedData(tables);
+
+        // Said out loud: a cap the user is not told about reads as "all your data is in there".
+        foreach (var note in imported.Notes)
+            Console.WriteLine(note);
+
+        RunReviewLoop(model, AppNameFor(description, source), workspaceRoot, imported);
+    }
+
+    /// <summary>
+    /// The findings of every table in one numbered list, so `n 2` means the same thing whichever
+    /// table the finding came from. Notes are de-duplicated: the same skipped check reported once
+    /// per table would be noise.
+    /// </summary>
+    internal static NormalizationReport CombineReports(IReadOnlyList<TabularTable> tables)
+    {
+        var findings = new List<NormalizationFinding>();
+        var notes = new List<string>();
+
+        foreach (var table in tables)
+        {
+            var report = NormalizationAnalyzer.Analyze(table);
+            findings.AddRange(report.Findings);
+
+            foreach (var note in report.Notes)
+                if (!notes.Contains(note, StringComparer.Ordinal))
+                    notes.Add(note);
+        }
+
+        return new NormalizationReport(findings, notes);
+    }
+
+    /// <summary>
+    /// The project name. A description names the app when there is one; otherwise the source's base
+    /// name goes through the SAME <see cref="DomainAppName.FromDescription"/> rule, so there is one
+    /// naming rule in the product rather than a second one invented for this path.
+    /// </summary>
+    internal static string AppNameFor(string description, DataSourceSpec? source)
+    {
+        if (description.Length > 0)
+            return DomainAppName.FromDescription(description);
+
+        if (source is null)
+            return DomainAppName.FromDescription(string.Empty);
+
+        return DomainAppName.FromDescription(
+            source.Kind == DataSourceKind.Sql
+                ? source.SqlDatabase ?? string.Empty
+                : Path.GetFileNameWithoutExtension(source.Location));
+    }
+
+    private static void RunReviewLoop(
+        CandidateDomainModel model, string appName, string workspaceRoot, ImportedData importedData)
     {
         while (true)
         {
@@ -107,7 +284,8 @@ internal sealed class BuildAppCommand
                     }
 
                     var scaffold = new AppScaffolder()
-                        .Scaffold(model, appName, workspaceRoot, target, persistence.Value);
+                        .Scaffold(model, appName, workspaceRoot, target, persistence.Value,
+                                  importedData);
                     if (scaffold.Success)
                     {
                         Console.WriteLine($"Generated project at {scaffold.ProjectPath}");

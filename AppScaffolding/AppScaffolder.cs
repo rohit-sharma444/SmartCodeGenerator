@@ -71,6 +71,23 @@ public sealed class AppScaffolder
         }
     }
 
+    /// <summary>Best-effort registration of the seed folder as copied-to-output content. Silent on
+    /// failure: the app still builds, it just starts with sample rows instead of the imported ones.</summary>
+    private static void InjectSeedContent(string csprojPath)
+    {
+        try
+        {
+            if (!File.Exists(csprojPath))
+                return;
+
+            File.WriteAllText(
+                csprojPath, CsprojEditing.InjectSeedContent(File.ReadAllText(csprojPath)));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+        }
+    }
+
     /// <summary>Environment-variable name the generated AppDbContext reads for a connection-string
     /// override: the upper-cased project name with non-alphanumerics as underscores, plus "_DB".</summary>
     private static string EnvVarName(string projectName)
@@ -95,8 +112,17 @@ public sealed class AppScaffolder
     public ScaffoldResult Scaffold(
         CandidateDomainModel model, string appName, string workspaceRoot, ITargetScaffolder target,
         PersistenceKind persistence)
+        => Scaffold(model, appName, workspaceRoot, target, persistence, importedData: null);
+
+    /// <summary>
+    /// As the five-argument overload, additionally seeding the generated app from
+    /// <paramref name="importedData"/> — the rows the user's own data source contributed.
+    /// </summary>
+    public ScaffoldResult Scaffold(
+        CandidateDomainModel model, string appName, string workspaceRoot, ITargetScaffolder target,
+        PersistenceKind persistence, ImportedData? importedData)
     {
-        var classes = DomainModelMapper.ToClassDefinitions(model);
+        var classes = DomainModelMapper.ToClassDefinitions(model, out var classNames);
 
         var projectName = appName + target.FolderSuffix;
         var outputFolder = Path.Combine(workspaceRoot, projectName);
@@ -135,6 +161,15 @@ public sealed class AppScaffolder
 
         var entityNames = classes.Select(c => c.Name).ToList();
 
+        // Projected through `classes`, so any review-loop edit is already accounted for.
+        var seedFiles = importedData is null
+            ? Array.Empty<(string FileName, string Json)>()
+            : SeedFileWriter.Files(classes, classNames, importedData).ToArray();
+
+        var seededClassNames = seedFiles
+            .Select(f => Path.GetFileNameWithoutExtension(f.FileName))
+            .ToList();
+
         // Shared, target-agnostic core: includes the IStore seam and StoreFactory, so every
         // target and persistence backend shares the same typed CRUD surface.
         var files = new List<(string Folder, string Name, string Source)>
@@ -146,7 +181,8 @@ public sealed class AppScaffolder
                 SeedDataTemplate.Source(
                     projectName,
                     SeedDataTemplate.OrderByDependency(classes),
-                    SeedDataTemplate.ForeignKeyFieldNames(classes))),
+                    SeedDataTemplate.ForeignKeyFieldNames(classes),
+                    seededClassNames)),
             (dataFolder, "SaveResult.cs", SaveResultTemplate.Source(projectName)),
             (validationFolder, "IValidator.cs", ValidatorTemplate.ValidatorInterface(projectName)),
             (validationFolder, "IEntityLookup.cs", ValidatorTemplate.EntityLookupInterface(projectName)),
@@ -188,6 +224,23 @@ public sealed class AppScaffolder
             var path = WriteSource(folder, name, source);
             if (path is not null)
                 written.Add(path);
+        }
+
+        // Data files, not source: written with the same best-effort WriteSource so a locked file
+        // is reported through `expected` rather than throwing mid-scaffold.
+        if (seedFiles.Length > 0)
+        {
+            var seedFolder = Path.Combine(dataFolder, SeedFileWriter.SeedFolderName);
+
+            foreach (var (fileName, json) in seedFiles)
+            {
+                expected++;
+                var path = WriteSource(seedFolder, fileName, json);
+                if (path is not null)
+                    written.Add(path);
+            }
+
+            InjectSeedContent(csprojPath);
         }
 
         // Written once, never overwritten: this is where the user's own rules live, and a rebuild

@@ -13,6 +13,13 @@ public enum DecisionStage
     Shaping,
 
     /// <summary>
+    /// Restructuring a data source the user supplied. A normalization split creates a class nobody
+    /// named and no article mentioned, so `why` needs a trail for it just as much as for a
+    /// harvested noun — arguably more, since the user did not ask for it by name.
+    /// </summary>
+    Normalization,
+
+    /// <summary>
     /// The user's own edits in the review loop. Discovery is over by this point, but an edit can
     /// still change what a later `why` has to explain — a rename moves an entity away from the
     /// name its whole trail is filed under.
