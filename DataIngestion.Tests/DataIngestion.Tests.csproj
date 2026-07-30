@@ -16,6 +16,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\DataIngestion\DataIngestion.csproj" />
+    <ProjectReference Include="..\AppScaffolding\AppScaffolding.csproj" />
   </ItemGroup>
 
 </Project>
