@@ -1,6 +1,8 @@
+using System;
 using System.Linq;
 using CodeGenerator.App;
 using DomainDiscovery.Model;
+using DomainDiscovery.Review;
 
 namespace CodeGenerator.Tests.App;
 
@@ -59,6 +61,24 @@ public class DecisionReportTests
             string.Join("\n", DecisionReport.ForName(ModelWithATrail(), "Lending")),
             "add Lending");
 
+        // A compound the pipeline can really file: wikilink names arrive through
+        // ToCompoundEntityName and seed/harvested ones through ToEntityName, so a Rejected or
+        // Suggested record always holds a separator-free token. This is the spelling that
+        // reaches the `add` suggestion in production, and the one that used to be flattened.
+        var model = new CandidateDomainModel();
+        model.Record("CashRegister", DecisionStage.Shaping, DecisionOutcome.Rejected,
+            DecisionReasons.DefinitionResolvesToAnAbstraction);
+
+        StringAssert.Contains(
+            string.Join("\n", DecisionReport.ForName(model, "CashRegister")),
+            "add CashRegister");
+    }
+
+    [TestMethod]
+    public void ForName_ConvertsASeparatorBearingNameIntoOneTheLoopAccepts()
+    {
+        // Defensive: only a Skipped record can hold raw typed text with a space in it, and those
+        // get no `add` line. Kept anyway so the conversion is pinned if that ever changes.
         StringAssert.Contains(
             string.Join("\n", DecisionReport.ForName(ModelWithATrail(), "Cash register")),
             "add CashRegister");
@@ -206,6 +226,26 @@ public class DecisionReportTests
 
         // Kept candidates are the model itself - the summary explains only what is missing.
         Assert.IsEmpty(DecisionReport.Summary(model));
+    }
+
+    [TestMethod]
+    public void TheAddCommandItPrints_ProducesExactlyTheNameItShowed()
+    {
+        // The invariant this whole fix exists to establish: a name `why` shows, and the `add`
+        // command it prints for that name, must agree — with each other and with the model that
+        // results. Asserting either half alone cannot catch them drifting apart.
+        var model = new CandidateDomainModel();
+        model.Record("FairTrade", DecisionStage.Shaping, DecisionOutcome.Rejected,
+            DecisionReasons.DefinitionResolvesToAnAbstraction);
+
+        var lines = DecisionReport.ForName(model, "FairTrade");
+
+        var shown = lines[0];
+        var printed = lines.Single(l => l.Contains("add "));
+        var typed = printed[(printed.IndexOf("add ", StringComparison.Ordinal) + 4)..].Trim();
+
+        Assert.IsTrue(ModelEditor.AddEntity(model, typed, out var created));
+        Assert.AreEqual(shown, created, "running the printed command must produce the shown name");
     }
 
     [TestMethod]

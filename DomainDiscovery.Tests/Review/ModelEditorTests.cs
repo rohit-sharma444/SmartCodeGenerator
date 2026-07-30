@@ -225,4 +225,97 @@ public class ModelEditorTests
         Assert.Equal(DefaultFields.NameField, Assert.Single(barcode.Fields).Name);
         Assert.Empty(model.Suggestions);
     }
+
+    [Fact]
+    public void AddEntity_KeepsACompoundNameTheUserTyped()
+    {
+        var model = new CandidateDomainModel();
+
+        Assert.True(ModelEditor.AddEntity(model, "CashRegister"));
+
+        // Not "Cashregister": the user typed the class name they wanted.
+        Assert.Equal("CashRegister", Assert.Single(model.Entities).Name);
+    }
+
+    [Fact]
+    public void AddEntity_BuildsACompoundFromAMultiWordName()
+    {
+        var model = new CandidateDomainModel();
+
+        Assert.True(ModelEditor.AddEntity(model, "cash register"));
+
+        Assert.Equal("CashRegister", Assert.Single(model.Entities).Name);
+    }
+
+    [Fact]
+    public void AddEntity_StillSingularizesWhatTheUserTyped()
+    {
+        var model = new CandidateDomainModel();
+
+        Assert.True(ModelEditor.AddEntity(model, "Books"));
+
+        Assert.Equal("Book", Assert.Single(model.Entities).Name);
+    }
+
+    [Fact]
+    public void AddEntity_ReportsTheNameItCreated()
+    {
+        var model = new CandidateDomainModel();
+
+        Assert.True(ModelEditor.AddEntity(model, "cash register", out var added));
+
+        Assert.Equal("CashRegister", added);
+    }
+
+    [Fact]
+    public void AddEntity_ReportsTheSuggestionsOwnName_WhenItPromotesOne()
+    {
+        // Promotion keeps the suggestion object, so the created name is NOT what the normalizer
+        // returned for the typed text. Reporting the normalizer's answer would misname it.
+        var model = new CandidateDomainModel();
+        model.Suggestions.Add(new CandidateEntity
+        {
+            Name = "LibraryMakerspace", Provenance = Provenance.Wiki
+        });
+
+        Assert.True(ModelEditor.AddEntity(model, "librarymakerspace", out var added));
+
+        Assert.Equal("LibraryMakerspace", added);
+    }
+
+    [Fact]
+    public void AddEntity_ReportsNoName_WhenItAddsNothing()
+    {
+        var model = ModelWith("Book");
+
+        Assert.False(ModelEditor.AddEntity(model, "book", out var added));
+
+        Assert.Null(added);
+    }
+
+    [Fact]
+    public void RenameEntity_KeepsACompoundNameTheUserTyped()
+    {
+        var model = ModelWith("Member");
+
+        Assert.True(ModelEditor.RenameEntity(model, "Member", "CashRegister"));
+
+        Assert.Equal("CashRegister", Assert.Single(model.Entities).Name);
+    }
+
+    [Fact]
+    public void TheOtherVerbsStillResolveAnEntityWithInteriorCapitals()
+    {
+        // Lookups normalize with ToEntityName, which flattens "CashRegister" to "Cashregister".
+        // They keep working only because Find compares case-insensitively — if that ever changes,
+        // preserving the typed casing would strand the entity behind every other verb.
+        var model = new CandidateDomainModel();
+        Assert.True(ModelEditor.AddEntity(model, "CashRegister"));
+
+        Assert.True(ModelEditor.AddField(model, "CashRegister", "Price", "decimal"));
+        Assert.True(ModelEditor.RemoveField(model, "CashRegister", "Price"));
+        Assert.True(ModelEditor.RemoveEntity(model, "CashRegister"));
+
+        Assert.Empty(model.Entities);
+    }
 }

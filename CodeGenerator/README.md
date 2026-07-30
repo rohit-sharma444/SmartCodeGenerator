@@ -145,7 +145,7 @@ In the review loop:
 | --- | --- |
 | `approve` \| `a` | Generate an app from the model as it stands, prompting for the output target. |
 | `approve <target>` | Generate straight to a target, skipping the prompt — one of `wpf` (default), `console`, `webapi`, `classlib`, `worker`. |
-| `add <name>` | Add an entity. |
+| `add <name>` | Add an entity. The name keeps the shape you type (`add CashRegister` gives `CashRegister`), and several words become one class name (`add cash register` gives the same). |
 | `remove <name>` | Remove an entity. |
 | `rename <old> <new>` | Rename an entity. |
 | `field <entity> <name>[:<type>]` | Add a field (type defaults to `string`). |

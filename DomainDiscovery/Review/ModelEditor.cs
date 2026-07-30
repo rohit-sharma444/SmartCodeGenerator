@@ -26,8 +26,20 @@ public static class ModelEditor
     /// it is promoted to the model as-is, keeping its provenance and confidence intact.
     /// </summary>
     public static bool AddEntity(CandidateDomainModel model, string name)
+        => AddEntity(model, name, out _);
+
+    /// <inheritdoc cref="AddEntity(CandidateDomainModel, string)"/>
+    /// <param name="addedName">
+    /// The name the model actually received, or null if nothing was added. Promoting a suggestion
+    /// keeps that suggestion's own name, so this is not always what the normalizer returned for
+    /// <paramref name="name"/> — which is why the caller cannot work it out for itself.
+    /// </param>
+    public static bool AddEntity(CandidateDomainModel model, string name, out string? addedName)
     {
-        var normalized = NameNormalizer.ToEntityName(name);
+        addedName = null;
+
+        // The name came from a person, not from prose: keep the shape they typed.
+        var normalized = NameNormalizer.ToUserTypedEntityName(name);
         if (!NameNormalizer.IsValidIdentifier(normalized) || Find(model, normalized) is not null)
             return false;
 
@@ -52,6 +64,7 @@ public static class ModelEditor
                 DefaultFields.ApplyTo(suggested, suggested.Provenance);
 
             model.Entities.Add(suggested);
+            addedName = suggested.Name;
             return true;
         }
 
@@ -68,6 +81,7 @@ public static class ModelEditor
             DefaultFields.ApplyTo(entity, Provenance.Seed);
 
         model.Entities.Add(entity);
+        addedName = entity.Name;
         return true;
     }
 
@@ -147,8 +161,10 @@ public static class ModelEditor
 
     public static bool RenameEntity(CandidateDomainModel model, string oldName, string newName)
     {
+        // The old name is a lookup, so it keeps the head-noun normalizer; the new one is a class
+        // name the user typed, so it keeps its shape.
         var target = Find(model, NameNormalizer.ToEntityName(oldName));
-        var normalizedNew = NameNormalizer.ToEntityName(newName);
+        var normalizedNew = NameNormalizer.ToUserTypedEntityName(newName);
         if (target is null || normalizedNew.Length == 0 || Find(model, normalizedNew) is not null)
             return false;
 

@@ -129,7 +129,7 @@ internal sealed class BuildAppCommand
                     return;
 
                 case "add" when parts.Length >= 2:
-                    Report(ModelEditor.AddEntity(model, parts[1]), $"Added '{parts[1]}'.", "Could not add (duplicate or invalid).");
+                    Console.WriteLine(AddLine(model, parts));
                     break;
 
                 case "remove" when parts.Length >= 2:
@@ -219,6 +219,24 @@ internal sealed class BuildAppCommand
     internal static bool IsPersistenceAllowed(ITargetScaffolder target, PersistenceKind persistence)
         => !(persistence == PersistenceKind.Sqlite
              && string.Equals(target.Key, "wpf", StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// Adds the entity an <c>add &lt;name&gt;</c> line asks for, and returns what to report.
+    /// Internal and pure for the same reason <see cref="WhyLines"/> is.
+    /// </summary>
+    /// <remarks>
+    /// Two things the previous inline version got wrong. It passed only <c>parts[1]</c>, so the
+    /// loop's three-way split silently reduced <c>add Cash register</c> to "Cash"; and it echoed
+    /// the typed text, which hid any difference between what was asked for and what was created.
+    /// </remarks>
+    internal static string AddLine(CandidateDomainModel model, string[] parts)
+    {
+        var name = string.Join(' ', parts.Skip(1)).Trim();
+
+        return ModelEditor.AddEntity(model, name, out var added)
+            ? $"Added '{added}'."
+            : "Could not add (duplicate or invalid).";
+    }
 
     /// <summary>
     /// The lines a <c>why [name]</c> line produces: the whole report when no name is given,

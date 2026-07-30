@@ -96,4 +96,38 @@ public class NameNormalizerTests
     {
         Assert.Equal(string.Empty, NameNormalizer.ToCompoundEntityName("   "));
     }
+
+    [Theory]
+    // A name the user typed is already the class name they want, so its shape survives.
+    [InlineData("CashRegister", "CashRegister")]
+    [InlineData("cash register", "CashRegister")]
+    [InlineData("widget", "Widget")]
+    // Only the last segment is singularized, and its case is kept while that happens.
+    [InlineData("Books", "Book")]
+    [InlineData("BookCategories", "BookCategory")]
+    [InlineData("CreditCards", "CreditCard")]
+    // A run of capitals is not a word boundary, so an acronym survives intact.
+    [InlineData("CashREGISTER", "CashREGISTER")]
+    [InlineData("ID", "ID")]
+    // The -ss/-us/-is guards still apply to the last segment.
+    [InlineData("BusinessAddress", "BusinessAddress")]
+    public void ToUserTypedEntityName_KeepsTheTypedShape_AndSingularizesTheLastSegment(
+        string input, string expected)
+    {
+        Assert.Equal(expected, NameNormalizer.ToUserTypedEntityName(input));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("!!!")]
+    public void ToUserTypedEntityName_OfBlank_IsEmpty(string input)
+        => Assert.Equal(string.Empty, NameNormalizer.ToUserTypedEntityName(input));
+
+    [Fact]
+    public void ToUserTypedEntityName_DoesNotRescueANameCSharpCannotDeclare()
+        // The caller still guards with IsValidIdentifier; normalizing must not hide a leading
+        // digit by silently dropping it.
+        => Assert.False(
+            NameNormalizer.IsValidIdentifier(NameNormalizer.ToUserTypedEntityName("2ndthing")));
 }

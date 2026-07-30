@@ -82,6 +82,86 @@ public static class NameNormalizer
     }
 
     /// <summary>
+    /// Turns text a person typed at the review loop into a class name, keeping the shape they
+    /// typed ("CashRegister" -> "CashRegister", "cash register" -> "CashRegister") and
+    /// singularizing only the last segment ("BookCategories" -> "BookCategory").
+    /// </summary>
+    /// <remarks>
+    /// Unlike <see cref="ToEntityName"/>, which reduces prose to its head noun, and
+    /// <see cref="ToCompoundEntityName"/>, which rebuilds a wikilink title, this one is for input
+    /// that is ALREADY the name the user wants. Both of the others lowercase a word after its
+    /// first character, which silently destroys a compound the user typed themselves — the whole
+    /// reason this exists.
+    /// </remarks>
+    public static string ToUserTypedEntityName(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return string.Empty;
+
+        var segments = Segments(text);
+        if (segments.Count == 0)
+            return string.Empty;
+
+        segments[^1] = SingularizePreservingCase(segments[^1]);
+
+        return string.Concat(segments.Select(
+            s => char.ToUpperInvariant(s[0]) + s[1..]));
+    }
+
+    /// <summary>
+    /// Splits on anything an identifier cannot contain, and again at each PascalCase boundary.
+    /// A capital following another capital does not start a segment, so an acronym stays whole.
+    /// </summary>
+    private static List<string> Segments(string text)
+    {
+        var segments = new List<string>();
+        var current = new System.Text.StringBuilder();
+
+        foreach (var character in text)
+        {
+            if (!char.IsLetterOrDigit(character))
+            {
+                Flush();
+                continue;
+            }
+
+            // "CashRegister" breaks before R; "CashREGISTER" does not break inside the run.
+            if (char.IsUpper(character) && current.Length > 0 && !char.IsUpper(current[^1]))
+                Flush();
+
+            current.Append(character);
+        }
+
+        Flush();
+        return segments;
+
+        void Flush()
+        {
+            if (current.Length > 0)
+                segments.Add(current.ToString());
+            current.Clear();
+        }
+    }
+
+    /// <summary>
+    /// <see cref="Singularize"/> works in lowercase, so its answer cannot simply be pasted over
+    /// the original. Where it only stripped a suffix the original is truncated ("Books" -> "Book");
+    /// the "ies" -> "y" rule is the one rewrite that is not a prefix, so the original's leading
+    /// characters are kept and the "y" appended ("Categories" -> "Categor" + "y").
+    /// </summary>
+    private static string SingularizePreservingCase(string segment)
+    {
+        var singular = Singularize(segment.ToLowerInvariant());
+
+        if (singular.Length == segment.Length)
+            return segment;
+
+        return segment.ToLowerInvariant().StartsWith(singular, StringComparison.Ordinal)
+            ? segment[..singular.Length]
+            : segment[..(singular.Length - 1)] + singular[^1];
+    }
+
+    /// <summary>
     /// A deliberately small English plural-stripper for the lowercase <paramref name="word"/>.
     /// It errs towards leaving a word alone: a missed plural costs a duplicate entity, while
     /// a wrongly stripped one ("address" -> "addres") corrupts a class name.

@@ -15,7 +15,7 @@
 
 | Command | Description | Example |
 | --- | --- | --- |
-| `add <name>` | Review loop: adds an entity to the candidate model. | `add Reservation` |
+| `add <name>` | Review loop: adds an entity to the candidate model. The name keeps the shape you type, so a compound survives; several words become one class name. | `add cash register` |
 | `approve [target] [sqlite]` | Review loop: generates the app. Targets: wpf (default), console, webapi, classlib, worker. Add 'sqlite' for EF Core persistence (JSON is the default; WPF is JSON-only). Alias: a. | `approve webapi sqlite` |
 | `build app: <description>` | Describes a system in plain English, discovers a domain model for it, then opens a review loop before any code is written. | `build app: a library that lends books to members` |
 | `cancel` | Review loop: abandons the model without generating anything. Alias: c. | `cancel` |
