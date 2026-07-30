@@ -150,6 +150,7 @@ In the review loop:
 | `rename <old> <new>` | Rename an entity. |
 | `field <entity> <name>[:<type>]` | Add a field (type defaults to `string`). |
 | `unfield <entity> <name>` | Remove a field. |
+| `why [name]` | Explain what discovery decided. Bare, it reports every decision grouped by outcome; with a name, it shows that name's whole trail — the stage, the reason and the evidence behind each step. |
 | `cancel` \| `c` | Discard the model and generate nothing. |
 
 Every target shares the same generated core — the model classes, a JSON store,

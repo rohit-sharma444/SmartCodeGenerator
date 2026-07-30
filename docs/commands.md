@@ -23,6 +23,7 @@
 | `remove <name>` | Review loop: removes an entity from the candidate model. | `remove Reservation` |
 | `rename <old> <new>` | Review loop: renames an entity in the candidate model. | `rename Member Borrower` |
 | `unfield <entity> <name>` | Review loop: removes a field from an entity. | `unfield Book Title` |
+| `why [name]` | Review loop: explains what discovery decided. Bare, it reports every decision grouped by outcome; with a name, it shows that name's whole trail — the stage, the reason and the evidence behind each step. | `why Cash register` |
 
 ## Class
 

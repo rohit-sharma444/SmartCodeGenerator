@@ -31,7 +31,12 @@ public class ProcessRunnerTests
     {
         var (fileName, arguments) = FloodBothStreams();
 
-        var result = ProcessRunner.Run(fileName, arguments, timeout: TimeSpan.FromSeconds(45));
+        // The timeout only bounds the failure case: a parent that fails to drain blocks the
+        // child forever, so a deadlock is caught at any ceiling. It therefore wants slack, not
+        // precision. 45s had almost none — the 6000-echo child measures ~0.4s alone but 35s+
+        // when the Debug suite runs it alongside several other 40s tests, so adding any four
+        // tests anywhere in this assembly was enough to trip it.
+        var result = ProcessRunner.Run(fileName, arguments, timeout: TimeSpan.FromSeconds(180));
 
         Assert.IsFalse(result.TimedOut, "The child exits on its own; a timeout here means we deadlocked.");
         Assert.AreEqual(0, result.ExitCode);
