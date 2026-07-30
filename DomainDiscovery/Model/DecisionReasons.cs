@@ -32,6 +32,13 @@ public static class DecisionReasons
     public const string YouNamedItNoDefinitionFound = "you named it; no definition found";
     public const string NoDefinitionWeRecognize = "no definition we recognize";
 
+    // --- Data ingestion ---
+    public const string ReadFromYourData = "read from your data";
+    public const string PrimaryKeyIsGenerated = "a key column is generated, not read";
+    public const string ColumnWouldCollideWithItsClassName =
+        "a column may not share its class's name";
+    public const string ColumnNameIsNotAValidIdentifier = "its column name is not a usable name";
+
     // --- Review loop ---
     public const string YouRenamedIt = "you renamed it";
 }

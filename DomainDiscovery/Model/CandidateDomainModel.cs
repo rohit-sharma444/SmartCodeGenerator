@@ -9,7 +9,14 @@ public enum Provenance
     Seed,
 
     /// <summary>Harvested from a fetched Wikipedia article.</summary>
-    Wiki
+    Wiki,
+
+    /// <summary>
+    /// Read from a data source the user supplied — a CSV column, a JSON property, a SQL column.
+    /// Distinct from <see cref="Seed"/> because the review loop prints this verbatim, and calling
+    /// a real column "Seed" would claim the pipeline guessed at something it was told.
+    /// </summary>
+    Data
 }
 
 public sealed class CandidateField
