@@ -8,17 +8,23 @@ file, the model classes, and a JSON-backed store with a typed repository per
 entity — then hands off to the chosen **target** for the project type and front
 end.
 
-Targets are an `ITargetScaffolder` strategy, and five ship today:
+Targets are an `ITargetScaffolder` strategy, and six ship today:
 
 | Target | `Key` | What it produces |
 | --- | --- | --- |
 | WPF (default) | `wpf` | A windowed CRUD app — one tab per entity. |
+| Windows Desktop | `winforms` | A windowed CRUD app — one tab per entity, WinForms instead of WPF. |
 | Console | `console` | A reflection-driven CRUD menu over the repositories. |
 | Web API | `webapi` | A minimal API with REST CRUD endpoints per entity. |
 | Class library | `classlib` | The shared core only — no entry point. |
 | Worker | `worker` | A `BackgroundService` that exercises the repositories. |
 
 The shared core is identical across all of them; only the front end differs.
+
+`WinFormsTarget` — a runnable Windows Forms CRUD app. Shares its whole presentation layer with
+`WpfTarget` through `DesktopViewModelFiles`; the only differences are the view (`Views/MainForm.cs`
+plus its own `Program.cs`, instead of `MainWindow.xaml`) and which `RelayCommand` variant it
+emits, since WPF's requeries through `CommandManager` and WinForms has no PresentationCore.
 
 This is a class library (`net10.0`) with no console I/O. The
 [`CodeGenerator`](../CodeGenerator/README.md) CLI drives it from
@@ -79,14 +85,15 @@ Then the target adds its front end and reconciles the `dotnet new` output:
 | Target | Folder suffix | Front end it writes |
 | --- | --- | --- |
 | WPF | *(none)* | `Data/RelationshipResolver.cs`, `ViewModels/` (ObservableObject, RelayCommand, IEntityViewModel, EntityViewModel, MainViewModel — one tab per entity), `Views/MainWindow.xaml(.cs)`; repoints `App.xaml`'s `StartupUri` to the foldered window. |
+| Windows Desktop | `.WinForms` | The same `Data/RelationshipResolver.cs` and `ViewModels/` as WPF (via `DesktopViewModelFiles`), built with a portable `RelayCommand` that has no `CommandManager` requery; `Views/MainForm.cs` and its own `Program.cs`. |
 | Console | `.Console` | `EntityMenu.cs` (a reflection-driven CRUD menu) and `Program.cs` (registers one menu per entity). |
 | Web API | `.Api` | `Program.cs` mapping REST CRUD endpoints per entity (minimal API). |
 | Class library | `.Lib` | *(nothing)* — the core is the deliverable; `FixupProject` deletes the template's `Class1.cs`. |
 | Worker | `.Worker` | `Worker.cs` (a `BackgroundService` logging each repository's record count) and `Program.cs`. |
 
-`RelationshipResolver.cs` lands under `Data/` but is **WPF-only**, not shared
-core: it depends on `IEntityViewModel`, so `WpfTarget` contributes it rather than
-`AppScaffolder`.
+`RelationshipResolver.cs` lands under `Data/` but is **not shared core**: it
+depends on `IEntityViewModel`, so the two desktop targets contribute it — via the
+shared `DesktopViewModelFiles` — rather than `AppScaffolder`.
 
 The generated app persists to **one JSON file per type**, written beside the
 built executable (`AppContext.BaseDirectory`). There is no database.
@@ -209,9 +216,9 @@ in the review loop.
 | `ImportedData` | Entity name → rows → field name → raw string value, plus `Notes` the caller must print (above all, that the `MaxSeedRows` cap dropped rows). Lives here rather than in `DataIngestion` because it is an *input to the scaffolder*, alongside `PersistenceKind` — and because that keeps it free of any `TabularTable` dependency, so a future SQL reader feeds the same carrier. |
 | `SeedFileWriter` | Imported rows → `(fileName, json)` pairs, projected through each class's final property list. `SeedFolderName` is the one spelling of the `Seed` folder that both this and the generated seeder use. |
 | `ITargetScaffolder` | The strategy a target implements: `Key`, `Description`, `ProjectType`, `FolderSuffix`, `FrontEndFiles(projectName, entityNames)`, and an optional `FixupProject(outputFolder)` (default no-op). |
-| `TargetScaffolders` | The registry — ordered `Keys` (`wpf, console, webapi, classlib, worker`), case-insensitive `TryResolve`, and `Default` (WPF). |
+| `TargetScaffolders` | The registry — ordered `Keys` (`wpf, console, webapi, classlib, worker, winforms`; `winforms` is appended rather than inserted, so every pre-existing key keeps its position), case-insensitive `TryResolve`, and `Default` (WPF). |
 | `GeneratedFile` | One file a target contributes: `RelativeFolder` (relative to the project root, `""` for the root), `Name`, `Source`. |
-| `WpfTarget`, `ConsoleTarget`, `WebApiTarget`, `ClassLibraryTarget`, `WorkerTarget` | The five shipped targets, under `Targets/`. |
+| `WpfTarget`, `ConsoleTarget`, `WebApiTarget`, `ClassLibraryTarget`, `WorkerTarget`, `WinFormsTarget` | The six shipped targets, under `Targets/`. |
 | `DomainModelMapper` | `CandidateDomainModel` → `ClassDefinition[]`: renaming, `Id`, audit fields, navigation properties. The interesting stage. An overload also yields the entity-name → class-name map, which `SeedFileWriter` needs because rows are keyed by entity while files are named for the class, and `ToUniqueClassName` can rename one (`Type` → `TypeItem`). |
 | `DomainAppName` | Free text → PascalCase project name (`"a library that lends books"` → `ALibraryThatLendsBooks`). Falls back to `GeneratedApp`; prefixes `App` when it would start with a digit. |
 | `ScaffoldResult` | `Success`, the project path, every file written, and a message. |
@@ -248,7 +255,9 @@ dotnet build AppScaffolding/AppScaffolding.csproj
 Covered by [`CodeGenerator.Tests`](../CodeGenerator.Tests/README.md) under `App/`
 rather than by a dedicated test project: `AppScaffolderWriteTests` and
 `DomainAppNameTests`, a test per target (`WpfTargetTests`, `ConsoleTargetTests`,
-`WebApiTargetTests`, `ClassLibraryTargetTests`, `WorkerTargetTests`),
-`TargetScaffoldersTests` for the registry, and `GeneratedProjectBuildTests` — an
-integration test that runs `dotnet build` on the generated console, web API,
-class-library, and worker projects.
+`WebApiTargetTests`, `ClassLibraryTargetTests`, `WorkerTargetTests`,
+`WinFormsTargetTests`, plus `WinFormsProjectFixupTests` and
+`WinFormsTemplateTests`), `TargetScaffoldersTests` for the registry, and
+`GeneratedProjectBuildTests` — a `DataRow`-driven integration test that runs
+`dotnet build` on the generated project for every target, skipping `wpf` and
+`winforms` on non-Windows since they need the desktop targeting pack.

@@ -11,18 +11,18 @@ public sealed class WpfTarget : ITargetScaffolder
     public DotNetProjectType ProjectType => DotNetProjectType.Wpf;
     public string FolderSuffix => "";
 
-    public IReadOnlyList<GeneratedFile> FrontEndFiles(string projectName, IReadOnlyList<string> entityNames) => new List<GeneratedFile>
+    public IReadOnlyList<GeneratedFile> FrontEndFiles(string projectName, IReadOnlyList<string> entityNames)
     {
-        // RelationshipResolver depends on IEntityViewModel, so it is WPF-only, not shared core.
-        new("Data", "RelationshipResolver.cs", RelationshipResolverTemplate.Source(projectName)),
-        new("ViewModels", "ObservableObject.cs", ViewModelTemplates.ObservableObject(projectName)),
-        new("ViewModels", "RelayCommand.cs", ViewModelTemplates.RelayCommand(projectName)),
-        new("ViewModels", "IEntityViewModel.cs", ViewModelTemplates.EntityViewModelInterface(projectName)),
-        new("ViewModels", "EntityViewModel.cs", ViewModelTemplates.EntityViewModel(projectName)),
-        new("ViewModels", "MainViewModel.cs", MainViewModelTemplate.Build(projectName, entityNames)),
-        new("Views", "MainWindow.xaml", MainWindowTemplate.Xaml(projectName)),
-        new("Views", "MainWindow.xaml.cs", MainWindowTemplate.CodeBehind(projectName)),
-    };
+        // Shared with WinFormsTarget. The WPF variant of RelayCommand requeries through
+        // CommandManager, which is what re-enables Delete when the grid selection changes.
+        var files = DesktopViewModelFiles.Build(
+            projectName, entityNames, ViewModelTemplates.RelayCommand(projectName));
+
+        files.Add(new("Views", "MainWindow.xaml", MainWindowTemplate.Xaml(projectName)));
+        files.Add(new("Views", "MainWindow.xaml.cs", MainWindowTemplate.CodeBehind(projectName)));
+
+        return files;
+    }
 
     public void FixupProject(string outputFolder) => WpfProjectFixup.Apply(outputFolder);
 }

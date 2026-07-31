@@ -62,38 +62,44 @@ internal sealed class BuildAppCommand
     public void Handle(string input, string workspaceRoot)
     {
         var request = InlineDataSource.Parse(Tail(input));
+
+        var description = request.Description;
         var source = request.Source;
         var normalize = request.Normalize;
+        ITargetScaffolder? target = null;
 
-        // Redirected stdin never prompts: existing piped scripts and E2E tests feed the review loop
-        // directly, and a question at the front would break every one of them. They opt in with the
-        // inline `from <format> <location>` form instead.
-        if (source is null && !Console.IsInputRedirected)
+        // Redirected stdin never prompts: existing piped scripts and E2E tests feed the review
+        // loop directly, and a question at the front would break every one of them. They opt in
+        // with the inline `from <format> <location>` form instead, and pick a target at `approve`.
+        if (!Console.IsInputRedirected)
         {
-            var outcome = DataSourceInterview.Resolve(Console.In, Console.Out);
+            var outcome = BuildAppWizard.Run(
+                request, Console.In, Console.Out, ApplicationTypeMenu.Choose);
 
-            if (outcome.Decision == InterviewDecision.Cancelled)
+            if (outcome.Decision == WizardDecision.Cancelled)
             {
-                // Not the same as "no data" — someone who backed out must not be handed a
-                // Wikipedia build they never asked for.
                 Console.WriteLine("Cancelled. Nothing was generated.");
                 return;
             }
 
+            description = outcome.Description;
+            target = outcome.Target;
             source = outcome.Source;
+            normalize = outcome.Normalize;
         }
 
         if (source is null)
         {
-            HandleFromDescription(request.Description, workspaceRoot);
+            HandleFromDescription(description, workspaceRoot, target);
             return;
         }
 
-        HandleFromData(request.Description, source, normalize, workspaceRoot);
+        HandleFromData(description, source, normalize, workspaceRoot, target);
     }
 
     /// <summary>The unchanged path: NLE seeds, Wikipedia topic, enrichment, review loop.</summary>
-    private static void HandleFromDescription(string description, string workspaceRoot)
+    private static void HandleFromDescription(
+        string description, string workspaceRoot, ITargetScaffolder? target)
     {
         if (description.Length == 0)
         {
@@ -121,7 +127,7 @@ internal sealed class BuildAppCommand
 
         RunReviewLoop(
             result.Model, DomainAppName.FromDescription(description), workspaceRoot,
-            ImportedData.None);
+            ImportedData.None, target);
     }
 
     /// <summary>
@@ -129,7 +135,8 @@ internal sealed class BuildAppCommand
     /// recognize, enrich or shape, and the run is fast and offline.
     /// </summary>
     private static void HandleFromData(
-        string description, DataSourceSpec source, bool normalize, string workspaceRoot)
+        string description, DataSourceSpec source, bool normalize, string workspaceRoot,
+        ITargetScaffolder? target)
     {
         if (!DataSourceReaders.TryCreate(source.Kind, out var reader))
         {
@@ -187,7 +194,7 @@ internal sealed class BuildAppCommand
         foreach (var note in imported.Notes)
             Console.WriteLine(note);
 
-        RunReviewLoop(model, AppNameFor(description, source), workspaceRoot, imported);
+        RunReviewLoop(model, AppNameFor(description, source), workspaceRoot, imported, target);
     }
 
     /// <summary>
@@ -233,11 +240,18 @@ internal sealed class BuildAppCommand
     }
 
     private static void RunReviewLoop(
-        CandidateDomainModel model, string appName, string workspaceRoot, ImportedData importedData)
+        CandidateDomainModel model, string appName, string workspaceRoot,
+        ImportedData importedData, ITargetScaffolder? target)
     {
         while (true)
         {
             PrintModel(model);
+
+            // The target was settled before discovery ran, so what `approve` will produce has to
+            // be visible here rather than being a surprise.
+            if (target is not null)
+                Console.WriteLine($"  Target: {ApplicationTypeMenu.LabelFor(target)}");
+
             Console.WriteLine("  [a]pprove [target] [sqlite]   add <name>   remove <name>   rename <old> <new>");
             Console.WriteLine("  field <entity> <name>[:<type>]   unfield <entity> <name>   why [name]   [c]ancel");
             Console.Write("> ");
@@ -266,8 +280,9 @@ internal sealed class BuildAppCommand
                         return;
                     }
 
-                    var target = ResolveTarget(parts, Console.IsInputRedirected, Console.In);
-                    if (target is null)
+                    var chosenTarget = ResolveTarget(
+                        parts, Console.IsInputRedirected, Console.In, target);
+                    if (chosenTarget is null)
                     {
                         Console.WriteLine(
                             $"Unknown target '{parts[1]}'. Valid: {string.Join(", ", TargetScaffolders.Keys)}");
@@ -281,15 +296,16 @@ internal sealed class BuildAppCommand
                         break;
                     }
 
-                    if (!IsPersistenceAllowed(target, persistence.Value))
+                    if (!IsPersistenceAllowed(chosenTarget, persistence.Value))
                     {
                         Console.WriteLine(
-                            "SQLite persistence isn't supported for the WPF target yet — it stays JSON.");
+                            "SQLite persistence isn't supported for the WPF or Windows Forms "
+                            + "targets yet — they stay JSON.");
                         break;
                     }
 
                     var scaffold = new AppScaffolder()
-                        .Scaffold(model, appName, workspaceRoot, target, persistence.Value,
+                        .Scaffold(model, appName, workspaceRoot, chosenTarget, persistence.Value,
                                   importedData);
                     if (scaffold.Success)
                     {
@@ -354,14 +370,23 @@ internal sealed class BuildAppCommand
 
     /// <summary>
     /// Resolves the output target for an <c>approve</c> command. An inline
-    /// <c>approve &lt;target&gt;</c> wins (null when the key is unknown). With no inline key,
-    /// redirected input never prompts and defaults to WPF (so piped scripts are unchanged);
-    /// interactive input is prompted, blank meaning WPF, and re-prompts on an unknown key.
+    /// <c>approve &lt;target&gt;</c> wins (null when the key is unknown); a
+    /// <paramref name="preselected"/> target — the one the wizard asked for — is next. With
+    /// neither, redirected input defaults to WPF (so piped scripts are unchanged) and interactive
+    /// input is prompted, blank meaning WPF, re-prompting on an unknown key.
     /// </summary>
-    internal static ITargetScaffolder? ResolveTarget(string[] parts, bool inputRedirected, TextReader reader)
+    internal static ITargetScaffolder? ResolveTarget(
+        string[] parts, bool inputRedirected, TextReader reader,
+        ITargetScaffolder? preselected = null)
     {
-        if (parts.Length >= 2)
+        // A lone json/sqlite is persistence, not a target: `approve sqlite` is only meaningful
+        // because the target was already chosen, and reading it as a target key is what used to
+        // reject it as unknown.
+        if (parts.Length >= 2 && !IsPersistenceToken(parts[1]))
             return TargetScaffolders.TryResolve(parts[1], out var inline) ? inline : null;
+
+        if (preselected is not null)
+            return preselected;
 
         if (inputRedirected)
             return TargetScaffolders.Default;
@@ -381,15 +406,26 @@ internal sealed class BuildAppCommand
         }
     }
 
-    /// <summary>The persistence backend an <c>approve</c> line selects. No third token means JSON;
-    /// <c>sqlite</c>/<c>json</c> (case-insensitively) select explicitly; any other token is invalid
-    /// (returns null).</summary>
+    /// <summary>Whether <paramref name="token"/> names a persistence backend rather than a
+    /// target.</summary>
+    internal static bool IsPersistenceToken(string token)
+        => string.Equals(token, "sqlite", StringComparison.OrdinalIgnoreCase)
+           || string.Equals(token, "json", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>The persistence backend an <c>approve</c> line selects. No token means JSON;
+    /// <c>sqlite</c>/<c>json</c> select explicitly, in either the second or third position (the
+    /// second is how <c>approve sqlite</c> reads once the wizard has settled the target); any
+    /// other token is invalid (returns null).</summary>
     internal static PersistenceKind? ResolvePersistence(string[] parts)
     {
-        if (parts.Length < 3)
+        var token = parts.Length >= 3
+            ? parts[2]
+            : parts.Length == 2 && IsPersistenceToken(parts[1]) ? parts[1] : null;
+
+        if (token is null)
             return PersistenceKind.Json;
 
-        return parts[2].ToLowerInvariant() switch
+        return token.ToLowerInvariant() switch
         {
             "sqlite" => PersistenceKind.Sqlite,
             "json" => PersistenceKind.Json,
@@ -397,11 +433,15 @@ internal sealed class BuildAppCommand
         };
     }
 
-    /// <summary>SQLite is available for every target except WPF, whose view models read JsonStore
-    /// directly (off the shared seam).</summary>
+    /// <summary>The targets whose view models read JsonStore directly, off the shared store
+    /// seam, and so cannot honour a SQLite backend.</summary>
+    private static readonly string[] JsonOnlyTargets = ["wpf", "winforms"];
+
+    /// <summary>SQLite is available for every target except the two desktop ones, whose shared
+    /// view models read JsonStore directly (off the shared seam).</summary>
     internal static bool IsPersistenceAllowed(ITargetScaffolder target, PersistenceKind persistence)
-        => !(persistence == PersistenceKind.Sqlite
-             && string.Equals(target.Key, "wpf", StringComparison.OrdinalIgnoreCase));
+        => persistence != PersistenceKind.Sqlite
+           || !JsonOnlyTargets.Contains(target.Key, StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Adds the entity an <c>add &lt;name&gt;</c> line asks for, and returns what to report.

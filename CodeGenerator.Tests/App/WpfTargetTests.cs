@@ -36,5 +36,12 @@ public class WpfTargetTests
         var mainVm = files.Single(f => f.Name == "MainViewModel.cs").Source;
         StringAssert.Contains(mainVm, "new EntityViewModel<Employee>(\"Employee\"),");
         StringAssert.Contains(mainVm, "new EntityViewModel<Department>(\"Department\"),");
+
+        // This is the silent-failure direction: if WpfTarget ever passed the portable
+        // RelayCommand instead, the generated app would still compile (ICommand is available
+        // either way) and every other assertion here would stay green, but the shipping WPF
+        // app's Delete button would never re-enable when the grid selection changes.
+        var relayCommand = files.Single(f => f.Name == "RelayCommand.cs").Source;
+        StringAssert.Contains(relayCommand, "CommandManager.RequerySuggested");
     }
 }

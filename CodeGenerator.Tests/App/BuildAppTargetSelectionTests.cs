@@ -50,4 +50,41 @@ public class BuildAppTargetSelectionTests
         var t = BuildAppCommand.ResolveTarget(Parts("approve"), inputRedirected: false, new StringReader("bad\nconsole\n"));
         Assert.AreEqual("console", t!.Key);
     }
+
+    [TestMethod]
+    public void APreselectedTarget_IsUsedWithoutPrompting()
+    {
+        Assert.IsTrue(TargetScaffolders.TryResolve("webapi", out var chosen));
+
+        // TextReader.Null: if this prompted, it would read EOF and fall over rather than quietly
+        // return the wizard's answer.
+        var t = BuildAppCommand.ResolveTarget(
+            Parts("approve"), inputRedirected: false, TextReader.Null, chosen);
+
+        Assert.AreEqual("webapi", t!.Key);
+    }
+
+    [TestMethod]
+    public void AnInlineTarget_StillOverridesThePreselectedOne()
+    {
+        Assert.IsTrue(TargetScaffolders.TryResolve("webapi", out var chosen));
+
+        var t = BuildAppCommand.ResolveTarget(
+            Parts("approve", "console"), inputRedirected: false, TextReader.Null, chosen);
+
+        Assert.AreEqual("console", t!.Key);
+    }
+
+    [TestMethod]
+    public void ALonePersistenceToken_IsNotMistakenForATarget()
+    {
+        Assert.IsTrue(TargetScaffolders.TryResolve("console", out var chosen));
+
+        // `approve sqlite` used to be rejected as an unknown target. With the target already
+        // settled by the wizard, the token can only be persistence.
+        var t = BuildAppCommand.ResolveTarget(
+            Parts("approve", "sqlite"), inputRedirected: false, TextReader.Null, chosen);
+
+        Assert.AreEqual("console", t!.Key);
+    }
 }

@@ -6,10 +6,12 @@ namespace CodeGenerator.Tests.App;
 public class TargetScaffoldersTests
 {
     [TestMethod]
-    public void Keys_AreTheFiveTargetsInOrder()
+    public void Keys_AreTheSixTargetsInOrder()
     {
+        // winforms is appended rather than inserted, so Default stays wpf and no existing key
+        // changes position. The wizard's menu supplies its own display order.
         CollectionAssert.AreEqual(
-            new[] { "wpf", "console", "webapi", "classlib", "worker" },
+            new[] { "wpf", "console", "webapi", "classlib", "worker", "winforms" },
             TargetScaffolders.Keys.ToList());
     }
 

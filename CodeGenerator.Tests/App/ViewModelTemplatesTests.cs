@@ -94,4 +94,41 @@ public class ViewModelTemplatesTests
             ViewModelTemplates.EntityViewModel("Payroll"),
             "EntityViewModel<T> : ObservableObject, IEntityViewModel where T : class, new()");
     }
+
+    [TestMethod]
+    public void PortableRelayCommand_DoesNotDependOnWpf()
+    {
+        var source = ViewModelTemplates.PortableRelayCommand("Payroll");
+
+        // CommandManager lives in PresentationCore. A WinForms project has no reference to it,
+        // so its presence here is a compile error in the generated app, not a style question.
+        Assert.IsFalse(
+            source.Contains("CommandManager", StringComparison.Ordinal),
+            "the portable RelayCommand must not reference CommandManager");
+    }
+
+    [TestMethod]
+    public void PortableRelayCommand_IsTheSameClassUnderTheSameNamespace()
+    {
+        var source = ViewModelTemplates.PortableRelayCommand("Payroll");
+
+        // EntityViewModel is shared between both desktop targets and says `new RelayCommand(...)`,
+        // so the type it binds to must have the same name and namespace in either variant.
+        StringAssert.Contains(source, "namespace Payroll.ViewModels;");
+        StringAssert.Contains(source, "public sealed class RelayCommand : ICommand");
+        StringAssert.Contains(source, "public bool CanExecute(object? parameter)");
+        StringAssert.Contains(source, "public void Execute(object? parameter)");
+    }
+
+    [TestMethod]
+    public void PortableRelayCommand_LetsTheCallerRaiseCanExecuteChanged()
+    {
+        var source = ViewModelTemplates.PortableRelayCommand("Payroll");
+
+        // The generated WinForms view never calls this (it polls CanExecute directly instead),
+        // but the member must still exist and be invocable: it is the seam hand-written code
+        // uses to signal a change itself.
+        StringAssert.Contains(source, "public void RaiseCanExecuteChanged()");
+        StringAssert.Contains(source, "CanExecuteChanged?.Invoke(this, EventArgs.Empty)");
+    }
 }

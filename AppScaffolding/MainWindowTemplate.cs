@@ -46,6 +46,11 @@ public static class MainWindowTemplate
 """;
 
     /// <summary>Source of <c>Views/MainWindow.xaml.cs</c>.</summary>
+    /// <remarks>
+    /// The <c>IsDisplayable</c> / <c>IsEntityType</c> / <c>DisplayMember</c> helpers emitted here
+    /// are deliberately duplicated in <see cref="WinFormsMainFormTemplate.Source"/> rather than
+    /// shared: keep the two in sync if the display convention ever changes.
+    /// </remarks>
     public static string CodeBehind(string appName) => $$"""
 using System;
 using System.Windows;
