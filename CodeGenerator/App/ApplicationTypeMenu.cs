@@ -91,12 +91,12 @@ internal static class ApplicationTypeMenu
 
     /// <summary>
     /// Asks for an application type the best way this console allows: an arrow-key list normally,
-    /// the numbered prompt when output is redirected — where <c>Console.SetCursorPosition</c> and
-    /// <c>ReadKey</c> throw "handle is invalid", the same condition
-    /// <see cref="CommandLineEditor"/> guards on.
+    /// the numbered prompt when input or output is redirected. <c>Console.SetCursorPosition</c>
+    /// throws when output is redirected; <c>Console.ReadKey</c> throws when input is redirected.
+    /// Matches the guard in <see cref="CommandLineEditor.ReadCommand"/>.
     /// </summary>
     public static int? Choose()
-        => Console.IsOutputRedirected
+        => Console.IsInputRedirected || Console.IsOutputRedirected
             ? ChooseNumbered(Console.In, Console.Out)
             : SelectionPrompt.Choose(Title, Labels, 0);
 }
