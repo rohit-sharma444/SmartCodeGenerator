@@ -1089,6 +1089,7 @@ Create `DataIngestion.Tests/Schema/Readers/ExcelNumberFormatTests.cs`:
 
 ```csharp
 using System.IO.Compression;
+using System.Security;
 using DataIngestion.Schema;
 using DataIngestion.Schema.Readers;
 using Xunit;
@@ -1107,7 +1108,9 @@ public class ExcelNumberFormatTests
          + "<styleSheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">"
          + $"<numFmts count=\"{custom.Length}\">"
          + string.Concat(custom.Select(c =>
-             $"<numFmt numFmtId=\"{c.Id}\" formatCode=\"{c.Code}\"/>"))
+             // Escaped, because a format code may itself contain a quote -- 0.00" m" is a number
+             // with a unit -- and Excel writes that as &quot; rather than breaking the attribute.
+             $"<numFmt numFmtId=\"{c.Id}\" formatCode=\"{SecurityElement.Escape(c.Code)}\"/>"))
          + "</numFmts>"
          + $"<cellXfs count=\"{numFmtIds.Length}\">"
          + string.Concat(numFmtIds.Select(id => $"<xf numFmtId=\"{id}\" xfId=\"0\"/>"))

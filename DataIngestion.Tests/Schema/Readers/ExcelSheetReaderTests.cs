@@ -166,4 +166,66 @@ public class ExcelSheetReaderTests
     [Fact]
     public void AnEmptySheet_ReadsAsNoRecords()
         => Assert.Empty(Records(string.Empty));
+
+    /// <summary>A date-styled number becomes a date, which is the whole reason to read xlsx rather
+    /// than ask the user for a CSV: as a CSV export this column is already text.</summary>
+    [Fact]
+    public void ADateStyledNumber_ReadsAsADate()
+    {
+        var styles = "<?xml version=\"1.0\"?>"
+            + "<styleSheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">"
+            + "<cellXfs count=\"1\"><xf numFmtId=\"14\" xfId=\"0\"/></cellXfs></styleSheet>";
+
+        var records = Records(
+            ExcelFixture.Row(1, ExcelFixture.Cell("A1", "46096", style: 0)), styles: styles);
+
+        Assert.Equal("2026-03-15", Assert.Single(records)[0]);
+    }
+
+    /// <summary>An UNstyled number in the same file stays exactly what it was.</summary>
+    [Fact]
+    public void AnUnstyledNumber_KeepsItsStoredText()
+    {
+        var styles = "<?xml version=\"1.0\"?>"
+            + "<styleSheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">"
+            + "<cellXfs count=\"2\"><xf numFmtId=\"0\" xfId=\"0\"/>"
+            + "<xf numFmtId=\"14\" xfId=\"0\"/></cellXfs></styleSheet>";
+
+        var records = Records(
+            ExcelFixture.Row(1,
+                ExcelFixture.Cell("A1", "46096", style: 0),
+                ExcelFixture.Cell("B1", "46096", style: 1)),
+            styles: styles);
+
+        Assert.Equal(new[] { "46096", "2026-03-15" }, Assert.Single(records));
+    }
+
+    [Fact]
+    public void A1904Workbook_CountsFromItsOwnEpoch()
+    {
+        var styles = "<?xml version=\"1.0\"?>"
+            + "<styleSheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">"
+            + "<cellXfs count=\"1\"><xf numFmtId=\"14\" xfId=\"0\"/></cellXfs></styleSheet>";
+
+        var records = Records(
+            ExcelFixture.Row(1, ExcelFixture.Cell("A1", "44196", style: 0)),
+            styles: styles, date1904: true);
+
+        Assert.Equal("2025-01-01", Assert.Single(records)[0]);
+    }
+
+    /// <summary>A postcode's padding is meaning, and losing it changes the user's own data.</summary>
+    [Fact]
+    public void AZeroPaddedNumber_KeepsItsPadding()
+    {
+        var styles = "<?xml version=\"1.0\"?>"
+            + "<styleSheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">"
+            + "<numFmts count=\"1\"><numFmt numFmtId=\"164\" formatCode=\"00000\"/></numFmts>"
+            + "<cellXfs count=\"1\"><xf numFmtId=\"164\" xfId=\"0\"/></cellXfs></styleSheet>";
+
+        var records = Records(
+            ExcelFixture.Row(1, ExcelFixture.Cell("A1", "1234", style: 0)), styles: styles);
+
+        Assert.Equal("01234", Assert.Single(records)[0]);
+    }
 }
