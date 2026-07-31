@@ -138,8 +138,8 @@ before parsing, so a predicate that already carries its own verb
 An interactive `build app` asks three questions before any work starts: what the application is
 for, which kind of app to build, and whether you already have data. The kinds are WPF (Windows
 desktop), Windows Desktop (WinForms), ASP.NET Web API, Console, Class Library and Windows
-Service; the menu is arrow-key driven, and falls back to a numbered prompt when output is
-redirected. Typing a description inline (`build app: a library that lends books`) answers the
+Service; the menu is arrow-key driven, and falls back to a numbered prompt when input or output
+is redirected. Typing a description inline (`build app: a library that lends books`) answers the
 first question and starts at the second.
 
 Targets: `wpf` (default), `winforms`, `console`, `webapi`, `classlib`, `worker`. `approve
@@ -159,7 +159,7 @@ In the review loop:
 
 | Input | Effect |
 | --- | --- |
-| `approve` \| `a` | Generate an app from the model as it stands, using the type chosen at the wizard's start; with none (a piped run) it prompts for the output target instead. |
+| `approve` \| `a` | Generate an app from the model as it stands, using the type chosen at the wizard's start; a piped run (no wizard, so no type chosen) defaults silently to WPF instead. |
 | `approve <target>` | Generate straight to a target, overriding the type chosen at the start (or skipping the prompt, if none was chosen) — one of `wpf` (default), `winforms`, `console`, `webapi`, `classlib`, `worker`. |
 | `add <name>` | Add an entity. The name keeps the shape you type (`add CashRegister` gives `CashRegister`), and several words become one class name (`add cash register` gives the same). |
 | `remove <name>` | Remove an entity. |
@@ -180,9 +180,12 @@ build app: a library that lends books to members
 approve console
 ```
 
-A bare `approve` uses the type the wizard already asked for; only when none was
-chosen (a piped run) does it prompt, and there a blank answer — or piped input, so
-existing scripts are unaffected — keeps the WPF default.
+A bare `approve` uses the type the wizard already asked for. A piped run never ran
+the wizard, so it has no chosen type; `ResolveTarget` defaults that case silently
+to WPF — no prompt, nothing read, so existing scripts are unaffected.
+(`ResolveTarget` also has a prompt-and-blank-defaults-to-WPF fallback for when no
+target is preselected and input isn't redirected, but the wizard now always
+preselects one, so that fallback is unreachable in ordinary interactive use.)
 
 Discovery reads Wikipedia from the local store built by
 [`WikipediaDumpImporter`](../WikipediaDumpImporter/README.md). Without that store
