@@ -10,6 +10,8 @@ public static class TargetScaffolders
         new WebApiTarget(),
         new ClassLibraryTarget(),
         new WorkerTarget(),
+        // Appended, not inserted: Default is All[0] and every existing key keeps its position.
+        new WinFormsTarget(),
     };
 
     /// <summary>Target keys in display order; the first is the default.</summary>
