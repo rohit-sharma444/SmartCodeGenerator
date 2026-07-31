@@ -1,7 +1,7 @@
 namespace DataIngestion.Schema.Readers;
 
 /// <summary>
-/// Maps a <see cref="DataSourceKind"/> to its reader, and answers for the two kinds that have no
+/// Maps a <see cref="DataSourceKind"/> to its reader, and answers for the one kind that has no
 /// reader yet. The interview offers every kind, so exactly one place has to know which are
 /// implemented — this one.
 /// </summary>
@@ -48,6 +48,9 @@ public static class DataSourceReaders
             case DataSourceKind.Json:
                 reader = new JsonTableReader();
                 return true;
+            case DataSourceKind.Excel:
+                reader = new ExcelReader();
+                return true;
             default:
                 reader = null!;
                 return false;
@@ -56,12 +59,7 @@ public static class DataSourceReaders
 
     /// <summary>What to tell a user who picked a kind this build cannot read.</summary>
     public static string NotSupportedMessage(DataSourceKind kind)
-    {
-        var advice = kind == DataSourceKind.Excel
-            ? "Save the sheet as CSV and choose csv."
-            : "Export the tables you want as CSV and choose csv.";
-
-        return $"{kind} is not in this build yet — it lands in a follow-on branch. "
-             + $"Working formats: csv, txt, json. {advice}";
-    }
+        => $"{kind} is not in this build yet — it lands in a follow-on branch. "
+         + "Working formats: csv, txt, json, excel. Export the tables you want as CSV and "
+         + "choose csv, or put them in a workbook and choose excel.";
 }
