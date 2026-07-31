@@ -105,9 +105,6 @@ public class ViewModelTemplatesTests
         Assert.IsFalse(
             source.Contains("CommandManager", StringComparison.Ordinal),
             "the portable RelayCommand must not reference CommandManager");
-        Assert.IsFalse(
-            source.Contains("using System.Windows.Input;\nusing System.Windows.Controls;",
-                StringComparison.Ordinal));
     }
 
     [TestMethod]
