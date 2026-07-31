@@ -51,7 +51,28 @@ public class WinFormsProjectFixupTests
     }
 
     [TestMethod]
-    public void Apply_IsIdempotentAndSurvivesAMissingForm()
+    public void Apply_OnAnAlreadyFixedProject_ChangesNothing()
+    {
+        var folder = NewProjectFolder();
+        try
+        {
+            WinFormsProjectFixup.Apply(folder);
+            Assert.IsFalse(File.Exists(Path.Combine(folder, "Form1.cs")));
+            Assert.IsFalse(File.Exists(Path.Combine(folder, "Form1.Designer.cs")));
+
+            WinFormsProjectFixup.Apply(folder);
+            Assert.IsFalse(File.Exists(Path.Combine(folder, "Form1.cs")));
+            Assert.IsFalse(File.Exists(Path.Combine(folder, "Form1.Designer.cs")));
+            Assert.IsTrue(File.Exists(Path.Combine(folder, "Program.cs")));
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public void Apply_WithNoTemplateFiles_DoesNotThrow()
     {
         var folder = Path.Combine(Path.GetTempPath(), "wffixup_" + Path.GetRandomFileName());
         Directory.CreateDirectory(folder);
@@ -59,7 +80,6 @@ public class WinFormsProjectFixupTests
         {
             // Newer SDK templates may not emit Form1.resx at all. A fixup that throws on a file
             // that was never there would fail every generation.
-            WinFormsProjectFixup.Apply(folder);
             WinFormsProjectFixup.Apply(folder);
         }
         finally

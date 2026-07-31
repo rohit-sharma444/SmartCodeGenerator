@@ -11,8 +11,8 @@ namespace AppScaffolding;
 /// </remarks>
 public static class WinFormsProjectFixup
 {
-    // Form1.resx is listed because older SDK templates emit one; newer ones may not, and
-    // deleting a file that was never there has to be a no-op.
+    // Form1.resx is listed defensively: in case some template version emits one. Deleting a file
+    // that was never there is a no-op.
     private static readonly string[] TemplateFiles =
         ["Form1.cs", "Form1.Designer.cs", "Form1.resx"];
 
