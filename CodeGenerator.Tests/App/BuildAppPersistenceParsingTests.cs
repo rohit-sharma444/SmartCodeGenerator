@@ -45,4 +45,17 @@ public class BuildAppPersistenceParsingTests
         Assert.IsTrue(BuildAppCommand.IsPersistenceAllowed(winforms, PersistenceKind.Json));
         Assert.IsTrue(BuildAppCommand.IsPersistenceAllowed(console, PersistenceKind.Sqlite));
     }
+
+    [TestMethod]
+    public void ResolvePersistence_ReadsALoneSqliteToken()
+    {
+        // `approve sqlite` with the target already chosen by the wizard.
+        Assert.AreEqual(
+            PersistenceKind.Sqlite,
+            BuildAppCommand.ResolvePersistence(new[] { "approve", "sqlite" }));
+
+        Assert.AreEqual(
+            PersistenceKind.Json,
+            BuildAppCommand.ResolvePersistence(new[] { "approve", "json" }));
+    }
 }
