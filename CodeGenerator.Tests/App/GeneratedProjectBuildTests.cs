@@ -38,14 +38,17 @@ public class GeneratedProjectBuildTests
     [DataRow("classlib")]
     [DataRow("worker")]
     [DataRow("wpf")]
+    [DataRow("winforms")]
     public void GeneratedProject_Builds(string targetKey)
     {
         // wpf is TargetScaffolders.Default -- what `build app:` ships unless told otherwise -- and
         // EntityViewModel<T> is the one place that resolves a validator outside Repository, under a
         // `where T : class, new()` constraint. A missing constraint is CS0452, which no substring
-        // assertion can see, so the default target has to be compiled like the rest.
-        if (targetKey == "wpf" && !OperatingSystem.IsWindows())
-            Assert.Inconclusive("The WPF target needs the Windows desktop targeting pack.");
+        // assertion can see, so the default target has to be compiled like the rest. winforms
+        // shares those same view models, and additionally proves its RelayCommand variant really
+        // is free of PresentationCore.
+        if ((targetKey == "wpf" || targetKey == "winforms") && !OperatingSystem.IsWindows())
+            Assert.Inconclusive($"The {targetKey} target needs the Windows desktop targeting pack.");
 
         Assert.IsTrue(TargetScaffolders.TryResolve(targetKey, out var target));
 
