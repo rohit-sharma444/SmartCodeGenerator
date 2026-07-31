@@ -206,6 +206,6 @@ keyword, so a description containing the word "from" is not truncated. Redirecte
 stdin never prompts, so existing piped scripts behave exactly as before and opt
 into this path explicitly with the inline form.
 
-`csv`, `txt` (delimiter sniffed) and `json` (nested arrays become child entities)
-work today. `excel` and `sql` are offered at the prompt and answered with what to
-use instead — they land in follow-on branches.
+`csv`, `txt` (delimiter sniffed), `json` (nested arrays become child entities) and
+`excel` (one visible sheet per entity) work today. `sql` is offered at the prompt
+and answered with what to use instead — it lands in a follow-on branch.

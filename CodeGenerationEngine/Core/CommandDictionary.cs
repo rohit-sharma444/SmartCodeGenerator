@@ -474,7 +474,7 @@ public static class CommandDictionary
             Category = "Build App",
             Command = "build app: <description> from <format> <location>",
             Description = "Builds the model from existing data without prompting. Formats: csv, "
-                        + "txt, json (excel and sql are not in this build yet). Add 'normalize' to "
+                        + "txt, json, excel (sql is not in this build yet). Add 'normalize' to "
                         + "apply every normalization change the data needs.",
             Example = "build app: order tracking from csv D:\\data\\orders.csv normalize"
         },

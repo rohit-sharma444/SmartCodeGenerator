@@ -2179,10 +2179,14 @@ Add to `CodeGenerator.Tests/App/GeneratedProjectBuildTests.cs`. It needs `using 
         const string ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
         const string rns = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 
-        // Style 0: the 00000 padded code. Style 1: a date. 46096 is 15 March 2026.
+        // Style 0 is General, as Excel always writes it: a cell with no s attribute uses index 0,
+        // so putting a real format there would silently apply it to every unstyled number in the
+        // file -- which is what CustomerId is, and it has to stay an int for the relationship.
+        // Style 1: the 00000 padded code. Style 2: a date. 46096 is 15 March 2026.
         var styles = $"<styleSheet xmlns=\"{ns}\">"
             + "<numFmts count=\"1\"><numFmt numFmtId=\"164\" formatCode=\"00000\"/></numFmts>"
-            + "<cellXfs count=\"2\"><xf numFmtId=\"164\" xfId=\"0\"/>"
+            + "<cellXfs count=\"3\"><xf numFmtId=\"0\" xfId=\"0\"/>"
+            + "<xf numFmtId=\"164\" xfId=\"0\"/>"
             + "<xf numFmtId=\"14\" xfId=\"0\"/></cellXfs></styleSheet>";
 
         var orders = $"<worksheet xmlns=\"{ns}\"><sheetData>"
@@ -2190,9 +2194,9 @@ Add to `CodeGenerator.Tests/App/GeneratedProjectBuildTests.cs`. It needs `using 
             + Inline("A1", "Code") + Inline("B1", "Placed")
             + Inline("C1", "Total") + Inline("D1", "CustomerId")
             + "</row>"
-            + "<row r=\"2\"><c r=\"A2\" s=\"0\"><v>42</v></c><c r=\"B2\" s=\"1\"><v>46096</v></c>"
+            + "<row r=\"2\"><c r=\"A2\" s=\"1\"><v>42</v></c><c r=\"B2\" s=\"2\"><v>46096</v></c>"
             + "<c r=\"C2\"><v>9.99</v></c><c r=\"D2\"><v>1</v></c></row>"
-            + "<row r=\"3\"><c r=\"A3\" s=\"0\"><v>7</v></c><c r=\"B3\" s=\"1\"><v>46097</v></c>"
+            + "<row r=\"3\"><c r=\"A3\" s=\"1\"><v>7</v></c><c r=\"B3\" s=\"2\"><v>46097</v></c>"
             + "<c r=\"C3\"><v>4.50</v></c><c r=\"D3\"><v>2</v></c></row>"
             + "</sheetData></worksheet>";
 
