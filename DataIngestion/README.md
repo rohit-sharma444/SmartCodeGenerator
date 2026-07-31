@@ -30,8 +30,8 @@ strings**, because CSV, TXT and JSON all arrive as text and typing is an inferen
 over that text. Conversion happens once, at seed-writing time, so no two stages
 have to agree about when a value became typed.
 
-That single shape is why Excel and SQL Server are cheap to add later: each is one
-more `IDataSourceReader` and nothing downstream changes.
+That single shape is why Excel cost one more `IDataSourceReader` and nothing
+downstream, and why SQL Server — the one format left — will cost the same.
 
 ## Where it sits
 
@@ -63,12 +63,12 @@ input to `DomainAppName`.
 | CSV | `csv` | RFC4180-shaped: quoted fields, embedded delimiters and newlines, doubled quotes, ragged rows, BOM, CRLF/LF. |
 | Delimited text | `txt` | Delimiter **sniffed** across tab / pipe / semicolon / comma. A non-tabular file is rejected with a message saying what to use instead. |
 | JSON | `json` | Array-of-objects to one table; a nested array becomes a child table with a foreign key, a nested object is flattened onto the parent. |
-| Excel | `excel` | Not in this build. Named at the prompt and answered with what to use instead — never a crash, never a silent fallback. |
-| SQL Server | `sql` | Not in this build, same treatment. |
+| Excel | `excel` | One visible sheet per entity. Shared strings, inline strings, formula results, booleans and sparse rows; a date serial becomes a date and a `00000`-formatted code keeps its zeros. Hidden sheets skipped; legacy binary `.xls` refused with instructions. |
+| SQL Server | `sql` | Not in this build. Named at the prompt and answered with what to use instead — never a crash, never a silent fallback. |
 
-Excel and SQL are deliberately on the menu: a menu missing Excel reads as "we
-never thought of Excel" rather than "Excel is next". Exactly one place —
-`DataSourceReaders` — knows which formats have readers.
+SQL is deliberately on the menu: a menu missing it reads as "we never thought of
+SQL" rather than "SQL is next". Exactly one place — `DataSourceReaders` — knows
+which formats have readers.
 
 ## Types
 
@@ -185,7 +185,7 @@ claim about someone's data.
 | `Schema/TabularTable.cs`, `TabularColumn.cs` | the one shape every reader produces |
 | `Schema/IDataSourceReader.cs` | the seam |
 | `Schema/ColumnTypeInference.cs` | values → one of the five types |
-| `Schema/Readers/` | `CsvReader`, `DelimitedTextReader`, `JsonTableReader`, and the `DataSourceReaders` registry |
+| `Schema/Readers/` | `CsvReader`, `DelimitedTextReader`, `JsonTableReader`, `ExcelReader` (with `ExcelWorkbook`, `ExcelSheetReader`, `ExcelNumberFormats`, `ExcelSerialDate`), and the `DataSourceReaders` registry |
 | `Normalization/` | `NormalizationFinding`, `NormalizationReport`, `NormalizationAnalyzer` (+ `.Dependencies`), `NormalizationPlan`, `NormalizationPrompt` |
 
 ## Why its own project

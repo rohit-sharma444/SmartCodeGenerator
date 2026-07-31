@@ -98,7 +98,7 @@ internal sealed class BuildAppCommand
         if (description.Length == 0)
         {
             Console.WriteLine("Usage: build app: <description of the system you want>");
-            Console.WriteLine("   or: build app from csv <path>   (also txt, json)");
+            Console.WriteLine("   or: build app from csv <path>   (also txt, json, excel)");
             return;
         }
 
@@ -149,14 +149,19 @@ internal sealed class BuildAppCommand
             return;
         }
 
+        // The file, not tables[0].Label: a workbook labels each table with its own sheet
+        // ("shop.xlsx [Orders]"), and a check that covers every sheet must not claim to be about
+        // the first one. Each finding still carries the sheet it came from.
+        var fileLabel = Path.GetFileName(source.Location);
+
         Console.WriteLine(
-            $"Read {tables.Count} table(s) from {tables[0].Label}: "
+            $"Read {tables.Count} table(s) from {fileLabel}: "
             + string.Join(", ", tables.Select(t => $"{t.Name} ({t.Rows.Count} rows)")));
 
         var report = CombineReports(tables);
 
         foreach (var line in NormalizationPrompt.Lines(
-                     report, tables[0].Label, tables.Sum(t => t.Rows.Count)))
+                     report, fileLabel, tables.Sum(t => t.Rows.Count)))
         {
             Console.WriteLine(line);
         }

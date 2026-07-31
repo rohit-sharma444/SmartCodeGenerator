@@ -83,18 +83,17 @@ public class DataSourceInterviewTests
         }
     }
 
-    /// <summary>Excel and SQL are on the menu but have no reader here. The user gets the reason and
-    /// the alternative, then another go -- not a crash and not a silent fallback.</summary>
-    [Theory]
-    [InlineData("excel")]
-    [InlineData("sql")]
-    public void AFormatWithNoReader_SaysSoAndReAsks(string format)
+    /// <summary>SQL is on the menu but has no reader here -- Excel had one added, so SQL is now the
+    /// only kind that exercises this branch. The user gets the reason and the alternative, then
+    /// another go -- not a crash and not a silent fallback.</summary>
+    [Fact]
+    public void AFormatWithNoReader_SaysSoAndReAsks()
     {
         var path = TempCsv();
 
         try
         {
-            var outcome = Run($"y\n{format}\ncsv\n{path}\n", out var written);
+            var outcome = Run($"y\nsql\ncsv\n{path}\n", out var written);
 
             Assert.Equal(InterviewDecision.Source, outcome.Decision);
             Assert.Contains("not in this build yet", written);

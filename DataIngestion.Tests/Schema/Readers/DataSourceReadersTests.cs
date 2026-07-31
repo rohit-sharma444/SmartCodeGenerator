@@ -10,33 +10,32 @@ public class DataSourceReadersTests
     [InlineData(DataSourceKind.Csv)]
     [InlineData(DataSourceKind.Txt)]
     [InlineData(DataSourceKind.Json)]
+    [InlineData(DataSourceKind.Excel)]
     public void SupportedKinds_HaveAReader(DataSourceKind kind)
     {
         Assert.True(DataSourceReaders.TryCreate(kind, out var reader));
         Assert.NotNull(reader);
     }
 
-    [Theory]
-    [InlineData(DataSourceKind.Excel)]
-    [InlineData(DataSourceKind.Sql)]
-    public void FormatsNotInThisBuild_HaveNoReader(DataSourceKind kind)
-        => Assert.False(DataSourceReaders.TryCreate(kind, out _));
+    /// <summary>SQL is the last kind with no reader.</summary>
+    [Fact]
+    public void SqlIsTheOnlyKindWithNoReader()
+        => Assert.False(DataSourceReaders.TryCreate(DataSourceKind.Sql, out _));
 
     /// <summary>A refusal without an alternative leaves the user at a dead end, so the message
-    /// must name the formats that do work.</summary>
-    [Theory]
-    [InlineData(DataSourceKind.Excel)]
-    [InlineData(DataSourceKind.Sql)]
-    public void NotSupportedMessage_NamesTheWorkingFormats(DataSourceKind kind)
+    /// must name the formats that do work — Excel now among them.</summary>
+    [Fact]
+    public void NotSupportedMessage_NamesTheWorkingFormats()
     {
-        var message = DataSourceReaders.NotSupportedMessage(kind);
+        var message = DataSourceReaders.NotSupportedMessage(DataSourceKind.Sql);
 
         Assert.Contains("csv", message);
         Assert.Contains("txt", message);
         Assert.Contains("json", message);
+        Assert.Contains("excel", message);
     }
 
-    /// <summary>Every kind is offered at the prompt, including the two with no reader.</summary>
+    /// <summary>Every kind is offered at the prompt, including the one with no reader.</summary>
     [Fact]
     public void Keys_OfferEveryKind()
         => Assert.Equal(new[] { "sql", "excel", "txt", "json", "csv" }, DataSourceReaders.Keys);

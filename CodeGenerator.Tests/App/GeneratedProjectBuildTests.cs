@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using System.IO;
+using System.IO.Compression;
+using System.Text;
 using System.Text.Json;
 using AppScaffolding;
 using AppScaffolding.Targets;
@@ -415,6 +417,163 @@ public class GeneratedProjectBuildTests
         finally
         {
             TryDeleteDirectory(workspace);
+        }
+    }
+
+    /// <summary>
+    /// The Excel path end to end: a workbook is read, modelled, scaffolded, and the result is
+    /// COMPILED. What makes this worth its runtime over the CSV case is the two things only a
+    /// workbook can get wrong — a date that is really a serial number, and a second sheet that has
+    /// to become a second class — and neither is visible to a substring assertion.
+    /// </summary>
+    [TestMethod]
+    [TestCategory("Integration")]
+    public void ProjectGeneratedFromAnExcelWorkbook_BuildsAndCarriesTheData()
+    {
+        // Short root: the scratchpad path plus a generated project's nesting exceeds MAX_PATH, and
+        // MSBuild reports that as MSB3030 "file not found" on a file that is plainly there.
+        var workspace = Path.Combine(Path.GetTempPath(), "gen_" + Path.GetRandomFileName());
+        Directory.CreateDirectory(workspace);
+
+        var xlsx = Path.Combine(workspace, "shop.xlsx");
+        WriteWorkbook(xlsx);
+
+        try
+        {
+            var tables = new ExcelReader().Read(new DataSourceSpec(DataSourceKind.Excel, xlsx));
+
+            // Two visible sheets, two entities. The hidden third sheet is not one.
+            Assert.HasCount(2, tables);
+            CollectionAssert.AreEquivalent(
+                new[] { "Orders", "Customers" }, tables.Select(t => t.Name).ToArray());
+
+            // The date column really is a date, not a five-digit serial.
+            var orders = tables.Single(t => t.Name == "Orders");
+            Assert.AreEqual("DateTime", orders.Columns.Single(c => c.Name == "Placed").Type);
+
+            // ...and the padded reference kept its zeros, so it stayed a string.
+            Assert.AreEqual("string", orders.Columns.Single(c => c.Name == "Code").Type);
+            Assert.AreEqual("00042", orders.Value(0, "Code"));
+
+            // The unstyled foreign key did NOT inherit the padding: only an int pairs with the
+            // entity the other sheet produced, so a stray zero here would drop the relationship
+            // and the generated navigation property with it.
+            Assert.AreEqual("int", orders.Columns.Single(c => c.Name == "CustomerId").Type);
+
+            var model = DataModelBuilder.Build(tables);
+
+            var order = model.Entities.Single(e => e.Name == "Order");
+            Assert.IsTrue(
+                order.Relationships.Any(r => r.Target == "Customer"),
+                "expected Order -> Customer, got: "
+                + string.Join(", ", order.Relationships.Select(r => r.Target)));
+            var imported = TabularImport.ToImportedData(tables);
+
+            Assert.IsTrue(TargetScaffolders.TryResolve("console", out var target));
+
+            var result = new AppScaffolder().Scaffold(
+                model, "Shop", workspace, target, PersistenceKind.Json, imported);
+
+            Assert.IsTrue(result.Success, "scaffold failed: " + result.Message);
+
+            // The generated project compiles. This is the assertion the rest exist to enable.
+            var (exit, output) = RunDotNet($"build \"{result.ProjectPath}\" -c Release");
+            Assert.AreEqual(0, exit, $"dotnet build failed:\n{output}");
+
+            var seedFolder = Path.Combine(
+                result.ProjectPath, "Data", SeedFileWriter.SeedFolderName);
+
+            var rows = JsonDocument.Parse(File.ReadAllText(Path.Combine(seedFolder, "Order.json")))
+                .RootElement.EnumerateArray().ToList();
+
+            Assert.HasCount(2, rows);
+            Assert.AreEqual(new DateTime(2026, 3, 15), rows[0].GetProperty("Placed").GetDateTime());
+            Assert.AreEqual("00042", rows[0].GetProperty("Code").GetString());
+            Assert.AreEqual(9.99m, rows[0].GetProperty("Total").GetDecimal());
+
+            // The second sheet became its own seeded class.
+            Assert.IsTrue(File.Exists(Path.Combine(seedFolder, "Customer.json")));
+        }
+        finally
+        {
+            TryDeleteDirectory(workspace);
+        }
+    }
+
+    /// <summary>
+    /// A minimal .xlsx written by hand. A committed binary workbook would be unreviewable bytes in
+    /// the repo, and this way the date serial and the padded format the test asserts on are visible
+    /// right next to the assertions.
+    /// </summary>
+    private static void WriteWorkbook(string path)
+    {
+        const string ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+        const string rns = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+
+        // Style 0 is General, as Excel always writes it: a cell with no s attribute uses index 0,
+        // so putting a real format there would silently apply it to every unstyled number in the
+        // file -- which is what CustomerId is, and it has to stay an int for the relationship.
+        // Style 1: the 00000 padded code. Style 2: a date. 46096 is 15 March 2026.
+        var styles = $"<styleSheet xmlns=\"{ns}\">"
+            + "<numFmts count=\"1\"><numFmt numFmtId=\"164\" formatCode=\"00000\"/></numFmts>"
+            + "<cellXfs count=\"3\"><xf numFmtId=\"0\" xfId=\"0\"/>"
+            + "<xf numFmtId=\"164\" xfId=\"0\"/>"
+            + "<xf numFmtId=\"14\" xfId=\"0\"/></cellXfs></styleSheet>";
+
+        var orders = $"<worksheet xmlns=\"{ns}\"><sheetData>"
+            + "<row r=\"1\">"
+            + Inline("A1", "Code") + Inline("B1", "Placed")
+            + Inline("C1", "Total") + Inline("D1", "CustomerId")
+            + "</row>"
+            + "<row r=\"2\"><c r=\"A2\" s=\"1\"><v>42</v></c><c r=\"B2\" s=\"2\"><v>46096</v></c>"
+            + "<c r=\"C2\"><v>9.99</v></c><c r=\"D2\"><v>1</v></c></row>"
+            + "<row r=\"3\"><c r=\"A3\" s=\"1\"><v>7</v></c><c r=\"B3\" s=\"2\"><v>46097</v></c>"
+            + "<c r=\"C3\"><v>4.50</v></c><c r=\"D3\"><v>2</v></c></row>"
+            + "</sheetData></worksheet>";
+
+        var customers = $"<worksheet xmlns=\"{ns}\"><sheetData>"
+            + "<row r=\"1\">" + Inline("A1", "Name") + Inline("B1", "City") + "</row>"
+            + "<row r=\"2\">" + Inline("A2", "Ada") + Inline("B2", "London") + "</row>"
+            + "<row r=\"3\">" + Inline("A3", "Grace") + Inline("B3", "York") + "</row>"
+            + "</sheetData></worksheet>";
+
+        var scratch = $"<worksheet xmlns=\"{ns}\"><sheetData>"
+            + "<row r=\"1\">" + Inline("A1", "Note") + "</row>"
+            + "<row r=\"2\">" + Inline("A2", "working") + "</row>"
+            + "</sheetData></worksheet>";
+
+        using var stream = File.Create(path);
+        using var zip = new ZipArchive(stream, ZipArchiveMode.Create);
+
+        Add(zip, "xl/worksheets/sheet1.xml", orders);
+        Add(zip, "xl/worksheets/sheet2.xml", customers);
+        Add(zip, "xl/worksheets/sheet3.xml", scratch);
+        Add(zip, "xl/styles.xml", styles);
+
+        Add(zip, "xl/workbook.xml",
+            $"<workbook xmlns=\"{ns}\" xmlns:r=\"{rns}\"><sheets>"
+            + "<sheet name=\"Orders\" sheetId=\"1\" r:id=\"rId1\"/>"
+            + "<sheet name=\"Customers\" sheetId=\"2\" r:id=\"rId2\"/>"
+            + "<sheet name=\"Scratch\" sheetId=\"3\" state=\"hidden\" r:id=\"rId3\"/>"
+            + "</sheets></workbook>");
+
+        Add(zip, "xl/_rels/workbook.xml.rels",
+            "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/"
+            + "relationships\">"
+            + $"<Relationship Id=\"rId1\" Target=\"worksheets/sheet1.xml\" Type=\"{rns}/worksheet\"/>"
+            + $"<Relationship Id=\"rId2\" Target=\"worksheets/sheet2.xml\" Type=\"{rns}/worksheet\"/>"
+            + $"<Relationship Id=\"rId3\" Target=\"worksheets/sheet3.xml\" Type=\"{rns}/worksheet\"/>"
+            + $"<Relationship Id=\"rId4\" Target=\"styles.xml\" Type=\"{rns}/styles\"/>"
+            + "</Relationships>");
+
+        static string Inline(string reference, string text)
+            => $"<c r=\"{reference}\" t=\"inlineStr\"><is><t>{text}</t></is></c>";
+
+        static void Add(ZipArchive zip, string name, string content)
+        {
+            using var entry = zip.CreateEntry(name).Open();
+            using var writer = new StreamWriter(entry, new UTF8Encoding(false));
+            writer.Write("<?xml version=\"1.0\"?>" + content);
         }
     }
 
