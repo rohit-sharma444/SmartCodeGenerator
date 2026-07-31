@@ -284,7 +284,8 @@ internal sealed class BuildAppCommand
                     if (!IsPersistenceAllowed(target, persistence.Value))
                     {
                         Console.WriteLine(
-                            "SQLite persistence isn't supported for the WPF target yet — it stays JSON.");
+                            "SQLite persistence isn't supported for the WPF or Windows Forms "
+                            + "targets yet — they stay JSON.");
                         break;
                     }
 
@@ -397,11 +398,15 @@ internal sealed class BuildAppCommand
         };
     }
 
-    /// <summary>SQLite is available for every target except WPF, whose view models read JsonStore
-    /// directly (off the shared seam).</summary>
+    /// <summary>The targets whose view models read JsonStore directly, off the shared store
+    /// seam, and so cannot honour a SQLite backend.</summary>
+    private static readonly string[] JsonOnlyTargets = ["wpf", "winforms"];
+
+    /// <summary>SQLite is available for every target except the two desktop ones, whose shared
+    /// view models read JsonStore directly (off the shared seam).</summary>
     internal static bool IsPersistenceAllowed(ITargetScaffolder target, PersistenceKind persistence)
-        => !(persistence == PersistenceKind.Sqlite
-             && string.Equals(target.Key, "wpf", StringComparison.OrdinalIgnoreCase));
+        => persistence != PersistenceKind.Sqlite
+           || !JsonOnlyTargets.Contains(target.Key, StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Adds the entity an <c>add &lt;name&gt;</c> line asks for, and returns what to report.
