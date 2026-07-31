@@ -88,4 +88,15 @@ internal static class ApplicationTypeMenu
             writer.WriteLine($"  Choose a number between 1 and {Choices.Length}, or c to cancel.");
         }
     }
+
+    /// <summary>
+    /// Asks for an application type the best way this console allows: an arrow-key list normally,
+    /// the numbered prompt when output is redirected — where <c>Console.SetCursorPosition</c> and
+    /// <c>ReadKey</c> throw "handle is invalid", the same condition
+    /// <see cref="CommandLineEditor"/> guards on.
+    /// </summary>
+    public static int? Choose()
+        => Console.IsOutputRedirected
+            ? ChooseNumbered(Console.In, Console.Out)
+            : SelectionPrompt.Choose(Title, Labels, 0);
 }
