@@ -32,9 +32,9 @@ public class BuildAppWizardTests
         var description = written.IndexOf("Describe the application", StringComparison.Ordinal);
         var data = written.IndexOf("Do you have existing data?", StringComparison.Ordinal);
 
-        Assert.IsTrue(description >= 0, "the description was never asked for");
-        Assert.IsTrue(data >= 0, "the data question was never asked");
-        Assert.IsTrue(data > description,
+        Assert.IsGreaterThanOrEqualTo(0, description, "the description was never asked for");
+        Assert.IsGreaterThanOrEqualTo(0, data, "the data question was never asked");
+        Assert.IsGreaterThan(description, data,
             $"the data question came first (description at {description}, data at {data})");
 
         Assert.AreEqual(WizardDecision.Proceed, outcome.Decision);
