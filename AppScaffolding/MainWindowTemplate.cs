@@ -46,6 +46,11 @@ public static class MainWindowTemplate
 """;
 
     /// <summary>Source of <c>Views/MainWindow.xaml.cs</c>.</summary>
+    /// <remarks>
+    /// The <c>IsDisplayable</c> / <c>IsEntityType</c> / <c>DisplayMember</c> helpers emitted here
+    /// are deliberately duplicated in <see cref="WinFormsMainFormTemplate.Source"/> rather than
+    /// shared: keep the two in sync if the display convention ever changes.
+    /// </remarks>
     public static string CodeBehind(string appName) => $$"""
 using System;
 using System.Windows;
@@ -120,9 +125,6 @@ public partial class MainWindow : Window
 
     // An entity type is one of the app's own model classes: a reference type that is neither a
     // string nor a generic collection. (Navigation collections are cancelled by IsDisplayable.)
-    //
-    // Deliberately duplicated in WinFormsMainFormTemplate rather than shared: keep the two in
-    // sync if the display convention (IsDisplayable / IsEntityType / DisplayMember) ever changes.
     private static bool IsEntityType(Type type) =>
         type.IsClass && type != typeof(string) && !type.IsGenericType;
 

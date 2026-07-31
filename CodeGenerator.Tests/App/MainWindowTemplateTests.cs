@@ -84,4 +84,19 @@ public class MainWindowTemplateTests
             source.IndexOf("TryBuildRelationshipColumn(sender, e)", StringComparison.Ordinal),
             "the FK combo branch must run and return before the nav-property cancel");
     }
+
+    [TestMethod]
+    public void CodeBehind_LeaksNoGeneratorImplementationDetails()
+    {
+        var source = MainWindowTemplate.CodeBehind("Payroll");
+
+        // The cross-reference note about the deliberate duplication with WinFormsMainFormTemplate
+        // is for a generator maintainer, not for a user reading their generated app's code-behind.
+        Assert.DoesNotContain(
+            "WinFormsMainFormTemplate", source,
+            "generator implementation details must not leak into the generated app's source");
+        Assert.DoesNotContain(
+            "MainWindowTemplate", source,
+            "generator implementation details must not leak into the generated app's source");
+    }
 }

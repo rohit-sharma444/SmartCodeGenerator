@@ -107,4 +107,19 @@ public class WinFormsTemplateTests
         // csproj opts in. The explicit pair always compiles.
         StringAssert.Contains(source, "Application.EnableVisualStyles()");
     }
+
+    [TestMethod]
+    public void MainForm_LeaksNoGeneratorImplementationDetails()
+    {
+        var source = WinFormsMainFormTemplate.Source("Payroll");
+
+        // The cross-reference note about the deliberate duplication with MainWindowTemplate is
+        // for a generator maintainer, not for a user reading their generated app's source.
+        Assert.DoesNotContain(
+            "WinFormsMainFormTemplate", source,
+            "generator implementation details must not leak into the generated app's source");
+        Assert.DoesNotContain(
+            "MainWindowTemplate", source,
+            "generator implementation details must not leak into the generated app's source");
+    }
 }

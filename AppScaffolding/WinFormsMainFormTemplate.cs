@@ -7,6 +7,11 @@ namespace AppScaffolding;
 public static class WinFormsMainFormTemplate
 {
     /// <summary>Source of <c>Views/MainForm.cs</c>.</summary>
+    /// <remarks>
+    /// The <c>IsDisplayable</c> / <c>IsEntityType</c> / <c>DisplayMember</c> helpers emitted here
+    /// are deliberately duplicated in <see cref="MainWindowTemplate.CodeBehind"/> rather than
+    /// shared: keep the two in sync if the display convention ever changes.
+    /// </remarks>
     public static string Source(string appName) => $$"""
 using System;
 using System.Collections.Specialized;
@@ -216,9 +221,6 @@ public sealed class MainForm : Form
 
     // An entity type is one of the app's own model classes: a reference type that is neither a
     // string nor a generic collection. (Navigation collections are dropped by IsDisplayable.)
-    //
-    // Deliberately duplicated in MainWindowTemplate rather than shared: keep the two in sync if
-    // the display convention (IsDisplayable / IsEntityType / DisplayMember) ever changes.
     private static bool IsEntityType(Type type) =>
         type.IsClass && type != typeof(string) && !type.IsGenericType;
 
