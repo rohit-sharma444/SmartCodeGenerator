@@ -17,7 +17,7 @@ public class ApplicationTypeMenuTests
                 "ASP.NET Web API",
                 "Console",
                 "Class Library",
-                "Windows Service",
+                "Worker Service (background)",
             },
             ApplicationTypeMenu.Labels.ToList());
     }
@@ -59,7 +59,7 @@ public class ApplicationTypeMenuTests
         var written = writer.ToString();
 
         StringAssert.Contains(written, "1) WPF (Windows desktop)");
-        StringAssert.Contains(written, "6) Windows Service");
+        StringAssert.Contains(written, "6) Worker Service (background)");
         StringAssert.Contains(written, "[1-6]");
     }
 

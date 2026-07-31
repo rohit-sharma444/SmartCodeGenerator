@@ -153,7 +153,7 @@ Piped or redirected input skips the wizard entirely and uses the inline form
 | --- | --- |
 | `build app: <description>` | Describe a system in plain English; this answers the wizard's first question — see above. Interactively, the wizard still asks which kind of app to build and whether you have data before running [domain discovery](../DomainDiscovery/README.md), printing the recognized topic and candidate entities, and opening a review loop. [`AppScaffolding`](../AppScaffolding/README.md) writes a runnable project into the workspace on approval. |
 | `build app` | Starts the same guided flow with no description typed inline, so it asks for one first — see [From existing data](#from-existing-data) below for what the data question adds. Piped, it prints usage. |
-| `build app[: <description>] from <format> <location> [normalize]` | Builds from existing data with no prompts, so it is scriptable. Formats: `csv`, `txt`, `json`. Add `normalize` to apply every normalization change the data needs. |
+| `build app[: <description>] from <format> <location> [normalize]` | Builds from existing data with no prompts when piped, so it is scriptable; interactively you are still asked the application type. Formats: `csv`, `txt`, `json`, `excel`. Add `normalize` to apply every normalization change the data needs. |
 
 In the review loop:
 
@@ -211,7 +211,7 @@ Application type:
   3) ASP.NET Web API
   4) Console
   5) Class Library
-  6) Windows Service
+  6) Worker Service (background)
 Choose [1-6] (default 1, c to cancel): 4
 
 Do you have existing data? [y/N]: y

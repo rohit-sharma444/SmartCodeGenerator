@@ -22,7 +22,7 @@ internal static class ApplicationTypeMenu
         new("ASP.NET Web API", "webapi"),
         new("Console", "console"),
         new("Class Library", "classlib"),
-        new("Windows Service", "worker"),
+        new("Worker Service (background)", "worker"),
     ];
 
     public const string Title = "Application type";
@@ -33,6 +33,12 @@ internal static class ApplicationTypeMenu
     /// <summary>The target the row at <paramref name="index"/> selects.</summary>
     public static ITargetScaffolder Resolve(int index)
     {
+        // An index outside the menu is a wiring bug rather than user input — every caller gets
+        // its index from this same menu. Guard it explicitly so that bug surfaces as the
+        // InvalidOperationException documented below, not an IndexOutOfRangeException.
+        if (index < 0 || index >= Choices.Length)
+            throw new InvalidOperationException($"No menu item at index {index}.");
+
         var key = Choices[index].Key;
 
         // Every key here is registered, so a miss is a wiring bug rather than user input.
