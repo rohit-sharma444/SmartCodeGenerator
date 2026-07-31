@@ -68,6 +68,45 @@ public sealed class RelayCommand : ICommand
 }
 """;
 
+    /// <summary>
+    /// Source of <c>ViewModels/RelayCommand.cs</c> for a target with no WPF reference.
+    /// </summary>
+    /// <remarks>
+    /// Same class, same namespace, same members as <see cref="RelayCommand"/> — deliberately, so
+    /// the shared <c>EntityViewModel</c> compiles against either. The difference is
+    /// <c>CanExecuteChanged</c>: the WPF variant routes it through
+    /// <c>CommandManager.RequerySuggested</c>, which lives in PresentationCore and does not exist
+    /// in a WinForms project. Here it is a plain event the view raises for itself.
+    /// </remarks>
+    public static string PortableRelayCommand(string appName) => $$"""
+using System;
+using System.Windows.Input;
+
+namespace {{appName}}.ViewModels;
+
+/// <summary>An ICommand over a delegate pair.</summary>
+public sealed class RelayCommand : ICommand
+{
+    private readonly Action _execute;
+    private readonly Func<bool>? _canExecute;
+
+    public RelayCommand(Action execute, Func<bool>? canExecute = null)
+    {
+        _execute = execute;
+        _canExecute = canExecute;
+    }
+
+    // The view raises this when something it knows about changes (a grid selection, most often).
+    public event EventHandler? CanExecuteChanged;
+
+    public void RaiseCanExecuteChanged() => CanExecuteChanged?.Invoke(this, EventArgs.Empty);
+
+    public bool CanExecute(object? parameter) => _canExecute?.Invoke() ?? true;
+
+    public void Execute(object? parameter) => _execute();
+}
+""";
+
     /// <summary>Source of <c>ViewModels/IEntityViewModel.cs</c>.</summary>
     public static string EntityViewModelInterface(string appName) => $$"""
 using System.Collections;

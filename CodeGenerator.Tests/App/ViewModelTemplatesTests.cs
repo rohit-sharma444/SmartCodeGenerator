@@ -94,4 +94,43 @@ public class ViewModelTemplatesTests
             ViewModelTemplates.EntityViewModel("Payroll"),
             "EntityViewModel<T> : ObservableObject, IEntityViewModel where T : class, new()");
     }
+
+    [TestMethod]
+    public void PortableRelayCommand_DoesNotDependOnWpf()
+    {
+        var source = ViewModelTemplates.PortableRelayCommand("Payroll");
+
+        // CommandManager lives in PresentationCore. A WinForms project has no reference to it,
+        // so its presence here is a compile error in the generated app, not a style question.
+        Assert.IsFalse(
+            source.Contains("CommandManager", StringComparison.Ordinal),
+            "the portable RelayCommand must not reference CommandManager");
+        Assert.IsFalse(
+            source.Contains("using System.Windows.Input;\nusing System.Windows.Controls;",
+                StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void PortableRelayCommand_IsTheSameClassUnderTheSameNamespace()
+    {
+        var source = ViewModelTemplates.PortableRelayCommand("Payroll");
+
+        // EntityViewModel is shared between both desktop targets and says `new RelayCommand(...)`,
+        // so the type it binds to must have the same name and namespace in either variant.
+        StringAssert.Contains(source, "namespace Payroll.ViewModels;");
+        StringAssert.Contains(source, "public sealed class RelayCommand : ICommand");
+        StringAssert.Contains(source, "public bool CanExecute(object? parameter)");
+        StringAssert.Contains(source, "public void Execute(object? parameter)");
+    }
+
+    [TestMethod]
+    public void PortableRelayCommand_LetsTheCallerRaiseCanExecuteChanged()
+    {
+        var source = ViewModelTemplates.PortableRelayCommand("Payroll");
+
+        // With no CommandManager there is no global requery, so the event has to be raisable —
+        // otherwise it is a dead member and nothing can ever re-evaluate CanExecute.
+        StringAssert.Contains(source, "public void RaiseCanExecuteChanged()");
+        StringAssert.Contains(source, "CanExecuteChanged?.Invoke(this, EventArgs.Empty)");
+    }
 }
