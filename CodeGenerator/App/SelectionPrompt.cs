@@ -23,6 +23,15 @@ internal static class SelectionPrompt
 
         var top = Console.CursorTop;
 
+        // Make room for the whole list before the first paint: if the cursor is already near the
+        // bottom of the buffer (routine — the header lines above just scrolled it there), painting
+        // without growing the buffer clips every row past the edge. Mirrors
+        // CommandLineEditor.RewriteLine's guard for the same situation.
+        var requiredHeight = top + labels.Count + 1;
+
+        if (requiredHeight >= Console.BufferHeight && OperatingSystem.IsWindows())
+            Console.BufferHeight = requiredHeight + 20;
+
         Paint(state, top);
 
         while (true)

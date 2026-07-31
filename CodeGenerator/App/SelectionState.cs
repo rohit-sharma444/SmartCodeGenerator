@@ -29,7 +29,10 @@ internal sealed class SelectionState
         Selected = key switch
         {
             ConsoleKey.UpArrow => Math.Max(0, Selected - 1),
-            ConsoleKey.DownArrow => Math.Min(_labels.Count - 1, Selected + 1),
+            // Max(0, ...) on the outside too: on an empty list, _labels.Count - 1 is -1, and
+            // without the outer clamp this would return -1 instead of staying at the invariant
+            // the constructor establishes (Selected is never negative).
+            ConsoleKey.DownArrow => Math.Max(0, Math.Min(_labels.Count - 1, Selected + 1)),
             _ => Selected,
         };
     }
