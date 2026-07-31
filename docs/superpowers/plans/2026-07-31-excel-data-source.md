@@ -798,6 +798,7 @@ public static class ExcelSheetReader
         foreach (var row in rows)
         {
             var cells = new List<string?>();
+            var written = false;
 
             // Where an unreferenced cell goes: the column after the last one placed.
             var cursor = 0;
@@ -810,6 +811,7 @@ public static class ExcelSheetReader
                     cells.Add(null);
 
                 var value = CellValue(cell, workbook);
+                written |= HasContent(cell);
 
                 if (cells.Count == index)
                     cells.Add(value);
@@ -820,8 +822,12 @@ public static class ExcelSheetReader
             }
 
             // A used range that overruns its data is ordinary, and a row of empty cells is not a
-            // row of nulls — the same rule CsvReader.ParseFields applies to a blank line.
-            if (cells.Any(c => !string.IsNullOrWhiteSpace(c)))
+            // row of nulls — the same rule CsvReader.ParseFields applies to a blank line. The test
+            // is what the file wrote, not what could be read from it: a row holding one #N/A is a
+            // row the user filled in, and dropping it would shorten the table. CsvReader's other
+            // half of that rule — a line with a delimiter is a record however empty — has no
+            // analogue here, because Excel writes styled-but-empty cells across the used range.
+            if (written)
                 records.Add(cells.ToArray());
         }
 
@@ -851,6 +857,15 @@ public static class ExcelSheetReader
 
         return letters == 0 ? null : index - 1;
     }
+
+    /// <summary>
+    /// Whether the file wrote anything in this cell. An empty cell is normally not written at all,
+    /// but a cell carrying only a style or a stale reference is written empty, and that is the one
+    /// the used range overruns with.
+    /// </summary>
+    private static bool HasContent(XElement cell)
+        => cell.Element(ExcelWorkbook.Main + "v") is not null
+        || cell.Element(ExcelWorkbook.Main + "is") is not null;
 
     private static string? CellValue(XElement cell, ExcelWorkbook workbook)
     {
