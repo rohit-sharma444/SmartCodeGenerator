@@ -16,9 +16,9 @@
 | Command | Description | Example |
 | --- | --- | --- |
 | `add <name>` | Review loop: adds an entity to the candidate model. The name keeps the shape you type, so a compound survives; several words become one class name. | `add cash register` |
-| `approve [target] [sqlite]` | Review loop: generates the app. Targets: wpf (default), console, webapi, classlib, worker. Add 'sqlite' for EF Core persistence (JSON is the default; WPF is JSON-only). Alias: a. | `approve webapi sqlite` |
-| `build app` | Starts the same flow with no description: asks whether you already have data, and builds the model from it if you do. | `build app` |
-| `build app: <description>` | Describes a system in plain English, discovers a domain model for it, then opens a review loop before any code is written. | `build app: a library that lends books to members` |
+| `approve [target] [sqlite]` | Review loop: generates the app using the type chosen at the start. Name a target to override it: wpf (default), winforms, console, webapi, classlib, worker. Add 'sqlite' for EF Core persistence (JSON is the default; the wpf and winforms targets are JSON-only). Alias: a. | `approve webapi sqlite` |
+| `build app` | Starts the same guided flow, asking for the description first, then the application type, then whether you already have data. | `build app` |
+| `build app: <description>` | Describes a system in plain English, then asks which kind of app to build and whether you have data, discovers a domain model, and opens a review loop before any code is written. | `build app: a library that lends books to members` |
 | `build app: <description> from <format> <location>` | Builds the model from existing data without prompting. Formats: csv, txt, json, excel (sql is not in this build yet). Add 'normalize' to apply every normalization change the data needs. | `build app: order tracking from csv D:\data\orders.csv normalize` |
 | `cancel` | Review loop: abandons the model without generating anything. Alias: c. | `cancel` |
 | `field <entity> <name>[:<type>]` | Review loop: adds a field to an entity. Omit the type to have it inferred; explicit types are string, int, decimal, bool or DateTime. | `field Book Title:string` |

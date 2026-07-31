@@ -457,16 +457,17 @@ public static class CommandDictionary
         {
             Category = "Build App",
             Command = "build app: <description>",
-            Description = "Describes a system in plain English, discovers a domain model for it, "
-                        + "then opens a review loop before any code is written.",
+            Description = "Describes a system in plain English, then asks which kind of app to "
+                        + "build and whether you have data, discovers a domain model, and opens a "
+                        + "review loop before any code is written.",
             Example = "build app: a library that lends books to members"
         },
         new()
         {
             Category = "Build App",
             Command = "build app",
-            Description = "Starts the same flow with no description: asks whether you already have "
-                        + "data, and builds the model from it if you do.",
+            Description = "Starts the same guided flow, asking for the description first, then the "
+                        + "application type, then whether you already have data.",
             Example = "build app"
         },
         new()
@@ -484,8 +485,10 @@ public static class CommandDictionary
         {
             Category = "Build App",
             Command = "approve [target] [sqlite]",
-            Description = "Review loop: generates the app. Targets: wpf (default), console, webapi, classlib, worker. "
-                        + "Add 'sqlite' for EF Core persistence (JSON is the default; WPF is JSON-only). Alias: a.",
+            Description = "Review loop: generates the app using the type chosen at the start. "
+                        + "Name a target to override it: wpf (default), winforms, console, webapi, "
+                        + "classlib, worker. Add 'sqlite' for EF Core persistence (JSON is the "
+                        + "default; the wpf and winforms targets are JSON-only). Alias: a.",
             Example = "approve webapi sqlite"
         },
         new()

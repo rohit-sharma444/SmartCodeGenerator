@@ -135,18 +135,32 @@ before parsing, so a predicate that already carries its own verb
 
 ### Domain discovery
 
+An interactive `build app` asks three questions before any work starts: what the application is
+for, which kind of app to build, and whether you already have data. The kinds are WPF (Windows
+desktop), Windows Desktop (WinForms), ASP.NET Web API, Console, Class Library and Windows
+Service; the menu is arrow-key driven, and falls back to a numbered prompt when output is
+redirected. Typing a description inline (`build app: a library that lends books`) answers the
+first question and starts at the second.
+
+Targets: `wpf` (default), `winforms`, `console`, `webapi`, `classlib`, `worker`. `approve
+<target>` at the review loop overrides the type chosen at the start. SQLite persistence is
+available for every target except `wpf` and `winforms`, which are JSON-only.
+
+Piped or redirected input skips the wizard entirely and uses the inline form
+(`build app: <description> from <format> <location>`), picking a target at `approve`.
+
 | Command | Description |
 | --- | --- |
-| `build app: <description>` | Describe a system in plain English; runs [domain discovery](../DomainDiscovery/README.md), prints the recognized topic and candidate entities, and opens a review loop. On approval you pick an output target, and [`AppScaffolding`](../AppScaffolding/README.md) writes a runnable project for it into the workspace. |
-| `build app` | The same flow with no description. Interactively it asks whether you already have data and, if you do, builds the model from that data instead of from Wikipedia — see [From existing data](#from-existing-data) below. Piped, it prints usage. |
+| `build app: <description>` | Describe a system in plain English; this answers the wizard's first question — see above. Interactively, the wizard still asks which kind of app to build and whether you have data before running [domain discovery](../DomainDiscovery/README.md), printing the recognized topic and candidate entities, and opening a review loop. [`AppScaffolding`](../AppScaffolding/README.md) writes a runnable project into the workspace on approval. |
+| `build app` | Starts the same guided flow with no description typed inline, so it asks for one first — see [From existing data](#from-existing-data) below for what the data question adds. Piped, it prints usage. |
 | `build app[: <description>] from <format> <location> [normalize]` | Builds from existing data with no prompts, so it is scriptable. Formats: `csv`, `txt`, `json`. Add `normalize` to apply every normalization change the data needs. |
 
 In the review loop:
 
 | Input | Effect |
 | --- | --- |
-| `approve` \| `a` | Generate an app from the model as it stands, prompting for the output target. |
-| `approve <target>` | Generate straight to a target, skipping the prompt — one of `wpf` (default), `console`, `webapi`, `classlib`, `worker`. |
+| `approve` \| `a` | Generate an app from the model as it stands, using the type chosen at the wizard's start; with none (a piped run) it prompts for the output target instead. |
+| `approve <target>` | Generate straight to a target, overriding the type chosen at the start (or skipping the prompt, if none was chosen) — one of `wpf` (default), `winforms`, `console`, `webapi`, `classlib`, `worker`. |
 | `add <name>` | Add an entity. The name keeps the shape you type (`add CashRegister` gives `CashRegister`), and several words become one class name (`add cash register` gives the same). |
 | `remove <name>` | Remove an entity. |
 | `rename <old> <new>` | Rename an entity. |
@@ -166,8 +180,9 @@ build app: a library that lends books to members
 approve console
 ```
 
-A bare `approve` prompts for the target; a blank answer (or piped input, so
-existing scripts are unaffected) keeps the WPF default.
+A bare `approve` uses the type the wizard already asked for; only when none was
+chosen (a piped run) does it prompt, and there a blank answer — or piped input, so
+existing scripts are unaffected — keeps the WPF default.
 
 Discovery reads Wikipedia from the local store built by
 [`WikipediaDumpImporter`](../WikipediaDumpImporter/README.md). Without that store
@@ -177,14 +192,32 @@ workspace; the CLI warns at startup when the store is missing.
 #### From existing data
 
 Guessing at Wikipedia is the wrong pipeline when the user already has the data. A
-bare `build app` at an interactive prompt therefore asks first:
+bare `build app` at an interactive prompt asks for a description and an
+application type first (see above), then asks about data:
 
 ```
 CodeGenerator >> build app
+
+Describe the application you want to build.
+(Enter to skip if you'll point at a data file instead, 'c' to cancel)
+> a shop that tracks orders
+
+Application type:
+  1) WPF (Windows desktop)
+  2) Windows Desktop (WinForms)
+  3) ASP.NET Web API
+  4) Console
+  5) Class Library
+  6) Windows Service
+Choose [1-6] (default 1, c to cancel): 4
+
 Do you have existing data? [y/N]: y
 Format [sql/excel/txt/json/csv] (c to cancel): csv
 CSV file path (c to cancel): D:\data\orders.csv
 ```
+
+(The application type menu shown here is the numbered fallback used when input or
+output is redirected; interactively it is the same list navigated with arrow keys.)
 
 | Answer | Effect |
 | --- | --- |
@@ -224,8 +257,10 @@ normalization split. On `approve` the generated app is **seeded with your rows**
 `Data/Seed/<Class>.json` per entity, loaded on first run, capped at 1000 rows per
 entity with the cap stated rather than silent.
 
-To skip the prompts entirely — for scripts, or just brevity — name the source
-inline:
+To skip the description and data questions — for scripts, or just brevity — name
+the source inline. Interactively you're still asked the application type (add
+`approve <target>` to override it too); piped input skips every question,
+including that one:
 
 ```
 build app: order tracking from csv D:\data\orders.csv
