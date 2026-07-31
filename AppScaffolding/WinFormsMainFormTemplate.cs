@@ -216,6 +216,9 @@ public sealed class MainForm : Form
 
     // An entity type is one of the app's own model classes: a reference type that is neither a
     // string nor a generic collection. (Navigation collections are dropped by IsDisplayable.)
+    //
+    // Deliberately duplicated in MainWindowTemplate rather than shared: keep the two in sync if
+    // the display convention (IsDisplayable / IsEntityType / DisplayMember) ever changes.
     private static bool IsEntityType(Type type) =>
         type.IsClass && type != typeof(string) && !type.IsGenericType;
 

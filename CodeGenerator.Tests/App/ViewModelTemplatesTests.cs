@@ -125,8 +125,9 @@ public class ViewModelTemplatesTests
     {
         var source = ViewModelTemplates.PortableRelayCommand("Payroll");
 
-        // With no CommandManager there is no global requery, so the event has to be raisable —
-        // otherwise it is a dead member and nothing can ever re-evaluate CanExecute.
+        // The generated WinForms view never calls this (it polls CanExecute directly instead),
+        // but the member must still exist and be invocable: it is the seam hand-written code
+        // uses to signal a change itself.
         StringAssert.Contains(source, "public void RaiseCanExecuteChanged()");
         StringAssert.Contains(source, "CanExecuteChanged?.Invoke(this, EventArgs.Empty)");
     }

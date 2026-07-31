@@ -6,7 +6,7 @@ namespace AppScaffolding.Targets;
 /// app has, and <c>RelationshipResolver</c> is pure reflection over <c>IEntityViewModel</c>.
 /// </summary>
 /// <remarks>
-/// <paramref name="relayCommandSource"/> is the one thing that genuinely differs: WPF's
+/// <c>relayCommandSource</c> is the one thing that genuinely differs: WPF's
 /// <c>RelayCommand</c> requeries through <c>CommandManager</c> (PresentationCore), WinForms' does
 /// not. Both emit the same class into the same file, so <c>EntityViewModel</c> is shared unchanged.
 /// </remarks>

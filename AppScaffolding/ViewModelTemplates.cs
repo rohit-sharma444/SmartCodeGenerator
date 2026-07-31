@@ -76,7 +76,10 @@ public sealed class RelayCommand : ICommand
     /// the shared <c>EntityViewModel</c> compiles against either. The difference is
     /// <c>CanExecuteChanged</c>: the WPF variant routes it through
     /// <c>CommandManager.RequerySuggested</c>, which lives in PresentationCore and does not exist
-    /// in a WinForms project. Here it is a plain event the view raises for itself.
+    /// in a WinForms project. Here the generated view re-evaluates <c>CanExecute</c> directly when
+    /// the grid selection changes (see <c>WinFormsMainFormTemplate</c>), so
+    /// <c>RaiseCanExecuteChanged</c> is never called by generated code; it exists as a seam for
+    /// hand-written code that wants to signal a change itself.
     /// </remarks>
     public static string PortableRelayCommand(string appName) => $$"""
 using System;
@@ -96,7 +99,9 @@ public sealed class RelayCommand : ICommand
         _canExecute = canExecute;
     }
 
-    // The view raises this when something it knows about changes (a grid selection, most often).
+    // The generated view re-evaluates CanExecute directly instead of raising this (see
+    // MainForm's grid.SelectionChanged handler). This method is a seam for hand-written code
+    // that wants to signal a change itself.
     public event EventHandler? CanExecuteChanged;
 
     public void RaiseCanExecuteChanged() => CanExecuteChanged?.Invoke(this, EventArgs.Empty);
