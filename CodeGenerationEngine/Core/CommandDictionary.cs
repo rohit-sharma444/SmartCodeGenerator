@@ -474,7 +474,8 @@ public static class CommandDictionary
         {
             Category = "Build App",
             Command = "build app: <description> from <format> <location>",
-            Description = "Builds the model from existing data without prompting. Formats: csv, "
+            Description = "Builds the model from existing data with no prompts when piped; "
+                        + "interactively you are still asked the application type. Formats: csv, "
                         + "txt, json, excel (sql is not in this build yet). Add 'normalize' to "
                         + "apply every normalization change the data needs.",
             Example = "build app: order tracking from csv D:\\data\\orders.csv normalize"
