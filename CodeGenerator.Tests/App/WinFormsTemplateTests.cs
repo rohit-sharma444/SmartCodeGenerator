@@ -69,6 +69,31 @@ public class WinFormsTemplateTests
     }
 
     [TestMethod]
+    public void MainForm_RunsColumnRulesOnEveryDataBindingComplete()
+    {
+        var source = WinFormsMainFormTemplate.Source("Payroll");
+
+        // DataBindingComplete fires more than once during ordinary startup, and WinForms'
+        // AutoGenerateColumns machinery re-adds a removed navigation column on the later fire.
+        // A one-shot latch here means the removed column silently comes back. The rules must run
+        // on every fire.
+        StringAssert.Contains(source, "grid.DataBindingComplete += (_, _) => ApplyColumnRules(grid, model);");
+        Assert.DoesNotContain(
+            "columnsAdjusted", source,
+            "the one-shot latch must not reappear: it lets WinForms re-add a removed navigation column unchecked");
+    }
+
+    [TestMethod]
+    public void MainForm_ColumnRulesAreIdempotent()
+    {
+        var source = WinFormsMainFormTemplate.Source("Payroll");
+
+        // Because the rules now run on every DataBindingComplete, a combo column already built on
+        // an earlier pass must be left alone rather than torn down and rebuilt each time.
+        StringAssert.Contains(source, "if (column is DataGridViewComboBoxColumn)");
+    }
+
+    [TestMethod]
     public void Program_RunsTheMainFormOnAnStaThread()
     {
         var source = WinFormsProgramTemplate.Source("Payroll");

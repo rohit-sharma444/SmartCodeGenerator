@@ -67,18 +67,12 @@ public sealed class MainForm : Form
         if (entity.Items is INotifyCollectionChanged observable)
             observable.CollectionChanged += (_, _) => binding.ResetBindings(false);
 
-        // Columns are generated when the binding completes, and ResetBindings raises it again.
-        // The rules are applied once: re-running them would rebuild the combo columns on
-        // every add.
-        var columnsAdjusted = false;
-        grid.DataBindingComplete += (_, _) =>
-        {
-            if (columnsAdjusted)
-                return;
-
-            columnsAdjusted = true;
-            ApplyColumnRules(grid, model);
-        };
+        // DataBindingComplete fires more than once during ordinary startup: once when the
+        // BindingSource first populates the grid, and again once the grid is actually realized,
+        // at which point WinForms' own AutoGenerateColumns machinery re-adds a column for any
+        // bound property that has no matching column -- including one this method just removed.
+        // So the rules must run on every fire, and must therefore be idempotent.
+        grid.DataBindingComplete += (_, _) => ApplyColumnRules(grid, model);
 
         var add = new Button { Text = "Add", Width = 80 };
         var delete = new Button { Text = "Delete", Width = 80, Enabled = false };
@@ -148,12 +142,18 @@ public sealed class MainForm : Form
             if (property is null)
                 continue;
 
-            // Id is generated, so it is shown but never edited.
+            // Id is generated, so it is shown but never edited. Setting ReadOnly again on a later
+            // pass is harmless, so no guard is needed here.
             if (string.Equals(column.DataPropertyName, "Id", StringComparison.OrdinalIgnoreCase))
             {
                 column.ReadOnly = true;
                 continue;
             }
+
+            // Already swapped to a combo box on an earlier pass: leave it alone rather than
+            // tearing it down and rebuilding it on every DataBindingComplete.
+            if (column is DataGridViewComboBoxColumn)
+                continue;
 
             // A foreign key is shown as a combo box over the related entity's rows, so a user
             // picks a Customer rather than typing its id.
