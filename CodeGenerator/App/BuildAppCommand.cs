@@ -252,9 +252,10 @@ internal sealed class BuildAppCommand
             if (target is not null)
                 Console.WriteLine($"  Target: {ApplicationTypeMenu.LabelFor(target)}");
 
-            Console.WriteLine("  [a]pprove [target] [sqlite]   add <name>   remove <name>   rename <old> <new>");
-            Console.WriteLine("  field <entity> <name>[:<type>]   unfield <entity> <name>   why [name]   [c]ancel");
+            Console.WriteLine("\n       [a]pprove [target] [sqlite] add <name>  remove <name>  rename <old> <new>  field <entity> <name>[:<type>]  unfield <entity> <name>  why [name]");
+            Console.WriteLine("         [c]ancel");
             Console.Write("> ");
+
             var input = Console.ReadLine();
             if (input is null)   // stdin closed / EOF — treat as cancel, never busy-loop
             {
@@ -508,14 +509,14 @@ internal sealed class BuildAppCommand
         if (model.Entities.Count > 0)
         {
             Console.WriteLine();
-            Console.WriteLine(
-                "Each entity also gets a <Entity>Repository with CRUD: "
-                + "GetAll, GetById, Create, Update, Delete");
+            //Console.WriteLine(
+            //    "Each entity also gets a <Entity>Repository with CRUD: "
+            //    + "GetAll, GetById, Create, Update, Delete");
         }
 
         // Rejections, demoted suggestions and skipped nouns, grouped by the reason each was
         // given. This replaces a bare list of rejected names that said nothing about why.
-        foreach (var line in DecisionReport.Summary(model))
-            Console.WriteLine(line);
+    //    foreach (var line in DecisionReport.Summary(model))
+    //        Console.WriteLine(line);
     }
 }
