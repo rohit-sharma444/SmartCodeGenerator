@@ -55,6 +55,17 @@ internal static class ApplicationTypeMenu
                ?.Label
            ?? target.Key;
 
+    /// <summary>The row that selects <paramref name="target"/>, or 0 when it is not on the menu.
+    /// Falls back rather than throwing, same tolerance as <see cref="LabelFor"/> — a target that
+    /// slips off the menu still needs some row pre-selected.</summary>
+    public static int IndexOf(ITargetScaffolder target)
+    {
+        var index = Array.FindIndex(
+            Choices, c => string.Equals(c.Key, target.Key, StringComparison.OrdinalIgnoreCase));
+
+        return index < 0 ? 0 : index;
+    }
+
     /// <summary>
     /// The fallback prompt: a numbered list read a line at a time. Used when the console cannot
     /// be repainted (redirected output makes the cursor APIs throw), and testable for the same
@@ -99,10 +110,19 @@ internal static class ApplicationTypeMenu
     /// Asks for an application type the best way this console allows: an arrow-key list normally,
     /// the numbered prompt when input or output is redirected. <c>Console.SetCursorPosition</c>
     /// throws when output is redirected; <c>Console.ReadKey</c> throws when input is redirected.
-    /// Matches the guard in <see cref="CommandLineEditor.ReadCommand"/>.
+    /// Matches the guard in <see cref="CommandLineEditor.ReadCommand"/>. Defaults to the first row.
     /// </summary>
     public static int? Choose()
+        => Choose(0);
+
+    /// <summary>
+    /// Same as the parameterless <see cref="Choose()"/>, but with <paramref name="defaultIndex"/>
+    /// pre-selected — how a target the wizard already settled stays chosen unless the user moves
+    /// off it. The numbered fallback has no notion of a default row beyond "1", so a redirected
+    /// console still goes through <see cref="ChooseNumbered"/> unchanged.
+    /// </summary>
+    public static int? Choose(int defaultIndex)
         => Console.IsInputRedirected || Console.IsOutputRedirected
             ? ChooseNumbered(Console.In, Console.Out)
-            : SelectionPrompt.Choose(Title, Labels, 0);
+            : SelectionPrompt.Choose(Title, Labels, defaultIndex);
 }

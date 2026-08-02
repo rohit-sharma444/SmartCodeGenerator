@@ -420,7 +420,8 @@ internal sealed class BuildAppCommand
 
     /// <summary>
     /// Collects <paramref name="action"/>'s arguments, one typed line each. Null means the user
-    /// abandoned the action — a blank answer, or stdin closing — and the loop returns to the list.
+    /// abandoned the action — a blank answer, or stdin closing — and the loop returns to the list
+    /// (except <c>why</c>, where a blank answer means the whole report).
     /// </summary>
     private static IReadOnlyList<string>? AskArguments(ReviewAction action)
     {
@@ -449,27 +450,27 @@ internal sealed class BuildAppCommand
     }
 
     /// <summary>
-    /// Asks for what <c>approve</c> needs through pickers: the application type when the wizard
-    /// has not already settled one, and the persistence backend when the chosen target can
+    /// Asks for what <c>approve</c> needs through pickers: the application type — always, pre-
+    /// selecting whatever the wizard already settled so Enter simply confirms it and ↑↓ can still
+    /// switch to something else — and the persistence backend when the newly chosen target can
     /// actually honour SQLite. Null means the user pressed Esc and nothing should be generated.
     /// </summary>
     private static (ITargetScaffolder Target, PersistenceKind Persistence)? ApproveInteractively(
         ITargetScaffolder? preselected)
     {
-        var target = preselected;
+        var index = preselected is null
+            ? ApplicationTypeMenu.Choose()
+            : ApplicationTypeMenu.Choose(ApplicationTypeMenu.IndexOf(preselected));
 
-        if (target is null)
-        {
-            var index = ApplicationTypeMenu.Choose();
+        if (index is null)
+            return null;
 
-            if (index is null)
-                return null;
-
-            target = ApplicationTypeMenu.Resolve(index.Value);
-        }
+        var target = ApplicationTypeMenu.Resolve(index.Value);
 
         // WPF and WinForms read JsonStore directly, so offering a choice here would only lead to
-        // the rejection the typed path prints. Skip the question instead.
+        // the rejection the typed path prints. Skip the question instead. Checked against the
+        // target just chosen, not the preselected one — switching away from WPF must unlock the
+        // SQLite question, and switching to it must suppress it.
         if (!IsPersistenceAllowed(target, PersistenceKind.Sqlite))
             return (target, PersistenceKind.Json);
 
@@ -646,8 +647,9 @@ internal sealed class BuildAppCommand
             Console.WriteLine($"  - {entity.Name} [{entity.Provenance}]{fields}{relationships}");
         }
 
-        // Every entity is scaffolded with a typed repository exposing these CRUD functions,
-        // so the review loop shows the full shape of what approval will generate.
+        // Every entity is scaffolded with a typed repository exposing these CRUD functions, but
+        // spelling that out here was judged noise for the review loop, so the describing line
+        // stays deliberately commented out below — only the blank-line spacer still runs.
         if (model.Entities.Count > 0)
         {
             Console.WriteLine();
@@ -657,7 +659,8 @@ internal sealed class BuildAppCommand
         }
 
         // Rejections, demoted suggestions and skipped nouns, grouped by the reason each was
-        // given. This replaces a bare list of rejected names that said nothing about why.
+        // given, were judged noise here too and are deliberately suppressed from this printout.
+        // DecisionReport.All is still reachable through the review loop's `why` action.
     //    foreach (var line in DecisionReport.Summary(model))
     //        Console.WriteLine(line);
     }

@@ -359,8 +359,8 @@ internal sealed class CommandLineEditor
         if (text.Length <= available)
             return (text, cursorPosition);
 
-        // Scroll only once the caret would leave the row, so editing inside a long command
-        // does not shuffle the text under it on every keystroke.
+        // The window shows the text up to the caret: for a command longer than the row, the
+        // caret sits at the last visible column and text to the right of the caret is not shown.
         var offset = Math.Max(0, cursorPosition - available + 1);
 
         return (
@@ -377,25 +377,14 @@ internal sealed class CommandLineEditor
     /// console row per suggestion, so a line that reached the width would wrap onto a row
     /// the clear loop never visits and stay on screen after Enter. Stopping one column
     /// short also matches the width the clear loop blanks, so the last column is never
-    /// written in the first place.
+    /// written in the first place. The clipping rule itself lives in <see cref="ConsoleLine"/>,
+    /// shared with <see cref="SelectionPrompt"/> rather than duplicated here.
     /// </summary>
     internal static string FormatSuggestionLine(CommandInfo suggestion, int width)
     {
         var line = $"  {suggestion.Command,-40} {suggestion.Description}";
 
-        var limit = width - 1;
-
-        if (limit <= 0)
-            return string.Empty;
-
-        if (line.Length <= limit)
-            return line;
-
-        const string ellipsis = "...";
-
-        return limit <= ellipsis.Length
-            ? line[..limit]
-            : line[..(limit - ellipsis.Length)] + ellipsis;
+        return ConsoleLine.Clip(line, width);
     }
 
     private void LoadPreviousHistory(ref List<char> buffer, ref int cursorPosition)
