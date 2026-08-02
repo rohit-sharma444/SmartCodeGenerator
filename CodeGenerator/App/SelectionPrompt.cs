@@ -74,7 +74,12 @@ internal static class SelectionPrompt
             // Blank the row first: the previous marker has to go, and the labels differ in length.
             Console.Write(new string(' ', Math.Max(0, Console.BufferWidth - 1)));
             Console.SetCursorPosition(0, row);
-            Console.Write(lines[i]);
+
+            // Clipped to the same width the blank above just cleared: an unclipped label longer
+            // than the console would wrap onto the next list row and could scroll the buffer
+            // mid-paint, invalidating the captured `top`. Shared with
+            // CommandLineEditor.FormatSuggestionLine via ConsoleLine so there is one clipping rule.
+            Console.Write(ConsoleLine.Clip(lines[i], Console.BufferWidth));
         }
     }
 

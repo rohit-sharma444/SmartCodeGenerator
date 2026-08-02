@@ -54,9 +54,7 @@ internal sealed class CommandLineEditor
                     // suggestion lines RewriteLine drew below the prompt must be cleared here —
                     // otherwise they linger on screen after the command is submitted.
                     ClearSuggestionLines();
-                    Console.SetCursorPosition(
-                        Math.Min(Prompt.Length + buffer.Count, Console.BufferWidth - 1),
-                        Math.Max(0, _inputTop));
+                    RedrawSubmittedLine(buffer);
                     return CommitCommand(buffer);
 
                 case ConsoleKey.Tab:
@@ -291,10 +289,15 @@ internal sealed class CommandLineEditor
         ClearSuggestionLines();
 
         // Draw prompt + text
+        var window = ClipInputToWindow(
+            text,
+            cursorPosition,
+            Console.BufferWidth - 1 - prompt.Length);
+
         Console.SetCursorPosition(0, inputTop);
 
         Console.Write(prompt);
-        Console.Write(text);
+        Console.Write(window.Text);
 
         // Draw suggestions
         if (visibleSuggestions > 0)
@@ -304,15 +307,14 @@ internal sealed class CommandLineEditor
 
             for (int i = 0; i < visibleSuggestions; i++)
             {
-                var suggestion = suggestions[i];
-
                 Console.SetCursorPosition(
                     0,
                     inputTop + i + 1);
 
                 Console.Write(
-                    $"  {suggestion.Command,-40} " +
-                    $"{suggestion.Description}");
+                    FormatSuggestionLine(
+                        suggestions[i],
+                        Console.BufferWidth));
             }
 
             Console.ResetColor();
@@ -324,12 +326,65 @@ internal sealed class CommandLineEditor
         // Restore cursor
         var cursorLeft =
             Math.Min(
-                prompt.Length + cursorPosition,
+                prompt.Length + window.CursorColumn,
                 Console.BufferWidth - 1);
 
         Console.SetCursorPosition(
             cursorLeft,
             inputTop);
+    }
+
+    /// <summary>
+    /// Picks the slice of <paramref name="text"/> to show on the input row, given the
+    /// <paramref name="available"/> columns left after the prompt, and reports the column
+    /// the caret lands on within that slice.
+    ///
+    /// The input row is exactly one console row — everything below it belongs to the
+    /// suggestion list, and <see cref="ClearSuggestionLines"/> only blanks rows it counted.
+    /// A command that reached the console width would wrap onto the first suggestion row,
+    /// be drawn over while typing, and then be blanked on Enter, losing its tail from both
+    /// the screen and the scrollback. So the row is a window that scrolls sideways to keep
+    /// the caret in view instead, the way any single-line field does. The whole command is
+    /// still what gets submitted, and <see cref="RedrawSubmittedLine"/> puts all of it back
+    /// on screen at that point.
+    /// </summary>
+    internal static (string Text, int CursorColumn) ClipInputToWindow(
+        string text, int cursorPosition, int available)
+    {
+        if (available <= 0)
+            return (string.Empty, 0);
+
+        cursorPosition = Math.Clamp(cursorPosition, 0, text.Length);
+
+        if (text.Length <= available)
+            return (text, cursorPosition);
+
+        // The window shows the text up to the caret: for a command longer than the row, the
+        // caret sits at the last visible column and text to the right of the caret is not shown.
+        var offset = Math.Max(0, cursorPosition - available + 1);
+
+        return (
+            text.Substring(offset, Math.Min(available, text.Length - offset)),
+            cursorPosition - offset);
+    }
+
+    /// <summary>
+    /// Renders one suggestion row for a console <paramref name="width"/> columns wide,
+    /// clipped to <paramref name="width"/> - 1 columns (with a trailing <c>...</c> when
+    /// anything was cut off).
+    ///
+    /// The clip is what keeps the row a row: <see cref="ClearSuggestionLines"/> blanks one
+    /// console row per suggestion, so a line that reached the width would wrap onto a row
+    /// the clear loop never visits and stay on screen after Enter. Stopping one column
+    /// short also matches the width the clear loop blanks, so the last column is never
+    /// written in the first place. The clipping rule itself lives in <see cref="ConsoleLine"/>,
+    /// shared with <see cref="SelectionPrompt"/> rather than duplicated here.
+    /// </summary>
+    internal static string FormatSuggestionLine(CommandInfo suggestion, int width)
+    {
+        var line = $"  {suggestion.Command,-40} {suggestion.Description}";
+
+        return ConsoleLine.Clip(line, width);
     }
 
     private void LoadPreviousHistory(ref List<char> buffer, ref int cursorPosition)
@@ -363,6 +418,29 @@ internal sealed class CommandLineEditor
     {
         _suggestions.Clear();
         _suggestionIndex = -1;
+    }
+
+    /// <summary>
+    /// Repaints the input line with the whole command just before it is committed, and
+    /// leaves the cursor after it so <see cref="CommitCommand"/>'s newline lands correctly.
+    ///
+    /// While typing, the row shows only a window onto a long command
+    /// (see <see cref="ClipInputToWindow"/>). The scrollback should record what was actually
+    /// submitted, so the full text goes back on screen here. Letting it wrap is safe at this
+    /// point and only here: the suggestion rows have just been cleared, nothing else is drawn
+    /// below, and <see cref="_inputTop"/> is about to be discarded — the caller builds a new
+    /// editor for the next command.
+    /// </summary>
+    private void RedrawSubmittedLine(List<char> buffer)
+    {
+        var inputTop = Math.Max(0, _inputTop);
+
+        Console.SetCursorPosition(0, inputTop);
+        Console.Write(new string(' ', Console.BufferWidth - 1));
+
+        Console.SetCursorPosition(0, inputTop);
+        Console.Write(Prompt);
+        Console.Write(new string([.. buffer]));
     }
 
     /// <summary>

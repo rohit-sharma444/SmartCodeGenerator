@@ -1,4 +1,6 @@
+using AppScaffolding;
 using AppScaffolding.Targets;
+using CodeGenerationEngine.Models;
 using CodeGenerator.App;
 
 namespace CodeGenerator.Tests.App;
@@ -6,6 +8,20 @@ namespace CodeGenerator.Tests.App;
 [TestClass]
 public class ApplicationTypeMenuTests
 {
+    /// <summary>A target with a key the menu does not recognize, to exercise
+    /// <see cref="ApplicationTypeMenu.IndexOf"/>'s fallback.</summary>
+    private sealed class OffMenuTarget : ITargetScaffolder
+    {
+        public string Key => "off-menu";
+        public string Description => "not on the menu";
+        public DotNetProjectType ProjectType => DotNetProjectType.Console;
+        public string FolderSuffix => ".OffMenu";
+
+        public IReadOnlyList<GeneratedFile> FrontEndFiles(
+            string projectName, IReadOnlyList<string> entityNames)
+            => [];
+    }
+
     [TestMethod]
     public void Labels_AreTheSixKindsOfAppInOrder()
     {
@@ -91,4 +107,19 @@ public class ApplicationTypeMenuTests
         // DataSourceInterview already applies.
         Assert.IsNull(ApplicationTypeMenu.ChooseNumbered(new StringReader(""), new StringWriter()));
     }
+
+    [TestMethod]
+    public void IndexOf_RoundTripsWithResolve_ForEveryMenuRow()
+    {
+        for (var i = 0; i < ApplicationTypeMenu.Labels.Count; i++)
+        {
+            var target = ApplicationTypeMenu.Resolve(i);
+
+            Assert.AreEqual(i, ApplicationTypeMenu.IndexOf(target), $"row {i} ('{target.Key}')");
+        }
+    }
+
+    [TestMethod]
+    public void IndexOf_ATargetNotOnTheMenu_FallsBackToZero()
+        => Assert.AreEqual(0, ApplicationTypeMenu.IndexOf(new OffMenuTarget()));
 }

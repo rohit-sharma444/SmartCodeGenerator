@@ -252,22 +252,69 @@ internal sealed class BuildAppCommand
             if (target is not null)
                 Console.WriteLine($"  Target: {ApplicationTypeMenu.LabelFor(target)}");
 
-            Console.WriteLine("  [a]pprove [target] [sqlite]   add <name>   remove <name>   rename <old> <new>");
-            Console.WriteLine("  field <entity> <name>[:<type>]   unfield <entity> <name>   why [name]   [c]ancel");
-            Console.Write("> ");
-            var input = Console.ReadLine();
-            if (input is null)   // stdin closed / EOF — treat as cancel, never busy-loop
+            string[] parts;
+
+            if (UseTypedInput)
             {
-                Console.WriteLine("Input closed. Cancelled — nothing was generated.");
-                return;
+                // The typed path is unchanged: SelectionPrompt cannot run without a console, and
+                // piped scripts drive the loop through exactly these lines.
+                Console.WriteLine("\n       [a]pprove [target] [sqlite] add <name>  remove <name>  rename <old> <new>  field <entity> <name>[:<type>]  unfield <entity> <name>  why [name]");
+                Console.WriteLine("         [c]ancel");
+                Console.Write("> ");
+
+                var input = Console.ReadLine();
+                if (input is null)   // stdin closed / EOF — treat as cancel, never busy-loop
+                {
+                    Console.WriteLine("Input closed. Cancelled — nothing was generated.");
+                    return;
+                }
+
+                var line = input.Trim();
+
+                if (line.Length == 0)
+                    continue;
+
+                parts = line.Split(' ', 3, StringSplitOptions.RemoveEmptyEntries);
+            }
+            else
+            {
+                var picked = PickAction();
+
+                if (picked is null)   // Esc on the list reads as cancel
+                {
+                    Console.WriteLine("Cancelled. Nothing was generated.");
+                    return;
+                }
+
+                // approve is the one action whose arguments are pickers rather than typed lines,
+                // and it already holds the values Generate needs — so it never reaches the switch.
+                if (picked.Verb == "approve")
+                {
+                    if (model.Entities.Count == 0)
+                    {
+                        Console.WriteLine("Nothing to generate — the model is empty.");
+                        return;
+                    }
+
+                    var approved = ApproveInteractively(target);
+
+                    if (approved is null)   // Esc at a picker: back to the action list
+                        continue;
+
+                    Generate(
+                        model, appName, workspaceRoot, importedData,
+                        approved.Value.Target, approved.Value.Persistence);
+                    return;
+                }
+
+                var answers = AskArguments(picked);
+
+                if (answers is null)   // blank or EOF: abandon the action
+                    continue;
+
+                parts = ReviewActions.Compose(picked, answers);
             }
 
-            var line = input.Trim();
-
-            if (line.Length == 0)
-                continue;
-
-            var parts = line.Split(' ', 3, StringSplitOptions.RemoveEmptyEntries);
             var verb = parts[0].ToLowerInvariant();
 
             switch (verb)
@@ -304,22 +351,9 @@ internal sealed class BuildAppCommand
                         break;
                     }
 
-                    var scaffold = new AppScaffolder()
-                        .Scaffold(model, appName, workspaceRoot, chosenTarget, persistence.Value,
-                                  importedData);
-                    if (scaffold.Success)
-                    {
-                        Console.WriteLine($"Generated project at {scaffold.ProjectPath}");
-                        if (scaffold.TestProjectPath is not null)
-                            Console.WriteLine($"Generated test project at {scaffold.TestProjectPath} — run with `dotnet test`.");
-                        Console.WriteLine("");
-                        //foreach (var file in scaffold.FilesWritten)
-                        //    Console.WriteLine($"  {Path.GetRelativePath(scaffold.ProjectPath, file)}");
-                    }
-                    else
-                    {
-                        Console.WriteLine($"Generation failed: {scaffold.Message}");
-                    }
+                    Generate(
+                        model, appName, workspaceRoot, importedData,
+                        chosenTarget, persistence.Value);
                     return;
 
                 case "c":
@@ -365,6 +399,116 @@ internal sealed class BuildAppCommand
                     Console.WriteLine("Unrecognized command.");
                     break;
             }
+        }
+    }
+
+    /// <summary>
+    /// Whether the review loop must fall back to typed lines. <see cref="SelectionPrompt"/> needs
+    /// <c>Console.ReadKey</c> and <c>Console.SetCursorPosition</c>, both of which throw with no
+    /// console attached. Matches the guard in <see cref="ApplicationTypeMenu.Choose"/>.
+    /// </summary>
+    private static bool UseTypedInput
+        => Console.IsInputRedirected || Console.IsOutputRedirected;
+
+    /// <summary>The action the user picked, or null if they pressed Esc.</summary>
+    private static ReviewAction? PickAction()
+    {
+        var index = SelectionPrompt.Choose(ReviewActions.Title, ReviewActions.Labels, 0);
+
+        return index is null ? null : ReviewActions.All[index.Value];
+    }
+
+    /// <summary>
+    /// Collects <paramref name="action"/>'s arguments, one typed line each. Null means the user
+    /// abandoned the action — a blank answer, or stdin closing — and the loop returns to the list
+    /// (except <c>why</c>, where a blank answer means the whole report).
+    /// </summary>
+    private static IReadOnlyList<string>? AskArguments(ReviewAction action)
+    {
+        var answers = new List<string>();
+
+        foreach (var prompt in action.ArgumentPrompts)
+        {
+            Console.Write($"{prompt}> ");
+
+            var answer = Console.ReadLine();
+
+            if (answer is null)
+                return null;
+
+            answer = answer.Trim();
+
+            // `why` is the one action where a blank answer means something — the whole report —
+            // so it is the one action a blank does not abandon.
+            if (answer.Length == 0 && action.Verb != "why")
+                return null;
+
+            answers.Add(answer);
+        }
+
+        return answers;
+    }
+
+    /// <summary>
+    /// Asks for what <c>approve</c> needs through pickers: the application type — always, pre-
+    /// selecting whatever the wizard already settled so Enter simply confirms it and ↑↓ can still
+    /// switch to something else — and the persistence backend when the newly chosen target can
+    /// actually honour SQLite. Null means the user pressed Esc and nothing should be generated.
+    /// </summary>
+    private static (ITargetScaffolder Target, PersistenceKind Persistence)? ApproveInteractively(
+        ITargetScaffolder? preselected)
+    {
+        var index = preselected is null
+            ? ApplicationTypeMenu.Choose()
+            : ApplicationTypeMenu.Choose(ApplicationTypeMenu.IndexOf(preselected));
+
+        if (index is null)
+            return null;
+
+        var target = ApplicationTypeMenu.Resolve(index.Value);
+
+        // WPF and WinForms read JsonStore directly, so offering a choice here would only lead to
+        // the rejection the typed path prints. Skip the question instead. Checked against the
+        // target just chosen, not the preselected one — switching away from WPF must unlock the
+        // SQLite question, and switching to it must suppress it.
+        if (!IsPersistenceAllowed(target, PersistenceKind.Sqlite))
+            return (target, PersistenceKind.Json);
+
+        var persistence = SelectionPrompt.Choose("Persistence", ["JSON", "SQLite"], 0);
+
+        return persistence is null
+            ? null
+            : (target, persistence.Value == 0 ? PersistenceKind.Json : PersistenceKind.Sqlite);
+    }
+
+    /// <summary>
+    /// Scaffolds the approved model and reports what was written.
+    /// </summary>
+    /// <remarks>
+    /// Extracted from the <c>approve</c> case so the picker path can generate directly: it
+    /// already holds a target and a persistence kind from its own prompts, while
+    /// <see cref="ResolveTarget"/> and <see cref="ResolvePersistence"/> exist to read those out
+    /// of a typed line.
+    /// </remarks>
+    private static void Generate(
+        CandidateDomainModel model, string appName, string workspaceRoot,
+        ImportedData importedData, ITargetScaffolder target, PersistenceKind persistence)
+    {
+        var scaffold = new AppScaffolder()
+            .Scaffold(model, appName, workspaceRoot, target, persistence, importedData);
+
+        if (scaffold.Success)
+        {
+            Console.WriteLine($"Generated project at {scaffold.ProjectPath}");
+            if (scaffold.TestProjectPath is not null)
+                Console.WriteLine($"Generated test project at {scaffold.TestProjectPath} — run with `dotnet test`.");
+            Console.WriteLine("");
+            //foreach (var file in scaffold.FilesWritten)
+            //    Console.WriteLine($"  {Path.GetRelativePath(scaffold.ProjectPath, file)}");
+        }
+        else
+        {
+            Console.WriteLine($"Generation failed: {scaffold.Message}");
         }
     }
 
@@ -503,19 +647,21 @@ internal sealed class BuildAppCommand
             Console.WriteLine($"  - {entity.Name} [{entity.Provenance}]{fields}{relationships}");
         }
 
-        // Every entity is scaffolded with a typed repository exposing these CRUD functions,
-        // so the review loop shows the full shape of what approval will generate.
+        // Every entity is scaffolded with a typed repository exposing these CRUD functions, but
+        // spelling that out here was judged noise for the review loop, so the describing line
+        // stays deliberately commented out below — only the blank-line spacer still runs.
         if (model.Entities.Count > 0)
         {
             Console.WriteLine();
-            Console.WriteLine(
-                "Each entity also gets a <Entity>Repository with CRUD: "
-                + "GetAll, GetById, Create, Update, Delete");
+            //Console.WriteLine(
+            //    "Each entity also gets a <Entity>Repository with CRUD: "
+            //    + "GetAll, GetById, Create, Update, Delete");
         }
 
         // Rejections, demoted suggestions and skipped nouns, grouped by the reason each was
-        // given. This replaces a bare list of rejected names that said nothing about why.
-        foreach (var line in DecisionReport.Summary(model))
-            Console.WriteLine(line);
+        // given, were judged noise here too and are deliberately suppressed from this printout.
+        // DecisionReport.All is still reachable through the review loop's `why` action.
+    //    foreach (var line in DecisionReport.Summary(model))
+    //        Console.WriteLine(line);
     }
 }
