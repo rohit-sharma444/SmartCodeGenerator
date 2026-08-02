@@ -229,7 +229,7 @@ internal static class ReviewActions
 dotnet test D:\SmartCodeGenerator-Repository\CodeGenerator.Tests\CodeGenerator.Tests.csproj --filter "FullyQualifiedName~ReviewActionsTests" --nologo
 ```
 
-Expected: PASS, 16 tests.
+Expected: PASS, 20 tests (10 methods; `ArgumentPrompts_MatchWhatTheSwitchCaseNeeds` expands to 8 rows, `Compose_TwoArgumentAction_SatisfiesItsLengthGuard` to 3, `Compose_OneArgumentAction_SatisfiesItsLengthGuard` to 2).
 
 - [ ] **Step 5: Commit**
 
@@ -320,7 +320,7 @@ dotnet build D:\SmartCodeGenerator-Repository\SmartCodeGenerator\SmartCodeGenera
 dotnet test D:\SmartCodeGenerator-Repository\SmartCodeGenerator\SmartCodeGenerator.slnx -c Release --no-build --nologo
 ```
 
-Expected: build 0 warnings / 0 errors; all four test projects pass with the same counts as before the task (`CodeGenerator.Tests` 701 + the 16 from Task 1 = 717).
+Expected: build 0 warnings / 0 errors; all four test projects pass with the same counts as before the task (`CodeGenerator.Tests` 701 + the 20 from Task 1 = 721).
 
 - [ ] **Step 4: Commit**
 
