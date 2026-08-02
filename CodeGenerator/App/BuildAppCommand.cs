@@ -305,22 +305,9 @@ internal sealed class BuildAppCommand
                         break;
                     }
 
-                    var scaffold = new AppScaffolder()
-                        .Scaffold(model, appName, workspaceRoot, chosenTarget, persistence.Value,
-                                  importedData);
-                    if (scaffold.Success)
-                    {
-                        Console.WriteLine($"Generated project at {scaffold.ProjectPath}");
-                        if (scaffold.TestProjectPath is not null)
-                            Console.WriteLine($"Generated test project at {scaffold.TestProjectPath} — run with `dotnet test`.");
-                        Console.WriteLine("");
-                        //foreach (var file in scaffold.FilesWritten)
-                        //    Console.WriteLine($"  {Path.GetRelativePath(scaffold.ProjectPath, file)}");
-                    }
-                    else
-                    {
-                        Console.WriteLine($"Generation failed: {scaffold.Message}");
-                    }
+                    Generate(
+                        model, appName, workspaceRoot, importedData,
+                        chosenTarget, persistence.Value);
                     return;
 
                 case "c":
@@ -366,6 +353,37 @@ internal sealed class BuildAppCommand
                     Console.WriteLine("Unrecognized command.");
                     break;
             }
+        }
+    }
+
+    /// <summary>
+    /// Scaffolds the approved model and reports what was written.
+    /// </summary>
+    /// <remarks>
+    /// Extracted from the <c>approve</c> case so the picker path can generate directly: it
+    /// already holds a target and a persistence kind from its own prompts, while
+    /// <see cref="ResolveTarget"/> and <see cref="ResolvePersistence"/> exist to read those out
+    /// of a typed line.
+    /// </remarks>
+    private static void Generate(
+        CandidateDomainModel model, string appName, string workspaceRoot,
+        ImportedData importedData, ITargetScaffolder target, PersistenceKind persistence)
+    {
+        var scaffold = new AppScaffolder()
+            .Scaffold(model, appName, workspaceRoot, target, persistence, importedData);
+
+        if (scaffold.Success)
+        {
+            Console.WriteLine($"Generated project at {scaffold.ProjectPath}");
+            if (scaffold.TestProjectPath is not null)
+                Console.WriteLine($"Generated test project at {scaffold.TestProjectPath} — run with `dotnet test`.");
+            Console.WriteLine("");
+            //foreach (var file in scaffold.FilesWritten)
+            //    Console.WriteLine($"  {Path.GetRelativePath(scaffold.ProjectPath, file)}");
+        }
+        else
+        {
+            Console.WriteLine($"Generation failed: {scaffold.Message}");
         }
     }
 
