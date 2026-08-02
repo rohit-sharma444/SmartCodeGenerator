@@ -39,7 +39,7 @@ public class ReviewActionsTests
     [DataRow("field", 2)]
     [DataRow("unfield", 2)]
     public void ArgumentPrompts_MatchWhatTheSwitchCaseNeeds(string verb, int expected)
-        => Assert.AreEqual(expected, Action(verb).ArgumentPrompts.Count);
+        => Assert.HasCount(expected, Action(verb).ArgumentPrompts);
 
     [TestMethod]
     [DataRow("rename")]
