@@ -14,7 +14,8 @@ Spec: `docs/superpowers/specs/2026-08-02-build-app-review-dropdown-design.md`
 
 - Repository root is `D:\SmartCodeGenerator-Repository`. The solution lives at `D:\SmartCodeGenerator-Repository\SmartCodeGenerator\SmartCodeGenerator.slnx`.
 - CI runs `dotnet build SmartCodeGenerator/SmartCodeGenerator.slnx -c Release --no-restore -warnaserror` then `dotnet test SmartCodeGenerator/SmartCodeGenerator.slnx -c Release --no-build`. The build must produce **0 warnings** — analyzer warnings are errors there even though a local Debug build hides them.
-- MSTest analyzer MSTEST0037 forbids `Assert.IsTrue` for comparisons. Use `Assert.IsLessThan(upperBound, value, message)`, `Assert.IsGreaterThanOrEqualTo(lowerBound, value, message)` — bound first, value second.
+- **Verify with `--no-incremental`.** A plain `dotnet build` that finds nothing changed prints "Build succeeded" *without recompiling*, so the analyzers never run and an analyzer error stays invisible. Always: `dotnet build … -c Release -warnaserror --no-incremental`.
+- MSTest analyzer MSTEST0037 forbids `Assert.IsTrue` for comparisons and `Assert.AreEqual` for collection counts. Use `Assert.IsLessThan(upperBound, value, message)` and `Assert.IsGreaterThanOrEqualTo(lowerBound, value, message)` — bound first, value second — and `Assert.HasCount(expectedCount, collection)` for counts.
 - Do **not** change the signatures of `BuildAppCommand.ResolveTarget`, `ResolvePersistence`, `IsPersistenceAllowed`, `AddLine`, `WhyLines`, or `FieldSpec.Parse`. Their existing tests must keep passing untouched.
 - Do **not** change the typed input path's parsing or its help text.
 - `CodeGenerator/App/BuildAppCommand.cs` has **uncommitted working-tree edits** (a reformatted one-line help string near line 255, and a commented-out `FilesWritten` loop near line 317). Preserve both exactly. Commit them separately first if you prefer a clean base.
@@ -81,7 +82,7 @@ public class ReviewActionsTests
     [DataRow("field", 2)]
     [DataRow("unfield", 2)]
     public void ArgumentPrompts_MatchWhatTheSwitchCaseNeeds(string verb, int expected)
-        => Assert.AreEqual(expected, Action(verb).ArgumentPrompts.Count);
+        => Assert.HasCount(expected, Action(verb).ArgumentPrompts);
 
     [TestMethod]
     [DataRow("rename")]
