@@ -22,11 +22,11 @@ public static class StoreStatusReport
         var lines = new List<string>
         {
             storeDate is { } date
-                ? $"Wikipedia store: dump {date}."
+                ? $"Wikipedia store: dump {date}. " + ServiceLine(service, status, now)
                 : "Wikipedia store: present, but it cannot say which dump it was built from.",
         };
 
-        lines.Add(ServiceLine(service, status, now));
+        //lines.Add(ServiceLine(service, status, now));
 
         if (status.State is StoreUpdateState.Failed && !string.IsNullOrWhiteSpace(status.LastError))
             lines.Add($"  Last update error: {status.LastError}");
@@ -52,7 +52,7 @@ public static class StoreStatusReport
             UpdaterServiceState.NotInstalled => "  Updater service: NOT INSTALLED.",
             UpdaterServiceState.Stopped => "  Updater service: installed, but stopped.",
             UpdaterServiceState.Unknown => "  Updater service: cannot tell.",
-            _ => $"  Updater service: running — {Activity(status, now)}",
+            _ => $"(Updater service: running — {Activity(status, now)})",
         };
 
     private static string Activity(StoreUpdateStatus status, DateTimeOffset now)
