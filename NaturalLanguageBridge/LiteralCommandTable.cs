@@ -37,6 +37,11 @@ public static class LiteralCommandTable
     /// gate test, which asserts every recognizable intent has a handler.</summary>
     public static IReadOnlyCollection<IntentType> Intents => [.. Exact.Values.Distinct()];
 
+    /// <summary>The exact phrases that resolve to <paramref name="intent"/>. Consumed by
+    /// the AI corpus harvester, which embeds real user phrasings rather than enum names.</summary>
+    public static IReadOnlyList<string> PhrasesFor(IntentType intent) =>
+        [.. Exact.Where(pair => pair.Value == intent).Select(pair => pair.Key)];
+
     public static bool TryResolve(string input, out IntentType intent)
     {
         var key = (input ?? string.Empty).Trim();
