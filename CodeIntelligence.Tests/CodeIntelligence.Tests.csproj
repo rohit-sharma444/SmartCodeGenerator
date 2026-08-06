@@ -15,6 +15,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\CodeIntelligence\CodeIntelligence.csproj" />
     <ProjectReference Include="..\CodeIntelligence.Abstractions\CodeIntelligence.Abstractions.csproj" />
   </ItemGroup>
 
