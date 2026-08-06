@@ -834,11 +834,19 @@ public static class CorpusHarvester
         collected.AddRange(FromLiteralTable());
         collected.AddRange(FromCommandCatalog());
 
+        // Dedup on (Text, Intent), NOT Text alone. Two documents with the same text
+        // but different intents are not duplicates — they are an ambiguous phrase, and
+        // both must survive. "generate design document" composes from both
+        // GenerateDocumentation and GenerateDesignDocument; "show project" from both
+        // ListProjects and ShowProject. Keeping both makes the k-NN vote split, drops
+        // confidence below the floor, and the resolver declines instead of guessing by
+        // list order. ThenBy keeps ordering total now that text alone is not unique.
         return collected
             .Where(d => d.Intent != IntentType.Unknown && d.Text.Length > 0)
-            .GroupBy(d => d.Text.ToLowerInvariant())
+            .GroupBy(d => (Text: d.Text.ToLowerInvariant(), d.Intent))
             .Select(g => g.First())
             .OrderBy(d => d.Text, StringComparer.Ordinal)
+            .ThenBy(d => d.Intent.ToString(), StringComparer.Ordinal)
             .ToList();
     }
 
@@ -890,16 +898,24 @@ public static class CorpusHarvester
 
     /// <summary>Drops "&lt;placeholder&gt;" and "[option]" spans so the embedded text is
     /// the phrasing a user would actually type, not the help syntax.</summary>
-    private static string StripPlaceholders(string command)
+    internal static string StripPlaceholders(string command)
     {
+        // Two INDEPENDENT counters, not one shared depth. A single counter cannot tell
+        // a mismatched closer from a real one: "<a]" would read as balanced, and a
+        // stray ">" at depth 0 would be silently swallowed instead of kept. Make the
+        // method internal (with InternalsVisibleTo for the test project) so both cases
+        // can be unit-tested directly.
         var builder = new StringBuilder();
-        var depth = 0;
+        var angleDepth = 0;
+        var bracketDepth = 0;
 
         foreach (var ch in command)
         {
-            if (ch is '<' or '[') depth++;
-            else if (ch is '>' or ']') depth = Math.Max(0, depth - 1);
-            else if (depth == 0) builder.Append(ch);
+            if (ch is '<') angleDepth++;
+            else if (ch is '[') bracketDepth++;
+            else if (ch is '>' && angleDepth > 0) angleDepth--;
+            else if (ch is ']' && bracketDepth > 0) bracketDepth--;
+            else if (angleDepth == 0 && bracketDepth == 0) builder.Append(ch);
         }
 
         return string.Join(' ',
