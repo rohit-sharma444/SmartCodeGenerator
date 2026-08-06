@@ -33,7 +33,7 @@ public sealed class SqliteVectorStore : IVectorStore
 
         var indexedModel = ReadMeta(connection, VectorSchema.ModelIdKey);
         var dimension = int.TryParse(ReadMeta(connection, VectorSchema.DimensionKey), out var d) ? d : 0;
-        var built = DateTime.TryParse(ReadMeta(connection, VectorSchema.BuiltUtcKey), out var b)
+        var built = DateTime.TryParse(ReadMeta(connection, VectorSchema.BuiltUtcKey), System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.RoundtripKind, out var b)
             ? b : (DateTime?)null;
 
         using var count = connection.CreateCommand();

@@ -86,4 +86,20 @@ public sealed class StorageTests : IDisposable
         Assert.Single(survivors);
         Assert.Equal("list classes", survivors[0].Text);
     }
+
+    [Fact]
+    public void Status_BuiltUtc_is_utc_and_dimension_round_trips()
+    {
+        var store = new SqliteVectorStore(DbPath);
+        var beforeBuild = DateTime.UtcNow;
+        store.ReplaceAll("model-a", 2, [Row("test", IntentType.ListClasses, 1f, 0f)]);
+        var afterBuild = DateTime.UtcNow;
+
+        var status = store.GetStatus("model-a");
+
+        Assert.NotNull(status.BuiltUtc);
+        Assert.Equal(DateTimeKind.Utc, status.BuiltUtc.Value.Kind);
+        Assert.InRange(status.BuiltUtc.Value, beforeBuild.AddSeconds(-1), afterBuild.AddSeconds(1));
+        Assert.Equal(2, status.Dimension);
+    }
 }
