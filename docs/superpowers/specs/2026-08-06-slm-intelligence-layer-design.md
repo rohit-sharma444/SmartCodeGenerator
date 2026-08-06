@@ -190,7 +190,15 @@ Brute-force cosine over a few thousand vectors — microseconds. No ANN index. B
 HNSW at this corpus size would be ceremony.
 
 Top-k (default k=5), weighted vote over the neighbours' intents, confidence from the
-vote margin. Below `ConfidenceFloor`, return `null` rather than guess.
+vote margin.
+
+**Two independent gates, not one.** `MinTopScore` asks "is anything actually
+similar?"; `ConfidenceFloor` asks "do the neighbours agree?". Either alone is
+insufficient — share-of-vote by itself gives a lone weak match (cosine 0.02, noise)
+100% of the vote and thus maximum confidence. Both must pass or `Decide` returns
+`null` rather than guess. They are deliberately not multiplied together: collapsing
+them loses the ability to tell a weak-but-unanimous match from a strong-but-contested
+one, and Task 10 calibrates each independently.
 
 ### Traceability
 
@@ -242,7 +250,8 @@ matching `IntentRepository`'s established pattern.
 |---|---|
 | `Enabled` | `false` |
 | `ResolverMode` | `Retrieval` |
-| `ConfidenceFloor` | `0.55` provisional, replaced by the first golden-set measurement |
+| `ConfidenceFloor` | `0.55` provisional, replaced by the first golden-set measurement. Must stay **above 0.5**: a two-way ambiguous phrase computes to exactly 0.5 and the comparison is inclusive |
+| `MinTopScore` | `0.35` provisional, calibrated alongside the floor |
 | `TopK` | `5` |
 | `EmbeddingModelId` | `all-MiniLM-L6-v2-int8` |
 | `GenerativeModelId` | unset until phase B |

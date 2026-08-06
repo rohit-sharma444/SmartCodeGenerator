@@ -1009,7 +1009,7 @@ Pure math, no ONNX. This is where the confidence floor is enforced.
 - Create: `CodeIntelligence.Tests/RetrievalTests.cs`
 
 **Interfaces:**
-- Produces: `Similarity.Cosine(float[], float[])`, `Similarity.Normalize(float[])`, `NeighbourVote.Decide(IReadOnlyList<StoredVector>, float[], int topK, double floor)` returning `AiResolution?`
+- Produces: `Similarity.Cosine(float[], float[])`, `Similarity.Normalize(float[])`, `NeighbourVote.Decide(IReadOnlyList<StoredVector>, float[], int topK, double floor, double minTopScore)` returning `AiResolution?`
 
 - [ ] **Step 1: Write the failing retrieval tests**
 
@@ -1179,15 +1179,22 @@ using CodeIntelligence.Abstractions;
 
 namespace CodeIntelligence.Retrieval;
 
-/// <summary>Brute-force k-NN over the corpus. Confidence is the winning intent's share
-/// of the total neighbour score, so a unanimous neighbourhood approaches 1 and an
-/// evenly split one approaches 1/n. Below the floor we return null — declining is
-/// always better than a confident wrong answer, because the user's next step after a
-/// decline is the familiar "did you mean" line.</summary>
+/// <summary>Brute-force k-NN over the corpus, behind TWO independent gates.
+///
+/// `minTopScore` asks "is anything actually similar?" and `floor` asks "do the
+/// neighbours agree?" — they must stay separate. Share-of-vote alone answers only the
+/// second: if exactly one corpus entry scores positive (say cosine 0.02, noise), it
+/// takes 100% of the vote and clears any floor. Multiplying the two together would
+/// hide which gate rejected an input, and Task 10 calibrates them independently.
+///
+/// `floor` is INCLUSIVE (confidence == floor is accepted) and therefore must be set
+/// ABOVE 0.5, or a two-way ambiguous phrase — which computes to exactly 0.5 — would be
+/// accepted instead of declined. Declining is always better than a confident wrong
+/// answer: the user's next step after a decline is the familiar "did you mean" line.</summary>
 public static class NeighbourVote
 {
     public static AiResolution? Decide(
-        IReadOnlyList<StoredVector> corpus, float[] query, int topK, double floor)
+        IReadOnlyList<StoredVector> corpus, float[] query, int topK, double floor, double minTopScore)
     {
         if (corpus.Count == 0 || query.Length == 0)
             return null;
@@ -1197,10 +1204,16 @@ public static class NeighbourVote
             .Where(e => e.Score > 0)
             .OrderByDescending(e => e.Score)
             .ThenBy(e => e.Text, StringComparer.Ordinal)
+            .ThenBy(e => e.Intent.ToString(), StringComparer.Ordinal)
             .Take(Math.Max(1, topK))
             .ToList();
 
         if (neighbours.Count == 0)
+            return null;
+
+        // Gate 1: is anything actually close? Without this, a single weak positive
+        // match takes 100% of the vote share and reports confidence 1.0.
+        if (neighbours[0].Score < minTopScore)
             return null;
 
         var totals = neighbours
@@ -1214,6 +1227,8 @@ public static class NeighbourVote
         var winner = totals[0];
         var confidence = overall == 0 ? 0 : winner.Score / overall;
 
+        // Gate 2: do the neighbours agree? Inclusive — see the class remarks on why
+        // floor must be set above 0.5.
         if (confidence < floor)
             return null;
 
@@ -1253,7 +1268,12 @@ Composes store, embedder and vote, and is the component that must never throw.
 
 **Interfaces:**
 - Consumes: `IVectorStore`, `IEmbeddingProvider`, `NeighbourVote.Decide`
-- Produces: `RetrievalIntentResolver(IVectorStore store, IEmbeddingProvider embedder, int topK, double floor, TimeSpan budget)` implementing `IIntentResolver`
+- Produces: `RetrievalIntentResolver(IVectorStore store, IEmbeddingProvider embedder, int topK, double floor, double minTopScore, TimeSpan budget)` implementing `IIntentResolver`
+
+Note on the tests below: they pass `minTopScore: 0.0` deliberately. Task 4 owns the
+gate's behavior and tests it directly; these tests exercise resolver plumbing (model
+drift, throwing embedder, cancellation, blank input) and a live gate would only add a
+second reason for them to fail.
 
 - [ ] **Step 1: Write the fake embedder**
 
@@ -1348,7 +1368,7 @@ public sealed class ResolverTests : IDisposable
     {
         var embedder = new FakeEmbeddingProvider();
         var resolver = new RetrievalIntentResolver(
-            SeededStore(embedder), embedder, topK: 3, floor: 0.4, budget: TimeSpan.FromSeconds(5));
+            SeededStore(embedder), embedder, topK: 3, floor: 0.4, minTopScore: 0.0, budget: TimeSpan.FromSeconds(5));
 
         var result = resolver.Resolve("show me the classes", CancellationToken.None);
 
@@ -1362,7 +1382,7 @@ public sealed class ResolverTests : IDisposable
     {
         var embedder = new FakeEmbeddingProvider();
         var resolver = new RetrievalIntentResolver(
-            SeededStore(embedder), embedder, topK: 3, floor: 0.4, budget: TimeSpan.FromSeconds(5));
+            SeededStore(embedder), embedder, topK: 3, floor: 0.4, minTopScore: 0.0, budget: TimeSpan.FromSeconds(5));
 
         Assert.Null(resolver.Resolve("zzzz qqqq", CancellationToken.None));
     }
@@ -1375,7 +1395,7 @@ public sealed class ResolverTests : IDisposable
 
         var other = new FakeEmbeddingProvider { ModelId = "fake-v2" };
         var resolver = new RetrievalIntentResolver(
-            store, other, topK: 3, floor: 0.4, budget: TimeSpan.FromSeconds(5));
+            store, other, topK: 3, floor: 0.4, minTopScore: 0.0, budget: TimeSpan.FromSeconds(5));
 
         Assert.Null(resolver.Resolve("list classes", CancellationToken.None));
     }
@@ -1392,7 +1412,7 @@ public sealed class ResolverTests : IDisposable
         };
 
         var resolver = new RetrievalIntentResolver(
-            store, broken, topK: 3, floor: 0.4, budget: TimeSpan.FromSeconds(5));
+            store, broken, topK: 3, floor: 0.4, minTopScore: 0.0, budget: TimeSpan.FromSeconds(5));
 
         var result = resolver.Resolve("list classes", CancellationToken.None);
 
@@ -1404,7 +1424,7 @@ public sealed class ResolverTests : IDisposable
     {
         var embedder = new FakeEmbeddingProvider();
         var resolver = new RetrievalIntentResolver(
-            SeededStore(embedder), embedder, topK: 3, floor: 0.4, budget: TimeSpan.FromSeconds(5));
+            SeededStore(embedder), embedder, topK: 3, floor: 0.4, minTopScore: 0.0, budget: TimeSpan.FromSeconds(5));
 
         using var cts = new CancellationTokenSource();
         cts.Cancel();
@@ -1417,7 +1437,7 @@ public sealed class ResolverTests : IDisposable
     {
         var embedder = new FakeEmbeddingProvider();
         var resolver = new RetrievalIntentResolver(
-            SeededStore(embedder), embedder, topK: 3, floor: 0.4, budget: TimeSpan.FromSeconds(5));
+            SeededStore(embedder), embedder, topK: 3, floor: 0.4, minTopScore: 0.0, budget: TimeSpan.FromSeconds(5));
 
         Assert.Null(resolver.Resolve("   ", CancellationToken.None));
     }
@@ -1457,17 +1477,20 @@ public sealed class RetrievalIntentResolver : IIntentResolver
     private readonly IEmbeddingProvider _embedder;
     private readonly int _topK;
     private readonly double _floor;
+    private readonly double _minTopScore;
     private readonly TimeSpan _budget;
 
     private IReadOnlyList<StoredVector>? _corpus;
 
     public RetrievalIntentResolver(
-        IVectorStore store, IEmbeddingProvider embedder, int topK, double floor, TimeSpan budget)
+        IVectorStore store, IEmbeddingProvider embedder,
+        int topK, double floor, double minTopScore, TimeSpan budget)
     {
         _store = store;
         _embedder = embedder;
         _topK = topK;
         _floor = floor;
+        _minTopScore = minTopScore;
         _budget = budget;
     }
 
@@ -1502,7 +1525,7 @@ public sealed class RetrievalIntentResolver : IIntentResolver
                 return null;
 
             Unavailable = null;
-            return NeighbourVote.Decide(_corpus, query, _topK, _floor);
+            return NeighbourVote.Decide(_corpus, query, _topK, _floor, _minTopScore);
         }
         catch (Exception ex)
         {
@@ -1906,7 +1929,7 @@ Expected: `model.onnx` listed.
 - Create: `CodeIntelligence.Tests/ConfigTests.cs`
 
 **Interfaces:**
-- Produces: `AiConfig` with `Enabled`, `ResolverMode`, `ConfidenceFloor`, `TopK`, `EmbeddingModelId`, `RetrievalTimeoutMs`; `AiConfig.Load()`, `AiConfig.Save()`; `AiLayer.Create()` returning `AiLayer`; `AiLayer.Resolver` (nullable `IIntentResolver`); `AiLayer.StatusText()`; `AiLayer.Reindex()`; `AiLayer.Record(...)`; `DecisionLog.Append(...)`, `DecisionLog.Last()`
+- Produces: `AiConfig` with `Enabled`, `ResolverMode`, `ConfidenceFloor`, `MinTopScore`, `TopK`, `EmbeddingModelId`, `RetrievalTimeoutMs`; `AiConfig.Load()`, `AiConfig.Save()`; `AiLayer.Create()` returning `AiLayer`; `AiLayer.Resolver` (nullable `IIntentResolver`); `AiLayer.StatusText()`; `AiLayer.Reindex()`; `AiLayer.Record(...)`; `DecisionLog.Append(...)`, `DecisionLog.Last()`
 
 - [ ] **Step 1: Write the failing config tests**
 
@@ -1941,6 +1964,9 @@ public sealed class ConfigTests : IDisposable
         Assert.Equal("Retrieval", config.ResolverMode);
         Assert.Equal(5, config.TopK);
         Assert.Equal(0.55, config.ConfidenceFloor, 3);
+        Assert.Equal(0.35, config.MinTopScore, 3);
+        Assert.True(config.ConfidenceFloor > 0.5,
+            "an inclusive floor at or below 0.5 would accept two-way ambiguous phrases");
     }
 
     [Fact]
@@ -1994,6 +2020,12 @@ public sealed class AiConfig
     public bool Enabled { get; set; }
     public string ResolverMode { get; set; } = "Retrieval";
     public double ConfidenceFloor { get; set; } = 0.55;
+
+    /// <summary>Gate 1: the minimum absolute cosine the nearest neighbour must reach
+    /// before any resolution is offered. Independent of ConfidenceFloor, which only
+    /// measures neighbour agreement — see NeighbourVote. Provisional; Task 10 calibrates.</summary>
+    public double MinTopScore { get; set; } = 0.35;
+
     public int TopK { get; set; } = 5;
     public string EmbeddingModelId { get; set; } = "all-MiniLM-L6-v2-int8";
     public int RetrievalTimeoutMs { get; set; } = 500;
@@ -2214,7 +2246,7 @@ public sealed class AiLayer
             }
 
             Resolver = new RetrievalIntentResolver(
-                _store, _embedder, Config.TopK, Config.ConfidenceFloor,
+                _store, _embedder, Config.TopK, Config.ConfidenceFloor, Config.MinTopScore,
                 TimeSpan.FromMilliseconds(Config.RetrievalTimeoutMs));
         }
         catch (Exception ex)
@@ -2937,7 +2969,7 @@ public sealed class GoldenSetTests : IDisposable
             [.. documents.Select(d => (d, embedder.Embed(d.Text)))]);
 
         return new RetrievalIntentResolver(store, embedder, topK: 5, floor: floor,
-            budget: TimeSpan.FromSeconds(30));
+            minTopScore: minTopScore, budget: TimeSpan.FromSeconds(30));
     }
 
     [Fact]
