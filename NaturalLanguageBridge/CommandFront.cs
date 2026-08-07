@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using CodeGenerationEngine.Core;
+using CodeIntelligence.Abstractions;
 using CodeGenerationEngine.Models;
 using CodeGenerationEngine.Service;
 using NaturalLanguageEngine.Models.Semantics;
@@ -210,14 +211,22 @@ public static class CommandFront
         => RunDetailed(input, ref project, configuredRules, workspace, setLastCreatedProject, onAnalyzed).Handled;
 
     /// <summary>As <see cref="Run"/>, but also reports whether the input was
-    /// recognized as a command (see <see cref="RunResult"/>).</summary>
+    /// recognized as a command (see <see cref="RunResult"/>).
+    ///
+    /// <paramref name="aiResolver"/> is consulted ONLY when rule-based parsing yields
+    /// Unknown, and only when <paramref name="confirmAi"/> is also supplied — so the AI
+    /// can never change, delay or degrade a command that already works today. With both
+    /// null this method behaves exactly as it did before the AI layer existed.</summary>
     public static RunResult RunDetailed(
         string input,
         ref ProjectMetaData? project,
         List<PropertyRule> configuredRules,
         string workspace,
         Action<ProjectMetaData?> setLastCreatedProject,
-        Action<SemanticResult?>? onAnalyzed = null)
+        Action<SemanticResult?>? onAnalyzed = null,
+        IIntentResolver? aiResolver = null,
+        Func<AiResolution, bool>? confirmAi = null,
+        CancellationToken ct = default)
     {
         if ((input ?? string.Empty).Trim().Equals("demo", StringComparison.OrdinalIgnoreCase))
         {
@@ -231,6 +240,26 @@ public static class CommandFront
             onAnalyzed(NlpActionProvider.Analyze(input ?? string.Empty));
 
         var command = Parse(input ?? string.Empty, workspace);
+
+        if (command.Intent == IntentType.Unknown && aiResolver is not null && confirmAi is not null)
+        {
+            var resolution = aiResolver.Resolve(input ?? string.Empty, ct);
+
+            // The Unknown check is not redundant with the resolver contract: a resolver
+            // may legally return a non-null resolution, and nothing stops that
+            // resolution being Unknown. Confirming it would ask the user to approve
+            // "I don't know", and accepting would mark the command Recognized while
+            // executing nothing.
+            if (resolution is not null &&
+                resolution.Intent != IntentType.Unknown &&
+                confirmAi(resolution))
+            {
+                command = CommandEntityExtractor.Extract(
+                    input ?? string.Empty, resolution.Intent, workspace);
+                command.Confidence = resolution.Confidence;
+            }
+        }
+
         var recognized = command.Intent != IntentType.Unknown;
         var handled = CommandHandlingService.Execute(command, ref project, configuredRules, workspace, setLastCreatedProject);
         return new RunResult(handled, recognized);

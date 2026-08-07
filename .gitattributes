@@ -1,2 +1,6 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# The MiniLM weights. The trailing -text is load-bearing: without it the `* text=auto`
+# rule above would try to normalize line endings inside a 22MB binary and corrupt it.
+*.onnx filter=lfs diff=lfs merge=lfs -text

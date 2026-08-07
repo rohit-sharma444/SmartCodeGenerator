@@ -1,0 +1,69 @@
+show me every class	ListClasses
+what classes exist	ListClasses
+give me a list of the classes	ListClasses
+i want to see the classes	ListClasses
+make a new class called Invoice	CreateClass
+i need a class for orders	CreateClass
+add a class named Payment	CreateClass
+get rid of the Customer class	DeleteClass
+remove the class Invoice	DeleteClass
+drop the Order class	DeleteClass
+what projects do i have	ListProjects
+show all my projects	ListProjects
+which project am i in	CurrentProject
+what project is active	CurrentProject
+start a new project called Billing	CreateProject
+set up a project named Shop	CreateProject
+switch to the Billing project	UseProject
+open project Shop	UseProject
+what properties does Customer have	ListProperties
+show the fields on Invoice	ListProperties
+add a field called Total to Invoice	CreateProperty
+put an Email property on Customer	CreateProperty
+what methods are on Customer	ListMethods
+list the functions in Invoice	ListMethods
+check that the project builds	ValidateProject
+does my project compile	ValidateProject
+look at the Customer class for problems	AnalyzeClass
+inspect the Invoice class	AnalyzeClass
+find classes nobody uses	FindUnusedClasses
+which classes are unused	FindUnusedClasses
+let me see the Customer class	ShowClass
+display the definition of Invoice	ShowClass
+change the name of Customer to Client	RenameClass
+rename the Order class to PurchaseOrder	RenameClass
+take the Email field off Customer	DeleteProperty
+remove the Total property from Invoice	DeleteProperty
+give Customer a method called Save	CreateMethod
+add a function named Recalculate to Invoice	CreateMethod
+get rid of the Save method on Customer	DeleteMethod
+delete the Recalculate function from Invoice	DeleteMethod
+what classes have i deleted	ListDeletedClasses
+show me the deleted classes	ListDeletedClasses
+bring back the Customer class	RestoreClass
+restore the Invoice class i deleted	RestoreClass
+make an interface for payments	CreateInterface
+i need an interface called IOrderStore	CreateInterface
+create a service for orders	CreateService
+i want a service class for billing	CreateService
+add a controller for customers	CreateController
+scaffold a controller named InvoiceController	CreateController
+look over the whole project	AnalyzeProject
+review my project for issues	AnalyzeProject
+which methods are never called	FindUnusedMethods
+find dead methods	FindUnusedMethods
+are there any circular references	FindCircularDependencies
+find dependency cycles	FindCircularDependencies
+write a constructor for Customer	GenerateConstructor
+give Invoice a constructor	GenerateConstructor
+add a ToString to Customer	GenerateToString
+implement equality for Customer	GenerateEquals
+write documentation for the project	GenerateDocumentation
+document my classes	GenerateDocumentation
+add comments to the Customer class	GenerateComments
+put xml comments on Invoice	GenerateComments
+what have you learned	ShowLearning
+show me what you picked up	ShowLearning
+what can you do	Help
+tell me the commands	Help
+tell me about the current project	ShowProject

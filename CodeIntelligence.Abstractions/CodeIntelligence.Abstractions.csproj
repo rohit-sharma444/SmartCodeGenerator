@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Contracts only. This project must never gain a PackageReference:
+       ArchitectureTests enforces it. Keeping it dependency-free is what lets
+       NaturalLanguageBridge reference the AI contracts without dragging in
+       ONNX Runtime or SQLite. -->
+  <ItemGroup>
+    <ProjectReference Include="..\CodeGenerationEngine\CodeGenerationEngine.csproj" />
+  </ItemGroup>
+
+</Project>

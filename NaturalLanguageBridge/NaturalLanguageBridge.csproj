@@ -4,6 +4,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Contracts only, and this must stay the bridge's ONLY AI reference:
+         ArchitectureTests.NaturalLanguageBridge_does_not_reference_onnx guards it.
+         Abstractions carries no package dependencies, so the rule-based path gains
+         nothing at runtime. -->
+    <ProjectReference Include="..\CodeIntelligence.Abstractions\CodeIntelligence.Abstractions.csproj" />
     <ProjectReference Include="..\CodeGenerationEngine\CodeGenerationEngine.csproj" />
     <ProjectReference Include="..\NaturalLanguageEngine\NaturalLanguageEngine.csproj" />
   </ItemGroup>

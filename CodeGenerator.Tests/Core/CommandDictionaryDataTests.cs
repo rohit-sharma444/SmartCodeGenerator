@@ -34,6 +34,32 @@ public class CommandDictionaryDataTests
     }
 
     [TestMethod]
+    public void MarkdownReference_KeepsEveryRowThreeColumns()
+    {
+        // A bare '|' in a command or description ends the table cell, so a row
+        // documenting alternatives silently renders with extra columns. Backticks do
+        // not protect it. This went unnoticed until `ai mode <retrieval|generative|
+        // hybrid>` became the first entry to contain one.
+        var markdown = CommandDictionary.GetMarkdownReference();
+
+        var rows = markdown
+            .Split('\n')
+            .Where(l => l.StartsWith("| ", StringComparison.Ordinal))
+            .Where(l => !l.StartsWith("| ---", StringComparison.Ordinal));
+
+        foreach (var row in rows)
+        {
+            // Count only UNESCAPED pipes: 4 delimit the 3 columns.
+            var delimiters = 0;
+            for (var i = 0; i < row.Length; i++)
+                if (row[i] == '|' && (i == 0 || row[i - 1] != '\\'))
+                    delimiters++;
+
+            Assert.AreEqual(4, delimiters, $"row is not 3 columns: {row}");
+        }
+    }
+
+    [TestMethod]
     public void HelpText_RendersEveryCommandExample()
     {
         var help = CommandDictionary.GetHelpText();

@@ -1,5 +1,7 @@
 using AppScaffolding;
 using AppScaffolding.Targets;
+using CodeIntelligence;
+using CodeIntelligence.Resolution;
 using DataIngestion;
 using DataIngestion.Normalization;
 using DataIngestion.Schema;
@@ -59,8 +61,17 @@ internal sealed class BuildAppCommand
         return (rest.StartsWith(':') ? rest[1..] : rest).Trim();
     }
 
-    public void Handle(string input, string workspaceRoot)
+    public void Handle(string input, string workspaceRoot, AiLayer? ai = null)
     {
+        // Built here rather than at CLI startup: it embeds ~30 phrases, and a session
+        // that never runs `build app` should not pay for that. Null whenever AI is off
+        // or unavailable, which the review loop treats as "no suggestion".
+        var reviewAi = ai?.CreatePhraseResolver(
+            ReviewCommandPhrases.All,
+            ReviewCommandPhrases.TopK,
+            ReviewCommandPhrases.ConfidenceFloor,
+            ReviewCommandPhrases.MinTopScore);
+
         var request = InlineDataSource.Parse(Tail(input));
 
         var description = request.Description;
@@ -90,16 +101,17 @@ internal sealed class BuildAppCommand
 
         if (source is null)
         {
-            HandleFromDescription(description, workspaceRoot, target);
+            HandleFromDescription(description, workspaceRoot, target, reviewAi);
             return;
         }
 
-        HandleFromData(description, source, normalize, workspaceRoot, target);
+        HandleFromData(description, source, normalize, workspaceRoot, target, reviewAi);
     }
 
     /// <summary>The unchanged path: NLE seeds, Wikipedia topic, enrichment, review loop.</summary>
     private static void HandleFromDescription(
-        string description, string workspaceRoot, ITargetScaffolder? target)
+        string description, string workspaceRoot, ITargetScaffolder? target,
+        PhraseResolver? reviewAi = null)
     {
         if (description.Length == 0)
         {
@@ -127,7 +139,7 @@ internal sealed class BuildAppCommand
 
         RunReviewLoop(
             result.Model, DomainAppName.FromDescription(description), workspaceRoot,
-            ImportedData.None, target);
+            ImportedData.None, target, reviewAi);
     }
 
     /// <summary>
@@ -136,7 +148,7 @@ internal sealed class BuildAppCommand
     /// </summary>
     private static void HandleFromData(
         string description, DataSourceSpec source, bool normalize, string workspaceRoot,
-        ITargetScaffolder? target)
+        ITargetScaffolder? target, PhraseResolver? reviewAi = null)
     {
         if (!DataSourceReaders.TryCreate(source.Kind, out var reader))
         {
@@ -194,7 +206,8 @@ internal sealed class BuildAppCommand
         foreach (var note in imported.Notes)
             Console.WriteLine(note);
 
-        RunReviewLoop(model, AppNameFor(description, source), workspaceRoot, imported, target);
+        RunReviewLoop(
+            model, AppNameFor(description, source), workspaceRoot, imported, target, reviewAi);
     }
 
     /// <summary>
@@ -241,7 +254,8 @@ internal sealed class BuildAppCommand
 
     private static void RunReviewLoop(
         CandidateDomainModel model, string appName, string workspaceRoot,
-        ImportedData importedData, ITargetScaffolder? target)
+        ImportedData importedData, ITargetScaffolder? target,
+        PhraseResolver? reviewAi = null)
     {
         while (true)
         {
@@ -253,6 +267,12 @@ internal sealed class BuildAppCommand
                 Console.WriteLine($"  Target: {ApplicationTypeMenu.LabelFor(target)}");
 
             string[] parts;
+
+            // The line as typed, kept for the AI suggestion below. Only the typed path
+            // can reach the switch's default case — the picker composes verbs that all
+            // have cases — so this stays empty on the picker path and no suggestion is
+            // ever attempted there.
+            var typedLine = string.Empty;
 
             if (UseTypedInput)
             {
@@ -274,6 +294,7 @@ internal sealed class BuildAppCommand
                 if (line.Length == 0)
                     continue;
 
+                typedLine = line;
                 parts = line.Split(' ', 3, StringSplitOptions.RemoveEmptyEntries);
             }
             else
@@ -397,9 +418,55 @@ internal sealed class BuildAppCommand
 
                 default:
                     Console.WriteLine("Unrecognized command.");
+
+                    // Suggest, never run. Retrieval recovers the ACTION but not its
+                    // operands ("get rid of Reservation" -> remove, with no entity), so
+                    // executing would guess at arguments the user did not confirm. It
+                    // also cannot prompt: the review loop only reads typed lines when
+                    // stdin is redirected, where blocking on a question would break
+                    // piped scripts. Printing the verb leaves the next move with the user.
+                    foreach (var line in SuggestionLines(reviewAi, typedLine))
+                        Console.WriteLine(line);
+
                     break;
             }
         }
+    }
+
+    /// <summary>
+    /// The AI's reading of an unrecognized review-loop line, ready to print. Empty when
+    /// there is no resolver, nothing was typed, or the two gates declined.
+    /// </summary>
+    /// <remarks>
+    /// Pure, and separated from the loop for the reason <see cref="ReviewActions"/> gives:
+    /// the loop reads the console and cannot be driven from a test, so anything decidable
+    /// is lifted out of it.
+    ///
+    /// Usage text is built from <see cref="ReviewActions.All"/> rather than written out
+    /// again here, so an action that gains or loses an argument cannot leave this
+    /// suggestion telling the user the wrong thing.
+    /// </remarks>
+    internal static IReadOnlyList<string> SuggestionLines(
+        PhraseResolver? reviewAi, string typedLine)
+    {
+        var suggestion = reviewAi?.Resolve(typedLine);
+
+        if (suggestion is null)
+            return [];
+
+        var action = ReviewActions.All.FirstOrDefault(a => a.Verb == suggestion.Label);
+
+        var usage = action is null || action.ArgumentPrompts.Count == 0
+            ? suggestion.Label
+            : $"{suggestion.Label} "
+              + string.Join(' ', action.ArgumentPrompts.Select(p => $"<{p.ToLowerInvariant()}>"));
+
+        return
+        [
+            $"Did you mean:  {usage}",
+            $"  (AI, {suggestion.Confidence:P0} confidence, "
+                + $"closest example: \"{suggestion.ClosestText}\")"
+        ];
     }
 
     /// <summary>
