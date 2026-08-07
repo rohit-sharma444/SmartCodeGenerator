@@ -1050,7 +1050,7 @@ public sealed class RetrievalTests
             V("create class", IntentType.CreateClass, 0f, 1f)
         };
 
-        var result = NeighbourVote.Decide(corpus, Similarity.Normalize([1f, 0f]), topK: 2, floor: 0.1);
+        var result = NeighbourVote.Decide(corpus, Similarity.Normalize([1f, 0f]), topK: 2, floor: 0.1, minTopScore: 0.35);
 
         Assert.NotNull(result);
         Assert.Equal(IntentType.ListClasses, result!.Intent);
@@ -1066,7 +1066,7 @@ public sealed class RetrievalTests
             V("create class", IntentType.CreateClass, 1f, 0f)
         };
 
-        var result = NeighbourVote.Decide(corpus, Similarity.Normalize([1f, 0f]), topK: 2, floor: 0.0);
+        var result = NeighbourVote.Decide(corpus, Similarity.Normalize([1f, 0f]), topK: 2, floor: 0.0, minTopScore: 0.35);
 
         Assert.NotNull(result);
         Assert.True(result!.Confidence < 0.6);
@@ -1081,14 +1081,14 @@ public sealed class RetrievalTests
             V("create class", IntentType.CreateClass, 1f, 0f)
         };
 
-        var result = NeighbourVote.Decide(corpus, Similarity.Normalize([1f, 0f]), topK: 2, floor: 0.9);
+        var result = NeighbourVote.Decide(corpus, Similarity.Normalize([1f, 0f]), topK: 2, floor: 0.9, minTopScore: 0.35);
 
         Assert.Null(result);
     }
 
     [Fact]
     public void An_empty_corpus_returns_null()
-        => Assert.Null(NeighbourVote.Decide([], [1f, 0f], topK: 5, floor: 0.1));
+        => Assert.Null(NeighbourVote.Decide([], [1f, 0f], topK: 5, floor: 0.1, minTopScore: 0.35));
 
     [Fact]
     public void Evidence_is_ordered_best_first_and_capped_at_topK()
@@ -1100,15 +1100,94 @@ public sealed class RetrievalTests
             V("c", IntentType.ListClasses, 0.6f, 0.8f)
         };
 
-        var result = NeighbourVote.Decide(corpus, Similarity.Normalize([1f, 0f]), topK: 2, floor: 0.0);
+        var result = NeighbourVote.Decide(corpus, Similarity.Normalize([1f, 0f]), topK: 2, floor: 0.0, minTopScore: 0.35);
 
         Assert.NotNull(result);
         Assert.Equal(2, result!.Evidence.Count);
         Assert.Equal("b", result.Evidence[0].Text);
         Assert.True(result.Evidence[0].Score >= result.Evidence[1].Score);
     }
+
+    [Fact]
+    public void A_lone_weak_match_returns_null_despite_100_percent_vote_share()
+    {
+        var corpus = new[]
+        {
+            V("weak", IntentType.ListClasses, 0.02f, 1f)
+        };
+
+        var result = NeighbourVote.Decide(corpus, Similarity.Normalize([1f, 0f]), topK: 5, floor: 0.0, minTopScore: 0.35);
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public void Floor_boundary_is_inclusive_minimum()
+    {
+        var corpus = new[]
+        {
+            V("a", IntentType.ListClasses, 1f, 0f),
+            V("b", IntentType.CreateClass, 1f, 0f)
+        };
+
+        var result = NeighbourVote.Decide(corpus, Similarity.Normalize([1f, 0f]), topK: 2, floor: 0.5, minTopScore: 0.0);
+
+        Assert.NotNull(result);
+        Assert.Equal(0.5, result!.Confidence, 6);
+    }
+
+    [Fact]
+    public void Voting_is_score_weighted_not_count_based()
+    {
+        var corpus = new[]
+        {
+            V("strong", IntentType.ListClasses, 0.99f, 0.1414f),
+            V("weak1", IntentType.CreateClass, 0.1f, 0.9949f),
+            V("weak2", IntentType.CreateClass, 0.1f, 0.9949f)
+        };
+
+        var result = NeighbourVote.Decide(corpus, Similarity.Normalize([1f, 0f]), topK: 3, floor: 0.0, minTopScore: 0.0);
+
+        Assert.NotNull(result);
+        Assert.Equal(IntentType.ListClasses, result!.Intent);
+        Assert.True(result.Confidence > 0.8);
+    }
+
+    [Fact]
+    public void Evidence_ordering_is_total()
+    {
+        // Listed ListClasses-first ON PURPOSE. LINQ's sort is stable, so a corpus in
+        // the asserted order would pass with no intent tie-break at all — the test has
+        // to fight the input order to prove the tie-break is what orders the output.
+        var corpus = new[]
+        {
+            V("text", IntentType.ListClasses, 0.5f, 0f),
+            V("text", IntentType.CreateClass, 0.5f, 0f)
+        };
+
+        var result = NeighbourVote.Decide(corpus, Similarity.Normalize([1f, 0f]), topK: 2, floor: 0.0, minTopScore: 0.0);
+
+        Assert.NotNull(result);
+        Assert.Equal(2, result!.Evidence.Count);
+        Assert.Equal(IntentType.CreateClass, result.Evidence[0].Intent);
+        Assert.Equal(IntentType.ListClasses, result.Evidence[1].Intent);
+    }
 }
 ```
+
+The last four tests are the ones a first pass omits, and each pins a property that
+would otherwise be free to regress silently:
+
+- `A_lone_weak_match...` is the reason `minTopScore` exists. Share-of-vote alone reports
+  confidence 1.0 for a single cosine-0.02 neighbour, because that neighbour is the whole
+  vote. Written without this test, the gate looks redundant.
+- `Floor_boundary_is_inclusive_minimum` pins `<` rather than `<=`, which is what makes the
+  "floor must exceed 0.5" rule in the class remarks true rather than aspirational.
+- `Voting_is_score_weighted_not_count_based` fails if `g.Sum(e => e.Score)` is ever
+  simplified to `g.Count()` — two weak neighbours would then outvote one near-perfect one.
+- `Evidence_ordering_is_total` must list the corpus in the OPPOSITE order to the assertion.
+  LINQ's `OrderBy` is a stable sort, so a fixture already in the asserted order passes with
+  the `ThenBy(e => e.Intent...)` deleted — a vacuous test that proves nothing.
 
 - [ ] **Step 2: Run them — expect failure**
 
@@ -1247,7 +1326,7 @@ public static class NeighbourVote
 dotnet test CodeIntelligence.Tests/CodeIntelligence.Tests.csproj --filter RetrievalTests
 ```
 
-Expected: 8 passed.
+Expected: 12 passed.
 
 - [ ] **Step 6: Commit**
 

@@ -138,10 +138,13 @@ public sealed class RetrievalTests
     [Fact]
     public void Evidence_ordering_is_total()
     {
+        // Listed ListClasses-first ON PURPOSE. LINQ's sort is stable, so a corpus in
+        // the asserted order would pass with no intent tie-break at all — the test has
+        // to fight the input order to prove the tie-break is what orders the output.
         var corpus = new[]
         {
-            V("text", IntentType.CreateClass, 0.5f, 0f),
-            V("text", IntentType.ListClasses, 0.5f, 0f)
+            V("text", IntentType.ListClasses, 0.5f, 0f),
+            V("text", IntentType.CreateClass, 0.5f, 0f)
         };
 
         var result = NeighbourVote.Decide(corpus, Similarity.Normalize([1f, 0f]), topK: 2, floor: 0.0, minTopScore: 0.0);
