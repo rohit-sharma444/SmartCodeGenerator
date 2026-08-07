@@ -126,11 +126,8 @@ internal class CodeGeneratorStarter
     /// written whichever way the user answers — a decline is as informative as an
     /// accept for calibrating a later auto-execute threshold.</summary>
     private bool Confirm(CodeIntelligence.Abstractions.AiResolution resolution)
-    {
-        var accepted = AiConfirmPrompt.Confirm(resolution);
-        _ai.DecisionLog.Append(_lastInput, resolution, accepted);
-        return accepted;
-    }
+        => AiDecisionRecorder.ConfirmAndRecord(
+            resolution, _lastInput, _ai.DecisionLog, AiConfirmPrompt.Confirm);
 
     internal void Run()
     {
