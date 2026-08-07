@@ -452,6 +452,61 @@ public static class CommandDictionary
         },
 #endregion
 
+#region "AI"
+        // Handled in the CLI beside history and clear, so these have no IntentType and
+        // no LiteralCommandTable entry. They are listed here because help is the command
+        // catalog users read, not a mirror of the parser.
+        new()
+        {
+            Category = "AI",
+            Command = "ai status",
+            Description = "Reports whether AI command recognition is on, the model and index in "
+                        + "use, both confidence gates, and how many decisions have been logged. "
+                        + "Plain 'ai' does the same.",
+            Example = "ai status"
+        },
+        new()
+        {
+            Category = "AI",
+            Command = "ai enable",
+            Description = "Turns AI recognition on in ai.json. Off by default. Restart the CLI "
+                        + "afterwards to load the model, then run 'ai reindex'.",
+            Example = "ai enable"
+        },
+        new()
+        {
+            Category = "AI",
+            Command = "ai disable",
+            Description = "Turns AI recognition off. Command recognition returns to the "
+                        + "rule-based path exactly as it behaves with AI absent.",
+            Example = "ai disable"
+        },
+        new()
+        {
+            Category = "AI",
+            Command = "ai reindex",
+            Description = "Rebuilds the phrase index from the current commands. Run it after "
+                        + "enabling AI, or whenever 'ai status' reports REINDEX REQUIRED.",
+            Example = "ai reindex"
+        },
+        new()
+        {
+            Category = "AI",
+            Command = "ai mode <retrieval|generative|hybrid>",
+            Description = "Sets how AI reads unrecognized input. Only retrieval works today; "
+                        + "generative and hybrid are declined until a later phase.",
+            Example = "ai mode retrieval"
+        },
+        new()
+        {
+            Category = "AI",
+            Command = "ai why",
+            Description = "Explains the last AI reading: what you typed, how it was read, the "
+                        + "supporting examples, and whether you accepted it.",
+            Example = "ai why"
+        },
+#endregion
+
 #region "Build App"
         new()
         {
@@ -603,11 +658,21 @@ public static class CommandDictionary
             lines.Add("| --- | --- | --- |");
 
             foreach (var command in group.OrderBy(c => c.Command))
-                lines.Add($"| `{command.Command}` | {command.Description} | `{command.Example}` |");
+                lines.Add(
+                    $"| `{Cell(command.Command)}` | {Cell(command.Description)} "
+                    + $"| `{Cell(command.Example)}` |");
 
             lines.Add(string.Empty);
         }
 
         return string.Join("\n", lines) + "\n";
     }
+
+    /// <summary>Escapes a value for a Markdown table cell.
+    ///
+    /// A bare <c>|</c> ends the cell, so a command documenting alternatives —
+    /// <c>ai mode &lt;retrieval|generative|hybrid&gt;</c> — silently renders as five
+    /// columns and breaks the whole row. Backticks do not protect it; the escape is
+    /// still required inside a code span.</summary>
+    private static string Cell(string value) => value.Replace("|", @"\|");
 }

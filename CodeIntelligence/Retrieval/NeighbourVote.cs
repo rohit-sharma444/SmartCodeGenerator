@@ -1,60 +1,44 @@
+using CodeGenerationEngine.Models;
 using CodeIntelligence.Abstractions;
 
 namespace CodeIntelligence.Retrieval;
 
-/// <summary>Brute-force k-NN over the corpus. Confidence is the winning intent's share
-/// of the total neighbour score, so a unanimous neighbourhood approaches 1 and an
-/// evenly split one approaches 1/n. Two gates protect against false confidence:
-/// minTopScore rejects lone weak matches, and floor enforces ambiguity decline.
-/// Below either gate we return null — declining is always better than a confident
-/// wrong answer, because the user's next step after a decline is the familiar
-/// "did you mean" line. The floor must be set above 0.5 for two-way ambiguous
-/// phrases to decline (floor is inclusive minimum).</summary>
+/// <summary>Brute-force k-NN over the corpus, behind TWO independent gates.
+///
+/// The gate logic itself lives in <see cref="PhraseVote"/>, which the build-app review
+/// loop also uses; this type is the <c>IntentType</c> face of it, adding the evidence
+/// shape and rationale string that <c>AiResolution</c> carries. Keeping one voting
+/// implementation is what stops the two callers drifting apart, since the thresholds
+/// are calibrated against that behaviour specifically.
+///
+/// `minTopScore` asks "is anything actually similar?" and `floor` asks "do the
+/// neighbours agree?" — they must stay separate: if exactly one corpus entry scores
+/// positive (say cosine 0.02, noise), it takes 100% of the vote and clears any floor.
+///
+/// `floor` is INCLUSIVE (confidence == floor is accepted) and therefore must be set
+/// ABOVE 0.5, or a two-way ambiguous phrase — which computes to exactly 0.5 — would be
+/// accepted instead of declined. Declining is always better than a confident wrong
+/// answer: the user's next step after a decline is the familiar "did you mean" line.</summary>
 public static class NeighbourVote
 {
     public static AiResolution? Decide(
         IReadOnlyList<StoredVector> corpus, float[] query, int topK, double floor, double minTopScore)
     {
-        if (corpus.Count == 0 || query.Length == 0)
+        var decision = PhraseVote.Decide(
+            [.. corpus.Select(v => (v.DocumentId, v.Text, v.Intent, v.Vector))],
+            query, topK, floor, minTopScore);
+
+        if (decision is null)
             return null;
 
-        var neighbours = corpus
-            .Select(v => new RetrievedExample(v.DocumentId, v.Text, v.Intent, Similarity.Cosine(v.Vector, query)))
-            .Where(e => e.Score > 0)
-            .OrderByDescending(e => e.Score)
-            .ThenBy(e => e.Text, StringComparer.Ordinal)
-            .ThenBy(e => e.Intent.ToString(), StringComparer.Ordinal)
-            .Take(Math.Max(1, topK))
+        var evidence = decision.Evidence
+            .Select(e => new RetrievedExample(e.Id, e.Text, e.Label, e.Score))
             .ToList();
-
-        if (neighbours.Count == 0)
-            return null;
-
-        // Gate 1: is anything actually close? A lone weak match would otherwise take
-        // 100% of the vote share and clear any floor.
-        if (neighbours[0].Score < minTopScore)
-            return null;
-
-        var totals = neighbours
-            .GroupBy(e => e.Intent)
-            .Select(g => (Intent: g.Key, Score: g.Sum(e => e.Score)))
-            .OrderByDescending(x => x.Score)
-            .ThenBy(x => x.Intent.ToString(), StringComparer.Ordinal)
-            .ToList();
-
-        var overall = neighbours.Sum(e => e.Score);
-        var winner = totals[0];
-        var confidence = overall == 0 ? 0 : winner.Score / overall;
-
-        // Gate 2: do the neighbours agree? Floor is inclusive minimum, so must be above 0.5
-        // to decline two-way ambiguous phrases.
-        if (confidence < floor)
-            return null;
 
         var rationale =
-            $"{neighbours.Count} nearest examples, {winner.Intent} holding " +
-            $"{confidence:P0} of the vote (closest: \"{neighbours[0].Text}\").";
+            $"{evidence.Count} nearest examples, {decision.Label} holding " +
+            $"{decision.Confidence:P0} of the vote (closest: \"{evidence[0].Text}\").";
 
-        return new AiResolution(winner.Intent, confidence, neighbours, rationale);
+        return new AiResolution(decision.Label, decision.Confidence, evidence, rationale);
     }
 }

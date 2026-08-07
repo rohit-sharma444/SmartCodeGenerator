@@ -190,7 +190,7 @@ internal class CodeGeneratorStarter
             {
                 if (BuildAppCommand.IsBuildApp(input))
                 {
-                    _buildApp.Handle(input, _workspaceRoot);
+                    _buildApp.Handle(input, _workspaceRoot, _ai);
                     continue;
                 }
 

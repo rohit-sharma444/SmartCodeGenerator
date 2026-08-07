@@ -91,6 +91,35 @@ public sealed class AiLayer
         }
     }
 
+    /// <summary>A resolver over a caller's own closed vocabulary, sharing this layer's
+    /// embedder and calibrated gates. Null when AI is off or unavailable, which callers
+    /// treat as "no suggestion" — the same degradation as a null <see cref="Resolver"/>.
+    ///
+    /// Gated on <see cref="Resolver"/> rather than just the embedder: if the user ran
+    /// `ai disable`, no surface should be quietly using AI anyway. The embedder stays
+    /// private; composing things out of it is this class's job.</summary>
+    /// <remarks>Thresholds are the CALLER's, deliberately not this layer's. Task 10
+    /// established that gates are calibrated against a specific corpus; a small closed
+    /// vocabulary behaves nothing like the 171-phrase intent corpus, and reusing
+    /// AiConfig's values there measurably rejected correct matches.</remarks>
+    public PhraseResolver? CreatePhraseResolver(
+        IReadOnlyList<(string Text, string Label)> phrases,
+        int topK, double floor, double minTopScore)
+    {
+        try
+        {
+            if (_embedder is null || Resolver is null || phrases.Count == 0)
+                return null;
+
+            return new PhraseResolver(_embedder, phrases, topK, floor, minTopScore);
+        }
+        catch (Exception ex)
+        {
+            Unavailable = $"{ex.GetType().Name}: {ex.Message}";
+            return null;
+        }
+    }
+
     /// <summary>Rebuilds the corpus and its embeddings. ReplaceAll is one transaction,
     /// so an interrupted reindex leaves the previous index intact and serving.</summary>
     public string Reindex()
