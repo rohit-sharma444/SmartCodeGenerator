@@ -24,11 +24,21 @@ public sealed class ConfigTests : IDisposable
 
         Assert.False(config.Enabled);
         Assert.Equal("Retrieval", config.ResolverMode);
-        Assert.Equal(5, config.TopK);
         Assert.Equal(0.55, config.ConfidenceFloor, 3);
-        Assert.Equal(0.35, config.MinTopScore, 3);
+
+        // Literals, not AiConfig.Default* — asserting a constant against itself proves
+        // nothing. These are the values calibrated by the golden-set sweep on
+        // 2026-08-07; changing a default should require deliberately editing this line.
+        Assert.Equal(2, config.TopK);
+        Assert.Equal(0.55, config.MinTopScore, 3);
+
         Assert.True(config.ConfidenceFloor > 0.5,
             "an inclusive floor at or below 0.5 would accept two-way ambiguous phrases");
+
+        // topK 1 makes every vote unanimous, which silently disables ConfidenceFloor
+        // and the decline-on-ambiguity behaviour the corpus dedup exists for.
+        Assert.True(config.TopK >= 2,
+            "topK below 2 makes the confidence floor inert - see AiConfig.DefaultTopK");
     }
 
     [Fact]

@@ -3204,7 +3204,11 @@ public sealed class GoldenSetTests : IDisposable
         store.ReplaceAll(embedder.ModelId, embedder.Dimension,
             [.. documents.Select(d => (d, embedder.Embed(d.Text)))]);
 
-        return new RetrievalIntentResolver(store, embedder, topK: 5, floor: floor,
+        // NOTE: this sample was broken — the method took only `floor` while the body
+        // referenced an undefined `minTopScore`. It must take BOTH gates, and topK too:
+        // the sweep found topK dominates both. Build the index ONCE and share it, since
+        // no threshold affects the embeddings.
+        return new RetrievalIntentResolver(store, embedder, topK: topK, floor: floor,
             minTopScore: minTopScore, budget: TimeSpan.FromSeconds(30));
     }
 
@@ -3274,11 +3278,24 @@ Expected: the per-floor report prints. Both tests pass, but `Accuracy_does_not_r
 
 - [ ] **Step 4: Calibrate**
 
-Pick the floor with the best correct count at a **wrong-and-confident count of roughly 5% of the set or lower** — declining is cheap, a confident wrong answer is not. Then:
+Pick the setting with the best correct count at a **wrong-and-confident count of roughly 5% of the set or lower** — declining is cheap, a confident wrong answer is not. Then:
 
-1. Set `ConfidenceFloor`'s default in `CodeIntelligence/AiConfig.cs` to the chosen floor.
-2. In `GoldenSetTests`, set `floor` to the same value, `minimumCorrect` to the measured count minus 2, and `maximumWrongConfident` to the measured count plus 1.
-3. Record the measured numbers in the spec's "On thresholds" section, replacing the promise to measure with the measurement.
+1. Set the defaults in `CodeIntelligence/AiConfig.cs`. Express them as `const` and have
+   `GoldenSetTests` measure those constants, so the gate cannot drift from what ships —
+   two literals in two files diverge silently.
+2. Set `minimumCorrect` to the measured count minus 2, and `maximumWrongConfident` to
+   the measured count plus 1.
+3. Record the measured numbers in the spec's "On thresholds" section, replacing the
+   promise to measure with the measurement.
+4. Update `ConfigTests.Defaults_are_disabled_retrieval_mode`, which pins the old default
+   values as literals and will go red. That is the test doing its job — edit it
+   deliberately rather than making it read the constants, which would be tautological.
+
+**Result when this ran (2026-08-07):** shipped topK 2, minTopScore 0.55, floor 0.55 →
+17 correct / 1 wrong / 51 declined of 69, 94% precision. The dominant parameter was
+`topK`, not either gate; `topK 1` scored best on raw accuracy and was rejected because
+it makes `ConfidenceFloor` inert. Top-1 accuracy tops out at 65% at any setting, so the
+next real gain is corpus phrasings, not tuning. Full reasoning in the spec.
 
 - [ ] **Step 5: Re-run and confirm the gate is real**
 

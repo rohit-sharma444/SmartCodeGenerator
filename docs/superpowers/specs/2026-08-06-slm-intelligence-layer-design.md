@@ -272,6 +272,14 @@ matching `IntentRepository`'s established pattern.
 
 Default-off for phase A. The flag flips once the decision log shows real accuracy.
 
+**Saved config pins defaults permanently.** `AiConfig.Save` writes every property, and
+`Load` then overrides the compiled defaults with whatever is on disk. A machine that
+ran `ai enable` before the Task 10 calibration keeps `TopK 5` / `MinTopScore 0.35`
+forever and never sees the better values — observed on this machine, where the probe's
+`ai.json` had to be deleted. Harmless for phase A because the feature is new and
+default-off, but phase B will re-tune these: it needs either a version field with a
+migration, or for `Save` to omit properties still at their default.
+
 ## Commands
 
 **Amended when Task 9 landed.** This section originally called for additive
@@ -345,9 +353,44 @@ projects. MSTest is used only by `CodeGenerator.Tests`.
 ### On thresholds
 
 No accuracy number is invented here and presented as a guarantee. The first
-measurement sets `ConfidenceFloor` and the accuracy assertion; the test then locks
-that floor in so regressions are caught. Committing the model is what makes this
-deterministic enough to assert at all.
+measurement sets the thresholds and the accuracy assertion; the test then locks them
+in so regressions are caught. Committing the model is what makes this deterministic
+enough to assert at all.
+
+**Measured 2026-08-07** against a 69-phrasing golden set spanning 34 intents, none of
+which appears in the corpus (`GoldenSetTests` asserts that overlap is empty — a golden
+set drawn from the index would score its own entries).
+
+Shipped: **topK 2, minTopScore 0.55, ConfidenceFloor 0.55** → 17 correct, 1
+wrong-and-confident, 51 declined. The layer answers about a quarter of unrecognized
+inputs and is right ~94% of the time when it does; otherwise it stays silent and the
+user sees exactly today's message.
+
+Three findings, in order of importance:
+
+1. **`topK` dominates both gates.** The corpus has very uneven per-intent coverage —
+   `ListProperties` has 2 phrasings, `CreateProperty` many — and a score-weighted sum
+   over 5 neighbours lets a document-rich intent outvote a sparse one whose single
+   nearest neighbour was correct. Measured: "what properties does Customer have"
+   retrieves "show properties" (`ListProperties`) as its closest match and still
+   returned `CreateProperty` at topK 5. Dropping to 2 was worth more than any
+   threshold change.
+2. **`topK 1` scored best on raw accuracy (45/69) and was rejected.** With one
+   neighbour the vote is unanimous by construction, so confidence is always 1.0 and
+   `ConfidenceFloor` becomes inert — every floor value produced byte-identical results
+   at topK 1. It would also destroy the decline-on-ambiguity behaviour the corpus dedup
+   was built for. 2 is the smallest k that keeps both gates alive, and the floor
+   demonstrably still does work there (at minTopScore 0.55, raising the floor from 0.00
+   to 0.55 moves 28 correct / 5 wrong to 17 correct / 1 wrong).
+3. **Top-1 retrieval accuracy tops out at 45/69 (65%) at any setting.** Thresholds only
+   trade correct answers for declines; they cannot raise that ceiling. The cause is the
+   corpus, as the Task 3 watch item predicted: 171 phrasings over 53 intents is ~3 each,
+   and several intents (`GenerateConstructor`, `GenerateComments`, `FindUnusedClasses`,
+   `FindCircularDependencies`) have no phrasing resembling how a user would ask. The
+   embedder is not the constraint — it separates a paraphrase from unrelated text at
+   0.68 vs 0.03. **The next real improvement is more and better corpus phrasings, not
+   tuning.** Short antonymic commands also embed very close together ("what have you
+   learned" retrieves "reset learning"), which no threshold can fix.
 
 ### Red first
 
