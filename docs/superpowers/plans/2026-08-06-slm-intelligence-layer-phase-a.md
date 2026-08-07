@@ -1496,6 +1496,14 @@ public sealed class ResolverTests : IDisposable
         var result = resolver.Resolve("list classes", CancellationToken.None);
 
         Assert.Null(result);
+
+        // Null alone does not prove the catch ran — every other failure path returns
+        // null too, so a broken embedder that was never CALLED would pass. Pinning
+        // Unavailable is what says the exception reached the handler rather than the
+        // resolver bailing out earlier at the reindex gate. Verified: give `broken` a
+        // ModelId of "fake-v2" and Assert.Null still passes while these two fail.
+        Assert.Contains("InvalidOperationException", resolver.Unavailable);
+        Assert.Contains("onnx exploded", resolver.Unavailable);
     }
 
     [Fact]
