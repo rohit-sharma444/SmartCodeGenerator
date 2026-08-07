@@ -17,6 +17,7 @@
   <ItemGroup>
     <ProjectReference Include="..\CodeIntelligence\CodeIntelligence.csproj" />
     <ProjectReference Include="..\CodeIntelligence.Abstractions\CodeIntelligence.Abstractions.csproj" />
+    <ProjectReference Include="..\CodeIntelligence.Onnx\CodeIntelligence.Onnx.csproj" />
   </ItemGroup>
 
 </Project>

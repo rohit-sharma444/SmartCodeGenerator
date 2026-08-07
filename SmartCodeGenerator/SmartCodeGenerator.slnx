@@ -5,6 +5,7 @@
   <Project Path="../CodeGenerator/CodeGenerator.csproj" />
   <Project Path="../CodeIntelligence/CodeIntelligence.csproj" />
   <Project Path="../CodeIntelligence.Abstractions/CodeIntelligence.Abstractions.csproj" />
+  <Project Path="../CodeIntelligence.Onnx/CodeIntelligence.Onnx.csproj" />
   <Project Path="../CodeIntelligence.Tests/CodeIntelligence.Tests.csproj" />
   <Project Path="../DataIngestion.Tests/DataIngestion.Tests.csproj" />
   <Project Path="../DataIngestion/DataIngestion.csproj" />
