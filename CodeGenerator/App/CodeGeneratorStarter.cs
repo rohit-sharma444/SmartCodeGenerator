@@ -1,6 +1,7 @@
 using CodeGenerationEngine.Core;
 using CodeGenerationEngine.Helper;
 using CodeGenerationEngine.Models;
+using CodeIntelligence;
 using DomainDiscovery;
 using DomainDiscovery.Wikipedia.Dump;
 using NaturalLanguageBridge;
@@ -24,6 +25,12 @@ internal class CodeGeneratorStarter
     private readonly NaturalLanguagePipeline _pipeline = new();
     private readonly BuildAppCommand _buildApp = new();
     private readonly BatchCommand _batch = new();
+    private readonly AiLayer _ai = AiLayer.Create();
+
+    /// <summary>The input currently being handled, so the confirm callback can record
+    /// it in the decision log. The callback is invoked from deep inside the pipeline
+    /// and is handed only the resolution, not the text it came from.</summary>
+    private string _lastInput = string.Empty;
 
     internal CodeGeneratorStarter()
     {
@@ -89,6 +96,11 @@ internal class CodeGeneratorStarter
                 return true;
             }
 
+            // No resolver and no confirm delegate: scripted single-shot invocations
+            // stay rule-based only. _lastInput is set anyway so that if RunOnce is ever
+            // given a confirm callback, the decision log records the right text rather
+            // than an empty string.
+            _lastInput = command;
             var outcome = _pipeline.Handle(command, ref currentProject,
                 _configuredRules, _workspaceRoot, r => ProjectManager.CurrentProject = r);
 
@@ -108,6 +120,16 @@ internal class CodeGeneratorStarter
             Console.WriteLine($"Error [{ex.GetType().Name}]: {ex.Message}");
             return false;
         }
+    }
+
+    /// <summary>Prompts for an AI reading and records the answer. The decision log is
+    /// written whichever way the user answers — a decline is as informative as an
+    /// accept for calibrating a later auto-execute threshold.</summary>
+    private bool Confirm(CodeIntelligence.Abstractions.AiResolution resolution)
+    {
+        var accepted = AiConfirmPrompt.Confirm(resolution);
+        _ai.DecisionLog.Append(_lastInput, resolution, accepted);
+        return accepted;
     }
 
     internal void Run()
@@ -157,6 +179,12 @@ internal class CodeGeneratorStarter
                 continue;
             }
 
+            if (AiCommand.IsAiCommand(input))
+            {
+                Console.WriteLine(AiCommand.Handle(input, _ai));
+                continue;
+            }
+
             // FIX #9: Improved exception handling with specific catch blocks
             try
             {
@@ -177,8 +205,15 @@ internal class CodeGeneratorStarter
                 // The NLE analysis is used internally only; we surface just the
                 // command's own output (e.g. the project list), not the raw
                 // SemanticResult, so no onAnalyzed callback is passed.
+                // Console.IsInputRedirected is the gate: a piped or scripted run must
+                // never block on a prompt, which also keeps scripted E2E runs
+                // deterministic and model-free.
+                _lastInput = input;
                 var outcome = _pipeline.Handle(input, ref currentProject,
-                     _configuredRules, _workspaceRoot, r => ProjectManager.CurrentProject = r);
+                     _configuredRules, _workspaceRoot, r => ProjectManager.CurrentProject = r,
+                     onAnalyzed: null,
+                     aiResolver: Console.IsInputRedirected ? null : _ai.Resolver,
+                     confirmAi: Console.IsInputRedirected ? null : Confirm);
 
                 // See RunOnce: gate on recognition, not success, so a recognized
                 // command that failed keeps its own error and isn't mislabeled.
@@ -222,6 +257,17 @@ internal class CodeGeneratorStarter
         PrintBanner();
 
         ReportWikipediaStoreStatus();
+
+        // Reported once per session, beside the updater-service line, so a missing or
+        // unloadable model is stated plainly at startup instead of silently making
+        // every unrecognized command behave as though AI were switched off.
+        //
+        // Deliberately NOT in PrintBanner: that method is static and, more to the
+        // point, `clear` re-runs it, which would repaint this line on every screen
+        // wipe. PrintHeader is the once-per-session path.
+        Console.WriteLine(_ai.Resolver is not null
+            ? "AI: enabled (retrieval)"
+            : $"AI: off ({_ai.Unavailable ?? "disabled"})");
     }
 
     /// <summary>

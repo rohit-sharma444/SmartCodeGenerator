@@ -67,13 +67,16 @@ CodeIntelligence.Tests/
 **Modified:**
 
 - `SmartCodeGenerator/SmartCodeGenerator.slnx` — add four projects
-- `CodeGenerationEngine/Models/IntentType.cs` — append 6 AI intents
 - `NaturalLanguageBridge/NaturalLanguageBridge.csproj` — reference Abstractions
 - `NaturalLanguageBridge/CommandFront.cs:214` — three optional parameters on `RunDetailed`
 - `NaturalLanguageBridge/NaturalLanguagePipeline.cs:20` — thread the parameters through
-- `NaturalLanguageBridge/LiteralCommandTable.cs:13` — six `ai ...` entries
-- `CodeGenerationEngine/Service/CommandHandlingService.cs` — dispatch the AI intents
+- `NaturalLanguageBridge/LiteralCommandTable.cs` — `PhrasesFor(intent)` for the harvester (Task 3)
 - `CodeGenerator/App/CodeGeneratorStarter.cs:92,180` — supply resolver and confirm delegate
+
+**Three entries removed from this list when Task 9 landed** — `IntentType.cs` (append 6
+AI intents), `LiteralCommandTable.cs` (six `ai ...` entries) and
+`CommandHandlingService.cs` (dispatch the AI intents). Task 9 Step 2 handles `ai` in
+the CLI instead, which makes all three unreachable dead code. See Task 9 Step 1.
 - `CodeGenerator/CodeGenerator.csproj` — reference `CodeIntelligence` and `CodeIntelligence.Onnx`
 - `.gitattributes` — LFS rule for `*.onnx`
 
@@ -2814,22 +2817,34 @@ git commit -m "feat(ai): add the optional resolver seam to CommandFront and the 
 - Consumes: `AiLayer.Create()`, `AiLayer.Resolver`, `AiLayer.StatusText()`, `AiLayer.Reindex()`, `AiLayer.DecisionLog`, `SelectionPrompt.Choose`
 - Produces: `AiCommand.IsAiCommand(string)`, `AiCommand.Handle(string, AiLayer)`, `AiConfirmPrompt.Confirm(AiResolution)`
 
-- [ ] **Step 1: Append the AI intents**
+- [x] **Step 1: DO NOT add AI intents — resolved when the task landed**
 
-At the very END of `CodeGenerationEngine/Models/IntentType.cs`, after `ShowBusinessValidation`:
+This step originally appended six members (`AiStatus`, `AiEnable`, `AiDisable`,
+`AiReindex`, `AiMode`, `AiWhy`) to `IntentType`. **They were not added, and must not
+be.** Step 2 below routes `ai ...` through the CLI, not the parser, and the two cannot
+both be right.
 
-```csharp
-    // AI layer. Appended last — IntentType members are persisted as integers by the
-    // learned-intent store, so inserting anywhere above corrupts saved data.
-    AiStatus,
-    AiEnable,
-    AiDisable,
-    AiReindex,
-    AiMode,
-    AiWhy
-```
+Under Step 2's design nothing produces those members: not `LiteralCommandTable`, not
+the `CommandFront` regex guards, not `NlpCommandMapper` — the three sources
+`ReachableIntentGateTests.Reachable()` reads — and no `CommandHandlingService` handler
+consumes them. They would be unreachable dead code, which this repo has explicitly
+rejected before (`NlpCommandMapperTests.cs`: "CreateRepository has no handler and must
+stay unreachable"; the 2026-07-26 spec refuses "unreachable dead code" in the same
+terms).
 
-Add a comma after `ShowBusinessValidation`.
+Step 2's reasoning is sound and matches the existing pattern exactly: `ClearCommand`,
+`HistoryCommand`, `BuildAppCommand` and `BatchCommand` are all CLI-level
+`IsX(input)` → handle → `continue`, none appear in `LiteralCommandTable`, and none
+have `IntentType` members. `ai` is the same shape — a console report, not a
+code-generation action.
+
+Not adding them is also the safer half of the fork: this plan's own global constraint
+warns that `IntentType` members are persisted as integers by the learned-intent store,
+so the lowest-risk change to that enum is no change at all.
+
+Consequently the header's **Modified** list is wrong on three counts — no
+`IntentType.cs` edit, no six `ai ...` entries in `LiteralCommandTable.cs`, and no AI
+dispatch in `CommandHandlingService.cs`. Corrected there.
 
 - [ ] **Step 2: Handle the `ai` commands in the CLI**
 
@@ -2869,12 +2884,15 @@ internal static class AiCommand
 
             case "enable":
                 layer.Config.Enabled = true;
-                layer.Config.Save();
+                // Save(layer.ConfigPath), NOT Save(). The no-arg overload targets
+                // AiConfig.DefaultPath, so a layer built on any other path silently
+                // edits the wrong file. AiLayer gained a ConfigPath property for this.
+                layer.Config.Save(layer.ConfigPath);
                 return "AI enabled. Restart the CLI to load the model, then run 'ai reindex' if prompted.";
 
             case "disable":
                 layer.Config.Enabled = false;
-                layer.Config.Save();
+                layer.Config.Save(layer.ConfigPath);
                 return "AI disabled. Command recognition is unchanged from the rule-based path.";
 
             case "reindex":
@@ -2892,7 +2910,7 @@ internal static class AiCommand
                     return $"Mode '{mode}' arrives in phase B. Only 'retrieval' is available today.";
 
                 layer.Config.ResolverMode = "Retrieval";
-                layer.Config.Save();
+                layer.Config.Save(layer.ConfigPath);
                 return "Mode set to Retrieval.";
 
             case "why":
@@ -3009,7 +3027,11 @@ Set `_lastInput = input;` immediately before the `_pipeline.Handle` call in `Run
 
 - [ ] **Step 5: Report AI state in the banner**
 
-Find `PrintBanner` in `CodeGeneratorStarter.cs` and add a line beside the existing updater-service line, so a missing model is reported once per session rather than on every unrecognized command:
+Add this to `PrintHeader`, after `ReportWikipediaStoreStatus()` — **not** to
+`PrintBanner` as an earlier revision said. `PrintBanner` is `private static`, so it
+cannot read the `_ai` field, and more importantly `clear` re-runs it, which would
+repaint the line on every screen wipe. `PrintHeader` is the once-per-session path and
+is where the updater-service line already comes from:
 
 ```csharp
         Console.WriteLine(_ai.Resolver is not null
@@ -3040,6 +3062,25 @@ ai why                   -> the recorded decision
 ```
 
 Note: rebuild `CodeGenerator` before trusting CLI behavior — `dotnet test` alone leaves its `bin` stale, and a working fix can look dead.
+
+**What this step can and cannot verify.** The first four lines are checkable by piping
+stdin, and were: `ai status` → off/disabled, `ai enable`, restart, `ai reindex` →
+"Indexed 171 phrasings", `ai status` → enabled with 171 phrasings and a Built
+timestamp.
+
+The confirmation prompt is NOT reachable that way and must be checked by a human at a
+real console. `Run()` passes the resolver only when `!Console.IsInputRedirected`, so a
+piped run is rule-based by construction — verified: piping `show me every class`
+prints "Command not recognized" and `ai why` still reports "No AI decisions recorded
+yet." That proves the redirect gate, not the prompt. Until someone runs it
+interactively, `AiConfirmPrompt.Confirm` and the `Confirm` callback that writes the
+decision log are UNVERIFIED end-to-end. Do not report them as working.
+
+Also add `CodeGenerator.Tests/App/AiCommandTests.cs`. The plan specified no tests for
+this task at all, which is the same gap that let Task 7's `CreatedUtc` defect ship.
+`AiCommand.Handle` is pure string-in/string-out given a layer, and `CodeGenerator`
+already carries `InternalsVisibleTo` for the test assembly, so there is no excuse for
+leaving it uncovered.
 
 - [ ] **Step 7: Commit**
 
@@ -3277,4 +3318,5 @@ git commit -m "test(ai): add the golden-set accuracy gate and calibrate the conf
 ## Deferred to phase B
 
 Generative provider, prompt construction, `GenerativeIntentResolver`, and the `ai mode generative|hybrid` paths — which today return "arrives in phase B". Phase B's plan is written after phase A's decision log has real data in it.
+
 

@@ -274,9 +274,20 @@ Default-off for phase A. The flag flips once the decision log shows real accurac
 
 ## Commands
 
-Additive `IntentType` members, `LiteralCommandTable` entries and
-`CommandHandlingService` handlers. New intents must have handlers behind them — the
-existing reachable-intent gate test enforces this.
+**Amended when Task 9 landed.** This section originally called for additive
+`IntentType` members, `LiteralCommandTable` entries and `CommandHandlingService`
+handlers. None were added. `ai ...` is handled in the CLI beside `clear`, `history`,
+`build app` and `batch` — all of which are `IsX(input)` → handle → `continue` with no
+enum member and no table entry — because these are console reports, not
+code-generation actions, and routing them through `CommandHandlingService` would push
+console formatting into the engine.
+
+The reachable-intent gate reads `LiteralCommandTable`, `CommandFront.GuardedIntents`
+and `NlpCommandMapper.MappedIntents`. Since no `ai` intent would appear in any of
+them, enum members would have been unreachable dead code rather than something the
+gate protects — and this codebase rejects unreachable intents on principle. Not
+touching `IntentType` also avoids all risk to the learned-intent store, which
+persists those members as integers.
 
 | Command | Behavior |
 |---|---|

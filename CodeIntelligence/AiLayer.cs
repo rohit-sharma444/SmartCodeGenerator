@@ -14,14 +14,23 @@ namespace CodeIntelligence;
 /// degrades to exactly today's behavior.</summary>
 public sealed class AiLayer
 {
-    private AiLayer(AiConfig config, string indexPath)
+    private AiLayer(AiConfig config, string configPath, string indexPath)
     {
         Config = config;
+        ConfigPath = configPath;
         IndexPath = indexPath;
         DecisionLog = new DecisionLog(indexPath);
     }
 
     public AiConfig Config { get; }
+
+    /// <summary>Where this layer's config was loaded from, so `ai enable` writes back
+    /// to the same file. Without it a layer built on a custom path would silently save
+    /// to AiConfig.DefaultPath — harmless in production, where Create() is called with
+    /// null, but it makes the toggle untestable and would surprise any future caller
+    /// that passes a path.</summary>
+    public string ConfigPath { get; }
+
     public string IndexPath { get; }
     public DecisionLog DecisionLog { get; }
     public IIntentResolver? Resolver { get; private set; }
@@ -32,10 +41,11 @@ public sealed class AiLayer
 
     public static AiLayer Create(string? configPath = null, string? indexPath = null)
     {
+        configPath ??= AiConfig.DefaultPath;
         var config = AiConfig.Load(configPath);
         indexPath ??= Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ai-index.db");
 
-        var layer = new AiLayer(config, indexPath);
+        var layer = new AiLayer(config, configPath, indexPath);
         layer.Initialize();
         return layer;
     }
