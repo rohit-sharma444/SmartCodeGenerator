@@ -2486,8 +2486,29 @@ public sealed class SpyResolver : IIntentResolver
     }
 }
 
-public sealed class SeamTests
+public sealed class SeamTests : IDisposable
 {
+    /// <summary>An EMPTY workspace of this test's own.
+    ///
+    /// Do NOT pass Path.GetTempPath() directly, as an earlier revision of this plan
+    /// did. RunDetailed EXECUTES the command, and the handlers behind "validate
+    /// project", "compile project", "check project" and "Order inherits AuditableBase"
+    /// enumerate the workspace — so they walk the entire Windows temp folder. Measured:
+    /// 4 of the theory cases died with UnauthorizedAccessException on the first
+    /// unreadable entry (msdtadmin), and the suite took 22s instead of 0.3s. Those
+    /// handlers can also WRITE into the workspace, i.e. into the user's real temp.
+    /// The invariant under test has nothing to do with the workspace contents.</summary>
+    private readonly string _workspace =
+        Path.Combine(Path.GetTempPath(), "ci-seam-" + Guid.NewGuid().ToString("N"));
+
+    public SeamTests() => Directory.CreateDirectory(_workspace);
+
+    public void Dispose()
+    {
+        try { Directory.Delete(_workspace, recursive: true); } catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
+    }
+
     private static AiResolution Resolution(IntentType intent) =>
         new(intent, 0.9, [new RetrievedExample(1, "list classes", intent, 0.9)], "test");
 
@@ -2524,7 +2545,7 @@ public sealed class SeamTests
         ProjectMetaData? project = null;
 
         CommandFront.RunDetailed(
-            input, ref project, [], Path.GetTempPath(), _ => { },
+            input, ref project, [], _workspace, _ => { },
             onAnalyzed: null, aiResolver: spy, confirmAi: _ => true);
 
         Assert.Empty(spy.Calls);
@@ -2539,7 +2560,7 @@ public sealed class SeamTests
         ProjectMetaData? project = null;
 
         CommandFront.RunDetailed(
-            "flurble the wotsit", ref project, [], Path.GetTempPath(), _ => { },
+            "flurble the wotsit", ref project, [], _workspace, _ => { },
             onAnalyzed: null, aiResolver: spy, confirmAi: _ => true);
 
         Assert.Single(spy.Calls);
@@ -2554,7 +2575,7 @@ public sealed class SeamTests
         ProjectMetaData? project = null;
 
         var result = CommandFront.RunDetailed(
-            "flurble the wotsit", ref project, [], Path.GetTempPath(), _ => { },
+            "flurble the wotsit", ref project, [], _workspace, _ => { },
             onAnalyzed: null, aiResolver: spy, confirmAi: _ => false);
 
         Assert.False(result.Recognized);
@@ -2569,7 +2590,7 @@ public sealed class SeamTests
         ProjectMetaData? project = null;
 
         var result = CommandFront.RunDetailed(
-            "flurble the wotsit", ref project, [], Path.GetTempPath(), _ => { },
+            "flurble the wotsit", ref project, [], _workspace, _ => { },
             onAnalyzed: null, aiResolver: spy, confirmAi: _ => true);
 
         Assert.True(result.Recognized);
@@ -2582,7 +2603,7 @@ public sealed class SeamTests
         ProjectMetaData? project = null;
 
         var result = CommandFront.RunDetailed(
-            "flurble the wotsit", ref project, [], Path.GetTempPath(), _ => { });
+            "flurble the wotsit", ref project, [], _workspace, _ => { });
 
         Assert.False(result.Recognized);
     }
@@ -2596,10 +2617,62 @@ public sealed class SeamTests
         ProjectMetaData? project = null;
 
         CommandFront.RunDetailed(
-            "flurble the wotsit", ref project, [], Path.GetTempPath(), _ => { },
+            "flurble the wotsit", ref project, [], _workspace, _ => { },
             onAnalyzed: null, aiResolver: spy, confirmAi: null);
 
         Assert.Empty(spy.Calls);
+    }
+
+    [Fact]
+    public void A_resolution_of_Unknown_is_never_offered_for_confirmation()
+    {
+        // A resolver is contractually allowed to return non-null; nothing stops it
+        // returning Unknown. Confirming that would ask the user to approve "I don't
+        // know", and accepting would then mark the command Recognized while executing
+        // nothing. Observed red with the Intent != Unknown guard removed.
+        IntentRepository.Initialize();
+
+        var confirmations = 0;
+        var spy = new SpyResolver { Next = Resolution(IntentType.Unknown) };
+        ProjectMetaData? project = null;
+
+        var result = CommandFront.RunDetailed(
+            "flurble the wotsit", ref project, [], _workspace, _ => { },
+            onAnalyzed: null, aiResolver: spy,
+            confirmAi: _ => { confirmations++; return true; });
+
+        Assert.Equal(0, confirmations);
+        Assert.False(result.Recognized);
+    }
+
+    [Fact]
+    public void The_resolvers_own_resolution_is_what_reaches_the_confirm_delegate()
+    {
+        // Assert.Same, NOT an assertion on Confidence. Asserting `received.Confidence
+        // == 0.77` only reads back the value the test constructed and proves nothing.
+        // Identity is the real property: the confirm delegate is handed the resolver's
+        // OWN object, so what the user is shown cannot drift from what retrieval
+        // decided. ParsedCommand.Confidence is deliberately not asserted here —
+        // RunDetailed returns only RunResult(Handled, Recognized), so the command is
+        // not observable from outside. Task 9 owns that surface.
+        IntentRepository.Initialize();
+        ProjectMetaData? project = null;
+
+        var spy = new SpyResolver
+        {
+            Next = new AiResolution(
+                IntentType.ListProjects, 0.77,
+                [new RetrievedExample(1, "list projects", IntentType.ListProjects, 0.77)], "test")
+        };
+
+        AiResolution? received = null;
+
+        CommandFront.RunDetailed(
+            "flurble the wotsit", ref project, [], _workspace, _ => { },
+            onAnalyzed: null, aiResolver: spy,
+            confirmAi: r => { received = r; return true; });
+
+        Assert.Same(spy.Next, received);
     }
 }
 ```
@@ -2714,7 +2787,13 @@ Expected: all pass, including one theory case per literal phrasing.
 dotnet test SmartCodeGenerator/SmartCodeGenerator.slnx -c Release
 ```
 
-Expected: the pre-existing 1657 tests still pass, plus the new ones. Any pre-existing test that now fails is a real regression from the seam — fix it before continuing rather than adjusting the test.
+Expected: the pre-existing tests still pass, plus the new ones. Any pre-existing test that now fails is a real regression from the seam — fix it before continuing rather than adjusting the test.
+
+Measured when this task landed: 1763 pre-existing across the four older projects, all
+green, plus 88 in `CodeIntelligence.Tests` = 1851. (The plan's original "1657" predates
+Tasks 1-7.) Also confirm the isolation claim by build output rather than inspection —
+`NaturalLanguageBridge/bin/Release` and `CodeGenerator/bin/Release` must each contain
+zero `*OnnxRuntime*` assemblies even now that the bridge references Abstractions.
 
 - [ ] **Step 8: Commit**
 
@@ -3198,3 +3277,4 @@ git commit -m "test(ai): add the golden-set accuracy gate and calibrate the conf
 ## Deferred to phase B
 
 Generative provider, prompt construction, `GenerativeIntentResolver`, and the `ai mode generative|hybrid` paths — which today return "arrives in phase B". Phase B's plan is written after phase A's decision log has real data in it.
+

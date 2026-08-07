@@ -1,4 +1,5 @@
 using CodeGenerationEngine.Models;
+using CodeIntelligence.Abstractions;
 using NaturalLanguageEngine.Models.Semantics;
 
 namespace NaturalLanguageBridge;
@@ -23,12 +24,16 @@ public sealed class NaturalLanguagePipeline
         List<PropertyRule> configuredRules,
         string workspaceRoot,
         Action<ProjectMetaData?> setLastCreatedProject,
-        Action<SemanticResult?>? onAnalyzed = null)
+        Action<SemanticResult?>? onAnalyzed = null,
+        IIntentResolver? aiResolver = null,
+        Func<AiResolution, bool>? confirmAi = null,
+        CancellationToken ct = default)
     {
         SemanticResult? captured = null;
         var result = CommandFront.RunDetailed(
             input, ref project, configuredRules, workspaceRoot, setLastCreatedProject,
-            a => { captured = a; onAnalyzed?.Invoke(a); });
+            a => { captured = a; onAnalyzed?.Invoke(a); },
+            aiResolver, confirmAi, ct);
 
         return new PipelineOutcome(result.Handled, captured, result.Recognized);
     }
