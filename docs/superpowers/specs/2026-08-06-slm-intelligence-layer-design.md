@@ -48,12 +48,24 @@ check.
 | Project | Contains | Depends on |
 |---|---|---|
 | `CodeIntelligence.Abstractions` | Interfaces and records only | nothing |
-| `CodeIntelligence` | Corpus, storage, retrieval, prompting, resolvers | Abstractions, `Microsoft.Data.Sqlite`, `CodeGenerationEngine` |
+| `CodeIntelligence` | Corpus, storage, retrieval, prompting, resolvers, composition root | Abstractions, `CodeIntelligence.Onnx`, `NaturalLanguageBridge`, `Microsoft.Data.Sqlite`, `CodeGenerationEngine` |
 | `CodeIntelligence.Onnx` | Tokenizer, embedding provider, generative provider, model management | Abstractions, `Microsoft.ML.OnnxRuntime`, `Microsoft.ML.Tokenizers` |
 | `CodeIntelligence.Tests` | Tests (xunit 2.9.2) | all of the above |
 
+**Amended when Task 7 landed.** This table first gave `CodeIntelligence` no dependency
+on `CodeIntelligence.Onnx`, while also placing the composition root at
+`CodeIntelligence/AiLayer.cs`. Both cannot hold: composing an ONNX provider means
+naming its type. Resolved in favour of the composition root — `CodeIntelligence`
+references the Onnx **project**, and `ArchitectureTests` continues to forbid it a direct
+`Microsoft.ML.OnnxRuntime` **package** reference. (`NaturalLanguageBridge` also arrived
+in this row at Task 3, where the corpus harvester began resolving catalog commands
+through the real parser rather than duplicating its rules.)
+
 `NaturalLanguageBridge` gains a reference to `CodeIntelligence.Abstractions` **only**.
-It never learns ONNX exists.
+It never learns ONNX exists. This is the property that actually matters, and it is
+unaffected by the amendment above — the arrow runs `CodeIntelligence` →
+`NaturalLanguageBridge`, never back. Verified at Task 7 by build output, not by
+inspection: `NaturalLanguageBridge/bin/Release` contains zero `*OnnxRuntime*` assemblies.
 
 `CodeIntelligence` sits downstream of `CodeGenerationEngine` because it needs
 `IntentType` and `ParsedCommand`. The dependency arrow is one-way: the engine never

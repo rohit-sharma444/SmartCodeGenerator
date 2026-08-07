@@ -2016,7 +2016,9 @@ Expected: `model.onnx` listed.
 - Create: `CodeIntelligence.Tests/ConfigTests.cs`
 
 **Interfaces:**
-- Produces: `AiConfig` with `Enabled`, `ResolverMode`, `ConfidenceFloor`, `MinTopScore`, `TopK`, `EmbeddingModelId`, `RetrievalTimeoutMs`; `AiConfig.Load()`, `AiConfig.Save()`; `AiLayer.Create()` returning `AiLayer`; `AiLayer.Resolver` (nullable `IIntentResolver`); `AiLayer.StatusText()`; `AiLayer.Reindex()`; `AiLayer.Record(...)`; `DecisionLog.Append(...)`, `DecisionLog.Last()`
+- Produces: `AiConfig` with `Enabled`, `ResolverMode`, `ConfidenceFloor`, `MinTopScore`, `TopK`, `EmbeddingModelId`, `RetrievalTimeoutMs`; `AiConfig.Load()`, `AiConfig.Save()`; `AiLayer.Create()` returning `AiLayer`; `AiLayer.Resolver` (nullable `IIntentResolver`); `AiLayer.StatusText()`; `AiLayer.Reindex()`; `DecisionLog.Append(...)`, `DecisionLog.Last()`, `DecisionLog.Count()`
+
+(An earlier revision listed `AiLayer.Record(...)` here. No step implements it and no task consumes it — Task 9 goes through `AiLayer.DecisionLog` directly — so it was dropped rather than invented.)
 
 - [ ] **Step 1: Write the failing config tests**
 
@@ -2161,6 +2163,7 @@ public sealed class AiConfig
 `CodeIntelligence/Storage/DecisionLog.cs`:
 
 ```csharp
+using System.Globalization;
 using CodeIntelligence.Abstractions;
 using Microsoft.Data.Sqlite;
 
@@ -2226,8 +2229,17 @@ public sealed class DecisionLog
             if (!reader.Read())
                 return null;
 
+            // RoundtripKind is load-bearing, exactly as in SqliteVectorStore.BuiltUtc:
+            // the value was written with "o", and a bare Parse hands it back as
+            // DateTimeKind.Local, silently shifting a field the record calls CreatedUtc
+            // by the machine's offset. This is the SAME defect the Task 2 sample carried;
+            // it was reintroduced here and caught by DecisionLogTests, which asserts
+            // CreatedUtc.Kind == Utc and was observed red against the bare Parse.
+            var createdUtc = DateTime.Parse(
+                reader.GetString(0), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
+
             return new LoggedDecision(
-                DateTime.Parse(reader.GetString(0)),
+                createdUtc,
                 reader.GetString(1),
                 reader.GetString(2),
                 reader.GetDouble(3),
@@ -2312,6 +2324,15 @@ public sealed class AiLayer
 
     private void Initialize()
     {
+        // Reset both outputs first. Reindex() re-enters here, and without the reset a
+        // reason recorded by an earlier attempt outlives a later successful one — so
+        // `ai status` would report a stale cause for a layer that is now working.
+        // Reachable, not hypothetical: a DISABLED layer still builds its embedder and
+        // store before the Enabled check, so `ai enable` followed by `ai reindex` lands
+        // on a layer holding a live Resolver AND "disabled - run 'ai enable'".
+        Unavailable = null;
+        Resolver = null;
+
         try
         {
             _store = new SqliteVectorStore(IndexPath);
@@ -2382,7 +2403,7 @@ public sealed class AiLayer
 
         return $"""
             AI: {state}
-            Mode: {Config.ResolverMode}   floor: {Config.ConfidenceFloor:0.00}   topK: {Config.TopK}
+            Mode: {Config.ResolverMode}   floor: {Config.ConfidenceFloor:0.00}   minTopScore: {Config.MinTopScore:0.00}   topK: {Config.TopK}
             Model: {modelId}
             Index: {status.DocumentCount} phrasings{(status.ReindexRequired ? " - REINDEX REQUIRED ('ai reindex')" : "")}
             Built: {(status.BuiltUtc.HasValue ? status.BuiltUtc.Value.ToString("u") : "never")}
@@ -2395,10 +2416,18 @@ public sealed class AiLayer
 - [ ] **Step 6: Run the config tests — expect pass**
 
 ```
-dotnet test CodeIntelligence.Tests/CodeIntelligence.Tests.csproj --filter ConfigTests
+dotnet test CodeIntelligence.Tests/CodeIntelligence.Tests.csproj --filter "ConfigTests|DecisionLogTests|AiLayerTests"
 ```
 
-Expected: 3 passed.
+Expected: 17 passed.
+
+The plan originally specified only the 3 ConfigTests, which left `DecisionLog` and
+`AiLayer` — both new, both carrying a catch-all that hides failure — with no coverage
+at all. That is precisely how the Task 2 `BuiltUtc` defect shipped, and sure enough
+`DecisionLog.Last()` had reintroduced it. Add `DecisionLogTests` (round-trip, the
+`CreatedUtc.Kind == Utc` regression guard, null/false `accepted` being distinguishable,
+and best-effort behavior on an unwritable database) and `AiLayerTests` (disabled vs
+enabled, reindex, the stale-`Unavailable` guard, and both gates appearing in status).
 
 - [ ] **Step 7: Commit**
 
