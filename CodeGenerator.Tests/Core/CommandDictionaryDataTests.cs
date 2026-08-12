@@ -82,7 +82,7 @@ public class CommandDictionaryDataTests
 
         foreach (var option in new[]
                  {
-                     "company", "theme", "accent", "icon", "title",
+                     "company", "theme", "accent", "icon", "title", "namespace",
                      "novalidation", "logging", "noseed",
                  })
         {
