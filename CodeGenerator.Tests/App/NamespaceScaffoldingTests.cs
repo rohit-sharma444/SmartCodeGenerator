@@ -201,6 +201,22 @@ public class NamespaceScaffoldingTests
             "namespace Acme.Shop.Console.Models");
     }
 
+    /// <summary>The same staleness trap, on the test project's csproj: it goes through the same
+    /// shared reconciler on a symmetric path, but nothing previously proved it, either.</summary>
+    [TestMethod]
+    public void Re_scaffolding_with_a_changed_prefix_updates_the_test_project_root_namespace()
+    {
+        Scaffold(new ConsoleTarget(), Prefixed);
+        var result = Scaffold(
+            new ConsoleTarget(), AppCustomization.Default with { NamespacePrefix = "Acme" });
+
+        Assert.IsNotNull(result.TestProjectPath);
+        var testCsproj = File.ReadAllText(result.TestProjectPath!);
+
+        StringAssert.Contains(testCsproj, "<RootNamespace>Acme.Shop.Console.Tests</RootNamespace>");
+        Assert.IsFalse(testCsproj.Contains("CodisLtd", StringComparison.Ordinal));
+    }
+
     [TestMethod]
     public void Re_scaffolding_without_a_prefix_drops_the_root_namespace()
     {
@@ -209,6 +225,19 @@ public class NamespaceScaffoldingTests
 
         Assert.IsFalse(
             File.ReadAllText(Path.Combine(result.ProjectPath, "Shop.Console.csproj"))
+                .Contains("RootNamespace", StringComparison.Ordinal));
+    }
+
+    /// <summary>The same drop, on the test project's csproj.</summary>
+    [TestMethod]
+    public void Re_scaffolding_without_a_prefix_drops_the_test_project_root_namespace()
+    {
+        Scaffold(new ConsoleTarget(), Prefixed);
+        var result = Scaffold(new ConsoleTarget(), AppCustomization.Default);
+
+        Assert.IsNotNull(result.TestProjectPath);
+        Assert.IsFalse(
+            File.ReadAllText(result.TestProjectPath!)
                 .Contains("RootNamespace", StringComparison.Ordinal));
     }
 
