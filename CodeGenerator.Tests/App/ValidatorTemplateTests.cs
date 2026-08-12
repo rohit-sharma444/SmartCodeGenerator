@@ -213,4 +213,111 @@ public sealed class CustomerValidator : IValidator<Customer>
         Assert.Contains("public sealed partial class CustomerValidator", source);
         Assert.Contains("partial void ValidateCustom(Customer item, List<string> errors)", source);
     }
+
+    /// <summary>
+    /// The fourth reconciliation point: a re-scaffold under a changed prefix has to repoint the
+    /// write-once custom stub's header at the new root, or it references a namespace no generated
+    /// file declares any more. Only the header may move — the hand-written rule below it, and any
+    /// using the file's own author added, are the user's and must survive byte for byte.
+    /// </summary>
+    [TestMethod]
+    public void ReconcileCustomStubNamespace_RepointsTheHeaderAndLeavesTheRestAlone()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "validator_fixup_" + Path.GetRandomFileName());
+        Directory.CreateDirectory(folder);
+        try
+        {
+            var path = Path.Combine(folder, "CustomerValidator.Custom.cs");
+            const string original = """
+                using System.Collections.Generic;
+                using CodisLtd.Shop.Models;
+                using System.Text.RegularExpressions;
+
+                namespace CodisLtd.Shop.Validation;
+
+                public sealed partial class CustomerValidator
+                {
+                    partial void ValidateCustom(Customer item, List<string> errors)
+                    {
+                        if (Regex.IsMatch(item.Name, "^[a-z]"))
+                            errors.Add("Name must not start with a lower-case letter.");
+                    }
+                }
+                """;
+            File.WriteAllText(path, original);
+
+            ValidatorTemplate.ReconcileCustomStubNamespace(path, "Acme.Shop");
+
+            var updated = File.ReadAllText(path);
+
+            // The header moved.
+            Assert.Contains("namespace Acme.Shop.Validation;", updated);
+            Assert.Contains("using Acme.Shop.Models;", updated);
+            Assert.IsFalse(updated.Contains("CodisLtd", StringComparison.Ordinal));
+
+            // An unrelated using is byte-for-byte intact -- it never named the old root.
+            Assert.Contains("using System.Text.RegularExpressions;", updated);
+
+            // The body -- the user's own rule -- is untouched.
+            Assert.Contains("if (Regex.IsMatch(item.Name, \"^[a-z]\"))", updated);
+            Assert.Contains(
+                "errors.Add(\"Name must not start with a lower-case letter.\");", updated);
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public void ReconcileCustomStubNamespace_IsIdempotent()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "validator_fixup_" + Path.GetRandomFileName());
+        Directory.CreateDirectory(folder);
+        try
+        {
+            var path = Path.Combine(folder, "CustomerValidator.Custom.cs");
+            File.WriteAllText(path, ValidatorTemplate.CustomStub("CodisLtd.Shop", "Customer"));
+
+            ValidatorTemplate.ReconcileCustomStubNamespace(path, "Acme.Shop");
+            var once = File.ReadAllText(path);
+
+            ValidatorTemplate.ReconcileCustomStubNamespace(path, "Acme.Shop");
+
+            Assert.AreEqual(once, File.ReadAllText(path));
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    /// <summary>With no prefix the current root equals the project name, so reconciling a stub
+    /// that already names it must be a byte-for-byte no-op.</summary>
+    [TestMethod]
+    public void ReconcileCustomStubNamespace_WithoutAPrefixChangesNothing()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "validator_fixup_" + Path.GetRandomFileName());
+        Directory.CreateDirectory(folder);
+        try
+        {
+            var path = Path.Combine(folder, "CustomerValidator.Custom.cs");
+            var original = ValidatorTemplate.CustomStub("Shop", "Customer");
+            File.WriteAllText(path, original);
+
+            ValidatorTemplate.ReconcileCustomStubNamespace(path, "Shop");
+
+            Assert.AreEqual(original, File.ReadAllText(path));
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public void ReconcileCustomStubNamespace_OnAMissingFile_DoesNotThrow()
+        => ValidatorTemplate.ReconcileCustomStubNamespace(
+            Path.Combine(Path.GetTempPath(), "no-such-file-" + Path.GetRandomFileName() + ".cs"),
+            "Acme.Shop");
 }

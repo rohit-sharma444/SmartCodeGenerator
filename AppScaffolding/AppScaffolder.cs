@@ -468,18 +468,28 @@ public sealed class AppScaffolder
 
         // Written once, never overwritten: this is where the user's own rules live, and a rebuild
         // must not discard them. The .Generated.cs half above is refreshed every run.
+        //
+        // The fourth reconciliation point: an existing stub keeps its body but has its namespace
+        // and app-rooted usings repointed on every run, the same as the app csproj, the test
+        // csproj and (for WPF) App.xaml/App.xaml.cs -- otherwise a re-scaffold under a changed
+        // prefix leaves it importing a namespace no generated file declares any more.
         foreach (var definition in validation ? classes : Array.Empty<ClassDefinition>())
         {
             var fileName = $"{definition.Name}Validator.Custom.cs";
-            if (File.Exists(Path.Combine(validationFolder, fileName)))
+            var customPath = Path.Combine(validationFolder, fileName);
+
+            if (File.Exists(customPath))
+            {
+                ValidatorTemplate.ReconcileCustomStubNamespace(customPath, rootNamespace);
                 continue;
+            }
 
             expected++;
-            var customPath = WriteSource(
+            var writtenPath = WriteSource(
                 validationFolder, fileName,
                 ValidatorTemplate.CustomStub(rootNamespace, definition.Name), header);
-            if (customPath is not null)
-                written.Add(customPath);
+            if (writtenPath is not null)
+                written.Add(writtenPath);
         }
 
         var testProjectPath = ScaffoldTestProject(
