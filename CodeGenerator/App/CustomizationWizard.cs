@@ -3,7 +3,7 @@ using AppScaffolding;
 namespace CodeGenerator.App;
 
 /// <summary>
-/// The opt-in customization step: one gate, then eight prompts pre-filled from whatever the
+/// The opt-in customization step: one gate, then nine prompts pre-filled from whatever the
 /// caller already knows.
 /// </summary>
 /// <remarks>
@@ -72,6 +72,19 @@ internal static class CustomizationWizard
         var title = Ask(reader, writer, "Window title", suggestedPattern);
         if (title is null) return null;
 
+        // A company just named is the likeliest prefix — the same courtesy as the title pattern
+        // above. Only offered when nothing is set yet, and only when it reduces to something a
+        // namespace may actually be called, so the run never refuses its own suggestion.
+        var suggestedPrefix = start.NamespacePrefix.Length == 0 && company.Length > 0
+            ? NamespacePrefix.FromCompany(company) ?? string.Empty
+            : start.NamespacePrefix;
+
+        var prefix = Ask(
+            reader, writer, "Namespace prefix",
+            suggestedPrefix.Length == 0 ? NoneLabel : suggestedPrefix);
+
+        if (prefix is null) return null;
+
         var validation = AskYesNo(reader, writer, "Validation layer", start.Validation);
         if (validation is null) return null;
 
@@ -88,6 +101,7 @@ internal static class CustomizationWizard
             Accent = ParseAccent(accent, start.Accent),
             IconPath = ParseOptional(icon, start.IconPath),
             TitlePattern = title.Length == 0 ? suggestedPattern : title,
+            NamespacePrefix = ParsePrefix(prefix, suggestedPrefix),
             Validation = validation.Value,
             Logging = logging.Value,
             SampleSeedData = seed.Value,
@@ -148,6 +162,20 @@ internal static class CustomizationWizard
         => string.Equals(value, NoneLabel, StringComparison.OrdinalIgnoreCase) ? null
            : value.Length == 0 ? current
            : value;
+
+    /// <summary>The typed prefix, the offered one when the answer is unusable, or none.</summary>
+    /// <remarks>
+    /// An invalid answer keeps what was offered rather than re-prompting, as a malformed accent
+    /// does — but unlike an accent, an invalid namespace could not be emitted at all, so this is
+    /// the one prompt where keeping the previous value also protects the build.
+    /// </remarks>
+    private static string ParsePrefix(string value, string suggested)
+    {
+        if (string.Equals(value, NoneLabel, StringComparison.OrdinalIgnoreCase))
+            return string.Empty;
+
+        return NamespacePrefix.IsValid(value) ? value : suggested;
+    }
 
     private static bool IsYes(string text)
         => string.Equals(text, "y", StringComparison.OrdinalIgnoreCase)

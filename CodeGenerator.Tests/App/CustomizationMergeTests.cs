@@ -107,4 +107,14 @@ public class CustomizationMergeTests
         Assert.AreEqual("Acme", merged.NamespacePrefix);
         Assert.AreEqual("Codis Ltd", merged.Company);
     }
+
+    [TestMethod]
+    public void The_namespace_prefix_is_named_in_the_review_loop()
+    {
+        var lines = CustomizationSummary.Lines(
+            AppCustomization.Default with { NamespacePrefix = "CodisLtd" });
+
+        Assert.HasCount(1, lines);
+        StringAssert.Contains(lines[0], "Namespace prefix: CodisLtd");
+    }
 }

@@ -190,7 +190,7 @@ public class BuildAppWizardTests
         var writer = new StringWriter();
 
         var outcome = BuildAppWizard.Run(
-            Bare(), new StringReader("a shop\nn\ny\nCodis Ltd\n\n\n\n\n\n\n\n"), writer, () => 0);
+            Bare(), new StringReader("a shop\nn\ny\nCodis Ltd\n\n\n\n\n\n\n\n\n"), writer, () => 0);
 
         var written = writer.ToString();
 
