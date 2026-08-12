@@ -199,6 +199,16 @@ public sealed class AppScaffolder
     /// <summary>Best-effort root-namespace reconciliation for a project file. Silent on failure:
     /// a project whose RootNamespace could not be written still builds, because every generated
     /// file declares its namespace explicitly.</summary>
+    /// <remarks>
+    /// Written only when the text actually changes — like <see cref="WpfProjectFixup.Rewrite"/>
+    /// and <see cref="ValidatorTemplate.ReconcileCustomStubNamespace"/> — because `dotnet new`
+    /// writes the project file WITH a UTF-8 BOM and an unconditional
+    /// <c>File.ReadAllText</c>/<c>File.WriteAllText</c> round trip silently writes it back without
+    /// one, even when nothing else in the text changed. With no prefix that struck on every single
+    /// scaffold, not just a re-scaffold, and falsified the invariant this whole feature is built
+    /// against: a neutral customization must reproduce byte-for-byte what the generator already
+    /// wrote.
+    /// </remarks>
     private static void SetRootNamespace(string csprojPath, string? rootNamespace)
     {
         try
@@ -206,9 +216,11 @@ public sealed class AppScaffolder
             if (!File.Exists(csprojPath))
                 return;
 
-            File.WriteAllText(
-                csprojPath,
-                CsprojEditing.SetRootNamespace(File.ReadAllText(csprojPath), rootNamespace));
+            var original = File.ReadAllText(csprojPath);
+            var updated = CsprojEditing.SetRootNamespace(original, rootNamespace);
+
+            if (!string.Equals(original, updated, StringComparison.Ordinal))
+                File.WriteAllText(csprojPath, updated);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {

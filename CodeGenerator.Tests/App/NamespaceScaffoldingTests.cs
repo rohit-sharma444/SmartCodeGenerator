@@ -211,4 +211,47 @@ public class NamespaceScaffoldingTests
             File.ReadAllText(Path.Combine(result.ProjectPath, "Shop.Console.csproj"))
                 .Contains("RootNamespace", StringComparison.Ordinal));
     }
+
+    /// <summary>
+    /// The invariant this whole feature is built around: with no prefix, scaffolding must
+    /// reproduce byte-for-byte what the generator produced before this branch. `dotnet new` writes
+    /// project files with a UTF-8 BOM, and a File.ReadAllText/WriteAllText round trip silently
+    /// strips it — so an unconditional rewrite of the app or test csproj (even to identical text)
+    /// falsifies the invariant on every scaffold, not just a re-scaffold.
+    /// </summary>
+    [TestMethod]
+    public void Scaffolding_twice_with_no_prefix_leaves_both_project_files_byte_for_byte_unchanged()
+    {
+        var first = Scaffold(new ConsoleTarget(), AppCustomization.Default);
+        Assert.IsTrue(first.Success, first.Message);
+        Assert.IsNotNull(first.TestProjectPath);
+
+        var appCsproj = Path.Combine(first.ProjectPath, "Shop.Console.csproj");
+        var testCsproj = first.TestProjectPath!;
+
+        var appBytesBefore = File.ReadAllBytes(appCsproj);
+        var testBytesBefore = File.ReadAllBytes(testCsproj);
+
+        // dotnet new writes the APP project WITH a UTF-8 BOM (EF BB BF), and with no branding, no
+        // SQLite package and no icon, nothing else touches it before SetRootNamespace -- so that
+        // BOM has to still be there before the second scaffold proves anything about it surviving.
+        // (The test project's own BOM is already gone by this point: TestProjectTemplates
+        // .InjectProjectReference unconditionally rewrites it once at creation to add the
+        // <ProjectReference>, and that write predates this branch -- not something this fix
+        // touches.)
+        Assert.IsTrue(HasUtf8Bom(appBytesBefore), "app csproj has no BOM to begin with");
+
+        var second = Scaffold(new ConsoleTarget(), AppCustomization.Default);
+        Assert.IsTrue(second.Success, second.Message);
+
+        CollectionAssert.AreEqual(
+            appBytesBefore, File.ReadAllBytes(appCsproj),
+            "the app csproj was rewritten even though nothing about it changed");
+        CollectionAssert.AreEqual(
+            testBytesBefore, File.ReadAllBytes(testCsproj),
+            "the test csproj was rewritten even though nothing about it changed");
+    }
+
+    private static bool HasUtf8Bom(byte[] bytes)
+        => bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF;
 }
