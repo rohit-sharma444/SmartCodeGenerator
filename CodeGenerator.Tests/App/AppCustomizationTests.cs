@@ -111,4 +111,25 @@ public class AppCustomizationTests
     [TestMethod]
     public void A_company_produces_a_one_line_banner()
         => Assert.AreEqual("// Copyright (c) 2026 Codis Ltd.\n", FileHeader.For("Codis Ltd", 2026));
+
+    /// <summary>A raw newline or carriage return in a title would otherwise land inside the C#
+    /// string literal it is emitted into as a literal source-level line break -- CS1010,
+    /// "Newline in constant". Escaped, not stripped, so the title survives intact.</summary>
+    [TestMethod]
+    public void TitleLiteralFor_escapes_newlines_and_carriage_returns()
+    {
+        var customization = AppCustomization.Default with { Company = "Bob\r\nSmith", TitlePattern = "{company}" };
+
+        Assert.AreEqual("Bob\\r\\nSmith", customization.TitleLiteralFor("Shop"));
+    }
+
+    /// <summary>Backslash must be escaped before quote: reversing the order would let a quote's
+    /// freshly-inserted backslash get doubled by a later backslash pass.</summary>
+    [TestMethod]
+    public void TitleLiteralFor_escapes_backslash_and_quote_in_order()
+    {
+        var customization = AppCustomization.Default with { Company = "Bob\\\"s", TitlePattern = "{company}" };
+
+        Assert.AreEqual("Bob\\\\\\\"s", customization.TitleLiteralFor("Shop"));
+    }
 }

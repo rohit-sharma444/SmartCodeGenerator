@@ -8,7 +8,9 @@ public static class ConsoleProgramTemplate
         => Build(projectName, entityNames, projectName);
 
     /// <summary>As <see cref="Build(string, IReadOnlyList{string})"/>, printing
-    /// <paramref name="title"/> as a banner before the menu loop starts.</summary>
+    /// <paramref name="title"/> as a banner before the menu loop starts. Gated the same way as
+    /// the Web API's root endpoint: emitted only when the title differs from the bare project
+    /// name, so an unbranded console app is byte-identical to today's.</summary>
     public static string Build(string projectName, IReadOnlyList<string> entityNames, string title)
     {
         var mapEntries = string.Join(",\n",
@@ -18,6 +20,10 @@ public static class ConsoleProgramTemplate
         var registrations = string.Join(",\n",
             entityNames.Select(name =>
                 $"    (\"{name}\", () => new EntityMenu<{name}>(new {name}Repository(), Related).Run())"));
+
+        var banner = title == projectName
+            ? string.Empty
+            : $"Console.WriteLine(\"{title}\");\n\n";
 
         return $$"""
 using {{projectName}};
@@ -40,9 +46,7 @@ var menus = new (string Name, Action Run)[]
 {{registrations}}
 };
 
-Console.WriteLine("{{title}}");
-
-while (true)
+{{banner}}while (true)
 {
     Console.WriteLine("\nEntities:");
     for (var i = 0; i < menus.Length; i++)

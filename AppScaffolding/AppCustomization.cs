@@ -114,8 +114,19 @@ public sealed record AppCustomization(
 
     /// <summary>The title as a C# string-literal body — a quote or backslash in a company name
     /// would otherwise break out of the literal it is emitted into.</summary>
+    /// <remarks>
+    /// Backslash is escaped before quote, so the backslash that escaping a quote inserts is
+    /// never itself doubled by a later backslash pass. A raw newline or carriage return is
+    /// escaped to the two-character sequence <c>\n</c> / <c>\r</c> last, rather than stripped, so
+    /// the title survives intact — left raw, either would land inside the literal as an actual
+    /// source-level line break, which is CS1010, "Newline in constant".
+    /// </remarks>
     public string TitleLiteralFor(string appName)
-        => TitleFor(appName).Replace("\\", "\\\\").Replace("\"", "\\\"");
+        => TitleFor(appName)
+            .Replace("\\", "\\\\")
+            .Replace("\"", "\\\"")
+            .Replace("\r", "\\r")
+            .Replace("\n", "\\n");
 
     /// <summary>The title as an XML attribute value.</summary>
     public string TitleAttributeFor(string appName)
