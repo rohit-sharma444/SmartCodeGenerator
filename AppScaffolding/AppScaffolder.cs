@@ -441,9 +441,13 @@ public sealed class AppScaffolder
         }
 
         // After the files are written, not in FixupProject: Views/Theme.xaml does not exist yet
-        // when the project is created.
+        // when the project is created, and the namespace has to be reconciled on every run rather
+        // than only on the run that created the project.
         if (target.ProjectType == DotNetProjectType.Wpf)
+        {
             WpfProjectFixup.MergeTheme(outputFolder);
+            WpfProjectFixup.ReconcileNamespace(outputFolder, rootNamespace);
+        }
 
         // Data files, not source: written with the same best-effort WriteSource so a locked file
         // is reported through `expected` rather than throwing mid-scaffold.

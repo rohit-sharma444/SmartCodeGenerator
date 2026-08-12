@@ -1,3 +1,5 @@
+using System.Text.RegularExpressions;
+
 namespace AppScaffolding;
 
 /// <summary>
@@ -95,6 +97,66 @@ public static class WpfProjectFixup
             // Rewrite the template's own markup rather than regenerate it, so its
             // x:Class and xmlns declarations survive untouched.
             File.WriteAllText(appXamlPath, xaml.Replace(TemplateStartupUri, FolderedStartupUri));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+        }
+    }
+
+    /// <summary>
+    /// Repoints <c>App.xaml</c>'s <c>x:Class</c> and <c>clr-namespace</c>, and its code-behind's
+    /// <c>namespace</c>, at <paramref name="rootNamespace"/>. Best-effort and idempotent.
+    /// </summary>
+    /// <remarks>
+    /// These two files come from <c>dotnet new wpf</c>, which named them after the project, and
+    /// neither is deleted nor overwritten by <see cref="Apply"/>. With a namespace prefix the
+    /// generated views declare a different namespace, and <c>x:Class</c> naming the old one does
+    /// not compile.
+    /// <para>
+    /// Called on every scaffold rather than only at creation — see
+    /// <see cref="MergeTheme"/> for the same reasoning — so it must work from whatever the files
+    /// currently say. It matches the SHAPE (<c>x:Class="….App"</c>, <c>clr-namespace:…</c>,
+    /// <c>namespace …;</c>) and never a remembered previous value, which a re-scaffold under a
+    /// changed prefix would not have.
+    /// </para>
+    /// </remarks>
+    public static void ReconcileNamespace(string projectFolder, string rootNamespace)
+    {
+        Rewrite(
+            Path.Combine(projectFolder, "App.xaml"),
+            xaml => Regex.Replace(
+                Regex.Replace(
+                    xaml,
+                    "x:Class=\"[^\"]*\\.App\"",
+                    $"x:Class=\"{rootNamespace}.App\""),
+                "clr-namespace:[^\"]*\"",
+                $"clr-namespace:{rootNamespace}\""));
+
+        // Both namespace forms: net10's template emits a file-scoped declaration, but a block one
+        // must not be corrupted if some template version emits it.
+        Rewrite(
+            Path.Combine(projectFolder, "App.xaml.cs"),
+            code => Regex.Replace(
+                code,
+                @"^namespace\s+[^;{\s]+",
+                $"namespace {rootNamespace}",
+                RegexOptions.Multiline));
+    }
+
+    /// <summary>Best-effort read-transform-write. A file that cannot be read or written is left
+    /// alone: the build error that follows is clearer than a crash here.</summary>
+    private static void Rewrite(string path, Func<string, string> transform)
+    {
+        try
+        {
+            if (!File.Exists(path))
+                return;
+
+            var original = File.ReadAllText(path);
+            var updated = transform(original);
+
+            if (!string.Equals(original, updated, StringComparison.Ordinal))
+                File.WriteAllText(path, updated);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
