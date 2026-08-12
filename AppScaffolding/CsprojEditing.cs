@@ -111,6 +111,58 @@ public static class CsprojEditing
         return close < 0 ? csproj : csproj.Insert(close, group);
     }
 
+    private const string RootNamespaceOpen = "<RootNamespace>";
+    private const string RootNamespaceClose = "</RootNamespace>";
+
+    /// <summary>
+    /// Sets <c>&lt;RootNamespace&gt;</c> to <paramref name="rootNamespace"/>, replacing any
+    /// existing value; a null or empty value removes the element. A no-op on a project file with
+    /// no closing tag.
+    /// </summary>
+    /// <remarks>
+    /// Update-or-insert rather than the insert-if-absent <see cref="InjectProperties"/> uses,
+    /// because this value can go stale in a way that misleads the IDE: re-scaffolding an existing
+    /// project under a different prefix would otherwise leave every file the user adds afterwards
+    /// in a namespace no generated file declares. Removing it on an empty value matters for the
+    /// same reason, in reverse.
+    /// </remarks>
+    public static string SetRootNamespace(string csproj, string? rootNamespace)
+    {
+        var open = csproj.IndexOf(RootNamespaceOpen, StringComparison.Ordinal);
+
+        if (open >= 0)
+        {
+            var close = csproj.IndexOf(RootNamespaceClose, open, StringComparison.Ordinal);
+
+            if (close < 0)
+                return csproj;
+
+            var end = close + RootNamespaceClose.Length;
+
+            if (string.IsNullOrEmpty(rootNamespace))
+            {
+                // Take the whole line, so removing the element does not leave a blank one behind.
+                var lineStart = csproj.LastIndexOf('\n', open) + 1;
+                var lineEnd = end < csproj.Length && csproj[end] == '\n' ? end + 1 : end;
+
+                return csproj[..lineStart] + csproj[lineEnd..];
+            }
+
+            return csproj[..open] + RootNamespaceOpen + rootNamespace + csproj[close..];
+        }
+
+        if (string.IsNullOrEmpty(rootNamespace))
+            return csproj;
+
+        var group =
+            "  <PropertyGroup>\n" +
+            $"    {RootNamespaceOpen}{rootNamespace}{RootNamespaceClose}\n" +
+            "  </PropertyGroup>\n";
+
+        var closeProject = csproj.LastIndexOf("</Project>", StringComparison.Ordinal);
+        return closeProject < 0 ? csproj : csproj.Insert(closeProject, group);
+    }
+
     private static string Escape(string value)
         => value.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;");
 }

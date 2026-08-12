@@ -77,4 +77,48 @@ public class CsprojEditingTests
 
         StringAssert.Contains(updated, "<Company>Smith &amp; Sons &lt;Ltd&gt;</Company>");
     }
+
+    /// <summary>
+    /// Update-or-insert, not insert-if-absent like the branding properties above: a stale root
+    /// namespace would send every file the user adds later into a namespace no generated file
+    /// declares.
+    /// </summary>
+    [TestMethod]
+    public void A_root_namespace_is_inserted()
+        => StringAssert.Contains(
+            CsprojEditing.SetRootNamespace(Csproj, "CodisLtd.Shop"),
+            "<RootNamespace>CodisLtd.Shop</RootNamespace>");
+
+    [TestMethod]
+    public void A_root_namespace_is_updated_in_place()
+    {
+        var once = CsprojEditing.SetRootNamespace(Csproj, "CodisLtd.Shop");
+        var twice = CsprojEditing.SetRootNamespace(once, "Acme.Shop");
+
+        StringAssert.Contains(twice, "<RootNamespace>Acme.Shop</RootNamespace>");
+        Assert.IsFalse(twice.Contains("CodisLtd", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void Setting_the_same_root_namespace_twice_changes_nothing()
+    {
+        var once = CsprojEditing.SetRootNamespace(Csproj, "CodisLtd.Shop");
+
+        Assert.AreEqual(once, CsprojEditing.SetRootNamespace(once, "CodisLtd.Shop"));
+    }
+
+    /// <summary>Dropping the prefix has to take the element with it, or the project keeps a root
+    /// namespace nothing in it declares.</summary>
+    [TestMethod]
+    public void An_empty_root_namespace_removes_the_element()
+    {
+        var set = CsprojEditing.SetRootNamespace(Csproj, "CodisLtd.Shop");
+        var cleared = CsprojEditing.SetRootNamespace(set, null);
+
+        Assert.IsFalse(cleared.Contains("RootNamespace", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void No_root_namespace_leaves_an_untouched_project_file_alone()
+        => Assert.AreEqual(Csproj, CsprojEditing.SetRootNamespace(Csproj, null));
 }

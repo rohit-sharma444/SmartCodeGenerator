@@ -154,4 +154,61 @@ public class NamespaceScaffoldingTests
             File.ReadAllText(Path.Combine(result.ProjectPath, "Data", "Repository.cs"))
                 .Contains("CodisLtd", StringComparison.Ordinal));
     }
+
+    [TestMethod]
+    public void Both_project_files_declare_the_root_namespace()
+    {
+        var result = Scaffold(new ConsoleTarget(), Prefixed);
+
+        StringAssert.Contains(
+            File.ReadAllText(Path.Combine(result.ProjectPath, "Shop.Console.csproj")),
+            "<RootNamespace>CodisLtd.Shop.Console</RootNamespace>");
+
+        Assert.IsNotNull(result.TestProjectPath);
+        StringAssert.Contains(
+            File.ReadAllText(result.TestProjectPath),
+            "<RootNamespace>CodisLtd.Shop.Console.Tests</RootNamespace>");
+    }
+
+    /// <summary>Without a prefix the element is not written at all: MSBuild already defaults it to
+    /// the project name, and writing it would change a project file this generator has always
+    /// left alone.</summary>
+    [TestMethod]
+    public void Without_a_prefix_no_root_namespace_is_written()
+    {
+        var result = Scaffold(new ConsoleTarget(), AppCustomization.Default);
+
+        Assert.IsFalse(
+            File.ReadAllText(Path.Combine(result.ProjectPath, "Shop.Console.csproj"))
+                .Contains("RootNamespace", StringComparison.Ordinal));
+    }
+
+    /// <summary>The staleness trap this design exists to prevent: regenerating over an existing
+    /// project with a CHANGED prefix must leave nothing pointing at the old one.</summary>
+    [TestMethod]
+    public void Re_scaffolding_with_a_changed_prefix_updates_the_root_namespace()
+    {
+        Scaffold(new ConsoleTarget(), Prefixed);
+        var result = Scaffold(
+            new ConsoleTarget(), AppCustomization.Default with { NamespacePrefix = "Acme" });
+
+        var csproj = File.ReadAllText(Path.Combine(result.ProjectPath, "Shop.Console.csproj"));
+
+        StringAssert.Contains(csproj, "<RootNamespace>Acme.Shop.Console</RootNamespace>");
+        Assert.IsFalse(csproj.Contains("CodisLtd", StringComparison.Ordinal));
+        StringAssert.Contains(
+            File.ReadAllText(Path.Combine(result.ProjectPath, "Models", "Order.cs")),
+            "namespace Acme.Shop.Console.Models");
+    }
+
+    [TestMethod]
+    public void Re_scaffolding_without_a_prefix_drops_the_root_namespace()
+    {
+        Scaffold(new ConsoleTarget(), Prefixed);
+        var result = Scaffold(new ConsoleTarget(), AppCustomization.Default);
+
+        Assert.IsFalse(
+            File.ReadAllText(Path.Combine(result.ProjectPath, "Shop.Console.csproj"))
+                .Contains("RootNamespace", StringComparison.Ordinal));
+    }
 }

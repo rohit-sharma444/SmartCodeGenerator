@@ -196,6 +196,25 @@ public sealed class AppScaffolder
         }
     }
 
+    /// <summary>Best-effort root-namespace reconciliation for a project file. Silent on failure:
+    /// a project whose RootNamespace could not be written still builds, because every generated
+    /// file declares its namespace explicitly.</summary>
+    private static void SetRootNamespace(string csprojPath, string? rootNamespace)
+    {
+        try
+        {
+            if (!File.Exists(csprojPath))
+                return;
+
+            File.WriteAllText(
+                csprojPath,
+                CsprojEditing.SetRootNamespace(File.ReadAllText(csprojPath), rootNamespace));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+        }
+    }
+
     /// <summary>Environment-variable name the generated AppDbContext reads for a connection-string
     /// override: the upper-cased project name with non-alphanumerics as underscores, plus "_DB".</summary>
     private static string EnvVarName(string projectName)
@@ -303,6 +322,11 @@ public sealed class AppScaffolder
         // The namespace emitted code declares. projectName goes on naming the folder, the csproj,
         // the assembly and the SQLite environment override — the prefix is a namespace only.
         var rootNamespace = customization.RootNamespaceFor(projectName);
+
+        // Written on every run, not only at creation: a project re-scaffolded under a different
+        // prefix must not keep pointing at the old namespace, and one re-scaffolded without a
+        // prefix must lose the element entirely.
+        SetRootNamespace(csprojPath, customization.NamespacePrefix.Length == 0 ? null : rootNamespace);
 
         var modelsFolder = Path.Combine(outputFolder, "Models");
         var dataFolder = Path.Combine(outputFolder, "Data");
@@ -517,6 +541,10 @@ public sealed class AppScaffolder
                 return null;
             }
         }
+
+        SetRootNamespace(
+            testCsproj,
+            appRootNamespace == appProjectName ? null : appRootNamespace + ".Tests");
 
         var roundTripPath = WriteSource(testFolder, "RepositoryRoundTripTests.cs",
             TestProjectTemplates.RoundTripTests(appRootNamespace, entityNames));
