@@ -1,0 +1,99 @@
+using AppScaffolding;
+using CodeGenerator.App;
+
+namespace CodeGenerator.Tests.App;
+
+/// <summary>
+/// How the remembered profile and the typed options combine, and what the review loop says about
+/// the result.
+/// </summary>
+[TestClass]
+public class CustomizationMergeTests
+{
+    private static readonly AppCustomization Saved = AppCustomization.Default with
+    {
+        Company = "Codis Ltd",
+        Theme = AppTheme.Light,
+        Accent = "#0B6E4F",
+        TitlePattern = AppCustomization.CompanyTitlePattern,
+        IconPath = "C:\\brand\\logo.ico",
+        Logging = true,
+    };
+
+    [TestMethod]
+    public void With_nothing_typed_the_profile_stands()
+        => Assert.AreEqual(Saved, BuildAppCommand.Merge(Saved, AppCustomization.Default));
+
+    [TestMethod]
+    public void With_no_profile_the_typed_options_stand()
+    {
+        var inline = AppCustomization.Default with { Company = "Acme", Theme = AppTheme.Dark };
+
+        Assert.AreEqual(inline, BuildAppCommand.Merge(AppCustomization.Default, inline));
+    }
+
+    /// <summary>What was typed just now beats what a previous run settled on, setting by setting
+    /// rather than wholesale.</summary>
+    [TestMethod]
+    public void A_typed_option_overrides_only_itself()
+    {
+        var merged = BuildAppCommand.Merge(
+            Saved, AppCustomization.Default with { Theme = AppTheme.Dark });
+
+        Assert.AreEqual(AppTheme.Dark, merged.Theme);
+        Assert.AreEqual("Codis Ltd", merged.Company);
+        Assert.AreEqual("#0B6E4F", merged.Accent);
+        Assert.IsTrue(merged.Logging);
+    }
+
+    /// <summary>The flags are the awkward half: `novalidation` and `noseed` set false, and false is
+    /// not the default, so they have to survive a profile that says otherwise.</summary>
+    [TestMethod]
+    public void A_typed_flag_overrides_the_profile()
+    {
+        var merged = BuildAppCommand.Merge(
+            Saved,
+            AppCustomization.Default with { Validation = false, SampleSeedData = false });
+
+        Assert.IsFalse(merged.Validation);
+        Assert.IsFalse(merged.SampleSeedData);
+        Assert.IsTrue(merged.Logging, "the profile's own logging choice should survive");
+    }
+
+    [TestMethod]
+    public void The_default_customization_says_nothing_in_the_review_loop()
+        => Assert.IsEmpty(CustomizationSummary.Lines(AppCustomization.Default));
+
+    [TestMethod]
+    public void Every_changed_setting_is_named_in_the_review_loop()
+    {
+        var lines = CustomizationSummary.Lines(Saved with
+        {
+            Validation = false,
+            SampleSeedData = false,
+        });
+
+        var text = string.Join("\n", lines);
+
+        StringAssert.Contains(text, "Company: Codis Ltd");
+        StringAssert.Contains(text, "Theme: light");
+        StringAssert.Contains(text, "Accent: #0B6E4F");
+        StringAssert.Contains(text, "Icon: C:\\brand\\logo.ico");
+        StringAssert.Contains(text, "Title: {company} - {app}");
+        StringAssert.Contains(text, "no validation layer");
+        StringAssert.Contains(text, "logging");
+        StringAssert.Contains(text, "no sample data");
+    }
+
+    /// <summary>Only what changed: a run that turned logging on has one thing to report, not
+    /// eight.</summary>
+    [TestMethod]
+    public void Only_the_changed_settings_are_named()
+    {
+        var lines = CustomizationSummary.Lines(
+            AppCustomization.Default with { Logging = true });
+
+        Assert.HasCount(1, lines);
+        StringAssert.Contains(lines[0], "logging");
+    }
+}

@@ -1,9 +1,15 @@
+using AppScaffolding;
 using CodeGenerator.App;
 using DataIngestion;
 using DataIngestion.Schema.Readers;
 
 namespace CodeGenerator.Tests.App;
 
+/// <summary>
+/// The wizard's flow. Every scripted input here ends with one more line than the questions the
+/// wizard used to ask: the customization step is last, and its gate reads a line before the
+/// wizard can return. "n" declines it, which is what these tests are about not being asked.
+/// </summary>
 [TestClass]
 public class BuildAppWizardTests
 {
@@ -26,7 +32,7 @@ public class BuildAppWizardTests
         var writer = new StringWriter();
 
         var outcome = BuildAppWizard.Run(
-            Bare(), new StringReader("a library lending system\nn\n"), writer, () => 0);
+            Bare(), new StringReader("a library lending system\nn\nn\n"), writer, () => 0);
 
         var written = writer.ToString();
         var description = written.IndexOf("Describe the application", StringComparison.Ordinal);
@@ -48,7 +54,7 @@ public class BuildAppWizardTests
 
         var outcome = BuildAppWizard.Run(
             new InlineBuildRequest("a bike shop", null, false),
-            new StringReader("n\n"), writer, () => 0);
+            new StringReader("n\nn\n"), writer, () => 0);
 
         Assert.AreEqual("a bike shop", outcome.Description);
         Assert.IsFalse(
@@ -60,7 +66,7 @@ public class BuildAppWizardTests
     public void TheChosenApplicationType_BecomesTheTarget()
     {
         var outcome = BuildAppWizard.Run(
-            Bare(), new StringReader("a shop\nn\n"), new StringWriter(), () => 1);
+            Bare(), new StringReader("a shop\nn\nn\n"), new StringWriter(), () => 1);
 
         // Index 1 is "Windows Desktop (WinForms)".
         Assert.AreEqual("winforms", outcome.Target!.Key);
@@ -73,7 +79,7 @@ public class BuildAppWizardTests
         try
         {
             var outcome = BuildAppWizard.Run(
-                Bare(), new StringReader($"\ny\ncsv\n{path}\n"), new StringWriter(), () => 3);
+                Bare(), new StringReader($"\ny\ncsv\n{path}\nn\n"), new StringWriter(), () => 3);
 
             Assert.AreEqual(WizardDecision.Proceed, outcome.Decision);
             Assert.AreEqual(string.Empty, outcome.Description);
@@ -94,7 +100,7 @@ public class BuildAppWizardTests
         {
             var outcome = BuildAppWizard.Run(
                 new InlineBuildRequest("orders", new DataSourceSpec(DataSourceKind.Csv, path), true),
-                new StringReader(""), writer, () => 0);
+                new StringReader("n\n"), writer, () => 0);
 
             Assert.AreEqual(WizardDecision.Proceed, outcome.Decision);
             Assert.AreEqual(path, outcome.Source!.Location);
@@ -161,7 +167,7 @@ public class BuildAppWizardTests
 
         var outcome = BuildAppWizard.Run(
             Bare(),
-            new StringReader("a shop\nn\n"),
+            new StringReader("a shop\nn\nn\n"),
             writer,
             () => { writtenWhenAsked = writer.ToString(); return 0; });
 
@@ -174,5 +180,48 @@ public class BuildAppWizardTests
         Assert.IsFalse(
             writtenWhenAsked!.Contains("Do you have existing data?", StringComparison.Ordinal),
             "the data question was asked before the application type");
+    }
+
+    /// <summary>The customization step is last: a user who wants to answer it has already settled
+    /// the description, the application type and the data source.</summary>
+    [TestMethod]
+    public void TheCustomizationStep_IsAskedLast()
+    {
+        var writer = new StringWriter();
+
+        var outcome = BuildAppWizard.Run(
+            Bare(), new StringReader("a shop\nn\ny\nCodis Ltd\n\n\n\n\n\n\n\n"), writer, () => 0);
+
+        var written = writer.ToString();
+
+        Assert.IsGreaterThan(
+            written.IndexOf("Do you have existing data?", StringComparison.Ordinal),
+            written.IndexOf("Customize appearance and features?", StringComparison.Ordinal));
+
+        Assert.AreEqual(WizardDecision.Proceed, outcome.Decision);
+        Assert.AreEqual("Codis Ltd", outcome.Customization.Company);
+    }
+
+    /// <summary>Declining it is not cancelling it: the build goes ahead with what the command line
+    /// already asked for.</summary>
+    [TestMethod]
+    public void DecliningTheCustomizationStep_KeepsTheStartingCustomization()
+    {
+        var start = AppCustomization.Default with { Company = "Codis Ltd" };
+
+        var outcome = BuildAppWizard.Run(
+            Bare(), new StringReader("a shop\nn\nn\n"), new StringWriter(), () => 0, start);
+
+        Assert.AreEqual(WizardDecision.Proceed, outcome.Decision);
+        Assert.AreEqual(start, outcome.Customization);
+    }
+
+    [TestMethod]
+    public void CancellingAtTheCustomizationStep_Cancels()
+    {
+        var outcome = BuildAppWizard.Run(
+            Bare(), new StringReader("a shop\nn\nc\n"), new StringWriter(), () => 0);
+
+        Assert.AreEqual(WizardDecision.Cancelled, outcome.Decision);
     }
 }
