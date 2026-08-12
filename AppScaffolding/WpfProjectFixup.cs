@@ -104,7 +104,7 @@ public static class WpfProjectFixup
     }
 
     /// <summary>
-    /// Repoints <c>App.xaml</c>'s <c>x:Class</c> and <c>clr-namespace</c>, and its code-behind's
+    /// Repoints <c>App.xaml</c>'s <c>x:Class</c> and <c>xmlns:local</c>, and its code-behind's
     /// <c>namespace</c>, at <paramref name="rootNamespace"/>. Best-effort and idempotent.
     /// </summary>
     /// <remarks>
@@ -115,9 +115,15 @@ public static class WpfProjectFixup
     /// <para>
     /// Called on every scaffold rather than only at creation — see
     /// <see cref="MergeTheme"/> for the same reasoning — so it must work from whatever the files
-    /// currently say. It matches the SHAPE (<c>x:Class="….App"</c>, <c>clr-namespace:…</c>,
+    /// currently say. It matches the SHAPE (<c>x:Class="….App"</c>, <c>xmlns:local="clr-namespace:…"</c>,
     /// <c>namespace …;</c>) and never a remembered previous value, which a re-scaffold under a
     /// changed prefix would not have.
+    /// </para>
+    /// <para>
+    /// The <c>clr-namespace</c> match is anchored to the <c>xmlns:local</c> attribute the template
+    /// itself wrote, not to any bare <c>clr-namespace:</c> occurrence: a hand-added converter or
+    /// resource xmlns (e.g. <c>xmlns:conv="clr-namespace:Shop.Converters"</c>) is a routine WPF
+    /// addition between scaffolds, and this rewrite has no business touching it.
     /// </para>
     /// </remarks>
     public static void ReconcileNamespace(string projectFolder, string rootNamespace)
@@ -129,8 +135,8 @@ public static class WpfProjectFixup
                     xaml,
                     "x:Class=\"[^\"]*\\.App\"",
                     $"x:Class=\"{rootNamespace}.App\""),
-                "clr-namespace:[^\"]*\"",
-                $"clr-namespace:{rootNamespace}\""));
+                "xmlns:local=\"clr-namespace:[^\"]*\"",
+                $"xmlns:local=\"clr-namespace:{rootNamespace}\""));
 
         // Both namespace forms: net10's template emits a file-scoped declaration, but a block one
         // must not be corrupted if some template version emits it.

@@ -181,4 +181,33 @@ public partial class App : Application
     [TestMethod]
     public void ReconcileNamespace_OnAFolderWithNoAppXaml_DoesNothing()
         => WpfProjectFixup.ReconcileNamespace(NewProjectFolder(), "CodisLtd.Shop");
+
+    private const string TemplateAppXamlWithConverterNamespace = """
+<Application x:Class="Shop.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:Shop"
+             xmlns:conv="clr-namespace:Shop.Converters"
+             StartupUri="Views/MainWindow.xaml">
+    <Application.Resources>
+    </Application.Resources>
+</Application>
+""";
+
+    /// <summary>The trap: `dotnet new wpf` emits exactly one `clr-namespace:`, but a hand-added
+    /// converter or resource xmlns is a routine WPF addition between scaffolds. Only the
+    /// xmlns:local the template itself wrote is ours to rewrite.</summary>
+    [TestMethod]
+    public void ReconcileNamespace_LeavesAHandAddedClrNamespaceXmlnsAlone()
+    {
+        var folder = NewProjectFolder();
+        File.WriteAllText(Path.Combine(folder, "App.xaml"), TemplateAppXamlWithConverterNamespace);
+
+        WpfProjectFixup.ReconcileNamespace(folder, "CodisLtd.Shop");
+
+        var xaml = File.ReadAllText(Path.Combine(folder, "App.xaml"));
+
+        StringAssert.Contains(xaml, "xmlns:local=\"clr-namespace:CodisLtd.Shop\"");
+        StringAssert.Contains(xaml, "xmlns:conv=\"clr-namespace:Shop.Converters\"");
+    }
 }
