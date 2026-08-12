@@ -13,8 +13,10 @@ namespace CodeGenerator.Tests.App;
 internal static class EmittedSource
 {
     /// <summary>
-    /// Flattens several emitted Validation/ files (and any other C# snippets) into one compilable
-    /// unit: strips each file's own namespace declaration and its &lt;App&gt;.Models/&lt;App&gt;.Data
+    /// Flattens several emitted Validation/ or Data/ files (and any other C# snippets) into one
+    /// compilable unit: strips each file's own namespace declaration — a compilation unit may
+    /// declare only one file-scoped namespace, so joining a Data/ file to a Validation/ one needs
+    /// both gone — and its &lt;App&gt;.Models/&lt;App&gt;.Data
     /// using (the callers' stubs stand in for those types), then hoists every remaining
     /// <c>using</c> directive to the front of the result. The fixture app is always named
     /// <c>Acme</c>.
@@ -38,7 +40,8 @@ internal static class EmittedSource
             var stripped = source
                 .Replace("using Acme.Models;", string.Empty)
                 .Replace("using Acme.Data;", string.Empty)
-                .Replace("namespace Acme.Validation;", string.Empty);
+                .Replace("namespace Acme.Validation;", string.Empty)
+                .Replace("namespace Acme.Data;", string.Empty);
 
             foreach (var line in stripped.Split('\n'))
             {

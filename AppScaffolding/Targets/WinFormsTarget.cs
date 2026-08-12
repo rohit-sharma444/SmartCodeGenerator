@@ -22,7 +22,8 @@ public sealed class WinFormsTarget : ITargetScaffolder
         string projectName, IReadOnlyList<string> entityNames, AppCustomization customization)
     {
         var files = DesktopViewModelFiles.Build(
-            projectName, entityNames, ViewModelTemplates.PortableRelayCommand(projectName));
+            projectName, entityNames, ViewModelTemplates.PortableRelayCommand(projectName),
+            customization.Validation);
 
         var palette = ThemePalette.Resolve(customization.Theme, customization.Accent);
 

@@ -312,11 +312,13 @@ public sealed class AppScaffolder
 
         // Shared, target-agnostic core: includes the IStore seam and StoreFactory, so every
         // target and persistence backend shares the same typed CRUD surface.
+        var validation = customization.Validation;
+
         var files = new List<(string Folder, string Name, string Source)>
         {
             (dataFolder, "IStore.cs", StoreSeamTemplate.Source(projectName)),
             (dataFolder, "StoreFactory.cs", StoreFactoryTemplate.Source(projectName, persistence)),
-            (dataFolder, "Repository.cs", RepositoryTemplate.Base(projectName)),
+            (dataFolder, "Repository.cs", RepositoryTemplate.Base(projectName, validation)),
             (dataFolder, "SeedData.cs",
                 SeedDataTemplate.Source(
                     projectName,
@@ -324,11 +326,21 @@ public sealed class AppScaffolder
                     SeedDataTemplate.ForeignKeyFieldNames(classes),
                     seededClassNames)),
             (dataFolder, "SaveResult.cs", SaveResultTemplate.Source(projectName)),
-            (validationFolder, "IValidator.cs", ValidatorTemplate.ValidatorInterface(projectName)),
-            (validationFolder, "IEntityLookup.cs", ValidatorTemplate.EntityLookupInterface(projectName)),
-            (validationFolder, "StoreEntityLookup.cs", ValidatorTemplate.StoreEntityLookup(projectName)),
-            (validationFolder, "ValidatorFactory.cs", ValidatorTemplate.Factory(projectName, entityNames)),
         };
+
+        // SaveResult above stays whatever the flag says: Repository still returns one, so the
+        // console menu and the Web API's ValidationProblem are untouched by turning validation off.
+        if (validation)
+        {
+            files.Add((validationFolder, "IValidator.cs",
+                ValidatorTemplate.ValidatorInterface(projectName)));
+            files.Add((validationFolder, "IEntityLookup.cs",
+                ValidatorTemplate.EntityLookupInterface(projectName)));
+            files.Add((validationFolder, "StoreEntityLookup.cs",
+                ValidatorTemplate.StoreEntityLookup(projectName)));
+            files.Add((validationFolder, "ValidatorFactory.cs",
+                ValidatorTemplate.Factory(projectName, entityNames)));
+        }
 
         // Persistence backend behind the seam.
         if (persistence == PersistenceKind.Sqlite)
@@ -349,10 +361,13 @@ public sealed class AppScaffolder
         // ForeignKeys.TargetsOf, so a lookup check is only ever emitted for a <Target>Id the
         // class actually declares.
         var classNameSet = ForeignKeys.ClassNameSet(classes);
-        foreach (var definition in classes)
-            files.Add((validationFolder, $"{definition.Name}Validator.Generated.cs",
-                ValidatorTemplate.Generated(
-                    projectName, definition, ForeignKeys.TargetsOf(definition, classNameSet))));
+        if (validation)
+        {
+            foreach (var definition in classes)
+                files.Add((validationFolder, $"{definition.Name}Validator.Generated.cs",
+                    ValidatorTemplate.Generated(
+                        projectName, definition, ForeignKeys.TargetsOf(definition, classNameSet))));
+        }
 
         // Target-specific front-end / entry point.
         foreach (var file in target.FrontEndFiles(projectName, entityNames, customization))
@@ -390,7 +405,7 @@ public sealed class AppScaffolder
 
         // Written once, never overwritten: this is where the user's own rules live, and a rebuild
         // must not discard them. The .Generated.cs half above is refreshed every run.
-        foreach (var definition in classes)
+        foreach (var definition in validation ? classes : Array.Empty<ClassDefinition>())
         {
             var fileName = $"{definition.Name}Validator.Custom.cs";
             if (File.Exists(Path.Combine(validationFolder, fileName)))
@@ -404,7 +419,7 @@ public sealed class AppScaffolder
                 written.Add(customPath);
         }
 
-        var testProjectPath = ScaffoldTestProject(workspaceRoot, projectName, classes);
+        var testProjectPath = ScaffoldTestProject(workspaceRoot, projectName, classes, validation);
 
         var allWritten = written.Count == expected;
 
@@ -423,7 +438,8 @@ public sealed class AppScaffolder
     /// WPF app's tests target net10.0-windows and resolve the reference.
     /// </summary>
     private static string? ScaffoldTestProject(
-        string workspaceRoot, string appProjectName, IReadOnlyList<ClassDefinition> classes)
+        string workspaceRoot, string appProjectName, IReadOnlyList<ClassDefinition> classes,
+        bool validation = true)
     {
         var entityNames = classes.Select(c => c.Name).ToList();
 
@@ -479,8 +495,10 @@ public sealed class AppScaffolder
             || supportPath is null)
             return null;
 
-        // One validator test file per model, so the generated suite covers the generated rules.
-        foreach (var definition in classes)
+        // One validator test file per model, so the generated suite covers the generated rules —
+        // and none at all when there are no validators to cover, since a test naming a validator
+        // the app never generated would not compile.
+        foreach (var definition in validation ? classes : Array.Empty<ClassDefinition>())
         {
             var required = definition.Properties.FirstOrDefault(p =>
                 p.Type == "string"

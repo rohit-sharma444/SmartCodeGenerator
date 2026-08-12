@@ -147,6 +147,58 @@ public class GeneratedProjectBuildTests
     }
 
     /// <summary>
+    /// An app generated with validation off builds, and its companion tests still pass. Generated
+    /// code hard-depends on the Validation folder in two places — Repository and EntityViewModel
+    /// both resolve a validator — so this is the check that catches a call site nobody remembered:
+    /// the console target proves Repository, the wpf target proves the view models, and the
+    /// generated test project proves nothing left behind still names a validator.
+    /// </summary>
+    [TestMethod]
+    [TestCategory("Integration")]
+    [DataRow("console")]
+    [DataRow("wpf")]
+    public void ProjectWithoutValidation_BuildsAndItsTestsPass(string targetKey)
+    {
+        if (targetKey == "wpf" && !OperatingSystem.IsWindows())
+            Assert.Inconclusive("The wpf target needs the Windows desktop targeting pack.");
+
+        Assert.IsTrue(TargetScaffolders.TryResolve(targetKey, out var target));
+
+        var workspace = Path.Combine(Path.GetTempPath(), "gen_" + Path.GetRandomFileName());
+        Directory.CreateDirectory(workspace);
+        try
+        {
+            var result = new AppScaffolder().Scaffold(
+                ScaffoldRequest.For(SampleModel(), "Sample", workspace, target)
+                with
+                {
+                    Customization = AppCustomization.Default with { Validation = false },
+                });
+
+            Assert.IsTrue(result.Success, "scaffold failed: " + result.Message);
+            Assert.IsFalse(
+                Directory.Exists(Path.Combine(result.ProjectPath, "Validation")),
+                "the Validation folder was generated anyway");
+
+            var (exit, output) = RunDotNet($"build \"{result.ProjectPath}\" -c Release");
+            Assert.AreEqual(0, exit, $"dotnet build failed for {targetKey}:\n{output}");
+
+            // The wpf target gets no test project of its own (its tests would need the desktop
+            // pack), so the console row is the one that proves the generated suite.
+            if (targetKey != "console")
+                return;
+
+            Assert.IsNotNull(result.TestProjectPath, "no test project was emitted");
+            var (testExit, testOutput) = RunDotNet($"test \"{result.TestProjectPath}\" -c Release");
+            Assert.AreEqual(0, testExit, $"dotnet test failed:\n{testOutput}");
+        }
+        finally
+        {
+            TryDeleteDirectory(workspace);
+        }
+    }
+
+    /// <summary>
     /// A 1x1 32bpp .ico, written by hand. MSBuild parses an ApplicationIcon, so the four bytes the
     /// unit tests use will not do here, and a committed binary would be unreviewable bytes in the
     /// repo — this way the header the build has to accept is visible.

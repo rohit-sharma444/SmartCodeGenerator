@@ -20,7 +20,8 @@ public sealed class WpfTarget : ITargetScaffolder
         // Shared with WinFormsTarget. The WPF variant of RelayCommand requeries through
         // CommandManager, which is what re-enables Delete when the grid selection changes.
         var files = DesktopViewModelFiles.Build(
-            projectName, entityNames, ViewModelTemplates.RelayCommand(projectName));
+            projectName, entityNames, ViewModelTemplates.RelayCommand(projectName),
+            customization.Validation);
 
         var palette = ThemePalette.Resolve(customization.Theme, customization.Accent);
 

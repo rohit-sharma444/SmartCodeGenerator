@@ -12,15 +12,19 @@ namespace AppScaffolding.Targets;
 /// </remarks>
 public static class DesktopViewModelFiles
 {
-    /// <summary>A fresh mutable list, so a target can append its own views to it.</summary>
+    /// <summary>A fresh mutable list, so a target can append its own views to it. With
+    /// <paramref name="validation"/> false the view models resolve no validator, because the
+    /// Validation folder they would resolve it from is not generated either.</summary>
     public static List<GeneratedFile> Build(
-        string projectName, IReadOnlyList<string> entityNames, string relayCommandSource) =>
+        string projectName, IReadOnlyList<string> entityNames, string relayCommandSource,
+        bool validation = true) =>
     [
         new("Data", "RelationshipResolver.cs", RelationshipResolverTemplate.Source(projectName)),
         new("ViewModels", "ObservableObject.cs", ViewModelTemplates.ObservableObject(projectName)),
         new("ViewModels", "RelayCommand.cs", relayCommandSource),
         new("ViewModels", "IEntityViewModel.cs", ViewModelTemplates.EntityViewModelInterface(projectName)),
-        new("ViewModels", "EntityViewModel.cs", ViewModelTemplates.EntityViewModel(projectName)),
+        new("ViewModels", "EntityViewModel.cs",
+            ViewModelTemplates.EntityViewModel(projectName, validation)),
         new("ViewModels", "MainViewModel.cs", MainViewModelTemplate.Build(projectName, entityNames)),
     ];
 }
