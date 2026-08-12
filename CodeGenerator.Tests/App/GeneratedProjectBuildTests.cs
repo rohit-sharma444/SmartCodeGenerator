@@ -31,6 +31,99 @@ public class GeneratedProjectBuildTests
         return model;
     }
 
+    /// <summary>
+    /// A prefixed app builds. This is the only check that can fail on the thing the prefix risks:
+    /// WPF's x:Class is resolved by the XAML compiler against the namespaces the generated views
+    /// declare, and App.xaml comes from `dotnet new` naming the project instead. The console row
+    /// adds the generated test project, whose own usings are rooted at the prefix too.
+    /// </summary>
+    [TestMethod]
+    [TestCategory("Integration")]
+    [DataRow("console")]
+    [DataRow("wpf")]
+    [DataRow("winforms")]
+    public void PrefixedProject_BuildsAndItsTestsPass(string targetKey)
+    {
+        if ((targetKey == "wpf" || targetKey == "winforms") && !OperatingSystem.IsWindows())
+            Assert.Inconclusive($"The {targetKey} target needs the Windows desktop targeting pack.");
+
+        Assert.IsTrue(TargetScaffolders.TryResolve(targetKey, out var target));
+
+        var workspace = Path.Combine(Path.GetTempPath(), "gen_" + Path.GetRandomFileName());
+        Directory.CreateDirectory(workspace);
+        try
+        {
+            var result = new AppScaffolder().Scaffold(
+                ScaffoldRequest.For(SampleModel(), "Sample", workspace, target)
+                with
+                {
+                    Customization = AppCustomization.Default with { NamespacePrefix = "CodisLtd" },
+                });
+
+            Assert.IsTrue(result.Success, "scaffold failed: " + result.Message);
+
+            var (exit, output) = RunDotNet($"build \"{result.ProjectPath}\" -c Release");
+            Assert.AreEqual(0, exit, $"dotnet build failed for {targetKey}:\n{output}");
+
+            if (targetKey != "console")
+                return;
+
+            Assert.IsNotNull(result.TestProjectPath, "no test project was emitted");
+            var (testExit, testOutput) = RunDotNet($"test \"{result.TestProjectPath}\" -c Release");
+            Assert.AreEqual(0, testExit, $"dotnet test failed:\n{testOutput}");
+        }
+        finally
+        {
+            TryDeleteDirectory(workspace);
+        }
+    }
+
+    /// <summary>
+    /// The staleness trap end to end: a project generated under one prefix and regenerated under
+    /// another has to build, which means App.xaml, RootNamespace and every emitted namespace agree
+    /// after the second run.
+    /// </summary>
+    [TestMethod]
+    [TestCategory("Integration")]
+    public void AProjectRegeneratedUnderAChangedPrefix_StillBuilds()
+    {
+        if (!OperatingSystem.IsWindows())
+            Assert.Inconclusive("The wpf target needs the Windows desktop targeting pack.");
+
+        Assert.IsTrue(TargetScaffolders.TryResolve("wpf", out var target));
+
+        var workspace = Path.Combine(Path.GetTempPath(), "gen_" + Path.GetRandomFileName());
+        Directory.CreateDirectory(workspace);
+        try
+        {
+            var scaffolder = new AppScaffolder();
+            var request = ScaffoldRequest.For(SampleModel(), "Sample", workspace, target);
+
+            scaffolder.Scaffold(request with
+            {
+                Customization = AppCustomization.Default with { NamespacePrefix = "CodisLtd" },
+            });
+
+            var second = scaffolder.Scaffold(request with
+            {
+                Customization = AppCustomization.Default with { NamespacePrefix = "Acme" },
+            });
+
+            Assert.IsTrue(second.Success, "scaffold failed: " + second.Message);
+
+            var appXaml = File.ReadAllText(Path.Combine(second.ProjectPath, "App.xaml"));
+            StringAssert.Contains(appXaml, "x:Class=\"Acme.Sample.App\"");
+            Assert.IsFalse(appXaml.Contains("CodisLtd", StringComparison.Ordinal));
+
+            var (exit, output) = RunDotNet($"build \"{second.ProjectPath}\" -c Release");
+            Assert.AreEqual(0, exit, $"dotnet build failed after the prefix changed:\n{output}");
+        }
+        finally
+        {
+            TryDeleteDirectory(workspace);
+        }
+    }
+
     [TestMethod]
     [TestCategory("Integration")]
     [DataRow("console")]
