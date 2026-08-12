@@ -12,13 +12,18 @@ public sealed class WpfTarget : ITargetScaffolder
     public string FolderSuffix => "";
 
     public IReadOnlyList<GeneratedFile> FrontEndFiles(string projectName, IReadOnlyList<string> entityNames)
+        => FrontEndFiles(projectName, entityNames, AppCustomization.Default);
+
+    public IReadOnlyList<GeneratedFile> FrontEndFiles(
+        string projectName, IReadOnlyList<string> entityNames, AppCustomization customization)
     {
         // Shared with WinFormsTarget. The WPF variant of RelayCommand requeries through
         // CommandManager, which is what re-enables Delete when the grid selection changes.
         var files = DesktopViewModelFiles.Build(
             projectName, entityNames, ViewModelTemplates.RelayCommand(projectName));
 
-        files.Add(new("Views", "MainWindow.xaml", MainWindowTemplate.Xaml(projectName)));
+        files.Add(new("Views", "MainWindow.xaml",
+            MainWindowTemplate.Xaml(projectName, customization.TitleAttributeFor(projectName))));
         files.Add(new("Views", "MainWindow.xaml.cs", MainWindowTemplate.CodeBehind(projectName)));
 
         return files;

@@ -5,6 +5,11 @@ namespace AppScaffolding;
 public static class ConsoleProgramTemplate
 {
     public static string Build(string projectName, IReadOnlyList<string> entityNames)
+        => Build(projectName, entityNames, projectName);
+
+    /// <summary>As <see cref="Build(string, IReadOnlyList{string})"/>, printing
+    /// <paramref name="title"/> as a banner before the menu loop starts.</summary>
+    public static string Build(string projectName, IReadOnlyList<string> entityNames, string title)
     {
         var mapEntries = string.Join(",\n",
             entityNames.Select(name =>
@@ -34,6 +39,8 @@ var menus = new (string Name, Action Run)[]
 {
 {{registrations}}
 };
+
+Console.WriteLine("{{title}}");
 
 while (true)
 {

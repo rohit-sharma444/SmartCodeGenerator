@@ -12,7 +12,10 @@ public static class WinFormsMainFormTemplate
     /// are deliberately duplicated in <see cref="MainWindowTemplate.CodeBehind"/> rather than
     /// shared: keep the two in sync if the display convention ever changes.
     /// </remarks>
-    public static string Source(string appName) => $$"""
+    public static string Source(string appName) => Source(appName, appName);
+
+    /// <summary>Source of <c>Views/MainForm.cs</c>, titled <paramref name="title"/>.</summary>
+    public static string Source(string appName, string title) => $$"""
 using System;
 using System.Collections.Specialized;
 using System.ComponentModel;
@@ -30,7 +33,7 @@ public sealed class MainForm : Form
 
     public MainForm()
     {
-        Text = "{{appName}}";
+        Text = "{{title}}";
         Width = 900;
         Height = 600;
 

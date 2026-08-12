@@ -111,4 +111,14 @@ public sealed record AppCustomization(
     /// title pattern uses to join "{company}" and "{app}".</summary>
     private static bool IsSeparatorChar(char c)
         => char.IsWhiteSpace(c) || c is '-' or ':' or '|';
+
+    /// <summary>The title as a C# string-literal body — a quote or backslash in a company name
+    /// would otherwise break out of the literal it is emitted into.</summary>
+    public string TitleLiteralFor(string appName)
+        => TitleFor(appName).Replace("\\", "\\\\").Replace("\"", "\\\"");
+
+    /// <summary>The title as an XML attribute value.</summary>
+    public string TitleAttributeFor(string appName)
+        => TitleFor(appName)
+            .Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;").Replace("\"", "&quot;");
 }

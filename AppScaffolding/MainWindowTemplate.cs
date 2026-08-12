@@ -7,11 +7,14 @@ namespace AppScaffolding;
 public static class MainWindowTemplate
 {
     /// <summary>Source of <c>Views/MainWindow.xaml</c>.</summary>
-    public static string Xaml(string appName) => $$"""
+    public static string Xaml(string appName) => Xaml(appName, appName);
+
+    /// <summary>Source of <c>Views/MainWindow.xaml</c>, titled <paramref name="title"/>.</summary>
+    public static string Xaml(string appName, string title) => $$"""
 <Window x:Class="{{appName}}.Views.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="{{appName}}" Height="600" Width="900">
+        Title="{{title}}" Height="600" Width="900">
     <!-- SelectedIndex is explicit: a Selector only follows the collection's current item
          when its ItemsSource is a CollectionView, so bound to an ObservableCollection it
          would open with no tab selected and a blank content area. -->

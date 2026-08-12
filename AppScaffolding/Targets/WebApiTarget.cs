@@ -10,9 +10,14 @@ public sealed class WebApiTarget : ITargetScaffolder
     public DotNetProjectType ProjectType => DotNetProjectType.WebApi;
     public string FolderSuffix => ".Api";
 
-    public IReadOnlyList<GeneratedFile> FrontEndFiles(string projectName, IReadOnlyList<string> entityNames) => new List<GeneratedFile>
+    public IReadOnlyList<GeneratedFile> FrontEndFiles(string projectName, IReadOnlyList<string> entityNames)
+        => FrontEndFiles(projectName, entityNames, AppCustomization.Default);
+
+    public IReadOnlyList<GeneratedFile> FrontEndFiles(
+        string projectName, IReadOnlyList<string> entityNames, AppCustomization customization) => new List<GeneratedFile>
     {
-        new("", "Program.cs", WebApiProgramTemplate.Build(projectName, entityNames)),
+        new("", "Program.cs", WebApiProgramTemplate.Build(
+            projectName, entityNames, customization.TitleLiteralFor(projectName))),
     };
     // Default FixupProject no-op: our Program.cs overwrites the template's; net10 webapi
     // emits no WeatherForecast.cs to remove.
