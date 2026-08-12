@@ -66,9 +66,9 @@ public sealed class AppScaffolder
         }
     }
 
-    /// <summary>Best-effort insertion of the EF Core SQLite package into the app project file.
+    /// <summary>Best-effort insertion of one package reference into the app project file.
     /// Idempotent and silent on failure — a missing package surfaces later as a build error.</summary>
-    private static void InjectEfCorePackage(string csprojPath)
+    private static void InjectPackage(string csprojPath, string id, string version)
     {
         try
         {
@@ -76,7 +76,7 @@ public sealed class AppScaffolder
                 return;
 
             var updated = CsprojEditing.InjectPackageReference(
-                File.ReadAllText(csprojPath), EfCorePackageId, EfCorePackageVersion);
+                File.ReadAllText(csprojPath), id, version);
             File.WriteAllText(csprojPath, updated);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -279,7 +279,16 @@ public sealed class AppScaffolder
         }
 
         if (persistence == PersistenceKind.Sqlite)
-            InjectEfCorePackage(csprojPath);
+            InjectPackage(csprojPath, EfCorePackageId, EfCorePackageVersion);
+
+        // Not for the Web API: the ASP.NET Core framework reference already carries these
+        // assemblies, and NuGet reports a reference to one of them as NU1510 — "likely
+        // unnecessary" — on every build of the generated project.
+        if (request.Customization.Logging && target.ProjectType != DotNetProjectType.WebApi)
+        {
+            foreach (var (id, version) in LoggingTemplate.Packages)
+                InjectPackage(csprojPath, id, version);
+        }
 
         if (request.Customization.HasBranding)
             InjectBranding(csprojPath, request.Customization.Company, request.Year);
@@ -320,13 +329,21 @@ public sealed class AppScaffolder
         // target and persistence backend shares the same typed CRUD surface.
         var validation = customization.Validation;
         var seed = customization.SampleSeedData;
+        var logging = customization.Logging;
 
         var files = new List<(string Folder, string Name, string Source)>
         {
             (dataFolder, "IStore.cs", StoreSeamTemplate.Source(projectName)),
             (dataFolder, "StoreFactory.cs", StoreFactoryTemplate.Source(projectName, persistence)),
-            (dataFolder, "Repository.cs", RepositoryTemplate.Base(projectName, validation)),
+            (dataFolder, "Repository.cs",
+                RepositoryTemplate.Base(projectName, validation, logging)),
         };
+
+        if (logging)
+        {
+            files.Add((Path.Combine(outputFolder, LoggingTemplate.FolderName),
+                LoggingTemplate.FileName, LoggingTemplate.Source(projectName)));
+        }
 
         // Added here rather than in the initializer above, which cannot hold a conditional element,
         // and before SaveResult so a seeding app's files are written in the order they always were.

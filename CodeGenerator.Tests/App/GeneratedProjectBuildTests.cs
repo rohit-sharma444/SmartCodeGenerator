@@ -147,6 +147,45 @@ public class GeneratedProjectBuildTests
     }
 
     /// <summary>
+    /// An app generated with logging builds — which is the only way the emitted AppLog.cs is
+    /// compiled at all, since Microsoft.Extensions.Logging is not among the assemblies
+    /// Compiler.Compile can reach. It also restores the versions LoggingTemplate.Packages pins: an
+    /// unresolvable one would fail every generated app and nothing else here would notice.
+    /// </summary>
+    [TestMethod]
+    [TestCategory("Integration")]
+    [DataRow("console")]
+    [DataRow("webapi")]
+    [DataRow("worker")]
+    public void ProjectWithLogging_Builds(string targetKey)
+    {
+        Assert.IsTrue(TargetScaffolders.TryResolve(targetKey, out var target));
+
+        var workspace = Path.Combine(Path.GetTempPath(), "gen_" + Path.GetRandomFileName());
+        Directory.CreateDirectory(workspace);
+        try
+        {
+            var result = new AppScaffolder().Scaffold(
+                ScaffoldRequest.For(SampleModel(), "Sample", workspace, target)
+                with
+                {
+                    Customization = AppCustomization.Default with { Logging = true },
+                });
+
+            Assert.IsTrue(result.Success, "scaffold failed: " + result.Message);
+            Assert.IsTrue(File.Exists(Path.Combine(
+                result.ProjectPath, LoggingTemplate.FolderName, LoggingTemplate.FileName)));
+
+            var (exit, output) = RunDotNet($"build \"{result.ProjectPath}\" -c Release");
+            Assert.AreEqual(0, exit, $"dotnet build failed for {targetKey}:\n{output}");
+        }
+        finally
+        {
+            TryDeleteDirectory(workspace);
+        }
+    }
+
+    /// <summary>
     /// An app generated without sample data builds. SeedData.EnsureSeeded() is called from four
     /// separate entry points, so every target is a row here: a missed call site is a CS0103 on a
     /// class the app no longer generates, and the console row's generated tests prove nothing left

@@ -28,6 +28,18 @@ public static class RepositoryTemplate
     /// produces reach them now.
     /// </remarks>
     public static string Base(string appName, bool validation)
+        => Base(appName, validation, logging: false);
+
+    /// <summary>
+    /// As <see cref="Base(string, bool)"/>, additionally logging every write through
+    /// <c>AppLog</c> when <paramref name="logging"/>.
+    /// </summary>
+    /// <remarks>
+    /// This is the app's only write path, which is what makes it the place worth logging: the
+    /// desktop view models save through the store directly, but everything else — console menu,
+    /// Web API, worker, generated tests — goes through here.
+    /// </remarks>
+    public static string Base(string appName, bool validation, bool logging)
     {
         // Raw string literals, not "\n" concatenation: a raw literal carries the line endings of
         // the source file it is written in, which is exactly what the template below carries. These
@@ -50,15 +62,77 @@ public static class RepositoryTemplate
         // Two blank lines before the closing delimiter, so the fragment ends with the blank line
         // that separates the guard from the body — the last newline of a raw literal is its
         // delimiter's, and is not part of the value.
-        var validateCall = validation
-            ? """
+        var validateCall = (validation, logging) switch
+        {
+            (false, _) => string.Empty,
+
+            // A rejected write is worth a line in the log: it is the one outcome that is neither a
+            // success nor an exception, so nothing else would record it.
+            (true, true) => """
+                    var errors = _validator.Validate(item);
+                    if (errors.Count > 0)
+                    {
+                        Log.LogWarning("Rejected {Entity}: {Error}", typeof(T).Name, errors[0]);
+                        return new SaveResult<T> { Success = false, Errors = errors };
+                    }
+
+
+            """,
+
+            _ => """
                     var errors = _validator.Validate(item);
                     if (errors.Count > 0)
                         return new SaveResult<T> { Success = false, Errors = errors };
 
 
+            """,
+        };
+
+        var loggingUsings = logging
+            ? $"""
+
+              using Microsoft.Extensions.Logging;
+              using {appName}.Logging;
+              """
+            : string.Empty;
+
+        var loggerField = logging
+            ? """
+                private static readonly ILogger Log = AppLog.For<Repository<T>>();
+
             """
             : string.Empty;
+
+        var createLog = logging
+            ? """
+                    Log.LogInformation("Created {Entity} {Id}.", typeof(T).Name, GetId(item));
+
+
+            """
+            : string.Empty;
+
+        var updateLog = logging
+            ? """
+                    Log.LogInformation("Updated {Entity} {Id}.", typeof(T).Name, GetId(item));
+
+
+            """
+            : string.Empty;
+
+        // Delete is the one method whose tail has to change rather than gain a line: it returns the
+        // save result directly, and there is nothing to log against until that result is known.
+        var deleteTail = logging
+            ? """
+                    var saved = _store.SaveAll(all);
+
+                    if (saved)
+                        Log.LogInformation("Deleted {Entity} {Id}.", typeof(T).Name, id);
+
+                    return saved;
+            """
+            : """
+                    return _store.SaveAll(all);
+            """;
 
         var createSummary = validation
             ? "Validates, then assigns the next Id, appends the record and persists it."
@@ -72,7 +146,7 @@ public static class RepositoryTemplate
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
+using System.Reflection;{{loggingUsings}}
 {{validationUsing}}
 namespace {{appName}}.Data;
 
@@ -86,7 +160,7 @@ namespace {{appName}}.Data;
 public abstract class Repository<T> where T : class, new()
 {
     private readonly IStore<T> _store = StoreFactory.Create<T>();
-{{validatorField}}
+{{validatorField}}{{loggerField}}
     /// <summary>Every stored record.</summary>
     public List<T> GetAll() => _store.GetAll();
 
@@ -103,7 +177,7 @@ public abstract class Repository<T> where T : class, new()
         if (!_store.SaveAll(all))
             return new SaveResult<T> { Success = false, Errors = new[] { "Could not persist " + typeof(T).Name + "." } };
 
-        return new SaveResult<T> { Success = true, Item = item };
+{{createLog}}        return new SaveResult<T> { Success = true, Item = item };
     }
 
     /// <summary>{{updateSummary}}</summary>
@@ -119,7 +193,7 @@ public abstract class Repository<T> where T : class, new()
         if (!_store.SaveAll(all))
             return new SaveResult<T> { Success = false, Errors = new[] { "Could not persist " + typeof(T).Name + "." } };
 
-        return new SaveResult<T> { Success = true, Item = item };
+{{updateLog}}        return new SaveResult<T> { Success = true, Item = item };
     }
 
     /// <summary>Removes the record with this Id. False when there is none.</summary>
@@ -129,7 +203,7 @@ public abstract class Repository<T> where T : class, new()
         if (all.RemoveAll(item => GetId(item) == id) == 0)
             return false;
 
-        return _store.SaveAll(all);
+{{deleteTail}}
     }
 
     private static PropertyInfo IdProperty =>
