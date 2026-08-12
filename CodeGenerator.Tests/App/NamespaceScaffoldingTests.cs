@@ -120,6 +120,28 @@ public class NamespaceScaffoldingTests
         Assert.IsFalse(source.Contains("CodisLtd.Shop.db", StringComparison.Ordinal));
     }
 
+    /// <summary>Regression guard for the one call site where <c>projectName</c> and
+    /// <c>rootNamespace</c> are passed to the same method (<c>DbContextTemplate.Source</c> from
+    /// <c>AppScaffolder</c>): with <c>Default</c> customization the two are equal, so only a
+    /// prefixed, SQLite-backed run through the actual scaffolder call site can catch the
+    /// arguments being swapped or the trailing one dropped.</summary>
+    [TestMethod]
+    public void A_prefixed_sqlite_app_keeps_its_database_file_and_env_var()
+    {
+        var result = new AppScaffolder().Scaffold(
+            ScaffoldRequest.For(TestModels.OneEntity(), "Shop", _root, new ConsoleTarget())
+                with { Customization = Prefixed, Persistence = PersistenceKind.Sqlite });
+
+        Assert.IsTrue(result.Success, result.Message);
+
+        var source = File.ReadAllText(Path.Combine(result.ProjectPath, "Data", "AppDbContext.cs"));
+
+        StringAssert.Contains(source, "namespace CodisLtd.Shop.Console.Data;");
+        StringAssert.Contains(source, "\"Shop.Console.db\"");
+        StringAssert.Contains(source, "Environment.GetEnvironmentVariable(\"SHOP_CONSOLE_DB\")");
+        Assert.IsFalse(source.Contains("CodisLtd.Shop.Console.db", StringComparison.Ordinal));
+    }
+
     [TestMethod]
     public void Without_a_prefix_nothing_moves()
     {
