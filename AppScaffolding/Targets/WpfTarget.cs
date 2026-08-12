@@ -17,19 +17,22 @@ public sealed class WpfTarget : ITargetScaffolder
     public IReadOnlyList<GeneratedFile> FrontEndFiles(
         string projectName, IReadOnlyList<string> entityNames, AppCustomization customization)
     {
+        // The namespace the emitted code declares; projectName still names the app in its title.
+        var ns = customization.RootNamespaceFor(projectName);
+
         // Shared with WinFormsTarget. The WPF variant of RelayCommand requeries through
         // CommandManager, which is what re-enables Delete when the grid selection changes.
         var files = DesktopViewModelFiles.Build(
-            projectName, entityNames, ViewModelTemplates.RelayCommand(projectName),
+            ns, entityNames, ViewModelTemplates.RelayCommand(ns),
             customization.Validation, customization.SampleSeedData);
 
         var palette = ThemePalette.Resolve(customization.Theme, customization.Accent);
 
         files.Add(new("Views", "MainWindow.xaml",
             MainWindowTemplate.Xaml(
-                projectName, customization.TitleAttributeFor(projectName), palette is not null,
+                ns, customization.TitleAttributeFor(projectName), palette is not null,
                 customization.IconFileName)));
-        files.Add(new("Views", "MainWindow.xaml.cs", MainWindowTemplate.CodeBehind(projectName)));
+        files.Add(new("Views", "MainWindow.xaml.cs", MainWindowTemplate.CodeBehind(ns)));
 
         if (palette is not null)
             files.Add(new("Views", ThemeXamlTemplate.FileName, ThemeXamlTemplate.Source(palette)));

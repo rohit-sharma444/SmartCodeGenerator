@@ -16,16 +16,16 @@ public static class DesktopViewModelFiles
     /// <paramref name="validation"/> false the view models resolve no validator, because the
     /// Validation folder they would resolve it from is not generated either.</summary>
     public static List<GeneratedFile> Build(
-        string projectName, IReadOnlyList<string> entityNames, string relayCommandSource,
+        string rootNamespace, IReadOnlyList<string> entityNames, string relayCommandSource,
         bool validation = true, bool seed = true) =>
     [
-        new("Data", "RelationshipResolver.cs", RelationshipResolverTemplate.Source(projectName)),
-        new("ViewModels", "ObservableObject.cs", ViewModelTemplates.ObservableObject(projectName)),
+        new("Data", "RelationshipResolver.cs", RelationshipResolverTemplate.Source(rootNamespace)),
+        new("ViewModels", "ObservableObject.cs", ViewModelTemplates.ObservableObject(rootNamespace)),
         new("ViewModels", "RelayCommand.cs", relayCommandSource),
-        new("ViewModels", "IEntityViewModel.cs", ViewModelTemplates.EntityViewModelInterface(projectName)),
+        new("ViewModels", "IEntityViewModel.cs", ViewModelTemplates.EntityViewModelInterface(rootNamespace)),
         new("ViewModels", "EntityViewModel.cs",
-            ViewModelTemplates.EntityViewModel(projectName, validation)),
+            ViewModelTemplates.EntityViewModel(rootNamespace, validation)),
         new("ViewModels", "MainViewModel.cs",
-            MainViewModelTemplate.Build(projectName, entityNames, seed)),
+            MainViewModelTemplate.Build(rootNamespace, entityNames, seed)),
     ];
 }

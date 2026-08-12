@@ -300,12 +300,16 @@ public sealed class AppScaffolder
             ? request.Customization
             : request.Customization with { IconPath = null };
 
+        // The namespace emitted code declares. projectName goes on naming the folder, the csproj,
+        // the assembly and the SQLite environment override — the prefix is a namespace only.
+        var rootNamespace = customization.RootNamespaceFor(projectName);
+
         var modelsFolder = Path.Combine(outputFolder, "Models");
         var dataFolder = Path.Combine(outputFolder, "Data");
         var validationFolder = Path.Combine(outputFolder, "Validation");
 
         var written = new List<string>(
-            WriteClasses(modelsFolder, classes, $"{projectName}.Models", header));
+            WriteClasses(modelsFolder, classes, $"{rootNamespace}.Models", header));
         var expected = classes.Count;
 
         var entityNames = classes.Select(c => c.Name).ToList();
@@ -333,16 +337,16 @@ public sealed class AppScaffolder
 
         var files = new List<(string Folder, string Name, string Source)>
         {
-            (dataFolder, "IStore.cs", StoreSeamTemplate.Source(projectName)),
-            (dataFolder, "StoreFactory.cs", StoreFactoryTemplate.Source(projectName, persistence)),
+            (dataFolder, "IStore.cs", StoreSeamTemplate.Source(rootNamespace)),
+            (dataFolder, "StoreFactory.cs", StoreFactoryTemplate.Source(rootNamespace, persistence)),
             (dataFolder, "Repository.cs",
-                RepositoryTemplate.Base(projectName, validation, logging)),
+                RepositoryTemplate.Base(rootNamespace, validation, logging)),
         };
 
         if (logging)
         {
             files.Add((Path.Combine(outputFolder, LoggingTemplate.FolderName),
-                LoggingTemplate.FileName, LoggingTemplate.Source(projectName)));
+                LoggingTemplate.FileName, LoggingTemplate.Source(rootNamespace)));
         }
 
         // Added here rather than in the initializer above, which cannot hold a conditional element,
@@ -351,42 +355,42 @@ public sealed class AppScaffolder
         {
             files.Add((dataFolder, "SeedData.cs",
                 SeedDataTemplate.Source(
-                    projectName,
+                    rootNamespace,
                     SeedDataTemplate.OrderByDependency(classes),
                     SeedDataTemplate.ForeignKeyFieldNames(classes),
                     seededClassNames)));
         }
 
-        files.Add((dataFolder, "SaveResult.cs", SaveResultTemplate.Source(projectName)));
+        files.Add((dataFolder, "SaveResult.cs", SaveResultTemplate.Source(rootNamespace)));
 
         // SaveResult above stays whatever the flag says: Repository still returns one, so the
         // console menu and the Web API's ValidationProblem are untouched by turning validation off.
         if (validation)
         {
             files.Add((validationFolder, "IValidator.cs",
-                ValidatorTemplate.ValidatorInterface(projectName)));
+                ValidatorTemplate.ValidatorInterface(rootNamespace)));
             files.Add((validationFolder, "IEntityLookup.cs",
-                ValidatorTemplate.EntityLookupInterface(projectName)));
+                ValidatorTemplate.EntityLookupInterface(rootNamespace)));
             files.Add((validationFolder, "StoreEntityLookup.cs",
-                ValidatorTemplate.StoreEntityLookup(projectName)));
+                ValidatorTemplate.StoreEntityLookup(rootNamespace)));
             files.Add((validationFolder, "ValidatorFactory.cs",
-                ValidatorTemplate.Factory(projectName, entityNames)));
+                ValidatorTemplate.Factory(rootNamespace, entityNames)));
         }
 
         // Persistence backend behind the seam.
         if (persistence == PersistenceKind.Sqlite)
         {
-            files.Add((dataFolder, "EfStore.cs", EfStoreTemplate.Source(projectName)));
+            files.Add((dataFolder, "EfStore.cs", EfStoreTemplate.Source(rootNamespace)));
             files.Add((dataFolder, "AppDbContext.cs",
-                DbContextTemplate.Source(projectName, entityNames, EnvVarName(projectName))));
+                DbContextTemplate.Source(projectName, entityNames, EnvVarName(projectName), rootNamespace)));
         }
         else
         {
-            files.Add((dataFolder, "JsonStore.cs", JsonStoreTemplate.Source($"{projectName}.Data")));
+            files.Add((dataFolder, "JsonStore.cs", JsonStoreTemplate.Source($"{rootNamespace}.Data")));
         }
 
         foreach (var name in entityNames)
-            files.Add((dataFolder, $"{name}Repository.cs", RepositoryTemplate.Typed(projectName, name)));
+            files.Add((dataFolder, $"{name}Repository.cs", RepositoryTemplate.Typed(rootNamespace, name)));
 
         // The regenerated half of each model's validator. Foreign-key targets come from
         // ForeignKeys.TargetsOf, so a lookup check is only ever emitted for a <Target>Id the
@@ -397,7 +401,7 @@ public sealed class AppScaffolder
             foreach (var definition in classes)
                 files.Add((validationFolder, $"{definition.Name}Validator.Generated.cs",
                     ValidatorTemplate.Generated(
-                        projectName, definition, ForeignKeys.TargetsOf(definition, classNameSet))));
+                        rootNamespace, definition, ForeignKeys.TargetsOf(definition, classNameSet))));
         }
 
         // Target-specific front-end / entry point.
@@ -445,13 +449,13 @@ public sealed class AppScaffolder
             expected++;
             var customPath = WriteSource(
                 validationFolder, fileName,
-                ValidatorTemplate.CustomStub(projectName, definition.Name), header);
+                ValidatorTemplate.CustomStub(rootNamespace, definition.Name), header);
             if (customPath is not null)
                 written.Add(customPath);
         }
 
         var testProjectPath = ScaffoldTestProject(
-            workspaceRoot, projectName, classes, validation, seed);
+            workspaceRoot, projectName, rootNamespace, classes, validation, seed);
 
         var allWritten = written.Count == expected;
 
@@ -470,8 +474,8 @@ public sealed class AppScaffolder
     /// WPF app's tests target net10.0-windows and resolve the reference.
     /// </summary>
     private static string? ScaffoldTestProject(
-        string workspaceRoot, string appProjectName, IReadOnlyList<ClassDefinition> classes,
-        bool validation = true, bool seed = true)
+        string workspaceRoot, string appProjectName, string appRootNamespace,
+        IReadOnlyList<ClassDefinition> classes, bool validation = true, bool seed = true)
     {
         var entityNames = classes.Select(c => c.Name).ToList();
 
@@ -515,17 +519,17 @@ public sealed class AppScaffolder
         }
 
         var roundTripPath = WriteSource(testFolder, "RepositoryRoundTripTests.cs",
-            TestProjectTemplates.RoundTripTests(appProjectName, entityNames));
+            TestProjectTemplates.RoundTripTests(appRootNamespace, entityNames));
 
         // No seed test without SeedData: it would name a class the app never generated.
         var seedPath = seed
             ? WriteSource(testFolder, "SeedDataTests.cs",
-                TestProjectTemplates.SeedTests(appProjectName, entityNames[0]))
+                TestProjectTemplates.SeedTests(appRootNamespace, entityNames[0]))
             : null;
         var parallelizationPath = WriteSource(testFolder, "TestParallelization.cs",
             TestProjectTemplates.DisableParallelization());
         var supportPath = WriteSource(testFolder, "TestSupport.cs",
-            TestProjectTemplates.TestSupport(appProjectName));
+            TestProjectTemplates.TestSupport(appRootNamespace));
 
         if (roundTripPath is null || (seed && seedPath is null) || parallelizationPath is null
             || supportPath is null)
@@ -541,7 +545,7 @@ public sealed class AppScaffolder
                 && p.Rules.Any(r => string.Equals(r.Name, "required", StringComparison.OrdinalIgnoreCase)));
 
             if (WriteSource(testFolder, $"{definition.Name}ValidatorTests.cs",
-                    TestProjectTemplates.ValidatorTests(appProjectName, definition.Name, required?.Name)) is null)
+                    TestProjectTemplates.ValidatorTests(appRootNamespace, definition.Name, required?.Name)) is null)
                 return null;
         }
 
