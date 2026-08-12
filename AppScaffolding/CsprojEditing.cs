@@ -27,16 +27,57 @@ public static class CsprojEditing
     /// a no-op on a project file with no closing tag.
     /// </summary>
     public static string InjectSeedContent(string csproj)
-    {
-        const string include = @"Data\Seed\*.json";
+        => InjectContent(csproj, @"Data\Seed\*.json");
 
-        if (csproj.Contains(include, StringComparison.Ordinal))
+    /// <summary>
+    /// Registers <paramref name="include"/> as content copied next to the built binary.
+    /// Idempotent, and a no-op on a project file with no closing tag.
+    /// </summary>
+    public static string InjectContent(string csproj, string include)
+        => InjectItem(
+            csproj, include,
+            $"    <Content Include=\"{include}\" CopyToOutputDirectory=\"PreserveNewest\" />\n");
+
+    /// <summary>
+    /// Registers <paramref name="include"/> as a WPF resource, embedded in the assembly where a
+    /// relative pack URI — a <c>Window</c>'s <c>Icon</c> attribute, say — can reach it.
+    /// Idempotent, and a no-op on a project file with no closing tag.
+    /// </summary>
+    public static string InjectResource(string csproj, string include)
+        => InjectItem(csproj, include, $"    <Resource Include=\"{include}\" />\n");
+
+    /// <summary>Sets <c>&lt;ApplicationIcon&gt;</c> — the icon the built .exe itself carries — to
+    /// <paramref name="relativePath"/>. Idempotent, and a no-op on a project file with no closing
+    /// tag.</summary>
+    public static string InjectApplicationIcon(string csproj, string relativePath)
+    {
+        if (csproj.Contains("<ApplicationIcon>", StringComparison.Ordinal))
             return csproj;
 
-        var itemGroup =
-            "  <ItemGroup>\n" +
-            $"    <Content Include=\"{include}\" CopyToOutputDirectory=\"PreserveNewest\" />\n" +
-            "  </ItemGroup>\n";
+        var group =
+            "  <PropertyGroup>\n" +
+            $"    <ApplicationIcon>{relativePath}</ApplicationIcon>\n" +
+            "  </PropertyGroup>\n";
+
+        var close = csproj.LastIndexOf("</Project>", StringComparison.Ordinal);
+        return close < 0 ? csproj : csproj.Insert(close, group);
+    }
+
+    /// <summary>Inserts <paramref name="item"/> in its own ItemGroup before the closing
+    /// <c>&lt;/Project&gt;</c> tag, unless something already includes
+    /// <paramref name="include"/>.</summary>
+    /// <remarks>
+    /// The guard matches the <c>Include</c> attribute rather than the bare path, because the same
+    /// path can legitimately appear elsewhere in the file: an icon registered as
+    /// <c>&lt;ApplicationIcon&gt;Assets\app.ico&lt;/ApplicationIcon&gt;</c> must not stop the
+    /// <c>Resource</c> item for that same file being added.
+    /// </remarks>
+    private static string InjectItem(string csproj, string include, string item)
+    {
+        if (csproj.Contains($"Include=\"{include}\"", StringComparison.Ordinal))
+            return csproj;
+
+        var itemGroup = "  <ItemGroup>\n" + item + "  </ItemGroup>\n";
 
         var close = csproj.LastIndexOf("</Project>", StringComparison.Ordinal);
         return close < 0 ? csproj : csproj.Insert(close, itemGroup);

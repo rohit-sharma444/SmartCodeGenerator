@@ -26,7 +26,8 @@ public sealed class WpfTarget : ITargetScaffolder
 
         files.Add(new("Views", "MainWindow.xaml",
             MainWindowTemplate.Xaml(
-                projectName, customization.TitleAttributeFor(projectName), palette is not null)));
+                projectName, customization.TitleAttributeFor(projectName), palette is not null,
+                customization.IconFileName)));
         files.Add(new("Views", "MainWindow.xaml.cs", MainWindowTemplate.CodeBehind(projectName)));
 
         if (palette is not null)

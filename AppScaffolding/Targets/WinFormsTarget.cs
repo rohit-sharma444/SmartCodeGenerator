@@ -28,7 +28,8 @@ public sealed class WinFormsTarget : ITargetScaffolder
 
         files.Add(new("Views", "MainForm.cs",
             WinFormsMainFormTemplate.Source(
-                projectName, customization.TitleLiteralFor(projectName), palette)));
+                projectName, customization.TitleLiteralFor(projectName), palette,
+                customization.IconFileName)));
         files.Add(new("", "Program.cs", WinFormsProgramTemplate.Source(projectName)));
 
         return files;

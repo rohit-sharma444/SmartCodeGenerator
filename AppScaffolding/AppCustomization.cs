@@ -46,8 +46,37 @@ public sealed record AppCustomization(
         Logging: false,
         SampleSeedData: true);
 
+    /// <summary>The project folder a supplied icon is copied into.</summary>
+    public const string AssetsFolder = "Assets";
+
     /// <summary>Whether anything company-derived should be emitted at all.</summary>
     public bool HasBranding => Company.Length > 0;
+
+    /// <summary>
+    /// The name the supplied icon is copied to inside <see cref="AssetsFolder"/>, or null when
+    /// there is no usable icon.
+    /// </summary>
+    /// <remarks>
+    /// The stem is always "app" and only the extension comes from the user, so no emitted project
+    /// file, XAML attribute or string literal ever carries a file name someone typed — a name
+    /// with a quote or an ampersand in it would otherwise need escaping in three places.
+    /// <para>
+    /// An extensionless path yields null: it cannot be an <c>ApplicationIcon</c>, and neither
+    /// front end has a way to name it.
+    /// </para>
+    /// </remarks>
+    public string? IconFileName
+    {
+        get
+        {
+            if (IconPath is null)
+                return null;
+
+            var extension = Path.GetExtension(IconPath).ToLowerInvariant();
+
+            return extension.Length == 0 ? null : "app" + extension;
+        }
+    }
 
     /// <summary>
     /// The window/page title for <paramref name="appName"/>.

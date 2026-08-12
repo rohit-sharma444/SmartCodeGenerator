@@ -17,10 +17,31 @@ public static class WinFormsMainFormTemplate
     /// <summary>Source of <c>Views/MainForm.cs</c>, titled <paramref name="title"/>.</summary>
     public static string Source(string appName, string title) => Source(appName, title, palette: null);
 
-    /// <summary>Source of <c>Views/MainForm.cs</c>, titled <paramref name="title"/> and, when
-    /// <paramref name="palette"/> is non-null, painted in its colours.</summary>
-    public static string Source(string appName, string title, ThemePalette? palette)
+    /// <summary>Source of <c>Views/MainForm.cs</c>, titled <paramref name="title"/>; when
+    /// <paramref name="palette"/> is non-null, painted in its colours, and when
+    /// <paramref name="iconFileName"/> names a <c>.ico</c>, showing it as the form's icon.</summary>
+    /// <remarks>
+    /// <c>Form.Icon</c> is an <see cref="System.Drawing.Icon"/>, so only a <c>.ico</c> is loaded:
+    /// converting a PNG would mean a bitmap handle for the form to own and free. A non-.ico is
+    /// still copied into the project, and still reaches the window on the WPF side.
+    /// </remarks>
+    public static string Source(
+        string appName, string title, ThemePalette? palette, string? iconFileName = null)
     {
+        // Read off disk beside the binary rather than embedded: AppScaffolder registers the copy
+        // as content copied to the output directory. Guarded, so an asset the user later deletes
+        // costs the app its icon rather than its startup. Types are qualified because the
+        // un-iconed form must stay byte-identical, and that rules out adding a using directive.
+        var formIcon = iconFileName is not null
+                       && iconFileName.EndsWith(".ico", StringComparison.OrdinalIgnoreCase)
+            ? $$"""
+
+        var iconPath = System.IO.Path.Combine(AppContext.BaseDirectory, "{{AppCustomization.AssetsFolder}}", "{{iconFileName}}");
+        if (System.IO.File.Exists(iconPath))
+            Icon = new Icon(iconPath);
+"""
+            : string.Empty;
+
         // Emitted only for a themed app: an unthemed form must stay byte-identical to the one
         // this generator has always produced.
         var formColours = palette is not null
@@ -62,7 +83,7 @@ public sealed class MainForm : Form
         Text = "{{title}}";
         Width = 900;
         Height = 600;
-{{formColours}}
+{{formColours}}{{formIcon}}
         var tabs = new TabControl { Dock = DockStyle.Fill };
 
         foreach (var entity in _model.Entities)

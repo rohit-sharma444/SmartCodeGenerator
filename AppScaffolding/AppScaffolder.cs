@@ -102,6 +102,83 @@ public sealed class AppScaffolder
         }
     }
 
+    /// <summary>
+    /// Copies the chosen icon to <c>Assets/app&lt;ext&gt;</c> and registers it in the project file.
+    /// False when there was no icon or it could not be copied — in which case nothing downstream
+    /// may name it.
+    /// </summary>
+    /// <remarks>
+    /// A missing or unreadable source is ignored rather than reported: it is not worth failing a
+    /// build the user has already answered ten questions for. The generated app then simply keeps
+    /// the default icon, which is why the caller drops the icon from the customization the front
+    /// end sees rather than emitting a reference to a file that is not there.
+    /// </remarks>
+    private static bool CopyIcon(
+        AppCustomization customization, string outputFolder, string csprojPath,
+        DotNetProjectType projectType)
+    {
+        var fileName = customization.IconFileName;
+
+        if (customization.IconPath is null
+            || fileName is null
+            || !File.Exists(customization.IconPath))
+            return false;
+
+        try
+        {
+            var assets = Path.Combine(outputFolder, AppCustomization.AssetsFolder);
+
+            Directory.CreateDirectory(assets);
+            File.Copy(customization.IconPath, Path.Combine(assets, fileName), overwrite: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+
+        RegisterIcon(csprojPath, $"{AppCustomization.AssetsFolder}\\{fileName}", projectType);
+        return true;
+    }
+
+    /// <summary>
+    /// Best-effort registration of the copied icon in the app project file. Silent on failure: the
+    /// project still builds, it just shows the default icon.
+    /// </summary>
+    /// <remarks>
+    /// A <c>.ico</c> becomes the <c>ApplicationIcon</c>, the icon the built .exe carries; MSBuild
+    /// rejects any other extension there. How the file itself is registered depends on how the
+    /// front end reaches it: WPF resolves a <c>Window</c>'s relative <c>Icon</c> attribute through
+    /// the pack URI, so the file has to be embedded as a <c>Resource</c>, while the WinForms form
+    /// reads it off disk and needs it copied beside the binary instead. The other targets have no
+    /// window, so for them the exe icon is the whole story.
+    /// </remarks>
+    private static void RegisterIcon(
+        string csprojPath, string relativePath, DotNetProjectType projectType)
+    {
+        try
+        {
+            if (!File.Exists(csprojPath))
+                return;
+
+            var csproj = File.ReadAllText(csprojPath);
+
+            if (relativePath.EndsWith(".ico", StringComparison.OrdinalIgnoreCase))
+                csproj = CsprojEditing.InjectApplicationIcon(csproj, relativePath);
+
+            csproj = projectType switch
+            {
+                DotNetProjectType.Wpf => CsprojEditing.InjectResource(csproj, relativePath),
+                DotNetProjectType.WinForms => CsprojEditing.InjectContent(csproj, relativePath),
+                _ => csproj,
+            };
+
+            File.WriteAllText(csprojPath, csproj);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+        }
+    }
+
     /// <summary>Best-effort registration of the seed folder as copied-to-output content. Silent on
     /// failure: the app still builds, it just starts with sample rows instead of the imported ones.</summary>
     private static void InjectSeedContent(string csprojPath)
@@ -207,6 +284,13 @@ public sealed class AppScaffolder
         if (request.Customization.HasBranding)
             InjectBranding(csprojPath, request.Customization.Company, request.Year);
 
+        // Copied before the front end is built, not after it: the window or form has to name the
+        // file, and an icon that could not be copied must leave nothing naming it behind.
+        var customization = CopyIcon(
+                request.Customization, outputFolder, csprojPath, target.ProjectType)
+            ? request.Customization
+            : request.Customization with { IconPath = null };
+
         var modelsFolder = Path.Combine(outputFolder, "Models");
         var dataFolder = Path.Combine(outputFolder, "Data");
         var validationFolder = Path.Combine(outputFolder, "Validation");
@@ -271,7 +355,7 @@ public sealed class AppScaffolder
                     projectName, definition, ForeignKeys.TargetsOf(definition, classNameSet))));
 
         // Target-specific front-end / entry point.
-        foreach (var file in target.FrontEndFiles(projectName, entityNames, request.Customization))
+        foreach (var file in target.FrontEndFiles(projectName, entityNames, customization))
             files.Add((Path.Combine(outputFolder, file.RelativeFolder), file.Name, file.Source));
 
         foreach (var (folder, name, source) in files)

@@ -68,6 +68,134 @@ public class GeneratedProjectBuildTests
         }
     }
 
+    /// <summary>
+    /// A customized app still builds once it has an icon. This is the one part of customization
+    /// MSBuild itself has to accept: it parses an ApplicationIcon to embed as a Win32 resource and
+    /// rejects anything that is not a real icon, and a Resource item naming a file that is not
+    /// where it says is a build error. The WinForms form's icon loading is emitted C# besides.
+    /// </summary>
+    [TestMethod]
+    [TestCategory("Integration")]
+    [DataRow("wpf")]
+    [DataRow("winforms")]
+    public void CustomizedProject_WithAnIcon_Builds(string targetKey)
+    {
+        if (!OperatingSystem.IsWindows())
+            Assert.Inconclusive($"The {targetKey} target needs the Windows desktop targeting pack.");
+
+        Assert.IsTrue(TargetScaffolders.TryResolve(targetKey, out var target));
+
+        var workspace = Path.Combine(Path.GetTempPath(), "gen_" + Path.GetRandomFileName());
+        Directory.CreateDirectory(workspace);
+        try
+        {
+            var icon = Path.Combine(workspace, "brand.ico");
+            File.WriteAllBytes(icon, MinimalIcon());
+
+            var result = new AppScaffolder().Scaffold(
+                ScaffoldRequest.For(SampleModel(), "Sample", workspace, target)
+                with
+                {
+                    Customization = AppCustomization.Default with
+                    {
+                        Company = "Codis Ltd",
+                        TitlePattern = AppCustomization.CompanyTitlePattern,
+                        Theme = AppTheme.Dark,
+                        IconPath = icon,
+                    },
+                    Year = 2026,
+                });
+
+            Assert.IsTrue(result.Success, "scaffold failed: " + result.Message);
+
+            var (exit, output) = RunDotNet($"build \"{result.ProjectPath}\" -c Release");
+            Assert.AreEqual(0, exit, $"dotnet build failed for {targetKey}:\n{output}");
+
+            // The two front ends reach the icon differently, and each way has to be provably in
+            // place: WPF resolves the window's relative Icon attribute through the pack URI, which
+            // reads the assembly's own resources, while the WinForms form opens the file beside its
+            // binary. Either registration missing leaves an app that builds and then shows the
+            // default icon, which no build result can report.
+            if (targetKey == "winforms")
+            {
+                Assert.IsNotEmpty(Directory.GetFiles(
+                    Path.Combine(result.ProjectPath, "bin"), "app.ico", SearchOption.AllDirectories));
+            }
+            else
+            {
+                var resources = Directory.GetFiles(
+                    Path.Combine(result.ProjectPath, "obj"), "*.g.resources",
+                    SearchOption.AllDirectories);
+
+                Assert.IsNotEmpty(resources, "no generated resource stream to hold the icon");
+
+                // Resource names are the lower-cased relative path, which is exactly what the
+                // window's Icon="Assets/app.ico" resolves to.
+                var names = resources.SelectMany(
+                    r => new[] { Encoding.UTF8, Encoding.Unicode }.Select(
+                        e => e.GetString(File.ReadAllBytes(r))));
+
+                Assert.IsTrue(
+                    names.Any(n => n.Contains("assets/app.ico", StringComparison.Ordinal)),
+                    "the icon was not embedded under the name the window asks for");
+            }
+        }
+        finally
+        {
+            TryDeleteDirectory(workspace);
+        }
+    }
+
+    /// <summary>
+    /// A 1x1 32bpp .ico, written by hand. MSBuild parses an ApplicationIcon, so the four bytes the
+    /// unit tests use will not do here, and a committed binary would be unreviewable bytes in the
+    /// repo — this way the header the build has to accept is visible.
+    /// </summary>
+    private static byte[] MinimalIcon()
+    {
+        using var buffer = new MemoryStream();
+        using var writer = new BinaryWriter(buffer);
+
+        const int headerSize = 40;   // BITMAPINFOHEADER
+        const int pixelBytes = 4;    // one BGRA pixel
+        const int maskBytes = 4;     // the AND mask's single row, padded to four bytes
+
+        // ICONDIR: one image, of type "icon".
+        writer.Write((short)0);
+        writer.Write((short)1);
+        writer.Write((short)1);
+
+        // ICONDIRENTRY.
+        writer.Write((byte)1);       // width
+        writer.Write((byte)1);       // height
+        writer.Write((byte)0);       // palette colours: none, this is a true-colour image
+        writer.Write((byte)0);       // reserved
+        writer.Write((short)1);      // colour planes
+        writer.Write((short)32);     // bits per pixel
+        writer.Write(headerSize + pixelBytes + maskBytes);
+        writer.Write(22);            // offset: past the ICONDIR and this single entry
+
+        // BITMAPINFOHEADER. The height is doubled because the DIB holds the colour image and the
+        // AND mask stacked.
+        writer.Write(headerSize);
+        writer.Write(1);             // width
+        writer.Write(2);             // height
+        writer.Write((short)1);      // planes
+        writer.Write((short)32);     // bits per pixel
+        writer.Write(0);             // BI_RGB: uncompressed
+        writer.Write(0);             // image size: the decoder computes it
+        writer.Write(0);             // horizontal resolution
+        writer.Write(0);             // vertical resolution
+        writer.Write(0);             // palette entries used
+        writer.Write(0);             // palette entries required
+
+        writer.Write(new byte[] { 0x00, 0x66, 0xCC, 0xFF });   // one opaque pixel, BGRA
+        writer.Write(new byte[maskBytes]);                     // nothing masked out
+
+        writer.Flush();
+        return buffer.ToArray();
+    }
+
     [TestMethod]
     [TestCategory("Integration")]
     public void GeneratedConsoleProject_WithRelationship_Builds()
