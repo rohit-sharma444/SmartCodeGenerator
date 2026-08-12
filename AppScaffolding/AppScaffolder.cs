@@ -18,7 +18,8 @@ public sealed class AppScaffolder
     /// written is skipped and the rest continue. Returns the paths successfully written.
     /// </summary>
     public IReadOnlyList<string> WriteClasses(
-        string outputFolder, IReadOnlyList<ClassDefinition> classes, string namespaceName)
+        string outputFolder, IReadOnlyList<ClassDefinition> classes, string namespaceName,
+        string header = "")
     {
         Directory.CreateDirectory(outputFolder);
 
@@ -26,7 +27,7 @@ public sealed class AppScaffolder
         foreach (var definition in classes)
         {
             var source = RoslynClassGenerator.Generate(definition, namespaceName);
-            var path = WriteSource(outputFolder, definition.Name + ".cs", source);
+            var path = WriteSource(outputFolder, definition.Name + ".cs", source, header);
             if (path is not null)
                 written.Add(path);
         }
@@ -38,13 +39,25 @@ public sealed class AppScaffolder
     /// Best-effort write of one source file into <paramref name="outputFolder"/>, creating
     /// the folder if needed. Returns the path on success, or null if it could not be written.
     /// </summary>
-    private static string? WriteSource(string outputFolder, string fileName, string source)
+    /// <remarks>
+    /// <paramref name="header"/> is prepended only for a <c>.cs</c> file: this same method also
+    /// writes <c>MainWindow.xaml</c> and <c>Data/Seed/*.json</c>, and a <c>//</c> banner would
+    /// corrupt both.
+    /// </remarks>
+    private static string? WriteSource(
+        string outputFolder, string fileName, string source, string header = "")
     {
         try
         {
             Directory.CreateDirectory(outputFolder);
             var path = Path.Combine(outputFolder, fileName);
-            File.WriteAllText(path, source);
+
+            var content = header.Length > 0
+                          && fileName.EndsWith(".cs", StringComparison.OrdinalIgnoreCase)
+                ? header + source
+                : source;
+
+            File.WriteAllText(path, content);
             return path;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -65,6 +78,24 @@ public sealed class AppScaffolder
             var updated = CsprojEditing.InjectPackageReference(
                 File.ReadAllText(csprojPath), EfCorePackageId, EfCorePackageVersion);
             File.WriteAllText(csprojPath, updated);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+        }
+    }
+
+    /// <summary>Best-effort branding of the app project file. Silent on failure: a project that
+    /// could not be branded still builds and runs.</summary>
+    private static void InjectBranding(string csprojPath, string company, int year)
+    {
+        try
+        {
+            if (!File.Exists(csprojPath))
+                return;
+
+            File.WriteAllText(
+                csprojPath,
+                CsprojEditing.InjectProperties(File.ReadAllText(csprojPath), company, year));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -140,6 +171,10 @@ public sealed class AppScaffolder
         var persistence = request.Persistence;
         var importedData = request.ImportedData;
 
+        // Prepended to generated C# only. XAML and the Data/Seed/*.json files go through the
+        // same WriteSource, and a `//` banner would corrupt both.
+        var header = FileHeader.For(request.Customization.Company, request.Year);
+
         var classes = DomainModelMapper.ToClassDefinitions(model, out var classNames);
 
         var projectName = appName + target.FolderSuffix;
@@ -169,12 +204,15 @@ public sealed class AppScaffolder
         if (persistence == PersistenceKind.Sqlite)
             InjectEfCorePackage(csprojPath);
 
+        if (request.Customization.HasBranding)
+            InjectBranding(csprojPath, request.Customization.Company, request.Year);
+
         var modelsFolder = Path.Combine(outputFolder, "Models");
         var dataFolder = Path.Combine(outputFolder, "Data");
         var validationFolder = Path.Combine(outputFolder, "Validation");
 
         var written = new List<string>(
-            WriteClasses(modelsFolder, classes, $"{projectName}.Models"));
+            WriteClasses(modelsFolder, classes, $"{projectName}.Models", header));
         var expected = classes.Count;
 
         var entityNames = classes.Select(c => c.Name).ToList();
@@ -239,7 +277,7 @@ public sealed class AppScaffolder
         foreach (var (folder, name, source) in files)
         {
             expected++;
-            var path = WriteSource(folder, name, source);
+            var path = WriteSource(folder, name, source, header);
             if (path is not null)
                 written.Add(path);
         }
@@ -271,7 +309,8 @@ public sealed class AppScaffolder
 
             expected++;
             var customPath = WriteSource(
-                validationFolder, fileName, ValidatorTemplate.CustomStub(projectName, definition.Name));
+                validationFolder, fileName,
+                ValidatorTemplate.CustomStub(projectName, definition.Name), header);
             if (customPath is not null)
                 written.Add(customPath);
         }

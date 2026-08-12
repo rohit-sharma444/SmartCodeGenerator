@@ -41,4 +41,35 @@ public static class CsprojEditing
         var close = csproj.LastIndexOf("</Project>", StringComparison.Ordinal);
         return close < 0 ? csproj : csproj.Insert(close, itemGroup);
     }
+
+    /// <summary>
+    /// Adds the branding properties for <paramref name="company"/> before the closing
+    /// <c>&lt;/Project&gt;</c> tag. Idempotent, a no-op when there is no company, and a no-op on
+    /// a project file with no closing tag.
+    /// </summary>
+    /// <remarks>
+    /// <paramref name="year"/> is a parameter rather than read from the clock, so a golden
+    /// project file does not change on 1 January. The company is XML-escaped: "Smith &amp; Sons"
+    /// would otherwise produce a project file MSBuild cannot parse.
+    /// </remarks>
+    public static string InjectProperties(string csproj, string company, int year)
+    {
+        if (company.Length == 0 || csproj.Contains("<Company>", StringComparison.Ordinal))
+            return csproj;
+
+        var escaped = Escape(company);
+
+        var group =
+            "  <PropertyGroup>\n" +
+            $"    <Company>{escaped}</Company>\n" +
+            $"    <Authors>{escaped}</Authors>\n" +
+            $"    <Copyright>Copyright (c) {year} {escaped}.</Copyright>\n" +
+            "  </PropertyGroup>\n";
+
+        var close = csproj.LastIndexOf("</Project>", StringComparison.Ordinal);
+        return close < 0 ? csproj : csproj.Insert(close, group);
+    }
+
+    private static string Escape(string value)
+        => value.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;");
 }
