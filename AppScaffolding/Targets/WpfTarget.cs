@@ -22,9 +22,15 @@ public sealed class WpfTarget : ITargetScaffolder
         var files = DesktopViewModelFiles.Build(
             projectName, entityNames, ViewModelTemplates.RelayCommand(projectName));
 
+        var palette = ThemePalette.Resolve(customization.Theme, customization.Accent);
+
         files.Add(new("Views", "MainWindow.xaml",
-            MainWindowTemplate.Xaml(projectName, customization.TitleAttributeFor(projectName))));
+            MainWindowTemplate.Xaml(
+                projectName, customization.TitleAttributeFor(projectName), palette is not null)));
         files.Add(new("Views", "MainWindow.xaml.cs", MainWindowTemplate.CodeBehind(projectName)));
+
+        if (palette is not null)
+            files.Add(new("Views", ThemeXamlTemplate.FileName, ThemeXamlTemplate.Source(palette)));
 
         return files;
     }

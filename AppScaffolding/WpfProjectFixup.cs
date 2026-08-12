@@ -36,6 +36,51 @@ public static class WpfProjectFixup
         }
     }
 
+    private const string MergeMarker = "Views/Theme.xaml";
+
+    /// <summary>
+    /// Merges <c>Views/Theme.xaml</c> into <c>App.xaml</c>'s resources when the scaffolder wrote
+    /// one. Best-effort and idempotent, like the StartupUri repoint above it.
+    /// </summary>
+    /// <remarks>
+    /// Called after the front-end files are written, not from <see cref="Apply"/>: the theme file
+    /// does not exist yet when the project is first created.
+    /// </remarks>
+    public static void MergeTheme(string projectFolder)
+    {
+        try
+        {
+            var appXamlPath = Path.Combine(projectFolder, "App.xaml");
+
+            if (!File.Exists(appXamlPath)
+                || !File.Exists(Path.Combine(projectFolder, "Views", ThemeXamlTemplate.FileName)))
+                return;
+
+            var xaml = File.ReadAllText(appXamlPath);
+
+            if (xaml.Contains(MergeMarker, StringComparison.Ordinal))
+                return;
+
+            const string open = "<Application.Resources>";
+            var index = xaml.IndexOf(open, StringComparison.Ordinal);
+
+            if (index < 0)
+                return;
+
+            var merged =
+                "\n            <ResourceDictionary>\n"
+                + "                <ResourceDictionary.MergedDictionaries>\n"
+                + $"                    <ResourceDictionary Source=\"{MergeMarker}\" />\n"
+                + "                </ResourceDictionary.MergedDictionaries>\n"
+                + "            </ResourceDictionary>";
+
+            File.WriteAllText(appXamlPath, xaml.Insert(index + open.Length, merged));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+        }
+    }
+
     private static void RepointStartupUri(string appXamlPath)
     {
         try

@@ -282,6 +282,11 @@ public sealed class AppScaffolder
                 written.Add(path);
         }
 
+        // After the files are written, not in FixupProject: Views/Theme.xaml does not exist yet
+        // when the project is created.
+        if (target.ProjectType == DotNetProjectType.Wpf)
+            WpfProjectFixup.MergeTheme(outputFolder);
+
         // Data files, not source: written with the same best-effort WriteSource so a locked file
         // is reported through `expected` rather than throwing mid-scaffold.
         if (seedFiles.Length > 0)

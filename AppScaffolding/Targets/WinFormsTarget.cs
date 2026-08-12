@@ -24,8 +24,11 @@ public sealed class WinFormsTarget : ITargetScaffolder
         var files = DesktopViewModelFiles.Build(
             projectName, entityNames, ViewModelTemplates.PortableRelayCommand(projectName));
 
+        var palette = ThemePalette.Resolve(customization.Theme, customization.Accent);
+
         files.Add(new("Views", "MainForm.cs",
-            WinFormsMainFormTemplate.Source(projectName, customization.TitleLiteralFor(projectName))));
+            WinFormsMainFormTemplate.Source(
+                projectName, customization.TitleLiteralFor(projectName), palette)));
         files.Add(new("", "Program.cs", WinFormsProgramTemplate.Source(projectName)));
 
         return files;

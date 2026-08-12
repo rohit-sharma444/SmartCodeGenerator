@@ -15,7 +15,33 @@ public static class WinFormsMainFormTemplate
     public static string Source(string appName) => Source(appName, appName);
 
     /// <summary>Source of <c>Views/MainForm.cs</c>, titled <paramref name="title"/>.</summary>
-    public static string Source(string appName, string title) => $$"""
+    public static string Source(string appName, string title) => Source(appName, title, palette: null);
+
+    /// <summary>Source of <c>Views/MainForm.cs</c>, titled <paramref name="title"/> and, when
+    /// <paramref name="palette"/> is non-null, painted in its colours.</summary>
+    public static string Source(string appName, string title, ThemePalette? palette)
+    {
+        // Emitted only for a themed app: an unthemed form must stay byte-identical to the one
+        // this generator has always produced.
+        var formColours = palette is not null
+            ? $$"""
+
+        BackColor = ColorTranslator.FromHtml("{{palette.Background}}");
+        ForeColor = ColorTranslator.FromHtml("{{palette.Foreground}}");
+"""
+            : string.Empty;
+
+        var gridColours = palette is not null
+            ? $$"""
+
+        grid.BackgroundColor = ColorTranslator.FromHtml("{{palette.Surface}}");
+        grid.DefaultCellStyle.BackColor = ColorTranslator.FromHtml("{{palette.Surface}}");
+        grid.DefaultCellStyle.ForeColor = ColorTranslator.FromHtml("{{palette.Foreground}}");
+        grid.GridColor = ColorTranslator.FromHtml("{{palette.GridLine}}");
+"""
+            : string.Empty;
+
+        return $$"""
 using System;
 using System.Collections.Specialized;
 using System.ComponentModel;
@@ -36,7 +62,7 @@ public sealed class MainForm : Form
         Text = "{{title}}";
         Width = 900;
         Height = 600;
-
+{{formColours}}
         var tabs = new TabControl { Dock = DockStyle.Fill };
 
         foreach (var entity in _model.Entities)
@@ -65,7 +91,7 @@ public sealed class MainForm : Form
             MultiSelect = false,
             SelectionMode = DataGridViewSelectionMode.FullRowSelect,
         };
-
+{{gridColours}}
         // DataGridView does not listen to INotifyCollectionChanged, so the collection is
         // republished through a BindingSource whenever the view model adds or removes a record.
         // Cell edits need no help: the bound objects are the view model's own instances.
@@ -250,4 +276,5 @@ public sealed class MainForm : Form
     }
 }
 """;
+    }
 }
