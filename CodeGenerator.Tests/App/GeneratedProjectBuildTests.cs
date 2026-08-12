@@ -147,6 +147,57 @@ public class GeneratedProjectBuildTests
     }
 
     /// <summary>
+    /// An app generated without sample data builds. SeedData.EnsureSeeded() is called from four
+    /// separate entry points, so every target is a row here: a missed call site is a CS0103 on a
+    /// class the app no longer generates, and the console row's generated tests prove nothing left
+    /// in the suite names it either.
+    /// </summary>
+    [TestMethod]
+    [TestCategory("Integration")]
+    [DataRow("console")]
+    [DataRow("webapi")]
+    [DataRow("worker")]
+    [DataRow("wpf")]
+    public void ProjectWithoutSampleData_BuildsAndItsTestsPass(string targetKey)
+    {
+        if (targetKey == "wpf" && !OperatingSystem.IsWindows())
+            Assert.Inconclusive("The wpf target needs the Windows desktop targeting pack.");
+
+        Assert.IsTrue(TargetScaffolders.TryResolve(targetKey, out var target));
+
+        var workspace = Path.Combine(Path.GetTempPath(), "gen_" + Path.GetRandomFileName());
+        Directory.CreateDirectory(workspace);
+        try
+        {
+            var result = new AppScaffolder().Scaffold(
+                ScaffoldRequest.For(SampleModel(), "Sample", workspace, target)
+                with
+                {
+                    Customization = AppCustomization.Default with { SampleSeedData = false },
+                });
+
+            Assert.IsTrue(result.Success, "scaffold failed: " + result.Message);
+            Assert.IsFalse(
+                File.Exists(Path.Combine(result.ProjectPath, "Data", "SeedData.cs")),
+                "SeedData.cs was generated anyway");
+
+            var (exit, output) = RunDotNet($"build \"{result.ProjectPath}\" -c Release");
+            Assert.AreEqual(0, exit, $"dotnet build failed for {targetKey}:\n{output}");
+
+            if (targetKey != "console")
+                return;
+
+            Assert.IsNotNull(result.TestProjectPath, "no test project was emitted");
+            var (testExit, testOutput) = RunDotNet($"test \"{result.TestProjectPath}\" -c Release");
+            Assert.AreEqual(0, testExit, $"dotnet test failed:\n{testOutput}");
+        }
+        finally
+        {
+            TryDeleteDirectory(workspace);
+        }
+    }
+
+    /// <summary>
     /// An app generated with validation off builds, and its companion tests still pass. Generated
     /// code hard-depends on the Validation folder in two places — Repository and EntityViewModel
     /// both resolve a validator — so this is the check that catches a call site nobody remembered:

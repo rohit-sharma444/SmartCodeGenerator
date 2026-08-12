@@ -21,7 +21,7 @@ public sealed class WpfTarget : ITargetScaffolder
         // CommandManager, which is what re-enables Delete when the grid selection changes.
         var files = DesktopViewModelFiles.Build(
             projectName, entityNames, ViewModelTemplates.RelayCommand(projectName),
-            customization.Validation);
+            customization.Validation, customization.SampleSeedData);
 
         var palette = ThemePalette.Resolve(customization.Theme, customization.Accent);
 

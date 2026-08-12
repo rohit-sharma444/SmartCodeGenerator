@@ -310,23 +310,37 @@ public sealed class AppScaffolder
             .Select(f => Path.GetFileNameWithoutExtension(f.FileName))
             .ToList();
 
+        // Imported rows arrive THROUGH SeedData, so a data-driven build keeps it whatever the toggle
+        // says: `noseed` suppresses the generator's own sample rows, not the user's own data. Folded
+        // back into the customization so the front ends, which only see that, agree with the files.
+        if (!customization.SampleSeedData && seedFiles.Length > 0)
+            customization = customization with { SampleSeedData = true };
+
         // Shared, target-agnostic core: includes the IStore seam and StoreFactory, so every
         // target and persistence backend shares the same typed CRUD surface.
         var validation = customization.Validation;
+        var seed = customization.SampleSeedData;
 
         var files = new List<(string Folder, string Name, string Source)>
         {
             (dataFolder, "IStore.cs", StoreSeamTemplate.Source(projectName)),
             (dataFolder, "StoreFactory.cs", StoreFactoryTemplate.Source(projectName, persistence)),
             (dataFolder, "Repository.cs", RepositoryTemplate.Base(projectName, validation)),
-            (dataFolder, "SeedData.cs",
+        };
+
+        // Added here rather than in the initializer above, which cannot hold a conditional element,
+        // and before SaveResult so a seeding app's files are written in the order they always were.
+        if (seed)
+        {
+            files.Add((dataFolder, "SeedData.cs",
                 SeedDataTemplate.Source(
                     projectName,
                     SeedDataTemplate.OrderByDependency(classes),
                     SeedDataTemplate.ForeignKeyFieldNames(classes),
-                    seededClassNames)),
-            (dataFolder, "SaveResult.cs", SaveResultTemplate.Source(projectName)),
-        };
+                    seededClassNames)));
+        }
+
+        files.Add((dataFolder, "SaveResult.cs", SaveResultTemplate.Source(projectName)));
 
         // SaveResult above stays whatever the flag says: Repository still returns one, so the
         // console menu and the Web API's ValidationProblem are untouched by turning validation off.
@@ -419,7 +433,8 @@ public sealed class AppScaffolder
                 written.Add(customPath);
         }
 
-        var testProjectPath = ScaffoldTestProject(workspaceRoot, projectName, classes, validation);
+        var testProjectPath = ScaffoldTestProject(
+            workspaceRoot, projectName, classes, validation, seed);
 
         var allWritten = written.Count == expected;
 
@@ -439,7 +454,7 @@ public sealed class AppScaffolder
     /// </summary>
     private static string? ScaffoldTestProject(
         string workspaceRoot, string appProjectName, IReadOnlyList<ClassDefinition> classes,
-        bool validation = true)
+        bool validation = true, bool seed = true)
     {
         var entityNames = classes.Select(c => c.Name).ToList();
 
@@ -484,14 +499,18 @@ public sealed class AppScaffolder
 
         var roundTripPath = WriteSource(testFolder, "RepositoryRoundTripTests.cs",
             TestProjectTemplates.RoundTripTests(appProjectName, entityNames));
-        var seedPath = WriteSource(testFolder, "SeedDataTests.cs",
-            TestProjectTemplates.SeedTests(appProjectName, entityNames[0]));
+
+        // No seed test without SeedData: it would name a class the app never generated.
+        var seedPath = seed
+            ? WriteSource(testFolder, "SeedDataTests.cs",
+                TestProjectTemplates.SeedTests(appProjectName, entityNames[0]))
+            : null;
         var parallelizationPath = WriteSource(testFolder, "TestParallelization.cs",
             TestProjectTemplates.DisableParallelization());
         var supportPath = WriteSource(testFolder, "TestSupport.cs",
             TestProjectTemplates.TestSupport(appProjectName));
 
-        if (roundTripPath is null || seedPath is null || parallelizationPath is null
+        if (roundTripPath is null || (seed && seedPath is null) || parallelizationPath is null
             || supportPath is null)
             return null;
 

@@ -17,7 +17,8 @@ public sealed class WebApiTarget : ITargetScaffolder
         string projectName, IReadOnlyList<string> entityNames, AppCustomization customization) => new List<GeneratedFile>
     {
         new("", "Program.cs", WebApiProgramTemplate.Build(
-            projectName, entityNames, customization.TitleLiteralFor(projectName))),
+            projectName, entityNames, customization.TitleLiteralFor(projectName),
+            customization.SampleSeedData)),
     };
     // Default FixupProject no-op: our Program.cs overwrites the template's; net10 webapi
     // emits no WeatherForecast.cs to remove.

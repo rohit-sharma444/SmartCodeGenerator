@@ -17,7 +17,7 @@ public static class DesktopViewModelFiles
     /// Validation folder they would resolve it from is not generated either.</summary>
     public static List<GeneratedFile> Build(
         string projectName, IReadOnlyList<string> entityNames, string relayCommandSource,
-        bool validation = true) =>
+        bool validation = true, bool seed = true) =>
     [
         new("Data", "RelationshipResolver.cs", RelationshipResolverTemplate.Source(projectName)),
         new("ViewModels", "ObservableObject.cs", ViewModelTemplates.ObservableObject(projectName)),
@@ -25,6 +25,7 @@ public static class DesktopViewModelFiles
         new("ViewModels", "IEntityViewModel.cs", ViewModelTemplates.EntityViewModelInterface(projectName)),
         new("ViewModels", "EntityViewModel.cs",
             ViewModelTemplates.EntityViewModel(projectName, validation)),
-        new("ViewModels", "MainViewModel.cs", MainViewModelTemplate.Build(projectName, entityNames)),
+        new("ViewModels", "MainViewModel.cs",
+            MainViewModelTemplate.Build(projectName, entityNames, seed)),
     ];
 }

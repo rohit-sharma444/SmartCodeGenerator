@@ -12,7 +12,16 @@ public static class ConsoleProgramTemplate
     /// the Web API's root endpoint: emitted only when the title differs from the bare project
     /// name, so an unbranded console app is byte-identical to today's.</summary>
     public static string Build(string projectName, IReadOnlyList<string> entityNames, string title)
+        => Build(projectName, entityNames, title, seed: true);
+
+    /// <summary>As the three-argument overload, seeding the stores on startup only when
+    /// <paramref name="seed"/> — with sample data off, SeedData.cs is not generated either, so the
+    /// call would not compile.</summary>
+    public static string Build(
+        string projectName, IReadOnlyList<string> entityNames, string title, bool seed)
     {
+        var seedCall = SeedDataTemplate.EnsureSeededCall(seed);
+
         var mapEntries = string.Join(",\n",
             entityNames.Select(name =>
                 $"    [typeof({name})] = () => new {name}Repository().GetAll()"));
@@ -30,9 +39,7 @@ using {{projectName}};
 using {{projectName}}.Data;
 using {{projectName}}.Models;
 
-SeedData.EnsureSeeded();
-
-// typeof(Entity) -> that entity's stored rows, so a menu can offer a picker for a foreign key.
+{{seedCall}}// typeof(Entity) -> that entity's stored rows, so a menu can offer a picker for a foreign key.
 var repositories = new System.Collections.Generic.Dictionary<Type, Func<System.Collections.IEnumerable>>
 {
 {{mapEntries}}

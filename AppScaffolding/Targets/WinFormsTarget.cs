@@ -23,7 +23,7 @@ public sealed class WinFormsTarget : ITargetScaffolder
     {
         var files = DesktopViewModelFiles.Build(
             projectName, entityNames, ViewModelTemplates.PortableRelayCommand(projectName),
-            customization.Validation);
+            customization.Validation, customization.SampleSeedData);
 
         var palette = ThemePalette.Resolve(customization.Theme, customization.Accent);
 

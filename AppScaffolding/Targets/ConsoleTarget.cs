@@ -18,7 +18,8 @@ public sealed class ConsoleTarget : ITargetScaffolder
     {
         new("", "EntityMenu.cs", ConsoleMenuTemplate.Source(projectName)),
         new("", "Program.cs", ConsoleProgramTemplate.Build(
-            projectName, entityNames, customization.TitleLiteralFor(projectName))),
+            projectName, entityNames, customization.TitleLiteralFor(projectName),
+            customization.SampleSeedData)),
     };
     // Default FixupProject no-op: our Program.cs overwrites the template's Program.cs.
 }

@@ -12,7 +12,15 @@ public static class WebApiProgramTemplate
     /// from "/" instead; an unbranded run adds no endpoint at all, leaving today's output
     /// untouched.</summary>
     public static string Build(string projectName, IReadOnlyList<string> entityNames, string title)
+        => Build(projectName, entityNames, title, seed: true);
+
+    /// <summary>As the three-argument overload, seeding the stores on startup only when
+    /// <paramref name="seed"/> — with sample data off there is no SeedData.cs to call.</summary>
+    public static string Build(
+        string projectName, IReadOnlyList<string> entityNames, string title, bool seed)
     {
+        var seedCall = SeedDataTemplate.EnsureSeededCall(seed);
+
         var registrations = string.Join("\n",
             entityNames.Select(name =>
                 $"MapEntity<{name}>(app, \"{name.ToLowerInvariant()}\", new {name}Repository());"));
@@ -30,9 +38,7 @@ using {{{projectName}}}.Models;
 var builder = WebApplication.CreateBuilder(args);
 var app = builder.Build();
 
-SeedData.EnsureSeeded();
-
-{{{rootEndpoint}}}{{{registrations}}}
+{{{seedCall}}}{{{rootEndpoint}}}{{{registrations}}}
 
 app.Run();
 
