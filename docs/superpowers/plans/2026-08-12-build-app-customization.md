@@ -247,17 +247,38 @@ public sealed record AppCustomization(
     /// </summary>
     /// <remarks>
     /// Substituting an empty company would leave the pattern's separator behind — "{company} -
-    /// {app}" reading " - Shop" — so leading and trailing separator characters are trimmed off
-    /// the result rather than the pattern being rejected.
+    /// {app}" reading " - Shop". The collapse happens at the PATTERN level: the placeholder and
+    /// its adjoining separator run are cut out before substitution.
+    /// <para>
+    /// Deliberately not a trim of the RESULT, which was this plan's first design and was
+    /// rejected during Task 1's review: trimming the result cannot tell a dangling separator
+    /// from punctuation the user typed, so `title "{app}:"` lost its colon. A later task makes
+    /// the pattern user-supplied, so that was real behaviour, not a hypothetical.
+    /// </para>
     /// </remarks>
     public string TitleFor(string appName)
     {
-        var title = TitlePattern
-            .Replace(CompanyPlaceholder, Company)
-            .Replace(AppPlaceholder, appName);
+        var pattern = Company.Length == 0 ? WithoutCompanyPlaceholder(TitlePattern) : TitlePattern;
 
-        return title.Trim().Trim('-', ':', '|').Trim();
+        return pattern
+            .Replace(CompanyPlaceholder, Company)
+            .Replace(AppPlaceholder, appName)
+            .Trim();
     }
+```
+
+**Required behaviour** (the implementer chooses the exact cut logic; these four cases must hold, and a `{company}` at the END of a pattern must take the run *before* it):
+
+| Pattern | Company | Result |
+| --- | --- | --- |
+| `{company} - {app}` | *(empty)* | `Shop` |
+| `{company} - {app}` | `Codis` | `Codis - Shop` |
+| `{app}:` | *(empty)* | `Shop:` |
+| `{app} - {company}` | *(empty)* | `Shop` |
+
+A separator run is whitespace plus any of `-`, `:`, `|`.
+
+```csharp
 }
 ```
 
