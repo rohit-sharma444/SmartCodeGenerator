@@ -33,6 +33,7 @@ internal static class CustomizationDefaults
         public bool? Validation { get; set; }
         public bool? Logging { get; set; }
         public bool? SampleSeedData { get; set; }
+        public string? NamespacePrefix { get; set; }
     }
 
     private static readonly JsonSerializerOptions Options = new()
@@ -69,7 +70,8 @@ internal static class CustomizationDefaults
                 IconPath: profile.IconPath ?? fallback.IconPath,
                 Validation: profile.Validation ?? fallback.Validation,
                 Logging: profile.Logging ?? fallback.Logging,
-                SampleSeedData: profile.SampleSeedData ?? fallback.SampleSeedData);
+                SampleSeedData: profile.SampleSeedData ?? fallback.SampleSeedData,
+                NamespacePrefix: profile.NamespacePrefix ?? fallback.NamespacePrefix);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
         {
@@ -94,6 +96,7 @@ internal static class CustomizationDefaults
                 Validation = customization.Validation,
                 Logging = customization.Logging,
                 SampleSeedData = customization.SampleSeedData,
+                NamespacePrefix = customization.NamespacePrefix,
             };
 
             File.WriteAllText(path, JsonSerializer.Serialize(profile, Options));
