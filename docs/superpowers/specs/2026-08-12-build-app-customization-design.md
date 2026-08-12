@@ -229,8 +229,20 @@ Two deliberate exclusions, both following precedent already in the code:
 | Setting | Where it lands |
 | --- | --- |
 | Company | `CsprojEditing.InjectProperties` writes `<Company>`, `<Authors>`, `<Copyright>(c) {year} {company}</Copyright>` |
-| Title | `MainWindowTemplate.Xaml` `Title=`, `WinFormsMainFormTemplate` `Text=`, the `ConsoleMenuTemplate` banner, the Web API OpenAPI title |
+| Title | `MainWindowTemplate.Xaml` `Title=`, `WinFormsMainFormTemplate` `Text=`, a `ConsoleProgramTemplate` banner, and a Web API root endpoint returning the title |
 | File header | prepended in `AppScaffolder.WriteSource`, gated to `.cs` |
+
+**Correction, found while planning and confirmed in the code:** this table first
+said the title lands in "the Web API OpenAPI title". **The generated Web API has
+no OpenAPI document** — `WebApiProgramTemplate.Build` emits
+`WebApplication.CreateBuilder(args)` then `builder.Build()` with no
+`AddOpenApi()`/`AddSwaggerGen()` anywhere, and adding one would be a new package
+and a new surface. What shipped instead is a root endpoint,
+`app.MapGet("/", () => "Codis Ltd - Shop");`, emitted only when the title differs
+from the bare project name — so an unbranded Web API is byte-identical to
+today's. The console banner is gated the same way, and for the same reason: with
+the default pattern the title *is* the app name, so an ungated banner would add a
+`Console.WriteLine` no unbranded console app has ever had.
 
 The file-header gate matters: `MainWindow.xaml` and the `Data/Seed/*.json` files
 are written through the same `WriteSource` method, and a `//` banner would
