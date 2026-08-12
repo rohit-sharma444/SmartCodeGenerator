@@ -18,6 +18,7 @@ public class CustomizationMergeTests
         TitlePattern = AppCustomization.CompanyTitlePattern,
         IconPath = "C:\\brand\\logo.ico",
         Logging = true,
+        NamespacePrefix = "CodisLtd",
     };
 
     [TestMethod]
@@ -95,5 +96,15 @@ public class CustomizationMergeTests
 
         Assert.HasCount(1, lines);
         StringAssert.Contains(lines[0], "logging");
+    }
+
+    [TestMethod]
+    public void A_typed_namespace_prefix_overrides_the_profile()
+    {
+        var merged = BuildAppCommand.Merge(
+            Saved, AppCustomization.Default with { NamespacePrefix = "Acme" });
+
+        Assert.AreEqual("Acme", merged.NamespacePrefix);
+        Assert.AreEqual("Codis Ltd", merged.Company);
     }
 }

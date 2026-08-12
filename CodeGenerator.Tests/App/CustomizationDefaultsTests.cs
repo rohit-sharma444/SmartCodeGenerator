@@ -40,6 +40,7 @@ public class CustomizationDefaultsTests
             TitlePattern = AppCustomization.CompanyTitlePattern,
             Logging = true,
             SampleSeedData = false,
+            NamespacePrefix = "CodisLtd",
         };
 
         CustomizationDefaults.Save(_root, saved);

@@ -179,4 +179,34 @@ public class InlineCustomizationTests
         Assert.AreEqual(@"orders from csv C:\Data\audit", remaining);
         Assert.IsTrue(customization.Logging);
     }
+
+    [TestMethod]
+    public void A_namespace_prefix_is_read()
+    {
+        var (remaining, customization) = Split("a shop namespace CodisLtd");
+
+        Assert.AreEqual("a shop", remaining);
+        Assert.AreEqual("CodisLtd", customization.NamespacePrefix);
+        Assert.AreEqual("CodisLtd.Shop", customization.RootNamespaceFor("Shop"));
+    }
+
+    [TestMethod]
+    public void A_dotted_namespace_prefix_is_read()
+    {
+        var (_, customization) = Split("a shop namespace \"Codis.Internal\"");
+
+        Assert.AreEqual("Codis.Internal", customization.NamespacePrefix);
+    }
+
+    /// <summary>Unlike a malformed accent, which is ignored, a malformed namespace cannot be
+    /// accepted at all — it would not compile. The words stay part of the description, which is
+    /// what `theme mauve` already does.</summary>
+    [TestMethod]
+    public void A_malformed_namespace_prefix_is_left_on_the_line()
+    {
+        var (remaining, customization) = Split("a shop namespace 3M");
+
+        Assert.AreEqual("a shop namespace 3M", remaining);
+        Assert.AreEqual(string.Empty, customization.NamespacePrefix);
+    }
 }
