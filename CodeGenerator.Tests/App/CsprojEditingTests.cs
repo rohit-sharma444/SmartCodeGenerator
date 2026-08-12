@@ -132,7 +132,8 @@ public class CsprojEditingTests
         var set = CsprojEditing.SetRootNamespace(Csproj, "CodisLtd.Shop");
         StringAssert.Contains(set, "<RootNamespace>CodisLtd.Shop</RootNamespace>");
         var setPgCount = CountOccurrences(set, "<PropertyGroup>");
-        Assert.IsTrue(setPgCount > initialPgCount, "Setting namespace should add a PropertyGroup");
+        Assert.IsGreaterThan(
+            initialPgCount, setPgCount, "Setting namespace should add a PropertyGroup");
 
         // Drop the namespace
         var cleared = CsprojEditing.SetRootNamespace(set, null);
