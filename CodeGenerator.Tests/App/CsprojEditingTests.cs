@@ -15,6 +15,29 @@ public class CsprojEditingTests
 </Project>
 """;
 
+    /// <summary>The same shape as <see cref="Csproj"/>, but with CRLF line endings and a
+    /// pre-existing PropertyGroup holding only a RootNamespace -- what `dotnet new` or a hand
+    /// edit, not this method's own LF-only insert, would leave behind.</summary>
+    private const string CsprojCrlfWithRootNamespaceOnly =
+        "<Project Sdk=\"Microsoft.NET.Sdk\">\r\n" +
+        "  <PropertyGroup>\r\n" +
+        "    <RootNamespace>CodisLtd.Shop</RootNamespace>\r\n" +
+        "  </PropertyGroup>\r\n" +
+        "  <PropertyGroup>\r\n" +
+        "    <TargetFramework>net10.0</TargetFramework>\r\n" +
+        "  </PropertyGroup>\r\n" +
+        "</Project>\r\n";
+
+    /// <summary>The same shape, but the RootNamespace sits alongside another property in one
+    /// CRLF PropertyGroup, so only the RootNamespace line -- not the whole group -- is removed.</summary>
+    private const string CsprojCrlfWithRootNamespaceAlongsideAnotherProperty =
+        "<Project Sdk=\"Microsoft.NET.Sdk\">\r\n" +
+        "  <PropertyGroup>\r\n" +
+        "    <TargetFramework>net10.0</TargetFramework>\r\n" +
+        "    <RootNamespace>CodisLtd.Shop</RootNamespace>\r\n" +
+        "  </PropertyGroup>\r\n" +
+        "</Project>\r\n";
+
     [TestMethod]
     public void InjectPackageReference_InsertsBeforeClosingTag()
     {
@@ -148,6 +171,43 @@ public class CsprojEditingTests
         var resetPgCount = CountOccurrences(reset, "<PropertyGroup>");
         Assert.AreEqual(setPgCount, resetPgCount,
             "Re-adding namespace after clearing should result in same PropertyGroup count as first add");
+    }
+
+    /// <summary>The block-removal branch's "take the whole line" check tested only `'\n'`, which on
+    /// a CRLF project file is the SECOND byte of the line terminator (`'\r'` comes first) -- so the
+    /// removed block's own trailing `\r\n` survived as a blank line. This does not bite a group the
+    /// method inserted itself (that insert uses `\n` only), only a pre-existing CRLF one.</summary>
+    [TestMethod]
+    public void Clearing_a_CRLF_only_root_namespace_group_leaves_no_blank_line()
+    {
+        var cleared = CsprojEditing.SetRootNamespace(CsprojCrlfWithRootNamespaceOnly, null);
+
+        Assert.IsFalse(cleared.Contains("RootNamespace", StringComparison.Ordinal));
+        Assert.AreEqual(
+            "<Project Sdk=\"Microsoft.NET.Sdk\">\r\n"
+            + "  <PropertyGroup>\r\n"
+            + "    <TargetFramework>net10.0</TargetFramework>\r\n"
+            + "  </PropertyGroup>\r\n"
+            + "</Project>\r\n",
+            cleared);
+    }
+
+    /// <summary>The single-line removal branch has the same `'\n'`-only check, for when the
+    /// PropertyGroup has to survive because it holds another property besides RootNamespace.</summary>
+    [TestMethod]
+    public void Clearing_a_CRLF_root_namespace_alongside_another_property_leaves_no_blank_line()
+    {
+        var cleared = CsprojEditing.SetRootNamespace(
+            CsprojCrlfWithRootNamespaceAlongsideAnotherProperty, null);
+
+        Assert.IsFalse(cleared.Contains("RootNamespace", StringComparison.Ordinal));
+        Assert.AreEqual(
+            "<Project Sdk=\"Microsoft.NET.Sdk\">\r\n"
+            + "  <PropertyGroup>\r\n"
+            + "    <TargetFramework>net10.0</TargetFramework>\r\n"
+            + "  </PropertyGroup>\r\n"
+            + "</Project>\r\n",
+            cleared);
     }
 
     /// <summary>Helper to count occurrences of a substring.</summary>

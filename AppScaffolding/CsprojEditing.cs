@@ -142,7 +142,10 @@ public static class CsprojEditing
             if (string.IsNullOrEmpty(rootNamespace))
             {
                 // Check if we can remove the PropertyGroup wrapper too, to avoid leaving it empty.
-                // This method is the only writer of these groups, so we can match the exact shape.
+                // Matching the exact shape is safe regardless of who wrote this group -- this
+                // method, InjectProperties/InjectBranding/InjectPackageReference (which write
+                // structurally identical groups), or a user by hand -- because the guard below only
+                // fires when the group holds nothing but this RootNamespace element.
                 var propertyGroupOpen = "<PropertyGroup>";
                 var propertyGroupClose = "</PropertyGroup>";
 
@@ -165,9 +168,7 @@ public static class CsprojEditing
                         {
                             // Remove the entire PropertyGroup block, taking the whole lines.
                             var blockStart = csproj.LastIndexOf('\n', pgOpenIndex) + 1;
-                            var blockEnd = pgCloseIndex + propertyGroupClose.Length;
-                            if (blockEnd < csproj.Length && csproj[blockEnd] == '\n')
-                                blockEnd++;
+                            var blockEnd = ConsumeLineEnding(csproj, pgCloseIndex + propertyGroupClose.Length);
 
                             return csproj[..blockStart] + csproj[blockEnd..];
                         }
@@ -176,7 +177,7 @@ public static class CsprojEditing
 
                 // Just remove the RootNamespace line if PropertyGroup contains other elements.
                 var lineStart = csproj.LastIndexOf('\n', open) + 1;
-                var lineEnd = end < csproj.Length && csproj[end] == '\n' ? end + 1 : end;
+                var lineEnd = ConsumeLineEnding(csproj, end);
 
                 return csproj[..lineStart] + csproj[lineEnd..];
             }
@@ -194,6 +195,24 @@ public static class CsprojEditing
 
         var closeProject = csproj.LastIndexOf("</Project>", StringComparison.Ordinal);
         return closeProject < 0 ? csproj : csproj.Insert(closeProject, group);
+    }
+
+    /// <summary>
+    /// <paramref name="position"/> moved past the line terminator that starts there, or left
+    /// unchanged if there is none. Handles both `\n` (this method's own inserts, and any
+    /// LF-only file) and `\r\n` (what `dotnet new` and most hand edits on Windows write) — a
+    /// plain `== '\n'` check sees only the second byte of a CRLF terminator and leaves the `\r`
+    /// behind as a blank line.
+    /// </summary>
+    private static int ConsumeLineEnding(string text, int position)
+    {
+        if (position + 1 < text.Length && text[position] == '\r' && text[position + 1] == '\n')
+            return position + 2;
+
+        if (position < text.Length && (text[position] == '\n' || text[position] == '\r'))
+            return position + 1;
+
+        return position;
     }
 
     private static string Escape(string value)
