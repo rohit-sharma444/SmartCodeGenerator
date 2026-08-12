@@ -535,6 +535,30 @@ public static class CommandDictionary
                         + "apply every normalization change the data needs.",
             Example = "build app: order tracking from csv D:\\data\\orders.csv normalize"
         },
+        new()
+        {
+            Category = "Build App",
+            Command = "build app: <description> [customization options]",
+            Description = "Customizes the generated application. Options go LAST on the line, "
+                        + "after any data source: company \"<name>\" sets the company (used in "
+                        + "the project metadata, the window title and a copyright header); "
+                        + "theme light|dark and accent #rrggbb colour the desktop front ends; "
+                        + "icon <path> supplies a .ico or .png; title \"<pattern>\" overrides the "
+                        + "window title, where {company} and {app} are substituted.",
+            Example = "build app: a shop company \"Codis Ltd\" theme dark accent #0B6E4F"
+        },
+        new()
+        {
+            Category = "Build App",
+            Command = "build app: <description> [novalidation] [logging] [noseed]",
+            Description = "Chooses which optional layers are generated. 'novalidation' omits the "
+                        + "Validation folder and its per-model validators; 'logging' adds a "
+                        + "logging layer (off by default); 'noseed' omits the sample seed rows "
+                        + "(rows imported from your own data file are unaffected). Interactively "
+                        + "these are asked by the 'Customize appearance and features?' step, "
+                        + "which remembers your answers in .codegen/app-profile.json.",
+            Example = "build app: a shop novalidation logging noseed"
+        },
         // The rest of this category is only valid at the review-loop prompt that
         // `build app:` opens, not at the main CodeGenerator prompt.
         new()
