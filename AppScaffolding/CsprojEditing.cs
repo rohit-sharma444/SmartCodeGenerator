@@ -141,7 +141,40 @@ public static class CsprojEditing
 
             if (string.IsNullOrEmpty(rootNamespace))
             {
-                // Take the whole line, so removing the element does not leave a blank one behind.
+                // Check if we can remove the PropertyGroup wrapper too, to avoid leaving it empty.
+                // This method is the only writer of these groups, so we can match the exact shape.
+                var propertyGroupOpen = "<PropertyGroup>";
+                var propertyGroupClose = "</PropertyGroup>";
+
+                var pgOpenIndex = csproj.LastIndexOf(propertyGroupOpen, open, StringComparison.Ordinal);
+
+                if (pgOpenIndex >= 0)
+                {
+                    var pgCloseIndex = csproj.IndexOf(propertyGroupClose, end, StringComparison.Ordinal);
+
+                    if (pgCloseIndex >= 0)
+                    {
+                        // Check if the PropertyGroup contains only this RootNamespace element (and whitespace).
+                        var beforeElement = csproj.Substring(
+                            pgOpenIndex + propertyGroupOpen.Length,
+                            open - pgOpenIndex - propertyGroupOpen.Length);
+                        var afterElement = csproj.Substring(end, pgCloseIndex - end);
+
+                        // Both before and after should be whitespace only.
+                        if (beforeElement.Trim().Length == 0 && afterElement.Trim().Length == 0)
+                        {
+                            // Remove the entire PropertyGroup block, taking the whole lines.
+                            var blockStart = csproj.LastIndexOf('\n', pgOpenIndex) + 1;
+                            var blockEnd = pgCloseIndex + propertyGroupClose.Length;
+                            if (blockEnd < csproj.Length && csproj[blockEnd] == '\n')
+                                blockEnd++;
+
+                            return csproj[..blockStart] + csproj[blockEnd..];
+                        }
+                    }
+                }
+
+                // Just remove the RootNamespace line if PropertyGroup contains other elements.
                 var lineStart = csproj.LastIndexOf('\n', open) + 1;
                 var lineEnd = end < csproj.Length && csproj[end] == '\n' ? end + 1 : end;
 
