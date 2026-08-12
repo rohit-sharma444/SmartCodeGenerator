@@ -15,7 +15,8 @@
 ## Global Constraints
 
 - **Repository root is `D:\SmartCodeGenerator-Repository`**, which is the PARENT of the tool's default working directory. Every path below is relative to that root. Use `git -C D:\SmartCodeGenerator-Repository ...`.
-- **`AppCustomization.Default` must be byte-for-byte neutral.** Every existing test in `CodeGenerator.Tests` must stay green with no edits to its expectations. If an existing test needs changing, the default is not neutral and the change is wrong.
+- **`AppCustomization.Default` must be byte-for-byte neutral in the GENERATED OUTPUT.** With the default customization, every file the scaffolder writes is identical to what it wrote before this feature, and the piped end-to-end tests produce identical output. If a test of *generated output* needs its expectations changed, the default is not neutral and the change is wrong.
+  - **Scope note (settled before execution):** this constrains the scaffolder's output, not the CLI's prompt sequence. Task 12 deliberately adds a wizard prompt, so `CodeGenerator.Tests/App/BuildAppWizardTests.cs` — which drives `BuildAppWizard.Run` through 10 scripted call sites with exactly-sufficient input — must gain the extra input line. That is expected and correct. No *other* existing test may need editing.
 - **Emitted code is verified by compiling it**, via `EmittedSource.AssertCompiles` / `EmittedSource.Flatten` in `CodeGenerator.Tests/App/EmittedSource.cs`. Substring assertions on emitted C# are not acceptable as the primary check.
 - **Test framework is MSTest**: `[TestClass]`, `[TestMethod]`. Analyzer MSTEST0037 rejects `Assert.AreEqual(n, x.Count)` — use `Assert.HasCount(n, x)`. `Assert.IsEmpty(x)` exists and is used.
 - **Never read `DateTime.Now` inside a template.** The copyright year is a parameter. Otherwise golden-output tests redden on 1 January.
