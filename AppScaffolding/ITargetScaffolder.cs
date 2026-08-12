@@ -27,6 +27,18 @@ public interface ITargetScaffolder
     /// are written by <see cref="AppScaffolder"/> before this runs.</summary>
     IReadOnlyList<GeneratedFile> FrontEndFiles(string projectName, IReadOnlyList<string> entityNames);
 
+    /// <summary>
+    /// As <see cref="FrontEndFiles(string,IReadOnlyList{string})"/>, for a target that varies its
+    /// front end with <paramref name="customization"/>.
+    /// </summary>
+    /// <remarks>
+    /// A default interface method, like <see cref="FixupProject"/> above it: only the targets
+    /// with a window, a page or a banner override this, and the rest are untouched.
+    /// </remarks>
+    IReadOnlyList<GeneratedFile> FrontEndFiles(
+        string projectName, IReadOnlyList<string> entityNames, AppCustomization customization)
+        => FrontEndFiles(projectName, entityNames);
+
     /// <summary>Optional post-create reconciliation of the files `dotnet new` emitted.
     /// Runs only against a project the scaffolder just created. No-op by default.</summary>
     void FixupProject(string outputFolder) { }

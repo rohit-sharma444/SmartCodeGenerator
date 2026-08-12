@@ -121,7 +121,25 @@ public sealed class AppScaffolder
     public ScaffoldResult Scaffold(
         CandidateDomainModel model, string appName, string workspaceRoot, ITargetScaffolder target,
         PersistenceKind persistence, ImportedData? importedData)
+        => Scaffold(new ScaffoldRequest(
+            model, appName, workspaceRoot, target, persistence, importedData,
+            AppCustomization.Default, DateTime.Now.Year));
+
+    /// <summary>
+    /// Creates a project named <c>&lt;AppName&gt;&lt;Target.FolderSuffix&gt;</c> under
+    /// <see cref="ScaffoldRequest.WorkspaceRoot"/> (reusing it if present) and writes the shared
+    /// model + data core plus the front end supplied by the target, shaped by
+    /// <see cref="ScaffoldRequest.Customization"/>.
+    /// </summary>
+    public ScaffoldResult Scaffold(ScaffoldRequest request)
     {
+        var model = request.Model;
+        var appName = request.AppName;
+        var workspaceRoot = request.WorkspaceRoot;
+        var target = request.Target;
+        var persistence = request.Persistence;
+        var importedData = request.ImportedData;
+
         var classes = DomainModelMapper.ToClassDefinitions(model, out var classNames);
 
         var projectName = appName + target.FolderSuffix;
@@ -215,7 +233,7 @@ public sealed class AppScaffolder
                     projectName, definition, ForeignKeys.TargetsOf(definition, classNameSet))));
 
         // Target-specific front-end / entry point.
-        foreach (var file in target.FrontEndFiles(projectName, entityNames))
+        foreach (var file in target.FrontEndFiles(projectName, entityNames, request.Customization))
             files.Add((Path.Combine(outputFolder, file.RelativeFolder), file.Name, file.Source));
 
         foreach (var (folder, name, source) in files)
