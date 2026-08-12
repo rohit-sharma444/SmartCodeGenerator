@@ -128,4 +128,55 @@ public class InlineCustomizationTests
         Assert.AreEqual("a shop", remaining);
         Assert.AreEqual("C:\\brand\\logo.ico", customization.IconPath);
     }
+
+    /// <summary>Regression for a crash found by the review probe: a lone quote character is not a
+    /// closing partner for anything, so it must be treated as an ordinary token rather than sent
+    /// through LastIndexOf with a negative start index.</summary>
+    [TestMethod]
+    public void A_lone_quote_does_not_crash_the_scan()
+    {
+        var (remaining, customization) = Split("\" theme dark");
+
+        Assert.AreEqual("\"", remaining);
+        Assert.AreEqual(AppTheme.Dark, customization.Theme);
+    }
+
+    /// <summary>Regression for a review finding: an unmatched opening quote must not leave a
+    /// literal quote character in the value, since that value flows into generated titles and
+    /// project metadata.</summary>
+    [TestMethod]
+    public void An_unmatched_opening_quote_is_stripped_from_the_value()
+    {
+        var (remaining, customization) = Split("a shop company \"Codis");
+
+        Assert.AreEqual("a shop", remaining);
+        Assert.AreEqual("Codis", customization.Company);
+    }
+
+    /// <summary>A quoted location is already immune to option-stripping: the trailing quote makes
+    /// the whole path one atomic token, so a flag word inside it is never seen as a separate,
+    /// trailing token.</summary>
+    [TestMethod]
+    public void A_quoted_location_survives_intact()
+    {
+        var (remaining, customization) = Split(
+            "orders from csv \"C:\\Data\\audit logging\" company \"Codis Ltd\" noseed");
+
+        Assert.AreEqual("orders from csv \"C:\\Data\\audit logging\"", remaining);
+        Assert.AreEqual("Codis Ltd", customization.Company);
+        Assert.IsFalse(customization.SampleSeedData);
+    }
+
+    /// <summary>Documented limitation, ruled to stay as-is rather than grow a path-detection
+    /// heuristic: an UNQUOTED location whose final word matches a flag is truncated, because
+    /// nothing marks where the location ends and the option scan begins. Quoting the location, as
+    /// <see cref="A_quoted_location_survives_intact"/> does, is the fix.</summary>
+    [TestMethod]
+    public void An_unquoted_location_ending_in_a_flag_word_is_truncated()
+    {
+        var (remaining, customization) = Split(@"orders from csv C:\Data\audit logging");
+
+        Assert.AreEqual(@"orders from csv C:\Data\audit", remaining);
+        Assert.IsTrue(customization.Logging);
+    }
 }

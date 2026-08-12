@@ -18,6 +18,16 @@ namespace CodeGenerator.App;
 /// <c>InlineCustomizationTests.A_description_ending_in_an_option_is_misread</c> pins the
 /// behaviour so it stays a decision rather than a surprise.
 /// </para>
+/// <para>
+/// The same right-to-left scan applies to the data source's location: a QUOTED location is one
+/// atomic token (the trailing quote hides any flag-shaped word inside it from the scan), but an
+/// UNQUOTED location is not, so its final word can be misread as an option the same way a
+/// description can. This is a ruled decision, not an oversight — a `--` separator or a
+/// path-detection heuristic was considered and rejected. <b>A location containing spaces must be
+/// quoted.</b> <c>InlineCustomizationTests.A_quoted_location_survives_intact</c> and
+/// <c>InlineCustomizationTests.An_unquoted_location_ending_in_a_flag_word_is_truncated</c> pin
+/// both halves of that rule.
+/// </para>
 /// </remarks>
 internal static class InlineCustomization
 {
@@ -143,6 +153,9 @@ internal static class InlineCustomization
     /// <summary>
     /// The last token of <paramref name="text"/> and what precedes it. A token is a quoted
     /// phrase when the text ends in a quote, so `company "Codis Ltd"` is two tokens, not three.
+    /// A lone quote character is not a closing partner for anything, so it is treated as an
+    /// ordinary token rather than searched for an opening match — the search index would go
+    /// negative.
     /// </summary>
     private static (string Token, string Before) SplitLastToken(string text)
     {
@@ -151,7 +164,7 @@ internal static class InlineCustomization
         if (trimmed.Length == 0)
             return (string.Empty, string.Empty);
 
-        if (trimmed[^1] == '"')
+        if (trimmed.Length >= 2 && trimmed[^1] == '"')
         {
             var open = trimmed.LastIndexOf('"', trimmed.Length - 2);
 
@@ -166,8 +179,18 @@ internal static class InlineCustomization
             : (trimmed[(space + 1)..], trimmed[..space].TrimEnd());
     }
 
+    /// <summary>
+    /// Strips the quotes from a fully-quoted token. An unmatched OPENING quote (a value like
+    /// `"Codis` with no closing partner) is also dropped rather than kept: the alternative of
+    /// rejecting the whole value was considered and rejected, because a stray quote character
+    /// flowing into a generated title or project file is worse than tolerating an unbalanced
+    /// quote the user probably mistyped.
+    /// </summary>
     private static string Unquote(string text)
-        => text.Length >= 2 && text[0] == '"' && text[^1] == '"'
-            ? text[1..^1]
-            : text;
+    {
+        if (text.Length >= 2 && text[0] == '"' && text[^1] == '"')
+            return text[1..^1];
+
+        return text.Length >= 1 && text[0] == '"' ? text[1..] : text;
+    }
 }
