@@ -223,10 +223,18 @@ public sealed partial class {{className}}Validator
     /// touched.
     /// <para>
     /// Matches the SHAPE, never a remembered previous value: the file's own current
-    /// <c>namespace …Validation;</c> line names the old root, and only <c>using</c> lines rooted
-    /// there are rewritten. A user's unrelated addition — <c>using
-    /// System.Text.RegularExpressions;</c>, or a reference into their own library — never starts
-    /// with the old root and so is left alone.
+    /// <c>namespace …Validation;</c> (or <c>namespace …Validation { … }</c>) line names the old
+    /// root, and only <c>using</c> lines rooted there are rewritten. A user's unrelated addition —
+    /// <c>using System.Text.RegularExpressions;</c>, or a reference into their own library — never
+    /// starts with the old root and so is left alone.
+    /// </para>
+    /// <para>
+    /// Both namespace forms: a file-scoped declaration is what every template here emits, but a
+    /// user may have reformatted their stub to the block form since it was written, and this must
+    /// not silently no-op on it — see <see cref="WpfProjectFixup.ReconcileNamespace"/>, which
+    /// handles the same two shapes for the same reason. The namespace regexes below replace only
+    /// <c>namespace X.Validation</c>, never the terminator that follows it, so whichever of
+    /// <c>;</c> or <c>{</c> the file already has is left exactly as it was.
     /// </para>
     /// </remarks>
     public static void ReconcileCustomStubNamespace(string path, string rootNamespace)
@@ -239,7 +247,7 @@ public sealed partial class {{className}}Validator
             var original = File.ReadAllText(path);
 
             var declaration = Regex.Match(
-                original, @"^namespace\s+([^;{\s]+)\.Validation;", RegexOptions.Multiline);
+                original, @"^namespace\s+([^;{\s]+)\.Validation\b", RegexOptions.Multiline);
             if (!declaration.Success)
                 return;
 
@@ -253,8 +261,8 @@ public sealed partial class {{className}}Validator
 
             updated = Regex.Replace(
                 updated,
-                $@"^namespace\s+{Regex.Escape(oldRoot)}\.Validation;",
-                $"namespace {rootNamespace}.Validation;",
+                $@"^namespace\s+{Regex.Escape(oldRoot)}\.Validation\b",
+                $"namespace {rootNamespace}.Validation",
                 RegexOptions.Multiline);
 
             if (!string.Equals(original, updated, StringComparison.Ordinal))
