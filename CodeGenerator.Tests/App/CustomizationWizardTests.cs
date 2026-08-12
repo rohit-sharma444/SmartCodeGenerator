@@ -199,4 +199,34 @@ public class CustomizationWizardTests
         Assert.IsNotNull(result);
         Assert.AreEqual(string.Empty, result.NamespacePrefix);
     }
+
+    /// <summary>Ruling: a remembered company only earns the prefix suggestion when it is typed
+    /// fresh in THIS run. A blank answer echoes back the value the wizard started with, and an
+    /// existing user with a saved company and no prefix must not silently adopt one just by
+    /// pressing Enter through the wizard — unlike the title-pattern courtesy two lines above,
+    /// adopting a prefix moves every namespace in the app and rewrites both csprojs, App.xaml and
+    /// the validator stubs on the next regeneration.</summary>
+    [TestMethod]
+    public void A_remembered_company_kept_by_a_blank_answer_suggests_no_prefix()
+    {
+        var saved = AppCustomization.Default with { Company = "Codis Ltd" };
+
+        var result = Run("y\n\n\n\n\n\n\n\n\n\n", saved);
+
+        Assert.IsNotNull(result);
+        Assert.AreEqual(string.Empty, result.NamespacePrefix);
+    }
+
+    /// <summary>The other half of the same ruling: a company typed fresh in this run still earns
+    /// the suggestion, exactly as before.</summary>
+    [TestMethod]
+    public void A_freshly_typed_company_still_suggests_a_prefix()
+    {
+        var saved = AppCustomization.Default with { Company = "Codis Ltd" };
+
+        var result = Run("y\nAcme Corp\n\n\n\n\n\n\n\n\n", saved);
+
+        Assert.IsNotNull(result);
+        Assert.AreEqual("AcmeCorp", result.NamespacePrefix);
+    }
 }

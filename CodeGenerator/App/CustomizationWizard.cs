@@ -73,9 +73,16 @@ internal static class CustomizationWizard
         if (title is null) return null;
 
         // A company just named is the likeliest prefix — the same courtesy as the title pattern
-        // above. Only offered when nothing is set yet, and only when it reduces to something a
+        // above, but narrower: a rewritten window caption has a small blast radius, while adopting
+        // a prefix moves every namespace in the app and rewrites both csprojs, App.xaml and the
+        // validator stubs on the next regeneration. So this is only offered for a company typed
+        // FRESH in this run, not one merely echoed back by a blank answer — an existing user with a
+        // saved company and no prefix must not silently adopt one just by pressing Enter through
+        // the wizard. Also only when nothing is set yet, and only when it reduces to something a
         // namespace may actually be called, so the run never refuses its own suggestion.
-        var suggestedPrefix = start.NamespacePrefix.Length == 0 && company.Length > 0
+        var suggestedPrefix = start.NamespacePrefix.Length == 0
+                               && company.Length > 0
+                               && company != start.Company
             ? NamespacePrefix.FromCompany(company) ?? string.Empty
             : start.NamespacePrefix;
 

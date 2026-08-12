@@ -209,4 +209,18 @@ public class InlineCustomizationTests
         Assert.AreEqual("a shop namespace 3M", remaining);
         Assert.AreEqual(string.Empty, customization.NamespacePrefix);
     }
+
+    /// <summary>Ruling: "none" is the vocabulary the wizard already teaches for clearing a value,
+    /// and inline was otherwise the only surface with no way at all to turn off a remembered
+    /// prefix from a piped run. `IsValid("none")` is true, so without this it would be accepted as
+    /// a literal (and broken) namespace segment instead.</summary>
+    [TestMethod]
+    public void Namespace_none_clears_a_remembered_prefix()
+    {
+        var (remaining, customization) = InlineCustomization.Split(
+            "a shop namespace none", AppCustomization.Default with { NamespacePrefix = "CodisLtd" });
+
+        Assert.AreEqual("a shop", remaining);
+        Assert.AreEqual(string.Empty, customization.NamespacePrefix);
+    }
 }
