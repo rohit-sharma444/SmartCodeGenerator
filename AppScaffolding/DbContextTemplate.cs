@@ -6,7 +6,8 @@ namespace AppScaffolding;
 /// client-assigned, and the database is created on first use.</summary>
 public static class DbContextTemplate
 {
-    /// <summary>Source of <c>Data/AppDbContext.cs</c> in <paramref name="projectName"/>.Data with a
+    /// <summary>Source of <c>Data/AppDbContext.cs</c>, declaring the <paramref name="rootNamespace"/>
+    /// (or <paramref name="projectName"/>, when there is no prefix) <c>.Data</c> namespace, with a
     /// DbSet per entity in <paramref name="entityNames"/>. <paramref name="envVarName"/> names an
     /// environment variable holding a full SQLite connection string that overrides the default.</summary>
     /// <param name="rootNamespace">

@@ -3,7 +3,7 @@ using CodeGenerator.App;
 
 namespace CodeGenerator.Tests.App;
 
-/// <summary>The opt-in gate and its eight prompts, driven through a TextReader like
+/// <summary>The opt-in gate and its nine prompts, driven through a TextReader like
 /// BuildAppWizard is.</summary>
 [TestClass]
 public class CustomizationWizardTests
@@ -130,6 +130,10 @@ public class CustomizationWizardTests
 
         StringAssert.Contains(written, "Company name [Codis Ltd]");
         StringAssert.Contains(written, "Theme [light/dark] [dark]");
+        // The company here is kept by a blank answer, not typed fresh, so the narrower Fix 4(a)
+        // ruling suggests no prefix -- the prompt shows "none", the same as it would with no saved
+        // company at all.
+        StringAssert.Contains(written, "Namespace prefix [none]");
         StringAssert.Contains(written, "Validation layer [yes]");
         StringAssert.Contains(written, "Logging [no]");
         StringAssert.Contains(written, "Sample seed data [yes]");

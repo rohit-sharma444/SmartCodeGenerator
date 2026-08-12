@@ -77,6 +77,24 @@ argument change. Three things outside the emitted set do:
 | test `.csproj` | add `<RootNamespace>`, set to the app's root namespace plus `.Tests` | matches the namespace the generated test files declare (`CodisLtd.Shop.Console.Tests`), while the test assembly stays `Shop.Console.Tests` |
 | `App.xaml` + `App.xaml.cs` (WPF only) | rewrite `x:Class`, `xmlns:local="clr-namespace:…"` and the code-behind `namespace` | these two files come from `dotnet new wpf` and are neither overwritten nor deleted by the existing fixup |
 
+**Correction, found during execution and confirmed in the code:** this section
+originally counted three reconciliation points. Execution found a fourth: the
+write-once `<Entity>Validator.Custom.cs` stub. Its namespace header — and any
+`using` line rooted at the app's old namespace — has to be repointed the same
+way, because the generated `.Generated.cs` half of each validator moves under
+the new prefix on every run while the hand-written stub, deliberately never
+overwritten, stays behind still declaring the old one. `ValidatorTemplate
+.ReconcileCustomStubNamespace` does this, matching the SHAPE the same way
+`WpfProjectFixup.ReconcileNamespace` does, and it runs from the same place in
+`AppScaffolder.Scaffold` as the other three, on every run.
+
+One more consequence worth stating rather than leaving implicit: removing the
+prefix removes the `<RootNamespace>` element from the app and test project
+files entirely — including one a user added there by hand, since the
+reconciler cannot tell the two apart. WPF's reconciler makes the same
+trade-off consciously (it too matches the shape, never a remembered value),
+and the choice here is the same one for the same reason.
+
 **WPF is the only target that needs the third row.** Probed against every
 template: `winforms` emits `Form1.cs`/`Form1.Designer.cs` (deleted by
 `WinFormsProjectFixup`) and a `Program.cs` we overwrite; `worker` emits a
