@@ -4,10 +4,30 @@ namespace AppScaffolding;
 public static class WebApiProgramTemplate
 {
     public static string Build(string projectName, IReadOnlyList<string> entityNames)
+        => Build(projectName, entityNames, projectName);
+
+    /// <summary>As <see cref="Build(string, IReadOnlyList{string})"/>, serving
+    /// <paramref name="title"/> from the root when it differs from <paramref name="projectName"/>.
+    /// The generated Web API has no OpenAPI document to carry a title, so a branded run serves it
+    /// from "/" instead; an unbranded run adds no endpoint at all, leaving today's output
+    /// untouched.</summary>
+    public static string Build(string projectName, IReadOnlyList<string> entityNames, string title)
+        => Build(projectName, entityNames, title, seed: true);
+
+    /// <summary>As the three-argument overload, seeding the stores on startup only when
+    /// <paramref name="seed"/> — with sample data off there is no SeedData.cs to call.</summary>
+    public static string Build(
+        string projectName, IReadOnlyList<string> entityNames, string title, bool seed)
     {
+        var seedCall = SeedDataTemplate.EnsureSeededCall(seed);
+
         var registrations = string.Join("\n",
             entityNames.Select(name =>
                 $"MapEntity<{name}>(app, \"{name.ToLowerInvariant()}\", new {name}Repository());"));
+
+        var rootEndpoint = title == projectName
+            ? string.Empty
+            : $"app.MapGet(\"/\", () => \"{title}\");\n";
 
         // Triple-$ raw string: interpolations use {{{...}}}, so the double braces the generated
         // route templates need ({{id:int}}) stay literal.
@@ -18,9 +38,7 @@ using {{{projectName}}}.Models;
 var builder = WebApplication.CreateBuilder(args);
 var app = builder.Build();
 
-SeedData.EnsureSeeded();
-
-{{{registrations}}}
+{{{seedCall}}}{{{rootEndpoint}}}{{{registrations}}}
 
 app.Run();
 

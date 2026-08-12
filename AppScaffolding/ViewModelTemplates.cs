@@ -133,21 +133,70 @@ public interface IEntityViewModel
 """;
 
     /// <summary>Source of <c>ViewModels/EntityViewModel.cs</c>.</summary>
-    public static string EntityViewModel(string appName) => $$"""
+    public static string EntityViewModel(string appName) => EntityViewModel(appName, validation: true);
+
+    /// <summary>
+    /// Source of <c>ViewModels/EntityViewModel.cs</c>. With <paramref name="validation"/> false the
+    /// Validation folder is not generated, so this file's own validator resolution has to go — the
+    /// second of the two places generated code hard-depends on that folder.
+    /// </summary>
+    public static string EntityViewModel(string appName, bool validation)
+    {
+        // Raw string literals rather than "\n" concatenation: these are lines lifted out of the
+        // template below, and a raw literal carries the same line endings that template does. See
+        // RepositoryTemplate.Base, which lifts its validation out the same way.
+        var validationUsing = validation
+            ? $"""
+            using {appName}.Validation;
+
+            """
+            : string.Empty;
+
+        var constraintReason = validation
+            ? """
+              /// <remarks>T is constrained to a reference type because this view-model resolves the entity's
+              /// generated validator, and ValidatorFactory.Create&lt;T&gt;() is declared `where T : class, new()`.
+              /// Every entity the app generates is a class, so the constraint costs nothing.</remarks>
+              """
+            : """
+              /// <remarks>T is constrained to a reference type because a record is held in an
+              /// ObservableCollection and compared against null on selection. Every entity the app
+              /// generates is a class, so the constraint costs nothing.</remarks>
+              """;
+
+        // The whole loop goes, not just the Validate call: with nothing to reject, a foreach that
+        // saved nothing and skipped nothing would be dead code in every generated app.
+        var validateRecords = validation
+            ? """
+                    // This path writes through _store, not Repository, so it has to run the generated
+                    // validator itself -- repository-level enforcement never sees these records.
+                    var validator = ValidatorFactory.Create<T>();
+                    foreach (var record in Records)
+                    {
+                        var errors = validator.Validate(record!);
+                        if (errors.Count > 0)
+                        {
+                            Status = $"Cannot save: {errors[0]}";
+                            return;
+                        }
+                    }
+
+
+            """
+            : string.Empty;
+
+        return $$"""
 using System.Collections;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Collections.Generic;
 using System.Windows.Input;
 using {{appName}}.Data;
-using {{appName}}.Validation;
-
+{{validationUsing}}
 namespace {{appName}}.ViewModels;
 
 /// <summary>One entity's records, edited in memory and persisted on Save.</summary>
-/// <remarks>T is constrained to a reference type because this view-model resolves the entity's
-/// generated validator, and ValidatorFactory.Create&lt;T&gt;() is declared `where T : class, new()`.
-/// Every entity the app generates is a class, so the constraint costs nothing.</remarks>
+{{constraintReason}}
 public sealed class EntityViewModel<T> : ObservableObject, IEntityViewModel where T : class, new()
 {
     private readonly JsonStore<T> _store = new();
@@ -209,23 +258,11 @@ public sealed class EntityViewModel<T> : ObservableObject, IEntityViewModel wher
 
     private void Save()
     {
-        // This path writes through _store, not Repository, so it has to run the generated
-        // validator itself -- repository-level enforcement never sees these records.
-        var validator = ValidatorFactory.Create<T>();
-        foreach (var record in Records)
-        {
-            var errors = validator.Validate(record!);
-            if (errors.Count > 0)
-            {
-                Status = $"Cannot save: {errors[0]}";
-                return;
-            }
-        }
-
-        Status = _store.SaveAll(Records.ToList())
+{{validateRecords}}        Status = _store.SaveAll(Records.ToList())
             ? $"Saved {Records.Count} {Title} record(s)."
             : $"Could not write {typeof(T).Name}.json.";
     }
 }
 """;
+    }
 }

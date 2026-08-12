@@ -80,6 +80,18 @@ The shared core:
     <Entity>Validator.Custom.cs      hand-written rules — written ONCE
 ```
 
+Three parts of that layout are **optional**, driven by `AppCustomization` (see
+[Customization](#customization) below):
+
+| Part | Absent when | What the emitted code looks like without it |
+| --- | --- | --- |
+| `Validation/` (the whole folder) | `Validation = false` | `Repository` loses its using, its `IValidator<T>` field and both `Validate` calls, and `EntityViewModel.Save` loses its validator loop — both call `ValidatorFactory.Create<T>()` otherwise, so the app would not compile. `SaveResult<T>` stays: every caller still reads `Success` and `Errors`, and a store failure still fills them. |
+| `Data/SeedData.cs` | `SampleSeedData = false` **and** no imported rows | The four entry points that call `SeedData.EnsureSeeded()` — console, Web API, worker `Program.cs` and `MainViewModel` — lose that call, and the worker also loses the `Data` using it only needed for it. Imported rows arrive *through* `SeedData`, so a build with a data source keeps the file whatever the toggle says. |
+| `Logging/AppLog.cs` | `Logging = false` (the default) | Nothing is emitted and nothing references it. With logging on, `Repository` logs a line per write and a warning per rejected write, and the project gains the three `Microsoft.Extensions.Logging` packages — except the Web API, whose framework reference already carries them. |
+
+`Assets/app.<ext>` appears only when an icon was supplied, and `Views/Theme.xaml`
+only when a theme or accent was.
+
 Then the target adds its front end and reconciles the `dotnet new` output:
 
 | Target | Folder suffix | Front end it writes |
@@ -97,6 +109,29 @@ shared `DesktopViewModelFiles` — rather than `AppScaffolder`.
 
 The generated app persists to **one JSON file per type**, written beside the
 built executable (`AppContext.BaseDirectory`). There is no database.
+
+## Customization
+
+`Scaffold(ScaffoldRequest)` is the full entry point, and `ScaffoldRequest`
+carries an `AppCustomization` describing what the user asked the generated app
+to look like and contain. `AppCustomization.Default` is **byte-for-byte
+neutral**: with it, every file written is identical to what this scaffolder
+wrote before customization existed — that is the invariant to check any change
+here against, and the reason every fragment below is empty by default.
+
+| Setting | Reaches |
+| --- | --- |
+| `Company` | `<Company>`/`<Authors>`/`<Copyright>` in the project file, a `// Copyright (c) <year> <company>.` banner on every generated `.cs` (only `.cs` — `MainWindow.xaml` and `Data/Seed/*.json` go through the same writer), and the window/page title through `TitlePattern`. |
+| `TitlePattern` | The WPF window's `Title`, the WinForms form's `Text`, a console banner, and a Web API root endpoint returning the title. `{company}` and `{app}` are substituted; with no company, the placeholder and its adjoining separator run are cut out, so `{company} - {app}` renders as `Shop`, not ` - Shop`. |
+| `Theme`, `Accent` | `Views/Theme.xaml` (merged into `App.xaml`) for WPF, and `ColorTranslator.FromHtml` assignments in `Views/MainForm.cs` for WinForms. `ThemePalette.Resolve` returns null when nothing was themed, which is what suppresses both. An accent alone themes over the light base; an invalid accent is ignored rather than rejected. |
+| `IconPath` | Copied to `Assets/app.<ext>`. A `.ico` also becomes `<ApplicationIcon>`, the icon the built .exe carries; MSBuild rejects any other extension there. WPF resolves the window's relative `Icon` attribute through the pack URI, so the file is registered as a `<Resource>`; the WinForms form opens it off disk, so its copy is content copied to the output directory. |
+| `Validation`, `SampleSeedData`, `Logging` | The three optional parts in the table above. |
+| `Year` (on the request, not the record) | The copyright banner and `<Copyright>`. Supplied by the caller, never read from the clock inside a template, or golden-output tests would redden on 1 January. |
+
+A target that varies its front end with any of this overrides the
+customization-aware `FrontEndFiles(projectName, entityNames, customization)`
+overload; the default interface method forwards to the two-argument one, so the
+targets that do not care are untouched.
 
 ## Seeding from the user's own data
 
@@ -212,10 +247,15 @@ in the review loop.
 
 | Type | Role |
 | --- | --- |
-| `AppScaffolder` | The entry point. `Scaffold(model, appName, workspaceRoot, target)` writes the shared core and delegates the front end to `target`; a three-arg overload defaults to WPF, and a six-arg one takes `ImportedData` to seed from the user's own rows. `WriteClasses(...)` writes just the model classes. |
+| `AppScaffolder` | The entry point. `Scaffold(ScaffoldRequest)` writes the shared core and delegates the front end to the request's target; the older overloads (`Scaffold(model, appName, workspaceRoot, target[, persistence[, importedData]])`, and a three-arg one defaulting to WPF) are thin wrappers over it with neutral customization. `WriteClasses(...)` writes just the model classes. |
+| `ScaffoldRequest` | Everything one run needs: model, app name, workspace root, target, `PersistenceKind`, `ImportedData?`, `AppCustomization` and the copyright `Year`. A parameter object because the overload chain already stood at four overloads and six arguments. `For(...)` builds one with today's defaults. |
+| `AppCustomization` | The settings record — company, theme, accent, title pattern, icon, and the three layer toggles — plus `Default` (neutral), `TitleFor`/`TitleLiteralFor`/`TitleAttributeFor` (the title escaped for plain text, a C# literal and an XML attribute) and `IconFileName`. |
+| `ThemePalette` | Theme + accent → six named colours, or **null** when nothing was themed, which is what suppresses every themed fragment. `IsValidHexColour` is the one spelling of `#rrggbb` this assembly and the CLI share. |
+| `FileHeader` | The one-line copyright banner, or empty with no company. Takes the year as a parameter. |
+| `ThemeXamlTemplate`, `LoggingTemplate` | The two optional emitted files: `Views/Theme.xaml` (a `ResourceDictionary` of brushes) and `Logging/AppLog.cs` (a static logger factory). `LoggingTemplate.Packages` pins the package versions a logging build restores. |
 | `ImportedData` | Entity name → rows → field name → raw string value, plus `Notes` the caller must print (above all, that the `MaxSeedRows` cap dropped rows). Lives here rather than in `DataIngestion` because it is an *input to the scaffolder*, alongside `PersistenceKind` — and because that keeps it free of any `TabularTable` dependency, so a future SQL reader feeds the same carrier. |
 | `SeedFileWriter` | Imported rows → `(fileName, json)` pairs, projected through each class's final property list. `SeedFolderName` is the one spelling of the `Seed` folder that both this and the generated seeder use. |
-| `ITargetScaffolder` | The strategy a target implements: `Key`, `Description`, `ProjectType`, `FolderSuffix`, `FrontEndFiles(projectName, entityNames)`, and an optional `FixupProject(outputFolder)` (default no-op). |
+| `ITargetScaffolder` | The strategy a target implements: `Key`, `Description`, `ProjectType`, `FolderSuffix`, `FrontEndFiles(projectName, entityNames)`, and two optional default interface methods — `FixupProject(outputFolder)` (no-op) and `FrontEndFiles(projectName, entityNames, customization)` (forwards to the two-argument overload). |
 | `TargetScaffolders` | The registry — ordered `Keys` (`wpf, console, webapi, classlib, worker, winforms`; `winforms` is appended rather than inserted, so every pre-existing key keeps its position), case-insensitive `TryResolve`, and `Default` (WPF). |
 | `GeneratedFile` | One file a target contributes: `RelativeFolder` (relative to the project root, `""` for the root), `Name`, `Source`. |
 | `WpfTarget`, `ConsoleTarget`, `WebApiTarget`, `ClassLibraryTarget`, `WorkerTarget`, `WinFormsTarget` | The six shipped targets, under `Targets/`. |

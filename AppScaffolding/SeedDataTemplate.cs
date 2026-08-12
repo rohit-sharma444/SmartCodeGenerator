@@ -65,6 +65,25 @@ public static class SeedDataTemplate
         IReadOnlyList<string> foreignKeyFieldNames)
         => Source(projectName, orderedEntityNames, foreignKeyFieldNames, []);
 
+    /// <summary>
+    /// The entry-point call into this file — <c>SeedData.EnsureSeeded();</c> and the blank line
+    /// after it — or nothing when the app was generated without seeding, in which case there is no
+    /// file for the call to reach.
+    /// </summary>
+    /// <remarks>
+    /// A raw string literal rather than "\n" concatenation, because a raw literal carries the line
+    /// endings of the source file it is written in and the templates splicing this in carry those
+    /// same endings. Built any other way, a seeding app's entry point would come out one CR per
+    /// line different from the one this generator has always produced.
+    /// </remarks>
+    public static string EnsureSeededCall(bool seed) => seed
+        ? """
+          SeedData.EnsureSeeded();
+
+
+          """
+        : string.Empty;
+
     /// <inheritdoc cref="Source(string, IReadOnlyList{string}, IReadOnlyList{string})"/>
     /// <param name="seededFromFile">
     /// Class names whose starting rows were imported from the user's own data and written to

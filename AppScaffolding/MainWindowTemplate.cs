@@ -7,11 +7,47 @@ namespace AppScaffolding;
 public static class MainWindowTemplate
 {
     /// <summary>Source of <c>Views/MainWindow.xaml</c>.</summary>
-    public static string Xaml(string appName) => $$"""
+    public static string Xaml(string appName) => Xaml(appName, appName);
+
+    /// <summary>Source of <c>Views/MainWindow.xaml</c>, titled <paramref name="title"/>.</summary>
+    public static string Xaml(string appName, string title) => Xaml(appName, title, themed: false);
+
+    /// <summary>Source of <c>Views/MainWindow.xaml</c>, titled <paramref name="title"/>; when
+    /// <paramref name="themed"/>, bound to the brushes <c>Views/Theme.xaml</c> declares, and when
+    /// <paramref name="iconFileName"/> is non-null, showing that file from
+    /// <see cref="AppCustomization.AssetsFolder"/> as its icon.</summary>
+    /// <remarks>
+    /// The icon is named as a relative pack URI, which resolves only for a file the project
+    /// embeds as a <c>Resource</c> — see <c>AppScaffolder.RegisterIcon</c>, which puts it there.
+    /// </remarks>
+    public static string Xaml(
+        string appName, string title, bool themed = false, string? iconFileName = null)
+    {
+        // Emitted only for an app that was given an icon: the window has always been iconless,
+        // and inherits the .exe's icon when there is one.
+        var windowIcon = iconFileName is null
+            ? string.Empty
+            : $"\n        Icon=\"{AppCustomization.AssetsFolder}/{iconFileName}\"";
+
+        // Emitted only for a themed app: an unthemed window must stay byte-identical to the one
+        // this generator has always produced.
+        var windowBrushes = themed
+            ? "\n        Background=\"{DynamicResource AppBackgroundBrush}\""
+              + "\n        Foreground=\"{DynamicResource AppForegroundBrush}\""
+            : string.Empty;
+
+        var gridBrushes = themed
+            ? "\n                              Background=\"{DynamicResource AppSurfaceBrush}\""
+              + "\n                              Foreground=\"{DynamicResource AppForegroundBrush}\""
+              + "\n                              HorizontalGridLinesBrush=\"{DynamicResource AppGridLineBrush}\""
+              + "\n                              VerticalGridLinesBrush=\"{DynamicResource AppGridLineBrush}\""
+            : string.Empty;
+
+        return $$"""
 <Window x:Class="{{appName}}.Views.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="{{appName}}" Height="600" Width="900">
+        Title="{{title}}" Height="600" Width="900"{{windowIcon}}{{windowBrushes}}>
     <!-- SelectedIndex is explicit: a Selector only follows the collection's current item
          when its ItemsSource is a CollectionView, so bound to an ObservableCollection it
          would open with no tab selected and a blank content area. -->
@@ -33,7 +69,7 @@ public static class MainWindowTemplate
                         <Button Content="Save" Command="{Binding SaveCommand}"
                                 Width="80" Margin="4,0" />
                     </StackPanel>
-                    <DataGrid ItemsSource="{Binding Items}"
+                    <DataGrid ItemsSource="{Binding Items}"{{gridBrushes}}
                               SelectedItem="{Binding Selected, Mode=TwoWay}"
                               AutoGenerateColumns="True"
                               CanUserAddRows="False"
@@ -44,6 +80,7 @@ public static class MainWindowTemplate
     </TabControl>
 </Window>
 """;
+    }
 
     /// <summary>Source of <c>Views/MainWindow.xaml.cs</c>.</summary>
     /// <remarks>

@@ -68,4 +68,25 @@ public class CommandDictionaryDataTests
             StringAssert.Contains(help, $"e.g. {command.Example}",
                 $"help output is missing the example for '{command.Command}'.");
     }
+
+    /// <summary>Every inline customization option the command accepts must be discoverable from
+    /// `help`, or it may as well not exist.</summary>
+    [TestMethod]
+    public void The_help_catalog_documents_the_customization_options()
+    {
+        var buildApp = string.Join(
+            "\n",
+            CommandDictionary.Commands
+                .Where(entry => entry.Category == "Build App")
+                .Select(entry => $"{entry.Command} {entry.Description} {entry.Example}"));
+
+        foreach (var option in new[]
+                 {
+                     "company", "theme", "accent", "icon", "title",
+                     "novalidation", "logging", "noseed",
+                 })
+        {
+            StringAssert.Contains(buildApp, option, $"'{option}' is not in the help catalog.");
+        }
+    }
 }

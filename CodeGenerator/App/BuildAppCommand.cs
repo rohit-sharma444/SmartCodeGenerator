@@ -72,11 +72,16 @@ internal sealed class BuildAppCommand
             ReviewCommandPhrases.ConfidenceFloor,
             ReviewCommandPhrases.MinTopScore);
 
-        var request = InlineDataSource.Parse(Tail(input));
+        // Options come off the line BEFORE the data source is parsed: a location is taken as the
+        // rest of the line, so anything left after it would be swallowed by the path.
+        var (remaining, inline) = InlineCustomization.Split(Tail(input), AppCustomization.Default);
+
+        var request = InlineDataSource.Parse(remaining);
 
         var description = request.Description;
         var source = request.Source;
         var normalize = request.Normalize;
+        var customization = inline;
         ITargetScaffolder? target = null;
 
         // Redirected stdin never prompts: existing piped scripts and E2E tests feed the review
@@ -84,8 +89,13 @@ internal sealed class BuildAppCommand
         // with the inline `from <format> <location>` form instead, and pick a target at `approve`.
         if (!Console.IsInputRedirected)
         {
+            // The remembered profile is read only here: a redirected-stdin run must not have its
+            // output changed by a file it never mentioned, which is the same determinism
+            // `normalize` protects. Inline options win over it — they were typed just now.
+            var start = Merge(CustomizationDefaults.Load(workspaceRoot), inline);
+
             var outcome = BuildAppWizard.Run(
-                request, Console.In, Console.Out, ApplicationTypeMenu.Choose);
+                request, Console.In, Console.Out, ApplicationTypeMenu.Choose, start);
 
             if (outcome.Decision == WizardDecision.Cancelled)
             {
@@ -97,26 +107,66 @@ internal sealed class BuildAppCommand
             target = outcome.Target;
             source = outcome.Source;
             normalize = outcome.Normalize;
+            customization = outcome.Customization;
+
+            // Saved even when the step was declined: what the user settled on this time is what
+            // the next run should offer, and declining settled it too.
+            CustomizationDefaults.Save(workspaceRoot, customization);
         }
 
         if (source is null)
         {
-            HandleFromDescription(description, workspaceRoot, target, reviewAi);
+            HandleFromDescription(description, workspaceRoot, target, customization, reviewAi);
             return;
         }
 
-        HandleFromData(description, source, normalize, workspaceRoot, target, reviewAi);
+        HandleFromData(
+            description, source, normalize, workspaceRoot, target, customization, reviewAi);
+    }
+
+    /// <summary>
+    /// The saved profile with anything named on the command line layered over it.
+    /// </summary>
+    /// <remarks>
+    /// A setting counts as named inline when it differs from
+    /// <see cref="AppCustomization.Default"/>, which is exact for the inline vocabulary:
+    /// every option there can only ever set a non-default value — there is no way to type an
+    /// empty company or the `light`-less "no theme", and each flag names the opposite of its
+    /// default.
+    /// </remarks>
+    internal static AppCustomization Merge(AppCustomization saved, AppCustomization inline)
+    {
+        var defaults = AppCustomization.Default;
+
+        return saved with
+        {
+            Company = Named(inline.Company, defaults.Company, saved.Company),
+            Theme = Named(inline.Theme, defaults.Theme, saved.Theme),
+            Accent = Named(inline.Accent, defaults.Accent, saved.Accent),
+            TitlePattern = Named(inline.TitlePattern, defaults.TitlePattern, saved.TitlePattern),
+            IconPath = Named(inline.IconPath, defaults.IconPath, saved.IconPath),
+            Validation = Named(inline.Validation, defaults.Validation, saved.Validation),
+            Logging = Named(inline.Logging, defaults.Logging, saved.Logging),
+            SampleSeedData =
+                Named(inline.SampleSeedData, defaults.SampleSeedData, saved.SampleSeedData),
+        };
+
+        static T Named<T>(T inline, T fallback, T saved)
+            => EqualityComparer<T>.Default.Equals(inline, fallback) ? saved : inline;
     }
 
     /// <summary>The unchanged path: NLE seeds, Wikipedia topic, enrichment, review loop.</summary>
     private static void HandleFromDescription(
         string description, string workspaceRoot, ITargetScaffolder? target,
-        PhraseResolver? reviewAi = null)
+        AppCustomization customization, PhraseResolver? reviewAi = null)
     {
         if (description.Length == 0)
         {
             Console.WriteLine("Usage: build app: <description of the system you want>");
             Console.WriteLine("   or: build app from csv <path>   (also txt, json, excel)");
+            Console.WriteLine("Options (last on the line): company \"<name>\"  theme light|dark  "
+                              + "accent #rrggbb  icon <path>  title \"<pattern>\"  "
+                              + "novalidation  logging  noseed");
             return;
         }
 
@@ -139,7 +189,7 @@ internal sealed class BuildAppCommand
 
         RunReviewLoop(
             result.Model, DomainAppName.FromDescription(description), workspaceRoot,
-            ImportedData.None, target, reviewAi);
+            ImportedData.None, target, customization, reviewAi);
     }
 
     /// <summary>
@@ -148,7 +198,8 @@ internal sealed class BuildAppCommand
     /// </summary>
     private static void HandleFromData(
         string description, DataSourceSpec source, bool normalize, string workspaceRoot,
-        ITargetScaffolder? target, PhraseResolver? reviewAi = null)
+        ITargetScaffolder? target, AppCustomization customization,
+        PhraseResolver? reviewAi = null)
     {
         if (!DataSourceReaders.TryCreate(source.Kind, out var reader))
         {
@@ -207,7 +258,8 @@ internal sealed class BuildAppCommand
             Console.WriteLine(note);
 
         RunReviewLoop(
-            model, AppNameFor(description, source), workspaceRoot, imported, target, reviewAi);
+            model, AppNameFor(description, source), workspaceRoot, imported, target, customization,
+            reviewAi);
     }
 
     /// <summary>
@@ -254,7 +306,7 @@ internal sealed class BuildAppCommand
 
     private static void RunReviewLoop(
         CandidateDomainModel model, string appName, string workspaceRoot,
-        ImportedData importedData, ITargetScaffolder? target,
+        ImportedData importedData, ITargetScaffolder? target, AppCustomization customization,
         PhraseResolver? reviewAi = null)
     {
         while (true)
@@ -265,6 +317,11 @@ internal sealed class BuildAppCommand
             // be visible here rather than being a surprise.
             if (target is not null)
                 Console.WriteLine($"  Target: {ApplicationTypeMenu.LabelFor(target)}");
+
+            // Settled before discovery too, and for the same reason. Prints nothing at all when
+            // nothing was customized.
+            foreach (var line in CustomizationSummary.Lines(customization))
+                Console.WriteLine(line);
 
             string[] parts;
 
@@ -324,7 +381,7 @@ internal sealed class BuildAppCommand
 
                     Generate(
                         model, appName, workspaceRoot, importedData,
-                        approved.Value.Target, approved.Value.Persistence);
+                        approved.Value.Target, approved.Value.Persistence, customization);
                     return;
                 }
 
@@ -374,7 +431,7 @@ internal sealed class BuildAppCommand
 
                     Generate(
                         model, appName, workspaceRoot, importedData,
-                        chosenTarget, persistence.Value);
+                        chosenTarget, persistence.Value, customization);
                     return;
 
                 case "c":
@@ -559,10 +616,14 @@ internal sealed class BuildAppCommand
     /// </remarks>
     private static void Generate(
         CandidateDomainModel model, string appName, string workspaceRoot,
-        ImportedData importedData, ITargetScaffolder target, PersistenceKind persistence)
+        ImportedData importedData, ITargetScaffolder target, PersistenceKind persistence,
+        AppCustomization customization)
     {
-        var scaffold = new AppScaffolder()
-            .Scaffold(model, appName, workspaceRoot, target, persistence, importedData);
+        // The year is read here rather than inside a template: a template reading the clock would
+        // turn every golden-output test red on 1 January.
+        var scaffold = new AppScaffolder().Scaffold(new ScaffoldRequest(
+            model, appName, workspaceRoot, target, persistence, importedData,
+            customization, DateTime.Now.Year));
 
         if (scaffold.Success)
         {

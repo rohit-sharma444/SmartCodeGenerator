@@ -16,11 +16,21 @@ public sealed class WinFormsTarget : ITargetScaffolder
 
     public IReadOnlyList<GeneratedFile> FrontEndFiles(
         string projectName, IReadOnlyList<string> entityNames)
+        => FrontEndFiles(projectName, entityNames, AppCustomization.Default);
+
+    public IReadOnlyList<GeneratedFile> FrontEndFiles(
+        string projectName, IReadOnlyList<string> entityNames, AppCustomization customization)
     {
         var files = DesktopViewModelFiles.Build(
-            projectName, entityNames, ViewModelTemplates.PortableRelayCommand(projectName));
+            projectName, entityNames, ViewModelTemplates.PortableRelayCommand(projectName),
+            customization.Validation, customization.SampleSeedData);
 
-        files.Add(new("Views", "MainForm.cs", WinFormsMainFormTemplate.Source(projectName)));
+        var palette = ThemePalette.Resolve(customization.Theme, customization.Accent);
+
+        files.Add(new("Views", "MainForm.cs",
+            WinFormsMainFormTemplate.Source(
+                projectName, customization.TitleLiteralFor(projectName), palette,
+                customization.IconFileName)));
         files.Add(new("", "Program.cs", WinFormsProgramTemplate.Source(projectName)));
 
         return files;

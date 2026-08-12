@@ -25,7 +25,8 @@ internal sealed record WizardOutcome(
     string Description,
     ITargetScaffolder? Target,
     DataSourceSpec? Source,
-    bool Normalize);
+    bool Normalize,
+    AppCustomization Customization);
 
 /// <summary>
 /// Asks what to build, what kind of app it is, and whether there is data — in that order.
@@ -42,14 +43,19 @@ internal sealed record WizardOutcome(
 /// </remarks>
 internal static class BuildAppWizard
 {
-    private static readonly WizardOutcome Cancelled =
-        new(WizardDecision.Cancelled, string.Empty, null, null, false);
+    private static readonly WizardOutcome Cancelled = new(
+        WizardDecision.Cancelled, string.Empty, null, null, false, AppCustomization.Default);
 
+    /// <param name="start">
+    /// What the command line and the remembered profile already settled, which the customization
+    /// step pre-fills its prompts from. Omitted means nothing was customized.
+    /// </param>
     public static WizardOutcome Run(
         InlineBuildRequest request,
         TextReader reader,
         TextWriter writer,
-        Func<int?> chooseApplicationType)
+        Func<int?> chooseApplicationType,
+        AppCustomization? start = null)
     {
         var description = request.Description;
 
@@ -87,8 +93,16 @@ internal static class BuildAppWizard
             source = outcome.Source;
         }
 
+        // Last, and opt-in: it is the only step that is pure decoration, so a user who wants the
+        // app they came for answers one more character and is done.
+        var customization = CustomizationWizard.Run(
+            reader, writer, start ?? AppCustomization.Default);
+
+        if (customization is null)
+            return Cancelled;
+
         return new WizardOutcome(
-            WizardDecision.Proceed, description, target, source, request.Normalize);
+            WizardDecision.Proceed, description, target, source, request.Normalize, customization);
     }
 
     /// <summary>

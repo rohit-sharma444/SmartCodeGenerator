@@ -4,7 +4,25 @@ namespace AppScaffolding;
 public static class MainViewModelTemplate
 {
     public static string Build(string appName, IReadOnlyList<string> entityNames)
+        => Build(appName, entityNames, seed: true);
+
+    /// <summary>As <see cref="Build(string, IReadOnlyList{string})"/>, seeding before the view
+    /// models load only when <paramref name="seed"/> — with sample data off there is no SeedData.cs
+    /// to call.</summary>
+    public static string Build(string appName, IReadOnlyList<string> entityNames, bool seed)
     {
+        // Its own fragment rather than SeedDataTemplate.EnsureSeededCall: this call site is inside
+        // a constructor, so it is indented and carries the comment explaining its position.
+        var seedCall = seed
+            ? """
+                      // Seed sample data before the view-models load: each EntityViewModel<T> reads its own
+                      // store in its constructor, so seeding after this point would leave the first run empty.
+                      SeedData.EnsureSeeded();
+
+
+              """
+            : string.Empty;
+
         var registrations = string.Join("\n",
             entityNames.Select(name =>
                 $"            new EntityViewModel<{name}>(\"{name}\"),"));
@@ -21,11 +39,7 @@ public sealed class MainViewModel
 {
     public MainViewModel()
     {
-        // Seed sample data before the view-models load: each EntityViewModel<T> reads its own
-        // store in its constructor, so seeding after this point would leave the first run empty.
-        SeedData.EnsureSeeded();
-
-        Entities = new ObservableCollection<IEntityViewModel>
+{{seedCall}}        Entities = new ObservableCollection<IEntityViewModel>
         {
 {{registrations}}
         };

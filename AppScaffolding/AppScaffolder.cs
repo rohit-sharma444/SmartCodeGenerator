@@ -18,7 +18,8 @@ public sealed class AppScaffolder
     /// written is skipped and the rest continue. Returns the paths successfully written.
     /// </summary>
     public IReadOnlyList<string> WriteClasses(
-        string outputFolder, IReadOnlyList<ClassDefinition> classes, string namespaceName)
+        string outputFolder, IReadOnlyList<ClassDefinition> classes, string namespaceName,
+        string header = "")
     {
         Directory.CreateDirectory(outputFolder);
 
@@ -26,7 +27,7 @@ public sealed class AppScaffolder
         foreach (var definition in classes)
         {
             var source = RoslynClassGenerator.Generate(definition, namespaceName);
-            var path = WriteSource(outputFolder, definition.Name + ".cs", source);
+            var path = WriteSource(outputFolder, definition.Name + ".cs", source, header);
             if (path is not null)
                 written.Add(path);
         }
@@ -38,13 +39,25 @@ public sealed class AppScaffolder
     /// Best-effort write of one source file into <paramref name="outputFolder"/>, creating
     /// the folder if needed. Returns the path on success, or null if it could not be written.
     /// </summary>
-    private static string? WriteSource(string outputFolder, string fileName, string source)
+    /// <remarks>
+    /// <paramref name="header"/> is prepended only for a <c>.cs</c> file: this same method also
+    /// writes <c>MainWindow.xaml</c> and <c>Data/Seed/*.json</c>, and a <c>//</c> banner would
+    /// corrupt both.
+    /// </remarks>
+    private static string? WriteSource(
+        string outputFolder, string fileName, string source, string header = "")
     {
         try
         {
             Directory.CreateDirectory(outputFolder);
             var path = Path.Combine(outputFolder, fileName);
-            File.WriteAllText(path, source);
+
+            var content = header.Length > 0
+                          && fileName.EndsWith(".cs", StringComparison.OrdinalIgnoreCase)
+                ? header + source
+                : source;
+
+            File.WriteAllText(path, content);
             return path;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -53,9 +66,9 @@ public sealed class AppScaffolder
         }
     }
 
-    /// <summary>Best-effort insertion of the EF Core SQLite package into the app project file.
+    /// <summary>Best-effort insertion of one package reference into the app project file.
     /// Idempotent and silent on failure — a missing package surfaces later as a build error.</summary>
-    private static void InjectEfCorePackage(string csprojPath)
+    private static void InjectPackage(string csprojPath, string id, string version)
     {
         try
         {
@@ -63,8 +76,103 @@ public sealed class AppScaffolder
                 return;
 
             var updated = CsprojEditing.InjectPackageReference(
-                File.ReadAllText(csprojPath), EfCorePackageId, EfCorePackageVersion);
+                File.ReadAllText(csprojPath), id, version);
             File.WriteAllText(csprojPath, updated);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+        }
+    }
+
+    /// <summary>Best-effort branding of the app project file. Silent on failure: a project that
+    /// could not be branded still builds and runs.</summary>
+    private static void InjectBranding(string csprojPath, string company, int year)
+    {
+        try
+        {
+            if (!File.Exists(csprojPath))
+                return;
+
+            File.WriteAllText(
+                csprojPath,
+                CsprojEditing.InjectProperties(File.ReadAllText(csprojPath), company, year));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+        }
+    }
+
+    /// <summary>
+    /// Copies the chosen icon to <c>Assets/app&lt;ext&gt;</c> and registers it in the project file.
+    /// False when there was no icon or it could not be copied — in which case nothing downstream
+    /// may name it.
+    /// </summary>
+    /// <remarks>
+    /// A missing or unreadable source is ignored rather than reported: it is not worth failing a
+    /// build the user has already answered ten questions for. The generated app then simply keeps
+    /// the default icon, which is why the caller drops the icon from the customization the front
+    /// end sees rather than emitting a reference to a file that is not there.
+    /// </remarks>
+    private static bool CopyIcon(
+        AppCustomization customization, string outputFolder, string csprojPath,
+        DotNetProjectType projectType)
+    {
+        var fileName = customization.IconFileName;
+
+        if (customization.IconPath is null
+            || fileName is null
+            || !File.Exists(customization.IconPath))
+            return false;
+
+        try
+        {
+            var assets = Path.Combine(outputFolder, AppCustomization.AssetsFolder);
+
+            Directory.CreateDirectory(assets);
+            File.Copy(customization.IconPath, Path.Combine(assets, fileName), overwrite: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+
+        RegisterIcon(csprojPath, $"{AppCustomization.AssetsFolder}\\{fileName}", projectType);
+        return true;
+    }
+
+    /// <summary>
+    /// Best-effort registration of the copied icon in the app project file. Silent on failure: the
+    /// project still builds, it just shows the default icon.
+    /// </summary>
+    /// <remarks>
+    /// A <c>.ico</c> becomes the <c>ApplicationIcon</c>, the icon the built .exe carries; MSBuild
+    /// rejects any other extension there. How the file itself is registered depends on how the
+    /// front end reaches it: WPF resolves a <c>Window</c>'s relative <c>Icon</c> attribute through
+    /// the pack URI, so the file has to be embedded as a <c>Resource</c>, while the WinForms form
+    /// reads it off disk and needs it copied beside the binary instead. The other targets have no
+    /// window, so for them the exe icon is the whole story.
+    /// </remarks>
+    private static void RegisterIcon(
+        string csprojPath, string relativePath, DotNetProjectType projectType)
+    {
+        try
+        {
+            if (!File.Exists(csprojPath))
+                return;
+
+            var csproj = File.ReadAllText(csprojPath);
+
+            if (relativePath.EndsWith(".ico", StringComparison.OrdinalIgnoreCase))
+                csproj = CsprojEditing.InjectApplicationIcon(csproj, relativePath);
+
+            csproj = projectType switch
+            {
+                DotNetProjectType.Wpf => CsprojEditing.InjectResource(csproj, relativePath),
+                DotNetProjectType.WinForms => CsprojEditing.InjectContent(csproj, relativePath),
+                _ => csproj,
+            };
+
+            File.WriteAllText(csprojPath, csproj);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -121,7 +229,29 @@ public sealed class AppScaffolder
     public ScaffoldResult Scaffold(
         CandidateDomainModel model, string appName, string workspaceRoot, ITargetScaffolder target,
         PersistenceKind persistence, ImportedData? importedData)
+        => Scaffold(new ScaffoldRequest(
+            model, appName, workspaceRoot, target, persistence, importedData,
+            AppCustomization.Default, DateTime.Now.Year));
+
+    /// <summary>
+    /// Creates a project named <c>&lt;AppName&gt;&lt;Target.FolderSuffix&gt;</c> under
+    /// <see cref="ScaffoldRequest.WorkspaceRoot"/> (reusing it if present) and writes the shared
+    /// model + data core plus the front end supplied by the target, shaped by
+    /// <see cref="ScaffoldRequest.Customization"/>.
+    /// </summary>
+    public ScaffoldResult Scaffold(ScaffoldRequest request)
     {
+        var model = request.Model;
+        var appName = request.AppName;
+        var workspaceRoot = request.WorkspaceRoot;
+        var target = request.Target;
+        var persistence = request.Persistence;
+        var importedData = request.ImportedData;
+
+        // Prepended to generated C# only. XAML and the Data/Seed/*.json files go through the
+        // same WriteSource, and a `//` banner would corrupt both.
+        var header = FileHeader.For(request.Customization.Company, request.Year);
+
         var classes = DomainModelMapper.ToClassDefinitions(model, out var classNames);
 
         var projectName = appName + target.FolderSuffix;
@@ -149,14 +279,33 @@ public sealed class AppScaffolder
         }
 
         if (persistence == PersistenceKind.Sqlite)
-            InjectEfCorePackage(csprojPath);
+            InjectPackage(csprojPath, EfCorePackageId, EfCorePackageVersion);
+
+        // Not for the Web API: the ASP.NET Core framework reference already carries these
+        // assemblies, and NuGet reports a reference to one of them as NU1510 — "likely
+        // unnecessary" — on every build of the generated project.
+        if (request.Customization.Logging && target.ProjectType != DotNetProjectType.WebApi)
+        {
+            foreach (var (id, version) in LoggingTemplate.Packages)
+                InjectPackage(csprojPath, id, version);
+        }
+
+        if (request.Customization.HasBranding)
+            InjectBranding(csprojPath, request.Customization.Company, request.Year);
+
+        // Copied before the front end is built, not after it: the window or form has to name the
+        // file, and an icon that could not be copied must leave nothing naming it behind.
+        var customization = CopyIcon(
+                request.Customization, outputFolder, csprojPath, target.ProjectType)
+            ? request.Customization
+            : request.Customization with { IconPath = null };
 
         var modelsFolder = Path.Combine(outputFolder, "Models");
         var dataFolder = Path.Combine(outputFolder, "Data");
         var validationFolder = Path.Combine(outputFolder, "Validation");
 
         var written = new List<string>(
-            WriteClasses(modelsFolder, classes, $"{projectName}.Models"));
+            WriteClasses(modelsFolder, classes, $"{projectName}.Models", header));
         var expected = classes.Count;
 
         var entityNames = classes.Select(c => c.Name).ToList();
@@ -170,25 +319,59 @@ public sealed class AppScaffolder
             .Select(f => Path.GetFileNameWithoutExtension(f.FileName))
             .ToList();
 
+        // Imported rows arrive THROUGH SeedData, so a data-driven build keeps it whatever the toggle
+        // says: `noseed` suppresses the generator's own sample rows, not the user's own data. Folded
+        // back into the customization so the front ends, which only see that, agree with the files.
+        if (!customization.SampleSeedData && seedFiles.Length > 0)
+            customization = customization with { SampleSeedData = true };
+
         // Shared, target-agnostic core: includes the IStore seam and StoreFactory, so every
         // target and persistence backend shares the same typed CRUD surface.
+        var validation = customization.Validation;
+        var seed = customization.SampleSeedData;
+        var logging = customization.Logging;
+
         var files = new List<(string Folder, string Name, string Source)>
         {
             (dataFolder, "IStore.cs", StoreSeamTemplate.Source(projectName)),
             (dataFolder, "StoreFactory.cs", StoreFactoryTemplate.Source(projectName, persistence)),
-            (dataFolder, "Repository.cs", RepositoryTemplate.Base(projectName)),
-            (dataFolder, "SeedData.cs",
+            (dataFolder, "Repository.cs",
+                RepositoryTemplate.Base(projectName, validation, logging)),
+        };
+
+        if (logging)
+        {
+            files.Add((Path.Combine(outputFolder, LoggingTemplate.FolderName),
+                LoggingTemplate.FileName, LoggingTemplate.Source(projectName)));
+        }
+
+        // Added here rather than in the initializer above, which cannot hold a conditional element,
+        // and before SaveResult so a seeding app's files are written in the order they always were.
+        if (seed)
+        {
+            files.Add((dataFolder, "SeedData.cs",
                 SeedDataTemplate.Source(
                     projectName,
                     SeedDataTemplate.OrderByDependency(classes),
                     SeedDataTemplate.ForeignKeyFieldNames(classes),
-                    seededClassNames)),
-            (dataFolder, "SaveResult.cs", SaveResultTemplate.Source(projectName)),
-            (validationFolder, "IValidator.cs", ValidatorTemplate.ValidatorInterface(projectName)),
-            (validationFolder, "IEntityLookup.cs", ValidatorTemplate.EntityLookupInterface(projectName)),
-            (validationFolder, "StoreEntityLookup.cs", ValidatorTemplate.StoreEntityLookup(projectName)),
-            (validationFolder, "ValidatorFactory.cs", ValidatorTemplate.Factory(projectName, entityNames)),
-        };
+                    seededClassNames)));
+        }
+
+        files.Add((dataFolder, "SaveResult.cs", SaveResultTemplate.Source(projectName)));
+
+        // SaveResult above stays whatever the flag says: Repository still returns one, so the
+        // console menu and the Web API's ValidationProblem are untouched by turning validation off.
+        if (validation)
+        {
+            files.Add((validationFolder, "IValidator.cs",
+                ValidatorTemplate.ValidatorInterface(projectName)));
+            files.Add((validationFolder, "IEntityLookup.cs",
+                ValidatorTemplate.EntityLookupInterface(projectName)));
+            files.Add((validationFolder, "StoreEntityLookup.cs",
+                ValidatorTemplate.StoreEntityLookup(projectName)));
+            files.Add((validationFolder, "ValidatorFactory.cs",
+                ValidatorTemplate.Factory(projectName, entityNames)));
+        }
 
         // Persistence backend behind the seam.
         if (persistence == PersistenceKind.Sqlite)
@@ -209,22 +392,30 @@ public sealed class AppScaffolder
         // ForeignKeys.TargetsOf, so a lookup check is only ever emitted for a <Target>Id the
         // class actually declares.
         var classNameSet = ForeignKeys.ClassNameSet(classes);
-        foreach (var definition in classes)
-            files.Add((validationFolder, $"{definition.Name}Validator.Generated.cs",
-                ValidatorTemplate.Generated(
-                    projectName, definition, ForeignKeys.TargetsOf(definition, classNameSet))));
+        if (validation)
+        {
+            foreach (var definition in classes)
+                files.Add((validationFolder, $"{definition.Name}Validator.Generated.cs",
+                    ValidatorTemplate.Generated(
+                        projectName, definition, ForeignKeys.TargetsOf(definition, classNameSet))));
+        }
 
         // Target-specific front-end / entry point.
-        foreach (var file in target.FrontEndFiles(projectName, entityNames))
+        foreach (var file in target.FrontEndFiles(projectName, entityNames, customization))
             files.Add((Path.Combine(outputFolder, file.RelativeFolder), file.Name, file.Source));
 
         foreach (var (folder, name, source) in files)
         {
             expected++;
-            var path = WriteSource(folder, name, source);
+            var path = WriteSource(folder, name, source, header);
             if (path is not null)
                 written.Add(path);
         }
+
+        // After the files are written, not in FixupProject: Views/Theme.xaml does not exist yet
+        // when the project is created.
+        if (target.ProjectType == DotNetProjectType.Wpf)
+            WpfProjectFixup.MergeTheme(outputFolder);
 
         // Data files, not source: written with the same best-effort WriteSource so a locked file
         // is reported through `expected` rather than throwing mid-scaffold.
@@ -245,7 +436,7 @@ public sealed class AppScaffolder
 
         // Written once, never overwritten: this is where the user's own rules live, and a rebuild
         // must not discard them. The .Generated.cs half above is refreshed every run.
-        foreach (var definition in classes)
+        foreach (var definition in validation ? classes : Array.Empty<ClassDefinition>())
         {
             var fileName = $"{definition.Name}Validator.Custom.cs";
             if (File.Exists(Path.Combine(validationFolder, fileName)))
@@ -253,12 +444,14 @@ public sealed class AppScaffolder
 
             expected++;
             var customPath = WriteSource(
-                validationFolder, fileName, ValidatorTemplate.CustomStub(projectName, definition.Name));
+                validationFolder, fileName,
+                ValidatorTemplate.CustomStub(projectName, definition.Name), header);
             if (customPath is not null)
                 written.Add(customPath);
         }
 
-        var testProjectPath = ScaffoldTestProject(workspaceRoot, projectName, classes);
+        var testProjectPath = ScaffoldTestProject(
+            workspaceRoot, projectName, classes, validation, seed);
 
         var allWritten = written.Count == expected;
 
@@ -277,7 +470,8 @@ public sealed class AppScaffolder
     /// WPF app's tests target net10.0-windows and resolve the reference.
     /// </summary>
     private static string? ScaffoldTestProject(
-        string workspaceRoot, string appProjectName, IReadOnlyList<ClassDefinition> classes)
+        string workspaceRoot, string appProjectName, IReadOnlyList<ClassDefinition> classes,
+        bool validation = true, bool seed = true)
     {
         var entityNames = classes.Select(c => c.Name).ToList();
 
@@ -322,19 +516,25 @@ public sealed class AppScaffolder
 
         var roundTripPath = WriteSource(testFolder, "RepositoryRoundTripTests.cs",
             TestProjectTemplates.RoundTripTests(appProjectName, entityNames));
-        var seedPath = WriteSource(testFolder, "SeedDataTests.cs",
-            TestProjectTemplates.SeedTests(appProjectName, entityNames[0]));
+
+        // No seed test without SeedData: it would name a class the app never generated.
+        var seedPath = seed
+            ? WriteSource(testFolder, "SeedDataTests.cs",
+                TestProjectTemplates.SeedTests(appProjectName, entityNames[0]))
+            : null;
         var parallelizationPath = WriteSource(testFolder, "TestParallelization.cs",
             TestProjectTemplates.DisableParallelization());
         var supportPath = WriteSource(testFolder, "TestSupport.cs",
             TestProjectTemplates.TestSupport(appProjectName));
 
-        if (roundTripPath is null || seedPath is null || parallelizationPath is null
+        if (roundTripPath is null || (seed && seedPath is null) || parallelizationPath is null
             || supportPath is null)
             return null;
 
-        // One validator test file per model, so the generated suite covers the generated rules.
-        foreach (var definition in classes)
+        // One validator test file per model, so the generated suite covers the generated rules —
+        // and none at all when there are no validators to cover, since a test naming a validator
+        // the app never generated would not compile.
+        foreach (var definition in validation ? classes : Array.Empty<ClassDefinition>())
         {
             var required = definition.Properties.FirstOrDefault(p =>
                 p.Type == "string"
