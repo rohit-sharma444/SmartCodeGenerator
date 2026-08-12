@@ -35,13 +35,18 @@ public class GeneratedProjectBuildTests
     /// A prefixed app builds. This is the only check that can fail on the thing the prefix risks:
     /// WPF's x:Class is resolved by the XAML compiler against the namespaces the generated views
     /// declare, and App.xaml comes from `dotnet new` naming the project instead. The console row
-    /// adds the generated test project, whose own usings are rooted at the prefix too.
+    /// adds the generated test project, whose own usings are rooted at the prefix too. webapi and
+    /// worker are here too: webapi's prefixed Program.cs otherwise only has an absence assertion
+    /// and worker's has none at all, and JsonStoreTemplate.Source($"{rootNamespace}.Data") is
+    /// emitted by every prefixed row and read by none of the others.
     /// </summary>
     [TestMethod]
     [TestCategory("Integration")]
     [DataRow("console")]
     [DataRow("wpf")]
     [DataRow("winforms")]
+    [DataRow("webapi")]
+    [DataRow("worker")]
     public void PrefixedProject_BuildsAndItsTestsPass(string targetKey)
     {
         if ((targetKey == "wpf" || targetKey == "winforms") && !OperatingSystem.IsWindows())
