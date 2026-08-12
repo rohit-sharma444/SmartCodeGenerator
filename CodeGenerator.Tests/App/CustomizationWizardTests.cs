@@ -3,7 +3,7 @@ using CodeGenerator.App;
 
 namespace CodeGenerator.Tests.App;
 
-/// <summary>The opt-in gate and its eight prompts, driven through a TextReader like
+/// <summary>The opt-in gate and its nine prompts, driven through a TextReader like
 /// BuildAppWizard is.</summary>
 [TestClass]
 public class CustomizationWizardTests
@@ -41,7 +41,7 @@ public class CustomizationWizardTests
     [TestMethod]
     public void Accepting_and_answering_collects_every_setting()
     {
-        var result = Run("y\nCodis Ltd\ndark\n#0B6E4F\n\n\nyes\nyes\nno\n");
+        var result = Run("y\nCodis Ltd\ndark\n#0B6E4F\n\n\n\nyes\nyes\nno\n");
 
         Assert.IsNotNull(result);
         Assert.AreEqual("Codis Ltd", result.Company);
@@ -57,7 +57,7 @@ public class CustomizationWizardTests
     [TestMethod]
     public void Naming_a_company_offers_the_company_title_pattern()
     {
-        var result = Run("y\nCodis Ltd\n\n\n\n\n\n\n\n");
+        var result = Run("y\nCodis Ltd\n\n\n\n\n\n\n\n\n");
 
         Assert.IsNotNull(result);
         Assert.AreEqual("Codis Ltd - Shop", result.TitleFor("Shop"));
@@ -69,15 +69,17 @@ public class CustomizationWizardTests
     public void Blank_answers_keep_the_prefilled_values()
     {
         // TitlePattern is set explicitly: a saved company with the bare "{app}" pattern is
-        // OFFERED the company pattern, so the round trip would not be an identity.
+        // OFFERED the company pattern, so the round trip would not be an identity. Likewise
+        // NamespacePrefix: a saved company with no prefix is OFFERED one derived from the company.
         var saved = AppCustomization.Default with
         {
             Company = "Codis Ltd",
             Theme = AppTheme.Dark,
             TitlePattern = AppCustomization.CompanyTitlePattern,
+            NamespacePrefix = "CodisLtd",
         };
 
-        var result = Run("y\n\n\n\n\n\n\n\n\n", saved);
+        var result = Run("y\n\n\n\n\n\n\n\n\n\n", saved);
 
         Assert.AreEqual(saved, result);
     }
@@ -85,7 +87,7 @@ public class CustomizationWizardTests
     [TestMethod]
     public void A_malformed_accent_keeps_the_previous_one_rather_than_failing()
     {
-        var result = Run("y\n\n\nnot-a-colour\n\n\n\n\n\n");
+        var result = Run("y\n\n\nnot-a-colour\n\n\n\n\n\n\n");
 
         Assert.IsNotNull(result);
         Assert.IsNull(result.Accent);
@@ -102,7 +104,7 @@ public class CustomizationWizardTests
             IconPath = "C:\\brand\\logo.ico",
         };
 
-        var result = Run("y\n\n\nnone\nnone\n\n\n\n\n", saved);
+        var result = Run("y\n\n\nnone\nnone\n\n\n\n\n\n", saved);
 
         Assert.IsNotNull(result);
         Assert.IsNull(result.Accent);
@@ -120,7 +122,7 @@ public class CustomizationWizardTests
         var writer = new StringWriter();
 
         CustomizationWizard.Run(
-            new StringReader("y\n\n\n\n\n\n\n\n\n"),
+            new StringReader("y\n\n\n\n\n\n\n\n\n\n"),
             writer,
             AppCustomization.Default with { Company = "Codis Ltd", Theme = AppTheme.Dark });
 
@@ -128,8 +130,107 @@ public class CustomizationWizardTests
 
         StringAssert.Contains(written, "Company name [Codis Ltd]");
         StringAssert.Contains(written, "Theme [light/dark] [dark]");
+        // The company here is kept by a blank answer, not typed fresh, so the narrower Fix 4(a)
+        // ruling suggests no prefix -- the prompt shows "none", the same as it would with no saved
+        // company at all.
+        StringAssert.Contains(written, "Namespace prefix [none]");
         StringAssert.Contains(written, "Validation layer [yes]");
         StringAssert.Contains(written, "Logging [no]");
         StringAssert.Contains(written, "Sample seed data [yes]");
+    }
+
+    [TestMethod]
+    public void A_namespace_prefix_is_collected()
+    {
+        var result = Run("y\n\n\n\n\n\nCodisLtd\n\n\n\n");
+
+        Assert.IsNotNull(result);
+        Assert.AreEqual("CodisLtd", result.NamespacePrefix);
+    }
+
+    /// <summary>A company just named is the likeliest prefix, so it is offered — the same courtesy
+    /// as a named company adopting the company title pattern. Blank accepts it.</summary>
+    [TestMethod]
+    public void Naming_a_company_offers_it_as_the_namespace_prefix()
+    {
+        var result = Run("y\nCodis Ltd\n\n\n\n\n\n\n\n\n");
+
+        Assert.IsNotNull(result);
+        Assert.AreEqual("CodisLtd", result.NamespacePrefix);
+    }
+
+    /// <summary>A company that cannot become an identifier must not be offered as one: the same
+    /// run would refuse it.</summary>
+    [TestMethod]
+    public void A_company_that_is_not_an_identifier_offers_no_prefix()
+    {
+        var result = Run("y\n3M\n\n\n\n\n\n\n\n\n");
+
+        Assert.IsNotNull(result);
+        Assert.AreEqual(string.Empty, result.NamespacePrefix);
+    }
+
+    /// <summary>An explicit prefix is not overwritten by the company suggestion.</summary>
+    [TestMethod]
+    public void An_existing_prefix_is_kept_over_the_company_suggestion()
+    {
+        var saved = AppCustomization.Default with { NamespacePrefix = "Acme" };
+
+        var result = Run("y\nCodis Ltd\n\n\n\n\n\n\n\n\n", saved);
+
+        Assert.IsNotNull(result);
+        Assert.AreEqual("Acme", result.NamespacePrefix);
+    }
+
+    [TestMethod]
+    public void A_malformed_namespace_prefix_keeps_the_previous_one()
+    {
+        var saved = AppCustomization.Default with { NamespacePrefix = "CodisLtd" };
+
+        var result = Run("y\n\n\n\n\n\nnot a namespace\n\n\n\n", saved);
+
+        Assert.IsNotNull(result);
+        Assert.AreEqual("CodisLtd", result.NamespacePrefix);
+    }
+
+    [TestMethod]
+    public void None_clears_a_remembered_namespace_prefix()
+    {
+        var saved = AppCustomization.Default with { NamespacePrefix = "CodisLtd" };
+
+        var result = Run("y\n\n\n\n\n\nnone\n\n\n\n", saved);
+
+        Assert.IsNotNull(result);
+        Assert.AreEqual(string.Empty, result.NamespacePrefix);
+    }
+
+    /// <summary>Ruling: a remembered company only earns the prefix suggestion when it is typed
+    /// fresh in THIS run. A blank answer echoes back the value the wizard started with, and an
+    /// existing user with a saved company and no prefix must not silently adopt one just by
+    /// pressing Enter through the wizard — unlike the title-pattern courtesy two lines above,
+    /// adopting a prefix moves every namespace in the app and rewrites both csprojs, App.xaml and
+    /// the validator stubs on the next regeneration.</summary>
+    [TestMethod]
+    public void A_remembered_company_kept_by_a_blank_answer_suggests_no_prefix()
+    {
+        var saved = AppCustomization.Default with { Company = "Codis Ltd" };
+
+        var result = Run("y\n\n\n\n\n\n\n\n\n\n", saved);
+
+        Assert.IsNotNull(result);
+        Assert.AreEqual(string.Empty, result.NamespacePrefix);
+    }
+
+    /// <summary>The other half of the same ruling: a company typed fresh in this run still earns
+    /// the suggestion, exactly as before.</summary>
+    [TestMethod]
+    public void A_freshly_typed_company_still_suggests_a_prefix()
+    {
+        var saved = AppCustomization.Default with { Company = "Codis Ltd" };
+
+        var result = Run("y\nAcme Corp\n\n\n\n\n\n\n\n\n", saved);
+
+        Assert.IsNotNull(result);
+        Assert.AreEqual("AcmeCorp", result.NamespacePrefix);
     }
 }

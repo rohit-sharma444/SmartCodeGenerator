@@ -1,0 +1,566 @@
+<html>
+<head>
+<meta charset="utf-8">
+<title>SmartCodeGenerator — User Manual</title>
+<style>
+  body { font-family: Calibri, sans-serif; font-size: 11pt; line-height: 1.4; }
+  h1 { font-size: 26pt; font-weight: normal; }
+  h2 { font-size: 18pt; font-weight: bold; page-break-before: always; }
+  h3 { font-size: 13pt; font-weight: bold; }
+  h4 { font-size: 11pt; font-weight: bold; }
+  code, pre { font-family: Consolas, monospace; font-size: 9.5pt; }
+  pre { background: #F3F4F6; padding: 8pt; border: 1pt solid #E5E7EB; }
+  table { border-collapse: collapse; width: 100%; font-size: 10pt; }
+  th, td { border: 1pt solid #BFBFBF; padding: 4pt 6pt; text-align: left; vertical-align: top; }
+  th { background: #E7E6E6; }
+  .note { background: #F3F4F6; border-left: 3pt solid #2563EB; padding: 6pt 10pt; }
+  .warn { background: #FDF2F2; border-left: 3pt solid #B91C1C; padding: 6pt 10pt; }
+  .subtitle { font-size: 13pt; color: #555555; }
+</style>
+</head>
+<body>
+
+<h1>SmartCodeGenerator</h1>
+<p class="subtitle">User Manual</p>
+<p>A command-line assistant that turns plain-English descriptions and existing data into working .NET projects.</p>
+
+<h2>1. About this manual</h2>
+
+<p>SmartCodeGenerator is an interactive command-line tool. You type instructions in ordinary English —
+<code>create employee class</code>, <code>build app: a library that lends books to members</code> — and it
+creates or edits real .NET code on disk.</p>
+
+<p>This manual covers the tool as an end user meets it: how to start it, what each command does, and how to
+drive the two flows that do the most work — generating a whole application, and editing the classes of a
+project. Chapter 15 is a complete command reference you can skim.</p>
+
+<h3>Conventions</h3>
+<table>
+<tr><th>Style</th><th>Meaning</th></tr>
+<tr><td><code>like this</code></td><td>Something you type, or a file or folder name.</td></tr>
+<tr><td><code>&lt;angle brackets&gt;</code></td><td>A value you supply.</td></tr>
+<tr><td><code>[square brackets]</code></td><td>An optional part of a command.</td></tr>
+<tr><td><code>a|b</code></td><td>Alternatives — type one of them.</td></tr>
+</table>
+
+<h2>2. Getting started</h2>
+
+<h3>Starting the tool</h3>
+<p>Run the executable. It prints a banner, tells you whether AI recognition is enabled, and shows the prompt:</p>
+<pre>CodeGenerator &gt;&gt; </pre>
+<p>Type <code>help</code> to list every command, and <code>exit</code> to leave. Press <strong>TAB</strong> at
+the prompt for command suggestions.</p>
+
+<h3>Where your work is saved</h3>
+<p>Everything the tool creates goes under a single folder called the <em>workspace root</em>. It is chosen like
+this, in order:</p>
+<ol>
+  <li>the <code>PROJECTPATH</code> environment variable, if it is set;</li>
+  <li>otherwise the current directory — and if you launched from a build-output folder such as
+      <code>bin\Debug\...</code>, the tool climbs out of it so generated code does not end up buried there.</li>
+</ol>
+<div class="note"><p><strong>Check yours before you generate anything.</strong> On Windows,
+<code>echo %PROJECTPATH%</code> tells you where your projects will appear. Setting it once saves confusion
+later, because the tool reports the full path of everything it writes and that path will not be your current
+directory if the variable is set.</p></div>
+
+<h3>Running a single command without the prompt</h3>
+<p>Pass a command as an argument and the tool runs just that command and exits, through exactly the same
+pipeline as the interactive prompt:</p>
+<pre>CodeGenerator "create console project EmployeeManagement"</pre>
+
+<h3>Scripting the tool</h3>
+<p>You can pipe a sequence of commands into the tool. When input is piped, it <strong>never prompts</strong> —
+every question that would normally be asked is skipped, so a script always produces the same result. Anything
+you would have answered interactively must instead be typed on the command line (see chapter 7):</p>
+<pre>build app: a shop that sells books company "Codis Ltd" theme dark
+approve console
+exit</pre>
+
+<h3>Getting help</h3>
+<table>
+<tr><th>Command</th><th>What it does</th></tr>
+<tr><td><code>help</code></td><td>Lists every command with an example.</td></tr>
+<tr><td><code>history</code></td><td>The last 20 commands. It does not record itself.</td></tr>
+<tr><td><code>clear</code> / <code>cls</code></td><td>Clears the screen. History is kept.</td></tr>
+<tr><td><code>batch</code></td><td>Type several commands, review what the tool understood, then run only the ones you approve.</td></tr>
+<tr><td><code>demo</code></td><td>Runs the built-in demo workflow.</td></tr>
+<tr><td><code>exit</code></td><td>Leaves the tool.</td></tr>
+</table>
+
+<h2>3. Core ideas</h2>
+
+<h3>Projects</h3>
+<p>A project is an ordinary .NET project on disk, inside your workspace root. One project is
+<em>current</em> at a time, and class commands act on it. Use <code>list projects</code>,
+<code>use project &lt;name&gt;</code> and <code>current project</code> to move around.</p>
+
+<h3>Two ways to create code</h3>
+<table>
+<tr><th>Flow</th><th>Use it when</th><th>Chapter</th></tr>
+<tr><td><code>build app</code></td><td>You want a whole working application — model classes, data access, validation and a front end — from a description or a data file.</td><td>4–8</td></tr>
+<tr><td>Project and class commands</td><td>You want to build up or edit a project piece by piece: classes, properties, methods, interfaces, validation rules.</td><td>9–11</td></tr>
+</table>
+
+<h3>The <code>.codegen</code> folder</h3>
+<p>The tool keeps small files of remembered state beside your work, including the customization answers it
+offers back to you next time (<code>.codegen/app-profile.json</code>, chapter 7). They are safe to delete;
+you will simply be asked again.</p>
+
+<h2>4. Building an application: the guided flow</h2>
+
+<p>The <code>build app</code> command is the centre of the tool. It asks a short series of questions, works out
+a candidate set of classes, shows them to you, and only writes code once you approve.</p>
+
+<h3>Starting it</h3>
+<table>
+<tr><th>Command</th><th>Effect</th></tr>
+<tr><td><code>build app</code></td><td>Asks for the description first, then everything else.</td></tr>
+<tr><td><code>build app: &lt;description&gt;</code></td><td>Skips the description question — you have already answered it.</td></tr>
+</table>
+
+<h3>The questions, in order</h3>
+<ol>
+  <li><strong>What are you building?</strong> A sentence of plain English:
+      <code>a library that lends books to members</code>. Press Enter to skip it if you are pointing at a data
+      file instead.</li>
+  <li><strong>Which kind of application?</strong> Chosen from a list — see chapter 8.</li>
+  <li><strong>Do you have existing data?</strong> If yes, you name the format and the file, and the file becomes
+      the source of truth for the model (chapter 5).</li>
+  <li><strong>Customize appearance and features?</strong> Optional. Answering <code>n</code> keeps the defaults;
+      answering <code>y</code> opens nine short prompts (chapter 7).</li>
+</ol>
+<p>At any question, <code>c</code> cancels the whole thing and nothing is written.</p>
+
+<h3>Discovery</h3>
+<p>From a description, the tool works out which classes your domain needs. It reads a local Wikipedia
+knowledge store and may fetch from Wikipedia the first time it meets a topic, which is why the first run on a
+new subject can pause for a moment. It then prints the candidate model — each class, where it came from, its
+fields, and any relationships it found:</p>
+<pre>Candidate model (10 entities):
+  - Shop [Seed] { Name:string, Address:string, City:string }
+  - Book [Wiki] { Title:string, Author:string, Isbn:string, Published:DateTime }
+  - Manuscript [Wiki] { Number:string, IssuedOn:DateTime, BookId:int }  -&gt; Book</pre>
+<p><code>[Seed]</code> means the class came from your own words; <code>[Wiki]</code> means it was read out of an
+article. The arrow shows a relationship the tool inferred.</p>
+<div class="note"><p><strong>If no topic is recognized</strong> the tool says so and shows only the classes it
+took from your words. A very short description — two or three words — often finds nothing. Add a few more
+words about what the system does, or add the classes by hand in the review loop.</p></div>
+
+<h2>5. Building from your own data</h2>
+
+<p>If you already have the data, it is a better source than any description: the tool reads the real columns and
+types instead of guessing. There is no Wikipedia lookup on this path, so it is fast and works offline.</p>
+
+<h3>Naming the source inline</h3>
+<pre>build app: order tracking from csv D:\data\orders.csv
+build app from excel D:\data\shop.xlsx</pre>
+<table>
+<tr><th>Format</th><th>Notes</th></tr>
+<tr><td><code>csv</code></td><td>Comma-separated text with a header row.</td></tr>
+<tr><td><code>txt</code></td><td>Delimited text.</td></tr>
+<tr><td><code>json</code></td><td>An array of objects.</td></tr>
+<tr><td><code>excel</code></td><td>An <code>.xlsx</code> workbook. Each visible sheet becomes a class; hidden sheets are ignored.</td></tr>
+<tr><td><code>sql</code></td><td>Recognized but not supported in this build — the tool tells you so rather than failing quietly.</td></tr>
+</table>
+<div class="warn"><p><strong>The location is taken as the rest of the line</strong>, because Windows paths
+contain spaces. Anything you want to add after it must be one of the recognized options in chapter 7 —
+otherwise it becomes part of the path.</p></div>
+
+<h3>Normalization</h3>
+<p>Real spreadsheets repeat themselves. The tool inspects what you gave it and reports what it found: a
+repeating group of columns (<code>Item1</code>, <code>Item2</code>, …), a column that depends on only part of
+the key, a value that should be its own table. Each finding is offered with an explanation, and you choose
+which to apply. Applying a finding splits the data into properly separated classes; declining keeps your
+columns exactly as they are.</p>
+<p>Every change you accept is remembered, so <code>why</code> in the review loop can explain a class you never
+named yourself. When input is piped, add <code>normalize</code> to the command line to accept every finding, or
+leave it off to accept none — that way a script is deterministic.</p>
+
+<h3>Your rows come with it</h3>
+<p>Rows from your file are written into the generated project as starting data, and loaded on first run. If a
+row cap applied, the tool says so out loud rather than silently dropping data.</p>
+
+<h2>6. Reviewing the model before anything is written</h2>
+
+<p>Nothing is generated until you approve. The review loop prints the model, the application type, and any
+customization you chose, then waits. When a console is available you pick actions from a list; when input is
+piped you type them.</p>
+
+<table>
+<tr><th>Action</th><th>What it does</th></tr>
+<tr><td><code>approve</code> (<code>a</code>)</td><td>Generates the application. See below for the options.</td></tr>
+<tr><td><code>add &lt;name&gt;</code></td><td>Adds a class. The name keeps the shape you type, so <code>add cash register</code> becomes one class.</td></tr>
+<tr><td><code>remove &lt;name&gt;</code></td><td>Removes a class.</td></tr>
+<tr><td><code>rename &lt;old&gt; &lt;new&gt;</code></td><td>Renames a class.</td></tr>
+<tr><td><code>field &lt;class&gt; &lt;name&gt;[:&lt;type&gt;]</code></td><td>Adds a field. Omit the type to have it inferred; explicit types are <code>string</code>, <code>int</code>, <code>decimal</code>, <code>bool</code>, <code>DateTime</code>.</td></tr>
+<tr><td><code>unfield &lt;class&gt; &lt;name&gt;</code></td><td>Removes a field.</td></tr>
+<tr><td><code>why [name]</code></td><td>Explains the tool's decisions. Bare, it groups every decision by outcome; with a name, it shows that name's whole trail — the stage, the reason, and the evidence.</td></tr>
+<tr><td><code>cancel</code> (<code>c</code>)</td><td>Abandons the model. Nothing is written.</td></tr>
+</table>
+
+<h3>Approving</h3>
+<pre>approve                  generates using the type you chose at the start
+approve webapi           overrides the type
+approve webapi sqlite    ...and uses a SQLite database instead of JSON files</pre>
+<p>Interactively, <code>approve</code> asks for the type and (where it applies) the storage backend through
+pickers, with your earlier choice pre-selected so Enter simply confirms it.</p>
+<div class="note"><p>An empty model cannot be generated — if discovery found nothing, add at least one class
+first.</p></div>
+
+<h2>7. Customizing the generated application</h2>
+
+<p>By default the generated application is plain and unbranded. You can change how it looks, what it is called,
+and which optional layers it contains.</p>
+
+<h3>Three ways to set it</h3>
+<h4>On the command line</h4>
+<p>Options go <strong>last</strong> on the line, after any data source:</p>
+<pre>build app: a shop that sells books company "Codis Ltd" theme dark accent #0B6E4F
+build app: order tracking from csv D:\data\orders.csv company "Codis Ltd" noseed</pre>
+<h4>Through the wizard</h4>
+<p>Answer <code>y</code> to <em>Customize appearance and features?</em> and the tool asks nine short questions,
+each showing the value it would keep in brackets. Press Enter to accept what is shown, or type
+<code>none</code> to clear an optional one:</p>
+<pre>  Company name [Codis Ltd]&gt;
+  Theme [light/dark] [dark]&gt;
+  Accent colour (#rrggbb) [none]&gt;
+  Icon path (.ico or .png) [none]&gt;
+  Window title [{company} - {app}]&gt;
+  Namespace prefix [CodisLtd]&gt;
+  Validation layer [yes]&gt;
+  Logging [no]&gt;
+  Sample seed data [yes]&gt;</pre>
+<p>Two of them offer you something derived from an earlier answer: naming a company adopts the
+<code>{company} - {app}</code> title, and a company you have just typed is offered as the namespace prefix
+with the spaces removed. Both are only suggestions — the bracket shows exactly what Enter will accept.</p>
+<p>Answering <code>n</code> at the gate is not the same as cancelling: the build goes ahead with whatever the
+command line already asked for. Typing <code>c</code> cancels.</p>
+<h4>From last time</h4>
+<p>Your answers are remembered in <code>.codegen/app-profile.json</code> and offered back as the starting point
+on the next run. Options typed on the command line always win over remembered ones. The remembered profile is
+deliberately ignored when input is piped, so a script cannot be changed by a file it never mentioned.</p>
+
+<h3>The settings</h3>
+<table>
+<tr><th>Option</th><th>Effect on the generated application</th></tr>
+<tr><td><code>company "&lt;name&gt;"</code></td><td>Sets <code>&lt;Company&gt;</code>, <code>&lt;Authors&gt;</code> and <code>&lt;Copyright&gt;</code> in the project file, adds a <code>// Copyright (c) &lt;year&gt; &lt;name&gt;.</code> banner to every generated C# file, and — unless you override the title — puts the company in the window title.</td></tr>
+<tr><td><code>title "&lt;pattern&gt;"</code></td><td>The window or page title. <code>{company}</code> and <code>{app}</code> are substituted, so <code>"{company} - {app}"</code> gives <em>Codis Ltd - Shop</em>. With no company the placeholder and its separator disappear cleanly rather than leaving a dangling dash.</td></tr>
+<tr><td><code>theme light|dark</code></td><td>Colours the desktop front ends. WPF gets a theme resource dictionary merged into the application; Windows Forms gets the colours applied directly.</td></tr>
+<tr><td><code>accent #rrggbb</code></td><td>An accent colour. Valid on its own — "the normal look, in our colour". A malformed colour is ignored rather than failing the build.</td></tr>
+<tr><td><code>icon &lt;path&gt;</code></td><td>Copies a <code>.ico</code> or <code>.png</code> into the project as the application icon. A <code>.ico</code> also becomes the icon the built <code>.exe</code> carries.</td></tr>
+<tr><td><code>namespace &lt;prefix&gt;</code></td><td>Puts the generated code under your own namespace root: <code>CodisLtd.Shop.Models</code> rather than <code>Shop.Models</code>. The project name, the folder, the assembly name, the database file and the connection-string environment variable are all deliberately left alone — only namespaces move. <code>namespace none</code> clears a remembered prefix. Unlike the other settings, a prefix that is not a legal C# namespace is refused rather than ignored, because it would not compile.</td></tr>
+<tr><td><code>novalidation</code></td><td>Omits the validation layer entirely — no <code>Validation</code> folder and no per-class validators.</td></tr>
+<tr><td><code>logging</code></td><td>Adds a small logging layer (off by default). The repository logs each write, and each rejected write when validation is on.</td></tr>
+<tr><td><code>noseed</code></td><td>Omits the generated sample rows. Rows imported from your own data file are unaffected — those always come with the project.</td></tr>
+</table>
+<div class="warn"><p><strong>One quirk worth knowing.</strong> Options are read from the end of the line
+backwards, so a description whose final words happen to spell an option is read as that option. Put the
+description first, or quote it, and this never bites.</p></div>
+
+<h2>8. What gets generated</h2>
+
+<h3>Application types</h3>
+<table>
+<tr><th>Type</th><th>Name to type</th><th>What you get</th></tr>
+<tr><td>WPF (default)</td><td><code>wpf</code></td><td>A windowed CRUD application, one tab per class.</td></tr>
+<tr><td>Windows Forms</td><td><code>winforms</code></td><td>The same, built on Windows Forms.</td></tr>
+<tr><td>Console</td><td><code>console</code></td><td>A menu-driven CRUD application.</td></tr>
+<tr><td>Web API</td><td><code>webapi</code></td><td>A minimal API with REST endpoints per class.</td></tr>
+<tr><td>Class library</td><td><code>classlib</code></td><td>The shared core only — no entry point.</td></tr>
+<tr><td>Worker</td><td><code>worker</code></td><td>A background service that exercises the repositories.</td></tr>
+</table>
+
+<h3>Storage</h3>
+<p>By default each class is stored in its own JSON file beside the built executable — no database, nothing to
+install. Add <code>sqlite</code> at <code>approve</code> for a real database through EF Core instead; the
+schema is created on first run. The connection string can be overridden at run time with an environment
+variable named after the project, such as <code>SHOP_DB</code>.</p>
+<div class="note"><p>SQLite is available for every type except WPF and Windows Forms, whose shared view models
+read the JSON store directly. The tool tells you rather than generating something that cannot work.</p></div>
+
+<h3>The project layout</h3>
+<pre>Shop/
+  Shop.csproj
+  Models/        one class per entity
+  Data/          the store, one repository per class, sample data
+  Validation/    the rule interfaces and one validator per class   (omitted by novalidation)
+  Logging/       AppLog.cs                                          (only with logging)
+  Assets/        your icon                                          (only with icon)
+  Views/ ViewModels/   the front end, for the desktop types
+Shop.Tests/      a companion test project, generated with the app</pre>
+<p>Each class gets a typed repository with <code>GetAll</code>, <code>GetById</code>, <code>Create</code>,
+<code>Update</code> and <code>Delete</code>. Each validator comes in two halves: a
+<code>.Generated.cs</code> file that is rewritten every time, and a <code>.Custom.cs</code> file that is written
+once and left alone afterwards — that is where your own rules go, and regenerating will not discard them.</p>
+
+<h3>Regenerating over an existing project</h3>
+<p>Running <code>build app</code> again against an existing project reuses it: generated sources are
+overwritten, but the project file and anything you have edited by hand are left in place.</p>
+
+<h2>9. Working with projects and classes</h2>
+
+<h3>Projects</h3>
+<table>
+<tr><th>Command</th><th>What it does</th></tr>
+<tr><td><code>create project &lt;name&gt;</code></td><td>Creates a project.</td></tr>
+<tr><td><code>create console project &lt;name&gt;</code></td><td>A console project.</td></tr>
+<tr><td><code>create class library &lt;name&gt;</code></td><td>A class library.</td></tr>
+<tr><td><code>create webapi project &lt;name&gt;</code></td><td>A Web API project.</td></tr>
+<tr><td><code>create wpf project &lt;name&gt;</code></td><td>A WPF project.</td></tr>
+<tr><td><code>create blazor project &lt;name&gt;</code></td><td>A Blazor project.</td></tr>
+<tr><td><code>create worker service &lt;name&gt;</code></td><td>A worker service.</td></tr>
+<tr><td><code>list projects</code></td><td>Lists what you have.</td></tr>
+<tr><td><code>use project &lt;name&gt;</code></td><td>Switches the current project.</td></tr>
+<tr><td><code>current project</code> / <code>show project</code></td><td>Reports the current project.</td></tr>
+</table>
+
+<h3>Classes</h3>
+<table>
+<tr><th>Command</th><th>What it does</th></tr>
+<tr><td><code>create class</code></td><td>Creates a class — <code>create employee class</code>.</td></tr>
+<tr><td><code>create class &lt;name&gt; with properties</code></td><td>Creates a class and its properties in one line: <code>create employee class emdcode:int, Name:string</code>.</td></tr>
+<tr><td><code>list classes</code></td><td>Lists the classes in the current project.</td></tr>
+<tr><td><code>list classes in &lt;project&gt;</code></td><td>Lists another project's classes.</td></tr>
+<tr><td><code>show class &lt;name&gt;</code></td><td>Prints the source.</td></tr>
+<tr><td><code>rename class &lt;old&gt; to &lt;new&gt;</code></td><td>Renames a class.</td></tr>
+<tr><td><code>&lt;class&gt; inherits &lt;base&gt;</code></td><td>Adds a base class, keeping any interfaces. Also <code>extends</code>, <code>derives from</code>.</td></tr>
+<tr><td><code>delete class &lt;name&gt;</code></td><td>Moves it to <code>DeletedClasses</code> — not gone.</td></tr>
+<tr><td><code>restore class &lt;name&gt;</code> / <code>restore last class</code></td><td>Brings it back.</td></tr>
+<tr><td><code>list deleted classes</code> / <code>show deleted classes</code></td><td>Lists what is in the recycle bin.</td></tr>
+</table>
+
+<h3>Properties, methods and interfaces</h3>
+<table>
+<tr><th>Command</th><th>What it does</th></tr>
+<tr><td><code>add property &lt;name&gt; &lt;type&gt; to &lt;class&gt;</code></td><td>Adds a property.</td></tr>
+<tr><td><code>list properties &lt;class&gt;</code> / <code>show properties &lt;class&gt;</code></td><td>Lists them.</td></tr>
+<tr><td><code>rename property &lt;old&gt; to &lt;new&gt; in &lt;class&gt;</code></td><td>Renames one. <code>field</code> works for <code>property</code>, and <code>on</code>/<code>of</code> for <code>in</code>.</td></tr>
+<tr><td><code>remove property &lt;name&gt; from &lt;class&gt;</code></td><td>Removes one.</td></tr>
+<tr><td><code>add method &lt;name&gt; to &lt;class&gt;</code></td><td>Adds a method.</td></tr>
+<tr><td><code>show methods &lt;class&gt;</code></td><td>Lists a class's methods.</td></tr>
+<tr><td><code>create interface &lt;name&gt;</code></td><td>Creates an interface.</td></tr>
+</table>
+
+<h2>10. Validation rules</h2>
+
+<p>Rules are declared in English and generated into a validator for the class.</p>
+<table>
+<tr><th>Command</th><th>What it does</th></tr>
+<tr><td><code>add validation &lt;rule&gt; on &lt;property&gt; in &lt;class&gt;</code></td><td>A field-level rule.</td></tr>
+<tr><td><code>add business validation &lt;rule&gt; in &lt;class&gt;</code></td><td>A rule about the record as a whole: <code>EndDate must be after StartDate</code>.</td></tr>
+<tr><td><code>show validation &lt;class&gt;</code></td><td>The field rules on a class.</td></tr>
+<tr><td><code>show business validation &lt;class&gt;</code></td><td>The record-level rules.</td></tr>
+<tr><td><code>generate validator for &lt;class&gt;</code></td><td>Writes the validator.</td></tr>
+</table>
+<h3>Rules you can write</h3>
+<ul>
+  <li><code>required</code> — also phrased <code>should not be blank</code></li>
+  <li><code>must be between &lt;min&gt; and &lt;max&gt;</code></li>
+  <li><code>length must be between &lt;min&gt; and &lt;max&gt;</code></li>
+  <li><code>must be greater than &lt;n&gt;</code> / <code>must be less than &lt;n&gt;</code></li>
+  <li><code>must be a valid email</code></li>
+  <li><code>must match &lt;regex&gt;</code></li>
+  <li><code>must be &lt;value&gt;, &lt;value&gt;, ...</code> — one of a list</li>
+</ul>
+<pre>add validation must be between 18 and 65 on Age in Employee
+add business validation EndDate must be after StartDate in Booking</pre>
+
+<h2>11. Checking and documenting a project</h2>
+<table>
+<tr><th>Command</th><th>What it does</th></tr>
+<tr><td><code>validate project</code></td><td>Compiles every <code>.cs</code> file in the project as one workspace and reports the real errors. Also <code>check project</code>, <code>compile project</code>.</td></tr>
+<tr><td><code>analyze project</code></td><td>Analyzes the current project.</td></tr>
+<tr><td><code>analyze class &lt;name&gt;</code></td><td>Analyzes one class.</td></tr>
+<tr><td><code>generate design document</code></td><td>Writes a design document for the project. Also <code>generate documentation</code>, <code>generate project report</code>.</td></tr>
+</table>
+<div class="note"><p><code>validate project</code> is the honest check: it compiles rather than pattern-matching,
+so what it reports is what a build would report.</p></div>
+
+<h2>12. AI-assisted recognition</h2>
+
+<p>The tool recognizes commands by rule first. Optionally it can also use a local AI model to work out what an
+unrecognized line probably meant. It is <strong>off by default</strong>, runs entirely on your machine, and only
+ever <em>suggests</em> — it never runs a command you did not confirm.</p>
+<table>
+<tr><th>Command</th><th>What it does</th></tr>
+<tr><td><code>ai enable</code> / <code>ai disable</code></td><td>Turns it on or off. After enabling, restart the tool to load the model, then run <code>ai reindex</code>.</td></tr>
+<tr><td><code>ai status</code> (or just <code>ai</code>)</td><td>Whether it is on, the model and index in use, both confidence gates, and how many decisions have been logged.</td></tr>
+<tr><td><code>ai reindex</code></td><td>Rebuilds the phrase index from the current commands. Run it after enabling, or whenever <code>ai status</code> reports REINDEX REQUIRED.</td></tr>
+<tr><td><code>ai why</code></td><td>Explains the last AI reading: what you typed, how it was read, the supporting examples, and whether you accepted it.</td></tr>
+<tr><td><code>ai mode retrieval</code></td><td>How unrecognized input is read. Only <code>retrieval</code> works today; <code>generative</code> and <code>hybrid</code> are declined.</td></tr>
+</table>
+
+<h3>Learned commands</h3>
+<p>The tool also remembers corrections you make, so a phrasing you use often is recognized next time.</p>
+<table>
+<tr><th>Command</th><th>What it does</th></tr>
+<tr><td><code>show learning</code></td><td>Lists learned command signatures and their confidence. Also <code>list learning</code>, <code>view learning</code>.</td></tr>
+<tr><td><code>reset learning</code></td><td>Clears the learned memory. Also <code>clear learning</code>, <code>forget learning</code>.</td></tr>
+</table>
+
+<h2>13. Two worked examples</h2>
+
+<h3>A branded desktop application from a description</h3>
+<pre>CodeGenerator &gt;&gt; build app: a library that lends books to members company "Codis Ltd" theme dark</pre>
+<ol>
+  <li>Choose <strong>WPF</strong> when asked for the application type.</li>
+  <li>Answer <strong>no</strong> to existing data.</li>
+  <li>Answer <strong>n</strong> to the customization step — the command line already said what you wanted.</li>
+  <li>Read the candidate model. Remove anything irrelevant (<code>remove Manuscript</code>), add anything
+      missing (<code>add late fee</code>), then <code>approve</code>.</li>
+  <li>Open the reported folder and run <code>dotnet build</code>. The window is titled
+      <em>Codis Ltd - LibraryThatLendsBooksToMembers</em>, painted dark, and every file carries the copyright
+      banner.</li>
+</ol>
+
+<h3>A Web API from a spreadsheet</h3>
+<pre>CodeGenerator &gt;&gt; build app: order tracking from excel D:\data\shop.xlsx</pre>
+<ol>
+  <li>Choose <strong>Web API</strong>.</li>
+  <li>Read the normalization findings and accept the ones that make sense.</li>
+  <li><code>approve webapi sqlite</code> to store the data in SQLite instead of JSON files.</li>
+  <li><code>dotnet run</code> the generated project; the REST endpoints serve your own rows.</li>
+</ol>
+
+<h2>14. Troubleshooting</h2>
+<table>
+<tr><th>What you see</th><th>What it means</th></tr>
+<tr><td>Generated files are not where you expected</td><td><code>PROJECTPATH</code> is set and points elsewhere. The tool prints the full path of everything it writes — trust that over your current directory.</td></tr>
+<tr><td>"No topic recognized online"</td><td>The description was too short or too unusual to match an article. Add a few words about what the system does, or add the classes by hand in the review loop.</td></tr>
+<tr><td>"Nothing to generate — the model is empty"</td><td>Discovery found no classes. Add at least one with <code>add &lt;name&gt;</code> before approving.</td></tr>
+<tr><td>Building the generated project reports a file it cannot find, and the file is plainly there</td><td>The path is too long for Windows. Generate under a shorter workspace root.</td></tr>
+<tr><td>SQLite was refused for a desktop application</td><td>WPF and Windows Forms read the JSON store directly. Choose another type, or keep JSON.</td></tr>
+<tr><td>Your own validation rules disappeared</td><td>They should not: rules go in <code>&lt;Class&gt;Validator.Custom.cs</code>, which is written once and never rewritten. The <code>.Generated.cs</code> half is the one refreshed each run. The single exception is the file's own <code>namespace</code> line, which is repointed if you change the namespace prefix — otherwise the file would no longer compile alongside the rest of the project. Your rules themselves are never touched.</td></tr>
+<tr><td>A piped script behaves differently from typing the same commands</td><td>By design: piped input never prompts, and the remembered customization profile is ignored. State what you need on the command line.</td></tr>
+</table>
+
+<h2>15. Command reference</h2>
+<p>Every command, by category. This is the same catalog <code>help</code> prints.</p>
+<h3>AI</h3>
+<table>
+<tr><th>Command</th><th>Description</th><th>Example</th></tr>
+<tr><td><code>ai disable</code></td><td>Turns AI recognition off. Command recognition returns to the rule-based path exactly as it behaves with AI absent.</td><td><code>ai disable</code></td></tr>
+<tr><td><code>ai enable</code></td><td>Turns AI recognition on in ai.json. Off by default. Restart the CLI afterwards to load the model, then run &#x27;ai reindex&#x27;.</td><td><code>ai enable</code></td></tr>
+<tr><td><code>ai mode &lt;retrieval|generative|hybrid&gt;</code></td><td>Sets how AI reads unrecognized input. Only retrieval works today; generative and hybrid are declined until a later phase.</td><td><code>ai mode retrieval</code></td></tr>
+<tr><td><code>ai reindex</code></td><td>Rebuilds the phrase index from the current commands. Run it after enabling AI, or whenever &#x27;ai status&#x27; reports REINDEX REQUIRED.</td><td><code>ai reindex</code></td></tr>
+<tr><td><code>ai status</code></td><td>Reports whether AI command recognition is on, the model and index in use, both confidence gates, and how many decisions have been logged. Plain &#x27;ai&#x27; does the same.</td><td><code>ai status</code></td></tr>
+<tr><td><code>ai why</code></td><td>Explains the last AI reading: what you typed, how it was read, the supporting examples, and whether you accepted it.</td><td><code>ai why</code></td></tr>
+</table>
+<h3>Analysis</h3>
+<table>
+<tr><th>Command</th><th>Description</th><th>Example</th></tr>
+<tr><td><code>analyze class &lt;class name&gt;</code></td><td>Analyzes a specific class.</td><td><code>analyze class Employee</code></td></tr>
+<tr><td><code>analyze project</code></td><td>Analyzes the current project.</td><td><code>analyze project</code></td></tr>
+<tr><td><code>validate project</code></td><td>Compiles every .cs file in the project as one workspace and reports real errors. Aliases: check project, compile project.</td><td><code>validate project</code></td></tr>
+</table>
+<h3>Build App</h3>
+<table>
+<tr><th>Command</th><th>Description</th><th>Example</th></tr>
+<tr><td><code>add &lt;name&gt;</code></td><td>Review loop: adds an entity to the candidate model. The name keeps the shape you type, so a compound survives; several words become one class name.</td><td><code>add cash register</code></td></tr>
+<tr><td><code>approve [target] [sqlite]</code></td><td>Review loop: generates the app using the type chosen at the start. Name a target to override it: wpf (default), winforms, console, webapi, classlib, worker. Add &#x27;sqlite&#x27; for EF Core persistence (JSON is the default; the wpf and winforms targets are JSON-only). Alias: a.</td><td><code>approve webapi sqlite</code></td></tr>
+<tr><td><code>build app</code></td><td>Starts the same guided flow, asking for the description first, then the application type, then whether you already have data.</td><td><code>build app</code></td></tr>
+<tr><td><code>build app: &lt;description&gt;</code></td><td>Describes a system in plain English, then asks which kind of app to build and whether you have data, discovers a domain model, and opens a review loop before any code is written.</td><td><code>build app: a library that lends books to members</code></td></tr>
+<tr><td><code>build app: &lt;description&gt; [customization options]</code></td><td>Customizes the generated application. Options go LAST on the line, after any data source: company &quot;&lt;name&gt;&quot; sets the company (used in the project metadata, the window title and a copyright header); theme light|dark and accent #rrggbb colour the desktop front ends; icon &lt;path&gt; supplies a .ico or .png; title &quot;&lt;pattern&gt;&quot; overrides the window title, where {company} and {app} are substituted; namespace &lt;prefix&gt; puts the generated code under that namespace root (CodisLtd.Shop), leaving the project and assembly names alone.</td><td><code>build app: a shop company &quot;Codis Ltd&quot; namespace CodisLtd theme dark</code></td></tr>
+<tr><td><code>build app: &lt;description&gt; [novalidation] [logging] [noseed]</code></td><td>Chooses which optional layers are generated. &#x27;novalidation&#x27; omits the Validation folder and its per-model validators; &#x27;logging&#x27; adds a logging layer (off by default); &#x27;noseed&#x27; omits the sample seed rows (rows imported from your own data file are unaffected). Interactively these are asked by the &#x27;Customize appearance and features?&#x27; step, which remembers your answers in .codegen/app-profile.json.</td><td><code>build app: a shop novalidation logging noseed</code></td></tr>
+<tr><td><code>build app: &lt;description&gt; from &lt;format&gt; &lt;location&gt;</code></td><td>Builds the model from existing data with no prompts when piped; interactively you are still asked the application type. Formats: csv, txt, json, excel (sql is not in this build yet). Add &#x27;normalize&#x27; to apply every normalization change the data needs.</td><td><code>build app: order tracking from csv D:\data\orders.csv normalize</code></td></tr>
+<tr><td><code>cancel</code></td><td>Review loop: abandons the model without generating anything. Alias: c.</td><td><code>cancel</code></td></tr>
+<tr><td><code>field &lt;entity&gt; &lt;name&gt;[:&lt;type&gt;]</code></td><td>Review loop: adds a field to an entity. Omit the type to have it inferred; explicit types are string, int, decimal, bool or DateTime.</td><td><code>field Book Title:string</code></td></tr>
+<tr><td><code>remove &lt;name&gt;</code></td><td>Review loop: removes an entity from the candidate model.</td><td><code>remove Reservation</code></td></tr>
+<tr><td><code>rename &lt;old&gt; &lt;new&gt;</code></td><td>Review loop: renames an entity in the candidate model.</td><td><code>rename Member Borrower</code></td></tr>
+<tr><td><code>unfield &lt;entity&gt; &lt;name&gt;</code></td><td>Review loop: removes a field from an entity.</td><td><code>unfield Book Title</code></td></tr>
+<tr><td><code>why [name]</code></td><td>Review loop: explains what discovery decided. Bare, it reports every decision grouped by outcome; with a name, it shows that name&#x27;s whole trail — the stage, the reason and the evidence behind each step.</td><td><code>why Cash register</code></td></tr>
+</table>
+<h3>Class</h3>
+<table>
+<tr><th>Command</th><th>Description</th><th>Example</th></tr>
+<tr><td><code>&lt;class name&gt; inherits &lt;base class name&gt;</code></td><td>Adds a base class to a class, keeping any existing interfaces. Aliases: extends, derives from.</td><td><code>Order inherits AuditableBase</code></td></tr>
+<tr><td><code>create class</code></td><td>Creates a new class.</td><td><code>create employee class</code></td></tr>
+<tr><td><code>create class &lt;class name&gt; with properties</code></td><td>Creates a new class with the specified properties.</td><td><code>create employee class emdcode:int, Name:string</code></td></tr>
+<tr><td><code>delete class</code></td><td>Moves a class to DeletedClasses.</td><td><code>delete class Employee</code></td></tr>
+<tr><td><code>list classes</code></td><td>Lists all classes in the current project.</td><td><code>list classes</code></td></tr>
+<tr><td><code>list classes in &lt;project name&gt;</code></td><td>Lists all classes in a project.</td><td><code>list classes in &lt;EmployeeManagement&gt;</code></td></tr>
+<tr><td><code>list deleted classes</code></td><td>Lists all deleted classes.</td><td><code>list deleted classes</code></td></tr>
+<tr><td><code>rename class</code></td><td>Rename a class.</td><td><code>rename class Employee to &lt;newclass&gt;</code></td></tr>
+<tr><td><code>restore class</code></td><td>Restores a deleted class.</td><td><code>restore class Employee</code></td></tr>
+<tr><td><code>show class</code></td><td>Displays the class source code.</td><td><code>show class Employee</code></td></tr>
+</table>
+<h3>Documentation</h3>
+<table>
+<tr><th>Command</th><th>Description</th><th>Example</th></tr>
+<tr><td><code>generate design document</code></td><td>Generates a design document for the current project.</td><td><code>generate design document</code></td></tr>
+<tr><td><code>generate documentation</code></td><td>Generates a design document for the current project.</td><td><code>generate documentation</code></td></tr>
+<tr><td><code>generate project report</code></td><td>Generates a design document for the current project.</td><td><code>generate project report</code></td></tr>
+</table>
+<h3>Interfaces</h3>
+<table>
+<tr><th>Command</th><th>Description</th><th>Example</th></tr>
+<tr><td><code>create interface &lt;interface name&gt;</code></td><td>Creates a new interface.</td><td><code>create interface IRepository</code></td></tr>
+</table>
+<h3>Learning</h3>
+<table>
+<tr><th>Command</th><th>Description</th><th>Example</th></tr>
+<tr><td><code>reset learning</code></td><td>Clears the learned command memory. Aliases: clear learning, forget learning.</td><td><code>reset learning</code></td></tr>
+<tr><td><code>show learning</code></td><td>Lists learned command signatures and their confidence. Aliases: list learning, view learning.</td><td><code>show learning</code></td></tr>
+</table>
+<h3>Methods</h3>
+<table>
+<tr><th>Command</th><th>Description</th><th>Example</th></tr>
+<tr><td><code>add method &lt;method name&gt; to &lt;class name&gt;</code></td><td>Adds a method to a class.</td><td><code>add method Save to Employee</code></td></tr>
+<tr><td><code>show methods &lt;class name&gt;</code></td><td>Lists all methods in a class.</td><td><code>show methods of Employee</code></td></tr>
+</table>
+<h3>Projects</h3>
+<table>
+<tr><th>Command</th><th>Description</th><th>Example</th></tr>
+<tr><td><code>create blazor project</code></td><td>Creates a new Blazor project.</td><td><code>create blazor project EmployeeManagement</code></td></tr>
+<tr><td><code>create class library</code></td><td>Creates a new class library.</td><td><code>create class library EmployeeManagement</code></td></tr>
+<tr><td><code>create console project</code></td><td>Creates a new console project.</td><td><code>create console project EmployeeManagement</code></td></tr>
+<tr><td><code>create project</code></td><td>Creates a new project.</td><td><code>create project EmployeeManagement</code></td></tr>
+<tr><td><code>create webapi project</code></td><td>Creates a new Web API project.</td><td><code>create webapi project EmployeeManagement</code></td></tr>
+<tr><td><code>create worker service</code></td><td>Creates a new Worker Service project.</td><td><code>create worker service BackgroundJobs</code></td></tr>
+<tr><td><code>create wpf project</code></td><td>Creates a new WPF project.</td><td><code>create wpf project EmployeeManagement</code></td></tr>
+<tr><td><code>current project</code></td><td>Shows the currently selected project.</td><td><code>current project</code></td></tr>
+<tr><td><code>list projects</code></td><td>Lists all available projects.</td><td><code>list projects</code></td></tr>
+<tr><td><code>show project</code></td><td>Shows the currently selected project (same as &#x27;current project&#x27;).</td><td><code>show project</code></td></tr>
+<tr><td><code>use project</code></td><td>Switches the active project.</td><td><code>use project EmployeeManagement</code></td></tr>
+</table>
+<h3>Properties</h3>
+<table>
+<tr><th>Command</th><th>Description</th><th>Example</th></tr>
+<tr><td><code>add property</code></td><td>Adds a property to a class.</td><td><code>add property Name string to Employee</code></td></tr>
+<tr><td><code>list properties &lt;class name&gt;</code></td><td>Lists all properties in a class.</td><td><code>list properties of Employee</code></td></tr>
+<tr><td><code>remove property</code></td><td>Removes a property from a class.</td><td><code>remove property Name from Employee</code></td></tr>
+<tr><td><code>rename property &lt;old&gt; to &lt;new&gt; in &lt;class name&gt;</code></td><td>Renames a property on a class. Aliases: field for property; on/of for in.</td><td><code>rename property Name to FullName in Employee</code></td></tr>
+<tr><td><code>show properties &lt;class name&gt;</code></td><td>Lists all properties in a class.</td><td><code>show properties of Employee</code></td></tr>
+</table>
+<h3>RecycleBin</h3>
+<table>
+<tr><th>Command</th><th>Description</th><th>Example</th></tr>
+<tr><td><code>delete class &lt;class name&gt;</code></td><td>Moves a class to DeletedClasses.</td><td><code>delete class &lt;Employee&gt;</code></td></tr>
+<tr><td><code>restore class &lt;class name&gt;</code></td><td>Restores a deleted class.</td><td><code>restore class &lt;Employee&gt;</code></td></tr>
+<tr><td><code>restore last class</code></td><td>Restores a deleted class.</td><td><code>restore last class</code></td></tr>
+<tr><td><code>show deleted classes</code></td><td>Displays all deleted classes.</td><td><code>show deleted classes</code></td></tr>
+</table>
+<h3>Utility</h3>
+<table>
+<tr><th>Command</th><th>Description</th><th>Example</th></tr>
+<tr><td><code>batch</code></td><td>Enter several commands, review what was detected, then run only the approved ones.</td><td><code>batch</code></td></tr>
+<tr><td><code>clear</code></td><td>Clears the screen (history is kept). Alias: cls.</td><td><code>clear</code></td></tr>
+<tr><td><code>cls</code></td><td>Alias for clear (clears the screen; history is kept).</td><td><code>cls</code></td></tr>
+<tr><td><code>demo</code></td><td>Runs the demo workflow.</td><td><code>demo</code></td></tr>
+<tr><td><code>exit</code></td><td>Exits the application.</td><td><code>exit</code></td></tr>
+<tr><td><code>help</code></td><td>Displays all available commands.</td><td><code>help</code></td></tr>
+<tr><td><code>history</code></td><td>Lists the last 20 commands (not itself recorded).</td><td><code>history</code></td></tr>
+</table>
+<h3>Validation</h3>
+<table>
+<tr><th>Command</th><th>Description</th><th>Example</th></tr>
+<tr><td><code>add business validation &lt;rule&gt; in &lt;class name&gt;</code></td><td>Adds an entity-level business rule to a class.</td><td><code>add business validation EndDate must be after StartDate in Booking</code></td></tr>
+<tr><td><code>add validation &lt;rule&gt; on &lt;property&gt; in &lt;class name&gt;</code></td><td>Adds a field-level data rule to a class. Rules: required (or &#x27;should not be blank&#x27;), must be between &lt;min&gt; and &lt;max&gt;, length must be between &lt;min&gt; and &lt;max&gt;, must be greater/less than &lt;n&gt;, must be a valid email, must match &lt;regex&gt;, must be &lt;value&gt;, &lt;value&gt;, ...</td><td><code>add validation must be between 18 and 65 on Age in Employee</code></td></tr>
+<tr><td><code>generate validator</code></td><td>Generates a validator for a class.</td><td><code>generate validator for Employee</code></td></tr>
+<tr><td><code>show business validation &lt;class name&gt;</code></td><td>Show business rules for a class.</td><td><code>show business validation Booking</code></td></tr>
+<tr><td><code>show validation &lt;class name&gt;</code></td><td>Show data validation rules for a class.</td><td><code>show validation Employee</code></td></tr>
+</table>
+
+</body>
+</html>

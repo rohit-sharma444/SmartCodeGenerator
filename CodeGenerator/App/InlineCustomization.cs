@@ -33,7 +33,7 @@ internal static class InlineCustomization
 {
     /// <summary>Options taking one value.</summary>
     private static readonly string[] ValueKeys =
-        ["company", "theme", "accent", "icon", "title"];
+        ["company", "theme", "accent", "icon", "title", "namespace"];
 
     /// <summary>Options that are a bare word.</summary>
     private static readonly string[] Flags =
@@ -144,6 +144,22 @@ internal static class InlineCustomization
 
             case "title":
                 return customization with { TitlePattern = value };
+
+            case "namespace":
+                // "none" clears a remembered prefix, ahead of the validity check below: it is the
+                // vocabulary the wizard already teaches for clearing a value, and inline would
+                // otherwise have no way at all to turn one off from a piped run. `IsValid("none")`
+                // is true, so without this ordering it would be accepted as a literal namespace
+                // segment instead.
+                if (string.Equals(value, "none", StringComparison.OrdinalIgnoreCase))
+                    return customization with { NamespacePrefix = string.Empty };
+
+                // Refused rather than ignored, unlike accent: an invalid namespace does not
+                // compile, and returning null leaves the words in the description where a user
+                // who was describing rather than configuring meant them to be.
+                return NamespacePrefix.IsValid(value)
+                    ? customization with { NamespacePrefix = value }
+                    : null;
 
             default:
                 return null;

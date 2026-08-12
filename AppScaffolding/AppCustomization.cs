@@ -26,7 +26,8 @@ public sealed record AppCustomization(
     string? IconPath,
     bool Validation,
     bool Logging,
-    bool SampleSeedData)
+    bool SampleSeedData,
+    string NamespacePrefix)
 {
     /// <summary>The only two placeholders a title pattern may use.</summary>
     public const string CompanyPlaceholder = "{company}";
@@ -44,7 +45,8 @@ public sealed record AppCustomization(
         IconPath: null,
         Validation: true,
         Logging: false,
-        SampleSeedData: true);
+        SampleSeedData: true,
+        NamespacePrefix: string.Empty);
 
     /// <summary>The project folder a supplied icon is copied into.</summary>
     public const string AssetsFolder = "Assets";
@@ -161,4 +163,17 @@ public sealed record AppCustomization(
     public string TitleAttributeFor(string appName)
         => TitleFor(appName)
             .Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;").Replace("\"", "&quot;");
+
+    /// <summary>
+    /// The namespace root emitted code declares: the project name, under the prefix when there is
+    /// one.
+    /// </summary>
+    /// <remarks>
+    /// This is the whole mechanism. No template uses its name argument for anything but a
+    /// namespace root, so passing this where the project name is passed today puts every emitted
+    /// file under the prefix — while the project name goes on naming the folder, the csproj, the
+    /// assembly and the SQLite environment override.
+    /// </remarks>
+    public string RootNamespaceFor(string projectName)
+        => NamespacePrefix.Length == 0 ? projectName : $"{NamespacePrefix}.{projectName}";
 }

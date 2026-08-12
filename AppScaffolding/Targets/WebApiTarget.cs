@@ -14,12 +14,18 @@ public sealed class WebApiTarget : ITargetScaffolder
         => FrontEndFiles(projectName, entityNames, AppCustomization.Default);
 
     public IReadOnlyList<GeneratedFile> FrontEndFiles(
-        string projectName, IReadOnlyList<string> entityNames, AppCustomization customization) => new List<GeneratedFile>
+        string projectName, IReadOnlyList<string> entityNames, AppCustomization customization)
     {
-        new("", "Program.cs", WebApiProgramTemplate.Build(
-            projectName, entityNames, customization.TitleLiteralFor(projectName),
-            customization.SampleSeedData)),
-    };
+        // The namespace the emitted code declares; projectName still names the app in its title.
+        var ns = customization.RootNamespaceFor(projectName);
+
+        return new List<GeneratedFile>
+        {
+            new("", "Program.cs", WebApiProgramTemplate.Build(
+                projectName, entityNames, customization.TitleLiteralFor(projectName),
+                customization.SampleSeedData, ns)),
+        };
+    }
     // Default FixupProject no-op: our Program.cs overwrites the template's; net10 webapi
     // emits no WeatherForecast.cs to remove.
 }

@@ -6,12 +6,20 @@ namespace AppScaffolding;
 /// client-assigned, and the database is created on first use.</summary>
 public static class DbContextTemplate
 {
-    /// <summary>Source of <c>Data/AppDbContext.cs</c> in <paramref name="projectName"/>.Data with a
+    /// <summary>Source of <c>Data/AppDbContext.cs</c>, declaring the <paramref name="rootNamespace"/>
+    /// (or <paramref name="projectName"/>, when there is no prefix) <c>.Data</c> namespace, with a
     /// DbSet per entity in <paramref name="entityNames"/>. <paramref name="envVarName"/> names an
     /// environment variable holding a full SQLite connection string that overrides the default.</summary>
+    /// <param name="rootNamespace">
+    /// The namespace to declare, when it differs from <paramref name="projectName"/>. The project
+    /// name still names the .db file: the prefix is a namespace, and renaming the database would
+    /// hide the data an existing app has already written.
+    /// </param>
     public static string Source(
-        string projectName, IReadOnlyList<string> entityNames, string envVarName)
+        string projectName, IReadOnlyList<string> entityNames, string envVarName,
+        string? rootNamespace = null)
     {
+        var ns = rootNamespace ?? projectName;
         var dbSets = string.Join("\n",
             entityNames.Select(n => $"    public DbSet<{n}> {n} => Set<{n}>();"));
 
@@ -21,9 +29,9 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using Microsoft.EntityFrameworkCore;
-using {{projectName}}.Models;
+using {{ns}}.Models;
 
-namespace {{projectName}}.Data;
+namespace {{ns}}.Data;
 
 /// <summary>SQLite database context. One table per entity, scalar columns only (navigation
 /// properties are ignored to match JsonStore's flat storage). Client-assigned int Ids. Creates the

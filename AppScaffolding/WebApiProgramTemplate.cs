@@ -16,9 +16,17 @@ public static class WebApiProgramTemplate
 
     /// <summary>As the three-argument overload, seeding the stores on startup only when
     /// <paramref name="seed"/> — with sample data off there is no SeedData.cs to call.</summary>
+    /// <param name="rootNamespace">
+    /// The namespace this app's code is under, when it differs from <paramref name="projectName"/>.
+    /// Separate from the project name because the root-endpoint gate below compares the title
+    /// against the PROJECT name: a prefixed app whose title was never customized must stay without
+    /// the endpoint.
+    /// </param>
     public static string Build(
-        string projectName, IReadOnlyList<string> entityNames, string title, bool seed)
+        string projectName, IReadOnlyList<string> entityNames, string title, bool seed,
+        string? rootNamespace = null)
     {
+        var ns = rootNamespace ?? projectName;
         var seedCall = SeedDataTemplate.EnsureSeededCall(seed);
 
         var registrations = string.Join("\n",
@@ -32,8 +40,8 @@ public static class WebApiProgramTemplate
         // Triple-$ raw string: interpolations use {{{...}}}, so the double braces the generated
         // route templates need ({{id:int}}) stay literal.
         return $$$"""
-using {{{projectName}}}.Data;
-using {{{projectName}}}.Models;
+using {{{ns}}}.Data;
+using {{{ns}}}.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 var app = builder.Build();

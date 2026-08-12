@@ -149,6 +149,7 @@ internal sealed class BuildAppCommand
             Logging = Named(inline.Logging, defaults.Logging, saved.Logging),
             SampleSeedData =
                 Named(inline.SampleSeedData, defaults.SampleSeedData, saved.SampleSeedData),
+            NamespacePrefix = Named(inline.NamespacePrefix, defaults.NamespacePrefix, saved.NamespacePrefix),
         };
 
         static T Named<T>(T inline, T fallback, T saved)

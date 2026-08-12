@@ -21,17 +21,20 @@ public sealed class WinFormsTarget : ITargetScaffolder
     public IReadOnlyList<GeneratedFile> FrontEndFiles(
         string projectName, IReadOnlyList<string> entityNames, AppCustomization customization)
     {
+        // The namespace the emitted code declares; projectName still names the app in its title.
+        var ns = customization.RootNamespaceFor(projectName);
+
         var files = DesktopViewModelFiles.Build(
-            projectName, entityNames, ViewModelTemplates.PortableRelayCommand(projectName),
+            ns, entityNames, ViewModelTemplates.PortableRelayCommand(ns),
             customization.Validation, customization.SampleSeedData);
 
         var palette = ThemePalette.Resolve(customization.Theme, customization.Accent);
 
         files.Add(new("Views", "MainForm.cs",
             WinFormsMainFormTemplate.Source(
-                projectName, customization.TitleLiteralFor(projectName), palette,
+                ns, customization.TitleLiteralFor(projectName), palette,
                 customization.IconFileName)));
-        files.Add(new("", "Program.cs", WinFormsProgramTemplate.Source(projectName)));
+        files.Add(new("", "Program.cs", WinFormsProgramTemplate.Source(ns)));
 
         return files;
     }

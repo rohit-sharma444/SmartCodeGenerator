@@ -40,6 +40,7 @@ public class CustomizationDefaultsTests
             TitlePattern = AppCustomization.CompanyTitlePattern,
             Logging = true,
             SampleSeedData = false,
+            NamespacePrefix = "CodisLtd",
         };
 
         CustomizationDefaults.Save(_root, saved);
@@ -86,4 +87,21 @@ public class CustomizationDefaultsTests
     public void Saving_into_an_unwritable_root_does_not_throw()
         => CustomizationDefaults.Save(
             Path.Combine(_root, "no", "such", "\0bad"), AppCustomization.Default);
+
+    /// <summary>Every other surface validates a namespace prefix — <c>InlineCustomization</c>
+    /// refuses it and the wizard's <c>ParsePrefix</c> keeps the previous value. A hand-edited
+    /// profile is not exempt: an invalid stored prefix must not flow into a namespace declaration
+    /// that will not compile.</summary>
+    [TestMethod]
+    public void An_invalid_namespace_prefix_loads_as_the_default()
+    {
+        Directory.CreateDirectory(Path.Combine(_root, ".codegen"));
+        File.WriteAllText(
+            Path.Combine(_root, ".codegen", CustomizationDefaults.FileName),
+            "{ \"namespacePrefix\": \"Codis Ltd\" }");
+
+        var loaded = CustomizationDefaults.Load(_root);
+
+        Assert.AreEqual(string.Empty, loaded.NamespacePrefix);
+    }
 }

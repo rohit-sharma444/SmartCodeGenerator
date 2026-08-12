@@ -111,6 +111,110 @@ public static class CsprojEditing
         return close < 0 ? csproj : csproj.Insert(close, group);
     }
 
+    private const string RootNamespaceOpen = "<RootNamespace>";
+    private const string RootNamespaceClose = "</RootNamespace>";
+
+    /// <summary>
+    /// Sets <c>&lt;RootNamespace&gt;</c> to <paramref name="rootNamespace"/>, replacing any
+    /// existing value; a null or empty value removes the element. A no-op on a project file with
+    /// no closing tag.
+    /// </summary>
+    /// <remarks>
+    /// Update-or-insert rather than the insert-if-absent <see cref="InjectProperties"/> uses,
+    /// because this value can go stale in a way that misleads the IDE: re-scaffolding an existing
+    /// project under a different prefix would otherwise leave every file the user adds afterwards
+    /// in a namespace no generated file declares. Removing it on an empty value matters for the
+    /// same reason, in reverse.
+    /// </remarks>
+    public static string SetRootNamespace(string csproj, string? rootNamespace)
+    {
+        var open = csproj.IndexOf(RootNamespaceOpen, StringComparison.Ordinal);
+
+        if (open >= 0)
+        {
+            var close = csproj.IndexOf(RootNamespaceClose, open, StringComparison.Ordinal);
+
+            if (close < 0)
+                return csproj;
+
+            var end = close + RootNamespaceClose.Length;
+
+            if (string.IsNullOrEmpty(rootNamespace))
+            {
+                // Check if we can remove the PropertyGroup wrapper too, to avoid leaving it empty.
+                // Matching the exact shape is safe regardless of who wrote this group -- this
+                // method, InjectProperties/InjectBranding/InjectPackageReference (which write
+                // structurally identical groups), or a user by hand -- because the guard below only
+                // fires when the group holds nothing but this RootNamespace element.
+                var propertyGroupOpen = "<PropertyGroup>";
+                var propertyGroupClose = "</PropertyGroup>";
+
+                var pgOpenIndex = csproj.LastIndexOf(propertyGroupOpen, open, StringComparison.Ordinal);
+
+                if (pgOpenIndex >= 0)
+                {
+                    var pgCloseIndex = csproj.IndexOf(propertyGroupClose, end, StringComparison.Ordinal);
+
+                    if (pgCloseIndex >= 0)
+                    {
+                        // Check if the PropertyGroup contains only this RootNamespace element (and whitespace).
+                        var beforeElement = csproj.Substring(
+                            pgOpenIndex + propertyGroupOpen.Length,
+                            open - pgOpenIndex - propertyGroupOpen.Length);
+                        var afterElement = csproj.Substring(end, pgCloseIndex - end);
+
+                        // Both before and after should be whitespace only.
+                        if (beforeElement.Trim().Length == 0 && afterElement.Trim().Length == 0)
+                        {
+                            // Remove the entire PropertyGroup block, taking the whole lines.
+                            var blockStart = csproj.LastIndexOf('\n', pgOpenIndex) + 1;
+                            var blockEnd = ConsumeLineEnding(csproj, pgCloseIndex + propertyGroupClose.Length);
+
+                            return csproj[..blockStart] + csproj[blockEnd..];
+                        }
+                    }
+                }
+
+                // Just remove the RootNamespace line if PropertyGroup contains other elements.
+                var lineStart = csproj.LastIndexOf('\n', open) + 1;
+                var lineEnd = ConsumeLineEnding(csproj, end);
+
+                return csproj[..lineStart] + csproj[lineEnd..];
+            }
+
+            return csproj[..open] + RootNamespaceOpen + rootNamespace + csproj[close..];
+        }
+
+        if (string.IsNullOrEmpty(rootNamespace))
+            return csproj;
+
+        var group =
+            "  <PropertyGroup>\n" +
+            $"    {RootNamespaceOpen}{rootNamespace}{RootNamespaceClose}\n" +
+            "  </PropertyGroup>\n";
+
+        var closeProject = csproj.LastIndexOf("</Project>", StringComparison.Ordinal);
+        return closeProject < 0 ? csproj : csproj.Insert(closeProject, group);
+    }
+
+    /// <summary>
+    /// <paramref name="position"/> moved past the line terminator that starts there, or left
+    /// unchanged if there is none. Handles both `\n` (this method's own inserts, and any
+    /// LF-only file) and `\r\n` (what `dotnet new` and most hand edits on Windows write) — a
+    /// plain `== '\n'` check sees only the second byte of a CRLF terminator and leaves the `\r`
+    /// behind as a blank line.
+    /// </summary>
+    private static int ConsumeLineEnding(string text, int position)
+    {
+        if (position + 1 < text.Length && text[position] == '\r' && text[position + 1] == '\n')
+            return position + 2;
+
+        if (position < text.Length && (text[position] == '\n' || text[position] == '\r'))
+            return position + 1;
+
+        return position;
+    }
+
     private static string Escape(string value)
         => value.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;");
 }

@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using CodeGenerationEngine.Models;
 
 namespace AppScaffolding;
@@ -207,6 +208,63 @@ public sealed partial class {{className}}Validator
     }
 }
 """;
+
+    /// <summary>
+    /// Repoints an already-written <c>Validator.Custom.cs</c> stub's <c>namespace</c> declaration
+    /// and any <c>using</c> line rooted at the app's own (old) namespace, at
+    /// <paramref name="rootNamespace"/>. Best-effort and idempotent, in the same spirit as
+    /// <see cref="WpfProjectFixup.ReconcileNamespace"/>.
+    /// </summary>
+    /// <remarks>
+    /// This is the fourth reconciliation point: <see cref="CustomStub"/> is written once and never
+    /// overwritten (the user's own hand-written rules live in its body, below the header), so a
+    /// re-scaffold under a changed prefix would otherwise leave it declaring — and importing from —
+    /// a namespace no generated file declares any more. Only the header moves; the body is never
+    /// touched.
+    /// <para>
+    /// Matches the SHAPE, never a remembered previous value: the file's own current
+    /// <c>namespace …Validation;</c> line names the old root, and only <c>using</c> lines rooted
+    /// there are rewritten. A user's unrelated addition — <c>using
+    /// System.Text.RegularExpressions;</c>, or a reference into their own library — never starts
+    /// with the old root and so is left alone.
+    /// </para>
+    /// </remarks>
+    public static void ReconcileCustomStubNamespace(string path, string rootNamespace)
+    {
+        try
+        {
+            if (!File.Exists(path))
+                return;
+
+            var original = File.ReadAllText(path);
+
+            var declaration = Regex.Match(
+                original, @"^namespace\s+([^;{\s]+)\.Validation;", RegexOptions.Multiline);
+            if (!declaration.Success)
+                return;
+
+            var oldRoot = declaration.Groups[1].Value;
+
+            var updated = Regex.Replace(
+                original,
+                $@"^using\s+{Regex.Escape(oldRoot)}\.",
+                $"using {rootNamespace}.",
+                RegexOptions.Multiline);
+
+            updated = Regex.Replace(
+                updated,
+                $@"^namespace\s+{Regex.Escape(oldRoot)}\.Validation;",
+                $"namespace {rootNamespace}.Validation;",
+                RegexOptions.Multiline);
+
+            if (!string.Equals(original, updated, StringComparison.Ordinal))
+                File.WriteAllText(path, updated);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Leave it; the build error that follows is clearer than a crash in the scaffolder.
+        }
+    }
 
     /// <summary>Wraps one property's (or one relationship's) checks in its own try/catch.</summary>
     private static string Block(IReadOnlyList<string> checks)

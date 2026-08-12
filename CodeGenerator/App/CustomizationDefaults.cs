@@ -33,6 +33,7 @@ internal static class CustomizationDefaults
         public bool? Validation { get; set; }
         public bool? Logging { get; set; }
         public bool? SampleSeedData { get; set; }
+        public string? NamespacePrefix { get; set; }
     }
 
     private static readonly JsonSerializerOptions Options = new()
@@ -69,7 +70,8 @@ internal static class CustomizationDefaults
                 IconPath: profile.IconPath ?? fallback.IconPath,
                 Validation: profile.Validation ?? fallback.Validation,
                 Logging: profile.Logging ?? fallback.Logging,
-                SampleSeedData: profile.SampleSeedData ?? fallback.SampleSeedData);
+                SampleSeedData: profile.SampleSeedData ?? fallback.SampleSeedData,
+                NamespacePrefix: ValidatedPrefix(profile.NamespacePrefix, fallback.NamespacePrefix));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
         {
@@ -94,6 +96,7 @@ internal static class CustomizationDefaults
                 Validation = customization.Validation,
                 Logging = customization.Logging,
                 SampleSeedData = customization.SampleSeedData,
+                NamespacePrefix = customization.NamespacePrefix,
             };
 
             File.WriteAllText(path, JsonSerializer.Serialize(profile, Options));
@@ -108,4 +111,32 @@ internal static class CustomizationDefaults
 
     private static AppTheme ParseTheme(string? value, AppTheme fallback)
         => Enum.TryParse<AppTheme>(value, ignoreCase: true, out var theme) ? theme : fallback;
+
+    /// <summary>
+    /// <paramref name="value"/> when it is empty or a valid namespace prefix, or
+    /// <paramref name="fallback"/> otherwise. Missing (null) also falls back.
+    /// </summary>
+    /// <remarks>
+    /// Every other surface validates a namespace prefix — <c>InlineCustomization</c> refuses an
+    /// invalid one and the wizard's <c>ParsePrefix</c> keeps the previous value — but a hand-edited
+    /// profile bypasses both, and <c>Load</c> otherwise assigns it straight from the JSON. A stored
+    /// value that would not compile after <c>namespace</c> must not reach
+    /// <c>RootNamespaceFor</c>, the csproj writers, WPF's <c>x:Class</c> or the validator stubs. The
+    /// re-validate-at-the-point-of-use precedent is <see cref="ThemePalette.Resolve"/>, which
+    /// tolerates a corrupt <c>Accent</c> the same way.
+    /// <para>
+    /// The type is qualified (<see cref="AppScaffolding.NamespacePrefix"/>) because the
+    /// <c>AppCustomization.NamespacePrefix</c> property and the <c>Profile.NamespacePrefix</c>
+    /// property this file also touches share the same name.
+    /// </para>
+    /// </remarks>
+    private static string ValidatedPrefix(string? value, string fallback)
+    {
+        if (value is null)
+            return fallback;
+
+        return value.Length == 0 || AppScaffolding.NamespacePrefix.IsValid(value)
+            ? value
+            : fallback;
+    }
 }

@@ -40,6 +40,11 @@ internal static class CustomizationSummary
         if (customization.TitlePattern != defaults.TitlePattern)
             lines.Add($"  Title: {customization.TitlePattern}");
 
+        // The bare prefix, not the resolved root: the root ends in the target's folder suffix
+        // (Shop.Console, Shop.WinForms), and the target can still be changed at `approve`.
+        if (customization.NamespacePrefix.Length > 0)
+            lines.Add($"  Namespace prefix: {customization.NamespacePrefix}");
+
         var features = new List<string>();
 
         if (!customization.Validation) features.Add("no validation layer");

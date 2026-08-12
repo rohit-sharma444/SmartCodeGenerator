@@ -16,11 +16,17 @@ public sealed class WorkerTarget : ITargetScaffolder
     /// <summary>A worker has nothing to title, theme or icon; it overrides this only because its
     /// entry point seeds the stores, and that goes with the sample data.</summary>
     public IReadOnlyList<GeneratedFile> FrontEndFiles(
-        string projectName, IReadOnlyList<string> entityNames, AppCustomization customization) => new List<GeneratedFile>
+        string projectName, IReadOnlyList<string> entityNames, AppCustomization customization)
     {
-        new("", "Worker.cs", WorkerTemplate.Build(projectName, entityNames)),
-        new("", "Program.cs",
-            WorkerProgramTemplate.Source(projectName, customization.SampleSeedData)),
-    };
+        // The namespace the emitted code declares; projectName still names the app in its title.
+        var ns = customization.RootNamespaceFor(projectName);
+
+        return new List<GeneratedFile>
+        {
+            new("", "Worker.cs", WorkerTemplate.Build(ns, entityNames)),
+            new("", "Program.cs",
+                WorkerProgramTemplate.Source(ns, customization.SampleSeedData)),
+        };
+    }
     // Default FixupProject no-op: our Worker.cs and Program.cs overwrite the template's.
 }

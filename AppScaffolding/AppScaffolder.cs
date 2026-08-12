@@ -196,6 +196,37 @@ public sealed class AppScaffolder
         }
     }
 
+    /// <summary>Best-effort root-namespace reconciliation for a project file. Silent on failure:
+    /// a project whose RootNamespace could not be written still builds, because every generated
+    /// file declares its namespace explicitly.</summary>
+    /// <remarks>
+    /// Written only when the text actually changes — like <see cref="WpfProjectFixup.Rewrite"/>
+    /// and <see cref="ValidatorTemplate.ReconcileCustomStubNamespace"/> — because `dotnet new`
+    /// writes the project file WITH a UTF-8 BOM and an unconditional
+    /// <c>File.ReadAllText</c>/<c>File.WriteAllText</c> round trip silently writes it back without
+    /// one, even when nothing else in the text changed. With no prefix that struck on every single
+    /// scaffold, not just a re-scaffold, and falsified the invariant this whole feature is built
+    /// against: a neutral customization must reproduce byte-for-byte what the generator already
+    /// wrote.
+    /// </remarks>
+    private static void SetRootNamespace(string csprojPath, string? rootNamespace)
+    {
+        try
+        {
+            if (!File.Exists(csprojPath))
+                return;
+
+            var original = File.ReadAllText(csprojPath);
+            var updated = CsprojEditing.SetRootNamespace(original, rootNamespace);
+
+            if (!string.Equals(original, updated, StringComparison.Ordinal))
+                File.WriteAllText(csprojPath, updated);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+        }
+    }
+
     /// <summary>Environment-variable name the generated AppDbContext reads for a connection-string
     /// override: the upper-cased project name with non-alphanumerics as underscores, plus "_DB".</summary>
     private static string EnvVarName(string projectName)
@@ -300,12 +331,21 @@ public sealed class AppScaffolder
             ? request.Customization
             : request.Customization with { IconPath = null };
 
+        // The namespace emitted code declares. projectName goes on naming the folder, the csproj,
+        // the assembly and the SQLite environment override — the prefix is a namespace only.
+        var rootNamespace = customization.RootNamespaceFor(projectName);
+
+        // Written on every run, not only at creation: a project re-scaffolded under a different
+        // prefix must not keep pointing at the old namespace, and one re-scaffolded without a
+        // prefix must lose the element entirely.
+        SetRootNamespace(csprojPath, customization.NamespacePrefix.Length == 0 ? null : rootNamespace);
+
         var modelsFolder = Path.Combine(outputFolder, "Models");
         var dataFolder = Path.Combine(outputFolder, "Data");
         var validationFolder = Path.Combine(outputFolder, "Validation");
 
         var written = new List<string>(
-            WriteClasses(modelsFolder, classes, $"{projectName}.Models", header));
+            WriteClasses(modelsFolder, classes, $"{rootNamespace}.Models", header));
         var expected = classes.Count;
 
         var entityNames = classes.Select(c => c.Name).ToList();
@@ -333,16 +373,16 @@ public sealed class AppScaffolder
 
         var files = new List<(string Folder, string Name, string Source)>
         {
-            (dataFolder, "IStore.cs", StoreSeamTemplate.Source(projectName)),
-            (dataFolder, "StoreFactory.cs", StoreFactoryTemplate.Source(projectName, persistence)),
+            (dataFolder, "IStore.cs", StoreSeamTemplate.Source(rootNamespace)),
+            (dataFolder, "StoreFactory.cs", StoreFactoryTemplate.Source(rootNamespace, persistence)),
             (dataFolder, "Repository.cs",
-                RepositoryTemplate.Base(projectName, validation, logging)),
+                RepositoryTemplate.Base(rootNamespace, validation, logging)),
         };
 
         if (logging)
         {
             files.Add((Path.Combine(outputFolder, LoggingTemplate.FolderName),
-                LoggingTemplate.FileName, LoggingTemplate.Source(projectName)));
+                LoggingTemplate.FileName, LoggingTemplate.Source(rootNamespace)));
         }
 
         // Added here rather than in the initializer above, which cannot hold a conditional element,
@@ -351,42 +391,42 @@ public sealed class AppScaffolder
         {
             files.Add((dataFolder, "SeedData.cs",
                 SeedDataTemplate.Source(
-                    projectName,
+                    rootNamespace,
                     SeedDataTemplate.OrderByDependency(classes),
                     SeedDataTemplate.ForeignKeyFieldNames(classes),
                     seededClassNames)));
         }
 
-        files.Add((dataFolder, "SaveResult.cs", SaveResultTemplate.Source(projectName)));
+        files.Add((dataFolder, "SaveResult.cs", SaveResultTemplate.Source(rootNamespace)));
 
         // SaveResult above stays whatever the flag says: Repository still returns one, so the
         // console menu and the Web API's ValidationProblem are untouched by turning validation off.
         if (validation)
         {
             files.Add((validationFolder, "IValidator.cs",
-                ValidatorTemplate.ValidatorInterface(projectName)));
+                ValidatorTemplate.ValidatorInterface(rootNamespace)));
             files.Add((validationFolder, "IEntityLookup.cs",
-                ValidatorTemplate.EntityLookupInterface(projectName)));
+                ValidatorTemplate.EntityLookupInterface(rootNamespace)));
             files.Add((validationFolder, "StoreEntityLookup.cs",
-                ValidatorTemplate.StoreEntityLookup(projectName)));
+                ValidatorTemplate.StoreEntityLookup(rootNamespace)));
             files.Add((validationFolder, "ValidatorFactory.cs",
-                ValidatorTemplate.Factory(projectName, entityNames)));
+                ValidatorTemplate.Factory(rootNamespace, entityNames)));
         }
 
         // Persistence backend behind the seam.
         if (persistence == PersistenceKind.Sqlite)
         {
-            files.Add((dataFolder, "EfStore.cs", EfStoreTemplate.Source(projectName)));
+            files.Add((dataFolder, "EfStore.cs", EfStoreTemplate.Source(rootNamespace)));
             files.Add((dataFolder, "AppDbContext.cs",
-                DbContextTemplate.Source(projectName, entityNames, EnvVarName(projectName))));
+                DbContextTemplate.Source(projectName, entityNames, EnvVarName(projectName), rootNamespace)));
         }
         else
         {
-            files.Add((dataFolder, "JsonStore.cs", JsonStoreTemplate.Source($"{projectName}.Data")));
+            files.Add((dataFolder, "JsonStore.cs", JsonStoreTemplate.Source($"{rootNamespace}.Data")));
         }
 
         foreach (var name in entityNames)
-            files.Add((dataFolder, $"{name}Repository.cs", RepositoryTemplate.Typed(projectName, name)));
+            files.Add((dataFolder, $"{name}Repository.cs", RepositoryTemplate.Typed(rootNamespace, name)));
 
         // The regenerated half of each model's validator. Foreign-key targets come from
         // ForeignKeys.TargetsOf, so a lookup check is only ever emitted for a <Target>Id the
@@ -397,7 +437,7 @@ public sealed class AppScaffolder
             foreach (var definition in classes)
                 files.Add((validationFolder, $"{definition.Name}Validator.Generated.cs",
                     ValidatorTemplate.Generated(
-                        projectName, definition, ForeignKeys.TargetsOf(definition, classNameSet))));
+                        rootNamespace, definition, ForeignKeys.TargetsOf(definition, classNameSet))));
         }
 
         // Target-specific front-end / entry point.
@@ -413,9 +453,13 @@ public sealed class AppScaffolder
         }
 
         // After the files are written, not in FixupProject: Views/Theme.xaml does not exist yet
-        // when the project is created.
+        // when the project is created, and the namespace has to be reconciled on every run rather
+        // than only on the run that created the project.
         if (target.ProjectType == DotNetProjectType.Wpf)
+        {
             WpfProjectFixup.MergeTheme(outputFolder);
+            WpfProjectFixup.ReconcileNamespace(outputFolder, rootNamespace);
+        }
 
         // Data files, not source: written with the same best-effort WriteSource so a locked file
         // is reported through `expected` rather than throwing mid-scaffold.
@@ -436,22 +480,32 @@ public sealed class AppScaffolder
 
         // Written once, never overwritten: this is where the user's own rules live, and a rebuild
         // must not discard them. The .Generated.cs half above is refreshed every run.
+        //
+        // The fourth reconciliation point: an existing stub keeps its body but has its namespace
+        // and app-rooted usings repointed on every run, the same as the app csproj, the test
+        // csproj and (for WPF) App.xaml/App.xaml.cs -- otherwise a re-scaffold under a changed
+        // prefix leaves it importing a namespace no generated file declares any more.
         foreach (var definition in validation ? classes : Array.Empty<ClassDefinition>())
         {
             var fileName = $"{definition.Name}Validator.Custom.cs";
-            if (File.Exists(Path.Combine(validationFolder, fileName)))
+            var customPath = Path.Combine(validationFolder, fileName);
+
+            if (File.Exists(customPath))
+            {
+                ValidatorTemplate.ReconcileCustomStubNamespace(customPath, rootNamespace);
                 continue;
+            }
 
             expected++;
-            var customPath = WriteSource(
+            var writtenPath = WriteSource(
                 validationFolder, fileName,
-                ValidatorTemplate.CustomStub(projectName, definition.Name), header);
-            if (customPath is not null)
-                written.Add(customPath);
+                ValidatorTemplate.CustomStub(rootNamespace, definition.Name), header);
+            if (writtenPath is not null)
+                written.Add(writtenPath);
         }
 
         var testProjectPath = ScaffoldTestProject(
-            workspaceRoot, projectName, classes, validation, seed);
+            workspaceRoot, projectName, rootNamespace, classes, validation, seed);
 
         var allWritten = written.Count == expected;
 
@@ -470,8 +524,8 @@ public sealed class AppScaffolder
     /// WPF app's tests target net10.0-windows and resolve the reference.
     /// </summary>
     private static string? ScaffoldTestProject(
-        string workspaceRoot, string appProjectName, IReadOnlyList<ClassDefinition> classes,
-        bool validation = true, bool seed = true)
+        string workspaceRoot, string appProjectName, string appRootNamespace,
+        IReadOnlyList<ClassDefinition> classes, bool validation = true, bool seed = true)
     {
         var entityNames = classes.Select(c => c.Name).ToList();
 
@@ -514,18 +568,22 @@ public sealed class AppScaffolder
             }
         }
 
+        SetRootNamespace(
+            testCsproj,
+            appRootNamespace == appProjectName ? null : appRootNamespace + ".Tests");
+
         var roundTripPath = WriteSource(testFolder, "RepositoryRoundTripTests.cs",
-            TestProjectTemplates.RoundTripTests(appProjectName, entityNames));
+            TestProjectTemplates.RoundTripTests(appRootNamespace, entityNames));
 
         // No seed test without SeedData: it would name a class the app never generated.
         var seedPath = seed
             ? WriteSource(testFolder, "SeedDataTests.cs",
-                TestProjectTemplates.SeedTests(appProjectName, entityNames[0]))
+                TestProjectTemplates.SeedTests(appRootNamespace, entityNames[0]))
             : null;
         var parallelizationPath = WriteSource(testFolder, "TestParallelization.cs",
             TestProjectTemplates.DisableParallelization());
         var supportPath = WriteSource(testFolder, "TestSupport.cs",
-            TestProjectTemplates.TestSupport(appProjectName));
+            TestProjectTemplates.TestSupport(appRootNamespace));
 
         if (roundTripPath is null || (seed && seedPath is null) || parallelizationPath is null
             || supportPath is null)
@@ -541,7 +599,7 @@ public sealed class AppScaffolder
                 && p.Rules.Any(r => string.Equals(r.Name, "required", StringComparison.OrdinalIgnoreCase)));
 
             if (WriteSource(testFolder, $"{definition.Name}ValidatorTests.cs",
-                    TestProjectTemplates.ValidatorTests(appProjectName, definition.Name, required?.Name)) is null)
+                    TestProjectTemplates.ValidatorTests(appRootNamespace, definition.Name, required?.Name)) is null)
                 return null;
         }
 

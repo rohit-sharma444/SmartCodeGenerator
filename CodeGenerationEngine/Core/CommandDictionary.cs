@@ -544,8 +544,10 @@ public static class CommandDictionary
                         + "the project metadata, the window title and a copyright header); "
                         + "theme light|dark and accent #rrggbb colour the desktop front ends; "
                         + "icon <path> supplies a .ico or .png; title \"<pattern>\" overrides the "
-                        + "window title, where {company} and {app} are substituted.",
-            Example = "build app: a shop company \"Codis Ltd\" theme dark accent #0B6E4F"
+                        + "window title, where {company} and {app} are substituted; "
+                        + "namespace <prefix> puts the generated code under that namespace root "
+                        + "(CodisLtd.Shop), leaving the project and assembly names alone.",
+            Example = "build app: a shop company \"Codis Ltd\" namespace CodisLtd theme dark"
         },
         new()
         {

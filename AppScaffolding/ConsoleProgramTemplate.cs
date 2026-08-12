@@ -17,9 +17,16 @@ public static class ConsoleProgramTemplate
     /// <summary>As the three-argument overload, seeding the stores on startup only when
     /// <paramref name="seed"/> — with sample data off, SeedData.cs is not generated either, so the
     /// call would not compile.</summary>
+    /// <param name="rootNamespace">
+    /// The namespace this app's code is under, when it differs from <paramref name="projectName"/>.
+    /// Separate from the project name because the banner gate below compares the title against the
+    /// PROJECT name: a prefixed app whose title was never customized must stay bannerless.
+    /// </param>
     public static string Build(
-        string projectName, IReadOnlyList<string> entityNames, string title, bool seed)
+        string projectName, IReadOnlyList<string> entityNames, string title, bool seed,
+        string? rootNamespace = null)
     {
+        var ns = rootNamespace ?? projectName;
         var seedCall = SeedDataTemplate.EnsureSeededCall(seed);
 
         var mapEntries = string.Join(",\n",
@@ -35,9 +42,9 @@ public static class ConsoleProgramTemplate
             : $"Console.WriteLine(\"{title}\");\n\n";
 
         return $$"""
-using {{projectName}};
-using {{projectName}}.Data;
-using {{projectName}}.Models;
+using {{ns}};
+using {{ns}}.Data;
+using {{ns}}.Models;
 
 {{seedCall}}// typeof(Entity) -> that entity's stored rows, so a menu can offer a picker for a foreign key.
 var repositories = new System.Collections.Generic.Dictionary<Type, Func<System.Collections.IEnumerable>>
