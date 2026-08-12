@@ -5,15 +5,15 @@ namespace AppScaffolding;
 /// Ids and whole-store SaveAll semantics — so Repository and SeedData need no behavioral change.</summary>
 public static class EfStoreTemplate
 {
-    /// <summary>Source of <c>Data/EfStore.cs</c> in <paramref name="projectName"/>.Data.</summary>
-    public static string Source(string projectName) => $$"""
+    /// <summary>Source of <c>Data/EfStore.cs</c> in <paramref name="rootNamespace"/>.Data.</summary>
+    public static string Source(string rootNamespace) => $$"""
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Microsoft.EntityFrameworkCore;
 
-namespace {{projectName}}.Data;
+namespace {{rootNamespace}}.Data;
 
 /// <summary>SQLite-backed store keyed by an int Id. One table per type. A fresh context per call
 /// mirrors JsonStore's stateless per-call file access.</summary>

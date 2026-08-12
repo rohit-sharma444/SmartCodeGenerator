@@ -5,9 +5,9 @@ namespace AppScaffolding;
 /// differs by <see cref="PersistenceKind"/>, so Repository and SeedData stay backend-agnostic.</summary>
 public static class StoreFactoryTemplate
 {
-    /// <summary>Source of <c>Data/StoreFactory.cs</c> in <paramref name="projectName"/>.Data for
+    /// <summary>Source of <c>Data/StoreFactory.cs</c> in <paramref name="rootNamespace"/>.Data for
     /// the chosen <paramref name="persistence"/> backend.</summary>
-    public static string Source(string projectName, PersistenceKind persistence)
+    public static string Source(string rootNamespace, PersistenceKind persistence)
     {
         var (backend, note) = persistence switch
         {
@@ -16,7 +16,7 @@ public static class StoreFactoryTemplate
         };
 
         return $$"""
-namespace {{projectName}}.Data;
+namespace {{rootNamespace}}.Data;
 
 /// <summary>Constructs the configured store for an entity type. This build persists to {{note}}.</summary>
 public static class StoreFactory

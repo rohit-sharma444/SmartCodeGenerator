@@ -5,7 +5,7 @@ namespace AppScaffolding;
 /// model + data core runs.</summary>
 public static class WorkerTemplate
 {
-    public static string Build(string projectName, IReadOnlyList<string> entityNames)
+    public static string Build(string rootNamespace, IReadOnlyList<string> entityNames)
     {
         var logs = string.Join("\n",
             entityNames.Select(name =>
@@ -14,9 +14,9 @@ public static class WorkerTemplate
         return $$"""
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using {{projectName}}.Data;
+using {{rootNamespace}}.Data;
 
-namespace {{projectName}};
+namespace {{rootNamespace}};
 
 /// <summary>Exercises the generated repositories once at startup.</summary>
 public sealed class Worker : BackgroundService

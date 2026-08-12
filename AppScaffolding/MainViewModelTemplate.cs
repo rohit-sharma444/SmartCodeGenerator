@@ -3,13 +3,13 @@ namespace AppScaffolding;
 /// <summary>The one generated file whose shape depends on the entity set.</summary>
 public static class MainViewModelTemplate
 {
-    public static string Build(string appName, IReadOnlyList<string> entityNames)
-        => Build(appName, entityNames, seed: true);
+    public static string Build(string rootNamespace, IReadOnlyList<string> entityNames)
+        => Build(rootNamespace, entityNames, seed: true);
 
     /// <summary>As <see cref="Build(string, IReadOnlyList{string})"/>, seeding before the view
     /// models load only when <paramref name="seed"/> — with sample data off there is no SeedData.cs
     /// to call.</summary>
-    public static string Build(string appName, IReadOnlyList<string> entityNames, bool seed)
+    public static string Build(string rootNamespace, IReadOnlyList<string> entityNames, bool seed)
     {
         // Its own fragment rather than SeedDataTemplate.EnsureSeededCall: this call site is inside
         // a constructor, so it is indented and carries the comment explaining its position.
@@ -29,10 +29,10 @@ public static class MainViewModelTemplate
 
         return $$"""
 using System.Collections.ObjectModel;
-using {{appName}}.Data;
-using {{appName}}.Models;
+using {{rootNamespace}}.Data;
+using {{rootNamespace}}.Models;
 
-namespace {{appName}}.ViewModels;
+namespace {{rootNamespace}}.ViewModels;
 
 /// <summary>One tab per discovered entity.</summary>
 public sealed class MainViewModel

@@ -13,10 +13,10 @@ public static class WinFormsMainFormTemplate
     /// <c>IsDisplayable</c> alone, in <see cref="PropertyEditorTemplate.Source"/> rather than
     /// shared: keep all three in sync if the display convention ever changes.
     /// </remarks>
-    public static string Source(string appName) => Source(appName, appName);
+    public static string Source(string rootNamespace) => Source(rootNamespace, rootNamespace);
 
     /// <summary>Source of <c>Views/MainForm.cs</c>, titled <paramref name="title"/>.</summary>
-    public static string Source(string appName, string title) => Source(appName, title, palette: null);
+    public static string Source(string rootNamespace, string title) => Source(rootNamespace, title, palette: null);
 
     /// <summary>Source of <c>Views/MainForm.cs</c>, titled <paramref name="title"/>; when
     /// <paramref name="palette"/> is non-null, painted in its colours, and when
@@ -27,7 +27,7 @@ public static class WinFormsMainFormTemplate
     /// still copied into the project, and still reaches the window on the WPF side.
     /// </remarks>
     public static string Source(
-        string appName, string title, ThemePalette? palette, string? iconFileName = null)
+        string rootNamespace, string title, ThemePalette? palette, string? iconFileName = null)
     {
         // Read off disk beside the binary rather than embedded: AppScaffolder registers the copy
         // as content copied to the output directory. Guarded, so an asset the user later deletes
@@ -70,9 +70,9 @@ using System.ComponentModel;
 using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
-using {{appName}}.ViewModels;
+using {{rootNamespace}}.ViewModels;
 
-namespace {{appName}}.Views;
+namespace {{rootNamespace}}.Views;
 
 /// <summary>One tab per discovered entity, over the shared view models.</summary>
 public sealed class MainForm : Form

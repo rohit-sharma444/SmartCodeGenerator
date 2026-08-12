@@ -16,10 +16,10 @@ namespace AppScaffolding;
 public static class ValidatorTemplate
 {
     /// <summary>Source of <c>Validation/IValidator.cs</c>.</summary>
-    public static string ValidatorInterface(string projectName) => $$"""
+    public static string ValidatorInterface(string rootNamespace) => $$"""
 using System.Collections.Generic;
 
-namespace {{projectName}}.Validation;
+namespace {{rootNamespace}}.Validation;
 
 /// <summary>Validates one entity, returning a message per broken rule.</summary>
 public interface IValidator<T>
@@ -30,8 +30,8 @@ public interface IValidator<T>
 """;
 
     /// <summary>Source of <c>Validation/IEntityLookup.cs</c>.</summary>
-    public static string EntityLookupInterface(string projectName) => $$"""
-namespace {{projectName}}.Validation;
+    public static string EntityLookupInterface(string rootNamespace) => $$"""
+namespace {{rootNamespace}}.Validation;
 
 /// <summary>Existence checks a validator needs for foreign keys. Injected so a validator can be
 /// unit-tested with a fake and no store on disk.</summary>
@@ -43,12 +43,12 @@ public interface IEntityLookup
 """;
 
     /// <summary>Source of <c>Validation/StoreEntityLookup.cs</c>.</summary>
-    public static string StoreEntityLookup(string projectName) => $$"""
+    public static string StoreEntityLookup(string rootNamespace) => $$"""
 using System;
 using System.Reflection;
-using {{projectName}}.Data;
+using {{rootNamespace}}.Data;
 
-namespace {{projectName}}.Validation;
+namespace {{rootNamespace}}.Validation;
 
 /// <summary>The real <see cref="IEntityLookup"/>: reads through the configured store.</summary>
 public sealed class StoreEntityLookup : IEntityLookup
@@ -73,7 +73,7 @@ public sealed class StoreEntityLookup : IEntityLookup
 """;
 
     /// <summary>Source of <c>Validation/ValidatorFactory.cs</c> for <paramref name="entityNames"/>.</summary>
-    public static string Factory(string projectName, IReadOnlyList<string> entityNames)
+    public static string Factory(string rootNamespace, IReadOnlyList<string> entityNames)
     {
         var arms = string.Join("\n", entityNames.Select(name => $$"""
         if (typeof(T) == typeof({{name}}))
@@ -86,9 +86,9 @@ public sealed class StoreEntityLookup : IEntityLookup
         return $$"""
 using System;
 using System.Collections.Generic;
-using {{projectName}}.Models;
+using {{rootNamespace}}.Models;
 
-namespace {{projectName}}.Validation;
+namespace {{rootNamespace}}.Validation;
 
 /// <summary>Resolves the validator for an entity type. Mirrors StoreFactory.Create&lt;T&gt;().</summary>
 public static class ValidatorFactory
@@ -131,7 +131,7 @@ internal sealed class NullValidator<T> : IValidator<T>
     /// ValidationEngine.EmitSection takes.
     /// </remarks>
     public static string Generated(
-        string projectName, ClassDefinition definition, IReadOnlyList<string> foreignKeyTargets)
+        string rootNamespace, ClassDefinition definition, IReadOnlyList<string> foreignKeyTargets)
     {
         var blocks = new List<string>();
 
@@ -153,9 +153,9 @@ internal sealed class NullValidator<T> : IValidator<T>
         return $$"""
 using System;
 using System.Collections.Generic;
-using {{projectName}}.Models;
+using {{rootNamespace}}.Models;
 
-namespace {{projectName}}.Validation;
+namespace {{rootNamespace}}.Validation;
 
 /// <summary>Inferred rules for {{definition.Name}}. REGENERATED — edit
 /// {{definition.Name}}Validator.Custom.cs instead.</summary>
@@ -192,11 +192,11 @@ public sealed partial class {{definition.Name}}Validator : IValidator<{{definiti
     }
 
     /// <summary>Source of the write-once <c>Validation/&lt;Model&gt;Validator.Custom.cs</c>.</summary>
-    public static string CustomStub(string projectName, string className) => $$"""
+    public static string CustomStub(string rootNamespace, string className) => $$"""
 using System.Collections.Generic;
-using {{projectName}}.Models;
+using {{rootNamespace}}.Models;
 
-namespace {{projectName}}.Validation;
+namespace {{rootNamespace}}.Validation;
 
 /// <summary>Hand-written rules for {{className}}.</summary>
 public sealed partial class {{className}}Validator

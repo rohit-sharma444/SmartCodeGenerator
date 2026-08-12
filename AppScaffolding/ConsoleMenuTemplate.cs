@@ -4,14 +4,14 @@ namespace AppScaffolding;
 /// Entity-independent: one file drives every entity's list/add/delete.</summary>
 public static class ConsoleMenuTemplate
 {
-    public static string Source(string projectName) => $$"""
+    public static string Source(string rootNamespace) => $$"""
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using {{projectName}}.Data;
+using {{rootNamespace}}.Data;
 
-namespace {{projectName}};
+namespace {{rootNamespace}};
 
 /// <summary>List / add / delete for one entity type, backed by its typed repository.</summary>
 public sealed class EntityMenu<T> where T : class, new()
