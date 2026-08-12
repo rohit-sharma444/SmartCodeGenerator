@@ -41,6 +41,39 @@ public class AppCustomizationTests
         Assert.AreEqual("Shop", customization.TitleFor("Shop"));
     }
 
+    /// <summary>A pattern with no company placeholder at all has nothing to collapse: its own
+    /// punctuation is not a dangling separator and must survive verbatim.</summary>
+    [TestMethod]
+    public void A_pattern_with_no_company_placeholder_keeps_its_own_punctuation()
+    {
+        var customization = AppCustomization.Default with { TitlePattern = "{app}:" };
+
+        Assert.AreEqual("Shop:", customization.TitleFor("Shop"));
+    }
+
+    [TestMethod]
+    public void A_pattern_with_no_company_placeholder_keeps_its_punctuation_even_with_a_company()
+    {
+        var customization = AppCustomization.Default with
+        {
+            Company = "Codis",
+            TitlePattern = "{app}:",
+        };
+
+        Assert.AreEqual("Shop:", customization.TitleFor("Shop"));
+    }
+
+    /// <summary>When the company placeholder sits at the end of the pattern with nothing
+    /// after it, the separator run that must collapse is the one preceding it, not one
+    /// following it (there is none).</summary>
+    [TestMethod]
+    public void A_trailing_company_placeholder_collapses_the_separator_that_precedes_it()
+    {
+        var customization = AppCustomization.Default with { TitlePattern = "{app} - {company}" };
+
+        Assert.AreEqual("Shop", customization.TitleFor("Shop"));
+    }
+
     [TestMethod]
     public void An_accent_alone_themes_over_the_light_base()
     {

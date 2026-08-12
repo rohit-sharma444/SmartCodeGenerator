@@ -54,15 +54,61 @@ public sealed record AppCustomization(
     /// </summary>
     /// <remarks>
     /// Substituting an empty company would leave the pattern's separator behind — "{company} -
-    /// {app}" reading " - Shop" — so leading and trailing separator characters are trimmed off
-    /// the result rather than the pattern being rejected.
+    /// {app}" reading " - Shop". The collapse happens at the PATTERN level, before
+    /// substitution: when there is no company, the "{company}" placeholder and the run of
+    /// separator characters adjoining it are cut out of the pattern first. This is deliberately
+    /// narrower than trimming the final result, which cannot distinguish a dangling separator
+    /// from punctuation the caller typed on purpose — a pattern of "{app}:" must keep its colon
+    /// whether or not a company is set.
     /// </remarks>
     public string TitleFor(string appName)
     {
-        var title = TitlePattern
+        var pattern = Company.Length == 0 ? CollapseCompanyPlaceholder(TitlePattern) : TitlePattern;
+
+        var title = pattern
             .Replace(CompanyPlaceholder, Company)
             .Replace(AppPlaceholder, appName);
 
-        return title.Trim().Trim('-', ':', '|').Trim();
+        return title.Trim();
     }
+
+    /// <summary>
+    /// Cuts the "{company}" placeholder out of <paramref name="pattern"/> along with the
+    /// separator run adjoining it, or returns <paramref name="pattern"/> unchanged when it has
+    /// no company placeholder.
+    /// </summary>
+    /// <remarks>
+    /// The run that follows the placeholder is the one that collapses — "{company} - {app}"
+    /// loses " - {app}"'s leading punctuation, not "{app}"'s. But when the placeholder sits at
+    /// the end of the pattern with nothing after it, there is no following run to take, so the
+    /// preceding one collapses instead — "{app} - {company}" loses "{app}"'s trailing " - ".
+    /// </remarks>
+    private static string CollapseCompanyPlaceholder(string pattern)
+    {
+        var index = pattern.IndexOf(CompanyPlaceholder, StringComparison.Ordinal);
+        if (index < 0)
+            return pattern;
+
+        var end = index + CompanyPlaceholder.Length;
+
+        if (end < pattern.Length)
+        {
+            var runEnd = end;
+            while (runEnd < pattern.Length && IsSeparatorChar(pattern[runEnd]))
+                runEnd++;
+
+            return pattern[..index] + pattern[runEnd..];
+        }
+
+        var runStart = index;
+        while (runStart > 0 && IsSeparatorChar(pattern[runStart - 1]))
+            runStart--;
+
+        return pattern[..runStart];
+    }
+
+    /// <summary>A dangling-separator character: whitespace, or one of the punctuation marks a
+    /// title pattern uses to join "{company}" and "{app}".</summary>
+    private static bool IsSeparatorChar(char c)
+        => char.IsWhiteSpace(c) || c is '-' or ':' or '|';
 }
