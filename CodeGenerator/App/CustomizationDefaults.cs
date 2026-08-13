@@ -71,7 +71,8 @@ internal static class CustomizationDefaults
                 Validation: profile.Validation ?? fallback.Validation,
                 Logging: profile.Logging ?? fallback.Logging,
                 SampleSeedData: profile.SampleSeedData ?? fallback.SampleSeedData,
-                NamespacePrefix: ValidatedPrefix(profile.NamespacePrefix, fallback.NamespacePrefix));
+                NamespacePrefix: ValidatedPrefix(profile.NamespacePrefix, fallback.NamespacePrefix),
+                Layout: fallback.Layout);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
         {
