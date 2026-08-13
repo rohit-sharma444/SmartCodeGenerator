@@ -72,11 +72,14 @@ public sealed class MainForm : Form
                 return;
 
             // One pane at a time: the old one is disposed rather than hidden, so its event
-            // handlers stop firing when the selection moves on.
-            foreach (Control existing in _host.Controls)
-                existing.Dispose();
-
+            // handlers stop firing when the selection moves on. Snapshotted first, because
+            // disposing a control removes it from this collection.
+            var open = _host.Controls.Cast<Control>().ToArray();
             _host.Controls.Clear();
+
+            foreach (var pane in open)
+                pane.Dispose();
+
             _host.Controls.Add(BuildPane(entity, _model));
         };
 

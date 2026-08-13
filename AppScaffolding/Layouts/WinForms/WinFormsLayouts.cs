@@ -8,6 +8,7 @@ public static class WinFormsLayouts
         new WinFormsTabsLayout(),
         new WinFormsSidebarLayout(),
         new WinFormsMasterDetailLayout(),
+        new WinFormsDashboardLayout(),
     ];
 
     public static IAppLayout Default { get; } = All[0];
