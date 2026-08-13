@@ -192,11 +192,17 @@ reimplement it.
 current item when the `ItemsSource` is a `CollectionView`, so bound to an
 `ObservableCollection` it would otherwise open with nothing selected.
 
-Both sides already have the seam that makes the new containers cheap. WPF's
-per-entity pane is a single `DataTemplate`, shared across the three new layouts
-as one raw-string-literal fragment (`EntityPaneXaml`); WinForms already factors
-its pane into a `BuildTab` method the new containers can call. **The layouts
-differ only in the container around the pane.**
+Both sides already have the seam that makes the new containers cheap: **the
+layouts differ only in the container around the pane.** WPF's per-entity pane is
+a single `DataTemplate`, shared across the three new layouts as one
+raw-string-literal fragment (`EntityPaneXaml`).
+
+WinForms is one step further away than it first looks. Its pane is already a
+method, `BuildTab` — but that method returns a `TabPage`, which a sidebar or a
+dashboard cannot host. So its *body* is what the new layouts share, re-emitted
+from a `WinFormsPaneCode` fragment as a `Panel`-returning `BuildPane`. Same
+arrangement as the WPF side, and the same rule: `tabs` keeps its own untouched
+copy.
 
 On fragment composition and the CRLF hazard: PR #78 established that a template
 line rebuilt from `"\n"` concatenation silently drops a CR, and that this is
