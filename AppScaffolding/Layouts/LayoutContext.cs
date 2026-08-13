@@ -19,8 +19,17 @@ public sealed record LayoutContext(
     /// <summary>Whether the layout should bind to the theme brushes.</summary>
     public bool Themed => Palette is not null;
 
-    /// <summary>The window/form caption, XML-escaped.</summary>
+    /// <summary>The window/form caption, XML-escaped — for a XAML attribute.</summary>
     public string TitleAttribute => Customization.TitleAttributeFor(ProjectName);
+
+    /// <summary>The window/form caption escaped as a C# string-literal body.</summary>
+    /// <remarks>
+    /// Windows Forms emits its caption into source (<c>Text = "..."</c>) rather than into markup,
+    /// so it needs this and never <see cref="TitleAttribute"/>: XML escaping would put
+    /// <c>&amp;amp;</c> inside a string literal. Both are here rather than one, because which
+    /// escaping is correct is a property of where the layout writes the title, not of the title.
+    /// </remarks>
+    public string TitleLiteral => Customization.TitleLiteralFor(ProjectName);
 
     /// <summary>The icon file inside the assets folder, or null when the app was given none.</summary>
     public string? IconFileName => Customization.IconFileName;

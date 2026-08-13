@@ -1,3 +1,5 @@
+using AppScaffolding.Layouts;
+using AppScaffolding.Layouts.WinForms;
 using CodeGenerationEngine.Models;
 
 namespace AppScaffolding.Targets;
@@ -30,10 +32,10 @@ public sealed class WinFormsTarget : ITargetScaffolder
 
         var palette = ThemePalette.Resolve(customization.Theme, customization.Accent);
 
-        files.Add(new("Views", "MainForm.cs",
-            WinFormsMainFormTemplate.Source(
-                ns, customization.TitleLiteralFor(projectName), palette,
-                customization.IconFileName)));
+        files.AddRange(
+            WinFormsLayouts.Resolve(customization.EffectiveLayout).ViewFiles(
+                new LayoutContext(ns, projectName, customization, palette)));
+
         files.Add(new("", "Program.cs", WinFormsProgramTemplate.Source(ns)));
 
         return files;
