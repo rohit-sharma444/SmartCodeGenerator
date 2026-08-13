@@ -9,8 +9,9 @@ public static class WinFormsMainFormTemplate
     /// <summary>Source of <c>Views/MainForm.cs</c>.</summary>
     /// <remarks>
     /// The <c>IsDisplayable</c> / <c>IsEntityType</c> / <c>DisplayMember</c> helpers emitted here
-    /// are deliberately duplicated in <see cref="MainWindowTemplate.CodeBehind"/> rather than
-    /// shared: keep the two in sync if the display convention ever changes.
+    /// are deliberately duplicated in <see cref="MainWindowTemplate.CodeBehind"/> and, for
+    /// <c>IsDisplayable</c> alone, in <see cref="PropertyEditorTemplate.Source"/> rather than
+    /// shared: keep all three in sync if the display convention ever changes.
     /// </remarks>
     public static string Source(string appName) => Source(appName, appName);
 

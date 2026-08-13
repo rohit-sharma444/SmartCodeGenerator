@@ -10,6 +10,7 @@ public static class WpfLayouts
         new WpfTabsLayout(),
         new WpfSidebarLayout(),
         new WpfDashboardLayout(),
+        new WpfMasterDetailLayout(),
     ];
 
     /// <summary>The historical default: the tabbed window.</summary>

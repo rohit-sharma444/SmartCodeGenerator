@@ -42,7 +42,7 @@ public static class EntityPaneXaml
 
                             <local:PropertyEditor DockPanel.Dock="Bottom"
                                                   Margin="8"
-                                                  Content="{Binding Selected}" />
+                                                  Record="{Binding Selected}" />
             """
             : string.Empty;
 
