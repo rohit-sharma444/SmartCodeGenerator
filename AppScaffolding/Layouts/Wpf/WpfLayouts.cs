@@ -8,6 +8,7 @@ public static class WpfLayouts
     private static readonly IAppLayout[] All =
     [
         new WpfTabsLayout(),
+        new WpfSidebarLayout(),
     ];
 
     /// <summary>The historical default: the tabbed window.</summary>
