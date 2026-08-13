@@ -34,6 +34,7 @@ internal static class CustomizationDefaults
         public bool? Logging { get; set; }
         public bool? SampleSeedData { get; set; }
         public string? NamespacePrefix { get; set; }
+        public string? Layout { get; set; }
     }
 
     private static readonly JsonSerializerOptions Options = new()
@@ -71,7 +72,8 @@ internal static class CustomizationDefaults
                 Validation: profile.Validation ?? fallback.Validation,
                 Logging: profile.Logging ?? fallback.Logging,
                 SampleSeedData: profile.SampleSeedData ?? fallback.SampleSeedData,
-                NamespacePrefix: ValidatedPrefix(profile.NamespacePrefix, fallback.NamespacePrefix));
+                NamespacePrefix: ValidatedPrefix(profile.NamespacePrefix, fallback.NamespacePrefix),
+                Layout: ParseLayout(profile.Layout));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
         {
@@ -97,6 +99,12 @@ internal static class CustomizationDefaults
                 Logging = customization.Logging,
                 SampleSeedData = customization.SampleSeedData,
                 NamespacePrefix = customization.NamespacePrefix,
+
+                // Null stays absent from the file rather than being written as "tabs": a profile
+                // that names no layout is what lets a later `layout tabs` read as typed.
+                Layout = customization.Layout is null
+                    ? null
+                    : AppLayoutCatalog.KeyFor(customization.Layout.Value),
             };
 
             File.WriteAllText(path, JsonSerializer.Serialize(profile, Options));
@@ -111,6 +119,16 @@ internal static class CustomizationDefaults
 
     private static AppTheme ParseTheme(string? value, AppTheme fallback)
         => Enum.TryParse<AppTheme>(value, ignoreCase: true, out var theme) ? theme : fallback;
+
+    /// <summary>The stored layout, or null when absent or unrecognized.</summary>
+    /// <remarks>
+    /// Re-validated here for the reason <see cref="ValidatedPrefix"/> gives: a hand-edited profile
+    /// bypasses the inline parser and the wizard, and <c>Load</c> otherwise assigns straight from
+    /// the JSON. There is no fallback parameter because null is already the "named nothing" value —
+    /// an unreadable layout is indistinguishable from an absent one, and both mean tabs downstream.
+    /// </remarks>
+    private static AppLayout? ParseLayout(string? value)
+        => value is not null && AppLayoutCatalog.TryResolve(value, out var layout) ? layout : null;
 
     /// <summary>
     /// <paramref name="value"/> when it is empty or a valid namespace prefix, or

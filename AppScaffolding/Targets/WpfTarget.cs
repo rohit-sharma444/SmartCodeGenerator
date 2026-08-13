@@ -1,3 +1,5 @@
+using AppScaffolding.Layouts;
+using AppScaffolding.Layouts.Wpf;
 using CodeGenerationEngine.Models;
 
 namespace AppScaffolding.Targets;
@@ -28,11 +30,11 @@ public sealed class WpfTarget : ITargetScaffolder
 
         var palette = ThemePalette.Resolve(customization.Theme, customization.Accent);
 
-        files.Add(new("Views", "MainWindow.xaml",
-            MainWindowTemplate.Xaml(
-                ns, customization.TitleAttributeFor(projectName), palette is not null,
-                customization.IconFileName)));
-        files.Add(new("Views", "MainWindow.xaml.cs", MainWindowTemplate.CodeBehind(ns)));
+        // Theming stays out here rather than inside the layouts: it is orthogonal to shape, and
+        // four layouts would otherwise each reimplement the merge into App.xaml.
+        files.AddRange(
+            WpfLayouts.Resolve(customization.EffectiveLayout).ViewFiles(
+                new LayoutContext(ns, projectName, customization, palette)));
 
         if (palette is not null)
             files.Add(new("Views", ThemeXamlTemplate.FileName, ThemeXamlTemplate.Source(palette)));

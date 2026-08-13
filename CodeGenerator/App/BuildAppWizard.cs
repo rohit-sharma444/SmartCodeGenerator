@@ -96,7 +96,7 @@ internal static class BuildAppWizard
         // Last, and opt-in: it is the only step that is pure decoration, so a user who wants the
         // app they came for answers one more character and is done.
         var customization = CustomizationWizard.Run(
-            reader, writer, start ?? AppCustomization.Default);
+            reader, writer, start ?? AppCustomization.Default, target);
 
         if (customization is null)
             return Cancelled;

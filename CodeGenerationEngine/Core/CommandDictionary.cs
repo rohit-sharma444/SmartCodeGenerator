@@ -546,8 +546,10 @@ public static class CommandDictionary
                         + "icon <path> supplies a .ico or .png; title \"<pattern>\" overrides the "
                         + "window title, where {company} and {app} are substituted; "
                         + "namespace <prefix> puts the generated code under that namespace root "
-                        + "(CodisLtd.Shop), leaving the project and assembly names alone.",
-            Example = "build app: a shop company \"Codis Ltd\" namespace CodisLtd theme dark"
+                        + "(CodisLtd.Shop), leaving the project and assembly names alone; "
+                        + "layout tabs|sidebar|master-detail|dashboard chooses the shape of the "
+                        + "window (wpf and winforms only).",
+            Example = "build app: a shop company \"Codis Ltd\" namespace CodisLtd theme dark layout sidebar"
         },
         new()
         {

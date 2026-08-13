@@ -1,4 +1,5 @@
 using AppScaffolding;
+using AppScaffolding.Targets;
 using CodeGenerator.App;
 
 namespace CodeGenerator.Tests.App;
@@ -11,6 +12,19 @@ public class CustomizationWizardTests
     private static AppCustomization? Run(string input, AppCustomization? start = null)
         => CustomizationWizard.Run(
             new StringReader(input), new StringWriter(), start ?? AppCustomization.Default);
+
+    /// <summary>As <see cref="Run(string, AppCustomization?)"/>, for a named target, keeping the
+    /// prompts it wrote.</summary>
+    private static (AppCustomization? Result, string Output) RunFor(
+        ITargetScaffolder target, string input, AppCustomization? start = null)
+    {
+        var writer = new StringWriter();
+
+        var result = CustomizationWizard.Run(
+            new StringReader(input), writer, start ?? AppCustomization.Default, target);
+
+        return (result, writer.ToString());
+    }
 
     [TestMethod]
     public void Declining_the_gate_leaves_the_start_untouched()
@@ -128,16 +142,22 @@ public class CustomizationWizardTests
 
         var written = writer.ToString();
 
-        StringAssert.Contains(written, "Company name [Codis Ltd]");
-        StringAssert.Contains(written, "Theme [light/dark] [dark]");
+        // Matched with the gap between label and value left open: the prompts are padded so every
+        // caret lands in one column, so the run of spaces between the two is presentation.
+        StringAssert.Matches(written, LabelShowing("Company name", "Codis Ltd"));
+        StringAssert.Matches(written, LabelShowing("Theme", "dark"));
         // The company here is kept by a blank answer, not typed fresh, so the narrower Fix 4(a)
         // ruling suggests no prefix -- the prompt shows "none", the same as it would with no saved
         // company at all.
-        StringAssert.Contains(written, "Namespace prefix [none]");
-        StringAssert.Contains(written, "Validation layer [yes]");
-        StringAssert.Contains(written, "Logging [no]");
-        StringAssert.Contains(written, "Sample seed data [yes]");
+        StringAssert.Matches(written, LabelShowing("Namespace prefix", "none"));
+        StringAssert.Matches(written, LabelShowing("Validation layer", "yes"));
+        StringAssert.Matches(written, LabelShowing("Logging", "no"));
+        StringAssert.Matches(written, LabelShowing("Sample seed data", "yes"));
     }
+
+    /// <summary>A prompt offering <paramref name="value"/> for <paramref name="label"/>.</summary>
+    private static System.Text.RegularExpressions.Regex LabelShowing(string label, string value)
+        => new($@"{System.Text.RegularExpressions.Regex.Escape(label)}\s+\[{System.Text.RegularExpressions.Regex.Escape(value)}\]");
 
     [TestMethod]
     public void A_namespace_prefix_is_collected()
@@ -232,5 +252,123 @@ public class CustomizationWizardTests
 
         Assert.IsNotNull(result);
         Assert.AreEqual("AcmeCorp", result.NamespacePrefix);
+    }
+
+    [TestMethod]
+    public void The_layout_is_asked_first_on_a_desktop_target()
+    {
+        var (result, output) = RunFor(new WpfTarget(), "y\nsidebar\n" + new string('\n', 9));
+
+        Assert.IsNotNull(result);
+        Assert.AreEqual(AppLayout.Sidebar, result.Layout);
+
+        // Structural, not decoration: it is asked before the company.
+        Assert.IsLessThan(
+            output.IndexOf("Company", StringComparison.Ordinal),
+            output.IndexOf("Layout", StringComparison.Ordinal),
+            "layout is the structural choice and is asked first");
+
+        StringAssert.Contains(output, "tabs/sidebar/master-detail/dashboard");
+    }
+
+    [TestMethod]
+    public void The_layout_prompt_is_skipped_for_a_target_with_no_window()
+    {
+        var (result, output) = RunFor(new ConsoleTarget(), "y\n" + new string('\n', 9));
+
+        Assert.IsNotNull(result);
+        Assert.IsNull(result.Layout);
+        Assert.DoesNotContain("Layout", output);
+    }
+
+    /// <summary>No target named at all is the case every pre-existing test in this file exercises,
+    /// and the reason the parameter is optional: their answers must not shift by one.</summary>
+    [TestMethod]
+    public void No_target_asks_nothing_about_layout()
+    {
+        var result = Run("y\n" + new string('\n', 9));
+
+        Assert.IsNotNull(result);
+        Assert.IsNull(result.Layout);
+    }
+
+    [TestMethod]
+    public void An_unusable_layout_answer_keeps_what_was_offered()
+    {
+        var start = AppCustomization.Default with { Layout = AppLayout.Dashboard };
+
+        var (result, _) = RunFor(new WpfTarget(), "y\nkanban\n" + new string('\n', 9), start);
+
+        Assert.IsNotNull(result);
+        Assert.AreEqual(AppLayout.Dashboard, result.Layout);
+    }
+
+    [TestMethod]
+    public void A_blank_layout_answer_keeps_the_remembered_one()
+    {
+        var start = AppCustomization.Default with { Layout = AppLayout.MasterDetail };
+
+        var (result, output) = RunFor(new WpfTarget(), "y\n" + new string('\n', 10), start);
+
+        Assert.IsNotNull(result);
+        Assert.AreEqual(AppLayout.MasterDetail, result.Layout);
+
+        // Offered as the current value, so pressing Enter through the wizard keeps it.
+        StringAssert.Contains(output, "[master-detail]");
+    }
+
+    /// <summary>A first run on a desktop target leaves the layout unnamed by pressing Enter, rather
+    /// than recording `tabs` — so a later `layout dashboard` on the line still wins the merge.</summary>
+    [TestMethod]
+    public void A_blank_layout_answer_names_nothing_when_nothing_was_remembered()
+    {
+        var (result, output) = RunFor(new WpfTarget(), "y\n" + new string('\n', 10));
+
+        Assert.IsNotNull(result);
+        Assert.IsNull(result.Layout);
+        StringAssert.Contains(output, "[tabs]");
+    }
+
+    [TestMethod]
+    public void Closed_input_at_the_layout_prompt_returns_null()
+        => Assert.IsNull(RunFor(new WpfTarget(), "y\n").Result);
+
+    /// <summary>Every caret in one column, so the block reads as a form rather than as a ragged
+    /// list — which is what it was while the accepted values sat inside the labels.</summary>
+    [TestMethod]
+    public void Every_prompt_puts_its_caret_in_the_same_column()
+    {
+        var (_, output) = RunFor(new WpfTarget(), "y\n" + new string('\n', 10),
+            AppCustomization.Default with { Company = "Codis Ltd", Theme = AppTheme.Dark });
+
+        // Ask writes without a newline -- in a terminal the user's Enter supplies it -- so the
+        // prompts arrive as one run of text and the carets have to be measured by the distance
+        // BETWEEN them. Reading a single column index off each line would pass on any output at all.
+        var block = output[(output.IndexOf("clears an optional one.", StringComparison.Ordinal) + 1)..];
+
+        var carets = System.Text.RegularExpressions.Regex.Matches(block, "> ")
+            .Select(match => match.Index)
+            .ToList();
+
+        Assert.HasCount(10, carets, "a desktop run asks ten questions");
+
+        var widths = carets.Zip(carets.Skip(1), (a, b) => b - a).Distinct().ToList();
+
+        Assert.HasCount(1, widths,
+            "every prompt should be the same width so the carets line up, found widths: "
+            + string.Join(", ", widths));
+    }
+
+    [TestMethod]
+    public void The_accepted_values_are_listed_once_rather_than_inside_every_label()
+    {
+        var (_, output) = RunFor(new WpfTarget(), "y\n" + new string('\n', 10));
+
+        StringAssert.Contains(output, "Layout: tabs/sidebar/master-detail/dashboard");
+        StringAssert.Contains(output, "Theme: light/dark");
+
+        // Inline they are what made the labels differ by thirty characters.
+        Assert.DoesNotContain("Theme [light/dark]", output);
+        Assert.DoesNotContain("Accent colour (#rrggbb)", output);
     }
 }

@@ -1,10 +1,11 @@
-using AppScaffolding;
+﻿using AppScaffolding;
+using AppScaffolding.Layouts;
 
 namespace CodeGenerator.App;
 
 /// <summary>
 /// The opt-in customization step: one gate, then nine prompts pre-filled from whatever the
-/// caller already knows.
+/// caller already knows — ten on a target with a window, which is also asked its layout.
 /// </summary>
 /// <remarks>
 /// Reads and writes only through the supplied reader and writer, never the console — the pattern
@@ -28,7 +29,8 @@ internal static class CustomizationWizard
     /// ASK, so declining keeps whatever the command line already said.
     /// </summary>
     public static AppCustomization? Run(
-        TextReader reader, TextWriter writer, AppCustomization start)
+        TextReader reader, TextWriter writer, AppCustomization start,
+        ITargetScaffolder? target = null)
     {
         writer.WriteLine();
         writer.Write("Customize appearance and features? [y/N]> ");
@@ -50,16 +52,50 @@ internal static class CustomizationWizard
 
         writer.WriteLine();
 
+        // First, and only for a target that has a window: layout is the one structural choice in a
+        // step that is otherwise decoration, and asking a console build for a window shape would be
+        // nonsense.
+        var layout = start.Layout;
+        var asksLayout = target is not null && AppLayouts.Supports(target.Key);
+
+        // The accepted values are listed here rather than inside each label: inline they make the
+        // labels differ by thirty characters, and every input caret then starts in its own column.
+        if (asksLayout)
+            writer.WriteLine($"  Layout: {AppLayoutCatalog.PromptOptions}");
+
+        writer.WriteLine("  Theme: light/dark      Accent: #rrggbb      Icon: .ico or .png");
+        writer.WriteLine($"  Enter keeps the value in brackets; \"{NoneLabel}\" clears an optional one.");
+        writer.WriteLine();
+
+        if (asksLayout)
+        {
+            var offered = AppLayoutCatalog.KeyFor(layout ?? AppLayout.Tabs);
+
+            var chosen = Ask(reader, writer, "Layout", offered);
+            if (chosen is null) return null;
+
+            // An unusable answer keeps the current value rather than re-prompting, as a malformed
+            // accent does. Enter on a run with no remembered layout leaves it UNNAMED rather than
+            // recording `tabs`: the review summary then stays quiet for a user who customized
+            // nothing, and a `layout tabs` typed against a remembered dashboard still reads as the
+            // deliberate override it is.
+            if (AppLayoutCatalog.TryResolve(chosen, out var parsed)
+                && (layout is not null || parsed != AppLayout.Tabs))
+            {
+                layout = parsed;
+            }
+        }
+
         var company = Ask(reader, writer, "Company name", start.Company);
         if (company is null) return null;
 
-        var theme = Ask(reader, writer, "Theme [light/dark]", ThemeLabel(start.Theme));
+        var theme = Ask(reader, writer, "Theme", ThemeLabel(start.Theme));
         if (theme is null) return null;
 
-        var accent = Ask(reader, writer, "Accent colour (#rrggbb)", start.Accent ?? NoneLabel);
+        var accent = Ask(reader, writer, "Accent colour", start.Accent ?? NoneLabel);
         if (accent is null) return null;
 
-        var icon = Ask(reader, writer, "Icon path (.ico or .png)", start.IconPath ?? NoneLabel);
+        var icon = Ask(reader, writer, "Icon path", start.IconPath ?? NoneLabel);
         if (icon is null) return null;
 
         // Naming a company but leaving the pattern at "{app}" would hide the company the user
@@ -103,6 +139,7 @@ internal static class CustomizationWizard
 
         return start with
         {
+            Layout = layout,
             Company = company,
             Theme = ParseTheme(theme, start.Theme),
             Accent = ParseAccent(accent, start.Accent),
@@ -115,11 +152,25 @@ internal static class CustomizationWizard
         };
     }
 
+    /// <summary>The column the labels are padded to, and the one the value brackets are.</summary>
+    /// <remarks>
+    /// Both are padded so every prompt's caret lands in the same column: unpadded, a label and a
+    /// remembered value together shift the point where the user types by up to thirty characters
+    /// down the block. <see cref="LabelColumn"/> clears the longest label ("Namespace prefix");
+    /// <see cref="ValueColumn"/> clears <c>[{company} - {app}]</c>, the title a named company is
+    /// offered and so the widest value a default run shows. A longer one — a full icon path someone
+    /// typed — pushes its own caret right, and only its own.
+    /// </remarks>
+    private const int LabelColumn = 18;
+    private const int ValueColumn = 20;
+
     /// <summary>One prompt showing its current value. Blank keeps it; null means stdin closed.</summary>
     private static string? Ask(
         TextReader reader, TextWriter writer, string label, string current)
     {
-        writer.Write($"  {label} [{current}]> ");
+        var value = $"[{current}]";
+
+        writer.Write($"  {label,-LabelColumn}{value,-ValueColumn}> ");
 
         var line = reader.ReadLine();
 

@@ -1,4 +1,5 @@
 using AppScaffolding;
+using AppScaffolding.Layouts;
 using AppScaffolding.Targets;
 using CodeIntelligence;
 using CodeIntelligence.Resolution;
@@ -129,10 +130,16 @@ internal sealed class BuildAppCommand
     /// </summary>
     /// <remarks>
     /// A setting counts as named inline when it differs from
-    /// <see cref="AppCustomization.Default"/>, which is exact for the inline vocabulary:
-    /// every option there can only ever set a non-default value — there is no way to type an
-    /// empty company or the `light`-less "no theme", and each flag names the opposite of its
-    /// default.
+    /// <see cref="AppCustomization.Default"/>, which is exact for most of the inline vocabulary:
+    /// there is no way to type an empty company or the `light`-less "no theme", and each flag names
+    /// the opposite of its default.
+    /// <para>
+    /// <see cref="AppCustomization.Layout"/> is the exception, and the reason it is nullable:
+    /// `layout tabs` is typeable and EQUALS the default, so a differs-from-default comparison would
+    /// read it as unmentioned and hand back a remembered layout instead. It layers on null — "not
+    /// named" — rather than on inequality. Any future option whose value can equal the default
+    /// needs the same treatment.
+    /// </para>
     /// </remarks>
     internal static AppCustomization Merge(AppCustomization saved, AppCustomization inline)
     {
@@ -150,6 +157,10 @@ internal sealed class BuildAppCommand
             SampleSeedData =
                 Named(inline.SampleSeedData, defaults.SampleSeedData, saved.SampleSeedData),
             NamespacePrefix = Named(inline.NamespacePrefix, defaults.NamespacePrefix, saved.NamespacePrefix),
+
+            // Null-coalescing rather than Named: null IS "not named" for a layout, so no comparison
+            // against the default is involved — see the remark above.
+            Layout = inline.Layout ?? saved.Layout,
         };
 
         static T Named<T>(T inline, T fallback, T saved)
@@ -380,6 +391,8 @@ internal sealed class BuildAppCommand
                     if (approved is null)   // Esc at a picker: back to the action list
                         continue;
 
+                    WriteLayoutNotice(approved.Value.Target, customization);
+
                     Generate(
                         model, appName, workspaceRoot, importedData,
                         approved.Value.Target, approved.Value.Persistence, customization);
@@ -429,6 +442,8 @@ internal sealed class BuildAppCommand
                             + "targets yet — they stay JSON.");
                         break;
                     }
+
+                    WriteLayoutNotice(chosenTarget, customization);
 
                     Generate(
                         model, appName, workspaceRoot, importedData,
@@ -704,6 +719,36 @@ internal sealed class BuildAppCommand
             "json" => PersistenceKind.Json,
             _ => null,
         };
+    }
+
+    /// <summary>
+    /// What to tell the user when the target they approved cannot use the layout they named, or
+    /// null when there is nothing to say.
+    /// </summary>
+    /// <remarks>
+    /// Internal and pure for the same reason <see cref="WhyLines"/> is. The check belongs at
+    /// `approve` rather than only in the wizard because the target can still be changed there — the
+    /// same reason <see cref="IsPersistenceAllowed"/> is re-checked at that point. A notice rather
+    /// than a refusal: the layout is decoration a windowless target simply has no use for, and
+    /// failing the build over it would be out of proportion.
+    /// </remarks>
+    /// <summary>Prints <see cref="LayoutNotice"/> when there is one. Both approve paths settle a
+    /// target of their own, so both call this.</summary>
+    private static void WriteLayoutNotice(ITargetScaffolder target, AppCustomization customization)
+    {
+        var notice = LayoutNotice(target, customization);
+
+        if (notice is not null)
+            Console.WriteLine(notice);
+    }
+
+    internal static string? LayoutNotice(ITargetScaffolder target, AppCustomization customization)
+    {
+        if (customization.Layout is null || AppLayouts.Supports(target.Key))
+            return null;
+
+        return $"The {AppLayoutCatalog.KeyFor(customization.Layout.Value)} layout applies to the "
+             + $"wpf and winforms targets; the {target.Key} target has no window, so it is ignored.";
     }
 
     /// <summary>The targets whose view models read JsonStore directly, off the shared store

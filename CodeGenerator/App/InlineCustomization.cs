@@ -33,7 +33,7 @@ internal static class InlineCustomization
 {
     /// <summary>Options taking one value.</summary>
     private static readonly string[] ValueKeys =
-        ["company", "theme", "accent", "icon", "title", "namespace"];
+        ["company", "theme", "accent", "icon", "title", "namespace", "layout"];
 
     /// <summary>Options that are a bare word.</summary>
     private static readonly string[] Flags =
@@ -159,6 +159,13 @@ internal static class InlineCustomization
                 // who was describing rather than configuring meant them to be.
                 return NamespacePrefix.IsValid(value)
                     ? customization with { NamespacePrefix = value }
+                    : null;
+
+            case "layout":
+                // Refused rather than ignored when unusable, like `theme mauve`: the words are
+                // more likely part of the description than a layout name we should guess at.
+                return AppLayoutCatalog.TryResolve(value, out var layout)
+                    ? customization with { Layout = layout }
                     : null;
 
             default:

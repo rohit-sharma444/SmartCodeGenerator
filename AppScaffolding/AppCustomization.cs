@@ -27,7 +27,8 @@ public sealed record AppCustomization(
     bool Validation,
     bool Logging,
     bool SampleSeedData,
-    string NamespacePrefix)
+    string NamespacePrefix,
+    AppLayout? Layout)
 {
     /// <summary>The only two placeholders a title pattern may use.</summary>
     public const string CompanyPlaceholder = "{company}";
@@ -46,13 +47,24 @@ public sealed record AppCustomization(
         Validation: true,
         Logging: false,
         SampleSeedData: true,
-        NamespacePrefix: string.Empty);
+        NamespacePrefix: string.Empty,
+        Layout: null);
 
     /// <summary>The project folder a supplied icon is copied into.</summary>
     public const string AssetsFolder = "Assets";
 
     /// <summary>Whether anything company-derived should be emitted at all.</summary>
     public bool HasBranding => Company.Length > 0;
+
+    /// <summary>
+    /// The layout to emit: whatever was named, or <see cref="AppLayout.Tabs"/> when nothing was.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="Layout"/> is nullable because "not mentioned" and "tabs" are different answers
+    /// to <c>BuildAppCommand.Merge</c>, which reads a setting as typed-inline when it differs from
+    /// <see cref="Default"/>. The emit path never cares about that distinction, and uses this.
+    /// </remarks>
+    public AppLayout EffectiveLayout => Layout ?? AppLayout.Tabs;
 
     /// <summary>
     /// The name the supplied icon is copied to inside <see cref="AssetsFolder"/>, or null when

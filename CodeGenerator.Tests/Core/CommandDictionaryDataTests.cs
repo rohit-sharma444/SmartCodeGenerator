@@ -82,11 +82,26 @@ public class CommandDictionaryDataTests
 
         foreach (var option in new[]
                  {
-                     "company", "theme", "accent", "icon", "title", "namespace",
+                     "company", "theme", "accent", "icon", "title", "namespace", "layout",
                      "novalidation", "logging", "noseed",
                  })
         {
             StringAssert.Contains(buildApp, option, $"'{option}' is not in the help catalog.");
         }
+    }
+
+    /// <summary>The option name alone is not enough for `layout`: it takes one of four keys, and a
+    /// user who cannot see them from `help` has to guess.</summary>
+    [TestMethod]
+    public void The_help_catalog_documents_every_layout_key()
+    {
+        var buildApp = string.Join(
+            "\n",
+            CommandDictionary.Commands
+                .Where(entry => entry.Category == "Build App")
+                .Select(entry => $"{entry.Command} {entry.Description} {entry.Example}"));
+
+        foreach (var key in AppScaffolding.AppLayoutCatalog.Keys)
+            StringAssert.Contains(buildApp, key, $"layout key '{key}' is not in the help catalog.");
     }
 }
