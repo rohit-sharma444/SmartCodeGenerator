@@ -45,6 +45,42 @@ public class EmittedDesktopSourceTests
     }
 
     [TestMethod]
+    public void AssertCompilesTogether_ResolvesTypesAcrossFilesAndNamespaces()
+    {
+        // What a single-tree compile cannot do: two file-scoped namespaces, one importing the
+        // other. This is the shape every emitted view has — code-behind plus view models.
+        EmittedDesktopSource.AssertCompilesTogether(
+            ("Views/Probe.xaml.cs", """
+                using System.Windows.Controls;
+                using Acme.ViewModels;
+
+                namespace Acme.Views;
+
+                public sealed class Probe : ContentControl
+                {
+                    public Probe() => DataContext = new Model();
+                }
+                """),
+            ("ViewModels/Model.cs", """
+                namespace Acme.ViewModels;
+
+                public sealed class Model;
+                """));
+    }
+
+    [TestMethod]
+    public void AssertCompilesTogether_StillReportsARealError()
+    {
+        // The control for the test above: if a multi-file compile reported success regardless,
+        // every later view test would be vacuous.
+        var result = CodeGenerationEngine.Core.Compiler.CompileSources(
+            [("Views/Probe.xaml.cs", "namespace Acme.Views; public sealed class Probe : NoSuchBase;")],
+            EmittedDesktopSource.DesktopReferences);
+
+        Assert.IsFalse(result.Success);
+    }
+
+    [TestMethod]
     public void PlainHarness_CannotCompileWpfTypes_WhichIsWhyThisOneExists()
     {
         // The control for the two tests above. If EmittedSource could already do this, this

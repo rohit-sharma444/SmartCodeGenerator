@@ -38,12 +38,41 @@ internal static class EmittedDesktopSource
 
     public static void AssertCompiles(string source)
     {
-        Assert.IsNotEmpty(
+        GuardReferences();
+
+        AssertNoErrors(Compiler.Compile(source, DesktopReferences));
+    }
+
+    /// <summary>
+    /// Asserts several emitted files compile as ONE assembly, each keeping its own file-scoped
+    /// namespace and <c>using</c> directives.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="EmittedSource.Flatten"/> is the wrong tool for emitted views: it strips only the
+    /// <c>Acme.Models</c> / <c>Acme.Data</c> / <c>Acme.Validation</c> names its own callers emit, so
+    /// a <c>Views</c> and a <c>ViewModels</c> fragment concatenated by it declare two file-scoped
+    /// namespaces in one compilation unit. Compiling them as separate syntax trees also keeps the
+    /// test faithful: the emitted code-behind really does live in another namespace than the view
+    /// models it imports, and a missing <c>using</c> would be invisible if both were flattened into
+    /// the global namespace.
+    /// </remarks>
+    public static void AssertCompilesTogether(params (string Path, string Code)[] files)
+    {
+        GuardReferences();
+
+        Assert.IsNotEmpty(files, "nothing was passed to compile");
+
+        AssertNoErrors(Compiler.CompileSources(files, DesktopReferences));
+    }
+
+    private static void GuardReferences()
+        => Assert.IsNotEmpty(
             DesktopReferences,
             "the Microsoft.WindowsDesktop.App.Ref pack was not found, so this assertion would be "
             + "vacuous; see EmittedDesktopSourceTests");
 
-        var result = Compiler.Compile(source, DesktopReferences);
+    private static void AssertNoErrors(CodeGenerationEngine.Models.CompilationResult result)
+    {
         var errors = result.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error).ToList();
         var message = string.Join("\n", errors.Select(e => e.ToString()));
 
