@@ -6,6 +6,7 @@ public static class WinFormsLayouts
     private static readonly IAppLayout[] All =
     [
         new WinFormsTabsLayout(),
+        new WinFormsSidebarLayout(),
     ];
 
     public static IAppLayout Default { get; } = All[0];
