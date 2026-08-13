@@ -189,8 +189,11 @@ public class BuildAppWizardTests
     {
         var writer = new StringWriter();
 
+        // The blank after the gate answers the layout prompt, which application type 0 — WPF — is
+        // asked before the company. Keeping the offered layout leaves this walkthrough about what
+        // it was about: that the customization step comes last.
         var outcome = BuildAppWizard.Run(
-            Bare(), new StringReader("a shop\nn\ny\nCodis Ltd\n\n\n\n\n\n\n\n\n"), writer, () => 0);
+            Bare(), new StringReader("a shop\nn\ny\n\nCodis Ltd\n\n\n\n\n\n\n\n\n"), writer, () => 0);
 
         var written = writer.ToString();
 

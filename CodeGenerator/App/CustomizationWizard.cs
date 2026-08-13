@@ -1,10 +1,11 @@
 using AppScaffolding;
+using AppScaffolding.Layouts;
 
 namespace CodeGenerator.App;
 
 /// <summary>
 /// The opt-in customization step: one gate, then nine prompts pre-filled from whatever the
-/// caller already knows.
+/// caller already knows — ten on a target with a window, which is also asked its layout.
 /// </summary>
 /// <remarks>
 /// Reads and writes only through the supplied reader and writer, never the console — the pattern
@@ -28,7 +29,8 @@ internal static class CustomizationWizard
     /// ASK, so declining keeps whatever the command line already said.
     /// </summary>
     public static AppCustomization? Run(
-        TextReader reader, TextWriter writer, AppCustomization start)
+        TextReader reader, TextWriter writer, AppCustomization start,
+        ITargetScaffolder? target = null)
     {
         writer.WriteLine();
         writer.Write("Customize appearance and features? [y/N]> ");
@@ -49,6 +51,30 @@ internal static class CustomizationWizard
             return start;
 
         writer.WriteLine();
+
+        // First, and only for a target that has a window: layout is the one structural choice in a
+        // step that is otherwise decoration, and asking a console build for a window shape would be
+        // nonsense.
+        var layout = start.Layout;
+
+        if (target is not null && AppLayouts.Supports(target.Key))
+        {
+            var offered = AppLayoutCatalog.KeyFor(layout ?? AppLayout.Tabs);
+
+            var chosen = Ask(reader, writer, $"Layout [{AppLayoutCatalog.PromptOptions}]", offered);
+            if (chosen is null) return null;
+
+            // An unusable answer keeps the current value rather than re-prompting, as a malformed
+            // accent does. Enter on a run with no remembered layout leaves it UNNAMED rather than
+            // recording `tabs`: the review summary then stays quiet for a user who customized
+            // nothing, and a `layout tabs` typed against a remembered dashboard still reads as the
+            // deliberate override it is.
+            if (AppLayoutCatalog.TryResolve(chosen, out var parsed)
+                && (layout is not null || parsed != AppLayout.Tabs))
+            {
+                layout = parsed;
+            }
+        }
 
         var company = Ask(reader, writer, "Company name", start.Company);
         if (company is null) return null;
@@ -103,6 +129,7 @@ internal static class CustomizationWizard
 
         return start with
         {
+            Layout = layout,
             Company = company,
             Theme = ParseTheme(theme, start.Theme),
             Accent = ParseAccent(accent, start.Accent),

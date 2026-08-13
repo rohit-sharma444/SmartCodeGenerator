@@ -104,4 +104,40 @@ public class CustomizationDefaultsTests
 
         Assert.AreEqual(string.Empty, loaded.NamespacePrefix);
     }
+
+    [TestMethod]
+    public void A_layout_round_trips_through_the_profile()
+    {
+        CustomizationDefaults.Save(
+            _root, AppCustomization.Default with { Layout = AppLayout.MasterDetail });
+
+        Assert.AreEqual(AppLayout.MasterDetail, CustomizationDefaults.Load(_root).Layout);
+    }
+
+    /// <summary>A hand-edited profile bypasses the inline parser and the wizard, so Load
+    /// re-validates — the rule the namespace prefix already follows.</summary>
+    [TestMethod]
+    public void An_unrecognized_stored_layout_falls_back_to_none()
+    {
+        Directory.CreateDirectory(Path.Combine(_root, ".codegen"));
+        File.WriteAllText(
+            Path.Combine(_root, ".codegen", CustomizationDefaults.FileName),
+            "{ \"layout\": \"kanban\" }");
+
+        Assert.IsNull(CustomizationDefaults.Load(_root).Layout);
+    }
+
+    /// <summary>A profile that names no layout must not gain one, or a later `layout tabs` would
+    /// stop reading as typed.</summary>
+    [TestMethod]
+    public void A_profile_with_no_layout_stays_without_one()
+    {
+        CustomizationDefaults.Save(_root, AppCustomization.Default with { Company = "Codis Ltd" });
+
+        Assert.IsNull(CustomizationDefaults.Load(_root).Layout);
+        Assert.DoesNotContain(
+            "\"layout\"",
+            File.ReadAllText(Path.Combine(_root, ".codegen", CustomizationDefaults.FileName)),
+            StringComparison.OrdinalIgnoreCase);
+    }
 }

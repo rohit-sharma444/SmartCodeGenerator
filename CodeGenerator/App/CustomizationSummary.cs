@@ -45,6 +45,11 @@ internal static class CustomizationSummary
         if (customization.NamespacePrefix.Length > 0)
             lines.Add($"  Namespace prefix: {customization.NamespacePrefix}");
 
+        // Named, not "differs from tabs": `layout tabs` typed against a remembered dashboard is a
+        // deliberate choice, and the one place the user can check that the override took effect.
+        if (customization.Layout is not null)
+            lines.Add($"  Layout: {AppLayoutCatalog.KeyFor(customization.Layout.Value)}");
+
         var features = new List<string>();
 
         if (!customization.Validation) features.Add("no validation layer");

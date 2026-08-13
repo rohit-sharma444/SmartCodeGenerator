@@ -147,4 +147,25 @@ public class CustomizationMergeTests
         Assert.AreEqual(
             AppLayout.Sidebar, BuildAppCommand.Merge(saved, AppCustomization.Default).Layout);
     }
+
+    [TestMethod]
+    public void The_layout_is_named_in_the_review_loop()
+    {
+        var lines = CustomizationSummary.Lines(
+            AppCustomization.Default with { Layout = AppLayout.Dashboard });
+
+        Assert.Contains("  Layout: dashboard", lines);
+    }
+
+    /// <summary>`layout tabs` against a remembered dashboard is a deliberate override, and the
+    /// review loop is where the user checks it took effect — so it is listed even though tabs is
+    /// what an uncustomized app already gets.</summary>
+    [TestMethod]
+    public void An_explicit_tabs_layout_is_still_named_in_the_review_loop()
+    {
+        var lines = CustomizationSummary.Lines(
+            AppCustomization.Default with { Layout = AppLayout.Tabs });
+
+        Assert.Contains("  Layout: tabs", lines);
+    }
 }
