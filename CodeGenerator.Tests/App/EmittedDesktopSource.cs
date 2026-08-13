@@ -1,0 +1,77 @@
+using System.Linq;
+using CodeGenerationEngine.Core;
+using Microsoft.CodeAnalysis;
+
+namespace CodeGenerator.Tests.App;
+
+/// <summary>
+/// Compiles emitted WPF / WinForms C# — the code <see cref="EmittedSource"/> cannot reach.
+/// </summary>
+/// <remarks>
+/// This test project targets net10.0, not net10.0-windows, so PresentationFramework, WindowsBase
+/// and System.Windows.Forms are not among the running process's TRUSTED_PLATFORM_ASSEMBLIES and
+/// <see cref="Compiler.Compile(string, IEnumerable{string})"/> cannot resolve a Window, a
+/// ContentControl or a Form. The WindowsDesktop REFERENCE pack shipped with the SDK supplies
+/// exactly those assemblies, and mixing them with the runtime's own platform assemblies produces
+/// no duplicate-assembly conflict — verified by probe, 0 errors and 0 warnings.
+/// <para>
+/// Retargeting the test project to net10.0-windows would be the alternative. It was rejected: it
+/// would make the whole suite Windows-only for the sake of a handful of tests, and the emitted
+/// desktop code is only ever compiled for real by the generated app's own build.
+/// </para>
+/// </remarks>
+internal static class EmittedDesktopSource
+{
+    private const string PackRoot =
+        @"C:\Program Files\dotnet\packs\Microsoft.WindowsDesktop.App.Ref";
+
+    /// <summary>
+    /// Every reference assembly in the newest installed WindowsDesktop ref pack, or empty when the
+    /// pack is missing.
+    /// </summary>
+    /// <remarks>
+    /// Empty rather than throwing, so the dedicated guard test in
+    /// <c>EmittedDesktopSourceTests</c> reports the cause once instead of every desktop test
+    /// failing with the same path error.
+    /// </remarks>
+    public static IReadOnlyList<string> DesktopReferences { get; } = LoadDesktopReferences();
+
+    public static void AssertCompiles(string source)
+    {
+        Assert.IsNotEmpty(
+            DesktopReferences,
+            "the Microsoft.WindowsDesktop.App.Ref pack was not found, so this assertion would be "
+            + "vacuous; see EmittedDesktopSourceTests");
+
+        var result = Compiler.Compile(source, DesktopReferences);
+        var errors = result.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error).ToList();
+        var message = string.Join("\n", errors.Select(e => e.ToString()));
+
+        Assert.IsTrue(result.Success, $"Compilation failed:\n{message}");
+        Assert.IsEmpty(errors, $"Compilation errors:\n{message}");
+    }
+
+    private static IReadOnlyList<string> LoadDesktopReferences()
+    {
+        try
+        {
+            if (!Directory.Exists(PackRoot))
+                return [];
+
+            // Ordered by the PARSED version, not by folder-name text: sorting the names as
+            // strings would put "9.0.19" above "10.0.11" and pick a stale pack.
+            var newest = Directory.GetDirectories(PackRoot)
+                .Select(d => (Dir: d, Parsed: Version.TryParse(Path.GetFileName(d), out var v) ? v : null))
+                .Where(x => x.Parsed is not null)
+                .OrderByDescending(x => x.Parsed)
+                .Select(x => Path.Combine(x.Dir, "ref", "net10.0"))
+                .FirstOrDefault(Directory.Exists);
+
+            return newest is null ? [] : Directory.GetFiles(newest, "*.dll");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return [];
+        }
+    }
+}
