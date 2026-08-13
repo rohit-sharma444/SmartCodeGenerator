@@ -223,4 +223,67 @@ public class InlineCustomizationTests
         Assert.AreEqual("a shop", remaining);
         Assert.AreEqual(string.Empty, customization.NamespacePrefix);
     }
+
+    [TestMethod]
+    public void A_layout_is_lifted_off_the_line()
+    {
+        var (remaining, customization) = Split("a shop layout sidebar");
+
+        Assert.AreEqual("a shop", remaining);
+        Assert.AreEqual(AppLayout.Sidebar, customization.Layout);
+    }
+
+    [TestMethod]
+    public void The_hyphenated_master_detail_key_is_read()
+    {
+        var (remaining, customization) = Split("a shop layout master-detail");
+
+        Assert.AreEqual("a shop", remaining);
+        Assert.AreEqual(AppLayout.MasterDetail, customization.Layout);
+    }
+
+    /// <summary>Ruling: `layout tabs` is the first inline option whose value equals the default, so
+    /// it must be recorded as TYPED rather than left looking unmentioned — see
+    /// <c>CustomizationMergeTests.An_inline_tabs_beats_a_remembered_dashboard</c>.</summary>
+    [TestMethod]
+    public void Layout_tabs_is_recorded_as_typed_rather_than_treated_as_absent()
+    {
+        var (_, customization) = Split("a shop layout tabs");
+
+        Assert.AreEqual(AppLayout.Tabs, customization.Layout);
+        Assert.IsNotNull(customization.Layout);
+    }
+
+    [TestMethod]
+    public void An_unusable_layout_leaves_the_line_alone()
+    {
+        var (remaining, customization) = Split("a shop layout kanban");
+
+        // The `theme mauve` rule: the user's words are likelier prose than a typo to guess at.
+        Assert.AreEqual("a shop layout kanban", remaining);
+        Assert.IsNull(customization.Layout);
+    }
+
+    [TestMethod]
+    public void Two_words_are_not_read_as_a_layout_key()
+    {
+        // The scan tokenizes on whitespace, which is why the key is hyphenated. "master detail"
+        // must leave the line alone rather than half-matching.
+        var (remaining, customization) = Split("a shop layout master detail");
+
+        Assert.AreEqual("a shop layout master detail", remaining);
+        Assert.IsNull(customization.Layout);
+    }
+
+    [TestMethod]
+    public void A_layout_coexists_with_the_other_options()
+    {
+        var (remaining, customization) =
+            Split("a shop company \"Codis Ltd\" layout dashboard theme dark");
+
+        Assert.AreEqual("a shop", remaining);
+        Assert.AreEqual(AppLayout.Dashboard, customization.Layout);
+        Assert.AreEqual(AppTheme.Dark, customization.Theme);
+        Assert.AreEqual("Codis Ltd", customization.Company);
+    }
 }

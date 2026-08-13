@@ -117,4 +117,34 @@ public class CustomizationMergeTests
         Assert.HasCount(1, lines);
         StringAssert.Contains(lines[0], "Namespace prefix: CodisLtd");
     }
+
+    [TestMethod]
+    public void An_inline_layout_beats_the_remembered_one()
+    {
+        var saved = AppCustomization.Default with { Layout = AppLayout.Dashboard };
+        var inline = AppCustomization.Default with { Layout = AppLayout.Sidebar };
+
+        Assert.AreEqual(AppLayout.Sidebar, BuildAppCommand.Merge(saved, inline).Layout);
+    }
+
+    /// <summary>The defect this test exists to prevent: `layout tabs` equals the DEFAULT layout, so
+    /// the differs-from-Default rule every other option uses would read it as "not mentioned" and
+    /// hand back the profile's dashboard — silently ignoring what the user just typed.</summary>
+    [TestMethod]
+    public void An_inline_tabs_beats_a_remembered_dashboard()
+    {
+        var saved = AppCustomization.Default with { Layout = AppLayout.Dashboard };
+        var inline = AppCustomization.Default with { Layout = AppLayout.Tabs };
+
+        Assert.AreEqual(AppLayout.Tabs, BuildAppCommand.Merge(saved, inline).Layout);
+    }
+
+    [TestMethod]
+    public void A_remembered_layout_survives_a_line_that_names_none()
+    {
+        var saved = AppCustomization.Default with { Layout = AppLayout.Sidebar };
+
+        Assert.AreEqual(
+            AppLayout.Sidebar, BuildAppCommand.Merge(saved, AppCustomization.Default).Layout);
+    }
 }

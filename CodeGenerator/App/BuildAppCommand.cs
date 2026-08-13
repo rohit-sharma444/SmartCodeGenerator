@@ -129,10 +129,16 @@ internal sealed class BuildAppCommand
     /// </summary>
     /// <remarks>
     /// A setting counts as named inline when it differs from
-    /// <see cref="AppCustomization.Default"/>, which is exact for the inline vocabulary:
-    /// every option there can only ever set a non-default value — there is no way to type an
-    /// empty company or the `light`-less "no theme", and each flag names the opposite of its
-    /// default.
+    /// <see cref="AppCustomization.Default"/>, which is exact for most of the inline vocabulary:
+    /// there is no way to type an empty company or the `light`-less "no theme", and each flag names
+    /// the opposite of its default.
+    /// <para>
+    /// <see cref="AppCustomization.Layout"/> is the exception, and the reason it is nullable:
+    /// `layout tabs` is typeable and EQUALS the default, so a differs-from-default comparison would
+    /// read it as unmentioned and hand back a remembered layout instead. It layers on null — "not
+    /// named" — rather than on inequality. Any future option whose value can equal the default
+    /// needs the same treatment.
+    /// </para>
     /// </remarks>
     internal static AppCustomization Merge(AppCustomization saved, AppCustomization inline)
     {
@@ -150,6 +156,10 @@ internal sealed class BuildAppCommand
             SampleSeedData =
                 Named(inline.SampleSeedData, defaults.SampleSeedData, saved.SampleSeedData),
             NamespacePrefix = Named(inline.NamespacePrefix, defaults.NamespacePrefix, saved.NamespacePrefix),
+
+            // Null-coalescing rather than Named: null IS "not named" for a layout, so no comparison
+            // against the default is involved — see the remark above.
+            Layout = inline.Layout ?? saved.Layout,
         };
 
         static T Named<T>(T inline, T fallback, T saved)
