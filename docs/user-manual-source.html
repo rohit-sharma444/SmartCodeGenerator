@@ -128,7 +128,8 @@ a candidate set of classes, shows them to you, and only writes code once you app
   <li><strong>Do you have existing data?</strong> If yes, you name the format and the file, and the file becomes
       the source of truth for the model (chapter 5).</li>
   <li><strong>Customize appearance and features?</strong> Optional. Answering <code>n</code> keeps the defaults;
-      answering <code>y</code> opens nine short prompts (chapter 7).</li>
+      answering <code>y</code> opens nine short prompts — ten for a WPF or Windows Forms application, which is
+      also asked its window layout (chapter 7).</li>
 </ol>
 <p>At any question, <code>c</code> cancels the whole thing and nothing is written.</p>
 
@@ -217,12 +218,14 @@ and which optional layers it contains.</p>
 <h4>On the command line</h4>
 <p>Options go <strong>last</strong> on the line, after any data source:</p>
 <pre>build app: a shop that sells books company "Codis Ltd" theme dark accent #0B6E4F
+build app: a shop that sells books layout sidebar theme dark
 build app: order tracking from csv D:\data\orders.csv company "Codis Ltd" noseed</pre>
 <h4>Through the wizard</h4>
-<p>Answer <code>y</code> to <em>Customize appearance and features?</em> and the tool asks nine short questions,
-each showing the value it would keep in brackets. Press Enter to accept what is shown, or type
-<code>none</code> to clear an optional one:</p>
-<pre>  Company name [Codis Ltd]&gt;
+<p>Answer <code>y</code> to <em>Customize appearance and features?</em> and the tool asks nine short questions —
+ten for a WPF or Windows Forms application, where the window layout is asked first — each showing the value it
+would keep in brackets. Press Enter to accept what is shown, or type <code>none</code> to clear an optional one:</p>
+<pre>  Layout [tabs/sidebar/master-detail/dashboard] [tabs]&gt;
+  Company name [Codis Ltd]&gt;
   Theme [light/dark] [dark]&gt;
   Accent colour (#rrggbb) [none]&gt;
   Icon path (.ico or .png) [none]&gt;
@@ -231,6 +234,9 @@ each showing the value it would keep in brackets. Press Enter to accept what is 
   Validation layer [yes]&gt;
   Logging [no]&gt;
   Sample seed data [yes]&gt;</pre>
+<p>The layout question is asked only for the two windowed application types, because it is the one structural
+choice in a step that is otherwise decoration — a console or Web API build has no window to shape. It is asked
+first for the same reason.</p>
 <p>Two of them offer you something derived from an earlier answer: naming a company adopts the
 <code>{company} - {app}</code> title, and a company you have just typed is offered as the namespace prefix
 with the spaces removed. Both are only suggestions — the bracket shows exactly what Enter will accept.</p>
@@ -246,6 +252,7 @@ deliberately ignored when input is piped, so a script cannot be changed by a fil
 <tr><th>Option</th><th>Effect on the generated application</th></tr>
 <tr><td><code>company "&lt;name&gt;"</code></td><td>Sets <code>&lt;Company&gt;</code>, <code>&lt;Authors&gt;</code> and <code>&lt;Copyright&gt;</code> in the project file, adds a <code>// Copyright (c) &lt;year&gt; &lt;name&gt;.</code> banner to every generated C# file, and — unless you override the title — puts the company in the window title.</td></tr>
 <tr><td><code>title "&lt;pattern&gt;"</code></td><td>The window or page title. <code>{company}</code> and <code>{app}</code> are substituted, so <code>"{company} - {app}"</code> gives <em>Codis Ltd - Shop</em>. With no company the placeholder and its separator disappear cleanly rather than leaving a dangling dash.</td></tr>
+<tr><td><code>layout tabs|sidebar|master-detail|dashboard</code></td><td>Chooses the shape of the window for the WPF and Windows Forms types — see <em>Window layouts</em> in chapter 8. <code>tabs</code> is the default and what every earlier version produced. Named for a type with no window, it is ignored and the tool says so at <code>approve</code>.</td></tr>
 <tr><td><code>theme light|dark</code></td><td>Colours the desktop front ends. WPF gets a theme resource dictionary merged into the application; Windows Forms gets the colours applied directly.</td></tr>
 <tr><td><code>accent #rrggbb</code></td><td>An accent colour. Valid on its own — "the normal look, in our colour". A malformed colour is ignored rather than failing the build.</td></tr>
 <tr><td><code>icon &lt;path&gt;</code></td><td>Copies a <code>.ico</code> or <code>.png</code> into the project as the application icon. A <code>.ico</code> also becomes the icon the built <code>.exe</code> carries.</td></tr>
@@ -263,13 +270,28 @@ description first, or quote it, and this never bites.</p></div>
 <h3>Application types</h3>
 <table>
 <tr><th>Type</th><th>Name to type</th><th>What you get</th></tr>
-<tr><td>WPF (default)</td><td><code>wpf</code></td><td>A windowed CRUD application, one tab per class.</td></tr>
-<tr><td>Windows Forms</td><td><code>winforms</code></td><td>The same, built on Windows Forms.</td></tr>
+<tr><td>WPF (default)</td><td><code>wpf</code></td><td>A windowed CRUD application. One tab per class by default, or any of the four shapes below.</td></tr>
+<tr><td>Windows Forms</td><td><code>winforms</code></td><td>The same, built on Windows Forms — the same four shapes.</td></tr>
 <tr><td>Console</td><td><code>console</code></td><td>A menu-driven CRUD application.</td></tr>
 <tr><td>Web API</td><td><code>webapi</code></td><td>A minimal API with REST endpoints per class.</td></tr>
 <tr><td>Class library</td><td><code>classlib</code></td><td>The shared core only — no entry point.</td></tr>
 <tr><td>Worker</td><td><code>worker</code></td><td>A background service that exercises the repositories.</td></tr>
 </table>
+
+<h3>Window layouts</h3>
+<p>The two windowed types can be generated in four shapes. Set it with <code>layout &lt;name&gt;</code> on the line,
+at the wizard's first customization question, or leave it remembered from last time. Every shape has the same
+grid, the same Add / Delete / Save row and the same status line — what changes is how you move between classes.</p>
+<table>
+<tr><th>Name to type</th><th>What the window looks like</th></tr>
+<tr><td><code>tabs</code> (default)</td><td>One tab per class, its grid filling the tab. What every earlier version produced, and still exactly that.</td></tr>
+<tr><td><code>sidebar</code></td><td>A list of classes down the left, the selected one's grid beside it. Suits a domain with more classes than fit comfortably across a tab strip.</td></tr>
+<tr><td><code>master-detail</code></td><td>Tabs as above, with an edit form under the grid showing the selected row field by field. Easier than editing in grid cells when a class has many fields. <code>Id</code> is shown but not editable, as in the grid.</td></tr>
+<tr><td><code>dashboard</code></td><td>Opens on a home screen of cards, one per class, each showing its current row count. Clicking a card opens that class's grid; <em>Home</em> returns to the cards. The counts update as you add and delete.</td></tr>
+</table>
+<div class="note"><p>The layout changes the window only. The classes, the repositories, the validation rules and
+the storage are identical whichever you pick, so it is safe to regenerate an existing project with a different
+layout — and a project generated without naming one is byte-for-byte what it always was.</p></div>
 
 <h3>Storage</h3>
 <p>By default each class is stored in its own JSON file beside the built executable — no database, nothing to
@@ -430,6 +452,8 @@ ever <em>suggests</em> — it never runs a command you did not confirm.</p>
 <tr><td>"No topic recognized online"</td><td>The description was too short or too unusual to match an article. Add a few words about what the system does, or add the classes by hand in the review loop.</td></tr>
 <tr><td>"Nothing to generate — the model is empty"</td><td>Discovery found no classes. Add at least one with <code>add &lt;name&gt;</code> before approving.</td></tr>
 <tr><td>Building the generated project reports a file it cannot find, and the file is plainly there</td><td>The path is too long for Windows. Generate under a shorter workspace root.</td></tr>
+<tr><td>The window has tabs when you asked for another layout, and the project has a longer name than you expected</td><td>The option was typed before the data source instead of after it, so its words stayed in the description — <code>build app: a shop layout sidebar from csv …</code> builds a tabbed app called <em>ShopLayoutSidebar</em>. Options go last on the line. The review loop lists the settings it actually read, which is where to check.</td></tr>
+<tr><td>"The … layout applies to the wpf and winforms targets"</td><td>You named a layout but approved a type with no window. The application is still generated; only the layout is ignored. Approve <code>wpf</code> or <code>winforms</code> to use it.</td></tr>
 <tr><td>SQLite was refused for a desktop application</td><td>WPF and Windows Forms read the JSON store directly. Choose another type, or keep JSON.</td></tr>
 <tr><td>Your own validation rules disappeared</td><td>They should not: rules go in <code>&lt;Class&gt;Validator.Custom.cs</code>, which is written once and never rewritten. The <code>.Generated.cs</code> half is the one refreshed each run. The single exception is the file's own <code>namespace</code> line, which is repointed if you change the namespace prefix — otherwise the file would no longer compile alongside the rest of the project. Your rules themselves are never touched.</td></tr>
 <tr><td>A piped script behaves differently from typing the same commands</td><td>By design: piped input never prompts, and the remembered customization profile is ignored. State what you need on the command line.</td></tr>
@@ -461,7 +485,7 @@ ever <em>suggests</em> — it never runs a command you did not confirm.</p>
 <tr><td><code>approve [target] [sqlite]</code></td><td>Review loop: generates the app using the type chosen at the start. Name a target to override it: wpf (default), winforms, console, webapi, classlib, worker. Add &#x27;sqlite&#x27; for EF Core persistence (JSON is the default; the wpf and winforms targets are JSON-only). Alias: a.</td><td><code>approve webapi sqlite</code></td></tr>
 <tr><td><code>build app</code></td><td>Starts the same guided flow, asking for the description first, then the application type, then whether you already have data.</td><td><code>build app</code></td></tr>
 <tr><td><code>build app: &lt;description&gt;</code></td><td>Describes a system in plain English, then asks which kind of app to build and whether you have data, discovers a domain model, and opens a review loop before any code is written.</td><td><code>build app: a library that lends books to members</code></td></tr>
-<tr><td><code>build app: &lt;description&gt; [customization options]</code></td><td>Customizes the generated application. Options go LAST on the line, after any data source: company &quot;&lt;name&gt;&quot; sets the company (used in the project metadata, the window title and a copyright header); theme light|dark and accent #rrggbb colour the desktop front ends; icon &lt;path&gt; supplies a .ico or .png; title &quot;&lt;pattern&gt;&quot; overrides the window title, where {company} and {app} are substituted; namespace &lt;prefix&gt; puts the generated code under that namespace root (CodisLtd.Shop), leaving the project and assembly names alone.</td><td><code>build app: a shop company &quot;Codis Ltd&quot; namespace CodisLtd theme dark</code></td></tr>
+<tr><td><code>build app: &lt;description&gt; [customization options]</code></td><td>Customizes the generated application. Options go LAST on the line, after any data source: company &quot;&lt;name&gt;&quot; sets the company (used in the project metadata, the window title and a copyright header); theme light|dark and accent #rrggbb colour the desktop front ends; icon &lt;path&gt; supplies a .ico or .png; title &quot;&lt;pattern&gt;&quot; overrides the window title, where {company} and {app} are substituted; namespace &lt;prefix&gt; puts the generated code under that namespace root (CodisLtd.Shop), leaving the project and assembly names alone; layout tabs|sidebar|master-detail|dashboard chooses the shape of the window (wpf and winforms only).</td><td><code>build app: a shop company &quot;Codis Ltd&quot; namespace CodisLtd theme dark layout sidebar</code></td></tr>
 <tr><td><code>build app: &lt;description&gt; [novalidation] [logging] [noseed]</code></td><td>Chooses which optional layers are generated. &#x27;novalidation&#x27; omits the Validation folder and its per-model validators; &#x27;logging&#x27; adds a logging layer (off by default); &#x27;noseed&#x27; omits the sample seed rows (rows imported from your own data file are unaffected). Interactively these are asked by the &#x27;Customize appearance and features?&#x27; step, which remembers your answers in .codegen/app-profile.json.</td><td><code>build app: a shop novalidation logging noseed</code></td></tr>
 <tr><td><code>build app: &lt;description&gt; from &lt;format&gt; &lt;location&gt;</code></td><td>Builds the model from existing data with no prompts when piped; interactively you are still asked the application type. Formats: csv, txt, json, excel (sql is not in this build yet). Add &#x27;normalize&#x27; to apply every normalization change the data needs.</td><td><code>build app: order tracking from csv D:\data\orders.csv normalize</code></td></tr>
 <tr><td><code>cancel</code></td><td>Review loop: abandons the model without generating anything. Alias: c.</td><td><code>cancel</code></td></tr>
