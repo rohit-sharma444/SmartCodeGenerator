@@ -32,9 +32,14 @@ public sealed class WpfSidebarLayout : IAppLayout
               + "\n        Foreground=\"{DynamicResource AppForegroundBrush}\""
             : string.Empty;
 
+        // The nav pane's own fill and the rule dividing it from the records: without them a white
+        // column against a white pane reads as an accident rather than as navigation.
+        var navFill = context.Themed ? "{DynamicResource AppSurfaceBrush}" : "#F9FAFB";
+        var navRule = context.Themed ? "{DynamicResource AppGridLineBrush}" : "#E5E7EB";
+        var navText = context.Themed ? "{DynamicResource AppForegroundBrush}" : "#111827";
+
         var listBrushes = context.Themed
-            ? "\n                 Background=\"{DynamicResource AppSurfaceBrush}\""
-              + "\n                 Foreground=\"{DynamicResource AppForegroundBrush}\""
+            ? "\n                         Foreground=\"{DynamicResource AppForegroundBrush}\""
             : string.Empty;
 
         return $$"""
@@ -45,17 +50,34 @@ public sealed class WpfSidebarLayout : IAppLayout
 {{EntityPaneXaml.Resource(context.Palette)}}
     <Grid>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="180" />
+            <ColumnDefinition Width="200" />
             <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
-        <!-- SelectedIndex is explicit for the reason the tabbed layout gives: a Selector only
-             follows its collection's current item when the ItemsSource is a CollectionView, so
-             bound to an ObservableCollection it would open with nothing selected. -->
-        <ListBox x:Name="EntityList"
-                 Grid.Column="0"
-                 ItemsSource="{Binding Entities}"
-                 DisplayMemberPath="Title"
-                 SelectedIndex="0"{{listBrushes}} />
+        <Border Grid.Column="0"
+                Background="{{navFill}}"
+                BorderBrush="{{navRule}}"
+                BorderThickness="0,0,1,0">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Top"
+                           Text="{{context.TitleAttribute}}"
+                           Margin="12,14,12,8"
+                           FontSize="15"
+                           FontWeight="SemiBold"
+                           TextTrimming="CharacterEllipsis"
+                           Foreground="{{navText}}" />
+                <!-- SelectedIndex is explicit for the reason the tabbed layout gives: a Selector
+                     only follows its collection's current item when the ItemsSource is a
+                     CollectionView, so bound to an ObservableCollection it would open with nothing
+                     selected. -->
+                <ListBox x:Name="EntityList"
+                         ItemsSource="{Binding Entities}"
+                         DisplayMemberPath="Title"
+                         SelectedIndex="0"
+                         BorderThickness="0"
+                         Background="Transparent"
+                         Padding="4"{{listBrushes}} />
+            </DockPanel>
+        </Border>
         <ContentControl Grid.Column="1"
                         Content="{Binding SelectedItem, ElementName=EntityList}"
                         ContentTemplate="{StaticResource EntityPane}" />

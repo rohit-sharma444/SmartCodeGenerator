@@ -33,9 +33,12 @@ public sealed class WpfDashboardLayout : IAppLayout
               + "\n        Foreground=\"{DynamicResource AppForegroundBrush}\""
             : string.Empty;
 
-        var cardBrush = context.Themed
-            ? " Background=\"{DynamicResource AppSurfaceBrush}\""
-            : string.Empty;
+        // A Border with only a CornerRadius draws nothing at all, so the fill and the edge are what
+        // make the card a card rather than a title and a number floating in the window.
+        var cardFill = context.Themed ? "{DynamicResource AppSurfaceBrush}" : "#FFFFFF";
+        var cardEdge = context.Themed ? "{DynamicResource AppGridLineBrush}" : "#E5E7EB";
+        var headingBrush = context.Themed ? "{DynamicResource AppForegroundBrush}" : "#111827";
+        var captionBrush = context.Themed ? "{DynamicResource AppForegroundBrush}" : "#6B7280";
 
         return $$"""
 <Window x:Class="{{context.RootNamespace}}.Views.MainWindow"
@@ -53,35 +56,56 @@ public sealed class WpfDashboardLayout : IAppLayout
                 Visibility="Collapsed"
                 Click="OnHome" />
         <Grid>
-            <!-- SelectedIndex is -1 on purpose: the app opens on the cards, and the pane
-                 appears only once one is clicked. -->
-            <ListBox x:Name="EntityCards"
-                     ItemsSource="{Binding Entities}"
-                     SelectedIndex="-1"
-                     BorderThickness="0"
-                     Background="Transparent"
-                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                     SelectionChanged="OnCardSelected">
-                <ListBox.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <WrapPanel />
-                    </ItemsPanelTemplate>
-                </ListBox.ItemsPanel>
-                <ListBox.ItemTemplate>
-                    <DataTemplate>
-                        <Border Width="160" Height="90" Margin="8" CornerRadius="4"{{cardBrush}}>
-                            <StackPanel VerticalAlignment="Center">
-                                <TextBlock Text="{Binding Title}"
-                                           FontSize="15"
-                                           HorizontalAlignment="Center" />
-                                <TextBlock Text="{Binding Items.Count}"
-                                           FontSize="28"
-                                           HorizontalAlignment="Center" />
-                            </StackPanel>
-                        </Border>
-                    </DataTemplate>
-                </ListBox.ItemTemplate>
-            </ListBox>
+            <DockPanel x:Name="CardsHost">
+                <TextBlock DockPanel.Dock="Top"
+                           Text="{{context.TitleAttribute}}"
+                           Margin="16,16,16,4"
+                           FontSize="20"
+                           TextTrimming="CharacterEllipsis"
+                           Foreground="{{headingBrush}}" />
+                <!-- SelectedIndex is -1 on purpose: the app opens on the cards, and the pane
+                     appears only once one is clicked. -->
+                <ListBox x:Name="EntityCards"
+                         ItemsSource="{Binding Entities}"
+                         SelectedIndex="-1"
+                         BorderThickness="0"
+                         Background="Transparent"
+                         Padding="8"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         SelectionChanged="OnCardSelected">
+                    <ListBox.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel />
+                        </ItemsPanelTemplate>
+                    </ListBox.ItemsPanel>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Border Width="168"
+                                    Height="104"
+                                    Margin="8"
+                                    CornerRadius="6"
+                                    Padding="12"
+                                    Background="{{cardFill}}"
+                                    BorderBrush="{{cardEdge}}"
+                                    BorderThickness="1">
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding Title}"
+                                               FontSize="15"
+                                               HorizontalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{Binding Items.Count}"
+                                               FontSize="30"
+                                               HorizontalAlignment="Center" />
+                                    <TextBlock Text="rows"
+                                               FontSize="11"
+                                               HorizontalAlignment="Center"
+                                               Foreground="{{captionBrush}}" />
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </DockPanel>
             <ContentControl x:Name="PaneHost"
                             Visibility="Collapsed"
                             Content="{Binding SelectedItem, ElementName=EntityCards}"
@@ -117,7 +141,9 @@ public sealed class WpfDashboardLayout : IAppLayout
                     if (EntityCards.SelectedItem is null)
                         return;
 
-                    EntityCards.Visibility = Visibility.Collapsed;
+                    // CardsHost, not the list: it carries the heading above the cards, which would
+                    // otherwise stay on screen over the records.
+                    CardsHost.Visibility = Visibility.Collapsed;
                     PaneHost.Visibility = Visibility.Visible;
                     HomeButton.Visibility = Visibility.Visible;
                 }
@@ -127,7 +153,7 @@ public sealed class WpfDashboardLayout : IAppLayout
                     EntityCards.SelectedIndex = -1;
                     PaneHost.Visibility = Visibility.Collapsed;
                     HomeButton.Visibility = Visibility.Collapsed;
-                    EntityCards.Visibility = Visibility.Visible;
+                    CardsHost.Visibility = Visibility.Visible;
                 }
 
 

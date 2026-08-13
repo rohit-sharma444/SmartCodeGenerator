@@ -30,6 +30,7 @@ using System;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
+using System.Windows.Media;
 
 namespace {{appName}}.Views;
 
@@ -80,7 +81,7 @@ public sealed class PropertyEditor : Grid
             var label = new TextBlock
             {
                 Text = property.Name,
-                Margin = new Thickness(4),
+                Margin = new Thickness(0, 0, 12, 6),
                 VerticalAlignment = VerticalAlignment.Center,
             };
 
@@ -88,12 +89,25 @@ public sealed class PropertyEditor : Grid
             SetColumn(label, 0);
             Children.Add(label);
 
-            var box = new TextBox { Margin = new Thickness(4) };
+            // Capped and left-aligned: in a star-width column a text box for a five-character
+            // price stretches the whole window.
+            var box = new TextBox
+            {
+                Margin = new Thickness(0, 0, 0, 6),
+                MinWidth = 180,
+                MaxWidth = 320,
+                HorizontalAlignment = HorizontalAlignment.Left,
+            };
 
             // Id is assigned by the store's NextId(), so it is shown but never edited -- the same
             // rule the window's column handler applies to the grid.
             box.IsReadOnly = !property.CanWrite
                 || string.Equals(property.Name, "Id", StringComparison.OrdinalIgnoreCase);
+
+            // A box that refuses typing while looking editable reads as a bug, so a read-only one
+            // is visibly muted.
+            if (box.IsReadOnly)
+                box.Background = new SolidColorBrush(Color.FromRgb(0xF3, 0xF4, 0xF6));
 
             // Source is explicit: this editor's DataContext is the entity's view model, inherited
             // from the pane template, so an unsourced binding would look for the record's

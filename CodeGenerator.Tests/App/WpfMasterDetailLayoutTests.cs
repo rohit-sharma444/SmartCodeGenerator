@@ -25,8 +25,10 @@ public class WpfMasterDetailLayoutTests
         StringAssert.Contains(xaml, "DisplayMemberPath=\"Title\"");
         StringAssert.Contains(xaml, "SelectedIndex=\"0\"");
         StringAssert.Contains(xaml, "ContentTemplate=\"{StaticResource EntityPane}\"");
-        StringAssert.Contains(xaml, "<local:PropertyEditor DockPanel.Dock=\"Bottom\"");
-        StringAssert.Contains(xaml, "Record=\"{Binding Selected}\"");
+        // The editor is docked through the Border that draws the rule above it, so the Dock is on
+        // that Border rather than on the editor itself.
+        StringAssert.Contains(xaml, "<Border DockPanel.Dock=\"Bottom\"");
+        StringAssert.Contains(xaml, "<local:PropertyEditor Record=\"{Binding Selected}\" />");
 
         // The editor is a type in the app's own Views namespace, so the window needs the xmlns.
         StringAssert.Contains(xaml, "xmlns:local=\"clr-namespace:Payroll.Views\"");

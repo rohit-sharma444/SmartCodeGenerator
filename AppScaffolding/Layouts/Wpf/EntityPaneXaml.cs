@@ -28,46 +28,66 @@ public static class EntityPaneXaml
         // Indented to align under the DataGrid's first attribute below, which sits ten columns
         // past its element's own indent.
         var gridBrushes = palette is null
-            ? string.Empty
+            ? """
+
+                                      AlternatingRowBackground="#FAFAFA"
+            """
             : """
 
                                       Background="{DynamicResource AppSurfaceBrush}"
                                       Foreground="{DynamicResource AppForegroundBrush}"
                                       HorizontalGridLinesBrush="{DynamicResource AppGridLineBrush}"
                                       VerticalGridLinesBrush="{DynamicResource AppGridLineBrush}"
+                                      AlternatingRowBackground="{DynamicResource AppBackgroundBrush}"
             """;
 
-        var editor = withEditor
-            ? """
+        var statusBrush = palette is null
+            ? "#6B7280"
+            : "{DynamicResource AppForegroundBrush}";
 
-                            <local:PropertyEditor DockPanel.Dock="Bottom"
-                                                  Margin="8"
-                                                  Record="{Binding Selected}" />
+        var rule = palette is null ? "#E5E7EB" : "{DynamicResource AppGridLineBrush}";
+
+        var editor = withEditor
+            ? $$"""
+
+                            <Border DockPanel.Dock="Bottom"
+                                    Margin="0,12,0,0"
+                                    Padding="0,12,0,0"
+                                    BorderThickness="0,1,0,0"
+                                    BorderBrush="{{rule}}">
+                                <local:PropertyEditor Record="{Binding Selected}" />
+                            </Border>
             """
             : string.Empty;
 
         return $$"""
     <Window.Resources>
         <DataTemplate x:Key="{{Key}}">
-            <DockPanel>
-                <StatusBar DockPanel.Dock="Bottom">
-                    <TextBlock Text="{Binding Status}" />
-                </StatusBar>
-                <StackPanel DockPanel.Dock="Bottom"
-                            Orientation="Horizontal"
-                            HorizontalAlignment="Right"
-                            Margin="8">
-                    <Button Content="Add" Command="{Binding AddCommand}"
-                            Width="80" Margin="4,0" />
-                    <Button Content="Delete" Command="{Binding DeleteCommand}"
-                            Width="80" Margin="4,0" />
-                    <Button Content="Save" Command="{Binding SaveCommand}"
-                            Width="80" Margin="4,0" />
-                </StackPanel>{{editor}}
+            <DockPanel Margin="12">
+                <!-- Status shares the button row rather than taking a strip of its own: it is
+                     assigned only by Add, Delete and Save, so a bar would be an empty band for the
+                     whole first session. -->
+                <Grid DockPanel.Dock="Bottom" Margin="0,12,0,0">
+                    <TextBlock Text="{Binding Status}"
+                               VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis"
+                               Foreground="{{statusBrush}}" />
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button Content="Add" Command="{Binding AddCommand}"
+                                Width="88" Height="28" Margin="8,0,0,0" />
+                        <Button Content="Delete" Command="{Binding DeleteCommand}"
+                                Width="88" Height="28" Margin="8,0,0,0" />
+                        <Button Content="Save" Command="{Binding SaveCommand}"
+                                Width="88" Height="28" Margin="8,0,0,0" />
+                    </StackPanel>
+                </Grid>{{editor}}
                 <DataGrid ItemsSource="{Binding Items}"{{gridBrushes}}
                           SelectedItem="{Binding Selected, Mode=TwoWay}"
                           AutoGenerateColumns="True"
                           CanUserAddRows="False"
+                          RowHeight="26"
+                          GridLinesVisibility="Horizontal"
+                          AlternationCount="2"
                           AutoGeneratingColumn="OnAutoGeneratingColumn" />
             </DockPanel>
         </DataTemplate>

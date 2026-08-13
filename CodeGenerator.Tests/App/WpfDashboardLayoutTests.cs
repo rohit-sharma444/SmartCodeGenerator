@@ -18,6 +18,7 @@ public class WpfDashboardLayoutTests
         public partial class MainWindow
         {
             internal System.Windows.Controls.ListBox EntityCards = new();
+            internal System.Windows.Controls.DockPanel CardsHost = new();
             internal System.Windows.Controls.ContentControl PaneHost = new();
             internal System.Windows.Controls.Button HomeButton = new();
 
