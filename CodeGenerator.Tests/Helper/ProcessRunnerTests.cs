@@ -49,10 +49,24 @@ public class ProcessRunnerTests
             $"stderr was only {result.StandardError.Length} bytes");
     }
 
+    /// <summary>How long the child would live if nothing killed it.</summary>
+    /// <remarks>
+    /// Deliberately far longer than the timeout. What the elapsed assertion below has to
+    /// distinguish is "killed early" from "waited for the child's own exit", and the gap between
+    /// the two is the whole margin: with a 30-second child against a 20-second ceiling this test
+    /// failed in CI at 27 seconds, where neither verdict was safe — 27 is over the ceiling but so
+    /// close to the child's own life that a passing run would have proved nothing either. Slack, as
+    /// the sibling pipe-flood test's ceiling already records, not precision.
+    /// </remarks>
+    private static readonly TimeSpan ChildLifetime = TimeSpan.FromSeconds(120);
+
+    /// <summary>Half the child's life: unreachable by a working kill, certain for a broken one.</summary>
+    private static readonly TimeSpan KillCeiling = TimeSpan.FromSeconds(60);
+
     [TestMethod]
     public void Run_ChildOutlivesTheTimeout_IsKilledAndReported()
     {
-        var (fileName, arguments) = SleepFor(30);
+        var (fileName, arguments) = SleepFor((int)ChildLifetime.TotalSeconds);
 
         var stopwatch = Stopwatch.StartNew();
         var result = ProcessRunner.Run(fileName, arguments, timeout: TimeSpan.FromSeconds(2));
@@ -60,8 +74,9 @@ public class ProcessRunnerTests
 
         Assert.IsTrue(result.TimedOut);
         Assert.AreNotEqual(0, result.ExitCode);
-        Assert.IsTrue(stopwatch.Elapsed < TimeSpan.FromSeconds(20),
-            $"Run returned after {stopwatch.Elapsed}, so the timeout did not kill the child.");
+        Assert.IsTrue(stopwatch.Elapsed < KillCeiling,
+            $"Run returned after {stopwatch.Elapsed}, so the timeout did not kill the child "
+            + $"(it would have lived {ChildLifetime.TotalSeconds:N0}s on its own).");
     }
 
     [TestMethod]
