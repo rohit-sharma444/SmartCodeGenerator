@@ -1,4 +1,4 @@
-using AppScaffolding;
+﻿using AppScaffolding;
 
 namespace CodeGenerator.Tests.App;
 
@@ -21,7 +21,7 @@ public class WpfPropertyEditorAppearanceTests
     [TestMethod]
     public void Rows_are_spaced_rather_than_touching()
     {
-        StringAssert.Contains(Source(), "new Thickness(0, 0, 12, 6)");
+        StringAssert.Contains(Source(), "new Thickness(0, 0, 16, 8)");
     }
 
     [TestMethod]

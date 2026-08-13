@@ -1,4 +1,4 @@
-namespace AppScaffolding;
+﻿namespace AppScaffolding;
 
 /// <summary>
 /// Emits <c>Views/PropertyEditor.cs</c>: the master-detail layout's edit form.
@@ -46,7 +46,9 @@ public sealed class PropertyEditor : Grid
 
     public PropertyEditor()
     {
-        ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        // A minimum on the label column so a form of short names ("Id", "Name") does not sit its
+        // fields hard against them; the fields then start in the same place whatever the names are.
+        ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto, MinWidth = 96 });
         ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
     }
 
@@ -81,7 +83,7 @@ public sealed class PropertyEditor : Grid
             var label = new TextBlock
             {
                 Text = property.Name,
-                Margin = new Thickness(0, 0, 12, 6),
+                Margin = new Thickness(0, 0, 16, 8),
                 VerticalAlignment = VerticalAlignment.Center,
             };
 
@@ -93,7 +95,7 @@ public sealed class PropertyEditor : Grid
             // price stretches the whole window.
             var box = new TextBox
             {
-                Margin = new Thickness(0, 0, 0, 6),
+                Margin = new Thickness(0, 0, 0, 8),
                 MinWidth = 180,
                 MaxWidth = 320,
                 HorizontalAlignment = HorizontalAlignment.Left,
