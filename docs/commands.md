@@ -127,7 +127,9 @@
 | `cls` | Alias for clear (clears the screen; history is kept). | `cls` |
 | `demo` | Runs the demo workflow. | `demo` |
 | `exit` | Exits the application. | `exit` |
-| `help` | Displays all available commands. | `help` |
+| `help` | Shows a one-screen overview: a few commands to start with, and every category with its command count. | `help` |
+| `help <topic>` | Shows one category's commands. A topic is any category name 'help' lists, spelled however you like; a command name works too, so 'help approve' explains that command. | `help build app` |
+| `help all` | Every command in one list — the complete catalog, which is what plain 'help' used to print. | `help all` |
 | `history` | Lists the last 20 commands (not itself recorded). | `history` |
 
 ## Validation

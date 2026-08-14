@@ -155,9 +155,18 @@ public static class CommandHandlingService
         return true;
     }
 
+    /// <summary>
+    /// The overview, not the full catalog.
+    /// </summary>
+    /// <remarks>
+    /// The CLI intercepts a typed <c>help</c> before the pipeline reaches here, so this path is
+    /// what an intent-recognized phrasing ("show me the commands") lands on. It shows the same
+    /// thing typing <c>help</c> does — a user who asked the same question two ways should not get
+    /// two different answers. <c>help all</c> is the way to the complete list.
+    /// </remarks>
     private static bool HandleHelp(CommandExecutionContext ctx)
     {
-        Console.WriteLine(CommandDictionary.GetHelpText());
+        Console.WriteLine(CommandDictionary.GetOverview());
         return true;
     }
 
