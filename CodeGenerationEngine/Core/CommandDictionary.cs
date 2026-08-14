@@ -338,8 +338,22 @@ public static class CommandDictionary
         {
             Category = "Utility",
             Command = "help",
-            Description = "Displays all available commands.",
+            Description = "Shows a one-screen overview: a few commands to start with, and every category with its command count.",
             Example = "help"
+        },
+        new()
+        {
+            Category = "Utility",
+            Command = "help <topic>",
+            Description = "Shows one category's commands. A topic is any category name 'help' lists, spelled however you like; a command name works too, so 'help approve' explains that command.",
+            Example = "help build app"
+        },
+        new()
+        {
+            Category = "Utility",
+            Command = "help all",
+            Description = "Every command in one list — the complete catalog, which is what plain 'help' used to print.",
+            Example = "help all"
         },
         new()
         {
@@ -632,6 +646,158 @@ public static class CommandDictionary
 #endregion
     ];
 
+    /// <summary>Every category in the catalog, once each, in a stable order.</summary>
+    public static IReadOnlyList<string> Categories { get; } =
+        Commands.Select(c => c.Category)
+            .Distinct()
+            .OrderBy(c => c, StringComparer.Ordinal)
+            .ToList();
+
+    /// <summary>One row of the overview's opening list: a catalog command and a one-line gloss.</summary>
+    /// <param name="Command">Must match a <see cref="CommandInfo.Command"/> exactly.</param>
+    /// <param name="Summary">Short enough that the row does not wrap on an 80-column console.</param>
+    public sealed record StarterCommand(string Command, string Summary);
+
+    /// <summary>
+    /// The handful of commands the overview leads with.
+    /// </summary>
+    /// <remarks>
+    /// Hand-picked rather than derived: ranking the catalog by anything measurable just produces
+    /// alphabetical noise, and what a new user needs first is a judgement. Each entry names a real
+    /// catalog row and a test asserts as much — a curated list is exactly the sort of thing that
+    /// rots into advertising a renamed command.
+    /// <para>
+    /// The summaries are written here rather than taken from <see cref="CommandInfo.Description"/>
+    /// because those are reference prose — the one for <c>build app:</c> is over 200 characters,
+    /// which wraps into four lines and undoes the point of a one-screen overview.
+    /// </para>
+    /// </remarks>
+    public static IReadOnlyList<StarterCommand> Starters { get; } =
+    [
+        new("build app: <description>", "describe a system, get an app"),
+        new("build app", "guided, or from data you have"),
+        new("create class <class name> with properties", "add a class"),
+        new("use project", "switch the active project"),
+        new("validate project", "compile it, report real errors"),
+    ];
+
+    /// <summary>How many categories are listed per line of the overview.</summary>
+    private const int CategoriesPerRow = 4;
+
+    /// <summary>
+    /// The one-screen answer to <c>help</c>: somewhere to start, then the categories.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="GetHelpText"/> is around 250 lines, which scrolls the prompt — and the command
+    /// the banner just told the user to type — off the top of the screen. That is a poor first
+    /// answer to "what can this do?", so the full catalog moved behind <c>help all</c>.
+    /// </remarks>
+    public static string GetOverview()
+    {
+        var lines = new List<string>
+        {
+            "Smart Code Generator — commands",
+            string.Empty,
+            "  Start here",
+        };
+
+        // Derived, not a magic 42: a longer starter command would otherwise push its summary
+        // out of alignment with the rest.
+        var commandWidth = Starters.Max(s => s.Command.Length) + 2;
+
+        foreach (var starter in Starters)
+            lines.Add("    " + starter.Command.PadRight(commandWidth) + starter.Summary);
+
+        lines.Add(string.Empty);
+        lines.Add("  Categories — `help <name>` for one");
+
+        var labels = Categories
+            .Select(c => $"{c} ({Commands.Count(x => x.Category == c)})")
+            .ToList();
+
+        var width = labels.Max(l => l.Length) + 3;
+
+        for (var i = 0; i < labels.Count; i += CategoriesPerRow)
+        {
+            var row = labels.Skip(i).Take(CategoriesPerRow)
+                .Select(l => l.PadRight(width));
+
+            lines.Add("    " + string.Concat(row).TrimEnd());
+        }
+
+        lines.Add(string.Empty);
+        lines.Add($"  help all    every command in one list ({Commands.Count})");
+
+        return string.Join(Environment.NewLine, lines);
+    }
+
+    /// <summary>
+    /// The commands under <paramref name="topic"/> — a category name, or a command name — or null
+    /// if it names neither.
+    /// </summary>
+    /// <remarks>
+    /// Null rather than an empty string or the whole catalog, so the caller can say what was not
+    /// understood and list the alternatives. Answering an unrecognized topic with everything is
+    /// the failure this whole change is about.
+    /// <para>
+    /// A command name is accepted as well as a category because <c>help approve</c> is what
+    /// someone stuck on one command actually types, and refusing it on the grounds that it is not
+    /// a category would be pedantry.
+    /// </para>
+    /// </remarks>
+    public static string? GetTopicHelp(string? topic)
+    {
+        var wanted = TopicKey(topic);
+
+        if (wanted.Length == 0)
+            return null;
+
+        var category = Categories.FirstOrDefault(c => TopicKey(c) == wanted);
+
+        if (category is not null)
+            return Render(category, Commands.Where(c => c.Category == category));
+
+        // Prefix, not equality: catalog entries carry their arguments ("approve [target]
+        // [sqlite]"), and nobody types those to ask about one.
+        var named = Commands
+            .Where(c => TopicKey(c.Command).StartsWith(wanted, StringComparison.Ordinal))
+            .ToList();
+
+        return named.Count == 0 ? null : Render(topic!.Trim(), named);
+    }
+
+    /// <summary>Case- and space-insensitive, so "Build App", "build app" and "buildapp" are one
+    /// topic.</summary>
+    private static string TopicKey(string? text)
+        => new((text ?? string.Empty).Where(c => !char.IsWhiteSpace(c))
+            .Select(char.ToLowerInvariant).ToArray());
+
+    private static string Render(string heading, IEnumerable<CommandInfo> commands)
+    {
+        var lines = new List<string>
+        {
+            heading.ToUpperInvariant(),
+            new string('-', 80),
+        };
+
+        foreach (var command in commands.OrderBy(c => c.Command, StringComparer.Ordinal))
+        {
+            lines.Add($"{command.Command,-45} {command.Description}");
+            lines.Add($"    e.g. {command.Example}");
+            lines.Add(string.Empty);
+        }
+
+        return string.Join(Environment.NewLine, lines);
+    }
+
+    /// <summary>
+    /// Every command, grouped by category. What <c>help all</c> prints.
+    /// </summary>
+    /// <remarks>
+    /// Bare <c>help</c> shows <see cref="GetOverview"/> instead. This stayed exactly as it was so
+    /// that the guarantee worth keeping — that every catalog entry is reachable from one screen of
+    /// output — still has something to be asserted against.
+    /// </remarks>
     public static string GetHelpText()
     {
         var lines = new List<string>
