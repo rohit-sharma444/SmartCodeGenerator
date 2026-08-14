@@ -105,7 +105,14 @@ validator generated, a rule registered), yellow for something you can fix (no pr
 selected, a class not found, a command not recognized), red for a real failure, grey
 for secondary detail. Colour is switched off entirely when output is
 redirected, and when `NO_COLOR` is set (to any value, per
-[no-color.org](https://no-color.org)), so piped transcripts are plain text.
+[no-color.org](https://no-color.org)), so piped transcripts are plain text. Set
+`FORCE_COLOR` to colour redirected output anyway — for a host that captures the
+stream and renders the escape sequences itself.
+
+Colour is delivered as ANSI escape sequences where the terminal supports them
+(virtual-terminal processing is enabled at startup), and as Windows console
+attributes where it does not. `status` reports which, which is the quickest way to
+diagnose a terminal that shows no colour.
 
 An unexpected failure reports what happened, not its exception type. Set
 `CG_VERBOSE=1` to get the type name and stack trace back.

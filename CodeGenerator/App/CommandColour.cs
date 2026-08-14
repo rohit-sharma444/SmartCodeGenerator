@@ -71,8 +71,11 @@ internal static class CommandColour
     /// </remarks>
     public static void Run(Func<CommandVerdict> command)
     {
-        if (!Output.ColourAllowed(
-                Console.IsOutputRedirected, Environment.GetEnvironmentVariable("NO_COLOR")))
+        // Output.ColourEnabled, not a local reading of the environment: it accounts for FORCE_COLOR
+        // and for whether a transport could actually be established. Duplicating the rules here is
+        // how buffering and colouring would come to disagree — buffering output that then prints
+        // uncoloured, which only delays it for nothing.
+        if (!Output.ColourEnabled)
         {
             command();
             return;
