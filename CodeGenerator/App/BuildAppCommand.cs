@@ -661,9 +661,9 @@ internal sealed class BuildAppCommand
 
         if (scaffold.Success)
         {
-            Console.WriteLine($"Generated project at {scaffold.ProjectPath}");
+            Output.Success($"Generated project at {scaffold.ProjectPath}");
             if (scaffold.TestProjectPath is not null)
-                Console.WriteLine($"Generated test project at {scaffold.TestProjectPath}");
+                Output.Success($"Generated test project at {scaffold.TestProjectPath}");
             Console.WriteLine("");
             //foreach (var file in scaffold.FilesWritten)
             //    Console.WriteLine($"  {Path.GetRelativePath(scaffold.ProjectPath, file)}");
@@ -682,7 +682,7 @@ internal sealed class BuildAppCommand
         }
         else
         {
-            Console.WriteLine($"Generation failed: {scaffold.Message}");
+            Output.Error($"Generation failed: {scaffold.Message}");
         }
 
         // A scaffold that failed still counts as attempted: it has reported its own reason and
@@ -718,10 +718,12 @@ internal sealed class BuildAppCommand
             if (Console.IsInputRedirected)
                 return name;
 
+            // A question about losing work: yellow, so it is not skimmed past on the way to the
+            // prompt. Not red — nothing has gone wrong, and answering 'o' is a legitimate choice.
             foreach (var line in OverwritePrompt.Warning(
                 GeneratedProjectPath.Folder(workspaceRoot, name, target)))
             {
-                Console.WriteLine(line);
+                Output.Warning(line);
             }
 
             var action = AskOverwriteAction();
@@ -831,15 +833,29 @@ internal sealed class BuildAppCommand
         {
             // No `dotnet` on PATH. The app on disk is still fine, so say what happened and let
             // the next-step lines below tell them how to build it themselves.
-            Console.WriteLine("Could not start `dotnet` — skipping the build check.");
+            Output.Warning("Could not start `dotnet` — skipping the build check.");
             Console.WriteLine("");
             return;
         }
 
         clock.Stop();
 
-        foreach (var line in BuildReport.Lines(result, clock.Elapsed, scaffold.ProjectPath))
-            Console.WriteLine(line);
+        // Coloured here rather than inside BuildReport: that stays a pure list of strings, and the
+        // outcome is already known at this call site. Only the first line carries the verdict —
+        // painting the quoted compiler errors red as well would be noise, not emphasis.
+        var report = BuildReport.Lines(result, clock.Elapsed, scaffold.ProjectPath);
+
+        for (var i = 0; i < report.Count; i++)
+        {
+            if (i > 0)
+                Console.WriteLine(report[i]);
+            else if (BuildReport.Succeeded(result))
+                Output.Success(report[i]);
+            else if (result.TimedOut)
+                Output.Warning(report[i]);
+            else
+                Output.Error(report[i]);
+        }
 
         Console.WriteLine("");
 

@@ -135,7 +135,7 @@ internal class CodeGeneratorStarter
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error [{ex.GetType().Name}]: {ex.Message}");
+            ReportUnexpected(ex);
             return false;
         }
     }
@@ -270,15 +270,24 @@ internal class CodeGeneratorStarter
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Unexpected error [{ex.GetType().Name}]: {ex.Message}");
-
-                // Include stack trace only in debug mode
-                if (System.Diagnostics.Debugger.IsAttached)
-                {
-                    Console.WriteLine($"Stack trace: {ex.StackTrace}");
-                }
+                ReportUnexpected(ex);
             }
         }
+    }
+
+    /// <summary>
+    /// Reports a failure nothing else handled.
+    /// </summary>
+    /// <remarks>
+    /// The exception's type name used to be printed here. It tells a user nothing they can act on
+    /// and makes an ordinary problem read like a crash, so it — and the stack — now sit behind
+    /// <c>CG_VERBOSE</c>. That also replaces the old "stack trace only when a debugger is
+    /// attached", which was no help at all to the person actually hitting the failure.
+    /// </remarks>
+    private static void ReportUnexpected(Exception exception)
+    {
+        foreach (var line in ErrorText.Lines(exception, ErrorText.Verbose))
+            Output.Error(line);
     }
 
     private void PrintHeader()
@@ -295,7 +304,7 @@ internal class CodeGeneratorStarter
         // Deliberately NOT in PrintBanner: that method is static and, more to the point, `clear`
         // re-runs it, which would repaint this on every screen wipe.
         if (_ai.Unavailable is { } reason)
-            Console.WriteLine($"AI: off ({reason}) — 'status' for detail.");
+            Output.Warning($"AI: off ({reason}) — 'status' for detail.");
     }
 
     /// <summary>
@@ -314,7 +323,7 @@ internal class CodeGeneratorStarter
     /// </remarks>
     private static void PrintBanner()
     {
-        Console.WriteLine("Smart Code Generator");
+        Console.WriteLine($"Smart Code Generator {VersionInfo.Current}");
         Console.WriteLine("Type 'help' for commands, 'status' for system state, 'exit' to quit.");
         Console.WriteLine("TAB completes commands; 'batch' runs several at once.");
         Console.WriteLine();
@@ -336,8 +345,10 @@ internal class CodeGeneratorStarter
         if (healthy)
             return;
 
+        // Warning, not error: none of these stop the tool working — a missing store falls back to
+        // the online API — but every one of them is something the user needs to know.
         foreach (var line in lines)
-            Console.WriteLine(line);
+            Output.Warning(line);
 
         Console.WriteLine();
     }
@@ -402,7 +413,8 @@ internal class CodeGeneratorStarter
             ProjectManager.CurrentProject?.ProjectName,
             _configuredRules.Count,
             StoreReport().Lines,
-            AiState()))
+            AiState(),
+            VersionInfo.Current))
         {
             Console.WriteLine(line);
         }
