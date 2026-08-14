@@ -26,7 +26,7 @@
 
 | Command | Description | Example |
 | --- | --- | --- |
-| `add <name>` | Review loop: adds an entity to the candidate model. The name keeps the shape you type, so a compound survives; several words become one class name. | `add cash register` |
+| `add <name>` | Review loop: adds a class to the candidate model. The name keeps the shape you type, so a compound survives; several words become one class name. | `add cash register` |
 | `approve [target] [sqlite]` | Review loop: generates the app using the type chosen at the start. Name a target to override it: wpf (default), winforms, console, webapi, classlib, worker. Add 'sqlite' for EF Core persistence (JSON is the default; the wpf and winforms targets are JSON-only). Alias: a. | `approve webapi sqlite` |
 | `build app` | Starts the same guided flow, asking for the description first, then the application type, then whether you already have data. | `build app` |
 | `build app: <description>` | Describes a system in plain English, then asks which kind of app to build and whether you have data, discovers a domain model, and opens a review loop before any code is written. | `build app: a library that lends books to members` |
@@ -34,10 +34,10 @@
 | `build app: <description> [novalidation] [logging] [noseed]` | Chooses which optional layers are generated. 'novalidation' omits the Validation folder and its per-model validators; 'logging' adds a logging layer (off by default); 'noseed' omits the sample seed rows (rows imported from your own data file are unaffected). Interactively these are asked by the 'Customize appearance and features?' step, which remembers your answers in .codegen/app-profile.json. | `build app: a shop novalidation logging noseed` |
 | `build app: <description> from <format> <location>` | Builds the model from existing data with no prompts when piped; interactively you are still asked the application type. Formats: csv, txt, json, excel (sql is not in this build yet). Add 'normalize' to apply every normalization change the data needs. | `build app: order tracking from csv D:\data\orders.csv normalize` |
 | `cancel` | Review loop: abandons the model without generating anything. Alias: c. | `cancel` |
-| `field <entity> <name>[:<type>]` | Review loop: adds a field to an entity. Omit the type to have it inferred; explicit types are string, int, decimal, bool or DateTime. | `field Book Title:string` |
-| `remove <name>` | Review loop: removes an entity from the candidate model. | `remove Reservation` |
-| `rename <old> <new>` | Review loop: renames an entity in the candidate model. | `rename Member Borrower` |
-| `unfield <entity> <name>` | Review loop: removes a field from an entity. | `unfield Book Title` |
+| `field <class> <name>[:<type>]` | Review loop: adds a field to a class. Omit the type to have it inferred; explicit types are string, int, decimal, bool or DateTime. | `field Book Title:string` |
+| `remove <name>` | Review loop: removes a class from the candidate model. | `remove Reservation` |
+| `rename <old> <new>` | Review loop: renames a class in the candidate model. | `rename Member Borrower` |
+| `unfield <class> <name>` | Review loop: removes a field from a class. | `unfield Book Title` |
 | `why [name]` | Review loop: explains what discovery decided. Bare, it reports every decision grouped by outcome; with a name, it shows that name's whole trail — the stage, the reason and the evidence behind each step. | `why Cash register` |
 
 ## Class
