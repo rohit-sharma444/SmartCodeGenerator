@@ -84,9 +84,9 @@ public class OutputColourTests
     {
         // The whole point: a user who sees no colour must be able to find out why from the tool
         // rather than by asking. Both causes are invisible from outside the process.
-        Assert.Contains("NO_COLOR", Output.Explain(outputRedirected: false, noColourVariable: "1"));
-        Assert.Contains("redirected", Output.Explain(outputRedirected: true, noColourVariable: null));
-        Assert.AreEqual("on", Output.Explain(outputRedirected: false, noColourVariable: null));
+        Assert.Contains("NO_COLOR", Output.Explain(false, "1", null, ColourTransport.Ansi));
+        Assert.Contains("redirected", Output.Explain(true, null, null, ColourTransport.Ansi));
+        Assert.StartsWith("on", Output.Explain(false, null, null, ColourTransport.Ansi));
     }
 
     [TestMethod]
@@ -94,7 +94,7 @@ public class OutputColourTests
     {
         // NO_COLOR= (empty) still means no colour, and a bare "off (NO_COLOR is set to )" would
         // read like a bug in the message.
-        Assert.Contains("''", Output.Explain(outputRedirected: false, noColourVariable: ""));
+        Assert.Contains("''", Output.Explain(false, "", null, ColourTransport.Ansi));
     }
 
     [TestMethod]
@@ -107,9 +107,9 @@ public class OutputColourTests
             foreach (var noColour in new[] { null, "", "1" })
             {
                 var allowed = Output.ColourAllowed(redirected, noColour);
-                var explained = Output.Explain(redirected, noColour);
+                var explained = Output.Explain(redirected, noColour, null, ColourTransport.Ansi);
 
-                Assert.AreEqual(allowed, explained == "on",
+                Assert.AreEqual(allowed, explained.StartsWith("on", StringComparison.Ordinal),
                     $"redirected={redirected} NO_COLOR={noColour ?? "(unset)"} -> {explained}");
             }
         }
@@ -141,5 +141,46 @@ public class OutputColourTests
             .ToArray();
 
         CollectionAssert.AreEqual(new[] { "worked", "did not" }, lines);
+    }
+
+    [TestMethod]
+    public void ForceColourOverridesRedirection()
+    {
+        // The opt-in a host uses when it captures the stream and renders the sequences itself --
+        // the only route by which the VS Code panel could ever show colour.
+        Assert.IsTrue(Output.ColourAllowed(
+            outputRedirected: true, noColourVariable: null, forceColourVariable: "1"));
+    }
+
+    [TestMethod]
+    public void NoColourBeatsForceColour()
+    {
+        // Asking for no colour is the stronger request: it is the one a person makes to fix
+        // something they are looking at right now.
+        Assert.IsFalse(Output.ColourAllowed(
+            outputRedirected: false, noColourVariable: "1", forceColourVariable: "1"));
+
+        Assert.IsFalse(Output.ColourAllowed(
+            outputRedirected: true, noColourVariable: "1", forceColourVariable: "1"));
+    }
+
+    [TestMethod]
+    public void ExplainNamesHowColourIsDelivered()
+    {
+        // "on" alone was not enough to diagnose a terminal that reported colour as enabled and still
+        // rendered white. Which mechanism is in use is the missing half of that answer.
+        var ansi = Output.Explain(false, null, null, ColourTransport.Ansi);
+        var attributes = Output.Explain(false, null, null, ColourTransport.ConsoleAttributes);
+
+        Assert.Contains("ANSI", ansi);
+        Assert.Contains("console attributes", attributes);
+        Assert.AreNotEqual(ansi, attributes);
+    }
+
+    [TestMethod]
+    public void ExplainTellsYouHowToOverrideRedirection()
+    {
+        Assert.Contains("FORCE_COLOR",
+            Output.Explain(true, null, null, ColourTransport.Ansi));
     }
 }
