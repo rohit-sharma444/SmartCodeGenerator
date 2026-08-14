@@ -13,7 +13,10 @@ public static class GeneratedCodeService
     {
         var target = ProjectLocator.Resolve(parsed, currentProject, workspaceRoot);
 
-        var formattedCode = CodeFormatter.Format(code);
+        // The project's own namespace, not a hardcoded one: a class written into Shop that declares
+        // `GeneratedCode` is invisible to the rest of Shop without a using, and contradicts the
+        // root namespace `build app:` sets. Falls back to GeneratedCode when there is no project.
+        var formattedCode = CodeFormatter.Format(code, ProjectNamespace.For(target.ProjectFile));
 
         var filePath = FileWriter.Save(target.Directory,
             parsed?.ClassName, formattedCode);
