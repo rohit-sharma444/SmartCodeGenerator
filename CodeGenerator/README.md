@@ -187,6 +187,30 @@ to WPF — no prompt, nothing read, so existing scripts are unaffected.
 target is preselected and input isn't redirected, but the wizard now always
 preselects one, so that fallback is unreachable in ordinary interactive use.)
 
+### After it generates
+
+Generation does not stop at a path on disk. The CLI compiles the project it just
+wrote and reports the outcome (`BuildReport`), then — on a green build, and for
+anything but a class library — offers to start it. The app is launched detached
+into its own window (`AppLauncher`), so the prompt returns immediately: MSBuild's
+`Name -> path.dll` line gives the apphost beside it, which is what keeps a console
+window from sitting behind a WPF app, with `dotnet run --project` as the fallback.
+
+A failed build lists up to ten distinct errors — deduplicated, because MSBuild
+repeats each one per referencing project — and the command to rerun it. A timeout
+is reported as its own outcome rather than as a failure, since nothing is then
+known to be wrong with the generated code.
+
+Last come the next-step lines (`NextSteps`): how to run it, where the seed rows
+are, and how to run the generated tests, varying by target — a class library is
+told how to be referenced rather than run, since `dotnet run` on one fails with
+MSB4057.
+
+The build and the run offer are gated on `Console.IsInputRedirected`, the same
+gate the wizard and the review loop use: a piped run does neither, so scripted
+end-to-end runs neither slow down nor change shape. The next-step lines are
+always printed.
+
 Discovery reads Wikipedia from the local store built by
 [`WikipediaDumpImporter`](../WikipediaDumpImporter/README.md). Without that store
 it falls back to the live MediaWiki API, caching pages under `.dd-cache` in the

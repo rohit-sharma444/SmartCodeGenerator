@@ -1,6 +1,8 @@
 using AppScaffolding;
 using AppScaffolding.Layouts;
 using AppScaffolding.Targets;
+using CodeGenerationEngine.Helper;
+using CodeGenerationEngine.Models;
 using CodeIntelligence;
 using CodeIntelligence.Resolution;
 using DataIngestion;
@@ -645,15 +647,94 @@ internal sealed class BuildAppCommand
         {
             Console.WriteLine($"Generated project at {scaffold.ProjectPath}");
             if (scaffold.TestProjectPath is not null)
-                Console.WriteLine($"Generated test project at {scaffold.TestProjectPath} — run with `dotnet test`.");
+                Console.WriteLine($"Generated test project at {scaffold.TestProjectPath}");
             Console.WriteLine("");
             //foreach (var file in scaffold.FilesWritten)
             //    Console.WriteLine($"  {Path.GetRelativePath(scaffold.ProjectPath, file)}");
+
+            BuildAndOfferToRun(scaffold, target);
+
+            // Printed whether or not the build was green: a user whose app does not compile
+            // still needs to know where the seed rows are and how to run it once it does.
+            foreach (var line in NextSteps.Lines(
+                target, scaffold.ProjectPath, scaffold.TestProjectPath, scaffold.FilesWritten))
+            {
+                Console.WriteLine(line);
+            }
+
+            Console.WriteLine("");
         }
         else
         {
             Console.WriteLine($"Generation failed: {scaffold.Message}");
         }
+    }
+
+    /// <summary>
+    /// How long to wait for the generated app to compile. Longer than the two minutes
+    /// <c>DotNetProjectFactory</c> allows <c>dotnet new</c>, because a first WPF or EF Core build
+    /// does real work — though restore has already run by this point, so it is rarely close.
+    /// </summary>
+    private static readonly TimeSpan BuildTimeout = TimeSpan.FromMinutes(3);
+
+    /// <summary>
+    /// Compiles what was just generated, reports the result, and — if it built and there is
+    /// something to start — offers to run it.
+    /// </summary>
+    /// <remarks>
+    /// Interactive only, on the same <see cref="Console.IsInputRedirected"/> gate the wizard, the
+    /// review loop and the AI resolver use. A piped run sees byte-identical output to before this
+    /// existed, so scripted end-to-end runs neither slow down nor change shape.
+    /// </remarks>
+    private static void BuildAndOfferToRun(ScaffoldResult scaffold, ITargetScaffolder target)
+    {
+        if (Console.IsInputRedirected)
+            return;
+
+        Console.WriteLine("Building...");
+
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+
+        ProcessResult result;
+        try
+        {
+            result = ProcessRunner.Run("dotnet", "build", scaffold.ProjectPath, BuildTimeout);
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            // No `dotnet` on PATH. The app on disk is still fine, so say what happened and let
+            // the next-step lines below tell them how to build it themselves.
+            Console.WriteLine("Could not start `dotnet` — skipping the build check.");
+            Console.WriteLine("");
+            return;
+        }
+
+        clock.Stop();
+
+        foreach (var line in BuildReport.Lines(result, clock.Elapsed, scaffold.ProjectPath))
+            Console.WriteLine(line);
+
+        Console.WriteLine("");
+
+        // Nothing to offer for a class library, and nothing worth starting from a red build.
+        if (!BuildReport.Succeeded(result)
+            || target.ProjectType == DotNetProjectType.ClassLibrary)
+            return;
+
+        Console.Write("Run it now? [y/N]: ");
+
+        var answer = Console.ReadLine()?.Trim() ?? string.Empty;
+
+        if (!answer.StartsWith('y') && !answer.StartsWith('Y'))
+            return;
+
+        var launched = AppLauncher.Launch(scaffold.ProjectPath, result.StandardOutput);
+
+        Console.WriteLine(launched is null
+            ? "Could not start the app — run it yourself with the command below."
+            : $"Started {launched}");
+
+        Console.WriteLine("");
     }
 
     /// <summary>
