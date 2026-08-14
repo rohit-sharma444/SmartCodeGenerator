@@ -316,6 +316,36 @@ Shop.Tests/      a companion test project, generated with the app</pre>
 <code>.Generated.cs</code> file that is rewritten every time, and a <code>.Custom.cs</code> file that is written
 once and left alone afterwards — that is where your own rules go, and regenerating will not discard them.</p>
 
+<h3>After it generates</h3>
+<p>Writing the files is not the last step. The tool compiles what it has just written and tells you the result,
+so you find out that the application builds from the tool rather than from your own first attempt:</p>
+<pre>Generated project at D:\Work\Shop
+
+Building...
+Build succeeded (4.1s)
+
+Run it now? [y/N]: y
+Started Shop.exe
+
+Next steps:
+  Run it       dotnet run --project D:\Work\Shop
+  Seed data    D:\Work\Shop\Data\Seed\   (edit these, then re-run)
+  Tests        dotnet test D:\Work\Shop.Tests</pre>
+<p>Answering <code>y</code> starts the application in a window of its own and hands the prompt straight back, so
+the tool stays usable while your application is open. Close the application when you are done with it; the tool
+does not wait for it and will not close it for you.</p>
+<p>A class library is never offered, because there is nothing in one to start — it is told how to be referenced
+instead. If the build fails, the run offer is skipped and the errors are listed with the command to try again:</p>
+<pre>Build FAILED (2.7s) — 1 error
+  Models\Order.cs(14,20): error CS0246: The type 'Custmer' could not be found
+  Rerun with: dotnet build D:\Work\Shop</pre>
+<p>Ten errors are shown at most, and the rest are counted — a project that fails usually fails the same way many
+times over, and the first few say what went wrong. The next-step lines are printed whether the build passed or
+failed, because a project that does not yet compile still has seed data you may want to look at.</p>
+<div class="note"><p>The build and the run offer happen only when you are typing at the prompt. A piped or
+scripted run does neither, so existing scripts are unchanged and no script is made slower by a compile it never
+asked for. The next-step lines are always printed.</p></div>
+
 <h3>Regenerating over an existing project</h3>
 <p>Running <code>build app</code> again against an existing project reuses it: generated sources are
 overwritten, but the project file and anything you have edited by hand are left in place.</p>
@@ -431,9 +461,9 @@ ever <em>suggests</em> — it never runs a command you did not confirm.</p>
   <li>Answer <strong>n</strong> to the customization step — the command line already said what you wanted.</li>
   <li>Read the candidate model. Remove anything irrelevant (<code>remove Manuscript</code>), add anything
       missing (<code>add late fee</code>), then <code>approve</code>.</li>
-  <li>Open the reported folder and run <code>dotnet build</code>. The window is titled
-      <em>Codis Ltd - LibraryThatLendsBooksToMembers</em>, painted dark, and every file carries the copyright
-      banner.</li>
+  <li>Wait for the build the tool runs for you, then answer <code>y</code> to <em>Run it now?</em>. The window
+      is titled <em>Codis Ltd - LibraryThatLendsBooksToMembers</em>, painted dark, and every file carries the
+      copyright banner.</li>
 </ol>
 
 <h3>A Web API from a spreadsheet</h3>
@@ -442,7 +472,8 @@ ever <em>suggests</em> — it never runs a command you did not confirm.</p>
   <li>Choose <strong>Web API</strong>.</li>
   <li>Read the normalization findings and accept the ones that make sense.</li>
   <li><code>approve webapi sqlite</code> to store the data in SQLite instead of JSON files.</li>
-  <li><code>dotnet run</code> the generated project; the REST endpoints serve your own rows.</li>
+  <li>Answer <code>y</code> to <em>Run it now?</em>; the REST endpoints serve your own rows. The address it
+      listens on is printed as the application starts.</li>
 </ol>
 
 <h2>14. Troubleshooting</h2>
@@ -457,6 +488,11 @@ ever <em>suggests</em> — it never runs a command you did not confirm.</p>
 <tr><td>SQLite was refused for a desktop application</td><td>WPF and Windows Forms read the JSON store directly. Choose another type, or keep JSON.</td></tr>
 <tr><td>Your own validation rules disappeared</td><td>They should not: rules go in <code>&lt;Class&gt;Validator.Custom.cs</code>, which is written once and never rewritten. The <code>.Generated.cs</code> half is the one refreshed each run. The single exception is the file's own <code>namespace</code> line, which is repointed if you change the namespace prefix — otherwise the file would no longer compile alongside the rest of the project. Your rules themselves are never touched.</td></tr>
 <tr><td>A piped script behaves differently from typing the same commands</td><td>By design: piped input never prompts, and the remembered customization profile is ignored. State what you need on the command line.</td></tr>
+<tr><td>"Build FAILED" straight after generating</td><td>The application was written to disk but does not compile. The errors listed are the compiler's own, against the generated files — the most common cause is a class or field name that is not valid C#. Fix it in the review loop and generate again, or edit the reported file directly and <code>dotnet build</code>. Nothing about the project is lost either way.</td></tr>
+<tr><td>Nothing is built after generating, and there is no <em>Run it now?</em></td><td>Input is piped. The build and the run offer are for typing at the prompt only, so a script is never slowed by a compile it did not ask for. Build it yourself with the command in the next-step lines, which are printed either way.</td></tr>
+<tr><td>"Build timed out"</td><td>The compile ran past three minutes and was stopped. This says nothing about the generated code — a first build on a cold machine can simply be slow. Run <code>dotnet build</code> on the reported folder yourself.</td></tr>
+<tr><td>"Could not start <code>dotnet</code>"</td><td>The .NET SDK is not on <code>PATH</code> for this session. The application is written and intact; install the SDK, or open a shell that has it, and build the reported folder.</td></tr>
+<tr><td>You answered <code>y</code> to <em>Run it now?</em> and no window appeared</td><td>Look for it behind the terminal — it opens as a separate window and does not steal focus. A Web API and a worker have no window and open a console of their own instead.</td></tr>
 </table>
 
 <h2>15. Command reference</h2>
