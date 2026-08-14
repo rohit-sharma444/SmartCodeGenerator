@@ -127,6 +127,32 @@ entities, and drops you into a review loop where you can `approve`, `add <name>`
 kind of app to generate, then [`AppScaffolding`](AppScaffolding/README.md) writes
 a runnable project for that target.
 
+It then **compiles what it wrote** and says so, rather than leaving you to find
+out yourself:
+
+```
+Generated project at D:\Work\Shop
+
+Building...
+Build succeeded (4.1s)
+
+Run it now? [y/N]: y
+Started Shop.exe
+
+Next steps:
+  Run it       dotnet run --project D:\Work\Shop
+  Seed data    D:\Work\Shop\Data\Seed\   (edit these, then re-run)
+  Tests        dotnet test D:\Work\Shop.Tests
+```
+
+A failing build lists the errors and the command to rerun it; the run offer is
+skipped, and a class library is never offered as something to run. Answering `y`
+starts the app detached, in its own window, so the prompt comes straight back.
+
+The build and the run offer are **interactive only** — a piped or scripted run
+skips both, so existing scripts behave exactly as before. The next-step lines are
+always printed.
+
 The targets are `wpf` (the default), `console`, `webapi`, `classlib`, and
 `worker`. All of them share the same generated core — the model classes, a JSON
 store, and a typed `<Entity>Repository` with `GetAll`/`GetById`/`Create`/
