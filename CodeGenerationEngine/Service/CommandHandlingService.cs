@@ -1,7 +1,8 @@
-using CodeGenerationEngine.Core;
+﻿using CodeGenerationEngine.Core;
 using CodeGenerationEngine.Core.Validation;
 using CodeGenerationEngine.Factory;
 using CodeGenerationEngine.Models;
+using CodeGenerationEngine.Helper;
 
 namespace CodeGenerationEngine.Service;
 
@@ -320,7 +321,7 @@ public static class CommandHandlingService
     {
         if (string.IsNullOrWhiteSpace(ctx.Command.ClassName))
         {
-            Console.WriteLine("No class specified for the validation rule.");
+            Output.Warning("No class specified for the validation rule.");
             return false;
         }
 
@@ -334,14 +335,14 @@ public static class CommandHandlingService
         var rules = ValidationRuleCatalog.Default.Parse(ctx.Command.ValidationText, category, parseCtx);
         if (rules.Count == 0)
         {
-            Console.WriteLine($"Could not parse a validation rule from: '{ctx.Command.ValidationText}'");
+            Output.Warning($"Could not parse a validation rule from: '{ctx.Command.ValidationText}'");
             return false;
         }
 
         foreach (var rule in rules)
             ValidationRegistry.Add(ctx.Command.ClassName, rule);
 
-        Console.WriteLine(successPrefix);
+        Output.Success(successPrefix);
         return true;
     }
 

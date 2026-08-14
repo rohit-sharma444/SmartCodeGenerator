@@ -196,7 +196,7 @@ public static class ProjectManager
 
         if (!success)
         {
-            Console.WriteLine("Project not found.");
+            Output.Warning("Project not found.");
             return false;
         }
 
@@ -210,7 +210,7 @@ public static class ProjectManager
     {
         if (ProjectManager.CurrentProject == null)
         {
-            Console.WriteLine("No project selected.");
+            Output.Warning("No project selected.");
             return false;
         }
 
@@ -240,7 +240,7 @@ public static class ProjectManager
         }
         else
         {
-            Console.WriteLine("No project selected. Use 'use project <name>' first.");
+            Output.Warning("No project selected. Use 'use project <name>' first.");
             return false;
         }
 

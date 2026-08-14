@@ -1,4 +1,4 @@
-using CodeGenerationEngine.Core;
+﻿using CodeGenerationEngine.Core;
 using CodeGenerationEngine.Helper;
 using CodeGenerationEngine.Models;
 using CodeIntelligence;
@@ -134,7 +134,9 @@ internal class CodeGeneratorStarter
             // already reported its own reason; calling it unrecognized is wrong.
             if (!outcome.Recognized && !string.IsNullOrWhiteSpace(command))
             {
-                Console.WriteLine(
+                // A warning, not an error: nothing failed, the user simply typed something the
+                // tool does not know. Red here would read as a fault in the tool.
+                Output.Warning(
                     UnrecognizedCommand.Describe(command, CommandSuggester.Closest(command)));
             }
 
@@ -272,7 +274,7 @@ internal class CodeGeneratorStarter
                 // command that failed keeps its own error and isn't mislabeled.
                 if (!outcome.Recognized && !string.IsNullOrWhiteSpace(input))
                 {
-                    Console.WriteLine(
+                    Output.Warning(
                         UnrecognizedCommand.Describe(input, CommandSuggester.Closest(input)));
                 }
             }

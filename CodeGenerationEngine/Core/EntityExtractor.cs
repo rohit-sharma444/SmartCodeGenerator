@@ -1,8 +1,9 @@
-using CodeGenerationEngine.Core.Validation;
+﻿using CodeGenerationEngine.Core.Validation;
 using CodeGenerationEngine.Models;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System.Text.RegularExpressions;
+using CodeGenerationEngine.Helper;
 
 namespace CodeGenerationEngine.Core;
 
@@ -39,7 +40,7 @@ public static class EntityExtractor
 
         if (string.IsNullOrWhiteSpace(searchRoot) || !Directory.Exists(searchRoot))
         {
-            Console.WriteLine($"Class '{command.ClassName}' not found.");
+            Output.Warning($"Class '{command.ClassName}' not found.");
             return false;
         }
 
@@ -50,7 +51,7 @@ public static class EntityExtractor
 
         if (classFile == null)
         {
-            Console.WriteLine($"Class '{command.ClassName}' not found.");
+            Output.Warning($"Class '{command.ClassName}' not found.");
             return false;
         }
 
@@ -66,7 +67,7 @@ public static class EntityExtractor
 
         File.WriteAllText(validatorFile, validationCode);
 
-        Console.WriteLine($"Validator generated: {validatorFile}");
+        Output.Success($"Validator generated: {validatorFile}");
         return true;
     }
 

@@ -1,4 +1,5 @@
 ﻿using System.Text.RegularExpressions;
+using CodeGenerationEngine.Helper;
 
 namespace CodeGenerationEngine.Core;
 
@@ -19,7 +20,7 @@ public static class FileWriter
 
         File.WriteAllText(filePath, code);
 
-        Console.WriteLine($"Saved generated class to: {filePath}");
+        Output.Success($"Saved generated class to: {filePath}");
 
         return filePath;
     }
