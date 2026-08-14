@@ -19,6 +19,17 @@ switch (StartupFlags.Parse(args))
         return 0;
 }
 
+// Ctrl-C asks rather than kills. Before this, a press during a Wikipedia fetch or a build
+// terminated the process outright — possibly mid-write, leaving a half-generated project. A second
+// press still quits, because a trap with no way out is worse than no trap.
+Console.CancelKeyPress += (_, e) =>
+{
+    e.Cancel = !Interrupt.ShouldTerminate();
+
+    if (e.Cancel)
+        Console.WriteLine();
+};
+
 var starter = new CodeGeneratorStarter();
 
 if (args.Length > 0)

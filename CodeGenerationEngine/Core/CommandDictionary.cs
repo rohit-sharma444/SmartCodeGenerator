@@ -373,7 +373,7 @@ public static class CommandDictionary
         {
             Category = "Utility",
             Command = "demo",
-            Description = "Runs the demo workflow.",
+            Description = "Runs a short guided walkthrough: creates a small project, adds a class with two validation rules, generates the validator and shows the result. Asks before writing anything, and names the folder it creates so you can delete it afterwards.",
             Example = "demo"
         },
         new()
