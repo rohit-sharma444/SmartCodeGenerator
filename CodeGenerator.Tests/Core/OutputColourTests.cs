@@ -1,6 +1,6 @@
-using CodeGenerator.App;
+using CodeGenerationEngine.Helper;
 
-namespace CodeGenerator.Tests.App;
+namespace CodeGenerator.Tests.Core;
 
 /// <summary>
 /// When the CLI is allowed to use colour.

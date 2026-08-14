@@ -1,4 +1,4 @@
-namespace CodeGenerator.App;
+﻿namespace CodeGenerationEngine.Helper;
 
 /// <summary>
 /// The CLI's four output roles.
@@ -9,12 +9,15 @@ namespace CodeGenerator.App;
 /// output, that is what makes this safe to add: a captured or piped transcript is byte-for-byte
 /// what it was before colour existed, so no test that reads console output needs to change.
 /// <para>
+/// Lives in the engine, not the CLI, because most of the messages a user reads are printed from
+/// here — the CLI cannot be the owner of something CodeGenerationEngine needs to call.
+/// <para>
 /// Four roles and no more. A screen painted in six colours reads as less considered, not more, so
 /// the discipline is the point: anything that is not success, failure, a warning or secondary
 /// detail goes through <see cref="Line"/> and stays the terminal's own colour.
 /// </para>
 /// </remarks>
-internal static class Output
+public static class Output
 {
     /// <summary>The no-color.org convention's variable name.</summary>
     private const string NoColourVariable = "NO_COLOR";

@@ -1,5 +1,6 @@
 ﻿using CodeGenerationEngine.Models;
 using System.Text.RegularExpressions;
+using CodeGenerationEngine.Helper;
 
 namespace CodeGenerationEngine.Core;
 
@@ -52,7 +53,7 @@ public static class ClassValidator
 
         if (project == null)
         {
-            Console.WriteLine("No project selected.");
+            Output.Warning("No project selected.");
             return "No project selected.";
         }
 
@@ -75,7 +76,7 @@ public static class ClassValidator
 
         if (classFile == null)
         {
-            Console.WriteLine($"Class '{className}' not found.");
+            Output.Warning($"Class '{className}' not found.");
             return "Class not found.";
         }
 

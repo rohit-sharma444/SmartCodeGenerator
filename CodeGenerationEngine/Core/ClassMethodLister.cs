@@ -1,4 +1,5 @@
 ﻿using System.Text.RegularExpressions;
+using CodeGenerationEngine.Helper;
 
 namespace CodeGenerationEngine.Core;
 
@@ -17,7 +18,7 @@ public static class ClassMethodLister
 
         if (file == null)
         {
-            Console.WriteLine($"Class '{className}' not found.");
+            Output.Warning($"Class '{className}' not found.");
             return false;
         }
 
