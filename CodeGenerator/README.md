@@ -23,6 +23,50 @@ PROJECTPATH=/path/to/workspace dotnet run --project CodeGenerator
 
 At the `CodeGenerator >>` prompt, type `help` for an overview or `exit` to quit.
 
+### Ctrl-C, and why a second press still quits
+
+`Interrupt` holds the policy: the first press requests cancellation and returns
+`false` from `ShouldTerminate()`, so `CancelKeyPress` sets `e.Cancel = true` and the
+process lives — a write in flight finishes rather than leaving a half-generated
+project. The second press returns `true` and lets it die.
+
+That second press is not a nicety. Much of the work here is synchronous and takes no
+token, so a press genuinely cannot stop it; a trap with no way out would be worse
+than no trap. `Interrupt.Token` is threaded into `NaturalLanguagePipeline.Handle`,
+which already accepted one, and `Interrupt.Reset()` runs as the prompt regains
+control so the next command does not start already cancelled.
+
+### The pager
+
+`Pager.Write` pauses a page at a time for `help all` (~250 lines) and the candidate
+model, which is reprinted after every review action. Never when redirected — a pager
+waiting on a key press in a pipe is a hang — and never when `Console.WindowHeight`
+cannot be read, since a host that cannot report its height cannot answer a key press
+either. `PageSize` is floored at 1, because a zero-line page loops forever.
+
+### The spinner
+
+`Spinner.Start` returns an `IDisposable` either way, so callers have no branch. On a
+real console it animates beside the label with an elapsed count; redirected, it
+prints the label once and nothing else — byte-identical to what piped runs saw
+before. Frames are ASCII deliberately: decoration is the last thing worth risking on
+a console whose encoding could not be changed.
+
+`Frame` does not use `Math.Abs`, which throws on `int.MinValue` — a spinner must be
+incapable of taking down the operation it decorates.
+
+### `demo` runs real commands
+
+`DemoScript` is seven actual commands driven back through
+`NaturalLanguagePipeline.Handle`, so the demo cannot drift from what the tool does. A
+test asserts every one of them matches a catalog entry, which is the guard that stops
+it rotting into the thing it replaced — the old `demo` printed a canned `Customer`
+class with its comment markers stripped and ran nothing.
+
+It writes to disk, so it names the path, asks first, refuses if the folder already
+exists, and declines entirely when input is redirected (printing the steps instead,
+so a scripted reader still learns something).
+
 ### Startup flags, and why they come first
 
 `StartupFlags` answers `--version` / `--help` (plus `-v`, `-h`, `-?`, `/?`, `/help`)
