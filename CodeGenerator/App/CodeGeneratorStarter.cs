@@ -513,7 +513,8 @@ internal class CodeGeneratorStarter
             _configuredRules.Count,
             StoreReport().Lines,
             AiState(),
-            VersionInfo.Current))
+            VersionInfo.Current,
+            Output.Explain()))
         {
             Console.WriteLine(line);
         }

@@ -35,6 +35,30 @@ public static class Output
     /// variable (null) permits it.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// Whether colour is on, and if not, why — for <c>status</c> to report.
+    /// </summary>
+    /// <remarks>
+    /// Exists because "I can't see coloured text" is a question the tool should answer about itself.
+    /// Both reasons are invisible from the outside: a user cannot tell that their shell sets
+    /// <c>NO_COLOR</c>, nor that whatever launched the CLI gave it a pipe instead of a console.
+    /// </remarks>
+    public static string Explain(bool outputRedirected, string? noColourVariable)
+    {
+        if (noColourVariable is not null)
+            return $"off (NO_COLOR is set to '{noColourVariable}')";
+
+        return outputRedirected
+            ? "off (output is redirected, so a transcript stays plain text)"
+            : "on";
+    }
+
+    /// <summary>As <see cref="Explain(bool, string?)"/>, for the console this process actually has.</summary>
+    public static string Explain()
+        => Explain(
+            Console.IsOutputRedirected,
+            Environment.GetEnvironmentVariable(NoColourVariable));
+
     public static bool ColourAllowed(bool outputRedirected, string? noColourVariable)
         => !outputRedirected && noColourVariable is null;
 
@@ -63,6 +87,24 @@ public static class Output
 
     /// <summary>Ordinary output, in whatever colour the terminal already is.</summary>
     public static void Line(string text) => Console.WriteLine(text);
+
+    /// <summary>
+    /// A message whose colour follows an outcome the caller already knows.
+    /// </summary>
+    /// <remarks>
+    /// Several handlers receive <c>(bool ok, string message)</c> from a service and print the
+    /// message unconditionally. Branching at each of those sites would be the same three lines
+    /// repeated; this keeps the decision in one place and makes it obvious that a failure here is a
+    /// <see cref="Warning"/> rather than an <see cref="Error"/> — the operation did not happen, but
+    /// nothing is broken (a class that was not there to delete, for instance).
+    /// </remarks>
+    public static void Result(bool ok, string message)
+    {
+        if (ok)
+            Success(message);
+        else
+            Warning(message);
+    }
 
     private static void Write(string text, ConsoleColor colour)
     {

@@ -1,4 +1,4 @@
-namespace CodeGenerator.App;
+﻿namespace CodeGenerator.App;
 
 /// <summary>
 /// The full system report, printed by <c>status</c>.
@@ -24,7 +24,8 @@ internal static class StatusReport
         int ruleCount,
         IReadOnlyList<string> storeLines,
         string aiState,
-        string version)
+        string version,
+        string colour)
     {
         var lines = new List<string>
         {
@@ -46,6 +47,10 @@ internal static class StatusReport
             lines.Add(Row("Rules", $"{ruleCount} loaded from rules.json"));
 
         lines.Add(Row("AI", aiState));
+
+        // Reported because both reasons colour can be off are invisible from the outside: a shell
+        // that sets NO_COLOR, and a host that handed the CLI a pipe instead of a console.
+        lines.Add(Row("Colour", colour));
         lines.Add(string.Empty);
         lines.AddRange(storeLines);
 
