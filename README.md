@@ -149,6 +149,23 @@ A failing build lists the errors and the command to rerun it; the run offer is
 skipped, and a class library is never offered as something to run. Answering `y`
 starts the app detached, in its own window, so the prompt comes straight back.
 
+If a project of that name is already there, you are asked before anything is
+overwritten:
+
+```
+D:\Work\Shop already holds a generated project.
+Regenerating overwrites its generated sources — Models, Data, Views and the
+*.Generated.cs validator halves. Your .Custom.cs rules, the project file and
+anything you added yourself are kept.
+
+  [o]verwrite   [r]ename   [c]ancel   (Enter cancels)
+```
+
+`r` generates under another name and leaves the existing project alone; `c` (or
+Enter) writes nothing and returns you to the review loop with the model intact.
+Enter cancels rather than overwrites on purpose — the effortless answer should be
+the one that cannot lose work.
+
 The build and the run offer are **interactive only** — a piped or scripted run
 skips both, so existing scripts behave exactly as before. The next-step lines are
 always printed.

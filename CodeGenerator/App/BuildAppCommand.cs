@@ -395,9 +395,13 @@ internal sealed class BuildAppCommand
 
                     WriteLayoutNotice(approved.Value.Target, customization);
 
-                    Generate(
+                    // Declining the overwrite is not a cancel: the reviewed model is still here,
+                    // so go back to the action list rather than discarding the whole interview.
+                    if (!Generate(
                         model, appName, workspaceRoot, importedData,
-                        approved.Value.Target, approved.Value.Persistence, customization);
+                        approved.Value.Target, approved.Value.Persistence, customization))
+                        continue;
+
                     return;
                 }
 
@@ -447,9 +451,12 @@ internal sealed class BuildAppCommand
 
                     WriteLayoutNotice(chosenTarget, customization);
 
-                    Generate(
+                    // See the picker path above: a declined overwrite returns to the loop.
+                    if (!Generate(
                         model, appName, workspaceRoot, importedData,
-                        chosenTarget, persistence.Value, customization);
+                        chosenTarget, persistence.Value, customization))
+                        break;
+
                     return;
 
                 case "c":
@@ -632,15 +639,24 @@ internal sealed class BuildAppCommand
     /// <see cref="ResolveTarget"/> and <see cref="ResolvePersistence"/> exist to read those out
     /// of a typed line.
     /// </remarks>
-    private static void Generate(
+    private static bool Generate(
         CandidateDomainModel model, string appName, string workspaceRoot,
         ImportedData importedData, ITargetScaffolder target, PersistenceKind persistence,
         AppCustomization customization)
     {
+        var name = ResolveOverwrite(appName, workspaceRoot, target);
+
+        if (name is null)
+        {
+            Console.WriteLine("Nothing was written. The model is still here — approve again when ready.");
+            Console.WriteLine("");
+            return false;
+        }
+
         // The year is read here rather than inside a template: a template reading the clock would
         // turn every golden-output test red on 1 January.
         var scaffold = new AppScaffolder().Scaffold(new ScaffoldRequest(
-            model, appName, workspaceRoot, target, persistence, importedData,
+            model, name, workspaceRoot, target, persistence, importedData,
             customization, DateTime.Now.Year));
 
         if (scaffold.Success)
@@ -667,6 +683,117 @@ internal sealed class BuildAppCommand
         else
         {
             Console.WriteLine($"Generation failed: {scaffold.Message}");
+        }
+
+        // A scaffold that failed still counts as attempted: it has reported its own reason and
+        // the loop exits exactly as it did before the guard existed. Only a declined overwrite
+        // returns false.
+        return true;
+    }
+
+    /// <summary>
+    /// The name to generate under, or null if the user declined to overwrite.
+    /// </summary>
+    /// <remarks>
+    /// Asks only when there is something to lose — <see cref="GeneratedProjectPath.Exists"/> is
+    /// the same test <c>AppScaffolder</c> uses to decide whether it is reusing a project, so the
+    /// question is put exactly when a regeneration would happen and never on a fresh name.
+    /// <para>
+    /// Redirected input never prompts and overwrites, which is what every version before this
+    /// did, so no script changes behaviour. Interactively the answer is a deliberate one: blank
+    /// cancels.
+    /// </para>
+    /// <para>
+    /// Loops rather than asking once, because a rename can collide too — the second name gets
+    /// the same question rather than silently overwriting a different project.
+    /// </para>
+    /// </remarks>
+    private static string? ResolveOverwrite(
+        string appName, string workspaceRoot, ITargetScaffolder target)
+    {
+        var name = appName;
+
+        while (GeneratedProjectPath.Exists(workspaceRoot, name, target))
+        {
+            if (Console.IsInputRedirected)
+                return name;
+
+            foreach (var line in OverwritePrompt.Warning(
+                GeneratedProjectPath.Folder(workspaceRoot, name, target)))
+            {
+                Console.WriteLine(line);
+            }
+
+            var action = AskOverwriteAction();
+
+            if (action == OverwriteAction.Overwrite)
+                return name;
+
+            if (action == OverwriteAction.Cancel)
+                return null;
+
+            var renamed = AskNewAppName();
+
+            if (renamed is null)
+                return null;
+
+            name = renamed;
+        }
+
+        return name;
+    }
+
+    /// <summary>Puts the overwrite question until it gets an answer it understands.</summary>
+    private static OverwriteAction AskOverwriteAction()
+    {
+        while (true)
+        {
+            Console.Write("> ");
+
+            var action = OverwritePrompt.Parse(Console.ReadLine());
+
+            if (action is not null)
+                return action.Value;
+
+            Console.WriteLine("  Answer o, r or c — or press Enter to cancel.");
+        }
+    }
+
+    /// <summary>
+    /// A new app name, or null to cancel.
+    /// </summary>
+    /// <remarks>
+    /// Normalized through <see cref="DomainAppName.FromDescription"/>, the same routine that
+    /// derived the original name from the description — so "cash book" becomes CashBook here
+    /// exactly as it would have there, and a name that cannot be a .NET identifier cannot be
+    /// typed in by this route either.
+    /// </remarks>
+    private static string? AskNewAppName()
+    {
+        while (true)
+        {
+            Console.Write("New name (c to cancel)> ");
+
+            var line = Console.ReadLine();
+
+            // EOF is the absence of an answer, not an empty one.
+            if (line is null)
+                return null;
+
+            var text = line.Trim();
+
+            if (string.Equals(text, "c", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(text, "cancel", StringComparison.OrdinalIgnoreCase))
+                return null;
+
+            if (text.Length == 0)
+                continue;
+
+            var name = DomainAppName.FromDescription(text);
+
+            Console.WriteLine($"  Generating as {name}.");
+
+            return name;
         }
     }
 
