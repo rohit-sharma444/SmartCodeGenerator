@@ -113,11 +113,27 @@ plain `Line`. Four and no more: a screen painted in six colours reads as less
 considered, not more, so anything that is not one of those goes through `Line` and
 keeps the terminal's own colour.
 
-Colour is set via `Console.ForegroundColor`, never as escape codes in the stream,
-and is skipped entirely when output is redirected or `NO_COLOR` is set (presence,
-not value — `NO_COLOR=0` still means no colour). That is what makes it safe to add
-to a codebase whose tests read console output: a captured transcript is byte-for-
-byte what it was before. Verified by checking piped output for ESC bytes — zero.
+`ColourDelivery` decides **how** colour is delivered, once per process:
+
+- **ANSI escape sequences** when virtual-terminal processing can be enabled — which
+  is every modern terminal. `Console.ForegroundColor` is not universal: on Windows it
+  calls `SetConsoleTextAttribute`, and a host that renders only escape sequences
+  drops it silently. That was a real user report.
+- **Windows console attributes** as the fallback for an older console.
+- **Nothing**, when `NO_COLOR` is set or output is redirected without `FORCE_COLOR`.
+
+`FORCE_COLOR` exists for a host that captures the stream and renders the sequences
+itself — the only route by which the VS Code extension panel could ever show colour,
+since it spawns the CLI with a pipe and console attributes cannot cross that. Note
+that when VT cannot be enabled *because* stdout is a pipe, forced colour still emits
+ANSI: falling back to attributes would send such a host nothing at all.
+
+`NO_COLOR` beats `FORCE_COLOR` — asking for no colour is the stronger request, being
+the one a person makes to fix something they are looking at.
+
+Without `FORCE_COLOR`, piped output contains **zero** escape bytes, so a captured
+transcript is byte-for-byte what it was before colour existed. Verified by checking
+for ESC bytes in both directions.
 
 Routing rule: **success** is something produced (a class written, a validator
 generated, a rule registered); **warning** is a precondition the user can fix (no

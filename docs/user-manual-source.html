@@ -77,10 +77,23 @@ you have simply typed something it does not know.</p>
 <p>Colour is switched off automatically when you redirect output to a file or another program, so a
 saved transcript is ordinary text. To turn it off at a real console as well, set the
 <code>NO_COLOR</code> environment variable to anything at all &#x2014; the convention is that its mere
-presence is the instruction, so even <code>NO_COLOR=0</code> means no colour.</p>
-<div class="note"><p><strong>Seeing no colour at all?</strong> Check whether something has already set
-that variable for you: at a PowerShell prompt, <code>echo $env:NO_COLOR</code>. Some tools and
-terminals set it deliberately. <code>Remove-Item Env:NO_COLOR</code> clears it for that session.</p></div>
+presence is the instruction, so even <code>NO_COLOR=0</code> means no colour. Conversely, set
+<code>FORCE_COLOR</code> to keep colour even when output is redirected, for a program that captures
+the output and colours it itself.</p>
+
+<h3>If you see no colour</h3>
+<p>Run <code>status</code>. The <strong>Colour</strong> line says whether colour is on and, if it is,
+how it is being sent:</p>
+<table>
+<tr><th>What it says</th><th>What it means</th></tr>
+<tr><td><code>on (ANSI escape sequences)</code></td><td>The usual case on a modern terminal. If text is still not coloured, the terminal itself is discarding it &#x2014; check its colour scheme, and whether Windows high-contrast mode is on.</td></tr>
+<tr><td><code>on (Windows console attributes)</code></td><td>An older console that cannot handle escape sequences. Colour is being set the legacy way.</td></tr>
+<tr><td><code>off (NO_COLOR is set to '&hellip;')</code></td><td>Something set that variable &#x2014; possibly your PowerShell profile. <code>Remove-Item Env:NO_COLOR</code> clears it for the session.</td></tr>
+<tr><td><code>off (output is redirected&hellip;)</code></td><td>The output is going to a file or another program. Set <code>FORCE_COLOR</code> if that program renders colour.</td></tr>
+</table>
+<div class="note"><p>One check settles whether the tool is at fault: <code>Write-Host "test"
+-ForegroundColor Red</code> at a PowerShell prompt. If <em>that</em> is not red either, no program can
+colour text in that terminal and the cause is the terminal or its settings.</p></div>
 
 <div class="note"><p><strong>A quiet start is a healthy one.</strong> The tool reports its own state only when
 something is wrong with it — a missing Wikipedia store, nothing updating it, an AI model it was told to load and
