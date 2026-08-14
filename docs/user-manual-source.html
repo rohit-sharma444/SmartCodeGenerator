@@ -46,10 +46,15 @@ project. Chapter 15 is a complete command reference you can skim.</p>
 <h2>2. Getting started</h2>
 
 <h3>Starting the tool</h3>
-<p>Run the executable. It prints a banner, tells you whether AI recognition is enabled, and shows the prompt:</p>
+<p>Run the executable. It prints three lines and the prompt:</p>
 <pre>CodeGenerator &gt;&gt; </pre>
 <p>Type <code>help</code> for an overview of what the tool can do, and <code>exit</code> to leave. Press
 <strong>TAB</strong> at the prompt for command suggestions.</p>
+<div class="note"><p><strong>A quiet start is a healthy one.</strong> The tool reports its own state only when
+something is wrong with it — a missing Wikipedia store, nothing updating it, an AI model it was told to load and
+could not. So if all you see is those three lines, everything it depends on is in order. Type
+<code>status</code> at any time for the full picture. Earlier versions printed that picture at every launch,
+which meant the warnings in it were easy to skim past.</p></div>
 
 <h3>Where your work is saved</h3>
 <p>Everything the tool creates goes under a single folder called the <em>workspace root</em>. It is chosen like
@@ -80,6 +85,7 @@ exit</pre>
 <h3>Getting help</h3>
 <table>
 <tr><th>Command</th><th>What it does</th></tr>
+<tr><td><code>status</code></td><td>The full picture: which folder it is writing to, how many projects it found and which is selected, any rules it loaded, whether AI recognition is on, and the state of the Wikipedia store and its updater service.</td></tr>
 <tr><td><code>help</code></td><td>A one-screen overview: a few commands worth starting with, then every category and how many commands it holds.</td></tr>
 <tr><td><code>help &lt;topic&gt;</code></td><td>The commands in one category — <code>help build app</code>, <code>help validation</code>. Capitals and spaces do not matter, so <code>buildapp</code> works too. A command name is also a topic, so <code>help approve</code> explains that one command.</td></tr>
 <tr><td><code>help all</code></td><td>Every command with an example, in one list. This is what plain <code>help</code> printed in earlier versions — around 250 lines, which is why it moved behind its own word.</td></tr>
@@ -507,6 +513,7 @@ ever <em>suggests</em> — it never runs a command you did not confirm.</p>
 <tr><td>"The … layout applies to the wpf and winforms targets"</td><td>You named a layout but approved a type with no window. The application is still generated; only the layout is ignored. Approve <code>wpf</code> or <code>winforms</code> to use it.</td></tr>
 <tr><td>SQLite was refused for a desktop application</td><td>WPF and Windows Forms read the JSON store directly. Choose another type, or keep JSON.</td></tr>
 <tr><td>Your own validation rules disappeared</td><td>They should not: rules go in <code>&lt;Class&gt;Validator.Custom.cs</code>, which is written once and never rewritten. The <code>.Generated.cs</code> half is the one refreshed each run. The single exception is the file's own <code>namespace</code> line, which is repointed if you change the namespace prefix — otherwise the file would no longer compile alongside the rest of the project. Your rules themselves are never touched.</td></tr>
+<tr><td>Startup no longer shows the store&#x27;s dump date, or whether AI is on</td><td>By design: the tool is quiet when nothing is wrong with it, so that the warnings it does print are noticed rather than skimmed. Type <code>status</code> for the full picture, which is the same information.</td></tr>
 <tr><td>A piped script behaves differently from typing the same commands</td><td>By design: piped input never prompts, and the remembered customization profile is ignored. State what you need on the command line.</td></tr>
 <tr><td>"Build FAILED" straight after generating</td><td>The application was written to disk but does not compile. The errors listed are the compiler's own, against the generated files — the most common cause is a class or field name that is not valid C#. Fix it in the review loop and generate again, or edit the reported file directly and <code>dotnet build</code>. Nothing about the project is lost either way.</td></tr>
 <tr><td>Nothing is built after generating, and there is no <em>Run it now?</em></td><td>Input is piped. The build and the run offer are for typing at the prompt only, so a script is never slowed by a compile it did not ask for. Build it yourself with the command in the next-step lines, which are printed either way.</td></tr>
@@ -633,6 +640,7 @@ own shows the shorter overview, and <code>help &lt;topic&gt;</code> shows one se
 <tr><td><code>cls</code></td><td>Alias for clear (clears the screen; history is kept).</td><td><code>cls</code></td></tr>
 <tr><td><code>demo</code></td><td>Runs the demo workflow.</td><td><code>demo</code></td></tr>
 <tr><td><code>exit</code></td><td>Exits the application.</td><td><code>exit</code></td></tr>
+<tr><td><code>status</code></td><td>Reports the workspace, the projects found and which is selected, any loaded rules, the AI state, and the Wikipedia store and its updater service. Startup prints only what is wrong; this prints everything.</td><td><code>status</code></td></tr>
 <tr><td><code>help</code></td><td>Shows a one-screen overview: a few commands to start with, and every category with its command count.</td><td><code>help</code></td></tr>
 <tr><td><code>help &lt;topic&gt;</code></td><td>Shows one category&#x27;s commands. A topic is any category name &#x27;help&#x27; lists, spelled however you like; a command name works too, so &#x27;help approve&#x27; explains that command.</td><td><code>help build app</code></td></tr>
 <tr><td><code>help all</code></td><td>Every command in one list — the complete catalog, which is what plain &#x27;help&#x27; used to print.</td><td><code>help all</code></td></tr>

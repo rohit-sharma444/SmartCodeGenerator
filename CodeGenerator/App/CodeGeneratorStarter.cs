@@ -18,6 +18,10 @@ internal class CodeGeneratorStarter
     private string _workspaceRoot = string.Empty;
 
     private List<PropertyRule> _configuredRules = [];
+
+    /// <summary>How many projects the workspace scan found, for <c>status</c> to report.</summary>
+    private int _projectCount;
+
     private readonly List<string> _commandHistory = [];
     private readonly string _historyPath;
     private const string HISTORY_FILENAME = ".codegen_history";
@@ -101,6 +105,12 @@ internal class CodeGeneratorStarter
             if (HelpCommand.IsHelp(command))
             {
                 Console.WriteLine(HelpCommand.Render(command));
+                return true;
+            }
+
+            if (StatusCommand.IsStatus(command))
+            {
+                PrintStatus();
                 return true;
             }
 
@@ -192,6 +202,12 @@ internal class CodeGeneratorStarter
                 continue;
             }
 
+            if (StatusCommand.IsStatus(input))
+            {
+                PrintStatus();
+                continue;
+            }
+
             if (AiCommand.IsAiCommand(input))
             {
                 Console.WriteLine(AiCommand.Handle(input, _ai));
@@ -271,35 +287,36 @@ internal class CodeGeneratorStarter
 
         ReportWikipediaStoreStatus();
 
-        // Reported once per session, beside the updater-service line, so a missing or
-        // unloadable model is stated plainly at startup instead of silently making
-        // every unrecognized command behave as though AI were switched off.
+        // Only when it is a problem. "AI: enabled" and a deliberate "off (disabled)" are both
+        // states the user chose, and `status` reports them; an Unavailable reason means AI was
+        // meant to be on and could not load, which would otherwise make every unrecognized
+        // command silently behave as though it were switched off.
         //
-        // Deliberately NOT in PrintBanner: that method is static and, more to the
-        // point, `clear` re-runs it, which would repaint this line on every screen
-        // wipe. PrintHeader is the once-per-session path.
-        Console.WriteLine(_ai.Resolver is not null
-            ? "AI: enabled (retrieval)"
-            : $"AI: off ({_ai.Unavailable ?? "disabled"})");
+        // Deliberately NOT in PrintBanner: that method is static and, more to the point, `clear`
+        // re-runs it, which would repaint this on every screen wipe.
+        if (_ai.Unavailable is { } reason)
+            Console.WriteLine($"AI: off ({reason}) — 'status' for detail.");
     }
 
     /// <summary>
-    /// Writes the title banner and command hints. Kept separate from the one-time
-    /// startup work in <see cref="PrintHeader"/> (e.g. reporting the Wikipedia store's
-    /// status) so <c>clear</c> can redraw the header after wiping the screen without
-    /// re-triggering that work.
+    /// Writes the title and the few hints worth having in front of a new user.
     /// </summary>
+    /// <remarks>
+    /// Kept separate from the one-time startup work in <see cref="PrintHeader"/> so <c>clear</c>
+    /// can redraw it without re-triggering that work.
+    /// <para>
+    /// Short on purpose. This used to be nine lines of box art and hints, followed by the store
+    /// report and the AI line — thirteen in the healthy case, which pushed the prompt and the
+    /// command just recommended off a short terminal, and taught the eye to skim exactly the
+    /// block that carries the store's warnings. What is left either says what to type or is a
+    /// problem.
+    /// </para>
+    /// </remarks>
     private static void PrintBanner()
     {
-        Console.WriteLine("============================================================");
-        Console.WriteLine("               Code Generation Engine");
-        Console.WriteLine("============================================================");
-        Console.WriteLine();
-
-        Console.WriteLine("Type 'help' for the commands, or 'help all' for the full reference.");
-        Console.WriteLine("Press TAB for command suggestions.");
-        Console.WriteLine("Type 'batch' to enter several commands and review them before they run.");
-        Console.WriteLine("Type 'exit' to quit the application.");
+        Console.WriteLine("Smart Code Generator");
+        Console.WriteLine("Type 'help' for commands, 'status' for system state, 'exit' to quit.");
+        Console.WriteLine("TAB completes commands; 'batch' runs several at once.");
         Console.WriteLine();
     }
 
@@ -311,6 +328,29 @@ internal class CodeGeneratorStarter
     /// </summary>
     private void ReportWikipediaStoreStatus()
     {
+        var (lines, healthy) = StoreReport();
+
+        // Silence means healthy. A line printed at every launch gets skimmed, and this is the very
+        // block that carries the store's warnings — so it earns its place on screen only when it
+        // has something wrong to say. `status` has the detail either way.
+        if (healthy)
+            return;
+
+        foreach (var line in lines)
+            Console.WriteLine(line);
+
+        Console.WriteLine();
+    }
+
+    /// <summary>
+    /// The store report, and whether it is well enough to keep to itself.
+    /// </summary>
+    /// <remarks>
+    /// One place, used by both the startup warning and <c>status</c>, so the two cannot disagree
+    /// about what the store is doing.
+    /// </remarks>
+    private (IReadOnlyList<string> Lines, bool Healthy) StoreReport()
+    {
         var databasePath = DomainDiscoveryPipeline.DefaultDumpDatabasePath;
 
         if (!File.Exists(databasePath))
@@ -319,16 +359,15 @@ internal class CodeGeneratorStarter
             // a manual delete removes it, and the app would otherwise slip to the online API without a
             // word. Say so, loudly — but do not stop. A fresh clone that never imported the store
             // depends on exactly that fallback to run 'build app:' at all.
-            Console.WriteLine($"Wikipedia store: NOT FOUND at {databasePath}.");
-            Console.WriteLine(
-                "  'build app:' will fall back to the online Wikipedia API — slower, rate-limited, and");
-            Console.WriteLine(
-                "  it needs a connection. If you had already imported the store, it has been moved or");
-            Console.WriteLine("  deleted. To (re)build it locally (a one-time import), run:");
-            Console.WriteLine();
-            Console.WriteLine("      dotnet run --project WikipediaDumpImporter -c Release");
-            Console.WriteLine();
-            return;
+            return
+            ([
+                $"Wikipedia store: NOT FOUND at {databasePath}.",
+                "  'build app:' will fall back to the online Wikipedia API — slower, rate-limited, and",
+                "  it needs a connection. If you had already imported the store, it has been moved or",
+                "  deleted. To (re)build it locally (a one-time import), run:",
+                string.Empty,
+                "      dotnet run --project WikipediaDumpImporter -c Release",
+            ], false);
         }
 
         int? storeDate;
@@ -345,15 +384,37 @@ internal class CodeGeneratorStarter
         var status = new StoreUpdateStatusFile(
             StoreUpdateStatusFile.BesideStore(databasePath)).Read();
 
-        foreach (var line in StoreStatusReport.Lines(
-            storeDate, status, UpdaterServicePresence.Detect(),
-            @".\tools\install-updater-service.ps1", DateTimeOffset.UtcNow))
+        var service = UpdaterServicePresence.Detect();
+        var now = DateTimeOffset.UtcNow;
+
+        return (
+            StoreStatusReport.Lines(
+                storeDate, status, service, @".\tools\install-updater-service.ps1", now),
+            StoreStatusReport.IsHealthy(storeDate, status, service, now));
+    }
+
+    /// <summary>Everything startup no longer prints, on demand.</summary>
+    private void PrintStatus()
+    {
+        foreach (var line in StatusReport.Lines(
+            _workspaceRoot,
+            _projectCount,
+            ProjectManager.CurrentProject?.ProjectName,
+            _configuredRules.Count,
+            StoreReport().Lines,
+            AiState()))
         {
             Console.WriteLine(line);
         }
 
         Console.WriteLine();
     }
+
+    /// <summary>How the AI layer would describe itself.</summary>
+    private string AiState()
+        => _ai.Resolver is not null
+            ? "enabled (retrieval)"
+            : $"off ({_ai.Unavailable ?? "disabled"})";
 
     private void LoadConfiguredRules()
     {
@@ -405,8 +466,16 @@ internal class CodeGeneratorStarter
                 });
             }
 
-            Console.WriteLine(projects.Length > 0
-                ? $"Found {projects.Length} project(s) and {ProjectManager.CurrentProject?.ProjectName} project is selected." : "");
+            _projectCount = projects.Length;
+
+            // Nothing at all when there are none, rather than the empty WriteLine this used to
+            // emit — a stray blank line above the banner on every first run.
+            if (projects.Length > 0)
+            {
+                Console.WriteLine(
+                    $"Found {projects.Length} project(s), "
+                    + $"{ProjectManager.CurrentProject?.ProjectName} selected.");
+            }
         }
         catch (Exception ex)
         {
