@@ -87,9 +87,11 @@ $env:PROJECTPATH = "D:\MyWorkspace"; dotnet run --project CodeGenerator
 PROJECTPATH=/path/to/workspace dotnet run --project CodeGenerator
 ```
 
-At the `CodeGenerator >>` prompt type `help` for all commands or `exit` to quit.
-Press TAB for suggestions, `history` to see recent commands, and `clear` (or
-`cls`) to wipe the screen. Commands can also be passed as a single argument
+At the `CodeGenerator >>` prompt type `help` or `exit` to quit. `help` shows a
+one-screen overview — a few commands to start with, then the categories;
+`help <topic>` drills into one category (or one command, so `help approve`
+works), and `help all` prints the complete catalog. Press TAB for suggestions,
+`history` to see recent commands, and `clear` (or `cls`) to wipe the screen. Commands can also be passed as a single argument
 (`dotnet run --project CodeGenerator -- "create console project MyApp"`) or piped
 in one per line.
 

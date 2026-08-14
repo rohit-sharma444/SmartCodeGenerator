@@ -21,8 +21,16 @@ $env:PROJECTPATH = "D:\MyWorkspace"; dotnet run --project CodeGenerator
 PROJECTPATH=/path/to/workspace dotnet run --project CodeGenerator
 ```
 
-At the `CodeGenerator >>` prompt, type `help` for the full command list or `exit`
-to quit.
+At the `CodeGenerator >>` prompt, type `help` for an overview or `exit` to quit.
+
+`help` is handled in `HelpCommand`, ahead of the recognition pipeline, because
+`LiteralCommandTable` keys on the exact word — a line with a topic on it matches
+nothing there and would fall through to the NLP path. It comes in three forms:
+bare `help` renders `CommandDictionary.GetOverview()` (starter commands plus the
+categories and their counts), `help <topic>` renders `GetTopicHelp` for a category
+or a single command, and `help all` renders `GetHelpText()`, the full catalog that
+plain `help` used to print. An unrecognized topic names itself back and lists the
+categories rather than printing nothing or, worse, everything.
 
 ### Non-interactive / scripted use
 
@@ -333,7 +341,9 @@ deterministic.
 | Command | Description |
 | --- | --- |
 | `demo` | Run a short demo workflow. |
-| `help` | Show all commands. |
+| `help` | One-screen overview: starter commands, then the categories. |
+| `help <topic>` | One category's commands, or one command's entry (`help approve`). |
+| `help all` | Every command in one list. |
 | `exit` | Quit. |
 
 ## Example session
