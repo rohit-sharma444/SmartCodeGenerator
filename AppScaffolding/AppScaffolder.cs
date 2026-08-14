@@ -285,9 +285,11 @@ public sealed class AppScaffolder
 
         var classes = DomainModelMapper.ToClassDefinitions(model, out var classNames);
 
-        var projectName = appName + target.FolderSuffix;
-        var outputFolder = Path.Combine(workspaceRoot, projectName);
-        var csprojPath = Path.Combine(outputFolder, projectName + ".csproj");
+        // Through GeneratedProjectPath, not composed here, so the CLI's overwrite guard and this
+        // writer cannot drift apart — see that type's remarks.
+        var projectName = GeneratedProjectPath.ProjectName(appName, target);
+        var outputFolder = GeneratedProjectPath.Folder(workspaceRoot, appName, target);
+        var csprojPath = GeneratedProjectPath.CsprojPath(workspaceRoot, appName, target);
 
         if (!File.Exists(csprojPath))
         {
