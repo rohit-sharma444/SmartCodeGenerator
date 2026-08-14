@@ -7,12 +7,12 @@ namespace AppScaffolding;
 public static class ViewModelTemplates
 {
     /// <summary>Source of <c>ViewModels/ObservableObject.cs</c>.</summary>
-    public static string ObservableObject(string appName) => $$"""
+    public static string ObservableObject(string rootNamespace) => $$"""
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 
-namespace {{appName}}.ViewModels;
+namespace {{rootNamespace}}.ViewModels;
 
 /// <summary>Minimal INotifyPropertyChanged base.</summary>
 public abstract class ObservableObject : INotifyPropertyChanged
@@ -36,11 +36,11 @@ public abstract class ObservableObject : INotifyPropertyChanged
 """;
 
     /// <summary>Source of <c>ViewModels/RelayCommand.cs</c>.</summary>
-    public static string RelayCommand(string appName) => $$"""
+    public static string RelayCommand(string rootNamespace) => $$"""
 using System;
 using System.Windows.Input;
 
-namespace {{appName}}.ViewModels;
+namespace {{rootNamespace}}.ViewModels;
 
 /// <summary>An ICommand over a delegate pair.</summary>
 public sealed class RelayCommand : ICommand
@@ -81,11 +81,11 @@ public sealed class RelayCommand : ICommand
     /// <c>RaiseCanExecuteChanged</c> is never called by generated code; it exists as a seam for
     /// hand-written code that wants to signal a change itself.
     /// </remarks>
-    public static string PortableRelayCommand(string appName) => $$"""
+    public static string PortableRelayCommand(string rootNamespace) => $$"""
 using System;
 using System.Windows.Input;
 
-namespace {{appName}}.ViewModels;
+namespace {{rootNamespace}}.ViewModels;
 
 /// <summary>An ICommand over a delegate pair.</summary>
 public sealed class RelayCommand : ICommand
@@ -113,11 +113,11 @@ public sealed class RelayCommand : ICommand
 """;
 
     /// <summary>Source of <c>ViewModels/IEntityViewModel.cs</c>.</summary>
-    public static string EntityViewModelInterface(string appName) => $$"""
+    public static string EntityViewModelInterface(string rootNamespace) => $$"""
 using System.Collections;
 using System.Windows.Input;
 
-namespace {{appName}}.ViewModels;
+namespace {{rootNamespace}}.ViewModels;
 
 /// <summary>The non-generic face of one entity's tab. MainWindow.xaml binds to this.</summary>
 public interface IEntityViewModel
@@ -133,21 +133,21 @@ public interface IEntityViewModel
 """;
 
     /// <summary>Source of <c>ViewModels/EntityViewModel.cs</c>.</summary>
-    public static string EntityViewModel(string appName) => EntityViewModel(appName, validation: true);
+    public static string EntityViewModel(string rootNamespace) => EntityViewModel(rootNamespace, validation: true);
 
     /// <summary>
     /// Source of <c>ViewModels/EntityViewModel.cs</c>. With <paramref name="validation"/> false the
     /// Validation folder is not generated, so this file's own validator resolution has to go — the
     /// second of the two places generated code hard-depends on that folder.
     /// </summary>
-    public static string EntityViewModel(string appName, bool validation)
+    public static string EntityViewModel(string rootNamespace, bool validation)
     {
         // Raw string literals rather than "\n" concatenation: these are lines lifted out of the
         // template below, and a raw literal carries the same line endings that template does. See
         // RepositoryTemplate.Base, which lifts its validation out the same way.
         var validationUsing = validation
             ? $"""
-            using {appName}.Validation;
+            using {rootNamespace}.Validation;
 
             """
             : string.Empty;
@@ -191,9 +191,9 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using System.Collections.Generic;
 using System.Windows.Input;
-using {{appName}}.Data;
+using {{rootNamespace}}.Data;
 {{validationUsing}}
-namespace {{appName}}.ViewModels;
+namespace {{rootNamespace}}.ViewModels;
 
 /// <summary>One entity's records, edited in memory and persisted on Save.</summary>
 {{constraintReason}}

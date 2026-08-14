@@ -35,11 +35,11 @@ public static class LoggingTemplate
         ("Microsoft.Extensions.Logging.Debug", "10.0.11"),
     ];
 
-    /// <summary>Source of <c>Logging/AppLog.cs</c> in <paramref name="appName"/>.Logging.</summary>
-    public static string Source(string appName) => $$"""
+    /// <summary>Source of <c>Logging/AppLog.cs</c> in <paramref name="rootNamespace"/>.Logging.</summary>
+    public static string Source(string rootNamespace) => $$"""
 using Microsoft.Extensions.Logging;
 
-namespace {{appName}}.Logging;
+namespace {{rootNamespace}}.Logging;
 
 /// <summary>The application's logger factory. Console and Debug providers only.</summary>
 /// <remarks>

@@ -16,10 +16,10 @@ namespace AppScaffolding;
 public static class ValidatorTemplate
 {
     /// <summary>Source of <c>Validation/IValidator.cs</c>.</summary>
-    public static string ValidatorInterface(string projectName) => $$"""
+    public static string ValidatorInterface(string rootNamespace) => $$"""
 using System.Collections.Generic;
 
-namespace {{projectName}}.Validation;
+namespace {{rootNamespace}}.Validation;
 
 /// <summary>Validates one entity, returning a message per broken rule.</summary>
 public interface IValidator<T>
@@ -30,8 +30,8 @@ public interface IValidator<T>
 """;
 
     /// <summary>Source of <c>Validation/IEntityLookup.cs</c>.</summary>
-    public static string EntityLookupInterface(string projectName) => $$"""
-namespace {{projectName}}.Validation;
+    public static string EntityLookupInterface(string rootNamespace) => $$"""
+namespace {{rootNamespace}}.Validation;
 
 /// <summary>Existence checks a validator needs for foreign keys. Injected so a validator can be
 /// unit-tested with a fake and no store on disk.</summary>
@@ -43,12 +43,12 @@ public interface IEntityLookup
 """;
 
     /// <summary>Source of <c>Validation/StoreEntityLookup.cs</c>.</summary>
-    public static string StoreEntityLookup(string projectName) => $$"""
+    public static string StoreEntityLookup(string rootNamespace) => $$"""
 using System;
 using System.Reflection;
-using {{projectName}}.Data;
+using {{rootNamespace}}.Data;
 
-namespace {{projectName}}.Validation;
+namespace {{rootNamespace}}.Validation;
 
 /// <summary>The real <see cref="IEntityLookup"/>: reads through the configured store.</summary>
 public sealed class StoreEntityLookup : IEntityLookup
@@ -73,7 +73,7 @@ public sealed class StoreEntityLookup : IEntityLookup
 """;
 
     /// <summary>Source of <c>Validation/ValidatorFactory.cs</c> for <paramref name="entityNames"/>.</summary>
-    public static string Factory(string projectName, IReadOnlyList<string> entityNames)
+    public static string Factory(string rootNamespace, IReadOnlyList<string> entityNames)
     {
         var arms = string.Join("\n", entityNames.Select(name => $$"""
         if (typeof(T) == typeof({{name}}))
@@ -86,9 +86,9 @@ public sealed class StoreEntityLookup : IEntityLookup
         return $$"""
 using System;
 using System.Collections.Generic;
-using {{projectName}}.Models;
+using {{rootNamespace}}.Models;
 
-namespace {{projectName}}.Validation;
+namespace {{rootNamespace}}.Validation;
 
 /// <summary>Resolves the validator for an entity type. Mirrors StoreFactory.Create&lt;T&gt;().</summary>
 public static class ValidatorFactory
@@ -131,7 +131,7 @@ internal sealed class NullValidator<T> : IValidator<T>
     /// ValidationEngine.EmitSection takes.
     /// </remarks>
     public static string Generated(
-        string projectName, ClassDefinition definition, IReadOnlyList<string> foreignKeyTargets)
+        string rootNamespace, ClassDefinition definition, IReadOnlyList<string> foreignKeyTargets)
     {
         var blocks = new List<string>();
 
@@ -153,9 +153,9 @@ internal sealed class NullValidator<T> : IValidator<T>
         return $$"""
 using System;
 using System.Collections.Generic;
-using {{projectName}}.Models;
+using {{rootNamespace}}.Models;
 
-namespace {{projectName}}.Validation;
+namespace {{rootNamespace}}.Validation;
 
 /// <summary>Inferred rules for {{definition.Name}}. REGENERATED — edit
 /// {{definition.Name}}Validator.Custom.cs instead.</summary>
@@ -192,11 +192,11 @@ public sealed partial class {{definition.Name}}Validator : IValidator<{{definiti
     }
 
     /// <summary>Source of the write-once <c>Validation/&lt;Model&gt;Validator.Custom.cs</c>.</summary>
-    public static string CustomStub(string projectName, string className) => $$"""
+    public static string CustomStub(string rootNamespace, string className) => $$"""
 using System.Collections.Generic;
-using {{projectName}}.Models;
+using {{rootNamespace}}.Models;
 
-namespace {{projectName}}.Validation;
+namespace {{rootNamespace}}.Validation;
 
 /// <summary>Hand-written rules for {{className}}.</summary>
 public sealed partial class {{className}}Validator
@@ -223,10 +223,18 @@ public sealed partial class {{className}}Validator
     /// touched.
     /// <para>
     /// Matches the SHAPE, never a remembered previous value: the file's own current
-    /// <c>namespace …Validation;</c> line names the old root, and only <c>using</c> lines rooted
-    /// there are rewritten. A user's unrelated addition — <c>using
-    /// System.Text.RegularExpressions;</c>, or a reference into their own library — never starts
-    /// with the old root and so is left alone.
+    /// <c>namespace …Validation;</c> (or <c>namespace …Validation { … }</c>) line names the old
+    /// root, and only <c>using</c> lines rooted there are rewritten. A user's unrelated addition —
+    /// <c>using System.Text.RegularExpressions;</c>, or a reference into their own library — never
+    /// starts with the old root and so is left alone.
+    /// </para>
+    /// <para>
+    /// Both namespace forms: a file-scoped declaration is what every template here emits, but a
+    /// user may have reformatted their stub to the block form since it was written, and this must
+    /// not silently no-op on it — see <see cref="WpfProjectFixup.ReconcileNamespace"/>, which
+    /// handles the same two shapes for the same reason. The namespace regexes below replace only
+    /// <c>namespace X.Validation</c>, never the terminator that follows it, so whichever of
+    /// <c>;</c> or <c>{</c> the file already has is left exactly as it was.
     /// </para>
     /// </remarks>
     public static void ReconcileCustomStubNamespace(string path, string rootNamespace)
@@ -239,7 +247,7 @@ public sealed partial class {{className}}Validator
             var original = File.ReadAllText(path);
 
             var declaration = Regex.Match(
-                original, @"^namespace\s+([^;{\s]+)\.Validation;", RegexOptions.Multiline);
+                original, @"^namespace\s+([^;{\s]+)\.Validation\b", RegexOptions.Multiline);
             if (!declaration.Success)
                 return;
 
@@ -253,8 +261,8 @@ public sealed partial class {{className}}Validator
 
             updated = Regex.Replace(
                 updated,
-                $@"^namespace\s+{Regex.Escape(oldRoot)}\.Validation;",
-                $"namespace {rootNamespace}.Validation;",
+                $@"^namespace\s+{Regex.Escape(oldRoot)}\.Validation\b",
+                $"namespace {rootNamespace}.Validation",
                 RegexOptions.Multiline);
 
             if (!string.Equals(original, updated, StringComparison.Ordinal))

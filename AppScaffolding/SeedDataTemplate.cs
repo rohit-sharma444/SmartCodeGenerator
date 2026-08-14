@@ -56,14 +56,14 @@ public static class SeedDataTemplate
     public static IReadOnlyList<string> ForeignKeyFieldNames(IReadOnlyList<ClassDefinition> classes)
         => ForeignKeys.FieldNames(classes);
 
-    /// <summary>Source of <c>Data/SeedData.cs</c> in <paramref name="projectName"/>.Data, seeding
+    /// <summary>Source of <c>Data/SeedData.cs</c> in <paramref name="rootNamespace"/>.Data, seeding
     /// the entities in <paramref name="orderedEntityNames"/> order. <paramref name="foreignKeyFieldNames"/>
     /// gates the generated seeder's runtime FK assignment to genuine foreign keys.</summary>
     public static string Source(
-        string projectName,
+        string rootNamespace,
         IReadOnlyList<string> orderedEntityNames,
         IReadOnlyList<string> foreignKeyFieldNames)
-        => Source(projectName, orderedEntityNames, foreignKeyFieldNames, []);
+        => Source(rootNamespace, orderedEntityNames, foreignKeyFieldNames, []);
 
     /// <summary>
     /// The entry-point call into this file — <c>SeedData.EnsureSeeded();</c> and the blank line
@@ -92,7 +92,7 @@ public static class SeedDataTemplate
     /// must not carry a branch it can never take.
     /// </param>
     public static string Source(
-        string projectName,
+        string rootNamespace,
         IReadOnlyList<string> orderedEntityNames,
         IReadOnlyList<string> foreignKeyFieldNames,
         IReadOnlyList<string> seededFromFile)
@@ -177,9 +177,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-{{extraUsings}}using {{projectName}}.Models;
+{{extraUsings}}using {{rootNamespace}}.Models;
 
-namespace {{projectName}}.Data;
+namespace {{rootNamespace}}.Data;
 
 /// <summary>
 /// Populates empty stores with sample rows on first run. Seed-if-empty and idempotent: a store

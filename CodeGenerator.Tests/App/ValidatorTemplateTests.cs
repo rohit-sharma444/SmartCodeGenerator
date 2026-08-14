@@ -269,6 +269,63 @@ public sealed class CustomerValidator : IValidator<Customer>
         }
     }
 
+    /// <summary>
+    /// A user who reformatted their stub to the block form must still get repointed: matching only
+    /// the file-scoped shape would silently no-op here, leaving the file declaring a namespace no
+    /// generated file declares any more -- the very failure this reconciler exists to prevent.
+    /// </summary>
+    [TestMethod]
+    public void ReconcileCustomStubNamespace_RepointsABlockScopedDeclaration()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "validator_fixup_" + Path.GetRandomFileName());
+        Directory.CreateDirectory(folder);
+        try
+        {
+            var path = Path.Combine(folder, "CustomerValidator.Custom.cs");
+            const string original = """
+                using System.Collections.Generic;
+                using CodisLtd.Shop.Models;
+                using System.Text.RegularExpressions;
+
+                namespace CodisLtd.Shop.Validation
+                {
+                    public sealed partial class CustomerValidator
+                    {
+                        partial void ValidateCustom(Customer item, List<string> errors)
+                        {
+                            if (Regex.IsMatch(item.Name, "^[a-z]"))
+                                errors.Add("Name must not start with a lower-case letter.");
+                        }
+                    }
+                }
+                """;
+            File.WriteAllText(path, original);
+
+            ValidatorTemplate.ReconcileCustomStubNamespace(path, "Acme.Shop");
+
+            var updated = File.ReadAllText(path);
+
+            // The header moved.
+            Assert.Contains("namespace Acme.Shop.Validation", updated);
+            Assert.Contains("using Acme.Shop.Models;", updated);
+            Assert.IsFalse(updated.Contains("CodisLtd", StringComparison.Ordinal));
+
+            // An unrelated using is byte-for-byte intact -- it never named the old root.
+            Assert.Contains("using System.Text.RegularExpressions;", updated);
+
+            // Everything from the opening brace onward -- the braces, the body, the user's own
+            // rule -- survives byte for byte: only the header above it may move.
+            const string fromOpeningBrace = "{";
+            var originalTail = original[original.IndexOf(fromOpeningBrace, StringComparison.Ordinal)..];
+            var updatedTail = updated[updated.IndexOf(fromOpeningBrace, StringComparison.Ordinal)..];
+            Assert.AreEqual(originalTail, updatedTail);
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
     [TestMethod]
     public void ReconcileCustomStubNamespace_IsIdempotent()
     {

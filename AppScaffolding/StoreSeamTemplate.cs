@@ -3,11 +3,11 @@ namespace AppScaffolding;
 /// <summary>Emits the persistence seam shared by the JSON and EF Core stores.</summary>
 public static class StoreSeamTemplate
 {
-    /// <summary>Source of <c>Data/IStore.cs</c> in <paramref name="projectName"/>.Data.</summary>
-    public static string Source(string projectName) => $$"""
+    /// <summary>Source of <c>Data/IStore.cs</c> in <paramref name="rootNamespace"/>.Data.</summary>
+    public static string Source(string rootNamespace) => $$"""
 using System.Collections.Generic;
 
-namespace {{projectName}}.Data;
+namespace {{rootNamespace}}.Data;
 
 /// <summary>Per-type list store keyed by an int Id. Implemented by JsonStore and EfStore, so the
 /// front-end persistence code is identical whichever backend a build selects.</summary>

@@ -6,7 +6,7 @@ public static class TestProjectTemplates
 {
     /// <summary>A self-cleaning CRUD round-trip over each entity's typed repository. Asserts on the
     /// row it creates (not on store counts), so the tests tolerate seeded data and each other.</summary>
-    public static string RoundTripTests(string projectName, IReadOnlyList<string> entityNames)
+    public static string RoundTripTests(string rootNamespace, IReadOnlyList<string> entityNames)
     {
         var facts = string.Join("\n\n", entityNames.Select(name => $$"""
     [Fact]
@@ -15,11 +15,11 @@ public static class TestProjectTemplates
 
         return $$"""
 using System.Reflection;
-using {{projectName}}.Data;
-using {{projectName}}.Models;
+using {{rootNamespace}}.Data;
+using {{rootNamespace}}.Models;
 using Xunit;
 
-namespace {{projectName}}.Tests;
+namespace {{rootNamespace}}.Tests;
 
 /// <summary>CRUD round-trip over each entity's typed repository. Each test creates a row and
 /// deletes it, asserting on that row rather than on store counts.</summary>
@@ -61,7 +61,7 @@ public class RepositoryRoundTripTests
     /// <summary>Source of <c><paramref name="entityName"/>ValidatorTests.cs</c>. When the model has
     /// a required property, also asserts a blank record is rejected — otherwise the only honest
     /// assertion is that a filled record passes.</summary>
-    public static string ValidatorTests(string projectName, string entityName, string? requiredPropertyName)
+    public static string ValidatorTests(string rootNamespace, string entityName, string? requiredPropertyName)
     {
         var requiredFact = requiredPropertyName is null ? string.Empty : $$"""
 
@@ -76,11 +76,11 @@ public class RepositoryRoundTripTests
 """;
 
         return $$"""
-using {{projectName}}.Models;
-using {{projectName}}.Validation;
+using {{rootNamespace}}.Models;
+using {{rootNamespace}}.Validation;
 using Xunit;
 
-namespace {{projectName}}.Tests;
+namespace {{rootNamespace}}.Tests;
 
 /// <summary>Rules generated for {{entityName}}. Uses a fake lookup so no store is needed.</summary>
 public class {{entityName}}ValidatorTests
@@ -116,11 +116,11 @@ public class {{entityName}}ValidatorTests
 
     /// <summary>Source of <c>TestSupport.cs</c>: entity population shared by the generated
     /// round-trip and validator tests.</summary>
-    public static string TestSupport(string projectName) => $$"""
+    public static string TestSupport(string rootNamespace) => $$"""
 using System;
 using System.Reflection;
 
-namespace {{projectName}}.Tests;
+namespace {{rootNamespace}}.Tests;
 
 /// <summary>Builds entities that satisfy the generated validation rules.</summary>
 internal static class TestSupport
@@ -156,11 +156,11 @@ internal static class TestSupport
 """;
 
     /// <summary>Asserts EnsureSeeded populates the first entity's store and is idempotent.</summary>
-    public static string SeedTests(string projectName, string firstEntityName) => $$"""
-using {{projectName}}.Data;
+    public static string SeedTests(string rootNamespace, string firstEntityName) => $$"""
+using {{rootNamespace}}.Data;
 using Xunit;
 
-namespace {{projectName}}.Tests;
+namespace {{rootNamespace}}.Tests;
 
 /// <summary>SeedData populates empty stores on first run and does nothing on the second.</summary>
 public class SeedDataTests

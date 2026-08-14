@@ -7,10 +7,10 @@ namespace AppScaffolding;
 public static class MainWindowTemplate
 {
     /// <summary>Source of <c>Views/MainWindow.xaml</c>.</summary>
-    public static string Xaml(string appName) => Xaml(appName, appName);
+    public static string Xaml(string rootNamespace) => Xaml(rootNamespace, rootNamespace);
 
     /// <summary>Source of <c>Views/MainWindow.xaml</c>, titled <paramref name="title"/>.</summary>
-    public static string Xaml(string appName, string title) => Xaml(appName, title, themed: false);
+    public static string Xaml(string rootNamespace, string title) => Xaml(rootNamespace, title, themed: false);
 
     /// <summary>Source of <c>Views/MainWindow.xaml</c>, titled <paramref name="title"/>; when
     /// <paramref name="themed"/>, bound to the brushes <c>Views/Theme.xaml</c> declares, and when
@@ -21,7 +21,7 @@ public static class MainWindowTemplate
     /// embeds as a <c>Resource</c> — see <c>AppScaffolder.RegisterIcon</c>, which puts it there.
     /// </remarks>
     public static string Xaml(
-        string appName, string title, bool themed = false, string? iconFileName = null)
+        string rootNamespace, string title, bool themed = false, string? iconFileName = null)
     {
         // Emitted only for an app that was given an icon: the window has always been iconless,
         // and inherits the .exe's icon when there is one.
@@ -44,7 +44,7 @@ public static class MainWindowTemplate
             : string.Empty;
 
         return $$"""
-<Window x:Class="{{appName}}.Views.MainWindow"
+<Window x:Class="{{rootNamespace}}.Views.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="{{title}}" Height="600" Width="900"{{windowIcon}}{{windowBrushes}}>
@@ -89,14 +89,14 @@ public static class MainWindowTemplate
     /// <c>IsDisplayable</c> alone, in <see cref="PropertyEditorTemplate.Source"/> rather than
     /// shared: keep all three in sync if the display convention ever changes.
     /// </remarks>
-    public static string CodeBehind(string appName) => $$"""
+    public static string CodeBehind(string rootNamespace) => $$"""
 using System;
 using System.Windows;
 using System.Windows.Controls;
 using System.Linq;
-using {{appName}}.ViewModels;
+using {{rootNamespace}}.ViewModels;
 
-namespace {{appName}}.Views;
+namespace {{rootNamespace}}.Views;
 
 public partial class MainWindow : Window
 {

@@ -3,12 +3,12 @@ namespace AppScaffolding;
 /// <summary>Emits <c>Data/SaveResult.cs</c>: what a validating write returns.</summary>
 public static class SaveResultTemplate
 {
-    /// <summary>Source of <c>Data/SaveResult.cs</c> in <paramref name="projectName"/>.Data.</summary>
-    public static string Source(string projectName) => $$"""
+    /// <summary>Source of <c>Data/SaveResult.cs</c> in <paramref name="rootNamespace"/>.Data.</summary>
+    public static string Source(string rootNamespace) => $$"""
 using System;
 using System.Collections.Generic;
 
-namespace {{projectName}}.Data;
+namespace {{rootNamespace}}.Data;
 
 /// <summary>The outcome of a validating write.</summary>
 /// <remarks>
