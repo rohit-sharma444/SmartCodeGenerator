@@ -600,7 +600,7 @@ public static class CommandDictionary
         {
             Category = "Build App",
             Command = "add <name>",
-            Description = "Review loop: adds an entity to the candidate model. The name keeps the "
+            Description = "Review loop: adds a class to the candidate model. The name keeps the "
                         + "shape you type, so a compound survives; several words become one class "
                         + "name.",
             Example = "add cash register"
@@ -609,29 +609,29 @@ public static class CommandDictionary
         {
             Category = "Build App",
             Command = "remove <name>",
-            Description = "Review loop: removes an entity from the candidate model.",
+            Description = "Review loop: removes a class from the candidate model.",
             Example = "remove Reservation"
         },
         new()
         {
             Category = "Build App",
             Command = "rename <old> <new>",
-            Description = "Review loop: renames an entity in the candidate model.",
+            Description = "Review loop: renames a class in the candidate model.",
             Example = "rename Member Borrower"
         },
         new()
         {
             Category = "Build App",
-            Command = "field <entity> <name>[:<type>]",
-            Description = "Review loop: adds a field to an entity. Omit the type to have it inferred; "
+            Command = "field <class> <name>[:<type>]",
+            Description = "Review loop: adds a field to a class. Omit the type to have it inferred; "
                         + "explicit types are string, int, decimal, bool or DateTime.",
             Example = "field Book Title:string"
         },
         new()
         {
             Category = "Build App",
-            Command = "unfield <entity> <name>",
-            Description = "Review loop: removes a field from an entity.",
+            Command = "unfield <class> <name>",
+            Description = "Review loop: removes a field from a class.",
             Example = "unfield Book Title"
         },
         new()

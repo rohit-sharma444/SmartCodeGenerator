@@ -1,4 +1,4 @@
-namespace CodeGenerator.App;
+﻿namespace CodeGenerator.App;
 
 /// <summary>
 /// One entry in the review loop's action list: the verb its switch case matches, the row the
@@ -26,15 +26,15 @@ internal static class ReviewActions
     public static IReadOnlyList<ReviewAction> All { get; } =
     [
         new("approve", "approve   — generate the app", []),
-        new("add",     "add       — add an entity", ["New entity name"]),
-        new("remove",  "remove    — remove an entity", ["Entity to remove"]),
-        new("rename",  "rename    — rename an entity", ["Entity to rename", "New name"]),
-        new("field",   "field     — add a field to an entity",
-            ["Entity", "Field, name or name:type"]),
-        new("unfield", "unfield   — remove a field from an entity",
-            ["Entity", "Field to remove"]),
+        new("add",     "add       — add a class", ["New class name"]),
+        new("remove",  "remove    — remove a class", ["Class to remove"]),
+        new("rename",  "rename    — rename a class", ["Class to rename", "New name"]),
+        new("field",   "field     — add a field to a class",
+            ["Class", "Field, name or name:type"]),
+        new("unfield", "unfield   — remove a field from a class",
+            ["Class", "Field to remove"]),
         new("why",     "why       — explain how the model was decided",
-            ["Entity (blank for the whole report)"]),
+            ["Class (blank for the whole report)"]),
         new("cancel",  "cancel    — nothing is generated", []),
     ];
 

@@ -1,4 +1,4 @@
-using AppScaffolding;
+﻿using AppScaffolding;
 using AppScaffolding.Layouts;
 using AppScaffolding.Targets;
 using CodeGenerationEngine.Helper;
@@ -198,8 +198,8 @@ internal sealed class BuildAppCommand
                 Console.WriteLine("Also read: " + string.Join(", ", result.Topic.SupportingTitles));
         }
         else
-            Console.WriteLine("No topic recognized online — showing seed entities only. " +
-                              "You can add entities by hand below.");
+            Console.WriteLine("No topic recognized online — showing seed classes only. " +
+                              "You can add classes by hand below.");
 
         RunReviewLoop(
             result.Model, DomainAppName.FromDescription(description), workspaceRoot,
@@ -349,7 +349,7 @@ internal sealed class BuildAppCommand
             {
                 // The typed path is unchanged: SelectionPrompt cannot run without a console, and
                 // piped scripts drive the loop through exactly these lines.
-                Console.WriteLine("\n       [a]pprove [target] [sqlite] add <name>  remove <name>  rename <old> <new>  field <entity> <name>[:<type>]  unfield <entity> <name>  why [name]");
+                Console.WriteLine("\n       [a]pprove [target] [sqlite] add <name>  remove <name>  rename <old> <new>  field <class> <name>[:<type>]  unfield <class> <name>  why [name]");
                 Console.WriteLine("         [c]ancel");
                 Console.Write("> ");
 
@@ -469,7 +469,7 @@ internal sealed class BuildAppCommand
                     break;
 
                 case "remove" when parts.Length >= 2:
-                    Report(ModelEditor.RemoveEntity(model, parts[1]), $"Removed '{parts[1]}'.", "No such entity.");
+                    Report(ModelEditor.RemoveEntity(model, parts[1]), $"Removed '{parts[1]}'.", "No such class.");
                     break;
 
                 case "rename" when parts.Length >= 3:
@@ -481,8 +481,8 @@ internal sealed class BuildAppCommand
                     Report(
                         ModelEditor.AddField(model, parts[1], spec.Name, spec.Type),
                         $"Added '{spec.Name}' to {parts[1]}.",
-                        "Could not add field. The entity must exist; the name must be new, a valid "
-                        + "identifier, and neither 'Id' (generated) nor the entity's own name; "
+                        "Could not add field. The class must exist; the name must be new, a valid "
+                        + "identifier, and neither 'Id' (generated) nor the class's own name; "
                         + "the type must be string, int, decimal, bool or DateTime.");
                     break;
 
@@ -490,7 +490,7 @@ internal sealed class BuildAppCommand
                     Report(
                         ModelEditor.RemoveField(model, parts[1], parts[2]),
                         $"Removed '{parts[2]}' from {parts[1]}.",
-                        "Could not remove field (no such field, or Name, which every entity keeps).");
+                        "Could not remove field (no such field, or Name, which every class keeps).");
                     break;
 
                 case "why":
@@ -1028,7 +1028,7 @@ internal sealed class BuildAppCommand
     private static void PrintModel(CandidateDomainModel model)
     {
         Console.WriteLine();
-        Console.WriteLine($"Candidate model ({model.Entities.Count} entities):");
+        Console.WriteLine($"Candidate model ({model.Entities.Count} classes):");
         foreach (var entity in model.Entities)
         {
             var fields = entity.Fields.Count == 0

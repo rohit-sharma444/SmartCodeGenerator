@@ -47,4 +47,44 @@ public class CommandSuggesterTests
         => Assert.IsFalse(
             CommandSuggester.Closest("add busniess validation Number in Bill")
                 .Any(s => s.Contains('<') || s.Contains('[')));
+
+    [TestMethod]
+    public void Closest_SuggestsNothing_ForVeryShortInput()
+    {
+        // The distance budget used to be a flat 3 regardless of input length, so every
+        // three-letter command sat within 3 edits of any two-character input: `-h` was answered
+        // with "why, add, cls" and `/?` with "add, cls, why". Confident nonsense, offered at the
+        // exact moment the user is already lost.
+        Assert.IsEmpty(CommandSuggester.Closest("-h"));
+        Assert.IsEmpty(CommandSuggester.Closest("/?"));
+        Assert.IsEmpty(CommandSuggester.Closest("x"));
+        Assert.IsEmpty(CommandSuggester.Closest("qq"));
+    }
+
+    [TestMethod]
+    public void Closest_StillSuggests_WhenTheTypoIsSmallRelativeToTheWord()
+    {
+        // The budget has to scale, not simply shrink: these are the cases the feature exists for
+        // and they must survive the fix.
+        CollectionAssert.Contains(CommandSuggester.Closest("hepl").ToList(), "help");
+        CollectionAssert.Contains(CommandSuggester.Closest("statuss").ToList(), "status");
+        CollectionAssert.Contains(CommandSuggester.Closest("btach").ToList(), "batch");
+    }
+
+    [TestMethod]
+    public void Closest_NeverSuggestsAWordItWouldHaveToRewriteEntirely()
+    {
+        // A suggestion whose edit distance is most of its own length is not a correction, it is a
+        // different word.
+        foreach (var input in new[] { "-h", "/?", "zz", "?" })
+        {
+            foreach (var suggestion in CommandSuggester.Closest(input))
+            {
+                Assert.IsLessThan(
+                    suggestion.Length,
+                    CommandSuggester.Distance(input, suggestion),
+                    $"'{input}' -> '{suggestion}' rewrites the whole word");
+            }
+        }
+    }
 }

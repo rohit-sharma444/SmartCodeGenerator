@@ -56,12 +56,37 @@ internal static class CommandSuggester
             .Where(prefix => prefix.Length > 0)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Select(prefix => (Prefix: prefix, Distance: Distance(LeadingWords(inputWords, prefix), prefix)))
-            .Where(x => x.Distance <= maxDistance)
+            .Where(x => x.Distance <= Budget(
+                LeadingWords(inputWords, x.Prefix), x.Prefix, maxDistance))
             .OrderBy(x => x.Distance)
             .ThenBy(x => x.Prefix, StringComparer.OrdinalIgnoreCase)
             .Take(max)
             .Select(x => x.Prefix)
             .ToList();
+    }
+
+    /// <summary>
+    /// How many edits may separate <paramref name="compared"/> from <paramref name="prefix"/> and
+    /// still count as a typo rather than a different phrase.
+    /// </summary>
+    /// <remarks>
+    /// This used to be a flat <paramref name="ceiling"/>, which made the suggester confidently
+    /// silly on short input: every three-letter command is within 3 edits of any two-character
+    /// string, so <c>-h</c> was answered with "why, add, cls" and <c>/?</c> with "add, cls, why" —
+    /// nonsense offered at the moment the user is already lost.
+    /// <para>
+    /// The budget is now bounded by the shorter of the two strings as well as by the ceiling: a
+    /// correction may not cost as much as the word it is correcting. That keeps every case the
+    /// feature exists for ("hepl" → help, "craete project" → create project) while refusing to
+    /// guess when there is too little to go on.
+    /// </para>
+    /// </remarks>
+    private static int Budget(string compared, string prefix, int ceiling)
+    {
+        var shorter = Math.Min(compared.Length, prefix.Length);
+
+        // A one-character input has no room for any edit at all; two characters allow one.
+        return Math.Min(ceiling, Math.Max(0, shorter - 1));
     }
 
     /// <summary>The literal words of a command name, up to the first placeholder

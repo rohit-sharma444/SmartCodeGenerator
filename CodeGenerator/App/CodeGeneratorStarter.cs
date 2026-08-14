@@ -22,6 +22,13 @@ internal class CodeGeneratorStarter
     /// <summary>How many projects the workspace scan found, for <c>status</c> to report.</summary>
     private int _projectCount;
 
+    /// <summary>
+    /// Whether <c>PROJECTPATH</c> chose the workspace root. Only used to word the
+    /// does-not-exist notice: naming the variable helps when it is set and misleads when it is not.
+    /// </summary>
+    private readonly bool _projectPathSet =
+        !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("PROJECTPATH"));
+
     private readonly List<string> _commandHistory = [];
     private readonly string _historyPath;
     private const string HISTORY_FILENAME = ".codegen_history";
@@ -460,6 +467,20 @@ internal class CodeGeneratorStarter
 
     private void InitializeExistingProjects()
     {
+        // Checked before the scan rather than caught after it: a missing directory is an ordinary
+        // situation with a clear cause, and letting Directory.GetFiles throw turned it into the
+        // tool reporting its own method failing.
+        var notice = WorkspaceNotice.Lines(_workspaceRoot, _projectPathSet);
+
+        if (notice.Count > 0)
+        {
+            foreach (var line in notice)
+                Output.Warning(line);
+
+            Console.WriteLine();
+            return;
+        }
+
         try
         {
             var projects = Directory.GetFiles(_workspaceRoot, "*.csproj",
@@ -491,7 +512,9 @@ internal class CodeGeneratorStarter
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Warning: Failed to initialize existing projects: {ex.Message}");
+            // Still reachable for a real fault — permissions, a path too long, a disk error — so
+            // it keeps a message, just not one phrased as an internal method name.
+            Output.Warning($"Could not scan {_workspaceRoot} for projects: {ex.Message}");
         }
     }
 

@@ -46,7 +46,8 @@ project. Chapter 15 is a complete command reference you can skim.</p>
 <h2>2. Getting started</h2>
 
 <h3>Starting the tool</h3>
-<p>Run the executable. It prints three lines — the first naming the version you are running — and
+<p>Ask it for its version with <code>CodeGenerator --version</code>, or for the command overview with <code>CodeGenerator --help</code> (<code>-h</code> and <code>/?</code> also work), without entering the prompt at all.</p>
+<p>Run the executable with no arguments and it prints three lines — the first naming the version you are running — and
 the prompt:</p>
 <pre>CodeGenerator &gt;&gt; </pre>
 <p>Type <code>help</code> for an overview of what the tool can do, and <code>exit</code> to leave. Press
@@ -154,7 +155,7 @@ a candidate set of classes, shows them to you, and only writes code once you app
 knowledge store and may fetch from Wikipedia the first time it meets a topic, which is why the first run on a
 new subject can pause for a moment. It then prints the candidate model — each class, where it came from, its
 fields, and any relationships it found:</p>
-<pre>Candidate model (10 entities):
+<pre>Candidate model (10 classes):
   - Shop [Seed] { Name:string, Address:string, City:string }
   - Book [Wiki] { Title:string, Author:string, Isbn:string, Published:DateTime }
   - Manuscript [Wiki] { Number:string, IssuedOn:DateTime, BookId:int }  -&gt; Book</pre>
@@ -320,7 +321,7 @@ read the JSON store directly. The tool tells you rather than generating somethin
 <h3>The project layout</h3>
 <pre>Shop/
   Shop.csproj
-  Models/        one class per entity
+  Models/        one file per class
   Data/          the store, one repository per class, sample data
   Validation/    the rule interfaces and one validator per class   (omitted by novalidation)
   Logging/       AppLog.cs                                          (only with logging)
@@ -557,7 +558,7 @@ own shows the shorter overview, and <code>help &lt;topic&gt;</code> shows one se
 <h3>Build App</h3>
 <table>
 <tr><th>Command</th><th>Description</th><th>Example</th></tr>
-<tr><td><code>add &lt;name&gt;</code></td><td>Review loop: adds an entity to the candidate model. The name keeps the shape you type, so a compound survives; several words become one class name.</td><td><code>add cash register</code></td></tr>
+<tr><td><code>add &lt;name&gt;</code></td><td>Review loop: adds a class to the candidate model. The name keeps the shape you type, so a compound survives; several words become one class name.</td><td><code>add cash register</code></td></tr>
 <tr><td><code>approve [target] [sqlite]</code></td><td>Review loop: generates the app using the type chosen at the start. Name a target to override it: wpf (default), winforms, console, webapi, classlib, worker. Add &#x27;sqlite&#x27; for EF Core persistence (JSON is the default; the wpf and winforms targets are JSON-only). Alias: a.</td><td><code>approve webapi sqlite</code></td></tr>
 <tr><td><code>build app</code></td><td>Starts the same guided flow, asking for the description first, then the application type, then whether you already have data.</td><td><code>build app</code></td></tr>
 <tr><td><code>build app: &lt;description&gt;</code></td><td>Describes a system in plain English, then asks which kind of app to build and whether you have data, discovers a domain model, and opens a review loop before any code is written.</td><td><code>build app: a library that lends books to members</code></td></tr>
@@ -565,10 +566,10 @@ own shows the shorter overview, and <code>help &lt;topic&gt;</code> shows one se
 <tr><td><code>build app: &lt;description&gt; [novalidation] [logging] [noseed]</code></td><td>Chooses which optional layers are generated. &#x27;novalidation&#x27; omits the Validation folder and its per-model validators; &#x27;logging&#x27; adds a logging layer (off by default); &#x27;noseed&#x27; omits the sample seed rows (rows imported from your own data file are unaffected). Interactively these are asked by the &#x27;Customize appearance and features?&#x27; step, which remembers your answers in .codegen/app-profile.json.</td><td><code>build app: a shop novalidation logging noseed</code></td></tr>
 <tr><td><code>build app: &lt;description&gt; from &lt;format&gt; &lt;location&gt;</code></td><td>Builds the model from existing data with no prompts when piped; interactively you are still asked the application type. Formats: csv, txt, json, excel (sql is not in this build yet). Add &#x27;normalize&#x27; to apply every normalization change the data needs.</td><td><code>build app: order tracking from csv D:\data\orders.csv normalize</code></td></tr>
 <tr><td><code>cancel</code></td><td>Review loop: abandons the model without generating anything. Alias: c.</td><td><code>cancel</code></td></tr>
-<tr><td><code>field &lt;entity&gt; &lt;name&gt;[:&lt;type&gt;]</code></td><td>Review loop: adds a field to an entity. Omit the type to have it inferred; explicit types are string, int, decimal, bool or DateTime.</td><td><code>field Book Title:string</code></td></tr>
-<tr><td><code>remove &lt;name&gt;</code></td><td>Review loop: removes an entity from the candidate model.</td><td><code>remove Reservation</code></td></tr>
-<tr><td><code>rename &lt;old&gt; &lt;new&gt;</code></td><td>Review loop: renames an entity in the candidate model.</td><td><code>rename Member Borrower</code></td></tr>
-<tr><td><code>unfield &lt;entity&gt; &lt;name&gt;</code></td><td>Review loop: removes a field from an entity.</td><td><code>unfield Book Title</code></td></tr>
+<tr><td><code>field &lt;class&gt; &lt;name&gt;[:&lt;type&gt;]</code></td><td>Review loop: adds a field to a class. Omit the type to have it inferred; explicit types are string, int, decimal, bool or DateTime.</td><td><code>field Book Title:string</code></td></tr>
+<tr><td><code>remove &lt;name&gt;</code></td><td>Review loop: removes a class from the candidate model.</td><td><code>remove Reservation</code></td></tr>
+<tr><td><code>rename &lt;old&gt; &lt;new&gt;</code></td><td>Review loop: renames a class in the candidate model.</td><td><code>rename Member Borrower</code></td></tr>
+<tr><td><code>unfield &lt;class&gt; &lt;name&gt;</code></td><td>Review loop: removes a field from a class.</td><td><code>unfield Book Title</code></td></tr>
 <tr><td><code>why [name]</code></td><td>Review loop: explains what discovery decided. Bare, it reports every decision grouped by outcome; with a name, it shows that name&#x27;s whole trail — the stage, the reason and the evidence behind each step.</td><td><code>why Cash register</code></td></tr>
 </table>
 <h3>Class</h3>
