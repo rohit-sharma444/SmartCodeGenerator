@@ -1,4 +1,4 @@
-# CodeGenerator
+﻿# CodeGenerator
 
 A natural-language command-line tool for scaffolding and editing .NET code. You
 type plain commands (e.g. `create class Customer with properties Name string`)
@@ -101,7 +101,14 @@ class.
 
 ### Output roles, errors, and the version
 
-`Output` has exactly four roles — `Success`, `Error`, `Warning`, `Detail` — plus a
+`Output` lives in `CodeGenerationEngine/Helper`, not the CLI: most of the messages a
+user reads are printed from the engine (`FileWriter`, `EntityExtractor`,
+`ProjectManager`, `CommandHandlingService`), and the CLI sits *above* the engine, so it
+cannot own something the engine needs to call. That placement is why colour reaches
+everyday output at all — while `Output` was CLI-only, the engine's messages could not
+use it and a normal session showed no colour whatsoever.
+
+It has exactly four roles — `Success`, `Error`, `Warning`, `Detail` — plus a
 plain `Line`. Four and no more: a screen painted in six colours reads as less
 considered, not more, so anything that is not one of those goes through `Line` and
 keeps the terminal's own colour.
@@ -111,6 +118,12 @@ and is skipped entirely when output is redirected or `NO_COLOR` is set (presence
 not value — `NO_COLOR=0` still means no colour). That is what makes it safe to add
 to a codebase whose tests read console output: a captured transcript is byte-for-
 byte what it was before. Verified by checking piped output for ESC bytes — zero.
+
+Routing rule: **success** is something produced (a class written, a validator
+generated, a rule registered); **warning** is a precondition the user can fix (no
+project selected, class not found, a command not recognized — nothing failed, so red
+would read as a fault in the tool); **error** is a real failure. Everything else keeps
+the terminal's own colour.
 
 `BuildReport` and `NextSteps` stay pure and keep returning plain strings; the
 caller, which knows the outcome, picks the colour. Only the *first* line of a build

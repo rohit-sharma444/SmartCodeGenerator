@@ -1,4 +1,4 @@
-# Smart Code Generator
+﻿# Smart Code Generator
 
 Generate and edit .NET code from plain-English commands. You type something like
 `create class Customer with properties Name string`, a natural-language pipeline
@@ -100,8 +100,10 @@ the folder it will create, asks first, and refuses if that folder already exists
 prints the command overview — neither enters the prompt. `-v`, `-h` and `/?` work
 too.
 
-Output is colour-coded — green for success, red for failure, yellow for warnings,
-grey for secondary detail. Colour is switched off entirely when output is
+Output is colour-coded — green when something was produced (a class written, a
+validator generated, a rule registered), yellow for something you can fix (no project
+selected, a class not found, a command not recognized), red for a real failure, grey
+for secondary detail. Colour is switched off entirely when output is
 redirected, and when `NO_COLOR` is set (to any value, per
 [no-color.org](https://no-color.org)), so piped transcripts are plain text.
 
