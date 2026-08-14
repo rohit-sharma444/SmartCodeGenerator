@@ -1,4 +1,4 @@
-using AppScaffolding;
+﻿using AppScaffolding;
 using AppScaffolding.Layouts;
 using AppScaffolding.Layouts.Wpf;
 
@@ -72,6 +72,40 @@ public class WpfDashboardLayoutTests
         // The count comes free: Items returns an ObservableCollection<T>, which raises
         // PropertyChanged("Count") on every mutation, and WPF binds against the runtime type.
         StringAssert.Contains(xaml, "Text=\"{Binding Items.Count}\"");
+    }
+
+    [TestMethod]
+    public void EachCardAnnouncesItsEntityNameToAssistiveTools()
+    {
+        // The cards use a full ItemTemplate rather than DisplayMemberPath, so the generated
+        // ListBoxItem's content is the view model itself and UI Automation falls back to
+        // ToString() -- a screen reader announced
+        // "Payroll.ViewModels.EntityViewModel`1[Payroll.Models.Shop]". Confirmed by walking the
+        // automation tree of a real generated app, not inferred.
+        //
+        // Set on the container rather than inside the template: the ListBoxItem is the element
+        // UI Automation reports, and a name on the template's root Border does not reach it.
+        var xaml = Xaml();
+
+        StringAssert.Contains(xaml, "<ListBox.ItemContainerStyle>");
+        StringAssert.Contains(xaml, "AutomationProperties.Name");
+        StringAssert.Contains(xaml, "Value=\"{Binding Title}\"");
+    }
+
+    [TestMethod]
+    public void TheSidebarAndMasterDetailNeedNoSuchFixup()
+    {
+        // Recorded so a future reader does not "fix" them too: both use
+        // DisplayMemberPath="Title", which makes each item's content a string, so their
+        // automation name is already the entity name.
+        var settings = AppCustomization.Default;
+
+        var sidebar = WpfLayouts.Resolve(AppLayout.Sidebar).ViewFiles(
+                new LayoutContext("Payroll", "Payroll", settings,
+                    ThemePalette.Resolve(settings.Theme, settings.Accent)))
+            .Single(f => f.Name == "MainWindow.xaml").Source;
+
+        StringAssert.Contains(sidebar, "DisplayMemberPath=\"Title\"");
     }
 
     [TestMethod]
