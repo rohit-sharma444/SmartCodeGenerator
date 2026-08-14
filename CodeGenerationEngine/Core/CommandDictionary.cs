@@ -592,7 +592,7 @@ public static class CommandDictionary
             Command = "approve [target] [sqlite]",
             Description = "Review loop: generates the app using the type chosen at the start. "
                         + "Name a target to override it: wpf (default), winforms, console, webapi, "
-                        + "classlib, worker. Add 'sqlite' for EF Core persistence (JSON is the "
+                        + "blazor, classlib, worker. Add 'sqlite' for EF Core persistence (JSON is the "
                         + "default; the wpf and winforms targets are JSON-only). Alias: a.",
             Example = "approve webapi sqlite"
         },

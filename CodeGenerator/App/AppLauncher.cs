@@ -56,8 +56,21 @@ internal static class AppLauncher
     /// an extra console window, but it works from the project path alone, which is the one thing
     /// we always have.
     /// </remarks>
-    public static string? Launch(string projectPath, string buildOutput)
+    /// <param name="projectPath">Folder of the generated project.</param>
+    /// <param name="buildOutput">MSBuild's console output, read for the built assembly's path.</param>
+    /// <param name="fromProjectFolder">
+    /// Start through <c>dotnet run</c> even when the executable is known. A web application has to:
+    /// its content root is wherever it is started from, and <c>wwwroot</c> is not copied to
+    /// <c>bin</c>, so launching the apphost there serves the app with none of its stylesheets
+    /// ("The WebRootPath was not found" in its own log). <c>dotnet run</c> roots it at the project
+    /// instead, which also applies the port in <c>launchSettings.json</c>.
+    /// </param>
+    public static string? Launch(
+        string projectPath, string buildOutput, bool fromProjectFolder = false)
     {
+        if (fromProjectFolder)
+            return RunThroughDotNet(projectPath);
+
         var executable = AssemblyPathFrom(buildOutput);
 
         return executable is not null && File.Exists(executable)

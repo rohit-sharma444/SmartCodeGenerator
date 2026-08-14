@@ -8,7 +8,7 @@ file, the model classes, and a JSON-backed store with a typed repository per
 entity — then hands off to the chosen **target** for the project type and front
 end.
 
-Targets are an `ITargetScaffolder` strategy, and six ship today:
+Targets are an `ITargetScaffolder` strategy, and seven ship today:
 
 | Target | `Key` | What it produces |
 | --- | --- | --- |
@@ -16,6 +16,7 @@ Targets are an `ITargetScaffolder` strategy, and six ship today:
 | Windows Desktop | `winforms` | A windowed CRUD app — one tab per entity, WinForms instead of WPF. |
 | Console | `console` | A reflection-driven CRUD menu over the repositories. |
 | Web API | `webapi` | A minimal API with REST CRUD endpoints per entity. |
+| Web Application | `blazor` | A Blazor Server app — one page per entity, editable in the browser. |
 | Class library | `classlib` | The shared core only — no entry point. |
 | Worker | `worker` | A `BackgroundService` that exercises the repositories. |
 
@@ -25,6 +26,15 @@ The shared core is identical across all of them; only the front end differs.
 `WpfTarget` through `DesktopViewModelFiles`; the only differences are the view (`Views/MainForm.cs`
 plus its own `Program.cs`, instead of `MainWindow.xaml`) and which `RelayCommand` variant it
 emits, since WPF's requeries through `CommandManager` and WinForms has no PresentationCore.
+
+`BlazorTarget` — the browser equivalent of the desktop targets rather than a second `webapi`: the
+same list-edit-save surface, reached with a URL instead of a window. It is the only target that
+leaves `Program.cs` alone — `dotnet new blazor` on .NET 10 already registers interactive server
+components and the render mode, so the pages only declare `@rendermode InteractiveServer`. Two
+consequences follow from that. Pages are emitted as `<Entity>Page.razor`, because a Razor file
+compiles to a class named after it and `Book.razor` would shadow `Models.Book`. And seeding cannot
+happen at startup, so the first page view runs it through `BlazorSeedTemplate`'s locked one-shot
+gate instead.
 
 This is a class library (`net10.0`) with no console I/O. The
 [`CodeGenerator`](../CodeGenerator/README.md) CLI drives it from
@@ -86,7 +96,7 @@ Three parts of that layout are **optional**, driven by `AppCustomization` (see
 | Part | Absent when | What the emitted code looks like without it |
 | --- | --- | --- |
 | `Validation/` (the whole folder) | `Validation = false` | `Repository` loses its using, its `IValidator<T>` field and both `Validate` calls, and `EntityViewModel.Save` loses its validator loop — both call `ValidatorFactory.Create<T>()` otherwise, so the app would not compile. `SaveResult<T>` stays: every caller still reads `Success` and `Errors`, and a store failure still fills them. |
-| `Data/SeedData.cs` | `SampleSeedData = false` **and** no imported rows | The four entry points that call `SeedData.EnsureSeeded()` — console, Web API, worker `Program.cs` and `MainViewModel` — lose that call, and the worker also loses the `Data` using it only needed for it. Imported rows arrive *through* `SeedData`, so a build with a data source keeps the file whatever the toggle says. |
+| `Data/SeedData.cs` | `SampleSeedData = false` **and** no imported rows | The five entry points that call `SeedData.EnsureSeeded()` — console, Web API, worker `Program.cs`, `MainViewModel`, and the Blazor target's `Data/AppSeed.cs` (which is not emitted at all in that case, and whose call disappears from every page with it) — lose that call, and the worker also loses the `Data` using it only needed for it. Imported rows arrive *through* `SeedData`, so a build with a data source keeps the file whatever the toggle says. |
 | `Logging/AppLog.cs` | `Logging = false` (the default) | Nothing is emitted and nothing references it. With logging on, `Repository` logs a line per write and a warning per rejected write, and the project gains the three `Microsoft.Extensions.Logging` packages — except the Web API, whose framework reference already carries them. |
 
 `Assets/app.<ext>` appears only when an icon was supplied, and `Views/Theme.xaml`
@@ -258,9 +268,10 @@ in the review loop.
 | `ImportedData` | Entity name → rows → field name → raw string value, plus `Notes` the caller must print (above all, that the `MaxSeedRows` cap dropped rows). Lives here rather than in `DataIngestion` because it is an *input to the scaffolder*, alongside `PersistenceKind` — and because that keeps it free of any `TabularTable` dependency, so a future SQL reader feeds the same carrier. |
 | `SeedFileWriter` | Imported rows → `(fileName, json)` pairs, projected through each class's final property list. `SeedFolderName` is the one spelling of the `Seed` folder that both this and the generated seeder use. |
 | `ITargetScaffolder` | The strategy a target implements: `Key`, `Description`, `ProjectType`, `FolderSuffix`, `FrontEndFiles(projectName, entityNames)`, and two optional default interface methods — `FixupProject(outputFolder)` (no-op) and `FrontEndFiles(projectName, entityNames, customization)` (forwards to the two-argument overload). |
-| `TargetScaffolders` | The registry — ordered `Keys` (`wpf, console, webapi, classlib, worker, winforms`; `winforms` is appended rather than inserted, so every pre-existing key keeps its position), case-insensitive `TryResolve`, and `Default` (WPF). |
+| `TargetScaffolders` | The registry — ordered `Keys` (`wpf, console, webapi, classlib, worker, winforms, blazor`; new targets are appended rather than inserted, so every pre-existing key keeps its position and `Default` stays `All[0]`), case-insensitive `TryResolve`, and `Default` (WPF). |
 | `GeneratedFile` | One file a target contributes: `RelativeFolder` (relative to the project root, `""` for the root), `Name`, `Source`. |
-| `WpfTarget`, `ConsoleTarget`, `WebApiTarget`, `ClassLibraryTarget`, `WorkerTarget`, `WinFormsTarget` | The six shipped targets, under `Targets/`. |
+| `WpfTarget`, `ConsoleTarget`, `WebApiTarget`, `ClassLibraryTarget`, `WorkerTarget`, `WinFormsTarget`, `BlazorTarget` | The seven shipped targets, under `Targets/`. |
+| `BlazorPageTemplate`, `BlazorShellTemplate`, `BlazorSeedTemplate` | What the Blazor target emits: one page per class (columns and editors reflected over the model's public properties), the nav menu and home page that replace the template's own, and the locked one-shot gate that seeds on the first page view — this is the one target that emits no `Program.cs`, so it has no startup hook to seed from. |
 | `DomainModelMapper` | `CandidateDomainModel` → `ClassDefinition[]`: renaming, `Id`, audit fields, navigation properties. The interesting stage. An overload also yields the entity-name → class-name map, which `SeedFileWriter` needs because rows are keyed by entity while files are named for the class, and `ToUniqueClassName` can rename one (`Type` → `TypeItem`). |
 | `DomainAppName` | Free text → PascalCase project name (`"a library that lends books"` → `ALibraryThatLendsBooks`). Falls back to `GeneratedApp`; prefixes `App` when it would start with a digit. |
 | `ScaffoldResult` | `Success`, the project path, every file written, and a message. |
@@ -298,7 +309,7 @@ Covered by [`CodeGenerator.Tests`](../CodeGenerator.Tests/README.md) under `App/
 rather than by a dedicated test project: `AppScaffolderWriteTests` and
 `DomainAppNameTests`, a test per target (`WpfTargetTests`, `ConsoleTargetTests`,
 `WebApiTargetTests`, `ClassLibraryTargetTests`, `WorkerTargetTests`,
-`WinFormsTargetTests`, plus `WinFormsProjectFixupTests` and
+`WinFormsTargetTests`, `BlazorTargetTests`, plus `WinFormsProjectFixupTests` and
 `WinFormsTemplateTests`), `TargetScaffoldersTests` for the registry, and
 `GeneratedProjectBuildTests` — a `DataRow`-driven integration test that runs
 `dotnet build` on the generated project for every target, skipping `wpf` and

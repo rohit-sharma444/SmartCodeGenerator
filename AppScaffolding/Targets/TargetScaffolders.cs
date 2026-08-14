@@ -1,4 +1,4 @@
-namespace AppScaffolding.Targets;
+﻿namespace AppScaffolding.Targets;
 
 /// <summary>The available output targets, keyed by their CLI key.</summary>
 public static class TargetScaffolders
@@ -12,6 +12,7 @@ public static class TargetScaffolders
         new WorkerTarget(),
         // Appended, not inserted: Default is All[0] and every existing key keeps its position.
         new WinFormsTarget(),
+        new BlazorTarget(),
     };
 
     /// <summary>Target keys in display order; the first is the default.</summary>

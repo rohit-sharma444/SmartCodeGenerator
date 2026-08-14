@@ -1,4 +1,4 @@
-using AppScaffolding;
+﻿using AppScaffolding;
 using AppScaffolding.Targets;
 
 namespace CodeGenerator.App;
@@ -20,6 +20,7 @@ internal static class ApplicationTypeMenu
         new("WPF (Windows desktop)", "wpf"),
         new("Windows Desktop (WinForms)", "winforms"),
         new("ASP.NET Web API", "webapi"),
+        new("Web Application (Blazor Server)", "blazor"),
         new("Console", "console"),
         new("Class Library", "classlib"),
         new("Worker Service (background)", "worker"),

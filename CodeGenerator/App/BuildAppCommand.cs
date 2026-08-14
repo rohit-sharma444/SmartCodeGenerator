@@ -894,11 +894,27 @@ internal sealed class BuildAppCommand
         if (!answer.StartsWith('y') && !answer.StartsWith('Y'))
             return;
 
-        var launched = AppLauncher.Launch(scaffold.ProjectPath, result.StandardOutput);
+        var isWebApp = target.ProjectType == DotNetProjectType.BlazorServer;
+
+        var launched = AppLauncher.Launch(
+            scaffold.ProjectPath, result.StandardOutput, fromProjectFolder: isWebApp);
 
         Console.WriteLine(launched is null
             ? "Could not start the app — run it yourself with the command below."
             : $"Started {launched}");
+
+        // A web application opens no window of its own, so "Started dotnet" would be all the user
+        // got. Tell them where to look instead. The wait is not padding: the browser would show a
+        // connection error if it were opened before Kestrel is listening, so the address is printed
+        // for the user to click rather than opened for them.
+        if (launched is not null && isWebApp)
+        {
+            var url = LaunchSettingsReader.HttpUrl(scaffold.ProjectPath);
+
+            Console.WriteLine(url is null
+                ? "It is a web application — open the address it prints in its own window."
+                : $"It is a web application — open {url} in your browser once it says it is listening.");
+        }
 
         Console.WriteLine("");
     }

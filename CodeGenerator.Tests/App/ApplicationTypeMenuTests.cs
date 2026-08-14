@@ -1,4 +1,4 @@
-using AppScaffolding;
+﻿using AppScaffolding;
 using AppScaffolding.Targets;
 using CodeGenerationEngine.Models;
 using CodeGenerator.App;
@@ -23,14 +23,17 @@ public class ApplicationTypeMenuTests
     }
 
     [TestMethod]
-    public void Labels_AreTheSixKindsOfAppInOrder()
+    public void Labels_AreEveryKindOfAppInOrder()
     {
+        // Blazor sits next to the Web API entry rather than at the end: the menu is ordered for a
+        // reader, not by when a target was added, and the two web options belong together.
         CollectionAssert.AreEqual(
             new[]
             {
                 "WPF (Windows desktop)",
                 "Windows Desktop (WinForms)",
                 "ASP.NET Web API",
+                "Web Application (Blazor Server)",
                 "Console",
                 "Class Library",
                 "Worker Service (background)",
@@ -46,7 +49,7 @@ public class ApplicationTypeMenuTests
             .ToList();
 
         CollectionAssert.AreEqual(
-            new[] { "wpf", "winforms", "webapi", "console", "classlib", "worker" }, keys);
+            new[] { "wpf", "winforms", "webapi", "blazor", "console", "classlib", "worker" }, keys);
     }
 
     [TestMethod]
@@ -75,8 +78,9 @@ public class ApplicationTypeMenuTests
         var written = writer.ToString();
 
         StringAssert.Contains(written, "1) WPF (Windows desktop)");
-        StringAssert.Contains(written, "6) Worker Service (background)");
-        StringAssert.Contains(written, "[1-6]");
+        StringAssert.Contains(written, "4) Web Application (Blazor Server)");
+        StringAssert.Contains(written, "7) Worker Service (background)");
+        StringAssert.Contains(written, "[1-7]");
     }
 
     [TestMethod]
@@ -95,7 +99,7 @@ public class ApplicationTypeMenuTests
         var chosen = ApplicationTypeMenu.ChooseNumbered(new StringReader("9\nzero\n3\n"), writer);
 
         Assert.AreEqual(2, chosen);
-        StringAssert.Contains(writer.ToString(), "Choose a number between 1 and 6");
+        StringAssert.Contains(writer.ToString(), "Choose a number between 1 and 7");
     }
 
     [TestMethod]
