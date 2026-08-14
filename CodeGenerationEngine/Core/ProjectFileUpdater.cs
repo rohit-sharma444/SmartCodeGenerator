@@ -14,7 +14,11 @@ public static class ProjectFileUpdater
             var doc = XDocument.Load(csproj);
             var ns = doc.Root?.GetDefaultNamespace() ?? XNamespace.None;
 
-            AddCompileReference(doc, ns, csproj, generatedFile);
+            // No Compile item. Every project this tool creates is SDK-style, and the SDK globs
+            // .cs from the project directory by default, so an explicit entry is a DUPLICATE and
+            // the project stops building with NETSDK1022. Nothing needs adding: writing the file
+            // into the project directory is already enough for it to be compiled. This is what
+            // AppScaffolding has always done for `build app:`, and why those projects build.
             AddAnnotationPackage(doc, ns, code);
             doc.Save(csproj);
         }
@@ -23,33 +27,6 @@ public static class ProjectFileUpdater
             Console.WriteLine(
                 $"Project update failed: {ex.Message}");
         }
-    }
-
-    private static void AddCompileReference(XDocument doc, XNamespace ns,
-        string csproj, string generatedFile)
-    {
-        var relative = Path.GetRelativePath(Path.GetDirectoryName(csproj)!,
-                generatedFile).Replace('\\', '/');
-
-        var exists = doc.Descendants().Any(x =>
-                x.Name.LocalName == "Compile" &&
-                x.Attribute("Include")?.Value == relative);
-
-        if (exists)
-            return;
-
-        var group = doc.Root!
-            .Elements()
-            .FirstOrDefault(x =>
-                x.Name.LocalName == "ItemGroup");
-
-        if (group == null)
-        {
-            group = new XElement(ns + "ItemGroup");
-            doc.Root.Add(group);
-        }
-
-        group.Add(new XElement(ns + "Compile", new XAttribute("Include", relative)));
     }
 
     private static void AddAnnotationPackage(XDocument doc, XNamespace ns, string code)

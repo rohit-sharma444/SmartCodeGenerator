@@ -35,39 +35,23 @@ public static class CsProjUpdater
             document.Save(csproj);
     }
 
+    /// <summary>
+    /// Does nothing, deliberately. Restoring a class needs no project-file change.
+    /// </summary>
+    /// <remarks>
+    /// This used to add <c>&lt;Compile Include="&lt;file&gt;"/&gt;</c>. Every project this tool
+    /// creates is SDK-style, and the SDK globs <c>.cs</c> from the project directory by default, so
+    /// the entry was a duplicate and the project stopped building with <c>NETSDK1022</c> — the same
+    /// root cause that <c>ProjectFileUpdater</c> had on the <c>create class</c> path. Putting the
+    /// file back on disk is the whole of a restore.
+    /// <para>
+    /// Kept as a no-op rather than deleted so <see cref="ClassRestoreService"/> still reads as
+    /// declaring its intent, and so the reason survives next to the code that used to be wrong.
+    /// <see cref="RemoveCompileEntry"/> is still real work: entries written by earlier versions are
+    /// out there in users' projects, and clearing one is a repair.
+    /// </para>
+    /// </remarks>
     public static void AddCompileEntry(string projectDirectory, string filePath)
     {
-        var csproj = Directory.GetFiles(projectDirectory, "*.csproj").FirstOrDefault();
-
-        if (csproj == null)
-            return;
-
-        var document = XDocument.Load(csproj);
-
-        var relativePath = Path.GetRelativePath(projectDirectory, filePath);
-
-        var alreadyExists = document
-            .Descendants()
-            .Any(x =>
-                x.Name.LocalName == "Compile" &&
-                string.Equals(
-                    x.Attribute("Include")?.Value,
-                    relativePath,
-                    StringComparison.OrdinalIgnoreCase));
-
-        if (alreadyExists)
-            return;
-
-        var itemGroup = document.Descendants().FirstOrDefault(x => x.Name.LocalName == "ItemGroup");
-
-        if (itemGroup == null)
-        {
-            itemGroup = new XElement("ItemGroup");
-            document.Root!.Add(itemGroup);
-        }
-
-        itemGroup.Add(new XElement("Compile", new XAttribute("Include", relativePath)));
-
-        document.Save(csproj);
     }
 }
