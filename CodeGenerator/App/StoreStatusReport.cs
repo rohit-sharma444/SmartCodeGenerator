@@ -15,6 +15,31 @@ public static class StoreStatusReport
     /// </summary>
     private static readonly TimeSpan StaleAfter = TimeSpan.FromHours(1);
 
+    /// <summary>
+    /// Whether the store needs saying nothing about — a store that knows its dump, a running
+    /// service, and a status that is not reporting trouble.
+    /// </summary>
+    /// <remarks>
+    /// Startup prints <see cref="Lines"/> only when this is false, so the asymmetry matters: a
+    /// false positive hides a real problem behind a clean-looking prompt, while a false negative
+    /// merely prints a line nobody needed. Everything that is not plainly well therefore counts as
+    /// unhealthy — including <see cref="StoreUpdateState.Unknown"/> and
+    /// <see cref="UpdaterServiceState.Unknown"/>, which mean "we could not tell" rather than "fine",
+    /// and a stale <see cref="StoreUpdateState.Applying"/>, which is a status frozen by a process
+    /// that stopped.
+    /// </remarks>
+    public static bool IsHealthy(
+        int? storeDate, StoreUpdateStatus status, UpdaterServiceState service, DateTimeOffset now)
+    {
+        if (storeDate is null || service != UpdaterServiceState.Running)
+            return false;
+
+        if (status.State is StoreUpdateState.Failed or StoreUpdateState.Unknown)
+            return false;
+
+        return !(status.State is StoreUpdateState.Applying && IsStale(status, now));
+    }
+
     public static IReadOnlyList<string> Lines(
         int? storeDate, StoreUpdateStatus status, UpdaterServiceState service,
         string installHintCommand, DateTimeOffset now)
