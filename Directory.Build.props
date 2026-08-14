@@ -12,6 +12,13 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
+
+    <!--
+      Shared by every project because they ship as one thing. The CLI reports it on the banner
+      and in `status` via VersionInfo, which trims the "+<sha>" the SDK appends to
+      AssemblyInformationalVersion.
+    -->
+    <Version>1.0.0</Version>
   </PropertyGroup>
 
 </Project>
