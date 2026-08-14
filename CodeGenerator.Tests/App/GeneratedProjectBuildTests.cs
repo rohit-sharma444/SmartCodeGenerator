@@ -38,7 +38,8 @@ public class GeneratedProjectBuildTests
     /// adds the generated test project, whose own usings are rooted at the prefix too. webapi and
     /// worker are here too: webapi's prefixed Program.cs otherwise only has an absence assertion
     /// and worker's has none at all, and JsonStoreTemplate.Source($"{rootNamespace}.Data") is
-    /// emitted by every prefixed row and read by none of the others.
+    /// emitted by every prefixed row and read by none of the others. blazor's pages carry the prefix
+    /// in <c>@using</c> directives, which the Razor compiler resolves and no other row exercises.
     /// </summary>
     [TestMethod]
     [TestCategory("Integration")]
@@ -47,6 +48,7 @@ public class GeneratedProjectBuildTests
     [DataRow("winforms")]
     [DataRow("webapi")]
     [DataRow("worker")]
+    [DataRow("blazor")]
     public void PrefixedProject_BuildsAndItsTestsPass(string targetKey)
     {
         if ((targetKey == "wpf" || targetKey == "winforms") && !OperatingSystem.IsWindows())
@@ -137,6 +139,7 @@ public class GeneratedProjectBuildTests
     [DataRow("worker")]
     [DataRow("wpf")]
     [DataRow("winforms")]
+    [DataRow("blazor")]
     public void GeneratedProject_Builds(string targetKey)
     {
         // wpf is TargetScaffolders.Default -- what `build app:` ships unless told otherwise -- and
@@ -144,7 +147,9 @@ public class GeneratedProjectBuildTests
         // `where T : class, new()` constraint. A missing constraint is CS0452, which no substring
         // assertion can see, so the default target has to be compiled like the rest. winforms
         // shares those same view models, and additionally proves its RelayCommand variant really
-        // is free of PresentationCore.
+        // is free of PresentationCore. blazor is here because a .razor file compiles to a class named
+        // after it, so an <Entity>.razor page would shadow Models.<Entity> and break every page in the
+        // app -- found exactly this way, and invisible to any assertion over the emitted markup.
         if ((targetKey == "wpf" || targetKey == "winforms") && !OperatingSystem.IsWindows())
             Assert.Inconclusive($"The {targetKey} target needs the Windows desktop targeting pack.");
 

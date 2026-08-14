@@ -78,6 +78,19 @@ public sealed class WpfDashboardLayout : IAppLayout
                             <WrapPanel />
                         </ItemsPanelTemplate>
                     </ListBox.ItemsPanel>
+                    <!-- The cards use an ItemTemplate rather than DisplayMemberPath, so each
+                         generated ListBoxItem's content is the view model itself and UI Automation
+                         falls back to ToString() - a screen reader announced
+                         "…ViewModels.EntityViewModel`1[…Models.Shop]". Named on the CONTAINER
+                         because the ListBoxItem is what automation reports; a name inside the
+                         template does not reach it. The sidebar and master-detail layouts need
+                         nothing here: DisplayMemberPath already makes each item's content a
+                         string. -->
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem">
+                            <Setter Property="AutomationProperties.Name" Value="{Binding Title}" />
+                        </Style>
+                    </ListBox.ItemContainerStyle>
                     <ListBox.ItemTemplate>
                         <DataTemplate>
                             <Border Width="168"

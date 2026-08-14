@@ -327,6 +327,7 @@ description first, or quote it, and this never bites.</p></div>
 <tr><td>Windows Forms</td><td><code>winforms</code></td><td>The same, built on Windows Forms — the same four shapes.</td></tr>
 <tr><td>Console</td><td><code>console</code></td><td>A menu-driven CRUD application.</td></tr>
 <tr><td>Web API</td><td><code>webapi</code></td><td>A minimal API with REST endpoints per class.</td></tr>
+<tr><td>Web Application</td><td><code>blazor</code></td><td>A Blazor Server application: one page per class, editable in the browser, with a navigation menu and a home page that lists them.</td></tr>
 <tr><td>Class library</td><td><code>classlib</code></td><td>The shared core only — no entry point.</td></tr>
 <tr><td>Worker</td><td><code>worker</code></td><td>A background service that exercises the repositories.</td></tr>
 </table>
@@ -345,6 +346,17 @@ grid, the same Add / Delete / Save row and the same status line — what changes
 <div class="note"><p>The layout changes the window only. The classes, the repositories, the validation rules and
 the storage are identical whichever you pick, so it is safe to regenerate an existing project with a different
 layout — and a project generated without naming one is byte-for-byte what it always was.</p></div>
+
+<h3>Web application pages</h3>
+<p>The <code>blazor</code> type is the browser version of the same application rather than a second Web API:
+one page per class, each with the class's records in a table you can type into, a <em>Remove</em> button on every
+row and <em>Add</em> and <em>Save</em> below. Nothing is written until you press <em>Save</em>, which also
+deletes whatever you removed — the same bargain the desktop window strikes. A navigation menu down the left
+reaches every page, and the home page lists them as links as well, so a narrow screen that collapses the menu
+still gets you there. Sample data appears on your first visit, whichever page you open first.</p>
+<div class="note"><p>Layouts do not apply here — <code>layout</code> names the shape of a <em>window</em>, and a
+web application has none. Naming one alongside <code>blazor</code> generates the application and ignores the
+layout, exactly as it does for the Console and Web API types.</p></div>
 
 <h3>Storage</h3>
 <p>By default each class is stored in its own JSON file beside the built executable — no database, nothing to
@@ -387,6 +399,14 @@ Next steps:
 <p>Answering <code>y</code> starts the application in a window of its own and hands the prompt straight back, so
 the tool stays usable while your application is open. Close the application when you are done with it; the tool
 does not wait for it and will not close it for you.</p>
+<p>A web application has no window, so instead of one appearing you are told where to point your browser:</p>
+<pre>Run it now? [y/N]: y
+Started dotnet
+It is a web application — open http://localhost:5156 in your browser once it says it is listening.</pre>
+<p>The port is the one recorded in the project's <code>Properties\launchSettings.json</code> when it was created;
+each project gets its own, so two generated web applications can run side by side. Give it a few seconds before
+you open the address — it is printed for you to click rather than opened for you, because a browser opened before
+the application is listening shows a connection error instead of your app.</p>
 <p>A class library is never offered, because there is nothing in one to start — it is told how to be referenced
 instead. If the build fails, the run offer is skipped and the errors are listed with the command to try again:</p>
 <pre>Build FAILED (2.7s) — 1 error
@@ -595,7 +615,7 @@ own shows the shorter overview, and <code>help &lt;topic&gt;</code> shows one se
 <table>
 <tr><th>Command</th><th>Description</th><th>Example</th></tr>
 <tr><td><code>add &lt;name&gt;</code></td><td>Review loop: adds a class to the candidate model. The name keeps the shape you type, so a compound survives; several words become one class name.</td><td><code>add cash register</code></td></tr>
-<tr><td><code>approve [target] [sqlite]</code></td><td>Review loop: generates the app using the type chosen at the start. Name a target to override it: wpf (default), winforms, console, webapi, classlib, worker. Add &#x27;sqlite&#x27; for EF Core persistence (JSON is the default; the wpf and winforms targets are JSON-only). Alias: a.</td><td><code>approve webapi sqlite</code></td></tr>
+<tr><td><code>approve [target] [sqlite]</code></td><td>Review loop: generates the app using the type chosen at the start. Name a target to override it: wpf (default), winforms, console, webapi, blazor, classlib, worker. Add &#x27;sqlite&#x27; for EF Core persistence (JSON is the default; the wpf and winforms targets are JSON-only). Alias: a.</td><td><code>approve webapi sqlite</code></td></tr>
 <tr><td><code>build app</code></td><td>Starts the same guided flow, asking for the description first, then the application type, then whether you already have data.</td><td><code>build app</code></td></tr>
 <tr><td><code>build app: &lt;description&gt;</code></td><td>Describes a system in plain English, then asks which kind of app to build and whether you have data, discovers a domain model, and opens a review loop before any code is written.</td><td><code>build app: a library that lends books to members</code></td></tr>
 <tr><td><code>build app: &lt;description&gt; [customization options]</code></td><td>Customizes the generated application. Options go LAST on the line, after any data source: company &quot;&lt;name&gt;&quot; sets the company (used in the project metadata, the window title and a copyright header); theme light|dark and accent #rrggbb colour the desktop front ends; icon &lt;path&gt; supplies a .ico or .png; title &quot;&lt;pattern&gt;&quot; overrides the window title, where {company} and {app} are substituted; namespace &lt;prefix&gt; puts the generated code under that namespace root (CodisLtd.Shop), leaving the project and assembly names alone; layout tabs|sidebar|master-detail|dashboard chooses the shape of the window (wpf and winforms only).</td><td><code>build app: a shop company &quot;Codis Ltd&quot; namespace CodisLtd theme dark layout sidebar</code></td></tr>

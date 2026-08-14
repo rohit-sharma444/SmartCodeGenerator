@@ -296,14 +296,14 @@ before parsing, so a predicate that already carries its own verb
 
 An interactive `build app` asks three questions before any work starts: what the application is
 for, which kind of app to build, and whether you already have data. The kinds are WPF (Windows
-desktop), Windows Desktop (WinForms), ASP.NET Web API, Console, Class Library and Windows
-Service; the menu is arrow-key driven, and falls back to a numbered prompt when input or output
-is redirected. Typing a description inline (`build app: a library that lends books`) answers the
+desktop), Windows Desktop (WinForms), ASP.NET Web API, Web Application (Blazor Server), Console,
+Class Library and Worker Service; the menu is arrow-key driven, and falls back to a numbered
+prompt when input or output is redirected. Typing a description inline (`build app: a library that lends books`) answers the
 first question and starts at the second.
 
-Targets: `wpf` (default), `winforms`, `console`, `webapi`, `classlib`, `worker`. `approve
-<target>` at the review loop overrides the type chosen at the start. SQLite persistence is
-available for every target except `wpf` and `winforms`, which are JSON-only.
+Targets: `wpf` (default), `winforms`, `console`, `webapi`, `blazor`, `classlib`, `worker`.
+`approve <target>` at the review loop overrides the type chosen at the start. SQLite persistence
+is available for every target except `wpf` and `winforms`, which are JSON-only.
 
 Piped or redirected input skips the wizard entirely and uses the inline form
 (`build app: <description> from <format> <location>`), picking a target at `approve`.
@@ -319,7 +319,7 @@ In the review loop:
 | Input | Effect |
 | --- | --- |
 | `approve` \| `a` | Generate an app from the model as it stands, using the type chosen at the wizard's start; a piped run (no wizard, so no type chosen) defaults silently to WPF instead. |
-| `approve <target>` | Generate straight to a target, overriding the type chosen at the start (or skipping the prompt, if none was chosen) — one of `wpf` (default), `winforms`, `console`, `webapi`, `classlib`, `worker`. |
+| `approve <target>` | Generate straight to a target, overriding the type chosen at the start (or skipping the prompt, if none was chosen) — one of `wpf` (default), `winforms`, `console`, `webapi`, `blazor`, `classlib`, `worker`. |
 | `add <name>` | Add an entity. The name keeps the shape you type (`add CashRegister` gives `CashRegister`), and several words become one class name (`add cash register` gives the same). |
 | `remove <name>` | Remove an entity. |
 | `rename <old> <new>` | Rename an entity. |

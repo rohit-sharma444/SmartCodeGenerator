@@ -463,6 +463,11 @@ public sealed class AppScaffolder
             WpfProjectFixup.ReconcileNamespace(outputFolder, rootNamespace);
         }
 
+        // Same reason, different file: the Blazor template's Program.cs imports
+        // `<ProjectName>.Components`, which a namespace prefix moves out from under it.
+        if (target.ProjectType == DotNetProjectType.BlazorServer)
+            BlazorProjectFixup.ReconcileNamespace(outputFolder, rootNamespace);
+
         // Data files, not source: written with the same best-effort WriteSource so a locked file
         // is reported through `expected` rather than throwing mid-scaffold.
         if (seedFiles.Length > 0)
