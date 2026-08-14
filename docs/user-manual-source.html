@@ -64,11 +64,23 @@ the seconds counted, so a pause never looks like a hang. Output longer than the 
 are unaffected.</p>
 
 <h3>Colour, and turning it off</h3>
-<p>Output is colour-coded: green when something succeeded, red when it failed, yellow for a warning
-you should read, and grey for secondary detail such as a path. Colour is switched off automatically
-when you redirect output to a file or another program, so a saved transcript is ordinary text. To turn
-it off at a real console as well, set the <code>NO_COLOR</code> environment variable to anything at
-all — the convention is that its mere presence is the instruction.</p>
+<p>Output is colour-coded, in four colours and no more:</p>
+<table>
+<tr><th>Colour</th><th>What it means</th><th>Examples</th></tr>
+<tr><td>Green</td><td>Something was produced.</td><td>A class written, a validator generated, a validation rule registered, an application generated.</td></tr>
+<tr><td>Yellow</td><td>Something you can fix. Nothing failed.</td><td>No project selected; a class that does not exist; a command the tool does not recognize; a missing Wikipedia store.</td></tr>
+<tr><td>Red</td><td>Something failed.</td><td>A generated application that will not compile; an unexpected error.</td></tr>
+<tr><td>Grey</td><td>Secondary detail you are not required to read.</td><td>Paths and labels beside the thing they describe.</td></tr>
+</table>
+<p>A command you mistype is yellow rather than red on purpose: nothing has gone wrong with the tool,
+you have simply typed something it does not know.</p>
+<p>Colour is switched off automatically when you redirect output to a file or another program, so a
+saved transcript is ordinary text. To turn it off at a real console as well, set the
+<code>NO_COLOR</code> environment variable to anything at all &#x2014; the convention is that its mere
+presence is the instruction, so even <code>NO_COLOR=0</code> means no colour.</p>
+<div class="note"><p><strong>Seeing no colour at all?</strong> Check whether something has already set
+that variable for you: at a PowerShell prompt, <code>echo $env:NO_COLOR</code>. Some tools and
+terminals set it deliberately. <code>Remove-Item Env:NO_COLOR</code> clears it for that session.</p></div>
 
 <div class="note"><p><strong>A quiet start is a healthy one.</strong> The tool reports its own state only when
 something is wrong with it — a missing Wikipedia store, nothing updating it, an AI model it was told to load and
