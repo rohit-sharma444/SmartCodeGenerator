@@ -23,6 +23,24 @@ PROJECTPATH=/path/to/workspace dotnet run --project CodeGenerator
 
 At the `CodeGenerator >>` prompt, type `help` for an overview or `exit` to quit.
 
+### Startup is quiet when nothing is wrong
+
+`PrintBanner` is three lines. The store report and the AI line are conditional:
+`StoreStatusReport.IsHealthy` decides the first, and the second prints only when
+`AiLayer.Unavailable` has a reason — an AI that was meant to load and could not.
+"Enabled" and a deliberate "off (disabled)" are states the user chose and say
+nothing useful at every launch.
+
+`IsHealthy` is deliberately asymmetric: anything not plainly well counts as
+unhealthy, including both `Unknown` states ("we could not tell" is not "fine") and
+a stale `Applying` snapshot left by a process that stopped. A false positive there
+would hide a real problem behind a clean-looking prompt; a false negative only
+prints a line nobody needed.
+
+`status` (`StatusCommand`, intercepted like `help`) prints everything through
+`StatusReport.Lines`. Both it and the startup warning take their store lines from
+one `StoreReport()`, so they cannot disagree about what the store is doing.
+
 `help` is handled in `HelpCommand`, ahead of the recognition pipeline, because
 `LiteralCommandTable` keys on the exact word — a line with a topic on it matches
 nothing there and would fall through to the NLP path. It comes in three forms:
@@ -341,6 +359,7 @@ deterministic.
 | Command | Description |
 | --- | --- |
 | `demo` | Run a short demo workflow. |
+| `status` | Workspace, projects, rules, AI, and the store — everything startup no longer prints. |
 | `help` | One-screen overview: starter commands, then the categories. |
 | `help <topic>` | One category's commands, or one command's entry (`help approve`). |
 | `help all` | Every command in one list. |

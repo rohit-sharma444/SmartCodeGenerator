@@ -87,6 +87,12 @@ $env:PROJECTPATH = "D:\MyWorkspace"; dotnet run --project CodeGenerator
 PROJECTPATH=/path/to/workspace dotnet run --project CodeGenerator
 ```
 
+Startup prints three lines and the prompt. It reports its own state only when
+something is wrong with it — a missing Wikipedia store, nothing updating it, an
+AI model it was told to load and could not — so a quiet start means everything it
+depends on is in order. `status` prints the full picture: workspace, projects and
+which is selected, loaded rules, AI state, and the store and its updater service.
+
 At the `CodeGenerator >>` prompt type `help` or `exit` to quit. `help` shows a
 one-screen overview — a few commands to start with, then the categories;
 `help <topic>` drills into one category (or one command, so `help approve`
