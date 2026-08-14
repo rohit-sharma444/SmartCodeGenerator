@@ -259,24 +259,38 @@ internal class CodeGeneratorStarter
                 // never block on a prompt, which also keeps scripted E2E runs
                 // deterministic and model-free.
                 _lastInput = input;
-                var outcome = _pipeline.Handle(input, ref currentProject,
-                     _configuredRules, _workspaceRoot, r => ProjectManager.CurrentProject = r,
-                     onAnalyzed: null,
-                     aiResolver: Console.IsInputRedirected ? null : _ai.Resolver,
-                     confirmAi: Console.IsInputRedirected ? null : Confirm,
 
-                     // Threaded through so the work that already accepts a token honours Ctrl-C.
-                     // Plenty of what runs below here is synchronous and takes none — a press
-                     // cannot interrupt those, which is exactly why a second press still quits.
-                     ct: Interrupt.Token);
-
-                // See RunOnce: gate on recognition, not success, so a recognized
-                // command that failed keeps its own error and isn't mislabeled.
-                if (!outcome.Recognized && !string.IsNullOrWhiteSpace(input))
+                // Everything this command prints is captured and then written back in one colour —
+                // green if it worked, red if it failed, amber if the words were not understood. The
+                // colour depends on the result, so the output cannot be coloured as it is produced.
+                //
+                // Only the pipeline commands go through here. `build app`, `batch` and `demo` are
+                // intercepted above and stream live: they prompt mid-flight, and buffering would
+                // hide the question the user is meant to answer.
+                CommandColour.Run(() =>
                 {
-                    Output.Warning(
-                        UnrecognizedCommand.Describe(input, CommandSuggester.Closest(input)));
-                }
+                    var outcome = _pipeline.Handle(input, ref currentProject,
+                         _configuredRules, _workspaceRoot, r => ProjectManager.CurrentProject = r,
+                         onAnalyzed: null,
+                         aiResolver: Console.IsInputRedirected ? null : _ai.Resolver,
+                         confirmAi: Console.IsInputRedirected ? null : Confirm,
+
+                         // Threaded through so the work that already accepts a token honours Ctrl-C.
+                         // Plenty of what runs below here is synchronous and takes none — a press
+                         // cannot interrupt those, which is exactly why a second press still quits.
+                         ct: Interrupt.Token);
+
+                    if (!outcome.Recognized && !string.IsNullOrWhiteSpace(input))
+                    {
+                        Console.WriteLine(
+                            UnrecognizedCommand.Describe(input, CommandSuggester.Closest(input)));
+                    }
+
+                    // Gated on recognition, not success: a recognized command that failed has
+                    // already reported its own reason, and calling it unrecognized would be wrong.
+                    // Inside the buffered region so it is part of the coloured block.
+                    return CommandColour.Verdict(outcome.Recognized, outcome.Handled);
+                });
             }
             catch (ArgumentException ex)
             {
@@ -513,7 +527,8 @@ internal class CodeGeneratorStarter
             _configuredRules.Count,
             StoreReport().Lines,
             AiState(),
-            VersionInfo.Current))
+            VersionInfo.Current,
+            Output.Explain()))
         {
             Console.WriteLine(line);
         }

@@ -82,7 +82,7 @@ public static class ProjectManager
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Failed to save registry: {ex.Message}");
+            Output.Error($"Failed to save registry: {ex.Message}");
         }
     }
 
@@ -109,7 +109,7 @@ public static class ProjectManager
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Failed to load registry: {ex.Message}");
+            Output.Error($"Failed to load registry: {ex.Message}");
         }
     }
 
@@ -200,7 +200,7 @@ public static class ProjectManager
             return false;
         }
 
-        Console.WriteLine($"Current project: " +
+        Output.Success($"Current project: " +
             $"{Path.GetFileNameWithoutExtension(ProjectManager.CurrentProject!.ProjectPath)}");
 
         return true;
@@ -359,7 +359,7 @@ public static class ProjectManager
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Warning: Failed to initialize existing projects: {ex.Message}");
+            Output.Warning($"Warning: Failed to initialize existing projects: {ex.Message}");
         }
     }
 
@@ -375,7 +375,7 @@ public static class ProjectManager
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Warning: Invalid PROJECTPATH '{projectPath}': {ex.Message}");
+                Output.Warning($"Warning: Invalid PROJECTPATH '{projectPath}': {ex.Message}");
             }
         }
 

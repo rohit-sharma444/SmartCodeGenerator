@@ -209,7 +209,7 @@ public static class CommandHandlingService
 
         if (!ClassValidator.IsValidClassName(command.ClassName))
         {
-            Console.WriteLine("Error: Could not determine a valid class name from input.");
+            Output.Error("Error: Could not determine a valid class name from input.");
             return false;
         }
 
@@ -263,14 +263,14 @@ public static class CommandHandlingService
     private static bool HandleDeleteClass(CommandExecutionContext ctx)
     {
         var (deleted, message) = ClassDeletionService.DeleteClass(ctx.WorkspaceRoot, ctx.Command.ClassName);
-        Console.WriteLine(message);
+        Output.Result(deleted, message);
         return deleted;
     }
 
     private static bool HandleRestoreClass(CommandExecutionContext ctx)
     {
         var (restored, message) = ClassRestoreService.RestoreClass(ctx.WorkspaceRoot, ctx.Command.ClassName);
-        Console.WriteLine(message);
+        Output.Result(restored, message);
         return restored;
     }
 
@@ -279,13 +279,13 @@ public static class CommandHandlingService
         var last = DeletedClassRegistry.GetLast(ctx.WorkspaceRoot);
         if (last == null)
         {
-            Console.WriteLine("No deleted classes to restore.");
+            Output.Warning("No deleted classes to restore.");
             return false;
         }
 
         var (restored, message) = ClassRestoreService.RestoreClass(
             ctx.WorkspaceRoot, last.ClassName);
-        Console.WriteLine(message);
+        Output.Result(restored, message);
         return restored;
     }
 

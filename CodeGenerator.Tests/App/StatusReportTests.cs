@@ -1,4 +1,4 @@
-using CodeGenerator.App;
+﻿using CodeGenerator.App;
 
 namespace CodeGenerator.Tests.App;
 
@@ -19,7 +19,7 @@ public class StatusReportTests
         IReadOnlyList<string>? store = null,
         string ai = "enabled (retrieval)")
         => string.Join("\n", StatusReport.Lines(
-            @"D:\Work", projects, active, rules, store ?? StoreLines, ai, "1.0.0"));
+            @"D:\Work", projects, active, rules, store ?? StoreLines, ai, "1.0.0", "on"));
 
     [TestMethod]
     public void ReportsTheWorkspaceRoot()
@@ -79,10 +79,17 @@ public class StatusReportTests
     }
 
     [TestMethod]
+    public void ReportsWhetherColourIsOn()
+    {
+        // "I can't see coloured text" has to be answerable without reading the source.
+        Assert.Contains("Colour", Report());
+    }
+
+    [TestMethod]
     public void FitsOnAScreenAndDoesNotWrap()
     {
         var lines = StatusReport.Lines(
-            @"D:\Work", 3, "Shop", 2, StoreLines, "enabled (retrieval)", "1.0.0");
+            @"D:\Work", 3, "Shop", 2, StoreLines, "enabled (retrieval)", "1.0.0", "on");
 
         Assert.IsLessThan(20, lines.Count);
 
