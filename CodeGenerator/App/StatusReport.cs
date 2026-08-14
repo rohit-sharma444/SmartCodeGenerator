@@ -23,12 +23,17 @@ internal static class StatusReport
         string? activeProject,
         int ruleCount,
         IReadOnlyList<string> storeLines,
-        string aiState)
+        string aiState,
+        string version)
     {
         var lines = new List<string>
         {
             "System state",
             string.Empty,
+
+            // First line of the report proper: the first thing anyone needs when describing a
+            // problem to someone else.
+            Row("Version", version),
 
             // First, because files landing somewhere unexpected — PROJECTPATH set and forgotten —
             // is the most common confusion this tool produces.

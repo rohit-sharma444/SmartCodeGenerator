@@ -19,7 +19,7 @@ public class StatusReportTests
         IReadOnlyList<string>? store = null,
         string ai = "enabled (retrieval)")
         => string.Join("\n", StatusReport.Lines(
-            @"D:\Work", projects, active, rules, store ?? StoreLines, ai));
+            @"D:\Work", projects, active, rules, store ?? StoreLines, ai, "1.0.0"));
 
     [TestMethod]
     public void ReportsTheWorkspaceRoot()
@@ -72,10 +72,17 @@ public class StatusReportTests
     }
 
     [TestMethod]
+    public void ReportsTheVersion()
+    {
+        // The first thing anyone needs when describing a problem to someone else.
+        Assert.Contains("1.0.0", Report());
+    }
+
+    [TestMethod]
     public void FitsOnAScreenAndDoesNotWrap()
     {
         var lines = StatusReport.Lines(
-            @"D:\Work", 3, "Shop", 2, StoreLines, "enabled (retrieval)");
+            @"D:\Work", 3, "Shop", 2, StoreLines, "enabled (retrieval)", "1.0.0");
 
         Assert.IsLessThan(20, lines.Count);
 

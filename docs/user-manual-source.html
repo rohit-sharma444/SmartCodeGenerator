@@ -46,10 +46,18 @@ project. Chapter 15 is a complete command reference you can skim.</p>
 <h2>2. Getting started</h2>
 
 <h3>Starting the tool</h3>
-<p>Run the executable. It prints three lines and the prompt:</p>
+<p>Run the executable. It prints three lines — the first naming the version you are running — and
+the prompt:</p>
 <pre>CodeGenerator &gt;&gt; </pre>
 <p>Type <code>help</code> for an overview of what the tool can do, and <code>exit</code> to leave. Press
 <strong>TAB</strong> at the prompt for command suggestions.</p>
+<h3>Colour, and turning it off</h3>
+<p>Output is colour-coded: green when something succeeded, red when it failed, yellow for a warning
+you should read, and grey for secondary detail such as a path. Colour is switched off automatically
+when you redirect output to a file or another program, so a saved transcript is ordinary text. To turn
+it off at a real console as well, set the <code>NO_COLOR</code> environment variable to anything at
+all — the convention is that its mere presence is the instruction.</p>
+
 <div class="note"><p><strong>A quiet start is a healthy one.</strong> The tool reports its own state only when
 something is wrong with it — a missing Wikipedia store, nothing updating it, an AI model it was told to load and
 could not. So if all you see is those three lines, everything it depends on is in order. Type
@@ -514,6 +522,7 @@ ever <em>suggests</em> — it never runs a command you did not confirm.</p>
 <tr><td>SQLite was refused for a desktop application</td><td>WPF and Windows Forms read the JSON store directly. Choose another type, or keep JSON.</td></tr>
 <tr><td>Your own validation rules disappeared</td><td>They should not: rules go in <code>&lt;Class&gt;Validator.Custom.cs</code>, which is written once and never rewritten. The <code>.Generated.cs</code> half is the one refreshed each run. The single exception is the file's own <code>namespace</code> line, which is repointed if you change the namespace prefix — otherwise the file would no longer compile alongside the rest of the project. Your rules themselves are never touched.</td></tr>
 <tr><td>Startup no longer shows the store&#x27;s dump date, or whether AI is on</td><td>By design: the tool is quiet when nothing is wrong with it, so that the warnings it does print are noticed rather than skimmed. Type <code>status</code> for the full picture, which is the same information.</td></tr>
+<tr><td>&quot;Something went wrong&quot;, and you need more than the message</td><td>Set <code>CG_VERBOSE=1</code> and run it again: the error then includes the internal exception type and where it happened, which is what to quote if you report the problem. That detail is hidden by default because it is not something you can act on.</td></tr>
 <tr><td>A piped script behaves differently from typing the same commands</td><td>By design: piped input never prompts, and the remembered customization profile is ignored. State what you need on the command line.</td></tr>
 <tr><td>"Build FAILED" straight after generating</td><td>The application was written to disk but does not compile. The errors listed are the compiler's own, against the generated files — the most common cause is a class or field name that is not valid C#. Fix it in the review loop and generate again, or edit the reported file directly and <code>dotnet build</code>. Nothing about the project is lost either way.</td></tr>
 <tr><td>Nothing is built after generating, and there is no <em>Run it now?</em></td><td>Input is piped. The build and the run offer are for typing at the prompt only, so a script is never slowed by a compile it did not ask for. Build it yourself with the command in the next-step lines, which are printed either way.</td></tr>

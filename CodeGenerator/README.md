@@ -23,6 +23,34 @@ PROJECTPATH=/path/to/workspace dotnet run --project CodeGenerator
 
 At the `CodeGenerator >>` prompt, type `help` for an overview or `exit` to quit.
 
+### Output roles, errors, and the version
+
+`Output` has exactly four roles — `Success`, `Error`, `Warning`, `Detail` — plus a
+plain `Line`. Four and no more: a screen painted in six colours reads as less
+considered, not more, so anything that is not one of those goes through `Line` and
+keeps the terminal's own colour.
+
+Colour is set via `Console.ForegroundColor`, never as escape codes in the stream,
+and is skipped entirely when output is redirected or `NO_COLOR` is set (presence,
+not value — `NO_COLOR=0` still means no colour). That is what makes it safe to add
+to a codebase whose tests read console output: a captured transcript is byte-for-
+byte what it was before. Verified by checking piped output for ESC bytes — zero.
+
+`BuildReport` and `NextSteps` stay pure and keep returning plain strings; the
+caller, which knows the outcome, picks the colour. Only the *first* line of a build
+report is coloured — painting the quoted compiler errors red too is noise, not
+emphasis.
+
+`ErrorText` handles a failure nothing else caught. The exception type used to be
+printed at the user; it and the stack now sit behind `CG_VERBOSE` (the convention
+`CG_NO_LEARN` set), which also replaces the old "stack only when a debugger is
+attached" — no use to the person actually hitting it. The innermost exception
+message is appended when it differs, because the outer one is often the vague half.
+
+`VersionInfo` reads `AssemblyInformationalVersion` and trims at `+`: the SDK appends
+the commit sha there, so a naive read prints a hash at the user. `<Version>` lives in
+`Directory.Build.props`, shared, since the projects ship together.
+
 ### Startup is quiet when nothing is wrong
 
 `PrintBanner` is three lines. The store report and the AI line are conditional:
