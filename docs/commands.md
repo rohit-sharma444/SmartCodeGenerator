@@ -131,6 +131,7 @@
 | `help <topic>` | Shows one category's commands. A topic is any category name 'help' lists, spelled however you like; a command name works too, so 'help approve' explains that command. | `help build app` |
 | `help all` | Every command in one list — the complete catalog, which is what plain 'help' used to print. | `help all` |
 | `history` | Lists the last 20 commands (not itself recorded). | `history` |
+| `status` | Reports the workspace, the projects found and which is selected, any loaded rules, the AI state, and the Wikipedia store and its updater service. Startup prints only what is wrong; this prints everything. | `status` |
 
 ## Validation
 

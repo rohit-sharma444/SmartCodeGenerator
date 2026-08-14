@@ -358,6 +358,13 @@ public static class CommandDictionary
         new()
         {
             Category = "Utility",
+            Command = "status",
+            Description = "Reports the workspace, the projects found and which is selected, any loaded rules, the AI state, and the Wikipedia store and its updater service. Startup prints only what is wrong; this prints everything.",
+            Example = "status"
+        },
+        new()
+        {
+            Category = "Utility",
             Command = "batch",
             Description = "Enter several commands, review what was detected, then run only the approved ones.",
             Example = "batch"
