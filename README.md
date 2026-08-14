@@ -87,6 +87,15 @@ $env:PROJECTPATH = "D:\MyWorkspace"; dotnet run --project CodeGenerator
 PROJECTPATH=/path/to/workspace dotnet run --project CodeGenerator
 ```
 
+**Ctrl-C** asks rather than kills: the first press cancels what is running and leaves
+the workspace consistent, a second press quits outright. Long operations show a
+spinner with elapsed time, and long output (`help all`, a large model) pauses a page
+at a time.
+
+**`demo`** runs a short guided walkthrough — seven real commands that create a small
+project, add a class with two validation rules and generate the validator. It names
+the folder it will create, asks first, and refuses if that folder already exists.
+
 `CodeGenerator --version` prints the version alone, and `CodeGenerator --help`
 prints the command overview — neither enters the prompt. `-v`, `-h` and `/?` work
 too.

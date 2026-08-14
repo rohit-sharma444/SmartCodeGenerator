@@ -10,7 +10,14 @@ namespace CodeGenerator.Tests.App;
 /// stream, and the test host redirects output, which switches it off. So the decision is what is
 /// lifted out and tested; that is also the part with rules worth stating.
 /// </remarks>
+/// <remarks>
+/// <see cref="DoNotParallelizeAttribute"/> because <see cref="WritingIsUnaffectedByColourBeingOff"/>
+/// captures <see cref="Console.Out"/>, which is process-global — a sibling test writing while it
+/// holds the redirect lands its output in this one's buffer. Latent when this was written; added
+/// after the same race made a spinner test fail for real.
+/// </remarks>
 [TestClass]
+[DoNotParallelize]
 public class OutputColourTests
 {
     [TestMethod]

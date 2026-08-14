@@ -125,7 +125,7 @@
 | `batch` | Enter several commands, review what was detected, then run only the approved ones. | `batch` |
 | `clear` | Clears the screen (history is kept). Alias: cls. | `clear` |
 | `cls` | Alias for clear (clears the screen; history is kept). | `cls` |
-| `demo` | Runs the demo workflow. | `demo` |
+| `demo` | Runs a short guided walkthrough: creates a small project, adds a class with two validation rules, generates the validator and shows the result. Asks before writing anything, and names the folder it creates so you can delete it afterwards. | `demo` |
 | `exit` | Exits the application. | `exit` |
 | `help` | Shows a one-screen overview: a few commands to start with, and every category with its command count. | `help` |
 | `help <topic>` | Shows one category's commands. A topic is any category name 'help' lists, spelled however you like; a command name works too, so 'help approve' explains that command. | `help build app` |

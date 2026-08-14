@@ -187,8 +187,14 @@ internal sealed class BuildAppCommand
         var cacheDir = Path.Combine(workspaceRoot, ".dd-cache");
         var pipeline = DomainDiscoveryPipeline.CreateDefault(cacheDir);
 
-        Console.WriteLine("Discovering domain (this may fetch from Wikipedia the first time)...");
-        DiscoveryResult result = pipeline.Discover(description);
+        // The longest silence in the tool: a first fetch for an unseen topic can take many seconds,
+        // and an unmoving line reads as hung. Piped runs print the label once, exactly as before.
+        DiscoveryResult result;
+
+        using (Spinner.Start("Discovering domain (this may fetch from Wikipedia the first time)"))
+        {
+            result = pipeline.Discover(description);
+        }
 
         if (result.Topic.IsRecognized)
         {
@@ -349,8 +355,11 @@ internal sealed class BuildAppCommand
             {
                 // The typed path is unchanged: SelectionPrompt cannot run without a console, and
                 // piped scripts drive the loop through exactly these lines.
-                Console.WriteLine("\n       [a]pprove [target] [sqlite] add <name>  remove <name>  rename <old> <new>  field <class> <name>[:<type>]  unfield <class> <name>  why [name]");
-                Console.WriteLine("         [c]ancel");
+                Console.WriteLine();
+
+                foreach (var hint in ReviewHints.Short)
+                    Console.WriteLine(hint);
+
                 Console.Write("> ");
 
                 var input = Console.ReadLine();
@@ -364,6 +373,16 @@ internal sealed class BuildAppCommand
 
                 if (line.Length == 0)
                     continue;
+
+                // Handled before the switch so it costs no verb and cannot collide with a class
+                // name: the short prompt is only defensible if the rest is one keystroke away.
+                if (ReviewHints.IsMoreRequest(line))
+                {
+                    foreach (var hint in ReviewHints.Full)
+                        Console.WriteLine(hint);
+
+                    continue;
+                }
 
                 typedLine = line;
                 parts = line.Split(' ', 3, StringSplitOptions.RemoveEmptyEntries);
@@ -820,22 +839,26 @@ internal sealed class BuildAppCommand
         if (Console.IsInputRedirected)
             return;
 
-        Console.WriteLine("Building...");
-
         var clock = System.Diagnostics.Stopwatch.StartNew();
 
         ProcessResult result;
-        try
+
+        // Up to three minutes with nothing on screen otherwise. This path is interactive-only
+        // already (see the guard above), so the spinner always animates here.
+        using (Spinner.Start("Building"))
         {
-            result = ProcessRunner.Run("dotnet", "build", scaffold.ProjectPath, BuildTimeout);
-        }
-        catch (System.ComponentModel.Win32Exception)
-        {
-            // No `dotnet` on PATH. The app on disk is still fine, so say what happened and let
-            // the next-step lines below tell them how to build it themselves.
-            Output.Warning("Could not start `dotnet` — skipping the build check.");
-            Console.WriteLine("");
-            return;
+            try
+            {
+                result = ProcessRunner.Run("dotnet", "build", scaffold.ProjectPath, BuildTimeout);
+            }
+            catch (System.ComponentModel.Win32Exception)
+            {
+                // No `dotnet` on PATH. The app on disk is still fine, so say what happened and let
+                // the next-step lines below tell them how to build it themselves.
+                Output.Warning("Could not start `dotnet` — skipping the build check.");
+                Console.WriteLine("");
+                return;
+            }
         }
 
         clock.Stop();
@@ -1028,7 +1051,12 @@ internal sealed class BuildAppCommand
     private static void PrintModel(CandidateDomainModel model)
     {
         Console.WriteLine();
-        Console.WriteLine($"Candidate model ({model.Entities.Count} classes):");
+
+        var lines = new List<string>
+        {
+            $"Candidate model ({model.Entities.Count} classes):",
+        };
+
         foreach (var entity in model.Entities)
         {
             var fields = entity.Fields.Count == 0
@@ -1042,8 +1070,12 @@ internal sealed class BuildAppCommand
                 ? string.Empty
                 : "  -> " + string.Join(", ", entity.Relationships.Select(r => r.Target));
 
-            Console.WriteLine($"  - {entity.Name} [{entity.Provenance}]{fields}{relationships}");
+            lines.Add($"  - {entity.Name} [{entity.Provenance}]{fields}{relationships}");
         }
+
+        // Paged: a rich domain can run to dozens of classes with their fields, and the model is
+        // reprinted after every action — so scrolling it away is the loop's most repeated annoyance.
+        Pager.Write(lines);
 
         // Every entity is scaffolded with a typed repository exposing these CRUD functions, but
         // spelling that out here was judged noise for the review loop, so the describing line

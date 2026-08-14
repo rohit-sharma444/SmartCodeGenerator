@@ -164,6 +164,10 @@ internal class CodeGeneratorStarter
 
         while (true)
         {
+            // Cleared as the prompt takes over, so a command cancelled with Ctrl-C does not leave
+            // the next one starting on an already-cancelled token.
+            Interrupt.Reset();
+
             Console.Write("CodeGenerator >> ");
 
             var editor = new CommandLineEditor(
@@ -205,13 +209,21 @@ internal class CodeGeneratorStarter
             // `help build app` matches nothing there. See HelpCommand.
             if (HelpCommand.IsHelp(input))
             {
-                Console.WriteLine(HelpCommand.Render(input));
+                // Paged: `help all` is around 250 lines, which otherwise scrolls the question and
+                // the answer's first half off the top of the screen.
+                Pager.Write(HelpCommand.Render(input).Split(Environment.NewLine));
                 continue;
             }
 
             if (StatusCommand.IsStatus(input))
             {
                 PrintStatus();
+                continue;
+            }
+
+            if (DemoCommand.IsDemo(input))
+            {
+                RunDemo(ref currentProject);
                 continue;
             }
 
@@ -249,7 +261,12 @@ internal class CodeGeneratorStarter
                      _configuredRules, _workspaceRoot, r => ProjectManager.CurrentProject = r,
                      onAnalyzed: null,
                      aiResolver: Console.IsInputRedirected ? null : _ai.Resolver,
-                     confirmAi: Console.IsInputRedirected ? null : Confirm);
+                     confirmAi: Console.IsInputRedirected ? null : Confirm,
+
+                     // Threaded through so the work that already accepts a token honours Ctrl-C.
+                     // Plenty of what runs below here is synchronous and takes none — a press
+                     // cannot interrupt those, which is exactly why a second press still quits.
+                     ct: Interrupt.Token);
 
                 // See RunOnce: gate on recognition, not success, so a recognized
                 // command that failed keeps its own error and isn't mislabeled.
@@ -409,6 +426,79 @@ internal class CodeGeneratorStarter
             StoreStatusReport.Lines(
                 storeDate, status, service, @".\tools\install-updater-service.ps1", now),
             StoreStatusReport.IsHealthy(storeDate, status, service, now));
+    }
+
+    /// <summary>
+    /// Runs the demo walkthrough: real commands, through the same pipeline as anything typed.
+    /// </summary>
+    /// <remarks>
+    /// It writes a project to disk, so it asks first and names the path before asking. Two things it
+    /// deliberately will not do: run without a console to confirm on, and write into a folder that
+    /// already exists — the same reasoning as the overwrite guard, since a demo clobbering someone's
+    /// work would be the worst possible first impression.
+    /// </remarks>
+    private void RunDemo(ref ProjectMetaData? currentProject)
+    {
+        var target = Path.Combine(_workspaceRoot, DemoScript.ProjectName);
+
+        if (Console.IsInputRedirected)
+        {
+            // Nothing written, and the steps printed so a scripted reader still learns what the
+            // tool does. Silently creating a project in a piped run would surprise every script.
+            Output.Warning("`demo` creates a project, so it needs a console to confirm on.");
+            Console.WriteLine("Run it at the prompt, or run these yourself:");
+
+            foreach (var step in DemoScript.Steps)
+                Console.WriteLine($"    {step.Command}");
+
+            Console.WriteLine();
+            return;
+        }
+
+        foreach (var line in DemoScript.Intro(_workspaceRoot))
+            Console.WriteLine(line);
+
+        if (Directory.Exists(target))
+        {
+            Output.Warning($"{target} already exists — delete or rename it, then run demo again.");
+            Console.WriteLine();
+            return;
+        }
+
+        Console.Write("Run it? [y/N]: ");
+
+        var answer = Console.ReadLine()?.Trim() ?? string.Empty;
+
+        if (!answer.StartsWith('y') && !answer.StartsWith('Y'))
+        {
+            Console.WriteLine("Nothing was created.");
+            Console.WriteLine();
+            return;
+        }
+
+        foreach (var step in DemoScript.Steps)
+        {
+            Console.WriteLine();
+            Output.Detail($"# {step.Narration}");
+
+            // Echoed as though typed, so the user can see — and repeat — exactly what ran.
+            Console.WriteLine($"CodeGenerator >> {step.Command}");
+
+            _pipeline.Handle(step.Command, ref currentProject, _configuredRules, _workspaceRoot,
+                r => ProjectManager.CurrentProject = r, ct: Interrupt.Token);
+
+            if (!Interrupt.Requested)
+                continue;
+
+            Output.Warning($"Cancelled. {target} was left as far as the demo got.");
+            Console.WriteLine();
+            return;
+        }
+
+        foreach (var line in DemoScript.Outro(target))
+            Console.WriteLine(line);
+
+        Console.WriteLine();
     }
 
     /// <summary>Everything startup no longer prints, on demand.</summary>

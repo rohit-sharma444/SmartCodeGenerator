@@ -228,13 +228,11 @@ public static class CommandFront
         Func<AiResolution, bool>? confirmAi = null,
         CancellationToken ct = default)
     {
-        if ((input ?? string.Empty).Trim().Equals("demo", StringComparison.OrdinalIgnoreCase))
-        {
-            var (demoCode, _) = CommandHandlingService.BuildDemo();
-            Console.WriteLine(demoCode.Replace("//", string.Empty));
-            onAnalyzed?.Invoke(null);
-            return new RunResult(true, true);
-        }
+        // `demo` used to be intercepted here, printing CommandHandlingService.BuildDemo()'s canned
+        // Customer class with its comment markers stripped — creating nothing, explaining nothing,
+        // and running no workflow while the catalog called it one. It is now DemoCommand in the CLI,
+        // which runs real commands back through this very method, so the demo cannot drift from
+        // what the tool actually does.
 
         if (onAnalyzed is not null)
             onAnalyzed(NlpActionProvider.Analyze(input ?? string.Empty));
