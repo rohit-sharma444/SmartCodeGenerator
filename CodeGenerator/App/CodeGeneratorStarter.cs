@@ -96,6 +96,14 @@ internal class CodeGeneratorStarter
                 return true;
             }
 
+            // Intercepted here too, so a scripted `help build app` gets the same answer as a
+            // typed one rather than falling through to the NLP path.
+            if (HelpCommand.IsHelp(command))
+            {
+                Console.WriteLine(HelpCommand.Render(command));
+                return true;
+            }
+
             // No resolver and no confirm delegate: scripted single-shot invocations
             // stay rule-based only. _lastInput is set anyway so that if RunOnce is ever
             // given a confirm callback, the decision log records the right text rather
@@ -173,6 +181,14 @@ internal class CodeGeneratorStarter
             if (HistoryCommand.IsHistory(input))
             {
                 Console.WriteLine(HistoryView.Format(_commandHistory, 20));
+                continue;
+            }
+
+            // Ahead of the pipeline: LiteralCommandTable keys on the exact word "help", so
+            // `help build app` matches nothing there. See HelpCommand.
+            if (HelpCommand.IsHelp(input))
+            {
+                Console.WriteLine(HelpCommand.Render(input));
                 continue;
             }
 
@@ -280,7 +296,7 @@ internal class CodeGeneratorStarter
         Console.WriteLine("============================================================");
         Console.WriteLine();
 
-        Console.WriteLine("Type 'help' to see the complete command reference.");
+        Console.WriteLine("Type 'help' for the commands, or 'help all' for the full reference.");
         Console.WriteLine("Press TAB for command suggestions.");
         Console.WriteLine("Type 'batch' to enter several commands and review them before they run.");
         Console.WriteLine("Type 'exit' to quit the application.");
