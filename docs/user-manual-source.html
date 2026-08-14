@@ -349,6 +349,24 @@ asked for. The next-step lines are always printed.</p></div>
 <h3>Regenerating over an existing project</h3>
 <p>Running <code>build app</code> again against an existing project reuses it: generated sources are
 overwritten, but the project file and anything you have edited by hand are left in place.</p>
+<p>Because that is not always what you meant — two descriptions can easily arrive at the same name — you are
+asked first:</p>
+<pre>D:\Work\Shop already holds a generated project.
+Regenerating overwrites its generated sources — Models, Data, Views and the
+*.Generated.cs validator halves. Your .Custom.cs rules, the project file and
+anything you added yourself are kept.
+
+  [o]verwrite   [r]ename   [c]ancel   (Enter cancels)</pre>
+<table>
+<tr><th>Answer</th><th>What happens</th></tr>
+<tr><td><code>o</code></td><td>Regenerates in place, as described above.</td></tr>
+<tr><td><code>r</code></td><td>Asks for another name and generates under that instead, leaving the existing project untouched. The name is tidied the same way a name taken from your description is, so <em>cash book</em> becomes <code>CashBook</code>. If the new name is also taken, you are asked again.</td></tr>
+<tr><td><code>c</code> or Enter</td><td>Writes nothing and returns you to the review loop. Your model is not lost — you can rename, adjust it and approve again.</td></tr>
+</table>
+<div class="note"><p>Pressing Enter cancels rather than overwrites, deliberately: the effortless answer is the one
+that cannot lose work. The question is asked only when a project of that name is already there, so it never
+interrupts a first build, and — like the build and the run offer — it is skipped entirely when input is piped,
+where the old overwrite-without-asking behaviour is kept so that scripts are unchanged.</p></div>
 
 <h2>9. Working with projects and classes</h2>
 
@@ -493,6 +511,9 @@ ever <em>suggests</em> — it never runs a command you did not confirm.</p>
 <tr><td>"Build timed out"</td><td>The compile ran past three minutes and was stopped. This says nothing about the generated code — a first build on a cold machine can simply be slow. Run <code>dotnet build</code> on the reported folder yourself.</td></tr>
 <tr><td>"Could not start <code>dotnet</code>"</td><td>The .NET SDK is not on <code>PATH</code> for this session. The application is written and intact; install the SDK, or open a shell that has it, and build the reported folder.</td></tr>
 <tr><td>You answered <code>y</code> to <em>Run it now?</em> and no window appeared</td><td>Look for it behind the terminal — it opens as a separate window and does not steal focus. A Web API and a worker have no window and open a console of their own instead.</td></tr>
+<tr><td>"… already holds a generated project" for an application you have never built</td><td>Two different descriptions reduced to the same project name — <em>a shop</em> and <em>the shop system</em> both give <code>Shop</code>. Answer <code>r</code> and give it a name of your own; the existing project is left alone.</td></tr>
+<tr><td>You meant to overwrite and it did nothing</td><td>Enter cancels at that question, on purpose. Answer <code>o</code> to overwrite. Nothing is lost either way — the model is still in the review loop, so simply approve again.</td></tr>
+<tr><td>Your edits to a generated file are gone after regenerating</td><td>Answering <code>o</code> overwrites generated sources, which includes any changes you made inside them. Only <code>&lt;Class&gt;Validator.Custom.cs</code>, the project file and files you added yourself are preserved. Put your own code in new files, or in the <code>.Custom.cs</code> halves.</td></tr>
 </table>
 
 <h2>15. Command reference</h2>

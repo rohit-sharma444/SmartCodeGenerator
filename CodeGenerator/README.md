@@ -187,6 +187,23 @@ to WPF — no prompt, nothing read, so existing scripts are unaffected.
 target is preselected and input isn't redirected, but the wizard now always
 preselects one, so that fallback is unreachable in ordinary interactive use.)
 
+### Overwriting an existing project
+
+`AppScaffolder` reuses a project whose `.csproj` already exists — generated sources
+are rewritten, the project file and hand-added files are not. That is deliberate and
+tested, but it is not always what the user meant, so `Generate` asks first
+(`OverwritePrompt`), offering overwrite / rename / cancel with Enter cancelling.
+
+The trigger is `GeneratedProjectPath.Exists`, which is the same test the scaffolder
+uses to decide reuse. Both go through that one type on purpose: a guard that derived
+the folder even slightly differently from the writer would not fail loudly, it would
+silently stop firing.
+
+`r` re-asks after renaming, since the new name can collide too. `Generate` returns
+`false` on a decline and the review loop continues rather than exiting, so the
+reviewed model survives. Redirected input never asks and overwrites, exactly as
+before.
+
 ### After it generates
 
 Generation does not stop at a path on disk. The CLI compiles the project it just
