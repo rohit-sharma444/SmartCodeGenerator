@@ -87,6 +87,10 @@ $env:PROJECTPATH = "D:\MyWorkspace"; dotnet run --project CodeGenerator
 PROJECTPATH=/path/to/workspace dotnet run --project CodeGenerator
 ```
 
+`CodeGenerator --version` prints the version alone, and `CodeGenerator --help`
+prints the command overview — neither enters the prompt. `-v`, `-h` and `/?` work
+too.
+
 Output is colour-coded — green for success, red for failure, yellow for warnings,
 grey for secondary detail. Colour is switched off entirely when output is
 redirected, and when `NO_COLOR` is set (to any value, per

@@ -23,6 +23,38 @@ PROJECTPATH=/path/to/workspace dotnet run --project CodeGenerator
 
 At the `CodeGenerator >>` prompt, type `help` for an overview or `exit` to quit.
 
+### Startup flags, and why they come first
+
+`StartupFlags` answers `--version` / `--help` (plus `-v`, `-h`, `-?`, `/?`, `/help`)
+in `Program.cs` **before `CodeGeneratorStarter` is constructed**. That ordering is
+the point: the constructor resolves the workspace, scans for projects and loads
+rules, printing as it goes, so a script reading `CodeGenerator --version` would
+otherwise have to strip that noise. `--version` emits the bare version and nothing
+else.
+
+Only a lone argument counts as a flag — `build app: the --version endpoint` is a
+description, and intercepting it would break a legitimate command. Bare `help` is
+deliberately *not* in the flag set: `HelpCommand` already owns it and handles
+`help <topic>`, which the flag path would flatten to the overview.
+
+### Console encoding
+
+`ConsoleEncoding.UseUtf8()` runs first of all. The tool emits an em dash in 36
+places and `↑↓` in `SelectionPrompt`'s hint; a console left on a legacy code page
+renders those as `?`. The arrows are not in Windows-1252 at all — confirmed the
+hard way, by a cp1252 host failing outright while enumerating them. Best-effort and
+never throws: a host that refuses keeps its previous encoding and everything still
+works.
+
+### One word for a generated class
+
+User-facing text says **class**, not "entity" — the review loop, its action labels,
+the argument prompts, the catalog descriptions and the manual. `CandidateEntity` and
+friends keep their names internally; only prose changed, and the command tokens are
+untouched, so no script breaks. The one surviving "entity" is *entity-level*
+validation, which is a scope paired with *field-level* rather than a name for the
+class.
+
 ### Output roles, errors, and the version
 
 `Output` has exactly four roles — `Success`, `Error`, `Warning`, `Detail` — plus a
