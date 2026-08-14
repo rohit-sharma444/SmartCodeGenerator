@@ -87,8 +87,16 @@ $env:PROJECTPATH = "D:\MyWorkspace"; dotnet run --project CodeGenerator
 PROJECTPATH=/path/to/workspace dotnet run --project CodeGenerator
 ```
 
-Startup prints three lines and the prompt. It reports its own state only when
-something is wrong with it — a missing Wikipedia store, nothing updating it, an
+Output is colour-coded — green for success, red for failure, yellow for warnings,
+grey for secondary detail. Colour is switched off entirely when output is
+redirected, and when `NO_COLOR` is set (to any value, per
+[no-color.org](https://no-color.org)), so piped transcripts are plain text.
+
+An unexpected failure reports what happened, not its exception type. Set
+`CG_VERBOSE=1` to get the type name and stack trace back.
+
+Startup prints three lines and the prompt, the first carrying the version. It
+reports its own state only when something is wrong with it — a missing Wikipedia store, nothing updating it, an
 AI model it was told to load and could not — so a quiet start means everything it
 depends on is in order. `status` prints the full picture: workspace, projects and
 which is selected, loaded rules, AI state, and the store and its updater service.
