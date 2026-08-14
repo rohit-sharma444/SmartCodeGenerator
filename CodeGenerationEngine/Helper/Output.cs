@@ -1,5 +1,20 @@
 ﻿namespace CodeGenerationEngine.Helper;
 
+/// <summary>The four things output can be, plus plain.</summary>
+public enum OutputRole
+{
+    /// <summary>The terminal's own colour.</summary>
+    Plain,
+
+    Success,
+
+    Error,
+
+    Warning,
+
+    Detail
+}
+
 /// <summary>
 /// The CLI's four output roles.
 /// </summary>
@@ -87,6 +102,45 @@ public static class Output
 
     /// <summary>Ordinary output, in whatever colour the terminal already is.</summary>
     public static void Line(string text) => Console.WriteLine(text);
+
+    /// <summary>
+    /// Writes text that may span many lines in a single colour, exactly as given.
+    /// </summary>
+    /// <remarks>
+    /// For colouring a whole command's output by its result: the caller has buffered everything the
+    /// command printed and now knows the verdict. Written with <see cref="Console.Write(string)"/>
+    /// rather than WriteLine because the captured text already carries its own line breaks — adding
+    /// one would insert a blank line the command never printed.
+    /// </remarks>
+    public static void Block(OutputRole role, string text)
+    {
+        var colour = role switch
+        {
+            OutputRole.Success => ConsoleColor.Green,
+            OutputRole.Error => ConsoleColor.Red,
+            OutputRole.Warning => ConsoleColor.Yellow,
+            OutputRole.Detail => ConsoleColor.DarkGray,
+            _ => (ConsoleColor?)null,
+        };
+
+        if (colour is null || !Allowed)
+        {
+            Console.Write(text);
+            return;
+        }
+
+        var previous = Console.ForegroundColor;
+
+        try
+        {
+            Console.ForegroundColor = colour.Value;
+            Console.Write(text);
+        }
+        finally
+        {
+            Console.ForegroundColor = previous;
+        }
+    }
 
     /// <summary>
     /// A message whose colour follows an outcome the caller already knows.
