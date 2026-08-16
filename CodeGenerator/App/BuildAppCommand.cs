@@ -1,4 +1,4 @@
-﻿using AppScaffolding;
+using AppScaffolding;
 using AppScaffolding.Layouts;
 using AppScaffolding.Targets;
 using CodeGenerationEngine.Helper;
@@ -191,6 +191,7 @@ internal sealed class BuildAppCommand
         // and an unmoving line reads as hung. Piped runs print the label once, exactly as before.
         DiscoveryResult result;
 
+        Console.WriteLine("\n");
         using (Spinner.Start("Discovering domain (this may fetch from Wikipedia the first time)"))
         {
             result = pipeline.Discover(description);
@@ -200,8 +201,8 @@ internal sealed class BuildAppCommand
         {
             // Where the rest of the classes came from. Without this a Borrower appearing in a
             // library model looks like a guess, when it was read out of an article by name.
-            if (result.Topic.SupportingTitles.Count > 0)
-                Console.WriteLine("Also read: " + string.Join(", ", result.Topic.SupportingTitles));
+            //if (result.Topic.SupportingTitles.Count > 0)
+            //    Console.WriteLine("Also read: " + string.Join(", ", result.Topic.SupportingTitles));
         }
         else
             Console.WriteLine("No topic recognized online — showing seed classes only. " +
@@ -887,7 +888,7 @@ internal sealed class BuildAppCommand
             || target.ProjectType == DotNetProjectType.ClassLibrary)
             return;
 
-        Console.Write("Run it now? [y/N]: ");
+        Console.Write("Run it now? [y/n]: ");
 
         var answer = Console.ReadLine()?.Trim() ?? string.Empty;
 
@@ -1066,32 +1067,32 @@ internal sealed class BuildAppCommand
 
     private static void PrintModel(CandidateDomainModel model)
     {
-        Console.WriteLine();
+        //Console.WriteLine();
 
-        var lines = new List<string>
-        {
-            $"Candidate model ({model.Entities.Count} classes):",
-        };
+        //var lines = new List<string>
+        //{
+        //    $"Candidate model ({model.Entities.Count} classes):",
+        //};
 
-        foreach (var entity in model.Entities)
-        {
-            var fields = entity.Fields.Count == 0
-                ? string.Empty
-                : " { " + string.Join(", ", entity.Fields.Select(f => $"{f.Name}:{f.Type}")) + " }";
+        //foreach (var entity in model.Entities)
+        //{
+        //    var fields = entity.Fields.Count == 0
+        //        ? string.Empty
+        //        : " { " + string.Join(", ", entity.Fields.Select(f => $"{f.Name}:{f.Type}")) + " }";
 
-            // A class with no mined relationships prints exactly as it always has; one with
-            // any gets its targets appended, so the review loop is where a user first sees
-            // that RelationshipMiner connected two of their classes.
-            var relationships = entity.Relationships.Count == 0
-                ? string.Empty
-                : "  -> " + string.Join(", ", entity.Relationships.Select(r => r.Target));
+        //    // A class with no mined relationships prints exactly as it always has; one with
+        //    // any gets its targets appended, so the review loop is where a user first sees
+        //    // that RelationshipMiner connected two of their classes.
+        //    var relationships = entity.Relationships.Count == 0
+        //        ? string.Empty
+        //        : "  -> " + string.Join(", ", entity.Relationships.Select(r => r.Target));
 
-            lines.Add($"  - {entity.Name} [{entity.Provenance}]{fields}{relationships}");
-        }
+        //    lines.Add($"  - {entity.Name} [{entity.Provenance}]{fields}{relationships}");
+        //}
 
         // Paged: a rich domain can run to dozens of classes with their fields, and the model is
         // reprinted after every action — so scrolling it away is the loop's most repeated annoyance.
-        Pager.Write(lines);
+        //Pager.Write(lines);
 
         // Every entity is scaffolded with a typed repository exposing these CRUD functions, but
         // spelling that out here was judged noise for the review loop, so the describing line

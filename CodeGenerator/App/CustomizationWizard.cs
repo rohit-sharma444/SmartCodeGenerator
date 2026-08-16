@@ -1,4 +1,4 @@
-﻿using AppScaffolding;
+using AppScaffolding;
 using AppScaffolding.Layouts;
 
 namespace CodeGenerator.App;
@@ -33,7 +33,7 @@ internal static class CustomizationWizard
         ITargetScaffolder? target = null)
     {
         writer.WriteLine();
-        writer.Write("Customize appearance and features? [y/N]> ");
+        writer.Write("Customize appearance and features? [y/n]> ");
 
         var gate = reader.ReadLine();
 
@@ -50,7 +50,7 @@ internal static class CustomizationWizard
         if (!IsYes(answer))
             return start;
 
-        writer.WriteLine();
+        //writer.WriteLine();
 
         // First, and only for a target that has a window: layout is the one structural choice in a
         // step that is otherwise decoration, and asking a console build for a window shape would be
