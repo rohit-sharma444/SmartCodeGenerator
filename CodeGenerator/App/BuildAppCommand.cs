@@ -98,7 +98,7 @@ internal sealed class BuildAppCommand
             var start = Merge(CustomizationDefaults.Load(workspaceRoot), inline);
 
             var outcome = BuildAppWizard.Run(
-                request, Console.In, Console.Out, ApplicationTypeMenu.Choose, start);
+                request, Console.In, Console.Out, ApplicationTypeMenu.Choose, start, Menu.Choose);
 
             if (outcome.Decision == WizardDecision.Cancelled)
             {
