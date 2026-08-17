@@ -57,11 +57,16 @@ the prompt:</p>
 file being written finish, so you are never left with a half-created project; the tool says so and
 returns you to the prompt. Some work cannot be interrupted once started — a compile already running,
 for instance — so a <em>second</em> Ctrl-C quits outright.</p>
-<p>Operations that take a while (discovering a domain, compiling a generated app) show a spinner with
-the seconds counted, so a pause never looks like a hang. Output longer than the window —
-<code>help all</code>, or a large candidate model — stops a page at a time; press Enter for more or
-<code>q</code> to stop. Both are skipped when output is redirected, so scripts and saved transcripts
-are unaffected.</p>
+<p><strong>Any command still running after a moment says so</strong>, with the seconds counted, so a
+pause never looks like a hang:</p>
+<pre>CodeGenerator &gt;&gt; create class Customer
+Working | 2s</pre>
+<p>It appears only once a command has taken longer than a moment, so the many that return at once
+show nothing extra, and it leaves the time it took in the transcript when it finishes. The same
+indicator covers the longer jobs that always had one — discovering a domain, compiling a generated
+app. Output longer than the window — <code>help all</code>, or a large candidate model — stops a page
+at a time; press Enter for more or <code>q</code> to stop. Both are skipped when output is redirected,
+so scripts and saved transcripts are unaffected.</p>
 
 <h3>Colour, and turning it off</h3>
 <p>Output is colour-coded, in four colours and no more:</p>
