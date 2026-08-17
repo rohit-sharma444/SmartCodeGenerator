@@ -53,3 +53,8 @@ Thumbs.db
 # Wikipedia dump and the store built from it (tens of GB; never commit)
 /Dump/
 *.db
+
+# Word's lock file for an open document. One got committed beside Corrections.docx:
+# it is 162 bytes of whoever had the document open, and it appears and vanishes as
+# the document is opened and closed.
+~$*

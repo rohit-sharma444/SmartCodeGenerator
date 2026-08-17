@@ -197,14 +197,11 @@ reserved for what cannot be chosen from a list — a description, a file path, a
 <h3>Discovery</h3>
 <p>From a description, the tool works out which classes your domain needs. It reads a local Wikipedia
 knowledge store and may fetch from Wikipedia the first time it meets a topic, which is why the first run on a
-new subject can pause for a moment. It then prints the candidate model — each class, where it came from, its
-fields, and any relationships it found:</p>
-<pre>Candidate model (10 classes):
-  - Shop [Seed] { Name:string, Address:string, City:string }
-  - Book [Wiki] { Title:string, Author:string, Isbn:string, Published:DateTime }
-  - Manuscript [Wiki] { Number:string, IssuedOn:DateTime, BookId:int }  -&gt; Book</pre>
-<p><code>[Seed]</code> means the class came from your own words; <code>[Wiki]</code> means it was read out of an
-article. The arrow shows a relationship the tool inferred.</p>
+new subject can pause for a moment. What it settles on goes straight into the review loop, where you can add to
+it, take from it, and ask about it before anything is written.</p>
+<p>To see what it decided, use <code>why</code> there. On its own it groups every decision by outcome — the
+classes it kept, the ones it suggested and passed over, the ones it rejected — and <code>why &lt;name&gt;</code>
+shows one name's whole trail: the stage, the reason, and the evidence (chapter 6).</p>
 <div class="note"><p><strong>If no topic is recognized</strong> the tool says so and shows only the classes it
 took from your words. A very short description — two or three words — often finds nothing. Add a few more
 words about what the system does, or add the classes by hand in the review loop.</p></div>
@@ -245,9 +242,10 @@ row cap applied, the tool says so out loud rather than silently dropping data.</
 
 <h2>6. Reviewing the model before anything is written</h2>
 
-<p>Nothing is generated until you approve. The review loop prints the model, the application type, and any
-customization you chose, then waits. When a console is available you pick actions from a list; when input is
-piped you type them.</p>
+<p>Nothing is generated until you approve. The review loop shows the application type and any customization
+you chose, then waits. When a console is available you pick actions from a list; when input is piped you type
+them. The classes themselves are not listed — <code>why</code> is what shows them, and what explains how each
+one got there.</p>
 
 <table>
 <tr><th>Action</th><th>What it does</th></tr>
