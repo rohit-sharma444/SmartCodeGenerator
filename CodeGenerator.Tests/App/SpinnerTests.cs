@@ -82,4 +82,101 @@ public class SpinnerTests
         // Byte-for-byte what a piped run saw before spinners existed: the label, once.
         Assert.AreEqual("Discovering domain", captured.ToString().Trim());
     }
+
+    /// <summary>Runs <paramref name="body"/> with the console captured, and returns what it wrote.</summary>
+    private static string Captured(Action body)
+    {
+        var captured = new StringWriter();
+        var previous = Console.Out;
+
+        try
+        {
+            Console.SetOut(captured);
+            body();
+        }
+        finally
+        {
+            Console.SetOut(previous);
+        }
+
+        return captured.ToString();
+    }
+
+    [TestMethod]
+    public void AnOperationThatFinishesQuicklyIsNeverAnnounced()
+    {
+        // The whole point of the delay. Every command is wrapped in one of these, and most finish
+        // in milliseconds — a spinner that flashed on each would be worse than the silence it
+        // replaces.
+        var written = Captured(
+            () => Spinner.StartAfter("Working", animate: true, TimeSpan.FromSeconds(30)).Dispose());
+
+        Assert.IsEmpty(written);
+    }
+
+    [TestMethod]
+    public void PastTheDelayItSaysSoAndLeavesTheTimeItTook()
+    {
+        var written = Captured(() =>
+        {
+            using (Spinner.StartAfter("Working", animate: true, TimeSpan.FromMilliseconds(20)))
+            {
+                Thread.Sleep(500);
+            }
+        });
+
+        // Drawn while it ran, and still readable in the transcript afterwards: "it took a moment"
+        // is worth knowing once the moment has passed.
+        StringAssert.Contains(written, "Working");
+    }
+
+    [TestMethod]
+    public void AConsoleThatCannotAnimateIsLeftCompletelyAlone()
+    {
+        // Not even the label, unlike Start(label, animate: false). A piped transcript is what every
+        // script reads, and a "Working" line on the front of every command in it would be new
+        // output that nothing asked for.
+        var written = Captured(
+            () => Spinner.StartAfter("Working", animate: false, TimeSpan.Zero).Dispose());
+
+        Assert.IsEmpty(written);
+    }
+
+    [TestMethod]
+    public void ItDrawsWhereItStarted_NotWhereConsoleOutHasSinceMoved()
+    {
+        var screen = new StringWriter();
+        var buffer = new StringWriter();
+        var previous = Console.Out;
+
+        try
+        {
+            Console.SetOut(screen);
+
+            using (Spinner.StartAfter("Working", animate: true, TimeSpan.FromMilliseconds(20)))
+            {
+                // Exactly what CommandColour does for the whole of a command, so that its output
+                // can be coloured by the verdict once it is known.
+                Console.SetOut(buffer);
+                Thread.Sleep(500);
+            }
+        }
+        finally
+        {
+            Console.SetOut(previous);
+        }
+
+        // On the screen, where the user is: a spinner that followed Console.Out would animate into
+        // the buffer instead — invisible while it mattered, then flushed out as a row of dead
+        // frames in the middle of the command's output.
+        StringAssert.Contains(screen.ToString(), "Working");
+        Assert.IsEmpty(buffer.ToString());
+    }
+
+    [TestMethod]
+    public void TheThresholdIsLongEnoughNotToFlickerAndShortEnoughToBeSeen()
+    {
+        Assert.IsGreaterThan(TimeSpan.Zero, Spinner.Threshold);
+        Assert.IsLessThan(TimeSpan.FromSeconds(1), Spinner.Threshold);
+    }
 }

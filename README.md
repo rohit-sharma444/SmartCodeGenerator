@@ -88,9 +88,10 @@ PROJECTPATH=/path/to/workspace dotnet run --project CodeGenerator
 ```
 
 **Ctrl-C** asks rather than kills: the first press cancels what is running and leaves
-the workspace consistent, a second press quits outright. Long operations show a
-spinner with elapsed time, and long output (`help all`, a large model) pauses a page
-at a time.
+the workspace consistent, a second press quits outright. Any command still going
+after a moment says so — `Working | 2s` — and leaves the time it took behind when
+it finishes; commands that return at once show nothing extra. Long output
+(`help all`, a large model) pauses a page at a time.
 
 **`demo`** runs a short guided walkthrough — seven real commands that create a small
 project, add a class with two validation rules and generate the validator. It names

@@ -1,4 +1,4 @@
-﻿using CodeGenerationEngine.Core;
+using CodeGenerationEngine.Core;
 using CodeGenerationEngine.Helper;
 using CodeGenerationEngine.Models;
 using CodeIntelligence;
@@ -126,8 +126,16 @@ internal class CodeGeneratorStarter
             // given a confirm callback, the decision log records the right text rather
             // than an empty string.
             _lastInput = command;
-            var outcome = _pipeline.Handle(command, ref currentProject,
-                _configuredRules, _workspaceRoot, r => ProjectManager.CurrentProject = r);
+
+            PipelineOutcome outcome;
+
+            // The single-shot form goes quiet for the same seconds the typed one does, and has the
+            // same nothing to show for it.
+            using (Spinner.StartAfter(Spinner.WorkingLabel, Spinner.Threshold))
+            {
+                outcome = _pipeline.Handle(command, ref currentProject,
+                    _configuredRules, _workspaceRoot, r => ProjectManager.CurrentProject = r);
+            }
 
             // Only offer the "did you mean" help for input we could not recognize.
             // A recognized command that failed (e.g. "No project selected") has

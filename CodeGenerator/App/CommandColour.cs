@@ -85,6 +85,13 @@ internal static class CommandColour
         var previous = Console.Out;
         var verdict = CommandVerdict.Failed;
 
+        // Buffering is exactly why a "still working" indicator belongs here: between pressing Enter
+        // and the command finishing, NOTHING reaches the screen, however long it takes. Started
+        // before the swap so it holds the real console to draw on, and disposed before the block is
+        // written so its line is gone — and gone from the line the output is about to use — by the
+        // time that output lands. It shows nothing at all unless the command outlasts the delay.
+        var working = Spinner.StartAfter(Spinner.WorkingLabel, Spinner.Threshold);
+
         try
         {
             Console.SetOut(buffer);
@@ -92,6 +99,8 @@ internal static class CommandColour
         }
         finally
         {
+            working.Dispose();
+
             Console.SetOut(previous);
 
             var text = buffer.ToString();
