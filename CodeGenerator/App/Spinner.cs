@@ -22,8 +22,17 @@ internal sealed class Spinner : IDisposable
 
     private static readonly TimeSpan Tick = TimeSpan.FromMilliseconds(120);
 
-    /// <summary>How wide a line the eraser has to blank.</summary>
-    private const int EraseWidth = 60;
+    /// <summary>
+    /// How much of the line the eraser has to blank: exactly what was drawn on it.
+    /// </summary>
+    /// <remarks>
+    /// A constant 60 before, which is narrower than the label discovery uses — 65 characters — so
+    /// the tail of the last frame survived the erase and sat on the end of the line the spinner
+    /// left behind: <c>...the first time) 23s3s</c>. Any width shorter than the widest frame leaves
+    /// some of that frame on screen, so it is measured rather than assumed. Written under
+    /// <see cref="_gate"/> with the rest of the drawing state.
+    /// </remarks>
+    private int _drawnWidth;
 
     /// <summary>
     /// How long a command may take before it is worth saying it is still going.
@@ -163,7 +172,15 @@ internal sealed class Spinner : IDisposable
                     if (_stop.IsCancellationRequested)
                         return;
 
-                    _out.Write($"\r{_label} {Frame(tick++)} {_clock.Elapsed.TotalSeconds:0}s");
+                    var frame = $"{_label} {Frame(tick++)} {_clock.Elapsed.TotalSeconds:0}s";
+
+                    _out.Write('\r');
+                    _out.Write(frame);
+                    _out.Flush();
+
+                    // Measured, not assumed: the seconds grow a digit as the work goes on, so the
+                    // widest frame is not necessarily the last one drawn.
+                    _drawnWidth = Math.Max(_drawnWidth, frame.Length);
                     _drew = true;
                 }
 
@@ -208,7 +225,7 @@ internal sealed class Spinner : IDisposable
         try
         {
             _out.Write('\r');
-            _out.Write(new string(' ', EraseWidth));
+            _out.Write(new string(' ', _drawnWidth));
             _out.Write('\r');
             _out.WriteLine($"{_label} {_clock.Elapsed.TotalSeconds:0}s");
         }
