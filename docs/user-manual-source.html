@@ -389,7 +389,7 @@ so you find out that the application builds from the tool rather than from your 
 Building...
 Build succeeded (4.1s)
 
-Run it now? [y/N]: y
+Run it now? [y/n]: y
 Started Shop.exe
 
 Next steps:
@@ -399,14 +399,18 @@ Next steps:
 <p>Answering <code>y</code> starts the application in a window of its own and hands the prompt straight back, so
 the tool stays usable while your application is open. Close the application when you are done with it; the tool
 does not wait for it and will not close it for you.</p>
-<p>A web application has no window, so instead of one appearing you are told where to point your browser:</p>
-<pre>Run it now? [y/N]: y
+<p>A web application has no window of its own, so the tool waits until it is listening and then opens it in your
+browser:</p>
+<pre>Run it now? [y/n]: y
 Started dotnet
-It is a web application — open http://localhost:5156 in your browser once it says it is listening.</pre>
+Waiting for it to start 7s
+Opened http://localhost:5156 in your browser.</pre>
 <p>The port is the one recorded in the project's <code>Properties\launchSettings.json</code> when it was created;
-each project gets its own, so two generated web applications can run side by side. Give it a few seconds before
-you open the address — it is printed for you to click rather than opened for you, because a browser opened before
-the application is listening shows a connection error instead of your app.</p>
+each project gets its own, so two generated web applications can run side by side. The wait is what makes the
+address worth opening: a web application restores and builds before it listens, so for the first several seconds
+there is nothing on the other end of it and a browser opened then shows a connection error instead of your app.
+The wait gives up after a minute and prints the address for you to open yourself; the application's own window
+says what it is still doing.</p>
 <p>A class library is never offered, because there is nothing in one to start — it is told how to be referenced
 instead. If the build fails, the run offer is skipped and the errors are listed with the command to try again:</p>
 <pre>Build FAILED (2.7s) — 1 error

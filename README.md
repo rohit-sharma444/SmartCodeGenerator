@@ -174,7 +174,7 @@ Generated project at D:\Work\Shop
 Building...
 Build succeeded (4.1s)
 
-Run it now? [y/N]: y
+Run it now? [y/n]: y
 Started Shop.exe
 
 Next steps:
@@ -185,7 +185,9 @@ Next steps:
 
 A failing build lists the errors and the command to rerun it; the run offer is
 skipped, and a class library is never offered as something to run. Answering `y`
-starts the app detached, in its own window, so the prompt comes straight back.
+starts the app detached, in its own window, so the prompt comes straight back. A
+web application has no window of its own, so the tool waits until it is
+listening — it restores and builds first — and then opens it in your browser.
 
 If a project of that name is already there, you are asked before anything is
 overwritten:
