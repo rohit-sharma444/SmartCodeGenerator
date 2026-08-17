@@ -21,16 +21,17 @@ internal static class SelectionPrompt
         Console.WriteLine($"{title} (↑↓ then Enter, Esc to cancel):");
         Console.WriteLine();
 
-        var top = Console.CursorTop;
+        // Scroll the room for the list into existence BEFORE noting the row it starts at, and let
+        // the console tell us where that ended up. Painting is done by absolute row, and a write
+        // into the last row of the buffer scrolls every row up by one — which silently invalidates
+        // a row number captured beforehand, so each option overwrites the one above it and only the
+        // last is left. That is not a rare edge: a terminal reports a buffer exactly as tall as its
+        // window, so any prompt far enough down the screen hits it, and a run that asks a dozen
+        // questions in a row is always far enough down.
+        for (var i = 0; i < labels.Count; i++)
+            Console.WriteLine();
 
-        // Make room for the whole list before the first paint: if the cursor is already near the
-        // bottom of the buffer (routine — the header lines above just scrolled it there), painting
-        // without growing the buffer clips every row past the edge. Mirrors
-        // CommandLineEditor.RewriteLine's guard for the same situation.
-        var requiredHeight = top + labels.Count + 1;
-
-        if (requiredHeight >= Console.BufferHeight && OperatingSystem.IsWindows())
-            Console.BufferHeight = requiredHeight + 20;
+        var top = Math.Max(0, Console.CursorTop - labels.Count);
 
         Paint(state, top);
 

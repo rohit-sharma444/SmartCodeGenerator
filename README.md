@@ -1,4 +1,4 @@
-﻿# Smart Code Generator
+# Smart Code Generator
 
 Generate and edit .NET code from plain-English commands. You type something like
 `create class Customer with properties Name string`, a natural-language pipeline
@@ -242,13 +242,26 @@ its values are the types, and its rows are the app's starting content. Run
 
 ```
 CodeGenerator >> build app
-Do you have existing data? [y/N]: y
-Format [sql/excel/txt/json/csv] (c to cancel): csv
+
+Do you have existing data? (up/down then Enter, Esc to cancel):
+
+  > Yes
+    No
+
+Format (up/down then Enter, Esc to cancel):
+
+    sql - not in this build yet
+    excel
+    txt
+    json
+  > csv
+
 CSV file path (c to cancel): D:\data\orders.csv
 ```
 
-Answer `n` (or just press Enter) and you get the description path above,
-unchanged. Answer `y` and [`DataIngestion`](DataIngestion/README.md) reads the
+Both questions are lists; the path is still typed, because a path is not a
+choice. Choose `No` (the selected row) and you get the description path above,
+unchanged. Choose `Yes` and [`DataIngestion`](DataIngestion/README.md) reads the
 file, checks it for normalization problems, and shows what it found:
 
 ```

@@ -178,13 +178,16 @@ a candidate set of classes, shows them to you, and only writes code once you app
       <code>a library that lends books to members</code>. Press Enter to skip it if you are pointing at a data
       file instead.</li>
   <li><strong>Which kind of application?</strong> Chosen from a list — see chapter 8.</li>
-  <li><strong>Do you have existing data?</strong> If yes, you name the format and the file, and the file becomes
-      the source of truth for the model (chapter 5).</li>
-  <li><strong>Customize appearance and features?</strong> Optional. Answering <code>n</code> keeps the defaults;
-      answering <code>y</code> opens nine short prompts — ten for a WPF or Windows Forms application, which is
+  <li><strong>Do you have existing data?</strong> Chosen from a list. Choose <em>Yes</em> and you pick the
+      format from a second list and type the file, and that file becomes the source of truth for the model
+      (chapter 5).</li>
+  <li><strong>Customize appearance and features?</strong> Optional. Choosing <em>No</em> keeps the defaults;
+      choosing <em>Yes</em> opens nine short questions — ten for a WPF or Windows Forms application, which is
       also asked its window layout (chapter 7).</li>
 </ol>
-<p>At any question, <code>c</code> cancels the whole thing and nothing is written.</p>
+<p>Every question with a fixed set of answers is a list: <strong>↑↓</strong> to move, <strong>Enter</strong> to
+take the selected row, <strong>Esc</strong> to cancel the whole thing with nothing written. What you type is
+reserved for what cannot be chosen from a list — a description, a file path, a company name.</p>
 
 <h3>Discovery</h3>
 <p>From a description, the tool works out which classes your domain needs. It reads a local Wikipedia
@@ -274,27 +277,32 @@ and which optional layers it contains.</p>
 build app: a shop that sells books layout sidebar theme dark
 build app: order tracking from csv D:\data\orders.csv company "Codis Ltd" noseed</pre>
 <h4>Through the wizard</h4>
-<p>Answer <code>y</code> to <em>Customize appearance and features?</em> and the tool asks nine short questions —
-ten for a WPF or Windows Forms application, where the window layout is asked first — each showing the value it
-would keep in brackets. Press Enter to accept what is shown, or type <code>none</code> to clear an optional one:</p>
-<pre>  Layout [tabs/sidebar/master-detail/dashboard] [tabs]&gt;
-  Company name [Codis Ltd]&gt;
-  Theme [light/dark] [dark]&gt;
-  Accent colour (#rrggbb) [none]&gt;
-  Icon path (.ico or .png) [none]&gt;
-  Window title [{company} - {app}]&gt;
-  Namespace prefix [CodisLtd]&gt;
-  Validation layer [yes]&gt;
-  Logging [no]&gt;
-  Sample seed data [yes]&gt;</pre>
+<p>Choose <em>Yes</em> at <em>Customize appearance and features?</em> and the tool asks nine short questions —
+ten for a WPF or Windows Forms application, where the window layout is asked first. Every one of them is a list
+you move through with <strong>↑↓</strong> and answer with <strong>Enter</strong>, and every one arrives with the
+value you already have selected, so pressing Enter through the lot changes nothing:</p>
+<pre>Theme (↑↓ then Enter, Esc to cancel):
+
+    None
+    Light
+  &gt; Dark</pre>
+<p>The four questions whose answer is a value rather than a choice — the company, the accent colour, the icon
+and the namespace prefix — offer to keep what is there, clear it, or take a new one you type:</p>
+<pre>Accent colour (↑↓ then Enter, Esc to cancel):
+
+  &gt; Keep #0B6E4F
+    None
+    Type a colour</pre>
+<p>Choosing the last row asks for the value at a prompt. A colour that is not <code>#rrggbb</code>, or a
+namespace that could not be one, keeps what was selected rather than trapping you in the question.</p>
 <p>The layout question is asked only for the two windowed application types, because it is the one structural
 choice in a step that is otherwise decoration — a console or Web API build has no window to shape. It is asked
 first for the same reason.</p>
-<p>Two of them offer you something derived from an earlier answer: naming a company adopts the
-<code>{company} - {app}</code> title, and a company you have just typed is offered as the namespace prefix
-with the spaces removed. Both are only suggestions — the bracket shows exactly what Enter will accept.</p>
-<p>Answering <code>n</code> at the gate is not the same as cancelling: the build goes ahead with whatever the
-command line already asked for. Typing <code>c</code> cancels.</p>
+<p>Two questions offer you something derived from an earlier answer: naming a company selects the
+<code>{company} - {app}</code> title, and a company you have just typed is offered as the namespace prefix with
+the spaces removed. Both are only suggestions — the selected row is exactly what Enter will take.</p>
+<p>Choosing <em>No</em> at the gate is not the same as cancelling: the build goes ahead with whatever the
+command line already asked for. <strong>Esc</strong> at any question cancels.</p>
 <h4>From last time</h4>
 <p>Your answers are remembered in <code>.codegen/app-profile.json</code> and offered back as the starting point
 on the next run. Options typed on the command line always win over remembered ones. The remembered profile is

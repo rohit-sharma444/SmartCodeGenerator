@@ -1,4 +1,4 @@
-﻿# CodeGenerator
+# CodeGenerator
 
 A natural-language command-line tool for scaffolding and editing .NET code. You
 type plain commands (e.g. `create class Customer with properties Name string`)
@@ -419,8 +419,10 @@ Format [sql/excel/txt/json/csv] (c to cancel): csv
 CSV file path (c to cancel): D:\data\orders.csv
 ```
 
-(The application type menu shown here is the numbered fallback used when input or
-output is redirected; interactively it is the same list navigated with arrow keys.)
+(The application type menu and the two questions under it are shown here in their
+numbered/typed fallback form, which is what a redirected run gets; interactively
+each is a list navigated with arrow keys, arriving with your current answer
+selected. The file path is typed either way.)
 
 | Answer | Effect |
 | --- | --- |
