@@ -35,9 +35,32 @@ public static class DataSourceInterview
 {
     private static readonly InterviewOutcome Cancelled = new(InterviewDecision.Cancelled, null);
 
-    public static InterviewOutcome Resolve(TextReader reader, TextWriter writer)
+    /// <summary>The question that decides whether a format is asked for at all.</summary>
+    private const string GateTitle = "Do you have existing data?";
+
+    /// <summary>The format the menu pre-selects.</summary>
+    /// <remarks>
+    /// Not the first row: <see cref="DataSourceReaders.Keys"/> is ordered as the requirements
+    /// listed the formats and heads with <c>sql</c>, the one kind this build cannot read — so
+    /// pre-selecting row zero would make Enter the one answer that cannot work.
+    /// </remarks>
+    private const string DefaultFormat = "csv";
+
+    /// <param name="choose">
+    /// Asks a question with a fixed set of answers — the CLI's drop-down, passed in because this
+    /// library cannot reference it. Null falls back to the typed prompts, which is what a console
+    /// that cannot paint a list gets.
+    /// </param>
+    public static InterviewOutcome Resolve(
+        TextReader reader, TextWriter writer,
+        Func<string, IReadOnlyList<string>, int, int?>? choose = null)
+        => choose is null
+            ? ResolveTyped(reader, writer)
+            : ResolveChosen(reader, writer, choose);
+
+    private static InterviewOutcome ResolveTyped(TextReader reader, TextWriter writer)
     {
-        writer.Write("Do you have existing data? [y/N]: ");
+        writer.Write($"{GateTitle} [y/N]: ");
         var answer = reader.ReadLine();
 
         // EOF is the absence of an answer, not the default answer. Conflating the two would run a
@@ -53,6 +76,61 @@ public static class DataSourceInterview
 
         return ResolveFormat(reader, writer);
     }
+
+    /// <summary>The same two questions as a pair of menus.</summary>
+    /// <remarks>
+    /// Only the asking differs: an unreadable format still explains itself and asks again, and the
+    /// path is still typed, because a path is not a choice.
+    /// </remarks>
+    private static InterviewOutcome ResolveChosen(
+        TextReader reader, TextWriter writer,
+        Func<string, IReadOnlyList<string>, int, int?> choose)
+    {
+        // No is the pre-selected row, which is the answer the typed prompt's blank line gave.
+        var gate = choose(GateTitle, ["Yes", "No"], 1);
+
+        if (gate is null)
+            return Cancelled;
+
+        if (gate != 0)
+            return new InterviewOutcome(InterviewDecision.NoData, null);
+
+        var keys = DataSourceReaders.Keys;
+
+        var labels = keys.Select(FormatLabel).ToList();
+        var fallback = Math.Max(0, keys.ToList().IndexOf(DefaultFormat));
+
+        while (true)
+        {
+            var row = choose("Format", labels, fallback);
+
+            if (row is null)
+                return Cancelled;
+
+            // Every row comes from the same catalogue the parser reads, so a miss is a wiring bug.
+            if (!DataSourceReaders.TryParseKind(keys[row.Value], out var kind))
+                return Cancelled;
+
+            // On the menu, but with no reader in this build. Say why, say what works, ask again.
+            if (!DataSourceReaders.TryCreate(kind, out _))
+            {
+                writer.WriteLine("  " + DataSourceReaders.NotSupportedMessage(kind));
+                continue;
+            }
+
+            return ResolveLocation(kind, reader, writer);
+        }
+    }
+
+    /// <summary>
+    /// A format's row. The one kind this build cannot read says so before it is chosen rather than
+    /// only after — a menu that offers something and then refuses it wastes the answer.
+    /// </summary>
+    private static string FormatLabel(string key)
+        => DataSourceReaders.TryParseKind(key, out var kind)
+           && !DataSourceReaders.TryCreate(kind, out _)
+            ? $"{key} — not in this build yet"
+            : key;
 
     private static InterviewOutcome ResolveFormat(TextReader reader, TextWriter writer)
     {

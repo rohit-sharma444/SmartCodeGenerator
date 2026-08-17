@@ -50,12 +50,19 @@ internal static class BuildAppWizard
     /// What the command line and the remembered profile already settled, which the customization
     /// step pre-fills its prompts from. Omitted means nothing was customized.
     /// </param>
+    /// <param name="choose">
+    /// Asks a question with a fixed set of answers — <see cref="Menu.Choose"/> in every real run.
+    /// Passed on to the two steps that ask them rather than called here, for the reason
+    /// <paramref name="chooseApplicationType"/> is a delegate: a list needs raw key input, which a
+    /// test cannot supply. Null leaves both steps on their typed prompts.
+    /// </param>
     public static WizardOutcome Run(
         InlineBuildRequest request,
         TextReader reader,
         TextWriter writer,
         Func<int?> chooseApplicationType,
-        AppCustomization? start = null)
+        AppCustomization? start = null,
+        Func<string, IReadOnlyList<string>, int, int?>? choose = null)
     {
         var description = request.Description;
 
@@ -84,7 +91,7 @@ internal static class BuildAppWizard
 
         if (source is null)
         {
-            var outcome = DataSourceInterview.Resolve(reader, writer);
+            var outcome = DataSourceInterview.Resolve(reader, writer, choose);
 
             if (outcome.Decision == InterviewDecision.Cancelled)
                 return Cancelled;
@@ -96,7 +103,7 @@ internal static class BuildAppWizard
         // Last, and opt-in: it is the only step that is pure decoration, so a user who wants the
         // app they came for answers one more character and is done.
         var customization = CustomizationWizard.Run(
-            reader, writer, start ?? AppCustomization.Default, target);
+            reader, writer, start ?? AppCustomization.Default, target, choose);
 
         if (customization is null)
             return Cancelled;

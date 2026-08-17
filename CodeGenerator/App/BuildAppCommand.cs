@@ -98,7 +98,7 @@ internal sealed class BuildAppCommand
             var start = Merge(CustomizationDefaults.Load(workspaceRoot), inline);
 
             var outcome = BuildAppWizard.Run(
-                request, Console.In, Console.Out, ApplicationTypeMenu.Choose, start);
+                request, Console.In, Console.Out, ApplicationTypeMenu.Choose, start, Menu.Choose);
 
             if (outcome.Decision == WizardDecision.Cancelled)
             {
@@ -904,20 +904,56 @@ internal sealed class BuildAppCommand
             ? "Could not start the app — run it yourself with the command below."
             : $"Started {launched}");
 
-        // A web application opens no window of its own, so "Started dotnet" would be all the user
-        // got. Tell them where to look instead. The wait is not padding: the browser would show a
-        // connection error if it were opened before Kestrel is listening, so the address is printed
-        // for the user to click rather than opened for them.
         if (launched is not null && isWebApp)
-        {
-            var url = LaunchSettingsReader.HttpUrl(scaffold.ProjectPath);
-
-            Console.WriteLine(url is null
-                ? "It is a web application — open the address it prints in its own window."
-                : $"It is a web application — open {url} in your browser once it says it is listening.");
-        }
+            OpenWhenListening(scaffold.ProjectPath);
 
         Console.WriteLine("");
+    }
+
+    /// <summary>
+    /// Waits for the web application that was just started, then puts it on screen.
+    /// </summary>
+    /// <remarks>
+    /// Every other target shows itself — a window, or a console. A web application shows nothing
+    /// and waits to be visited, so without this the whole of "Run it now? y" is the word "Started"
+    /// and an address, and it reads as an app that did not run. It was reported exactly that way.
+    /// <para>
+    /// The wait is the part that matters. <c>dotnet run</c> restores and builds before Kestrel
+    /// binds anything, so for the first several seconds the address is dead and opening it produces
+    /// a browser that cannot connect — which looks worse than printing nothing. Opening it only
+    /// once something answers is what makes the offer honest.
+    /// </para>
+    /// </remarks>
+    private static void OpenWhenListening(string projectPath)
+    {
+        var url = LaunchSettingsReader.HttpUrl(projectPath);
+
+        if (url is null)
+        {
+            Console.WriteLine("It is a web application — open the address it prints in its own window.");
+            return;
+        }
+
+        bool listening;
+
+        // Short enough to stay inside the spinner's eraser; the address is printed on its own line
+        // either way.
+        using (Spinner.Start("Waiting for it to start"))
+        {
+            listening = WebAppStart.Wait(url);
+        }
+
+        if (!listening)
+        {
+            Output.Warning(
+                $"It has not answered on {url} yet — open that once its own window says it is listening.");
+            return;
+        }
+
+        if (WebAppStart.OpenBrowser(url))
+            Output.Success($"Opened {url} in your browser.");
+        else
+            Console.WriteLine($"It is listening at {url} — open that in your browser.");
     }
 
     /// <summary>

@@ -23,17 +23,29 @@ internal static class CustomizationWizard
     /// <summary>How a prompt shows, and clears, a value it has none of.</summary>
     private const string NoneLabel = "none";
 
+    /// <summary>The question that decides whether the rest are asked at all.</summary>
+    internal const string GateTitle = "Customize appearance and features?";
+
     /// <summary>
     /// The customization to build with, or null if the user cancelled. Returns
     /// <paramref name="start"/> unchanged when they decline the gate — the gate decides whether to
     /// ASK, so declining keeps whatever the command line already said.
     /// </summary>
+    /// <param name="choose">
+    /// Asks a question with a fixed set of answers, which is how every real run asks these — see
+    /// <see cref="CustomizationMenus"/>. Null falls back to the typed prompts below, which is what
+    /// a console that cannot paint a list gets, and what the tests drive.
+    /// </param>
     public static AppCustomization? Run(
         TextReader reader, TextWriter writer, AppCustomization start,
-        ITargetScaffolder? target = null)
+        ITargetScaffolder? target = null,
+        Func<string, IReadOnlyList<string>, int, int?>? choose = null)
     {
+        if (choose is not null)
+            return CustomizationMenus.Run(reader, writer, start, target, choose);
+
         writer.WriteLine();
-        writer.Write("Customize appearance and features? [y/n]> ");
+        writer.Write($"{GateTitle} [y/n]> ");
 
         var gate = reader.ReadLine();
 
@@ -208,7 +220,7 @@ internal static class CustomizationWizard
         => Enum.TryParse<AppTheme>(value, ignoreCase: true, out var parsed) ? parsed : current;
 
     /// <summary>The typed accent, or the current one when it is unusable. "none" clears it.</summary>
-    private static string? ParseAccent(string value, string? current)
+    internal static string? ParseAccent(string value, string? current)
     {
         if (string.Equals(value, NoneLabel, StringComparison.OrdinalIgnoreCase))
             return null;
@@ -216,7 +228,7 @@ internal static class CustomizationWizard
         return ThemePalette.IsValidHexColour(value) ? value : current;
     }
 
-    private static string? ParseOptional(string value, string? current)
+    internal static string? ParseOptional(string value, string? current)
         => string.Equals(value, NoneLabel, StringComparison.OrdinalIgnoreCase) ? null
            : value.Length == 0 ? current
            : value;
@@ -227,7 +239,7 @@ internal static class CustomizationWizard
     /// does — but unlike an accent, an invalid namespace could not be emitted at all, so this is
     /// the one prompt where keeping the previous value also protects the build.
     /// </remarks>
-    private static string ParsePrefix(string value, string suggested)
+    internal static string ParsePrefix(string value, string suggested)
     {
         if (string.Equals(value, NoneLabel, StringComparison.OrdinalIgnoreCase))
             return string.Empty;

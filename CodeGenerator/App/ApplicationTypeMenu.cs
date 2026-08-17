@@ -74,44 +74,11 @@ internal static class ApplicationTypeMenu
     /// </summary>
     /// <returns>The chosen index, or null to cancel.</returns>
     public static int? ChooseNumbered(TextReader reader, TextWriter writer)
-    {
-        writer.WriteLine();
-        writer.WriteLine(Title + ":");
-
-        for (var i = 0; i < Choices.Length; i++)
-            writer.WriteLine($"  {i + 1}) {Choices[i].Label}");
-
-        while (true)
-        {
-            writer.Write($"Choose [1-{Choices.Length}] (default 1, c to cancel): ");
-
-            var line = reader.ReadLine();
-
-            // EOF is the absence of an answer, not the default answer.
-            if (line is null)
-                return null;
-
-            var text = line.Trim();
-
-            if (text.Length == 0)
-                return 0;
-
-            if (string.Equals(text, "c", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(text, "cancel", StringComparison.OrdinalIgnoreCase))
-                return null;
-
-            if (int.TryParse(text, out var number) && number >= 1 && number <= Choices.Length)
-                return number - 1;
-
-            writer.WriteLine($"  Choose a number between 1 and {Choices.Length}, or c to cancel.");
-        }
-    }
+        => Menu.ChooseNumbered(reader, writer, Title, Labels, 0);
 
     /// <summary>
     /// Asks for an application type the best way this console allows: an arrow-key list normally,
-    /// the numbered prompt when input or output is redirected. <c>Console.SetCursorPosition</c>
-    /// throws when output is redirected; <c>Console.ReadKey</c> throws when input is redirected.
-    /// Matches the guard in <see cref="CommandLineEditor.ReadCommand"/>. Defaults to the first row.
+    /// the numbered prompt when input or output is redirected. Defaults to the first row.
     /// </summary>
     public static int? Choose()
         => Choose(0);
@@ -119,11 +86,8 @@ internal static class ApplicationTypeMenu
     /// <summary>
     /// Same as the parameterless <see cref="Choose()"/>, but with <paramref name="defaultIndex"/>
     /// pre-selected — how a target the wizard already settled stays chosen unless the user moves
-    /// off it. The numbered fallback has no notion of a default row beyond "1", so a redirected
-    /// console still goes through <see cref="ChooseNumbered"/> unchanged.
+    /// off it.
     /// </summary>
     public static int? Choose(int defaultIndex)
-        => Console.IsInputRedirected || Console.IsOutputRedirected
-            ? ChooseNumbered(Console.In, Console.Out)
-            : SelectionPrompt.Choose(Title, Labels, defaultIndex);
+        => Menu.Choose(Title, Labels, defaultIndex);
 }
