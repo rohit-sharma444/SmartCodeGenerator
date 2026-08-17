@@ -173,6 +173,85 @@ public class SpinnerTests
         Assert.IsEmpty(buffer.ToString());
     }
 
+    /// <summary>
+    /// What the captured writes would actually look like on a console, one string per line.
+    /// </summary>
+    /// <remarks>
+    /// A spinner's output only means anything once the carriage returns are applied: on screen it
+    /// is one line rewritten over and over, while in a buffer it is every frame end to end. Without
+    /// replaying that, a test cannot see what the user is left looking at — which is where the
+    /// residue this fixes was hiding.
+    /// </remarks>
+    private static List<string> Screen(string captured)
+    {
+        var lines = new List<string>();
+        var line = new System.Text.StringBuilder();
+        var column = 0;
+
+        foreach (var ch in captured)
+        {
+            switch (ch)
+            {
+                case '\r':
+                    column = 0;
+                    break;
+
+                case '\n':
+                    lines.Add(line.ToString());
+                    line.Clear();
+                    column = 0;
+                    break;
+
+                default:
+                    while (line.Length < column)
+                        line.Append(' ');
+
+                    if (column < line.Length)
+                        line[column] = ch;
+                    else
+                        line.Append(ch);
+
+                    column++;
+                    break;
+            }
+        }
+
+        if (line.Length > 0)
+            lines.Add(line.ToString());
+
+        return lines;
+    }
+
+    [TestMethod]
+    public void TheLineItLeavesBehindCarriesNoRemainsOfTheAnimation()
+    {
+        // The real label from the discovery spinner, and the reason this was ever wrong: it is 65
+        // characters, the eraser blanked a fixed 60, and the tail of the last frame — "3s" of
+        // "23s" — survived to sit on the end of the line as "...first time) 23s3s".
+        const string label = "Discovering domain (this may fetch from Wikipedia the first time)";
+
+        var written = Captured(() =>
+        {
+            using (Spinner.StartAfter(label, animate: true, TimeSpan.FromMilliseconds(20)))
+            {
+                Thread.Sleep(400);
+            }
+        });
+
+        var screen = Screen(written);
+
+        Assert.IsNotEmpty(screen);
+
+        // TrimEnd, and only TrimEnd: the eraser blanks the widest frame and the line it reprints is
+        // a couple of characters shorter, so the cells past its end hold spaces. Blank cells are
+        // indistinguishable from nothing on a console — a leftover "3s" is not.
+        StringAssert.Matches(
+            screen[^1].TrimEnd(),
+            new System.Text.RegularExpressions.Regex(
+                "^" + System.Text.RegularExpressions.Regex.Escape(label) + @" \d+s$"),
+            $"left on screen: '{screen[^1]}'");
+    }
+
     [TestMethod]
     public void TheThresholdIsLongEnoughNotToFlickerAndShortEnoughToBeSeen()
     {
