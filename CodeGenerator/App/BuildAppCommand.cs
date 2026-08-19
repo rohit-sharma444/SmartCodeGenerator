@@ -1,4 +1,4 @@
-using AppScaffolding;
+﻿using AppScaffolding;
 using AppScaffolding.Layouts;
 using AppScaffolding.Targets;
 using CodeGenerationEngine.Helper;
@@ -87,9 +87,50 @@ internal sealed class BuildAppCommand
         var customization = inline;
         ITargetScaffolder? target = null;
 
-        // Redirected stdin never prompts: existing piped scripts and E2E tests feed the review
-        // loop directly, and a question at the front would break every one of them. They opt in
-        // with the inline `from <format> <location>` form instead, and pick a target at `approve`.
+        // The browser takes the whole interview when there is a person at the console. Redirected
+        // stdin never reaches here: existing piped scripts and E2E tests feed the review loop
+        // directly, and a page in front of them would break every one of them. They opt in with
+        // the inline `from <format> <location>` form instead, and pick a target at `approve`.
+        if (UseWebWorkflow(
+                Console.IsInputRedirected,
+                Environment.GetEnvironmentVariable(NoWebVariable) == "1"))
+        {
+            var webStart = Merge(CustomizationDefaults.Load(workspaceRoot), inline);
+
+            var session = new Web.Workflow.BuildSession(
+                description, workspaceRoot, webStart, source);
+
+            if (Web.BuildAppWebHost.TryStart(session, out var host))
+            {
+                using (host)
+                {
+                    Console.WriteLine($"  Opening the build workflow at {host.Url}");
+
+                    if (!WebAppStart.OpenBrowser(host.Url))
+                        Console.WriteLine("  No default browser — open that address yourself.");
+
+                    Console.WriteLine("  Ctrl-C here cancels.");
+                    Console.WriteLine("");
+
+                    var webOutcome = Web.BuildAppWebHost.Run(session, Interrupt.Token);
+
+                    foreach (var line in webOutcome.Lines)
+                        Console.WriteLine(line);
+
+                    Console.WriteLine("");
+                }
+
+                // The workflow generated, cancelled or was abandoned in the browser. Either way
+                // this command is over — nothing below runs.
+                return;
+            }
+
+            // Could not bind loopback. Say so and fall through to the console wizard rather than
+            // leaving the user with no way to run the command at all.
+            Output.Warning(
+                "Could not start the build workflow page — using the console wizard instead.");
+        }
+
         if (!Console.IsInputRedirected)
         {
             // The remembered profile is read only here: a redirected-stdin run must not have its
@@ -570,6 +611,29 @@ internal sealed class BuildAppCommand
                 + $"closest example: \"{suggestion.ClosestText}\")"
         ];
     }
+
+    /// <summary>The environment variable that keeps the console wizard.</summary>
+    /// <remarks>
+    /// For a headless or SSH session, where there is no browser to open and no display to open
+    /// it on. Not a second product path — a way out of one.
+    /// </remarks>
+    internal const string NoWebVariable = "CG_NO_WEB";
+
+    /// <summary>
+    /// Whether this run should open the workflow page.
+    /// </summary>
+    /// <remarks>
+    /// Pure, and taking its two inputs as arguments, for the reason <see cref="UseTypedInput"/>
+    /// is separate: the branch it governs reads the console and cannot be driven from a test, so
+    /// the decision is lifted out of it.
+    /// <para>
+    /// Redirected stdin is the hard boundary. A piped run keeps <c>InlineDataSource</c> parsing
+    /// and the typed review loop, byte for byte — that is what every scripted E2E test drives,
+    /// and none of them should have to change.
+    /// </para>
+    /// </remarks>
+    internal static bool UseWebWorkflow(bool inputRedirected, bool noWeb)
+        => !inputRedirected && !noWeb;
 
     /// <summary>
     /// Whether the review loop must fall back to typed lines. <see cref="SelectionPrompt"/> needs
