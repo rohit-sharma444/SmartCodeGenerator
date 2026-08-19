@@ -19,15 +19,23 @@ body {
 
 .workflow { max-width: 1100px; margin: 0 auto; }
 
-/* A grid, so the seven nodes wrap onto a second row on a narrow window without the
-   connectors needing to be re-measured. */
+/* One row of seven while there is room for one, so the pipeline reads as a pipeline and the
+   connectors join nodes that are actually side by side. */
 .stage-diagram {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    grid-template-columns: repeat(7, minmax(0, 1fr));
     gap: 0.75rem 1.75rem;
     margin: 0 0 2rem;
     padding: 0;
     list-style: none;
+}
+
+/* Too narrow for seven: wrap, and drop the connectors with the row. A connector drawn to the
+   left of the first node of a wrapped row points at nothing — there is no selector for
+   "first in row", so the honest answer is to draw none. */
+@media (max-width: 900px) {
+    .stage-diagram { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+    .stage-node + .stage-node::before { display: none; }
 }
 
 .stage-node {
@@ -54,6 +62,32 @@ body {
     cursor: pointer;
     display: block;
     width: 100%;
+}
+
+/* One answer per line. Inline labels run seven application types into a single paragraph, which
+   reads as prose rather than as a choice. */
+.choice {
+    display: block;
+    margin: 0.3rem 0;
+}
+
+.choices { margin: 0.75rem 0 1.25rem; }
+
+.actions { display: flex; gap: 0.5rem; margin-top: 1.25rem; }
+
+.hint { color: var(--pending); font-size: 0.9em; }
+
+.fields label,
+.file label { display: block; margin: 0.4rem 0; }
+
+.build-log {
+    max-height: 20rem;
+    overflow: auto;
+    padding: 0.75rem;
+    border: 1px solid var(--line);
+    background: #fff;
+    font-family: ui-monospace, Consolas, monospace;
+    font-size: 0.82em;
 }
 
 .stage-node.pending { color: var(--pending); }
