@@ -23,7 +23,7 @@ body {
    connectors join nodes that are actually side by side. */
 .stage-diagram {
     display: grid;
-    grid-template-columns: repeat(7, minmax(0, 1fr));
+    grid-template-columns: repeat(8, minmax(0, 1fr));
     gap: 0.75rem 1.75rem;
     margin: 0 0 2rem;
     padding: 0;
@@ -103,6 +103,18 @@ body {
     border: 1px solid var(--line);
     border-radius: 6px;
     background: #fff;
+}
+
+.next-steps {
+    margin: 1rem 0;
+    padding-left: 1.1rem;
+    font-size: 0.9em;
+}
+
+.notice {
+    padding: 0.6rem 0.9rem;
+    border-left: 4px solid var(--active);
+    background: #f2f6fd;
 }
 
 .failure {

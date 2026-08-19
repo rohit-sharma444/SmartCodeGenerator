@@ -32,7 +32,7 @@ public class StageDiagramTests
         var rendered = Render(context, New());
 
         Assert.HasCount(1, rendered.FindAll(".stage-node.active"));
-        Assert.HasCount(6, rendered.FindAll(".stage-node.pending"));
+        Assert.HasCount(7, rendered.FindAll(".stage-node.pending"));
     }
 
     [TestMethod]

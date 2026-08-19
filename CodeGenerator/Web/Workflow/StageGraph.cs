@@ -21,7 +21,8 @@ public static class StageGraph
         new(BuildStage.Look,     "Look",     "Branding, theme and features"),
         new(BuildStage.Discover, "Discover", "Work out the classes"),
         new(BuildStage.Review,   "Review",   "Change the model before it is written"),
-        new(BuildStage.Generate, "Generate", "Write it, build it, run it"),
+        new(BuildStage.Generate, "Generate", "Write it and build it"),
+        new(BuildStage.Run,      "Run",      "Start it and watch it come up"),
     ];
 
     public static BuildStage? Next(BuildStage stage)
@@ -56,13 +57,16 @@ public static class StageGraph
     public static IReadOnlyList<BuildStage> Invalidates(BuildStage changed)
         => changed switch
         {
-            BuildStage.Describe => [BuildStage.Discover, BuildStage.Review, BuildStage.Generate],
-            BuildStage.Data     => [BuildStage.Discover, BuildStage.Review, BuildStage.Generate],
-            BuildStage.Discover => [BuildStage.Review, BuildStage.Generate],
+            BuildStage.Describe =>
+                [BuildStage.Discover, BuildStage.Review, BuildStage.Generate, BuildStage.Run],
+            BuildStage.Data     =>
+                [BuildStage.Discover, BuildStage.Review, BuildStage.Generate, BuildStage.Run],
+            BuildStage.Discover => [BuildStage.Review, BuildStage.Generate, BuildStage.Run],
             BuildStage.AppType  => [],
             BuildStage.Look     => [],
             BuildStage.Review   => [],
             BuildStage.Generate => [],
+            BuildStage.Run      => [],
             _ => throw new InvalidOperationException($"No invalidation rule for {changed}."),
         };
 

@@ -1,7 +1,7 @@
 namespace CodeGenerator.Web.Workflow;
 
 /// <summary>
-/// The seven nodes of the `build app` workflow, in the order the diagram draws them.
+/// The eight nodes of the `build app` workflow, in the order the diagram draws them.
 /// </summary>
 /// <remarks>
 /// The order matters twice: <see cref="StageGraph.Next"/> and
@@ -18,5 +18,12 @@ public enum BuildStage
     Look,
     Discover,
     Review,
-    Generate
+    Generate,
+
+    /// <summary>
+    /// Starting what was written. Its own node rather than a button on the generate panel: a
+    /// project that compiles is not yet a thing the user has seen work, and the diagram should
+    /// say that the run is still ahead of them.
+    /// </summary>
+    Run
 }

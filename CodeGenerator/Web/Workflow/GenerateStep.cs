@@ -61,6 +61,18 @@ internal static class GenerateStep
         return (result, clock.Elapsed);
     }
 
+    /// <summary>
+    /// Whether the run stage has anything to start.
+    /// </summary>
+    /// <remarks>
+    /// Three ways to have nothing: nothing was generated, what was generated did not compile, or
+    /// it is a class library — <c>dotnet run</c> on one fails with MSB4057, which is why
+    /// <see cref="NextSteps"/> offers a project reference instead.
+    /// </remarks>
+    public static bool CanRun(GeneratedApp? app, ITargetScaffolder target)
+        => app is { BuildSucceeded: true, Scaffold.Success: true }
+           && target.ProjectType != DotNetProjectType.ClassLibrary;
+
     /// <summary>What the console prints once the browser is done.</summary>
     public static BuildOutcome OutcomeFor(ScaffoldResult scaffold, ITargetScaffolder target)
     {

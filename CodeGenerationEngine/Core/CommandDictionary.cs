@@ -536,7 +536,8 @@ public static class CommandDictionary
             Description = "Describes a system in plain English. Interactively this opens a "
                         + "workflow page in the browser — the console prints the address and "
                         + "waits — where the rest of the build happens: application type, data, "
-                        + "look, domain discovery, model review, then generate, build and run. "
+                        + "look, domain discovery, model review, generate-and-build, then running "
+                        + "the finished application. "
                         + "Piped runs are unchanged, and CG_NO_WEB=1 keeps the console wizard.",
             Example = "build app: a library that lends books to members"
         },
@@ -545,7 +546,8 @@ public static class CommandDictionary
             Category = "Build App",
             Command = "build app",
             Description = "Starts the same flow with nothing filled in. Interactively it opens a "
-                        + "workflow page in the browser drawn as seven connected stages: the one "
+                        + "workflow page in the browser drawn as eight connected stages, ending "
+                        + "in one that starts the application it just built: the one "
                         + "being answered is open, a finished stage can be clicked to go back, and "
                         + "changing the description or the data source discards the model that was "
                         + "discovered from the old one. Piped runs keep the console wizard, as "

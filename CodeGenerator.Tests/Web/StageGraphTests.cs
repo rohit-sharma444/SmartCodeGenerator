@@ -2,16 +2,20 @@ using CodeGenerator.Web.Workflow;
 
 namespace CodeGenerator.Tests.Web;
 
-/// <summary>The workflow's shape: seven nodes in order, and what changing one costs.</summary>
+/// <summary>The workflow's shape: eight nodes in order, and what changing one costs.</summary>
 [TestClass]
 public class StageGraphTests
 {
     [TestMethod]
-    public void Has_seven_nodes_in_workflow_order()
+    public void Has_eight_nodes_in_workflow_order()
     {
-        Assert.HasCount(7, StageGraph.Nodes);
+        Assert.HasCount(8, StageGraph.Nodes);
         Assert.AreEqual(BuildStage.Describe, StageGraph.Nodes[0].Stage);
         Assert.AreEqual(BuildStage.Generate, StageGraph.Nodes[6].Stage);
+
+        // Running it is its own stage, not a button on the generate panel: it is the step that
+        // tells the user whether what was written actually works.
+        Assert.AreEqual(BuildStage.Run, StageGraph.Nodes[7].Stage);
     }
 
     [TestMethod]
@@ -29,7 +33,8 @@ public class StageGraphTests
     {
         Assert.AreEqual(BuildStage.AppType, StageGraph.Next(BuildStage.Describe));
         Assert.AreEqual(BuildStage.Review, StageGraph.Next(BuildStage.Discover));
-        Assert.IsNull(StageGraph.Next(BuildStage.Generate));
+        Assert.AreEqual(BuildStage.Run, StageGraph.Next(BuildStage.Generate));
+        Assert.IsNull(StageGraph.Next(BuildStage.Run));
     }
 
     [TestMethod]
@@ -47,24 +52,28 @@ public class StageGraphTests
     {
         var invalidated = StageGraph.Invalidates(BuildStage.Describe);
 
-        Assert.HasCount(3, invalidated);
+        Assert.HasCount(4, invalidated);
         Assert.Contains(BuildStage.Discover, invalidated);
         Assert.Contains(BuildStage.Review, invalidated);
         Assert.Contains(BuildStage.Generate, invalidated);
+
+        // What was generated and run came from the old answer, so neither survives it either.
+        Assert.Contains(BuildStage.Run, invalidated);
     }
 
     [TestMethod]
     public void Changing_the_data_source_invalidates_discovery_onward()
-        => Assert.HasCount(3, StageGraph.Invalidates(BuildStage.Data));
+        => Assert.HasCount(4, StageGraph.Invalidates(BuildStage.Data));
 
     [TestMethod]
     public void Changing_discovery_invalidates_the_review_onward()
     {
         var invalidated = StageGraph.Invalidates(BuildStage.Discover);
 
-        Assert.HasCount(2, invalidated);
+        Assert.HasCount(3, invalidated);
         Assert.Contains(BuildStage.Review, invalidated);
         Assert.Contains(BuildStage.Generate, invalidated);
+        Assert.Contains(BuildStage.Run, invalidated);
     }
 
     [TestMethod]
@@ -74,5 +83,6 @@ public class StageGraphTests
         Assert.IsEmpty(StageGraph.Invalidates(BuildStage.Look));
         Assert.IsEmpty(StageGraph.Invalidates(BuildStage.Review));
         Assert.IsEmpty(StageGraph.Invalidates(BuildStage.Generate));
+        Assert.IsEmpty(StageGraph.Invalidates(BuildStage.Run));
     }
 }

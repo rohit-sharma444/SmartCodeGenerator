@@ -296,8 +296,9 @@ before parsing, so a predicate that already carries its own verb
 
 An interactive `build app` opens a workflow page in the browser and carries the whole build
 there: the console prints the address, says that Ctrl-C cancels, and waits. The page draws the
-pipeline as seven connected stages — describe, application type, data, look, discover, review,
-generate — with the stage being answered open beneath the diagram. A finished stage is clickable,
+pipeline as eight connected stages — describe, application type, data, look, discover, review,
+generate, run — with the stage being answered open beneath the diagram. The last one starts what
+was just built, because a project that compiles is not yet an application the user has seen work. A finished stage is clickable,
 so any answer can be revisited; changing the description or the data source discards the model
 that was discovered from the old one, because it was discovered from something the user has since
 changed. Typing a description inline (`build app: a library that lends books`) opens the page on
@@ -320,7 +321,7 @@ typed review loop exactly as it always has.
 
 | Command | Description |
 | --- | --- |
-| `build app: <description>` | Describe a system in plain English; this answers the workflow's first stage — see above. Interactively the rest happens on the page: application type, data, look, then [domain discovery](../DomainDiscovery/README.md), the model review, and generate-build-run. [`AppScaffolding`](../AppScaffolding/README.md) writes a runnable project into the workspace when the review is approved. |
+| `build app: <description>` | Describe a system in plain English; this answers the workflow's first stage — see above. Interactively the rest happens on the page: application type, data, look, then [domain discovery](../DomainDiscovery/README.md), the model review, generate-and-build, and finally running it. [`AppScaffolding`](../AppScaffolding/README.md) writes a runnable project into the workspace when the review is approved. |
 | `build app` | Starts the same workflow with nothing filled in, so the page opens on the description — see [From existing data](#from-existing-data) below for what the data stage adds. Piped, it prints usage. |
 | `build app[: <description>] from <format> <location> [normalize]` | Builds from existing data with no prompts when piped, so it is scriptable; interactively the file is already answered and the page opens on what is left. Formats: `csv`, `txt`, `json`, `excel`. Add `normalize` to apply every normalization change the data needs. |
 

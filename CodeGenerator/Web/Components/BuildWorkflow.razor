@@ -40,6 +40,9 @@
             case BuildStage.Generate:
                 <GenerateStage Session="Session" OnAdvance="Refresh" />
                 break;
+            case BuildStage.Run:
+                <RunStage Session="Session" OnAdvance="Refresh" />
+                break;
         }
     </section>
 </main>

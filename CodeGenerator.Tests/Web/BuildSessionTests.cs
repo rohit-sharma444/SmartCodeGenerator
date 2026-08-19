@@ -1,5 +1,6 @@
 using AppScaffolding;
 using AppScaffolding.Targets;
+using CodeGenerator.Web;
 using CodeGenerator.Web.Workflow;
 using DataIngestion;
 
@@ -178,6 +179,55 @@ public class BuildSessionTests
         Assert.AreEqual(StageState.Failed, session.StateOf(BuildStage.Data));
         Assert.AreEqual("No file at C:\nope.csv", session.FailureMessage);
         Assert.AreEqual(SessionPhase.Running, session.Phase);
+    }
+
+    // The run stage starts what the generate stage wrote, so what was written has to outlive the
+    // panel that wrote it.
+    [TestMethod]
+    public void What_was_generated_is_carried_to_the_run_stage()
+    {
+        var session = Discovered();
+        var app = new GeneratedApp(
+            new AppScaffolding.ScaffoldResult(true, @"C:\ws\Shop", [], string.Empty),
+            BuildLog: "Build succeeded.",
+            BuildSucceeded: true);
+
+        session.SetGenerated(app);
+
+        Assert.AreSame(app, session.Generated);
+    }
+
+    [TestMethod]
+    public void Regenerating_from_a_changed_answer_forgets_the_app_that_was_generated()
+    {
+        var session = Discovered();
+        session.SetGenerated(new GeneratedApp(
+            new AppScaffolding.ScaffoldResult(true, @"C:\ws\Shop", [], string.Empty),
+            BuildLog: string.Empty,
+            BuildSucceeded: true));
+
+        session.GoTo(BuildStage.Describe);
+        session.SetDescription("a hotel");
+
+        Assert.IsNull(session.Generated);
+        Assert.AreEqual(StageState.Pending, session.StateOf(BuildStage.Run));
+    }
+
+    // Completing marks the node the user finished on, which is Run when the app was started and
+    // Generate when there was nothing to start.
+    [TestMethod]
+    public void Completing_marks_the_node_it_was_completed_from()
+    {
+        var session = Discovered();
+        session.Advance();
+        session.Advance();
+
+        Assert.AreEqual(BuildStage.Run, session.Current);
+
+        session.Complete(new BuildOutcome(SessionPhase.Generated, ["done"]));
+
+        Assert.AreEqual(SessionPhase.Generated, session.Phase);
+        Assert.AreEqual(StageState.Done, session.StateOf(BuildStage.Run));
     }
 
     [TestMethod]

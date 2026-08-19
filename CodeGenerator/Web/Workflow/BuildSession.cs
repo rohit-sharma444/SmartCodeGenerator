@@ -86,6 +86,11 @@ public sealed class BuildSession
     /// loud rather than swallowed.</summary>
     public ImportedData ImportedData { get; private set; } = ImportedData.None;
 
+    /// <summary>What the generate stage wrote, once it has. Null until then, and again whenever a
+    /// changed answer invalidates it — the run stage must not offer to start an app that no longer
+    /// matches the answers on screen.</summary>
+    public GeneratedApp? Generated { get; private set; }
+
     /// <summary>Why the node that failed, failed. Null whenever nothing has.</summary>
     public string? FailureMessage { get; private set; }
 
@@ -121,6 +126,9 @@ public sealed class BuildSession
 
     public void SetImportedData(ImportedData imported) => ImportedData = imported;
 
+    /// <summary>Records what the generate stage produced, for the run stage to start.</summary>
+    public void SetGenerated(GeneratedApp app) => Generated = app;
+
     /// <summary>
     /// Applies an answer, and discards whatever it invalidated.
     /// </summary>
@@ -152,6 +160,9 @@ public sealed class BuildSession
                 Model = null;
                 ImportedData = ImportedData.None;
             }
+
+            if (invalidated == BuildStage.Generate)
+                Generated = null;
         }
     }
 
@@ -208,10 +219,18 @@ public sealed class BuildSession
     /// <summary>The tab was closed. Distinct from <see cref="Cancel"/>: nothing was decided.</summary>
     public void Abandon() => Phase = SessionPhase.Abandoned;
 
+    /// <summary>
+    /// Ends the workflow with what the console should print.
+    /// </summary>
+    /// <remarks>
+    /// Marks whichever node it was called from, not <see cref="BuildStage.Run"/>: a generation
+    /// that failed finishes on <see cref="BuildStage.Generate"/>, and claiming the app was run
+    /// would be a lie the diagram tells.
+    /// </remarks>
     public void Complete(BuildOutcome outcome)
     {
         Outcome = outcome;
-        _states[BuildStage.Generate] = StageState.Done;
+        _states[Current] = StageState.Done;
         Phase = SessionPhase.Generated;
     }
 

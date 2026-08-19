@@ -59,14 +59,24 @@ else
         <pre class="build-log">@string.Join(Environment.NewLine, _log)</pre>
     }
 
-    @if (_phase == Phase.Done && _canRun)
-    {
-        <button type="button" class="run" @onclick="Run">Run it now</button>
-    }
-
     @if (_phase == Phase.Done)
     {
-        <button type="button" class="finish" @onclick="Finish">Done</button>
+        <div class="actions">
+            <button type="button" class="back" @onclick="Back">Back</button>
+
+            @if (_written)
+            {
+                @* On to the run stage rather than a Run button here: whether it starts is its own
+                   question, and the diagram carries it. *@
+                <button type="button" class="next" @onclick="Continue">Next</button>
+            }
+            else
+            {
+                @* Nothing was written, so there is nothing for the run stage to do — this run
+                   ends here, and the console says why. *@
+                <button type="button" class="finish" @onclick="Finish">Done</button>
+            }
+        </div>
     }
 }
 
@@ -82,7 +92,10 @@ else
     private readonly List<string> _report = [];
     private readonly List<string> _log = [];
     private ScaffoldResult? _scaffold;
-    private bool _canRun;
+
+    /// <summary>Whether a project reached disk. False keeps the workflow on this node, because a
+    /// run stage with nothing to start is a dead end the user cannot act on.</summary>
+    private bool _written;
 
     private ITargetScaffolder Target => Session.Target ?? TargetScaffolders.Default;
 
@@ -90,7 +103,30 @@ else
     /// changed after the layout was named.</summary>
     private string? LayoutNotice => BuildAppCommand.LayoutNotice(Target, Session.Customization);
 
-    protected override void OnInitialized() => _name = GenerateStep.NameFor(Session);
+    protected override void OnInitialized()
+    {
+        _name = GenerateStep.NameFor(Session);
+
+        // A reload — or a second tab — gets a new panel with empty fields, and offering to write
+        // a project the session has already written would rebuild it behind the user's back. What
+        // the session knows is authoritative; only the streamed build log is gone with the circuit
+        // that watched it.
+        if (Session.Generated is not { } app)
+            return;
+
+        _scaffold = app.Scaffold;
+        _written = true;
+        _phase = Phase.Done;
+
+        _report.Add($"Generated project at {app.Scaffold.ProjectPath}");
+
+        if (app.Scaffold.TestProjectPath is not null)
+            _report.Add($"Generated test project at {app.Scaffold.TestProjectPath}");
+
+        _report.Add(app.BuildSucceeded
+            ? "It compiled."
+            : "It did not compile — the log is above the last time it ran.");
+    }
 
     /// <summary>A typed name goes through the same rule the generated one did, so what is written
     /// is always a usable identifier.</summary>
@@ -102,7 +138,15 @@ else
             ? PersistenceKind.Sqlite
             : PersistenceKind.Json;
 
-    private void Write()
+    /// <summary>
+    /// Starts the write, and is awaited.
+    /// </summary>
+    /// <remarks>
+    /// Awaited rather than fire-and-forget: Blazor re-renders after an awaited handler completes,
+    /// and a discarded task leaves the last state change — the one that says the build finished —
+    /// with nothing to paint it. The panel then shows a build still running forever.
+    /// </remarks>
+    private async Task Write()
     {
         // A rename can collide too, so the question is asked about whatever name is current.
         if (GenerateStep.Collides(Session, _name, Target))
@@ -111,10 +155,10 @@ else
             return;
         }
 
-        _ = Go();
+        await Go();
     }
 
-    private void Overwrite() => _ = Go();
+    private async Task Overwrite() => await Go();
 
     private async Task Go()
     {
@@ -135,6 +179,7 @@ else
         {
             _report.Add($"Generation failed: {scaffold.Message}");
             _phase = Phase.Done;
+            StateHasChanged();
             return;
         }
 
@@ -151,39 +196,35 @@ else
 
         _report.AddRange(BuildReport.Lines(built.Result, built.Elapsed, scaffold.ProjectPath));
 
-        // Nothing to offer for a class library, and nothing worth starting from a red build.
-        _canRun = BuildReport.Succeeded(built.Result)
-                  && Target.ProjectType != DotNetProjectType.ClassLibrary;
+        // Handed to the session, not kept here: the run stage starts what this stage wrote, and
+        // it needs the build log to find the assembly.
+        Session.SetGenerated(new GeneratedApp(
+            scaffold,
+            string.Join(Environment.NewLine, _log),
+            BuildReport.Succeeded(built.Result)));
 
+        _written = true;
         _phase = Phase.Done;
+
+        // Belt as well as braces: the awaited handler re-renders on its own, but the same method
+        // is reachable from the overwrite dialog and this is the transition that must not be lost.
+        StateHasChanged();
     }
 
-    private void Run()
+    private async Task Continue()
     {
-        var isWebApp = Target.ProjectType == DotNetProjectType.BlazorServer;
+        Session.Advance();
 
-        var launched = AppLauncher.Launch(
-            _scaffold!.ProjectPath, string.Join(Environment.NewLine, _log),
-            fromProjectFolder: isWebApp);
-
-        _report.Add(launched is null
-            ? "Could not start the app — use the command below."
-            : $"Started {launched}");
-
-        // A web app shows nothing of its own and waits to be visited, so opening it once
-        // something answers is what makes the offer honest.
-        if (launched is not null && isWebApp)
-        {
-            var url = LaunchSettingsReader.HttpUrl(_scaffold.ProjectPath);
-
-            if (url is not null && WebAppStart.Wait(url))
-                WebAppStart.OpenBrowser(url);
-        }
+        await OnAdvance.InvokeAsync();
     }
 
+    /// <summary>Ends the workflow here, for the one case the run stage cannot help with: nothing
+    /// was written at all.</summary>
     private async Task Finish()
     {
-        Session.Complete(GenerateStep.OutcomeFor(_scaffold!, Target));
+        Session.Complete(GenerateStep.OutcomeFor(
+            _scaffold ?? new ScaffoldResult(false, string.Empty, [], "nothing was written"),
+            Target));
 
         await OnAdvance.InvokeAsync();
     }
