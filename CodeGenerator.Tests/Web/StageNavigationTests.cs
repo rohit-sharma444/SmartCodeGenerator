@@ -150,4 +150,29 @@ public class StageNavigationTests
     [TestMethod]
     public void With_no_step_at_all_there_is_nothing_to_commit()
         => Assert.IsFalse(new StageNavigation().ShouldCommitBeforeLeaving);
+
+    // A named step is an action; the stage it leads to holds nothing until that action has run, so
+    // it must not be offered as a place to click ahead to.
+    [TestMethod]
+    public void A_named_step_leads_nowhere_clickable()
+    {
+        var navigation = new StageNavigation();
+
+        navigation.Offer(() => Task.FromResult(true), label: "Generate");
+
+        Assert.IsFalse(navigation.IsPlainStep);
+        Assert.IsFalse(navigation.LeadsSomewhereClickable);
+        Assert.IsTrue(navigation.CanContinue, "the button in the box still works");
+    }
+
+    [TestMethod]
+    public void A_plain_step_leads_somewhere_clickable()
+    {
+        var navigation = new StageNavigation();
+
+        navigation.Offer(() => Task.FromResult(true));
+
+        Assert.IsTrue(navigation.IsPlainStep);
+        Assert.IsTrue(navigation.LeadsSomewhereClickable);
+    }
 }

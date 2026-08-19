@@ -68,18 +68,18 @@ public class StageSummaryTests
         Assert.AreEqual("orders.csv", StageSummary.For(session, BuildStage.Data));
     }
 
-    // "No data" is a decision, and the box should say it was made — but only once it has been.
+    // "No data" is a decision, and the box says it was made — but only once it has been applied,
+    // which is what the panel does when the user takes the step or clicks away.
     [TestMethod]
-    public void Choosing_no_data_reads_as_an_answer_once_the_node_is_done()
+    public void Choosing_no_data_reads_as_an_answer_once_it_is_applied()
     {
         var session = New("a shop");
         session.SetTarget(new WpfTarget());
         session.Advance();
+
+        Assert.IsNull(StageSummary.For(session, BuildStage.Data), "nothing applied yet");
+
         session.SetNoData();
-
-        Assert.IsNull(StageSummary.For(session, BuildStage.Data), "not answered yet");
-
-        session.Advance();
 
         Assert.AreEqual("discovered from the web", StageSummary.For(session, BuildStage.Data));
     }
@@ -101,7 +101,8 @@ public class StageSummaryTests
         Assert.AreEqual(BuildStage.Look, session.Current);
         Assert.IsNull(StageSummary.For(session, BuildStage.Look), "open, but not answered");
 
-        session.Advance();
+        // What the look panel applies, whether or not the user changed anything.
+        session.SetCustomization(session.Customization);
 
         Assert.AreEqual("defaults", StageSummary.For(session, BuildStage.Look));
     }
@@ -172,6 +173,20 @@ public class StageSummaryTests
 
         Assert.AreEqual("Shop.Console", StageSummary.For(session, BuildStage.Generate));
         Assert.AreEqual("ready to start", StageSummary.For(session, BuildStage.Run));
+    }
+
+    [TestMethod]
+    public void The_run_node_says_started_once_it_has_been()
+    {
+        var session = New("a shop");
+        session.SetGenerated(new GeneratedApp(
+            new ScaffoldResult(true, @"C:\ws\Shop.Console", [], string.Empty),
+            BuildLog: string.Empty,
+            BuildSucceeded: true));
+
+        session.MarkStarted();
+
+        Assert.AreEqual("started", StageSummary.For(session, BuildStage.Run));
     }
 
     [TestMethod]

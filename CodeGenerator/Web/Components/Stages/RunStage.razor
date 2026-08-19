@@ -77,6 +77,15 @@ else
 
     private GeneratedApp? App => Session.Generated;
 
+    protected override void OnInitialized()
+    {
+        // The last node: there is nothing past it, so it offers no step and the box draws none.
+        Navigation.Withdraw();
+
+        // A reload gets a new panel; what the session remembers is what stands.
+        _started = Session.Started;
+    }
+
     private ITargetScaffolder Target => Session.Target ?? TargetScaffolders.Default;
 
     private bool Runnable => GenerateStep.CanRun(App, Target);
@@ -140,6 +149,11 @@ else
 
         _started = launched is not null;
         _starting = false;
+
+        // Recorded on the session, not just here: the box says "started" rather than "ready to
+        // start", and this panel is rebuilt from scratch by any reload.
+        if (_started)
+            Session.MarkStarted();
     }
 
     /// <summary>Moves the progress list on. Same shape as the generate panel's, and for the same
@@ -221,7 +235,5 @@ else
         await OnAdvance.InvokeAsync();
     }
 
-    protected override void OnInitialized()
-        // The last node: there is nothing past it, so it offers no step and the box draws none.
-        => Navigation.Withdraw();
+
 }

@@ -213,16 +213,20 @@ reached.</p>
 <tr><th>Box</th><th>What it means</th></tr>
 <tr><td>Green, ticked</td><td>Answered. It shows the answer it holds — <code>Console</code>,
 <code>orders.csv</code>, <code>12 classes</code> — and clicking it goes back to change that answer.</td></tr>
-<tr><td>Blue, open</td><td>The one you are answering. It carries the step forward:
-<strong>Continue &#x2192;</strong>, or the name of the step where the step has a name of its own, as
-<em>Generate</em> does.</td></tr>
+<tr><td>Blue, open</td><td>The one you are answering. It carries both moves: the step forward —
+<strong>Continue &#x2192;</strong>, or the name of the step where it has one, as <em>Generate</em>
+does — and a quiet <strong>&#x2190;</strong> back to the stage before it.</td></tr>
 <tr><td>Dashed outline</td><td>Where that step leads. Clicking it does the same thing as the button in the open
 box, so you can move by clicking either.</td></tr>
-<tr><td>Grey</td><td>Not reached yet. It says what it will ask.</td></tr>
+<tr><td>Grey</td><td>Not reached yet, or nothing in it to go to: it says what it will ask, and
+cannot be clicked. <em>Generate</em> and <em>Run</em> stay like this until the project has actually
+been written — <em>Write it</em> is what enables them.</td></tr>
 <tr><td>Red</td><td>Something went wrong there — a file that would not read. Click it to try again.</td></tr>
 </table>
 <p>The step forward is greyed out until the answer is usable, so a colour that is not a colour stops you there
-rather than three screens later. Going back keeps what the open box had already answered, and costs nothing
+rather than three screens later. Writing the application is deliberately not something a click on a box can do:
+the <em>Generate</em> box only opens through the button in the review box, and only after <em>Write it</em> has
+run does the <em>Run</em> box become something you can move to. Going back keeps what the open box had already answered, and costs nothing
 except where it must: changing the description or the data source throws away the model that was discovered
 from the old one, because it was worked out from something you have since changed, and that stage runs again.
 Changing the application type or anything under <em>Look</em> costs nothing at all, because neither is read
@@ -676,7 +680,7 @@ own shows the shorter overview, and <code>help &lt;topic&gt;</code> shows one se
 <tr><th>Command</th><th>Description</th><th>Example</th></tr>
 <tr><td><code>add &lt;name&gt;</code></td><td>Review loop: adds a class to the candidate model. The name keeps the shape you type, so a compound survives; several words become one class name.</td><td><code>add cash register</code></td></tr>
 <tr><td><code>approve [target] [sqlite]</code></td><td>Review loop: generates the app using the type chosen at the start. Name a target to override it: wpf (default), winforms, console, webapi, blazor, classlib, worker. Add &#x27;sqlite&#x27; for EF Core persistence (JSON is the default; the wpf and winforms targets are JSON-only). Alias: a.</td><td><code>approve webapi sqlite</code></td></tr>
-<tr><td><code>build app</code></td><td>Starts the same flow with nothing filled in. Interactively it opens a workflow page in the browser drawn as eight connected stages, ending in one that starts the application it just built. The stages are the navigation: each box shows the answer it holds, the box being answered carries the step forward, the next box lights up when that step is ready, and clicking a finished box goes back to change it — there are no Back and Next buttons. A long step reports its progress as it works, and changing the description or the data source discards the model that was discovered from the old one. Piped runs keep the console wizard, as does CG_NO_WEB=1.</td><td><code>build app</code></td></tr>
+<tr><td><code>build app</code></td><td>Starts the same flow with nothing filled in. Interactively it opens a workflow page in the browser drawn as eight connected stages, ending in one that starts the application it just built. The stages are the navigation: each box shows the answer it holds, the box being answered carries the step forward and an arrow back one stage, the next box lights up when that step is ready, and clicking a finished box goes back to change it — there are no Back and Next buttons. Generate and Run stay disabled until the project has actually been written. A long step reports its progress as it works, and changing the description or the data source discards the model that was discovered from the old one. Piped runs keep the console wizard, as does CG_NO_WEB=1.</td><td><code>build app</code></td></tr>
 <tr><td><code>build app: &lt;description&gt;</code></td><td>Describes a system in plain English. Interactively this opens a workflow page in the browser — the console prints the address and waits — where the rest of the build happens: application type, data, look, domain discovery, model review, generate-and-build, then running the finished application. Every step that takes a while says what it is doing and how long it has been doing it, and the compiler&#x27;s output appears line by line as it builds. Piped runs are unchanged, and CG_NO_WEB=1 keeps the console wizard.</td><td><code>build app: a library that lends books to members</code></td></tr>
 <tr><td><code>build app: &lt;description&gt; [customization options]</code></td><td>Customizes the generated application. Options go LAST on the line, after any data source: company &quot;&lt;name&gt;&quot; sets the company (used in the project metadata, the window title and a copyright header); theme light|dark and accent #rrggbb colour the desktop front ends; icon &lt;path&gt; supplies a .ico or .png; title &quot;&lt;pattern&gt;&quot; overrides the window title, where {company} and {app} are substituted; namespace &lt;prefix&gt; puts the generated code under that namespace root (CodisLtd.Shop), leaving the project and assembly names alone; layout tabs|sidebar|master-detail|dashboard chooses the shape of the window (wpf and winforms only).</td><td><code>build app: a shop company &quot;Codis Ltd&quot; namespace CodisLtd theme dark layout sidebar</code></td></tr>
 <tr><td><code>build app: &lt;description&gt; [novalidation] [logging] [noseed]</code></td><td>Chooses which optional layers are generated. &#x27;novalidation&#x27; omits the Validation folder and its per-model validators; &#x27;logging&#x27; adds a logging layer (off by default); &#x27;noseed&#x27; omits the sample seed rows (rows imported from your own data file are unaffected). Interactively these are asked by the &#x27;Customize appearance and features?&#x27; step, which remembers your answers in .codegen/app-profile.json.</td><td><code>build app: a shop novalidation logging noseed</code></td></tr>

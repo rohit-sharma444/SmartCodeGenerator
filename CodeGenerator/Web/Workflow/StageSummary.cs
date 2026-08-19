@@ -26,11 +26,11 @@ public static class StageSummary
             BuildStage.AppType => session.Target is null
                 ? null
                 : ApplicationTypeMenu.LabelFor(session.Target),
-            BuildStage.Data => Answered(session, stage) ? DataAnswer(session) : null,
+            BuildStage.Data => session.HoldsAnAnswer(stage) ? DataAnswer(session) : null,
 
             // Guarded like the data node: the customization always HAS a value, so a box nobody
-            // has opened would otherwise announce "defaults" as though it had been decided.
-            BuildStage.Look => Answered(session, stage) ? Look(session.Customization) : null,
+            // has answered would otherwise announce "defaults" as though it had been decided.
+            BuildStage.Look => session.HoldsAnAnswer(stage) ? Look(session.Customization) : null,
             BuildStage.Discover => session.Model is null
                 ? null
                 : Classes(session.Model.Entities.Count),
@@ -40,9 +40,11 @@ public static class StageSummary
             BuildStage.Generate => session.Generated is null
                 ? null
                 : Path.GetFileName(session.Generated.Scaffold.ProjectPath),
-            BuildStage.Run => session.Generated is null
-                ? null
-                : session.Generated.BuildSucceeded ? "ready to start" : "did not build",
+            BuildStage.Run => session.Started
+                ? "started"
+                : session.Generated is null
+                    ? null
+                    : session.Generated.BuildSucceeded ? "ready to start" : "did not build",
             _ => null,
         };
 
@@ -54,19 +56,6 @@ public static class StageSummary
         => session.Source is not null
             ? Path.GetFileName(session.Source.Location)
             : "discovered from the web";
-
-    /// <summary>
-    /// Whether this node has been answered, so a value it merely defaults to is not reported as a
-    /// decision.
-    /// </summary>
-    /// <remarks>
-    /// Done only, not Done-or-open. On the open data node a null source cannot be told apart from
-    /// a user who has not chosen yet, so "discovered from the web" there would be the box putting
-    /// words in their mouth. An inline answer arrives already Done, which is why this asks the
-    /// state rather than comparing against a default.
-    /// </remarks>
-    private static bool Answered(BuildSession session, BuildStage stage)
-        => session.StateOf(stage) == StageState.Done;
 
     /// <summary>
     /// What was customized, or "defaults" when nothing was. Named settings rather than a count:

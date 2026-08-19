@@ -21,7 +21,11 @@ Both of them wear one of two front ends. An interactive `build app` opens a
 workflow page in the browser — eight stages ending in one that starts the
 generated application, and the stages are also the navigation: a panel offers
 its forward step through a `StageNavigation` the diagram draws inside the box
-being answered, which is why no panel has a Next button. Blazor Server hosted
+being answered, which is why no panel has a Next button. A step with a name of
+its own (`Generate`) is never taken by clicking the stage ahead, and
+`BuildSession.HoldsAnAnswer` decides whether a node the user merely passed
+through is recorded as done — without it the diagram would claim a project was
+generated when nothing was written. Blazor Server hosted
 in-process by the CLI itself
 (`CodeGenerator/Web`, which is why that project builds under the Web SDK) — and the
 console prints the address and waits for the page to finish. Redirected or piped

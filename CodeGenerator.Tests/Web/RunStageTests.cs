@@ -121,6 +121,34 @@ public class RunStageTests
         StringAssert.Contains(rendered.Markup, @"C:\ws\Shop");
     }
 
+    // The step the review panel offered outlives that panel, so a generate panel that did not
+    // withdraw it would show "Generate →" and walk on to the run stage with nothing written.
+    [TestMethod]
+    public void The_generate_panel_offers_no_way_on_until_something_is_written()
+    {
+        using var context = new BunitContext();
+        var navigation = new StageNavigation();
+        navigation.Offer(() => Task.FromResult(true), label: "Generate");
+
+        var session = new BuildSession("a shop", Path.GetTempPath(), AppCustomization.Default);
+        session.SetTarget(new WpfTarget());
+        session.Advance();
+        session.SetNoData();
+        session.Advance();
+        session.SetCustomization(AppCustomization.Default);
+        session.Advance();
+        session.SetModel(new CandidateDomainModel());
+        session.Advance();   // review
+        session.Advance();   // generate, nothing written
+
+        context.Render<GenerateStage>(p => p
+            .Add(c => c.Session, session)
+            .Add(c => c.Navigation, navigation)
+            .Add(c => c.OnAdvance, () => { }));
+
+        Assert.IsFalse(navigation.HasStep);
+    }
+
     private static IRenderedComponent<RunStage> Render(
         BunitContext context, out BuildSession session, bool BuildSucceeded,
         StageNavigation? navigation = null)

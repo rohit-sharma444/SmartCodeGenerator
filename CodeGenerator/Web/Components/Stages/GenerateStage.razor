@@ -111,6 +111,12 @@ else
     {
         _name = GenerateStep.NameFor(Session);
 
+        // Withdrawn first, and that is not housekeeping: the step the review panel offered is
+        // still there otherwise, so this box would show "Generate →" and taking it would walk on
+        // to the run stage with nothing written. Nothing leads out of here until something has
+        // been written.
+        Navigation.Withdraw();
+
         // A reload — or a second tab — gets a new panel with empty fields, and offering to write
         // a project the session has already written would rebuild it behind the user's back. What
         // the session knows is authoritative; only the streamed build log is gone with the circuit

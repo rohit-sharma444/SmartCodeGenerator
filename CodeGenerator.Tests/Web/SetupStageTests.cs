@@ -176,6 +176,28 @@ public class SetupStageTests
         Assert.IsFalse(navigation.CanContinue);
     }
 
+    // Leaving the customization alone is still answering the question, and the box above has no
+    // other way to tell "defaults" from "never reached".
+    [TestMethod]
+    public async Task The_look_panel_answers_its_node_even_when_nothing_was_customized()
+    {
+        using var context = new BunitContext();
+        var session = New("a shop");
+        var navigation = new StageNavigation();
+
+        context.Render<LookStage>(p => p
+            .Add(c => c.Session, session)
+            .Add(c => c.Navigation, navigation)
+            .Add(c => c.OnAdvance, () => { }));
+
+        Assert.IsFalse(session.HoldsAnAnswer(BuildStage.Look));
+
+        Assert.IsTrue(await navigation.ApplyAsync());
+
+        Assert.IsTrue(session.HoldsAnAnswer(BuildStage.Look));
+        Assert.AreEqual("defaults", StageSummary.For(session, BuildStage.Look));
+    }
+
     // Asking a console app for a window shape is nonsense, and the console wizard already skips
     // the question for such a target.
     [TestMethod]

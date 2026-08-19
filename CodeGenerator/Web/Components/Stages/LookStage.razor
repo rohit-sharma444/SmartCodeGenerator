@@ -138,8 +138,10 @@
 
     private Task<bool> Next()
     {
-        if (_customize)
-            Session.SetCustomization(Compose());
+        // Applied either way, and the unchanged value is not a no-op: it is what records that this
+        // node was answered at all. The customization always HAS a value, so without this the box
+        // above could never tell "left at the defaults" from "never reached".
+        Session.SetCustomization(_customize ? Compose() : Session.Customization);
 
         // Saved even when the gate was left off: what the user settled on this time is what the
         // next run should offer, and declining settled it too.

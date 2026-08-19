@@ -301,9 +301,12 @@ generate, run — with the stage being answered open beneath the diagram. The la
 was just built, because a project that compiles is not yet an application the user has seen work.
 
 The boxes are the navigation, so there are no Back and Next buttons anywhere. Each box shows the
-answer it holds ("Console", "orders.csv", "12 classes"), the box being answered carries the step
-forward, and the box that step leads to lights up as a second way to take it. Clicking a finished
-box goes back to change it, keeping whatever the open panel had already answered; changing the
+answer it holds ("Console", "orders.csv", "12 classes"), and the box being answered carries both
+moves: the step forward, and an arrow back to the stage before it. The box that step leads to
+lights up as a second way forward — except where the step is an action with a name of its own:
+`Generate` and `Run` stay disabled until the project has actually been written, because until then
+there is nothing in them to go to. Clicking a finished box goes back to change it, keeping whatever
+the open panel had already answered; changing the
 description or the data source discards the model that was discovered from the old one, because it
 was discovered from something the user has since changed. Typing a description inline
 (`build app: a library that lends books`) opens the page on the application type instead.

@@ -230,6 +230,114 @@ public class BuildSessionTests
         Assert.AreEqual(StageState.Done, session.StateOf(BuildStage.Run));
     }
 
+    // Walking into a node and leaving again is not answering it. A green tick on the generate node
+    // would say a project exists, which is exactly what the user is being asked to decide.
+    [TestMethod]
+    public void Leaving_a_node_that_holds_nothing_leaves_it_pending()
+    {
+        var session = Discovered();
+        session.Advance();                                    // review -> generate, nothing written
+
+        Assert.AreEqual(BuildStage.Generate, session.Current);
+
+        session.GoTo(BuildStage.Describe);
+
+        Assert.AreEqual(StageState.Pending, session.StateOf(BuildStage.Generate));
+        Assert.IsFalse(session.HoldsAnAnswer(BuildStage.Generate));
+    }
+
+    [TestMethod]
+    public void Leaving_a_node_that_holds_an_answer_keeps_it_done()
+    {
+        var session = New("a shop");
+        session.SetTarget(new WpfTarget());
+        session.Advance();                                    // on data
+        session.SetNoData();                                  // answered, but not continued
+
+        session.GoTo(BuildStage.Describe);
+
+        Assert.AreEqual(StageState.Done, session.StateOf(BuildStage.Data));
+    }
+
+    // "No data" is an answer that leaves Source null, so the session records the choice itself
+    // rather than trying to read it back out of a null.
+    [TestMethod]
+    public void Choosing_no_data_counts_as_answering_the_data_node()
+    {
+        var session = New("a shop");
+
+        Assert.IsFalse(session.HoldsAnAnswer(BuildStage.Data));
+
+        session.SetNoData();
+
+        Assert.IsTrue(session.HoldsAnAnswer(BuildStage.Data));
+    }
+
+    // The customization always has a value, so applying it is the only signal that the node was
+    // answered — the look panel applies even when the user changed nothing.
+    [TestMethod]
+    public void The_look_node_is_answered_by_applying_it_not_by_having_a_value()
+    {
+        var session = New("a shop");
+
+        Assert.IsFalse(session.HoldsAnAnswer(BuildStage.Look));
+
+        session.SetCustomization(session.Customization);
+
+        Assert.IsTrue(session.HoldsAnAnswer(BuildStage.Look));
+    }
+
+    // The review node holds the model it reviews, so it stays answered even though its own step is
+    // an action rather than an answer.
+    [TestMethod]
+    public void The_review_node_holds_the_model_it_reviews()
+    {
+        var session = Discovered();
+
+        Assert.IsTrue(session.HoldsAnAnswer(BuildStage.Review));
+
+        session.Advance();
+        session.GoTo(BuildStage.Describe);
+
+        Assert.AreEqual(StageState.Done, session.StateOf(BuildStage.Review));
+    }
+
+    // Compiling is not the same as having seen it run, so the run node is answered by starting it.
+    [TestMethod]
+    public void The_run_node_is_answered_by_starting_the_app()
+    {
+        var session = Discovered();
+        session.SetGenerated(new GeneratedApp(
+            new AppScaffolding.ScaffoldResult(true, @"C:\ws\Shop", [], string.Empty),
+            BuildLog: string.Empty,
+            BuildSucceeded: true));
+
+        Assert.IsFalse(session.HoldsAnAnswer(BuildStage.Run));
+
+        session.MarkStarted();
+
+        Assert.IsTrue(session.HoldsAnAnswer(BuildStage.Run));
+    }
+
+    // Regenerating means the app that was started is gone, so the run node is unanswered again.
+    [TestMethod]
+    public void Generating_again_forgets_that_the_last_one_was_started()
+    {
+        var session = Discovered();
+        session.SetGenerated(new GeneratedApp(
+            new AppScaffolding.ScaffoldResult(true, @"C:\ws\Shop", [], string.Empty),
+            BuildLog: string.Empty,
+            BuildSucceeded: true));
+        session.MarkStarted();
+
+        session.SetGenerated(new GeneratedApp(
+            new AppScaffolding.ScaffoldResult(true, @"C:\ws\Shop", [], string.Empty),
+            BuildLog: string.Empty,
+            BuildSucceeded: true));
+
+        Assert.IsFalse(session.Started);
+    }
+
     [TestMethod]
     public void Cancelling_and_abandoning_are_different_endings()
     {

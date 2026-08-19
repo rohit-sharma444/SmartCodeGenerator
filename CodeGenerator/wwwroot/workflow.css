@@ -93,6 +93,9 @@ body {
     display: block;
     font-size: 0.84em;
     color: var(--ink);
+
+    /* A project name or a file name has no spaces to break at, and a box is 130px wide. */
+    overflow-wrap: anywhere;
 }
 
 /* Only on hover and focus, so eight boxes are not eight invitations at once. */
@@ -117,10 +120,46 @@ body {
     border-radius: 4px;
 }
 
+/* Back and forward, side by side inside the box being answered. */
+.stage-move {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-top: 0.15rem;
+}
+
+/* Quiet next to the step forward: going back is available, not encouraged. */
+.stage-back {
+    padding: 0.3rem 0.5rem;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: #fff;
+    color: var(--pending);
+    font: inherit;
+    font-size: 0.85em;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.stage-back:hover {
+    border-color: var(--active);
+    color: var(--active);
+}
+
+/* Off screen but not out of the accessibility tree: the arrow alone is not a name. */
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
 /* The step forward, inside the box the user is answering. The one loud thing on the page. */
 .stage-continue {
-    align-self: flex-start;
-    margin-top: 0.15rem;
     padding: 0.3rem 0.7rem;
     border: 0;
     border-radius: 4px;

@@ -211,6 +211,67 @@ public class StageDiagramTests
         Assert.IsEmpty(rendered.FindAll(".stage-node.next"));
     }
 
+    // Until the project has been written there is nothing in the Generate box to go to, so it is
+    // not offered as a click — the named button in the Review box is the only way to write it.
+    [TestMethod]
+    public void The_stage_after_a_named_step_is_not_offered_as_a_click()
+    {
+        using var context = new BunitContext();
+        var navigation = new StageNavigation();
+        navigation.Offer(() => Task.FromResult(true), label: "Generate");
+
+        var rendered = Render(context, New(), navigation);
+
+        Assert.IsEmpty(rendered.FindAll(".stage-node.next"));
+        Assert.IsNotEmpty(rendered.FindAll(".stage-continue"));
+    }
+
+    // One step back, always in the same place. Clicking a green box goes anywhere; this goes to the
+    // stage before this one, which is the move people actually want.
+    [TestMethod]
+    public void The_open_box_offers_one_step_back()
+    {
+        using var context = new BunitContext();
+        var session = New("a shop");
+        BuildStage? revisited = null;
+
+        var rendered = context.Render<StageDiagram>(parameters => parameters
+            .Add(p => p.Session, session)
+            .Add(p => p.Navigation, new StageNavigation())
+            .Add(p => p.OnRevisit, (BuildStage stage) => revisited = stage)
+            .Add(p => p.OnContinue, () => { }));
+
+        rendered.Find(".stage-node.active .stage-back").Click();
+
+        Assert.AreEqual(BuildStage.Describe, revisited);
+    }
+
+    [TestMethod]
+    public void There_is_no_way_back_from_the_first_stage()
+    {
+        using var context = new BunitContext();
+
+        var rendered = Render(context, New());
+
+        Assert.AreEqual(BuildStage.Describe, New().Current);
+        Assert.IsEmpty(rendered.FindAll(".stage-back"));
+    }
+
+    // The arrow alone is not a name, and a screen reader that reads "button" has told the user
+    // nothing.
+    [TestMethod]
+    public void The_way_back_says_where_it_goes()
+    {
+        using var context = new BunitContext();
+
+        var rendered = Render(context, New("a shop"));
+
+        var back = rendered.Find(".stage-back");
+
+        StringAssert.Contains(back.GetAttribute("title")!, "Describe");
+        StringAssert.Contains(back.TextContent, "Describe");
+    }
+
     private static IRenderedComponent<StageDiagram> Render(
         BunitContext context, BuildSession session, StageNavigation? navigation = null)
         => context.Render<StageDiagram>(parameters => parameters

@@ -26,6 +26,14 @@ public sealed class BuildSession
 {
     private readonly Dictionary<BuildStage, StageState> _states = new();
 
+    /// <summary>Whether "no data" was chosen, which a null <see cref="Source"/> cannot say on its
+    /// own — it also means nobody has answered that node yet.</summary>
+    private bool _noDataChosen;
+
+    /// <summary>Whether the look node was answered. The customization always HAS a value, so this
+    /// is the only way to tell a decision from a default.</summary>
+    private bool _lookAnswered;
+
     /// <param name="description">
     /// What followed `build app:`, or empty. A description typed inline has already answered
     /// node 1, so the workflow opens at node 2.
@@ -86,6 +94,10 @@ public sealed class BuildSession
     /// loud rather than swallowed.</summary>
     public ImportedData ImportedData { get; private set; } = ImportedData.None;
 
+    /// <summary>Whether the generated application was actually started. Distinct from a green
+    /// build: compiling is not the same as having seen it run.</summary>
+    public bool Started { get; private set; }
+
     /// <summary>What the generate stage wrote, once it has. Null until then, and again whenever a
     /// changed answer invalidates it — the run stage must not offer to start an app that no longer
     /// matches the answers on screen.</summary>
@@ -113,13 +125,29 @@ public sealed class BuildSession
             () => Target = target);
 
     public void SetSource(DataSourceSpec source)
-        => Change(BuildStage.Data, source != Source, () => Source = source);
+        => Change(BuildStage.Data, source != Source, () =>
+        {
+            Source = source;
+            _noDataChosen = false;
+        });
 
     public void SetNoData()
-        => Change(BuildStage.Data, Source is not null, () => Source = null);
+        => Change(BuildStage.Data, Source is not null, () =>
+        {
+            Source = null;
+            _noDataChosen = true;
+        });
 
+    /// <remarks>
+    /// Called even when the user changed nothing — the look panel applies its answer either way —
+    /// so this is what records that the node was answered at all.
+    /// </remarks>
     public void SetCustomization(AppCustomization customization)
-        => Change(BuildStage.Look, customization != Customization, () => Customization = customization);
+        => Change(BuildStage.Look, customization != Customization, () =>
+        {
+            Customization = customization;
+            _lookAnswered = true;
+        });
 
     public void SetModel(CandidateDomainModel model)
         => Change(BuildStage.Discover, changed: true, () => Model = model);
@@ -127,7 +155,40 @@ public sealed class BuildSession
     public void SetImportedData(ImportedData imported) => ImportedData = imported;
 
     /// <summary>Records what the generate stage produced, for the run stage to start.</summary>
-    public void SetGenerated(GeneratedApp app) => Generated = app;
+    public void SetGenerated(GeneratedApp app)
+    {
+        Generated = app;
+        Started = false;
+    }
+
+    /// <summary>Records that the run stage started it.</summary>
+    public void MarkStarted() => Started = true;
+
+    /// <summary>
+    /// Whether <paramref name="stage"/> holds something: an answer given, or work done.
+    /// </summary>
+    /// <remarks>
+    /// This is what <see cref="GoTo"/> uses to decide whether the node being left has been
+    /// answered, and it is asked of the session rather than inferred from the node's state because
+    /// a state can lie. Marking a node Done merely because the user passed through it is how a
+    /// diagram ends up claiming a project was generated when nothing was written.
+    /// </remarks>
+    public bool HoldsAnAnswer(BuildStage stage)
+        => stage switch
+        {
+            BuildStage.Describe => Description.Length > 0,
+            BuildStage.AppType => Target is not null,
+            BuildStage.Data => Source is not null || _noDataChosen,
+            BuildStage.Look => _lookAnswered,
+
+            // The review node holds the model it reviews, so it stays answered for as long as
+            // there is one — even though its own step is an action rather than an answer.
+            BuildStage.Discover => Model is not null,
+            BuildStage.Review => Model is not null,
+            BuildStage.Generate => Generated is not null,
+            BuildStage.Run => Started,
+            _ => false,
+        };
 
     /// <summary>
     /// Applies an answer, and discards whatever it invalidated.
@@ -194,11 +255,12 @@ public sealed class BuildSession
         if (_states[stage] == StageState.Pending)
             throw new InvalidOperationException($"{stage} has not been reached yet.");
 
-        // The node being left keeps whatever it had. Marking it Pending would erase an answer
-        // the user only navigated away from, and every answer downstream is still valid — that
-        // is what Invalidates is for.
+        // The node being left is recorded for what it actually holds. Done where it was answered,
+        // so it stays green and can be clicked back into; Pending where it was only passed
+        // through — walking into the generate node and leaving again writes nothing, and a green
+        // tick there would say a project exists.
         if (_states[Current] == StageState.Active)
-            _states[Current] = StageState.Done;
+            _states[Current] = HoldsAnAnswer(Current) ? StageState.Done : StageState.Pending;
 
         Current = stage;
         _states[stage] = StageState.Active;

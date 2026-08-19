@@ -47,12 +47,30 @@
                 @Detail(node, answer)
             }
 
-            @if (state == StageState.Active && Navigation.HasStep)
+            @if (state == StageState.Active && (Back is not null || Navigation.HasStep))
             {
-                <button type="button" class="stage-continue" disabled="@(!Navigation.CanContinue)"
-                        @onclick="Continue">
-                    @Navigation.Label <span aria-hidden="true">→</span>
-                </button>
+                <div class="stage-move">
+                    @if (Back is not null)
+                    {
+                        @* One step back, always in the same place. Clicking a green box goes
+                           anywhere; this goes to the stage before this one, which is the move
+                           people actually want and should not have to aim for. *@
+                        <button type="button" class="stage-back"
+                                @onclick="() => OnRevisit.InvokeAsync(Back.Value)"
+                                title="Back to @TitleOf(Back.Value)">
+                            <span aria-hidden="true">←</span>
+                            <span class="visually-hidden">Back to @TitleOf(Back.Value)</span>
+                        </button>
+                    }
+
+                    @if (Navigation.HasStep)
+                    {
+                        <button type="button" class="stage-continue"
+                                disabled="@(!Navigation.CanContinue)" @onclick="Continue">
+                            @Navigation.Label <span aria-hidden="true">→</span>
+                        </button>
+                    }
+                </div>
             }
         </li>
     }
@@ -90,12 +108,28 @@
     private Task Continue() => OnContinue.InvokeAsync();
 
     /// <summary>
+    /// The stage the back control returns to: the one before the open node, when there is one and
+    /// it has been reached. Null on the first stage, and null for a stage that was never answered —
+    /// <see cref="BuildSession.GoTo"/> refuses one of those, so offering it would be a broken
+    /// promise.
+    /// </summary>
+    private BuildStage? Back
+        => StageGraph.Previous(Session.Current) is { } previous
+           && Session.StateOf(previous) != StageState.Pending
+            ? previous
+            : null;
+
+    private static string TitleOf(BuildStage stage)
+        => StageGraph.Nodes.First(n => n.Stage == stage).Title;
+
+    /// <summary>
     /// Whether this node is the one the forward step leads to. Only ever the node after the open
-    /// one, and only while the panel is offering a usable step — a box that lights up before its
-    /// answer is valid would be a promise the click cannot keep.
+    /// one, and only while the panel is offering a usable step of ordinary movement — a box that
+    /// lights up before its answer is valid would be a promise the click cannot keep, and one that
+    /// lights up for a named action would mean clicking a box to write a project.
     /// </summary>
     private bool IsTheStepForward(BuildStage stage)
-        => Navigation.CanContinue
+        => Navigation.LeadsSomewhereClickable
            && StageGraph.Next(Session.Current) == stage
            && Session.StateOf(stage) == StageState.Pending;
 
