@@ -81,6 +81,11 @@ public sealed class BuildSession
 
     public CandidateDomainModel? Model { get; private set; }
 
+    /// <summary>The rows read from the user's file, or <see cref="ImportedData.None"/> on the
+    /// discovery path. Read by the generate step, and its notes — the row caps — are said out
+    /// loud rather than swallowed.</summary>
+    public ImportedData ImportedData { get; private set; } = ImportedData.None;
+
     /// <summary>Why the node that failed, failed. Null whenever nothing has.</summary>
     public string? FailureMessage { get; private set; }
 
@@ -114,6 +119,8 @@ public sealed class BuildSession
     public void SetModel(CandidateDomainModel model)
         => Change(BuildStage.Discover, changed: true, () => Model = model);
 
+    public void SetImportedData(ImportedData imported) => ImportedData = imported;
+
     /// <summary>
     /// Applies an answer, and discards whatever it invalidated.
     /// </summary>
@@ -141,7 +148,10 @@ public sealed class BuildSession
             _states[invalidated] = StageState.Pending;
 
             if (invalidated == BuildStage.Discover)
+            {
                 Model = null;
+                ImportedData = ImportedData.None;
+            }
         }
     }
 

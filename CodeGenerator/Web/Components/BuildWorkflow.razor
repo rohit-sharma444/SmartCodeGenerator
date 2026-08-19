@@ -31,6 +31,9 @@
             case BuildStage.Look:
                 <LookStage Session="Session" OnAdvance="Refresh" />
                 break;
+            case BuildStage.Discover:
+                <DiscoverStage Session="Session" OnAdvance="Refresh" />
+                break;
         }
     </section>
 </main>

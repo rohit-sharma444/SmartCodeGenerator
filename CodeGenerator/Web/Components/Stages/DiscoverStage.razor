@@ -1,0 +1,133 @@
+@using CodeGenerator.Web.Workflow
+@using DataIngestion.Normalization
+
+@if (_busy)
+{
+    @* The longest silence in the tool. A first fetch for an unseen topic runs many seconds, and
+       an unmoving screen reads as hung — this is the spinner's replacement. *@
+    <p class="working" aria-live="polite">@_label</p>
+}
+else if (_read is not null)
+{
+    @foreach (var line in _read.Lines)
+    {
+        <p class="read-line">@line</p>
+    }
+
+    @if (_read.Report.Findings.Count > 0)
+    {
+        <p>These changes would put the data into a better shape. Tick the ones to apply.</p>
+
+        <ul class="findings">
+            @foreach (var finding in _read.Report.Findings)
+            {
+                <li>
+                    <label class="choice">
+                        <input type="checkbox" checked="@_chosen.Contains(finding)"
+                               @onchange="e => Toggle(finding, (bool?)e.Value ?? false)" />
+                        <strong>@finding.Headline</strong> — @finding.Proposal
+                    </label>
+
+                    @* Evidence is not decoration: a finding the user cannot inspect is a finding
+                       they cannot trust. *@
+                    <details>
+                        <summary>Why</summary>
+                        @foreach (var line in finding.Evidence)
+                        {
+                            <p class="evidence">@line</p>
+                        }
+                    </details>
+                </li>
+            }
+        </ul>
+    }
+
+    <div class="actions">
+        <button type="button" class="back" @onclick="Back">Back</button>
+        <button type="button" class="next" @onclick="Continue">Continue</button>
+    </div>
+}
+else
+{
+    <div class="actions">
+        <button type="button" class="back" @onclick="Back">Back</button>
+        <button type="button" class="next" @onclick="Start">Start</button>
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public required BuildSession Session { get; set; }
+    [Parameter] public EventCallback OnAdvance { get; set; }
+
+    private bool _busy;
+    private string _label = string.Empty;
+    private ReadResult? _read;
+    private readonly List<NormalizationFinding> _chosen = [];
+
+    protected override async Task OnInitializedAsync() => await Start();
+
+    private async Task Start()
+    {
+        if (Session.HasData)
+        {
+            ReadTheFile();
+            return;
+        }
+
+        _busy = true;
+        _label = "Discovering domain (this may fetch from Wikipedia the first time)…";
+
+        // Off the circuit's thread, so the label above is actually painted before the wait.
+        var discovered = await Task.Run(
+            () => DiscoveryStep.Discover(Session.Description, Session.WorkspaceRoot));
+
+        _busy = false;
+
+        if (!discovered.TopicRecognized)
+        {
+            _label = "No topic recognized online — showing seed classes only. "
+                     + "You can add classes by hand in the review.";
+        }
+
+        Session.SetModel(discovered.Model);
+        Session.Advance();
+
+        await OnAdvance.InvokeAsync();
+    }
+
+    private void ReadTheFile()
+    {
+        if (!DiscoveryStep.TryRead(Session.Source!, out var read, out var error))
+        {
+            Session.Fail(error);
+            return;
+        }
+
+        _read = read;
+    }
+
+    private void Toggle(NormalizationFinding finding, bool ticked)
+    {
+        if (ticked)
+            _chosen.Add(finding);
+        else
+            _chosen.Remove(finding);
+    }
+
+    private async Task Continue()
+    {
+        var (model, imported) = DiscoveryStep.BuildFromData(_read!, _chosen);
+
+        Session.SetModel(model);
+        Session.SetImportedData(imported);
+        Session.Advance();
+
+        await OnAdvance.InvokeAsync();
+    }
+
+    private async Task Back()
+    {
+        Session.GoTo(BuildStage.Data);
+        await OnAdvance.InvokeAsync();
+    }
+}
