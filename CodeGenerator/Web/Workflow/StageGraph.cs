@@ -1,0 +1,79 @@
+namespace CodeGenerator.Web.Workflow;
+
+/// <summary>One node as the diagram needs it: what to call it, and one line of what it does.</summary>
+internal sealed record StageNode(BuildStage Stage, string Title, string Blurb);
+
+/// <summary>
+/// The workflow's shape. Pure: nodes, the walk between them, and what changing an answer costs.
+/// </summary>
+/// <remarks>
+/// Separate from <see cref="BuildSession"/> for the reason <c>SelectionState</c> is separate
+/// from <c>SelectionPrompt</c> — everything decidable is lifted out of the thing that holds
+/// mutable state, so it can be asserted directly.
+/// </remarks>
+internal static class StageGraph
+{
+    public static IReadOnlyList<StageNode> Nodes { get; } =
+    [
+        new(BuildStage.Describe, "Describe", "What are we building?"),
+        new(BuildStage.AppType,  "App type", "Which kind of application"),
+        new(BuildStage.Data,     "Data",     "A file to read, or discover from the web"),
+        new(BuildStage.Look,     "Look",     "Branding, theme and features"),
+        new(BuildStage.Discover, "Discover", "Work out the classes"),
+        new(BuildStage.Review,   "Review",   "Change the model before it is written"),
+        new(BuildStage.Generate, "Generate", "Write it, build it, run it"),
+    ];
+
+    public static BuildStage? Next(BuildStage stage)
+    {
+        var index = IndexOf(stage);
+
+        return index + 1 < Nodes.Count ? Nodes[index + 1].Stage : null;
+    }
+
+    public static BuildStage? Previous(BuildStage stage)
+    {
+        var index = IndexOf(stage);
+
+        return index > 0 ? Nodes[index - 1].Stage : null;
+    }
+
+    /// <summary>
+    /// The stages whose results are worthless once <paramref name="changed"/> is answered
+    /// differently.
+    /// </summary>
+    /// <remarks>
+    /// Not simply "everything downstream". An application type and a customization are not read
+    /// until <see cref="BuildStage.Generate"/>, so changing either leaves a discovered model
+    /// perfectly valid — and re-running a Wikipedia fetch because a checkbox moved would be the
+    /// worst version of this feature. A description, by contrast, is the discovery input AND the
+    /// app name, so changing it invalidates everything discovery produced.
+    /// <para>
+    /// A total switch, so a stage added to <see cref="BuildStage"/> cannot compile without a
+    /// decision being made here.
+    /// </para>
+    /// </remarks>
+    public static IReadOnlyList<BuildStage> Invalidates(BuildStage changed)
+        => changed switch
+        {
+            BuildStage.Describe => [BuildStage.Discover, BuildStage.Review, BuildStage.Generate],
+            BuildStage.Data     => [BuildStage.Discover, BuildStage.Review, BuildStage.Generate],
+            BuildStage.Discover => [BuildStage.Review, BuildStage.Generate],
+            BuildStage.AppType  => [],
+            BuildStage.Look     => [],
+            BuildStage.Review   => [],
+            BuildStage.Generate => [],
+            _ => throw new InvalidOperationException($"No invalidation rule for {changed}."),
+        };
+
+    /// <summary>Where <paramref name="stage"/> sits in the walk. A miss is a wiring bug: every
+    /// member of the enum has a node.</summary>
+    private static int IndexOf(BuildStage stage)
+    {
+        for (var i = 0; i < Nodes.Count; i++)
+            if (Nodes[i].Stage == stage)
+                return i;
+
+        throw new InvalidOperationException($"No node for stage {stage}.");
+    }
+}
