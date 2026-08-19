@@ -51,7 +51,7 @@ public class WorkflowPageTests
         Assert.AreEqual("a hotel", session.Description);
         Assert.IsNull(session.Model);
         Assert.AreEqual(BuildStage.AppType, session.Current);
-        Assert.AreEqual(0, page.FindAll(".discard-question").Count);
+        Assert.IsEmpty(page.FindAll(".discard-question"));
     }
 
     [TestMethod]
@@ -68,7 +68,7 @@ public class WorkflowPageTests
         Assert.AreEqual("a shop", session.Description);
         Assert.IsNotNull(session.Model);
         Assert.AreEqual(BuildStage.Describe, session.Current);
-        Assert.AreEqual(0, page.FindAll(".discard-question").Count);
+        Assert.IsEmpty(page.FindAll(".discard-question"));
     }
 
     /// <summary>
