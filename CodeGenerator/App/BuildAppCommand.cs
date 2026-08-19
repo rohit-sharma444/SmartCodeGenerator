@@ -112,7 +112,9 @@ internal sealed class BuildAppCommand
                     Console.WriteLine("  Ctrl-C here cancels.");
                     Console.WriteLine("");
 
-                    var webOutcome = Web.BuildAppWebHost.Run(session, Interrupt.Token);
+                    // The host that is already running, not a second one: the tabs have to be
+                    // counted on the Kestrel the browser was pointed at.
+                    var webOutcome = host.Run(session, Interrupt.Token);
 
                     foreach (var line in webOutcome.Lines)
                         Console.WriteLine(line);

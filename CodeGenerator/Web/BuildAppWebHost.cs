@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using CodeGenerator.Web.Workflow;
+using Microsoft.AspNetCore.Components.Server.Circuits;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -32,14 +33,30 @@ internal sealed class BuildAppWebHost : IDisposable
     /// <summary>How often <see cref="Run"/> looks at the session.</summary>
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(200);
 
+    /// <summary>
+    /// How long every tab must have been gone before the workflow is treated as abandoned.
+    /// </summary>
+    /// <remarks>
+    /// Long enough that a refresh — circuit down, new circuit up about a second later — is not
+    /// mistaken for a closed tab, and short enough that a user who closed the tab is not left
+    /// wondering why their prompt has not come back.
+    /// </remarks>
+    private static readonly TimeSpan AbandonGrace = TimeSpan.FromSeconds(10);
+
     private readonly WebApplication _app;
 
-    private BuildAppWebHost(WebApplication app, string url, string token)
+    private BuildAppWebHost(WebApplication app, string url, string token, CircuitWatch circuits)
     {
         _app = app;
         Url = url;
         SessionToken = token;
+        Circuits = circuits;
     }
+
+    /// <summary>The tabs connected to this host. Written by <see cref="WorkflowCircuits"/> from
+    /// the circuits Blazor raises, and read by <see cref="Run(BuildSession, CancellationToken,
+    /// TimeSpan?)"/>.</summary>
+    public CircuitWatch Circuits { get; }
 
     /// <summary>The address to open, token and all.</summary>
     public string Url { get; }
@@ -88,6 +105,13 @@ internal sealed class BuildAppWebHost : IDisposable
             // rival one against the same workspace.
             builder.Services.AddSingleton(session);
 
+            // The watch is one per host and the handler is one per circuit, which is the whole
+            // point of the pair: the handlers come and go with the tabs and the count does not.
+            var circuits = new CircuitWatch();
+
+            builder.Services.AddSingleton(circuits);
+            builder.Services.AddScoped<CircuitHandler, WorkflowCircuits>();
+
             var app = builder.Build();
 
             app.MapStaticAssets();
@@ -115,7 +139,8 @@ internal sealed class BuildAppWebHost : IDisposable
 
             var bound = app.Urls.First();
 
-            host = new BuildAppWebHost(app, $"{bound}/build?{TokenParameter}={token}", token);
+            host = new BuildAppWebHost(
+                app, $"{bound}/build?{TokenParameter}={token}", token, circuits);
 
             return true;
         }
@@ -127,12 +152,13 @@ internal sealed class BuildAppWebHost : IDisposable
     }
 
     /// <summary>
-    /// Runs the workflow to its end and returns what the console should print.
+    /// Starts a host of its own and runs the workflow to its end.
     /// </summary>
     /// <remarks>
-    /// Polls rather than awaiting an event, for one reason: the session is mutated from a Blazor
-    /// circuit on another thread, and a poll costs nothing next to a workflow a person is typing
-    /// into. Every exit is bounded — there is no path here that waits forever.
+    /// For a caller with no use for the URL. The interactive command uses
+    /// <see cref="TryStart"/> and the instance <see cref="Run(BuildSession, CancellationToken,
+    /// TimeSpan?)"/> instead, because it has to print the address before the waiting begins —
+    /// and because the tabs must be counted on the host the browser is actually looking at.
     /// </remarks>
     public static BuildOutcome Run(BuildSession session, CancellationToken ct)
     {
@@ -140,25 +166,50 @@ internal sealed class BuildAppWebHost : IDisposable
             return new BuildOutcome(SessionPhase.Cancelled, ["Could not start the build workflow."]);
 
         using (host)
-        {
-            while (session.Phase == SessionPhase.Running)
-            {
-                if (ct.IsCancellationRequested)
-                {
-                    session.Cancel();
-                    break;
-                }
+            return host.Run(session, ct);
+    }
 
-                Thread.Sleep(PollInterval);
+    /// <summary>
+    /// Runs the workflow to its end and returns what the console should print.
+    /// </summary>
+    /// <remarks>
+    /// Polls rather than awaiting an event, for one reason: the session is mutated from a Blazor
+    /// circuit on another thread, and a poll costs nothing next to a workflow a person is typing
+    /// into. Every exit is bounded — there is no path here that waits forever, including the one
+    /// where the person walked away: a tab closed and never replaced ends the workflow, or the
+    /// console would wait on a page nobody has open.
+    /// </remarks>
+    /// <param name="grace">
+    /// How long the last tab must have been gone. Defaults to <see cref="AbandonGrace"/>; passed
+    /// explicitly by the tests, which have no interest in waiting ten real seconds.
+    /// </param>
+    public BuildOutcome Run(BuildSession session, CancellationToken ct, TimeSpan? grace = null)
+    {
+        var window = grace ?? AbandonGrace;
+
+        while (session.Phase == SessionPhase.Running)
+        {
+            if (ct.IsCancellationRequested)
+            {
+                session.Cancel();
+                break;
             }
 
-            return session.Phase switch
+            if (Circuits.ShouldAbandon(window, DateTimeOffset.UtcNow))
             {
-                SessionPhase.Abandoned => BuildOutcome.Abandoned,
-                SessionPhase.Generated => session.Outcome ?? BuildOutcome.Cancelled,
-                _ => BuildOutcome.Cancelled,
-            };
+                session.Abandon();
+                break;
+            }
+
+            Thread.Sleep(PollInterval);
         }
+
+        return session.Phase switch
+        {
+            SessionPhase.Abandoned => BuildOutcome.Abandoned,
+            SessionPhase.Generated => session.Outcome ?? BuildOutcome.Cancelled,
+            _ => BuildOutcome.Cancelled,
+        };
     }
 
     public void Dispose()

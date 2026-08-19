@@ -135,6 +135,46 @@ public class BuildAppWebHostTests
         Assert.IsTrue(task.Wait(ReturnsWithin), "Run did not return on interrupt");
     }
 
+    /// <summary>
+    /// The failure this feature can least afford: a tab closed and a console blocked forever.
+    /// </summary>
+    /// <remarks>
+    /// Drives the watch directly rather than through a browser. What a real circuit does to the
+    /// watch is <c>WorkflowCircuitsTests</c>'s job; what the host does about it is this one's.
+    /// </remarks>
+    [TestMethod]
+    public void Run_returns_when_the_last_tab_is_closed()
+    {
+        using var host = Start(out var session);
+
+        host.Circuits.Opened(DateTimeOffset.UtcNow);
+        host.Circuits.Closed(DateTimeOffset.UtcNow);
+
+        var task = Task.Run(
+            () => host.Run(session, CancellationToken.None, TimeSpan.Zero));
+
+        Assert.IsTrue(task.Wait(ReturnsWithin), "Run did not return on an abandoned workflow");
+        Assert.AreEqual(SessionPhase.Abandoned, task.Result.Phase);
+    }
+
+    /// <summary>
+    /// The counterpart, and the one a too-eager watch would break: nobody has opened the page
+    /// yet, and the URL is still worth pasting.
+    /// </summary>
+    [TestMethod]
+    public void Run_keeps_waiting_when_the_page_has_not_been_opened_yet()
+    {
+        using var host = Start(out var session);
+
+        var task = Task.Run(() => host.Run(session, CancellationToken.None, TimeSpan.Zero));
+
+        Assert.IsFalse(
+            task.Wait(TimeSpan.FromSeconds(2)), "Run gave up before the page was ever opened");
+
+        session.Cancel();
+        task.Wait(ReturnsWithin);
+    }
+
     private static BuildAppWebHost Start(out BuildSession session)
     {
         session = NewSession();
