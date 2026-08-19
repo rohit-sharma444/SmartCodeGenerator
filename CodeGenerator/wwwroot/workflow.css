@@ -76,3 +76,21 @@ body {
     border-left: 4px solid var(--failed);
     background: #fdf0ef;
 }
+
+.review { display: grid; grid-template-columns: 1fr 220px; gap: 1.5rem; }
+.entities { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 1rem; }
+
+.entity { border: 1px solid var(--line); border-radius: 6px; padding: 0.75rem; }
+.entity header { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+.entity-name { font-weight: 600; border: 1px solid transparent; background: transparent; }
+.entity-name:focus { border-color: var(--active); background: #fff; }
+
+.provenance { font-size: 0.72em; text-transform: uppercase; color: var(--pending); }
+.fields { list-style: none; padding: 0; margin: 0.5rem 0; }
+.fields li { display: flex; gap: 0.5rem; align-items: baseline; }
+.field-type { font-size: 0.8em; color: var(--pending); }
+
+.suggestions button.promote { margin: 0 0.3rem 0.3rem 0; }
+.settled { grid-column: 2; font-size: 0.88em; }
+.edit-report { margin-top: 1rem; font-style: italic; }
+.evidence { font-family: ui-monospace, Consolas, monospace; font-size: 0.82em; }

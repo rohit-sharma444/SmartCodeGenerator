@@ -34,6 +34,9 @@
             case BuildStage.Discover:
                 <DiscoverStage Session="Session" OnAdvance="Refresh" />
                 break;
+            case BuildStage.Review:
+                <ReviewStage Session="Session" OnAdvance="Refresh" />
+                break;
         }
     </section>
 </main>
