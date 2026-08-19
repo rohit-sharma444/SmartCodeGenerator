@@ -1,0 +1,7 @@
+@page "/build"
+@rendermode InteractiveServer
+@using CodeGenerator.Web.Workflow
+@inject BuildSession Session
+
+<h1>Build an application</h1>
+<p>Workflow stage: @Session.Current</p>

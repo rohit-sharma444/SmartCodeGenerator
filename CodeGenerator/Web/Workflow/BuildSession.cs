@@ -1,4 +1,5 @@
 using AppScaffolding;
+using CodeGenerator.Web;
 using DataIngestion;
 using DomainDiscovery.Model;
 
@@ -77,6 +78,9 @@ internal sealed class BuildSession
 
     /// <summary>Why the node that failed, failed. Null whenever nothing has.</summary>
     public string? FailureMessage { get; private set; }
+
+    /// <summary>What the console prints, set by the generate step. Null until it runs.</summary>
+    public BuildOutcome? Outcome { get; private set; }
 
     public StageState StateOf(BuildStage stage) => _states[stage];
 
@@ -189,8 +193,9 @@ internal sealed class BuildSession
     /// <summary>The tab was closed. Distinct from <see cref="Cancel"/>: nothing was decided.</summary>
     public void Abandon() => Phase = SessionPhase.Abandoned;
 
-    public void Complete()
+    public void Complete(BuildOutcome outcome)
     {
+        Outcome = outcome;
         _states[BuildStage.Generate] = StageState.Done;
         Phase = SessionPhase.Generated;
     }
