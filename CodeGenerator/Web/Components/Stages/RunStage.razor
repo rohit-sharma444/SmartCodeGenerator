@@ -49,10 +49,11 @@ else
 }
 
 <div class="actions">
-    <button type="button" class="back" @onclick="Back">Back</button>
-
     @if (Runnable)
     {
+        @* Starting it is the action this stage exists for, so it is the loud button here. There is
+           nowhere forward to navigate to: Done ends the workflow and hands the console its
+           report. *@
         <button type="button" class="run" disabled="@_starting" @onclick="Start">
             @(_started ? "Start it again" : "Run it now")
         </button>
@@ -63,6 +64,7 @@ else
 
 @code {
     [Parameter, EditorRequired] public required BuildSession Session { get; set; }
+    [Parameter, EditorRequired] public required StageNavigation Navigation { get; set; }
     [Parameter] public EventCallback OnAdvance { get; set; }
 
     private readonly List<string> _report = [];
@@ -219,9 +221,7 @@ else
         await OnAdvance.InvokeAsync();
     }
 
-    private async Task Back()
-    {
-        Session.GoTo(BuildStage.Generate);
-        await OnAdvance.InvokeAsync();
-    }
+    protected override void OnInitialized()
+        // The last node: there is nothing past it, so it offers no step and the box draws none.
+        => Navigation.Withdraw();
 }

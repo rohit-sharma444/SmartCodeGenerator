@@ -549,11 +549,13 @@ public static class CommandDictionary
             Command = "build app",
             Description = "Starts the same flow with nothing filled in. Interactively it opens a "
                         + "workflow page in the browser drawn as eight connected stages, ending "
-                        + "in one that starts the application it just built: the one "
-                        + "being answered is open, a long step reports its progress as it works, "
-                        + "a finished stage can be clicked to go back, and "
-                        + "changing the description or the data source discards the model that was "
-                        + "discovered from the old one. Piped runs keep the console wizard, as "
+                        + "in one that starts the application it just built. The stages are the "
+                        + "navigation: each box shows the answer it holds, the box being answered "
+                        + "carries the step forward, the next box lights up when that step is "
+                        + "ready, and clicking a finished box goes back to change it — there are "
+                        + "no Back and Next buttons. A long step reports its progress as it works, "
+                        + "and changing the description or the data source discards the model that "
+                        + "was discovered from the old one. Piped runs keep the console wizard, as "
                         + "does CG_NO_WEB=1.",
             Example = "build app"
         },

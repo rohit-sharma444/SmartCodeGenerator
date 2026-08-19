@@ -83,13 +83,19 @@ public class ReviewStageTests
         StringAssert.Contains(markup, CodeGenerator.App.ApplicationTypeMenu.LabelFor(new WpfTarget()));
     }
 
+    // Generating is this stage's step forward, so it is named in the box rather than buried under
+    // a screen of entity cards.
     [TestMethod]
-    public void Generate_advances_to_the_last_node()
+    public async Task Generate_is_the_step_forward_and_advances_to_the_last_node()
     {
         using var context = new BunitContext();
-        var rendered = Render(context, out var session);
+        var navigation = new StageNavigation();
+        Render(context, out var session, navigation);
 
-        rendered.Find("button.generate").Click();
+        Assert.AreEqual("Generate", navigation.Label);
+
+        Assert.IsTrue(await navigation.ApplyAsync());
+        session.Advance();
 
         Assert.AreEqual(BuildStage.Generate, session.Current);
     }
@@ -98,17 +104,19 @@ public class ReviewStageTests
     public void Generate_is_refused_on_an_empty_model()
     {
         using var context = new BunitContext();
-        var session = SessionWith(new CandidateDomainModel());
+        var navigation = new StageNavigation();
 
-        var rendered = context.Render<ReviewStage>(p => p
-            .Add(c => c.Session, session)
+        context.Render<ReviewStage>(p => p
+            .Add(c => c.Session, SessionWith(new CandidateDomainModel()))
+            .Add(c => c.Navigation, navigation)
             .Add(c => c.OnAdvance, () => { }));
 
-        Assert.IsTrue(rendered.Find("button.generate").HasAttribute("disabled"));
+        Assert.IsTrue(navigation.HasStep, "the step should be visible, just not usable");
+        Assert.IsFalse(navigation.CanContinue);
     }
 
     private static IRenderedComponent<ReviewStage> Render(
-        BunitContext context, out BuildSession session)
+        BunitContext context, out BuildSession session, StageNavigation? navigation = null)
     {
         session = SessionWith(AModel());
 
@@ -116,6 +124,7 @@ public class ReviewStageTests
 
         return context.Render<ReviewStage>(p => p
             .Add(c => c.Session, captured)
+            .Add(c => c.Navigation, navigation ?? new StageNavigation())
             .Add(c => c.OnAdvance, () => { }));
     }
 

@@ -44,21 +44,19 @@ else if (_read is not null)
         </ul>
     }
 
-    <div class="actions">
-        <button type="button" class="back" @onclick="Back">Back</button>
-        <button type="button" class="next" @onclick="Continue">Continue</button>
-    </div>
 }
 else
 {
+    @* Nothing ran and nothing failed — only reachable if the panel was reopened after its work
+       was thrown away, so it offers to do it again. *@
     <div class="actions">
-        <button type="button" class="back" @onclick="Back">Back</button>
-        <button type="button" class="next" @onclick="Start">Start</button>
+        <button type="button" class="start" @onclick="Start">Start</button>
     </div>
 }
 
 @code {
     [Parameter, EditorRequired] public required BuildSession Session { get; set; }
+    [Parameter, EditorRequired] public required StageNavigation Navigation { get; set; }
     [Parameter] public EventCallback OnAdvance { get; set; }
 
     private bool _busy;
@@ -72,6 +70,10 @@ else
 
     private async Task Start()
     {
+        // Nothing to move on to while this runs: the discovery path advances itself, and the data
+        // path has findings to tick first.
+        Navigation.Withdraw();
+
         if (Session.HasData)
         {
             ReadTheFile();
@@ -150,6 +152,9 @@ else
         }
 
         _read = read;
+
+        // Read and analysed: the findings are ticked here and the step forward applies them.
+        Navigation.Offer(Continue);
     }
 
     private void Toggle(NormalizationFinding finding, bool ticked)
@@ -160,20 +165,14 @@ else
             _chosen.Remove(finding);
     }
 
-    private async Task Continue()
+    private Task<bool> Continue()
     {
         var (model, imported) = DiscoveryStep.BuildFromData(_read!, _chosen);
 
         Session.SetModel(model);
         Session.SetImportedData(imported);
-        Session.Advance();
 
-        await OnAdvance.InvokeAsync();
+        return Task.FromResult(true);
     }
 
-    private async Task Back()
-    {
-        Session.GoTo(BuildStage.Data);
-        await OnAdvance.InvokeAsync();
-    }
 }

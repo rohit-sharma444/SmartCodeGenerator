@@ -31,7 +31,7 @@
     }
 
     <div class="actions">
-        <button type="button" class="back" @onclick="Back">Back</button>
+        @* Writing is a real action rather than navigation, so it stays here and stays loud. *@
         <button type="button" class="write" @onclick="Write">Write it</button>
         <button type="button" class="cancel" @onclick="() => Session.Cancel()">Cancel</button>
     </div>
@@ -66,23 +66,12 @@ else
         <pre class="build-log">@string.Join(Environment.NewLine, _log)</pre>
     }
 
-    @if (_phase == Phase.Done)
+    @if (_phase == Phase.Done && !_written)
     {
+        @* Nothing was written, so there is nothing for the run stage to do — this run ends here,
+           and the console says why. *@
         <div class="actions">
-            <button type="button" class="back" @onclick="Back">Back</button>
-
-            @if (_written)
-            {
-                @* On to the run stage rather than a Run button here: whether it starts is its own
-                   question, and the diagram carries it. *@
-                <button type="button" class="next" @onclick="Continue">Next</button>
-            }
-            else
-            {
-                @* Nothing was written, so there is nothing for the run stage to do — this run
-                   ends here, and the console says why. *@
-                <button type="button" class="finish" @onclick="Finish">Done</button>
-            }
+            <button type="button" class="finish" @onclick="Finish">Done</button>
         </div>
     }
 }
@@ -91,6 +80,7 @@ else
     private enum Phase { Confirm, Overwrite, Working, Done }
 
     [Parameter, EditorRequired] public required BuildSession Session { get; set; }
+    [Parameter, EditorRequired] public required StageNavigation Navigation { get; set; }
     [Parameter] public EventCallback OnAdvance { get; set; }
 
     private Phase _phase = Phase.Confirm;
@@ -136,6 +126,9 @@ else
 
         if (app.Scaffold.TestProjectPath is not null)
             _report.Add($"Generated test project at {app.Scaffold.TestProjectPath}");
+
+        // Written already, so the way on is the box's, exactly as it is after a fresh write.
+        Navigation.Offer(Continue);
 
         _steps.Add($"Wrote {app.Scaffold.FilesWritten.Count} file(s)");
         _steps.Add(app.BuildSucceeded ? "Compiled" : "The compiler reported problems");
@@ -234,6 +227,9 @@ else
         _written = true;
         _phase = Phase.Done;
 
+        // The run stage is now reachable, and the box says so.
+        Navigation.Offer(Continue);
+
         // Belt as well as braces: the awaited handler re-renders on its own, but the same method
         // is reachable from the overwrite dialog and this is the transition that must not be lost.
         StateHasChanged();
@@ -303,12 +299,8 @@ else
 
     public void Dispose() => StopClock();
 
-    private async Task Continue()
-    {
-        Session.Advance();
-
-        await OnAdvance.InvokeAsync();
-    }
+    /// <summary>The project is already written; the step is only the move to the run node.</summary>
+    private static Task<bool> Continue() => Task.FromResult(true);
 
     /// <summary>Ends the workflow here, for the one case the run stage cannot help with: nothing
     /// was written at all.</summary>
@@ -321,9 +313,4 @@ else
         await OnAdvance.InvokeAsync();
     }
 
-    private async Task Back()
-    {
-        Session.GoTo(BuildStage.Review);
-        await OnAdvance.InvokeAsync();
-    }
 }

@@ -19,7 +19,10 @@ loop and the scaffolder are shared and know nothing about which path built it.
 
 Both of them wear one of two front ends. An interactive `build app` opens a
 workflow page in the browser — eight stages ending in one that starts the
-generated application, Blazor Server hosted in-process by the CLI itself
+generated application, and the stages are also the navigation: a panel offers
+its forward step through a `StageNavigation` the diagram draws inside the box
+being answered, which is why no panel has a Next button. Blazor Server hosted
+in-process by the CLI itself
 (`CodeGenerator/Web`, which is why that project builds under the Web SDK) — and the
 console prints the address and waits for the page to finish. Redirected or piped
 input, and `CG_NO_WEB=1`, keep the console wizard and the typed review loop

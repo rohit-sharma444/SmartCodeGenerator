@@ -107,18 +107,22 @@
 }
 
 <div class="actions">
-    <button type="button" class="generate" disabled="@(Model.Entities.Count == 0)"
-            @onclick="Generate">
-        Generate
-    </button>
+    @* Generating is the step forward, so it is named in the box rather than buried under a screen
+       of entity cards the user has to scroll past to find it. *@
     <button type="button" class="cancel" @onclick="() => Session.Cancel()">Cancel</button>
 </div>
 
 @code {
     [Parameter, EditorRequired] public required BuildSession Session { get; set; }
+    [Parameter, EditorRequired] public required StageNavigation Navigation { get; set; }
     [Parameter] public EventCallback OnAdvance { get; set; }
 
     private CandidateDomainModel Model => Session.Model!;
+
+    /// <summary>A model with no classes has nothing to generate, so the step is offered and
+    /// disabled rather than hidden — the user can see what they are working towards.</summary>
+    protected override void OnInitialized()
+        => Navigation.Offer(Generate, ready: () => Model.Entities.Count > 0, label: "Generate");
 
     private string _newClass = string.Empty;
     private string _newField = string.Empty;
@@ -193,10 +197,7 @@
 
     private void Why(string name) => _why = [.. DecisionReport.ForName(Model, name)];
 
-    private async Task Generate()
-    {
-        Session.Advance();
-
-        await OnAdvance.InvokeAsync();
-    }
+    /// <summary>Nothing to apply: the model has been edited in place all along, so this stage's
+    /// step is purely the move to the generate node.</summary>
+    private static Task<bool> Generate() => Task.FromResult(true);
 }

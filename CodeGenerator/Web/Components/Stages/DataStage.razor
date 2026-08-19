@@ -49,8 +49,6 @@
 }
 
 <div class="actions">
-    <button type="button" class="back" @onclick="Back">Back</button>
-    <button type="button" class="next" @onclick="Next">Next</button>
     <button type="button" class="cancel" @onclick="() => Session.Cancel()">Cancel</button>
 </div>
 
@@ -59,6 +57,7 @@
     private const long MaxUpload = 10 * 1024 * 1024;
 
     [Parameter, EditorRequired] public required BuildSession Session { get; set; }
+    [Parameter, EditorRequired] public required StageNavigation Navigation { get; set; }
     [Parameter] public EventCallback OnAdvance { get; set; }
 
     private bool _hasFile;
@@ -68,6 +67,10 @@
 
     protected override void OnInitialized()
     {
+        // Offered unconditionally: a path that does not exist is reported after the click, which
+        // is friendlier than a control that stays dark without saying why.
+        Navigation.Offer(Next);
+
         if (Session.Source is null)
             return;
 
@@ -98,7 +101,7 @@
         _error = null;
     }
 
-    private async Task Next()
+    private Task<bool> Next()
     {
         _error = null;
 
@@ -109,14 +112,13 @@
             if (Session.Description.Length == 0)
             {
                 _error = "With no description and no data there is nothing to build from — "
-                         + "go back and describe the application, or point at a file.";
-                return;
+                         + "click Describe above and say what to build, or point at a file.";
+                return Task.FromResult(false);
             }
 
             Session.SetNoData();
-            Session.Advance();
-            await OnAdvance.InvokeAsync();
-            return;
+
+            return Task.FromResult(true);
         }
 
         // A path pasted from Explorer arrives quoted, exactly as it does in the console.
@@ -127,30 +129,24 @@
         if (!File.Exists(path))
         {
             _error = $"No file at {path}.";
-            return;
+            return Task.FromResult(false);
         }
 
         if (!DataSourceReaders.TryParseKind(_format, out var kind))
         {
             _error = $"Unknown format '{_format}'.";
-            return;
+            return Task.FromResult(false);
         }
 
         if (!DataSourceReaders.TryCreate(kind, out _))
         {
             _error = DataSourceReaders.NotSupportedMessage(kind);
-            return;
+            return Task.FromResult(false);
         }
 
         Session.SetSource(new DataSourceSpec(kind, path));
-        Session.Advance();
 
-        await OnAdvance.InvokeAsync();
+        return Task.FromResult(true);
     }
 
-    private async Task Back()
-    {
-        Session.GoTo(BuildStage.AppType);
-        await OnAdvance.InvokeAsync();
-    }
 }

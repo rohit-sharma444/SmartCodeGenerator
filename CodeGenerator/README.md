@@ -298,11 +298,15 @@ An interactive `build app` opens a workflow page in the browser and carries the 
 there: the console prints the address, says that Ctrl-C cancels, and waits. The page draws the
 pipeline as eight connected stages — describe, application type, data, look, discover, review,
 generate, run — with the stage being answered open beneath the diagram. The last one starts what
-was just built, because a project that compiles is not yet an application the user has seen work. A finished stage is clickable,
-so any answer can be revisited; changing the description or the data source discards the model
-that was discovered from the old one, because it was discovered from something the user has since
-changed. Typing a description inline (`build app: a library that lends books`) opens the page on
-the application type instead.
+was just built, because a project that compiles is not yet an application the user has seen work.
+
+The boxes are the navigation, so there are no Back and Next buttons anywhere. Each box shows the
+answer it holds ("Console", "orders.csv", "12 classes"), the box being answered carries the step
+forward, and the box that step leads to lights up as a second way to take it. Clicking a finished
+box goes back to change it, keeping whatever the open panel had already answered; changing the
+description or the data source discards the model that was discovered from the old one, because it
+was discovered from something the user has since changed. Typing a description inline
+(`build app: a library that lends books`) opens the page on the application type instead.
 
 The kinds of app are WPF (Windows desktop), Windows Desktop (WinForms), ASP.NET Web API, Web
 Application (Blazor Server), Console, Class Library and Worker Service.

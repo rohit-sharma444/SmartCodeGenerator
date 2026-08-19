@@ -2,12 +2,14 @@
 @rendermode InteractiveServer
 @using CodeGenerator.Web.Components.Stages
 @using CodeGenerator.Web.Workflow
+@implements IDisposable
 @inject BuildSession Session
 
 <main class="workflow">
     <h1>Build an application</h1>
 
-    <StageDiagram Session="Session" OnRevisit="Revisit" />
+    <StageDiagram Session="Session" Navigation="_navigation" OnRevisit="Revisit"
+                  OnContinue="Continue" />
 
     @if (Session.FailureMessage is not null)
     {
@@ -17,41 +19,90 @@
     <section class="panel">
         <h2>@StageGraph.Nodes.First(n => n.Stage == Session.Current).Title</h2>
 
+        @* Keyed on the stage, so revisiting a node builds a fresh panel rather than reusing the
+           one next door with its draft fields still in it. *@
         @switch (Session.Current)
         {
             case BuildStage.Describe:
-                <DescribeStage Session="Session" OnAdvance="Refresh" />
+                <DescribeStage @key="BuildStage.Describe" Session="Session"
+                               Navigation="_navigation" OnAdvance="Refresh" />
                 break;
             case BuildStage.AppType:
-                <AppTypeStage Session="Session" OnAdvance="Refresh" />
+                <AppTypeStage @key="BuildStage.AppType" Session="Session"
+                              Navigation="_navigation" OnAdvance="Refresh" />
                 break;
             case BuildStage.Data:
-                <DataStage Session="Session" OnAdvance="Refresh" />
+                <DataStage @key="BuildStage.Data" Session="Session"
+                           Navigation="_navigation" OnAdvance="Refresh" />
                 break;
             case BuildStage.Look:
-                <LookStage Session="Session" OnAdvance="Refresh" />
+                <LookStage @key="BuildStage.Look" Session="Session"
+                           Navigation="_navigation" OnAdvance="Refresh" />
                 break;
             case BuildStage.Discover:
-                <DiscoverStage Session="Session" OnAdvance="Refresh" />
+                <DiscoverStage @key="BuildStage.Discover" Session="Session"
+                               Navigation="_navigation" OnAdvance="Refresh" />
                 break;
             case BuildStage.Review:
-                <ReviewStage Session="Session" OnAdvance="Refresh" />
+                <ReviewStage @key="BuildStage.Review" Session="Session"
+                             Navigation="_navigation" OnAdvance="Refresh" />
                 break;
             case BuildStage.Generate:
-                <GenerateStage Session="Session" OnAdvance="Refresh" />
+                <GenerateStage @key="BuildStage.Generate" Session="Session"
+                               Navigation="_navigation" OnAdvance="Refresh" />
                 break;
             case BuildStage.Run:
-                <RunStage Session="Session" OnAdvance="Refresh" />
+                <RunStage @key="BuildStage.Run" Session="Session"
+                          Navigation="_navigation" OnAdvance="Refresh" />
                 break;
         }
     </section>
 </main>
 
 @code {
-    private void Revisit(BuildStage stage)
+    /// <summary>
+    /// The open panel's step forward, which the diagram draws.
+    /// </summary>
+    /// <remarks>
+    /// Owned here because the two components that need it are siblings: the panel offers the step
+    /// and the box above draws it. Held for the page's lifetime rather than per stage, so a panel
+    /// that offers nothing leaves the previous offer behind — which is why every panel either
+    /// offers or withdraws when it initializes.
+    /// </remarks>
+    private readonly StageNavigation _navigation = new();
+
+    protected override void OnInitialized() => _navigation.Changed += Refresh;
+
+    public void Dispose() => _navigation.Changed -= Refresh;
+
+    /// <summary>
+    /// Takes the open panel's step: its answer is applied, and only then does the workflow move on.
+    /// </summary>
+    /// <remarks>
+    /// Advancing lives here rather than in eight panels, and that is what makes
+    /// <see cref="Revisit"/> safe: leaving a node can apply an answer without stepping into the
+    /// stage after it, which would leave an untouched stage marked as done.
+    /// </remarks>
+    private async Task Continue()
     {
+        if (await _navigation.ApplyAsync())
+            Session.Advance();
+
+        Refresh();
+    }
+
+    private async Task Revisit(BuildStage stage)
+    {
+        // The answer the panel holds is applied first where applying is safe, so clicking a box to
+        // go and check something does not quietly cost the user what they just answered. Applied,
+        // not advanced: the node being left is then genuinely answered, which is what GoTo records.
+        // The panel itself keeps nothing — each node is keyed, so the next panel starts from the
+        // session rather than from whatever the last one had typed in it.
+        if (_navigation.ShouldCommitBeforeLeaving)
+            await _navigation.ApplyAsync();
+
         Session.GoTo(stage);
-        StateHasChanged();
+        Refresh();
     }
 
     private void Refresh() => StateHasChanged();

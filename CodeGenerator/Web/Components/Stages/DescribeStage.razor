@@ -9,25 +9,30 @@
 </textarea>
 
 <div class="actions">
-    <button type="button" class="next" @onclick="Next">Next</button>
+    @* Cancel only. Moving on is the diagram's job — the box above holds the step forward. *@
     <button type="button" class="cancel" @onclick="() => Session.Cancel()">Cancel</button>
 </div>
 
 @code {
     [Parameter, EditorRequired] public required BuildSession Session { get; set; }
+    [Parameter, EditorRequired] public required StageNavigation Navigation { get; set; }
     [Parameter] public EventCallback OnAdvance { get; set; }
 
     private string _text = string.Empty;
 
-    protected override void OnInitialized() => _text = Session.Description;
+    protected override void OnInitialized()
+    {
+        _text = Session.Description;
 
-    private async Task Next()
+        Navigation.Offer(Next);
+    }
+
+    private Task<bool> Next()
     {
         // Blank is allowed here and refused at node 3, where "no description AND no data" is
         // the combination that has genuinely nothing to build from.
         Session.SetDescription(_text);
-        Session.Advance();
 
-        await OnAdvance.InvokeAsync();
+        return Task.FromResult(true);
     }
 }

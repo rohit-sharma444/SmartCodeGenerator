@@ -40,10 +40,14 @@ body {
 
 .stage-node {
     position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
     padding: 0.7rem 0.9rem;
     border: 2px solid var(--line);
     border-radius: 6px;
     background: #fff;
+    transition: border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
 }
 
 /* The connector. On the node rather than between nodes, so it cannot get out of step with the
@@ -57,12 +61,94 @@ body {
     border-top: 2px solid var(--line);
 }
 
-.stage-node button {
+/* The whole box is the click target where the box is clickable: a small link inside a card is a
+   worse target than the card, and the card is what the user is looking at. */
+.stage-node .node-open {
     all: unset;
     cursor: pointer;
-    display: block;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
     width: 100%;
 }
+
+/* The mark in the corner. Quiet, because the border colour is what carries the state — this is
+   for anyone who cannot see the colour. */
+.stage-mark {
+    position: absolute;
+    top: 0.45rem;
+    right: 0.6rem;
+    font-size: 0.8em;
+    line-height: 1;
+    color: var(--pending);
+}
+
+.stage-node.done .stage-mark { color: var(--done); }
+.stage-node.active .stage-mark { color: var(--active); }
+.stage-node.failed .stage-mark { color: var(--failed); }
+
+/* The answer the box holds. Darker than the blurb it replaces: it is what the user came back to
+   the diagram to read. */
+.stage-answer {
+    display: block;
+    font-size: 0.84em;
+    color: var(--ink);
+}
+
+/* Only on hover and focus, so eight boxes are not eight invitations at once. */
+.stage-change {
+    display: block;
+    font-size: 0.76em;
+    color: var(--active);
+    opacity: 0;
+    transition: opacity 120ms ease;
+}
+
+.stage-node.done:hover,
+.stage-node.failed:hover { transform: translateY(-1px); }
+
+.stage-node.done:hover .stage-change,
+.stage-node.failed:hover .stage-change,
+.node-open:focus-visible .stage-change { opacity: 1; }
+
+.node-open:focus-visible {
+    outline: 2px solid var(--active);
+    outline-offset: 3px;
+    border-radius: 4px;
+}
+
+/* The step forward, inside the box the user is answering. The one loud thing on the page. */
+.stage-continue {
+    align-self: flex-start;
+    margin-top: 0.15rem;
+    padding: 0.3rem 0.7rem;
+    border: 0;
+    border-radius: 4px;
+    background: var(--active);
+    color: #fff;
+    font: inherit;
+    font-size: 0.85em;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.stage-continue:hover:not(:disabled) { filter: brightness(1.08); }
+
+/* Disabled rather than hidden: what the user is working towards should stay visible. */
+.stage-continue:disabled {
+    background: var(--line);
+    color: var(--pending);
+    cursor: not-allowed;
+}
+
+/* The box the step leads to. Dashed, so it reads as an invitation rather than as an answer. */
+.stage-node.next {
+    border-style: dashed;
+    border-color: var(--active);
+    color: var(--ink);
+}
+
+.stage-node.next:hover { transform: translateY(-1px); }
 
 /* One answer per line. Inline labels run seven application types into a single paragraph, which
    reads as prose rather than as a choice. */
@@ -97,6 +183,31 @@ body {
 
 .stage-title { display: block; font-weight: 600; }
 .stage-blurb { display: block; font-size: 0.82em; color: var(--pending); }
+
+/* Panel buttons: one loud action per panel at most, everything else quiet. Navigation is not
+   here any more — it is in the boxes. */
+.actions button {
+    padding: 0.4rem 0.9rem;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: #fff;
+    font: inherit;
+    cursor: pointer;
+}
+
+.actions button:hover:not(:disabled) { border-color: var(--pending); }
+
+.actions .write,
+.actions .run,
+.actions .finish,
+.actions .start {
+    border-color: var(--active);
+    background: var(--active);
+    color: #fff;
+    font-weight: 600;
+}
+
+.actions .cancel { color: var(--pending); }
 
 .panel {
     padding: 1.25rem 1.5rem;

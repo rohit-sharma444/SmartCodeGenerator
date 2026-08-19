@@ -1,27 +1,58 @@
-@* The pipeline, drawn. A CSS grid with pseudo-element connectors rather than an SVG with
-   computed coordinates: a node whose title wraps must not need the arrows re-measuring. *@
+@* The pipeline, drawn — and the navigation. A CSS grid with pseudo-element connectors rather than
+   an SVG with computed coordinates: a node whose title wraps must not need the arrows
+   re-measuring.
+
+   There are no Back and Next buttons under the panel. Each box carries its own state, the answer
+   it holds and, when it is the open one, the step forward — so moving through the workflow means
+   clicking the thing you are moving to, and going back means clicking what you want to change. *@
 @using CodeGenerator.Web.Workflow
 
 <ol class="stage-diagram">
     @foreach (var node in StageGraph.Nodes)
     {
-        var state = Session.StateOf(node.Stage);
+        var stage = node.Stage;
+        var state = Session.StateOf(stage);
+        var answer = StageSummary.For(Session, stage);
+        var isNext = IsTheStepForward(stage);
 
-        <li class="stage-node @CssFor(state)">
+        <li class="stage-node @CssFor(state) @(isNext ? "next" : null)">
             @if (IsRevisitable(state))
             {
                 @* A button, not a div with an onclick: a workflow the keyboard cannot drive is
                    not navigable, and the diagram is the navigation. *@
-                <button type="button" @onclick="() => OnRevisit.InvokeAsync(node.Stage)"
+                <button type="button" class="node-open" @onclick="() => OnRevisit.InvokeAsync(stage)"
                         title="Go back to @node.Title">
+                    <span class="stage-mark" aria-hidden="true">✓</span>
                     <span class="stage-title">@node.Title</span>
-                    <span class="stage-blurb">@node.Blurb</span>
+                    @Detail(node, answer)
+                    <span class="stage-change">change</span>
+                </button>
+            }
+            else if (isNext)
+            {
+                @* The next box is the forward step, so it is the same click as the arrow in the
+                   open box — the two are one decision drawn twice, deliberately: one is where the
+                   eye is, the other is where the workflow is going. *@
+                <button type="button" class="node-open" @onclick="Continue"
+                        title="@Navigation.Label — @node.Title">
+                    <span class="stage-mark" aria-hidden="true">→</span>
+                    <span class="stage-title">@node.Title</span>
+                    @Detail(node, answer)
                 </button>
             }
             else
             {
+                <span class="stage-mark" aria-hidden="true">@MarkFor(state)</span>
                 <span class="stage-title">@node.Title</span>
-                <span class="stage-blurb">@node.Blurb</span>
+                @Detail(node, answer)
+            }
+
+            @if (state == StageState.Active && Navigation.HasStep)
+            {
+                <button type="button" class="stage-continue" disabled="@(!Navigation.CanContinue)"
+                        @onclick="Continue">
+                    @Navigation.Label <span aria-hidden="true">→</span>
+                </button>
             }
         </li>
     }
@@ -31,9 +62,42 @@
     [Parameter, EditorRequired]
     public required BuildSession Session { get; set; }
 
+    /// <summary>What the open panel is offering as its step forward, if anything.</summary>
+    [Parameter, EditorRequired]
+    public required StageNavigation Navigation { get; set; }
+
     /// <summary>Raised when a node the user may go back to is clicked.</summary>
     [Parameter]
     public EventCallback<BuildStage> OnRevisit { get; set; }
+
+    /// <summary>Raised by both forward controls. The page acts on it, because applying an answer
+    /// and advancing the session are two different things and only the page owns the second.
+    /// </summary>
+    [Parameter]
+    public EventCallback OnContinue { get; set; }
+
+    /// <summary>The answer if there is one, the blurb if there is not: a box the user has not
+    /// reached should say what it will ask, and one they have answered should say what they
+    /// said.</summary>
+    private static RenderFragment Detail(StageNode node, string? answer) => builder =>
+    {
+        builder.OpenElement(0, "span");
+        builder.AddAttribute(1, "class", answer is null ? "stage-blurb" : "stage-answer");
+        builder.AddContent(2, answer ?? node.Blurb);
+        builder.CloseElement();
+    };
+
+    private Task Continue() => OnContinue.InvokeAsync();
+
+    /// <summary>
+    /// Whether this node is the one the forward step leads to. Only ever the node after the open
+    /// one, and only while the panel is offering a usable step — a box that lights up before its
+    /// answer is valid would be a promise the click cannot keep.
+    /// </summary>
+    private bool IsTheStepForward(BuildStage stage)
+        => Navigation.CanContinue
+           && StageGraph.Next(Session.Current) == stage
+           && Session.StateOf(stage) == StageState.Pending;
 
     private static string CssFor(StageState state)
         => state switch
@@ -44,10 +108,21 @@
             _ => "pending",
         };
 
+    /// <summary>The mark in the corner of the box. Quiet on purpose — the colour of the border
+    /// carries the state; this is for anyone who cannot see the colour.</summary>
+    private static string MarkFor(StageState state)
+        => state switch
+        {
+            StageState.Active => "●",
+            StageState.Done => "✓",
+            StageState.Failed => "!",
+            _ => "",
+        };
+
     /// <summary>
-    /// Whether this node can be clicked. Done and Failed can — a failed node is exactly the one
-    /// a user needs to get back into. Pending cannot: it has no answer to change, which is why
-    /// <see cref="BuildSession.GoTo"/> refuses one.
+    /// Whether this node can be clicked to go back into. Done and Failed can — a failed node is
+    /// exactly the one a user needs to get back into. Pending cannot: it has no answer to change,
+    /// which is why <see cref="BuildSession.GoTo"/> refuses one.
     /// </summary>
     private static bool IsRevisitable(StageState state)
         => state is StageState.Done or StageState.Failed;

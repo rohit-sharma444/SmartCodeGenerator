@@ -1,4 +1,5 @@
 using AppScaffolding;
+using AppScaffolding.Targets;
 using Bunit;
 using CodeGenerator.Web.Components.Stages;
 using CodeGenerator.Web.Workflow;
@@ -6,14 +7,18 @@ using DataIngestion.Schema.Readers;
 
 namespace CodeGenerator.Tests.Web;
 
-/// <summary>The four setup panels. Bindings and blocked-Next only — the rules are the session's
-/// and the validators'.</summary>
+/// <summary>
+/// The four setup panels. Bindings and refused steps only — the rules are the session's and the
+/// validators'.
+/// </summary>
+/// <remarks>
+/// None of these panels has a Next button any more: each offers its step to the diagram, which
+/// draws it in the box being answered. So "can the user move on" is a question about the
+/// <see cref="StageNavigation"/> the panel was handed, and taking the step is calling it.
+/// </remarks>
 [TestClass]
 public class SetupStageTests
 {
-    private static BuildSession New(string description = "")
-        => new(description, Path.GetTempPath(), AppCustomization.Default);
-
     [TestMethod]
     public void The_describe_panel_opens_with_the_inline_description_in_it()
     {
@@ -22,6 +27,7 @@ public class SetupStageTests
 
         var rendered = context.Render<DescribeStage>(p => p
             .Add(c => c.Session, session)
+            .Add(c => c.Navigation, new StageNavigation())
             .Add(c => c.OnAdvance, () => { }));
 
         Assert.AreEqual("a library system", rendered.Find("textarea").GetAttribute("value"));
@@ -32,13 +38,36 @@ public class SetupStageTests
     public void The_describe_panel_allows_a_blank_description()
     {
         using var context = new BunitContext();
+        var navigation = new StageNavigation();
+
+        context.Render<DescribeStage>(p => p
+            .Add(c => c.Session, New())
+            .Add(c => c.Navigation, navigation)
+            .Add(c => c.OnAdvance, () => { }));
+
+        Assert.IsTrue(navigation.CanContinue);
+    }
+
+    [TestMethod]
+    public async Task The_describe_panel_takes_the_description_when_the_step_is_taken()
+    {
+        using var context = new BunitContext();
         var session = New();
+        var navigation = new StageNavigation();
 
         var rendered = context.Render<DescribeStage>(p => p
             .Add(c => c.Session, session)
+            .Add(c => c.Navigation, navigation)
             .Add(c => c.OnAdvance, () => { }));
 
-        Assert.IsFalse(rendered.Find("button.next").HasAttribute("disabled"));
+        rendered.Find("textarea").Change("a shop that sells books");
+
+        // What the page does with the step: apply, and advance only if the panel took it.
+        Assert.IsTrue(await navigation.ApplyAsync());
+        session.Advance();
+
+        Assert.AreEqual("a shop that sells books", session.Description);
+        Assert.AreEqual(BuildStage.AppType, session.Current);
     }
 
     [TestMethod]
@@ -48,6 +77,7 @@ public class SetupStageTests
 
         var rendered = context.Render<AppTypeStage>(p => p
             .Add(c => c.Session, New("a shop"))
+            .Add(c => c.Navigation, new StageNavigation())
             .Add(c => c.OnAdvance, () => { }));
 
         Assert.HasCount(
@@ -64,6 +94,7 @@ public class SetupStageTests
 
         var rendered = context.Render<DataStage>(p => p
             .Add(c => c.Session, New("a shop"))
+            .Add(c => c.Navigation, new StageNavigation())
             .Add(c => c.OnAdvance, () => { }));
 
         rendered.Find("input[type=radio][value=file]").Change(true);
@@ -81,54 +112,68 @@ public class SetupStageTests
                 $"{key} has no reader and should not be selectable");
     }
 
+    // The step is offered even when the path is wrong: reporting the mistake after the click beats
+    // a control that stays dark without saying why.
     [TestMethod]
-    public void The_data_panel_refuses_a_path_that_is_not_there()
+    public async Task The_data_panel_refuses_a_path_that_is_not_there()
     {
         using var context = new BunitContext();
         var session = New("a shop");
+        session.SetTarget(new WpfTarget());
+        session.Advance();                    // the data node is the open one
+        var navigation = new StageNavigation();
 
         var rendered = context.Render<DataStage>(p => p
             .Add(c => c.Session, session)
+            .Add(c => c.Navigation, navigation)
             .Add(c => c.OnAdvance, () => { }));
 
         rendered.Find("input[type=radio][value=file]").Change(true);
         rendered.Find("input.path").Change(@"C:\nope\missing.csv");
-        rendered.Find("button.next").Click();
+
+        // Refused, so the page does not advance and the panel says why.
+        Assert.IsFalse(await navigation.ApplyAsync());
 
         Assert.IsNull(session.Source);
+        Assert.AreEqual(BuildStage.Data, session.Current);
         StringAssert.Contains(rendered.Markup, "missing.csv");
     }
 
     // The console wizard silently keeps the old value on a bad accent, because trapping someone
-    // in a terminal loop over a colour is worse. A form has no such excuse.
+    // in a terminal loop over a colour is worse. A form has no such excuse — the step is refused.
     [TestMethod]
-    public void The_look_panel_blocks_next_on_an_unusable_accent()
+    public void The_look_panel_refuses_the_step_on_an_unusable_accent()
     {
         using var context = new BunitContext();
+        var navigation = new StageNavigation();
 
         var rendered = context.Render<LookStage>(p => p
             .Add(c => c.Session, New("a shop"))
+            .Add(c => c.Navigation, navigation)
             .Add(c => c.OnAdvance, () => { }));
 
         rendered.Find("input.customize").Change(true);
         rendered.Find("input.accent").Change("not-a-colour");
 
-        Assert.IsTrue(rendered.Find("button.next").HasAttribute("disabled"));
+        Assert.IsTrue(navigation.HasStep, "the step should be visible, just not usable");
+        Assert.IsFalse(navigation.CanContinue);
     }
 
     [TestMethod]
-    public void The_look_panel_blocks_next_on_an_unusable_namespace_prefix()
+    public void The_look_panel_refuses_the_step_on_an_unusable_namespace_prefix()
     {
         using var context = new BunitContext();
+        var navigation = new StageNavigation();
 
         var rendered = context.Render<LookStage>(p => p
             .Add(c => c.Session, New("a shop"))
+            .Add(c => c.Navigation, navigation)
             .Add(c => c.OnAdvance, () => { }));
 
         rendered.Find("input.customize").Change(true);
         rendered.Find("input.prefix").Change("9nope-");
 
-        Assert.IsTrue(rendered.Find("button.next").HasAttribute("disabled"));
+        Assert.IsFalse(navigation.CanContinue);
     }
 
     // Asking a console app for a window shape is nonsense, and the console wizard already skips
@@ -142,10 +187,51 @@ public class SetupStageTests
 
         var rendered = context.Render<LookStage>(p => p
             .Add(c => c.Session, session)
+            .Add(c => c.Navigation, new StageNavigation())
             .Add(c => c.OnAdvance, () => { }));
 
         rendered.Find("input.customize").Change(true);
 
         Assert.IsEmpty(rendered.FindAll("select.layout"));
     }
+
+    // Every setup panel is a step in a walk, so every one of them has to hand the diagram
+    // something to draw — a panel that offers nothing is a workflow with no way on.
+    [TestMethod]
+    public void Every_setup_panel_offers_a_step()
+    {
+        using var context = new BunitContext();
+
+        var describe = new StageNavigation();
+        context.Render<DescribeStage>(p => p
+            .Add(c => c.Session, New("a shop"))
+            .Add(c => c.Navigation, describe)
+            .Add(c => c.OnAdvance, () => { }));
+
+        var appType = new StageNavigation();
+        context.Render<AppTypeStage>(p => p
+            .Add(c => c.Session, New("a shop"))
+            .Add(c => c.Navigation, appType)
+            .Add(c => c.OnAdvance, () => { }));
+
+        var data = new StageNavigation();
+        context.Render<DataStage>(p => p
+            .Add(c => c.Session, New("a shop"))
+            .Add(c => c.Navigation, data)
+            .Add(c => c.OnAdvance, () => { }));
+
+        var look = new StageNavigation();
+        context.Render<LookStage>(p => p
+            .Add(c => c.Session, New("a shop"))
+            .Add(c => c.Navigation, look)
+            .Add(c => c.OnAdvance, () => { }));
+
+        Assert.IsTrue(describe.HasStep, "describe offers no step");
+        Assert.IsTrue(appType.HasStep, "app type offers no step");
+        Assert.IsTrue(data.HasStep, "data offers no step");
+        Assert.IsTrue(look.HasStep, "look offers no step");
+    }
+
+    private static BuildSession New(string description = "")
+        => new(description, Path.GetTempPath(), AppCustomization.Default);
 }

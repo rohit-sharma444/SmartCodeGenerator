@@ -19,24 +19,27 @@
 </div>
 
 <div class="actions">
-    <button type="button" class="next" @onclick="Next">Next</button>
     <button type="button" class="cancel" @onclick="() => Session.Cancel()">Cancel</button>
 </div>
 
 @code {
     [Parameter, EditorRequired] public required BuildSession Session { get; set; }
+    [Parameter, EditorRequired] public required StageNavigation Navigation { get; set; }
     [Parameter] public EventCallback OnAdvance { get; set; }
 
     private int _index;
 
     protected override void OnInitialized()
-        => _index = Session.Target is null ? 0 : ApplicationTypeMenu.IndexOf(Session.Target);
+    {
+        _index = Session.Target is null ? 0 : ApplicationTypeMenu.IndexOf(Session.Target);
 
-    private async Task Next()
+        Navigation.Offer(Next);
+    }
+
+    private Task<bool> Next()
     {
         Session.SetTarget(ApplicationTypeMenu.Resolve(_index));
-        Session.Advance();
 
-        await OnAdvance.InvokeAsync();
+        return Task.FromResult(true);
     }
 }

@@ -78,13 +78,13 @@
 }
 
 <div class="actions">
-    <button type="button" class="back" @onclick="Back">Back</button>
-    <button type="button" class="next" disabled="@(!Valid)" @onclick="Next">Next</button>
+    @* Nothing here refuses the step — the box does, because Valid is what it is told. *@
     <button type="button" class="cancel" @onclick="() => Session.Cancel()">Cancel</button>
 </div>
 
 @code {
     [Parameter, EditorRequired] public required BuildSession Session { get; set; }
+    [Parameter, EditorRequired] public required StageNavigation Navigation { get; set; }
     [Parameter] public EventCallback OnAdvance { get; set; }
 
     private bool _customize;
@@ -118,6 +118,10 @@
 
     protected override void OnInitialized()
     {
+        // The step is offered but only usable while the fields are: an unusable accent disables
+        // the control in the box, which is where the user is looking for the way on.
+        Navigation.Offer(Next, ready: () => Valid);
+
         var start = Session.Customization;
 
         _layout = AppLayoutCatalog.KeyFor(start.EffectiveLayout);
@@ -132,7 +136,7 @@
         _seed = start.SampleSeedData;
     }
 
-    private async Task Next()
+    private Task<bool> Next()
     {
         if (_customize)
             Session.SetCustomization(Compose());
@@ -141,9 +145,7 @@
         // next run should offer, and declining settled it too.
         CustomizationDefaults.Save(Session.WorkspaceRoot, Session.Customization);
 
-        Session.Advance();
-
-        await OnAdvance.InvokeAsync();
+        return Task.FromResult(true);
     }
 
     private AppCustomization Compose()
@@ -165,9 +167,4 @@
             SampleSeedData = _seed,
         };
 
-    private async Task Back()
-    {
-        Session.GoTo(BuildStage.Data);
-        await OnAdvance.InvokeAsync();
-    }
 }

@@ -87,15 +87,18 @@ public class RunStageTests
             "the outcome should name the project that was written");
     }
 
+    // The last node: nothing is past it, so it offers the diagram no step and the box draws none.
+    // Going back is a click on an earlier box, which is the diagram's business.
     [TestMethod]
-    public void Going_back_reopens_the_generate_stage()
+    public void The_run_stage_offers_no_step_forward()
     {
         using var context = new BunitContext();
-        var rendered = Render(context, out var session, BuildSucceeded: true);
+        var navigation = new StageNavigation();
+        navigation.Offer(() => Task.FromResult(true), label: "left over from the last panel");
 
-        rendered.Find("button.back").Click();
+        Render(context, out _, BuildSucceeded: true, navigation);
 
-        Assert.AreEqual(BuildStage.Generate, session.Current);
+        Assert.IsFalse(navigation.HasStep);
     }
 
     // A reload builds a new circuit with a new panel, so a generate panel that trusted only its
@@ -106,18 +109,21 @@ public class RunStageTests
         using var context = new BunitContext();
         var session = SessionOnTheRunStage(buildSucceeded: true);
         session.GoTo(BuildStage.Generate);
+        var navigation = new StageNavigation();
 
         var rendered = context.Render<GenerateStage>(p => p
             .Add(c => c.Session, session)
+            .Add(c => c.Navigation, navigation)
             .Add(c => c.OnAdvance, () => { }));
 
         Assert.IsEmpty(rendered.FindAll("button.write"));
-        Assert.IsNotEmpty(rendered.FindAll("button.next"));
+        Assert.IsTrue(navigation.HasStep, "the way on to the run stage should be offered");
         StringAssert.Contains(rendered.Markup, @"C:\ws\Shop");
     }
 
     private static IRenderedComponent<RunStage> Render(
-        BunitContext context, out BuildSession session, bool BuildSucceeded)
+        BunitContext context, out BuildSession session, bool BuildSucceeded,
+        StageNavigation? navigation = null)
     {
         session = SessionOnTheRunStage(BuildSucceeded);
 
@@ -125,6 +131,7 @@ public class RunStageTests
 
         return context.Render<RunStage>(p => p
             .Add(c => c.Session, captured)
+            .Add(c => c.Navigation, navigation ?? new StageNavigation())
             .Add(c => c.OnAdvance, () => { }));
     }
 
