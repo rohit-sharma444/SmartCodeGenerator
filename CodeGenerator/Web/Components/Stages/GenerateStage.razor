@@ -3,6 +3,7 @@
 @using CodeGenerationEngine.Models
 @using CodeGenerator.App
 @using CodeGenerator.Web.Workflow
+@implements IDisposable
 
 @if (_phase == Phase.Confirm)
 {
@@ -49,6 +50,10 @@ else if (_phase == Phase.Overwrite)
 }
 else
 {
+    @* Progress first, because during the minute this takes it is the only thing worth reading:
+       scaffolding and a first build are both long enough that a still page reads as a hung one. *@
+    <ProgressList Done="_steps" Current="@_step" Seconds="_seconds" />
+
     @foreach (var line in _report)
     {
         <p class="report-line">@line</p>
@@ -56,6 +61,8 @@ else
 
     @if (_log.Count > 0)
     {
+        @* The compiler's own output, as it arrives. Scrolled to the end, so what is on screen is
+           what the build is doing now rather than what it did first. *@
         <pre class="build-log">@string.Join(Environment.NewLine, _log)</pre>
     }
 
@@ -91,6 +98,13 @@ else
     private PersistenceKind _persistence = PersistenceKind.Json;
     private readonly List<string> _report = [];
     private readonly List<string> _log = [];
+
+    /// <summary>What has finished, and what is running — the progress the user watches.</summary>
+    private readonly List<string> _steps = [];
+    private string? _step;
+    private int _seconds;
+    private System.Timers.Timer? _clock;
+
     private ScaffoldResult? _scaffold;
 
     /// <summary>Whether a project reached disk. False keeps the workflow on this node, because a
@@ -122,6 +136,9 @@ else
 
         if (app.Scaffold.TestProjectPath is not null)
             _report.Add($"Generated test project at {app.Scaffold.TestProjectPath}");
+
+        _steps.Add($"Wrote {app.Scaffold.FilesWritten.Count} file(s)");
+        _steps.Add(app.BuildSucceeded ? "Compiled" : "The compiler reported problems");
 
         _report.Add(app.BuildSucceeded
             ? "It compiled."
@@ -165,6 +182,9 @@ else
         _phase = Phase.Working;
         _report.Clear();
         _log.Clear();
+        _steps.Clear();
+
+        Step($"Writing {_name} into {GenerateStep.FolderFor(Session, _name, Target)}");
 
         var scaffold = await Task.Run(
             () => GenerateStep.Scaffold(Session, _name, Target, _persistence));
@@ -177,11 +197,15 @@ else
 
         if (!scaffold.Success)
         {
+            Finished("Could not write the project");
             _report.Add($"Generation failed: {scaffold.Message}");
             _phase = Phase.Done;
             StateHasChanged();
             return;
         }
+
+        Step("Compiling it — a first build restores packages and can take a minute",
+             finished: $"Wrote {scaffold.FilesWritten.Count} file(s)");
 
         _report.Add($"Generated project at {scaffold.ProjectPath}");
 
@@ -193,6 +217,10 @@ else
         var built = await Task.Run(() => GenerateStep.Build(
             scaffold.ProjectPath,
             line => InvokeAsync(() => { _log.Add(line); StateHasChanged(); })));
+
+        Finished(BuildReport.Succeeded(built.Result)
+            ? "Compiled"
+            : "The compiler reported problems — the log is below");
 
         _report.AddRange(BuildReport.Lines(built.Result, built.Elapsed, scaffold.ProjectPath));
 
@@ -210,6 +238,70 @@ else
         // is reachable from the overwrite dialog and this is the transition that must not be lost.
         StateHasChanged();
     }
+
+    /// <summary>
+    /// Moves the progress list on: <paramref name="finished"/> is ticked off and
+    /// <paramref name="next"/> becomes what is running.
+    /// </summary>
+    private void Step(string next, string? finished = null)
+    {
+        if (finished is not null)
+            _steps.Add(finished);
+
+        _step = next;
+        _seconds = 0;
+
+        StartClock();
+        StateHasChanged();
+    }
+
+    /// <summary>Ticks the last step off and stops the clock — nothing is running any more.</summary>
+    private void Finished(string last)
+    {
+        _steps.Add(last);
+        _step = null;
+
+        StopClock();
+    }
+
+    /// <remarks>
+    /// A timer rather than a stopwatch read during renders: nothing else would cause a render
+    /// while the scaffolder works, so without a tick of its own the elapsed time would sit at
+    /// zero for the whole minute it is meant to be reassuring the user about.
+    /// </remarks>
+    private void StartClock()
+    {
+        if (_clock is not null)
+            return;
+
+        _clock = new System.Timers.Timer(1000) { AutoReset = true };
+
+        _clock.Elapsed += async (_, _) =>
+        {
+            _seconds++;
+
+            try
+            {
+                await InvokeAsync(StateHasChanged);
+            }
+            catch (Exception ex) when (ex is ObjectDisposedException or InvalidOperationException)
+            {
+                // The circuit went away — a closed tab, mid-build. Nothing left to repaint.
+                StopClock();
+            }
+        };
+
+        _clock.Start();
+    }
+
+    private void StopClock()
+    {
+        _clock?.Stop();
+        _clock?.Dispose();
+        _clock = null;
+    }
+
+    public void Dispose() => StopClock();
 
     private async Task Continue()
     {

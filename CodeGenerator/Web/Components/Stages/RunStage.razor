@@ -3,6 +3,7 @@
 @using CodeGenerationEngine.Models
 @using CodeGenerator.App
 @using CodeGenerator.Web.Workflow
+@implements IDisposable
 
 @* The last node. Compiling is not the same as working, so starting it is a step of its own rather
    than a button on the generate panel — and the diagram then says the run is still ahead. *@
@@ -22,6 +23,8 @@ else
         it runs as a separate process and keeps running after this page closes.
     </p>
 }
+
+<ProgressList Done="_steps" Current="@_step" Seconds="_seconds" />
 
 @foreach (var line in _report)
 {
@@ -63,6 +66,10 @@ else
     [Parameter] public EventCallback OnAdvance { get; set; }
 
     private readonly List<string> _report = [];
+    private readonly List<string> _steps = [];
+    private string? _step;
+    private int _seconds;
+    private System.Timers.Timer? _clock;
     private bool _starting;
     private bool _started;
 
@@ -89,8 +96,11 @@ else
     {
         _starting = true;
         _report.Clear();
+        _steps.Clear();
 
         var isWebApp = Target.ProjectType == DotNetProjectType.BlazorServer;
+
+        Step("Starting it");
 
         // Off the circuit's thread: a web app is waited for until it answers, and that wait would
         // otherwise hold the render loop and leave the page looking dead.
@@ -107,6 +117,10 @@ else
         {
             var url = LaunchSettingsReader.HttpUrl(App!.Scaffold.ProjectPath);
 
+            Step(
+                url is null ? "Looking for its address" : $"Waiting for it to answer on {url}",
+                finished: launched is null ? "Could not start it" : "Started");
+
             if (url is not null && await Task.Run(() => WebAppStart.Wait(url)))
             {
                 WebAppStart.OpenBrowser(url);
@@ -118,9 +132,70 @@ else
             }
         }
 
+        Finished(launched is null
+            ? "Could not start it"
+            : _report.Any(l => l.StartsWith("Opened")) ? "Opened in the browser" : "Started");
+
         _started = launched is not null;
         _starting = false;
     }
+
+    /// <summary>Moves the progress list on. Same shape as the generate panel's, and for the same
+    /// reason: a wait with nothing on screen reads as a hang.</summary>
+    private void Step(string next, string? finished = null)
+    {
+        if (finished is not null && (_steps.Count == 0 || _steps[^1] != finished))
+            _steps.Add(finished);
+
+        _step = next;
+        _seconds = 0;
+
+        StartClock();
+        StateHasChanged();
+    }
+
+    private void Finished(string last)
+    {
+        if (_steps.Count == 0 || _steps[^1] != last)
+            _steps.Add(last);
+
+        _step = null;
+
+        StopClock();
+    }
+
+    private void StartClock()
+    {
+        if (_clock is not null)
+            return;
+
+        _clock = new System.Timers.Timer(1000) { AutoReset = true };
+
+        _clock.Elapsed += async (_, _) =>
+        {
+            _seconds++;
+
+            try
+            {
+                await InvokeAsync(StateHasChanged);
+            }
+            catch (Exception ex) when (ex is ObjectDisposedException or InvalidOperationException)
+            {
+                StopClock();
+            }
+        };
+
+        _clock.Start();
+    }
+
+    private void StopClock()
+    {
+        _clock?.Stop();
+        _clock?.Dispose();
+        _clock = null;
+    }
+
+    public void Dispose() => StopClock();
 
     private async Task Finish()
     {

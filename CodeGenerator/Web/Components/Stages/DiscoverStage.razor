@@ -1,11 +1,13 @@
 @using CodeGenerator.Web.Workflow
 @using DataIngestion.Normalization
+@implements IDisposable
 
 @if (_busy)
 {
     @* The longest silence in the tool. A first fetch for an unseen topic runs many seconds, and
-       an unmoving screen reads as hung — this is the spinner's replacement. *@
-    <p class="working" aria-live="polite">@_label</p>
+       an unmoving screen reads as hung — this is the spinner's replacement, and the seconds
+       counting up are what say it is still going. *@
+    <ProgressList Current="@_label" Seconds="_seconds" />
 }
 else if (_read is not null)
 {
@@ -61,6 +63,8 @@ else
 
     private bool _busy;
     private string _label = string.Empty;
+    private int _seconds;
+    private System.Timers.Timer? _clock;
     private ReadResult? _read;
     private readonly List<NormalizationFinding> _chosen = [];
 
@@ -75,13 +79,16 @@ else
         }
 
         _busy = true;
-        _label = "Discovering domain (this may fetch from Wikipedia the first time)…";
+        _label = "Discovering the domain — the first fetch for a new topic is the slow one";
+        _seconds = 0;
+        StartClock();
 
         // Off the circuit's thread, so the label above is actually painted before the wait.
         var discovered = await Task.Run(
             () => DiscoveryStep.Discover(Session.Description, Session.WorkspaceRoot));
 
         _busy = false;
+        StopClock();
 
         if (!discovered.TopicRecognized)
         {
@@ -94,6 +101,45 @@ else
 
         await OnAdvance.InvokeAsync();
     }
+
+    /// <remarks>
+    /// A timer rather than a stopwatch read at render time: the fetch causes no renders of its
+    /// own, so without a tick the elapsed time would sit at zero for the whole wait it exists to
+    /// make bearable.
+    /// </remarks>
+    private void StartClock()
+    {
+        if (_clock is not null)
+            return;
+
+        _clock = new System.Timers.Timer(1000) { AutoReset = true };
+
+        _clock.Elapsed += async (_, _) =>
+        {
+            _seconds++;
+
+            try
+            {
+                await InvokeAsync(StateHasChanged);
+            }
+            catch (Exception ex) when (ex is ObjectDisposedException or InvalidOperationException)
+            {
+                // The tab was closed mid-fetch. Nothing left to repaint.
+                StopClock();
+            }
+        };
+
+        _clock.Start();
+    }
+
+    private void StopClock()
+    {
+        _clock?.Stop();
+        _clock?.Dispose();
+        _clock = null;
+    }
+
+    public void Dispose() => StopClock();
 
     private void ReadTheFile()
     {

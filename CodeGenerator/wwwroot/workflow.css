@@ -105,6 +105,23 @@ body {
     background: #fff;
 }
 
+/* Progress. A finished step is ticked and quiet; the running one is the loud line, because it is
+   the only thing on the page that is still changing. */
+.progress {
+    margin: 0.5rem 0 1rem;
+    padding: 0;
+    list-style: none;
+}
+
+.progress li { padding: 0.15rem 0; }
+
+.step-done { color: var(--pending); }
+.step-done::before { content: "\2713\00a0"; color: var(--done); }
+
+.step-current { font-weight: 600; }
+.step-current::before { content: "\00b7\00a0"; }
+.step-current .elapsed { font-weight: 400; color: var(--pending); }
+
 .next-steps {
     margin: 1rem 0;
     padding-left: 1.1rem;

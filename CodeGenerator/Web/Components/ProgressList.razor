@@ -1,0 +1,36 @@
+@* What a long step is doing, while it is still doing it.
+
+   Its own component because three stages need the same thing — discovery, generation and the run
+   — and because a panel mid-work cannot be rendered from a test: the work has to really happen.
+   Lifted out, the thing that draws progress is assertable on its own. *@
+
+@if (Done.Count > 0 || Current is not null)
+{
+    <ul class="progress">
+        @foreach (var step in Done)
+        {
+            <li class="step-done">@step</li>
+        }
+
+        @if (Current is not null)
+        {
+            @* aria-live, so this is announced rather than only drawn: it is the one part of the
+               page that changes without the user doing anything. *@
+            <li class="step-current" aria-live="polite">
+                @Current<span class="elapsed"> — @Seconds s</span>
+            </li>
+        }
+    </ul>
+}
+
+@code {
+    /// <summary>Steps already finished, oldest first.</summary>
+    [Parameter] public IReadOnlyList<string> Done { get; set; } = [];
+
+    /// <summary>What is happening now, or null when nothing is.</summary>
+    [Parameter] public string? Current { get; set; }
+
+    /// <summary>How long the current step has been going. Counted rather than measured so the
+    /// caller owns the clock — a stage that finishes must be able to stop it.</summary>
+    [Parameter] public int Seconds { get; set; }
+}
