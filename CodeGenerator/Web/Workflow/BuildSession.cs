@@ -69,6 +69,21 @@ public sealed class BuildSession
         _states[Current] = StageState.Active;
     }
 
+    /// <summary>
+    /// Raised after anything here moves.
+    /// </summary>
+    /// <remarks>
+    /// One workflow can have more than one page looking at it — the session is a singleton so
+    /// that a second tab attaches rather than starting a rival run against the same workspace —
+    /// and a Blazor circuit only repaints when it is told to. Without this, the tab nobody
+    /// touched goes on drawing a node the workflow has left, with a live Continue button on it.
+    /// <para>
+    /// Raised on whichever circuit's thread made the change, which is not the subscriber's: a
+    /// page handling this must marshal onto its own renderer before touching its state.
+    /// </para>
+    /// </remarks>
+    public event Action? Changed;
+
     public string WorkspaceRoot { get; }
 
     public BuildStage Current { get; private set; }
@@ -166,17 +181,29 @@ public sealed class BuildSession
     public bool SetModel(CandidateDomainModel model)
         => Change(BuildStage.Discover, changed: true, () => Model = model);
 
-    public void SetImportedData(ImportedData imported) => ImportedData = imported;
+    public void SetImportedData(ImportedData imported)
+    {
+        ImportedData = imported;
+
+        Changed?.Invoke();
+    }
 
     /// <summary>Records what the generate stage produced, for the run stage to start.</summary>
     public void SetGenerated(GeneratedApp app)
     {
         Generated = app;
         Started = false;
+
+        Changed?.Invoke();
     }
 
     /// <summary>Records that the run stage started it.</summary>
-    public void MarkStarted() => Started = true;
+    public void MarkStarted()
+    {
+        Started = true;
+
+        Changed?.Invoke();
+    }
 
     /// <summary>
     /// Whether <paramref name="stage"/> holds something: an answer given, or work done.
@@ -231,10 +258,14 @@ public sealed class BuildSession
             _pending = () => Apply(stage, changed: true, apply);
             PendingDiscard = DiscardWarning();
 
+            Changed?.Invoke();
+
             return false;
         }
 
         Apply(stage, changed, apply);
+
+        Changed?.Invoke();
 
         return true;
     }
@@ -270,6 +301,8 @@ public sealed class BuildSession
         PendingDiscard = null;
 
         pending();
+
+        Changed?.Invoke();
     }
 
     /// <summary>Drops a held change, model intact. The answer on screen stays as it was.</summary>
@@ -277,6 +310,8 @@ public sealed class BuildSession
     {
         _pending = null;
         PendingDiscard = null;
+
+        Changed?.Invoke();
     }
 
     /// <summary>
@@ -327,6 +362,8 @@ public sealed class BuildSession
 
         Current = next.Value;
         _states[Current] = StageState.Active;
+
+        Changed?.Invoke();
     }
 
     /// <summary>Reopens an answered node. This is what a click on a green node does.</summary>
@@ -350,6 +387,8 @@ public sealed class BuildSession
 
         Current = stage;
         _states[stage] = StageState.Active;
+
+        Changed?.Invoke();
     }
 
     /// <summary>Records that the open node could not do its work. Not terminal: the panel offers
@@ -360,12 +399,24 @@ public sealed class BuildSession
 
         FailureMessage = message;
         _states[Current] = StageState.Failed;
+
+        Changed?.Invoke();
     }
 
-    public void Cancel() => Phase = SessionPhase.Cancelled;
+    public void Cancel()
+    {
+        Phase = SessionPhase.Cancelled;
+
+        Changed?.Invoke();
+    }
 
     /// <summary>The tab was closed. Distinct from <see cref="Cancel"/>: nothing was decided.</summary>
-    public void Abandon() => Phase = SessionPhase.Abandoned;
+    public void Abandon()
+    {
+        Phase = SessionPhase.Abandoned;
+
+        Changed?.Invoke();
+    }
 
     /// <summary>
     /// Ends the workflow with what the console should print.
@@ -380,6 +431,8 @@ public sealed class BuildSession
         Outcome = outcome;
         _states[Current] = StageState.Done;
         Phase = SessionPhase.Generated;
+
+        Changed?.Invoke();
     }
 
     private void RequireRunning()

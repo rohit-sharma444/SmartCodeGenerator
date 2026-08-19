@@ -91,9 +91,32 @@
     /// </remarks>
     private readonly StageNavigation _navigation = new();
 
-    protected override void OnInitialized() => _navigation.Changed += Refresh;
+    protected override void OnInitialized()
+    {
+        _navigation.Changed += Refresh;
 
-    public void Dispose() => _navigation.Changed -= Refresh;
+        // The workflow can be moved by a tab that is not this one. The panel below is chosen from
+        // Session.Current, so a circuit that is never told stays on a node the workflow has left
+        // — showing an answer that no longer stands and a Continue button that would take a step
+        // already taken.
+        Session.Changed += Repaint;
+    }
+
+    public void Dispose()
+    {
+        _navigation.Changed -= Refresh;
+        Session.Changed -= Repaint;
+    }
+
+    /// <summary>
+    /// Redraws for a change that arrived from somewhere else.
+    /// </summary>
+    /// <remarks>
+    /// Through <c>InvokeAsync</c>, because the event is raised on whichever circuit made the
+    /// change and touching this one's state from that thread is exactly the race the renderer's
+    /// synchronization context exists to prevent.
+    /// </remarks>
+    private void Repaint() => _ = InvokeAsync(StateHasChanged);
 
     /// <summary>
     /// Takes the open panel's step: its answer is applied, and only then does the workflow move on.
