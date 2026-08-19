@@ -1,0 +1,156 @@
+@using CodeGenerator.Web.Workflow
+@using DataIngestion
+@using DataIngestion.Schema.Readers
+@using Microsoft.AspNetCore.Components.Forms
+
+<p>Is there data to read, or should the domain be discovered from the web?</p>
+
+<label class="choice">
+    <input type="radio" name="data" value="none" checked="@(!_hasFile)"
+           @onchange="() => _hasFile = false" />
+    No data — discover the domain from the web
+</label>
+
+<label class="choice">
+    <input type="radio" name="data" value="file" checked="@_hasFile"
+           @onchange="() => _hasFile = true" />
+    I have a file
+</label>
+
+@if (_hasFile)
+{
+    <div class="file">
+        <label>
+            Format
+            <select value="@_format" @onchange="e => _format = e.Value?.ToString() ?? _format">
+                @foreach (var key in DataSourceReaders.Keys)
+                {
+                    <option value="@key" disabled="@(!Readable(key))">@Label(key)</option>
+                }
+            </select>
+        </label>
+
+        @* A path box rather than only a file picker: the server IS this machine, and a path is
+           what DataSourceSpec.Location holds. The drop zone below is the convenience. *@
+        <label>
+            Path
+            <input class="path" value="@_path"
+                   @onchange="e => _path = e.Value?.ToString() ?? string.Empty" />
+        </label>
+
+        <InputFile OnChange="Upload" class="drop" />
+        <span class="hint">…or drop a file here to copy it into the workspace cache.</span>
+    </div>
+}
+
+@if (_error is not null)
+{
+    <p class="failure" role="alert">@_error</p>
+}
+
+<div class="actions">
+    <button type="button" class="back" @onclick="Back">Back</button>
+    <button type="button" class="next" @onclick="Next">Next</button>
+    <button type="button" class="cancel" @onclick="() => Session.Cancel()">Cancel</button>
+</div>
+
+@code {
+    /// <summary>Ten megabytes. The 512 KB default rejects an ordinary spreadsheet.</summary>
+    private const long MaxUpload = 10 * 1024 * 1024;
+
+    [Parameter, EditorRequired] public required BuildSession Session { get; set; }
+    [Parameter] public EventCallback OnAdvance { get; set; }
+
+    private bool _hasFile;
+    private string _format = "csv";
+    private string _path = string.Empty;
+    private string? _error;
+
+    protected override void OnInitialized()
+    {
+        if (Session.Source is null)
+            return;
+
+        _hasFile = true;
+        _path = Session.Source.Location;
+        _format = Session.Source.Kind.ToString().ToLowerInvariant();
+    }
+
+    private static bool Readable(string key)
+        => DataSourceReaders.TryParseKind(key, out var kind)
+           && DataSourceReaders.TryCreate(kind, out _);
+
+    private static string Label(string key)
+        => Readable(key) ? key : $"{key} — not in this build yet";
+
+    private async Task Upload(InputFileChangeEventArgs args)
+    {
+        var folder = Path.Combine(Session.WorkspaceRoot, ".dd-cache", "uploads");
+        Directory.CreateDirectory(folder);
+
+        var destination = Path.Combine(folder, args.File.Name);
+
+        await using var source = args.File.OpenReadStream(MaxUpload);
+        await using var target = File.Create(destination);
+        await source.CopyToAsync(target);
+
+        _path = destination;
+        _error = null;
+    }
+
+    private async Task Next()
+    {
+        _error = null;
+
+        if (!_hasFile)
+        {
+            // The one combination with nothing to build from, refused here rather than after a
+            // discovery run that would have nothing to discover.
+            if (Session.Description.Length == 0)
+            {
+                _error = "With no description and no data there is nothing to build from — "
+                         + "go back and describe the application, or point at a file.";
+                return;
+            }
+
+            Session.SetNoData();
+            Session.Advance();
+            await OnAdvance.InvokeAsync();
+            return;
+        }
+
+        // A path pasted from Explorer arrives quoted, exactly as it does in the console.
+        var path = _path.Trim();
+        if (path.Length >= 2 && path[0] == '"' && path[^1] == '"')
+            path = path[1..^1];
+
+        if (!File.Exists(path))
+        {
+            _error = $"No file at {path}.";
+            return;
+        }
+
+        if (!DataSourceReaders.TryParseKind(_format, out var kind))
+        {
+            _error = $"Unknown format '{_format}'.";
+            return;
+        }
+
+        if (!DataSourceReaders.TryCreate(kind, out _))
+        {
+            _error = DataSourceReaders.NotSupportedMessage(kind);
+            return;
+        }
+
+        Session.SetSource(new DataSourceSpec(kind, path));
+        Session.Advance();
+
+        await OnAdvance.InvokeAsync();
+    }
+
+    private async Task Back()
+    {
+        Session.GoTo(BuildStage.AppType);
+        await OnAdvance.InvokeAsync();
+    }
+}

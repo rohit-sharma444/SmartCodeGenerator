@@ -1,5 +1,6 @@
 @page "/build"
 @rendermode InteractiveServer
+@using CodeGenerator.Web.Components.Stages
 @using CodeGenerator.Web.Workflow
 @inject BuildSession Session
 
@@ -14,9 +15,23 @@
     }
 
     <section class="panel">
-        @* Stage panels are added by the tasks that build them. Until then the panel names the
-           stage, so the diagram and the shell can be worked on independently. *@
         <h2>@StageGraph.Nodes.First(n => n.Stage == Session.Current).Title</h2>
+
+        @switch (Session.Current)
+        {
+            case BuildStage.Describe:
+                <DescribeStage Session="Session" OnAdvance="Refresh" />
+                break;
+            case BuildStage.AppType:
+                <AppTypeStage Session="Session" OnAdvance="Refresh" />
+                break;
+            case BuildStage.Data:
+                <DataStage Session="Session" OnAdvance="Refresh" />
+                break;
+            case BuildStage.Look:
+                <LookStage Session="Session" OnAdvance="Refresh" />
+                break;
+        }
     </section>
 </main>
 
@@ -26,4 +41,6 @@
         Session.GoTo(stage);
         StateHasChanged();
     }
+
+    private void Refresh() => StateHasChanged();
 }

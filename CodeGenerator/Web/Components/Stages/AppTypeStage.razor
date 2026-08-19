@@ -1,0 +1,42 @@
+@using CodeGenerator.App
+@using CodeGenerator.Web.Workflow
+
+@* Rows, order and labels all come from ApplicationTypeMenu, which is already the single
+   display-only source. A target added there appears here without this file changing. *@
+<p>Which kind of application?</p>
+
+<div class="choices">
+    @for (var i = 0; i < ApplicationTypeMenu.Labels.Count; i++)
+    {
+        var index = i;
+
+        <label class="choice">
+            <input type="radio" name="apptype" checked="@(_index == index)"
+                   @onchange="() => _index = index" />
+            @ApplicationTypeMenu.Labels[index]
+        </label>
+    }
+</div>
+
+<div class="actions">
+    <button type="button" class="next" @onclick="Next">Next</button>
+    <button type="button" class="cancel" @onclick="() => Session.Cancel()">Cancel</button>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public required BuildSession Session { get; set; }
+    [Parameter] public EventCallback OnAdvance { get; set; }
+
+    private int _index;
+
+    protected override void OnInitialized()
+        => _index = Session.Target is null ? 0 : ApplicationTypeMenu.IndexOf(Session.Target);
+
+    private async Task Next()
+    {
+        Session.SetTarget(ApplicationTypeMenu.Resolve(_index));
+        Session.Advance();
+
+        await OnAdvance.InvokeAsync();
+    }
+}
