@@ -9,9 +9,29 @@ namespace CodeGenerator.Tests.Web;
 /// binds loopback, refuses a visitor with no token, and always stops — a CLI left blocked on an
 /// abandoned workflow is the worst failure this feature can have.
 /// </summary>
+/// <remarks>
+/// <see cref="DoNotParallelizeAttribute"/> because every test here starts a real Kestrel: run at
+/// method level, eight web hosts come up at once and compete with the tests that compile whole
+/// generated projects. On a two-core CI runner that is enough contention to push a start-and-stop
+/// past twenty seconds — which is how these two waits went red on CI while passing every local
+/// run. Same reasoning as <c>CommandColourTests</c>, one resource further out: there is one
+/// machine, and starting web servers on it is not something to do eight ways at once.
+/// </remarks>
 [TestClass]
+[DoNotParallelize]
 public class BuildAppWebHostTests
 {
+    /// <summary>
+    /// How long <see cref="BuildAppWebHost.Run"/> is given to notice and return.
+    /// </summary>
+    /// <remarks>
+    /// Generous on purpose. The assertion is "it returns rather than blocking forever", and it
+    /// pays for a web host starting and stopping on whatever CPU is left over — a starved runner
+    /// took CodeGenerator.Tests from five minutes to thirteen. A tighter number tests the runner's
+    /// mood, not the code.
+    /// </remarks>
+    private static readonly TimeSpan ReturnsWithin = TimeSpan.FromSeconds(60);
+
     private static BuildSession NewSession()
         => new("a shop", Path.GetTempPath(), AppCustomization.Default);
 
@@ -98,7 +118,7 @@ public class BuildAppWebHostTests
 
         session.Cancel();
 
-        Assert.IsTrue(task.Wait(TimeSpan.FromSeconds(20)), "Run did not return on cancel");
+        Assert.IsTrue(task.Wait(ReturnsWithin), "Run did not return on cancel");
         Assert.AreEqual(SessionPhase.Cancelled, task.Result.Phase);
     }
 
@@ -112,7 +132,7 @@ public class BuildAppWebHostTests
 
         interrupt.Cancel();
 
-        Assert.IsTrue(task.Wait(TimeSpan.FromSeconds(20)), "Run did not return on interrupt");
+        Assert.IsTrue(task.Wait(ReturnsWithin), "Run did not return on interrupt");
     }
 
     private static BuildAppWebHost Start(out BuildSession session)
