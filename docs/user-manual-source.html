@@ -202,7 +202,7 @@ reached.</p>
   <li><strong>Review</strong> — the model, on screen, where you change it before anything is written
       (chapter 6).</li>
   <li><strong>Generate</strong> — the project is written and compiled, with its build log on screen as it
-      happens.</li>
+      happens (see <em>Knowing it is still working</em> below).</li>
   <li><strong>Run</strong> — the finished application is started, so you see it working rather than being
       told that it compiled. It runs as a separate process and keeps running after the page closes. A class
       library, or a project that did not build, says so here instead: there is nothing to start.</li>
@@ -212,6 +212,17 @@ is for. Going back costs nothing except where it must: changing the description 
 the model that was discovered from the old one, because it was worked out from something you have since changed,
 and that stage runs again. Changing the application type or anything under <em>Look</em> costs nothing at all,
 because neither is read until the project is written.</p>
+
+<h3>Knowing it is still working</h3>
+<p>Three of the stages take real time: the first Wikipedia fetch for a subject the tool has not met
+before, writing the project, and compiling it. None of them leaves you looking at a still page.</p>
+<p>Each one names what it is doing with the seconds counting up beside it, and ticks itself off when
+it is done, so the panel reads as a short list of what has happened and what is happening now:</p>
+<pre>&#x2713; Wrote 96 file(s)
+&#xB7; Compiling it — a first build restores packages and can take a minute — 14 s</pre>
+<p>While the build runs, the compiler's own output appears line by line underneath, so a build that
+is going to fail starts telling you before it finishes. A first build restores packages and is the
+slow one; later builds of the same project are quick.</p>
 
 <h3>Discovery</h3>
 <p>From a description, the tool works out which classes your domain needs. It reads a local Wikipedia
@@ -650,8 +661,8 @@ own shows the shorter overview, and <code>help &lt;topic&gt;</code> shows one se
 <tr><th>Command</th><th>Description</th><th>Example</th></tr>
 <tr><td><code>add &lt;name&gt;</code></td><td>Review loop: adds a class to the candidate model. The name keeps the shape you type, so a compound survives; several words become one class name.</td><td><code>add cash register</code></td></tr>
 <tr><td><code>approve [target] [sqlite]</code></td><td>Review loop: generates the app using the type chosen at the start. Name a target to override it: wpf (default), winforms, console, webapi, blazor, classlib, worker. Add &#x27;sqlite&#x27; for EF Core persistence (JSON is the default; the wpf and winforms targets are JSON-only). Alias: a.</td><td><code>approve webapi sqlite</code></td></tr>
-<tr><td><code>build app</code></td><td>Starts the same flow with nothing filled in. Interactively it opens a workflow page in the browser drawn as eight connected stages, ending in one that starts the application it just built: the one being answered is open, a finished stage can be clicked to go back, and changing the description or the data source discards the model that was discovered from the old one. Piped runs keep the console wizard, as does CG_NO_WEB=1.</td><td><code>build app</code></td></tr>
-<tr><td><code>build app: &lt;description&gt;</code></td><td>Describes a system in plain English. Interactively this opens a workflow page in the browser — the console prints the address and waits — where the rest of the build happens: application type, data, look, domain discovery, model review, generate-and-build, then running the finished application. Piped runs are unchanged, and CG_NO_WEB=1 keeps the console wizard.</td><td><code>build app: a library that lends books to members</code></td></tr>
+<tr><td><code>build app</code></td><td>Starts the same flow with nothing filled in. Interactively it opens a workflow page in the browser drawn as eight connected stages, ending in one that starts the application it just built: the one being answered is open, a long step reports its progress as it works, a finished stage can be clicked to go back, and changing the description or the data source discards the model that was discovered from the old one. Piped runs keep the console wizard, as does CG_NO_WEB=1.</td><td><code>build app</code></td></tr>
+<tr><td><code>build app: &lt;description&gt;</code></td><td>Describes a system in plain English. Interactively this opens a workflow page in the browser — the console prints the address and waits — where the rest of the build happens: application type, data, look, domain discovery, model review, generate-and-build, then running the finished application. Every step that takes a while says what it is doing and how long it has been doing it, and the compiler&#x27;s output appears line by line as it builds. Piped runs are unchanged, and CG_NO_WEB=1 keeps the console wizard.</td><td><code>build app: a library that lends books to members</code></td></tr>
 <tr><td><code>build app: &lt;description&gt; [customization options]</code></td><td>Customizes the generated application. Options go LAST on the line, after any data source: company &quot;&lt;name&gt;&quot; sets the company (used in the project metadata, the window title and a copyright header); theme light|dark and accent #rrggbb colour the desktop front ends; icon &lt;path&gt; supplies a .ico or .png; title &quot;&lt;pattern&gt;&quot; overrides the window title, where {company} and {app} are substituted; namespace &lt;prefix&gt; puts the generated code under that namespace root (CodisLtd.Shop), leaving the project and assembly names alone; layout tabs|sidebar|master-detail|dashboard chooses the shape of the window (wpf and winforms only).</td><td><code>build app: a shop company &quot;Codis Ltd&quot; namespace CodisLtd theme dark layout sidebar</code></td></tr>
 <tr><td><code>build app: &lt;description&gt; [novalidation] [logging] [noseed]</code></td><td>Chooses which optional layers are generated. &#x27;novalidation&#x27; omits the Validation folder and its per-model validators; &#x27;logging&#x27; adds a logging layer (off by default); &#x27;noseed&#x27; omits the sample seed rows (rows imported from your own data file are unaffected). Interactively these are asked by the &#x27;Customize appearance and features?&#x27; step, which remembers your answers in .codegen/app-profile.json.</td><td><code>build app: a shop novalidation logging noseed</code></td></tr>
 <tr><td><code>build app: &lt;description&gt; from &lt;format&gt; &lt;location&gt;</code></td><td>Builds the model from existing data with no prompts when piped; interactively the file is already answered and the workflow page opens on what is left. Formats: csv, txt, json, excel (sql is not in this build yet). Add &#x27;normalize&#x27; to apply every normalization change the data needs.</td><td><code>build app: order tracking from csv D:\data\orders.csv normalize</code></td></tr>

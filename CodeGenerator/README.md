@@ -307,6 +307,11 @@ the application type instead.
 The kinds of app are WPF (Windows desktop), Windows Desktop (WinForms), ASP.NET Web API, Web
 Application (Blazor Server), Console, Class Library and Worker Service.
 
+Nothing waits in silence. Each long step — the Wikipedia fetch, writing the project, compiling it,
+starting it — names what it is doing with the seconds counting up beside it, ticks itself off when
+it finishes, and the compiler's own output appears line by line while the build runs rather than
+all at once at the end.
+
 The page is served by Kestrel in this process on a loopback port with a one-off token in its
 address, and lives exactly as long as the command. `CG_NO_WEB=1` keeps the console wizard, for a
 session with no browser to open — as does redirected input, below.

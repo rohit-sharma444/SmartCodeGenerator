@@ -23,7 +23,11 @@ generated application, Blazor Server hosted in-process by the CLI itself
 (`CodeGenerator/Web`, which is why that project builds under the Web SDK) — and the
 console prints the address and waits for the page to finish. Redirected or piped
 input, and `CG_NO_WEB=1`, keep the console wizard and the typed review loop
-unchanged. The page calls the same services the console path calls; there is no
+unchanged. The two long stages report progress rather than going quiet:
+discovery and the scaffolder are named steps with the seconds counting up, and
+the compiler's output arrives line by line through
+`ProcessRunner.RunStreaming` — added alongside `Run`, which reads both streams
+to the end and therefore cannot report anything until it is over. The page calls the same services the console path calls; there is no
 second pipeline behind it.
 
 > **Note:** the SVGs below are pre-rendered from the Mermaid source in each
