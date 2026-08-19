@@ -116,9 +116,9 @@
                 return Task.FromResult(false);
             }
 
-            Session.SetNoData();
-
-            return Task.FromResult(true);
+            // False here means the session is holding the change until the user says whether
+            // the model may go with it, and the page draws that question rather than advancing.
+            return Task.FromResult(Session.SetNoData());
         }
 
         // A path pasted from Explorer arrives quoted, exactly as it does in the console.
@@ -144,9 +144,7 @@
             return Task.FromResult(false);
         }
 
-        Session.SetSource(new DataSourceSpec(kind, path));
-
-        return Task.FromResult(true);
+        return Task.FromResult(Session.SetSource(new DataSourceSpec(kind, path)));
     }
 
 }

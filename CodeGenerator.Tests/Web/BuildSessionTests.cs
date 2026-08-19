@@ -91,6 +91,8 @@ public class BuildSessionTests
     // The rule the whole diagram lives on. A model discovered from one description must not
     // survive a different description. Driven the way the page drives it: a click on the green
     // Describe node, then a retype — a setter is only ever called from its own node's panel.
+    // The confirmation is the change's price and DiscardConfirmationTests is where it is proved;
+    // what is proved here is that saying yes really does clear everything discovery produced.
     [TestMethod]
     public void Changing_the_description_discards_the_discovered_model()
     {
@@ -98,6 +100,7 @@ public class BuildSessionTests
 
         session.GoTo(BuildStage.Describe);
         session.SetDescription("a hotel");
+        session.ConfirmPending();
 
         Assert.IsNull(session.Model);
         Assert.AreEqual(StageState.Pending, session.StateOf(BuildStage.Discover));
@@ -110,6 +113,7 @@ public class BuildSessionTests
         var session = Discovered();
 
         session.SetSource(new DataSourceSpec(DataSourceKind.Csv, @"C:\data\other.csv"));
+        session.ConfirmPending();
 
         Assert.IsNull(session.Model);
         Assert.AreEqual(StageState.Pending, session.StateOf(BuildStage.Discover));
@@ -208,6 +212,7 @@ public class BuildSessionTests
 
         session.GoTo(BuildStage.Describe);
         session.SetDescription("a hotel");
+        session.ConfirmPending();
 
         Assert.IsNull(session.Generated);
         Assert.AreEqual(StageState.Pending, session.StateOf(BuildStage.Run));

@@ -109,29 +109,43 @@ public sealed class BuildSession
     /// <summary>What the console prints, set by the generate step. Null until it runs.</summary>
     public BuildOutcome? Outcome { get; private set; }
 
+    /// <summary>
+    /// The question on screen, when a changed answer is waiting to be confirmed. Null the rest of
+    /// the time, which is nearly always.
+    /// </summary>
+    /// <remarks>
+    /// A sentence rather than a flag, because the page has nothing else to say it with and the
+    /// count is the part that matters: "the model" is an abstraction, and "14 classes" is the
+    /// afternoon the user is about to lose.
+    /// </remarks>
+    public string? PendingDiscard { get; private set; }
+
+    /// <summary>The change <see cref="PendingDiscard"/> is asking about, held unapplied.</summary>
+    private Action? _pending;
+
     public StageState StateOf(BuildStage stage) => _states[stage];
 
-    public void SetDescription(string text)
+    public bool SetDescription(string text)
     {
         var value = (text ?? string.Empty).Trim();
 
-        Change(BuildStage.Describe, value != Description, () => Description = value);
+        return Change(BuildStage.Describe, value != Description, () => Description = value);
     }
 
-    public void SetTarget(ITargetScaffolder target)
+    public bool SetTarget(ITargetScaffolder target)
         => Change(
             BuildStage.AppType,
             !string.Equals(target.Key, Target?.Key, StringComparison.OrdinalIgnoreCase),
             () => Target = target);
 
-    public void SetSource(DataSourceSpec source)
+    public bool SetSource(DataSourceSpec source)
         => Change(BuildStage.Data, source != Source, () =>
         {
             Source = source;
             _noDataChosen = false;
         });
 
-    public void SetNoData()
+    public bool SetNoData()
         => Change(BuildStage.Data, Source is not null, () =>
         {
             Source = null;
@@ -142,14 +156,14 @@ public sealed class BuildSession
     /// Called even when the user changed nothing — the look panel applies its answer either way —
     /// so this is what records that the node was answered at all.
     /// </remarks>
-    public void SetCustomization(AppCustomization customization)
+    public bool SetCustomization(AppCustomization customization)
         => Change(BuildStage.Look, customization != Customization, () =>
         {
             Customization = customization;
             _lookAnswered = true;
         });
 
-    public void SetModel(CandidateDomainModel model)
+    public bool SetModel(CandidateDomainModel model)
         => Change(BuildStage.Discover, changed: true, () => Model = model);
 
     public void SetImportedData(ImportedData imported) => ImportedData = imported;
@@ -191,17 +205,89 @@ public sealed class BuildSession
         };
 
     /// <summary>
-    /// Applies an answer, and discards whatever it invalidated.
+    /// Applies an answer, and discards whatever it invalidated — or holds it, and asks first.
     /// </summary>
     /// <remarks>
     /// <paramref name="changed"/> is what makes clicking back into a node harmless: re-answering
     /// with the same value is not a change, so looking at an answer and pressing Next does not
     /// throw away a Wikipedia fetch.
+    /// <para>
+    /// A change that would cost the model is not applied at all until it is confirmed. Holding it
+    /// rather than applying-and-offering-undo is what keeps this honest: while the question is on
+    /// screen the session still holds the model, so a user who closes the tab, or answers the
+    /// question with the browser's Back button, loses nothing.
+    /// </para>
     /// </remarks>
-    private void Change(BuildStage stage, bool changed, Action apply)
+    /// <returns>
+    /// Whether the answer was applied. False means it is held and <see cref="PendingDiscard"/> is
+    /// the question to put on screen — which is also why the panel must not advance.
+    /// </returns>
+    private bool Change(BuildStage stage, bool changed, Action apply)
     {
         RequireRunning();
 
+        if (changed && WouldDiscardModel(stage))
+        {
+            _pending = () => Apply(stage, changed: true, apply);
+            PendingDiscard = DiscardWarning();
+
+            return false;
+        }
+
+        Apply(stage, changed, apply);
+
+        return true;
+    }
+
+    /// <summary>
+    /// A change is only worth a question when there is a model to lose and this answer is what
+    /// discovery was run from. The table in <see cref="StageGraph.Invalidates"/> is the authority
+    /// — asking anywhere else would be caution the rules do not support, and users who are asked
+    /// needlessly stop reading the question.
+    /// </summary>
+    private bool WouldDiscardModel(BuildStage stage)
+        => Model is not null && StageGraph.Invalidates(stage).Contains(BuildStage.Discover);
+
+    private string DiscardWarning()
+    {
+        var count = Model!.Entities.Count;
+
+        return $"This discards the {count} {(count == 1 ? "class" : "classes")}, "
+            + "and discovery will run again.";
+    }
+
+    /// <summary>Applies a held change. The page calls this when the user says to go ahead.</summary>
+    /// <exception cref="InvalidOperationException">Nothing is held. The page drew a question the
+    /// session was not asking, which is a wiring bug rather than something to shrug at.</exception>
+    public void ConfirmPending()
+    {
+        RequireRunning();
+
+        var pending = _pending
+            ?? throw new InvalidOperationException("No change is waiting to be confirmed.");
+
+        _pending = null;
+        PendingDiscard = null;
+
+        pending();
+    }
+
+    /// <summary>Drops a held change, model intact. The answer on screen stays as it was.</summary>
+    public void CancelPending()
+    {
+        _pending = null;
+        PendingDiscard = null;
+    }
+
+    /// <summary>
+    /// Writes the answer in, and clears out what it invalidated.
+    /// </summary>
+    /// <remarks>
+    /// The value is written back even when nothing changed — that is how the look node records
+    /// that it was answered at all — but only a real change costs anything downstream.
+    /// </remarks>
+    private void Apply(BuildStage stage, bool changed, Action apply)
+    {
         apply();
 
         if (!changed)

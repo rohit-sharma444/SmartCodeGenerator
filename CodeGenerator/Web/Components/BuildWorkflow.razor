@@ -19,6 +19,26 @@
     <section class="panel">
         <h2>@StageGraph.Nodes.First(n => n.Stage == Session.Current).Title</h2>
 
+        @if (Session.PendingDiscard is not null)
+        {
+            @* Inside the panel, above the answer that raised it: the question is about what was
+               just typed, and it belongs next to it rather than at the top of the page. *@
+            <div class="discard-question" role="alertdialog" aria-live="assertive">
+                <p>@Session.PendingDiscard</p>
+
+                <div class="actions">
+                    @* Keeping is first and Change is the plainer control, because the safe answer
+                       should be the easy one to hit. *@
+                    <button type="button" class="discard-keep" @onclick="KeepTheModel">
+                        Keep the model
+                    </button>
+                    <button type="button" class="discard-confirm" @onclick="ChangeAnyway">
+                        Change anyway
+                    </button>
+                </div>
+            </div>
+        }
+
         @* Keyed on the stage, so revisiting a node builds a fresh panel rather than reusing the
            one next door with its draft fields still in it. *@
         @switch (Session.Current)
@@ -87,6 +107,11 @@
     {
         if (await _navigation.ApplyAsync())
             Session.Advance();
+        else
+            // Not applied. Either the panel refused its own input and is saying why, or the
+            // session is holding the change and wants an answer first — in which case this is
+            // what the answer leads back to.
+            _afterConfirming = () => { Session.Advance(); return Task.CompletedTask; };
 
         Refresh();
     }
@@ -98,10 +123,46 @@
         // not advanced: the node being left is then genuinely answered, which is what GoTo records.
         // The panel itself keeps nothing — each node is keyed, so the next panel starts from the
         // session rather than from whatever the last one had typed in it.
-        if (_navigation.ShouldCommitBeforeLeaving)
-            await _navigation.ApplyAsync();
+        if (_navigation.ShouldCommitBeforeLeaving && !await _navigation.ApplyAsync())
+        {
+            // The commit is waiting on the discard question. Going anyway would answer it by
+            // walking away — the user would be reading another node while the thing they were
+            // asked about happened behind them — so the click waits here for its answer.
+            _afterConfirming = () => { Session.GoTo(stage); return Task.CompletedTask; };
+
+            Refresh();
+            return;
+        }
 
         Session.GoTo(stage);
+        Refresh();
+    }
+
+    /// <summary>
+    /// Where the click that raised the discard question was going. Run only if the user says the
+    /// model may go: the click and the confirmation are one decision, and half of it is worse
+    /// than neither.
+    /// </summary>
+    private Func<Task>? _afterConfirming;
+
+    private async Task ChangeAnyway()
+    {
+        Session.ConfirmPending();
+
+        var next = _afterConfirming;
+        _afterConfirming = null;
+
+        if (next is not null)
+            await next();
+
+        Refresh();
+    }
+
+    private void KeepTheModel()
+    {
+        Session.CancelPending();
+        _afterConfirming = null;
+
         Refresh();
     }
 

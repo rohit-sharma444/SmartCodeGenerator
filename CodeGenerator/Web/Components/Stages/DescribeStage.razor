@@ -28,11 +28,11 @@
     }
 
     private Task<bool> Next()
-    {
         // Blank is allowed here and refused at node 3, where "no description AND no data" is
         // the combination that has genuinely nothing to build from.
-        Session.SetDescription(_text);
-
-        return Task.FromResult(true);
-    }
+        //
+        // The session's answer is passed straight back: false means it is holding the change
+        // until the user says whether the model may go, and the page must not advance past a
+        // question it has just put on screen.
+        => Task.FromResult(Session.SetDescription(_text));
 }
