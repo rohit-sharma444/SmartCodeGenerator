@@ -533,17 +533,23 @@ public static class CommandDictionary
         {
             Category = "Build App",
             Command = "build app: <description>",
-            Description = "Describes a system in plain English, then asks which kind of app to "
-                        + "build and whether you have data, discovers a domain model, and opens a "
-                        + "review loop before any code is written.",
+            Description = "Describes a system in plain English. Interactively this opens a "
+                        + "workflow page in the browser — the console prints the address and "
+                        + "waits — where the rest of the build happens: application type, data, "
+                        + "look, domain discovery, model review, then generate, build and run. "
+                        + "Piped runs are unchanged, and CG_NO_WEB=1 keeps the console wizard.",
             Example = "build app: a library that lends books to members"
         },
         new()
         {
             Category = "Build App",
             Command = "build app",
-            Description = "Starts the same guided flow, asking for the description first, then the "
-                        + "application type, then whether you already have data.",
+            Description = "Starts the same flow with nothing filled in. Interactively it opens a "
+                        + "workflow page in the browser drawn as seven connected stages: the one "
+                        + "being answered is open, a finished stage can be clicked to go back, and "
+                        + "changing the description or the data source discards the model that was "
+                        + "discovered from the old one. Piped runs keep the console wizard, as "
+                        + "does CG_NO_WEB=1.",
             Example = "build app"
         },
         new()
@@ -551,7 +557,8 @@ public static class CommandDictionary
             Category = "Build App",
             Command = "build app: <description> from <format> <location>",
             Description = "Builds the model from existing data with no prompts when piped; "
-                        + "interactively you are still asked the application type. Formats: csv, "
+                        + "interactively the file is already answered and the workflow page opens "
+                        + "on what is left. Formats: csv, "
                         + "txt, json, excel (sql is not in this build yet). Add 'normalize' to "
                         + "apply every normalization change the data needs.",
             Example = "build app: order tracking from csv D:\\data\\orders.csv normalize"
