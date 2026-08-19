@@ -1,7 +1,7 @@
 namespace CodeGenerator.Web.Workflow;
 
 /// <summary>One node as the diagram needs it: what to call it, and one line of what it does.</summary>
-internal sealed record StageNode(BuildStage Stage, string Title, string Blurb);
+public sealed record StageNode(BuildStage Stage, string Title, string Blurb);
 
 /// <summary>
 /// The workflow's shape. Pure: nodes, the walk between them, and what changing an answer costs.
@@ -11,7 +11,7 @@ internal sealed record StageNode(BuildStage Stage, string Title, string Blurb);
 /// from <c>SelectionPrompt</c> — everything decidable is lifted out of the thing that holds
 /// mutable state, so it can be asserted directly.
 /// </remarks>
-internal static class StageGraph
+public static class StageGraph
 {
     public static IReadOnlyList<StageNode> Nodes { get; } =
     [

@@ -10,7 +10,7 @@ namespace CodeGenerator.Web.Workflow;
 /// but it does need a row in <see cref="StageGraph.Invalidates"/>, which is deliberately a
 /// total switch so the compiler asks for one.
 /// </remarks>
-internal enum BuildStage
+public enum BuildStage
 {
     Describe,
     AppType,

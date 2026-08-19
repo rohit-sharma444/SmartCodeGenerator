@@ -16,8 +16,13 @@ namespace CodeGenerator.Web.Workflow;
 /// Registered as a singleton for the host's lifetime, so a second browser tab attaches to the
 /// running workflow rather than starting a rival one against the same workspace.
 /// </para>
+/// <para>
+/// Public, along with the rest of <c>CodeGenerator.Web.Workflow</c>, only because Razor generates
+/// every component as a public class and a <c>[Parameter]</c> may not be less accessible than the
+/// component holding it. Nothing outside this executable references any of it.
+/// </para>
 /// </remarks>
-internal sealed class BuildSession
+public sealed class BuildSession
 {
     private readonly Dictionary<BuildStage, StageState> _states = new();
 

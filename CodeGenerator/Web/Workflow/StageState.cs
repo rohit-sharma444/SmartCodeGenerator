@@ -1,7 +1,7 @@
 namespace CodeGenerator.Web.Workflow;
 
 /// <summary>How one node draws, and whether it can be revisited.</summary>
-internal enum StageState
+public enum StageState
 {
     /// <summary>Not reached, or invalidated by a change upstream.</summary>
     Pending,
@@ -23,7 +23,7 @@ internal enum StageState
 /// closed the tab did not decide anything, and the console says so differently from one who
 /// pressed Cancel.
 /// </remarks>
-internal enum SessionPhase
+public enum SessionPhase
 {
     Running,
     Cancelled,

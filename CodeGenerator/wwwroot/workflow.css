@@ -1,1 +1,78 @@
-/* The workflow diagram and its panels. Filled in with the diagram component. */
+/* Self-contained: no CDN, no web font. The tool must work with no network. */
+:root {
+    --ink: #1c1c1c;
+    --paper: #fbfbfa;
+    --line: #d3d3cf;
+    --pending: #8a8a85;
+    --active: #1f6feb;
+    --done: #1a7f37;
+    --failed: #b3261e;
+}
+
+body {
+    margin: 0;
+    padding: 2rem;
+    background: var(--paper);
+    color: var(--ink);
+    font: 15px/1.5 "Segoe UI", system-ui, sans-serif;
+}
+
+.workflow { max-width: 1100px; margin: 0 auto; }
+
+/* A grid, so the seven nodes wrap onto a second row on a narrow window without the
+   connectors needing to be re-measured. */
+.stage-diagram {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 0.75rem 1.75rem;
+    margin: 0 0 2rem;
+    padding: 0;
+    list-style: none;
+}
+
+.stage-node {
+    position: relative;
+    padding: 0.7rem 0.9rem;
+    border: 2px solid var(--line);
+    border-radius: 6px;
+    background: #fff;
+}
+
+/* The connector. On the node rather than between nodes, so it cannot get out of step with the
+   grid's own wrapping; hidden on the last of a row by the grid overflowing invisibly. */
+.stage-node + .stage-node::before {
+    content: "";
+    position: absolute;
+    left: -1.4rem;
+    top: 50%;
+    width: 1rem;
+    border-top: 2px solid var(--line);
+}
+
+.stage-node button {
+    all: unset;
+    cursor: pointer;
+    display: block;
+    width: 100%;
+}
+
+.stage-node.pending { color: var(--pending); }
+.stage-node.active  { border-color: var(--active); box-shadow: 0 0 0 3px rgb(31 111 235 / 15%); }
+.stage-node.done    { border-color: var(--done); }
+.stage-node.failed  { border-color: var(--failed); }
+
+.stage-title { display: block; font-weight: 600; }
+.stage-blurb { display: block; font-size: 0.82em; color: var(--pending); }
+
+.panel {
+    padding: 1.25rem 1.5rem;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: #fff;
+}
+
+.failure {
+    padding: 0.6rem 0.9rem;
+    border-left: 4px solid var(--failed);
+    background: #fdf0ef;
+}

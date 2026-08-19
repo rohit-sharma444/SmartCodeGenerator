@@ -10,7 +10,7 @@ namespace CodeGenerator.Web;
 /// return lines: the caller decides the colour, and a test can assert the content without
 /// parsing a screen.
 /// </remarks>
-internal sealed record BuildOutcome(SessionPhase Phase, IReadOnlyList<string> Lines)
+public sealed record BuildOutcome(SessionPhase Phase, IReadOnlyList<string> Lines)
 {
     public static BuildOutcome Cancelled { get; } =
         new(SessionPhase.Cancelled, ["Cancelled. Nothing was generated."]);

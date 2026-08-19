@@ -3,5 +3,27 @@
 @using CodeGenerator.Web.Workflow
 @inject BuildSession Session
 
-<h1>Build an application</h1>
-<p>Workflow stage: @Session.Current</p>
+<main class="workflow">
+    <h1>Build an application</h1>
+
+    <StageDiagram Session="Session" OnRevisit="Revisit" />
+
+    @if (Session.FailureMessage is not null)
+    {
+        <p class="failure" role="alert">@Session.FailureMessage</p>
+    }
+
+    <section class="panel">
+        @* Stage panels are added by the tasks that build them. Until then the panel names the
+           stage, so the diagram and the shell can be worked on independently. *@
+        <h2>@StageGraph.Nodes.First(n => n.Stage == Session.Current).Title</h2>
+    </section>
+</main>
+
+@code {
+    private void Revisit(BuildStage stage)
+    {
+        Session.GoTo(stage);
+        StateHasChanged();
+    }
+}

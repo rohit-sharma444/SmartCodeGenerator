@@ -1,0 +1,54 @@
+@* The pipeline, drawn. A CSS grid with pseudo-element connectors rather than an SVG with
+   computed coordinates: a node whose title wraps must not need the arrows re-measuring. *@
+@using CodeGenerator.Web.Workflow
+
+<ol class="stage-diagram">
+    @foreach (var node in StageGraph.Nodes)
+    {
+        var state = Session.StateOf(node.Stage);
+
+        <li class="stage-node @CssFor(state)">
+            @if (IsRevisitable(state))
+            {
+                @* A button, not a div with an onclick: a workflow the keyboard cannot drive is
+                   not navigable, and the diagram is the navigation. *@
+                <button type="button" @onclick="() => OnRevisit.InvokeAsync(node.Stage)"
+                        title="Go back to @node.Title">
+                    <span class="stage-title">@node.Title</span>
+                    <span class="stage-blurb">@node.Blurb</span>
+                </button>
+            }
+            else
+            {
+                <span class="stage-title">@node.Title</span>
+                <span class="stage-blurb">@node.Blurb</span>
+            }
+        </li>
+    }
+</ol>
+
+@code {
+    [Parameter, EditorRequired]
+    public required BuildSession Session { get; set; }
+
+    /// <summary>Raised when a node the user may go back to is clicked.</summary>
+    [Parameter]
+    public EventCallback<BuildStage> OnRevisit { get; set; }
+
+    private static string CssFor(StageState state)
+        => state switch
+        {
+            StageState.Active => "active",
+            StageState.Done => "done",
+            StageState.Failed => "failed",
+            _ => "pending",
+        };
+
+    /// <summary>
+    /// Whether this node can be clicked. Done and Failed can — a failed node is exactly the one
+    /// a user needs to get back into. Pending cannot: it has no answer to change, which is why
+    /// <see cref="BuildSession.GoTo"/> refuses one.
+    /// </summary>
+    private static bool IsRevisitable(StageState state)
+        => state is StageState.Done or StageState.Failed;
+}
