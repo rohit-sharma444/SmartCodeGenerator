@@ -306,9 +306,10 @@ moves: the step forward, and an arrow back to the stage before it. The box that 
 lights up as a second way forward — except where the step is an action with a name of its own:
 `Generate` and `Run` stay disabled until the project has actually been written, because until then
 there is nothing in them to go to. Clicking a finished box goes back to change it, keeping whatever
-the open panel had already answered; changing the
-description or the data source discards the model that was discovered from the old one, because it
-was discovered from something the user has since changed. Typing a description inline
+the open panel had already answered; changing the description or the data source discards the model
+that was discovered from the old one, because it was discovered from something the user has since
+changed — so that change asks first, counting the classes it would cost, and holds the answer
+unapplied until it is confirmed. Nothing is lost while the question is on screen. Typing a description inline
 (`build app: a library that lends books`) opens the page on the application type instead.
 
 The kinds of app are WPF (Windows desktop), Windows Desktop (WinForms), ASP.NET Web API, Web
@@ -322,6 +323,13 @@ all at once at the end.
 The page is served by Kestrel in this process on a loopback port with a one-off token in its
 address, and lives exactly as long as the command. `CG_NO_WEB=1` keeps the console wizard, for a
 session with no browser to open — as does redirected input, below.
+
+Exactly as long as the command, in both directions. A second tab on the same address attaches to
+the running workflow rather than starting a rival one against the same workspace, and the two stay
+in step: whichever tab takes a step, the other follows it. Closing the last one ends the command
+and says so, after a grace period long enough that a page refresh is not mistaken for leaving. A
+workflow nobody has opened yet is not abandoned, though — the address is printed whether or not a
+browser could be launched, and pasting it a minute later finds the page still waiting.
 
 Targets: `wpf` (default), `winforms`, `console`, `webapi`, `blazor`, `classlib`, `worker`.
 `approve <target>` at the review loop overrides the type chosen at the start. SQLite persistence

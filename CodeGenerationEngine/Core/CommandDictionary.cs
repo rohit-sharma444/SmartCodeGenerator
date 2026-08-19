@@ -556,9 +556,10 @@ public static class CommandDictionary
                         + "to change it — there are no Back and Next buttons. Generate and Run stay "
                         + "disabled until the project has actually been written. A long step "
                         + "reports its progress as it works, "
-                        + "and changing the description or the data source discards the model that "
-                        + "was discovered from the old one. Piped runs keep the console wizard, as "
-                        + "does CG_NO_WEB=1.",
+                        + "and changing the description or the data source asks first, because "
+                        + "it discards the model that was discovered from the old one. Two tabs on "
+                        + "the same workflow stay in step, and closing the last one ends the "
+                        + "command. Piped runs keep the console wizard, as does CG_NO_WEB=1.",
             Example = "build app"
         },
         new()
