@@ -37,6 +37,9 @@
             case BuildStage.Review:
                 <ReviewStage Session="Session" OnAdvance="Refresh" />
                 break;
+            case BuildStage.Generate:
+                <GenerateStage Session="Session" OnAdvance="Refresh" />
+                break;
         }
     </section>
 </main>

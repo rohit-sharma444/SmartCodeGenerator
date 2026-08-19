@@ -1,0 +1,196 @@
+@using AppScaffolding
+@using AppScaffolding.Targets
+@using CodeGenerationEngine.Models
+@using CodeGenerator.App
+@using CodeGenerator.Web.Workflow
+
+@if (_phase == Phase.Confirm)
+{
+    <p>Ready to write <strong>@_name</strong>.</p>
+
+    <label>Name
+        <input class="app-name" value="@_name" @onchange="NameTyped" />
+    </label>
+
+    @* Hidden rather than offered-and-refused: WPF and WinForms read JsonStore directly off the
+       shared store seam, so SQLite is not a choice they have. *@
+    @if (BuildAppCommand.IsPersistenceAllowed(Target, PersistenceKind.Sqlite))
+    {
+        <label>Persistence
+            <select class="persistence" @onchange="PersistenceChosen">
+                <option value="json">JSON</option>
+                <option value="sqlite">SQLite</option>
+            </select>
+        </label>
+    }
+
+    @if (LayoutNotice is not null)
+    {
+        <p class="notice">@LayoutNotice</p>
+    }
+
+    <div class="actions">
+        <button type="button" class="back" @onclick="Back">Back</button>
+        <button type="button" class="write" @onclick="Write">Write it</button>
+        <button type="button" class="cancel" @onclick="() => Session.Cancel()">Cancel</button>
+    </div>
+}
+else if (_phase == Phase.Overwrite)
+{
+    @* A question about losing work, so it is a decision rather than a default. *@
+    <div class="overwrite" role="alertdialog">
+        <p>@GenerateStep.FolderFor(Session, _name, Target) already exists.</p>
+        <button type="button" class="overwrite-yes" @onclick="Overwrite">Overwrite it</button>
+        <button type="button" class="overwrite-rename" @onclick="() => _phase = Phase.Confirm">
+            Use a different name
+        </button>
+        <button type="button" class="cancel" @onclick="() => Session.Cancel()">Cancel</button>
+    </div>
+}
+else
+{
+    @foreach (var line in _report)
+    {
+        <p class="report-line">@line</p>
+    }
+
+    @if (_log.Count > 0)
+    {
+        <pre class="build-log">@string.Join(Environment.NewLine, _log)</pre>
+    }
+
+    @if (_phase == Phase.Done && _canRun)
+    {
+        <button type="button" class="run" @onclick="Run">Run it now</button>
+    }
+
+    @if (_phase == Phase.Done)
+    {
+        <button type="button" class="finish" @onclick="Finish">Done</button>
+    }
+}
+
+@code {
+    private enum Phase { Confirm, Overwrite, Working, Done }
+
+    [Parameter, EditorRequired] public required BuildSession Session { get; set; }
+    [Parameter] public EventCallback OnAdvance { get; set; }
+
+    private Phase _phase = Phase.Confirm;
+    private string _name = string.Empty;
+    private PersistenceKind _persistence = PersistenceKind.Json;
+    private readonly List<string> _report = [];
+    private readonly List<string> _log = [];
+    private ScaffoldResult? _scaffold;
+    private bool _canRun;
+
+    private ITargetScaffolder Target => Session.Target ?? TargetScaffolders.Default;
+
+    /// <summary>Re-checked here rather than only at node 4, because the target can still be
+    /// changed after the layout was named.</summary>
+    private string? LayoutNotice => BuildAppCommand.LayoutNotice(Target, Session.Customization);
+
+    protected override void OnInitialized() => _name = GenerateStep.NameFor(Session);
+
+    /// <summary>A typed name goes through the same rule the generated one did, so what is written
+    /// is always a usable identifier.</summary>
+    private void NameTyped(ChangeEventArgs e)
+        => _name = DomainAppName.FromDescription(e.Value?.ToString() ?? _name);
+
+    private void PersistenceChosen(ChangeEventArgs e)
+        => _persistence = e.Value?.ToString() == "sqlite"
+            ? PersistenceKind.Sqlite
+            : PersistenceKind.Json;
+
+    private void Write()
+    {
+        // A rename can collide too, so the question is asked about whatever name is current.
+        if (GenerateStep.Collides(Session, _name, Target))
+        {
+            _phase = Phase.Overwrite;
+            return;
+        }
+
+        _ = Go();
+    }
+
+    private void Overwrite() => _ = Go();
+
+    private async Task Go()
+    {
+        _phase = Phase.Working;
+        _report.Clear();
+        _log.Clear();
+
+        var scaffold = await Task.Run(
+            () => GenerateStep.Scaffold(Session, _name, Target, _persistence));
+
+        _scaffold = scaffold;
+
+        // Said out loud: a row cap the user is not told about reads as "all your data is in there".
+        foreach (var note in Session.ImportedData.Notes)
+            _report.Add(note);
+
+        if (!scaffold.Success)
+        {
+            _report.Add($"Generation failed: {scaffold.Message}");
+            _phase = Phase.Done;
+            return;
+        }
+
+        _report.Add($"Generated project at {scaffold.ProjectPath}");
+
+        if (scaffold.TestProjectPath is not null)
+            _report.Add($"Generated test project at {scaffold.TestProjectPath}");
+
+        StateHasChanged();
+
+        var built = await Task.Run(() => GenerateStep.Build(
+            scaffold.ProjectPath,
+            line => InvokeAsync(() => { _log.Add(line); StateHasChanged(); })));
+
+        _report.AddRange(BuildReport.Lines(built.Result, built.Elapsed, scaffold.ProjectPath));
+
+        // Nothing to offer for a class library, and nothing worth starting from a red build.
+        _canRun = BuildReport.Succeeded(built.Result)
+                  && Target.ProjectType != DotNetProjectType.ClassLibrary;
+
+        _phase = Phase.Done;
+    }
+
+    private void Run()
+    {
+        var isWebApp = Target.ProjectType == DotNetProjectType.BlazorServer;
+
+        var launched = AppLauncher.Launch(
+            _scaffold!.ProjectPath, string.Join(Environment.NewLine, _log),
+            fromProjectFolder: isWebApp);
+
+        _report.Add(launched is null
+            ? "Could not start the app — use the command below."
+            : $"Started {launched}");
+
+        // A web app shows nothing of its own and waits to be visited, so opening it once
+        // something answers is what makes the offer honest.
+        if (launched is not null && isWebApp)
+        {
+            var url = LaunchSettingsReader.HttpUrl(_scaffold.ProjectPath);
+
+            if (url is not null && WebAppStart.Wait(url))
+                WebAppStart.OpenBrowser(url);
+        }
+    }
+
+    private async Task Finish()
+    {
+        Session.Complete(GenerateStep.OutcomeFor(_scaffold!, Target));
+
+        await OnAdvance.InvokeAsync();
+    }
+
+    private async Task Back()
+    {
+        Session.GoTo(BuildStage.Review);
+        await OnAdvance.InvokeAsync();
+    }
+}
