@@ -1,6 +1,7 @@
 using AppScaffolding;
 using CodeGenerator.Web;
 using CodeGenerator.Web.Workflow;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace CodeGenerator.Tests.Web;
 
@@ -173,6 +174,34 @@ public class BuildAppWebHostTests
 
         session.Cancel();
         task.Wait(ReturnsWithin);
+    }
+
+    /// <summary>
+    /// The registration itself, which is the half of the tab-counting that no unit test of
+    /// <c>WorkflowCircuits</c> can reach: a handler Blazor never resolves is a handler that never
+    /// runs, and the workflow would then wait forever on a closed tab exactly as it used to.
+    /// </summary>
+    [TestMethod]
+    public void Hands_Blazor_a_circuit_handler_that_reports_to_this_host()
+    {
+        using var host = Start(out _);
+
+        using var scope = host.Services.CreateScope();
+
+        var handlers = scope.ServiceProvider
+            .GetServices<Microsoft.AspNetCore.Components.Server.Circuits.CircuitHandler>()
+            .ToList();
+
+        Assert.ContainsSingle(handlers.OfType<WorkflowCircuits>());
+
+        // Resolved from the container rather than newed up, so this proves the wiring and not
+        // just the class: the watch it moves must be the one this host polls.
+        var handler = handlers.OfType<WorkflowCircuits>().Single();
+
+        handler.OnConnectionUpAsync(null!, CancellationToken.None).GetAwaiter().GetResult();
+        handler.OnConnectionDownAsync(null!, CancellationToken.None).GetAwaiter().GetResult();
+
+        Assert.IsTrue(host.Circuits.ShouldAbandon(TimeSpan.Zero, DateTimeOffset.UtcNow.AddDays(1)));
     }
 
     private static BuildAppWebHost Start(out BuildSession session)

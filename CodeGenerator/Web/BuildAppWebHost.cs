@@ -58,6 +58,10 @@ internal sealed class BuildAppWebHost : IDisposable
     /// TimeSpan?)"/>.</summary>
     public CircuitWatch Circuits { get; }
 
+    /// <summary>What the running host resolves its services from — the container Blazor takes
+    /// the circuit handlers out of.</summary>
+    public IServiceProvider Services => _app.Services;
+
     /// <summary>The address to open, token and all.</summary>
     public string Url { get; }
 
