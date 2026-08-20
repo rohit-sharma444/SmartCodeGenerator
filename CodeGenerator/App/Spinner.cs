@@ -66,7 +66,18 @@ internal sealed class Spinner : IDisposable
     /// </remarks>
     private readonly TextWriter _out;
     private readonly CancellationTokenSource _stop = new();
-    private readonly Task _loop;
+
+    /// <summary>
+    /// A thread of its own, deliberately not a <see cref="Task"/>.
+    /// </summary>
+    /// <remarks>
+    /// On the thread pool the animation is queued behind the work it is decorating, and the moments
+    /// the pool has no free worker are exactly the moments a user most needs to be told the tool is
+    /// still going. A loaded CI runner showed it: half a second of a 20ms spinner produced no output
+    /// at all, because the frame loop never got a worker. One thread for the length of one slow
+    /// command is the cheaper side of that trade. Background, so it can never hold the process open.
+    /// </remarks>
+    private readonly Thread _loop;
     private readonly Stopwatch _clock = Stopwatch.StartNew();
 
     /// <summary>Guards <see cref="_drew"/> against the dispose that races the first frame.</summary>
@@ -81,7 +92,8 @@ internal sealed class Spinner : IDisposable
         _label = label;
         _delay = delay;
         _out = Console.Out;
-        _loop = Task.Run(Spin);
+        _loop = new Thread(Spin) { IsBackground = true, Name = "spinner" };
+        _loop.Start();
     }
 
     /// <summary>The frame for <paramref name="tick"/>, cycling.</summary>
@@ -152,7 +164,7 @@ internal sealed class Spinner : IDisposable
     internal static IDisposable StartAfter(string label, bool animate, TimeSpan delay)
         => animate ? new Spinner(label, delay) : new NoSpinner();
 
-    private async Task Spin()
+    private void Spin()
     {
         var tick = 0;
 
@@ -160,8 +172,8 @@ internal sealed class Spinner : IDisposable
         {
             // Nothing on screen until the work has earned it. Cancelled inside this wait, the
             // spinner never existed as far as the user is concerned.
-            if (_delay > TimeSpan.Zero)
-                await Task.Delay(_delay, _stop.Token);
+            if (_delay > TimeSpan.Zero && Waited(_delay))
+                return;
 
             while (!_stop.IsCancellationRequested)
             {
@@ -184,12 +196,14 @@ internal sealed class Spinner : IDisposable
                     _drew = true;
                 }
 
-                await Task.Delay(Tick, _stop.Token);
+                if (Waited(Tick))
+                    return;
             }
         }
-        catch (OperationCanceledException)
+        catch (ObjectDisposedException)
         {
-            // The expected way out.
+            // Dispose gave up waiting for this thread and released the token. Rare, and there is
+            // nothing left to draw on.
         }
         catch (IOException)
         {
@@ -197,17 +211,15 @@ internal sealed class Spinner : IDisposable
         }
     }
 
+    /// <summary>Sleeps for <paramref name="span"/>, returning true if the spinner was stopped
+    /// instead — a cancellable wait without a task to schedule.</summary>
+    private bool Waited(TimeSpan span) => _stop.Token.WaitHandle.WaitOne(span);
+
     public void Dispose()
     {
         _stop.Cancel();
 
-        try
-        {
-            _loop.Wait(TimeSpan.FromSeconds(1));
-        }
-        catch (AggregateException)
-        {
-        }
+        _loop.Join(TimeSpan.FromSeconds(1));
 
         // Nothing was ever drawn — the work finished inside the delay — so there is nothing to
         // erase and nothing to say. This is the ordinary case for a command that returns at once.
