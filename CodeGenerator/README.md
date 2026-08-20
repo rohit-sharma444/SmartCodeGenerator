@@ -309,8 +309,17 @@ there is nothing in them to go to. Clicking a finished box goes back to change i
 the open panel had already answered; changing the description or the data source discards the model
 that was discovered from the old one, because it was discovered from something the user has since
 changed — so that change asks first, counting the classes it would cost, and holds the answer
-unapplied until it is confirmed. Nothing is lost while the question is on screen. Typing a description inline
+unapplied until it is confirmed. Nothing is lost while the question is on screen. `Cancel` asks the
+same way once there is an answer to lose, saying what it would cost — and saying plainly that a
+project already written stays where it is, because cancelling does not delete it; on a first page
+with nothing answered it simply cancels. Typing a description inline
 (`build app: a library that lends books`) opens the page on the application type instead.
+
+The whole workflow can be walked from the keyboard. The panel that opens takes the keyboard — once
+per stage, so a repaint mid-answer does not pull the caret out of a field — and Enter takes the step
+the open box offers. Plain steps only, by the same rule that keeps a click on another box from
+taking a named one: `Generate` writes a project to disk and stays a deliberate click. Enter in the
+description is a new line, that being the one answer here where it means one.
 
 The kinds of app are WPF (Windows desktop), Windows Desktop (WinForms), ASP.NET Web API, Web
 Application (Blazor Server), Console, Class Library and Worker Service.

@@ -557,7 +557,10 @@ public static class CommandDictionary
                         + "disabled until the project has actually been written. A long step "
                         + "reports its progress as it works, "
                         + "and changing the description or the data source asks first, because "
-                        + "it discards the model that was discovered from the old one. Two tabs on "
+                        + "it discards the model that was discovered from the old one; Cancel asks "
+                        + "the same way once there is an answer to lose. The panel that opens holds "
+                        + "the keyboard and Enter takes the step it offers — never Generate or Run, "
+                        + "which stay deliberate clicks. Two tabs on "
                         + "the same workflow stay in step, and closing the last one ends the "
                         + "command. Piped runs keep the console wizard, as does CG_NO_WEB=1.",
             Example = "build app"

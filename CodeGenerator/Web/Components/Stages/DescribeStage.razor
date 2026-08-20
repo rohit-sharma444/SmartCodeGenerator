@@ -1,16 +1,20 @@
 @using CodeGenerator.Web.Workflow
+@using Microsoft.AspNetCore.Components.Web
 
 <p>Describe the application you want to build.</p>
 <p class="hint">
     Leave it blank if you will point at a data file instead — that is a supported flow.
 </p>
 
-<textarea rows="4" value="@_text" @onchange="e => _text = e.Value?.ToString() ?? string.Empty">
+@* Enter belongs to the textarea: the page takes a plain step on Enter, and a description is
+   the one answer on this workflow where a new line is a sentence and not a decision. *@
+<textarea rows="4" value="@_text" @onchange="e => _text = e.Value?.ToString() ?? string.Empty"
+          @onkeydown="Typed" @onkeydown:stopPropagation="true">
 </textarea>
 
 <div class="actions">
     @* Cancel only. Moving on is the diagram's job — the box above holds the step forward. *@
-    <button type="button" class="cancel" @onclick="() => Session.Cancel()">Cancel</button>
+    <button type="button" class="cancel" @onclick="() => Session.RequestCancel()">Cancel</button>
 </div>
 
 @code {
@@ -19,6 +23,19 @@
     [Parameter] public EventCallback OnAdvance { get; set; }
 
     private string _text = string.Empty;
+
+    /// <summary>
+    /// Swallows keys the page would otherwise act on.
+    /// </summary>
+    /// <remarks>
+    /// The page takes a plain step on Enter; in a description Enter is a new line, and this is the
+    /// one answer on the workflow where that is true. The handler is empty on purpose — the
+    /// stopPropagation directive beside it is the behaviour, and Blazor applies it to a handled
+    /// event.
+    /// </remarks>
+    private void Typed(KeyboardEventArgs key)
+    {
+    }
 
     protected override void OnInitialized()
     {

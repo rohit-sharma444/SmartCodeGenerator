@@ -292,6 +292,25 @@ body {
 
 /* The question asked before a changed answer throws a model away. Warm rather than red: this is
    a decision to make, not a failure to report, and one of the two answers is perfectly safe. */
+/* The same shape as the discard question — one visual language for "answer this first" — but a
+   heavier rule, because this one ends the run rather than one answer. */
+.cancel-question {
+    padding: 0.6rem 0.9rem;
+    margin-bottom: 1rem;
+    border-left: 4px solid #c53030;
+    background: #fff5f5;
+}
+
+.cancel-question p { margin: 0; }
+.cancel-question .actions { margin-top: 0.75rem; }
+
+/* Carrying on is the safe answer, so it is the one the eye lands on. */
+.cancel-keep {
+    border-color: var(--active);
+    color: var(--active);
+    font-weight: 600;
+}
+
 .discard-question {
     padding: 0.6rem 0.9rem;
     margin-bottom: 1rem;

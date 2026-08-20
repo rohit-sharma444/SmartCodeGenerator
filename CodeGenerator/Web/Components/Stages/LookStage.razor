@@ -79,7 +79,7 @@
 
 <div class="actions">
     @* Nothing here refuses the step — the box does, because Valid is what it is told. *@
-    <button type="button" class="cancel" @onclick="() => Session.Cancel()">Cancel</button>
+    <button type="button" class="cancel" @onclick="() => Session.RequestCancel()">Cancel</button>
 </div>
 
 @code {

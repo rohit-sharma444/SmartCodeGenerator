@@ -115,6 +115,92 @@ public class ReviewStageTests
         Assert.IsFalse(navigation.CanContinue);
     }
 
+    // The row exists and is wired to the same AddLine the console review loop uses; nothing
+    // covered it, so nothing said which of the two names it must report.
+    [TestMethod]
+    public void Adding_a_class_puts_it_in_the_model_and_on_the_screen()
+    {
+        using var context = new BunitContext();
+        var rendered = Render(context, out var session);
+
+        rendered.Find("input.new-class").Change("Member");
+        rendered.Find("button.add-class").Click();
+
+        Assert.IsNotEmpty(session.Model!.Entities.Where(e => e.Name == "Member"));
+        StringAssert.Contains(rendered.Markup, "Member");
+    }
+
+    /// <summary>
+    /// The editor keeps the name shape a person typed, and promoting a suggestion keeps the
+    /// suggestion's own spelling — so the report has to name what the model received rather than
+    /// echoing the box, which is the one thing a caller cannot work out for itself.
+    /// </summary>
+    [TestMethod]
+    public void The_report_names_the_class_the_model_kept_not_the_text_typed()
+    {
+        using var context = new BunitContext();
+        var rendered = Render(context, out var session);
+
+        rendered.Find("input.new-class").Change("  member  ");
+        rendered.Find("button.add-class").Click();
+
+        var kept = session.Model!.Entities.Last().Name;
+
+        Assert.AreNotEqual("  member  ", kept);
+
+        // The report, specifically: the entity card carries that name too, so asserting on the
+        // whole markup would pass however the message was worded.
+        StringAssert.Contains(rendered.Find(".edit-report").TextContent, kept);
+    }
+
+    [TestMethod]
+    public void A_class_the_model_already_has_is_refused_with_a_reason()
+    {
+        using var context = new BunitContext();
+        var rendered = Render(context, out var session);
+
+        rendered.Find("input.new-class").Change("Book");
+        rendered.Find("button.add-class").Click();
+
+        Assert.HasCount(1, session.Model!.Entities.Where(e => e.Name == "Book"));
+        StringAssert.Contains(rendered.Find(".edit-report").TextContent.ToLowerInvariant(), "could not");
+    }
+
+    /// <summary>
+    /// Typing the name of something discovery only suggested promotes it, keeping the fields and
+    /// provenance discovery had already worked out — the alternative is a second, emptier class
+    /// beside the suggestion it duplicates.
+    /// </summary>
+    [TestMethod]
+    public void Naming_a_suggestion_promotes_it_rather_than_inventing_a_second_class()
+    {
+        using var context = new BunitContext();
+        var rendered = Render(context, out var session);
+
+        rendered.Find("input.new-class").Change("Shelf");
+        rendered.Find("button.add-class").Click();
+
+        Assert.HasCount(1, session.Model!.Entities.Where(e => e.Name == "Shelf"));
+        Assert.IsEmpty(session.Model.Suggestions.Where(e => e.Name == "Shelf"));
+    }
+
+    /// <summary>
+    /// A class with no fields generates a class with nothing but its Id. The editor gives every
+    /// added class a fallback field for that reason, and the panel must keep going through the
+    /// editor rather than building an entity of its own.
+    /// </summary>
+    [TestMethod]
+    public void An_added_class_is_never_left_without_a_field()
+    {
+        using var context = new BunitContext();
+        var rendered = Render(context, out var session);
+
+        rendered.Find("input.new-class").Change("Member");
+        rendered.Find("button.add-class").Click();
+
+        Assert.IsNotEmpty(session.Model!.Entities.Single(e => e.Name == "Member").Fields);
+    }
+
     private static IRenderedComponent<ReviewStage> Render(
         BunitContext context, out BuildSession session, StageNavigation? navigation = null)
     {
