@@ -50,9 +50,15 @@ internal static class DiscoveryStep
         {
             tables = reader.Read(source);
         }
-        catch (Exception ex) when (ex is FileNotFoundException or InvalidDataException)
+        catch (Exception ex) when (ex is IOException or InvalidDataException
+                                       or UnauthorizedAccessException)
         {
             // The reader's message already says what was wrong in the user's own terms.
+            //
+            // IOException rather than only FileNotFoundException, which was the whole of it before:
+            // a spreadsheet open in Excel is the ordinary case and throws the base type, so it
+            // escaped this handler and took the circuit with it — while the summary above promised
+            // "false with a message rather than an exception" the entire time.
             error = ex.Message;
             return false;
         }

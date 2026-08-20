@@ -57,4 +57,47 @@ public class AppLauncherTests
         Assert.IsNull(AppLauncher.AssemblyPathFrom("  Shop -> not a dll"));
         Assert.IsNull(AppLauncher.AssemblyPathFrom("an arrow -> like this one"));
     }
+
+    /// <summary>
+    /// The run stage starts a real process and had no way to stop it: Launch disposed the Process
+    /// and returned only a file name, so the id was gone the moment it existed. A running app holds
+    /// its own bin folder open, which is what makes the next build of that project fail — so "stop
+    /// it" is the difference between carrying on and going to Task Manager.
+    /// </summary>
+    [TestMethod]
+    public void A_started_process_can_be_stopped_by_the_id_it_reported()
+    {
+        // Waits on stdin forever, which this test never gives it.
+        using var child = System.Diagnostics.Process.Start(
+            new System.Diagnostics.ProcessStartInfo("cmd.exe", "/c pause")
+            {
+                RedirectStandardInput = true,
+                UseShellExecute = false
+            });
+
+        Assert.IsNotNull(child);
+        Assert.IsFalse(child.HasExited);
+
+        Assert.IsTrue(AppLauncher.Stop(child.Id));
+
+        child.WaitForExit(TimeSpan.FromSeconds(10));
+        Assert.IsTrue(child.HasExited);
+    }
+
+    [TestMethod]
+    public void Stopping_something_that_has_already_gone_is_not_an_error()
+    {
+        using var child = System.Diagnostics.Process.Start(
+            new System.Diagnostics.ProcessStartInfo("cmd.exe", "/c exit")
+            {
+                UseShellExecute = false
+            });
+
+        Assert.IsNotNull(child);
+        child.WaitForExit(TimeSpan.FromSeconds(10));
+
+        // A user who stops an app that closed itself gets a plain "no", not an exception out of a
+        // component handler.
+        Assert.IsFalse(AppLauncher.Stop(child.Id));
+    }
 }

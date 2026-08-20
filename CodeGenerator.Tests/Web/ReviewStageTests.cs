@@ -201,6 +201,19 @@ public class ReviewStageTests
         Assert.IsNotEmpty(session.Model!.Entities.Single(e => e.Name == "Member").Fields);
     }
 
+    /// <summary>Where someone deciding to do it differently is standing, with every answer so far
+    /// as one line they can copy.</summary>
+    [TestMethod]
+    public void Shows_the_command_that_would_do_the_same_run()
+    {
+        using var context = new BunitContext();
+
+        var echo = Render(context, out _).Find(".command-echo").TextContent;
+
+        StringAssert.Contains(echo, "build app: a library");
+        StringAssert.Contains(echo, "approve ");
+    }
+
     private static IRenderedComponent<ReviewStage> Render(
         BunitContext context, out BuildSession session, StageNavigation? navigation = null)
     {

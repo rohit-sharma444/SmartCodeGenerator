@@ -10,7 +10,7 @@
     <p>Ready to write <strong>@_name</strong>.</p>
 
     <label>Name
-        <input class="app-name" value="@_name" @onchange="NameTyped" />
+        <input class="app-name answer" value="@_name" @onchange="NameTyped" />
     </label>
 
     @* Hidden rather than offered-and-refused: WPF and WinForms read JsonStore directly off the
@@ -18,7 +18,7 @@
     @if (BuildAppCommand.IsPersistenceAllowed(Target, PersistenceKind.Sqlite))
     {
         <label>Persistence
-            <select class="persistence" @onchange="PersistenceChosen">
+            <select class="persistence answer" @onchange="PersistenceChosen">
                 <option value="json">JSON</option>
                 <option value="sqlite">SQLite</option>
             </select>
@@ -217,18 +217,44 @@ else
             scaffold.ProjectPath,
             line => InvokeAsync(() => { _log.Add(line); StateHasChanged(); })));
 
-        Finished(BuildReport.Succeeded(built.Result)
+        // No compiler at all is not a failed build: the project is written, and saying "the
+        // compiler reported problems" over an empty log would send the user looking for problems
+        // that were never reported. The console front end has always said this here.
+        if (built.Result is not { } result)
+        {
+            Finished("Could not start `dotnet` — the build was skipped");
+
+            _report.Add(
+                "Could not start `dotnet`, so the project was written but not compiled. "
+                + "The steps below say how to build it yourself.");
+
+            Session.SetGenerated(new GeneratedApp(
+                scaffold,
+                string.Join(Environment.NewLine, _log),
+                BuildSucceeded: false,
+                BuildRan: false));
+
+            _written = true;
+            _phase = Phase.Done;
+
+            Navigation.Offer(Continue);
+            StateHasChanged();
+
+            return;
+        }
+
+        Finished(BuildReport.Succeeded(result)
             ? "Compiled"
             : "The compiler reported problems — the log is below");
 
-        _report.AddRange(BuildReport.Lines(built.Result, built.Elapsed, scaffold.ProjectPath));
+        _report.AddRange(BuildReport.Lines(result, built.Elapsed, scaffold.ProjectPath));
 
         // Handed to the session, not kept here: the run stage starts what this stage wrote, and
         // it needs the build log to find the assembly.
         Session.SetGenerated(new GeneratedApp(
             scaffold,
             string.Join(Environment.NewLine, _log),
-            BuildReport.Succeeded(built.Result)));
+            BuildReport.Succeeded(result)));
 
         _written = true;
         _phase = Phase.Done;

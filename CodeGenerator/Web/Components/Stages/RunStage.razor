@@ -59,6 +59,16 @@ else
         </button>
     }
 
+    @if (Session.StartedProcessId is { } running)
+    {
+        @* Offered for as long as it is ours to stop. A running app holds its own bin folder, so
+           the next build of this project fails until it closes — which is the practical reason
+           this is here and not a nicety. *@
+        <button type="button" class="stop" @onclick="() => StopIt(running)">
+            Stop it (process @running)
+        </button>
+    }
+
     <button type="button" class="finish" @onclick="Finish">Done</button>
 </div>
 
@@ -97,11 +107,14 @@ else
             ? "Nothing has been generated yet."
             : !App.Scaffold.Success
                 ? $"Nothing was written: {App.Scaffold.Message}"
-                : !App.BuildSucceeded
-                    ? "The generated project did not build, so there is nothing to start yet. "
-                      + "Go back to see the build log, or open the project and fix it."
-                    : "A class library has nothing to start. Reference it from an application "
-                      + "instead — the steps below say how.";
+                : !App.BuildRan
+                    ? "The project was written but not compiled — `dotnet` could not be started "
+                      + "here. Build it yourself with the steps below, then run it."
+                    : !App.BuildSucceeded
+                        ? "The generated project did not build, so there is nothing to start yet. "
+                          + "Go back to see the build log, or open the project and fix it."
+                        : "A class library has nothing to start. Reference it from an "
+                          + "application instead — the steps below say how.";
 
     private async Task Start()
     {
@@ -115,12 +128,14 @@ else
 
         // Off the circuit's thread: a web app is waited for until it answers, and that wait would
         // otherwise hold the render loop and leave the page looking dead.
+        var startedId = 0;
+
         var launched = await Task.Run(() => AppLauncher.Launch(
-            App!.Scaffold.ProjectPath, App.BuildLog, fromProjectFolder: isWebApp));
+            App!.Scaffold.ProjectPath, App.BuildLog, out startedId, fromProjectFolder: isWebApp));
 
         _report.Add(launched is null
             ? "Could not start the app — use the command below."
-            : $"Started {launched}");
+            : $"Started {launched} (process {startedId})");
 
         // A web app shows nothing of its own and waits to be visited, so opening it once
         // something answers is what makes the offer honest.
@@ -153,7 +168,26 @@ else
         // Recorded on the session, not just here: the box says "started" rather than "ready to
         // start", and this panel is rebuilt from scratch by any reload.
         if (_started)
-            Session.MarkStarted();
+            Session.MarkStarted(startedId);
+    }
+
+    /// <summary>
+    /// Stops the app this stage started.
+    /// </summary>
+    /// <remarks>
+    /// Off the circuit's thread: killing a process tree waits for it to go, and that wait would
+    /// otherwise hold the render loop. Whatever the answer, the offer goes — an app that had
+    /// already closed itself is stopped as far as the user is concerned.
+    /// </remarks>
+    private async Task StopIt(int processId)
+    {
+        var stopped = await Task.Run(() => AppLauncher.Stop(processId));
+
+        _report.Add(stopped
+            ? $"Stopped process {processId}."
+            : $"Process {processId} was not running any more.");
+
+        Session.MarkStopped();
     }
 
     /// <summary>Moves the progress list on. Same shape as the generate panel's, and for the same

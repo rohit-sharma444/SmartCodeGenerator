@@ -85,4 +85,36 @@ public class StageGraphTests
         Assert.IsEmpty(StageGraph.Invalidates(BuildStage.Generate));
         Assert.IsEmpty(StageGraph.Invalidates(BuildStage.Run));
     }
+
+    /// <summary>
+    /// The tab said "Build an application" and nothing else, for all eight stages and for both
+    /// tabs at once — which is exactly when a title has work to do.
+    /// </summary>
+    [TestMethod]
+    public void The_tab_title_says_which_stage_of_how_many()
+    {
+        var session = new BuildSession("a shop", @"C:\ws", AppScaffolding.AppCustomization.Default);
+
+        var opening = StageGraph.TabTitle(session);
+
+        StringAssert.Contains(opening, $"of {StageGraph.Nodes.Count}");
+        StringAssert.Contains(opening, "App type");
+        StringAssert.Contains(opening, "Build an application");
+        StringAssert.Contains(opening, "2 of");
+
+        session.SetTarget(new AppScaffolding.Targets.ConsoleTarget());
+        session.Advance();
+
+        StringAssert.Contains(StageGraph.TabTitle(session), "3 of");
+        StringAssert.Contains(StageGraph.TabTitle(session), "Data");
+    }
+
+    [TestMethod]
+    public void The_first_stage_is_one_not_zero()
+    {
+        var session = new BuildSession(
+            string.Empty, @"C:\ws", AppScaffolding.AppCustomization.Default);
+
+        StringAssert.Contains(StageGraph.TabTitle(session), "1 of");
+    }
 }

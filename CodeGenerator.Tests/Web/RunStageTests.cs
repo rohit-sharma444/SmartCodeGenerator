@@ -149,6 +149,84 @@ public class RunStageTests
         Assert.IsFalse(navigation.HasStep);
     }
 
+    /// <summary>
+    /// A build that never ran is not a build that failed, and the panel must not blame the
+    /// compiler for a `dotnet` it could not start — the project is written, and what the user has
+    /// to do next is different.
+    /// </summary>
+    [TestMethod]
+    public void A_build_that_never_ran_says_so_rather_than_blaming_the_compiler()
+    {
+        using var context = new BunitContext();
+
+        var session = new BuildSession("a shop", Path.GetTempPath(), AppCustomization.Default);
+        session.SetTarget(new WpfTarget());
+        session.Advance();
+        session.SetNoData();
+        session.Advance();
+        session.SetCustomization(AppCustomization.Default);
+        session.Advance();
+        session.SetModel(new CandidateDomainModel());
+        session.Advance();
+        session.Advance();
+        session.SetGenerated(new GeneratedApp(
+            Written, BuildLog: string.Empty, BuildSucceeded: false, BuildRan: false));
+        session.Advance();
+
+        var markup = context.Render<RunStage>(p => p
+            .Add(c => c.Session, session)
+            .Add(c => c.Navigation, new StageNavigation())
+            .Add(c => c.OnAdvance, () => { })).Markup;
+
+        StringAssert.Contains(markup, "not compiled");
+        Assert.DoesNotContain("did not build", markup);
+    }
+
+    [TestMethod]
+    public void A_running_app_can_be_stopped_from_the_panel()
+    {
+        using var context = new BunitContext();
+        var session = SessionOnTheRunStage(buildSucceeded: true);
+
+        session.MarkStarted(processId: 4321);
+
+        var rendered = context.Render<RunStage>(p => p
+            .Add(c => c.Session, session)
+            .Add(c => c.Navigation, new StageNavigation())
+            .Add(c => c.OnAdvance, () => { }));
+
+        Assert.IsNotEmpty(rendered.FindAll("button.stop"));
+
+        // The id is on screen because a user who goes to Task Manager needs it, and because it is
+        // the evidence that this panel is offering to stop the thing it actually started.
+        StringAssert.Contains(rendered.Markup, "4321");
+    }
+
+    [TestMethod]
+    public void Nothing_offers_to_stop_an_app_that_was_never_started()
+    {
+        using var context = new BunitContext();
+
+        var rendered = Render(context, out _, BuildSucceeded: true);
+
+        Assert.IsEmpty(rendered.FindAll("button.stop"));
+    }
+
+    /// <summary>Stopping it forgets the id, so the panel stops offering to stop something that has
+    /// gone — while the stage stays answered, because the app was run.</summary>
+    [TestMethod]
+    public void Stopping_forgets_the_process_but_not_that_it_ran()
+    {
+        var session = SessionOnTheRunStage(buildSucceeded: true);
+
+        session.MarkStarted(processId: 4321);
+        session.MarkStopped();
+
+        Assert.IsNull(session.StartedProcessId);
+        Assert.IsTrue(session.Started);
+        Assert.IsTrue(session.HoldsAnAnswer(BuildStage.Run));
+    }
+
     private static IRenderedComponent<RunStage> Render(
         BunitContext context, out BuildSession session, bool BuildSucceeded,
         StageNavigation? navigation = null)

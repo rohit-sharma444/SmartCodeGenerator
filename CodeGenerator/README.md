@@ -315,6 +315,22 @@ project already written stays where it is, because cancelling does not delete it
 with nothing answered it simply cancels. Typing a description inline
 (`build app: a library that lends books`) opens the page on the application type instead.
 
+A step that fails does not end the run. Everything a panel does is inside an error boundary that
+reports to the session, so a throw becomes a red box with a message and a way back into it —
+`dotnet` missing, a file open in another program, a path Windows will not take, a dropped file over
+the 10 MB cap. Before that boundary existed, an exception out of a handler tore down the Blazor
+circuit: the page froze with nothing on it, the host counted the tab as gone, and the console
+reported a workflow closed before it finished. A build that could not be started is reported as
+exactly that rather than as a build that failed, matching what the console front end has always
+done.
+
+The workflow answers back, too. A named data file is summarised before anything is built from it
+(`orders.csv: orders — 240 rows, 12 columns`), the browser tab carries the stage (`3 of 8 · Data`),
+the application the run stage started can be stopped from the page — with its process id, since a
+running app holds the `bin` folder the next build needs — and every outcome ends with the
+`build app:` line that would do the same run again, quoted so it parses back to the answers it came
+from. The review screen shows that line too.
+
 The whole workflow can be walked from the keyboard. The panel that opens takes the keyboard — once
 per stage, so a repaint mid-answer does not pull the caret out of a field — and Enter takes the step
 the open box offers. Plain steps only, by the same rule that keeps a click on another box from

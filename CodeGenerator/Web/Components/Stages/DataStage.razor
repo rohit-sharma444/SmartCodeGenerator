@@ -22,7 +22,7 @@
     <div class="file">
         <label>
             Format
-            <select value="@_format" @onchange="e => _format = e.Value?.ToString() ?? _format">
+            <select class="answer" value="@_format" @onchange="e => _format = e.Value?.ToString() ?? _format">
                 @foreach (var key in DataSourceReaders.Keys)
                 {
                     <option value="@key" disabled="@(!Readable(key))">@Label(key)</option>
@@ -34,11 +34,17 @@
            what DataSourceSpec.Location holds. The drop zone below is the convenience. *@
         <label>
             Path
-            <input class="path" value="@_path"
-                   @onchange="e => _path = e.Value?.ToString() ?? string.Empty" />
+            <input class="path answer" value="@_path" @onchange="PathGiven" />
         </label>
 
-        <InputFile OnChange="Upload" class="drop" />
+        @if (_peek is not null)
+        {
+            @* Said before the click, not after: a wrong file costs a discovery run to find out
+               about otherwise. *@
+            <p class="peek" aria-live="polite">@_peek</p>
+        }
+
+        <InputFile OnChange="Upload" class="drop answer" />
         <span class="hint">…or drop a file here to copy it into the workspace cache.</span>
     </div>
 }
@@ -64,6 +70,7 @@
     private string _format = "csv";
     private string _path = string.Empty;
     private string? _error;
+    private string? _peek;
 
     protected override void OnInitialized()
     {
@@ -77,6 +84,55 @@
         _hasFile = true;
         _path = Session.Source.Location;
         _format = Session.Source.Kind.ToString().ToLowerInvariant();
+
+        // Coming back to this node shows what the answer it holds actually contains, rather than
+        // only the path it was given.
+        Peek();
+    }
+
+    private void PathGiven(ChangeEventArgs e)
+    {
+        _path = e.Value?.ToString() ?? string.Empty;
+
+        Peek();
+    }
+
+    /// <summary>
+    /// Says what the named file holds, when it can.
+    /// </summary>
+    /// <remarks>
+    /// Silent about anything it cannot answer — a half-typed path is not a mistake yet, and a panel
+    /// that objected on every keystroke would train the user to ignore it. Refusals belong to the
+    /// click, where <see cref="Next"/> already reports them.
+    /// <para>
+    /// This reads the file, which the discover stage will read again. Worth it: the read is the only
+    /// honest way to say how many rows are in there, and finding out at the click before discovery
+    /// costs a great deal less than finding out from the model after it.
+    /// </para>
+    /// </remarks>
+    private void Peek()
+    {
+        _peek = null;
+
+        var path = Unquoted(_path);
+
+        if (path.Length == 0 || !File.Exists(path))
+            return;
+
+        if (!DataSourceReaders.TryParseKind(_format, out var kind)
+            || !DataSourceReaders.TryCreate(kind, out _))
+            return;
+
+        if (DiscoveryStep.TryRead(new DataSourceSpec(kind, path), out var read, out _))
+            _peek = DataPeek.Describe(read);
+    }
+
+    /// <summary>A path pasted from Explorer arrives quoted, exactly as it does in the console.</summary>
+    private static string Unquoted(string value)
+    {
+        var path = value.Trim();
+
+        return path.Length >= 2 && path[0] == '"' && path[^1] == '"' ? path[1..^1] : path;
     }
 
     private static bool Readable(string key)
@@ -86,20 +142,48 @@
     private static string Label(string key)
         => Readable(key) ? key : $"{key} — not in this build yet";
 
+    /// <summary>
+    /// Copies a dropped file into the workspace cache.
+    /// </summary>
+    /// <remarks>
+    /// Everything here can fail at the user rather than at the developer: a file over the cap, a
+    /// workspace path too long for Windows, a folder that cannot be written. Thrown from a handler
+    /// it took the circuit with it — the page froze and the console was told the tab had closed —
+    /// so a spreadsheet that is too big is reported as the sentence it is.
+    /// </remarks>
     private async Task Upload(InputFileChangeEventArgs args)
     {
-        var folder = Path.Combine(Session.WorkspaceRoot, ".dd-cache", "uploads");
-        Directory.CreateDirectory(folder);
+        // Checked before opening, because the reason is worth saying and the answer is worth
+        // offering: nothing needs copying at all when the file is already on this machine.
+        if (args.File.Size > MaxUpload)
+        {
+            _error = $"That file is {Megabytes(args.File.Size)}, and the limit for a drop is "
+                     + "10 MB. Put its path in the path box instead — the server is this machine, "
+                     + "so the file does not need copying anywhere.";
+            return;
+        }
 
-        var destination = Path.Combine(folder, args.File.Name);
+        try
+        {
+            var folder = Path.Combine(Session.WorkspaceRoot, ".dd-cache", "uploads");
+            Directory.CreateDirectory(folder);
 
-        await using var source = args.File.OpenReadStream(MaxUpload);
-        await using var target = File.Create(destination);
-        await source.CopyToAsync(target);
+            var destination = Path.Combine(folder, args.File.Name);
 
-        _path = destination;
-        _error = null;
+            await using var source = args.File.OpenReadStream(MaxUpload);
+            await using var target = File.Create(destination);
+            await source.CopyToAsync(target);
+
+            _path = destination;
+            _error = null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _error = PanelFailure.Explain(ex);
+        }
     }
+
+    private static string Megabytes(long bytes) => $"{bytes / 1024d / 1024d:0.#} MB";
 
     private Task<bool> Next()
     {
@@ -121,10 +205,7 @@
             return Task.FromResult(Session.SetNoData());
         }
 
-        // A path pasted from Explorer arrives quoted, exactly as it does in the console.
-        var path = _path.Trim();
-        if (path.Length >= 2 && path[0] == '"' && path[^1] == '"')
-            path = path[1..^1];
+        var path = Unquoted(_path);
 
         if (!File.Exists(path))
         {

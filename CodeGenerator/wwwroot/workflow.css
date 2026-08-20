@@ -202,8 +202,50 @@ body {
 
 .hint { color: var(--pending); font-size: 0.9em; }
 
+/* What the named file holds. Quiet: it is a confirmation, not a warning. */
+.peek {
+    margin: 0.35rem 0 0;
+    color: var(--done);
+    font-size: 0.9em;
+}
+
 .fields label,
 .file label { display: block; margin: 0.4rem 0; }
+
+/* One width for every answer a panel asks for, so the boxes make a single line down the left and
+   another down the right instead of ending wherever their default size fell. Marked with a class
+   rather than matched by a selector: the review screen's entity cards hold inputs of their own that
+   must stay the width of the text in them, and CSS has no way to say "except inside those" as
+   plainly as naming the ones that line up. */
+.panel .answer {
+    display: block;
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 34rem;
+    margin: 0.15rem 0 0;
+    padding: 0.4rem 0.5rem;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: #fff;
+
+    /* Inherited, or a select renders in the browser's own UI font beside inputs that do not. */
+    font: inherit;
+}
+
+.panel textarea.answer { resize: vertical; }
+
+/* The run as a line to copy. Monospace and wrapping: a path with spaces in it must be readable
+   whole, and a horizontal scrollbar in a sidebar hides the end of the command. */
+.command-echo {
+    margin: 0.35rem 0 0;
+    padding: 0.5rem 0.6rem;
+    border: 1px solid var(--line);
+    background: #f8f9fb;
+    font-family: ui-monospace, Consolas, monospace;
+    font-size: 0.8em;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
 
 .build-log {
     max-height: 20rem;
@@ -247,6 +289,13 @@ body {
 }
 
 .actions .cancel { color: var(--pending); }
+
+/* Quiet, not loud: stopping is the useful thing to be able to do, never the thing to be nudged
+   towards. It sits beside the loud Run button and must not compete with it. */
+.actions .stop {
+    border-color: var(--failed);
+    color: var(--failed);
+}
 
 .panel {
     padding: 1.25rem 1.5rem;

@@ -77,16 +77,52 @@ public class WorkflowOutcomeTests
         Assert.DoesNotContain("Nothing was generated", lines);
     }
 
-    /// <summary>A finished run reports what the generate stage put in the session, untouched.</summary>
+    /// <summary>
+    /// A finished run reports what the generate stage put in the session — every line of it, in
+    /// order, with only the repeat command added after.
+    /// </summary>
     [TestMethod]
     public void A_completed_run_reports_its_own_outcome()
     {
         var session = Written();
-        var reported = new BuildOutcome(SessionPhase.Generated, ["Wrote it."]);
+        var reported = new BuildOutcome(
+            SessionPhase.Generated, ["Wrote it.", @"Generated project at C:\ws\Shop"]);
 
         session.Complete(reported);
 
-        Assert.AreSame(reported, BuildAppWebHost.OutcomeFor(session));
+        var lines = BuildAppWebHost.OutcomeFor(session).Lines;
+
+        Assert.AreEqual(SessionPhase.Generated, BuildAppWebHost.OutcomeFor(session).Phase);
+        Assert.AreEqual(reported.Lines[0], lines[0]);
+        Assert.AreEqual(reported.Lines[1], lines[1]);
+    }
+
+    /// <summary>
+    /// The console is where the user ends up, and a cancelled run used to leave nothing behind that
+    /// could be repeated — the whole interview again, by hand.
+    /// </summary>
+    [TestMethod]
+    public void Every_outcome_ends_with_the_command_that_would_do_it_again()
+    {
+        var session = Discovered();
+        session.RequestCancel();
+        session.ConfirmCancel();
+
+        var lines = BuildAppWebHost.OutcomeFor(session).Lines;
+
+        Assert.IsTrue(
+            lines.Any(l => l.StartsWith("build app: a shop")),
+            $"no repeatable command in: {string.Join(" | ", lines)}");
+    }
+
+    [TestMethod]
+    public void A_run_with_nothing_answered_has_no_command_to_offer()
+    {
+        var session = new BuildSession(string.Empty, @"C:\ws", AppCustomization.Default);
+        session.Cancel();
+
+        Assert.IsFalse(
+            BuildAppWebHost.OutcomeFor(session).Lines.Any(l => l.StartsWith("build app")));
     }
 
     private static BuildSession Discovered()

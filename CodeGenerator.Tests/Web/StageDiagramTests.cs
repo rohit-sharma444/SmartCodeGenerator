@@ -272,6 +272,51 @@ public class StageDiagramTests
         StringAssert.Contains(back.TextContent, "Describe");
     }
 
+    /// <summary>
+    /// The marks were written for the person who cannot see the colour — the comment above them
+    /// says so — and were then hidden from assistive technology, which is that person. The state
+    /// has to exist as words somewhere.
+    /// </summary>
+    [TestMethod]
+    public void Every_node_says_its_state_in_words_and_not_only_in_colour()
+    {
+        using var context = new BunitContext();
+        var session = New("a shop");
+        session.SetTarget(new ConsoleTarget());
+
+        var markup = Render(context, session).Markup;
+
+        StringAssert.Contains(markup, "Answered");
+        StringAssert.Contains(markup, "Current step");
+        StringAssert.Contains(markup, "Not reached yet");
+    }
+
+    /// <summary>The glyph stays decorative, or a reader announces the state twice — once as a
+    /// tick and once as a word.</summary>
+    [TestMethod]
+    public void The_glyph_itself_stays_decorative()
+    {
+        using var context = new BunitContext();
+
+        var rendered = Render(context, New("a shop"));
+
+        foreach (var mark in rendered.FindAll(".stage-mark"))
+            Assert.AreEqual("true", mark.GetAttribute("aria-hidden"));
+    }
+
+    [TestMethod]
+    public void The_open_node_is_the_current_step_and_the_only_one()
+    {
+        using var context = new BunitContext();
+
+        var rendered = Render(context, New("a shop"));
+
+        var current = rendered.FindAll("[aria-current=step]");
+
+        Assert.HasCount(1, current);
+        StringAssert.Contains(current[0].TextContent, "App type");
+    }
+
     private static IRenderedComponent<StageDiagram> Render(
         BunitContext context, BuildSession session, StageNavigation? navigation = null)
         => context.Render<StageDiagram>(parameters => parameters

@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Diagnostics;
 using AppScaffolding;
 using AppScaffolding.Targets;
@@ -47,18 +48,42 @@ internal static class GenerateStep
             // every golden-output test red on 1 January.
             DateTime.Now.Year));
 
-    /// <summary>Compiles what was just written, handing each line over as it arrives.</summary>
-    public static (ProcessResult Result, TimeSpan Elapsed) Build(
-        string projectPath, Action<string> onLine)
+    /// <summary>
+    /// Compiles what was just written, handing each line over as it arrives.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="ProcessRunner.RunStreaming"/> documents that it throws
+    /// <see cref="Win32Exception"/> when the executable cannot be started, and on this path that
+    /// exception came out of a component event handler — which takes the circuit down, freezes the
+    /// page with nothing on it, and has the console report a closed tab for a machine that simply
+    /// has no `dotnet` on PATH. The console front end has always caught exactly this and carried
+    /// on; catching it here is that rule called rather than copied, which is the whole premise of
+    /// this class.
+    /// </remarks>
+    /// <param name="executable">
+    /// The compiler to start. A seam, not a setting: the only caller uses the default, and a test
+    /// needs a name that cannot be started to reach the case above.
+    /// </param>
+    public static BuildAttempt Build(
+        string projectPath, Action<string> onLine, string executable = "dotnet")
     {
         var clock = Stopwatch.StartNew();
 
-        var result = ProcessRunner.RunStreaming(
-            "dotnet", "build", onLine, projectPath, BuildTimeout);
+        try
+        {
+            var result = ProcessRunner.RunStreaming(
+                executable, "build", onLine, projectPath, BuildTimeout);
 
-        clock.Stop();
+            clock.Stop();
 
-        return (result, clock.Elapsed);
+            return new BuildAttempt(result, clock.Elapsed);
+        }
+        catch (Win32Exception)
+        {
+            clock.Stop();
+
+            return new BuildAttempt(null, clock.Elapsed);
+        }
     }
 
     /// <summary>

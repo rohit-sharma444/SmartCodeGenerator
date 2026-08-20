@@ -266,6 +266,39 @@ public class WorkflowPageTests
         Assert.AreEqual(BuildStage.Describe, session.Current);
     }
 
+    /// <summary>
+    /// A boundary nobody wired is a boundary that never runs, and the workflow would go on dying
+    /// silently exactly as it did before — with every unit test still green.
+    /// </summary>
+    [TestMethod]
+    public void The_open_panel_sits_inside_an_error_boundary_the_page_handles()
+    {
+        using var context = PageFor(New("a shop"), out _);
+
+        var page = context.Render<BuildWorkflow>();
+
+        var boundary = page.FindComponent<CodeGenerator.Web.Components.PanelErrorBoundary>();
+
+        Assert.IsTrue(
+            boundary.Instance.OnError.HasDelegate,
+            "the page must handle what a panel throws");
+    }
+
+    /// <summary>The page has to actually set it, not merely be able to.</summary>
+    [TestMethod]
+    public void The_page_puts_the_stage_in_the_browser_tab()
+    {
+        using var context = PageFor(New("a shop"), out _);
+
+        var page = context.Render<BuildWorkflow>();
+
+        var title = page.FindComponent<Microsoft.AspNetCore.Components.Web.PageTitle>();
+        var content = title.Instance.ChildContent;
+
+        Assert.IsNotNull(content, "the page set a title with nothing in it");
+        StringAssert.Contains(context.Render(content).Markup, "App type");
+    }
+
     /// <summary>A session parked on the review node, where the step forward is named.</summary>
     private static BuildSession OnReview()
     {
@@ -297,6 +330,9 @@ public class WorkflowPageTests
 
         // The page focuses the open panel, which is an interop call the strict default refuses.
         context.JSInterop.Mode = JSRuntimeMode.Loose;
+
+        // The error boundary around the panel resolves an ILoggerFactory of its own.
+        context.Services.AddLogging();
         context.Services.AddSingleton(session);
         registered = session;
 

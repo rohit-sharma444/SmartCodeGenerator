@@ -67,27 +67,76 @@ internal static class AppLauncher
     /// </param>
     public static string? Launch(
         string projectPath, string buildOutput, bool fromProjectFolder = false)
+        => Launch(projectPath, buildOutput, out _, fromProjectFolder);
+
+    /// <summary>
+    /// As <see cref="Launch(string,string,bool)"/>, also reporting the process it started.
+    /// </summary>
+    /// <param name="processId">
+    /// The id of what was started, or zero when nothing was. Kept because the caller may need to
+    /// stop it: a running app holds its own <c>bin</c> folder open, so the next build of that
+    /// project fails until it is closed — and until now the id was discarded the instant it
+    /// existed, leaving Task Manager as the only way out.
+    /// </param>
+    public static string? Launch(
+        string projectPath, string buildOutput, out int processId, bool fromProjectFolder = false)
     {
         if (fromProjectFolder)
-            return RunThroughDotNet(projectPath);
+            return RunThroughDotNet(projectPath, out processId);
 
         var executable = AssemblyPathFrom(buildOutput);
 
-        return executable is not null && File.Exists(executable)
-            ? Start(executable, string.Empty, Path.GetDirectoryName(executable))
-              ?? RunThroughDotNet(projectPath)
-            : RunThroughDotNet(projectPath);
+        if (executable is null || !File.Exists(executable))
+            return RunThroughDotNet(projectPath, out processId);
+
+        return Start(executable, string.Empty, Path.GetDirectoryName(executable), out processId)
+               ?? RunThroughDotNet(projectPath, out processId);
     }
 
-    private static string? RunThroughDotNet(string projectPath)
-        => Start("dotnet", $"run --project \"{projectPath}\"", projectPath);
+    /// <summary>
+    /// Stops a process this class started.
+    /// </summary>
+    /// <remarks>
+    /// The whole tree: a project run through <c>dotnet run</c> is a dotnet process with the app
+    /// underneath it, and killing only the parent leaves the app holding the folder that made
+    /// stopping worth offering. False rather than an exception for something already gone — a user
+    /// stopping an app that closed itself deserves a plain no, and this is called from a component
+    /// handler where a throw costs the circuit.
+    /// </remarks>
+    public static bool Stop(int processId)
+    {
+        try
+        {
+            using var process = Process.GetProcessById(processId);
+
+            if (process.HasExited)
+                return false;
+
+            process.Kill(entireProcessTree: true);
+            process.WaitForExit(TimeSpan.FromSeconds(5));
+
+            return true;
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException
+                                      or Win32Exception or NotSupportedException
+                                      or AggregateException)
+        {
+            return false;
+        }
+    }
+
+    private static string? RunThroughDotNet(string projectPath, out int processId)
+        => Start("dotnet", $"run --project \"{projectPath}\"", projectPath, out processId);
 
     /// <summary>
     /// Best-effort start of a detached child. Returns what was started, or null when the OS
     /// refused — a failed launch is a disappointment, never a reason to take down the CLI.
     /// </summary>
-    private static string? Start(string fileName, string arguments, string? workingDirectory)
+    private static string? Start(
+        string fileName, string arguments, string? workingDirectory, out int processId)
     {
+        processId = 0;
+
         try
         {
             using var started = Process.Start(new ProcessStartInfo
@@ -102,7 +151,12 @@ internal static class AppLauncher
                 UseShellExecute = true
             });
 
-            return started is null ? null : Path.GetFileName(fileName);
+            if (started is null)
+                return null;
+
+            processId = started.Id;
+
+            return Path.GetFileName(fileName);
         }
         catch (Exception ex) when (ex is Win32Exception or InvalidOperationException
                                        or System.IO.FileNotFoundException)

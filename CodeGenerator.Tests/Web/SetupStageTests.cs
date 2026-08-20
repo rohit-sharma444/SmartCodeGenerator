@@ -112,6 +112,38 @@ public class SetupStageTests
                 $"{key} has no reader and should not be selectable");
     }
 
+    /// <summary>
+    /// Dropping an oversized file used to end the run. OpenReadStream throws IOException past the
+    /// cap, nothing caught it, and a throw out of a component handler takes the circuit — so the
+    /// page froze and the console was told the tab had been closed. It is a spreadsheet that is too
+    /// big, which is a sentence, not a crash.
+    /// </summary>
+    [TestMethod]
+    public void The_data_panel_refuses_an_oversized_drop_with_a_sentence()
+    {
+        using var context = new BunitContext();
+        var session = New("a shop");
+
+        var rendered = context.Render<DataStage>(p => p
+            .Add(c => c.Session, session)
+            .Add(c => c.Navigation, new StageNavigation())
+            .Add(c => c.OnAdvance, () => { }));
+
+        rendered.Find("input[type=radio][value=file]").Change(true);
+
+        rendered.FindComponent<Microsoft.AspNetCore.Components.Forms.InputFile>()
+            .UploadFiles(InputFileContent.CreateFromText(
+                new string('x', 11 * 1024 * 1024), "huge.csv"));
+
+        var failure = rendered.Find(".failure").TextContent;
+
+        StringAssert.Contains(failure, "10 MB");
+        StringAssert.Contains(failure, "path box");
+
+        // A refusal, not a crash: the workflow is still running and still on this stage.
+        Assert.AreEqual(SessionPhase.Running, session.Phase);
+    }
+
     // The step is offered even when the path is wrong: reporting the mistake after the click beats
     // a control that stays dark without saying why.
     [TestMethod]

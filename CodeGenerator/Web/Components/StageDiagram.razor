@@ -15,7 +15,10 @@
         var answer = StageSummary.For(Session, stage);
         var isNext = IsTheStepForward(stage);
 
-        <li class="stage-node @CssFor(state) @(isNext ? "next" : null)">
+        @* aria-current, so a reader is told which of the eight this is without having to infer
+           it from a border colour. *@
+        <li class="stage-node @CssFor(state) @(isNext ? "next" : null)"
+            aria-current="@(state == StageState.Active ? "step" : null)">
             @if (IsRevisitable(state))
             {
                 @* A button, not a div with an onclick: a workflow the keyboard cannot drive is
@@ -23,6 +26,7 @@
                 <button type="button" class="node-open" @onclick="() => OnRevisit.InvokeAsync(stage)"
                         title="Go back to @node.Title">
                     <span class="stage-mark" aria-hidden="true">✓</span>
+                    <span class="visually-hidden">@StateWord(state)</span>
                     <span class="stage-title">@node.Title</span>
                     @Detail(node, answer)
                     <span class="stage-change">change</span>
@@ -36,6 +40,7 @@
                 <button type="button" class="node-open" @onclick="Continue"
                         title="@Navigation.Label — @node.Title">
                     <span class="stage-mark" aria-hidden="true">→</span>
+                    <span class="visually-hidden">@StateWord(state)</span>
                     <span class="stage-title">@node.Title</span>
                     @Detail(node, answer)
                 </button>
@@ -43,6 +48,7 @@
             else
             {
                 <span class="stage-mark" aria-hidden="true">@MarkFor(state)</span>
+                <span class="visually-hidden">@StateWord(state)</span>
                 <span class="stage-title">@node.Title</span>
                 @Detail(node, answer)
             }
@@ -142,8 +148,26 @@
             _ => "pending",
         };
 
+    /// <summary>
+    /// The state in words, for a reader that cannot see the border or the glyph.
+    /// </summary>
+    /// <remarks>
+    /// The glyphs below were written for the person who cannot see the colour and then hidden from
+    /// assistive technology, which is that person. They stay decorative — a tick and the word
+    /// "Answered" both announced would say it twice — and this is the part that is read.
+    /// </remarks>
+    private static string StateWord(StageState state)
+        => state switch
+        {
+            StageState.Active => "Current step:",
+            StageState.Done => "Answered:",
+            StageState.Failed => "Failed:",
+            _ => "Not reached yet:",
+        };
+
     /// <summary>The mark in the corner of the box. Quiet on purpose — the colour of the border
-    /// carries the state; this is for anyone who cannot see the colour.</summary>
+    /// carries the state, and <see cref="StateWord"/> carries it for anyone who cannot see
+    /// that.</summary>
     private static string MarkFor(StageState state)
         => state switch
         {

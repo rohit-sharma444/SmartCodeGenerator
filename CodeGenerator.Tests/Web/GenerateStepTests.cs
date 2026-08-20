@@ -65,6 +65,33 @@ public class GenerateStepTests
         Assert.IsTrue(outcome.Lines.Any(l => l.Contains("timed out")));
     }
 
+    /// <summary>
+    /// The console path catches this exactly (BuildAppCommand: "Could not start `dotnet` —
+    /// skipping the build check") and the design's error table promises it on the web too, where
+    /// nothing caught it: ProcessRunner.RunStreaming documents that it throws Win32Exception when
+    /// the executable cannot be started, so it came out of an event handler and took the circuit —
+    /// and a dead circuit is reported to the console as a closed tab.
+    /// </summary>
+    [TestMethod]
+    public void A_build_that_cannot_start_the_compiler_is_reported_rather_than_thrown()
+    {
+        var attempt = GenerateStep.Build(
+            Path.GetTempPath(), _ => { }, executable: "cg-no-such-executable");
+
+        Assert.IsFalse(attempt.Ran);
+        Assert.IsNull(attempt.Result);
+    }
+
+    [TestMethod]
+    public void A_compiler_that_does_start_is_reported_as_having_run()
+    {
+        // `where build` finds nothing and exits 1, which is all this needs: something that starts.
+        var attempt = GenerateStep.Build(Path.GetTempPath(), _ => { }, executable: "where");
+
+        Assert.IsTrue(attempt.Ran);
+        Assert.IsNotNull(attempt.Result);
+    }
+
     private static BuildSession SessionFor(string description)
     {
         var session = new BuildSession(description, Path.GetTempPath(), AppCustomization.Default);
