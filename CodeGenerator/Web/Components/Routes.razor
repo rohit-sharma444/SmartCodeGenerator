@@ -1,0 +1,9 @@
+@* One route. There is no navigation, so there is no layout and no NavMenu. *@
+<Router AppAssembly="typeof(Routes).Assembly">
+    <Found Context="routeData">
+        <RouteView RouteData="routeData" />
+    </Found>
+    <NotFound>
+        <p>Nothing here.</p>
+    </NotFound>
+</Router>

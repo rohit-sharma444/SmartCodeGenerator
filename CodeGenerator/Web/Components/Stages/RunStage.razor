@@ -1,0 +1,239 @@
+@using AppScaffolding
+@using AppScaffolding.Targets
+@using CodeGenerationEngine.Models
+@using CodeGenerator.App
+@using CodeGenerator.Web.Workflow
+@implements IDisposable
+
+@* The last node. Compiling is not the same as working, so starting it is a step of its own rather
+   than a button on the generate panel — and the diagram then says the run is still ahead. *@
+
+@if (App is null)
+{
+    <p>Nothing has been generated yet.</p>
+}
+else if (!Runnable)
+{
+    <p class="notice">@WhyNot</p>
+}
+else
+{
+    <p>
+        <strong>@App.Scaffold.ProjectPath</strong> compiled. Start it to see it working —
+        it runs as a separate process and keeps running after this page closes.
+    </p>
+}
+
+<ProgressList Done="_steps" Current="@_step" Seconds="_seconds" />
+
+@foreach (var line in _report)
+{
+    <p class="report-line">@line</p>
+}
+
+@if (App is not null)
+{
+    @* The next steps are worth having on screen and not only in the console the user has just
+       stopped looking at. *@
+    <h3>Next steps</h3>
+    <ul class="next-steps">
+        @* NextSteps.Lines leads with its own heading, which is a heading here rather than the
+           first bullet of its own list. *@
+        @foreach (var line in NextSteps.Lines(
+            Target, App.Scaffold.ProjectPath, App.Scaffold.TestProjectPath,
+            App.Scaffold.FilesWritten).Where(l => l.Trim() != "Next steps:"))
+        {
+            <li>@line</li>
+        }
+    </ul>
+}
+
+<div class="actions">
+    @if (Runnable)
+    {
+        @* Starting it is the action this stage exists for, so it is the loud button here. There is
+           nowhere forward to navigate to: Done ends the workflow and hands the console its
+           report. *@
+        <button type="button" class="run" disabled="@_starting" @onclick="Start">
+            @(_started ? "Start it again" : "Run it now")
+        </button>
+    }
+
+    <button type="button" class="finish" @onclick="Finish">Done</button>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public required BuildSession Session { get; set; }
+    [Parameter, EditorRequired] public required StageNavigation Navigation { get; set; }
+    [Parameter] public EventCallback OnAdvance { get; set; }
+
+    private readonly List<string> _report = [];
+    private readonly List<string> _steps = [];
+    private string? _step;
+    private int _seconds;
+    private System.Timers.Timer? _clock;
+    private bool _starting;
+    private bool _started;
+
+    private GeneratedApp? App => Session.Generated;
+
+    protected override void OnInitialized()
+    {
+        // The last node: there is nothing past it, so it offers no step and the box draws none.
+        Navigation.Withdraw();
+
+        // A reload gets a new panel; what the session remembers is what stands.
+        _started = Session.Started;
+    }
+
+    private ITargetScaffolder Target => Session.Target ?? TargetScaffolders.Default;
+
+    private bool Runnable => GenerateStep.CanRun(App, Target);
+
+    /// <summary>Why there is no button. Each case is a different thing for the user to do next,
+    /// so each says so rather than sharing one vague sentence.</summary>
+    private string WhyNot
+        => App is null
+            ? "Nothing has been generated yet."
+            : !App.Scaffold.Success
+                ? $"Nothing was written: {App.Scaffold.Message}"
+                : !App.BuildSucceeded
+                    ? "The generated project did not build, so there is nothing to start yet. "
+                      + "Go back to see the build log, or open the project and fix it."
+                    : "A class library has nothing to start. Reference it from an application "
+                      + "instead — the steps below say how.";
+
+    private async Task Start()
+    {
+        _starting = true;
+        _report.Clear();
+        _steps.Clear();
+
+        var isWebApp = Target.ProjectType == DotNetProjectType.BlazorServer;
+
+        Step("Starting it");
+
+        // Off the circuit's thread: a web app is waited for until it answers, and that wait would
+        // otherwise hold the render loop and leave the page looking dead.
+        var launched = await Task.Run(() => AppLauncher.Launch(
+            App!.Scaffold.ProjectPath, App.BuildLog, fromProjectFolder: isWebApp));
+
+        _report.Add(launched is null
+            ? "Could not start the app — use the command below."
+            : $"Started {launched}");
+
+        // A web app shows nothing of its own and waits to be visited, so opening it once
+        // something answers is what makes the offer honest.
+        if (launched is not null && isWebApp)
+        {
+            var url = LaunchSettingsReader.HttpUrl(App!.Scaffold.ProjectPath);
+
+            Step(
+                url is null ? "Looking for its address" : $"Waiting for it to answer on {url}",
+                finished: launched is null ? "Could not start it" : "Started");
+
+            if (url is not null && await Task.Run(() => WebAppStart.Wait(url)))
+            {
+                WebAppStart.OpenBrowser(url);
+                _report.Add($"Opened {url}");
+            }
+            else if (url is not null)
+            {
+                _report.Add($"It has not answered on {url} yet — try that address in a moment.");
+            }
+        }
+
+        Finished(launched is null
+            ? "Could not start it"
+            : _report.Any(l => l.StartsWith("Opened")) ? "Opened in the browser" : "Started");
+
+        _started = launched is not null;
+        _starting = false;
+
+        // Recorded on the session, not just here: the box says "started" rather than "ready to
+        // start", and this panel is rebuilt from scratch by any reload.
+        if (_started)
+            Session.MarkStarted();
+    }
+
+    /// <summary>Moves the progress list on. Same shape as the generate panel's, and for the same
+    /// reason: a wait with nothing on screen reads as a hang.</summary>
+    private void Step(string next, string? finished = null)
+    {
+        if (finished is not null && (_steps.Count == 0 || _steps[^1] != finished))
+            _steps.Add(finished);
+
+        _step = next;
+        _seconds = 0;
+
+        StartClock();
+        StateHasChanged();
+    }
+
+    private void Finished(string last)
+    {
+        if (_steps.Count == 0 || _steps[^1] != last)
+            _steps.Add(last);
+
+        _step = null;
+
+        StopClock();
+    }
+
+    private void StartClock()
+    {
+        if (_clock is not null)
+            return;
+
+        _clock = new System.Timers.Timer(1000) { AutoReset = true };
+
+        _clock.Elapsed += async (_, _) =>
+        {
+            _seconds++;
+
+            try
+            {
+                await InvokeAsync(StateHasChanged);
+            }
+            catch (Exception ex) when (ex is ObjectDisposedException or InvalidOperationException)
+            {
+                StopClock();
+            }
+        };
+
+        _clock.Start();
+    }
+
+    private void StopClock()
+    {
+        _clock?.Stop();
+        _clock?.Dispose();
+        _clock = null;
+    }
+
+    public void Dispose() => StopClock();
+
+    private async Task Finish()
+    {
+        if (App is null)
+        {
+            // Only reachable if this node was opened without a generation behind it. Ending on
+            // the Cancelled wording is honest: nothing was written.
+            Session.Complete(BuildOutcome.Cancelled);
+            await OnAdvance.InvokeAsync();
+            return;
+        }
+
+        var outcome = GenerateStep.OutcomeFor(App.Scaffold, Target);
+
+        // What happened here goes to the console too: the user watched it in the browser and then
+        // goes back to a prompt that should say the same thing.
+        Session.Complete(_report.Count == 0
+            ? outcome
+            : new BuildOutcome(outcome.Phase, [.. outcome.Lines, .. _report]));
+
+        await OnAdvance.InvokeAsync();
+    }
+
+
+}

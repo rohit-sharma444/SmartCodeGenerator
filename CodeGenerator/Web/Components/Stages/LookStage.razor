@@ -1,0 +1,172 @@
+@using AppScaffolding
+@using AppScaffolding.Layouts
+@using CodeGenerator.App
+@using CodeGenerator.Web.Workflow
+
+@* Collapsed behind a gate, matching CustomizationWizard.GateTitle: this step is decoration, and
+   a user who wants the app they came for should skip it in one click. *@
+<label class="choice">
+    <input type="checkbox" class="customize" checked="@_customize"
+           @onchange="e => _customize = (bool?)e.Value ?? false" />
+    Customize appearance and features
+</label>
+
+@if (_customize)
+{
+    <div class="fields">
+        @if (AsksLayout)
+        {
+            <label>
+                Layout
+                <select class="layout" value="@_layout"
+                        @onchange="e => _layout = e.Value?.ToString() ?? _layout">
+                    @foreach (var key in AppLayoutCatalog.Keys)
+                    {
+                        <option value="@key">@key</option>
+                    }
+                </select>
+            </label>
+        }
+
+        <label>Company
+            <input class="company" value="@_company"
+                   @onchange="e => _company = e.Value?.ToString() ?? string.Empty" /></label>
+
+        <label>Theme
+            <select class="theme" value="@_theme"
+                    @onchange="e => _theme = e.Value?.ToString() ?? _theme">
+                <option value="default">none</option>
+                <option value="light">light</option>
+                <option value="dark">dark</option>
+            </select></label>
+
+        <label>Accent colour
+            <input class="accent" value="@_accent" placeholder="#rrggbb"
+                   @onchange="e => _accent = e.Value?.ToString() ?? string.Empty" />
+            @if (AccentError is not null)
+            {
+                <span class="field-error">@AccentError</span>
+            }
+        </label>
+
+        <label>Icon path
+            <input class="icon" value="@_icon"
+                   @onchange="e => _icon = e.Value?.ToString() ?? string.Empty" /></label>
+
+        <label>Window title
+            <input class="title" value="@_title"
+                   @onchange="e => _title = e.Value?.ToString() ?? string.Empty" /></label>
+
+        <label>Namespace prefix
+            <input class="prefix" value="@_prefix"
+                   @onchange="e => _prefix = e.Value?.ToString() ?? string.Empty" />
+            @if (PrefixError is not null)
+            {
+                <span class="field-error">@PrefixError</span>
+            }
+        </label>
+
+        <label class="choice"><input type="checkbox" class="validation" checked="@_validation"
+            @onchange="e => _validation = (bool?)e.Value ?? false" /> Validation layer</label>
+
+        <label class="choice"><input type="checkbox" class="logging" checked="@_logging"
+            @onchange="e => _logging = (bool?)e.Value ?? false" /> Logging</label>
+
+        <label class="choice"><input type="checkbox" class="seed" checked="@_seed"
+            @onchange="e => _seed = (bool?)e.Value ?? false" /> Sample seed data</label>
+    </div>
+}
+
+<div class="actions">
+    @* Nothing here refuses the step — the box does, because Valid is what it is told. *@
+    <button type="button" class="cancel" @onclick="() => Session.Cancel()">Cancel</button>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public required BuildSession Session { get; set; }
+    [Parameter, EditorRequired] public required StageNavigation Navigation { get; set; }
+    [Parameter] public EventCallback OnAdvance { get; set; }
+
+    private bool _customize;
+    private string _layout = "tabs";
+    private string _company = string.Empty;
+    private string _theme = "default";
+    private string _accent = string.Empty;
+    private string _icon = string.Empty;
+    private string _title = AppCustomization.AppPlaceholder;
+    private string _prefix = string.Empty;
+    private bool _validation = true;
+    private bool _logging;
+    private bool _seed = true;
+
+    /// <summary>Only a target with a window has a layout. The console wizard skips the question
+    /// for the same reason.</summary>
+    private bool AsksLayout
+        => Session.Target is not null && AppLayouts.Supports(Session.Target.Key);
+
+    private string? AccentError
+        => _accent.Length == 0 || ThemePalette.IsValidHexColour(_accent)
+            ? null
+            : "A colour looks like #1f6feb.";
+
+    private string? PrefixError
+        => _prefix.Length == 0 || NamespacePrefix.IsValid(_prefix)
+            ? null
+            : "A prefix must be a valid namespace, like Acme or Acme.Internal.";
+
+    private bool Valid => AccentError is null && PrefixError is null;
+
+    protected override void OnInitialized()
+    {
+        // The step is offered but only usable while the fields are: an unusable accent disables
+        // the control in the box, which is where the user is looking for the way on.
+        Navigation.Offer(Next, ready: () => Valid);
+
+        var start = Session.Customization;
+
+        _layout = AppLayoutCatalog.KeyFor(start.EffectiveLayout);
+        _company = start.Company;
+        _theme = start.Theme == AppTheme.Default ? "default" : start.Theme.ToString().ToLowerInvariant();
+        _accent = start.Accent ?? string.Empty;
+        _icon = start.IconPath ?? string.Empty;
+        _title = start.TitlePattern;
+        _prefix = start.NamespacePrefix;
+        _validation = start.Validation;
+        _logging = start.Logging;
+        _seed = start.SampleSeedData;
+    }
+
+    private Task<bool> Next()
+    {
+        // Applied either way, and the unchanged value is not a no-op: it is what records that this
+        // node was answered at all. The customization always HAS a value, so without this the box
+        // above could never tell "left at the defaults" from "never reached".
+        Session.SetCustomization(_customize ? Compose() : Session.Customization);
+
+        // Saved even when the gate was left off: what the user settled on this time is what the
+        // next run should offer, and declining settled it too.
+        CustomizationDefaults.Save(Session.WorkspaceRoot, Session.Customization);
+
+        return Task.FromResult(true);
+    }
+
+    private AppCustomization Compose()
+        => Session.Customization with
+        {
+            Layout = AsksLayout && AppLayoutCatalog.TryResolve(_layout, out var layout)
+                ? layout
+                : Session.Customization.Layout,
+            Company = _company.Trim(),
+            Theme = Enum.TryParse<AppTheme>(_theme, ignoreCase: true, out var theme)
+                ? theme
+                : AppTheme.Default,
+            Accent = _accent.Length == 0 ? null : _accent,
+            IconPath = _icon.Length == 0 ? null : _icon,
+            TitlePattern = _title.Length == 0 ? AppCustomization.AppPlaceholder : _title,
+            NamespacePrefix = _prefix.Trim(),
+            Validation = _validation,
+            Logging = _logging,
+            SampleSeedData = _seed,
+        };
+
+}

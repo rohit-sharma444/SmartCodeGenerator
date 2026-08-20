@@ -1,0 +1,203 @@
+@using CodeGenerator.App
+@using CodeGenerator.Web.Workflow
+@using DomainDiscovery.Model
+@using DomainDiscovery.Review
+
+@* The model, on screen. In the console PrintModel is almost entirely commented out because a
+   thirty-class domain reprinted after every edit was unusable — so the review loop currently
+   edits a model the user cannot see. This is the fix. *@
+
+<div class="review">
+    <div class="entities">
+        @foreach (var entity in Model.Entities.ToList())
+        {
+            <article class="entity" data-entity="@entity.Name">
+                <header>
+                    <input class="entity-name" value="@entity.Name"
+                           @onchange="e => Rename(entity, e.Value?.ToString())" />
+                    <span class="provenance">@entity.Provenance</span>
+                    <button type="button" class="why" @onclick="() => Why(entity.Name)">why</button>
+                    <button type="button" class="remove" @onclick="() => Remove(entity.Name)">
+                        remove
+                    </button>
+                </header>
+
+                <ul class="fields">
+                    @foreach (var field in entity.Fields.ToList())
+                    {
+                        <li>
+                            <span class="field-name">@field.Name</span>
+                            <span class="field-type">@field.Type</span>
+                            <button type="button" class="unfield"
+                                    @onclick="() => RemoveField(entity.Name, field.Name)">
+                                ×
+                            </button>
+                        </li>
+                    }
+                </ul>
+
+                <div class="add-field-row">
+                    <input class="field-name" placeholder="new field"
+                           @onchange="e => _newField = e.Value?.ToString() ?? string.Empty" />
+
+                    @* The five ModelEditor accepts. A sixth here would compile and then fail. *@
+                    <select class="field-type" @onchange="TypeChosen">
+                        <option value="string">string</option>
+                        <option value="int">int</option>
+                        <option value="decimal">decimal</option>
+                        <option value="bool">bool</option>
+                        <option value="DateTime">DateTime</option>
+                    </select>
+
+                    <button type="button" class="add-field" @onclick="() => AddField(entity.Name)">
+                        add field
+                    </button>
+                </div>
+            </article>
+        }
+    </div>
+
+    @if (Model.Suggestions.Count > 0)
+    {
+        @* Offered rather than deleted: not knowing an entity's fields is not the same as knowing
+           it is not an entity. Invisible in the console, which is the single largest thing the
+           terminal hides. *@
+        <aside class="suggestions">
+            <h3>Also found</h3>
+            @foreach (var suggestion in Model.Suggestions.ToList())
+            {
+                <button type="button" class="promote" @onclick="() => Promote(suggestion.Name)">
+                    + @suggestion.Name
+                </button>
+            }
+        </aside>
+    }
+
+    <aside class="settled">
+        <h3>Will generate</h3>
+        <p>@(Session.Target is null ? "not chosen" : ApplicationTypeMenu.LabelFor(Session.Target))</p>
+        @foreach (var line in CustomizationSummary.Lines(Session.Customization))
+        {
+            <p>@line</p>
+        }
+    </aside>
+</div>
+
+<div class="add-class-row">
+    <input class="new-class" placeholder="new class"
+           @onchange="e => _newClass = e.Value?.ToString() ?? string.Empty" />
+    <button type="button" class="add-class" @onclick="AddClass">add class</button>
+</div>
+
+@if (_message is not null)
+{
+    <p class="edit-report" aria-live="polite">@_message</p>
+}
+
+@if (_why.Count > 0)
+{
+    <section class="why-panel">
+        <h3>Why this model</h3>
+        @foreach (var line in _why)
+        {
+            <p>@line</p>
+        }
+        <button type="button" @onclick="() => _why.Clear()">close</button>
+    </section>
+}
+
+<div class="actions">
+    @* Generating is the step forward, so it is named in the box rather than buried under a screen
+       of entity cards the user has to scroll past to find it. *@
+    <button type="button" class="cancel" @onclick="() => Session.Cancel()">Cancel</button>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public required BuildSession Session { get; set; }
+    [Parameter, EditorRequired] public required StageNavigation Navigation { get; set; }
+    [Parameter] public EventCallback OnAdvance { get; set; }
+
+    private CandidateDomainModel Model => Session.Model!;
+
+    /// <summary>A model with no classes has nothing to generate, so the step is offered and
+    /// disabled rather than hidden — the user can see what they are working towards.</summary>
+    protected override void OnInitialized()
+        => Navigation.Offer(Generate, ready: () => Model.Entities.Count > 0, label: "Generate");
+
+    private string _newClass = string.Empty;
+    private string _newField = string.Empty;
+    private string _newType = "string";
+    private string? _message;
+    private List<string> _why = [];
+
+    /// <summary>
+    /// Reports what <see cref="ModelEditor"/> answered.
+    /// </summary>
+    /// <remarks>
+    /// The rules are not restated here — no control is pre-disabled by second-guessing
+    /// <c>RemoveField</c> or <c>AddField</c>. A duplicated rule is a rule that will drift; asking
+    /// and reporting keeps one copy.
+    /// <para>
+    /// Every caller is a method rather than a lambda in the markup: a Razor attribute delimited
+    /// by double quotes cannot contain a double-quoted C# string.
+    /// </para>
+    /// </remarks>
+    private void Report(bool changed, string ok, string fail) => _message = changed ? ok : fail;
+
+    private void Remove(string entityName)
+        => Report(
+            ModelEditor.RemoveEntity(Model, entityName),
+            $"Removed {entityName}.",
+            "Could not remove.");
+
+    private void RemoveField(string entityName, string fieldName)
+        => Report(
+            ModelEditor.RemoveField(Model, entityName, fieldName),
+            $"Removed {fieldName}.",
+            "Could not remove that field — Name and a class's last field both stay.");
+
+    private void TypeChosen(ChangeEventArgs e)
+        => _newType = e.Value?.ToString() ?? "string";
+
+    private void Rename(CandidateEntity entity, string? typed)
+    {
+        var name = (typed ?? string.Empty).Trim();
+
+        if (name.Length == 0 || name == entity.Name)
+            return;
+
+        Report(
+            ModelEditor.RenameEntity(Model, entity.Name, name),
+            $"Renamed to {name}.",
+            "Could not rename — the name may already be in use.");
+    }
+
+    private void AddClass()
+    {
+        // BuildAppCommand.AddLine reports the name the model actually received, which is not
+        // always the name typed: promoting a suggestion keeps the suggestion's own spelling.
+        _message = BuildAppCommand.AddLine(Model, ["add", _newClass]);
+        _newClass = string.Empty;
+    }
+
+    private void Promote(string name) => _message = BuildAppCommand.AddLine(Model, ["add", name]);
+
+    private void AddField(string entityName)
+    {
+        // The type is explicit, so TypeInference is deliberately bypassed: the drop-down is the
+        // user overriding a guess before it is made.
+        Report(
+            ModelEditor.AddField(Model, entityName, _newField, _newType),
+            $"Added {_newField} to {entityName}.",
+            "Could not add that field. The name must be new, a valid identifier, and neither "
+            + "'Id' (generated) nor the class's own name.");
+
+        _newField = string.Empty;
+    }
+
+    private void Why(string name) => _why = [.. DecisionReport.ForName(Model, name)];
+
+    /// <summary>Nothing to apply: the model has been edited in place all along, so this stage's
+    /// step is purely the move to the generate node.</summary>
+    private static Task<bool> Generate() => Task.FromResult(true);
+}

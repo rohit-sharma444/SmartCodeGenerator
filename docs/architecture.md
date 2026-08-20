@@ -17,6 +17,26 @@ There are **three paths** through the system:
 The last two converge: both produce the same `CandidateDomainModel`, so the review
 loop and the scaffolder are shared and know nothing about which path built it.
 
+Both of them wear one of two front ends. An interactive `build app` opens a
+workflow page in the browser — eight stages ending in one that starts the
+generated application, and the stages are also the navigation: a panel offers
+its forward step through a `StageNavigation` the diagram draws inside the box
+being answered, which is why no panel has a Next button. A step with a name of
+its own (`Generate`) is never taken by clicking the stage ahead, and
+`BuildSession.HoldsAnAnswer` decides whether a node the user merely passed
+through is recorded as done — without it the diagram would claim a project was
+generated when nothing was written. Blazor Server hosted
+in-process by the CLI itself
+(`CodeGenerator/Web`, which is why that project builds under the Web SDK) — and the
+console prints the address and waits for the page to finish. Redirected or piped
+input, and `CG_NO_WEB=1`, keep the console wizard and the typed review loop
+unchanged. The two long stages report progress rather than going quiet:
+discovery and the scaffolder are named steps with the seconds counting up, and
+the compiler's output arrives line by line through
+`ProcessRunner.RunStreaming` — added alongside `Run`, which reads both streams
+to the end and therefore cannot report anything until it is over. The page calls the same services the console path calls; there is no
+second pipeline behind it.
+
 > **Note:** the SVGs below are pre-rendered from the Mermaid source in each
 > `<details>` block. The data path was added to the Mermaid sources but the images
 > have not been re-rendered, so where the two disagree the Mermaid is current.

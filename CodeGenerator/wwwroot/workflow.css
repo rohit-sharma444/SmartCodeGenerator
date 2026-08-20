@@ -1,0 +1,328 @@
+/* Self-contained: no CDN, no web font. The tool must work with no network. */
+:root {
+    --ink: #1c1c1c;
+    --paper: #fbfbfa;
+    --line: #d3d3cf;
+    --pending: #8a8a85;
+    --active: #1f6feb;
+    --done: #1a7f37;
+    --failed: #b3261e;
+}
+
+body {
+    margin: 0;
+    padding: 2rem;
+    background: var(--paper);
+    color: var(--ink);
+    font: 15px/1.5 "Segoe UI", system-ui, sans-serif;
+}
+
+.workflow { max-width: 1100px; margin: 0 auto; }
+
+/* One row of seven while there is room for one, so the pipeline reads as a pipeline and the
+   connectors join nodes that are actually side by side. */
+.stage-diagram {
+    display: grid;
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+    gap: 0.75rem 1.75rem;
+    margin: 0 0 2rem;
+    padding: 0;
+    list-style: none;
+}
+
+/* Too narrow for seven: wrap, and drop the connectors with the row. A connector drawn to the
+   left of the first node of a wrapped row points at nothing — there is no selector for
+   "first in row", so the honest answer is to draw none. */
+@media (max-width: 900px) {
+    .stage-diagram { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+    .stage-node + .stage-node::before { display: none; }
+}
+
+.stage-node {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    padding: 0.7rem 0.9rem;
+    border: 2px solid var(--line);
+    border-radius: 6px;
+    background: #fff;
+    transition: border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+}
+
+/* The connector. On the node rather than between nodes, so it cannot get out of step with the
+   grid's own wrapping; hidden on the last of a row by the grid overflowing invisibly. */
+.stage-node + .stage-node::before {
+    content: "";
+    position: absolute;
+    left: -1.4rem;
+    top: 50%;
+    width: 1rem;
+    border-top: 2px solid var(--line);
+}
+
+/* The whole box is the click target where the box is clickable: a small link inside a card is a
+   worse target than the card, and the card is what the user is looking at. */
+.stage-node .node-open {
+    all: unset;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    width: 100%;
+}
+
+/* The mark in the corner. Quiet, because the border colour is what carries the state — this is
+   for anyone who cannot see the colour. */
+.stage-mark {
+    position: absolute;
+    top: 0.45rem;
+    right: 0.6rem;
+    font-size: 0.8em;
+    line-height: 1;
+    color: var(--pending);
+}
+
+.stage-node.done .stage-mark { color: var(--done); }
+.stage-node.active .stage-mark { color: var(--active); }
+.stage-node.failed .stage-mark { color: var(--failed); }
+
+/* The answer the box holds. Darker than the blurb it replaces: it is what the user came back to
+   the diagram to read. */
+.stage-answer {
+    display: block;
+    font-size: 0.84em;
+    color: var(--ink);
+
+    /* A project name or a file name has no spaces to break at, and a box is 130px wide. */
+    overflow-wrap: anywhere;
+}
+
+/* Only on hover and focus, so eight boxes are not eight invitations at once. */
+.stage-change {
+    display: block;
+    font-size: 0.76em;
+    color: var(--active);
+    opacity: 0;
+    transition: opacity 120ms ease;
+}
+
+.stage-node.done:hover,
+.stage-node.failed:hover { transform: translateY(-1px); }
+
+.stage-node.done:hover .stage-change,
+.stage-node.failed:hover .stage-change,
+.node-open:focus-visible .stage-change { opacity: 1; }
+
+.node-open:focus-visible {
+    outline: 2px solid var(--active);
+    outline-offset: 3px;
+    border-radius: 4px;
+}
+
+/* Back and forward, side by side inside the box being answered. */
+.stage-move {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-top: 0.15rem;
+}
+
+/* Quiet next to the step forward: going back is available, not encouraged. */
+.stage-back {
+    padding: 0.3rem 0.5rem;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: #fff;
+    color: var(--pending);
+    font: inherit;
+    font-size: 0.85em;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.stage-back:hover {
+    border-color: var(--active);
+    color: var(--active);
+}
+
+/* Off screen but not out of the accessibility tree: the arrow alone is not a name. */
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+/* The step forward, inside the box the user is answering. The one loud thing on the page. */
+.stage-continue {
+    padding: 0.3rem 0.7rem;
+    border: 0;
+    border-radius: 4px;
+    background: var(--active);
+    color: #fff;
+    font: inherit;
+    font-size: 0.85em;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.stage-continue:hover:not(:disabled) { filter: brightness(1.08); }
+
+/* Disabled rather than hidden: what the user is working towards should stay visible. */
+.stage-continue:disabled {
+    background: var(--line);
+    color: var(--pending);
+    cursor: not-allowed;
+}
+
+/* The box the step leads to. Dashed, so it reads as an invitation rather than as an answer. */
+.stage-node.next {
+    border-style: dashed;
+    border-color: var(--active);
+    color: var(--ink);
+}
+
+.stage-node.next:hover { transform: translateY(-1px); }
+
+/* One answer per line. Inline labels run seven application types into a single paragraph, which
+   reads as prose rather than as a choice. */
+.choice {
+    display: block;
+    margin: 0.3rem 0;
+}
+
+.choices { margin: 0.75rem 0 1.25rem; }
+
+.actions { display: flex; gap: 0.5rem; margin-top: 1.25rem; }
+
+.hint { color: var(--pending); font-size: 0.9em; }
+
+.fields label,
+.file label { display: block; margin: 0.4rem 0; }
+
+.build-log {
+    max-height: 20rem;
+    overflow: auto;
+    padding: 0.75rem;
+    border: 1px solid var(--line);
+    background: #fff;
+    font-family: ui-monospace, Consolas, monospace;
+    font-size: 0.82em;
+}
+
+.stage-node.pending { color: var(--pending); }
+.stage-node.active  { border-color: var(--active); box-shadow: 0 0 0 3px rgb(31 111 235 / 15%); }
+.stage-node.done    { border-color: var(--done); }
+.stage-node.failed  { border-color: var(--failed); }
+
+.stage-title { display: block; font-weight: 600; }
+.stage-blurb { display: block; font-size: 0.82em; color: var(--pending); }
+
+/* Panel buttons: one loud action per panel at most, everything else quiet. Navigation is not
+   here any more — it is in the boxes. */
+.actions button {
+    padding: 0.4rem 0.9rem;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: #fff;
+    font: inherit;
+    cursor: pointer;
+}
+
+.actions button:hover:not(:disabled) { border-color: var(--pending); }
+
+.actions .write,
+.actions .run,
+.actions .finish,
+.actions .start {
+    border-color: var(--active);
+    background: var(--active);
+    color: #fff;
+    font-weight: 600;
+}
+
+.actions .cancel { color: var(--pending); }
+
+.panel {
+    padding: 1.25rem 1.5rem;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: #fff;
+}
+
+/* Progress. A finished step is ticked and quiet; the running one is the loud line, because it is
+   the only thing on the page that is still changing. */
+.progress {
+    margin: 0.5rem 0 1rem;
+    padding: 0;
+    list-style: none;
+}
+
+.progress li { padding: 0.15rem 0; }
+
+.step-done { color: var(--pending); }
+.step-done::before { content: "\2713\00a0"; color: var(--done); }
+
+.step-current { font-weight: 600; }
+.step-current::before { content: "\00b7\00a0"; }
+.step-current .elapsed { font-weight: 400; color: var(--pending); }
+
+.next-steps {
+    margin: 1rem 0;
+    padding-left: 1.1rem;
+    font-size: 0.9em;
+}
+
+.notice {
+    padding: 0.6rem 0.9rem;
+    border-left: 4px solid var(--active);
+    background: #f2f6fd;
+}
+
+.failure {
+    padding: 0.6rem 0.9rem;
+    border-left: 4px solid var(--failed);
+    background: #fdf0ef;
+}
+
+/* The question asked before a changed answer throws a model away. Warm rather than red: this is
+   a decision to make, not a failure to report, and one of the two answers is perfectly safe. */
+.discard-question {
+    padding: 0.6rem 0.9rem;
+    margin-bottom: 1rem;
+    border-left: 4px solid #b7791f;
+    background: #fdf6e7;
+}
+
+.discard-question p { margin: 0; }
+.discard-question .actions { margin-top: 0.75rem; }
+
+/* Keeping the model is the safe answer, so it is the one the eye lands on. */
+.discard-keep {
+    border-color: var(--active);
+    color: var(--active);
+    font-weight: 600;
+}
+
+.review { display: grid; grid-template-columns: 1fr 220px; gap: 1.5rem; }
+.entities { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 1rem; }
+
+.entity { border: 1px solid var(--line); border-radius: 6px; padding: 0.75rem; }
+.entity header { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+.entity-name { font-weight: 600; border: 1px solid transparent; background: transparent; }
+.entity-name:focus { border-color: var(--active); background: #fff; }
+
+.provenance { font-size: 0.72em; text-transform: uppercase; color: var(--pending); }
+.fields { list-style: none; padding: 0; margin: 0.5rem 0; }
+.fields li { display: flex; gap: 0.5rem; align-items: baseline; }
+.field-type { font-size: 0.8em; color: var(--pending); }
+
+.suggestions button.promote { margin: 0 0.3rem 0.3rem 0; }
+.settled { grid-column: 2; font-size: 0.88em; }
+.edit-report { margin-top: 1rem; font-style: italic; }
+.evidence { font-family: ui-monospace, Consolas, monospace; font-size: 0.82em; }

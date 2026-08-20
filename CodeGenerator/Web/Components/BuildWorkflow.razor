@@ -1,0 +1,193 @@
+@page "/build"
+@rendermode InteractiveServer
+@using CodeGenerator.Web.Components.Stages
+@using CodeGenerator.Web.Workflow
+@implements IDisposable
+@inject BuildSession Session
+
+<main class="workflow">
+    <h1>Build an application</h1>
+
+    <StageDiagram Session="Session" Navigation="_navigation" OnRevisit="Revisit"
+                  OnContinue="Continue" />
+
+    @if (Session.FailureMessage is not null)
+    {
+        <p class="failure" role="alert">@Session.FailureMessage</p>
+    }
+
+    <section class="panel">
+        <h2>@StageGraph.Nodes.First(n => n.Stage == Session.Current).Title</h2>
+
+        @if (Session.PendingDiscard is not null)
+        {
+            @* Inside the panel, above the answer that raised it: the question is about what was
+               just typed, and it belongs next to it rather than at the top of the page. *@
+            <div class="discard-question" role="alertdialog" aria-live="assertive">
+                <p>@Session.PendingDiscard</p>
+
+                <div class="actions">
+                    @* Keeping is first and Change is the plainer control, because the safe answer
+                       should be the easy one to hit. *@
+                    <button type="button" class="discard-keep" @onclick="KeepTheModel">
+                        Keep the model
+                    </button>
+                    <button type="button" class="discard-confirm" @onclick="ChangeAnyway">
+                        Change anyway
+                    </button>
+                </div>
+            </div>
+        }
+
+        @* Keyed on the stage, so revisiting a node builds a fresh panel rather than reusing the
+           one next door with its draft fields still in it. *@
+        @switch (Session.Current)
+        {
+            case BuildStage.Describe:
+                <DescribeStage @key="BuildStage.Describe" Session="Session"
+                               Navigation="_navigation" OnAdvance="Refresh" />
+                break;
+            case BuildStage.AppType:
+                <AppTypeStage @key="BuildStage.AppType" Session="Session"
+                              Navigation="_navigation" OnAdvance="Refresh" />
+                break;
+            case BuildStage.Data:
+                <DataStage @key="BuildStage.Data" Session="Session"
+                           Navigation="_navigation" OnAdvance="Refresh" />
+                break;
+            case BuildStage.Look:
+                <LookStage @key="BuildStage.Look" Session="Session"
+                           Navigation="_navigation" OnAdvance="Refresh" />
+                break;
+            case BuildStage.Discover:
+                <DiscoverStage @key="BuildStage.Discover" Session="Session"
+                               Navigation="_navigation" OnAdvance="Refresh" />
+                break;
+            case BuildStage.Review:
+                <ReviewStage @key="BuildStage.Review" Session="Session"
+                             Navigation="_navigation" OnAdvance="Refresh" />
+                break;
+            case BuildStage.Generate:
+                <GenerateStage @key="BuildStage.Generate" Session="Session"
+                               Navigation="_navigation" OnAdvance="Refresh" />
+                break;
+            case BuildStage.Run:
+                <RunStage @key="BuildStage.Run" Session="Session"
+                          Navigation="_navigation" OnAdvance="Refresh" />
+                break;
+        }
+    </section>
+</main>
+
+@code {
+    /// <summary>
+    /// The open panel's step forward, which the diagram draws.
+    /// </summary>
+    /// <remarks>
+    /// Owned here because the two components that need it are siblings: the panel offers the step
+    /// and the box above draws it. Held for the page's lifetime rather than per stage, so a panel
+    /// that offers nothing leaves the previous offer behind — which is why every panel either
+    /// offers or withdraws when it initializes.
+    /// </remarks>
+    private readonly StageNavigation _navigation = new();
+
+    protected override void OnInitialized()
+    {
+        _navigation.Changed += Refresh;
+
+        // The workflow can be moved by a tab that is not this one. The panel below is chosen from
+        // Session.Current, so a circuit that is never told stays on a node the workflow has left
+        // — showing an answer that no longer stands and a Continue button that would take a step
+        // already taken.
+        Session.Changed += Repaint;
+    }
+
+    public void Dispose()
+    {
+        _navigation.Changed -= Refresh;
+        Session.Changed -= Repaint;
+    }
+
+    /// <summary>
+    /// Redraws for a change that arrived from somewhere else.
+    /// </summary>
+    /// <remarks>
+    /// Through <c>InvokeAsync</c>, because the event is raised on whichever circuit made the
+    /// change and touching this one's state from that thread is exactly the race the renderer's
+    /// synchronization context exists to prevent.
+    /// </remarks>
+    private void Repaint() => _ = InvokeAsync(StateHasChanged);
+
+    /// <summary>
+    /// Takes the open panel's step: its answer is applied, and only then does the workflow move on.
+    /// </summary>
+    /// <remarks>
+    /// Advancing lives here rather than in eight panels, and that is what makes
+    /// <see cref="Revisit"/> safe: leaving a node can apply an answer without stepping into the
+    /// stage after it, which would leave an untouched stage marked as done.
+    /// </remarks>
+    private async Task Continue()
+    {
+        if (await _navigation.ApplyAsync())
+            Session.Advance();
+        else
+            // Not applied. Either the panel refused its own input and is saying why, or the
+            // session is holding the change and wants an answer first — in which case this is
+            // what the answer leads back to.
+            _afterConfirming = () => { Session.Advance(); return Task.CompletedTask; };
+
+        Refresh();
+    }
+
+    private async Task Revisit(BuildStage stage)
+    {
+        // The answer the panel holds is applied first where applying is safe, so clicking a box to
+        // go and check something does not quietly cost the user what they just answered. Applied,
+        // not advanced: the node being left is then genuinely answered, which is what GoTo records.
+        // The panel itself keeps nothing — each node is keyed, so the next panel starts from the
+        // session rather than from whatever the last one had typed in it.
+        if (_navigation.ShouldCommitBeforeLeaving && !await _navigation.ApplyAsync())
+        {
+            // The commit is waiting on the discard question. Going anyway would answer it by
+            // walking away — the user would be reading another node while the thing they were
+            // asked about happened behind them — so the click waits here for its answer.
+            _afterConfirming = () => { Session.GoTo(stage); return Task.CompletedTask; };
+
+            Refresh();
+            return;
+        }
+
+        Session.GoTo(stage);
+        Refresh();
+    }
+
+    /// <summary>
+    /// Where the click that raised the discard question was going. Run only if the user says the
+    /// model may go: the click and the confirmation are one decision, and half of it is worse
+    /// than neither.
+    /// </summary>
+    private Func<Task>? _afterConfirming;
+
+    private async Task ChangeAnyway()
+    {
+        Session.ConfirmPending();
+
+        var next = _afterConfirming;
+        _afterConfirming = null;
+
+        if (next is not null)
+            await next();
+
+        Refresh();
+    }
+
+    private void KeepTheModel()
+    {
+        Session.CancelPending();
+        _afterConfirming = null;
+
+        Refresh();
+    }
+
+    private void Refresh() => StateHasChanged();
+}

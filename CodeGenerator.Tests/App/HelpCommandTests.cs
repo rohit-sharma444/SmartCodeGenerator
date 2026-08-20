@@ -1,4 +1,4 @@
-using CodeGenerator.App;
+﻿using CodeGenerator.App;
 
 namespace CodeGenerator.Tests.App;
 
@@ -86,4 +86,15 @@ public class HelpCommandTests
         foreach (var category in CodeGenerationEngine.Core.CommandDictionary.Categories)
             Assert.Contains(category, rendered);
     }
+    // The catalog is what `help build app` prints, and an interactive run no longer answers
+    // questions in the console at all — a catalog that still describes one is a documentation bug.
+    [TestMethod]
+    public void The_build_app_entry_mentions_the_workflow_page()
+    {
+        var entry = CodeGenerationEngine.Core.CommandDictionary.Commands
+            .First(c => c.Command == "build app");
+
+        StringAssert.Contains(entry.Description.ToLowerInvariant(), "browser");
+    }
+
 }

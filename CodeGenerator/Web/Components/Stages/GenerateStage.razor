@@ -1,0 +1,322 @@
+@using AppScaffolding
+@using AppScaffolding.Targets
+@using CodeGenerationEngine.Models
+@using CodeGenerator.App
+@using CodeGenerator.Web.Workflow
+@implements IDisposable
+
+@if (_phase == Phase.Confirm)
+{
+    <p>Ready to write <strong>@_name</strong>.</p>
+
+    <label>Name
+        <input class="app-name" value="@_name" @onchange="NameTyped" />
+    </label>
+
+    @* Hidden rather than offered-and-refused: WPF and WinForms read JsonStore directly off the
+       shared store seam, so SQLite is not a choice they have. *@
+    @if (BuildAppCommand.IsPersistenceAllowed(Target, PersistenceKind.Sqlite))
+    {
+        <label>Persistence
+            <select class="persistence" @onchange="PersistenceChosen">
+                <option value="json">JSON</option>
+                <option value="sqlite">SQLite</option>
+            </select>
+        </label>
+    }
+
+    @if (LayoutNotice is not null)
+    {
+        <p class="notice">@LayoutNotice</p>
+    }
+
+    <div class="actions">
+        @* Writing is a real action rather than navigation, so it stays here and stays loud. *@
+        <button type="button" class="write" @onclick="Write">Write it</button>
+        <button type="button" class="cancel" @onclick="() => Session.Cancel()">Cancel</button>
+    </div>
+}
+else if (_phase == Phase.Overwrite)
+{
+    @* A question about losing work, so it is a decision rather than a default. *@
+    <div class="overwrite" role="alertdialog">
+        <p>@GenerateStep.FolderFor(Session, _name, Target) already exists.</p>
+        <button type="button" class="overwrite-yes" @onclick="Overwrite">Overwrite it</button>
+        <button type="button" class="overwrite-rename" @onclick="() => _phase = Phase.Confirm">
+            Use a different name
+        </button>
+        <button type="button" class="cancel" @onclick="() => Session.Cancel()">Cancel</button>
+    </div>
+}
+else
+{
+    @* Progress first, because during the minute this takes it is the only thing worth reading:
+       scaffolding and a first build are both long enough that a still page reads as a hung one. *@
+    <ProgressList Done="_steps" Current="@_step" Seconds="_seconds" />
+
+    @foreach (var line in _report)
+    {
+        <p class="report-line">@line</p>
+    }
+
+    @if (_log.Count > 0)
+    {
+        @* The compiler's own output, as it arrives. Scrolled to the end, so what is on screen is
+           what the build is doing now rather than what it did first. *@
+        <pre class="build-log">@string.Join(Environment.NewLine, _log)</pre>
+    }
+
+    @if (_phase == Phase.Done && !_written)
+    {
+        @* Nothing was written, so there is nothing for the run stage to do — this run ends here,
+           and the console says why. *@
+        <div class="actions">
+            <button type="button" class="finish" @onclick="Finish">Done</button>
+        </div>
+    }
+}
+
+@code {
+    private enum Phase { Confirm, Overwrite, Working, Done }
+
+    [Parameter, EditorRequired] public required BuildSession Session { get; set; }
+    [Parameter, EditorRequired] public required StageNavigation Navigation { get; set; }
+    [Parameter] public EventCallback OnAdvance { get; set; }
+
+    private Phase _phase = Phase.Confirm;
+    private string _name = string.Empty;
+    private PersistenceKind _persistence = PersistenceKind.Json;
+    private readonly List<string> _report = [];
+    private readonly List<string> _log = [];
+
+    /// <summary>What has finished, and what is running — the progress the user watches.</summary>
+    private readonly List<string> _steps = [];
+    private string? _step;
+    private int _seconds;
+    private System.Timers.Timer? _clock;
+
+    private ScaffoldResult? _scaffold;
+
+    /// <summary>Whether a project reached disk. False keeps the workflow on this node, because a
+    /// run stage with nothing to start is a dead end the user cannot act on.</summary>
+    private bool _written;
+
+    private ITargetScaffolder Target => Session.Target ?? TargetScaffolders.Default;
+
+    /// <summary>Re-checked here rather than only at node 4, because the target can still be
+    /// changed after the layout was named.</summary>
+    private string? LayoutNotice => BuildAppCommand.LayoutNotice(Target, Session.Customization);
+
+    protected override void OnInitialized()
+    {
+        _name = GenerateStep.NameFor(Session);
+
+        // Withdrawn first, and that is not housekeeping: the step the review panel offered is
+        // still there otherwise, so this box would show "Generate →" and taking it would walk on
+        // to the run stage with nothing written. Nothing leads out of here until something has
+        // been written.
+        Navigation.Withdraw();
+
+        // A reload — or a second tab — gets a new panel with empty fields, and offering to write
+        // a project the session has already written would rebuild it behind the user's back. What
+        // the session knows is authoritative; only the streamed build log is gone with the circuit
+        // that watched it.
+        if (Session.Generated is not { } app)
+            return;
+
+        _scaffold = app.Scaffold;
+        _written = true;
+        _phase = Phase.Done;
+
+        _report.Add($"Generated project at {app.Scaffold.ProjectPath}");
+
+        if (app.Scaffold.TestProjectPath is not null)
+            _report.Add($"Generated test project at {app.Scaffold.TestProjectPath}");
+
+        // Written already, so the way on is the box's, exactly as it is after a fresh write.
+        Navigation.Offer(Continue);
+
+        _steps.Add($"Wrote {app.Scaffold.FilesWritten.Count} file(s)");
+        _steps.Add(app.BuildSucceeded ? "Compiled" : "The compiler reported problems");
+
+        _report.Add(app.BuildSucceeded
+            ? "It compiled."
+            : "It did not compile — the log is above the last time it ran.");
+    }
+
+    /// <summary>A typed name goes through the same rule the generated one did, so what is written
+    /// is always a usable identifier.</summary>
+    private void NameTyped(ChangeEventArgs e)
+        => _name = DomainAppName.FromDescription(e.Value?.ToString() ?? _name);
+
+    private void PersistenceChosen(ChangeEventArgs e)
+        => _persistence = e.Value?.ToString() == "sqlite"
+            ? PersistenceKind.Sqlite
+            : PersistenceKind.Json;
+
+    /// <summary>
+    /// Starts the write, and is awaited.
+    /// </summary>
+    /// <remarks>
+    /// Awaited rather than fire-and-forget: Blazor re-renders after an awaited handler completes,
+    /// and a discarded task leaves the last state change — the one that says the build finished —
+    /// with nothing to paint it. The panel then shows a build still running forever.
+    /// </remarks>
+    private async Task Write()
+    {
+        // A rename can collide too, so the question is asked about whatever name is current.
+        if (GenerateStep.Collides(Session, _name, Target))
+        {
+            _phase = Phase.Overwrite;
+            return;
+        }
+
+        await Go();
+    }
+
+    private async Task Overwrite() => await Go();
+
+    private async Task Go()
+    {
+        _phase = Phase.Working;
+        _report.Clear();
+        _log.Clear();
+        _steps.Clear();
+
+        Step($"Writing {_name} into {GenerateStep.FolderFor(Session, _name, Target)}");
+
+        var scaffold = await Task.Run(
+            () => GenerateStep.Scaffold(Session, _name, Target, _persistence));
+
+        _scaffold = scaffold;
+
+        // Said out loud: a row cap the user is not told about reads as "all your data is in there".
+        foreach (var note in Session.ImportedData.Notes)
+            _report.Add(note);
+
+        if (!scaffold.Success)
+        {
+            Finished("Could not write the project");
+            _report.Add($"Generation failed: {scaffold.Message}");
+            _phase = Phase.Done;
+            StateHasChanged();
+            return;
+        }
+
+        Step("Compiling it — a first build restores packages and can take a minute",
+             finished: $"Wrote {scaffold.FilesWritten.Count} file(s)");
+
+        _report.Add($"Generated project at {scaffold.ProjectPath}");
+
+        if (scaffold.TestProjectPath is not null)
+            _report.Add($"Generated test project at {scaffold.TestProjectPath}");
+
+        StateHasChanged();
+
+        var built = await Task.Run(() => GenerateStep.Build(
+            scaffold.ProjectPath,
+            line => InvokeAsync(() => { _log.Add(line); StateHasChanged(); })));
+
+        Finished(BuildReport.Succeeded(built.Result)
+            ? "Compiled"
+            : "The compiler reported problems — the log is below");
+
+        _report.AddRange(BuildReport.Lines(built.Result, built.Elapsed, scaffold.ProjectPath));
+
+        // Handed to the session, not kept here: the run stage starts what this stage wrote, and
+        // it needs the build log to find the assembly.
+        Session.SetGenerated(new GeneratedApp(
+            scaffold,
+            string.Join(Environment.NewLine, _log),
+            BuildReport.Succeeded(built.Result)));
+
+        _written = true;
+        _phase = Phase.Done;
+
+        // The run stage is now reachable, and the box says so.
+        Navigation.Offer(Continue);
+
+        // Belt as well as braces: the awaited handler re-renders on its own, but the same method
+        // is reachable from the overwrite dialog and this is the transition that must not be lost.
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Moves the progress list on: <paramref name="finished"/> is ticked off and
+    /// <paramref name="next"/> becomes what is running.
+    /// </summary>
+    private void Step(string next, string? finished = null)
+    {
+        if (finished is not null)
+            _steps.Add(finished);
+
+        _step = next;
+        _seconds = 0;
+
+        StartClock();
+        StateHasChanged();
+    }
+
+    /// <summary>Ticks the last step off and stops the clock — nothing is running any more.</summary>
+    private void Finished(string last)
+    {
+        _steps.Add(last);
+        _step = null;
+
+        StopClock();
+    }
+
+    /// <remarks>
+    /// A timer rather than a stopwatch read during renders: nothing else would cause a render
+    /// while the scaffolder works, so without a tick of its own the elapsed time would sit at
+    /// zero for the whole minute it is meant to be reassuring the user about.
+    /// </remarks>
+    private void StartClock()
+    {
+        if (_clock is not null)
+            return;
+
+        _clock = new System.Timers.Timer(1000) { AutoReset = true };
+
+        _clock.Elapsed += async (_, _) =>
+        {
+            _seconds++;
+
+            try
+            {
+                await InvokeAsync(StateHasChanged);
+            }
+            catch (Exception ex) when (ex is ObjectDisposedException or InvalidOperationException)
+            {
+                // The circuit went away — a closed tab, mid-build. Nothing left to repaint.
+                StopClock();
+            }
+        };
+
+        _clock.Start();
+    }
+
+    private void StopClock()
+    {
+        _clock?.Stop();
+        _clock?.Dispose();
+        _clock = null;
+    }
+
+    public void Dispose() => StopClock();
+
+    /// <summary>The project is already written; the step is only the move to the run node.</summary>
+    private static Task<bool> Continue() => Task.FromResult(true);
+
+    /// <summary>Ends the workflow here, for the one case the run stage cannot help with: nothing
+    /// was written at all.</summary>
+    private async Task Finish()
+    {
+        Session.Complete(GenerateStep.OutcomeFor(
+            _scaffold ?? new ScaffoldResult(false, string.Empty, [], "nothing was written"),
+            Target));
+
+        await OnAdvance.InvokeAsync();
+    }
+
+}

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using CodeGenerator.App;
 
 namespace CodeGenerator.Tests.App;
@@ -83,6 +84,82 @@ public class SpinnerTests
         Assert.AreEqual("Discovering domain", captured.ToString().Trim());
     }
 
+    /// <summary>
+    /// A capture that can be read while the spinner thread is still writing to it, which a
+    /// <see cref="StringWriter"/> does not promise.
+    /// </summary>
+    private sealed class Capture : TextWriter
+    {
+        private readonly System.Text.StringBuilder _text = new();
+
+        public override System.Text.Encoding Encoding => System.Text.Encoding.Unicode;
+
+        public override void Write(char value)
+        {
+            lock (_text)
+                _text.Append(value);
+        }
+
+        public override void Write(string? value)
+        {
+            lock (_text)
+                _text.Append(value);
+        }
+
+        public override string ToString()
+        {
+            lock (_text)
+                return _text.ToString();
+        }
+    }
+
+    /// <summary>How long a test waits for a frame when it only cares that one arrives.</summary>
+    /// <remarks>
+    /// Long enough that only a spinner which never draws at all runs it out. The tests below used to
+    /// sleep a few hundred milliseconds instead, which asserts that a loaded machine scheduled the
+    /// frame loop inside that window — three of them went red on a CI runner for exactly that
+    /// reason, on an empty capture, and it was never the promise under test.
+    /// </remarks>
+    private static readonly TimeSpan LongEnoughForAFrame = TimeSpan.FromSeconds(10);
+
+    /// <summary>
+    /// Blocks until the spinner has drawn its first frame into <paramref name="capture"/>, or
+    /// <paramref name="budget"/> runs out — in which case the caller's assertion fails on an empty
+    /// capture, which is the failure worth reporting.
+    /// </summary>
+    private static void WaitUntilItDraws(Capture capture, TimeSpan budget)
+    {
+        var waited = Stopwatch.StartNew();
+
+        while (capture.ToString().Length == 0 && waited.Elapsed < budget)
+            Thread.Sleep(10);
+    }
+
+    /// <summary>
+    /// Runs a spinner with the console captured until it has drawn, and hands back what it wrote.
+    /// </summary>
+    private static Capture WhatItDrew(string label, TimeSpan budget)
+    {
+        var screen = new Capture();
+        var previous = Console.Out;
+
+        try
+        {
+            Console.SetOut(screen);
+
+            using (Spinner.StartAfter(label, animate: true, TimeSpan.FromMilliseconds(20)))
+            {
+                WaitUntilItDraws(screen, budget);
+            }
+        }
+        finally
+        {
+            Console.SetOut(previous);
+        }
+
+        return screen;
+    }
+
     /// <summary>Runs <paramref name="body"/> with the console captured, and returns what it wrote.</summary>
     private static string Captured(Action body)
     {
@@ -117,17 +194,11 @@ public class SpinnerTests
     [TestMethod]
     public void PastTheDelayItSaysSoAndLeavesTheTimeItTook()
     {
-        var written = Captured(() =>
-        {
-            using (Spinner.StartAfter("Working", animate: true, TimeSpan.FromMilliseconds(20)))
-            {
-                Thread.Sleep(500);
-            }
-        });
+        var screen = WhatItDrew("Working", LongEnoughForAFrame);
 
         // Drawn while it ran, and still readable in the transcript afterwards: "it took a moment"
         // is worth knowing once the moment has passed.
-        StringAssert.Contains(written, "Working");
+        StringAssert.Contains(screen.ToString(), "Working");
     }
 
     [TestMethod]
@@ -145,8 +216,8 @@ public class SpinnerTests
     [TestMethod]
     public void ItDrawsWhereItStarted_NotWhereConsoleOutHasSinceMoved()
     {
-        var screen = new StringWriter();
-        var buffer = new StringWriter();
+        var screen = new Capture();
+        var buffer = new Capture();
         var previous = Console.Out;
 
         try
@@ -158,7 +229,7 @@ public class SpinnerTests
                 // Exactly what CommandColour does for the whole of a command, so that its output
                 // can be coloured by the verdict once it is known.
                 Console.SetOut(buffer);
-                Thread.Sleep(500);
+                WaitUntilItDraws(screen, LongEnoughForAFrame);
             }
         }
         finally
@@ -230,15 +301,7 @@ public class SpinnerTests
         // "23s" — survived to sit on the end of the line as "...first time) 23s3s".
         const string label = "Discovering domain (this may fetch from Wikipedia the first time)";
 
-        var written = Captured(() =>
-        {
-            using (Spinner.StartAfter(label, animate: true, TimeSpan.FromMilliseconds(20)))
-            {
-                Thread.Sleep(400);
-            }
-        });
-
-        var screen = Screen(written);
+        var screen = Screen(WhatItDrew(label, LongEnoughForAFrame).ToString());
 
         Assert.IsNotEmpty(screen);
 
@@ -250,6 +313,41 @@ public class SpinnerTests
             new System.Text.RegularExpressions.Regex(
                 "^" + System.Text.RegularExpressions.Regex.Escape(label) + @" \d+s$"),
             $"left on screen: '{screen[^1]}'");
+    }
+
+    [TestMethod]
+    public void ItStillDrawsWhenEveryThreadPoolWorkerIsBusy()
+    {
+        // The CI failure this was written for: the animation ran as a thread-pool task, so on a
+        // loaded runner it queued behind the very work it was there to say was still going, and
+        // half a second of "Working" arrived as nothing at all. An indicator whose whole job is to
+        // prove liveness while the machine is busy may not depend on that queue being short.
+        ThreadPool.GetMinThreads(out var workers, out _);
+
+        using var release = new ManualResetEventSlim(false);
+
+        // Enough to hold every worker the pool starts with and fill the queue behind them, so a
+        // work item submitted now waits on thread injection rather than running.
+        for (var queued = 0; queued < workers + 4; queued++)
+            ThreadPool.UnsafeQueueUserWorkItem(_ => release.Wait(), null);
+
+        Capture screen;
+
+        try
+        {
+            // A second, and the bound is the whole assertion — wait indefinitely and this test is
+            // vacuous. Measured on this machine with the pool held: a thread of its own draws in
+            // 45ms, a queued work item in 4305ms, because it waits on the pool injecting a thread.
+            screen = WhatItDrew("Working", TimeSpan.FromSeconds(1));
+        }
+        finally
+        {
+            // Before the assertion, so a red run does not leave the pool starved for the tests
+            // after it.
+            release.Set();
+        }
+
+        StringAssert.Contains(screen.ToString(), "Working");
     }
 
     [TestMethod]

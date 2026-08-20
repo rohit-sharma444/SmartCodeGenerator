@@ -294,25 +294,56 @@ before parsing, so a predicate that already carries its own verb
 
 ### Domain discovery
 
-An interactive `build app` asks three questions before any work starts: what the application is
-for, which kind of app to build, and whether you already have data. The kinds are WPF (Windows
-desktop), Windows Desktop (WinForms), ASP.NET Web API, Web Application (Blazor Server), Console,
-Class Library and Worker Service; the menu is arrow-key driven, and falls back to a numbered
-prompt when input or output is redirected. Typing a description inline (`build app: a library that lends books`) answers the
-first question and starts at the second.
+An interactive `build app` opens a workflow page in the browser and carries the whole build
+there: the console prints the address, says that Ctrl-C cancels, and waits. The page draws the
+pipeline as eight connected stages — describe, application type, data, look, discover, review,
+generate, run — with the stage being answered open beneath the diagram. The last one starts what
+was just built, because a project that compiles is not yet an application the user has seen work.
+
+The boxes are the navigation, so there are no Back and Next buttons anywhere. Each box shows the
+answer it holds ("Console", "orders.csv", "12 classes"), and the box being answered carries both
+moves: the step forward, and an arrow back to the stage before it. The box that step leads to
+lights up as a second way forward — except where the step is an action with a name of its own:
+`Generate` and `Run` stay disabled until the project has actually been written, because until then
+there is nothing in them to go to. Clicking a finished box goes back to change it, keeping whatever
+the open panel had already answered; changing the description or the data source discards the model
+that was discovered from the old one, because it was discovered from something the user has since
+changed — so that change asks first, counting the classes it would cost, and holds the answer
+unapplied until it is confirmed. Nothing is lost while the question is on screen. Typing a description inline
+(`build app: a library that lends books`) opens the page on the application type instead.
+
+The kinds of app are WPF (Windows desktop), Windows Desktop (WinForms), ASP.NET Web API, Web
+Application (Blazor Server), Console, Class Library and Worker Service.
+
+Nothing waits in silence. Each long step — the Wikipedia fetch, writing the project, compiling it,
+starting it — names what it is doing with the seconds counting up beside it, ticks itself off when
+it finishes, and the compiler's own output appears line by line while the build runs rather than
+all at once at the end.
+
+The page is served by Kestrel in this process on a loopback port with a one-off token in its
+address, and lives exactly as long as the command. `CG_NO_WEB=1` keeps the console wizard, for a
+session with no browser to open — as does redirected input, below.
+
+Exactly as long as the command, in both directions. A second tab on the same address attaches to
+the running workflow rather than starting a rival one against the same workspace, and the two stay
+in step: whichever tab takes a step, the other follows it. Closing the last one ends the command
+and says so, after a grace period long enough that a page refresh is not mistaken for leaving. A
+workflow nobody has opened yet is not abandoned, though — the address is printed whether or not a
+browser could be launched, and pasting it a minute later finds the page still waiting.
 
 Targets: `wpf` (default), `winforms`, `console`, `webapi`, `blazor`, `classlib`, `worker`.
 `approve <target>` at the review loop overrides the type chosen at the start. SQLite persistence
 is available for every target except `wpf` and `winforms`, which are JSON-only.
 
-Piped or redirected input skips the wizard entirely and uses the inline form
-(`build app: <description> from <format> <location>`), picking a target at `approve`.
+Piped or redirected input opens no page and asks no questions: it uses the inline form
+(`build app: <description> from <format> <location>`), picks a target at `approve`, and drives the
+typed review loop exactly as it always has.
 
 | Command | Description |
 | --- | --- |
-| `build app: <description>` | Describe a system in plain English; this answers the wizard's first question — see above. Interactively, the wizard still asks which kind of app to build and whether you have data before running [domain discovery](../DomainDiscovery/README.md), printing the recognized topic and candidate entities, and opening a review loop. [`AppScaffolding`](../AppScaffolding/README.md) writes a runnable project into the workspace on approval. |
-| `build app` | Starts the same guided flow with no description typed inline, so it asks for one first — see [From existing data](#from-existing-data) below for what the data question adds. Piped, it prints usage. |
-| `build app[: <description>] from <format> <location> [normalize]` | Builds from existing data with no prompts when piped, so it is scriptable; interactively you are still asked the application type. Formats: `csv`, `txt`, `json`, `excel`. Add `normalize` to apply every normalization change the data needs. |
+| `build app: <description>` | Describe a system in plain English; this answers the workflow's first stage — see above. Interactively the rest happens on the page: application type, data, look, then [domain discovery](../DomainDiscovery/README.md), the model review, generate-and-build, and finally running it. [`AppScaffolding`](../AppScaffolding/README.md) writes a runnable project into the workspace when the review is approved. |
+| `build app` | Starts the same workflow with nothing filled in, so the page opens on the description — see [From existing data](#from-existing-data) below for what the data stage adds. Piped, it prints usage. |
+| `build app[: <description>] from <format> <location> [normalize]` | Builds from existing data with no prompts when piped, so it is scriptable; interactively the file is already answered and the page opens on what is left. Formats: `csv`, `txt`, `json`, `excel`. Add `normalize` to apply every normalization change the data needs. |
 
 In the review loop:
 
@@ -394,9 +425,11 @@ workspace; the CLI warns at startup when the store is missing.
 
 #### From existing data
 
-Guessing at Wikipedia is the wrong pipeline when the user already has the data. A
-bare `build app` at an interactive prompt asks for a description and an
-application type first (see above), then asks about data:
+Guessing at Wikipedia is the wrong pipeline when the user already has the data, so the data
+stage asks. Interactively that stage is on the workflow page, which offers a format, a path box
+and a drop zone, and refuses a format this build has no reader for before it is chosen. The
+transcript below is the console wizard, which is what a redirected run and `CG_NO_WEB=1` still
+get:
 
 ```
 CodeGenerator >> build app
