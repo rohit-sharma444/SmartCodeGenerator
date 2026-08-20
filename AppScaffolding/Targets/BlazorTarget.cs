@@ -72,6 +72,7 @@ public sealed class BlazorTarget : ITargetScaffolder
             files.Add(new(PagesFolder, "Login.razor", BlazorLoginTemplate.LoginPage(login)));
             files.Add(new("Components", "Routes.razor", BlazorLoginTemplate.Routes(ns)));
             files.Add(new("Auth", "AuthEndpoints.cs", BlazorLoginTemplate.Endpoints(ns)));
+            files.Add(new(PagesFolder, "UsersPage.razor", BlazorLoginTemplate.UsersPage(ns)));
         }
 
         // The desktop targets seed from their main view model and the console and Web API from their

@@ -140,6 +140,156 @@ public static class BlazorLoginTemplate
 </Router>
 """;
 
+    /// <summary>Source of <c>Components/Pages/UsersPage.razor</c>.</summary>
+    /// <remarks>
+    /// Restricted twice over: the nav does not show the link to a non-administrator, and the page
+    /// itself refuses one. Only the second is a permission — a URL can be typed.
+    /// </remarks>
+    public static string UsersPage(string rootNamespace) => $$"""
+@page "/users"
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
+@* A different namespace from the one above: [Authorize] comes from
+   Microsoft.AspNetCore.Authorization, AuthenticationState from
+   Microsoft.AspNetCore.Components.Authorization. Importing only the first builds
+   everywhere except the cascading parameter. *@
+@using Microsoft.AspNetCore.Components.Authorization
+@using {{rootNamespace}}.Auth
+@using {{rootNamespace}}.Data
+@using {{rootNamespace}}.Models
+@attribute [Authorize(Roles = "Admin")]
+
+<PageTitle>Users</PageTitle>
+
+<h1>Users</h1>
+
+<table class="table">
+    <thead>
+        <tr><th>User name</th><th>Display name</th><th>Role</th><th>Active</th><th></th></tr>
+    </thead>
+    <tbody>
+        @foreach (var account in _accounts)
+        {
+            <tr>
+                <td><input class="form-control" @bind="account.UserName" /></td>
+                <td><input class="form-control" @bind="account.DisplayName" /></td>
+                <td>
+                    <select class="form-select" @bind="account.Role">
+                        <option value="@AppRole.User">User</option>
+                        <option value="@AppRole.Admin">Admin</option>
+                    </select>
+                </td>
+                <td><input type="checkbox" @bind="account.IsActive" /></td>
+                <td>
+                    <button class="btn btn-sm btn-outline-danger"
+                            disabled="@IsSignedIn(account)"
+                            @onclick="() => Delete(account)">Delete</button>
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+<div class="d-flex gap-2 align-items-end mb-3">
+    <button class="btn btn-primary" @onclick="Add">Add</button>
+    <button class="btn btn-secondary" @onclick="Save">Save</button>
+
+    <div class="ms-4">
+        <label class="form-label mb-0">Set password for the account above</label>
+        <div class="d-flex gap-2">
+            <input class="form-control" type="password" @bind="_newPassword" />
+            <button class="btn btn-outline-secondary" @onclick="SetPassword">Set</button>
+        </div>
+    </div>
+</div>
+
+<p class="text-body-secondary">@_status</p>
+
+@code {
+    private readonly IStore<User> _store = StoreFactory.Create<User>();
+
+    private List<User> _accounts = new();
+    private User? _selected;
+    private string _newPassword = string.Empty;
+    private string _status = string.Empty;
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthenticationState { get; set; }
+
+    private string _signedInUser = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _accounts = _store.GetAll();
+
+        if (AuthenticationState is not null)
+        {
+            var state = await AuthenticationState;
+            _signedInUser = state.User.Identity?.Name ?? string.Empty;
+        }
+    }
+
+    // The signed-in account cannot be deleted: it would leave the session pointing at a record
+    // that no longer exists, and it is what guarantees one administrator always remains.
+    private bool IsSignedIn(User account)
+        => string.Equals(account.UserName, _signedInUser, StringComparison.OrdinalIgnoreCase);
+
+    private void Add()
+    {
+        // No password, so the account is inert until someone sets one. A default password on a
+        // new account is a door everyone knows about.
+        var user = new User
+        {
+            Id = _store.NextId(_accounts),
+            UserName = "new.user",
+            DisplayName = "New user",
+            Role = AppRole.User,
+            IsActive = true,
+            CreatedOn = DateTime.Now,
+            ModifiedOn = DateTime.Now,
+        };
+
+        _accounts.Add(user);
+        _selected = user;
+        _status = "Added. Set a password before it can sign in.";
+    }
+
+    private void Delete(User account)
+    {
+        if (IsSignedIn(account))
+        {
+            _status = "You cannot delete the account you are signed in with.";
+            return;
+        }
+
+        _accounts.Remove(account);
+        Save();
+    }
+
+    private void Save()
+        => _status = _store.SaveAll(_accounts) ? "Saved." : "Could not save the accounts.";
+
+    private void SetPassword()
+    {
+        var target = _selected ?? _accounts.LastOrDefault();
+
+        if (target is null || _newPassword.Length == 0)
+        {
+            _status = "Choose an account and type a password first.";
+            return;
+        }
+
+        // Through AuthService, so hashing stays in one place.
+        _status = AuthService.ChangePassword(target.Id, _newPassword)
+            ? "Password set."
+            : "Could not set the password.";
+
+        _newPassword = string.Empty;
+        _accounts = _store.GetAll();
+    }
+}
+""";
+
     /// <summary>Source of <c>Auth/AuthEndpoints.cs</c>.</summary>
     /// <remarks>
     /// Endpoints rather than component code, for the reason the class remarks give: only a request

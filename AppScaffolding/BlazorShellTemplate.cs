@@ -39,7 +39,7 @@ public static class BlazorShellTemplate
                 <span aria-hidden="true"></span> Home
             </NavLink>
         </div>
-{{NavItems(classNames)}}    </nav>
+{{NavItems(classNames)}}{{AdminNav(login)}}    </nav>
 </div>
 {{SignOut(login)}}
 """;
@@ -51,6 +51,30 @@ public static class BlazorShellTemplate
     /// </summary>
     private static string NavUsings(bool login)
         => login ? "@using Microsoft.AspNetCore.Components.Authorization\n\n" : string.Empty;
+
+    /// <summary>
+    /// The Users link, shown only to an administrator.
+    /// </summary>
+    /// <remarks>
+    /// Hiding the link is not the permission — the page carries [Authorize(Roles = "Admin")]
+    /// for that, because a URL can be typed. This only keeps the nav honest about what the
+    /// signed-in user can reach.
+    /// </remarks>
+    private static string AdminNav(bool login)
+        => login
+            ? """
+        <AuthorizeView Roles="Admin">
+            <Authorized>
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="users">
+                        <span aria-hidden="true"></span> Users
+                    </NavLink>
+                </div>
+            </Authorized>
+        </AuthorizeView>
+
+"""
+            : string.Empty;
 
     /// <summary>The signed-in strip, or nothing at all for an app with no login.</summary>
     private static string SignOut(bool login)

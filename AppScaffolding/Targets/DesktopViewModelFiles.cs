@@ -30,7 +30,7 @@ public static class DesktopViewModelFiles
             new("ViewModels", "EntityViewModel.cs",
                 ViewModelTemplates.EntityViewModel(rootNamespace, validation)),
             new("ViewModels", "MainViewModel.cs",
-                MainViewModelTemplate.Build(rootNamespace, entityNames, seed)),
+                MainViewModelTemplate.Build(rootNamespace, entityNames, seed, login)),
         };
 
         // Desktop-only, and emitted beside the view models rather than by AuthCoreFiles: a
@@ -41,6 +41,8 @@ public static class DesktopViewModelFiles
             files.Add(new("Auth", "Session.cs", SessionTemplate.Source(rootNamespace)));
             files.Add(new("ViewModels", "LoginViewModel.cs",
                 LoginViewModelTemplate.Source(rootNamespace)));
+            files.Add(new("ViewModels", "UsersViewModel.cs",
+                UsersViewModelTemplate.Source(rootNamespace)));
         }
 
         return files;
