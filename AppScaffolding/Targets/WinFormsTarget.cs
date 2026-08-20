@@ -1,4 +1,5 @@
-﻿using AppScaffolding.Layouts;
+﻿using AppScaffolding.Auth;
+using AppScaffolding.Layouts;
 using AppScaffolding.Layouts.WinForms;
 using CodeGenerationEngine.Models;
 
@@ -30,7 +31,7 @@ public sealed class WinFormsTarget : ITargetScaffolder
 
         var files = DesktopViewModelFiles.Build(
             ns, entityNames, ViewModelTemplates.PortableRelayCommand(ns),
-            customization.Validation, customization.SampleSeedData);
+            customization.Validation, customization.SampleSeedData, customization.Login);
 
         var palette = ThemePalette.Resolve(customization.Theme, customization.Accent);
 
@@ -38,7 +39,14 @@ public sealed class WinFormsTarget : ITargetScaffolder
             WinFormsLayouts.Resolve(customization.EffectiveLayout).ViewFiles(
                 new LayoutContext(ns, projectName, customization, palette)));
 
-        files.Add(new("", "Program.cs", WinFormsProgramTemplate.Source(ns)));
+        if (customization.Login)
+        {
+            files.Add(new("Views", "LoginForm.cs",
+                WinFormsLoginTemplate.Source(
+                    new LayoutContext(ns, projectName, customization, palette))));
+        }
+
+        files.Add(new("", "Program.cs", WinFormsProgramTemplate.Source(ns, customization.Login)));
 
         return files;
     }
