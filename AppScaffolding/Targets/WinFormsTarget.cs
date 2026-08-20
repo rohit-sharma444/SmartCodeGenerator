@@ -1,4 +1,4 @@
-using AppScaffolding.Layouts;
+﻿using AppScaffolding.Layouts;
 using AppScaffolding.Layouts.WinForms;
 using CodeGenerationEngine.Models;
 
@@ -13,6 +13,8 @@ public sealed class WinFormsTarget : ITargetScaffolder
 {
     public string Key => "winforms";
     public string Description => "a runnable Windows Forms CRUD app";
+    public bool HasScreens => true;
+
     public DotNetProjectType ProjectType => DotNetProjectType.WinForms;
     public string FolderSuffix => ".WinForms";
 

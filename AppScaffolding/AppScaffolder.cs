@@ -1,3 +1,4 @@
+﻿using AppScaffolding.Auth;
 using CodeGenerationEngine.Core;
 using CodeGenerationEngine.Factory;
 using CodeGenerationEngine.Models;
@@ -401,6 +402,20 @@ public sealed class AppScaffolder
 
         files.Add((dataFolder, "SaveResult.cs", SaveResultTemplate.Source(rootNamespace)));
 
+        // The auth core, for a target that has screens to gate. Emitted here rather than by
+        // each target because all three UI targets receive identical files -- only the login
+        // VIEW differs, and that stays with the target.
+        var auth = customization.Login && target.HasScreens;
+
+        if (auth)
+        {
+            foreach (var file in AuthCoreFiles.For(rootNamespace))
+            {
+                files.Add((
+                    Path.Combine(outputFolder, file.RelativeFolder), file.Name, file.Source));
+            }
+        }
+
         // SaveResult above stays whatever the flag says: Repository still returns one, so the
         // console menu and the Web API's ValidationProblem are untouched by turning validation off.
         if (validation)
@@ -418,9 +433,16 @@ public sealed class AppScaffolder
         // Persistence backend behind the seam.
         if (persistence == PersistenceKind.Sqlite)
         {
+            // Appended rather than mixed into entityNames, which also drives the class count,
+            // the repositories and the validators -- none of which User takes part in.
+            var contextEntities = auth
+                ? entityNames.Append(AuthCoreFiles.EntityName).ToList()
+                : entityNames;
+
             files.Add((dataFolder, "EfStore.cs", EfStoreTemplate.Source(rootNamespace)));
             files.Add((dataFolder, "AppDbContext.cs",
-                DbContextTemplate.Source(projectName, entityNames, EnvVarName(projectName), rootNamespace)));
+                DbContextTemplate.Source(
+                    projectName, contextEntities, EnvVarName(projectName), rootNamespace)));
         }
         else
         {

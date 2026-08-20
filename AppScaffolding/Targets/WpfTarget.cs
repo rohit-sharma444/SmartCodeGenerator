@@ -1,4 +1,4 @@
-using AppScaffolding.Layouts;
+﻿using AppScaffolding.Layouts;
 using AppScaffolding.Layouts.Wpf;
 using CodeGenerationEngine.Models;
 
@@ -10,6 +10,8 @@ public sealed class WpfTarget : ITargetScaffolder
 {
     public string Key => "wpf";
     public string Description => "a runnable WPF CRUD app";
+    public bool HasScreens => true;
+
     public DotNetProjectType ProjectType => DotNetProjectType.Wpf;
     public string FolderSuffix => "";
 

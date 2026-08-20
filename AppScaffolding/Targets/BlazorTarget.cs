@@ -26,6 +26,8 @@ public sealed class BlazorTarget : ITargetScaffolder
 
     public string Description => "a Blazor Server web app with a page per class";
 
+    public bool HasScreens => true;
+
     public DotNetProjectType ProjectType => DotNetProjectType.BlazorServer;
 
     public string FolderSuffix => ".Web";
