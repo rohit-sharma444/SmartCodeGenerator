@@ -1,4 +1,4 @@
-namespace AppScaffolding;
+﻿namespace AppScaffolding;
 
 /// <summary>
 /// The parts of the <c>dotnet new blazor</c> shell that have to know about the discovered classes:
@@ -12,8 +12,19 @@ namespace AppScaffolding;
 public static class BlazorShellTemplate
 {
     /// <summary>Source of <c>Components/Layout/NavMenu.razor</c>.</summary>
-    public static string NavMenu(string title, IReadOnlyList<string> classNames) => $$"""
-<div class="top-row ps-3 navbar navbar-dark">
+    public static string NavMenu(string title, IReadOnlyList<string> classNames)
+        => NavMenu(title, classNames, login: false);
+
+    /// <summary>
+    /// Source of <c>Components/Layout/NavMenu.razor</c>. With <paramref name="login"/> the menu
+    /// carries the signed-in user and a sign-out button.
+    /// </summary>
+    /// <remarks>
+    /// Sign-out is a POST, not a link. A GET sign-out can be fired by any image tag on any page
+    /// the visitor happens to open, which signs people out at random.
+    /// </remarks>
+    public static string NavMenu(string title, IReadOnlyList<string> classNames, bool login) => $$"""
+{{NavUsings(login)}}<div class="top-row ps-3 navbar navbar-dark">
     <div class="container-fluid">
         <a class="navbar-brand" href="">{{title}}</a>
     </div>
@@ -30,7 +41,35 @@ public static class BlazorShellTemplate
         </div>
 {{NavItems(classNames)}}    </nav>
 </div>
+{{SignOut(login)}}
 """;
+
+    /// <summary>
+    /// What AuthorizeView needs imported. The template's _Imports.razor has no authorization
+    /// namespace in it, and rewriting that file would mean reconciling the project name it
+    /// names, so each file that authorizes brings its own using.
+    /// </summary>
+    private static string NavUsings(bool login)
+        => login ? "@using Microsoft.AspNetCore.Components.Authorization\n\n" : string.Empty;
+
+    /// <summary>The signed-in strip, or nothing at all for an app with no login.</summary>
+    private static string SignOut(bool login)
+        => login
+            ? """
+
+<AuthorizeView>
+    <Authorized>
+        <div class="nav-scrollable px-3 py-2">
+            <span class="text-body-secondary small">@context.User.Identity?.Name</span>
+            <form method="post" action="/auth/logout">
+                <AntiforgeryToken />
+                <button type="submit" class="btn btn-link nav-link p-0">Sign out</button>
+            </form>
+        </div>
+    </Authorized>
+</AuthorizeView>
+"""
+            : string.Empty;
 
     private static string NavItems(IReadOnlyList<string> classNames)
         => string.Concat(classNames.Select(name => $$"""

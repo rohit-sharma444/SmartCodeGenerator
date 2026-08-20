@@ -18,6 +18,13 @@
 /// </remarks>
 public static class BlazorPageTemplate
 {
+    /// <summary>The authorization attribute and the namespace it needs, or nothing at all for an
+    /// app with no login.</summary>
+    private static string Authorize(bool login)
+        => login
+            ? "\n@using Microsoft.AspNetCore.Authorization\n@attribute [Authorize]"
+            : string.Empty;
+
     /// <summary>Source of <c>Components/Pages/&lt;className&gt;Page.razor</c>.</summary>
     /// <param name="rootNamespace">Namespace the generated code declares, prefix included.</param>
     /// <param name="className">The model class this page lists.</param>
@@ -26,9 +33,19 @@ public static class BlazorPageTemplate
     /// <see cref="BlazorSeedTemplate"/>'s gate to run the seeder before its first read — this target
     /// emits no <c>Program.cs</c>, so there is no startup hook to do it from.
     /// </param>
-    public static string Page(string rootNamespace, string className, bool seed) => $$"""
+    public static string Page(string rootNamespace, string className, bool seed)
+        => Page(rootNamespace, className, seed, login: false);
+
+    /// <summary>
+    /// As above; with <paramref name="login"/> the page refuses an unauthenticated visitor.
+    /// </summary>
+    /// <remarks>
+    /// The attribute alone decides nothing: it is honoured only because the emitted
+    /// <c>Routes.razor</c> uses an AuthorizeRouteView. The template's plain RouteView ignores it.
+    /// </remarks>
+    public static string Page(string rootNamespace, string className, bool seed, bool login) => $$"""
 @page "/{{className.ToLowerInvariant()}}"
-@rendermode InteractiveServer
+@rendermode InteractiveServer{{Authorize(login)}}
 @using System.Reflection
 @using {{rootNamespace}}.Data
 @using {{rootNamespace}}.Models

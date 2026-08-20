@@ -493,7 +493,14 @@ public sealed class AppScaffolder
         // Same reason, different file: the Blazor template's Program.cs imports
         // `<ProjectName>.Components`, which a namespace prefix moves out from under it.
         if (target.ProjectType == DotNetProjectType.BlazorServer)
+        {
             BlazorProjectFixup.ReconcileNamespace(outputFolder, rootNamespace);
+
+            // Cookie authentication is the one thing the emitted files cannot switch on by
+            // themselves: the services and the middleware live in the host the template wrote.
+            if (auth)
+                BlazorProjectFixup.EnableAuthentication(outputFolder, rootNamespace);
+        }
 
         // Data files, not source: written with the same best-effort WriteSource so a locked file
         // is reported through `expected` rather than throwing mid-scaffold.

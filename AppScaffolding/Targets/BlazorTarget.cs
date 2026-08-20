@@ -1,4 +1,6 @@
-﻿using CodeGenerationEngine.Models;
+﻿using AppScaffolding.Auth;
+using AppScaffolding.Layouts;
+using CodeGenerationEngine.Models;
 
 namespace AppScaffolding.Targets;
 
@@ -46,7 +48,7 @@ public sealed class BlazorTarget : ITargetScaffolder
         var files = new List<GeneratedFile>
         {
             new("Components/Layout", "NavMenu.razor",
-                BlazorShellTemplate.NavMenu(title, entityNames)),
+                BlazorShellTemplate.NavMenu(title, entityNames, customization.Login)),
 
             new(PagesFolder, "Home.razor", BlazorShellTemplate.Home(title, entityNames)),
         };
@@ -58,7 +60,19 @@ public sealed class BlazorTarget : ITargetScaffolder
         files.AddRange(entityNames.Select(name =>
             new GeneratedFile(
                 PagesFolder, $"{name}Page.razor",
-                BlazorPageTemplate.Page(ns, name, customization.SampleSeedData))));
+                BlazorPageTemplate.Page(
+                    ns, name, customization.SampleSeedData, customization.Login))));
+
+        // The login page, the endpoints that set the cookie, and a router that actually reads
+        // the [Authorize] attributes above -- the template's RouteView does not.
+        if (customization.Login)
+        {
+            var login = new LayoutContext(ns, projectName, customization, Palette: null);
+
+            files.Add(new(PagesFolder, "Login.razor", BlazorLoginTemplate.LoginPage(login)));
+            files.Add(new("Components", "Routes.razor", BlazorLoginTemplate.Routes(ns)));
+            files.Add(new("Auth", "AuthEndpoints.cs", BlazorLoginTemplate.Endpoints(ns)));
+        }
 
         // The desktop targets seed from their main view model and the console and Web API from their
         // own Program.cs. This target does not emit Program.cs -- dotnet new blazor writes a good one,

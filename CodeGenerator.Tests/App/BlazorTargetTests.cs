@@ -147,7 +147,14 @@ public class BlazorTargetTests
         // AppSeed is C#, not markup, and belongs beside the SeedData it calls.
         Assert.AreEqual("Data", files.Single(f => f.Name == "AppSeed.cs").RelativeFolder);
 
-        foreach (var page in files.Where(f => f.Name.EndsWith(".razor") && f.Name != "NavMenu.razor"))
+        // The router sits beside App.razor rather than among the pages, which is where the
+        // template keeps it -- it is not a page and has no route of its own.
+        Assert.AreEqual("Components", files.Single(f => f.Name == "Routes.razor").RelativeFolder);
+
+        var shell = new[] { "NavMenu.razor", "Routes.razor" };
+
+        foreach (var page in files.Where(
+                     f => f.Name.EndsWith(".razor") && !shell.Contains(f.Name)))
             Assert.AreEqual("Components/Pages", page.RelativeFolder);
     }
 

@@ -1,4 +1,4 @@
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
 
 namespace AppScaffolding;
 
@@ -28,6 +28,102 @@ public static class BlazorProjectFixup
 
     private static readonly Regex ComponentsImport =
         new(@"^using\s+[\w.]+\.Components;", RegexOptions.Multiline);
+
+    private const string BuildMarker = "var app = builder.Build();";
+    private const string AntiforgeryMarker = "app.UseAntiforgery();";
+    private const string AuthenticationMarker = "app.UseAuthentication();";
+    private const string EndpointMarker = "app.MapRazorComponents<App>()";
+    private const string RunMarker = "app.Run();";
+
+    private const string CookieUsing = "using Microsoft.AspNetCore.Authentication.Cookies;";
+
+    private const string Services = """
+builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+    .AddCookie(options =>
+    {
+        options.LoginPath = "/login";
+        options.AccessDeniedPath = "/login";
+    });
+builder.Services.AddAuthorization();
+builder.Services.AddCascadingAuthenticationState();
+
+""";
+
+    /// <summary>
+    /// Adds cookie authentication to the template's <c>Program.cs</c>. Best-effort and idempotent.
+    /// </summary>
+    /// <remarks>
+    /// Insertions rather than a replacement, for the reason <see cref="ReconcileNamespace"/>
+    /// gives: the template's host is correct, and re-implementing it would mean drifting from it
+    /// on every SDK update.
+    /// <para>
+    /// Middleware order is not a preference. <c>UseAuthentication</c> and <c>UseAuthorization</c>
+    /// must run BEFORE <c>UseAntiforgery</c>, so the insertion point is that call — and when a
+    /// host has none, the endpoint mapping instead, which every Blazor host has. Anchoring only
+    /// on antiforgery would silently leave a host unauthenticated.
+    /// </para>
+    /// <para>
+    /// <c>MapStaticAssets</c> is deliberately untouched: moving or dropping it breaks the static
+    /// web asset manifest and the application serves no stylesheets at all.
+    /// </para>
+    /// </remarks>
+    public static void EnableAuthentication(string projectFolder, string rootNamespace)
+    {
+        var path = Path.Combine(projectFolder, "Program.cs");
+
+        try
+        {
+            if (!File.Exists(path))
+                return;
+
+            var text = File.ReadAllText(path);
+
+            // Not a host this rewrite understands, or one it has already rewritten.
+            if (!text.Contains(TemplateMarker, StringComparison.Ordinal)
+                || text.Contains(AuthenticationMarker, StringComparison.Ordinal))
+                return;
+
+            var buildIndex = text.IndexOf(BuildMarker, StringComparison.Ordinal);
+
+            var middlewareIndex = text.IndexOf(AntiforgeryMarker, StringComparison.Ordinal);
+
+            if (middlewareIndex < 0)
+                middlewareIndex = text.IndexOf(EndpointMarker, StringComparison.Ordinal);
+
+            if (buildIndex < 0 || middlewareIndex < 0)
+                return;
+
+            // The later insertion first: inserting at the earlier index would shift this offset.
+            text = text.Insert(
+                middlewareIndex,
+                AuthenticationMarker + "\napp.UseAuthorization();\n\n");
+
+            text = text.Insert(buildIndex, Services);
+
+            // Both usings, and the auth one is NOT optional: MapAuthEndpoints is an extension
+            // method, so without its namespace Program.cs fails with CS1061 rather than CS0246,
+            // which reads as a missing package. Found by building a generated app.
+            var authUsing = $"using {rootNamespace}.Auth;";
+
+            if (!text.Contains(authUsing, StringComparison.Ordinal))
+                text = authUsing + "\n" + text;
+
+            if (!text.Contains(CookieUsing, StringComparison.Ordinal))
+                text = CookieUsing + "\n" + text;
+
+            // Mapped beside the component endpoints, so a POST to /auth/login is matched by the
+            // endpoint rather than swallowed by the router.
+            if (text.Contains(RunMarker, StringComparison.Ordinal))
+                text = text.Replace(
+                    RunMarker, "app.MapAuthEndpoints();\n\n" + RunMarker);
+
+            File.WriteAllText(path, text);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Leave it; the build error that follows is clearer than a crash here.
+        }
+    }
 
     /// <summary>
     /// Repoints <c>Program.cs</c>'s components import at <paramref name="rootNamespace"/>.

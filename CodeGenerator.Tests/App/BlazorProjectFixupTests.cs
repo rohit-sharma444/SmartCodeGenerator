@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.IO;
 using AppScaffolding;
 
@@ -32,6 +32,40 @@ app.MapRazorComponents<App>()
 app.Run();
 """;
 
+    /// <summary>
+    /// What `dotnet new blazor` writes on .NET 10, captured from a real generation rather than
+    /// remembered — the abbreviated <see cref="TemplateProgram"/> above has neither
+    /// UseAntiforgery nor MapStaticAssets, and both matter to the authentication surgery.
+    /// </summary>
+    private const string RealTemplateProgram = """
+using Shop.Components;
+
+var builder = WebApplication.CreateBuilder(args);
+
+// Add services to the container.
+builder.Services.AddRazorComponents()
+    .AddInteractiveServerComponents();
+
+var app = builder.Build();
+
+// Configure the HTTP request pipeline.
+if (!app.Environment.IsDevelopment())
+{
+    app.UseExceptionHandler("/Error", createScopeForErrors: true);
+    app.UseHsts();
+}
+app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
+app.UseHttpsRedirection();
+
+app.UseAntiforgery();
+
+app.MapStaticAssets();
+app.MapRazorComponents<App>()
+    .AddInteractiveServerRenderMode();
+
+app.Run();
+""";
+
     private readonly List<string> _tempFolders = new();
 
     private string NewProjectFolder(string program = TemplateProgram)
@@ -47,6 +81,104 @@ app.Run();
 
     private static string ProgramIn(string folder)
         => File.ReadAllText(Path.Combine(folder, "Program.cs"));
+
+    private string Fixed(string program)
+    {
+        var folder = NewProjectFolder(program);
+
+        BlazorProjectFixup.EnableAuthentication(folder, "Shop");
+
+        return File.ReadAllText(Path.Combine(folder, "Program.cs"));
+    }
+
+    [TestMethod]
+    public void EnableAuthentication_RegistersTheServicesBeforeTheAppIsBuilt()
+    {
+        var program = Fixed(RealTemplateProgram);
+
+        Assert.IsLessThan(
+            program.IndexOf("var app = builder.Build();", StringComparison.Ordinal),
+            program.IndexOf("AddAuthentication", StringComparison.Ordinal));
+
+        StringAssert.Contains(program, "AddCascadingAuthenticationState");
+        StringAssert.Contains(program, "using Microsoft.AspNetCore.Authentication.Cookies;");
+    }
+
+    /// <summary>
+    /// The order ASP.NET Core requires: authentication and authorization run BEFORE antiforgery.
+    /// </summary>
+    /// <remarks>
+    /// Wrong order is a runtime failure with a misleading message, and no unit test over emitted
+    /// strings would see it — only the order of the inserted lines can be checked here.
+    /// </remarks>
+    [TestMethod]
+    public void EnableAuthentication_PutsTheMiddlewareBeforeAntiforgery()
+    {
+        var program = Fixed(RealTemplateProgram);
+
+        var authentication = program.IndexOf("app.UseAuthentication();", StringComparison.Ordinal);
+        var authorization = program.IndexOf("app.UseAuthorization();", StringComparison.Ordinal);
+        var antiforgery = program.IndexOf("app.UseAntiforgery();", StringComparison.Ordinal);
+
+        Assert.IsGreaterThan(-1, authentication, "authentication middleware was never added");
+        Assert.IsLessThan(authorization, authentication);
+        Assert.IsLessThan(antiforgery, authorization);
+    }
+
+    /// <summary>A Program.cs with no UseAntiforgery still has to get the middleware, and before
+    /// the endpoints rather than nowhere at all.</summary>
+    [TestMethod]
+    public void EnableAuthentication_FallsBackToTheEndpointsWhenThereIsNoAntiforgery()
+    {
+        var program = Fixed(TemplateProgram);
+
+        var authentication = program.IndexOf("app.UseAuthentication();", StringComparison.Ordinal);
+
+        Assert.IsGreaterThan(-1, authentication, "authentication middleware was never added");
+        Assert.IsLessThan(
+            program.IndexOf("app.MapRazorComponents<App>()", StringComparison.Ordinal),
+            authentication);
+    }
+
+    /// <summary>Moving or dropping MapStaticAssets breaks the static web asset manifest, and the
+    /// app serves no stylesheets at all.</summary>
+    [TestMethod]
+    public void EnableAuthentication_LeavesTheStaticAssetMappingAlone()
+        => StringAssert.Contains(Fixed(RealTemplateProgram), "app.MapStaticAssets();");
+
+    [TestMethod]
+    public void EnableAuthentication_MapsTheAuthEndpoints()
+        => StringAssert.Contains(Fixed(RealTemplateProgram), "app.MapAuthEndpoints();");
+
+    /// <summary>
+    /// MapAuthEndpoints is an EXTENSION method, so Program.cs needs the namespace it lives in.
+    /// </summary>
+    /// <remarks>
+    /// Without it the build fails with CS1061 -- "WebApplication does not contain a definition
+    /// for MapAuthEndpoints" -- which reads as a missing package rather than a missing using.
+    /// Found by building a generated app.
+    /// </remarks>
+    [TestMethod]
+    public void EnableAuthentication_ImportsTheNamespaceTheEndpointsLiveIn()
+        => StringAssert.Contains(Fixed(RealTemplateProgram), "using Shop.Auth;");
+
+    [TestMethod]
+    public void EnableAuthentication_IsIdempotent()
+    {
+        var once = Fixed(RealTemplateProgram);
+
+        Assert.AreEqual(once, Fixed(once));
+    }
+
+    /// <summary>A Program.cs this rewrite does not recognise is left alone, like every other
+    /// fixup here.</summary>
+    [TestMethod]
+    public void EnableAuthentication_LeavesAnUnrecognisedProgramAlone()
+    {
+        const string other = "Console.WriteLine(\"not a blazor host\");";
+
+        Assert.AreEqual(other, Fixed(other));
+    }
 
     [TestCleanup]
     public void CleanupTempFolders()
