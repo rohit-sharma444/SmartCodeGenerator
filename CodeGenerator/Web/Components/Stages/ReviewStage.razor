@@ -109,7 +109,7 @@
 <div class="actions">
     @* Generating is the step forward, so it is named in the box rather than buried under a screen
        of entity cards the user has to scroll past to find it. *@
-    <button type="button" class="cancel" @onclick="() => Session.Cancel()">Cancel</button>
+    <button type="button" class="cancel" @onclick="() => Session.RequestCancel()">Cancel</button>
 </div>
 
 @code {

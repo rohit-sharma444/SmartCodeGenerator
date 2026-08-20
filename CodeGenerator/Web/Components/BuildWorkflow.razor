@@ -16,6 +16,25 @@
         <p class="failure" role="alert">@Session.FailureMessage</p>
     }
 
+    @if (Session.PendingCancel is not null)
+    {
+        @* Above the panel, not inside it: cancelling is about the whole run rather than the answer
+           being edited, which is what separates this from the discard question below. *@
+        <div class="cancel-question" role="alertdialog" aria-live="assertive">
+            <p>@Session.PendingCancel</p>
+
+            <div class="actions">
+                @* Carrying on is the safe answer, so it is the one the eye lands on. *@
+                <button type="button" class="cancel-keep" @onclick="KeepBuilding">
+                    Keep building
+                </button>
+                <button type="button" class="cancel-confirm" @onclick="EndTheBuild">
+                    Cancel the build
+                </button>
+            </div>
+        </div>
+    }
+
     <section class="panel">
         <h2>@StageGraph.Nodes.First(n => n.Stage == Session.Current).Title</h2>
 
@@ -177,6 +196,27 @@
 
         if (next is not null)
             await next();
+
+        Refresh();
+    }
+
+    /// <summary>
+    /// Ends the workflow, the cancel question having been answered.
+    /// </summary>
+    /// <remarks>
+    /// The session decides whether the question is asked at all — a first page with nothing on it
+    /// cancels outright — so there is nothing for the page to work out here.
+    /// </remarks>
+    private void EndTheBuild()
+    {
+        Session.ConfirmCancel();
+
+        Refresh();
+    }
+
+    private void KeepBuilding()
+    {
+        Session.KeepBuilding();
 
         Refresh();
     }

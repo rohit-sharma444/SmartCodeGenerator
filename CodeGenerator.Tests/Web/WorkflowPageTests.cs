@@ -129,6 +129,48 @@ public class WorkflowPageTests
             () => StringAssert.Contains(second.Find(".panel h2").TextContent, "Data"));
     }
 
+    [TestMethod]
+    public void Cancel_asks_before_it_ends_the_run()
+    {
+        using var context = PageFor(Discovered(), out var session);
+
+        var page = context.Render<BuildWorkflow>();
+
+        page.Find(".cancel").Click();
+
+        Assert.IsNotNull(page.Find(".cancel-question"));
+        Assert.AreEqual(SessionPhase.Running, session.Phase);
+    }
+
+    [TestMethod]
+    public void Confirming_the_cancel_ends_the_run()
+    {
+        using var context = PageFor(Discovered(), out var session);
+
+        var page = context.Render<BuildWorkflow>();
+
+        page.Find(".cancel").Click();
+        page.Find(".cancel-confirm").Click();
+
+        Assert.AreEqual(SessionPhase.Cancelled, session.Phase);
+    }
+
+    [TestMethod]
+    public void Keeping_the_build_takes_the_question_away_and_changes_nothing_else()
+    {
+        using var context = PageFor(Discovered(), out var session);
+
+        var page = context.Render<BuildWorkflow>();
+
+        page.Find(".cancel").Click();
+        page.Find(".cancel-keep").Click();
+
+        Assert.IsEmpty(page.FindAll(".cancel-question"));
+        Assert.AreEqual(SessionPhase.Running, session.Phase);
+        Assert.AreEqual(BuildStage.Describe, session.Current);
+        Assert.IsNotNull(session.Model);
+    }
+
     /// <summary>The App type box, which is green and clickable because the fixture answered
     /// it.</summary>
     private static AngleSharp.Dom.IElement AppTypeBox(IRenderedComponent<BuildWorkflow> page)

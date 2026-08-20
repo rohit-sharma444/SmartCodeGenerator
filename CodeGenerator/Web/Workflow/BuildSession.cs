@@ -315,6 +315,94 @@ public sealed class BuildSession
     }
 
     /// <summary>
+    /// The question on screen when a cancel is waiting to be answered. Null the rest of the time.
+    /// </summary>
+    /// <remarks>
+    /// On the session rather than the page for the same reason <see cref="PendingDiscard"/> is:
+    /// the workflow is one run with possibly two tabs looking at it, and the tab that did not
+    /// click Cancel must not go on offering a step forward through a run that is being ended.
+    /// </remarks>
+    public string? PendingCancel { get; private set; }
+
+    /// <summary>
+    /// Ends the workflow — asking first, when there is anything to lose.
+    /// </summary>
+    /// <remarks>
+    /// Cancel is the most destructive control on the page and it was the only unguarded one, while
+    /// re-typing a description had been asking since the round before. Nothing is held here the
+    /// way <see cref="Change"/> holds a change, because nothing needs to be: cancelling is not
+    /// applied until it is confirmed, so waiting costs the user nothing.
+    /// </remarks>
+    /// <returns>Whether the workflow was cancelled outright, there being nothing to ask about.</returns>
+    public bool RequestCancel()
+    {
+        RequireRunning();
+
+        // An empty first page has nothing to confirm losing, and a wizard that asks anyway teaches
+        // the user that these questions are noise to be clicked away.
+        if (!StageGraph.Nodes.Any(node => HoldsAnAnswer(node.Stage)))
+        {
+            Cancel();
+
+            return true;
+        }
+
+        PendingCancel = CancelWarning();
+
+        Changed?.Invoke();
+
+        return false;
+    }
+
+    /// <summary>
+    /// What cancelling would actually cost, which is not the same at every node.
+    /// </summary>
+    /// <remarks>
+    /// A written project is not deleted by cancelling, so a warning that implied it was would be
+    /// overstating the stakes — the same failure as understating them, and the faster way to teach
+    /// someone to ignore the question.
+    /// </remarks>
+    private string CancelWarning()
+    {
+        if (Generated is not null)
+            return $"The project at {Generated.Scaffold.ProjectPath} stays on disk, "
+                + "but the workflow ends here and the console reports it cancelled.";
+
+        if (Model is not null)
+        {
+            var count = Model.Entities.Count;
+
+            return $"This discards the {count} {(count == 1 ? "class" : "classes")} discovered, "
+                + "and nothing will be generated.";
+        }
+
+        return "This discards the answers so far, and nothing will be generated.";
+    }
+
+    /// <summary>Ends the workflow, the question having been answered.</summary>
+    /// <exception cref="InvalidOperationException">Nothing was asked. As with
+    /// <see cref="ConfirmPending"/>, the page drew a question the session was not asking.</exception>
+    public void ConfirmCancel()
+    {
+        RequireRunning();
+
+        if (PendingCancel is null)
+            throw new InvalidOperationException("No cancel is waiting to be confirmed.");
+
+        PendingCancel = null;
+
+        Cancel();
+    }
+
+    /// <summary>Drops the question. Every answer stays exactly as it was.</summary>
+    public void KeepBuilding()
+    {
+        PendingCancel = null;
+
+        Changed?.Invoke();
+    }
+
+    /// <summary>
     /// Writes the answer in, and clears out what it invalidated.
     /// </summary>
     /// <remarks>

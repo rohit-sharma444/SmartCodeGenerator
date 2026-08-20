@@ -33,7 +33,7 @@
     <div class="actions">
         @* Writing is a real action rather than navigation, so it stays here and stays loud. *@
         <button type="button" class="write" @onclick="Write">Write it</button>
-        <button type="button" class="cancel" @onclick="() => Session.Cancel()">Cancel</button>
+        <button type="button" class="cancel" @onclick="() => Session.RequestCancel()">Cancel</button>
     </div>
 }
 else if (_phase == Phase.Overwrite)
@@ -45,7 +45,7 @@ else if (_phase == Phase.Overwrite)
         <button type="button" class="overwrite-rename" @onclick="() => _phase = Phase.Confirm">
             Use a different name
         </button>
-        <button type="button" class="cancel" @onclick="() => Session.Cancel()">Cancel</button>
+        <button type="button" class="cancel" @onclick="() => Session.RequestCancel()">Cancel</button>
     </div>
 }
 else
