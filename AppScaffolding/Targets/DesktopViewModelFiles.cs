@@ -1,4 +1,5 @@
 ﻿using AppScaffolding.Auth;
+using AppScaffolding.Screens;
 
 namespace AppScaffolding.Targets;
 
@@ -23,6 +24,7 @@ public static class DesktopViewModelFiles
     {
         var files = new List<GeneratedFile>
         {
+            new("Screens", "EntityRole.cs", ScreenTemplates.RoleEnum(rootNamespace)),
             new("Data", "RelationshipResolver.cs", RelationshipResolverTemplate.Source(rootNamespace)),
             new("ViewModels", "ObservableObject.cs", ViewModelTemplates.ObservableObject(rootNamespace)),
             new("ViewModels", "RelayCommand.cs", relayCommandSource),

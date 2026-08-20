@@ -1,4 +1,4 @@
-using AppScaffolding;
+﻿using AppScaffolding;
 using AppScaffolding.Targets;
 
 namespace CodeGenerator.Tests.App;
@@ -7,7 +7,7 @@ namespace CodeGenerator.Tests.App;
 public class DesktopViewModelFilesTests
 {
     [TestMethod]
-    public void Build_EmitsTheSixSharedFiles()
+    public void Build_EmitsTheSevenSharedFiles()
     {
         var files = DesktopViewModelFiles.Build(
             "Payroll", new[] { "Employee" }, ViewModelTemplates.RelayCommand("Payroll"));
@@ -17,6 +17,8 @@ public class DesktopViewModelFilesTests
         CollectionAssert.AreEqual(
             new[]
             {
+                // The interface names EntityRole, so every generated app declares it.
+                "Screens/EntityRole.cs",
                 "Data/RelationshipResolver.cs",
                 "ViewModels/ObservableObject.cs",
                 "ViewModels/RelayCommand.cs",
@@ -48,7 +50,7 @@ public class DesktopViewModelFilesTests
 
         files.Add(new GeneratedFile("Views", "Anything.cs", "// x"));
 
-        Assert.HasCount(7, files);
+        Assert.HasCount(8, files);
     }
 
     [TestMethod]

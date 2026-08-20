@@ -2,6 +2,7 @@
 using System.Reflection;
 using AppScaffolding;
 using AppScaffolding.Auth;
+using AppScaffolding.Screens;
 using AppScaffolding.Targets;
 using CodeGenerationEngine.Core;
 
@@ -67,13 +68,17 @@ public class UsersPaneTests
                     .Replace("namespace Acme.ViewModels;", string.Empty),
                 ViewModelTemplates.PortableRelayCommand("Acme")
                     .Replace("namespace Acme.ViewModels;", string.Empty),
+                ScreenTemplates.RoleEnum("Acme")
+                    .Replace("namespace Acme.Screens;", string.Empty),
                 ViewModelTemplates.EntityViewModelInterface("Acme")
-                    .Replace("namespace Acme.ViewModels;", string.Empty),
+                    .Replace("namespace Acme.ViewModels;", string.Empty)
+                    .Replace("using Acme.Screens;", string.Empty),
                 UsersViewModelTemplate.Source("Acme")
                     .Replace("namespace Acme.ViewModels;", string.Empty)
                     .Replace("using Acme.Auth;", string.Empty)
                     .Replace("using Acme.Data;", string.Empty)
-                    .Replace("using Acme.Models;", string.Empty),
+                    .Replace("using Acme.Models;", string.Empty)
+                    .Replace("using Acme.Screens;", string.Empty),
             ]);
 
         EmittedSource.AssertCompiles(source);

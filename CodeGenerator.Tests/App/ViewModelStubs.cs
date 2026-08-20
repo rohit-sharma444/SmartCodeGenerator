@@ -28,7 +28,11 @@ internal static class ViewModelStubs
             ICommand DeleteCommand { get; }
             ICommand SaveCommand { get; }
             string Status { get; }
+            EntityRole Role { get; }
+            int Count { get; }
         }
+
+        public enum EntityRole { Master, Transaction, DocumentLine }
 
         public sealed class MainViewModel
         {

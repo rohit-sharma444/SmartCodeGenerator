@@ -1,4 +1,4 @@
-namespace AppScaffolding.Auth;
+﻿namespace AppScaffolding.Auth;
 
 /// <summary>Emits <c>ViewModels/UsersViewModel.cs</c>: the account list, as an ordinary pane.</summary>
 /// <remarks>
@@ -18,6 +18,7 @@ using System.Windows.Input;
 using {{rootNamespace}}.Auth;
 using {{rootNamespace}}.Data;
 using {{rootNamespace}}.Models;
+using {{rootNamespace}}.Screens;
 
 namespace {{rootNamespace}}.ViewModels;
 
@@ -41,6 +42,11 @@ public sealed class UsersViewModel : ObservableObject, IEntityViewModel
     }
 
     public string Title => "Users";
+
+    /// <summary>Accounts are reference data: a list and an editor, like any other master.</summary>
+    public EntityRole Role => EntityRole.Master;
+
+    public int Count => Accounts.Count;
 
     /// <summary>The typed collection the grid binds to.</summary>
     public ObservableCollection<User> Accounts { get; }
