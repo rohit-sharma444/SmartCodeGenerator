@@ -41,6 +41,18 @@ public static class MainViewModelTemplate
         // The pane an administrator gets on top of the discovered entities. The business
         // shell opens this same view model from its Admin group; until then it is an ordinary
         // pane, which is what makes the four older layouts usable with a login.
+        // Exposed here rather than read as a static in XAML: an x:Static would need a new
+        // xmlns on all four window roots, and this is one property on the object the window
+        // already binds to.
+        var signedIn = login
+            ? """
+
+
+    /// <summary>The signed-in user, for the pane's sign-out strip.</summary>
+    public string SignedInUser => Session.DisplayName;
+"""
+            : string.Empty;
+
         var usersPane = login
             ? """
 
@@ -51,7 +63,7 @@ public static class MainViewModelTemplate
 """
             : string.Empty;
 
-        var authUsing = login ? $"using {rootNamespace}.Auth;\n" : string.Empty;
+        var authUsing = login ? $"using {rootNamespace}.Auth;\r\n" : string.Empty;
 
         return $$"""
 using System.Collections.ObjectModel;
@@ -75,7 +87,7 @@ public sealed class MainViewModel
         // persisted. This is the earliest point at which every store is loaded, and so the
         // earliest point at which they can be joined back up.
         RelationshipResolver.Resolve(Entities);{{usersPane}}
-    }
+    }{{signedIn}}
 
     public ObservableCollection<IEntityViewModel> Entities { get; }
 }

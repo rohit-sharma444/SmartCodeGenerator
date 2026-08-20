@@ -1,4 +1,4 @@
-namespace CodeGenerator.Tests.App;
+﻿namespace CodeGenerator.Tests.App;
 
 /// <summary>
 /// Stand-ins for the view-model files a generated app emits, so an emitted view can be compiled
@@ -33,6 +33,25 @@ internal static class ViewModelStubs
         public sealed class MainViewModel
         {
             public ObservableCollection<IEntityViewModel> Entities { get; } = new();
+
+            // Bound by the pane's sign-out strip, which every layout emits when the app has a
+            // login. Without it these compile tests only ever cover the `nologin` shape.
+            public string SignedInUser => string.Empty;
+        }
+        """;
+
+    /// <summary>The static session the emitted sign-out handler calls.</summary>
+    /// <remarks>
+    /// A stub rather than the real SessionTemplate: these tests compile a LAYOUT, and pulling in
+    /// the auth core would make them fail for reasons that have nothing to do with the view.
+    /// </remarks>
+    public const string WinFormsSession = """
+        namespace Payroll.WinForms.Auth;
+
+        public static class Session
+        {
+            public static bool SignOutRequested { get; private set; }
+            public static void RequestSignOut() => SignOutRequested = true;
         }
         """;
 }

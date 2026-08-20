@@ -1,4 +1,4 @@
-namespace AppScaffolding.Layouts.Wpf;
+﻿namespace AppScaffolding.Layouts.Wpf;
 
 /// <summary>
 /// A home screen of per-entity cards showing row counts, clicking through to that entity's pane.
@@ -19,7 +19,7 @@ public sealed class WpfDashboardLayout : IAppLayout
     public IReadOnlyList<GeneratedFile> ViewFiles(LayoutContext context) =>
     [
         new("Views", "MainWindow.xaml", Xaml(context)),
-        new("Views", "MainWindow.xaml.cs", CodeBehind(context.RootNamespace)),
+        new("Views", "MainWindow.xaml.cs", CodeBehind(context.RootNamespace, context.Customization.Login)),
     ];
 
     private static string Xaml(LayoutContext context)
@@ -45,7 +45,7 @@ public sealed class WpfDashboardLayout : IAppLayout
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="{{context.TitleAttribute}}" Height="600" Width="900"{{windowIcon}}{{windowBrushes}}>
-{{EntityPaneXaml.Resource(context.Palette)}}
+{{EntityPaneXaml.Resource(context.Palette, login: context.Customization.Login)}}
     <DockPanel>
         <Button x:Name="HomeButton"
                 DockPanel.Dock="Top"
@@ -137,9 +137,9 @@ public sealed class WpfDashboardLayout : IAppLayout
     /// it: the AutoGeneratingColumn handler, the foreign-key combo logic and the display
     /// convention are long, and a copy here would be a second thing to keep in sync.
     /// </remarks>
-    private static string CodeBehind(string rootNamespace)
+    private static string CodeBehind(string rootNamespace, bool login)
     {
-        var source = MainWindowTemplate.CodeBehind(rootNamespace);
+        var source = MainWindowTemplate.CodeBehind(rootNamespace, login);
 
         // Raw literal, so the inserted lines carry this file's own line endings — the same ones
         // the template's literal carries. Rebuilt with "\n" they would silently lose a CR. The

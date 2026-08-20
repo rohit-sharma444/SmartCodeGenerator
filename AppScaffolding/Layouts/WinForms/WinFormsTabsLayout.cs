@@ -1,4 +1,4 @@
-namespace AppScaffolding.Layouts.WinForms;
+﻿namespace AppScaffolding.Layouts.WinForms;
 
 /// <summary>The original WinForms shape: a TabControl over IEntityViewModel.</summary>
 /// <remarks>Delegates entirely to <see cref="WinFormsMainFormTemplate"/>, for the reason
@@ -14,6 +14,7 @@ public sealed class WinFormsTabsLayout : IAppLayout
     [
         new("Views", "MainForm.cs",
             WinFormsMainFormTemplate.Source(
-                context.RootNamespace, context.TitleLiteral, context.Palette, context.IconFileName)),
+                context.RootNamespace, context.TitleLiteral, context.Palette, context.IconFileName,
+                context.Customization.Login)),
     ];
 }

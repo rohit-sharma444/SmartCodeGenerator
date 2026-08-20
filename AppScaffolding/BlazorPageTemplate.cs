@@ -22,7 +22,7 @@ public static class BlazorPageTemplate
     /// app with no login.</summary>
     private static string Authorize(bool login)
         => login
-            ? "\n@using Microsoft.AspNetCore.Authorization\n@attribute [Authorize]"
+            ? "\r\n@using Microsoft.AspNetCore.Authorization\r\n@attribute [Authorize]"
             : string.Empty;
 
     /// <summary>Source of <c>Components/Pages/&lt;className&gt;Page.razor</c>.</summary>

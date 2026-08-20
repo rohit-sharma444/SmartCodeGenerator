@@ -1,4 +1,4 @@
-namespace AppScaffolding.Layouts.WinForms;
+﻿namespace AppScaffolding.Layouts.WinForms;
 
 /// <summary>
 /// A home screen of per-entity cards showing row counts, clicking through to that entity's pane.
@@ -21,6 +21,10 @@ public sealed class WinFormsDashboardLayout : IAppLayout
 
     private static string Source(LayoutContext context)
     {
+        var authUsing = context.Customization.Login
+            ? $"using {context.RootNamespace}.Auth;\r\n"
+            : string.Empty;
+
         var formColours = context.Palette is null
             ? string.Empty
             : $$"""
@@ -46,7 +50,7 @@ using System.ComponentModel;
 using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
-using {{context.RootNamespace}}.ViewModels;
+{{authUsing}}using {{context.RootNamespace}}.ViewModels;
 
 namespace {{context.RootNamespace}}.Views;
 
@@ -135,7 +139,7 @@ public sealed class MainForm : Form
         _cards.Visible = true;
     }
 
-{{WinFormsPaneCode.BuildPaneMethod(context.Palette)}}
+{{WinFormsPaneCode.BuildPaneMethod(context.Palette, login: context.Customization.Login)}}
 }
 """;
     }

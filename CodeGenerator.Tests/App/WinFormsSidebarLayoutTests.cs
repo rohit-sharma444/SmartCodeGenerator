@@ -1,4 +1,4 @@
-using AppScaffolding;
+﻿using AppScaffolding;
 using AppScaffolding.Layouts;
 using AppScaffolding.Layouts.WinForms;
 
@@ -62,7 +62,8 @@ public class WinFormsSidebarLayoutTests
     {
         EmittedDesktopSource.AssertCompilesTogether(
             ("Views/MainForm.cs", Source()),
-            ("ViewModels/MainViewModel.cs", ViewModelStubs.WinFormsHost));
+            ("ViewModels/MainViewModel.cs", ViewModelStubs.WinFormsHost),
+            ("Auth/Session.cs", ViewModelStubs.WinFormsSession));
     }
 
     [TestMethod]
@@ -76,7 +77,8 @@ public class WinFormsSidebarLayoutTests
                 Theme = AppTheme.Dark,
                 IconPath = @"D:\brand\logo.ico",
             })),
-            ("ViewModels/MainViewModel.cs", ViewModelStubs.WinFormsHost));
+            ("ViewModels/MainViewModel.cs", ViewModelStubs.WinFormsHost),
+            ("Auth/Session.cs", ViewModelStubs.WinFormsSession));
     }
 
     [TestMethod]

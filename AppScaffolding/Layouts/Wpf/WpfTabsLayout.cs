@@ -1,4 +1,4 @@
-namespace AppScaffolding.Layouts.Wpf;
+﻿namespace AppScaffolding.Layouts.Wpf;
 
 /// <summary>
 /// The original WPF shape: a TabControl over IEntityViewModel, one tab per entity.
@@ -18,7 +18,8 @@ public sealed class WpfTabsLayout : IAppLayout
     [
         new("Views", "MainWindow.xaml",
             MainWindowTemplate.Xaml(
-                context.RootNamespace, context.TitleAttribute, context.Themed, context.IconFileName)),
-        new("Views", "MainWindow.xaml.cs", MainWindowTemplate.CodeBehind(context.RootNamespace)),
+                context.RootNamespace, context.TitleAttribute, context.Themed, context.IconFileName,
+                context.Customization.Login)),
+        new("Views", "MainWindow.xaml.cs", MainWindowTemplate.CodeBehind(context.RootNamespace, context.Customization.Login)),
     ];
 }

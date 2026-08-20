@@ -1,4 +1,4 @@
-namespace AppScaffolding.Layouts.Wpf;
+﻿namespace AppScaffolding.Layouts.Wpf;
 
 /// <summary>
 /// A navigation list of entities on the left, the selected entity's pane on the right.
@@ -18,7 +18,7 @@ public sealed class WpfSidebarLayout : IAppLayout
     public IReadOnlyList<GeneratedFile> ViewFiles(LayoutContext context) =>
     [
         new("Views", "MainWindow.xaml", Xaml(context)),
-        new("Views", "MainWindow.xaml.cs", MainWindowTemplate.CodeBehind(context.RootNamespace)),
+        new("Views", "MainWindow.xaml.cs", MainWindowTemplate.CodeBehind(context.RootNamespace, context.Customization.Login)),
     ];
 
     private static string Xaml(LayoutContext context)
@@ -47,7 +47,7 @@ public sealed class WpfSidebarLayout : IAppLayout
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="{{context.TitleAttribute}}" Height="600" Width="900"{{windowIcon}}{{windowBrushes}}>
-{{EntityPaneXaml.Resource(context.Palette)}}
+{{EntityPaneXaml.Resource(context.Palette, login: context.Customization.Login)}}
     <Grid>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="200" />

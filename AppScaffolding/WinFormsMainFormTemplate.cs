@@ -1,4 +1,4 @@
-namespace AppScaffolding;
+﻿namespace AppScaffolding;
 
 /// <summary>
 /// The WinForms view. Entirely static, like its WPF counterpart: a TabControl over
@@ -27,8 +27,53 @@ public static class WinFormsMainFormTemplate
     /// still copied into the project, and still reaches the window on the WPF side.
     /// </remarks>
     public static string Source(
-        string rootNamespace, string title, ThemePalette? palette, string? iconFileName = null)
+        string rootNamespace, string title, ThemePalette? palette, string? iconFileName = null,
+        bool login = false)
     {
+        // FindForm() rather than a captured reference: BuildTab is static, and the button is
+        // already in the form's control tree by the time anyone can click it. Close() as well
+        // as the flag, because the entry point's loop only regains control when the shell
+        // closes -- the flag alone would read as a dead button.
+        var signOutRow = login
+            ? """
+
+        var signOut = new Button { Text = "Sign out", Width = 88 };
+        signOut.Click += (s, _) =>
+        {
+            Session.RequestSignOut();
+            ((Control)s!).FindForm()?.Close();
+        };
+
+        var signedIn = new Label
+        {
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Text = model.SignedInUser,
+        };
+
+        var identity = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1,
+        };
+        identity.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+        identity.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        identity.Controls.Add(signedIn, 0, 0);
+        identity.Controls.Add(signOut, 1, 0);
+"""
+            : string.Empty;
+
+        var signOutRowStyle = login
+            ? "        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 32f));"
+            : string.Empty;
+
+        var signOutPlacement = login
+            ? "        layout.Controls.Add(identity, 0, 3);"
+            : string.Empty;
+
+        var authUsing = login ? $"using {rootNamespace}.Auth;\r\n" : string.Empty;
+
+        var rowCount = login ? 4 : 3;
+
         // Read off disk beside the binary rather than embedded: AppScaffolder registers the copy
         // as content copied to the output directory. Guarded, so an asset the user later deletes
         // costs the app its icon rather than its startup. Types are qualified because the
@@ -70,7 +115,7 @@ using System.ComponentModel;
 using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
-using {{rootNamespace}}.ViewModels;
+{{authUsing}}using {{rootNamespace}}.ViewModels;
 
 namespace {{rootNamespace}}.Views;
 
@@ -103,6 +148,7 @@ public sealed class MainForm : Form
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40f));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 26f));
+{{signOutRowStyle}}{{signOutRow}}
 
         var grid = new DataGridView
         {

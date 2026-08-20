@@ -1,4 +1,4 @@
-using AppScaffolding;
+﻿using AppScaffolding;
 using AppScaffolding.Layouts;
 using AppScaffolding.Layouts.Wpf;
 using AppScaffolding.Targets;
@@ -10,7 +10,11 @@ public class WpfLayoutNeutralityTests
 {
     private static LayoutContext Context(AppCustomization? customization = null)
     {
-        var settings = customization ?? AppCustomization.Default;
+        // `nologin` is part of the promise, not an incidental default. The guarantee is
+        // that a NAMED layout with NO login reproduces the pre-auth output byte for byte;
+        // with a login those layouts legitimately gain a login window, a Users pane and a
+        // sign-out control, which SignOutReachableTests covers.
+        var settings = (customization ?? AppCustomization.Default) with { Login = false };
 
         return new LayoutContext(
             RootNamespace: "Payroll",
@@ -58,7 +62,10 @@ public class WpfLayoutNeutralityTests
     [TestMethod]
     public void WpfTarget_DefaultsToTheTabsLayoutOutput()
     {
-        var files = new WpfTarget().FrontEndFiles("Payroll", ["Employee"], AppCustomization.Default);
+        // `nologin`, because that is the promise: a build that names no layout and asks for no
+        // login is the one that must reproduce the pre-auth output byte for byte.
+        var files = new WpfTarget().FrontEndFiles(
+            "Payroll", ["Employee"], AppCustomization.Default with { Login = false });
 
         Assert.AreEqual(
             MainWindowTemplate.Xaml("Payroll", "Payroll", themed: false, iconFileName: null),

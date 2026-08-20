@@ -1,4 +1,4 @@
-namespace AppScaffolding.Layouts.WinForms;
+﻿namespace AppScaffolding.Layouts.WinForms;
 
 /// <summary>
 /// The per-entity pane the non-tabbed WinForms layouts share.
@@ -21,8 +21,30 @@ public static class WinFormsPaneCode
     /// MainForm class body. With <paramref name="withPropertyGrid"/> the pane carries a
     /// PropertyGrid bound to the current row.
     /// </summary>
-    public static string BuildPaneMethod(ThemePalette? palette, bool withPropertyGrid = false)
+    public static string BuildPaneMethod(
+        ThemePalette? palette, bool withPropertyGrid = false, bool login = false)
     {
+        // Into the existing button row rather than a row of its own: the pane's
+        // TableLayoutPanel has two different row shapes here, and threading a fourth through
+        // both buys nothing a right-aligned button does not. Flow is right-to-left, so adding
+        // it first puts it at the far edge, away from Save.
+        //
+        // FindForm() because this builder is static and the button is in the form's tree by
+        // the time it can be clicked; Close() as well as the flag, because the entry point's
+        // loop only regains control when the shell closes.
+        var signOut = login
+            ? """
+
+            var signOut = new Button { Text = "Sign out", Width = 88 };
+            signOut.Click += (s, _) =>
+            {
+                Session.RequestSignOut();
+                ((Control)s!).FindForm()?.Close();
+            };
+            buttons.Controls.Add(signOut);
+"""
+            : string.Empty;
+
         var gridColours = palette is null
             ? string.Empty
             : $$"""
@@ -130,6 +152,7 @@ public static class WinFormsPaneCode
             Dock = DockStyle.Fill,
             FlowDirection = FlowDirection.RightToLeft,
         };
+{{signOut}}
         buttons.Controls.Add(save);
         buttons.Controls.Add(delete);
         buttons.Controls.Add(add);

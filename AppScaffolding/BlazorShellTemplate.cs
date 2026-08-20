@@ -50,7 +50,7 @@ public static class BlazorShellTemplate
     /// names, so each file that authorizes brings its own using.
     /// </summary>
     private static string NavUsings(bool login)
-        => login ? "@using Microsoft.AspNetCore.Components.Authorization\n\n" : string.Empty;
+        => login ? "@using Microsoft.AspNetCore.Components.Authorization\r\n\r\n" : string.Empty;
 
     /// <summary>
     /// The Users link, shown only to an administrator.
@@ -141,7 +141,7 @@ public static class BlazorShellTemplate
     /// with no login.</summary>
     private static string HomeAuthorize(bool login)
         => login
-            ? "\n@using Microsoft.AspNetCore.Authorization\n@attribute [Authorize]"
+            ? "\r\n@using Microsoft.AspNetCore.Authorization\r\n@attribute [Authorize]"
             : string.Empty;
 
     private static string Summary(IReadOnlyList<string> classNames)

@@ -1,4 +1,4 @@
-namespace AppScaffolding.Layouts.WinForms;
+﻿namespace AppScaffolding.Layouts.WinForms;
 
 /// <summary>A navigation list of entities docked left, the selected entity's pane filling the rest.</summary>
 public sealed class WinFormsSidebarLayout : IAppLayout
@@ -14,6 +14,10 @@ public sealed class WinFormsSidebarLayout : IAppLayout
 
     private static string Source(LayoutContext context)
     {
+        var authUsing = context.Customization.Login
+            ? $"using {context.RootNamespace}.Auth;\r\n"
+            : string.Empty;
+
         var formColours = context.Palette is null
             ? string.Empty
             : $$"""
@@ -39,7 +43,7 @@ using System.ComponentModel;
 using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
-using {{context.RootNamespace}}.ViewModels;
+{{authUsing}}using {{context.RootNamespace}}.ViewModels;
 
 namespace {{context.RootNamespace}}.Views;
 
@@ -92,7 +96,7 @@ public sealed class MainForm : Form
             list.SelectedIndex = 0;
     }
 
-{{WinFormsPaneCode.BuildPaneMethod(context.Palette)}}
+{{WinFormsPaneCode.BuildPaneMethod(context.Palette, login: context.Customization.Login)}}
 }
 """;
     }

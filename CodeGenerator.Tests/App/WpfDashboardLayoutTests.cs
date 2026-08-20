@@ -161,13 +161,25 @@ public class WpfDashboardLayoutTests
         StringAssert.Contains(CodeBehind(), "\n    private void OnHome(");
     }
 
+    /// <summary>The static session the emitted sign-out handler calls.</summary>
+    private const string SessionStub = """
+        namespace Payroll.Auth;
+
+        public static class Session
+        {
+            public static bool SignOutRequested { get; private set; }
+            public static void RequestSignOut() => SignOutRequested = true;
+        }
+        """;
+
     [TestMethod]
     public void CodeBehindCompiles()
     {
         EmittedDesktopSource.AssertCompilesTogether(
             ("Views/MainWindow.xaml.cs", CodeBehind()),
             ("Views/MainWindow.g.cs", XamlPartialStub),
-            ("ViewModels/MainViewModel.cs", ViewModelStub));
+            ("ViewModels/MainViewModel.cs", ViewModelStub),
+            ("Auth/Session.cs", SessionStub));
     }
 
     [TestMethod]
