@@ -1,4 +1,4 @@
-using CodeGenerationEngine.Models;
+﻿using CodeGenerationEngine.Models;
 using DomainDiscovery.Model;
 
 namespace AppScaffolding;
@@ -77,11 +77,35 @@ public static class DomainModelMapper
     /// </remarks>
     public static IReadOnlyList<ClassDefinition> ToClassDefinitions(
         CandidateDomainModel model, out IReadOnlyDictionary<string, string> classNames)
+        => ToClassDefinitions(model, out classNames, reserved: []);
+
+    /// <summary>
+    /// As above, with <paramref name="reserved"/> naming classes the generated app already
+    /// declares, so a discovered entity of the same name is renamed rather than colliding.
+    /// </summary>
+    /// <remarks>
+    /// The auth core emits its own <c>User</c>. Without this, a model that discovered a User
+    /// entity had that class OVERWRITTEN by the auth model -- its repository, validator, seed
+    /// rows and view model then compiled against the wrong shape -- and under SQLite the entity
+    /// list gained a second "User" and AppDbContext emitted DbSet&lt;User&gt; twice (CS0102).
+    /// <para>
+    /// Passed in rather than added to <see cref="ReservedNames"/>, because the collision only
+    /// exists when the app HAS an auth core: a `nologin` build must still emit the entity under
+    /// the name the user described, or its output stops matching what the generator produced
+    /// before any of this existed.
+    /// </para>
+    /// </remarks>
+    public static IReadOnlyList<ClassDefinition> ToClassDefinitions(
+        CandidateDomainModel model,
+        out IReadOnlyDictionary<string, string> classNames,
+        IReadOnlyCollection<string> reserved)
     {
         var classes = new List<ClassDefinition>();
 
         // Class names double as file names, and Windows file names are case-insensitive.
         var usedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+
 
         // Entity name -> generated class name. A relationship names its target by ENTITY name, but
         // a nav property must be typed by the CLASS name, and ToUniqueClassName can rename one
@@ -91,7 +115,7 @@ public static class DomainModelMapper
 
         foreach (var entity in model.Entities)
         {
-            var className = ToUniqueClassName(entity.Name, usedNames);
+            var className = ToUniqueClassName(entity.Name, usedNames, reserved);
             names[entity.Name] = className;
 
             var definition = new ClassDefinition { Name = className };
@@ -283,11 +307,17 @@ public static class DomainModelMapper
     /// reserved identifier nor a name already taken by an earlier entity, and records it
     /// in <paramref name="usedNames"/>.
     /// </summary>
-    private static string ToUniqueClassName(string entityName, HashSet<string> usedNames)
+    private static string ToUniqueClassName(
+        string entityName, HashSet<string> usedNames, IReadOnlyCollection<string> reserved)
     {
-        var baseName = ReservedNames.Contains(entityName) || IsValidatorName(entityName)
-            ? entityName + DisambiguatingSuffix
-            : entityName;
+        // The caller's reserved names take the same suffix the built-in ones do, rather than
+        // the numeric fallback: "User" becomes "UserItem" like "Type" becomes "TypeItem",
+        // because "User2" reads as a second user rather than as a renamed class.
+        var isReserved = ReservedNames.Contains(entityName)
+            || reserved.Contains(entityName, StringComparer.OrdinalIgnoreCase)
+            || IsValidatorName(entityName);
+
+        var baseName = isReserved ? entityName + DisambiguatingSuffix : entityName;
 
         var candidate = baseName;
         for (var n = 2; !usedNames.Add(candidate); n++)

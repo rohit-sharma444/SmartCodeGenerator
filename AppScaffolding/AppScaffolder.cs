@@ -284,7 +284,13 @@ public sealed class AppScaffolder
         // same WriteSource, and a `//` banner would corrupt both.
         var header = FileHeader.For(request.Customization.Company, request.Year);
 
-        var classes = DomainModelMapper.ToClassDefinitions(model, out var classNames);
+        // Decided here rather than beside the file list further down: the auth core occupies
+        // the name "User", and a discovered entity can only be renamed around it if that is
+        // known before the classes are built.
+        var auth = request.Customization.Login && target.HasScreens;
+
+        var classes = DomainModelMapper.ToClassDefinitions(
+            model, out var classNames, auth ? AuthCoreFiles.ReservedNames : []);
 
         // Through GeneratedProjectPath, not composed here, so the CLI's overwrite guard and this
         // writer cannot drift apart — see that type's remarks.
@@ -404,9 +410,8 @@ public sealed class AppScaffolder
 
         // The auth core, for a target that has screens to gate. Emitted here rather than by
         // each target because all three UI targets receive identical files -- only the login
-        // VIEW differs, and that stays with the target.
-        var auth = customization.Login && target.HasScreens;
-
+        // VIEW differs, and that stays with the target. `auth` was decided before the classes
+        // were mapped, because it also reserves the name "User".
         if (auth)
         {
             foreach (var file in AuthCoreFiles.For(rootNamespace))
@@ -550,8 +555,18 @@ public sealed class AppScaffolder
 
         var allWritten = written.Count == expected;
 
+        // A renamed entity is reported, never silent: the user described a class by one name and
+        // the app declares it under another, so without this they go looking for something that
+        // is not there.
+        var renamed = classNames
+            .Where(pair => !string.Equals(pair.Key, pair.Value, StringComparison.Ordinal))
+            .Select(pair => $"{pair.Key} was renamed to {pair.Value}")
+            .ToList();
+
+        var renameNote = renamed.Count == 0 ? string.Empty : " " + string.Join("; ", renamed) + ".";
+
         var message = allWritten
-            ? $"Generated {classes.Count} class(es) + {target.Description}."
+            ? $"Generated {classes.Count} class(es) + {target.Description}.{renameNote}"
             : $"Generated {written.Count} of {expected} file(s); " +
               "some files could not be written.";
 
