@@ -378,6 +378,10 @@ body {
 }
 
 .review { display: grid; grid-template-columns: 1fr 220px; gap: 1.5rem; }
+/* 240 kept, because the card was never the problem — the columns were. With the action track at
+   2rem rather than 5.5rem the name column comes out at about 100px, which fits the field names the
+   generator produces, and three cards still fit across the panel: 260 measured one card per row
+   worse (808px of room, and three 260s want 812), which is scrolling on a twenty-class model. */
 .entities { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 1rem; }
 
 .entity { border: 1px solid var(--line); border-radius: 6px; padding: 0.75rem; }
@@ -386,9 +390,68 @@ body {
 .entity-name:focus { border-color: var(--active); background: #fff; }
 
 .provenance { font-size: 0.72em; text-transform: uppercase; color: var(--pending); }
+/* The model, as a table rather than as sentences.
+   Every field row shares one set of column tracks — name, type, remove — so the types line up down
+   the card and the remove buttons make a single edge. Flex put each row's type wherever that row's
+   name happened to end (measured: 164, 164, 220, 175 down one four-field card), which reads as
+   ragged text where the whole point is a column of data you can scan.
+   Tracks on the ROW rather than the list, keeping the <li> boxes: `display: contents` on a list
+   item would line the columns up too, and take the list semantics out of the accessibility tree
+   with it. A fixed type column is what makes identical tracks align across rows — wide enough for
+   DateTime, the longest of the five ModelEditor accepts. */
 .fields { list-style: none; padding: 0; margin: 0.5rem 0; }
-.fields li { display: flex; gap: 0.5rem; align-items: baseline; }
+
+.fields li {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 4.5rem 2rem;
+    gap: 0.4rem;
+    align-items: baseline;
+    padding: 0.1rem 0;
+}
+
+/* Left of its cell, so the crosses make a column with the button below them rather than drifting
+   out to the card's edge. */
+.fields .unfield { justify-self: start; }
+
 .field-type { font-size: 0.8em; color: var(--pending); }
+
+/* minmax(0, ...) above rather than a bare 1fr, because a bare 1fr keeps an automatic MINIMUM: a row
+   whose field name is longer than its fair share widened its own first column, and the types went
+   back to stepping down the card one row at a time. Zero minimum means every row resolves to the
+   same tracks.
+   break-word, not anywhere: a name too long for its column should wrap rather than overflow, but
+   `anywhere` broke ordinary names mid-word — "Publish/edOn" — which reads worse than anything this
+   was fixing. */
+.field-name { overflow-wrap: break-word; }
+
+/* The same three tracks, so the row that adds a field lines up under the fields it adds to: a name,
+   its type, and the control at the end. The third track is fixed rather than `auto` because `auto`
+   sizes to its own content — the wider "add field" button shrank the name column and put this row
+   out of step with every row above it, which measurement caught and the eye would have too. */
+.add-field-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 4.5rem 2rem;
+    gap: 0.4rem;
+    align-items: center;
+    margin-top: 0.5rem;
+}
+
+/* Its own row, spanning: a button wide enough to read is wider than a column of crosses, and
+   letting it set the third track is what squeezed the names in the first place. */
+.add-field-row .add-field {
+    grid-column: 1 / -1;
+    justify-self: start;
+    white-space: nowrap;
+}
+
+.add-field-row .field-name,
+.add-field-row .field-type {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    font: inherit;
+    font-size: 0.85em;
+}
 
 .suggestions button.promote { margin: 0 0.3rem 0.3rem 0; }
 .settled { grid-column: 2; font-size: 0.88em; }

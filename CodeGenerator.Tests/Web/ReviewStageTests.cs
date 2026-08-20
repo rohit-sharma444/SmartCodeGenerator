@@ -214,6 +214,43 @@ public class ReviewStageTests
         StringAssert.Contains(echo, "approve ");
     }
 
+    /// <summary>
+    /// The three columns the card's grid draws are positional: name, then type, then the control.
+    /// Reordering the markup would leave the CSS quietly putting a type under a name — which a
+    /// screenshot shows and no other test would.
+    /// </summary>
+    [TestMethod]
+    public void A_field_row_is_a_name_then_a_type_then_its_remove()
+    {
+        using var context = new BunitContext();
+
+        var row = Render(context, out _).Find("[data-entity=Book] .fields li");
+
+        var cells = row.Children.Select(c => c.ClassName).ToList();
+
+        Assert.HasCount(3, cells);
+        StringAssert.Contains(cells[0], "field-name");
+        StringAssert.Contains(cells[1], "field-type");
+        StringAssert.Contains(cells[2], "unfield");
+    }
+
+    /// <summary>The row that adds a field uses the same tracks, so it carries the same three in the
+    /// same order — a name, its type, and the control.</summary>
+    [TestMethod]
+    public void The_add_row_carries_the_same_three_in_the_same_order()
+    {
+        using var context = new BunitContext();
+
+        var row = Render(context, out _).Find("[data-entity=Book] .add-field-row");
+
+        var cells = row.Children.Select(c => c.ClassName).ToList();
+
+        Assert.HasCount(3, cells);
+        StringAssert.Contains(cells[0], "field-name");
+        StringAssert.Contains(cells[1], "field-type");
+        StringAssert.Contains(cells[2], "add-field");
+    }
+
     private static IRenderedComponent<ReviewStage> Render(
         BunitContext context, out BuildSession session, StageNavigation? navigation = null)
     {
