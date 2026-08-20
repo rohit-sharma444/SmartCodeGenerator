@@ -212,6 +212,28 @@ body {
 .fields label,
 .file label { display: block; margin: 0.4rem 0; }
 
+/* One width for every answer a panel asks for, so the boxes make a single line down the left and
+   another down the right instead of ending wherever their default size fell. Marked with a class
+   rather than matched by a selector: the review screen's entity cards hold inputs of their own that
+   must stay the width of the text in them, and CSS has no way to say "except inside those" as
+   plainly as naming the ones that line up. */
+.panel .answer {
+    display: block;
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 34rem;
+    margin: 0.15rem 0 0;
+    padding: 0.4rem 0.5rem;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: #fff;
+
+    /* Inherited, or a select renders in the browser's own UI font beside inputs that do not. */
+    font: inherit;
+}
+
+.panel textarea.answer { resize: vertical; }
+
 /* The run as a line to copy. Monospace and wrapping: a path with spaces in it must be readable
    whole, and a horizontal scrollbar in a sidebar hides the end of the command. */
 .command-echo {

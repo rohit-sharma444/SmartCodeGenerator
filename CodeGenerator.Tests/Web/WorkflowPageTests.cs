@@ -293,8 +293,10 @@ public class WorkflowPageTests
         var page = context.Render<BuildWorkflow>();
 
         var title = page.FindComponent<Microsoft.AspNetCore.Components.Web.PageTitle>();
+        var content = title.Instance.ChildContent;
 
-        StringAssert.Contains(context.Render(title.Instance.ChildContent).Markup, "App type");
+        Assert.IsNotNull(content, "the page set a title with nothing in it");
+        StringAssert.Contains(context.Render(content).Markup, "App type");
     }
 
     /// <summary>A session parked on the review node, where the step forward is named.</summary>

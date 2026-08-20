@@ -18,7 +18,7 @@
         {
             <label>
                 Layout
-                <select class="layout" value="@_layout"
+                <select class="layout answer" value="@_layout"
                         @onchange="e => _layout = e.Value?.ToString() ?? _layout">
                     @foreach (var key in AppLayoutCatalog.Keys)
                     {
@@ -29,11 +29,11 @@
         }
 
         <label>Company
-            <input class="company" value="@_company"
+            <input class="company answer" value="@_company"
                    @onchange="e => _company = e.Value?.ToString() ?? string.Empty" /></label>
 
         <label>Theme
-            <select class="theme" value="@_theme"
+            <select class="theme answer" value="@_theme"
                     @onchange="e => _theme = e.Value?.ToString() ?? _theme">
                 <option value="default">none</option>
                 <option value="light">light</option>
@@ -41,7 +41,7 @@
             </select></label>
 
         <label>Accent colour
-            <input class="accent" value="@_accent" placeholder="#rrggbb"
+            <input class="accent answer" value="@_accent" placeholder="#rrggbb"
                    @onchange="e => _accent = e.Value?.ToString() ?? string.Empty" />
             @if (AccentError is not null)
             {
@@ -50,15 +50,15 @@
         </label>
 
         <label>Icon path
-            <input class="icon" value="@_icon"
+            <input class="icon answer" value="@_icon"
                    @onchange="e => _icon = e.Value?.ToString() ?? string.Empty" /></label>
 
         <label>Window title
-            <input class="title" value="@_title"
+            <input class="title answer" value="@_title"
                    @onchange="e => _title = e.Value?.ToString() ?? string.Empty" /></label>
 
         <label>Namespace prefix
-            <input class="prefix" value="@_prefix"
+            <input class="prefix answer" value="@_prefix"
                    @onchange="e => _prefix = e.Value?.ToString() ?? string.Empty" />
             @if (PrefixError is not null)
             {

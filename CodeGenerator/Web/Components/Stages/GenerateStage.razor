@@ -10,7 +10,7 @@
     <p>Ready to write <strong>@_name</strong>.</p>
 
     <label>Name
-        <input class="app-name" value="@_name" @onchange="NameTyped" />
+        <input class="app-name answer" value="@_name" @onchange="NameTyped" />
     </label>
 
     @* Hidden rather than offered-and-refused: WPF and WinForms read JsonStore directly off the
@@ -18,7 +18,7 @@
     @if (BuildAppCommand.IsPersistenceAllowed(Target, PersistenceKind.Sqlite))
     {
         <label>Persistence
-            <select class="persistence" @onchange="PersistenceChosen">
+            <select class="persistence answer" @onchange="PersistenceChosen">
                 <option value="json">JSON</option>
                 <option value="sqlite">SQLite</option>
             </select>

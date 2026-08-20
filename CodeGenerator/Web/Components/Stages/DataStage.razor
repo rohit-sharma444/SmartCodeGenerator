@@ -22,7 +22,7 @@
     <div class="file">
         <label>
             Format
-            <select value="@_format" @onchange="e => _format = e.Value?.ToString() ?? _format">
+            <select class="answer" value="@_format" @onchange="e => _format = e.Value?.ToString() ?? _format">
                 @foreach (var key in DataSourceReaders.Keys)
                 {
                     <option value="@key" disabled="@(!Readable(key))">@Label(key)</option>
@@ -34,7 +34,7 @@
            what DataSourceSpec.Location holds. The drop zone below is the convenience. *@
         <label>
             Path
-            <input class="path" value="@_path" @onchange="PathGiven" />
+            <input class="path answer" value="@_path" @onchange="PathGiven" />
         </label>
 
         @if (_peek is not null)
@@ -44,7 +44,7 @@
             <p class="peek" aria-live="polite">@_peek</p>
         }
 
-        <InputFile OnChange="Upload" class="drop" />
+        <InputFile OnChange="Upload" class="drop answer" />
         <span class="hint">…or drop a file here to copy it into the workspace cache.</span>
     </div>
 }

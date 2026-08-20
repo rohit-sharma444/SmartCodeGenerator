@@ -8,7 +8,7 @@
 
 @* Enter belongs to the textarea: the page takes a plain step on Enter, and a description is
    the one answer on this workflow where a new line is a sentence and not a decision. *@
-<textarea rows="4" value="@_text" @onchange="e => _text = e.Value?.ToString() ?? string.Empty"
+<textarea class="answer" rows="4" value="@_text" @onchange="e => _text = e.Value?.ToString() ?? string.Empty"
           @onkeydown="Typed" @onkeydown:stopPropagation="true">
 </textarea>
 
