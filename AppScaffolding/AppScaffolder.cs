@@ -479,7 +479,8 @@ public sealed class AppScaffolder
         }
 
         // Target-specific front-end / entry point.
-        foreach (var file in target.FrontEndFiles(projectName, entityNames, customization))
+        foreach (var file in target.FrontEndFiles(
+                     new FrontEndContext(projectName, entityNames, customization, roles)))
             files.Add((Path.Combine(outputFolder, file.RelativeFolder), file.Name, file.Source));
 
         foreach (var (folder, name, source) in files)

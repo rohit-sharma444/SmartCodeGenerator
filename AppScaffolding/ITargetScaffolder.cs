@@ -40,6 +40,16 @@ public interface ITargetScaffolder
         => FrontEndFiles(projectName, entityNames);
 
     /// <summary>
+    /// As the overloads above, for a target whose front end varies with the entities' roles.
+    /// </summary>
+    /// <remarks>
+    /// A default interface method like its neighbours: a target that does not care about roles
+    /// needs no change, and the four screenless ones never will.
+    /// </remarks>
+    IReadOnlyList<GeneratedFile> FrontEndFiles(FrontEndContext context)
+        => FrontEndFiles(context.ProjectName, context.EntityNames, context.Customization);
+
+    /// <summary>
     /// Whether this target produces a user interface that a login could stand in front of.
     /// </summary>
     /// <remarks>
