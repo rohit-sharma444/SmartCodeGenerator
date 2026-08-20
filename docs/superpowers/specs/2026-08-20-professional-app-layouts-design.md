@@ -350,29 +350,37 @@ interaction wins.
 
 ## Delivery
 
-Four sequenced branches, each its own plan and pull request. The pieces are not
-independent, which is why they share one design document, but each branch leaves
-the repository green and shippable.
+**Two branches, not four.** The auth core shipped on its own; everything else
+ships together.
 
-1. **Auth core and login.** `User`, hashing, roles, seeded admin, the
-   split-panel login in all three targets, the Users pane inside the existing
-   layouts, the `nologin` flag. Universal, so everything else builds on it.
-2. **Entity classification.** `EntityRole`, the heuristic, the `transactions` and
-   `masters` overrides, the wizard prompt, the help catalogue, the manual, the
-   build summary line.
-3. **The shell and the master screens.** Grouped rail, grouped dashboard home,
-   header, role filtering, the `business` layout key and the default flip —
-   plus the read-only list and the dedicated editor, because masters now use
-   them and a shell whose master screens cannot be edited is not shippable.
-4. **Transaction screens.** What a transaction adds on top of a master: the
-   filter bar, the column totals, and the lines grid inside the editor, with
-   the no-lines fallback.
+1. **Auth core and login** *(shipped — PR #104)*. `User`, hashing, roles, seeded
+   admin, the split-panel login in all three targets, the Users pane inside the
+   existing layouts, the `nologin` flag. Universal, so everything else builds on
+   it, and independently valuable: a generated application gained a real sign-in
+   without any of the screens below existing.
+2. **The screens.** Classification, the shell, the master screens and the
+   transaction screens, in that order, as one branch:
+   - `EntityRole`, the heuristic, the `transactions` and `masters` overrides, the
+     wizard prompt, the help catalogue, the manual, the build summary line.
+   - The grouped rail, the grouped dashboard home, the header, role filtering,
+     the `business` layout key and the default flip.
+   - The read-only list and the dedicated editor, shared by both kinds of screen.
+   - What a transaction adds on top of a master: the filter bar, the column
+     totals, and the lines grid inside the editor, with the no-lines fallback.
 
-The editor moved from branch 4 to branch 3 when the master screen became a
-list-and-editor rather than a grid-and-form. That is the whole reason the two
-branches are worth splitting this way: branch 3 builds the shared mechanism,
-and branch 4 becomes a much smaller increment on top of it than it would have
-been against a separate master interaction.
+**Why these are one branch and not three.** They were planned as three, and the
+split turned out to be artificial in a way worth recording. Classification alone
+delivers nothing anyone can see — a role assigned to every entity, whose only
+visible output is a summary line — because the screens that read it do not exist
+yet. The editor is shared between masters and transactions, so it had already
+migrated from the last branch to the middle one. And the default flip is only
+defensible once the screens it flips to are all present: shipping a `business`
+layout whose transaction screens are still plain grids would make the generator
+worse, not better, for exactly as long as it took to finish.
+
+What the split was buying was reviewability, and that is paid for differently:
+one commit per task, and the default flip in a commit of its own near the end,
+so the riskiest change can be reverted without unpicking the rest.
 
 ## Testing
 
