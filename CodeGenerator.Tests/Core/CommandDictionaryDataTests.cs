@@ -84,6 +84,7 @@ public class CommandDictionaryDataTests
                  {
                      "company", "theme", "accent", "icon", "title", "namespace", "layout",
                      "novalidation", "logging", "noseed", "nologin",
+                     "transactions", "masters",
                  })
         {
             StringAssert.Contains(buildApp, option, $"'{option}' is not in the help catalog.");

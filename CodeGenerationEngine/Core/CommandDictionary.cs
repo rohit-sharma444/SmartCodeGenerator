@@ -611,6 +611,19 @@ public static class CommandDictionary
                         + "which remembers your answers in .codegen/app-profile.json.",
             Example = "build app: a shop novalidation logging noseed nologin"
         },
+        new()
+        {
+            Category = "Build App",
+            Command = "build app: <description> [transactions <A,B>] [masters <A,B>]",
+            Description = "Overrules how the generator split your model into screens. It "
+                        + "decides by itself which classes are transactions (a class with a "
+                        + "foreign key AND either a date of its own or a transactional name) "
+                        + "and which are masters (everything else); these name the ones it got "
+                        + "wrong. Comma-joined with no spaces, or quoted. Naming a line entity "
+                        + "as a master gives it a screen of its own instead of editing it "
+                        + "inside its parent.",
+            Example = "build app: a shop transactions Order,Invoice masters Region"
+        },
         // The rest of this category is only valid at the review-loop prompt that
         // `build app:` opens, not at the main CodeGenerator prompt.
         new()

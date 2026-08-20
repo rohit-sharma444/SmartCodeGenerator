@@ -73,6 +73,12 @@ internal static class BuildCommandEcho
         if (customization.Layout is { } layout)
             options += $" layout {LayoutWord(layout)}";
 
+        if (customization.Transactions.Length > 0)
+            options += $" transactions {customization.Transactions}";
+
+        if (customization.Masters.Length > 0)
+            options += $" masters {customization.Masters}";
+
         if (!customization.Validation)
             options += " novalidation";
 

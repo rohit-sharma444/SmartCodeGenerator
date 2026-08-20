@@ -73,6 +73,21 @@ internal static class CustomizationMenus
                 layout = chosen;
         }
 
+        // Beside the layout question: both are about the SHAPE of the app rather than its
+        // appearance. "None" means decide automatically, which is what it means for every
+        // other optional value here.
+        var transactions = AskValue(
+            reader, writer, choose, "Transactions", start.Transactions, "Keep", "Type names");
+
+        if (transactions is null)
+            return null;
+
+        var masters = AskValue(
+            reader, writer, choose, "Masters", start.Masters, "Keep", "Type names");
+
+        if (masters is null)
+            return null;
+
         var company = AskValue(
             reader, writer, choose, "Company name", start.Company, "Keep", "Type a name");
 
@@ -185,6 +200,18 @@ internal static class CustomizationMenus
             Validation = validation.Value,
             Logging = logging.Value,
             SampleSeedData = seed.Value,
+            Transactions = transactions.Value.Choice switch
+            {
+                ValueChoice.Kept => start.Transactions,
+                ValueChoice.None => string.Empty,
+                _ => transactions.Value.Text,
+            },
+            Masters = masters.Value.Choice switch
+            {
+                ValueChoice.Kept => start.Masters,
+                ValueChoice.None => string.Empty,
+                _ => masters.Value.Text,
+            },
             Login = login.Value,
         };
     }

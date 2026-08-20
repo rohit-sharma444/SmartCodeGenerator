@@ -98,6 +98,19 @@ internal static class CustomizationWizard
             }
         }
 
+        // Asked beside the layout, because both are about the SHAPE of the app rather than its
+        // appearance. Blank means "decide automatically", which is what NoneLabel already
+        // means for the optional values below.
+        var transactions = Ask(
+            reader, writer, "Transactions",
+            start.Transactions.Length == 0 ? NoneLabel : start.Transactions);
+        if (transactions is null) return null;
+
+        var masters = Ask(
+            reader, writer, "Masters",
+            start.Masters.Length == 0 ? NoneLabel : start.Masters);
+        if (masters is null) return null;
+
         var company = Ask(reader, writer, "Company name", start.Company);
         if (company is null) return null;
 
@@ -167,6 +180,8 @@ internal static class CustomizationWizard
             Logging = logging.Value,
             SampleSeedData = seed.Value,
             Login = login.Value,
+            Transactions = ParseOptional(transactions, start.Transactions) ?? string.Empty,
+            Masters = ParseOptional(masters, start.Masters) ?? string.Empty,
         };
     }
 

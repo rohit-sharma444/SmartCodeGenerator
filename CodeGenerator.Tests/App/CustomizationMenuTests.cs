@@ -58,6 +58,7 @@ public class CustomizationMenuTests
     /// <summary>The questions asked after the gate, in order, for a target with no window.</summary>
     private static readonly string[] Questions =
     [
+        "Transactions", "Masters",
         "Company name", "Theme", "Accent colour", "Icon", "Window title", "Namespace prefix",
         "Validation layer", "Logging", "Sample seed data", "Require a login",
     ];

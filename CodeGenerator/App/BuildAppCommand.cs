@@ -223,6 +223,7 @@ internal sealed class BuildAppCommand
     internal const string InlineOptionsHelp =
         "Options (last on the line): company \"<name>\"  theme light|dark  "
         + "accent #rrggbb  icon <path>  title \"<pattern>\"  "
+        + "transactions <A,B>  masters <A,B>  "
         + "novalidation  logging  noseed  nologin";
 
     /// <summary>The unchanged path: NLE seeds, Wikipedia topic, enrichment, review loop.</summary>

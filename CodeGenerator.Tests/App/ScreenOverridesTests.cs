@@ -1,4 +1,4 @@
-using AppScaffolding;
+﻿using AppScaffolding;
 using AppScaffolding.Screens;
 using CodeGenerationEngine.Models;
 using CodeGenerator.App;
@@ -134,6 +134,33 @@ public class ScreenOverridesTests
         Assert.AreEqual("a shop transactions \"\"", remaining);
         Assert.AreEqual(string.Empty, customization.Transactions);
     }
+
+    /// <summary>Every surface the other options reach. An option the help does not mention is an
+    /// option nobody finds.</summary>
+    [TestMethod]
+    public void The_inline_options_help_line_lists_both_keys()
+    {
+        StringAssert.Contains(BuildAppCommand.InlineOptionsHelp, "transactions");
+        StringAssert.Contains(BuildAppCommand.InlineOptionsHelp, "masters");
+    }
+
+    [TestMethod]
+    public void The_summary_reports_the_overrides()
+    {
+        var lines = CustomizationSummary.Lines(
+            AppCustomization.Default with { Transactions = "Order", Masters = "Region" });
+
+        Assert.IsTrue(lines.Any(l => l.Contains("Order", StringComparison.Ordinal)));
+        Assert.IsTrue(lines.Any(l => l.Contains("Region", StringComparison.Ordinal)));
+    }
+
+    /// <summary>Only differences from the default are listed, and by default nothing is
+    /// overridden.</summary>
+    [TestMethod]
+    public void The_summary_stays_silent_when_nothing_is_overridden()
+        => Assert.IsFalse(
+            CustomizationSummary.Lines(AppCustomization.Default)
+                .Any(l => l.Contains("ransaction", StringComparison.Ordinal)));
 
     /// <summary>The record is compared by value across the existing suite; a collection member
     /// would break that silently, which is why these are strings.</summary>
