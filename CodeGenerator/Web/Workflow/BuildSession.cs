@@ -197,10 +197,36 @@ public sealed class BuildSession
         Changed?.Invoke();
     }
 
-    /// <summary>Records that the run stage started it.</summary>
-    public void MarkStarted()
+    /// <summary>
+    /// The process the run stage started, while it is still ours to stop. Null before a run, and
+    /// again once it has been stopped.
+    /// </summary>
+    /// <remarks>
+    /// On the session rather than the panel because a reload builds a new panel, and an app the
+    /// user can no longer stop from the page is an app holding a <c>bin</c> folder that the next
+    /// build needs.
+    /// </remarks>
+    public int? StartedProcessId { get; private set; }
+
+    /// <summary>Records that the run stage started it, and what it started.</summary>
+    public void MarkStarted(int? processId = null)
     {
         Started = true;
+        StartedProcessId = processId is > 0 ? processId : null;
+
+        Changed?.Invoke();
+    }
+
+    /// <summary>
+    /// Forgets the process, the app having been stopped.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="Started"/> stays true: the run happened, and the node holds that answer. What is
+    /// gone is only the offer to stop something that is no longer there.
+    /// </remarks>
+    public void MarkStopped()
+    {
+        StartedProcessId = null;
 
         Changed?.Invoke();
     }

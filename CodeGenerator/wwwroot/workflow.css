@@ -248,6 +248,13 @@ body {
 
 .actions .cancel { color: var(--pending); }
 
+/* Quiet, not loud: stopping is the useful thing to be able to do, never the thing to be nudged
+   towards. It sits beside the loud Run button and must not compete with it. */
+.actions .stop {
+    border-color: var(--failed);
+    color: var(--failed);
+}
+
 .panel {
     padding: 1.25rem 1.5rem;
     border: 1px solid var(--line);
