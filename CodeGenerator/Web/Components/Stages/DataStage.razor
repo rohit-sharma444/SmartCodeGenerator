@@ -86,20 +86,48 @@
     private static string Label(string key)
         => Readable(key) ? key : $"{key} — not in this build yet";
 
+    /// <summary>
+    /// Copies a dropped file into the workspace cache.
+    /// </summary>
+    /// <remarks>
+    /// Everything here can fail at the user rather than at the developer: a file over the cap, a
+    /// workspace path too long for Windows, a folder that cannot be written. Thrown from a handler
+    /// it took the circuit with it — the page froze and the console was told the tab had closed —
+    /// so a spreadsheet that is too big is reported as the sentence it is.
+    /// </remarks>
     private async Task Upload(InputFileChangeEventArgs args)
     {
-        var folder = Path.Combine(Session.WorkspaceRoot, ".dd-cache", "uploads");
-        Directory.CreateDirectory(folder);
+        // Checked before opening, because the reason is worth saying and the answer is worth
+        // offering: nothing needs copying at all when the file is already on this machine.
+        if (args.File.Size > MaxUpload)
+        {
+            _error = $"That file is {Megabytes(args.File.Size)}, and the limit for a drop is "
+                     + "10 MB. Put its path in the path box instead — the server is this machine, "
+                     + "so the file does not need copying anywhere.";
+            return;
+        }
 
-        var destination = Path.Combine(folder, args.File.Name);
+        try
+        {
+            var folder = Path.Combine(Session.WorkspaceRoot, ".dd-cache", "uploads");
+            Directory.CreateDirectory(folder);
 
-        await using var source = args.File.OpenReadStream(MaxUpload);
-        await using var target = File.Create(destination);
-        await source.CopyToAsync(target);
+            var destination = Path.Combine(folder, args.File.Name);
 
-        _path = destination;
-        _error = null;
+            await using var source = args.File.OpenReadStream(MaxUpload);
+            await using var target = File.Create(destination);
+            await source.CopyToAsync(target);
+
+            _path = destination;
+            _error = null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _error = PanelFailure.Explain(ex);
+        }
     }
+
+    private static string Megabytes(long bytes) => $"{bytes / 1024d / 1024d:0.#} MB";
 
     private Task<bool> Next()
     {

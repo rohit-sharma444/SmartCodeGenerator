@@ -63,6 +63,10 @@
             </div>
         }
 
+        @* Everything that reads a file or starts a process is inside this. A throw used to end
+           the circuit, which froze the page and had the console report a closed tab. *@
+        <PanelErrorBoundary @ref="_boundary" OnError="PanelFailed">
+            <ChildContent>
         @* Keyed on the stage, so revisiting a node builds a fresh panel rather than reusing the
            one next door with its draft fields still in it. *@
         @switch (Session.Current)
@@ -100,6 +104,16 @@
                           Navigation="_navigation" OnAdvance="Refresh" />
                 break;
         }
+            </ChildContent>
+            <ErrorContent>
+                @* The message itself is above, on the failure line, because the session records it
+                   and both tabs then say the same thing. *@
+                <p class="panel-broken" role="alert">
+                    This step could not finish. Its box is red — click it to try again, or a green
+                    box to change an answer first.
+                </p>
+            </ErrorContent>
+        </PanelErrorBoundary>
     </section>
 </main>
 
@@ -127,6 +141,9 @@
     /// </remarks>
     private BuildStage? _focused;
 
+    /// <summary>The boundary around the open panel, so a new stage can start clean.</summary>
+    private PanelErrorBoundary? _boundary;
+
     protected override void OnInitialized()
     {
         _navigation.Changed += Refresh;
@@ -146,6 +163,10 @@
 
         _focused = Session.Current;
 
+        // A new stage builds a new panel, so whatever the last one threw is behind us. Without
+        // this the boundary keeps showing its error content over every stage that follows.
+        _boundary?.Recover();
+
         try
         {
             await _panel.FocusAsync();
@@ -155,6 +176,20 @@
             // The tab went away between the render and the focus. There is nothing to focus and
             // nothing worth failing a workflow over.
         }
+    }
+
+    /// <summary>
+    /// Turns a panel that threw into a failed stage.
+    /// </summary>
+    /// <remarks>
+    /// Recorded on the session, so the diagram draws the node red and offers the way back it
+    /// already knows how to offer, and so the other tab is told as well.
+    /// </remarks>
+    private void PanelFailed(Exception exception)
+    {
+        PanelFailure.Report(Session, exception);
+
+        Refresh();
     }
 
     /// <summary>

@@ -76,4 +76,29 @@ public class DiscoveryStepTests
         if (read.Report.Findings.Count > 0)
             Assert.IsNotEmpty(model.Decisions);
     }
+
+    /// <summary>
+    /// A spreadsheet open in Excel is the ordinary case, and it throws IOException rather than
+    /// FileNotFoundException — which the catch here did not cover, so it escaped a component
+    /// handler and took the circuit with it. The doc comment promised "false with a message rather
+    /// than an exception" the whole time.
+    /// </summary>
+    [TestMethod]
+    public void A_file_another_program_is_holding_is_reported_rather_than_thrown()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"cg-locked-{Guid.NewGuid():N}.csv");
+        File.WriteAllText(path, "Name,Age" + Environment.NewLine + "Ada,36" + Environment.NewLine);
+
+        // Held exactly as Excel holds a workbook.
+        using (File.Open(path, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            var read = DiscoveryStep.TryRead(
+                new DataSourceSpec(DataSourceKind.Csv, path), out _, out var error);
+
+            Assert.IsFalse(read);
+            Assert.IsNotEmpty(error);
+        }
+
+        File.Delete(path);
+    }
 }
