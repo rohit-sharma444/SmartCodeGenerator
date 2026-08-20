@@ -703,7 +703,46 @@ ever <em>suggests</em> — it never runs a command you did not confirm.</p>
 
 <pre>build app: a shop that sells books nologin</pre>
 
-<h2>15. Troubleshooting</h2>
+<h2>15. Masters and transactions</h2>
+
+<p>A business application has two kinds of screen, and the generator works out which is which from
+   the model it discovered.</p>
+
+<p>A <strong>master</strong> is reference data &mdash; Customer, Product, Supplier, Category.
+   A <strong>transaction</strong> is a record that refers to reference data and happens at a
+   moment in time &mdash; Order, Invoice, Payment. The generator calls something a transaction when
+   it has <em>both</em> a foreign key to another class <em>and</em> either a date of its own or a
+   name it recognises (order, invoice, payment, booking and similar). Both halves are needed:
+   a foreign key alone would make an Address a transaction, and a date alone would make an
+   Employee with a hire date one. Everything else is a master, which is the safe answer &mdash; a
+   master screen is the ordinary list this generator has always produced.</p>
+
+<p>A third kind gets no screen at all. A <strong>line</strong> &mdash; OrderLine, InvoiceItem
+   &mdash; is a child of a transaction, named after it, and is edited inside its parent rather
+   than on a screen of its own.</p>
+
+<h3>What it decided</h3>
+
+<p>Every build says so, under the generated project path:</p>
+
+<pre>Screens: 2 masters, 1 transaction (Order has 1 line)</pre>
+
+<p>Read that line. A class in the wrong group is easy to correct and hard to notice later &mdash;
+   and a class listed as a line has no screen, which nothing else in the output would tell you.</p>
+
+<h3>Correcting it</h3>
+
+<p>Name the ones it got wrong. Comma-joined, with no spaces &mdash; or in quotes if you prefer
+   them:</p>
+
+<pre>build app: a shop that sells books transactions Order,Invoice masters Region</pre>
+
+<p>The wizard asks the same two questions, next to the layout question, and remembers your answers
+   in <code>.codegen/app-profile.json</code>. Naming a line entity as a master is how you give it a
+   screen of its own instead of editing it inside its parent. Naming a class both ways is a
+   contradiction, and master wins.</p>
+
+<h2>16. Troubleshooting</h2>
 <table>
 <tr><th>What you see</th><th>What it means</th></tr>
 <tr><td>Generated files are not where you expected</td><td><code>PROJECTPATH</code> is set and points elsewhere. The tool prints the full path of everything it writes — trust that over your current directory.</td></tr>
@@ -727,7 +766,7 @@ ever <em>suggests</em> — it never runs a command you did not confirm.</p>
 <tr><td>Your edits to a generated file are gone after regenerating</td><td>Answering <code>o</code> overwrites generated sources, which includes any changes you made inside them. Only <code>&lt;Class&gt;Validator.Custom.cs</code>, the project file and files you added yourself are preserved. Put your own code in new files, or in the <code>.Custom.cs</code> halves.</td></tr>
 </table>
 
-<h2>16. Command reference</h2>
+<h2>17. Command reference</h2>
 <p>Every command, by category. This is the same catalog <code>help all</code> prints; <code>help</code> on its
 own shows the shorter overview, and <code>help &lt;topic&gt;</code> shows one section of it.</p>
 <h3>AI</h3>
