@@ -29,6 +29,7 @@ In scope:
 | Authentication | `User` record, PBKDF2 hashing, two roles, seeded admin, sign-in/sign-out, change password, Users admin screen |
 | Classification | `EntityRole` of Master / Transaction / DocumentLine, inferred from the model, overridable from the command line and the wizard |
 | Shell | Grouped navigation rail, dashboard home grouped by role, header naming the signed-in user, role-filtered navigation |
+| Master screens | Read-only list and a dedicated editor, sharing the editor mechanism with transactions |
 | Transaction screens | Filtered list with column totals; a dedicated document editor with header fields and a lines grid |
 | Targets | WPF, Windows Forms, Blazor Server |
 
@@ -244,10 +245,39 @@ hardcoded neutrals `WpfSidebarLayout` already uses when it is not.
 
 ## Master screens
 
-Unchanged in substance from today's `master-detail` pane: a grid with an edit
-form beneath it, foreign keys editing as drop-downs, existing generated
-validators running on save. What is new is that it is now one of three panes
-selected by role, that Delete is Admin-only, and that it sits inside the shell.
+A **read-only list and a dedicated editor** — the same interaction the
+transaction screens use.
+
+The list finds a record: a grid that cannot be typed into, with a search box and
+the columns that identify a row. Opening one — double-click, or the Open button —
+opens the editor: the record's fields laid out as a form, foreign keys as
+drop-downs, existing generated validators running on save, and Cancel next to
+Save.
+
+The editor works on a **copy**, for the reason the transaction editor does:
+Cancel has to genuinely cancel rather than leave a half-typed record behind. The
+clone mechanism is shared between the two, not written twice.
+
+Delete is Admin-only and acts on the list selection.
+
+**Why not the obvious thing.** An earlier draft of this spec said masters were
+"unchanged in substance from today's `master-detail` pane" — a grid with an edit
+form beneath it. That was never chosen; it was asserted, and it was the least
+ambitious option available. It also has two defects that only look small: edits
+land live against the row so there is no Cancel, and a wide entity gets a
+horizontal scrollbar because the grid shows every column.
+
+**What this buys.** The application edits one way. A user never learns that a
+Customer changes differently from an Order, and the generator emits one editor
+mechanism rather than two. A transaction screen then differs from a master screen
+in exactly three ways — a filter bar, column totals, and a lines grid inside the
+editor — which is a far smaller difference to build and to explain than two
+unrelated interaction models.
+
+**What it costs.** Opening an editor to change one field is heavier than typing
+into a grid, and reference data is exactly the data that gets changed one field
+at a time. This is the accepted trade: consistency over the fastest possible
+single edit.
 
 ## Transaction screens
 
@@ -307,10 +337,19 @@ the repository green and shippable.
 2. **Entity classification.** `EntityRole`, the heuristic, the `transactions` and
    `masters` overrides, the wizard prompt, the help catalogue, the manual, the
    build summary line.
-3. **The shell.** Grouped rail, grouped dashboard home, header, role filtering,
-   the `business` layout key and the default flip.
-4. **Transaction screens.** Filter bar and totals, the document editor in all
-   three targets, the no-lines fallback.
+3. **The shell and the master screens.** Grouped rail, grouped dashboard home,
+   header, role filtering, the `business` layout key and the default flip —
+   plus the read-only list and the dedicated editor, because masters now use
+   them and a shell whose master screens cannot be edited is not shippable.
+4. **Transaction screens.** What a transaction adds on top of a master: the
+   filter bar, the column totals, and the lines grid inside the editor, with
+   the no-lines fallback.
+
+The editor moved from branch 4 to branch 3 when the master screen became a
+list-and-editor rather than a grid-and-form. That is the whole reason the two
+branches are worth splitting this way: branch 3 builds the shared mechanism,
+and branch 4 becomes a much smaller increment on top of it than it would have
+been against a separate master interaction.
 
 ## Testing
 
