@@ -13,7 +13,14 @@ namespace CodeGenerator.Web.Workflow;
 /// <param name="Scaffold">What was written, and where.</param>
 /// <param name="BuildLog">Everything the compiler said, in order.</param>
 /// <param name="BuildSucceeded">Whether that build was green. A red one has nothing to start.</param>
+/// <param name="BuildRan">
+/// Whether the compiler was started at all. False only when `dotnet` could not be started, which
+/// is not the same as a build that failed: the project is written and correct as far as anyone
+/// knows, and what the user does next is build it themselves. Defaulted, because every other path
+/// through this workflow did run a build.
+/// </param>
 public sealed record GeneratedApp(
     ScaffoldResult Scaffold,
     string BuildLog,
-    bool BuildSucceeded);
+    bool BuildSucceeded,
+    bool BuildRan = true);

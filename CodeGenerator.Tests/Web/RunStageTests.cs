@@ -149,6 +149,39 @@ public class RunStageTests
         Assert.IsFalse(navigation.HasStep);
     }
 
+    /// <summary>
+    /// A build that never ran is not a build that failed, and the panel must not blame the
+    /// compiler for a `dotnet` it could not start — the project is written, and what the user has
+    /// to do next is different.
+    /// </summary>
+    [TestMethod]
+    public void A_build_that_never_ran_says_so_rather_than_blaming_the_compiler()
+    {
+        using var context = new BunitContext();
+
+        var session = new BuildSession("a shop", Path.GetTempPath(), AppCustomization.Default);
+        session.SetTarget(new WpfTarget());
+        session.Advance();
+        session.SetNoData();
+        session.Advance();
+        session.SetCustomization(AppCustomization.Default);
+        session.Advance();
+        session.SetModel(new CandidateDomainModel());
+        session.Advance();
+        session.Advance();
+        session.SetGenerated(new GeneratedApp(
+            Written, BuildLog: string.Empty, BuildSucceeded: false, BuildRan: false));
+        session.Advance();
+
+        var markup = context.Render<RunStage>(p => p
+            .Add(c => c.Session, session)
+            .Add(c => c.Navigation, new StageNavigation())
+            .Add(c => c.OnAdvance, () => { })).Markup;
+
+        StringAssert.Contains(markup, "not compiled");
+        Assert.DoesNotContain("did not build", markup);
+    }
+
     private static IRenderedComponent<RunStage> Render(
         BunitContext context, out BuildSession session, bool BuildSucceeded,
         StageNavigation? navigation = null)

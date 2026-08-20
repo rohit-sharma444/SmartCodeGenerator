@@ -97,11 +97,14 @@ else
             ? "Nothing has been generated yet."
             : !App.Scaffold.Success
                 ? $"Nothing was written: {App.Scaffold.Message}"
-                : !App.BuildSucceeded
-                    ? "The generated project did not build, so there is nothing to start yet. "
-                      + "Go back to see the build log, or open the project and fix it."
-                    : "A class library has nothing to start. Reference it from an application "
-                      + "instead — the steps below say how.";
+                : !App.BuildRan
+                    ? "The project was written but not compiled — `dotnet` could not be started "
+                      + "here. Build it yourself with the steps below, then run it."
+                    : !App.BuildSucceeded
+                        ? "The generated project did not build, so there is nothing to start yet. "
+                          + "Go back to see the build log, or open the project and fix it."
+                        : "A class library has nothing to start. Reference it from an "
+                          + "application instead — the steps below say how.";
 
     private async Task Start()
     {
