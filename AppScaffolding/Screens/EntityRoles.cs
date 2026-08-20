@@ -1,4 +1,4 @@
-using CodeGenerationEngine.Models;
+﻿using CodeGenerationEngine.Models;
 
 namespace AppScaffolding.Screens;
 
@@ -22,7 +22,21 @@ public static class EntityRoles
     /// </remarks>
     public static IReadOnlyList<string> AuditFields { get; } = ["CreatedOn", "ModifiedOn"];
 
+    /// <summary>
+    /// What a line entity's name ends in, or is named after its parent plus.
+    /// </summary>
+    /// <remarks>
+    /// A strict NAME test, deliberately, not a shape test. A line gets no screen of its own,
+    /// so a false positive hides one — and a hidden screen is far harder to notice than an
+    /// extra one.
+    /// </remarks>
+    public static IReadOnlyList<string> LineSuffixes { get; } = ["Line", "Item", "Detail", "Row"];
+
     /// <summary>The role of every class in <paramref name="classes"/>.</summary>
+    /// <remarks>
+    /// Two passes, because lines are defined in terms of transactions: nothing can be
+    /// recognised as a line until its parent is known to be one.
+    /// </remarks>
     public static EntityRoleMap Classify(IReadOnlyList<ClassDefinition> classes)
     {
         var roles = new Dictionary<string, EntityRole>(StringComparer.OrdinalIgnoreCase);
@@ -35,9 +49,54 @@ public static class EntityRoles
                 : EntityRole.Master;
         }
 
-        return new EntityRoleMap(
-            roles, new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase));
+        var lines = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var definition in classes)
+        {
+            var parent = LineParentOf(definition, names, roles);
+
+            if (parent is null)
+                continue;
+
+            roles[definition.Name] = EntityRole.DocumentLine;
+
+            var existing = lines.TryGetValue(parent, out var already) ? already.ToList() : [];
+
+            existing.Add(definition.Name);
+            lines[parent] = existing;
+        }
+
+        return new EntityRoleMap(roles, lines);
     }
+
+    /// <summary>
+    /// The transaction <paramref name="definition"/> is the lines of, or null when it is not
+    /// lines at all.
+    /// </summary>
+    /// <remarks>
+    /// Both conditions are required: a foreign key to something already classed as a
+    /// Transaction, and a name that says "lines". A child of a MASTER called CustomerLine is
+    /// not lines, because there is no document to edit it inside.
+    /// </remarks>
+    private static string? LineParentOf(
+        ClassDefinition definition,
+        HashSet<string> allNames,
+        IReadOnlyDictionary<string, EntityRole> roles)
+    {
+        if (!LooksLikeLines(definition.Name))
+            return null;
+
+        foreach (var target in ForeignKeys.TargetsOf(definition, allNames))
+        {
+            if (roles.TryGetValue(target, out var role) && role == EntityRole.Transaction)
+                return target;
+        }
+
+        return null;
+    }
+
+    private static bool LooksLikeLines(string name)
+        => LineSuffixes.Any(suffix => name.EndsWith(suffix, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// Both halves are required: an outgoing foreign key, AND either a date that is not an audit
