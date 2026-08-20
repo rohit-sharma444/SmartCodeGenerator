@@ -1,4 +1,4 @@
-namespace AppScaffolding;
+﻿namespace AppScaffolding;
 
 /// <summary>
 /// The layout vocabulary: the CLI keys and their descriptions, in display order.
@@ -17,6 +17,8 @@ public static class AppLayoutCatalog
         // Hyphenated deliberately: the inline parser tokenizes on whitespace.
         (AppLayout.MasterDetail, "master-detail", "tabs, with an edit form for the selected row under the grid"),
         (AppLayout.Dashboard, "dashboard", "a home screen of per-entity cards showing row counts"),
+        (AppLayout.Business, "business",
+            "a dashboard home, a rail grouped into masters and transactions, and an editor for every record"),
     ];
 
     /// <summary>Layout keys in display order; the first is the default.</summary>

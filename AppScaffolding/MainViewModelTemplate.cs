@@ -21,6 +21,30 @@ public static class MainViewModelTemplate
     /// </remarks>
     public static string Build(
         string rootNamespace, IReadOnlyList<string> entityNames, bool seed, bool login)
+        => Build(rootNamespace, entityNames, seed, login, roles: null);
+
+    /// <summary>
+    /// As above; with <paramref name="roles"/> each entity gets the screen its role calls for.
+    /// </summary>
+    /// <remarks>
+    /// Null for the four older layouts, which bind to EntityViewModel and must keep emitting
+    /// exactly what they always did. A DocumentLine is registered for NO screen at all -- it is
+    /// edited inside its parent, and listing it would be the one mistake the classification
+    /// exists to avoid.
+    /// </remarks>
+    private static string Screen(string name, Screens.EntityRoleMap? roles)
+    {
+        if (roles is null)
+            return $"new EntityViewModel<{name}>(\"{name}\")";
+
+        return roles.RoleOf(name) == Screens.EntityRole.Transaction
+            ? $"new TransactionScreenViewModel<{name}>(\"{name}\")"
+            : $"new MasterScreenViewModel<{name}>(\"{name}\")";
+    }
+
+    public static string Build(
+        string rootNamespace, IReadOnlyList<string> entityNames, bool seed, bool login,
+        Screens.EntityRoleMap? roles)
     {
         // Its own fragment rather than SeedDataTemplate.EnsureSeededCall: this call site is inside
         // a constructor, so it is indented and carries the comment explaining its position.
@@ -35,8 +59,10 @@ public static class MainViewModelTemplate
             : string.Empty;
 
         var registrations = string.Join("\n",
-            entityNames.Select(name =>
-                $"            new EntityViewModel<{name}>(\"{name}\"),"));
+            entityNames
+                .Where(name => roles is null
+                               || roles.RoleOf(name) != Screens.EntityRole.DocumentLine)
+                .Select(name => $"            {Screen(name, roles)},"));
 
         // The pane an administrator gets on top of the discovered entities. The business
         // shell opens this same view model from its Admin group; until then it is an ordinary

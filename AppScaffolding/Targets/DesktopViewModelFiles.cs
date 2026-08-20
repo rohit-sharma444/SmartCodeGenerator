@@ -18,9 +18,14 @@ public static class DesktopViewModelFiles
     /// <summary>A fresh mutable list, so a target can append its own views to it. With
     /// <paramref name="validation"/> false the view models resolve no validator, because the
     /// Validation folder they would resolve it from is not generated either.</summary>
+    /// <param name="roles">
+    /// Supplied only for the business shell, whose screens differ per entity. Null everywhere
+    /// else, and the four older layouts then emit exactly what they always did.
+    /// </param>
     public static List<GeneratedFile> Build(
         string rootNamespace, IReadOnlyList<string> entityNames, string relayCommandSource,
-        bool validation = true, bool seed = true, bool login = false)
+        bool validation = true, bool seed = true, bool login = false,
+        EntityRoleMap? roles = null)
     {
         var files = new List<GeneratedFile>
         {
@@ -32,8 +37,24 @@ public static class DesktopViewModelFiles
             new("ViewModels", "EntityViewModel.cs",
                 ViewModelTemplates.EntityViewModel(rootNamespace, validation)),
             new("ViewModels", "MainViewModel.cs",
-                MainViewModelTemplate.Build(rootNamespace, entityNames, seed, login)),
+                MainViewModelTemplate.Build(rootNamespace, entityNames, seed, login, roles)),
         };
+
+        // The business shell's screens. Emitted only for it: the four older layouts bind to
+        // EntityViewModel and would carry five files nothing references.
+        if (roles is not null)
+        {
+            files.Add(new("ViewModels", "RecordEditorViewModel.cs",
+                RecordEditorTemplate.Source(rootNamespace)));
+            files.Add(new("ViewModels", "MasterScreenViewModel.cs",
+                MasterScreenTemplate.Source(rootNamespace)));
+            files.Add(new("ViewModels", "TransactionScreenViewModel.cs",
+                TransactionScreenTemplate.Source(rootNamespace)));
+            files.Add(new("ViewModels", "DashboardViewModel.cs",
+                ShellTemplate.Dashboard(rootNamespace)));
+            files.Add(new("ViewModels", "ShellViewModel.cs",
+                ShellTemplate.Shell(rootNamespace)));
+        }
 
         // Desktop-only, and emitted beside the view models rather than by AuthCoreFiles: a
         // static signed-in user is right for one process serving one person and wrong for a

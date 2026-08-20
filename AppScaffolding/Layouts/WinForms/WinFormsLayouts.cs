@@ -1,4 +1,4 @@
-namespace AppScaffolding.Layouts.WinForms;
+﻿namespace AppScaffolding.Layouts.WinForms;
 
 /// <summary>The Windows Forms layouts, keyed by <see cref="AppLayout"/>.</summary>
 public static class WinFormsLayouts
@@ -9,6 +9,7 @@ public static class WinFormsLayouts
         new WinFormsSidebarLayout(),
         new WinFormsMasterDetailLayout(),
         new WinFormsDashboardLayout(),
+        new WinFormsBusinessLayout(),
     ];
 
     public static IAppLayout Default { get; } = All[0];

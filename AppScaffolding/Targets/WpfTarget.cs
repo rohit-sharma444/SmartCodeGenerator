@@ -19,9 +19,28 @@ public sealed class WpfTarget : ITargetScaffolder
     public IReadOnlyList<GeneratedFile> FrontEndFiles(string projectName, IReadOnlyList<string> entityNames)
         => FrontEndFiles(projectName, entityNames, AppCustomization.Default);
 
+    /// <summary>
+    /// The business shell needs the entities' roles, which names alone cannot carry, so this
+    /// target implements the context overload rather than taking the default.
+    /// </summary>
+    public IReadOnlyList<GeneratedFile> FrontEndFiles(FrontEndContext context)
+        => FrontEndFiles(
+            context.ProjectName, context.EntityNames, context.Customization, context.Roles);
+
     public IReadOnlyList<GeneratedFile> FrontEndFiles(
         string projectName, IReadOnlyList<string> entityNames, AppCustomization customization)
+        => FrontEndFiles(projectName, entityNames, customization, roles: null);
+
+    private IReadOnlyList<GeneratedFile> FrontEndFiles(
+        string projectName, IReadOnlyList<string> entityNames, AppCustomization customization,
+        Screens.EntityRoleMap? roles)
     {
+        // Roles reach the view models only for the business shell; the four older layouts
+        // bind to EntityViewModel and must go on emitting exactly what they always did.
+        var screenRoles = customization.EffectiveLayout == AppLayout.Business
+            ? roles ?? Screens.EntityRoleMap.Empty
+            : null;
+
         // The namespace the emitted code declares; projectName still names the app in its title.
         var ns = customization.RootNamespaceFor(projectName);
 
@@ -29,7 +48,8 @@ public sealed class WpfTarget : ITargetScaffolder
         // CommandManager, which is what re-enables Delete when the grid selection changes.
         var files = DesktopViewModelFiles.Build(
             ns, entityNames, ViewModelTemplates.RelayCommand(ns),
-            customization.Validation, customization.SampleSeedData, customization.Login);
+            customization.Validation, customization.SampleSeedData, customization.Login,
+            screenRoles);
 
         var palette = ThemePalette.Resolve(customization.Theme, customization.Accent);
 

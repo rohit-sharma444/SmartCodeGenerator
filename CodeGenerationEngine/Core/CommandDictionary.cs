@@ -593,8 +593,10 @@ public static class CommandDictionary
                         + "window title, where {company} and {app} are substituted; "
                         + "namespace <prefix> puts the generated code under that namespace root "
                         + "(CodisLtd.Shop), leaving the project and assembly names alone; "
-                        + "layout tabs|sidebar|master-detail|dashboard chooses the shape of the "
-                        + "window (wpf and winforms only).",
+                        + "layout tabs|sidebar|master-detail|dashboard|business chooses the shape "
+                        + "of the window (wpf and winforms only); business is the shell with a "
+                        + "dashboard home, a rail grouped into masters and transactions, and an "
+                        + "editor for every record.",
             Example = "build app: a shop company \"Codis Ltd\" namespace CodisLtd theme dark layout sidebar"
         },
         new()
