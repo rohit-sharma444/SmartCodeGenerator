@@ -38,21 +38,30 @@ public static class EntityRoles
     /// recognised as a line until its parent is known to be one.
     /// </remarks>
     public static EntityRoleMap Classify(IReadOnlyList<ClassDefinition> classes)
+        => Classify(classes, ScreenOverrides.None);
+
+    /// <summary>The role of every class, with <paramref name="overrides"/> overruling the
+    /// heuristic.</summary>
+    public static EntityRoleMap Classify(
+        IReadOnlyList<ClassDefinition> classes, ScreenOverrides overrides)
     {
         var roles = new Dictionary<string, EntityRole>(StringComparer.OrdinalIgnoreCase);
         var names = ForeignKeys.ClassNameSet(classes);
 
         foreach (var definition in classes)
         {
-            roles[definition.Name] = IsTransaction(definition, names)
-                ? EntityRole.Transaction
-                : EntityRole.Master;
+            roles[definition.Name] = Role(definition, names, overrides);
         }
 
         var lines = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var definition in classes)
         {
+            // A name the user pulled out to a master keeps its own screen, and so is not
+            // lines. This is the only correction anyone would want to make to line detection.
+            if (overrides.IsMaster(definition.Name))
+                continue;
+
             var parent = LineParentOf(definition, names, roles);
 
             if (parent is null)
@@ -67,6 +76,19 @@ public static class EntityRoles
         }
 
         return new EntityRoleMap(roles, lines);
+    }
+
+    /// <summary>The role of one class: what the user said, else what the heuristic says.</summary>
+    private static EntityRole Role(
+        ClassDefinition definition, HashSet<string> names, ScreenOverrides overrides)
+    {
+        if (overrides.IsMaster(definition.Name))
+            return EntityRole.Master;
+
+        if (overrides.IsTransaction(definition.Name))
+            return EntityRole.Transaction;
+
+        return IsTransaction(definition, names) ? EntityRole.Transaction : EntityRole.Master;
     }
 
     /// <summary>

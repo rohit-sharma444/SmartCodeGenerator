@@ -1,4 +1,4 @@
-namespace AppScaffolding;
+﻿namespace AppScaffolding;
 
 /// <summary>Which theme a generated desktop front end uses. <see cref="Default"/> means the
 /// generator emits no theme at all, which is what every pre-customization app looked like.</summary>
@@ -25,6 +25,13 @@ public enum AppTheme
 /// combination under which a named layout still reproduces the generator's pre-auth output byte
 /// for byte.
 /// </param>
+/// <param name="Transactions">
+/// Entity names the user declared to be transactions, comma-joined, overruling the heuristic.
+/// A string rather than a collection because this record is compared by value across the suite
+/// and a list member would break that silently.
+/// </param>
+/// <param name="Masters">As <paramref name="Transactions"/>, in the other direction. A name
+/// given in both wins as a master, which is the safe answer.</param>
 public sealed record AppCustomization(
     string Company,
     AppTheme Theme,
@@ -35,6 +42,8 @@ public sealed record AppCustomization(
     bool Logging,
     bool SampleSeedData,
     bool Login,
+    string Transactions,
+    string Masters,
     string NamespacePrefix,
     AppLayout? Layout)
 {
@@ -56,6 +65,8 @@ public sealed record AppCustomization(
         Logging: false,
         SampleSeedData: true,
         Login: true,
+        Transactions: string.Empty,
+        Masters: string.Empty,
         NamespacePrefix: string.Empty,
         Layout: null);
 
