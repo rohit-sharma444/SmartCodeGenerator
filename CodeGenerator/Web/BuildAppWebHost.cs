@@ -208,11 +208,31 @@ internal sealed class BuildAppWebHost : IDisposable
             Thread.Sleep(PollInterval);
         }
 
+        return OutcomeFor(session);
+    }
+
+    /// <summary>
+    /// What the console prints for a workflow that has ended.
+    /// </summary>
+    /// <remarks>
+    /// Separated from the wait above so it can be asserted without binding a port, and because the
+    /// interesting part is not the loop: a run that ends after the generate stage leaves a project
+    /// on disk, and both terminal messages used to say "Nothing was generated" regardless. The
+    /// cancel question promises that the project stays, so this is the line that has to agree.
+    /// </remarks>
+    internal static BuildOutcome OutcomeFor(BuildSession session)
+    {
+        var written = session.Generated?.Scaffold.ProjectPath;
+
         return session.Phase switch
         {
-            SessionPhase.Abandoned => BuildOutcome.Abandoned,
+            SessionPhase.Abandoned => written is null
+                ? BuildOutcome.Abandoned
+                : BuildOutcome.AbandonedLeaving(written),
             SessionPhase.Generated => session.Outcome ?? BuildOutcome.Cancelled,
-            _ => BuildOutcome.Cancelled,
+            _ => written is null
+                ? BuildOutcome.Cancelled
+                : BuildOutcome.CancelledLeaving(written),
         };
     }
 
