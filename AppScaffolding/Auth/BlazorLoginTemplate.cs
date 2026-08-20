@@ -74,6 +74,9 @@ public static class BlazorLoginTemplate
                 <div class="alert alert-danger py-2">@SignInResult.FailureMessage</div>
             }
 
+            @* The token is not decoration: the endpoint validates it, so a form without one is
+               refused with a 400. Verified against a running app. Without it, any page anywhere
+               could post here and sign a visitor into an account of its choosing. *@
             <form method="post" action="/auth/login">
                 <AntiforgeryToken />
 
@@ -339,14 +342,14 @@ public static class AuthEndpoints
                 CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity));
 
             return Results.Redirect("/");
-        }).DisableAntiforgery();
+        });
 
         app.MapPost("/auth/logout", async (HttpContext context) =>
         {
             await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
 
             return Results.Redirect("/login");
-        }).DisableAntiforgery();
+        });
     }
 }
 """;

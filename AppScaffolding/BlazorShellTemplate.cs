@@ -111,8 +111,21 @@ public static class BlazorShellTemplate
     /// collapses on a small screen, and a first-time visitor should not have to find it to discover
     /// what the application contains.
     /// </remarks>
-    public static string Home(string title, IReadOnlyList<string> classNames) => $$"""
-@page "/"
+    public static string Home(string title, IReadOnlyList<string> classNames)
+        => Home(title, classNames, login: false);
+
+    /// <summary>
+    /// Source of <c>Components/Pages/Home.razor</c>. With <paramref name="login"/> it refuses
+    /// an unauthenticated visitor like every other page.
+    /// </summary>
+    /// <remarks>
+    /// The home page needs the attribute as much as the entity pages do, and is the easiest to
+    /// forget: it lists every class the application holds, so left open it hands an anonymous
+    /// visitor the shape of the whole model. Found by requesting "/" on a running app after
+    /// every page test passed.
+    /// </remarks>
+    public static string Home(string title, IReadOnlyList<string> classNames, bool login) => $$"""
+@page "/"{{HomeAuthorize(login)}}
 
 <PageTitle>{{title}}</PageTitle>
 
@@ -123,6 +136,13 @@ public static class BlazorShellTemplate
 <ul>
 {{HomeItems(classNames)}}</ul>
 """;
+
+    /// <summary>The authorization attribute and the namespace it needs, or nothing for an app
+    /// with no login.</summary>
+    private static string HomeAuthorize(bool login)
+        => login
+            ? "\n@using Microsoft.AspNetCore.Authorization\n@attribute [Authorize]"
+            : string.Empty;
 
     private static string Summary(IReadOnlyList<string> classNames)
         => classNames.Count switch

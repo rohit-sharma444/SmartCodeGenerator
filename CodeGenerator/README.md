@@ -199,6 +199,28 @@ printf 'create console project MyApp\nuse project MyApp\ncreate class Customer\n
   | dotnet run --project CodeGenerator
 ```
 
+## Signing in to a generated app
+
+Every generated WPF, Windows Forms and web application opens at a login screen, and nothing else
+is reachable until someone signs in — on the web that includes the home page, and typing a page's
+address directly does not get past it.
+
+The first run creates one account, `admin`, with the password `admin`. The login screen says so
+while that password is still in place and stops once it is changed. Passwords are never stored:
+the store holds a PBKDF2 hash and the random salt it was made with.
+
+An account is an **Admin** or a **User**. Only an Admin sees the Users screen or can delete a
+master record; both roles can create, edit and save everything else. A new account has no password
+and cannot sign in until an administrator sets one, and nobody can delete the account they are
+signed in with — which is what keeps at least one administrator in place.
+
+`nologin` on the `build app:` line, or answering *no* to *Require a login*, omits the login screen,
+the accounts and the Users screen entirely:
+
+```
+build app: a shop that sells books nologin
+```
+
 ## Command reference
 
 Angle brackets `<...>` are placeholders. Commands are case-insensitive.

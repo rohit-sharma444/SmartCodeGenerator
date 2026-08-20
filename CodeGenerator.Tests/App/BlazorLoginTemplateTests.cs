@@ -102,6 +102,29 @@ public class BlazorLoginTemplateTests
         => StringAssert.Contains(
             SourceOf(AppCustomization.Default, "OrderPage.razor"), "@attribute [Authorize]");
 
+    /// <summary>
+    /// The home page is gated too, and it is the easiest one to forget.
+    /// </summary>
+    /// <remarks>
+    /// It lists every class the application holds, so an unauthorised home page hands an
+    /// anonymous visitor the shape of the whole model. Found by requesting "/" on a RUNNING app
+    /// after every entity-page assertion already passed — /book redirected and / did not.
+    /// </remarks>
+    [TestMethod]
+    public void The_home_page_requires_authorisation_too()
+    {
+        var home = SourceOf(AppCustomization.Default, "Home.razor");
+
+        StringAssert.Contains(home, "@attribute [Authorize]");
+        StringAssert.Contains(home, "@using Microsoft.AspNetCore.Authorization");
+    }
+
+    [TestMethod]
+    public void A_nologin_home_page_carries_no_authorize_attribute()
+        => Assert.IsFalse(
+            SourceOf(AppCustomization.Default with { Login = false }, "Home.razor")
+                .Contains("[Authorize]", StringComparison.Ordinal));
+
     [TestMethod]
     public void Nologin_pages_carry_no_authorize_attribute()
         => Assert.IsFalse(
@@ -137,6 +160,22 @@ public class BlazorLoginTemplateTests
         StringAssert.Contains(endpoints, "SignInAsync");
         StringAssert.Contains(endpoints, "SignOutAsync");
     }
+
+    /// <summary>
+    /// The sign-in endpoints must NOT opt out of antiforgery validation.
+    /// </summary>
+    /// <remarks>
+    /// Settled by experiment on a running app, which was the open question this branch carried:
+    /// with the token the post signs in, and without it the request is refused with a 400. So the
+    /// opt-out is not needed to make the form work — it only removes the protection. Left in, any
+    /// page anywhere could post here and sign a visitor into an account of its choosing.
+    /// </remarks>
+    [TestMethod]
+    public void The_sign_in_endpoints_do_not_opt_out_of_antiforgery()
+        => Assert.IsFalse(
+            SourceOf(AppCustomization.Default, "AuthEndpoints.cs")
+                .Contains("DisableAntiforgery", StringComparison.Ordinal),
+            "the form carries a token and the endpoint validates it");
 
     /// <summary>The role must be a claim, or [Authorize(Roles = ...)] never matches.</summary>
     [TestMethod]

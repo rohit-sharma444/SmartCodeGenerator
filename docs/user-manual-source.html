@@ -664,7 +664,46 @@ ever <em>suggests</em> — it never runs a command you did not confirm.</p>
       listens on is printed as the application starts.</li>
 </ol>
 
-<h2>14. Troubleshooting</h2>
+<h2>14. Signing in to a generated application</h2>
+
+<p>Every generated WPF, Windows Forms and web application opens at a login screen. Nothing else in
+   the application is reachable until someone signs in &mdash; on the web that includes the home
+   page, and typing a page&rsquo;s address directly does not get past it.</p>
+
+<p>The first run creates one account, <strong>admin</strong>, with the password
+   <strong>admin</strong>. The login screen says so while that password is still in place, and
+   stops saying so once it has been changed. Change it: the account is created for you precisely
+   because an application with no way in is useless, not because the password is a good one.</p>
+
+<p>Passwords are never stored. What is written to the store is a PBKDF2 hash and the random salt
+   it was made with, so reading the data file tells you nothing about anyone&rsquo;s password.</p>
+
+<h3>Roles</h3>
+
+<p>An account is either an <strong>Admin</strong> or a <strong>User</strong>. The role has exactly
+   two effects:</p>
+
+<ul>
+  <li>Only an Admin sees the <strong>Users</strong> screen, where accounts are added, renamed,
+      deactivated and given passwords.</li>
+  <li>Only an Admin can delete a master record.</li>
+</ul>
+
+<p>Both roles can create, edit and save everything else. A new account is created with no password
+   and cannot sign in until an administrator gives it one &mdash; a new account is not a way in
+   until somebody decides it is. Nobody can delete the account they are signed in with, which is
+   also what guarantees an application always keeps at least one administrator.</p>
+
+<h3>Turning it off</h3>
+
+<p>Add <code>nologin</code> to the <code>build app:</code> line, or answer <em>no</em> to
+   <em>Require a login</em> in the customization step, and the generated application has no login
+   screen, no accounts and no Users screen. Useful for a throwaway prototype; not something to
+   ship.</p>
+
+<pre>build app: a shop that sells books nologin</pre>
+
+<h2>15. Troubleshooting</h2>
 <table>
 <tr><th>What you see</th><th>What it means</th></tr>
 <tr><td>Generated files are not where you expected</td><td><code>PROJECTPATH</code> is set and points elsewhere. The tool prints the full path of everything it writes — trust that over your current directory.</td></tr>
@@ -688,7 +727,7 @@ ever <em>suggests</em> — it never runs a command you did not confirm.</p>
 <tr><td>Your edits to a generated file are gone after regenerating</td><td>Answering <code>o</code> overwrites generated sources, which includes any changes you made inside them. Only <code>&lt;Class&gt;Validator.Custom.cs</code>, the project file and files you added yourself are preserved. Put your own code in new files, or in the <code>.Custom.cs</code> halves.</td></tr>
 </table>
 
-<h2>15. Command reference</h2>
+<h2>16. Command reference</h2>
 <p>Every command, by category. This is the same catalog <code>help all</code> prints; <code>help</code> on its
 own shows the shorter overview, and <code>help &lt;topic&gt;</code> shows one section of it.</p>
 <h3>AI</h3>

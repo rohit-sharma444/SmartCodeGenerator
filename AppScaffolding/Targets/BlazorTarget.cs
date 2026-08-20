@@ -50,7 +50,8 @@ public sealed class BlazorTarget : ITargetScaffolder
             new("Components/Layout", "NavMenu.razor",
                 BlazorShellTemplate.NavMenu(title, entityNames, customization.Login)),
 
-            new(PagesFolder, "Home.razor", BlazorShellTemplate.Home(title, entityNames)),
+            new(PagesFolder, "Home.razor",
+                BlazorShellTemplate.Home(title, entityNames, customization.Login)),
         };
 
         // "<Entity>Page.razor", not "<Entity>.razor": a Razor file compiles to a class named after
