@@ -560,7 +560,12 @@ public static class CommandDictionary
                         + "it discards the model that was discovered from the old one; Cancel asks "
                         + "the same way once there is an answer to lose. The panel that opens holds "
                         + "the keyboard and Enter takes the step it offers — never Generate or Run, "
-                        + "which stay deliberate clicks. Two tabs on "
+                        + "which stay deliberate clicks. A named data file is summarised — how "
+                        + "many rows and columns — before anything is built from it; a step that "
+                        + "fails says why and stays clickable rather than ending the run; the "
+                        + "application the last stage starts can be stopped from the page; and the "
+                        + "console signs off with the `build app:` line that would do the same run "
+                        + "again. Two tabs on "
                         + "the same workflow stay in step, and closing the last one ends the "
                         + "command. Piped runs keep the console wizard, as does CG_NO_WEB=1.",
             Example = "build app"
