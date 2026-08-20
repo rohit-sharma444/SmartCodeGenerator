@@ -25,6 +25,20 @@ public static class StageGraph
         new(BuildStage.Run,      "Run",      "Start it and watch it come up"),
     ];
 
+    /// <summary>What the browser tab should say.</summary>
+    /// <remarks>
+    /// It said "Build an application" and nothing else — for all eight stages, and for both tabs
+    /// at once, which is precisely when a title has work to do. The position goes first because
+    /// that is the part still legible in a narrow tab.
+    /// </remarks>
+    public static string TabTitle(BuildSession session)
+    {
+        var at = Nodes.ToList().FindIndex(n => n.Stage == session.Current);
+        var node = Nodes[at < 0 ? 0 : at];
+
+        return $"{(at < 0 ? 0 : at) + 1} of {Nodes.Count} · {node.Title} — Build an application";
+    }
+
     public static BuildStage? Next(BuildStage stage)
     {
         var index = IndexOf(stage);

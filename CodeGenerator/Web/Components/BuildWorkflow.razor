@@ -7,6 +7,9 @@
 @implements IDisposable
 @inject BuildSession Session
 
+@* The tab, which said the same thing on every stage and in every tab. *@
+<PageTitle>@StageGraph.TabTitle(Session)</PageTitle>
+
 <main class="workflow">
     <h1>Build an application</h1>
 

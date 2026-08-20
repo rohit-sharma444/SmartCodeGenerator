@@ -284,6 +284,19 @@ public class WorkflowPageTests
             "the page must handle what a panel throws");
     }
 
+    /// <summary>The page has to actually set it, not merely be able to.</summary>
+    [TestMethod]
+    public void The_page_puts_the_stage_in_the_browser_tab()
+    {
+        using var context = PageFor(New("a shop"), out _);
+
+        var page = context.Render<BuildWorkflow>();
+
+        var title = page.FindComponent<Microsoft.AspNetCore.Components.Web.PageTitle>();
+
+        StringAssert.Contains(context.Render(title.Instance.ChildContent).Markup, "App type");
+    }
+
     /// <summary>A session parked on the review node, where the step forward is named.</summary>
     private static BuildSession OnReview()
     {
