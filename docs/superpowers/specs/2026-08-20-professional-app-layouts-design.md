@@ -213,12 +213,18 @@ navigation, the current screen, `SignOutCommand`. `IEntityViewModel` gains only
 **WPF.** `LoginWindow` is shown by `App.xaml.cs` before the main window, and
 sign-out is a loop there rather than a process restart: close the shell, show
 the login again. The content area is a `ContentControl` bound to the current
-screen; the three panes are implicit `DataTemplate`s keyed by `DataType` —
-`DashboardViewModel`, `MasterScreenViewModel`, `TransactionScreenViewModel`. No
-selector class and no per-entity XAML.
+screen; the panes are implicit `DataTemplate`s keyed by `DataType` —
+`DashboardViewModel`, `MasterScreenViewModel`, `TransactionScreenViewModel` and
+`RecordEditorViewModel`. No selector class and no per-entity XAML.
+
+The editor being a fourth template rather than a window is what makes the whole
+content area one mechanism: opening a record sets the current screen, and Back to
+list sets it back. The shell therefore keeps the screen it came from, so Back has
+somewhere to return to — a one-deep history, not a stack, because nothing in this
+design opens an editor from an editor.
 
 **Windows Forms.** The same view models with different plumbing, because there
-are no data templates: three `UserControl`s swapped into a content panel, a
+are no data templates: four `UserControl`s swapped into a content panel, a
 `TreeView` for the grouped rail (the least code that still reads as grouping),
 and `LoginForm.ShowDialog` from `Program.cs`.
 
@@ -258,6 +264,13 @@ The editor works on a **copy**, for the reason the transaction editor does:
 Cancel has to genuinely cancel rather than leave a half-typed record behind. The
 clone mechanism is shared between the two, not written twice.
 
+It is also presented the same way: it **replaces the content area** rather than
+opening a window, exactly as the transaction editor does, and the same
+*Discard your changes?* prompt guards navigating away from it. A master editor
+that opened a modal while a transaction editor swapped the content area would
+reintroduce, inside the application, precisely the inconsistency both of these
+choices were made to remove.
+
 Delete is Admin-only and acts on the list selection.
 
 **Why not the obvious thing.** An earlier draft of this spec said masters were
@@ -296,10 +309,20 @@ a model with no such field renders no date range. The footer totals every
 labelled total per column — more honest than guessing which single column is
 *the* total.
 
-**The editor.** One dedicated surface per transaction:
-`DocumentWindow.ShowDialog` on WPF, `DocumentForm.ShowDialog` on Windows Forms,
-and the routes `/order/{id:int}` and `/order/new` in Blazor. That divergence is
-accepted; a modal is the wrong shape on the web.
+**The editor replaces the content area.** It is not a window. The rail stays
+visible, the header stays visible, and the editor fills the space the list was
+in; a **Back to list** action returns. On the web it is what it always was — the
+routes `/order/{id:int}` and `/order/new` — so all three targets now behave
+identically. An earlier draft accepted a modal on the desktop and a route on the
+web as a deliberate divergence; that divergence is gone, and with it the need to
+explain why the same application navigates two different ways.
+
+**What a modal was buying, and how it is replaced.** A modal cannot be abandoned:
+you cannot wander off into another screen with unsaved edits, because nothing else
+is clickable. An in-shell editor can, so the shell has to say so. Navigating away
+from an editor with unsaved changes — a rail item, Back to list, sign-out —
+prompts: *Discard your changes?* This is the one interaction this choice adds, and
+it has to exist on all three targets or the choice quietly loses data.
 
 It edits a **copy**, which is the reason for having a dedicated editor at all:
 Cancel must genuinely cancel, including line edits. The clone is a
@@ -379,5 +402,22 @@ been against a separate master interaction.
 None outstanding. Decisions taken during design, recorded so they are not
 relitigated: the role has two effects and does not make transactions read-only;
 there is no forced password change on first sign-in; the transaction editor is
-uniform whether or not the model has line entities; and the four existing
-layouts remain selectable and gain only the login.
+uniform whether or not the model has line entities; the four existing layouts
+remain selectable and gain only the login; and both editors replace the content
+area rather than opening a window.
+
+**Two corrections made after the auth branch shipped**, recorded because the
+first one is a process failure worth not repeating:
+
+- **The master screen was asserted, not chosen.** It was drawn as a fixed
+  reference at the top of a mockup and described as "settled", and it reached
+  the spec as the least ambitious option available. Offered as a real choice it
+  was rejected. Anything presented as already decided should be something the
+  requester actually decided.
+- **The editor is not a modal.** The first draft accepted a modal on the desktop
+  and a route on the web as a deliberate divergence. That was reversed in favour
+  of one behaviour on all three targets, which costs the *Discard your changes?*
+  prompt and buys an application that navigates one way.
+
+Neither correction cost any code: no screen in this section had been built when
+they were made.
