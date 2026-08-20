@@ -7,7 +7,11 @@
     <title>Build an application</title>
     <base href="/" />
     <link rel="stylesheet" href="workflow.css" />
-    <HeadOutlet />
+    @* The render mode is load-bearing: the workflow page is InteractiveServer, so its PageTitle
+       updates arrive on the interactive circuit. A statically rendered outlet never hears them —
+       the tab kept the title below for the whole run, which no unit test can see, because the
+       component IS rendered and IS handed its content either way. *@
+    <HeadOutlet @rendermode="InteractiveServer" />
 </head>
 <body>
     <Routes />
