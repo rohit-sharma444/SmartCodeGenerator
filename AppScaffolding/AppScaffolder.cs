@@ -483,6 +483,11 @@ public sealed class AppScaffolder
         {
             WpfProjectFixup.MergeTheme(outputFolder);
             WpfProjectFixup.ReconcileNamespace(outputFolder, rootNamespace);
+
+            // Only for an app with a login, whose emitted App.xaml.cs opens the first window
+            // itself. Without a login the template's StartupUri is still what starts the app.
+            if (auth)
+                WpfProjectFixup.RemoveStartupUri(outputFolder);
         }
 
         // Same reason, different file: the Blazor template's Program.cs imports

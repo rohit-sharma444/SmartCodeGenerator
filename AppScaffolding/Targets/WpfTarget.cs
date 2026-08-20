@@ -1,4 +1,5 @@
-﻿using AppScaffolding.Layouts;
+﻿using AppScaffolding.Auth;
+using AppScaffolding.Layouts;
 using AppScaffolding.Layouts.Wpf;
 using CodeGenerationEngine.Models;
 
@@ -28,7 +29,7 @@ public sealed class WpfTarget : ITargetScaffolder
         // CommandManager, which is what re-enables Delete when the grid selection changes.
         var files = DesktopViewModelFiles.Build(
             ns, entityNames, ViewModelTemplates.RelayCommand(ns),
-            customization.Validation, customization.SampleSeedData);
+            customization.Validation, customization.SampleSeedData, customization.Login);
 
         var palette = ThemePalette.Resolve(customization.Theme, customization.Accent);
 
@@ -40,6 +41,18 @@ public sealed class WpfTarget : ITargetScaffolder
 
         if (palette is not null)
             files.Add(new("Views", ThemeXamlTemplate.FileName, ThemeXamlTemplate.Source(palette)));
+
+        // App.xaml.cs is emitted, replacing the template's: the sign-in has to happen before
+        // any window opens, and StartupUri opens one before OnStartup finishes. The matching
+        // StartupUri removal is WpfProjectFixup.RemoveStartupUri, called by the scaffolder.
+        if (customization.Login)
+        {
+            var login = new LayoutContext(ns, projectName, customization, palette);
+
+            files.Add(new("Views", "LoginWindow.xaml", WpfLoginTemplate.Xaml(login)));
+            files.Add(new("Views", "LoginWindow.xaml.cs", WpfLoginTemplate.CodeBehind(ns)));
+            files.Add(new("", "App.xaml.cs", WpfLoginTemplate.AppCodeBehind(ns)));
+        }
 
         return files;
     }

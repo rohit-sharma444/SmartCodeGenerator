@@ -1,3 +1,5 @@
+﻿using AppScaffolding.Auth;
+
 namespace AppScaffolding.Targets;
 
 /// <summary>
@@ -17,15 +19,30 @@ public static class DesktopViewModelFiles
     /// Validation folder they would resolve it from is not generated either.</summary>
     public static List<GeneratedFile> Build(
         string rootNamespace, IReadOnlyList<string> entityNames, string relayCommandSource,
-        bool validation = true, bool seed = true) =>
-    [
-        new("Data", "RelationshipResolver.cs", RelationshipResolverTemplate.Source(rootNamespace)),
-        new("ViewModels", "ObservableObject.cs", ViewModelTemplates.ObservableObject(rootNamespace)),
-        new("ViewModels", "RelayCommand.cs", relayCommandSource),
-        new("ViewModels", "IEntityViewModel.cs", ViewModelTemplates.EntityViewModelInterface(rootNamespace)),
-        new("ViewModels", "EntityViewModel.cs",
-            ViewModelTemplates.EntityViewModel(rootNamespace, validation)),
-        new("ViewModels", "MainViewModel.cs",
-            MainViewModelTemplate.Build(rootNamespace, entityNames, seed)),
-    ];
+        bool validation = true, bool seed = true, bool login = false)
+    {
+        var files = new List<GeneratedFile>
+        {
+            new("Data", "RelationshipResolver.cs", RelationshipResolverTemplate.Source(rootNamespace)),
+            new("ViewModels", "ObservableObject.cs", ViewModelTemplates.ObservableObject(rootNamespace)),
+            new("ViewModels", "RelayCommand.cs", relayCommandSource),
+            new("ViewModels", "IEntityViewModel.cs", ViewModelTemplates.EntityViewModelInterface(rootNamespace)),
+            new("ViewModels", "EntityViewModel.cs",
+                ViewModelTemplates.EntityViewModel(rootNamespace, validation)),
+            new("ViewModels", "MainViewModel.cs",
+                MainViewModelTemplate.Build(rootNamespace, entityNames, seed)),
+        };
+
+        // Desktop-only, and emitted beside the view models rather than by AuthCoreFiles: a
+        // static signed-in user is right for one process serving one person and wrong for a
+        // server serving many.
+        if (login)
+        {
+            files.Add(new("Auth", "Session.cs", SessionTemplate.Source(rootNamespace)));
+            files.Add(new("ViewModels", "LoginViewModel.cs",
+                LoginViewModelTemplate.Source(rootNamespace)));
+        }
+
+        return files;
+    }
 }
