@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.Json.Serialization;
 using AppScaffolding;
 
@@ -33,6 +33,7 @@ internal static class CustomizationDefaults
         public bool? Validation { get; set; }
         public bool? Logging { get; set; }
         public bool? SampleSeedData { get; set; }
+        public bool? Login { get; set; }
         public string? NamespacePrefix { get; set; }
         public string? Layout { get; set; }
     }
@@ -72,6 +73,7 @@ internal static class CustomizationDefaults
                 Validation: profile.Validation ?? fallback.Validation,
                 Logging: profile.Logging ?? fallback.Logging,
                 SampleSeedData: profile.SampleSeedData ?? fallback.SampleSeedData,
+                Login: profile.Login ?? fallback.Login,
                 NamespacePrefix: ValidatedPrefix(profile.NamespacePrefix, fallback.NamespacePrefix),
                 Layout: ParseLayout(profile.Layout));
         }
@@ -98,6 +100,7 @@ internal static class CustomizationDefaults
                 Validation = customization.Validation,
                 Logging = customization.Logging,
                 SampleSeedData = customization.SampleSeedData,
+                Login = customization.Login,
                 NamespacePrefix = customization.NamespacePrefix,
 
                 // Null stays absent from the file rather than being written as "tabs": a profile

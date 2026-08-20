@@ -37,7 +37,7 @@ internal static class InlineCustomization
 
     /// <summary>Options that are a bare word.</summary>
     private static readonly string[] Flags =
-        ["novalidation", "logging", "noseed"];
+        ["novalidation", "logging", "noseed", "nologin"];
 
     /// <summary>
     /// Splits <paramref name="tail"/> into what remains for the data-source parser and the
@@ -102,6 +102,7 @@ internal static class InlineCustomization
             "novalidation" => customization with { Validation = false },
             "logging" => customization with { Logging = true },
             "noseed" => customization with { SampleSeedData = false },
+            "nologin" => customization with { Login = false },
             _ => customization,
         };
 

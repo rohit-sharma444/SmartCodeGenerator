@@ -18,6 +18,13 @@ public enum AppTheme
 /// The regression proof is the existing suite — if an old test has to change, this record is
 /// not neutral.
 /// </remarks>
+/// <param name="Login">
+/// Whether the application gates itself behind a login screen. True by default, unlike every other
+/// setting here — an application with screens is expected to have accounts, and this is the one
+/// place the record is deliberately NOT neutral. `nologin` turns it off, and that is the only
+/// combination under which a named layout still reproduces the generator's pre-auth output byte
+/// for byte.
+/// </param>
 public sealed record AppCustomization(
     string Company,
     AppTheme Theme,
@@ -27,6 +34,7 @@ public sealed record AppCustomization(
     bool Validation,
     bool Logging,
     bool SampleSeedData,
+    bool Login,
     string NamespacePrefix,
     AppLayout? Layout)
 {
@@ -47,6 +55,7 @@ public sealed record AppCustomization(
         Validation: true,
         Logging: false,
         SampleSeedData: true,
+        Login: true,
         NamespacePrefix: string.Empty,
         Layout: null);
 
