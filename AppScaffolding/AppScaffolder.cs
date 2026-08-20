@@ -1,4 +1,5 @@
 ﻿using AppScaffolding.Auth;
+using AppScaffolding.Screens;
 using CodeGenerationEngine.Core;
 using CodeGenerationEngine.Factory;
 using CodeGenerationEngine.Models;
@@ -292,6 +293,14 @@ public sealed class AppScaffolder
         var classes = DomainModelMapper.ToClassDefinitions(
             model, out var classNames, auth ? AuthCoreFiles.ReservedNames : []);
 
+        // Classified here rather than at the point of use: the summary is reported whether or
+        // not any screen reads the roles yet, so a misclassification is visible from the first
+        // build rather than from the first launch.
+        var roles = EntityRoles.Classify(
+            classes,
+            ScreenOverrides.Parse(
+                request.Customization.Transactions, request.Customization.Masters));
+
         // Through GeneratedProjectPath, not composed here, so the CLI's overwrite guard and this
         // writer cannot drift apart — see that type's remarks.
         var projectName = GeneratedProjectPath.ProjectName(appName, target);
@@ -570,7 +579,9 @@ public sealed class AppScaffolder
             : $"Generated {written.Count} of {expected} file(s); " +
               "some files could not be written.";
 
-        return new ScaffoldResult(allWritten, outputFolder, written, message, testProjectPath);
+        return new ScaffoldResult(
+            allWritten, outputFolder, written, message, testProjectPath,
+            ScreenSummary.Describe(roles));
     }
 
     /// <summary>

@@ -762,6 +762,11 @@ internal sealed class BuildAppCommand
             Output.Success($"Generated project at {scaffold.ProjectPath}");
             if (scaffold.TestProjectPath is not null)
                 Output.Success($"Generated test project at {scaffold.TestProjectPath}");
+
+            // How the model was split into screens. A misclassification is otherwise only
+            // discoverable by launching the app and noticing a screen is missing.
+            if (scaffold.ScreenSummary.Length > 0)
+                Console.WriteLine($"  Screens: {scaffold.ScreenSummary}");
             Console.WriteLine("");
             //foreach (var file in scaffold.FilesWritten)
             //    Console.WriteLine($"  {Path.GetRelativePath(scaffold.ProjectPath, file)}");
