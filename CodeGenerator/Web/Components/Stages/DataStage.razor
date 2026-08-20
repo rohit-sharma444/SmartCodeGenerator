@@ -34,9 +34,15 @@
            what DataSourceSpec.Location holds. The drop zone below is the convenience. *@
         <label>
             Path
-            <input class="path" value="@_path"
-                   @onchange="e => _path = e.Value?.ToString() ?? string.Empty" />
+            <input class="path" value="@_path" @onchange="PathGiven" />
         </label>
+
+        @if (_peek is not null)
+        {
+            @* Said before the click, not after: a wrong file costs a discovery run to find out
+               about otherwise. *@
+            <p class="peek" aria-live="polite">@_peek</p>
+        }
 
         <InputFile OnChange="Upload" class="drop" />
         <span class="hint">…or drop a file here to copy it into the workspace cache.</span>
@@ -64,6 +70,7 @@
     private string _format = "csv";
     private string _path = string.Empty;
     private string? _error;
+    private string? _peek;
 
     protected override void OnInitialized()
     {
@@ -77,6 +84,55 @@
         _hasFile = true;
         _path = Session.Source.Location;
         _format = Session.Source.Kind.ToString().ToLowerInvariant();
+
+        // Coming back to this node shows what the answer it holds actually contains, rather than
+        // only the path it was given.
+        Peek();
+    }
+
+    private void PathGiven(ChangeEventArgs e)
+    {
+        _path = e.Value?.ToString() ?? string.Empty;
+
+        Peek();
+    }
+
+    /// <summary>
+    /// Says what the named file holds, when it can.
+    /// </summary>
+    /// <remarks>
+    /// Silent about anything it cannot answer — a half-typed path is not a mistake yet, and a panel
+    /// that objected on every keystroke would train the user to ignore it. Refusals belong to the
+    /// click, where <see cref="Next"/> already reports them.
+    /// <para>
+    /// This reads the file, which the discover stage will read again. Worth it: the read is the only
+    /// honest way to say how many rows are in there, and finding out at the click before discovery
+    /// costs a great deal less than finding out from the model after it.
+    /// </para>
+    /// </remarks>
+    private void Peek()
+    {
+        _peek = null;
+
+        var path = Unquoted(_path);
+
+        if (path.Length == 0 || !File.Exists(path))
+            return;
+
+        if (!DataSourceReaders.TryParseKind(_format, out var kind)
+            || !DataSourceReaders.TryCreate(kind, out _))
+            return;
+
+        if (DiscoveryStep.TryRead(new DataSourceSpec(kind, path), out var read, out _))
+            _peek = DataPeek.Describe(read);
+    }
+
+    /// <summary>A path pasted from Explorer arrives quoted, exactly as it does in the console.</summary>
+    private static string Unquoted(string value)
+    {
+        var path = value.Trim();
+
+        return path.Length >= 2 && path[0] == '"' && path[^1] == '"' ? path[1..^1] : path;
     }
 
     private static bool Readable(string key)
@@ -149,10 +205,7 @@
             return Task.FromResult(Session.SetNoData());
         }
 
-        // A path pasted from Explorer arrives quoted, exactly as it does in the console.
-        var path = _path.Trim();
-        if (path.Length >= 2 && path[0] == '"' && path[^1] == '"')
-            path = path[1..^1];
+        var path = Unquoted(_path);
 
         if (!File.Exists(path))
         {

@@ -202,6 +202,13 @@ body {
 
 .hint { color: var(--pending); font-size: 0.9em; }
 
+/* What the named file holds. Quiet: it is a confirmation, not a warning. */
+.peek {
+    margin: 0.35rem 0 0;
+    color: var(--done);
+    font-size: 0.9em;
+}
+
 .fields label,
 .file label { display: block; margin: 0.4rem 0; }
 
