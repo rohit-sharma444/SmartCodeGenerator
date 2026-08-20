@@ -171,6 +171,121 @@ public class WorkflowPageTests
         Assert.IsNotNull(session.Model);
     }
 
+    // Eight panels and no way through them without a mouse: nothing in the page handled a key,
+    // and after each step the focus fell back to the document.
+    [TestMethod]
+    public void Enter_takes_the_step_the_panel_offers()
+    {
+        using var context = PageFor(New("a shop"), out var session);
+
+        var page = context.Render<BuildWorkflow>();
+
+        Assert.AreEqual(BuildStage.AppType, session.Current);
+
+        page.Find(".panel").KeyDown(Key.Enter);
+
+        Assert.AreEqual(BuildStage.Data, session.Current);
+    }
+
+    /// <summary>
+    /// The generate panel offers nothing until a project has been written — nothing leads out of
+    /// there — and Enter must respect that rather than stepping into a run stage with nothing to
+    /// run.
+    /// </summary>
+    [TestMethod]
+    public void Enter_does_nothing_where_no_step_is_offered()
+    {
+        var session = OnReview();
+        session.Advance();
+
+        using var context = PageFor(session, out _);
+
+        var page = context.Render<BuildWorkflow>();
+
+        Assert.AreEqual(BuildStage.Generate, session.Current);
+
+        page.Find(".panel").KeyDown(Key.Enter);
+
+        Assert.AreEqual(BuildStage.Generate, session.Current);
+    }
+
+    /// <summary>
+    /// A named step is an action rather than movement — Generate writes a project — and the rule
+    /// that keeps a click on another box from taking it is the rule that keeps a stray Enter from
+    /// taking it too.
+    /// </summary>
+    [TestMethod]
+    public void Enter_never_takes_a_named_step()
+    {
+        using var context = PageFor(OnReview(), out var session);
+
+        var page = context.Render<BuildWorkflow>();
+
+        page.Find(".panel").KeyDown(Key.Enter);
+
+        Assert.AreEqual(BuildStage.Review, session.Current);
+        Assert.IsNull(session.Generated);
+    }
+
+    /// <summary>
+    /// The panel that opens takes the keyboard, so the next answer can be typed. Asserted through
+    /// the interop call because that is what Blazor's FocusAsync is: there is no rendered focus to
+    /// look at in a test renderer.
+    /// </summary>
+    [TestMethod]
+    public void The_panel_that_opens_takes_the_keyboard()
+    {
+        using var context = PageFor(New("a shop"), out _);
+
+        context.Render<BuildWorkflow>();
+
+        Assert.IsNotEmpty(
+            context.JSInterop.Invocations.Where(i => i.Identifier.Contains("focus")));
+    }
+
+    /// <summary>
+    /// A description is prose: Enter there is a new line, not a decision.
+    /// </summary>
+    /// <remarks>
+    /// The propagation is real and so is this test: dropping the stopPropagation directive from
+    /// the textarea reddens it on <c>Actual:&lt;AppType&gt;</c>, which is the page's Enter rule
+    /// reaching an event that was never meant for it. The empty handler beside the directive is
+    /// what gives Blazor a handled event to apply it to.
+    /// </remarks>
+    [TestMethod]
+    public void The_description_keeps_Enter_for_itself()
+    {
+        using var context = PageFor(New(string.Empty), out var session);
+
+        var page = context.Render<BuildWorkflow>();
+
+        Assert.AreEqual(BuildStage.Describe, session.Current);
+
+        page.Find("textarea").KeyDown(Key.Enter);
+
+        Assert.AreEqual(BuildStage.Describe, session.Current);
+    }
+
+    /// <summary>A session parked on the review node, where the step forward is named.</summary>
+    private static BuildSession OnReview()
+    {
+        var model = new CandidateDomainModel();
+        model.Entities.Add(new CandidateEntity { Name = "Book" });
+
+        var session = New("a shop");
+
+        session.SetTarget(new ConsoleTarget());
+        session.Advance();
+        session.SetNoData();
+        session.Advance();
+        session.SetCustomization(AppCustomization.Default);
+        session.Advance();
+        session.SetModel(model);
+        session.Advance();
+
+        return session;
+    }
+
     /// <summary>The App type box, which is green and clickable because the fixture answered
     /// it.</summary>
     private static AngleSharp.Dom.IElement AppTypeBox(IRenderedComponent<BuildWorkflow> page)
@@ -180,6 +295,8 @@ public class WorkflowPageTests
     {
         var context = new BunitContext();
 
+        // The page focuses the open panel, which is an interop call the strict default refuses.
+        context.JSInterop.Mode = JSRuntimeMode.Loose;
         context.Services.AddSingleton(session);
         registered = session;
 

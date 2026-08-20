@@ -2,6 +2,8 @@
 @rendermode InteractiveServer
 @using CodeGenerator.Web.Components.Stages
 @using CodeGenerator.Web.Workflow
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.JSInterop
 @implements IDisposable
 @inject BuildSession Session
 
@@ -35,7 +37,10 @@
         </div>
     }
 
-    <section class="panel">
+    @* tabindex so the section itself can hold the keyboard: the panel that opens is where the
+       next answer is typed, and without this the focus falls back to the document after every
+       step and the whole wizard needs a mouse. *@
+    <section class="panel" tabindex="-1" @ref="_panel" @onkeydown="Typed">
         <h2>@StageGraph.Nodes.First(n => n.Stage == Session.Current).Title</h2>
 
         @if (Session.PendingDiscard is not null)
@@ -110,6 +115,18 @@
     /// </remarks>
     private readonly StageNavigation _navigation = new();
 
+    /// <summary>The open panel, so the keyboard can be given to it.</summary>
+    private ElementReference _panel;
+
+    /// <summary>
+    /// Which stage the keyboard was last handed to, so it is handed over once per stage.
+    /// </summary>
+    /// <remarks>
+    /// Focusing on every render would fight the user: a panel repaints when a field changes, and
+    /// pulling the focus back to the section mid-answer would throw away what they were typing in.
+    /// </remarks>
+    private BuildStage? _focused;
+
     protected override void OnInitialized()
     {
         _navigation.Changed += Refresh;
@@ -119,6 +136,42 @@
         // — showing an answer that no longer stands and a Continue button that would take a step
         // already taken.
         Session.Changed += Repaint;
+    }
+
+    /// <summary>Gives the keyboard to the panel that has just opened.</summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_focused == Session.Current)
+            return;
+
+        _focused = Session.Current;
+
+        try
+        {
+            await _panel.FocusAsync();
+        }
+        catch (Exception ex) when (ex is JSDisconnectedException or ObjectDisposedException)
+        {
+            // The tab went away between the render and the focus. There is nothing to focus and
+            // nothing worth failing a workflow over.
+        }
+    }
+
+    /// <summary>
+    /// Enter takes the step the panel is offering.
+    /// </summary>
+    /// <remarks>
+    /// Plain steps only, and for the reason <see cref="StageNavigation.IsPlainStep"/> exists: a
+    /// named step is an action — Generate writes a project to disk — and it should take a
+    /// deliberate click, not a key pressed at the end of a sentence. The description's textarea
+    /// stops this event itself, so Enter there is still a new line.
+    /// </remarks>
+    private async Task Typed(KeyboardEventArgs key)
+    {
+        if (key.Key != "Enter" || !_navigation.IsPlainStep || !_navigation.CanContinue)
+            return;
+
+        await Continue();
     }
 
     public void Dispose()
