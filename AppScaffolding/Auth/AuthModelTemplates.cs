@@ -1,4 +1,4 @@
-namespace AppScaffolding.Auth;
+﻿namespace AppScaffolding.Auth;
 
 /// <summary>Emits the two types the auth core stores: the role enum and the user record.</summary>
 /// <remarks>
@@ -30,6 +30,7 @@ public enum AppRole
     /// <summary>Source of <c>Models/User.cs</c>.</summary>
     public static string User(string rootNamespace) => $$"""
 using System;
+using System.ComponentModel;
 using {{rootNamespace}}.Auth;
 
 namespace {{rootNamespace}}.Models;
@@ -44,8 +45,14 @@ public class User
 
     public string DisplayName { get; set; } = string.Empty;
 
+    // [Browsable(false)] keeps these out of every generated grid. Both WPF's DataGrid and
+    // Windows Forms' DataGridView honour it when generating columns, and without it the
+    // stored hash and salt render as EDITABLE columns on the Users screen -- one keystroke
+    // and a Save locks that account out for good.
+    [Browsable(false)]
     public string PasswordHash { get; set; } = string.Empty;
 
+    [Browsable(false)]
     public string PasswordSalt { get; set; } = string.Empty;
 
     public AppRole Role { get; set; } = AppRole.User;
