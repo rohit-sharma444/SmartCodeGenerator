@@ -1,4 +1,4 @@
-using AppScaffolding;
+﻿using AppScaffolding;
 using AppScaffolding.Layouts;
 
 namespace CodeGenerator.App;
@@ -149,6 +149,11 @@ internal static class CustomizationWizard
         var seed = AskYesNo(reader, writer, "Sample seed data", start.SampleSeedData);
         if (seed is null) return null;
 
+        // Phrased as a positive so the remembered answer in app-profile.json reads as the
+        // question does; the inline flag is the negative one.
+        var login = AskYesNo(reader, writer, "Require a login", start.Login);
+        if (login is null) return null;
+
         return start with
         {
             Layout = layout,
@@ -161,6 +166,7 @@ internal static class CustomizationWizard
             Validation = validation.Value,
             Logging = logging.Value,
             SampleSeedData = seed.Value,
+            Login = login.Value,
         };
     }
 

@@ -1,4 +1,4 @@
-using AppScaffolding;
+﻿using AppScaffolding;
 using AppScaffolding.Layouts;
 
 namespace CodeGenerator.App;
@@ -147,6 +147,11 @@ internal static class CustomizationMenus
         if (seed is null)
             return null;
 
+        var login = AskYesNo(choose, "Require a login", start.Login);
+
+        if (login is null)
+            return null;
+
         return start with
         {
             Layout = layout,
@@ -180,6 +185,7 @@ internal static class CustomizationMenus
             Validation = validation.Value,
             Logging = logging.Value,
             SampleSeedData = seed.Value,
+            Login = login.Value,
         };
     }
 

@@ -48,4 +48,29 @@ public class LoginFlagTests
         Assert.AreEqual("a shop with no login", remaining);
         Assert.IsTrue(customization.Login);
     }
+
+    /// <summary>Every surface `noseed` reaches, `nologin` must reach too — a flag the help does
+    /// not mention is a flag nobody finds.</summary>
+    [TestMethod]
+    public void The_inline_options_help_line_lists_the_flag()
+        => StringAssert.Contains(BuildAppCommand.InlineOptionsHelp, "nologin");
+
+    [TestMethod]
+    public void The_summary_reports_a_build_with_no_login()
+    {
+        var lines = CustomizationSummary.Lines(AppCustomization.Default with { Login = false });
+
+        Assert.IsTrue(
+            lines.Any(l => l.Contains("no login", StringComparison.Ordinal)),
+            "The summary is where a user checks that the flag took effect.");
+    }
+
+    /// <summary>Only differences from the default are listed, and login is on by default.</summary>
+    [TestMethod]
+    public void The_summary_stays_silent_when_login_is_on()
+    {
+        var lines = CustomizationSummary.Lines(AppCustomization.Default);
+
+        Assert.IsFalse(lines.Any(l => l.Contains("login", StringComparison.OrdinalIgnoreCase)));
+    }
 }

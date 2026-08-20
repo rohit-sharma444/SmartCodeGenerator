@@ -212,6 +212,19 @@ internal sealed class BuildAppCommand
             => EqualityComparer<T>.Default.Equals(inline, fallback) ? saved : inline;
     }
 
+    /// <summary>
+    /// The options line the usage message prints.
+    /// </summary>
+    /// <remarks>
+    /// A constant rather than a literal inside the usage message, so a test can hold it to
+    /// listing every option the parser accepts. A flag the help does not mention is a flag
+    /// nobody finds.
+    /// </remarks>
+    internal const string InlineOptionsHelp =
+        "Options (last on the line): company \"<name>\"  theme light|dark  "
+        + "accent #rrggbb  icon <path>  title \"<pattern>\"  "
+        + "novalidation  logging  noseed  nologin";
+
     /// <summary>The unchanged path: NLE seeds, Wikipedia topic, enrichment, review loop.</summary>
     private static void HandleFromDescription(
         string description, string workspaceRoot, ITargetScaffolder? target,
@@ -221,9 +234,7 @@ internal sealed class BuildAppCommand
         {
             Console.WriteLine("Usage: build app: <description of the system you want>");
             Console.WriteLine("   or: build app from csv <path>   (also txt, json, excel)");
-            Console.WriteLine("Options (last on the line): company \"<name>\"  theme light|dark  "
-                              + "accent #rrggbb  icon <path>  title \"<pattern>\"  "
-                              + "novalidation  logging  noseed");
+            Console.WriteLine(InlineOptionsHelp);
             return;
         }
 

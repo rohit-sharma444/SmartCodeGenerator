@@ -1,4 +1,4 @@
-using AppScaffolding;
+﻿using AppScaffolding;
 using AppScaffolding.Targets;
 using CodeGenerator.App;
 
@@ -55,7 +55,7 @@ public class CustomizationWizardTests
     [TestMethod]
     public void Accepting_and_answering_collects_every_setting()
     {
-        var result = Run("y\nCodis Ltd\ndark\n#0B6E4F\n\n\n\nyes\nyes\nno\n");
+        var result = Run("y\nCodis Ltd\ndark\n#0B6E4F\n\n\n\nyes\nyes\nno\n\n");
 
         Assert.IsNotNull(result);
         Assert.AreEqual("Codis Ltd", result.Company);
@@ -71,7 +71,7 @@ public class CustomizationWizardTests
     [TestMethod]
     public void Naming_a_company_offers_the_company_title_pattern()
     {
-        var result = Run("y\nCodis Ltd\n\n\n\n\n\n\n\n\n");
+        var result = Run("y\nCodis Ltd\n\n\n\n\n\n\n\n\n\n");
 
         Assert.IsNotNull(result);
         Assert.AreEqual("Codis Ltd - Shop", result.TitleFor("Shop"));
@@ -93,7 +93,7 @@ public class CustomizationWizardTests
             NamespacePrefix = "CodisLtd",
         };
 
-        var result = Run("y\n\n\n\n\n\n\n\n\n\n", saved);
+        var result = Run("y\n\n\n\n\n\n\n\n\n\n\n", saved);
 
         Assert.AreEqual(saved, result);
     }
@@ -101,7 +101,7 @@ public class CustomizationWizardTests
     [TestMethod]
     public void A_malformed_accent_keeps_the_previous_one_rather_than_failing()
     {
-        var result = Run("y\n\n\nnot-a-colour\n\n\n\n\n\n\n");
+        var result = Run("y\n\n\nnot-a-colour\n\n\n\n\n\n\n\n");
 
         Assert.IsNotNull(result);
         Assert.IsNull(result.Accent);
@@ -118,7 +118,7 @@ public class CustomizationWizardTests
             IconPath = "C:\\brand\\logo.ico",
         };
 
-        var result = Run("y\n\n\nnone\nnone\n\n\n\n\n\n", saved);
+        var result = Run("y\n\n\nnone\nnone\n\n\n\n\n\n\n", saved);
 
         Assert.IsNotNull(result);
         Assert.IsNull(result.Accent);
@@ -136,7 +136,7 @@ public class CustomizationWizardTests
         var writer = new StringWriter();
 
         CustomizationWizard.Run(
-            new StringReader("y\n\n\n\n\n\n\n\n\n\n"),
+            new StringReader("y\n\n\n\n\n\n\n\n\n\n\n"),
             writer,
             AppCustomization.Default with { Company = "Codis Ltd", Theme = AppTheme.Dark });
 
@@ -162,7 +162,7 @@ public class CustomizationWizardTests
     [TestMethod]
     public void A_namespace_prefix_is_collected()
     {
-        var result = Run("y\n\n\n\n\n\nCodisLtd\n\n\n\n");
+        var result = Run("y\n\n\n\n\n\nCodisLtd\n\n\n\n\n");
 
         Assert.IsNotNull(result);
         Assert.AreEqual("CodisLtd", result.NamespacePrefix);
@@ -173,7 +173,7 @@ public class CustomizationWizardTests
     [TestMethod]
     public void Naming_a_company_offers_it_as_the_namespace_prefix()
     {
-        var result = Run("y\nCodis Ltd\n\n\n\n\n\n\n\n\n");
+        var result = Run("y\nCodis Ltd\n\n\n\n\n\n\n\n\n\n");
 
         Assert.IsNotNull(result);
         Assert.AreEqual("CodisLtd", result.NamespacePrefix);
@@ -184,7 +184,7 @@ public class CustomizationWizardTests
     [TestMethod]
     public void A_company_that_is_not_an_identifier_offers_no_prefix()
     {
-        var result = Run("y\n3M\n\n\n\n\n\n\n\n\n");
+        var result = Run("y\n3M\n\n\n\n\n\n\n\n\n\n");
 
         Assert.IsNotNull(result);
         Assert.AreEqual(string.Empty, result.NamespacePrefix);
@@ -196,7 +196,7 @@ public class CustomizationWizardTests
     {
         var saved = AppCustomization.Default with { NamespacePrefix = "Acme" };
 
-        var result = Run("y\nCodis Ltd\n\n\n\n\n\n\n\n\n", saved);
+        var result = Run("y\nCodis Ltd\n\n\n\n\n\n\n\n\n\n", saved);
 
         Assert.IsNotNull(result);
         Assert.AreEqual("Acme", result.NamespacePrefix);
@@ -207,7 +207,7 @@ public class CustomizationWizardTests
     {
         var saved = AppCustomization.Default with { NamespacePrefix = "CodisLtd" };
 
-        var result = Run("y\n\n\n\n\n\nnot a namespace\n\n\n\n", saved);
+        var result = Run("y\n\n\n\n\n\nnot a namespace\n\n\n\n\n", saved);
 
         Assert.IsNotNull(result);
         Assert.AreEqual("CodisLtd", result.NamespacePrefix);
@@ -218,7 +218,7 @@ public class CustomizationWizardTests
     {
         var saved = AppCustomization.Default with { NamespacePrefix = "CodisLtd" };
 
-        var result = Run("y\n\n\n\n\n\nnone\n\n\n\n", saved);
+        var result = Run("y\n\n\n\n\n\nnone\n\n\n\n\n", saved);
 
         Assert.IsNotNull(result);
         Assert.AreEqual(string.Empty, result.NamespacePrefix);
@@ -235,7 +235,7 @@ public class CustomizationWizardTests
     {
         var saved = AppCustomization.Default with { Company = "Codis Ltd" };
 
-        var result = Run("y\n\n\n\n\n\n\n\n\n\n", saved);
+        var result = Run("y\n\n\n\n\n\n\n\n\n\n\n", saved);
 
         Assert.IsNotNull(result);
         Assert.AreEqual(string.Empty, result.NamespacePrefix);
@@ -248,7 +248,7 @@ public class CustomizationWizardTests
     {
         var saved = AppCustomization.Default with { Company = "Codis Ltd" };
 
-        var result = Run("y\nAcme Corp\n\n\n\n\n\n\n\n\n", saved);
+        var result = Run("y\nAcme Corp\n\n\n\n\n\n\n\n\n\n", saved);
 
         Assert.IsNotNull(result);
         Assert.AreEqual("AcmeCorp", result.NamespacePrefix);
@@ -257,7 +257,7 @@ public class CustomizationWizardTests
     [TestMethod]
     public void The_layout_is_asked_first_on_a_desktop_target()
     {
-        var (result, output) = RunFor(new WpfTarget(), "y\nsidebar\n" + new string('\n', 9));
+        var (result, output) = RunFor(new WpfTarget(), "y\nsidebar\n" + new string('\n', 10));
 
         Assert.IsNotNull(result);
         Assert.AreEqual(AppLayout.Sidebar, result.Layout);
@@ -274,7 +274,7 @@ public class CustomizationWizardTests
     [TestMethod]
     public void The_layout_prompt_is_skipped_for_a_target_with_no_window()
     {
-        var (result, output) = RunFor(new ConsoleTarget(), "y\n" + new string('\n', 9));
+        var (result, output) = RunFor(new ConsoleTarget(), "y\n" + new string('\n', 10));
 
         Assert.IsNotNull(result);
         Assert.IsNull(result.Layout);
@@ -286,7 +286,7 @@ public class CustomizationWizardTests
     [TestMethod]
     public void No_target_asks_nothing_about_layout()
     {
-        var result = Run("y\n" + new string('\n', 9));
+        var result = Run("y\n" + new string('\n', 11));
 
         Assert.IsNotNull(result);
         Assert.IsNull(result.Layout);
@@ -297,7 +297,7 @@ public class CustomizationWizardTests
     {
         var start = AppCustomization.Default with { Layout = AppLayout.Dashboard };
 
-        var (result, _) = RunFor(new WpfTarget(), "y\nkanban\n" + new string('\n', 9), start);
+        var (result, _) = RunFor(new WpfTarget(), "y\nkanban\n" + new string('\n', 10), start);
 
         Assert.IsNotNull(result);
         Assert.AreEqual(AppLayout.Dashboard, result.Layout);
@@ -308,7 +308,7 @@ public class CustomizationWizardTests
     {
         var start = AppCustomization.Default with { Layout = AppLayout.MasterDetail };
 
-        var (result, output) = RunFor(new WpfTarget(), "y\n" + new string('\n', 10), start);
+        var (result, output) = RunFor(new WpfTarget(), "y\n" + new string('\n', 11), start);
 
         Assert.IsNotNull(result);
         Assert.AreEqual(AppLayout.MasterDetail, result.Layout);
@@ -322,7 +322,7 @@ public class CustomizationWizardTests
     [TestMethod]
     public void A_blank_layout_answer_names_nothing_when_nothing_was_remembered()
     {
-        var (result, output) = RunFor(new WpfTarget(), "y\n" + new string('\n', 10));
+        var (result, output) = RunFor(new WpfTarget(), "y\n" + new string('\n', 11));
 
         Assert.IsNotNull(result);
         Assert.IsNull(result.Layout);
@@ -338,7 +338,7 @@ public class CustomizationWizardTests
     [TestMethod]
     public void Every_prompt_puts_its_caret_in_the_same_column()
     {
-        var (_, output) = RunFor(new WpfTarget(), "y\n" + new string('\n', 10),
+        var (_, output) = RunFor(new WpfTarget(), "y\n" + new string('\n', 11),
             AppCustomization.Default with { Company = "Codis Ltd", Theme = AppTheme.Dark });
 
         // Ask writes without a newline -- in a terminal the user's Enter supplies it -- so the
@@ -350,7 +350,7 @@ public class CustomizationWizardTests
             .Select(match => match.Index)
             .ToList();
 
-        Assert.HasCount(10, carets, "a desktop run asks ten questions");
+        Assert.HasCount(11, carets, "a desktop run asks eleven questions");
 
         var widths = carets.Zip(carets.Skip(1), (a, b) => b - a).Distinct().ToList();
 
@@ -362,7 +362,7 @@ public class CustomizationWizardTests
     [TestMethod]
     public void The_accepted_values_are_listed_once_rather_than_inside_every_label()
     {
-        var (_, output) = RunFor(new WpfTarget(), "y\n" + new string('\n', 10));
+        var (_, output) = RunFor(new WpfTarget(), "y\n" + new string('\n', 11));
 
         StringAssert.Contains(output, "Layout: tabs/sidebar/master-detail/dashboard");
         StringAssert.Contains(output, "Theme: light/dark");

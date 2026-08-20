@@ -1,4 +1,4 @@
-using AppScaffolding;
+﻿using AppScaffolding;
 
 namespace CodeGenerator.Web.Workflow;
 
@@ -81,6 +81,9 @@ internal static class BuildCommandEcho
 
         if (!customization.SampleSeedData)
             options += " noseed";
+
+        if (!customization.Login)
+            options += " nologin";
 
         return options;
     }

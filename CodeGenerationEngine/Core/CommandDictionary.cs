@@ -600,14 +600,16 @@ public static class CommandDictionary
         new()
         {
             Category = "Build App",
-            Command = "build app: <description> [novalidation] [logging] [noseed]",
+            Command = "build app: <description> [novalidation] [logging] [noseed] [nologin]",
             Description = "Chooses which optional layers are generated. 'novalidation' omits the "
                         + "Validation folder and its per-model validators; 'logging' adds a "
                         + "logging layer (off by default); 'noseed' omits the sample seed rows "
-                        + "(rows imported from your own data file are unaffected). Interactively "
+                        + "(rows imported from your own data file are unaffected); 'nologin' "
+                        + "omits the login screen, the user accounts and the Users screen, "
+                        + "which an app with screens is given by default. Interactively "
                         + "these are asked by the 'Customize appearance and features?' step, "
                         + "which remembers your answers in .codegen/app-profile.json.",
-            Example = "build app: a shop novalidation logging noseed"
+            Example = "build app: a shop novalidation logging noseed nologin"
         },
         // The rest of this category is only valid at the review-loop prompt that
         // `build app:` opens, not at the main CodeGenerator prompt.

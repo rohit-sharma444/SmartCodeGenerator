@@ -1,4 +1,4 @@
-using AppScaffolding;
+﻿using AppScaffolding;
 using AppScaffolding.Layouts;
 using AppScaffolding.Targets;
 using CodeGenerator.App;
@@ -59,7 +59,7 @@ public class CustomizationMenuTests
     private static readonly string[] Questions =
     [
         "Company name", "Theme", "Accent colour", "Icon", "Window title", "Namespace prefix",
-        "Validation layer", "Logging", "Sample seed data",
+        "Validation layer", "Logging", "Sample seed data", "Require a login",
     ];
 
     /// <summary>Accept the gate, then take the pre-selected row at every question.</summary>
