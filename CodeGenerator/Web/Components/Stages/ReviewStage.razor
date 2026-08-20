@@ -80,6 +80,12 @@
         {
             <p>@line</p>
         }
+
+        @* Every answer so far, as the line that would give them all at once. Here rather than at
+           the end because this is where the answers are settled and where someone deciding to do
+           it differently is standing. *@
+        <h3>The same run as a command</h3>
+        <pre class="command-echo">@string.Join(Environment.NewLine, BuildCommandEcho.For(Session))</pre>
     </aside>
 </div>
 

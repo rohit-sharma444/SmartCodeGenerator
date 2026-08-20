@@ -212,6 +212,19 @@ body {
 .fields label,
 .file label { display: block; margin: 0.4rem 0; }
 
+/* The run as a line to copy. Monospace and wrapping: a path with spaces in it must be readable
+   whole, and a horizontal scrollbar in a sidebar hides the end of the command. */
+.command-echo {
+    margin: 0.35rem 0 0;
+    padding: 0.5rem 0.6rem;
+    border: 1px solid var(--line);
+    background: #f8f9fb;
+    font-family: ui-monospace, Consolas, monospace;
+    font-size: 0.8em;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
 .build-log {
     max-height: 20rem;
     overflow: auto;

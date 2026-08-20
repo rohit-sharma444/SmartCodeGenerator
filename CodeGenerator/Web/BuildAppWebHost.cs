@@ -224,7 +224,7 @@ internal sealed class BuildAppWebHost : IDisposable
     {
         var written = session.Generated?.Scaffold.ProjectPath;
 
-        return session.Phase switch
+        var outcome = session.Phase switch
         {
             SessionPhase.Abandoned => written is null
                 ? BuildOutcome.Abandoned
@@ -234,6 +234,24 @@ internal sealed class BuildAppWebHost : IDisposable
                 ? BuildOutcome.Cancelled
                 : BuildOutcome.CancelledLeaving(written),
         };
+
+        return outcome with { Lines = [.. outcome.Lines, .. Repeatable(session)] };
+    }
+
+    /// <summary>
+    /// The command that would do this again, on the end of every outcome.
+    /// </summary>
+    /// <remarks>
+    /// The console is where the user ends up, and until now a workflow left nothing behind that
+    /// could be run again or put in a script — a cancelled run in particular cost the whole
+    /// interview to repeat. Worth most exactly where it was missing most.
+    /// </remarks>
+    private static IEnumerable<string> Repeatable(BuildSession session)
+    {
+        if (session.Description.Length == 0 && session.Source is null)
+            return [];
+
+        return ["", "To do the same again:", .. BuildCommandEcho.For(session)];
     }
 
     public void Dispose()
