@@ -347,6 +347,40 @@ public sealed class WpfBusinessLayout : IAppLayout
         DataContext = shell;
 """;
 
+    /// <summary>
+    /// The first statement of the shared <c>OnAutoGeneratingColumn</c>, which the lines rule is
+    /// spliced in front of.
+    /// </summary>
+    /// <remarks>
+    /// In front of it, not after: the shared rules turn a &lt;Nav&gt;Id into a combo box and
+    /// <c>return</c>, so a rule that ran later would be reached only for the columns the grid was
+    /// never going to draw as a picker anyway.
+    /// </remarks>
+    private const string LineGridColumnAnchor =
+        "        if (string.Equals(e.PropertyName, \"Id\", StringComparison.OrdinalIgnoreCase))";
+
+    /// <summary>
+    /// Drops the foreign key from a lines grid.
+    /// </summary>
+    /// <remarks>
+    /// The set on the row knows its own key name, so this needs no entity name and no per-model
+    /// emission. Found by opening a generated app: WinForms hid the column and the web filtered
+    /// the field out, and WPF drew it as a picker over every other document.
+    /// </remarks>
+    private const string LineGridColumnRule = """
+        // The lines of a document belong to the document being edited: LineSet stamps the parent
+        // id on save, so it is not a choice the user makes -- and the rule below would draw it as
+        // a combo box over every other document, inviting a line to be moved to one of them.
+        if (sender is FrameworkElement { DataContext: ILineSet lines }
+            && string.Equals(e.PropertyName, lines.ForeignKey, StringComparison.Ordinal))
+        {
+            e.Cancel = true;
+            return;
+        }
+
+
+""";
+
     private static string CodeBehind(string rootNamespace)
     {
         // The column rules and the display convention are long, and the business grids need the
@@ -376,6 +410,12 @@ public sealed class WpfBusinessLayout : IAppLayout
             $"using {rootNamespace}.ViewModels;",
             $"using {rootNamespace}.Screens;\r\nusing {rootNamespace}.ViewModels;",
             StringComparison.Ordinal);
+
+        // Spliced rather than added to the shared rules: the four older layouts share that
+        // code-behind and emit no Screens/LineSet.cs, so naming ILineSet there would be a compile
+        // error in every one of their generated apps.
+        source = source.Replace(
+            LineGridColumnAnchor, LineGridColumnRule + LineGridColumnAnchor, StringComparison.Ordinal);
 
         // One blank line, not two: what precedes the splice already ends in a newline.
         var handlers = """

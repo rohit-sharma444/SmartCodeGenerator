@@ -345,4 +345,68 @@ public class WpfBusinessLayoutTests
             public static void RequestSignOut() => SignOutRequested = true;
         }
         """;
+
+    /// <summary>
+    /// The lines grid does not offer the foreign key that ties a line to the document it is
+    /// being edited inside.
+    /// </summary>
+    /// <remarks>
+    /// The shared column rules turn a &lt;Nav&gt;Id into a combo box over that entity's rows, which
+    /// is right on a list — a user picks a Customer rather than typing its id — and wrong here:
+    /// the parent is the document on screen, LineSet stamps it on save, and a picker over every
+    /// other document invites reassigning a line to one of them. WinForms hides the column
+    /// (`column.Visible = false`) and the web filters the field out; WPF showed it, which is how
+    /// this was found — by opening a generated app and reading the grid.
+    /// </remarks>
+    [TestMethod]
+    public void The_lines_grid_hides_the_foreign_key()
+    {
+        var code = new WpfBusinessLayout().ViewFiles(Context())
+            .Single(f => f.Name == "MainWindow.xaml.cs").Source;
+
+        // The set on the row knows its own key name, so the rule needs no entity name: whatever
+        // was auto-generated is compared against the ILineSet the grid is bound to.
+        StringAssert.Contains(code, "DataContext: ILineSet");
+        StringAssert.Contains(code, "lines.ForeignKey");
+        StringAssert.Contains(code, "e.Cancel = true");
+    }
+
+    /// <summary>
+    /// The guard runs before the relationship column is built, or the combo box is created and
+    /// then thrown away — and a cancelled column that was already replaced does not cancel.
+    /// </summary>
+    [TestMethod]
+    public void The_foreign_key_guard_precedes_the_relationship_column()
+    {
+        var code = new WpfBusinessLayout().ViewFiles(Context())
+            .Single(f => f.Name == "MainWindow.xaml.cs").Source;
+
+        var guard = code.IndexOf("lines.ForeignKey", StringComparison.Ordinal);
+        var relationship = code.IndexOf("TryBuildRelationshipColumn(sender, e)", StringComparison.Ordinal);
+
+        Assert.IsGreaterThan(-1, guard);
+        Assert.IsGreaterThan(-1, relationship);
+        Assert.IsLessThan(relationship, guard, "the combo box is built before the key is dropped");
+    }
+
+    /// <summary>
+    /// Only the business shell can mention ILineSet: the four older layouts share this
+    /// code-behind and never emit Screens/LineSet.cs, so naming the type there is a compile
+    /// error in the generated app rather than a test failure here.
+    /// </summary>
+    [TestMethod]
+    public void No_older_layout_mentions_the_line_set()
+    {
+        foreach (var layout in new[]
+                 { AppLayout.Tabs, AppLayout.Sidebar, AppLayout.MasterDetail, AppLayout.Dashboard })
+        {
+            var code = WpfLayouts.Resolve(layout).ViewFiles(Context())
+                .SingleOrDefault(f => f.Name == "MainWindow.xaml.cs")?.Source;
+
+            if (code is null)
+                continue;
+
+            Assert.DoesNotContain("ILineSet", code, StringComparison.Ordinal);
+        }
+    }
 }
