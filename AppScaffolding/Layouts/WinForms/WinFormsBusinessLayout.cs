@@ -297,11 +297,18 @@ public sealed class MainForm : Form
         }, 0, 0);
 
         // A PropertyGrid over the DRAFT, so every field is editable without this file naming one.
+        //
+        // NoSort is not a preference: the default sorts the fields alphabetically and puts them
+        // under a "Misc" category header, so an Order reads CreatedOn, Currency, Id, ... and looks
+        // nothing like the ordered form WPF builds from the same class. Declaration order is the
+        // order the model was written in, which is the order a person expects to fill in. The
+        // master-detail pane has set this since it was written.
         var grid = new PropertyGrid
         {
             Dock = DockStyle.Fill,
             SelectedObject = editor.GetType().GetProperty("Draft")?.GetValue(editor),
             ToolbarVisible = false,
+            PropertySort = PropertySort.NoSort,
         };
 
         layout.Controls.Add(grid, 0, 1);
