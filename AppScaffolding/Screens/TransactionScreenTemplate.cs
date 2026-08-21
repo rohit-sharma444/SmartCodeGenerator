@@ -37,11 +37,21 @@ public sealed class TransactionScreenViewModel<T> : MasterScreenViewModel<T> whe
     /// </remarks>
     private static readonly string[] AuditFields = ["CreatedOn", "ModifiedOn"];
 
+    private readonly Func<IReadOnlyList<ILineSet>>? _lines;
+
     private DateTime? _from;
     private DateTime? _to;
 
-    public TransactionScreenViewModel(string title) : base(title)
+    /// <param name="lines">
+    /// Builds this transaction's line sets, one editor at a time. A factory rather than a list
+    /// because every editor needs its OWN lines: they are a copy of what the store holds, and two
+    /// editors sharing one set would share the copy.
+    /// </param>
+    public TransactionScreenViewModel(string title, Func<IReadOnlyList<ILineSet>>? lines = null)
+        : base(title)
     {
+        _lines = lines;
+
         DateField = typeof(T).GetProperties()
             .Where(p => p.PropertyType == typeof(DateTime))
             .Select(p => p.Name)
@@ -50,6 +60,9 @@ public sealed class TransactionScreenViewModel<T> : MasterScreenViewModel<T> whe
     }
 
     public override EntityRole Role => EntityRole.Transaction;
+
+    /// <inheritdoc />
+    protected override IReadOnlyList<ILineSet> LineSets() => _lines?.Invoke() ?? [];
 
     /// <summary>The date the range filters on, or empty when the model has none — in which case
     /// the view renders no range rather than filtering on something arbitrary.</summary>

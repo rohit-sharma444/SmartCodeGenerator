@@ -121,7 +121,9 @@ public class Note
 
         var screenType = assembly.GetType("TransactionScreenViewModel`1")!.MakeGenericType(type);
 
-        return Activator.CreateInstance(screenType, [model])!;
+        // All three arguments: Activator does not fill an optional parameter, and a transaction
+        // screen now takes a line-set factory as well as its title.
+        return Activator.CreateInstance(screenType, [model, null])!;
     }
 
     private static IList Items(object screen)

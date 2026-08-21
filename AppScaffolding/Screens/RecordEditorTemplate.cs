@@ -59,10 +59,12 @@ public static class RecordEditorTemplate
 
         return $$"""
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.Windows.Input;
 using {{rootNamespace}}.Data;
+using {{rootNamespace}}.Screens;
 {{validationUsing}}
 namespace {{rootNamespace}}.ViewModels;
 
@@ -81,6 +83,10 @@ public interface IRecordEditor
 
     /// <summary>The heading the shell shows while this editor is on screen.</summary>
     string Title { get; }
+
+    /// <summary>The lines this record holds, or empty. A master has none; a transaction has one
+    /// set per kind of line.</summary>
+    IReadOnlyList<ILineSet> Lines { get; }
 }
 
 /// <summary>One record, edited in a copy so Cancel can genuinely cancel.</summary>
@@ -90,12 +96,25 @@ public sealed class RecordEditorViewModel<T> : ObservableObject, IRecordEditor w
     private string _openedAs;
     private string _status = string.Empty;
 {{validatorField}}
-    public RecordEditorViewModel(T? record, bool isNew)
+    /// <param name="lines">
+    /// The line sets this record's editor shows, supplied by the screen that opened it. Null for a
+    /// master, and for a transaction whose lines the classifier did not find.
+    /// </param>
+    public RecordEditorViewModel(T? record, bool isNew, IReadOnlyList<ILineSet>? lines = null)
     {
         IsNew = isNew;
         Draft = record is null ? new T() : Clone(record);
+        Lines = lines ?? [];
 
         _openedAs = Snapshot(Draft);
+
+        // A new record has no id yet, so it has no lines to read either -- they are written after
+        // the parent is saved and has one.
+        if (record is not null)
+        {
+            foreach (var set in Lines)
+                set.Load(IdOf(Draft));
+        }
 
         SaveCommand = new RelayCommand(Save);
         CancelCommand = new RelayCommand(Cancel);
@@ -106,6 +125,13 @@ public sealed class RecordEditorViewModel<T> : ObservableObject, IRecordEditor w
 
     /// <summary>The copy on screen. Nothing outside this object holds a reference to it.</summary>
     public T Draft { get; }
+
+    /// <inheritdoc />
+    public IReadOnlyList<ILineSet> Lines { get; }
+
+    /// <summary>Whether to show a lines area at all. A view binds this so a master's editor is not
+    /// a form with an empty grid under it.</summary>
+    public bool HasLines => Lines.Count > 0;
 
     public bool IsNew { get; }
 
@@ -118,7 +144,9 @@ public sealed class RecordEditorViewModel<T> : ObservableObject, IRecordEditor w
     /// Compared as a serialized snapshot rather than tracked per property: the draft is a plain
     /// generated model with no change notification, so there is nothing to subscribe to.
     /// </remarks>
-    public bool IsDirty => !string.Equals(Snapshot(Draft), _openedAs, StringComparison.Ordinal);
+    public bool IsDirty
+        => !string.Equals(Snapshot(Draft), _openedAs, StringComparison.Ordinal)
+           || Lines.Any(set => set.IsDirty);
 
     public string Status
     {
@@ -156,6 +184,18 @@ public sealed class RecordEditorViewModel<T> : ObservableObject, IRecordEditor w
         if (!_store.SaveAll(all))
         {
             Status = "Could not save.";
+            return;
+        }
+
+        // The lines go after the parent, because a new parent has no id until it is written --
+        // that id is what stamps them. Reported rather than swallowed: the record IS saved, and
+        // saying nothing would leave the editor looking as though nothing had happened.
+        foreach (var set in Lines)
+        {
+            if (set.Save(IdOf(Draft)))
+                continue;
+
+            Status = $"Saved, but could not save the {set.Title} lines.";
             return;
         }
 

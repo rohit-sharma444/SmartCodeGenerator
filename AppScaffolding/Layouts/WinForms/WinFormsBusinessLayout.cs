@@ -54,6 +54,7 @@ using System.Linq;
 using System.Reflection;
 using System.Windows.Forms;
 using {{context.RootNamespace}}.Auth;
+using {{context.RootNamespace}}.Screens;
 using {{context.RootNamespace}}.ViewModels;
 
 namespace {{context.RootNamespace}}.Views;
@@ -271,9 +272,21 @@ public sealed class MainForm : Form
 
     private Control BuildEditor(IRecordEditor editor)
     {
-        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3 };
+        // A row for the lines only when there are lines: a master's editor is a form and a button
+        // row, exactly as it was before transactions had any.
+        var hasLines = editor.Lines.Count > 0;
+
+        var layout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill, ColumnCount = 1, RowCount = hasLines ? 4 : 3,
+        };
+
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34f));
-        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, hasLines ? 45f : 100f));
+
+        if (hasLines)
+            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 55f));
+
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 44f));
 
         layout.Controls.Add(new Label
@@ -293,14 +306,90 @@ public sealed class MainForm : Form
 
         layout.Controls.Add(grid, 0, 1);
 
+        if (hasLines)
+            layout.Controls.Add(BuildLines(editor), 0, 2);
+
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft };
 
         buttons.Controls.Add(CommandButton(editor, "SaveCommand", "Save"));
         buttons.Controls.Add(CommandButton(editor, "CancelCommand", "Cancel"));
 
-        layout.Controls.Add(buttons, 0, 2);
+        layout.Controls.Add(buttons, 0, hasLines ? 3 : 2);
 
         return layout;
+    }
+
+    /// <summary>
+    /// The lines of a transaction, one grid per kind.
+    /// </summary>
+    /// <remarks>
+    /// Bound straight to the set's own collection rather than to a copy of it: this grid IS the
+    /// editor for a line, so a cell edit has to reach the object the editor will save. That is what
+    /// the BindingList behind ILineSet.Items is for -- a DataGridView needs IBindingList to notice
+    /// a row being added.
+    /// </remarks>
+    private Control BuildLines(IRecordEditor editor)
+    {
+        var host = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, AutoScroll = true };
+
+        foreach (var lines in editor.Lines)
+        {
+            var panel = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3 };
+            panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 24f));
+            panel.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
+            panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 32f));
+
+            panel.Controls.Add(new Label
+            {
+                Text = lines.Title,
+                Dock = DockStyle.Fill,
+                Font = new Font(SystemFonts.DefaultFont, FontStyle.Bold),
+            }, 0, 0);
+
+            var grid = new DataGridView
+            {
+                Dock = DockStyle.Fill,
+                DataSource = lines.Items,
+                AutoGenerateColumns = true,
+                AllowUserToAddRows = false,
+                AllowUserToDeleteRows = false,
+                MultiSelect = false,
+                SelectionMode = DataGridViewSelectionMode.FullRowSelect,
+                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
+            };
+
+            grid.SelectionChanged += (_, _) => lines.Selected = grid.CurrentRow?.DataBoundItem;
+
+            // The parent's id is stamped on save, so it is not a field anyone types into.
+            grid.DataBindingComplete += (_, _) =>
+            {
+                if (grid.Columns[lines.ForeignKey] is { } column)
+                    column.Visible = false;
+            };
+
+            panel.Controls.Add(grid, 0, 1);
+
+            var buttons = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft,
+            };
+
+            var remove = new Button { Text = "Remove line", Width = 96 };
+            remove.Click += (_, _) => lines.Remove(lines.Selected);
+
+            var add = new Button { Text = "Add line", Width = 88, Margin = new Padding(4, 0, 0, 0) };
+            add.Click += (_, _) => lines.Add();
+
+            buttons.Controls.Add(remove);
+            buttons.Controls.Add(add);
+
+            panel.Controls.Add(buttons, 0, 2);
+
+            host.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
+            host.Controls.Add(panel);
+        }
+
+        return host;
     }
 
     private Control BuildList(object screen)

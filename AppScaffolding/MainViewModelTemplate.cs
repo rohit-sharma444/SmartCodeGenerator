@@ -38,8 +38,32 @@ public static class MainViewModelTemplate
             return $"new EntityViewModel<{name}>(\"{name}\")";
 
         return roles.RoleOf(name) == Screens.EntityRole.Transaction
-            ? $"new TransactionScreenViewModel<{name}>(\"{name}\")"
+            ? $"new TransactionScreenViewModel<{name}>(\"{name}\"{Lines(name, roles)})"
             : $"new MasterScreenViewModel<{name}>(\"{name}\")";
+    }
+
+    /// <summary>
+    /// The factory that builds a transaction's line sets, or nothing when it has no lines.
+    /// </summary>
+    /// <remarks>
+    /// This is the only place that knows both types, which is why the sets are built here and
+    /// passed down: a screen is generic over the record and cannot name the line.
+    /// <para>
+    /// The foreign key is <c>&lt;Parent&gt;Id</c> by construction — <c>EntityRoles</c> only calls a
+    /// class a line when it has exactly that property, so a name assembled here cannot miss.
+    /// </para>
+    /// </remarks>
+    private static string Lines(string name, Screens.EntityRoleMap roles)
+    {
+        var lines = roles.LinesOf(name);
+
+        if (lines.Count == 0)
+            return string.Empty;
+
+        var sets = string.Join(
+            ", ", lines.Select(line => $"new LineSet<{line}>(\"{line}\", \"{name}Id\")"));
+
+        return $", () => [{sets}]";
     }
 
     public static string Build(
@@ -89,12 +113,18 @@ public static class MainViewModelTemplate
 """
             : string.Empty;
 
+        // Only for the business shell, whose registrations name LineSet. The four older layouts
+        // must emit exactly what they always did, and one extra using is a difference.
+        var screensUsing = roles is null
+            ? string.Empty
+            : $"\r\nusing {rootNamespace}.Screens;";
+
         var authUsing = login ? $"using {rootNamespace}.Auth;\r\n" : string.Empty;
 
         return $$"""
 using System.Collections.ObjectModel;
 {{authUsing}}using {{rootNamespace}}.Data;
-using {{rootNamespace}}.Models;
+using {{rootNamespace}}.Models;{{screensUsing}}
 
 namespace {{rootNamespace}}.ViewModels;
 

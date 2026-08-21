@@ -164,6 +164,38 @@ public class WinFormsBusinessLayoutTests
         StringAssert.Contains(source, "CommandButton(editor, \"CancelCommand\", \"Cancel\")");
     }
 
+    /// <summary>
+    /// The lines of a transaction, in a grid inside the editor.
+    /// </summary>
+    /// <remarks>
+    /// Bound to the set's own collection rather than a copy: this grid IS the editor for a line, so
+    /// a cell edit has to reach the object the editor will save.
+    /// </remarks>
+    [TestMethod]
+    public void The_editor_shows_the_lines_of_a_transaction()
+    {
+        var source = Source();
+
+        StringAssert.Contains(source, "foreach (var lines in editor.Lines)");
+        StringAssert.Contains(source, "DataSource = lines.Items,");
+        StringAssert.Contains(source, "lines.Add()");
+        StringAssert.Contains(source, "lines.Remove(lines.Selected)");
+
+        // The parent's id is stamped on save, so it is not a column anyone types into.
+        StringAssert.Contains(source, "grid.Columns[lines.ForeignKey]");
+    }
+
+    /// <summary>A master's editor keeps the three rows it always had.</summary>
+    [TestMethod]
+    public void An_editor_with_no_lines_grows_no_row_for_them()
+    {
+        var source = Source();
+
+        StringAssert.Contains(source, "var hasLines = editor.Lines.Count > 0;");
+        StringAssert.Contains(source, "RowCount = hasLines ? 4 : 3,");
+        StringAssert.Contains(source, "layout.Controls.Add(buttons, 0, hasLines ? 3 : 2);");
+    }
+
     [TestMethod]
     public void An_unthemed_shell_uses_the_system_colours()
     {
@@ -242,6 +274,21 @@ public class WinFormsBusinessLayoutTests
         namespace Payroll.WinForms.Screens;
 
         public enum EntityRole { Master, Transaction, DocumentLine }
+
+        /// <summary>The lines of a transaction, as much of it as a view touches.</summary>
+        public interface ILineSet
+        {
+            string Title { get; }
+            string ForeignKey { get; }
+            System.Type LineType { get; }
+            System.Collections.IEnumerable Items { get; }
+            object? Selected { get; set; }
+            bool IsDirty { get; }
+            void Load(int parentId);
+            void Add();
+            void Remove(object? line);
+            bool Save(int parentId);
+        }
         """;
 
     /// <summary>
@@ -278,6 +325,7 @@ public class WinFormsBusinessLayoutTests
         {
             bool IsDirty { get; }
             string Title { get; }
+            IReadOnlyList<ILineSet> Lines { get; }
         }
 
         public sealed record NavGroup(string Title, IReadOnlyList<IEntityViewModel> Entities);

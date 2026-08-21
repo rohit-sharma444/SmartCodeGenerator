@@ -70,17 +70,24 @@ public static class BlazorPageTemplate
     /// arrives with an id and <c>/order/new</c> arrives without one. A separate "new" page would be
     /// the same file twice.
     /// </remarks>
-    public static string EditorPage(string rootNamespace, string className, bool seed, bool login)
+    /// <param name="lines">
+    /// The line classes this record holds, if any. Named here because the page is the only place
+    /// that knows both types — the editor component is generic over the record alone.
+    /// </param>
+    public static string EditorPage(
+        string rootNamespace, string className, bool seed, bool login,
+        IReadOnlyList<string> lines)
         => $$"""
 @page "/{{Route(className)}}/{Id:int}"
 @page "/{{Route(className)}}/new"
 @rendermode InteractiveServer{{Authorize(login)}}
 @using {{rootNamespace}}.Components.Screens
-@using {{rootNamespace}}.Models{{SeedUsing(rootNamespace, seed)}}
+@using {{rootNamespace}}.Models
+@using {{rootNamespace}}.Screens{{SeedUsing(rootNamespace, seed)}}
 
 <PageTitle>{{className}}</PageTitle>
 
-<RecordEditor TRecord="{{className}}" Id="@Id" Title="{{className}}" Route="{{Route(className)}}" />
+<RecordEditor TRecord="{{className}}" Id="@Id" Title="{{className}}" Route="{{Route(className)}}"{{LineSets(className, lines)}} />
 
 @code {
     /// <summary>Null on the "new" route, which is how the editor knows which it is.</summary>
@@ -101,6 +108,20 @@ public static class BlazorPageTemplate
         => login
             ? "\r\n@using Microsoft.AspNetCore.Authorization\r\n@attribute [Authorize]"
             : string.Empty;
+
+    /// <summary>
+    /// The line sets, as a factory the editor calls once per record.
+    /// </summary>
+    /// <remarks>
+    /// The foreign key is <c>&lt;Parent&gt;Id</c> by construction: the classifier only calls a
+    /// class a line when it has exactly that property.
+    /// </remarks>
+    private static string LineSets(string className, IReadOnlyList<string> lines)
+        => lines.Count == 0
+            ? string.Empty
+            : "\r\n              Lines=\"@(() => new ILineSet[] { "
+              + string.Join(", ", lines.Select(line => $"new LineSet<{line}>(\"{line}\", \"{className}Id\")"))
+              + " })\"";
 
     /// <summary>Where the seed gate lives, imported only by a page that calls it.</summary>
     private static string SeedUsing(string rootNamespace, bool seed)

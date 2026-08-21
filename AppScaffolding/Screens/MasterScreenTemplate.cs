@@ -126,12 +126,26 @@ public class MasterScreenViewModel<T> : ObservableObject, IEntityViewModel where
             .ToList();
     }
 
-    private void New() => EditorRequested?.Invoke(this, new RecordEditorViewModel<T>(null, isNew: true));
+    /// <summary>
+    /// The line sets a record's editor gets.
+    /// </summary>
+    /// <remarks>
+    /// Empty here: reference data has no lines. A transaction screen overrides this, which is why
+    /// the editor is built through it rather than inline — both paths have to agree.
+    /// </remarks>
+    protected virtual IReadOnlyList<ILineSet> LineSets() => [];
+
+    private void New()
+        => EditorRequested?.Invoke(
+            this, new RecordEditorViewModel<T>(null, isNew: true, LineSets()));
 
     private void Open()
     {
         if (Selected is T record)
-            EditorRequested?.Invoke(this, new RecordEditorViewModel<T>(record, isNew: false));
+        {
+            EditorRequested?.Invoke(
+                this, new RecordEditorViewModel<T>(record, isNew: false, LineSets()));
+        }
     }
 
     /// <summary>Deletes the selected row. Administrators only, which is one of the role's two

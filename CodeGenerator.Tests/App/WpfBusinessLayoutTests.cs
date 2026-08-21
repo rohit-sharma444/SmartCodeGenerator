@@ -130,6 +130,41 @@ public class WpfBusinessLayoutTests
         StringAssert.Contains(xaml, "Command=\"{Binding CancelCommand}\"");
     }
 
+    /// <summary>
+    /// The third thing a transaction adds: its lines, inside the editor.
+    /// </summary>
+    /// <remarks>
+    /// An ItemsControl over an empty collection renders nothing, which IS the no-lines fallback —
+    /// a master's editor is a form and a button row, with no empty grid under it.
+    /// </remarks>
+    [TestMethod]
+    public void The_editor_shows_the_lines_of_a_transaction()
+    {
+        var xaml = Xaml();
+
+        StringAssert.Contains(xaml, "ItemsSource=\"{Binding Lines}\"");
+        StringAssert.Contains(xaml, "Click=\"OnAddLine\"");
+        StringAssert.Contains(xaml, "Click=\"OnRemoveLine\"");
+
+        // The lines grid IS the editor for a line, so unlike the two lists it is typed into.
+        StringAssert.Contains(xaml, "SelectedItem=\"{Binding Selected}\"");
+        Assert.AreEqual(2, xaml.Split("IsReadOnly=\"True\"").Length - 1);
+    }
+
+    [TestMethod]
+    public void The_line_buttons_act_on_the_set_they_belong_to()
+    {
+        var code = new WpfBusinessLayout().ViewFiles(Context())
+            .Single(f => f.Name == "MainWindow.xaml.cs").Source;
+
+        StringAssert.Contains(code, "private void OnAddLine(");
+        StringAssert.Contains(code, "private void OnRemoveLine(");
+
+        // The DataContext of the button, the same way the rail's buttons carry their screen.
+        StringAssert.Contains(code, "DataContext: ILineSet lines");
+        StringAssert.Contains(code, "lines.Remove(lines.Selected)");
+    }
+
     /// <summary>Theming stays orthogonal, as it is for every other layout.</summary>
     [TestMethod]
     public void A_themed_shell_binds_the_theme_brushes()
@@ -209,6 +244,21 @@ public class WpfBusinessLayoutTests
         namespace Payroll.Screens;
 
         public enum EntityRole { Master, Transaction, DocumentLine }
+
+        /// <summary>The lines of a transaction, as much of it as a view touches.</summary>
+        public interface ILineSet
+        {
+            string Title { get; }
+            string ForeignKey { get; }
+            System.Type LineType { get; }
+            System.Collections.IEnumerable Items { get; }
+            object? Selected { get; set; }
+            bool IsDirty { get; }
+            void Load(int parentId);
+            void Add();
+            void Remove(object? line);
+            bool Save(int parentId);
+        }
         """;
 
     private const string ShellStub = """
@@ -238,6 +288,7 @@ public class WpfBusinessLayoutTests
         {
             bool IsDirty { get; }
             string Title { get; }
+            IReadOnlyList<ILineSet> Lines { get; }
         }
 
         public sealed class DashboardViewModel

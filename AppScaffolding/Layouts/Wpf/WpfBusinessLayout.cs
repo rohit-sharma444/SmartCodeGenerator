@@ -195,7 +195,45 @@ public sealed class WpfBusinessLayout : IAppLayout
                     <Button Content="Save" Command="{Binding SaveCommand}" Width="88" Margin="4,0,0,0" />
                 </StackPanel>
                 <ScrollViewer>
-                    <views:PropertyEditor Record="{Binding Draft}" />
+                    <StackPanel>
+                        <views:PropertyEditor Record="{Binding Draft}" />
+
+                        <!-- The lines of a transaction, edited inside their parent. An ItemsControl
+                             over an empty collection renders nothing, which is the no-lines
+                             fallback: a master's editor is a form and nothing else. -->
+                        <ItemsControl ItemsSource="{Binding Lines}" Margin="0,18,0,0">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Margin="0,0,0,12">
+                                        <TextBlock Text="{Binding Title}"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{{{muted}}}"
+                                                   Margin="0,0,0,6" />
+                                        <!-- Typed into, unlike the lists: this grid IS the editor
+                                             for a line, which has no screen of its own. -->
+                                        <DataGrid ItemsSource="{Binding Items}"
+                                                  SelectedItem="{Binding Selected}"
+                                                  AutoGenerateColumns="True"
+                                                  AutoGeneratingColumn="OnAutoGeneratingColumn"
+                                                  CanUserAddRows="False"
+                                                  HeadersVisibility="Column"
+                                                  MaxHeight="220"
+                                                  GridLinesVisibility="Horizontal"
+                                                  BorderBrush="{{{rule}}}" />
+                                        <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                            <Button Content="Add line"
+                                                    Click="OnAddLine"
+                                                    Width="88" />
+                                            <Button Content="Remove line"
+                                                    Click="OnRemoveLine"
+                                                    Width="96"
+                                                    Margin="6,0,0,0" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
                 </ScrollViewer>
             </DockPanel>
         </DataTemplate>
@@ -333,6 +371,12 @@ public sealed class WpfBusinessLayout : IAppLayout
             Shell(),
             StringComparison.Ordinal);
 
+        // The line handlers name ILineSet, which lives with the roles rather than the view models.
+        source = source.Replace(
+            $"using {rootNamespace}.ViewModels;",
+            $"using {rootNamespace}.Screens;\r\nusing {rootNamespace}.ViewModels;",
+            StringComparison.Ordinal);
+
         // One blank line, not two: what precedes the splice already ends in a newline.
         var handlers = """
 
@@ -351,6 +395,20 @@ public sealed class WpfBusinessLayout : IAppLayout
 
         if (Session.SignOutRequested)
             Close();
+    }
+
+    // The line buttons carry their own ILineSet as their DataContext, the same way the rail's
+    // buttons carry a screen: whatever was clicked knows which lines it means.
+    private void OnAddLine(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: ILineSet lines })
+            lines.Add();
+    }
+
+    private void OnRemoveLine(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: ILineSet lines })
+            lines.Remove(lines.Selected);
     }
 
     // The rail's buttons carry the entity view model as their DataContext, so navigation needs no

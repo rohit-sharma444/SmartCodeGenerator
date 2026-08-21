@@ -96,6 +96,10 @@ public sealed class BlazorTarget : ITargetScaffolder
                 BlazorScreenTemplates.RecordEditor(ns, customization.Validation)),
 
             new("Screens", "ScreenFields.cs", BlazorScreenTemplates.Fields(ns)),
+
+            // The lines of a transaction, which the editor holds and the page names. The same file
+            // the desktop targets emit: one set of semantics, three views.
+            new("Screens", "LineSet.cs", LineSetTemplate.Source(ns)),
         };
 
         // Two pages each: the list, and the editor behind /<entity>/<id> and /<entity>/new.
@@ -114,7 +118,8 @@ public sealed class BlazorTarget : ITargetScaffolder
             new GeneratedFile(
                 PagesFolder, BlazorPageTemplate.EditorFileName(name),
                 BlazorPageTemplate.EditorPage(
-                    ns, name, customization.SampleSeedData, customization.Login)),
+                    ns, name, customization.SampleSeedData, customization.Login,
+                    roles.LinesOf(name))),
         }));
 
         // The login page, the endpoints that set the cookie, and a router that actually reads

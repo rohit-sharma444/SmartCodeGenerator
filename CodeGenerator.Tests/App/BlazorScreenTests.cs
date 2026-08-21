@@ -146,6 +146,56 @@ public class BlazorScreenTests
         Assert.DoesNotContain("Shop.Validation", bare);
     }
 
+    /// <summary>
+    /// A transaction's editor holds its lines; a master's holds none.
+    /// </summary>
+    /// <remarks>
+    /// The page supplies them, because it is the only place that knows both the record type and the
+    /// line type — the component is generic over the record alone.
+    /// </remarks>
+    [TestMethod]
+    public void The_editor_page_hands_the_editor_its_lines()
+    {
+        var editor = Source("OrderEditorPage.razor");
+
+        Assert.Contains("Lines=\"@(() => new ILineSet[] { new LineSet<OrderLine>(\"OrderLine\", \"OrderId\") })\"", editor);
+        Assert.Contains("@using Shop.Screens", editor);
+
+        // Reference data has no lines, and the attribute is absent rather than empty.
+        Assert.DoesNotContain("Lines=", Source("CustomerEditorPage.razor"));
+    }
+
+    [TestMethod]
+    public void The_editor_renders_a_table_per_set_of_lines()
+    {
+        var editor = Source("RecordEditor.razor");
+
+        Assert.Contains("@foreach (var lines in _lines)", editor);
+        Assert.Contains("lines.Add()", editor);
+        Assert.Contains("lines.Remove(line)", editor);
+
+        // The parent's id is stamped on save, so it is not a column anyone types into.
+        Assert.Contains("field.Name, lines.ForeignKey", editor);
+
+        // And they go after the record, which is where the id comes from.
+        Assert.Contains("lines.Save(ScreenFields.IdOf(_draft))", editor);
+    }
+
+    /// <summary>A line edit alone has to make the editor dirty, or the guard lets it go.</summary>
+    [TestMethod]
+    public void A_line_edit_counts_as_an_unsaved_change()
+        => Assert.Contains("_lines.Any(lines => lines.IsDirty)", Source("RecordEditor.razor"));
+
+    /// <summary>The same file the desktop targets emit — one set of semantics, three views.</summary>
+    [TestMethod]
+    public void The_web_emits_the_same_line_set_the_desktop_does()
+    {
+        var emitted = Files().Single(f => f.Name == "LineSet.cs");
+
+        Assert.AreEqual("Screens", emitted.RelativeFolder);
+        Assert.AreEqual(AppScaffolding.Screens.LineSetTemplate.Source("Shop"), emitted.Source);
+    }
+
     [TestMethod]
     public void The_transaction_screen_has_the_date_range_and_the_totals()
     {

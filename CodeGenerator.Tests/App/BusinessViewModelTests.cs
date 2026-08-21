@@ -1,4 +1,4 @@
-using AppScaffolding;
+﻿using AppScaffolding;
 using AppScaffolding.Screens;
 using AppScaffolding.Targets;
 
@@ -97,4 +97,48 @@ public class BusinessViewModelTests
             },
             files.Select(f => f.Name).ToList());
     }
+
+    /// <summary>
+    /// A transaction with lines is registered with a factory that builds them.
+    /// </summary>
+    /// <remarks>
+    /// MainViewModel is the only place that knows both types, which is why the sets are built here
+    /// and handed down. The foreign key is &lt;Parent&gt;Id by construction: the classifier only
+    /// calls a class a line when it has exactly that property.
+    /// </remarks>
+    [TestMethod]
+    public void A_transaction_with_lines_is_given_a_factory_for_them()
+    {
+        var roles = EntityRoles.Classify(
+            [
+                EntityRolesTests.Entity("Customer", ("Name", "string")),
+                EntityRolesTests.Entity(
+                    "Order",
+                    [.. EntityRolesTests.ForeignKeyTo("Customer"), ("OrderedOn", "DateTime")]),
+                EntityRolesTests.Entity(
+                    "OrderLine", [.. EntityRolesTests.ForeignKeyTo("Order"), ("Quantity", "int")]),
+            ]);
+
+        var source = MainViewModelTemplate.Build(
+            "Shop", ["Customer", "Order", "OrderLine"], seed: false, login: false, roles);
+
+        StringAssert.Contains(
+            source,
+            "new TransactionScreenViewModel<Order>(\"Order\", "
+            + "() => [new LineSet<OrderLine>(\"OrderLine\", \"OrderId\")]),");
+
+        // A master gets no factory, and the line itself gets no screen at all.
+        StringAssert.Contains(source, "new MasterScreenViewModel<Customer>(\"Customer\"),");
+        Assert.DoesNotContain("MasterScreenViewModel<OrderLine>", source);
+
+        // The registrations name LineSet, so the file has to import where it lives.
+        StringAssert.Contains(source, "using Shop.Screens;");
+    }
+
+    /// <summary>And the four older layouts gain neither the import nor the factory.</summary>
+    [TestMethod]
+    public void A_layout_with_no_roles_gains_no_import()
+        => Assert.DoesNotContain(
+            "using Shop.Screens;",
+            MainViewModelTemplate.Build("Shop", ["Order"], seed: false, login: false));
 }

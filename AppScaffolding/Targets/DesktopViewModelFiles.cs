@@ -44,6 +44,11 @@ public static class DesktopViewModelFiles
         // EntityViewModel and would carry five files nothing references.
         if (roles is not null)
         {
+            // Beside EntityRole rather than among the view models: it is the same kind of thing --
+            // what the model is, rather than how a window shows it -- and the web target emits it
+            // into the same folder for the same screens.
+            files.Add(new("Screens", "LineSet.cs", LineSetTemplate.Source(rootNamespace)));
+
             files.Add(new("ViewModels", "RecordEditorViewModel.cs",
                 RecordEditorTemplate.Source(rootNamespace, validation)));
             files.Add(new("ViewModels", "MasterScreenViewModel.cs",

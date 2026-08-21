@@ -793,7 +793,7 @@ ever <em>suggests</em> — it never runs a command you did not confirm.</p>
   <li><strong>column totals</strong> under the list: every money-shaped column that is neither an
       <code>Id</code> nor a foreign key gets its own total, over the rows currently shown rather
       than over the whole store. Several honest totals beat one confidently wrong one;</li>
-  <li>the same editor.</li>
+  <li>its <strong>lines</strong>, inside the editor &mdash; described below.</li>
 </ul>
 
 <h3>The editor</h3>
@@ -807,6 +807,24 @@ ever <em>suggests</em> — it never runs a command you did not confirm.</p>
    press <em>Save</em>, so <em>Cancel</em> genuinely cancels rather than leaving a half-typed record
    behind. <em>Save</em> runs the same validation rules the rest of the application runs
    (chapter 10) and says what it refused rather than silently keeping the old value.</p>
+
+<h3>Lines</h3>
+
+<p>A transaction's editor also holds its <strong>lines</strong> &mdash; the OrderLines of an Order
+   &mdash; in a grid under the record's own fields, with <em>Add line</em> and
+   <em>Remove line</em> beside it. This is the only place a line is edited: it has no screen of its
+   own and no place in the rail, which is what the third kind of class means (chapter 15). A record
+   with no lines shows no grid, so a master's editor is a form and a button row and nothing
+   else.</p>
+
+<p>The column that points at the parent is not shown. You never fill it in: the application stamps
+   it when you save, which is also why the lines are written <em>after</em> the record &mdash; a new
+   record has no id until it is stored, and that id is what the lines are attached to.</p>
+
+<p>Line edits are part of the same copy. Adding, changing or removing a line makes the editor
+   unsaved, so navigating away asks the same question; <em>Cancel</em> discards line changes exactly
+   as it discards a typed field; and removing a line only removes it from the store when you
+   save.</p>
 
 <div class="warn"><p><strong>Discard your changes?</strong> Because the editor fills the content area
    rather than opening a window in front of it, you <em>can</em> wander off with unsaved edits

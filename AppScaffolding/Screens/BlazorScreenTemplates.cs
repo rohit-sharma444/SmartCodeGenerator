@@ -546,7 +546,52 @@ else
         </div>
     }
 
-    <div class="d-flex gap-2">
+    @foreach (var lines in _lines)
+    {
+        <h2 class="h6 mt-4">@lines.Title</h2>
+
+        @if (Rows(lines).Count == 0)
+        {
+            <p><em>No @lines.Title rows yet.</em></p>
+        }
+        else
+        {
+            <table class="table table-sm">
+                <thead>
+                    <tr>
+                        @foreach (var field in LineFields(lines))
+                        {
+                            <th>@field.Name</th>
+                        }
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var line in Rows(lines))
+                    {
+                        <tr>
+                            @foreach (var field in LineFields(lines))
+                            {
+                                <td>
+                                    <input type="@ScreenFields.InputType(field)" class="form-control form-control-sm"
+                                           value="@ScreenFields.Display(field.GetValue(line))"
+                                           @onchange="e => SetLine(line, field, e.Value?.ToString())" />
+                                </td>
+                            }
+                            <td>
+                                <button class="btn btn-sm btn-outline-danger"
+                                        @onclick="() => lines.Remove(line)">Remove</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+
+        <button class="btn btn-sm btn-outline-secondary" @onclick="() => lines.Add()">Add @lines.Title</button>
+    }
+
+    <div class="d-flex gap-2 mt-4">
         <button class="btn btn-primary" @onclick="Save">Save</button>
         <button class="btn btn-outline-secondary" @onclick="Cancel">Cancel</button>
     </div>
@@ -565,6 +610,7 @@ else
     private readonly IStore<TRecord> _store = StoreFactory.Create<TRecord>();
 
     private TRecord _draft = new();
+    private IReadOnlyList<ILineSet> _lines = [];
     private string _openedAs = string.Empty;
     private string _status = string.Empty;
     private bool _missing;
@@ -573,6 +619,16 @@ else
 
     /// <summary>Whichever record the URL named, or null for a new one.</summary>
     [Parameter] public int? Id { get; set; }
+
+    /// <summary>
+    /// Builds this record's line sets, or null for a master.
+    /// </summary>
+    /// <remarks>
+    /// Supplied by the page, which is the only place that knows both the record type and the line
+    /// type: this component is generic over the record alone and cannot name a line. A factory
+    /// rather than a list, because every editor needs its own copy of the lines.
+    /// </remarks>
+    [Parameter] public Func<IReadOnlyList<ILineSet>>? Lines { get; set; }
 
     [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
 
@@ -589,7 +645,22 @@ else
     /// Compared as a serialized snapshot rather than tracked per property: the draft is a plain
     /// generated model with no change notification, so there is nothing to subscribe to.
     /// </remarks>
-    private bool IsDirty => !string.Equals(ScreenFields.Snapshot(_draft), _openedAs, StringComparison.Ordinal);
+    private bool IsDirty
+        => !string.Equals(ScreenFields.Snapshot(_draft), _openedAs, StringComparison.Ordinal)
+           || _lines.Any(lines => lines.IsDirty);
+
+    /// <summary>The lines on screen. ILineSet holds them untyped, because the editor cannot name
+    /// the line type any more than it can name the record's.</summary>
+    private static List<object> Rows(ILineSet lines) => lines.Items.Cast<object>().ToList();
+
+    /// <summary>The columns a line is edited through: everything but its own id and the parent's,
+    /// which the editor stamps on save.</summary>
+    private static IEnumerable<PropertyInfo> LineFields(ILineSet lines)
+        => ScreenFields.Editable(lines.LineType)
+            .Where(field => !string.Equals(field.Name, lines.ForeignKey, StringComparison.Ordinal));
+
+    private void SetLine(object line, PropertyInfo field, string? text)
+        => _status = ScreenFields.Assign(line, field, text) ?? string.Empty;
 
     /// <summary>Set while leaving deliberately, so Save and Cancel are not asked to confirm a
     /// discard the user just chose.</summary>
@@ -633,6 +704,16 @@ else
 
         _draft = stored is null ? new TRecord() : ScreenFields.Clone(stored);
         _openedAs = ScreenFields.Snapshot(_draft);
+
+        _lines = Lines?.Invoke() ?? [];
+
+        // A new record has no id yet, so it has no lines to read either: they are written after the
+        // parent is saved and has one.
+        if (Id is { } parentId)
+        {
+            foreach (var lines in _lines)
+                lines.Load(parentId);
+        }
     }
 
     /// <summary>Writes a typed value onto the draft, reporting one that will not convert rather
@@ -667,6 +748,17 @@ else
         if (!_store.SaveAll(all))
         {
             _status = "Could not save.";
+            return;
+        }
+
+        // The lines go after the parent, because a new parent has no id until it is written -- and
+        // that id is what stamps them.
+        foreach (var lines in _lines)
+        {
+            if (lines.Save(ScreenFields.IdOf(_draft)))
+                continue;
+
+            _status = $"Saved, but could not save the {lines.Title} lines.";
             return;
         }
 

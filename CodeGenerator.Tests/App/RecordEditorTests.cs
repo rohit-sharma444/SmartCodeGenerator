@@ -1,4 +1,5 @@
-﻿using System.Reflection;
+﻿using System.Collections;
+using System.Reflection;
 using AppScaffolding;
 using AppScaffolding.Screens;
 using CodeGenerationEngine.Core;
@@ -70,12 +71,23 @@ public class Book
         return Assembly.Load(Compiler.Compile(source).AssemblyBytes!);
     }
 
-    /// <summary>The emitted editor, stripped of the namespaces the flattened source has none of.</summary>
+    /// <summary>
+    /// The emitted editor, stripped of the namespaces the flattened source has none of.
+    /// </summary>
+    /// <remarks>
+    /// LineSet travels with it: the editor's own signature names ILineSet, so the two do not
+    /// compile apart. Callers that do not care about lines get the types anyway and ignore them.
+    /// </remarks>
     internal static string Editor(bool validation)
-        => RecordEditorTemplate.Source("Acme", validation)
-            .Replace("namespace Acme.ViewModels;", string.Empty)
-            .Replace("using Acme.Data;", string.Empty)
-            .Replace("using Acme.Validation;", string.Empty);
+        => AppScaffolding.Screens.LineSetTemplate.Source("Acme")
+               .Replace("namespace Acme.Screens;", string.Empty)
+               .Replace("using Acme.Data;", string.Empty)
+           + Environment.NewLine
+           + RecordEditorTemplate.Source("Acme", validation)
+               .Replace("namespace Acme.ViewModels;", string.Empty)
+               .Replace("using Acme.Data;", string.Empty)
+               .Replace("using Acme.Screens;", string.Empty)
+               .Replace("using Acme.Validation;", string.Empty);
 
     /// <summary>
     /// The editor an app generated with validation on gets, over a validator that rejects a book
@@ -142,7 +154,7 @@ internal sealed class NullValidator<T> : IValidator<T>
 
         var editorType = assembly.GetType("RecordEditorViewModel`1")!.MakeGenericType(bookType);
 
-        return (Activator.CreateInstance(editorType, [book, false])!, book);
+        return (Activator.CreateInstance(editorType, [book, false, null])!, book);
     }
 
     private static object Draft(object editor)
@@ -244,7 +256,7 @@ internal sealed class NullValidator<T> : IValidator<T>
         var editorType = assembly.GetType("RecordEditorViewModel`1")!
             .MakeGenericType(assembly.GetType("Book")!);
 
-        var editor = Activator.CreateInstance(editorType, [null, true])!;
+        var editor = Activator.CreateInstance(editorType, [null, true, null])!;
 
         SetTitle(Draft(editor), "Brand new");
         Execute(editor, "SaveCommand");
@@ -335,6 +347,174 @@ internal sealed class NullValidator<T> : IValidator<T>
         Assert.DoesNotContain("Acme.Validation", source);
 
         StringAssert.Contains(RecordEditorTemplate.Source("Acme", validation: true), "ValidatorFactory.Create<T>()");
+    }
+
+    // ---- the lines a transaction's editor holds ----
+
+    /// <summary>A line class pointing at Book, and the store the set reads it from.</summary>
+    private const string LineStub = """
+public class BookNote
+{
+    public int Id { get; set; }
+    public int BookId { get; set; }
+    public string Note { get; set; } = string.Empty;
+}
+""";
+
+    private static Assembly EmitWithLines()
+    {
+        var source = EmittedSource.Flatten(
+            StoreAndModelStub, LineStub, ObservableAndCommand, Editor(validation: false));
+
+        EmittedSource.AssertCompiles(source);
+
+        return Assembly.Load(Compiler.Compile(source).AssemblyBytes!);
+    }
+
+    private static object LineSet(Assembly assembly)
+        => Activator.CreateInstance(
+            assembly.GetType("LineSet`1")!.MakeGenericType(assembly.GetType("BookNote")!),
+            ["BookNote", "BookId"])!;
+
+    private static IList Notes(Assembly assembly)
+        => (IList)assembly.GetType("MemoryStore`1")!
+            .MakeGenericType(assembly.GetType("BookNote")!)
+            .GetField("Rows")!.GetValue(null)!;
+
+    private static object EditorOver(Assembly assembly, object? record, bool isNew, object set)
+    {
+        var sets = Array.CreateInstance(assembly.GetType("ILineSet")!, 1);
+        sets.SetValue(set, 0);
+
+        return Activator.CreateInstance(
+            assembly.GetType("RecordEditorViewModel`1")!.MakeGenericType(assembly.GetType("Book")!),
+            [record, isNew, sets])!;
+    }
+
+    private static List<object> Lines(object set)
+        => ((System.Collections.IEnumerable)set.GetType().GetProperty("Items")!.GetValue(set)!)
+            .Cast<object>().ToList();
+
+    /// <summary>An editor opened over a record shows the lines that record already has.</summary>
+    [TestMethod]
+    public void Opening_a_record_loads_its_lines()
+    {
+        var assembly = EmitWithLines();
+
+        var note = Activator.CreateInstance(assembly.GetType("BookNote")!)!;
+        note.GetType().GetProperty("Id")!.SetValue(note, 1);
+        note.GetType().GetProperty("BookId")!.SetValue(note, 1);
+
+        Notes(assembly).Clear();
+        Notes(assembly).Add(note);
+
+        var (editor, _) = OpenExistingWith(assembly, LineSet(assembly));
+
+        Assert.IsTrue((bool)editor.GetType().GetProperty("HasLines")!.GetValue(editor)!);
+        Assert.HasCount(1, Lines(SetOf(editor)));
+    }
+
+    /// <summary>A change to a line alone must make the editor dirty, or the shell lets you navigate
+    /// away from it without asking.</summary>
+    [TestMethod]
+    public void A_line_edit_makes_the_editor_dirty()
+    {
+        var assembly = EmitWithLines();
+        var (editor, _) = OpenExistingWith(assembly, LineSet(assembly));
+
+        Assert.IsFalse((bool)editor.GetType().GetProperty("IsDirty")!.GetValue(editor)!);
+
+        SetOf(editor).GetType().GetMethod("Add")!.Invoke(SetOf(editor), null);
+
+        Assert.IsTrue((bool)editor.GetType().GetProperty("IsDirty")!.GetValue(editor)!);
+    }
+
+    /// <summary>
+    /// The lines are saved AFTER the record, stamped with the id it was just given.
+    /// </summary>
+    /// <remarks>
+    /// The whole reason for the ordering: a new record has no id until it is written, so lines
+    /// saved first would carry a foreign key of zero and belong to nothing.
+    /// </remarks>
+    [TestMethod]
+    public void A_new_records_lines_are_stamped_with_the_id_it_is_given()
+    {
+        var assembly = EmitWithLines();
+        Rows(assembly).Clear();
+        Notes(assembly).Clear();
+
+        var set = LineSet(assembly);
+        var editor = EditorOver(assembly, null, isNew: true, set);
+
+        set.GetType().GetMethod("Add")!.Invoke(set, null);
+        Execute(editor, "SaveCommand");
+
+        var book = Rows(assembly)[0]!;
+        var bookId = (int)book.GetType().GetProperty("Id")!.GetValue(book)!;
+
+        Assert.AreNotEqual(0, bookId);
+        Assert.HasCount(1, Notes(assembly));
+
+        var stored = Notes(assembly)[0]!;
+
+        Assert.AreEqual(bookId, stored.GetType().GetProperty("BookId")!.GetValue(stored));
+    }
+
+    /// <summary>Cancel leaves the lines exactly as they were, which is the point of cloning them.</summary>
+    [TestMethod]
+    public void Cancel_leaves_the_lines_alone()
+    {
+        var assembly = EmitWithLines();
+
+        var note = Activator.CreateInstance(assembly.GetType("BookNote")!)!;
+        note.GetType().GetProperty("Id")!.SetValue(note, 1);
+        note.GetType().GetProperty("BookId")!.SetValue(note, 1);
+        note.GetType().GetProperty("Note")!.SetValue(note, "Original");
+
+        Notes(assembly).Clear();
+        Notes(assembly).Add(note);
+
+        var (editor, _) = OpenExistingWith(assembly, LineSet(assembly));
+
+        Lines(SetOf(editor))[0].GetType().GetProperty("Note")!
+            .SetValue(Lines(SetOf(editor))[0], "Changed");
+
+        Execute(editor, "CancelCommand");
+
+        var stored = Notes(assembly)[0]!;
+
+        Assert.AreEqual("Original", stored.GetType().GetProperty("Note")!.GetValue(stored));
+    }
+
+    /// <summary>A master's editor is a form and nothing else. The views bind HasLines so it does not
+    /// grow an empty grid.</summary>
+    [TestMethod]
+    public void An_editor_with_no_lines_says_so()
+    {
+        var (editor, _) = OpenExisting(Emit());
+
+        Assert.IsFalse((bool)editor.GetType().GetProperty("HasLines")!.GetValue(editor)!);
+        Assert.IsEmpty((System.Collections.IEnumerable)editor.GetType().GetProperty("Lines")!.GetValue(editor)!);
+    }
+
+    private static object SetOf(object editor)
+        => ((System.Collections.IEnumerable)editor.GetType().GetProperty("Lines")!.GetValue(editor)!)
+            .Cast<object>().First();
+
+    /// <summary>Book 1, open in an editor that also holds a set of lines.</summary>
+    private static (object Editor, object Record) OpenExistingWith(Assembly assembly, object set)
+    {
+        var bookType = assembly.GetType("Book")!;
+        var book = Activator.CreateInstance(bookType)!;
+
+        bookType.GetProperty("Id")!.SetValue(book, 1);
+        bookType.GetProperty("Title")!.SetValue(book, "Original");
+
+        var rows = Rows(assembly);
+        rows.Clear();
+        rows.Add(book);
+
+        return (EditorOver(assembly, book, isNew: false, set), book);
     }
 
     private static string Status(object editor)
