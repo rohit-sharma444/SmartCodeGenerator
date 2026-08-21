@@ -125,6 +125,92 @@ builder.Services.AddCascadingAuthenticationState();
         }
     }
 
+    /// <summary>What the template's own App.razor renders the router with.</summary>
+    private const string StaticRouter = "<Routes />";
+
+    private const string StaticHead = "<HeadOutlet />";
+
+    private const string RoutedRouter = "<Routes @rendermode=\"RenderModeForPage\" />";
+
+    private const string RoutedHead = "<HeadOutlet @rendermode=\"RenderModeForPage\" />";
+
+    private const string EndpointsUsing = "@using Microsoft.AspNetCore.Components.Endpoints";
+
+    /// <summary>
+    /// The render mode the whole page tree gets, and the one page that opts out.
+    /// </summary>
+    /// <remarks>
+    /// Appended to App.razor rather than emitted as a whole file, for the reason
+    /// <see cref="ReconcileNamespace"/> gives about Program.cs: the template's shell is correct and
+    /// re-implementing it would mean drifting from it on every SDK update.
+    /// </remarks>
+    private const string RenderModeMember = """
+
+@code {
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    /// <summary>
+    /// Interactive routing, except for a page that has opted out of it.
+    /// </summary>
+    /// <remarks>
+    /// The login page needs an HttpContext to issue its antiforgery token and to set the cookie,
+    /// and an interactive circuit has neither. Excluding it from interactive routing is only half
+    /// the job: the interactive router does not know the route of an excluded page, so it renders
+    /// Not Found over the form the server had just sent.
+    /// </remarks>
+    private IComponentRenderMode? RenderModeForPage =>
+        HttpContext.AcceptsInteractiveRouting() ? InteractiveServer : null;
+}
+""";
+
+    /// <summary>
+    /// Makes the ROUTER interactive, which is what lets a screen intercept a navigation.
+    /// </summary>
+    /// <remarks>
+    /// The template renders <c>&lt;Routes /&gt;</c> statically and each page asks for
+    /// interactivity itself. Under that arrangement a rail click is an enhanced page load handled
+    /// outside every circuit, so the editor's <c>NavigationLock</c> never sees it and unsaved edits
+    /// are lost silently — found by clicking a rail item in a running app with a half-typed record,
+    /// which no assertion over emitted markup could show.
+    /// <para>
+    /// Best-effort and idempotent, matching the SHAPE of what is there rather than a remembered
+    /// previous value, as every other rewrite here does.
+    /// </para>
+    /// </remarks>
+    public static void EnableInteractiveRouting(string projectFolder)
+    {
+        var path = Path.Combine(projectFolder, "Components", "App.razor");
+
+        try
+        {
+            if (!File.Exists(path))
+                return;
+
+            var text = File.ReadAllText(path);
+
+            // Already rewritten, or not the shell this rewrite understands.
+            if (text.Contains("RenderModeForPage", StringComparison.Ordinal)
+                || !text.Contains(StaticRouter, StringComparison.Ordinal))
+                return;
+
+            text = text.Replace(StaticRouter, RoutedRouter, StringComparison.Ordinal);
+
+            // The head outlet has to move with the router: a static one stops updating the title
+            // once navigation happens inside a circuit.
+            text = text.Replace(StaticHead, RoutedHead, StringComparison.Ordinal);
+
+            if (!text.Contains(EndpointsUsing, StringComparison.Ordinal))
+                text = EndpointsUsing + Environment.NewLine + text;
+
+            File.WriteAllText(path, text.TrimEnd() + Environment.NewLine + RenderModeMember);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Leave it; the build error that follows is clearer than a crash here.
+        }
+    }
+
     /// <summary>
     /// Repoints <c>Program.cs</c>'s components import at <paramref name="rootNamespace"/>.
     /// Best-effort and idempotent.

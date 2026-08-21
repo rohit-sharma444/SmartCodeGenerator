@@ -6,9 +6,13 @@ namespace AppScaffolding.Auth;
 /// <remarks>
 /// Three things here are not preferences, and each has a test saying so.
 /// <para>
-/// The login page is static-rendered — no <c>@rendermode</c>. An interactive circuit has already
-/// flushed its response, so it cannot write an authentication cookie: an interactive login would
-/// appear to work and leave the visitor signed out.
+/// The login page is static-rendered — no <c>@rendermode</c>, and
+/// <c>[ExcludeFromInteractiveRouting]</c> to keep it that way now that the ROUTER is interactive.
+/// An interactive circuit has already flushed its response, so it cannot write an authentication
+/// cookie: an interactive login would appear to work and leave the visitor signed out. The other
+/// half of the opt-out is in <see cref="BlazorProjectFixup.EnableInteractiveRouting"/> — without
+/// it the interactive router does not know this page's route and renders Not Found over the form
+/// the server had just sent.
 /// </para>
 /// <para>
 /// <c>Routes.razor</c> is replaced because the template's uses a plain <c>RouteView</c>, which
@@ -39,7 +43,9 @@ public static class BlazorLoginTemplate
 
         return $$"""
 @page "/login"
+@using Microsoft.AspNetCore.Components
 @using {{context.RootNamespace}}.Auth
+@attribute [ExcludeFromInteractiveRouting]
 
 <PageTitle>Sign in</PageTitle>
 

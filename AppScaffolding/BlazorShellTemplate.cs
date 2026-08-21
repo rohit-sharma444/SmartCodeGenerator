@@ -48,7 +48,7 @@ public static class BlazorShellTemplate
                 <span aria-hidden="true"></span> Home
             </NavLink>
         </div>
-{{NavGroups(classNames, roles)}}{{AdminNav(login)}}    </nav>
+{{NavGroups(classNames, roles, login)}}{{AdminNav(login)}}    </nav>
 </div>
 {{SignOut(login)}}
 """;
@@ -112,11 +112,38 @@ public static class BlazorShellTemplate
     /// Masters first and transactions second, matching <c>ShellViewModel.Groups</c> — the two rails
     /// are the same rail on different stacks, and a user moving between them should not have to
     /// re-learn the order.
+    /// <para>
+    /// Behind an AuthorizeView for an app with accounts, for the reason the home page carries
+    /// [Authorize]: the layout renders on the login page too, so an unauthenticated visitor was
+    /// handed the name of every entity in the model before signing in. Seen on a running app.
+    /// </para>
     /// </remarks>
-    private static string NavGroups(IReadOnlyList<string> classNames, EntityRoleMap roles)
-        => string.Concat(
+    private static string NavGroups(
+        IReadOnlyList<string> classNames, EntityRoleMap roles, bool login)
+    {
+        var groups = string.Concat(
             NavGroup("Masters", Named(classNames, roles, EntityRole.Master)),
             NavGroup("Transactions", Named(classNames, roles, EntityRole.Transaction)));
+
+        if (!login || groups.Length == 0)
+            return groups;
+
+        // Composed rather than written as one literal: the fragment sits eight spaces in and its
+        // contents sixteen, and a raw literal's indentation is measured from its own delimiter.
+        return "        <AuthorizeView>" + Environment.NewLine
+             + "            <Authorized>" + Environment.NewLine
+             + Indent(groups)
+             + "            </Authorized>" + Environment.NewLine
+             + "        </AuthorizeView>" + Environment.NewLine
+             + Environment.NewLine;
+    }
+
+    /// <summary>Two more levels in, so the emitted markup still reads as nesting.</summary>
+    private static string Indent(string markup)
+        => string.Concat(
+            markup.TrimEnd().Split(Environment.NewLine)
+                .Select(line => line.Length == 0 ? line : "        " + line)
+                .Select(line => line + Environment.NewLine));
 
     /// <summary>The names with this role, in the order they were discovered.</summary>
     /// <remarks>

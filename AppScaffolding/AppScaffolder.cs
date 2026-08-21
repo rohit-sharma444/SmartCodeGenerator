@@ -511,6 +511,11 @@ public sealed class AppScaffolder
         {
             BlazorProjectFixup.ReconcileNamespace(outputFolder, rootNamespace);
 
+            // The router has to run inside a circuit or the editor cannot ask before a rail click
+            // throws away a half-typed record. Like the namespace, this lives in the shell the
+            // template wrote, so the emitted files cannot switch it on themselves.
+            BlazorProjectFixup.EnableInteractiveRouting(outputFolder);
+
             // Cookie authentication is the one thing the emitted files cannot switch on by
             // themselves: the services and the middleware live in the host the template wrote.
             if (auth)

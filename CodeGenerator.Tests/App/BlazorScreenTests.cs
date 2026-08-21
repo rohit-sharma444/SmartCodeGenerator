@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using AppScaffolding;
 using AppScaffolding.Screens;
 using AppScaffolding.Targets;
@@ -274,6 +274,53 @@ public class BlazorScreenTests
     public void The_screens_import_the_authorization_namespace_components_use()
         => Assert.Contains(
             "@using Microsoft.AspNetCore.Components.Authorization", Source("MasterScreen.razor"));
+
+    /// <summary>
+    /// The rail is not shown to a visitor who has not signed in.
+    /// </summary>
+    /// <remarks>
+    /// The layout renders on the login page too, so an unauthenticated visitor was handed the name
+    /// of every entity in the model before signing in — the same leak the home page had, seen on a
+    /// running app rather than in an assertion.
+    /// </remarks>
+    [TestMethod]
+    public void The_rail_names_no_entity_to_a_visitor_who_has_not_signed_in()
+    {
+        var nav = Source("NavMenu.razor");
+
+        var gate = nav.IndexOf("<AuthorizeView>", StringComparison.Ordinal);
+
+        Assert.IsGreaterThan(-1, gate, "the entity groups are not behind an AuthorizeView");
+        Assert.IsGreaterThan(gate, nav.IndexOf("href=\"customer\"", StringComparison.Ordinal));
+        Assert.IsGreaterThan(gate, nav.IndexOf("href=\"order\"", StringComparison.Ordinal));
+    }
+
+    /// <summary>An app with no accounts has nobody to authorize, so the rail is just a rail.</summary>
+    [TestMethod]
+    public void An_app_with_no_login_has_no_gate_on_its_rail()
+    {
+        var nav = Source("NavMenu.razor", AppCustomization.Default with { Login = false });
+
+        Assert.DoesNotContain("AuthorizeView", nav);
+        Assert.Contains("href=\"customer\"", nav);
+    }
+
+    /// <summary>
+    /// The login page opts out of interactive routing.
+    /// </summary>
+    /// <remarks>
+    /// It needs an HttpContext for its antiforgery token and its cookie, and an interactive circuit
+    /// has neither. The other half of the opt-out is in BlazorProjectFixup.EnableInteractiveRouting;
+    /// this attribute alone would leave the page rendering Not Found once the circuit started.
+    /// </remarks>
+    [TestMethod]
+    public void The_login_page_stays_static_under_an_interactive_router()
+    {
+        var login = Source("Login.razor");
+
+        Assert.Contains("@attribute [ExcludeFromInteractiveRouting]", login);
+        Assert.DoesNotContain("@rendermode", login);
+    }
 
     [TestMethod]
     public void Every_page_declares_interactive_rendering()

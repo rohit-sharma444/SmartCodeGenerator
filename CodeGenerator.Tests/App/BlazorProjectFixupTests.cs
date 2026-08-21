@@ -190,6 +190,109 @@ app.Run();
         }
     }
 
+    /// <summary>What `dotnet new blazor` writes as its shell, in the two lines this rewrite
+    /// touches.</summary>
+    private const string TemplateApp = """
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <HeadOutlet />
+</head>
+
+<body>
+    <Routes />
+    <script src="@Assets["_framework/blazor.web.js"]"></script>
+</body>
+
+</html>
+""";
+
+    private string AppAfterRouting(string shell = TemplateApp)
+    {
+        var folder = NewProjectFolder();
+
+        Directory.CreateDirectory(Path.Combine(folder, "Components"));
+        File.WriteAllText(Path.Combine(folder, "Components", "App.razor"), shell);
+
+        BlazorProjectFixup.EnableInteractiveRouting(folder);
+
+        return File.ReadAllText(Path.Combine(folder, "Components", "App.razor"));
+    }
+
+    /// <summary>
+    /// The router runs inside a circuit, which is what lets the editor intercept a navigation.
+    /// </summary>
+    /// <remarks>
+    /// With the template's static router a rail click is an enhanced page load handled outside every
+    /// circuit, so NavigationLock never sees it and a half-typed record is lost without a word.
+    /// Found by clicking a rail item in a running app, which no assertion over markup could show.
+    /// </remarks>
+    [TestMethod]
+    public void EnableInteractiveRouting_GivesTheRouterARenderMode()
+    {
+        var shell = AppAfterRouting();
+
+        Assert.Contains("<Routes @rendermode=\"RenderModeForPage\" />", shell);
+        Assert.DoesNotContain("<Routes />", shell);
+    }
+
+    /// <summary>The head outlet has to move with the router, or the page title stops changing once
+    /// navigation happens inside the circuit.</summary>
+    [TestMethod]
+    public void EnableInteractiveRouting_MovesTheHeadOutletToo()
+    {
+        var shell = AppAfterRouting();
+
+        Assert.Contains("<HeadOutlet @rendermode=\"RenderModeForPage\" />", shell);
+        Assert.DoesNotContain("<HeadOutlet />", shell);
+    }
+
+    /// <summary>
+    /// And the page that opts out still renders.
+    /// </summary>
+    /// <remarks>
+    /// AcceptsInteractiveRouting is the half people miss: [ExcludeFromInteractiveRouting] alone
+    /// leaves the interactive router without that page's route, so it renders Not Found over the
+    /// form the server had just sent. Seen four seconds after the login page loaded.
+    /// </remarks>
+    [TestMethod]
+    public void EnableInteractiveRouting_FallsBackToStaticForAnExcludedPage()
+    {
+        var shell = AppAfterRouting();
+
+        Assert.Contains("@using Microsoft.AspNetCore.Components.Endpoints", shell);
+        Assert.Contains("HttpContext.AcceptsInteractiveRouting() ? InteractiveServer : null", shell);
+        Assert.Contains("[CascadingParameter]", shell);
+    }
+
+    [TestMethod]
+    public void EnableInteractiveRouting_IsIdempotent()
+    {
+        var once = AppAfterRouting();
+        var twice = AppAfterRouting(once);
+
+        Assert.AreEqual(once, twice);
+    }
+
+    /// <summary>A shell someone has already edited into another shape is none of this method's
+    /// business.</summary>
+    [TestMethod]
+    public void EnableInteractiveRouting_LeavesAShellItDoesNotRecogniseAlone()
+    {
+        const string handWritten = """
+<!DOCTYPE html>
+<html><body><Routes @rendermode="InteractiveWebAssembly" /></body></html>
+""";
+
+        Assert.AreEqual(handWritten, AppAfterRouting(handWritten));
+    }
+
+    [TestMethod]
+    public void EnableInteractiveRouting_WithNoShellAtAll_DoesNotThrow()
+        => BlazorProjectFixup.EnableInteractiveRouting(NewProjectFolder());
+
     [TestMethod]
     public void ReconcileNamespace_RepointsTheComponentsImportAtThePrefixedNamespace()
     {
