@@ -56,6 +56,33 @@ public static class DomainModelMapper
     /// </summary>
     private const string JsonIgnoreAttribute = "JsonIgnore";
 
+    /// <summary>The namespace [Browsable] lives in. Declared only by a class that uses it.</summary>
+    /// <remarks>
+    /// Deliberately NOT <see cref="DataAnnotationsNamespace"/>, which is a child of it: a class
+    /// with validation attributes and no navigation property must not gain this one, or a using it
+    /// does not need appears in every generated model.
+    /// </remarks>
+    private const string ComponentModelNamespace = "System.ComponentModel";
+
+    /// <summary>
+    /// Kept out of a form, not off the class.
+    /// </summary>
+    /// <remarks>
+    /// WinForms builds its record editor from a <c>PropertyGrid</c> over the draft, which lists
+    /// every public property — so Order.Customer appeared as a greyed row nobody can fill in,
+    /// while WPF's emitted PropertyEditor omitted it by construction and the same model produced
+    /// two different forms. This is the frameworks' own way to say a property is not a field, and
+    /// it costs the other targets nothing: JSON never wrote it, Blazor's screens filter on scalars,
+    /// and a DataGridView skips it for free (the emitted column rules already dropped it by hand).
+    /// <para>
+    /// It carries an argument, which no attribute in this list did before. Roslyn prints an
+    /// identifier token's text verbatim, so <c>Attribute(IdentifierName("Browsable(false)"))</c>
+    /// emits valid syntax — pinned by a compile in <c>RoslynClassGeneratorTests</c>, because it
+    /// looks as though it should not work.
+    /// </para>
+    /// </remarks>
+    private const string NotBrowsableAttribute = "Browsable(false)";
+
     /// <summary>The namespace DataAnnotations attributes live in. Declared only by a class that uses one.</summary>
     private const string DataAnnotationsNamespace = "System.ComponentModel.DataAnnotations";
 
@@ -199,11 +226,14 @@ public static class DomainModelMapper
         {
             Name = name,
             Type = type,
-            Attributes = { JsonIgnoreAttribute }
+            Attributes = { JsonIgnoreAttribute, NotBrowsableAttribute }
         });
 
         if (!definition.Usings.Contains(JsonSerializationNamespace))
             definition.Usings.Add(JsonSerializationNamespace);
+
+        if (!definition.Usings.Contains(ComponentModelNamespace))
+            definition.Usings.Add(ComponentModelNamespace);
     }
 
     /// <summary>

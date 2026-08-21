@@ -308,6 +308,54 @@ public class DomainModelMapperNavigationTests
             DomainModelMapper.ToClassDefinitions(model).Single().Usings,
             "System.Text.Json.Serialization");
     }
+
+    /// <summary>
+    /// A navigation property is hidden from a property grid.
+    /// </summary>
+    /// <remarks>
+    /// WinForms builds its record editor from a PropertyGrid over the draft, so every public
+    /// property appears — including Order.Customer, which shows as a greyed, unfillable row
+    /// because the copy the editor works on has it null ([JsonIgnore] drops it). WPF's emitted
+    /// PropertyEditor omits non-scalars by construction, so the same model produced two different
+    /// forms. [Browsable(false)] is the frameworks' own way of saying this is not a field, and it
+    /// costs the other targets nothing: JSON never saw it, Blazor filters on scalars, and a
+    /// DataGridView skips it for free.
+    /// </remarks>
+    [TestMethod]
+    public void Hides_a_navigation_property_from_a_property_grid()
+    {
+        var classes = DomainModelMapper.ToClassDefinitions(OrderReferencesCustomer());
+
+        var nav = classes.Single(c => c.Name == "Order").Properties.Single(p => p.Name == "Customer");
+        var inverse = classes.Single(c => c.Name == "Customer").Properties.Single(p => p.Name == "Orders");
+
+        CollectionAssert.Contains(nav.Attributes, "Browsable(false)");
+        CollectionAssert.Contains(inverse.Attributes, "Browsable(false)");
+    }
+
+    /// <summary>The using it needs, or the generated class does not compile.</summary>
+    [TestMethod]
+    public void Declares_the_using_that_Browsable_needs()
+    {
+        var order = DomainModelMapper.ToClassDefinitions(OrderReferencesCustomer())
+            .Single(c => c.Name == "Order");
+
+        CollectionAssert.Contains(order.Usings, "System.ComponentModel");
+    }
+
+    /// <summary>
+    /// A real field keeps it off. Hiding one of those would take a column out of every list and a
+    /// row out of every editor, which is the opposite of the point.
+    /// </summary>
+    [TestMethod]
+    public void A_scalar_property_is_not_hidden()
+    {
+        var order = DomainModelMapper.ToClassDefinitions(OrderReferencesCustomer())
+            .Single(c => c.Name == "Order");
+
+        foreach (var property in order.Properties.Where(p => p.Name != "Customer"))
+            CollectionAssert.DoesNotContain(property.Attributes, "Browsable(false)", property.Name);
+    }
 }
 
 [TestClass]
@@ -381,7 +429,8 @@ public class DomainModelMapperValidationTests
     [TestMethod]
     public void NavigationProperty_IsNotGivenValidation()
     {
-        // Order -> Customer: the Customer nav property must keep only [JsonIgnore].
+        // Order -> Customer: the Customer nav property carries what a nav property is given and
+        // nothing a field would be.
         var model = new CandidateDomainModel();
         model.Entities.Add(new CandidateEntity { Name = "Customer" });
         var order = new CandidateEntity { Name = "Order" };
@@ -391,7 +440,17 @@ public class DomainModelMapperValidationTests
         var nav = DomainModelMapper.ToClassDefinitions(model)
             .Single(c => c.Name == "Order").Properties.Single(p => p.Name == "Customer");
 
-        CollectionAssert.AreEqual(new[] { "JsonIgnore" }, nav.Attributes);
+        CollectionAssert.AreEqual(new[] { "JsonIgnore", "Browsable(false)" }, nav.Attributes);
         Assert.IsEmpty(nav.Rules);
+    }
+
+
+    /// <summary>A model with no relationships declares neither the attribute nor its using.</summary>
+    [TestMethod]
+    public void A_class_with_no_navigation_declares_no_component_model_using()
+    {
+        var employee = DomainModelMapper.ToClassDefinitions(EmployeeModel()).Single();
+
+        CollectionAssert.DoesNotContain(employee.Usings, "System.ComponentModel");
     }
 }

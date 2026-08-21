@@ -1,5 +1,6 @@
 using CodeGenerationEngine.Core;
 using CodeGenerationEngine.Models;
+using CodeGenerator.Tests.App;
 
 namespace CodeGenerator.Tests.Core;
 
@@ -142,5 +143,46 @@ public class RoslynClassGeneratorTests
         var source = RoslynClassGenerator.Generate(definition, "App.Models");
 
         Assert.DoesNotContain("using ", source);
+    }
+
+    /// <summary>
+    /// An attribute named with arguments is emitted with them, and compiles.
+    /// </summary>
+    /// <remarks>
+    /// Worth pinning because the mechanism looks as though it could not work: every attribute goes
+    /// through <c>Attribute(IdentifierName(a))</c>, and <c>Browsable(false)</c> is not an
+    /// identifier. Roslyn prints an identifier token's text verbatim, so it comes out as valid
+    /// attribute syntax anyway — which means the attribute list can carry arguments and no caller
+    /// has to know it is really a name. The compile is the assertion that matters; both string
+    /// checks below would pass on a mangled token.
+    /// </remarks>
+    [TestMethod]
+    public void Generate_EmitsAnAttributeWithItsArguments()
+    {
+        var definition = new ClassDefinition
+        {
+            Name = "Order",
+            Properties =
+            {
+                new PropertyDefinition
+                {
+                    Name = "Customer",
+                    Type = "Customer",
+                    Attributes = { "JsonIgnore", "Browsable(false)" },
+                },
+            },
+        };
+
+        var source = RoslynClassGenerator.Generate(definition, "App.Models");
+
+        StringAssert.Contains(source, "Browsable(false)");
+        StringAssert.Contains(source, "JsonIgnore");
+
+        // The proof that it is an attribute rather than a mangled identifier: it compiles as one.
+        // A substring assertion passes either way, which is how this would have shipped.
+        EmittedSource.AssertCompiles(
+            "using System.ComponentModel;\nusing System.Text.Json.Serialization;\n"
+            + "public class Customer { }\n"
+            + source.Replace("namespace App.Models;", string.Empty, StringComparison.Ordinal));
     }
 }
