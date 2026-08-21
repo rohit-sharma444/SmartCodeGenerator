@@ -95,7 +95,12 @@ internal sealed class BuildAppCommand
                 Console.IsInputRedirected,
                 Environment.GetEnvironmentVariable(NoWebVariable) == "1"))
         {
-            var webStart = Merge(CustomizationDefaults.Load(workspaceRoot), inline);
+            var saved = CustomizationDefaults.Load(workspaceRoot);
+            var webStart = Merge(saved, inline);
+
+            // Before the page opens, so the layout the workflow will start pre-filled with is one
+            // the user has been told about rather than one they have to notice.
+            WriteRememberedLayoutNotice(workspaceRoot, saved, inline.Layout);
 
             var session = new Web.Workflow.BuildSession(
                 description, workspaceRoot, webStart, source);
@@ -138,7 +143,12 @@ internal sealed class BuildAppCommand
             // The remembered profile is read only here: a redirected-stdin run must not have its
             // output changed by a file it never mentioned, which is the same determinism
             // `normalize` protects. Inline options win over it — they were typed just now.
-            var start = Merge(CustomizationDefaults.Load(workspaceRoot), inline);
+            var saved = CustomizationDefaults.Load(workspaceRoot);
+            var start = Merge(saved, inline);
+
+            // Before the wizard, because its Layout step arrives pre-filled with the remembered
+            // answer: Enter keeps it, and nothing else would say where it came from.
+            WriteRememberedLayoutNotice(workspaceRoot, saved, inline.Layout);
 
             var outcome = BuildAppWizard.Run(
                 request, Console.In, Console.Out, ApplicationTypeMenu.Choose, start, Menu.Choose);
@@ -763,10 +773,11 @@ internal sealed class BuildAppCommand
             if (scaffold.TestProjectPath is not null)
                 Output.Success($"Generated test project at {scaffold.TestProjectPath}");
 
-            // How the model was split into screens. A misclassification is otherwise only
-            // discoverable by launching the app and noticing a screen is missing.
-            if (scaffold.ScreenSummary.Length > 0)
-                Console.WriteLine($"  Screens: {scaffold.ScreenSummary}");
+            // How the model was split into screens, or which layout means there is no such split.
+            // A misclassification is otherwise only discoverable by launching the app and noticing
+            // a screen is missing.
+            if (ScreensLine(target, customization, scaffold.ScreenSummary) is { } screens)
+                Console.WriteLine(screens);
             Console.WriteLine("");
             //foreach (var file in scaffold.FilesWritten)
             //    Console.WriteLine($"  {Path.GetRelativePath(scaffold.ProjectPath, file)}");
@@ -1115,6 +1126,17 @@ internal sealed class BuildAppCommand
     /// than a refusal: the layout is decoration a windowless target simply has no use for, and
     /// failing the build over it would be out of proportion.
     /// </remarks>
+    /// <summary>Prints the remembered-layout notice when there is one.</summary>
+    private static void WriteRememberedLayoutNotice(
+        string workspaceRoot, AppCustomization saved, AppLayout? namedOnTheLine)
+    {
+        var notice = CustomizationDefaults.RememberedLayoutNotice(
+            workspaceRoot, saved, namedOnTheLine);
+
+        if (notice is not null)
+            Console.WriteLine(notice);
+    }
+
     /// <summary>Prints <see cref="LayoutNotice"/> when there is one. Both approve paths settle a
     /// target of their own, so both call this.</summary>
     private static void WriteLayoutNotice(ITargetScaffolder target, AppCustomization customization)
@@ -1123,6 +1145,41 @@ internal sealed class BuildAppCommand
 
         if (notice is not null)
             Console.WriteLine(notice);
+    }
+
+    /// <summary>
+    /// The finished build's line about its screens: the master / transaction split where the
+    /// screens were built from it, the layout in force where they were not, and nothing for a
+    /// target that has no screens.
+    /// </summary>
+    /// <remarks>
+    /// Pure and internal for the reason <see cref="LayoutNotice"/> is: the printing is one line at
+    /// the call site and the decision is what needs covering. The decision matters because the
+    /// summary used to print on every target and every layout — a `layout dashboard` run
+    /// announced "8 masters, 0 transactions" over a window holding neither, which is what made a
+    /// shipped business shell look to its user as though it had never arrived.
+    /// </remarks>
+    internal static string? ScreensLine(
+        ITargetScaffolder target, AppCustomization customization, string screenSummary)
+    {
+        // Nothing was classified, so there is nothing to describe and nothing to correct. The
+        // guard the printed version already had, kept for the same reason: "Screens: " alone is
+        // worse than silence.
+        if (screenSummary.Length == 0)
+            return null;
+
+        if (AppLayouts.UsesRoleScreens(target.Key, customization.EffectiveLayout))
+            return $"  Screens: {screenSummary}";
+
+        // Only where a layout could have been business and was not. A windowless target already
+        // hears about a named layout from LayoutNotice, and has no screens to explain.
+        if (!AppLayouts.Supports(target.Key))
+            return null;
+
+        var key = AppLayoutCatalog.KeyFor(customization.EffectiveLayout);
+
+        return $"  Layout: {key} — no master or transaction screens; "
+             + $"the {AppLayoutCatalog.KeyFor(AppLayout.Business)} layout has them.";
     }
 
     internal static string? LayoutNotice(ITargetScaffolder target, AppCustomization customization)
