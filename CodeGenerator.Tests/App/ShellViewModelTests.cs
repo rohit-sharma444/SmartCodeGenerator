@@ -1,4 +1,4 @@
-using System.Collections;
+﻿using System.Collections;
 using System.Reflection;
 using AppScaffolding;
 using AppScaffolding.Screens;
@@ -61,9 +61,7 @@ public sealed class FakeEditor : IRecordEditor
             // The editor names IStore/StoreFactory even though this shell never opens a real one,
             // so the store stub travels with it.
             RecordEditorTests.StoreAndModelStub,
-            RecordEditorTemplate.Source("Acme")
-                .Replace("namespace Acme.ViewModels;", string.Empty)
-                .Replace("using Acme.Data;", string.Empty),
+            RecordEditorTests.Editor(validation: false),
             Stub,
             ShellTemplate.Dashboard("Acme")
                 .Replace("namespace Acme.ViewModels;", string.Empty)

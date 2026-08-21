@@ -45,7 +45,7 @@ public static class DesktopViewModelFiles
         if (roles is not null)
         {
             files.Add(new("ViewModels", "RecordEditorViewModel.cs",
-                RecordEditorTemplate.Source(rootNamespace)));
+                RecordEditorTemplate.Source(rootNamespace, validation)));
             files.Add(new("ViewModels", "MasterScreenViewModel.cs",
                 MasterScreenTemplate.Source(rootNamespace)));
             files.Add(new("ViewModels", "TransactionScreenViewModel.cs",

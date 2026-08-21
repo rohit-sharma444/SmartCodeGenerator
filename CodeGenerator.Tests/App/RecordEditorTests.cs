@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using AppScaffolding;
 using AppScaffolding.Screens;
 using CodeGenerationEngine.Core;
@@ -49,18 +49,19 @@ public class Book
 }
 """;
 
+    /// <summary>The two view-model files every screen here builds on.</summary>
+    internal static string ObservableAndCommand
+        => ViewModelTemplates.ObservableObject("Acme").Replace("namespace Acme.ViewModels;", string.Empty)
+         + Environment.NewLine
+         + ViewModelTemplates.PortableRelayCommand("Acme").Replace("namespace Acme.ViewModels;", string.Empty);
+
     internal static Assembly Emit(params string[] extra)
     {
         var source = EmittedSource.Flatten(
             [
                 StoreAndModelStub,
-                ViewModelTemplates.ObservableObject("Acme")
-                    .Replace("namespace Acme.ViewModels;", string.Empty),
-                ViewModelTemplates.PortableRelayCommand("Acme")
-                    .Replace("namespace Acme.ViewModels;", string.Empty),
-                RecordEditorTemplate.Source("Acme")
-                    .Replace("namespace Acme.ViewModels;", string.Empty)
-                    .Replace("using Acme.Data;", string.Empty),
+                ObservableAndCommand,
+                Editor(validation: false),
                 .. extra,
             ]);
 
@@ -68,6 +69,59 @@ public class Book
 
         return Assembly.Load(Compiler.Compile(source).AssemblyBytes!);
     }
+
+    /// <summary>The emitted editor, stripped of the namespaces the flattened source has none of.</summary>
+    internal static string Editor(bool validation)
+        => RecordEditorTemplate.Source("Acme", validation)
+            .Replace("namespace Acme.ViewModels;", string.Empty)
+            .Replace("using Acme.Data;", string.Empty)
+            .Replace("using Acme.Validation;", string.Empty);
+
+    /// <summary>
+    /// The editor an app generated with validation on gets, over a validator that rejects a book
+    /// with no title.
+    /// </summary>
+    private static Assembly EmitValidating()
+    {
+        var source = EmittedSource.Flatten(StoreAndModelStub, ValidatorStub, ObservableAndCommand, Editor(validation: true));
+
+        EmittedSource.AssertCompiles(source);
+
+        return Assembly.Load(Compiler.Compile(source).AssemblyBytes!);
+    }
+
+    /// <summary>The validation seam the generated app really has: an IValidator&lt;T&gt; resolved
+    /// by a ValidatorFactory, degrading to no rules for an unmapped type.</summary>
+    private const string ValidatorStub = """
+using System;
+using System.Collections.Generic;
+
+public interface IValidator<T> { IReadOnlyList<string> Validate(T item); }
+
+public sealed class BookValidator : IValidator<Book>
+{
+    public IReadOnlyList<string> Validate(Book item)
+        => string.IsNullOrWhiteSpace(item.Title)
+            ? new[] { "Title is required." }
+            : Array.Empty<string>();
+}
+
+public static class ValidatorFactory
+{
+    public static IValidator<T> Create<T>() where T : class, new()
+    {
+        if (typeof(T) == typeof(Book))
+            return (IValidator<T>)(object)new BookValidator();
+
+        return new NullValidator<T>();
+    }
+}
+
+internal sealed class NullValidator<T> : IValidator<T>
+{
+    public IReadOnlyList<string> Validate(T item) => Array.Empty<string>();
+}
+""";
 
     internal static System.Collections.IList Rows(Assembly assembly)
         => (System.Collections.IList)assembly.GetType("MemoryStore`1")!
@@ -217,4 +271,72 @@ public class Book
         Assert.IsNotNull(contract, "the shell cannot ask a closed generic whether it is dirty");
         Assert.IsFalse((bool)contract!.GetProperty("IsDirty")!.GetValue(editor)!);
     }
+
+    /// <summary>
+    /// The editor runs the generated validators, because the layout it replaces did.
+    /// </summary>
+    /// <remarks>
+    /// This path writes through the store, not through <c>Repository&lt;T&gt;</c>, so nothing else
+    /// would run them: the business shell would otherwise accept records the tabs layout rejects,
+    /// from the same model, in the same application.
+    /// </remarks>
+    [TestMethod]
+    public void A_record_the_validator_rejects_is_not_saved()
+    {
+        var assembly = EmitValidating();
+        var (editor, _) = OpenExisting(assembly);
+
+        SetTitle(Draft(editor), string.Empty);
+        Execute(editor, "SaveCommand");
+
+        Assert.AreEqual("Original", GetTitle(Rows(assembly)[0]!), "the store took a rejected record");
+        StringAssert.Contains(Status(editor), "Title is required.");
+    }
+
+    /// <summary>A rejected save must not close the editor: the user has to be able to fix the
+    /// field they were told about.</summary>
+    [TestMethod]
+    public void A_rejected_save_leaves_the_editor_open_and_dirty()
+    {
+        var assembly = EmitValidating();
+        var (editor, _) = OpenExisting(assembly);
+
+        var closed = 0;
+        editor.GetType().GetEvent("Closed")!
+            .AddEventHandler(editor, new EventHandler((_, _) => closed++));
+
+        SetTitle(Draft(editor), string.Empty);
+        Execute(editor, "SaveCommand");
+
+        Assert.AreEqual(0, closed);
+        Assert.IsTrue((bool)editor.GetType().GetProperty("IsDirty")!.GetValue(editor)!);
+    }
+
+    [TestMethod]
+    public void A_record_the_validator_accepts_still_saves()
+    {
+        var assembly = EmitValidating();
+        var (editor, _) = OpenExisting(assembly);
+
+        SetTitle(Draft(editor), "Changed");
+        Execute(editor, "SaveCommand");
+
+        Assert.AreEqual("Changed", GetTitle(Rows(assembly)[0]!));
+    }
+
+    /// <summary>An app generated with validation off has no Validation folder to resolve a
+    /// validator from, so naming one would not compile.</summary>
+    [TestMethod]
+    public void An_app_with_no_validators_resolves_none()
+    {
+        var source = RecordEditorTemplate.Source("Acme", validation: false);
+
+        Assert.DoesNotContain("ValidatorFactory", source);
+        Assert.DoesNotContain("Acme.Validation", source);
+
+        StringAssert.Contains(RecordEditorTemplate.Source("Acme", validation: true), "ValidatorFactory.Create<T>()");
+    }
+
+    private static string Status(object editor)
+        => (string)editor.GetType().GetProperty("Status")!.GetValue(editor)!;
 }

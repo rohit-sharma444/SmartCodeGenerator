@@ -13,14 +13,57 @@ namespace AppScaffolding.Screens;
 /// </remarks>
 public static class RecordEditorTemplate
 {
-    /// <summary>Source of <c>ViewModels/RecordEditorViewModel.cs</c>.</summary>
-    public static string Source(string rootNamespace) => $$"""
+    /// <summary>
+    /// Source of <c>ViewModels/RecordEditorViewModel.cs</c>.
+    /// </summary>
+    /// <param name="validation">
+    /// Whether the app has generated validators. With none, the Validation folder this would
+    /// resolve one from is not generated either, so naming it would not compile — the same bargain
+    /// <c>ViewModelTemplates.EntityViewModel</c> and <c>RepositoryTemplate.Base</c> strike.
+    /// </param>
+    public static string Source(string rootNamespace, bool validation)
+    {
+        // Raw string literals rather than "\n" concatenation: these are lines lifted out of the
+        // template below, and a raw literal carries the same line endings that template does.
+        var validationUsing = validation
+            ? $"""
+            using {rootNamespace}.Validation;
+
+            """
+            : string.Empty;
+
+        var validatorField = validation
+            ? """
+                private readonly IValidator<T> _validator = ValidatorFactory.Create<T>();
+
+            """
+            : string.Empty;
+
+        // Two blank lines before the closing delimiter, so the fragment ends with the blank line
+        // that separates the guard from the body.
+        var validateCall = validation
+            ? """
+                    // This path writes through _store, not Repository, so it has to run the generated
+                    // validator itself. Without this the business shell would accept records the
+                    // layout it replaced rejected, from the same model in the same application.
+                    var errors = _validator.Validate(Draft);
+                    if (errors.Count > 0)
+                    {
+                        Status = $"Cannot save: {errors[0]}";
+                        return;
+                    }
+
+
+            """
+            : string.Empty;
+
+        return $$"""
 using System;
 using System.Linq;
 using System.Text.Json;
 using System.Windows.Input;
 using {{rootNamespace}}.Data;
-
+{{validationUsing}}
 namespace {{rootNamespace}}.ViewModels;
 
 /// <summary>
@@ -46,7 +89,7 @@ public sealed class RecordEditorViewModel<T> : ObservableObject, IRecordEditor w
     private readonly IStore<T> _store = StoreFactory.Create<T>();
     private string _openedAs;
     private string _status = string.Empty;
-
+{{validatorField}}
     public RecordEditorViewModel(T? record, bool isNew)
     {
         IsNew = isNew;
@@ -88,7 +131,7 @@ public sealed class RecordEditorViewModel<T> : ObservableObject, IRecordEditor w
 
     private void Save()
     {
-        var all = _store.GetAll();
+{{validateCall}}        var all = _store.GetAll();
 
         if (IsNew)
         {
@@ -137,4 +180,5 @@ public sealed class RecordEditorViewModel<T> : ObservableObject, IRecordEditor w
         => typeof(T).GetProperty("Id")?.SetValue(record, id);
 }
 """;
+    }
 }

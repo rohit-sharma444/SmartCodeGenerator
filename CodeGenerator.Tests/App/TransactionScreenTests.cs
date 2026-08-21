@@ -1,4 +1,4 @@
-using System.Collections;
+﻿using System.Collections;
 using System.Reflection;
 using AppScaffolding;
 using AppScaffolding.Screens;
@@ -77,9 +77,7 @@ public class Note
             ViewModelTemplates.EntityViewModelInterface("Acme")
                 .Replace("namespace Acme.ViewModels;", string.Empty)
                 .Replace("using Acme.Screens;", string.Empty),
-            RecordEditorTemplate.Source("Acme")
-                .Replace("namespace Acme.ViewModels;", string.Empty)
-                .Replace("using Acme.Data;", string.Empty),
+            RecordEditorTests.Editor(validation: false),
             MasterScreenTemplate.Source("Acme")
                 .Replace("namespace Acme.ViewModels;", string.Empty)
                 .Replace("using Acme.Auth;", string.Empty)
