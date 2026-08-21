@@ -597,7 +597,10 @@ public static class CommandDictionary
                         + "of the window (wpf and winforms only); business is the default and is "
                         + "the shell with a dashboard home, a rail grouped into masters and "
                         + "transactions, and an editor for every record; the web app is always "
-                        + "that shell, which is why naming a layout does not apply to it.",
+                        + "that shell, which is why naming a layout does not apply to it. A "
+                        + "layout you chose on an earlier interactive run is remembered in "
+                        + ".codegen/app-profile.json and kept, default or not, so a run that "
+                        + "is using a remembered one says so and names the file.",
             Example = "build app: a shop company \"Codis Ltd\" namespace CodisLtd theme dark layout sidebar"
         },
         new()

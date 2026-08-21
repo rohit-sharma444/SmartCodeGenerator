@@ -87,6 +87,44 @@ internal static class CustomizationDefaults
         }
     }
 
+    /// <summary>
+    /// What to say when the loaded profile names a layout other than the default, or null when it
+    /// names none or names that default.
+    /// </summary>
+    /// <remarks>
+    /// <c>EffectiveLayout</c> is <c>Layout ?? Business</c>, so a remembered layout wins for good:
+    /// a profile written before the business shell became the default keeps its owner on the old
+    /// shape, and the only workspace the flip reaches is one with no profile — which is what every
+    /// test is. Reported from real use as "I can't see the master and transaction screens", after
+    /// three runs of a profile holding <c>dashboard</c>.
+    /// <para>
+    /// Printed rather than corrected: the profile records an answer the user gave, and quietly
+    /// overriding it would be the same silence in the other direction. The file is named so it can
+    /// be edited or deleted, because that is the only way to stop being asked.
+    /// </para>
+    /// </remarks>
+    /// <param name="namedOnTheLine">
+    /// The layout the command line named, if any. A layout typed just now is not a remembered one:
+    /// crediting the profile for it would be wrong, and the user who typed it knows what they
+    /// chose.
+    /// </param>
+    public static string? RememberedLayoutNotice(
+        string workspaceRoot, AppCustomization saved, AppLayout? namedOnTheLine)
+    {
+        if (namedOnTheLine is not null)
+            return null;
+
+        if (saved.Layout is null || saved.Layout == AppLayout.Business)
+            return null;
+
+        var key = AppLayoutCatalog.KeyFor(saved.Layout.Value);
+        var business = AppLayoutCatalog.KeyFor(AppLayout.Business);
+
+        return $"  Using the {key} layout, remembered from {PathFor(workspaceRoot)}. "
+             + $"The default is now {business} — {AppLayoutCatalog.Descriptions[AppLayout.Business]}."
+             + $" Choose {business} at the Layout step to switch, or delete that file to forget it.";
+    }
+
     public static void Save(string workspaceRoot, AppCustomization customization)
     {
         try
@@ -134,7 +172,8 @@ internal static class CustomizationDefaults
     /// Re-validated here for the reason <see cref="ValidatedPrefix"/> gives: a hand-edited profile
     /// bypasses the inline parser and the wizard, and <c>Load</c> otherwise assigns straight from
     /// the JSON. There is no fallback parameter because null is already the "named nothing" value —
-    /// an unreadable layout is indistinguishable from an absent one, and both mean tabs downstream.
+    /// an unreadable layout is indistinguishable from an absent one, and both mean the default
+    /// layout downstream -- business, since the flip.
     /// </remarks>
     private static AppLayout? ParseLayout(string? value)
         => value is not null && AppLayoutCatalog.TryResolve(value, out var layout) ? layout : null;

@@ -1,4 +1,5 @@
 using AppScaffolding;
+using AppScaffolding.Layouts;
 using CodeGenerator.App;
 
 namespace CodeGenerator.Tests.App;
@@ -140,4 +141,81 @@ public class CustomizationDefaultsTests
             File.ReadAllText(Path.Combine(_root, ".codegen", CustomizationDefaults.FileName)),
             StringComparison.OrdinalIgnoreCase);
     }
+
+    /// <summary>
+    /// A remembered layout is announced, because it overrules the default silently.
+    /// </summary>
+    /// <remarks>
+    /// `EffectiveLayout` is `Layout ?? Business`, so a profile written before the business shell
+    /// became the default keeps its owner on the old shape for good — and the only workspace the
+    /// flip reaches is one with no profile, which is what every test is. Reported from real use:
+    /// three runs of a `dashboard` profile, each looking as though the shell had never shipped.
+    /// </remarks>
+    [TestMethod]
+    public void A_remembered_layout_is_announced()
+    {
+        var notice = CustomizationDefaults.RememberedLayoutNotice(
+            _root, AppCustomization.Default with { Layout = AppLayout.Dashboard }, null);
+
+        Assert.IsNotNull(notice);
+        StringAssert.Contains(notice, "dashboard");
+
+        // Named so it can be edited or deleted: the file is the whole reason the layout is stuck.
+        StringAssert.Contains(notice, CustomizationDefaults.FileName);
+
+        // And what they are missing, or the notice is a fact with nothing to do about it.
+        StringAssert.Contains(notice, "business");
+
+        // The whole sentence once, because every part of it is load-bearing: which layout is in
+        // force, where that came from, what the default is now, and the two ways to change it.
+        Assert.AreEqual(
+            $"  Using the dashboard layout, remembered from "
+            + $"{Path.Combine(_root, ".codegen", CustomizationDefaults.FileName)}. "
+            + "The default is now business — a dashboard home, a rail grouped into masters and "
+            + "transactions, and an editor for every record."
+            + " Choose business at the Layout step to switch, or delete that file to forget it.",
+            notice);
+    }
+
+    [TestMethod]
+    public void A_remembered_business_layout_is_not_announced()
+        => Assert.IsNull(CustomizationDefaults.RememberedLayoutNotice(
+            _root, AppCustomization.Default with { Layout = AppLayout.Business }, null));
+
+    /// <summary>The overwhelmingly common case: nothing to say, and a line here would appear on
+    /// every interactive run forever.</summary>
+    [TestMethod]
+    public void A_profile_naming_no_layout_is_not_announced()
+        => Assert.IsNull(
+            CustomizationDefaults.RememberedLayoutNotice(_root, AppCustomization.Default, null));
+
+    /// <summary>Every older layout is worth announcing, not just the one that was reported.</summary>
+    [TestMethod]
+    public void Every_older_layout_is_announced()
+    {
+        foreach (var layout in new[]
+                 { AppLayout.Tabs, AppLayout.Sidebar, AppLayout.MasterDetail, AppLayout.Dashboard })
+        {
+            var notice = CustomizationDefaults.RememberedLayoutNotice(
+                _root, AppCustomization.Default with { Layout = layout }, null);
+
+            Assert.IsNotNull(notice, $"a remembered {layout} layout says nothing");
+            StringAssert.Contains(notice, AppLayoutCatalog.KeyFor(layout));
+        }
+    }
+
+    /// <summary>
+    /// A layout typed on the command line is not a remembered one.
+    /// </summary>
+    /// <remarks>
+    /// The notice is computed from the SAVED profile, not from the merged customization the run
+    /// goes on to use — `layout dashboard` on the line would otherwise be reported as something
+    /// the profile did, to the one user who cannot be confused about it.
+    /// </remarks>
+    [TestMethod]
+    public void A_layout_named_on_the_line_is_not_credited_to_the_profile()
+        => Assert.IsNull(CustomizationDefaults.RememberedLayoutNotice(
+            _root,
+            AppCustomization.Default with { Layout = AppLayout.Dashboard },
+            AppLayout.Sidebar));
 }
