@@ -318,7 +318,8 @@ public class CustomizationWizardTests
     }
 
     /// <summary>A first run on a desktop target leaves the layout unnamed by pressing Enter, rather
-    /// than recording `tabs` — so a later `layout dashboard` on the line still wins the merge.</summary>
+    /// than recording the default — so a later `layout dashboard` on the line still wins the
+    /// merge. What it offers is the shape a build with no answer would get.</summary>
     [TestMethod]
     public void A_blank_layout_answer_names_nothing_when_nothing_was_remembered()
     {
@@ -326,7 +327,7 @@ public class CustomizationWizardTests
 
         Assert.IsNotNull(result);
         Assert.IsNull(result.Layout);
-        StringAssert.Contains(output, "[tabs]");
+        StringAssert.Contains(output, "[business]");
     }
 
     [TestMethod]

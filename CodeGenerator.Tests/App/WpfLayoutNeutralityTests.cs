@@ -60,12 +60,14 @@ public class WpfLayoutNeutralityTests
     }
 
     [TestMethod]
-    public void WpfTarget_DefaultsToTheTabsLayoutOutput()
+    public void WpfTarget_WithTabsNamed_EmitsTheOriginalOutput()
     {
-        // `nologin`, because that is the promise: a build that names no layout and asks for no
-        // login is the one that must reproduce the pre-auth output byte for byte.
+        // The promise, exactly: a build that NAMES tabs and asks for no login reproduces the
+        // pre-auth output byte for byte. Naming nothing now means the business shell, which is a
+        // different shape on purpose.
         var files = new WpfTarget().FrontEndFiles(
-            "Payroll", ["Employee"], AppCustomization.Default with { Login = false });
+            "Payroll", ["Employee"],
+            AppCustomization.Default with { Login = false, Layout = AppLayout.Tabs });
 
         Assert.AreEqual(
             MainWindowTemplate.Xaml("Payroll", "Payroll", themed: false, iconFileName: null),

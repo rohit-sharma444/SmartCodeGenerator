@@ -1,4 +1,4 @@
-using AppScaffolding;
+﻿using AppScaffolding;
 using AppScaffolding.Targets;
 using CodeGenerationEngine.Models;
 
@@ -21,7 +21,11 @@ public class WpfTargetTests
     [TestMethod]
     public void FrontEndFiles_EmitsTheRelationshipResolverViewModelsAndViews()
     {
-        var files = new WpfTarget().FrontEndFiles("Payroll", new[] { "Employee", "Department" });
+        // Tabs named, because this pins the pane view model the four older layouts bind to. The
+        // business shell binds screens instead, and has its own tests.
+        var files = new WpfTarget().FrontEndFiles(
+            "Payroll", ["Employee", "Department"],
+            AppCustomization.Default with { Layout = AppLayout.Tabs });
         var names = files.Select(f => f.RelativeFolder + "/" + f.Name).ToList();
 
         CollectionAssert.Contains(names, "Data/RelationshipResolver.cs");

@@ -62,12 +62,13 @@ public class WinFormsLayoutNeutralityTests
     }
 
     [TestMethod]
-    public void WinFormsTarget_DefaultsToTheTabsLayoutOutput()
+    public void WinFormsTarget_WithTabsNamed_EmitsTheOriginalOutput()
     {
-        // `nologin`, because that is the promise: a build that names no layout and asks for
-        // no login is the one that must reproduce the pre-auth output byte for byte.
+        // The promise, exactly: a build that NAMES tabs and asks for no login reproduces the
+        // pre-auth output byte for byte. Naming nothing now means the business shell.
         var files = new WinFormsTarget().FrontEndFiles(
-            "Payroll.WinForms", ["Employee"], AppCustomization.Default with { Login = false });
+            "Payroll.WinForms", ["Employee"],
+            AppCustomization.Default with { Login = false, Layout = AppLayout.Tabs });
 
         Assert.AreEqual(
             WinFormsMainFormTemplate.Source("Payroll.WinForms", "Payroll.WinForms", palette: null, iconFileName: null),

@@ -21,7 +21,14 @@ public static class AppLayoutCatalog
             "a dashboard home, a rail grouped into masters and transactions, and an editor for every record"),
     ];
 
-    /// <summary>Layout keys in display order; the first is the default.</summary>
+    /// <summary>
+    /// Layout keys in display order.
+    /// </summary>
+    /// <remarks>
+    /// Tabs is first because it is what this generator emitted before layouts existed, not because
+    /// it is the default: <see cref="AppCustomization.EffectiveLayout"/> answers "business" for a
+    /// build that names nothing.
+    /// </remarks>
     public static IReadOnlyList<string> Keys { get; } = All.Select(x => x.Key).ToList();
 
     public static IReadOnlyDictionary<AppLayout, string> Descriptions { get; } =

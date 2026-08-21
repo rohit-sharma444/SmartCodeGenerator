@@ -81,18 +81,18 @@ internal static class CustomizationWizard
 
         if (asksLayout)
         {
-            var offered = AppLayoutCatalog.KeyFor(layout ?? AppLayout.Tabs);
+            var offered = AppLayoutCatalog.KeyFor(layout ?? AppCustomization.Default.EffectiveLayout);
 
             var chosen = Ask(reader, writer, "Layout", offered);
             if (chosen is null) return null;
 
             // An unusable answer keeps the current value rather than re-prompting, as a malformed
             // accent does. Enter on a run with no remembered layout leaves it UNNAMED rather than
-            // recording `tabs`: the review summary then stays quiet for a user who customized
-            // nothing, and a `layout tabs` typed against a remembered dashboard still reads as the
+            // recording the default: the review summary then stays quiet for a user who customized
+            // nothing, and a layout typed against a remembered dashboard still reads as the
             // deliberate override it is.
             if (AppLayoutCatalog.TryResolve(chosen, out var parsed)
-                && (layout is not null || parsed != AppLayout.Tabs))
+                && (layout is not null || parsed != AppCustomization.Default.EffectiveLayout))
             {
                 layout = parsed;
             }

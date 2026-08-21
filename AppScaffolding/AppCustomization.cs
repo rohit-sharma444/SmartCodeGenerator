@@ -84,7 +84,7 @@ public sealed record AppCustomization(
     /// to <c>BuildAppCommand.Merge</c>, which reads a setting as typed-inline when it differs from
     /// <see cref="Default"/>. The emit path never cares about that distinction, and uses this.
     /// </remarks>
-    public AppLayout EffectiveLayout => Layout ?? AppLayout.Tabs;
+    public AppLayout EffectiveLayout => Layout ?? AppLayout.Business;
 
     /// <summary>
     /// The name the supplied icon is copied to inside <see cref="AssetsFolder"/>, or null when

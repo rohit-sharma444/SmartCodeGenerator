@@ -31,6 +31,19 @@ public sealed class WinFormsBusinessLayout : IAppLayout
             ? "SystemColors.Control"
             : $"ColorTranslator.FromHtml(\"{context.Palette.Surface}\")";
 
+        // Read off disk beside the binary rather than embedded, as every other layout does:
+        // AppScaffolder registers the copy as content copied to the output directory. Guarded, so
+        // an asset the user later deletes costs the app its icon rather than its startup.
+        var formIcon = context.IconFileName is not null
+                       && context.IconFileName.EndsWith(".ico", StringComparison.OrdinalIgnoreCase)
+            ? $$"""
+
+        var iconPath = System.IO.Path.Combine(AppContext.BaseDirectory, "{{AppCustomization.AssetsFolder}}", "{{context.IconFileName}}");
+        if (System.IO.File.Exists(iconPath))
+            Icon = new Icon(iconPath);
+"""
+            : string.Empty;
+
         return $$"""
 using System;
 using System.Collections;
@@ -75,7 +88,7 @@ public sealed class MainForm : Form
         Text = "{{context.TitleLiteral}}";
         ClientSize = new Size(1000, 640);
         StartPosition = FormStartPosition.CenterScreen;
-
+{{formIcon}}
         BuildRail();
         Controls.Add(BuildLayout());
 

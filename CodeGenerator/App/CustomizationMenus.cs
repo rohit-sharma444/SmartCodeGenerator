@@ -66,10 +66,11 @@ internal static class CustomizationMenus
             if (chosen is null)
                 return null;
 
-            // Enter on a run with no remembered layout leaves it UNNAMED rather than recording
-            // `tabs`: the review summary then stays quiet for a user who customized nothing, and a
-            // `layout tabs` typed against a remembered dashboard still reads as the override it is.
-            if (layout is not null || chosen != AppLayout.Tabs)
+            // Taking the pre-selected row on a run with no remembered layout leaves it UNNAMED
+            // rather than recording the default: the review summary then stays quiet for a user who
+            // customized nothing, and a layout named against a remembered dashboard still reads as
+            // the override it is.
+            if (layout is not null || chosen != AppCustomization.Default.EffectiveLayout)
                 layout = chosen;
         }
 
@@ -231,7 +232,7 @@ internal static class CustomizationMenus
             })
             .ToList();
 
-        var offered = AppLayoutCatalog.KeyFor(current ?? AppLayout.Tabs);
+        var offered = AppLayoutCatalog.KeyFor(current ?? AppCustomization.Default.EffectiveLayout);
 
         var row = choose("Layout", labels, IndexOf(keys, offered));
 

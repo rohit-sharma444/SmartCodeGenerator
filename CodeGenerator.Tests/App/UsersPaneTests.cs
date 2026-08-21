@@ -36,7 +36,8 @@ public class UsersPaneTests
     public void Nologin_leaves_the_main_view_model_byte_identical()
         => Assert.AreEqual(
             MainViewModelTemplate.Build("Shop", ["Order"], seed: true),
-            MainViewModelFor(AppCustomization.Default with { Login = false }));
+            MainViewModelFor(
+                AppCustomization.Default with { Login = false, Layout = AppLayout.Tabs }));
 
     /// <summary>The pane is added only for an administrator. A plain user seeing the account list
     /// is the role doing nothing.</summary>

@@ -78,6 +78,8 @@ public class CustomizationMenuTests
     }
 
     /// <summary>As <see cref="KeepEverything"/>, for a target that is also asked its layout.</summary>
+    /// <summary>Yes to the gate, then every question taken as offered — including the layout, whose
+    /// pre-selected row is the default layout wherever the catalogue happens to list it.</summary>
     private static int?[] KeepEverythingWithLayout()
         => [0, Keep, .. Enumerable.Repeat<int?>(Keep, Questions.Length)];
 
