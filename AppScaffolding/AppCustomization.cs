@@ -1,4 +1,4 @@
-namespace AppScaffolding;
+﻿namespace AppScaffolding;
 
 /// <summary>Which theme a generated desktop front end uses. <see cref="Default"/> means the
 /// generator emits no theme at all, which is what every pre-customization app looked like.</summary>
@@ -18,6 +18,20 @@ public enum AppTheme
 /// The regression proof is the existing suite — if an old test has to change, this record is
 /// not neutral.
 /// </remarks>
+/// <param name="Login">
+/// Whether the application gates itself behind a login screen. True by default, unlike every other
+/// setting here — an application with screens is expected to have accounts, and this is the one
+/// place the record is deliberately NOT neutral. `nologin` turns it off, and that is the only
+/// combination under which a named layout still reproduces the generator's pre-auth output byte
+/// for byte.
+/// </param>
+/// <param name="Transactions">
+/// Entity names the user declared to be transactions, comma-joined, overruling the heuristic.
+/// A string rather than a collection because this record is compared by value across the suite
+/// and a list member would break that silently.
+/// </param>
+/// <param name="Masters">As <paramref name="Transactions"/>, in the other direction. A name
+/// given in both wins as a master, which is the safe answer.</param>
 public sealed record AppCustomization(
     string Company,
     AppTheme Theme,
@@ -27,6 +41,9 @@ public sealed record AppCustomization(
     bool Validation,
     bool Logging,
     bool SampleSeedData,
+    bool Login,
+    string Transactions,
+    string Masters,
     string NamespacePrefix,
     AppLayout? Layout)
 {
@@ -47,6 +64,9 @@ public sealed record AppCustomization(
         Validation: true,
         Logging: false,
         SampleSeedData: true,
+        Login: true,
+        Transactions: string.Empty,
+        Masters: string.Empty,
         NamespacePrefix: string.Empty,
         Layout: null);
 
@@ -64,7 +84,7 @@ public sealed record AppCustomization(
     /// to <c>BuildAppCommand.Merge</c>, which reads a setting as typed-inline when it differs from
     /// <see cref="Default"/>. The emit path never cares about that distinction, and uses this.
     /// </remarks>
-    public AppLayout EffectiveLayout => Layout ?? AppLayout.Tabs;
+    public AppLayout EffectiveLayout => Layout ?? AppLayout.Business;
 
     /// <summary>
     /// The name the supplied icon is copied to inside <see cref="AssetsFolder"/>, or null when

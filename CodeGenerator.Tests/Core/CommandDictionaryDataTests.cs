@@ -1,4 +1,4 @@
-using CodeGenerationEngine.Core;
+﻿using CodeGenerationEngine.Core;
 
 namespace CodeGenerator.Tests.Core;
 
@@ -83,7 +83,8 @@ public class CommandDictionaryDataTests
         foreach (var option in new[]
                  {
                      "company", "theme", "accent", "icon", "title", "namespace", "layout",
-                     "novalidation", "logging", "noseed",
+                     "novalidation", "logging", "noseed", "nologin",
+                     "transactions", "masters",
                  })
         {
             StringAssert.Contains(buildApp, option, $"'{option}' is not in the help catalog.");

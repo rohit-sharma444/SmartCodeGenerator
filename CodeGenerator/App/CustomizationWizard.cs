@@ -1,4 +1,4 @@
-using AppScaffolding;
+﻿using AppScaffolding;
 using AppScaffolding.Layouts;
 
 namespace CodeGenerator.App;
@@ -81,22 +81,35 @@ internal static class CustomizationWizard
 
         if (asksLayout)
         {
-            var offered = AppLayoutCatalog.KeyFor(layout ?? AppLayout.Tabs);
+            var offered = AppLayoutCatalog.KeyFor(layout ?? AppCustomization.Default.EffectiveLayout);
 
             var chosen = Ask(reader, writer, "Layout", offered);
             if (chosen is null) return null;
 
             // An unusable answer keeps the current value rather than re-prompting, as a malformed
             // accent does. Enter on a run with no remembered layout leaves it UNNAMED rather than
-            // recording `tabs`: the review summary then stays quiet for a user who customized
-            // nothing, and a `layout tabs` typed against a remembered dashboard still reads as the
+            // recording the default: the review summary then stays quiet for a user who customized
+            // nothing, and a layout typed against a remembered dashboard still reads as the
             // deliberate override it is.
             if (AppLayoutCatalog.TryResolve(chosen, out var parsed)
-                && (layout is not null || parsed != AppLayout.Tabs))
+                && (layout is not null || parsed != AppCustomization.Default.EffectiveLayout))
             {
                 layout = parsed;
             }
         }
+
+        // Asked beside the layout, because both are about the SHAPE of the app rather than its
+        // appearance. Blank means "decide automatically", which is what NoneLabel already
+        // means for the optional values below.
+        var transactions = Ask(
+            reader, writer, "Transactions",
+            start.Transactions.Length == 0 ? NoneLabel : start.Transactions);
+        if (transactions is null) return null;
+
+        var masters = Ask(
+            reader, writer, "Masters",
+            start.Masters.Length == 0 ? NoneLabel : start.Masters);
+        if (masters is null) return null;
 
         var company = Ask(reader, writer, "Company name", start.Company);
         if (company is null) return null;
@@ -149,6 +162,11 @@ internal static class CustomizationWizard
         var seed = AskYesNo(reader, writer, "Sample seed data", start.SampleSeedData);
         if (seed is null) return null;
 
+        // Phrased as a positive so the remembered answer in app-profile.json reads as the
+        // question does; the inline flag is the negative one.
+        var login = AskYesNo(reader, writer, "Require a login", start.Login);
+        if (login is null) return null;
+
         return start with
         {
             Layout = layout,
@@ -161,6 +179,9 @@ internal static class CustomizationWizard
             Validation = validation.Value,
             Logging = logging.Value,
             SampleSeedData = seed.Value,
+            Login = login.Value,
+            Transactions = ParseOptional(transactions, start.Transactions) ?? string.Empty,
+            Masters = ParseOptional(masters, start.Masters) ?? string.Empty,
         };
     }
 

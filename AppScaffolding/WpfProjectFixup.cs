@@ -1,4 +1,4 @@
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
 
 namespace AppScaffolding;
 
@@ -77,6 +77,39 @@ public static class WpfProjectFixup
                 + "            </ResourceDictionary>";
 
             File.WriteAllText(appXamlPath, xaml.Insert(index + open.Length, merged));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+        }
+    }
+
+    /// <summary>
+    /// Removes <c>StartupUri</c> from <c>App.xaml</c>, for an app whose entry point opens its
+    /// own first window.
+    /// </summary>
+    /// <remarks>
+    /// StartupUri opens its window before <c>OnStartup</c> finishes, so leaving it in place
+    /// would show the shell behind the login. Best-effort and idempotent, like the repoint it
+    /// undoes.
+    /// </remarks>
+    public static void RemoveStartupUri(string projectFolder)
+    {
+        var path = Path.Combine(projectFolder, "App.xaml");
+
+        try
+        {
+            if (!File.Exists(path))
+                return;
+
+            var xaml = File.ReadAllText(path);
+
+            // Either spelling: the repoint above may or may not have run first.
+            var updated = xaml
+                .Replace(FolderedStartupUri, string.Empty)
+                .Replace(TemplateStartupUri, string.Empty);
+
+            if (!string.Equals(xaml, updated, StringComparison.Ordinal))
+                File.WriteAllText(path, updated);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {

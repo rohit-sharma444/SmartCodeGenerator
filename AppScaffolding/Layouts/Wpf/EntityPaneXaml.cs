@@ -1,4 +1,4 @@
-namespace AppScaffolding.Layouts.Wpf;
+﻿namespace AppScaffolding.Layouts.Wpf;
 
 /// <summary>
 /// The per-entity pane — grid, button row, status bar — as a keyed <c>DataTemplate</c> in
@@ -23,7 +23,8 @@ public static class EntityPaneXaml
     /// The <c>Window.Resources</c> block declaring the pane. With <paramref name="withEditor"/> the
     /// pane carries a <c>PropertyEditor</c> for the selected row between the grid and the buttons.
     /// </summary>
-    public static string Resource(ThemePalette? palette, bool withEditor = false)
+    public static string Resource(
+        ThemePalette? palette, bool withEditor = false, bool login = false)
     {
         // Indented to align under the DataGrid's first attribute below, which sits ten columns
         // past its element's own indent.
@@ -60,10 +61,32 @@ public static class EntityPaneXaml
             """
             : string.Empty;
 
-        return $$"""
+        // Docked above the records rather than beside Add/Delete/Save: signing out is not an
+        // action on a record. Only one pane is on screen at a time in every layout, so this
+        // renders once rather than per tab.
+        //
+        // The name comes through MainViewModel, reached with a RelativeSource walk to the
+        // window, rather than an x:Static -- an x:Static would need a new xmlns on all four
+        // window roots. That binding is also why this literal is $$$: it ends in }}.
+        var signOut = login
+            ? $$$"""
+
+                <Grid DockPanel.Dock="Top" Margin="0,0,0,10">
+                    <TextBlock VerticalAlignment="Center"
+                               Foreground="{{{statusBrush}}}"
+                               Text="{Binding DataContext.SignedInUser, RelativeSource={RelativeSource AncestorType=Window}}" />
+                    <Button Content="Sign out"
+                            Click="OnSignOut"
+                            HorizontalAlignment="Right"
+                            Width="88" Height="26" />
+                </Grid>
+            """
+            : string.Empty;
+
+        return $$$"""
     <Window.Resources>
-        <DataTemplate x:Key="{{Key}}">
-            <DockPanel Margin="12">
+        <DataTemplate x:Key="{{{Key}}}">
+            <DockPanel Margin="12">{{{signOut}}}
                 <!-- Status shares the button row rather than taking a strip of its own: it is
                      assigned only by Add, Delete and Save, so a bar would be an empty band for the
                      whole first session. -->
@@ -71,7 +94,7 @@ public static class EntityPaneXaml
                     <TextBlock Text="{Binding Status}"
                                VerticalAlignment="Center"
                                TextTrimming="CharacterEllipsis"
-                               Foreground="{{statusBrush}}" />
+                               Foreground="{{{statusBrush}}}" />
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                         <Button Content="Add" Command="{Binding AddCommand}"
                                 Width="88" Height="28" Margin="8,0,0,0" />
@@ -80,8 +103,8 @@ public static class EntityPaneXaml
                         <Button Content="Save" Command="{Binding SaveCommand}"
                                 Width="88" Height="28" Margin="8,0,0,0" />
                     </StackPanel>
-                </Grid>{{editor}}
-                <DataGrid ItemsSource="{Binding Items}"{{gridBrushes}}
+                </Grid>{{{editor}}}
+                <DataGrid ItemsSource="{Binding Items}"{{{gridBrushes}}}
                           SelectedItem="{Binding Selected, Mode=TwoWay}"
                           AutoGenerateColumns="True"
                           CanUserAddRows="False"

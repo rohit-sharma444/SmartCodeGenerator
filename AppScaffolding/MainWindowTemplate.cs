@@ -1,4 +1,4 @@
-namespace AppScaffolding;
+﻿namespace AppScaffolding;
 
 /// <summary>
 /// The view. Entirely static: a TabControl over IEntityViewModel renders any
@@ -21,8 +21,26 @@ public static class MainWindowTemplate
     /// embeds as a <c>Resource</c> — see <c>AppScaffolder.RegisterIcon</c>, which puts it there.
     /// </remarks>
     public static string Xaml(
-        string rootNamespace, string title, bool themed = false, string? iconFileName = null)
+        string rootNamespace, string title, bool themed = false, string? iconFileName = null,
+        bool login = false)
     {
+        // Docked above the grid, inside the pane template, so it renders once: only the
+        // selected tab's content is realised. The binding walks to the window's DataContext,
+        // which is why this literal is $$$ -- it ends in }}.
+        var signOut = login
+            ? $$$"""
+
+                                <Grid DockPanel.Dock="Top" Margin="0,0,0,8">
+                                    <TextBlock VerticalAlignment="Center"
+                                               Text="{Binding DataContext.SignedInUser, RelativeSource={RelativeSource AncestorType=Window}}" />
+                                    <Button Content="Sign out"
+                                            Click="OnSignOut"
+                                            HorizontalAlignment="Right"
+                                            Width="80" Margin="4,0" />
+                                </Grid>
+            """
+            : string.Empty;
+
         // Emitted only for an app that was given an icon: the window has always been iconless,
         // and inherits the .exe's icon when there is one.
         var windowIcon = iconFileName is null
@@ -54,7 +72,7 @@ public static class MainWindowTemplate
     <TabControl ItemsSource="{Binding Entities}" DisplayMemberPath="Title" SelectedIndex="0">
         <TabControl.ContentTemplate>
             <DataTemplate>
-                <DockPanel>
+                <DockPanel>{{signOut}}
                     <StatusBar DockPanel.Dock="Bottom">
                         <TextBlock Text="{Binding Status}" />
                     </StatusBar>
@@ -89,12 +107,39 @@ public static class MainWindowTemplate
     /// <c>IsDisplayable</c> alone, in <see cref="PropertyEditorTemplate.Source"/> rather than
     /// shared: keep all three in sync if the display convention ever changes.
     /// </remarks>
-    public static string CodeBehind(string rootNamespace) => $$"""
+    public static string CodeBehind(string rootNamespace) => CodeBehind(rootNamespace, login: false);
+
+    /// <summary>
+    /// Source of <c>Views/MainWindow.xaml.cs</c>. With <paramref name="login"/> it also
+    /// handles the pane's Sign out button.
+    /// </summary>
+    /// <remarks>
+    /// The handler closes the window as well as raising the flag. The entry point's loop only
+    /// gets control back when the shell closes, so setting the flag alone would do nothing
+    /// visible and read as a dead button.
+    /// </remarks>
+    public static string CodeBehind(string rootNamespace, bool login)
+    {
+        var signOut = login
+            ? """
+
+
+    private void OnSignOut(object sender, RoutedEventArgs e)
+    {
+        Session.RequestSignOut();
+        Close();
+    }
+"""
+            : string.Empty;
+
+        var authUsing = login ? $"using {rootNamespace}.Auth;\r\n" : string.Empty;
+
+        return $$"""
 using System;
 using System.Windows;
 using System.Windows.Controls;
 using System.Linq;
-using {{rootNamespace}}.ViewModels;
+{{authUsing}}using {{rootNamespace}}.ViewModels;
 
 namespace {{rootNamespace}}.Views;
 
@@ -104,7 +149,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         DataContext = new MainViewModel();
-    }
+    }{{signOut}}
 
     // Column presentation is a view concern, so the Id lock lives here rather
     // than in a view model. This is the only code-behind in the generated app.
@@ -188,4 +233,5 @@ public partial class MainWindow : Window
     }
 }
 """;
+    }
 }

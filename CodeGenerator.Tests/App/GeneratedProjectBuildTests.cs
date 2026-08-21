@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Text;
@@ -78,6 +78,100 @@ public class GeneratedProjectBuildTests
             Assert.IsNotNull(result.TestProjectPath, "no test project was emitted");
             var (testExit, testOutput) = RunDotNet($"test \"{result.TestProjectPath}\" -c Release");
             Assert.AreEqual(0, testExit, $"dotnet test failed:\n{testOutput}");
+        }
+        finally
+        {
+            TryDeleteDirectory(workspace);
+        }
+    }
+
+    /// <summary>
+    /// A model with a real transaction in it, so the business shell's own screens are compiled.
+    /// </summary>
+    /// <remarks>
+    /// Order references a Customer and carries a date and an amount, which is what makes the
+    /// classifier call it a transaction. Without it every row here is masters-only and the
+    /// transaction screen, its date range and its totals are never built.
+    /// </remarks>
+    private static CandidateDomainModel BusinessModel()
+    {
+        var model = new CandidateDomainModel();
+
+        model.Entities.Add(new CandidateEntity
+        {
+            Name = "Customer",
+            Fields = { new CandidateField { Name = "Name", Type = "string" } }
+        });
+
+        model.Entities.Add(new CandidateEntity
+        {
+            Name = "Order",
+            Fields =
+            {
+                new CandidateField { Name = "CustomerId", Type = "int" },
+                new CandidateField { Name = "OrderedOn", Type = "DateTime" },
+                new CandidateField { Name = "Total", Type = "decimal" },
+            }
+        });
+
+        model.Entities.Add(new CandidateEntity
+        {
+            Name = "OrderLine",
+            Fields =
+            {
+                new CandidateField { Name = "OrderId", Type = "int" },
+                new CandidateField { Name = "Quantity", Type = "int" },
+            }
+        });
+
+        return model;
+    }
+
+    /// <summary>
+    /// The business shell builds, on every target that has one.
+    /// </summary>
+    /// <remarks>
+    /// Nothing else here builds it: every other row leaves <c>Layout</c> unset, and until the
+    /// default flips that means tabs — so the shell, the four screens and the editor were emitted
+    /// by the generator and compiled by nothing. Branch 1 shipped five defects that passed every
+    /// string assertion and were caught only by building a generated app.
+    /// </remarks>
+    [TestMethod]
+    [TestCategory("Integration")]
+    [DataRow("wpf")]
+    [DataRow("winforms")]
+    [DataRow("blazor")]
+    public void BusinessProject_Builds(string targetKey)
+    {
+        if ((targetKey == "wpf" || targetKey == "winforms") && !OperatingSystem.IsWindows())
+            Assert.Inconclusive($"The {targetKey} target needs the Windows desktop targeting pack.");
+
+        Assert.IsTrue(TargetScaffolders.TryResolve(targetKey, out var target));
+
+        var workspace = Path.Combine(Path.GetTempPath(), "gen_" + Path.GetRandomFileName());
+        Directory.CreateDirectory(workspace);
+        try
+        {
+            var result = new AppScaffolder().Scaffold(
+                ScaffoldRequest.For(BusinessModel(), "Sample", workspace, target)
+                with
+                {
+                    Customization = AppCustomization.Default with { Layout = AppLayout.Business },
+                });
+
+            Assert.IsTrue(result.Success, "scaffold failed: " + result.Message);
+
+            // Or the row builds a tabs app under a business name and proves nothing.
+            var marker = targetKey == "blazor"
+                ? Path.Combine("Components", "Screens", "MasterScreen.razor")
+                : Path.Combine("ViewModels", "ShellViewModel.cs");
+
+            Assert.IsTrue(
+                File.Exists(Path.Combine(result.ProjectPath, marker)),
+                $"{marker} was not emitted, so this build covers the wrong screens");
+
+            var (exit, output) = RunDotNet($"build \"{result.ProjectPath}\" -c Release");
+            Assert.AreEqual(0, exit, $"dotnet build failed for {targetKey}:\n{output}");
         }
         finally
         {

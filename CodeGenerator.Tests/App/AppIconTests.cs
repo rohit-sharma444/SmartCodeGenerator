@@ -1,4 +1,4 @@
-using AppScaffolding;
+﻿using AppScaffolding;
 using AppScaffolding.Targets;
 
 namespace CodeGenerator.Tests.App;
@@ -166,12 +166,23 @@ public class AppIconTests
                 .Single(f => f.Name == "MainForm.cs").Source
                 .Contains("new Icon(", StringComparison.Ordinal));
 
+    /// <summary>
+    /// No icon means no icon loading.
+    /// </summary>
+    /// <remarks>
+    /// The named pieces, not the bare word "Icon": the business shell says MessageBoxIcon.Warning
+    /// when it asks whether to discard an edit, which has nothing to do with an application icon.
+    /// </remarks>
     [TestMethod]
     public void An_un_iconed_form_is_unchanged()
-        => Assert.IsFalse(
-            new WinFormsTarget().FrontEndFiles("Shop", ["Order"], AppCustomization.Default)
-                .Single(f => f.Name == "MainForm.cs").Source
-                .Contains("Icon", StringComparison.Ordinal));
+    {
+        var source = new WinFormsTarget()
+            .FrontEndFiles("Shop", ["Order"], AppCustomization.Default)
+            .Single(f => f.Name == "MainForm.cs").Source;
+
+        Assert.DoesNotContain("new Icon(", source);
+        Assert.DoesNotContain("iconPath", source);
+    }
 
     [TestMethod]
     public void The_copied_file_name_keeps_only_the_supplied_extension()

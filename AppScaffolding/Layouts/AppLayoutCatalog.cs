@@ -1,4 +1,4 @@
-namespace AppScaffolding;
+﻿namespace AppScaffolding;
 
 /// <summary>
 /// The layout vocabulary: the CLI keys and their descriptions, in display order.
@@ -17,9 +17,18 @@ public static class AppLayoutCatalog
         // Hyphenated deliberately: the inline parser tokenizes on whitespace.
         (AppLayout.MasterDetail, "master-detail", "tabs, with an edit form for the selected row under the grid"),
         (AppLayout.Dashboard, "dashboard", "a home screen of per-entity cards showing row counts"),
+        (AppLayout.Business, "business",
+            "a dashboard home, a rail grouped into masters and transactions, and an editor for every record"),
     ];
 
-    /// <summary>Layout keys in display order; the first is the default.</summary>
+    /// <summary>
+    /// Layout keys in display order.
+    /// </summary>
+    /// <remarks>
+    /// Tabs is first because it is what this generator emitted before layouts existed, not because
+    /// it is the default: <see cref="AppCustomization.EffectiveLayout"/> answers "business" for a
+    /// build that names nothing.
+    /// </remarks>
     public static IReadOnlyList<string> Keys { get; } = All.Select(x => x.Key).ToList();
 
     public static IReadOnlyDictionary<AppLayout, string> Descriptions { get; } =

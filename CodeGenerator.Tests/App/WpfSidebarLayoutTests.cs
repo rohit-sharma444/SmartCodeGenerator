@@ -1,4 +1,4 @@
-using System.Xml.Linq;
+﻿using System.Xml.Linq;
 using AppScaffolding;
 using AppScaffolding.Layouts;
 using AppScaffolding.Layouts.Wpf;
@@ -87,7 +87,9 @@ public class WpfSidebarLayoutTests
             new LayoutContext("Payroll", "Payroll", AppCustomization.Default, null));
 
         Assert.AreEqual(
-            MainWindowTemplate.CodeBehind("Payroll"),
+            // login: true to match the fixture. The claim is that the layout REUSES the
+            // shared code-behind, not that the shared one never changes.
+            MainWindowTemplate.CodeBehind("Payroll", login: true),
             files.Single(f => f.Name == "MainWindow.xaml.cs").Source);
     }
 

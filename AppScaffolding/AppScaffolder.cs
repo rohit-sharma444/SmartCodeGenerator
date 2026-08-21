@@ -1,3 +1,5 @@
+﻿using AppScaffolding.Auth;
+using AppScaffolding.Screens;
 using CodeGenerationEngine.Core;
 using CodeGenerationEngine.Factory;
 using CodeGenerationEngine.Models;
@@ -283,7 +285,21 @@ public sealed class AppScaffolder
         // same WriteSource, and a `//` banner would corrupt both.
         var header = FileHeader.For(request.Customization.Company, request.Year);
 
-        var classes = DomainModelMapper.ToClassDefinitions(model, out var classNames);
+        // Decided here rather than beside the file list further down: the auth core occupies
+        // the name "User", and a discovered entity can only be renamed around it if that is
+        // known before the classes are built.
+        var auth = request.Customization.Login && target.HasScreens;
+
+        var classes = DomainModelMapper.ToClassDefinitions(
+            model, out var classNames, auth ? AuthCoreFiles.ReservedNames : []);
+
+        // Classified here rather than at the point of use: the summary is reported whether or
+        // not any screen reads the roles yet, so a misclassification is visible from the first
+        // build rather than from the first launch.
+        var roles = EntityRoles.Classify(
+            classes,
+            ScreenOverrides.Parse(
+                request.Customization.Transactions, request.Customization.Masters));
 
         // Through GeneratedProjectPath, not composed here, so the CLI's overwrite guard and this
         // writer cannot drift apart — see that type's remarks.
@@ -401,6 +417,19 @@ public sealed class AppScaffolder
 
         files.Add((dataFolder, "SaveResult.cs", SaveResultTemplate.Source(rootNamespace)));
 
+        // The auth core, for a target that has screens to gate. Emitted here rather than by
+        // each target because all three UI targets receive identical files -- only the login
+        // VIEW differs, and that stays with the target. `auth` was decided before the classes
+        // were mapped, because it also reserves the name "User".
+        if (auth)
+        {
+            foreach (var file in AuthCoreFiles.For(rootNamespace))
+            {
+                files.Add((
+                    Path.Combine(outputFolder, file.RelativeFolder), file.Name, file.Source));
+            }
+        }
+
         // SaveResult above stays whatever the flag says: Repository still returns one, so the
         // console menu and the Web API's ValidationProblem are untouched by turning validation off.
         if (validation)
@@ -418,9 +447,16 @@ public sealed class AppScaffolder
         // Persistence backend behind the seam.
         if (persistence == PersistenceKind.Sqlite)
         {
+            // Appended rather than mixed into entityNames, which also drives the class count,
+            // the repositories and the validators -- none of which User takes part in.
+            var contextEntities = auth
+                ? entityNames.Append(AuthCoreFiles.EntityName).ToList()
+                : entityNames;
+
             files.Add((dataFolder, "EfStore.cs", EfStoreTemplate.Source(rootNamespace)));
             files.Add((dataFolder, "AppDbContext.cs",
-                DbContextTemplate.Source(projectName, entityNames, EnvVarName(projectName), rootNamespace)));
+                DbContextTemplate.Source(
+                    projectName, contextEntities, EnvVarName(projectName), rootNamespace)));
         }
         else
         {
@@ -443,7 +479,8 @@ public sealed class AppScaffolder
         }
 
         // Target-specific front-end / entry point.
-        foreach (var file in target.FrontEndFiles(projectName, entityNames, customization))
+        foreach (var file in target.FrontEndFiles(
+                     new FrontEndContext(projectName, entityNames, customization, roles)))
             files.Add((Path.Combine(outputFolder, file.RelativeFolder), file.Name, file.Source));
 
         foreach (var (folder, name, source) in files)
@@ -461,12 +498,29 @@ public sealed class AppScaffolder
         {
             WpfProjectFixup.MergeTheme(outputFolder);
             WpfProjectFixup.ReconcileNamespace(outputFolder, rootNamespace);
+
+            // Only for an app with a login, whose emitted App.xaml.cs opens the first window
+            // itself. Without a login the template's StartupUri is still what starts the app.
+            if (auth)
+                WpfProjectFixup.RemoveStartupUri(outputFolder);
         }
 
         // Same reason, different file: the Blazor template's Program.cs imports
         // `<ProjectName>.Components`, which a namespace prefix moves out from under it.
         if (target.ProjectType == DotNetProjectType.BlazorServer)
+        {
             BlazorProjectFixup.ReconcileNamespace(outputFolder, rootNamespace);
+
+            // The router has to run inside a circuit or the editor cannot ask before a rail click
+            // throws away a half-typed record. Like the namespace, this lives in the shell the
+            // template wrote, so the emitted files cannot switch it on themselves.
+            BlazorProjectFixup.EnableInteractiveRouting(outputFolder);
+
+            // Cookie authentication is the one thing the emitted files cannot switch on by
+            // themselves: the services and the middleware live in the host the template wrote.
+            if (auth)
+                BlazorProjectFixup.EnableAuthentication(outputFolder, rootNamespace);
+        }
 
         // Data files, not source: written with the same best-effort WriteSource so a locked file
         // is reported through `expected` rather than throwing mid-scaffold.
@@ -516,12 +570,24 @@ public sealed class AppScaffolder
 
         var allWritten = written.Count == expected;
 
+        // A renamed entity is reported, never silent: the user described a class by one name and
+        // the app declares it under another, so without this they go looking for something that
+        // is not there.
+        var renamed = classNames
+            .Where(pair => !string.Equals(pair.Key, pair.Value, StringComparison.Ordinal))
+            .Select(pair => $"{pair.Key} was renamed to {pair.Value}")
+            .ToList();
+
+        var renameNote = renamed.Count == 0 ? string.Empty : " " + string.Join("; ", renamed) + ".";
+
         var message = allWritten
-            ? $"Generated {classes.Count} class(es) + {target.Description}."
+            ? $"Generated {classes.Count} class(es) + {target.Description}.{renameNote}"
             : $"Generated {written.Count} of {expected} file(s); " +
               "some files could not be written.";
 
-        return new ScaffoldResult(allWritten, outputFolder, written, message, testProjectPath);
+        return new ScaffoldResult(
+            allWritten, outputFolder, written, message, testProjectPath,
+            ScreenSummary.Describe(roles));
     }
 
     /// <summary>

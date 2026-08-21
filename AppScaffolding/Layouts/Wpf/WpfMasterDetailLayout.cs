@@ -1,4 +1,4 @@
-namespace AppScaffolding.Layouts.Wpf;
+﻿namespace AppScaffolding.Layouts.Wpf;
 
 /// <summary>
 /// Tab chrome, with each pane split into a grid above and an edit form for the selected row below.
@@ -12,7 +12,7 @@ public sealed class WpfMasterDetailLayout : IAppLayout
     public IReadOnlyList<GeneratedFile> ViewFiles(LayoutContext context) =>
     [
         new("Views", "MainWindow.xaml", Xaml(context)),
-        new("Views", "MainWindow.xaml.cs", MainWindowTemplate.CodeBehind(context.RootNamespace)),
+        new("Views", "MainWindow.xaml.cs", MainWindowTemplate.CodeBehind(context.RootNamespace, context.Customization.Login)),
         new("Views", PropertyEditorTemplate.FileName,
             PropertyEditorTemplate.Source(context.RootNamespace)),
     ];
@@ -34,7 +34,7 @@ public sealed class WpfMasterDetailLayout : IAppLayout
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:{{context.RootNamespace}}.Views"
         Title="{{context.TitleAttribute}}" Height="600" Width="900"{{windowIcon}}{{windowBrushes}}>
-{{EntityPaneXaml.Resource(context.Palette, withEditor: true)}}
+{{EntityPaneXaml.Resource(context.Palette, withEditor: true, login: context.Customization.Login)}}
     <!-- SelectedIndex is explicit for the reason the tabbed layout gives. -->
     <TabControl ItemsSource="{Binding Entities}"
                 DisplayMemberPath="Title"

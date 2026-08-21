@@ -1,4 +1,4 @@
-namespace AppScaffolding;
+﻿namespace AppScaffolding;
 
 /// <summary>
 /// The WinForms view. Entirely static, like its WPF counterpart: a TabControl over
@@ -27,8 +27,60 @@ public static class WinFormsMainFormTemplate
     /// still copied into the project, and still reaches the window on the WPF side.
     /// </remarks>
     public static string Source(
-        string rootNamespace, string title, ThemePalette? palette, string? iconFileName = null)
+        string rootNamespace, string title, ThemePalette? palette, string? iconFileName = null,
+        bool login = false)
     {
+        // FindForm() rather than a captured reference: BuildTab is static, and the button is
+        // already in the form's control tree by the time anyone can click it. Close() as well
+        // as the flag, because the entry point's loop only regains control when the shell
+        // closes -- the flag alone would read as a dead button.
+        var signOutRow = login
+            ? """
+
+        var signOut = new Button { Text = "Sign out", Width = 88 };
+        signOut.Click += (s, _) =>
+        {
+            Session.RequestSignOut();
+            ((Control)s!).FindForm()?.Close();
+        };
+
+        var signedIn = new Label
+        {
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Text = model.SignedInUser,
+        };
+
+        var identity = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1,
+        };
+        identity.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+        identity.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        identity.Controls.Add(signedIn, 0, 0);
+        identity.Controls.Add(signOut, 1, 0);
+"""
+            : string.Empty;
+
+        // Both carry their own leading newline and both sit at the END of the line before them.
+        // A placeholder alone on a line emits a BLANK line when it is empty, which is how the
+        // `layout tabs nologin` output drifted one line from what it has always been -- found by
+        // diffing a generated app against the same app generated from main.
+        var signOutRowStyle = login
+            ? "\r\n        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 32f));"
+            : string.Empty;
+
+        // Row 3, which is why rowCount grows with it. Without this the identity panel is built
+        // and never added: the button exists, satisfies every assertion that greps the source for
+        // it, and is invisible in the running application.
+        var signOutPlacement = login
+            ? "\r\n        layout.Controls.Add(identity, 0, 3);"
+            : string.Empty;
+
+        var authUsing = login ? $"using {rootNamespace}.Auth;\r\n" : string.Empty;
+
+        var rowCount = login ? 4 : 3;
+
         // Read off disk beside the binary rather than embedded: AppScaffolder registers the copy
         // as content copied to the output directory. Guarded, so an asset the user later deletes
         // costs the app its icon rather than its startup. Types are qualified because the
@@ -70,7 +122,7 @@ using System.ComponentModel;
 using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
-using {{rootNamespace}}.ViewModels;
+{{authUsing}}using {{rootNamespace}}.ViewModels;
 
 namespace {{rootNamespace}}.Views;
 
@@ -99,10 +151,10 @@ public sealed class MainForm : Form
     {
         var page = new TabPage(entity.Title);
 
-        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3 };
+        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = {{rowCount}} };
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40f));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 26f));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 26f));{{signOutRowStyle}}{{signOutRow}}
 
         var grid = new DataGridView
         {
@@ -175,7 +227,7 @@ public sealed class MainForm : Form
 
         layout.Controls.Add(grid, 0, 0);
         layout.Controls.Add(buttons, 0, 1);
-        layout.Controls.Add(status, 0, 2);
+        layout.Controls.Add(status, 0, 2);{{signOutPlacement}}
 
         page.Controls.Add(layout);
         return page;

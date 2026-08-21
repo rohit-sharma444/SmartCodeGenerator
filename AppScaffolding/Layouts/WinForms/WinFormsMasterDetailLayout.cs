@@ -1,4 +1,4 @@
-namespace AppScaffolding.Layouts.WinForms;
+﻿namespace AppScaffolding.Layouts.WinForms;
 
 /// <summary>
 /// Tab chrome, with each pane split into a grid above and a PropertyGrid for the selected row below.
@@ -21,6 +21,10 @@ public sealed class WinFormsMasterDetailLayout : IAppLayout
 
     private static string Source(LayoutContext context)
     {
+        var authUsing = context.Customization.Login
+            ? $"using {context.RootNamespace}.Auth;\r\n"
+            : string.Empty;
+
         var formColours = context.Palette is null
             ? string.Empty
             : $$"""
@@ -46,7 +50,7 @@ using System.ComponentModel;
 using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
-using {{context.RootNamespace}}.ViewModels;
+{{authUsing}}using {{context.RootNamespace}}.ViewModels;
 
 namespace {{context.RootNamespace}}.Views;
 
@@ -75,7 +79,7 @@ public sealed class MainForm : Form
         Controls.Add(tabs);
     }
 
-{{WinFormsPaneCode.BuildPaneMethod(context.Palette, withPropertyGrid: true)}}
+{{WinFormsPaneCode.BuildPaneMethod(context.Palette, withPropertyGrid: true, login: context.Customization.Login)}}
 }
 """;
     }

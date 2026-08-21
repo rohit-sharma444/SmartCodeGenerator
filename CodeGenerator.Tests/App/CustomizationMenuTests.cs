@@ -1,4 +1,4 @@
-using AppScaffolding;
+﻿using AppScaffolding;
 using AppScaffolding.Layouts;
 using AppScaffolding.Targets;
 using CodeGenerator.App;
@@ -58,8 +58,9 @@ public class CustomizationMenuTests
     /// <summary>The questions asked after the gate, in order, for a target with no window.</summary>
     private static readonly string[] Questions =
     [
+        "Transactions", "Masters",
         "Company name", "Theme", "Accent colour", "Icon", "Window title", "Namespace prefix",
-        "Validation layer", "Logging", "Sample seed data",
+        "Validation layer", "Logging", "Sample seed data", "Require a login",
     ];
 
     /// <summary>Accept the gate, then take the pre-selected row at every question.</summary>
@@ -77,6 +78,8 @@ public class CustomizationMenuTests
     }
 
     /// <summary>As <see cref="KeepEverything"/>, for a target that is also asked its layout.</summary>
+    /// <summary>Yes to the gate, then every question taken as offered — including the layout, whose
+    /// pre-selected row is the default layout wherever the catalogue happens to list it.</summary>
     private static int?[] KeepEverythingWithLayout()
         => [0, Keep, .. Enumerable.Repeat<int?>(Keep, Questions.Length)];
 

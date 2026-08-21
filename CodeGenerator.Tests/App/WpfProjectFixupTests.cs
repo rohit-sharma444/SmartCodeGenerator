@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.IO;
 using AppScaffolding;
 
@@ -97,6 +97,58 @@ public partial class App : Application
         var appXaml = File.ReadAllText(Path.Combine(folder, "App.xaml"));
         StringAssert.Contains(appXaml, "StartupUri=\"Views/MainWindow.xaml\"");
         StringAssert.Contains(appXaml, "x:Class=\"Payroll.App\"", "the template's own markup must survive");
+    }
+
+    /// <summary>
+    /// An app with a login opens its own first window from OnStartup, so StartupUri has to go.
+    /// </summary>
+    /// <remarks>
+    /// StartupUri opens its window BEFORE OnStartup finishes, so left in place the shell appears
+    /// behind the login screen. Nothing in an emitted-source assertion can see that; this is the
+    /// only check.
+    /// </remarks>
+    [TestMethod]
+    public void RemoveStartupUri_LeavesTheApplicationWithNoStartupWindow()
+    {
+        var folder = NewTemplateProjectFolder();
+
+        WpfProjectFixup.Apply(folder);
+        WpfProjectFixup.RemoveStartupUri(folder);
+
+        var appXaml = File.ReadAllText(Path.Combine(folder, "App.xaml"));
+
+        Assert.DoesNotContain("StartupUri", appXaml);
+        StringAssert.Contains(
+            appXaml, "x:Class=\"Payroll.App\"", "the template's own markup must survive");
+        StringAssert.Contains(appXaml, "<Application.Resources>");
+    }
+
+    /// <summary>Removal runs on every scaffold of a login app, including a re-scaffold over a
+    /// project that has already had it removed.</summary>
+    [TestMethod]
+    public void RemoveStartupUri_IsIdempotent()
+    {
+        var folder = NewTemplateProjectFolder();
+
+        WpfProjectFixup.RemoveStartupUri(folder);
+        var once = File.ReadAllText(Path.Combine(folder, "App.xaml"));
+
+        WpfProjectFixup.RemoveStartupUri(folder);
+
+        Assert.AreEqual(once, File.ReadAllText(Path.Combine(folder, "App.xaml")));
+    }
+
+    /// <summary>Without a login the template's StartupUri is still what starts the app, so a
+    /// plain Apply must leave it alone.</summary>
+    [TestMethod]
+    public void Apply_AloneKeepsTheStartupUri()
+    {
+        var folder = NewTemplateProjectFolder();
+
+        WpfProjectFixup.Apply(folder);
+
+        StringAssert.Contains(
+            File.ReadAllText(Path.Combine(folder, "App.xaml")), "StartupUri");
     }
 
     [TestMethod]

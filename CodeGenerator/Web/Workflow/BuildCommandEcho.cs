@@ -1,4 +1,4 @@
-using AppScaffolding;
+﻿using AppScaffolding;
 
 namespace CodeGenerator.Web.Workflow;
 
@@ -73,6 +73,12 @@ internal static class BuildCommandEcho
         if (customization.Layout is { } layout)
             options += $" layout {LayoutWord(layout)}";
 
+        if (customization.Transactions.Length > 0)
+            options += $" transactions {customization.Transactions}";
+
+        if (customization.Masters.Length > 0)
+            options += $" masters {customization.Masters}";
+
         if (!customization.Validation)
             options += " novalidation";
 
@@ -81,6 +87,9 @@ internal static class BuildCommandEcho
 
         if (!customization.SampleSeedData)
             options += " noseed";
+
+        if (!customization.Login)
+            options += " nologin";
 
         return options;
     }

@@ -1,4 +1,4 @@
-using AppScaffolding;
+﻿using AppScaffolding;
 
 namespace CodeGenerator.App;
 
@@ -33,11 +33,14 @@ internal static class InlineCustomization
 {
     /// <summary>Options taking one value.</summary>
     private static readonly string[] ValueKeys =
-        ["company", "theme", "accent", "icon", "title", "namespace", "layout"];
+    [
+        "company", "theme", "accent", "icon", "title", "namespace", "layout",
+        "transactions", "masters",
+    ];
 
     /// <summary>Options that are a bare word.</summary>
     private static readonly string[] Flags =
-        ["novalidation", "logging", "noseed"];
+        ["novalidation", "logging", "noseed", "nologin"];
 
     /// <summary>
     /// Splits <paramref name="tail"/> into what remains for the data-source parser and the
@@ -102,6 +105,7 @@ internal static class InlineCustomization
             "novalidation" => customization with { Validation = false },
             "logging" => customization with { Logging = true },
             "noseed" => customization with { SampleSeedData = false },
+            "nologin" => customization with { Login = false },
             _ => customization,
         };
 
@@ -126,6 +130,12 @@ internal static class InlineCustomization
                         ? AppCustomization.CompanyTitlePattern
                         : customization.TitlePattern,
                 };
+
+            case "transactions":
+                return customization with { Transactions = value };
+
+            case "masters":
+                return customization with { Masters = value };
 
             case "theme":
                 if (string.Equals(value, "light", StringComparison.OrdinalIgnoreCase))

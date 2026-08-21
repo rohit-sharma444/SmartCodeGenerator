@@ -1,4 +1,4 @@
-namespace AppScaffolding;
+﻿namespace AppScaffolding;
 
 /// <summary>The one generated file whose shape depends on the entity set.</summary>
 public static class MainViewModelTemplate
@@ -10,6 +10,65 @@ public static class MainViewModelTemplate
     /// models load only when <paramref name="seed"/> — with sample data off there is no SeedData.cs
     /// to call.</summary>
     public static string Build(string rootNamespace, IReadOnlyList<string> entityNames, bool seed)
+        => Build(rootNamespace, entityNames, seed, login: false);
+
+    /// <summary>
+    /// As above; with <paramref name="login"/> an administrator also gets the Users pane.
+    /// </summary>
+    /// <remarks>
+    /// Appended after the collection initialiser rather than inside it, so the output for an
+    /// app with no login stays byte-identical to what this template has always produced.
+    /// </remarks>
+    public static string Build(
+        string rootNamespace, IReadOnlyList<string> entityNames, bool seed, bool login)
+        => Build(rootNamespace, entityNames, seed, login, roles: null);
+
+    /// <summary>
+    /// As above; with <paramref name="roles"/> each entity gets the screen its role calls for.
+    /// </summary>
+    /// <remarks>
+    /// Null for the four older layouts, which bind to EntityViewModel and must keep emitting
+    /// exactly what they always did. A DocumentLine is registered for NO screen at all -- it is
+    /// edited inside its parent, and listing it would be the one mistake the classification
+    /// exists to avoid.
+    /// </remarks>
+    private static string Screen(string name, Screens.EntityRoleMap? roles)
+    {
+        if (roles is null)
+            return $"new EntityViewModel<{name}>(\"{name}\")";
+
+        return roles.RoleOf(name) == Screens.EntityRole.Transaction
+            ? $"new TransactionScreenViewModel<{name}>(\"{name}\"{Lines(name, roles)})"
+            : $"new MasterScreenViewModel<{name}>(\"{name}\")";
+    }
+
+    /// <summary>
+    /// The factory that builds a transaction's line sets, or nothing when it has no lines.
+    /// </summary>
+    /// <remarks>
+    /// This is the only place that knows both types, which is why the sets are built here and
+    /// passed down: a screen is generic over the record and cannot name the line.
+    /// <para>
+    /// The foreign key is <c>&lt;Parent&gt;Id</c> by construction — <c>EntityRoles</c> only calls a
+    /// class a line when it has exactly that property, so a name assembled here cannot miss.
+    /// </para>
+    /// </remarks>
+    private static string Lines(string name, Screens.EntityRoleMap roles)
+    {
+        var lines = roles.LinesOf(name);
+
+        if (lines.Count == 0)
+            return string.Empty;
+
+        var sets = string.Join(
+            ", ", lines.Select(line => $"new LineSet<{line}>(\"{line}\", \"{name}Id\")"));
+
+        return $", () => [{sets}]";
+    }
+
+    public static string Build(
+        string rootNamespace, IReadOnlyList<string> entityNames, bool seed, bool login,
+        Screens.EntityRoleMap? roles)
     {
         // Its own fragment rather than SeedDataTemplate.EnsureSeededCall: this call site is inside
         // a constructor, so it is indented and carries the comment explaining its position.
@@ -24,13 +83,48 @@ public static class MainViewModelTemplate
             : string.Empty;
 
         var registrations = string.Join("\n",
-            entityNames.Select(name =>
-                $"            new EntityViewModel<{name}>(\"{name}\"),"));
+            entityNames
+                .Where(name => roles is null
+                               || roles.RoleOf(name) != Screens.EntityRole.DocumentLine)
+                .Select(name => $"            {Screen(name, roles)},"));
+
+        // The pane an administrator gets on top of the discovered entities. The business
+        // shell opens this same view model from its Admin group; until then it is an ordinary
+        // pane, which is what makes the four older layouts usable with a login.
+        // Exposed here rather than read as a static in XAML: an x:Static would need a new
+        // xmlns on all four window roots, and this is one property on the object the window
+        // already binds to.
+        var signedIn = login
+            ? """
+
+
+    /// <summary>The signed-in user, for the pane's sign-out strip.</summary>
+    public string SignedInUser => Session.DisplayName;
+"""
+            : string.Empty;
+
+        var usersPane = login
+            ? """
+
+
+        // The Users pane, for an administrator only.
+        if (Session.IsAdmin)
+            Entities.Add(new UsersViewModel());
+"""
+            : string.Empty;
+
+        // Only for the business shell, whose registrations name LineSet. The four older layouts
+        // must emit exactly what they always did, and one extra using is a difference.
+        var screensUsing = roles is null
+            ? string.Empty
+            : $"\r\nusing {rootNamespace}.Screens;";
+
+        var authUsing = login ? $"using {rootNamespace}.Auth;\r\n" : string.Empty;
 
         return $$"""
 using System.Collections.ObjectModel;
-using {{rootNamespace}}.Data;
-using {{rootNamespace}}.Models;
+{{authUsing}}using {{rootNamespace}}.Data;
+using {{rootNamespace}}.Models;{{screensUsing}}
 
 namespace {{rootNamespace}}.ViewModels;
 
@@ -48,8 +142,8 @@ public sealed class MainViewModel
         // in but the navigation properties are still null -- they are [JsonIgnore] and never
         // persisted. This is the earliest point at which every store is loaded, and so the
         // earliest point at which they can be joined back up.
-        RelationshipResolver.Resolve(Entities);
-    }
+        RelationshipResolver.Resolve(Entities);{{usersPane}}
+    }{{signedIn}}
 
     public ObservableCollection<IEntityViewModel> Entities { get; }
 }

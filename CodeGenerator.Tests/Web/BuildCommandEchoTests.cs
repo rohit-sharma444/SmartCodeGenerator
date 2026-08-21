@@ -1,4 +1,4 @@
-using AppScaffolding;
+﻿using AppScaffolding;
 using AppScaffolding.Targets;
 using CodeGenerator.App;
 using CodeGenerator.Web.Workflow;
@@ -95,6 +95,9 @@ public class BuildCommandEchoTests
             Validation = false,
             Logging = true,
             SampleSeedData = false,
+            Login = false,
+            Transactions = "Order",
+            Masters = "Region",
         };
 
         session.SetCustomization(asked);
@@ -109,6 +112,9 @@ public class BuildCommandEchoTests
         Assert.AreEqual(asked.Validation, parsed.Customization.Validation);
         Assert.AreEqual(asked.Logging, parsed.Customization.Logging);
         Assert.AreEqual(asked.SampleSeedData, parsed.Customization.SampleSeedData);
+        Assert.AreEqual(asked.Login, parsed.Customization.Login);
+        Assert.AreEqual(asked.Transactions, parsed.Customization.Transactions);
+        Assert.AreEqual(asked.Masters, parsed.Customization.Masters);
     }
 
     /// <summary>

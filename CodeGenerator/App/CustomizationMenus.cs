@@ -1,4 +1,4 @@
-using AppScaffolding;
+﻿using AppScaffolding;
 using AppScaffolding.Layouts;
 
 namespace CodeGenerator.App;
@@ -66,12 +66,28 @@ internal static class CustomizationMenus
             if (chosen is null)
                 return null;
 
-            // Enter on a run with no remembered layout leaves it UNNAMED rather than recording
-            // `tabs`: the review summary then stays quiet for a user who customized nothing, and a
-            // `layout tabs` typed against a remembered dashboard still reads as the override it is.
-            if (layout is not null || chosen != AppLayout.Tabs)
+            // Taking the pre-selected row on a run with no remembered layout leaves it UNNAMED
+            // rather than recording the default: the review summary then stays quiet for a user who
+            // customized nothing, and a layout named against a remembered dashboard still reads as
+            // the override it is.
+            if (layout is not null || chosen != AppCustomization.Default.EffectiveLayout)
                 layout = chosen;
         }
+
+        // Beside the layout question: both are about the SHAPE of the app rather than its
+        // appearance. "None" means decide automatically, which is what it means for every
+        // other optional value here.
+        var transactions = AskValue(
+            reader, writer, choose, "Transactions", start.Transactions, "Keep", "Type names");
+
+        if (transactions is null)
+            return null;
+
+        var masters = AskValue(
+            reader, writer, choose, "Masters", start.Masters, "Keep", "Type names");
+
+        if (masters is null)
+            return null;
 
         var company = AskValue(
             reader, writer, choose, "Company name", start.Company, "Keep", "Type a name");
@@ -147,6 +163,11 @@ internal static class CustomizationMenus
         if (seed is null)
             return null;
 
+        var login = AskYesNo(choose, "Require a login", start.Login);
+
+        if (login is null)
+            return null;
+
         return start with
         {
             Layout = layout,
@@ -180,6 +201,19 @@ internal static class CustomizationMenus
             Validation = validation.Value,
             Logging = logging.Value,
             SampleSeedData = seed.Value,
+            Transactions = transactions.Value.Choice switch
+            {
+                ValueChoice.Kept => start.Transactions,
+                ValueChoice.None => string.Empty,
+                _ => transactions.Value.Text,
+            },
+            Masters = masters.Value.Choice switch
+            {
+                ValueChoice.Kept => start.Masters,
+                ValueChoice.None => string.Empty,
+                _ => masters.Value.Text,
+            },
+            Login = login.Value,
         };
     }
 
@@ -198,7 +232,7 @@ internal static class CustomizationMenus
             })
             .ToList();
 
-        var offered = AppLayoutCatalog.KeyFor(current ?? AppLayout.Tabs);
+        var offered = AppLayoutCatalog.KeyFor(current ?? AppCustomization.Default.EffectiveLayout);
 
         var row = choose("Layout", labels, IndexOf(keys, offered));
 

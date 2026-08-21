@@ -1,4 +1,4 @@
-namespace AppScaffolding.Layouts.Wpf;
+﻿namespace AppScaffolding.Layouts.Wpf;
 
 /// <summary>The WPF layouts, keyed by <see cref="AppLayout"/>.</summary>
 /// <remarks>Shaped like <c>TargetScaffolders</c>: a private array, the first element as the
@@ -11,6 +11,7 @@ public static class WpfLayouts
         new WpfSidebarLayout(),
         new WpfDashboardLayout(),
         new WpfMasterDetailLayout(),
+        new WpfBusinessLayout(),
     ];
 
     /// <summary>The historical default: the tabbed window.</summary>

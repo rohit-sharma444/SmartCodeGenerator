@@ -58,3 +58,6 @@ Thumbs.db
 # it is 162 bytes of whoever had the document open, and it appears and vanishes as
 # the document is opened and closed.
 ~$*
+
+# Brainstorming companion scratch (mockups, session state)
+.superpowers/

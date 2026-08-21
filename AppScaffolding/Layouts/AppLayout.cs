@@ -1,4 +1,4 @@
-namespace AppScaffolding;
+﻿namespace AppScaffolding;
 
 /// <summary>
 /// The shape of a generated desktop front end.
@@ -19,5 +19,9 @@ public enum AppLayout
     MasterDetail,
 
     /// <summary>A home screen of per-entity cards showing row counts, clicking through to a grid.</summary>
-    Dashboard
+    Dashboard,
+
+    /// <summary>The business shell: a dashboard home, a rail grouped into masters and
+    /// transactions, and an editor that replaces the content area.</summary>
+    Business
 }

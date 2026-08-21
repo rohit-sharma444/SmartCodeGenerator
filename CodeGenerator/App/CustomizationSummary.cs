@@ -1,4 +1,4 @@
-using AppScaffolding;
+﻿using AppScaffolding;
 
 namespace CodeGenerator.App;
 
@@ -50,11 +50,22 @@ internal static class CustomizationSummary
         if (customization.Layout is not null)
             lines.Add($"  Layout: {AppLayoutCatalog.KeyFor(customization.Layout.Value)}");
 
+        // Named, not counted: the point of typing them is to check the generator agreed.
+        if (customization.Transactions.Length > 0)
+            lines.Add($"  Transactions: {customization.Transactions}");
+
+        if (customization.Masters.Length > 0)
+            lines.Add($"  Masters: {customization.Masters}");
+
         var features = new List<string>();
 
         if (!customization.Validation) features.Add("no validation layer");
         if (customization.Logging) features.Add("logging");
         if (!customization.SampleSeedData) features.Add("no sample data");
+
+        // Stated only when off. Login is the one setting whose default is NOT the pre-feature
+        // behaviour, so "login" on every summary would be noise; "no login" is the decision.
+        if (!customization.Login) features.Add("no login");
 
         if (features.Count > 0)
             lines.Add("  Features: " + string.Join(", ", features));

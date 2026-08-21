@@ -27,6 +27,8 @@ public static class PropertyEditorTemplate
 
     public static string Source(string appName) => $$"""
 using System;
+using System.ComponentModel;
+using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
@@ -75,7 +77,12 @@ public sealed class PropertyEditor : Grid
 
         foreach (var property in record.GetType().GetProperties())
         {
-            if (!property.CanRead || !IsDisplayable(property.PropertyType))
+            // Browsable(false) as well as the type check: the grids get this from the framework
+            // when they generate columns, and this editor builds its fields by hand, so without
+            // it the password hash stays editable in exactly one layout.
+            if (!property.CanRead
+                || !IsDisplayable(property.PropertyType)
+                || !IsBrowsable(property))
                 continue;
 
             RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -131,6 +138,14 @@ public sealed class PropertyEditor : Grid
 
     // Kept in step with the same convention in MainWindow.xaml.cs: a navigation property has no
     // sensible editor, and a collection would render as its type name.
+    /// <summary>Whether a property is meant to be shown at all.</summary>
+    /// <remarks>
+    /// Kept beside IsDisplayable because they are the same convention: one hides a type nothing
+    /// can render, the other hides a value nobody should see.
+    /// </remarks>
+    private static bool IsBrowsable(PropertyInfo property)
+        => property.GetCustomAttribute<BrowsableAttribute>()?.Browsable != false;
+
     private static bool IsDisplayable(Type type)
     {
         var underlying = Nullable.GetUnderlyingType(type) ?? type;

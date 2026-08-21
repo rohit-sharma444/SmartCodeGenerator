@@ -1,4 +1,4 @@
-using AppScaffolding;
+﻿using AppScaffolding;
 
 namespace CodeGenerator.Tests.App;
 
@@ -51,7 +51,7 @@ public class AppLayoutCatalogTests
     {
         // The wizard prompt and the help catalogue print these verbatim, so a key added to the
         // catalogue without a rendering here would reach the user as a silently short list.
-        Assert.AreEqual("tabs/sidebar/master-detail/dashboard", AppLayoutCatalog.PromptOptions);
-        Assert.AreEqual("tabs|sidebar|master-detail|dashboard", AppLayoutCatalog.HelpOptions);
+        Assert.AreEqual("tabs/sidebar/master-detail/dashboard/business", AppLayoutCatalog.PromptOptions);
+        Assert.AreEqual("tabs|sidebar|master-detail|dashboard|business", AppLayoutCatalog.HelpOptions);
     }
 }

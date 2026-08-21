@@ -1,4 +1,4 @@
-namespace AppScaffolding;
+﻿namespace AppScaffolding;
 
 /// <summary>
 /// The MVVM plumbing every scaffolded app gets, identical apart from its namespace.
@@ -116,10 +116,11 @@ public sealed class RelayCommand : ICommand
     public static string EntityViewModelInterface(string rootNamespace) => $$"""
 using System.Collections;
 using System.Windows.Input;
+using {{rootNamespace}}.Screens;
 
 namespace {{rootNamespace}}.ViewModels;
 
-/// <summary>The non-generic face of one entity's tab. MainWindow.xaml binds to this.</summary>
+/// <summary>The non-generic face of one entity's screen. Every layout binds to this.</summary>
 public interface IEntityViewModel
 {
     string Title { get; }
@@ -129,6 +130,13 @@ public interface IEntityViewModel
     ICommand DeleteCommand { get; }
     ICommand SaveCommand { get; }
     string Status { get; }
+
+    /// <summary>Which kind of screen this entity gets. The four pre-business layouts ignore
+    /// it, which is why it could be added without changing any of them.</summary>
+    EntityRole Role { get; }
+
+    /// <summary>How many records it holds, for the dashboard's tiles.</summary>
+    int Count { get; }
 }
 """;
 
@@ -192,6 +200,7 @@ using System.Linq;
 using System.Collections.Generic;
 using System.Windows.Input;
 using {{rootNamespace}}.Data;
+using {{rootNamespace}}.Screens;
 {{validationUsing}}
 namespace {{rootNamespace}}.ViewModels;
 
@@ -203,9 +212,12 @@ public sealed class EntityViewModel<T> : ObservableObject, IEntityViewModel wher
     private object? _selected;
     private string _status = string.Empty;
 
-    public EntityViewModel(string title)
+    /// <summary>The role defaults to Master so the four pre-business layouts, which never
+    /// pass one, behave exactly as they did.</summary>
+    public EntityViewModel(string title, EntityRole role = EntityRole.Master)
     {
         Title = title;
+        Role = role;
         Records = new ObservableCollection<T>(_store.GetAll());
         AddCommand = new RelayCommand(Add);
         DeleteCommand = new RelayCommand(Delete, () => _selected is T);
@@ -213,6 +225,10 @@ public sealed class EntityViewModel<T> : ObservableObject, IEntityViewModel wher
     }
 
     public string Title { get; }
+
+    public EntityRole Role { get; }
+
+    public int Count => Records.Count;
 
     /// <summary>
     /// Typed on purpose: DataGrid derives its columns from IEnumerable&lt;T&gt;'s type

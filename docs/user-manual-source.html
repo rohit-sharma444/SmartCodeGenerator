@@ -32,7 +32,7 @@ creates or edits real .NET code on disk.</p>
 
 <p>This manual covers the tool as an end user meets it: how to start it, what each command does, and how to
 drive the two flows that do the most work — generating a whole application, and editing the classes of a
-project. Chapter 15 is a complete command reference you can skim.</p>
+project. Chapter 18 is a complete command reference you can skim.</p>
 
 <h3>Conventions</h3>
 <table>
@@ -398,7 +398,7 @@ deliberately ignored when input is piped, so a script cannot be changed by a fil
 <tr><th>Option</th><th>Effect on the generated application</th></tr>
 <tr><td><code>company "&lt;name&gt;"</code></td><td>Sets <code>&lt;Company&gt;</code>, <code>&lt;Authors&gt;</code> and <code>&lt;Copyright&gt;</code> in the project file, adds a <code>// Copyright (c) &lt;year&gt; &lt;name&gt;.</code> banner to every generated C# file, and — unless you override the title — puts the company in the window title.</td></tr>
 <tr><td><code>title "&lt;pattern&gt;"</code></td><td>The window or page title. <code>{company}</code> and <code>{app}</code> are substituted, so <code>"{company} - {app}"</code> gives <em>Codis Ltd - Shop</em>. With no company the placeholder and its separator disappear cleanly rather than leaving a dangling dash.</td></tr>
-<tr><td><code>layout tabs|sidebar|master-detail|dashboard</code></td><td>Chooses the shape of the window for the WPF and Windows Forms types — see <em>Window layouts</em> in chapter 8. <code>tabs</code> is the default and what every earlier version produced. Named for a type with no window, it is ignored and the tool says so at <code>approve</code>.</td></tr>
+<tr><td><code>layout business|tabs|sidebar|master-detail|dashboard</code></td><td>Chooses the shape of the window for the WPF and Windows Forms types — see <em>Window layouts</em> in chapter 8 and chapter 16. <code>business</code> is the default: a dashboard home, a rail grouped into masters and transactions, and an editor for every record. <code>tabs</code> is what every earlier version produced and still produces exactly that. Named for a type with no window, it is ignored and the tool says so at <code>approve</code>.</td></tr>
 <tr><td><code>theme light|dark</code></td><td>Colours the desktop front ends. WPF gets a theme resource dictionary merged into the application; Windows Forms gets the colours applied directly.</td></tr>
 <tr><td><code>accent #rrggbb</code></td><td>An accent colour. Valid on its own — "the normal look, in our colour". A malformed colour is ignored rather than failing the build.</td></tr>
 <tr><td><code>icon &lt;path&gt;</code></td><td>Copies a <code>.ico</code> or <code>.png</code> into the project as the application icon. A <code>.ico</code> also becomes the icon the built <code>.exe</code> carries.</td></tr>
@@ -416,40 +416,44 @@ description first, or quote it, and this never bites.</p></div>
 <h3>Application types</h3>
 <table>
 <tr><th>Type</th><th>Name to type</th><th>What you get</th></tr>
-<tr><td>WPF (default)</td><td><code>wpf</code></td><td>A windowed CRUD application. One tab per class by default, or any of the four shapes below.</td></tr>
-<tr><td>Windows Forms</td><td><code>winforms</code></td><td>The same, built on Windows Forms — the same four shapes.</td></tr>
+<tr><td>WPF (default)</td><td><code>wpf</code></td><td>A windowed business application: a dashboard, a grouped rail and an editor for every record. Four older shapes are still available by name.</td></tr>
+<tr><td>Windows Forms</td><td><code>winforms</code></td><td>The same, built on Windows Forms — the same five shapes.</td></tr>
 <tr><td>Console</td><td><code>console</code></td><td>A menu-driven CRUD application.</td></tr>
 <tr><td>Web API</td><td><code>webapi</code></td><td>A minimal API with REST endpoints per class.</td></tr>
-<tr><td>Web Application</td><td><code>blazor</code></td><td>A Blazor Server application: one page per class, editable in the browser, with a navigation menu and a home page that lists them.</td></tr>
+<tr><td>Web Application</td><td><code>blazor</code></td><td>A Blazor Server application: the same business screens in the browser — a dashboard home, a grouped navigation menu, and an editor at its own address.</td></tr>
 <tr><td>Class library</td><td><code>classlib</code></td><td>The shared core only — no entry point.</td></tr>
 <tr><td>Worker</td><td><code>worker</code></td><td>A background service that exercises the repositories.</td></tr>
 </table>
 
 <h3>Window layouts</h3>
-<p>The two windowed types can be generated in four shapes. Set it with <code>layout &lt;name&gt;</code> on the line,
-at the wizard's first customization question, or leave it remembered from last time. Every shape has the same
-grid, the same Add / Delete / Save row and the same status line — what changes is how you move between classes.</p>
+<p>The two windowed types can be generated in five shapes. Set it with <code>layout &lt;name&gt;</code> on the line,
+at the wizard's first customization question, or leave it remembered from last time. The four older shapes all
+have the same grid, the same Add / Delete / Save row and the same status line — what changes is how you move
+between classes. <code>business</code> is a different application, and chapter 16 describes it.</p>
 <table>
 <tr><th>Name to type</th><th>What the window looks like</th></tr>
-<tr><td><code>tabs</code> (default)</td><td>One tab per class, its grid filling the tab. What every earlier version produced, and still exactly that.</td></tr>
+<tr><td><code>business</code> (default)</td><td>A dashboard home, a rail grouped into masters and transactions, and an editor that replaces the content area for every record. See chapter 16.</td></tr>
+<tr><td><code>tabs</code></td><td>One tab per class, its grid filling the tab. What every earlier version produced, and still exactly that.</td></tr>
 <tr><td><code>sidebar</code></td><td>A list of classes down the left, the selected one's grid beside it. Suits a domain with more classes than fit comfortably across a tab strip.</td></tr>
 <tr><td><code>master-detail</code></td><td>Tabs as above, with an edit form under the grid showing the selected row field by field. Easier than editing in grid cells when a class has many fields. <code>Id</code> is shown but not editable, as in the grid.</td></tr>
 <tr><td><code>dashboard</code></td><td>Opens on a home screen of cards, one per class, each showing its current row count. Clicking a card opens that class's grid; <em>Home</em> returns to the cards. The counts update as you add and delete.</td></tr>
 </table>
 <div class="note"><p>The layout changes the window only. The classes, the repositories, the validation rules and
 the storage are identical whichever you pick, so it is safe to regenerate an existing project with a different
-layout — and a project generated without naming one is byte-for-byte what it always was.</p></div>
+layout. <code>layout tabs</code> together with <code>nologin</code> is byte-for-byte what this generator
+produced before either the login or the business shell existed.</p></div>
 
 <h3>Web application pages</h3>
-<p>The <code>blazor</code> type is the browser version of the same application rather than a second Web API:
-one page per class, each with the class's records in a table you can type into, a <em>Remove</em> button on every
-row and <em>Add</em> and <em>Save</em> below. Nothing is written until you press <em>Save</em>, which also
-deletes whatever you removed — the same bargain the desktop window strikes. A navigation menu down the left
-reaches every page, and the home page lists them as links as well, so a narrow screen that collapses the menu
-still gets you there. Sample data appears on your first visit, whichever page you open first.</p>
+<p>The <code>blazor</code> type is the browser version of the same application rather than a second Web API,
+and it is the same business shell: a navigation menu grouped into Masters and Transactions, a home page of
+per-class counts under those headings, and one page per class showing its records in a read-only table with
+<em>New</em>, <em>Open</em> and <em>Delete</em>. Opening a record goes to its own address —
+<code>/order/7</code>, or <code>/order/new</code> — so a record can be bookmarked or sent to a colleague.
+Sample data appears on your first visit, whichever page you open first.</p>
 <div class="note"><p>Layouts do not apply here — <code>layout</code> names the shape of a <em>window</em>, and a
-web application has none. Naming one alongside <code>blazor</code> generates the application and ignores the
-layout, exactly as it does for the Console and Web API types.</p></div>
+web application has none. A web application is always the business shell, so naming a layout alongside
+<code>blazor</code> generates the application and ignores the layout, exactly as it does for the Console and
+Web API types.</p></div>
 
 <h3>Storage</h3>
 <p>By default each class is stored in its own JSON file beside the built executable — no database, nothing to
@@ -664,7 +668,183 @@ ever <em>suggests</em> — it never runs a command you did not confirm.</p>
       listens on is printed as the application starts.</li>
 </ol>
 
-<h2>14. Troubleshooting</h2>
+<h2>14. Signing in to a generated application</h2>
+
+<p>Every generated WPF, Windows Forms and web application opens at a login screen. Nothing else in
+   the application is reachable until someone signs in &mdash; on the web that includes the home
+   page, and typing a page&rsquo;s address directly does not get past it.</p>
+
+<p>The first run creates one account, <strong>admin</strong>, with the password
+   <strong>admin</strong>. The login screen says so while that password is still in place, and
+   stops saying so once it has been changed. Change it: the account is created for you precisely
+   because an application with no way in is useless, not because the password is a good one.</p>
+
+<p>Passwords are never stored. What is written to the store is a PBKDF2 hash and the random salt
+   it was made with, so reading the data file tells you nothing about anyone&rsquo;s password.</p>
+
+<h3>Roles</h3>
+
+<p>An account is either an <strong>Admin</strong> or a <strong>User</strong>. The role has exactly
+   two effects:</p>
+
+<ul>
+  <li>Only an Admin sees the <strong>Users</strong> screen, where accounts are added, renamed,
+      deactivated and given passwords.</li>
+  <li>Only an Admin can delete a master record.</li>
+</ul>
+
+<p>Both roles can create, edit and save everything else. A new account is created with no password
+   and cannot sign in until an administrator gives it one &mdash; a new account is not a way in
+   until somebody decides it is. Nobody can delete the account they are signed in with, which is
+   also what guarantees an application always keeps at least one administrator.</p>
+
+<h3>Turning it off</h3>
+
+<p>Add <code>nologin</code> to the <code>build app:</code> line, or answer <em>no</em> to
+   <em>Require a login</em> in the customization step, and the generated application has no login
+   screen, no accounts and no Users screen. Useful for a throwaway prototype; not something to
+   ship.</p>
+
+<pre>build app: a shop that sells books nologin</pre>
+
+<h2>15. Masters and transactions</h2>
+
+<p>A business application has two kinds of screen, and the generator works out which is which from
+   the model it discovered.</p>
+
+<p>A <strong>master</strong> is reference data &mdash; Customer, Product, Supplier, Category.
+   A <strong>transaction</strong> is a record that refers to reference data and happens at a
+   moment in time &mdash; Order, Invoice, Payment. The generator calls something a transaction when
+   it has <em>both</em> a foreign key to another class <em>and</em> either a date of its own or a
+   name it recognises (order, invoice, payment, booking and similar). Both halves are needed:
+   a foreign key alone would make an Address a transaction, and a date alone would make an
+   Employee with a hire date one. Everything else is a master, which is the safe answer &mdash; a
+   master screen is the ordinary list this generator has always produced.</p>
+
+<p>A third kind gets no screen at all. A <strong>line</strong> &mdash; OrderLine, InvoiceItem
+   &mdash; is a child of a transaction, named after it, and is edited inside its parent rather
+   than on a screen of its own.</p>
+
+<h3>What it decided</h3>
+
+<p>Every build says so, under the generated project path:</p>
+
+<pre>Screens: 2 masters, 1 transaction (Order has 1 line)</pre>
+
+<p>Read that line. A class in the wrong group is easy to correct and hard to notice later &mdash;
+   and a class listed as a line has no screen, which nothing else in the output would tell you.</p>
+
+<h3>Correcting it</h3>
+
+<p>Name the ones it got wrong. Comma-joined, with no spaces &mdash; or in quotes if you prefer
+   them:</p>
+
+<pre>build app: a shop that sells books transactions Order,Invoice masters Region</pre>
+
+<p>The wizard asks the same two questions, next to the layout question, and remembers your answers
+   in <code>.codegen/app-profile.json</code>. Naming a line entity as a master is how you give it a
+   screen of its own instead of editing it inside its parent. Naming a class both ways is a
+   contradiction, and master wins.</p>
+
+<h2>16. The business shell</h2>
+
+<p>This is what a generated application looks like when you say nothing about its shape. It is the
+   same shell on all three front ends &mdash; WPF, Windows Forms and the browser &mdash; so a user
+   who learns one has learned the others.</p>
+
+<h3>The home screen</h3>
+
+<p>The application opens on a dashboard: one tile per class showing how many records it holds,
+   grouped under <em>Transactions</em> and <em>Masters</em>. Transactions come first, because on a
+   business screen they are the work and the masters are what the work refers to. Clicking a tile
+   opens that class's screen. <em>Home</em> in the header comes back.</p>
+
+<h3>The rail</h3>
+
+<p>Down the left is a navigation rail with the same two groups, in the order a rail reads best
+   &mdash; <em>Masters</em>, then <em>Transactions</em> &mdash; and, for an administrator only, an
+   <em>Admin</em> group holding the Users screen. Line classes are not listed at all: a line is
+   edited inside its parent, which is the whole point of the third kind (chapter 15).</p>
+
+<p>The header names the signed-in user and offers <em>Back</em> and <em>Sign out</em>. Signing out
+   returns to the login screen rather than closing the application, so a second person can sign in
+   at the same machine.</p>
+
+<h3>Master screens</h3>
+
+<p>A master screen is a <strong>read-only list</strong> and a <strong>dedicated editor</strong>. The
+   list finds a record &mdash; a search box narrows it across every text column, so you do not have
+   to know which column holds what &mdash; and <em>New</em> or <em>Open</em> (or a double-click)
+   opens the editor. <em>Delete</em> acts on the selected row and is available to an administrator
+   only.</p>
+
+<p>The list cannot be typed into. That is deliberate: an application that edits records two
+   different ways teaches its users that a Customer changes differently from an Order, and this one
+   edits everything one way.</p>
+
+<h3>Transaction screens</h3>
+
+<p>A transaction screen is the same list with three additions:</p>
+
+<ul>
+  <li>a <strong>date range</strong>, labelled with the model's own date &mdash; not
+      <code>CreatedOn</code>, which every class carries and nobody chose. A class with no date of
+      its own shows no range rather than filtering on something arbitrary;</li>
+  <li><strong>column totals</strong> under the list: every money-shaped column that is neither an
+      <code>Id</code> nor a foreign key gets its own total, over the rows currently shown rather
+      than over the whole store. Several honest totals beat one confidently wrong one;</li>
+  <li>its <strong>lines</strong>, inside the editor &mdash; described below.</li>
+</ul>
+
+<h3>The editor</h3>
+
+<p>Opening a record <strong>replaces the content area</strong>. The rail and the header stay where
+   they are, so you always know where you are, and <em>Cancel</em> (or <em>Back</em>) returns to the
+   list. On the web it is an address of its own &mdash; <code>/order/7</code> for a record and
+   <code>/order/new</code> for a new one &mdash; which is what makes a record shareable.</p>
+
+<p>The editor works on a <strong>copy</strong>. Nothing you type reaches the stored record until you
+   press <em>Save</em>, so <em>Cancel</em> genuinely cancels rather than leaving a half-typed record
+   behind. <em>Save</em> runs the same validation rules the rest of the application runs
+   (chapter 10) and says what it refused rather than silently keeping the old value.</p>
+
+<h3>Lines</h3>
+
+<p>A transaction's editor also holds its <strong>lines</strong> &mdash; the OrderLines of an Order
+   &mdash; in a grid under the record's own fields, with <em>Add line</em> and
+   <em>Remove line</em> beside it. This is the only place a line is edited: it has no screen of its
+   own and no place in the rail, which is what the third kind of class means (chapter 15). A record
+   with no lines shows no grid, so a master's editor is a form and a button row and nothing
+   else.</p>
+
+<p>The column that points at the parent is not shown. You never fill it in: the application stamps
+   it when you save, which is also why the lines are written <em>after</em> the record &mdash; a new
+   record has no id until it is stored, and that id is what the lines are attached to.</p>
+
+<p>Line edits are part of the same copy. Adding, changing or removing a line makes the editor
+   unsaved, so navigating away asks the same question; <em>Cancel</em> discards line changes exactly
+   as it discards a typed field; and removing a line only removes it from the store when you
+   save.</p>
+
+<div class="warn"><p><strong>Discard your changes?</strong> Because the editor fills the content area
+   rather than opening a window in front of it, you <em>can</em> wander off with unsaved edits
+   &mdash; so the application asks first. Clicking a rail item, <em>Back</em>, or <em>Sign out</em>
+   while a record has unsaved changes prompts once; answering no leaves the editor exactly as it
+   was. This is the one interaction the in-place editor adds, and it exists on all three front
+   ends.</p></div>
+
+<h3>If you would rather have the old window</h3>
+
+<p>Name the layout. <code>layout tabs</code> is what every earlier version produced &mdash; a tab
+   per class, with an editable grid &mdash; and <code>sidebar</code>, <code>master-detail</code> and
+   <code>dashboard</code> are the other three shapes described in chapter 8. Together with
+   <code>nologin</code>, <code>layout tabs</code> reproduces the pre-login output exactly.</p>
+
+<pre>build app: a shop that sells books layout tabs nologin</pre>
+
+<p>The web application has no window and therefore no layout: it is always this shell.</p>
+
+<h2>17. Troubleshooting</h2>
 <table>
 <tr><th>What you see</th><th>What it means</th></tr>
 <tr><td>Generated files are not where you expected</td><td><code>PROJECTPATH</code> is set and points elsewhere. The tool prints the full path of everything it writes — trust that over your current directory.</td></tr>
@@ -688,7 +868,7 @@ ever <em>suggests</em> — it never runs a command you did not confirm.</p>
 <tr><td>Your edits to a generated file are gone after regenerating</td><td>Answering <code>o</code> overwrites generated sources, which includes any changes you made inside them. Only <code>&lt;Class&gt;Validator.Custom.cs</code>, the project file and files you added yourself are preserved. Put your own code in new files, or in the <code>.Custom.cs</code> halves.</td></tr>
 </table>
 
-<h2>15. Command reference</h2>
+<h2>18. Command reference</h2>
 <p>Every command, by category. This is the same catalog <code>help all</code> prints; <code>help</code> on its
 own shows the shorter overview, and <code>help &lt;topic&gt;</code> shows one section of it.</p>
 <h3>AI</h3>

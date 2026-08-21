@@ -1,4 +1,4 @@
-using CodeGenerationEngine.Models;
+﻿using CodeGenerationEngine.Models;
 
 namespace AppScaffolding;
 
@@ -38,6 +38,26 @@ public interface ITargetScaffolder
     IReadOnlyList<GeneratedFile> FrontEndFiles(
         string projectName, IReadOnlyList<string> entityNames, AppCustomization customization)
         => FrontEndFiles(projectName, entityNames);
+
+    /// <summary>
+    /// As the overloads above, for a target whose front end varies with the entities' roles.
+    /// </summary>
+    /// <remarks>
+    /// A default interface method like its neighbours: a target that does not care about roles
+    /// needs no change, and the four screenless ones never will.
+    /// </remarks>
+    IReadOnlyList<GeneratedFile> FrontEndFiles(FrontEndContext context)
+        => FrontEndFiles(context.ProjectName, context.EntityNames, context.Customization);
+
+    /// <summary>
+    /// Whether this target produces a user interface that a login could stand in front of.
+    /// </summary>
+    /// <remarks>
+    /// False by default, so the console, Web API, worker and class-library targets are
+    /// untouched by the auth core: they have no screens to gate, and emitting accounts into
+    /// them would be dead code. Only the three targets with a window or a page override it.
+    /// </remarks>
+    bool HasScreens => false;
 
     /// <summary>Optional post-create reconciliation of the files `dotnet new` emitted.
     /// Runs only against a project the scaffolder just created. No-op by default.</summary>

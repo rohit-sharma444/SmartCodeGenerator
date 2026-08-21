@@ -1,4 +1,4 @@
-using AppScaffolding;
+﻿using AppScaffolding;
 using AppScaffolding.Layouts;
 using AppScaffolding.Layouts.WinForms;
 using AppScaffolding.Targets;
@@ -10,7 +10,11 @@ public class WinFormsLayoutNeutralityTests
 {
     private static LayoutContext Context(AppCustomization? customization = null)
     {
-        var settings = customization ?? AppCustomization.Default;
+        // `nologin` is part of the promise, not an incidental default. The guarantee is
+        // that a NAMED layout with NO login reproduces the pre-auth output byte for byte;
+        // with a login those layouts legitimately gain a login window, a Users pane and a
+        // sign-out control, which SignOutReachableTests covers.
+        var settings = (customization ?? AppCustomization.Default) with { Login = false };
 
         return new LayoutContext(
             "Payroll.WinForms", "Payroll.WinForms", settings,
@@ -58,10 +62,13 @@ public class WinFormsLayoutNeutralityTests
     }
 
     [TestMethod]
-    public void WinFormsTarget_DefaultsToTheTabsLayoutOutput()
+    public void WinFormsTarget_WithTabsNamed_EmitsTheOriginalOutput()
     {
+        // The promise, exactly: a build that NAMES tabs and asks for no login reproduces the
+        // pre-auth output byte for byte. Naming nothing now means the business shell.
         var files = new WinFormsTarget().FrontEndFiles(
-            "Payroll.WinForms", ["Employee"], AppCustomization.Default);
+            "Payroll.WinForms", ["Employee"],
+            AppCustomization.Default with { Login = false, Layout = AppLayout.Tabs });
 
         Assert.AreEqual(
             WinFormsMainFormTemplate.Source("Payroll.WinForms", "Payroll.WinForms", palette: null, iconFileName: null),

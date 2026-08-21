@@ -593,21 +593,39 @@ public static class CommandDictionary
                         + "window title, where {company} and {app} are substituted; "
                         + "namespace <prefix> puts the generated code under that namespace root "
                         + "(CodisLtd.Shop), leaving the project and assembly names alone; "
-                        + "layout tabs|sidebar|master-detail|dashboard chooses the shape of the "
-                        + "window (wpf and winforms only).",
+                        + "layout tabs|sidebar|master-detail|dashboard|business chooses the shape "
+                        + "of the window (wpf and winforms only); business is the default and is "
+                        + "the shell with a dashboard home, a rail grouped into masters and "
+                        + "transactions, and an editor for every record; the web app is always "
+                        + "that shell, which is why naming a layout does not apply to it.",
             Example = "build app: a shop company \"Codis Ltd\" namespace CodisLtd theme dark layout sidebar"
         },
         new()
         {
             Category = "Build App",
-            Command = "build app: <description> [novalidation] [logging] [noseed]",
+            Command = "build app: <description> [novalidation] [logging] [noseed] [nologin]",
             Description = "Chooses which optional layers are generated. 'novalidation' omits the "
                         + "Validation folder and its per-model validators; 'logging' adds a "
                         + "logging layer (off by default); 'noseed' omits the sample seed rows "
-                        + "(rows imported from your own data file are unaffected). Interactively "
+                        + "(rows imported from your own data file are unaffected); 'nologin' "
+                        + "omits the login screen, the user accounts and the Users screen, "
+                        + "which an app with screens is given by default. Interactively "
                         + "these are asked by the 'Customize appearance and features?' step, "
                         + "which remembers your answers in .codegen/app-profile.json.",
-            Example = "build app: a shop novalidation logging noseed"
+            Example = "build app: a shop novalidation logging noseed nologin"
+        },
+        new()
+        {
+            Category = "Build App",
+            Command = "build app: <description> [transactions <A,B>] [masters <A,B>]",
+            Description = "Overrules how the generator split your model into screens. It "
+                        + "decides by itself which classes are transactions (a class with a "
+                        + "foreign key AND either a date of its own or a transactional name) "
+                        + "and which are masters (everything else); these name the ones it got "
+                        + "wrong. Comma-joined with no spaces, or quoted. Naming a line entity "
+                        + "as a master gives it a screen of its own instead of editing it "
+                        + "inside its parent.",
+            Example = "build app: a shop transactions Order,Invoice masters Region"
         },
         // The rest of this category is only valid at the review-loop prompt that
         // `build app:` opens, not at the main CodeGenerator prompt.
