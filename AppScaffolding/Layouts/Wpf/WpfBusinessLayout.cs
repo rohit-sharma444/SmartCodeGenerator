@@ -292,8 +292,8 @@ public sealed class WpfBusinessLayout : IAppLayout
         // same ones, so the shared code-behind is reused rather than restated.
         var source = MainWindowTemplate.CodeBehind(rootNamespace, login: true);
 
+        // One blank line, not two: what precedes the splice already ends in a newline.
         var handlers = """
-
 
     // The rail's buttons carry the entity view model as their DataContext, so navigation needs no
     // lookup: whatever was clicked IS the screen to show.

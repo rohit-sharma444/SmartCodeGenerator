@@ -1,4 +1,4 @@
-using AppScaffolding;
+﻿using AppScaffolding;
 using AppScaffolding.Targets;
 
 namespace CodeGenerator.Tests.App;
@@ -83,6 +83,39 @@ public class SignOutReachableTests
 
         StringAssert.Contains(
             PaneOf(new WinFormsTarget(), AppLayout.Tabs, "MainForm.cs"), "SignedInUser");
+    }
+
+    /// <summary>
+    /// Built is not shown.
+    /// </summary>
+    /// <remarks>
+    /// The tabbed Windows Forms form built the identity panel, put the signed-in name and the
+    /// Sign out button in it, and never added it to the layout — so every assertion above passed
+    /// while the control was invisible in the running application. The row it goes in has to exist
+    /// too: a TableLayoutPanel with RowCount 3 has no row 3.
+    /// </remarks>
+    [TestMethod]
+    public void The_winforms_sign_out_row_is_added_to_the_form()
+    {
+        var code = PaneOf(new WinFormsTarget(), AppLayout.Tabs, "MainForm.cs");
+
+        StringAssert.Contains(code, "layout.Controls.Add(identity, 0, 3);");
+        StringAssert.Contains(code, "RowCount = 4 };");
+        StringAssert.Contains(code, "layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 32f));");
+    }
+
+    /// <summary>And an app with no login keeps the three rows it always had.</summary>
+    [TestMethod]
+    public void The_winforms_form_with_no_login_keeps_three_rows()
+    {
+        var code = new WinFormsTarget()
+            .FrontEndFiles(
+                "Shop", ["Order"],
+                AppCustomization.Default with { Login = false, Layout = AppLayout.Tabs })
+            .Single(f => f.Name == "MainForm.cs").Source;
+
+        StringAssert.Contains(code, "RowCount = 3 };");
+        Assert.DoesNotContain("identity", code);
     }
 
     /// <summary>Requesting a sign-out has to close the shell, or the flag is set and the loop

@@ -32,6 +32,9 @@ public static class WinFormsPaneCode
         // FindForm() because this builder is static and the button is in the form's tree by
         // the time it can be clicked; Close() as well as the flag, because the entry point's
         // loop only regains control when the shell closes.
+        // At the END of the line before it: a placeholder alone on a line emits a BLANK line when
+        // it is empty, which is how the `nologin` output drifted a line from what it has always
+        // been. The fragment carries its own leading newline instead.
         var signOut = login
             ? """
 
@@ -151,8 +154,7 @@ public static class WinFormsPaneCode
         {
             Dock = DockStyle.Fill,
             FlowDirection = FlowDirection.RightToLeft,
-        };
-{{signOut}}
+        };{{signOut}}
         buttons.Controls.Add(save);
         buttons.Controls.Add(delete);
         buttons.Controls.Add(add);

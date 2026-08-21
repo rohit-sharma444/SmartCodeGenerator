@@ -62,12 +62,19 @@ public static class WinFormsMainFormTemplate
 """
             : string.Empty;
 
+        // Both carry their own leading newline and both sit at the END of the line before them.
+        // A placeholder alone on a line emits a BLANK line when it is empty, which is how the
+        // `layout tabs nologin` output drifted one line from what it has always been -- found by
+        // diffing a generated app against the same app generated from main.
         var signOutRowStyle = login
-            ? "        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 32f));"
+            ? "\r\n        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 32f));"
             : string.Empty;
 
+        // Row 3, which is why rowCount grows with it. Without this the identity panel is built
+        // and never added: the button exists, satisfies every assertion that greps the source for
+        // it, and is invisible in the running application.
         var signOutPlacement = login
-            ? "        layout.Controls.Add(identity, 0, 3);"
+            ? "\r\n        layout.Controls.Add(identity, 0, 3);"
             : string.Empty;
 
         var authUsing = login ? $"using {rootNamespace}.Auth;\r\n" : string.Empty;
@@ -144,11 +151,10 @@ public sealed class MainForm : Form
     {
         var page = new TabPage(entity.Title);
 
-        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3 };
+        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = {{rowCount}} };
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40f));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 26f));
-{{signOutRowStyle}}{{signOutRow}}
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 26f));{{signOutRowStyle}}{{signOutRow}}
 
         var grid = new DataGridView
         {
@@ -221,7 +227,7 @@ public sealed class MainForm : Form
 
         layout.Controls.Add(grid, 0, 0);
         layout.Controls.Add(buttons, 0, 1);
-        layout.Controls.Add(status, 0, 2);
+        layout.Controls.Add(status, 0, 2);{{signOutPlacement}}
 
         page.Controls.Add(layout);
         return page;

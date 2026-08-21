@@ -1,4 +1,4 @@
-using AppScaffolding;
+﻿using AppScaffolding;
 using AppScaffolding.Targets;
 
 namespace CodeGenerator.Tests.App;
@@ -32,7 +32,7 @@ public class EmittedLineEndingTests
             foreach (var layout in new[]
                      {
                          AppLayout.Tabs, AppLayout.Sidebar,
-                         AppLayout.MasterDetail, AppLayout.Dashboard,
+                         AppLayout.MasterDetail, AppLayout.Dashboard, AppLayout.Business,
                      })
             {
                 foreach (var login in new[] { true, false })
@@ -81,5 +81,29 @@ public class EmittedLineEndingTests
         Assert.IsEmpty(
             offenders,
             "these emitted files mix CRLF and LF:\n  " + string.Join("\n  ", offenders));
+    }
+
+    /// <summary>
+    /// Two blank lines together, which is what an empty placeholder alone on a line leaves behind.
+    /// </summary>
+    /// <remarks>
+    /// The shape of a real defect rather than a style rule: the sign-out row's placeholders sat on
+    /// their own line, so an app with no login gained a blank line and the `layout tabs nologin`
+    /// output stopped matching what this generator has always produced. The neutrality tests could
+    /// not see it — they compare the target's output against the same revision's template, so a
+    /// change inside the template is invisible to them. This is the assertion that would have.
+    /// </remarks>
+    [TestMethod]
+    public void No_emitted_file_has_two_blank_lines_together()
+    {
+        var offenders = EveryEmittedFile()
+            .Where(f => f.Source.Contains("\r\n\r\n\r\n", StringComparison.Ordinal)
+                        || f.Source.Contains("\n\n\n", StringComparison.Ordinal))
+            .Select(f => $"{f.Target} -> {f.File}")
+            .ToList();
+
+        Assert.IsEmpty(
+            offenders,
+            "an empty fragment left a blank line in:\n  " + string.Join("\n  ", offenders));
     }
 }

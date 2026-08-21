@@ -748,7 +748,7 @@ else
                   [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
 
               """
-            : "\r\n";
+            : string.Empty;
 
     /// <summary>Delete acts on the list selection, and only an administrator may.</summary>
     private static string DeleteHandler(bool login)
