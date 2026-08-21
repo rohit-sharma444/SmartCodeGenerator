@@ -915,6 +915,56 @@ public static class CommandDictionary
         return string.Join("\n", lines) + "\n";
     }
 
+    /// <summary>
+    /// The same catalog as HTML, for the user manual's command-reference appendix.
+    /// </summary>
+    /// <remarks>
+    /// The appendix was maintained by hand and fell behind: it offered four window layouts after a
+    /// fifth became the default, and listed the optional-layer options without <c>nologin</c>. Two
+    /// copies of one catalog is one copy too many, so it is generated from the same list
+    /// <see cref="GetMarkdownReference"/> uses, in the same order, and a test keeps the committed
+    /// HTML in step.
+    /// <para>
+    /// Only the tables. The chapter heading and its introduction are prose and stay in the source
+    /// document, between the markers the test looks for.
+    /// </para>
+    /// </remarks>
+    public static string GetHtmlReference()
+    {
+        var lines = new List<string>();
+
+        foreach (var group in Commands
+                     .OrderBy(c => c.Category)
+                     .GroupBy(c => c.Category))
+        {
+            lines.Add($"<h3>{Html(group.Key)}</h3>");
+            lines.Add("<table>");
+            lines.Add("<tr><th>Command</th><th>Description</th><th>Example</th></tr>");
+
+            foreach (var command in group.OrderBy(c => c.Command))
+                lines.Add(
+                    $"<tr><td><code>{Html(command.Command)}</code></td>"
+                    + $"<td>{Html(command.Description)}</td>"
+                    + $"<td><code>{Html(command.Example)}</code></td></tr>");
+
+            lines.Add("</table>");
+        }
+
+        return string.Join("\n", lines) + "\n";
+    }
+
+    /// <summary>Escapes a value for an HTML table cell.
+    ///
+    /// Every command that documents an argument carries angle brackets, and Word's HTML
+    /// converter reads <c>&lt;class name&gt;</c> as a tag and drops it — the text simply is
+    /// not in the .docx, with nothing in the conversion log to say so.</summary>
+    private static string Html(string value)
+        => value.Replace("&", "&amp;", StringComparison.Ordinal)
+                .Replace("<", "&lt;", StringComparison.Ordinal)
+                .Replace(">", "&gt;", StringComparison.Ordinal)
+                .Replace("\"", "&quot;", StringComparison.Ordinal)
+                .Replace("'", "&#x27;", StringComparison.Ordinal);
+
     /// <summary>Escapes a value for a Markdown table cell.
     ///
     /// A bare <c>|</c> ends the cell, so a command documenting alternatives —
