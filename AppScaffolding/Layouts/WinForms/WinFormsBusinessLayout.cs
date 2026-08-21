@@ -89,6 +89,15 @@ public sealed class MainForm : Form
         ClientSize = new Size(1000, 640);
         StartPosition = FormStartPosition.CenterScreen;
 {{formIcon}}
+        // The form follows the shell rather than telling it what to show: an editor request comes
+        // from a screen, is routed by the shell, and the content area has to notice. One signal
+        // instead of a Show() after every action -- and the same signal the WPF binding uses.
+        _shell.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(ShellViewModel.Current))
+                Show(_shell.Current);
+        };
+
         BuildRail();
         Controls.Add(BuildLayout());
 
@@ -133,7 +142,7 @@ public sealed class MainForm : Form
         };
 
         var back = new Button { Text = "Back", Width = 72, Dock = DockStyle.Right };
-        back.Click += (_, _) => { _shell.Back(); Show(_shell.Current); };
+        back.Click += (_, _) => _shell.Back();
 
         var who = new Label
         {
@@ -181,8 +190,8 @@ public sealed class MainForm : Form
         // A group heading is not a screen, so clicking one navigates nowhere.
         _rail.AfterSelect += (_, e) =>
         {
-            if (e.Node?.Tag is { } screen && _shell.TryShow(screen))
-                Show(_shell.Current);
+            if (e.Node?.Tag is { } screen)
+                _shell.TryShow(screen);
         };
     }
 
@@ -342,7 +351,6 @@ public sealed class MainForm : Form
         layout.Controls.Add(status, 0, 2);
 
         Bind(screen, grid);
-        SubscribeToEditor(screen);
 
         return layout;
     }
@@ -358,44 +366,6 @@ public sealed class MainForm : Form
         var items = screen.GetType().GetProperty("Items")?.GetValue(screen) as IEnumerable;
 
         grid.DataSource = items?.Cast<object>().ToList();
-    }
-
-    /// <summary>Wires the screen's editor request to the shell, which is what opens it.</summary>
-    private void SubscribeToEditor(object screen)
-    {
-        var evt = screen.GetType().GetEvent("EditorRequested");
-
-        if (evt is null)
-            return;
-
-        var handler = GetType()
-            .GetMethod(nameof(OnEditorRequested), BindingFlags.Instance | BindingFlags.NonPublic)!
-            .MakeGenericMethod(evt.EventHandlerType!.GetGenericArguments()[0]);
-
-        evt.AddEventHandler(screen, Delegate.CreateDelegate(evt.EventHandlerType!, this, handler));
-    }
-
-    private void OnEditorRequested<TEditor>(object? sender, TEditor editor)
-    {
-        if (editor is null)
-            return;
-
-        var opened = sender;
-
-        if (editor is IRecordEditor && _shell.TryShow(editor))
-        {
-            Show(_shell.Current);
-
-            // When the editor finishes, the list underneath reloads and comes back.
-            editor.GetType().GetEvent("Closed")?.AddEventHandler(
-                editor,
-                new EventHandler((_, _) =>
-                {
-                    opened?.GetType().GetMethod("Reload")?.Invoke(opened, null);
-                    _shell.Back();
-                    Show(_shell.Current);
-                }));
-        }
     }
 
     private Button CommandButton(object owner, string commandName, string text)

@@ -1,4 +1,4 @@
-using AppScaffolding;
+﻿using AppScaffolding;
 using AppScaffolding.Layouts;
 using AppScaffolding.Layouts.Wpf;
 using AppScaffolding.Screens;
@@ -48,7 +48,12 @@ public class WpfBusinessLayoutTests
 
         StringAssert.Contains(xaml, "ItemsSource=\"{Binding Groups}\"");
         StringAssert.Contains(xaml, "{Binding SignedInUser}");
-        StringAssert.Contains(xaml, "Command=\"{Binding SignOutCommand}\"");
+
+        // A Click handler, not the command alone: the command asks before discarding an edit and
+        // sets the flag, and something still has to CLOSE the window -- the sign-in loop in
+        // App.xaml.cs only regains control when it does. Bound to the command alone, Sign out
+        // looked dead in a running app.
+        StringAssert.Contains(xaml, "Click=\"OnShellSignOut\"");
         StringAssert.Contains(xaml, "Content=\"{Binding Current}\"");
     }
 
@@ -153,6 +158,22 @@ public class WpfBusinessLayoutTests
         StringAssert.Contains(code, "private void OnNavigate(");
         StringAssert.Contains(code, "shell.TryShow(screen)");
         StringAssert.Contains(code, "OnAutoGeneratingColumn");
+
+        // The window binds the SHELL. Without this it bound the pane list every other layout
+        // binds, so the rail and the content area bound to properties MainViewModel does not have
+        // and the window opened showing a header and nothing else. SignedInUser resolved anyway,
+        // because MainViewModel happens to have one too, which is what made it look plausible.
+        StringAssert.Contains(code, "DataContext = shell;");
+        StringAssert.Contains(code, "new ShellViewModel(");
+
+        // And the prompt this shell exists to be able to ask.
+        StringAssert.Contains(code, "shell.ConfirmDiscard = () => MessageBox.Show(");
+        StringAssert.Contains(code, "\"Discard your changes?\"");
+
+        // Sign out runs the command and then closes, or the flag is set and nothing acts on it.
+        StringAssert.Contains(code, "private void OnShellSignOut(");
+        StringAssert.Contains(code, "if (Session.SignOutRequested)");
+        StringAssert.Contains(code, "Close();");
     }
 
     [TestMethod]
@@ -191,7 +212,9 @@ public class WpfBusinessLayoutTests
         """;
 
     private const string ShellStub = """
+        using System;
         using System.Collections;
+        using System.Collections.Generic;
         using System.Collections.ObjectModel;
         using System.Windows.Input;
         using Payroll.Screens;
@@ -224,11 +247,40 @@ public class WpfBusinessLayoutTests
         public sealed class MainViewModel
         {
             public ObservableCollection<IEntityViewModel> Entities { get; } = new();
+            public string SignedInUser => string.Empty;
         }
 
+        public sealed class NavGroup
+        {
+            public string Title => string.Empty;
+            public IReadOnlyList<IEntityViewModel> Entities { get; } = new List<IEntityViewModel>();
+        }
+
+        /// <summary>
+        /// The shape the real ShellViewModel has, not the one line the code-behind used to touch.
+        /// </summary>
+        /// <remarks>
+        /// A stub thinner than the type it stands in for is how a window that never built a shell
+        /// at all compiled here for a week.
+        /// </remarks>
         public sealed class ShellViewModel
         {
+            public ShellViewModel(
+                IReadOnlyList<IEntityViewModel> entities, IReadOnlyList<IEntityViewModel> adminEntities)
+            {
+            }
+
+            public Func<bool> ConfirmDiscard { get; set; } = () => true;
+            public DashboardViewModel Dashboard { get; } = new();
+            public IReadOnlyList<NavGroup> Groups { get; } = new List<NavGroup>();
+            public string SignedInUser => string.Empty;
+            public object? Current => Dashboard;
+            public bool CanGoBack => false;
+            public ICommand SignOutCommand { get; } = null!;
+            public ICommand BackCommand { get; } = null!;
+            public ICommand HomeCommand { get; } = null!;
             public bool TryShow(object screen) => true;
+            public void Back() { }
         }
         """;
 

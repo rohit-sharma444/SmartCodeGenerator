@@ -219,7 +219,7 @@ public sealed class WpfBusinessLayout : IAppLayout
                                Foreground="{{{muted}}}"
                                Margin="0,0,10,0" />
                     <Button Content="Back" Command="{Binding BackCommand}" Width="70" Margin="4,0" />
-                    <Button Content="Sign out" Command="{Binding SignOutCommand}" Width="80" Margin="4,0" />
+                    <Button Content="Sign out" Click="OnShellSignOut" Width="80" Margin="4,0" />
                 </StackPanel>
                 <TextBlock Text="{{{context.TitleAttribute}}}"
                            FontSize="14"
@@ -286,14 +286,72 @@ public sealed class WpfBusinessLayout : IAppLayout
     /// screen is showing. <c>ConfirmDiscard</c> is wired here because the answer is a message box
     /// on this target and a NavigationLock on the web — the shell only knows it has to ask.
     /// </remarks>
+    /// <summary>
+    /// What the window's DataContext is: the shell, built over the pane list.
+    /// </summary>
+    /// <remarks>
+    /// ConfirmDiscard is wired here because the answer is a message box on this target and a
+    /// NavigationLock on the web — the shell only knows that it has to ask.
+    /// </remarks>
+    private static string Shell() => """
+        var model = new MainViewModel();
+
+        var shell = new ShellViewModel(
+            model.Entities.Where(e => !IsAdminPane(e)).ToList(),
+            model.Entities.Where(IsAdminPane).ToList());
+
+        // The desktop's answer to "discard your changes?". What asking looks like belongs to the
+        // view; the shell only knows it has to ask.
+        shell.ConfirmDiscard = () => MessageBox.Show(
+            this, "Discard your changes?", "Unsaved changes",
+            MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes;
+
+        DataContext = shell;
+""";
+
     private static string CodeBehind(string rootNamespace)
     {
         // The column rules and the display convention are long, and the business grids need the
         // same ones, so the shared code-behind is reused rather than restated.
-        var source = MainWindowTemplate.CodeBehind(rootNamespace, login: true);
+        //
+        // login: false, then the Auth using is put back by hand. The shared sign-out handler
+        // closes the window without asking, which is right for the four older layouts and wrong
+        // here -- this shell can be holding an editor with unsaved edits -- so it is replaced
+        // rather than left in place as a second handler nothing calls.
+        var source = MainWindowTemplate.CodeBehind(rootNamespace, login: false)
+            .Replace(
+                $"using {rootNamespace}.ViewModels;",
+                $"using {rootNamespace}.Auth;\r\nusing {rootNamespace}.ViewModels;",
+                StringComparison.Ordinal);
+
+        // The window binds the SHELL, not the pane list every other layout binds. Without this the
+        // rail, the content area and the header all bind to properties MainViewModel does not
+        // have: the window opens showing a header and nothing else, and SignedInUser resolves only
+        // because MainViewModel happens to have one too. Found by signing into a built app.
+        source = source.Replace(
+            "        DataContext = new MainViewModel();",
+            Shell(),
+            StringComparison.Ordinal);
 
         // One blank line, not two: what precedes the splice already ends in a newline.
         var handlers = """
+
+    /// <summary>The Users pane, which belongs under Admin rather than among the entities.</summary>
+    private static bool IsAdminPane(IEntityViewModel entity)
+        => string.Equals(entity.Title, "Users", StringComparison.Ordinal);
+
+    // The command asks before discarding an edit, and closing is what hands control back to the
+    // sign-in loop in App.xaml.cs -- it only regains control when this window closes.
+    private void OnShellSignOut(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not ShellViewModel shell)
+            return;
+
+        shell.SignOutCommand.Execute(null);
+
+        if (Session.SignOutRequested)
+            Close();
+    }
 
     // The rail's buttons carry the entity view model as their DataContext, so navigation needs no
     // lookup: whatever was clicked IS the screen to show.

@@ -54,6 +54,7 @@ public sealed class DashboardViewModel
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Windows.Input;
 using {{rootNamespace}}.Auth;
 using {{rootNamespace}}.Screens;
@@ -86,6 +87,13 @@ public sealed class ShellViewModel : ObservableObject
         ];
 
         _current = Dashboard;
+
+        // Every screen's editor request lands in the content area. Wired here rather than in each
+        // view: a screen raises the request and does not know what a window is, and doing it once
+        // means both desktop targets behave the same. The WPF window bound a screen whose request
+        // nothing handled, so New did nothing at all.
+        foreach (var entity in entities.Concat(adminEntities))
+            Route(entity);
 
         SignOutCommand = new RelayCommand(SignOut);
         BackCommand = new RelayCommand(Back, () => _previous is not null);
@@ -147,27 +155,6 @@ public sealed class ShellViewModel : ObservableObject
         return true;
     }
 
-    /// <summary>Opens a record over the screen that asked for it, and returns there when it
-    /// closes.</summary>
-    public void ShowEditor(object editor, Action? onClosed = null)
-    {
-        var from = _current;
-
-        if (editor is IRecordEditor && _current is IRecordEditor { IsDirty: true } && !ConfirmDiscard())
-            return;
-
-        _previous = from is IRecordEditor ? _previous : from;
-
-        Current = editor;
-
-        if (onClosed is not null)
-            Closed += onClosed;
-    }
-
-    /// <summary>Raised by the shell when an editor finishes, so the screen underneath can
-    /// reload.</summary>
-    public event Action? Closed;
-
     /// <summary>Returns to the screen the editor was opened over.</summary>
     public void Back()
     {
@@ -177,7 +164,6 @@ public sealed class ShellViewModel : ObservableObject
         var target = _previous;
         _previous = null;
 
-        Closed?.Invoke();
         Current = target;
     }
 
@@ -187,6 +173,49 @@ public sealed class ShellViewModel : ObservableObject
             return;
 
         Session.RequestSignOut();
+    }
+
+    /// <summary>
+    /// Subscribes to one screen's editor request.
+    /// </summary>
+    /// <remarks>
+    /// By reflection because the event is <c>EventHandler&lt;RecordEditorViewModel&lt;T&gt;&gt;</c>
+    /// and this shell holds <c>IEntityViewModel</c>: it cannot name T. A pane with no such event —
+    /// the Users pane, or any of the four older layouts' — is simply left alone.
+    /// </remarks>
+    private void Route(IEntityViewModel entity)
+    {
+        var request = entity.GetType().GetEvent("EditorRequested");
+
+        if (request?.EventHandlerType is null)
+            return;
+
+        var handler = GetType()
+            .GetMethod(nameof(OnEditorRequested), BindingFlags.Instance | BindingFlags.NonPublic)!
+            .MakeGenericMethod(request.EventHandlerType.GetGenericArguments()[0]);
+
+        request.AddEventHandler(
+            entity, Delegate.CreateDelegate(request.EventHandlerType, this, handler));
+    }
+
+    /// <summary>Shows the editor over the screen that asked for it, and reloads that screen when
+    /// it closes.</summary>
+    private void OnEditorRequested<TEditor>(object? sender, TEditor editor)
+    {
+        if (editor is not IRecordEditor || !TryShow(editor))
+            return;
+
+        var opened = sender;
+
+        editor.GetType().GetEvent("Closed")?.AddEventHandler(
+            editor,
+            new EventHandler((_, _) =>
+            {
+                // The list underneath re-reads the store, then the shell returns to it.
+                opened?.GetType().GetMethod("Reload")?.Invoke(opened, null);
+
+                Back();
+            }));
     }
 
     private static IEnumerable<NavGroup> Group(

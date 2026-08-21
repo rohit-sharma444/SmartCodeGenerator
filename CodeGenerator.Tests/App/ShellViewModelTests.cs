@@ -114,6 +114,107 @@ public sealed class FakeEditor : IRecordEditor
     private static bool TryShow(object shell, object screen)
         => (bool)shell.GetType().GetMethod("TryShow")!.Invoke(shell, [screen])!;
 
+    /// <summary>
+    /// The same shell over a REAL master screen, which is the only way to exercise the editor
+    /// request.
+    /// </summary>
+    /// <remarks>
+    /// FakePane has no such event, so every test above passes whether the shell routes one or not
+    /// — and it did not: the WPF window showed a list whose New button did nothing at all, because
+    /// the request was raised into a void. Found by clicking New in a built application.
+    /// </remarks>
+    private static Assembly EmitWithRealScreen()
+    {
+        var source = EmittedSource.Flatten(
+            ViewModelTemplates.ObservableObject("Acme").Replace("namespace Acme.ViewModels;", string.Empty),
+            ViewModelTemplates.PortableRelayCommand("Acme").Replace("namespace Acme.ViewModels;", string.Empty),
+            ScreenTemplates.RoleEnum("Acme").Replace("namespace Acme.Screens;", string.Empty),
+            ViewModelTemplates.EntityViewModelInterface("Acme")
+                .Replace("namespace Acme.ViewModels;", string.Empty)
+                .Replace("using Acme.Screens;", string.Empty),
+            RecordEditorTests.StoreAndModelStub,
+            RecordEditorTests.Editor(validation: false),
+            Stub,
+            MasterScreenTemplate.Source("Acme")
+                .Replace("namespace Acme.ViewModels;", string.Empty)
+                .Replace("using Acme.Auth;", string.Empty)
+                .Replace("using Acme.Data;", string.Empty)
+                .Replace("using Acme.Screens;", string.Empty),
+            ShellTemplate.Dashboard("Acme")
+                .Replace("namespace Acme.ViewModels;", string.Empty)
+                .Replace("using Acme.Screens;", string.Empty),
+            ShellTemplate.Shell("Acme")
+                .Replace("namespace Acme.ViewModels;", string.Empty)
+                .Replace("using Acme.Auth;", string.Empty)
+                .Replace("using Acme.Screens;", string.Empty));
+
+        EmittedSource.AssertCompiles(source);
+
+        var assembly = Assembly.Load(Compiler.Compile(source).AssemblyBytes!);
+
+        assembly.GetType("Session")!.GetMethod("Reset")!.Invoke(null, null);
+
+        return assembly;
+    }
+
+    /// <summary>A shell whose only entity is a real master screen over two books.</summary>
+    private static (object Shell, object Screen) ShellOverARealScreen(Assembly assembly)
+    {
+        var screen = MasterScreenTests.Screen(assembly, "MasterScreenViewModel", "First", "Second");
+
+        var listType = typeof(List<>).MakeGenericType(assembly.GetType("IEntityViewModel")!);
+        var entities = (IList)Activator.CreateInstance(listType)!;
+        entities.Add(screen);
+
+        var shell = Activator.CreateInstance(
+            assembly.GetType("ShellViewModel")!,
+            [entities, Activator.CreateInstance(listType)!])!;
+
+        Assert.IsTrue(TryShow(shell, screen), "the list should be showing to begin with");
+
+        return (shell, screen);
+    }
+
+    [TestMethod]
+    public void A_screen_that_asks_for_an_editor_gets_one_in_the_content_area()
+    {
+        var assembly = EmitWithRealScreen();
+        var (shell, screen) = ShellOverARealScreen(assembly);
+
+        RecordEditorTests.Execute(screen, "NewCommand");
+
+        var current = Current(shell);
+
+        Assert.IsNotNull(current, "New raised a request nothing handled");
+        Assert.AreNotSame(screen, current);
+        StringAssert.StartsWith(current!.GetType().Name, "RecordEditorViewModel");
+    }
+
+    /// <summary>And closing it comes back to the list, which re-reads the store on the way.</summary>
+    [TestMethod]
+    public void Closing_the_editor_returns_to_the_list()
+    {
+        var assembly = EmitWithRealScreen();
+        var (shell, screen) = ShellOverARealScreen(assembly);
+
+        RecordEditorTests.Execute(screen, "NewCommand");
+
+        var editor = Current(shell)!;
+
+        // A saved record proves the reload: the list had two rows and the store now has three.
+        editor.GetType().GetProperty("Draft")!.GetValue(editor)!
+            .GetType().GetProperty("Title")!.SetValue(
+                editor.GetType().GetProperty("Draft")!.GetValue(editor), "Third");
+
+        RecordEditorTests.Execute(editor, "SaveCommand");
+
+        Assert.AreSame(screen, Current(shell), "the shell did not come back to the list");
+
+        var items = (IEnumerable)screen.GetType().GetProperty("Items")!.GetValue(screen)!;
+
+        Assert.HasCount(3, items.Cast<object>().ToList());
+    }
+
     [TestMethod]
     public void The_rail_groups_masters_and_transactions_separately()
     {

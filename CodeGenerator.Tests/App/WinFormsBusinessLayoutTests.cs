@@ -1,4 +1,4 @@
-using AppScaffolding;
+﻿using AppScaffolding;
 using AppScaffolding.Layouts;
 using AppScaffolding.Layouts.WinForms;
 using AppScaffolding.Screens;
@@ -70,7 +70,25 @@ public class WinFormsBusinessLayoutTests
     [TestMethod]
     public void A_group_heading_navigates_nowhere()
     {
-        StringAssert.Contains(Source(), "if (e.Node?.Tag is { } screen && _shell.TryShow(screen))");
+        StringAssert.Contains(Source(), "if (e.Node?.Tag is { } screen)");
+        StringAssert.Contains(Source(), "_shell.TryShow(screen);");
+    }
+
+    /// <summary>
+    /// The form follows the shell rather than telling it what to show.
+    /// </summary>
+    /// <remarks>
+    /// An editor request comes from a screen and is routed by the shell, so the content area has
+    /// to notice a change it did not cause. Pushing from each click instead left New doing nothing
+    /// once the routing moved into the shell — one signal, and both targets use the same one.
+    /// </remarks>
+    [TestMethod]
+    public void The_content_area_follows_the_shell()
+    {
+        var source = Source();
+
+        StringAssert.Contains(source, "_shell.PropertyChanged +=");
+        StringAssert.Contains(source, "e.PropertyName == nameof(ShellViewModel.Current)");
     }
 
     [TestMethod]
@@ -276,8 +294,10 @@ public class WinFormsBusinessLayoutTests
             public ObservableCollection<IEntityViewModel> Entities { get; } = new();
         }
 
-        public sealed class ShellViewModel
+        public sealed class ShellViewModel : System.ComponentModel.INotifyPropertyChanged
         {
+            public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+
             public ShellViewModel(
                 IReadOnlyList<IEntityViewModel> entities, IReadOnlyList<IEntityViewModel> adminEntities)
             {
