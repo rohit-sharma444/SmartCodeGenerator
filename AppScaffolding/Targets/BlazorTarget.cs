@@ -1,5 +1,6 @@
 ﻿using AppScaffolding.Auth;
 using AppScaffolding.Layouts;
+using AppScaffolding.Screens;
 using CodeGenerationEngine.Models;
 
 namespace AppScaffolding.Targets;
@@ -38,31 +39,83 @@ public sealed class BlazorTarget : ITargetScaffolder
         string projectName, IReadOnlyList<string> entityNames)
         => FrontEndFiles(projectName, entityNames, AppCustomization.Default);
 
+    /// <summary>
+    /// The web screens need the entities' roles, which names alone cannot carry, so this target
+    /// implements the context overload rather than taking the default.
+    /// </summary>
+    public IReadOnlyList<GeneratedFile> FrontEndFiles(FrontEndContext context)
+        => FrontEndFiles(
+            context.ProjectName, context.EntityNames, context.Customization, context.Roles);
+
     public IReadOnlyList<GeneratedFile> FrontEndFiles(
         string projectName, IReadOnlyList<string> entityNames, AppCustomization customization)
+        => FrontEndFiles(projectName, entityNames, customization, EntityRoleMap.Empty);
+
+    /// <summary>
+    /// Every file this target emits.
+    /// </summary>
+    /// <remarks>
+    /// The screens are not behind a layout switch as they are on the desktop: a layout shapes a
+    /// window, `build app` tells the user outright that naming one is ignored for this target, and
+    /// the web has only ever had one shape. So the roles decide which screen a page renders, and
+    /// every generated web app gets these screens.
+    /// </remarks>
+    private IReadOnlyList<GeneratedFile> FrontEndFiles(
+        string projectName, IReadOnlyList<string> entityNames, AppCustomization customization,
+        EntityRoleMap roles)
     {
         // The namespace the emitted code declares; projectName still names the app in its title.
         var ns = customization.RootNamespaceFor(projectName);
         var title = customization.TitleLiteralFor(projectName);
 
+        // A document line gets no page at all: it is edited inside its parent, which is the whole
+        // point of the third role. Everything below works from these names, so the rail, the
+        // dashboard and the routes cannot disagree about which entities the app has.
+        var pageable = entityNames
+            .Where(name => roles.RoleOf(name) != EntityRole.DocumentLine)
+            .ToList();
+
         var files = new List<GeneratedFile>
         {
             new("Components/Layout", "NavMenu.razor",
-                BlazorShellTemplate.NavMenu(title, entityNames, customization.Login)),
+                BlazorShellTemplate.NavMenu(title, pageable, customization.Login, roles)),
 
             new(PagesFolder, "Home.razor",
-                BlazorShellTemplate.Home(title, entityNames, customization.Login)),
+                BlazorShellTemplate.Home(
+                    title, pageable, customization.Login, roles, ns, customization.SampleSeedData)),
+
+            // The three screens every page renders one of. Generic, so these are the whole of the
+            // find-open-save surface however many entities the model has.
+            new(BlazorScreenTemplates.Folder, "MasterScreen.razor",
+                BlazorScreenTemplates.MasterScreen(ns, customization.Login)),
+
+            new(BlazorScreenTemplates.Folder, "TransactionScreen.razor",
+                BlazorScreenTemplates.TransactionScreen(ns, customization.Login)),
+
+            new(BlazorScreenTemplates.Folder, "RecordEditor.razor",
+                BlazorScreenTemplates.RecordEditor(ns, customization.Validation)),
+
+            new("Screens", "ScreenFields.cs", BlazorScreenTemplates.Fields(ns)),
         };
 
+        // Two pages each: the list, and the editor behind /<entity>/<id> and /<entity>/new.
+        //
         // "<Entity>Page.razor", not "<Entity>.razor": a Razor file compiles to a class named after
         // it, so Book.razor would produce Components.Pages.Book and SHADOW Models.Book -- inside the
         // page the bare name Book then means the component, and nothing compiles. Found by building a
         // generated app; markup assertions cannot see it. The route stays "/book".
-        files.AddRange(entityNames.Select(name =>
+        files.AddRange(pageable.SelectMany(name => new[]
+        {
             new GeneratedFile(
-                PagesFolder, $"{name}Page.razor",
-                BlazorPageTemplate.Page(
-                    ns, name, customization.SampleSeedData, customization.Login))));
+                PagesFolder, BlazorPageTemplate.ListFileName(name),
+                BlazorPageTemplate.ListPage(
+                    ns, name, customization.SampleSeedData, customization.Login, roles.RoleOf(name))),
+
+            new GeneratedFile(
+                PagesFolder, BlazorPageTemplate.EditorFileName(name),
+                BlazorPageTemplate.EditorPage(
+                    ns, name, customization.SampleSeedData, customization.Login)),
+        }));
 
         // The login page, the endpoints that set the cookie, and a router that actually reads
         // the [Authorize] attributes above -- the template's RouteView does not.

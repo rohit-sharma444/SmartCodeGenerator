@@ -161,14 +161,14 @@ public class GeneratedProjectBuildTests
 
             Assert.IsTrue(result.Success, "scaffold failed: " + result.Message);
 
-            // Or the row builds a tabs app under a business name and proves nothing. The web has
-            // no view models -- its marker arrives with the web screens.
-            if (targetKey != "blazor")
-            {
-                Assert.IsTrue(
-                    File.Exists(Path.Combine(result.ProjectPath, "ViewModels", "ShellViewModel.cs")),
-                    "the business shell was not emitted, so this build covers the wrong layout");
-            }
+            // Or the row builds a tabs app under a business name and proves nothing.
+            var marker = targetKey == "blazor"
+                ? Path.Combine("Components", "Screens", "MasterScreen.razor")
+                : Path.Combine("ViewModels", "ShellViewModel.cs");
+
+            Assert.IsTrue(
+                File.Exists(Path.Combine(result.ProjectPath, marker)),
+                $"{marker} was not emitted, so this build covers the wrong screens");
 
             var (exit, output) = RunDotNet($"build \"{result.ProjectPath}\" -c Release");
             Assert.AreEqual(0, exit, $"dotnet build failed for {targetKey}:\n{output}");

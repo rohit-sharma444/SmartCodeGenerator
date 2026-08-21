@@ -46,15 +46,20 @@ public class BlazorTargetTests
         CollectionAssert.Contains(ApplicationTypeMenu.Labels.ToList(), "Web Application (Blazor Server)");
     }
 
+    /// <summary>Two pages each: the list, and the editor the list opens.</summary>
     [TestMethod]
     public void ThereIsOnePageForEveryClass()
     {
         foreach (var name in Names)
         {
-            var page = Source($"{name}Page.razor");
+            var route = name.ToLowerInvariant();
 
-            Assert.Contains($"@page \"/{name.ToLowerInvariant()}\"", page);
-            Assert.Contains($"{name}Repository", page);
+            Assert.Contains($"@page \"/{route}\"", Source($"{name}Page.razor"));
+
+            var editor = Source($"{name}EditorPage.razor");
+
+            Assert.Contains($"@page \"/{route}/{{Id:int}}\"", editor);
+            Assert.Contains($"@page \"/{route}/new\"", editor);
         }
     }
 
@@ -67,25 +72,43 @@ public class BlazorTargetTests
             Assert.Contains("@rendermode InteractiveServer", Source($"{name}Page.razor"));
     }
 
+    /// <summary>
+    /// The same actions as the desktop targets, in the same two places: the list finds and the
+    /// editor changes.
+    /// </summary>
+    /// <remarks>
+    /// They live in the shared components now rather than in each page, which is the whole point of
+    /// the page being three lines long.
+    /// </remarks>
     [TestMethod]
     public void EachPageOffersTheSameActionsAsTheDesktopTargets()
     {
-        var page = Source("OrderPage.razor");
+        var list = Source("MasterScreen.razor");
 
-        Assert.Contains("Add", page);
-        Assert.Contains("Save", page);
-        Assert.Contains("Remove", page);
+        foreach (var action in new[] { "New", "Open", "Delete" })
+            Assert.Contains($">{action}</button>", list);
+
+        var editor = Source("RecordEditor.razor");
+
+        Assert.Contains(">Save</button>", editor);
+        Assert.Contains(">Cancel</button>", editor);
     }
 
+    /// <summary>
+    /// Delete writes through immediately, rather than marking a row and waiting for a Save.
+    /// </summary>
+    /// <remarks>
+    /// The old editable table needed a pending-deletions list, because Save wrote back everything
+    /// still present and a removed record reappeared on the next load. A read-only list has no Save
+    /// of its own, so there is nothing to defer to.
+    /// </remarks>
     [TestMethod]
-    public void RemovingASavedRecordDeletesItOnSave()
+    public void DeletingARecordWritesThroughToTheStore()
     {
-        // The first cut only dropped the row from the list, so Save wrote back everything still
-        // present and the removed record reappeared on the next load.
-        var page = Source("OrderPage.razor");
+        var list = Source("MasterScreen.razor");
 
-        Assert.Contains("_repository.Delete(", page);
-        Assert.Contains("_removed", page);
+        Assert.Contains("all.RemoveAll(", list);
+        Assert.Contains("_store.SaveAll(all)", list);
     }
 
     [TestMethod]
@@ -151,10 +174,21 @@ public class BlazorTargetTests
         // template keeps it -- it is not a page and has no route of its own.
         Assert.AreEqual("Components", files.Single(f => f.Name == "Routes.razor").RelativeFolder);
 
+        // The screens are components, not pages: they have no route and are rendered BY a page.
+        var screens = new[] { "MasterScreen.razor", "TransactionScreen.razor", "RecordEditor.razor" };
+
+        foreach (var screen in screens)
+            Assert.AreEqual("Components/Screens", files.Single(f => f.Name == screen).RelativeFolder);
+
+        // ScreenFields is C#, and sits with the roles it reflects over rather than among the markup.
+        Assert.AreEqual("Screens", files.Single(f => f.Name == "ScreenFields.cs").RelativeFolder);
+
         var shell = new[] { "NavMenu.razor", "Routes.razor" };
 
         foreach (var page in files.Where(
-                     f => f.Name.EndsWith(".razor") && !shell.Contains(f.Name)))
+                     f => f.Name.EndsWith(".razor")
+                          && !shell.Contains(f.Name)
+                          && !screens.Contains(f.Name)))
             Assert.AreEqual("Components/Pages", page.RelativeFolder);
     }
 
@@ -199,7 +233,9 @@ public class BlazorTargetTests
             var page = bare.Single(f => f.Name == $"{name}Page.razor").Source;
 
             Assert.DoesNotContain("AppSeed", page);
-            Assert.Contains("_items = _repository.GetAll();", page);
+
+            // With nothing to seed the list page has no code at all: it is a route and one element.
+            Assert.DoesNotContain("@code", page);
         }
     }
 
