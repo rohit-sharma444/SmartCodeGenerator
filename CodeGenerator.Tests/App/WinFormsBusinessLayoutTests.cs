@@ -260,6 +260,35 @@ public class WinFormsBusinessLayoutTests
             ("Auth/Session.cs", SessionStub));
     }
 
+    /// <summary>
+    /// The editor lists a record's fields in the order the class declares them.
+    /// </summary>
+    /// <remarks>
+    /// A PropertyGrid left at its default sorts alphabetically UNDER a category header, so an
+    /// Order opened as "CreatedOn, Currency, Id, InventoryId, IssuedOn, …" beneath the word
+    /// "Misc" — reported from a running app, and nothing like the ordered form WPF emits from the
+    /// same model. The master-detail layout has set this since it was written; the business
+    /// editor was simply missing it.
+    /// </remarks>
+    [TestMethod]
+    public void The_editor_lists_fields_in_declaration_order()
+    {
+        var source = Source();
+
+        // Anchored to the editor's own grid rather than to the file: the master and transaction
+        // screens hold grids of their own, and one of those carrying the setting proves nothing
+        // about the editor.
+        var editor = source.IndexOf("A PropertyGrid over the DRAFT", StringComparison.Ordinal);
+        Assert.IsGreaterThan(-1, editor, "the editor's PropertyGrid is not where this test thinks");
+
+        var initializerEnd = source.IndexOf("};", editor, StringComparison.Ordinal);
+        var sort = source.IndexOf(
+            "PropertySort = PropertySort.NoSort", editor, StringComparison.Ordinal);
+
+        Assert.IsGreaterThan(-1, sort, "the editor's grid does not set PropertySort");
+        Assert.IsLessThan(initializerEnd, sort, "PropertySort is set on a later control");
+    }
+
     [TestMethod]
     public void The_themed_form_compiles_too()
     {

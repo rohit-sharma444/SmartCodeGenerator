@@ -13,7 +13,20 @@ namespace CodeGenerator.Tests.App;
 /// anything answered on it — and a web app, alone among the targets, puts nothing on screen of its
 /// own. Waiting is therefore the whole feature, and the wait is what these tests pin down.
 /// </remarks>
+/// <remarks>
+/// <para>
+/// <c>DoNotParallelize</c> for one test in here, and it is not a timing tolerance:
+/// <c>IsListening_IsTrueOnlyWhileSomethingHoldsThePort</c> asks the OS for an ephemeral port,
+/// releases it, and then asserts nothing answers on it. This assembly also starts Kestrels — the
+/// build-workflow host tests — and they ask for ephemeral ports too, so a neighbour can be handed
+/// the very port this test just gave back and the second assertion fails on a port that is
+/// genuinely listening, for someone else. Reproduced in a full Release run and green on its own
+/// nine times over; the precedent is the SpinnerTests fix, which was the same lesson about a test
+/// that cannot tolerate neighbours.
+/// </para>
+/// </remarks>
 [TestClass]
+[DoNotParallelize]
 public class WebAppStartTests
 {
     [TestMethod]
