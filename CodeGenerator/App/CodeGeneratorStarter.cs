@@ -406,7 +406,7 @@ internal class CodeGeneratorStarter
     /// One place, used by both the startup warning and <c>status</c>, so the two cannot disagree
     /// about what the store is doing.
     /// </remarks>
-    private (IReadOnlyList<string> Lines, bool Healthy) StoreReport()
+    internal static (IReadOnlyList<string> Lines, bool Healthy) StoreReport()
     {
         var databasePath = DomainDiscoveryPipeline.DefaultDumpDatabasePath;
 
@@ -532,7 +532,7 @@ internal class CodeGeneratorStarter
             ProjectManager.CurrentProject?.ProjectName,
             _workspace.Rules.Count,
             StoreReport().Lines,
-            AiState(),
+            AiState(_ai),
             VersionInfo.Current,
             Output.Explain()))
         {
@@ -542,11 +542,12 @@ internal class CodeGeneratorStarter
         Console.WriteLine();
     }
 
-    /// <summary>How the AI layer would describe itself.</summary>
-    private string AiState()
-        => _ai.Resolver is not null
+    /// <summary>How the AI layer would describe itself. Static and internal so the chat page's
+    /// `status` reads the same words this one does rather than a second copy of them.</summary>
+    internal static string AiState(AiLayer ai)
+        => ai.Resolver is not null
             ? "enabled (retrieval)"
-            : $"off ({_ai.Unavailable ?? "disabled"})";
+            : $"off ({ai.Unavailable ?? "disabled"})";
 
     private void InitializeExistingProjects()
     {

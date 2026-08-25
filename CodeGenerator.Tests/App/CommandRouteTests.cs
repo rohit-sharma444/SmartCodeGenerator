@@ -46,6 +46,16 @@ public class CommandRouteTests
     }
 
     [TestMethod]
+    public void Chat_is_its_own_kind_so_the_page_can_decline_it()
+    {
+        // The chat page declines `chat` — you are already in it — and it can only decline a kind
+        // classification actually produces.
+        Assert.AreEqual(CommandKind.Chat, CommandRoute.Classify("chat"));
+        Assert.AreEqual(CommandKind.Help, CommandRoute.Classify("help chat"));
+        Assert.AreEqual(CommandKind.Pipeline, CommandRoute.Classify("chat about the weather"));
+    }
+
+    [TestMethod]
     public void Anything_else_is_the_pipeline()
     {
         Assert.AreEqual(CommandKind.Pipeline, CommandRoute.Classify("list classes"));

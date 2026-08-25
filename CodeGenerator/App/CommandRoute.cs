@@ -43,6 +43,9 @@ internal static class CommandRoute
         if (AiCommand.IsAiCommand(text))
             return CommandKind.Ai;
 
+        if (ChatCommand.IsChat(text))
+            return CommandKind.Chat;
+
         if (BuildAppCommand.IsBuildApp(text))
             return CommandKind.BuildApp;
 
