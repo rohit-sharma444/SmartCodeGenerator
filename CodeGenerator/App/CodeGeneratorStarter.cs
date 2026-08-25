@@ -34,6 +34,7 @@ internal class CodeGeneratorStarter
     private readonly NaturalLanguagePipeline _pipeline = new();
     private readonly BuildAppCommand _buildApp = new();
     private readonly BatchCommand _batch = new();
+    private readonly ChatCommand _chat = new();
     private readonly AiLayer _ai = AiLayer.Create();
 
     /// <summary>The input currently being handled, so the confirm callback can record
@@ -101,6 +102,13 @@ internal class CodeGeneratorStarter
             {
                 _buildApp.Handle(command, _workspace.Root);
                 return true;
+            }
+
+            // A scripted single-shot run has no browser and nobody to type into one.
+            if (kind == CommandKind.Chat)
+            {
+                Output.Warning("`chat` needs an interactive console. Start the tool and type it.");
+                return false;
             }
 
             // Intercepted here too, so a scripted `help build app` gets the same answer as a
@@ -238,6 +246,15 @@ internal class CodeGeneratorStarter
             if (kind == CommandKind.Ai)
             {
                 Console.WriteLine(AiCommand.Handle(input, _ai));
+                continue;
+            }
+
+            // Not buffered, and deliberately not inside CommandColour.Run: this prints an address
+            // and then blocks, and buffering it would print the address after the session it was
+            // for had already ended.
+            if (kind == CommandKind.Chat)
+            {
+                _chat.Handle(_workspace, _ai, _commandHistory);
                 continue;
             }
 

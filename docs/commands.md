@@ -124,6 +124,7 @@
 | Command | Description | Example |
 | --- | --- | --- |
 | `batch` | Enter several commands, review what was detected, then run only the approved ones. | `batch` |
+| `chat` | Opens a page in the browser where every command except 'build app', 'batch' and 'demo' can be run in a conversation: a command's whole output appears below what you typed, tinted green when it worked, red when it failed and amber when the words were not understood. The header says which solution is loaded and which project the next command will act on, and 'Load' points the whole session - console included - at another .sln, .slnx, .csproj or folder. The box completes from the command catalog as you type, and shares its history with the prompt. Closing the tab ends the session. Alias: ui. Piped runs and CG_NO_WEB=1 keep the console. | `chat` |
 | `clear` | Clears the screen (history is kept). Alias: cls. | `clear` |
 | `cls` | Alias for clear (clears the screen; history is kept). | `cls` |
 | `demo` | Runs a short guided walkthrough: creates a small project, adds a class with two validation rules, generates the validator and shows the result. Asks before writing anything, and names the folder it creates so you can delete it afterwards. | `demo` |
