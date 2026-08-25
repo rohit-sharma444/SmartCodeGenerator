@@ -2,32 +2,32 @@
   {
     "Signature": "current project",
     "Intent": 5,
-    "SuccessCount": 0,
-    "FailureCount": 0,
+    "SuccessCount": 2,
+    "FailureCount": 1,
     "LastUsedUtc": "2026-07-25T09:33:28.3574935Z",
-    "Confidence": 0
+    "Confidence": 0.39999999999999997
   },
   {
     "Signature": "help",
     "Intent": 1,
-    "SuccessCount": 0,
+    "SuccessCount": 5,
     "FailureCount": 0,
     "LastUsedUtc": "2026-07-24T17:20:59.9005986Z",
-    "Confidence": 0
+    "Confidence": 0.7142857142857143
   },
   {
     "Signature": "inventorymanagement project use",
     "Intent": 3,
-    "SuccessCount": 0,
+    "SuccessCount": 1,
     "FailureCount": 0,
     "LastUsedUtc": "2026-07-25T09:33:26.089459Z",
-    "Confidence": 0
+    "Confidence": 0.3333333333333333
   },
   {
     "Signature": "add be bill blank in not number should validation",
     "Intent": 22,
     "SuccessCount": 0,
-    "FailureCount": 0,
+    "FailureCount": 1,
     "LastUsedUtc": "2026-07-25T09:33:48.4306642Z",
     "Confidence": 0
   },
@@ -35,56 +35,8 @@
     "Signature": "add be bill blank class in not number should validation",
     "Intent": 22,
     "SuccessCount": 0,
-    "FailureCount": 0,
+    "FailureCount": 2,
     "LastUsedUtc": "2026-07-25T09:34:22.7207618Z",
     "Confidence": 0
-  },
-  {
-    "Signature": "codegenerationengine project use",
-    "Intent": 3,
-    "SuccessCount": 4,
-    "FailureCount": 0,
-    "LastUsedUtc": "2026-08-25T02:41:36.1081228Z",
-    "Confidence": 0.6666666666666666
-  },
-  {
-    "Signature": "classes list",
-    "Intent": 42,
-    "SuccessCount": 5,
-    "FailureCount": 0,
-    "LastUsedUtc": "2026-08-25T02:41:41.2180644Z",
-    "Confidence": 0.7142857142857143
-  },
-  {
-    "Signature": "class projectmanager show",
-    "Intent": 7,
-    "SuccessCount": 4,
-    "FailureCount": 0,
-    "LastUsedUtc": "2026-08-25T02:41:37.4861381Z",
-    "Confidence": 0.6666666666666666
-  },
-  {
-    "Signature": "commandinfo list of properties",
-    "Intent": 15,
-    "SuccessCount": 1,
-    "FailureCount": 0,
-    "LastUsedUtc": "2026-08-25T02:17:54.1100736Z",
-    "Confidence": 0.3333333333333333
-  },
-  {
-    "Signature": "list of projectmetadata properties",
-    "Intent": 15,
-    "SuccessCount": 3,
-    "FailureCount": 0,
-    "LastUsedUtc": "2026-08-25T02:41:39.6770538Z",
-    "Confidence": 0.6
-  },
-  {
-    "Signature": "class commandinfo show",
-    "Intent": 7,
-    "SuccessCount": 1,
-    "FailureCount": 0,
-    "LastUsedUtc": "2026-08-25T02:45:59.6523105Z",
-    "Confidence": 0.3333333333333333
   }
 ]
