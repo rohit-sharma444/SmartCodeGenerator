@@ -5,7 +5,6 @@ using CodeIntelligence;
 using DomainDiscovery;
 using DomainDiscovery.Wikipedia.Dump;
 using NaturalLanguageBridge;
-using System.Text.Json;
 
 namespace CodeGenerator.App;
 
@@ -14,13 +13,14 @@ namespace CodeGenerator.App;
 /// </summary>
 internal class CodeGeneratorStarter
 {
-    // workspace root (resolved once)
-    private string _workspaceRoot = string.Empty;
-
-    private List<PropertyRule> _configuredRules = [];
-
-    /// <summary>How many projects the workspace scan found, for <c>status</c> to report.</summary>
-    private int _projectCount;
+    /// <summary>
+    /// Where the tool is working: the root, the rules read from it, and the projects under it.
+    /// </summary>
+    /// <remarks>
+    /// One object rather than the four loose fields this used to keep, because the chat page can
+    /// re-root at runtime and the REPL has to read whatever it left behind.
+    /// </remarks>
+    private readonly Workspace _workspace;
 
     /// <summary>
     /// Whether <c>PROJECTPATH</c> chose the workspace root. Only used to word the
@@ -30,8 +30,6 @@ internal class CodeGeneratorStarter
         !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("PROJECTPATH"));
 
     private readonly List<string> _commandHistory = [];
-    private readonly string _historyPath;
-    private const string HISTORY_FILENAME = ".codegen_history";
 
     private readonly NaturalLanguagePipeline _pipeline = new();
     private readonly BuildAppCommand _buildApp = new();
@@ -45,11 +43,7 @@ internal class CodeGeneratorStarter
 
     internal CodeGeneratorStarter()
     {
-        _workspaceRoot = ResolveWorkspaceRoot();
-
-        _historyPath = Path.Combine(_workspaceRoot, HISTORY_FILENAME);
-
-        LoadConfiguredRules();
+        _workspace = new Workspace(ResolveWorkspaceRoot(), _projectPathSet);
 
         ProjectManager.LoadProject();
 
@@ -58,11 +52,11 @@ internal class CodeGeneratorStarter
 
         // The registry file is global; drop anything not in this workspace so
         // projects from other workspaces don't leak into list/use/generate.
-        ProjectManager.RetainOnlyWithin(_workspaceRoot);
+        ProjectManager.RetainOnlyWithin(_workspace.Root);
 
         // Load per-workspace learned intent memory. Consult/capture honor
         // CG_NO_LEARN, but this init still loads the file regardless.
-        LearnedIntentStore.Initialize(_workspaceRoot);
+        LearnedIntentStore.Initialize(_workspace.Root);
 
         LoadCommandHistory();
     }
@@ -105,7 +99,7 @@ internal class CodeGeneratorStarter
         {
             if (kind == CommandKind.BuildApp)
             {
-                _buildApp.Handle(command, _workspaceRoot);
+                _buildApp.Handle(command, _workspace.Root);
                 return true;
             }
 
@@ -136,7 +130,7 @@ internal class CodeGeneratorStarter
             using (Spinner.StartAfter(Spinner.WorkingLabel, Spinner.Threshold))
             {
                 outcome = _pipeline.Handle(command, ref currentProject,
-                    _configuredRules, _workspaceRoot, r => ProjectManager.CurrentProject = r);
+                    _workspace.Rules, _workspace.Root, r => ProjectManager.CurrentProject = r);
             }
 
             // Only offer the "did you mean" help for input we could not recognize.
@@ -183,7 +177,7 @@ internal class CodeGeneratorStarter
             Console.Write("CodeGenerator >> ");
 
             var editor = new CommandLineEditor(
-                _commandHistory, _historyPath);
+                _commandHistory, _workspace.HistoryPath);
 
 
             var input = editor.ReadCommand();
@@ -252,13 +246,13 @@ internal class CodeGeneratorStarter
             {
                 if (kind == CommandKind.BuildApp)
                 {
-                    _buildApp.Handle(input, _workspaceRoot, _ai);
+                    _buildApp.Handle(input, _workspace.Root, _ai);
                     continue;
                 }
 
                 if (kind == CommandKind.Batch)
                 {
-                    _batch.Handle(ref currentProject, _configuredRules, _workspaceRoot,
+                    _batch.Handle(ref currentProject, _workspace.Rules, _workspace.Root,
                         r => ProjectManager.CurrentProject = r, _pipeline);
                     continue;
                 }
@@ -282,7 +276,7 @@ internal class CodeGeneratorStarter
                 CommandColour.Run(() =>
                 {
                     var outcome = _pipeline.Handle(input, ref currentProject,
-                         _configuredRules, _workspaceRoot, r => ProjectManager.CurrentProject = r,
+                         _workspace.Rules, _workspace.Root, r => ProjectManager.CurrentProject = r,
                          onAnalyzed: null,
                          aiResolver: Console.IsInputRedirected ? null : _ai.Resolver,
                          confirmAi: Console.IsInputRedirected ? null : Confirm,
@@ -467,7 +461,7 @@ internal class CodeGeneratorStarter
     /// </remarks>
     private void RunDemo(ref ProjectMetaData? currentProject)
     {
-        var target = Path.Combine(_workspaceRoot, DemoScript.ProjectName);
+        var target = Path.Combine(_workspace.Root, DemoScript.ProjectName);
 
         if (Console.IsInputRedirected)
         {
@@ -483,7 +477,7 @@ internal class CodeGeneratorStarter
             return;
         }
 
-        foreach (var line in DemoScript.Intro(_workspaceRoot))
+        foreach (var line in DemoScript.Intro(_workspace.Root))
             Console.WriteLine(line);
 
         if (Directory.Exists(target))
@@ -512,7 +506,7 @@ internal class CodeGeneratorStarter
             // Echoed as though typed, so the user can see — and repeat — exactly what ran.
             Console.WriteLine($"CodeGenerator >> {step.Command}");
 
-            _pipeline.Handle(step.Command, ref currentProject, _configuredRules, _workspaceRoot,
+            _pipeline.Handle(step.Command, ref currentProject, _workspace.Rules, _workspace.Root,
                 r => ProjectManager.CurrentProject = r, ct: Interrupt.Token);
 
             if (!Interrupt.Requested)
@@ -533,10 +527,10 @@ internal class CodeGeneratorStarter
     private void PrintStatus()
     {
         foreach (var line in StatusReport.Lines(
-            _workspaceRoot,
-            _projectCount,
+            _workspace.Root,
+            _workspace.ProjectCount,
             ProjectManager.CurrentProject?.ProjectName,
-            _configuredRules.Count,
+            _workspace.Rules.Count,
             StoreReport().Lines,
             AiState(),
             VersionInfo.Current,
@@ -554,42 +548,12 @@ internal class CodeGeneratorStarter
             ? "enabled (retrieval)"
             : $"off ({_ai.Unavailable ?? "disabled"})";
 
-    private void LoadConfiguredRules()
-    {
-        var rulesJsonPath = Path.Combine(_workspaceRoot, "rules.json");
-        var rulesTxtPath = Path.Combine(_workspaceRoot, "rules.txt");
-
-        try
-        {
-            if (File.Exists(rulesJsonPath))
-            {
-                var json = File.ReadAllText(rulesJsonPath);
-                var opts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-                var loaded = JsonSerializer.Deserialize<List<PropertyRule>>(json, opts);
-                if (loaded != null)
-                    _configuredRules = loaded;
-                Console.WriteLine($"Loaded {_configuredRules.Count} property rules from rules.json");
-            }
-            else if (File.Exists(rulesTxtPath))
-            {
-                var lines = File.ReadAllLines(rulesTxtPath).Where(l => !string.IsNullOrWhiteSpace(l));
-                _configuredRules = RuleParser.Parse(lines).ToList();
-                Console.WriteLine($"Parsed {_configuredRules.Count} property rules from rules.txt");
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Failed to load rules: {ex.Message}");
-            _configuredRules = new List<PropertyRule>();
-        }
-    }
-
     private void InitializeExistingProjects()
     {
         // Checked before the scan rather than caught after it: a missing directory is an ordinary
         // situation with a clear cause, and letting Directory.GetFiles throw turned it into the
         // tool reporting its own method failing.
-        var notice = WorkspaceNotice.Lines(_workspaceRoot, _projectPathSet);
+        var notice = WorkspaceNotice.Lines(_workspace.Root, _projectPathSet);
 
         if (notice.Count > 0)
         {
@@ -600,46 +564,31 @@ internal class CodeGeneratorStarter
             return;
         }
 
-        try
-        {
-            var projects = Directory.GetFiles(_workspaceRoot, "*.csproj",
-                SearchOption.AllDirectories);
+        // The same call the chat page makes when it re-roots, so registering projects and loading
+        // rules has one code path. Startup is simply the first load, at the root it already has.
+        var load = _workspace.LoadFrom(_workspace.Root);
 
-            foreach (var project in projects)
-            {
-                var projectDir = Path.GetDirectoryName(project);
-                ProjectManager.Register(new ProjectMetaData
-                {
-                    Success = true,
-                    ProjectPath = projectDir ?? Path.GetDirectoryName(_workspaceRoot) ?? _workspaceRoot,
-                    CsProjPath = project,
-                    ProjectName = Path.GetFileNameWithoutExtension(project),
-                    Message = "Loaded"
-                });
-            }
-
-            _projectCount = projects.Length;
-
-            // Nothing at all when there are none, rather than the empty WriteLine this used to
-            // emit — a stray blank line above the banner on every first run.
-            if (projects.Length > 0)
-            {
-                Console.WriteLine(
-                    $"Found {projects.Length} project(s), "
-                    + $"{ProjectManager.CurrentProject?.ProjectName} selected.");
-            }
-        }
-        catch (Exception ex)
+        if (!load.Ok)
         {
             // Still reachable for a real fault — permissions, a path too long, a disk error — so
             // it keeps a message, just not one phrased as an internal method name.
-            Output.Warning($"Could not scan {_workspaceRoot} for projects: {ex.Message}");
+            Output.Warning($"Could not scan {_workspace.Root} for projects: {load.Problem}");
+            return;
+        }
+
+        // Nothing at all when there are none, rather than the empty WriteLine this used to
+        // emit — a stray blank line above the banner on every first run.
+        if (load.ProjectCount > 0)
+        {
+            Console.WriteLine(
+                $"Found {load.ProjectCount} project(s), "
+                + $"{ProjectManager.CurrentProject?.ProjectName} selected.");
         }
     }
 
     private void LoadCommandHistory()
     {
         _commandHistory.Clear();
-        _commandHistory.AddRange(CommandHistoryFile.ReadLines(_historyPath));
+        _commandHistory.AddRange(CommandHistoryFile.ReadLines(_workspace.HistoryPath));
     }
 }
