@@ -1,0 +1,43 @@
+@* What the page says before anything has been typed into it. *@
+
+<div class="welcome">
+    <svg class="welcome-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M8 6 3 12l5 6" />
+        <path d="m16 6 5 6-5 6" />
+        <path d="M13.5 4.5 10.5 19.5" />
+    </svg>
+
+    <h1 class="welcome-title">SmartCodeGenerator</h1>
+
+    <p class="welcome-lead">
+        Type a command below and it runs against the workspace named in the bar above.
+        Start typing to see what the tool knows.
+    </p>
+
+    <div class="welcome-chips">
+        @foreach (var starter in CommandCatalog.Starters())
+        {
+            <button type="button" class="welcome-chip" @onclick="() => Pick(starter.Command)">
+                <span class="welcome-chip-command">@starter.Command</span>
+                <span class="welcome-chip-what">@starter.Description</span>
+            </button>
+        }
+    </div>
+
+    <p class="welcome-note">These fill the box. Nothing runs until you send it.</p>
+</div>
+
+@code {
+    /// <summary>Raised with the command a starter names.</summary>
+    /// <remarks>
+    /// Filled, never run — the same rule the transcript's "did you mean" chips keep. The four
+    /// starters only read, so running them would be harmless, and the page would still be
+    /// teaching that clicking a suggestion executes it. The next suggestion it offers might not
+    /// be harmless.
+    /// </remarks>
+    [Parameter]
+    public EventCallback<string> OnPick { get; set; }
+
+    private Task Pick(string command) => OnPick.InvokeAsync(command);
+}

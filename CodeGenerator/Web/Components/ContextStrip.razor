@@ -1,0 +1,125 @@
+@* The header bar: who this is, what the next command will act on, and any question standing in
+   its way. *@
+
+<header class="strip">
+    <div class="strip-inner">
+        <div class="brand">
+            @* Inline, because the page is served with no network and an icon font is a network
+               request. Two nested brackets: the tool reads code and writes it. *@
+            <svg class="brand-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M8 6 3 12l5 6" />
+                <path d="m16 6 5 6-5 6" />
+                <path d="M13.5 4.5 10.5 19.5" />
+            </svg>
+            <span class="brand-text">
+                <span class="brand-name">SmartCodeGenerator</span>
+                <span class="brand-sub">Chat</span>
+            </span>
+        </div>
+
+        <div class="strip-context">
+            <span class="strip-root" title="@Session.Root">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                </svg>
+                @Session.Root
+            </span>
+
+            <span class="strip-facts">
+                <span class="strip-fact">
+                    <span class="strip-fact-value">@Session.ProjectCount</span> projects
+                </span>
+                <span class="strip-fact">
+                    project:
+                    <span class="strip-fact-value">@(Session.CurrentProject ?? "none")</span>
+                </span>
+                <span class="strip-fact">
+                    <span class="strip-fact-value">@Session.RuleCount</span> rules
+                </span>
+                <span class="strip-fact">
+                    @* The dot and the word say the same thing, so the state survives being read
+                       by someone who cannot tell the two greys apart. *@
+                    <span class="strip-dot @(Session.AiState == "on" ? "strip-dot-on" : "")"></span>
+                    AI: <span class="strip-fact-value">@Session.AiState</span>
+                </span>
+            </span>
+        </div>
+
+        <button type="button" class="strip-change strip-tree @(TreeOpen ? "strip-change-on" : "")"
+                aria-expanded="@TreeOpen"
+                title="@(TreeOpen ? "Hide the project tree" : "Show the project tree")"
+                @onclick="OnToggleTree">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M4 5h16" />
+                <path d="M9 12h11" />
+                <path d="M9 19h11" />
+                <path d="M4 5v14" />
+            </svg>
+            Tree
+        </button>
+
+        @* `strip-change` is the shared look of a header button; `strip-picker` and `strip-tree`
+           are which one it is. Both are needed: without the second, every selector for "the
+           Change button" quietly matches Tree as well, which is how two tests started clicking
+           the wrong control the moment Tree was added. *@
+        <button type="button" class="strip-change strip-picker @(PickerOpen ? "strip-change-on" : "")"
+                aria-expanded="@PickerOpen" @onclick="OnChangeSolution">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+            </svg>
+            @(PickerOpen ? "Close" : "Change…")
+        </button>
+    </div>
+</header>
+
+@if (Session.Question is { } question)
+{
+    <div class="question">
+        <div class="question-inner">
+            <svg class="question-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M9.5 9.5a2.5 2.5 0 1 1 3.2 2.4c-.6.2-.7.6-.7 1.1v.5" />
+                <path d="M12 17h.01" />
+            </svg>
+            <span class="question-text">@question.Text</span>
+            <button type="button" class="question-yes"
+                    @onclick="() => Session.Answer(true)">Yes</button>
+            <button type="button" class="question-no"
+                    @onclick="() => Session.Answer(false)">No</button>
+        </div>
+    </div>
+}
+
+@code {
+    @* No class count, deliberately: counting classes means enumerating *.cs across the workspace
+       after every turn, and a count that lags what the transcript just did is worse than none. *@
+
+    [Parameter, EditorRequired]
+    public ChatSession Session { get; set; } = default!;
+
+    /// <summary>Whether the solution picker is open, so the button can say Close.</summary>
+    /// <remarks>
+    /// The state lives on the page rather than here: the picker is the page's child too, and two
+    /// components each keeping their own idea of whether it is open is how a button ends up
+    /// disagreeing with the panel beneath it.
+    /// </remarks>
+    [Parameter]
+    public bool PickerOpen { get; set; }
+
+    /// <summary>Raised when the Change button is clicked.</summary>
+    [Parameter]
+    public EventCallback OnChangeSolution { get; set; }
+
+    /// <summary>Whether the project tree is showing, so the button can say which.</summary>
+    [Parameter]
+    public bool TreeOpen { get; set; }
+
+    /// <summary>Raised when the Tree button is clicked.</summary>
+    [Parameter]
+    public EventCallback OnToggleTree { get; set; }
+}

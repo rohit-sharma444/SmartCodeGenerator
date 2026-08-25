@@ -5,7 +5,6 @@ using CodeIntelligence;
 using DomainDiscovery;
 using DomainDiscovery.Wikipedia.Dump;
 using NaturalLanguageBridge;
-using System.Text.Json;
 
 namespace CodeGenerator.App;
 
@@ -14,13 +13,14 @@ namespace CodeGenerator.App;
 /// </summary>
 internal class CodeGeneratorStarter
 {
-    // workspace root (resolved once)
-    private string _workspaceRoot = string.Empty;
-
-    private List<PropertyRule> _configuredRules = [];
-
-    /// <summary>How many projects the workspace scan found, for <c>status</c> to report.</summary>
-    private int _projectCount;
+    /// <summary>
+    /// Where the tool is working: the root, the rules read from it, and the projects under it.
+    /// </summary>
+    /// <remarks>
+    /// One object rather than the four loose fields this used to keep, because the chat page can
+    /// re-root at runtime and the REPL has to read whatever it left behind.
+    /// </remarks>
+    private readonly Workspace _workspace;
 
     /// <summary>
     /// Whether <c>PROJECTPATH</c> chose the workspace root. Only used to word the
@@ -30,12 +30,11 @@ internal class CodeGeneratorStarter
         !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("PROJECTPATH"));
 
     private readonly List<string> _commandHistory = [];
-    private readonly string _historyPath;
-    private const string HISTORY_FILENAME = ".codegen_history";
 
     private readonly NaturalLanguagePipeline _pipeline = new();
     private readonly BuildAppCommand _buildApp = new();
     private readonly BatchCommand _batch = new();
+    private readonly ChatCommand _chat = new();
     private readonly AiLayer _ai = AiLayer.Create();
 
     /// <summary>The input currently being handled, so the confirm callback can record
@@ -45,11 +44,7 @@ internal class CodeGeneratorStarter
 
     internal CodeGeneratorStarter()
     {
-        _workspaceRoot = ResolveWorkspaceRoot();
-
-        _historyPath = Path.Combine(_workspaceRoot, HISTORY_FILENAME);
-
-        LoadConfiguredRules();
+        _workspace = new Workspace(ResolveWorkspaceRoot(), _projectPathSet);
 
         ProjectManager.LoadProject();
 
@@ -58,11 +53,11 @@ internal class CodeGeneratorStarter
 
         // The registry file is global; drop anything not in this workspace so
         // projects from other workspaces don't leak into list/use/generate.
-        ProjectManager.RetainOnlyWithin(_workspaceRoot);
+        ProjectManager.RetainOnlyWithin(_workspace.Root);
 
         // Load per-workspace learned intent memory. Consult/capture honor
         // CG_NO_LEARN, but this init still loads the file regardless.
-        LearnedIntentStore.Initialize(_workspaceRoot);
+        LearnedIntentStore.Initialize(_workspace.Root);
 
         LoadCommandHistory();
     }
@@ -99,23 +94,32 @@ internal class CodeGeneratorStarter
 
         ProjectMetaData? currentProject = null;
 
+        var kind = CommandRoute.Classify(command);
+
         try
         {
-            if (BuildAppCommand.IsBuildApp(command))
+            if (kind == CommandKind.BuildApp)
             {
-                _buildApp.Handle(command, _workspaceRoot);
+                _buildApp.Handle(command, _workspace.Root);
                 return true;
+            }
+
+            // A scripted single-shot run has no browser and nobody to type into one.
+            if (kind == CommandKind.Chat)
+            {
+                Output.Warning("`chat` needs an interactive console. Start the tool and type it.");
+                return false;
             }
 
             // Intercepted here too, so a scripted `help build app` gets the same answer as a
             // typed one rather than falling through to the NLP path.
-            if (HelpCommand.IsHelp(command))
+            if (kind == CommandKind.Help)
             {
                 Console.WriteLine(HelpCommand.Render(command));
                 return true;
             }
 
-            if (StatusCommand.IsStatus(command))
+            if (kind == CommandKind.Status)
             {
                 PrintStatus();
                 return true;
@@ -134,7 +138,7 @@ internal class CodeGeneratorStarter
             using (Spinner.StartAfter(Spinner.WorkingLabel, Spinner.Threshold))
             {
                 outcome = _pipeline.Handle(command, ref currentProject,
-                    _configuredRules, _workspaceRoot, r => ProjectManager.CurrentProject = r);
+                    _workspace.Rules, _workspace.Root, r => ProjectManager.CurrentProject = r);
             }
 
             // Only offer the "did you mean" help for input we could not recognize.
@@ -181,7 +185,7 @@ internal class CodeGeneratorStarter
             Console.Write("CodeGenerator >> ");
 
             var editor = new CommandLineEditor(
-                _commandHistory, _historyPath);
+                _commandHistory, _workspace.HistoryPath);
 
 
             var input = editor.ReadCommand();
@@ -189,10 +193,12 @@ internal class CodeGeneratorStarter
             //if (string.IsNullOrWhiteSpace(input))
             //    continue;
 
-            if (input.Equals("exit", StringComparison.OrdinalIgnoreCase))
+            var kind = CommandRoute.Classify(input);
+
+            if (kind == CommandKind.Exit)
                 break;
 
-            if (ClearCommand.IsClear(input))
+            if (kind == CommandKind.Clear)
             {
                 // Screen-only wipe, then redraw the header so it stays put (the
                 // store-status report is NOT re-printed). Skipped when output
@@ -209,7 +215,7 @@ internal class CodeGeneratorStarter
                 continue;
             }
 
-            if (HistoryCommand.IsHistory(input))
+            if (kind == CommandKind.History)
             {
                 Console.WriteLine(HistoryView.Format(_commandHistory, 20));
                 continue;
@@ -217,7 +223,7 @@ internal class CodeGeneratorStarter
 
             // Ahead of the pipeline: LiteralCommandTable keys on the exact word "help", so
             // `help build app` matches nothing there. See HelpCommand.
-            if (HelpCommand.IsHelp(input))
+            if (kind == CommandKind.Help)
             {
                 // Paged: `help all` is around 250 lines, which otherwise scrolls the question and
                 // the answer's first half off the top of the screen.
@@ -225,36 +231,45 @@ internal class CodeGeneratorStarter
                 continue;
             }
 
-            if (StatusCommand.IsStatus(input))
+            if (kind == CommandKind.Status)
             {
                 PrintStatus();
                 continue;
             }
 
-            if (DemoCommand.IsDemo(input))
+            if (kind == CommandKind.Demo)
             {
                 RunDemo(ref currentProject);
                 continue;
             }
 
-            if (AiCommand.IsAiCommand(input))
+            if (kind == CommandKind.Ai)
             {
                 Console.WriteLine(AiCommand.Handle(input, _ai));
+                continue;
+            }
+
+            // Not buffered, and deliberately not inside CommandColour.Run: this prints an address
+            // and then blocks, and buffering it would print the address after the session it was
+            // for had already ended.
+            if (kind == CommandKind.Chat)
+            {
+                _chat.Handle(_workspace, _ai, _commandHistory);
                 continue;
             }
 
             // FIX #9: Improved exception handling with specific catch blocks
             try
             {
-                if (BuildAppCommand.IsBuildApp(input))
+                if (kind == CommandKind.BuildApp)
                 {
-                    _buildApp.Handle(input, _workspaceRoot, _ai);
+                    _buildApp.Handle(input, _workspace.Root, _ai);
                     continue;
                 }
 
-                if (BatchCommand.IsBatch(input))
+                if (kind == CommandKind.Batch)
                 {
-                    _batch.Handle(ref currentProject, _configuredRules, _workspaceRoot,
+                    _batch.Handle(ref currentProject, _workspace.Rules, _workspace.Root,
                         r => ProjectManager.CurrentProject = r, _pipeline);
                     continue;
                 }
@@ -278,7 +293,7 @@ internal class CodeGeneratorStarter
                 CommandColour.Run(() =>
                 {
                     var outcome = _pipeline.Handle(input, ref currentProject,
-                         _configuredRules, _workspaceRoot, r => ProjectManager.CurrentProject = r,
+                         _workspace.Rules, _workspace.Root, r => ProjectManager.CurrentProject = r,
                          onAnalyzed: null,
                          aiResolver: Console.IsInputRedirected ? null : _ai.Resolver,
                          confirmAi: Console.IsInputRedirected ? null : Confirm,
@@ -408,7 +423,7 @@ internal class CodeGeneratorStarter
     /// One place, used by both the startup warning and <c>status</c>, so the two cannot disagree
     /// about what the store is doing.
     /// </remarks>
-    private (IReadOnlyList<string> Lines, bool Healthy) StoreReport()
+    internal static (IReadOnlyList<string> Lines, bool Healthy) StoreReport()
     {
         var databasePath = DomainDiscoveryPipeline.DefaultDumpDatabasePath;
 
@@ -463,7 +478,7 @@ internal class CodeGeneratorStarter
     /// </remarks>
     private void RunDemo(ref ProjectMetaData? currentProject)
     {
-        var target = Path.Combine(_workspaceRoot, DemoScript.ProjectName);
+        var target = Path.Combine(_workspace.Root, DemoScript.ProjectName);
 
         if (Console.IsInputRedirected)
         {
@@ -479,7 +494,7 @@ internal class CodeGeneratorStarter
             return;
         }
 
-        foreach (var line in DemoScript.Intro(_workspaceRoot))
+        foreach (var line in DemoScript.Intro(_workspace.Root))
             Console.WriteLine(line);
 
         if (Directory.Exists(target))
@@ -508,7 +523,7 @@ internal class CodeGeneratorStarter
             // Echoed as though typed, so the user can see — and repeat — exactly what ran.
             Console.WriteLine($"CodeGenerator >> {step.Command}");
 
-            _pipeline.Handle(step.Command, ref currentProject, _configuredRules, _workspaceRoot,
+            _pipeline.Handle(step.Command, ref currentProject, _workspace.Rules, _workspace.Root,
                 r => ProjectManager.CurrentProject = r, ct: Interrupt.Token);
 
             if (!Interrupt.Requested)
@@ -529,12 +544,12 @@ internal class CodeGeneratorStarter
     private void PrintStatus()
     {
         foreach (var line in StatusReport.Lines(
-            _workspaceRoot,
-            _projectCount,
+            _workspace.Root,
+            _workspace.ProjectCount,
             ProjectManager.CurrentProject?.ProjectName,
-            _configuredRules.Count,
+            _workspace.Rules.Count,
             StoreReport().Lines,
-            AiState(),
+            AiState(_ai),
             VersionInfo.Current,
             Output.Explain()))
         {
@@ -544,48 +559,19 @@ internal class CodeGeneratorStarter
         Console.WriteLine();
     }
 
-    /// <summary>How the AI layer would describe itself.</summary>
-    private string AiState()
-        => _ai.Resolver is not null
+    /// <summary>How the AI layer would describe itself. Static and internal so the chat page's
+    /// `status` reads the same words this one does rather than a second copy of them.</summary>
+    internal static string AiState(AiLayer ai)
+        => ai.Resolver is not null
             ? "enabled (retrieval)"
-            : $"off ({_ai.Unavailable ?? "disabled"})";
-
-    private void LoadConfiguredRules()
-    {
-        var rulesJsonPath = Path.Combine(_workspaceRoot, "rules.json");
-        var rulesTxtPath = Path.Combine(_workspaceRoot, "rules.txt");
-
-        try
-        {
-            if (File.Exists(rulesJsonPath))
-            {
-                var json = File.ReadAllText(rulesJsonPath);
-                var opts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-                var loaded = JsonSerializer.Deserialize<List<PropertyRule>>(json, opts);
-                if (loaded != null)
-                    _configuredRules = loaded;
-                Console.WriteLine($"Loaded {_configuredRules.Count} property rules from rules.json");
-            }
-            else if (File.Exists(rulesTxtPath))
-            {
-                var lines = File.ReadAllLines(rulesTxtPath).Where(l => !string.IsNullOrWhiteSpace(l));
-                _configuredRules = RuleParser.Parse(lines).ToList();
-                Console.WriteLine($"Parsed {_configuredRules.Count} property rules from rules.txt");
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Failed to load rules: {ex.Message}");
-            _configuredRules = new List<PropertyRule>();
-        }
-    }
+            : $"off ({ai.Unavailable ?? "disabled"})";
 
     private void InitializeExistingProjects()
     {
         // Checked before the scan rather than caught after it: a missing directory is an ordinary
         // situation with a clear cause, and letting Directory.GetFiles throw turned it into the
         // tool reporting its own method failing.
-        var notice = WorkspaceNotice.Lines(_workspaceRoot, _projectPathSet);
+        var notice = WorkspaceNotice.Lines(_workspace.Root, _projectPathSet);
 
         if (notice.Count > 0)
         {
@@ -596,46 +582,31 @@ internal class CodeGeneratorStarter
             return;
         }
 
-        try
-        {
-            var projects = Directory.GetFiles(_workspaceRoot, "*.csproj",
-                SearchOption.AllDirectories);
+        // The same call the chat page makes when it re-roots, so registering projects and loading
+        // rules has one code path. Startup is simply the first load, at the root it already has.
+        var load = _workspace.LoadFrom(_workspace.Root);
 
-            foreach (var project in projects)
-            {
-                var projectDir = Path.GetDirectoryName(project);
-                ProjectManager.Register(new ProjectMetaData
-                {
-                    Success = true,
-                    ProjectPath = projectDir ?? Path.GetDirectoryName(_workspaceRoot) ?? _workspaceRoot,
-                    CsProjPath = project,
-                    ProjectName = Path.GetFileNameWithoutExtension(project),
-                    Message = "Loaded"
-                });
-            }
-
-            _projectCount = projects.Length;
-
-            // Nothing at all when there are none, rather than the empty WriteLine this used to
-            // emit — a stray blank line above the banner on every first run.
-            if (projects.Length > 0)
-            {
-                Console.WriteLine(
-                    $"Found {projects.Length} project(s), "
-                    + $"{ProjectManager.CurrentProject?.ProjectName} selected.");
-            }
-        }
-        catch (Exception ex)
+        if (!load.Ok)
         {
             // Still reachable for a real fault — permissions, a path too long, a disk error — so
             // it keeps a message, just not one phrased as an internal method name.
-            Output.Warning($"Could not scan {_workspaceRoot} for projects: {ex.Message}");
+            Output.Warning($"Could not scan {_workspace.Root} for projects: {load.Problem}");
+            return;
+        }
+
+        // Nothing at all when there are none, rather than the empty WriteLine this used to
+        // emit — a stray blank line above the banner on every first run.
+        if (load.ProjectCount > 0)
+        {
+            Console.WriteLine(
+                $"Found {load.ProjectCount} project(s), "
+                + $"{ProjectManager.CurrentProject?.ProjectName} selected.");
         }
     }
 
     private void LoadCommandHistory()
     {
         _commandHistory.Clear();
-        _commandHistory.AddRange(CommandHistoryFile.ReadLines(_historyPath));
+        _commandHistory.AddRange(CommandHistoryFile.ReadLines(_workspace.HistoryPath));
     }
 }

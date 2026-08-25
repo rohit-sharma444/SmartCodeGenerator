@@ -1,0 +1,216 @@
+@page "/chat"
+@rendermode InteractiveServer
+@implements IDisposable
+@inject ChatSession Session
+@inject IJSRuntime Js
+
+@* Named ChatPage rather than Chat: a Chat component class beside the CodeGenerator.Web.Chat
+   namespace is an ambiguity inside Components. *@
+
+<PageTitle>Chat — SmartCodeGenerator</PageTitle>
+
+@* The frame: a header band, an optional picker band, one scrolling middle, and a foot that stays
+   put. `.chat` is fixed to the viewport, which is also how it escapes the body padding and the
+   light background workflow.css sets for the other page. *@
+<div class="chat">
+    <ContextStrip Session="Session" PickerOpen="_picking" OnChangeSolution="TogglePicker"
+                  TreeOpen="Session.TreeOpen" OnToggleTree="ToggleTree" />
+
+    @if (_picking)
+    {
+        <SolutionPicker Session="Session" OnLoaded="ClosePicker" />
+    }
+
+    @* The tree and the transcript share this row and scroll independently of each other, so
+       opening a long project does not move the conversation. *@
+    <div class="chat-body">
+        @if (Session.TreeOpen)
+        {
+            <ProjectTreeView Tree="_tree"
+                             Projects="ProjectTree.Projects()"
+                             Disabled="Session.Running || Session.Ended"
+                             OnCommand="Send" />
+        }
+
+        @* The class says the tree is beside it, so the transcript can stop centring itself in a
+           box that is no longer the page. *@
+        <div class="chat-scroll @(Session.TreeOpen ? "chat-scroll-beside" : "")" @ref="_scroll">
+            @if (Session.Turns.Count == 0)
+            {
+                <ChatWelcome OnPick="Prefill" />
+            }
+            else
+            {
+                <ChatTranscript Turns="Session.Turns" OnSuggestion="Prefill" />
+            }
+        </div>
+    </div>
+
+    <div class="chat-foot">
+        <div class="foot-inner">
+            @if (Session.Running)
+            {
+                <div class="working">
+                    <span class="working-spinner"></span>
+                    <span class="working-text">
+                        @(_stopping ? "Stopping" : "Working on") @Session.InFlight…
+                    </span>
+                    <button type="button" class="working-stop" disabled="@_stopping"
+                            @onclick="Stop">Stop</button>
+                </div>
+            }
+
+            <ChatComposer @ref="_composer"
+                          Disabled="Session.Running || Session.Ended"
+                          History="Session.History"
+                          OnSend="Send" />
+        </div>
+    </div>
+</div>
+
+@code {
+    private bool _stopping;
+
+    /// <summary>Whether the solution picker band is showing.</summary>
+    /// <remarks>
+    /// Held here rather than inside the picker, because the header's button has to agree with it.
+    /// </remarks>
+    private bool _picking;
+
+    /// <summary>
+    /// What the tree has read so far.
+    /// </summary>
+    /// <remarks>
+    /// Per circuit, not per session. It holds nothing but a cache of what is on disk, so a second
+    /// tab reading the same folders again costs one directory walk and keeps the two tabs from
+    /// sharing which nodes are open — which is a view, and belongs to whoever is looking.
+    /// </remarks>
+    private readonly ProjectTree _tree = new();
+
+    /// <summary>The scrolling middle, so a new turn can be scrolled to.</summary>
+    private ElementReference _scroll;
+
+    /// <summary>
+    /// How many turns were on screen the last time this scrolled to the bottom.
+    /// </summary>
+    /// <remarks>
+    /// Starts at -1 rather than 0 so the first render of a session resumed in a second tab scrolls
+    /// to the end of a transcript it did not itself produce.
+    /// </remarks>
+    private int _drawn = -1;
+
+    /// <summary>The composer, so a "did you mean" chip can fill it.</summary>
+    private ChatComposer? _composer;
+
+    /// <summary>
+    /// Puts a guess in the box.
+    /// </summary>
+    /// <remarks>
+    /// Filled, never run. One keystroke away is close enough for a guess about what someone meant,
+    /// and these commands write files.
+    /// </remarks>
+    private void Prefill(string command) => _composer?.Fill(command);
+
+    /// <summary>
+    /// Opens the picker on a workspace with nothing in it.
+    /// </summary>
+    /// <remarks>
+    /// A folder with no projects is the one case where the first thing to do is choose somewhere
+    /// else, so the panel is already open. Everywhere else it stays behind its button: a file
+    /// listing wedged between the header and the conversation is not what the page is for.
+    /// </remarks>
+    protected override void OnInitialized()
+    {
+        _picking = Session.ProjectCount == 0;
+
+        Session.Changed += Repaint;
+    }
+
+    public void Dispose() => Session.Changed -= Repaint;
+
+    private void TogglePicker() => _picking = !_picking;
+
+    private void ClosePicker() => _picking = false;
+
+    /// <summary>Shows or hides the tree, on the session so a refresh does not lose it.</summary>
+    private void ToggleTree() => Session.ShowTree(!Session.TreeOpen);
+
+    /// <summary>How many turns the tree's cache was read against.</summary>
+    private int _treeAt;
+
+    /// <summary>
+    /// Keeps the newest turn on screen.
+    /// </summary>
+    /// <remarks>
+    /// The transcript scrolls inside its own box now, so a turn that arrives while the reader is
+    /// at the bottom would otherwise appear below the fold and look like nothing happened. Only on
+    /// a change in the count, so this does not fight the reader scrolling back through a long
+    /// transcript on every unrelated repaint.
+    /// </remarks>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_drawn == Session.Turns.Count)
+            return;
+
+        _drawn = Session.Turns.Count;
+
+        try
+        {
+            await Js.InvokeVoidAsync("chatScrollToEnd", _scroll);
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+        {
+            // The circuit went away, or the element did. Neither is worth a turn in the
+            // transcript, and the page is about to stop existing either way.
+        }
+    }
+
+    /// <summary>
+    /// Repaints this circuit when the session changes.
+    /// </summary>
+    /// <remarks>
+    /// InvokeAsync because the event is raised from a worker thread: the command runs off the
+    /// circuit so the page can keep drawing while it does, and StateHasChanged called directly
+    /// from that thread throws.
+    /// </remarks>
+    private void Repaint()
+    {
+        // Cleared as the command that was being stopped finishes, so the next one starts with a
+        // live Stop button rather than one still labelled from the last run.
+        if (!Session.Running)
+            _stopping = false;
+
+        // A command has finished, so what is on disk may have moved under the tree: `create class`
+        // adds one, `delete class` takes one away, `add property` changes what a class declares.
+        // Before the repaint, not after, or this render draws the answer it is about to discard.
+        if (_treeAt != Session.Turns.Count)
+        {
+            _treeAt = Session.Turns.Count;
+            _tree.Forget();
+        }
+
+        InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// Sends one message.
+    /// </summary>
+    /// <remarks>
+    /// Awaited, not discarded: a dropped task never repaints and swallows whatever it threw.
+    /// </remarks>
+    private async Task Send(string input) => await Session.Send(input);
+
+    /// <summary>
+    /// Asks the running command to stop.
+    /// </summary>
+    /// <remarks>
+    /// Best-effort, and the label says so rather than claiming success. Plenty of what runs below
+    /// here is synchronous and takes no token; a button that said "Stopped" would be lying about
+    /// half the catalog.
+    /// </remarks>
+    private void Stop()
+    {
+        _stopping = true;
+        Session.Cancel();
+    }
+}

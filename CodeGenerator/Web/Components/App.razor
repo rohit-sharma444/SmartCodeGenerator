@@ -4,9 +4,10 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Build an application</title>
+    <title>SmartCodeGenerator</title>
     <base href="/" />
     <link rel="stylesheet" href="workflow.css" />
+    <link rel="stylesheet" href="chat.css" />
     @* The render mode is load-bearing: the workflow page is InteractiveServer, so its PageTitle
        updates arrive on the interactive circuit. A statically rendered outlet never hears them —
        the tab kept the title below for the whole run, which no unit test can see, because the
@@ -15,6 +16,30 @@
 </head>
 <body>
     <Routes />
+    @* The clipboard is behind an API the server cannot reach, so the copy button calls out to
+       this. Optional chaining because a browser with no permission has no clipboard object. *@
+    <script>
+        window.chatCopy = text => navigator.clipboard?.writeText(text);
+
+        // The transcript scrolls inside its own box, so the newest turn has to be scrolled to
+        // rather than being wherever the page happens to end. Optional chaining because the
+        // element is gone by the time this arrives if the reader navigated away mid-command.
+        window.chatScrollToEnd = element => {
+            if (element) element.scrollTop = element.scrollHeight;
+        };
+
+        // Enter sends, so the browser must not also type a newline into the box. Capture phase and
+        // no stopPropagation, so Blazor's own keydown listener still receives the event and decides
+        // what Enter means; this only stops the character. Shift+Enter is left alone, because that
+        // is the one that is meant to insert a line.
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Enter' && !e.shiftKey
+                && e.target instanceof HTMLTextAreaElement
+                && e.target.closest('.composer')) {
+                e.preventDefault();
+            }
+        }, true);
+    </script>
     <script src="_framework/blazor.web.js"></script>
 </body>
 </html>

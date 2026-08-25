@@ -1,0 +1,218 @@
+@* The input, and the dropdown over the command catalog. *@
+
+<div class="composer">
+    @if (_suggestions.Count > 0)
+    {
+        <ul class="suggestions">
+            @for (var i = 0; i < _suggestions.Count; i++)
+            {
+                var index = i;
+                var suggestion = _suggestions[i];
+
+                <li class="suggestion @(index == _selected ? "suggestion-on" : "")"
+                    @onclick="() => Insert(suggestion.Command)">
+                    <span class="suggestion-command">@suggestion.Command</span>
+                    <span class="suggestion-description">@suggestion.Description</span>
+                    <span class="suggestion-example">@suggestion.Example</span>
+                </li>
+            }
+        </ul>
+    }
+
+    <div class="composer-box">
+        <textarea @key="_generation"
+                  @ref="_box"
+                  value="@_pushed"
+                  disabled="@Disabled"
+                  rows="2"
+                  placeholder="Type a command…"
+                  @oninput="OnInput"
+                  @onkeydown="OnKeyDown"></textarea>
+
+        @* The twin of the Enter rule below, and the discoverable one. Disabled rather than hidden
+           on an empty box: a button that comes and goes is a button people stop looking for. *@
+        <button type="button" class="composer-send"
+                disabled="@(Disabled || string.IsNullOrWhiteSpace(_text))"
+                @onclick="Send">
+            Send
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M4 12h15" />
+                <path d="m13 6 6 6-6 6" />
+            </svg>
+        </button>
+    </div>
+
+    @* The keyboard is the fast path and stays the fast path; this is where it is written down. *@
+    <div class="composer-hint">
+        <span><kbd>Enter</kbd> sends</span>
+        <span><kbd>Shift</kbd> + <kbd>Enter</kbd> for a new line</span>
+        <span><kbd>↑</kbd> for history</span>
+    </div>
+</div>
+
+@code {
+    private string _text = string.Empty;
+    private string _pushed = string.Empty;
+    private int _generation;
+    private bool _refocus;
+    private ElementReference _box;
+    private int _selected;
+    private int _historyAt = -1;
+    private IReadOnlyList<CommandInfo> _suggestions = [];
+
+    [Parameter]
+    public bool Disabled { get; set; }
+
+    [Parameter]
+    public IReadOnlyList<string> History { get; set; } = [];
+
+    [Parameter]
+    public EventCallback<string> OnSend { get; set; }
+
+
+
+    /// <summary>
+    /// Puts text in the box without sending it.
+    /// </summary>
+    /// <remarks>
+    /// For the transcript's "did you mean" chips, which are one keystroke away from running and
+    /// never run themselves.
+    /// </remarks>
+    public void Fill(string text)
+    {
+        Push(text);
+        _suggestions = [];
+        _selected = 0;
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Writes text into the box.
+    /// </summary>
+    /// <remarks>
+    /// Blazor patches the DOM for any attribute whose rendered value differs from the last render.
+    /// With `value` bound to the text being typed, every keystroke sends a value back to the
+    /// browser and anything typed while that was in flight is rolled back. Measured in a real
+    /// browser on loopback: clean at ten characters a second, one lost at twenty, most of the line
+    /// above that.
+    /// <para>
+    /// So the rendered value is what this component last wrote, never what the user is typing, and
+    /// the key is bumped as well: setting the box back to what it was last set to is a change the
+    /// browser has to see, and an unchanged attribute is one Blazor does not send.
+    /// </para>
+    /// </remarks>
+    private void Push(string text)
+    {
+        _text = text;
+        _pushed = text;
+        _generation++;
+        _refocus = true;
+    }
+
+    /// <summary>Takes the caret back after a keyed element was replaced.</summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_refocus)
+            return;
+
+        _refocus = false;
+
+        await _box.FocusAsync();
+    }
+    private void OnInput(ChangeEventArgs e)
+    {
+        _text = e.Value?.ToString() ?? string.Empty;
+        _suggestions = CommandCatalog.Matches(_text);
+        _selected = 0;
+    }
+
+    /// <summary>
+    /// The keyboard, and the one rule this component exists to keep.
+    /// </summary>
+    /// <remarks>
+    /// While the dropdown is open, Enter completes and the arrows move the selection. Closed, Enter
+    /// sends and Up recalls history. Both meanings for one key is unavoidable, since this is the
+    /// arrangement every editor uses, but which one applies has to be decided by something the
+    /// user can see, and the open dropdown is that thing.
+    /// </remarks>
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (Disabled)
+            return;
+
+        var open = _suggestions.Count > 0;
+
+        switch (e.Key)
+        {
+            case "Escape" when open:
+                _suggestions = [];
+                return;
+
+            case "ArrowDown" when open:
+                _selected = Math.Min(_selected + 1, _suggestions.Count - 1);
+                return;
+
+            case "ArrowUp" when open:
+                _selected = Math.Max(_selected - 1, 0);
+                return;
+
+            case "Tab" when open:
+            case "Enter" when open && !e.ShiftKey:
+                Insert(_suggestions[_selected].Command);
+                return;
+
+            case "ArrowUp":
+                Recall(-1);
+                return;
+
+            case "ArrowDown":
+                Recall(1);
+                return;
+
+            case "Enter" when !e.ShiftKey:
+                await Send();
+                return;
+        }
+    }
+
+    private void Insert(string command)
+    {
+        Push(command);
+        _suggestions = [];
+        _selected = 0;
+    }
+
+    /// <summary>
+    /// Walks the shared history. Newest first going up, which is what every shell does.
+    /// </summary>
+    private void Recall(int direction)
+    {
+        if (History.Count == 0)
+            return;
+
+        _historyAt = _historyAt < 0
+            ? History.Count - 1
+            : Math.Clamp(_historyAt - direction, 0, History.Count - 1);
+
+        Push(History[_historyAt]);
+    }
+
+    private async Task Send()
+    {
+        var text = _text;
+
+        // Nothing typed, nothing sent. The console prints nothing for an empty line; here it
+        // would leave a turn with no input and no output, which stays on screen.
+        if (string.IsNullOrWhiteSpace(text))
+            return;
+
+        // Cleared before the callback: the command runs on a worker and the page repaints while it
+        // does, so a box still holding the sent text reads as a command that did not go.
+        Push(string.Empty);
+        _suggestions = [];
+        _historyAt = -1;
+
+        await OnSend.InvokeAsync(text);
+    }
+}

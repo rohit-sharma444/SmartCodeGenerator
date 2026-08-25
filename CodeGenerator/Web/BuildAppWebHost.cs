@@ -1,12 +1,5 @@
-using System.Security.Cryptography;
 using CodeGenerator.Web.Workflow;
-using Microsoft.AspNetCore.Components.Server.Circuits;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 
 namespace CodeGenerator.Web;
 
@@ -18,17 +11,17 @@ namespace CodeGenerator.Web;
 /// calls, against the same objects, so there is nothing to serialize and nothing to marshal back
 /// — the scaffold runs here and the console prints the result directly.
 /// <para>
-/// Three things this class exists to get right. It binds port 0 and reads the assignment back, so
-/// a port in use is not a failure mode. It mints a token and 404s without it, because any process
-/// on this machine can reach loopback and this page writes files and runs <c>dotnet</c>. And it
-/// stops on every path — a terminal session, a console interrupt, or a tab closed and never
-/// reconnected — because a CLI blocked forever on an abandoned workflow is worse than no feature.
+/// The host mechanics — binding port 0 and reading the assignment back, the token and the 404
+/// without it, the static-asset manifests, anti-forgery, the circuit count and the stop on every
+/// path — now live in <see cref="LoopbackHost"/>, because the chat page needs the same ones and
+/// the token guard must exist exactly once. What is left here is the workflow's own half: the
+/// wait, the abandon grace, and what the console prints when it ends.
 /// </para>
 /// </remarks>
 internal sealed class BuildAppWebHost : IDisposable
 {
-    /// <summary>How long the query string's token parameter is called.</summary>
-    private const string TokenParameter = "t";
+    /// <summary>The route the workflow page is served on.</summary>
+    private const string Route = "build";
 
     /// <summary>How often <see cref="Run"/> looks at the session.</summary>
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(200);
@@ -43,29 +36,23 @@ internal sealed class BuildAppWebHost : IDisposable
     /// </remarks>
     private static readonly TimeSpan AbandonGrace = TimeSpan.FromSeconds(10);
 
-    private readonly WebApplication _app;
+    private readonly LoopbackHost _host;
 
-    private BuildAppWebHost(WebApplication app, string url, string token, CircuitWatch circuits)
-    {
-        _app = app;
-        Url = url;
-        SessionToken = token;
-        Circuits = circuits;
-    }
+    private BuildAppWebHost(LoopbackHost host) => _host = host;
 
     /// <summary>The tabs connected to this host. Written by <see cref="WorkflowCircuits"/> from
     /// the circuits Blazor raises, and read by <see cref="Run(BuildSession, CancellationToken,
     /// TimeSpan?)"/>.</summary>
-    public CircuitWatch Circuits { get; }
+    public CircuitWatch Circuits => _host.Circuits;
 
     /// <summary>What the running host resolves its services from — the container Blazor takes
     /// the circuit handlers out of.</summary>
-    public IServiceProvider Services => _app.Services;
+    public IServiceProvider Services => _host.Services;
 
     /// <summary>The address to open, token and all.</summary>
-    public string Url { get; }
+    public string Url => _host.Url;
 
-    public string SessionToken { get; }
+    public string SessionToken => _host.SessionToken;
 
     /// <summary>
     /// Starts the host, or reports that it could not. False rather than an exception because a
@@ -76,83 +63,14 @@ internal sealed class BuildAppWebHost : IDisposable
     {
         host = null!;
 
-        try
-        {
-            var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
-
-            // The application name and content root are pinned to this assembly and its output
-            // folder rather than left to the defaults: the defaults are the entry assembly and
-            // the current directory, and both are wrong here — the CLI is started from wherever
-            // the user happens to be, and under a test host the entry assembly is the test host.
-            // Both manifests below are named after this assembly, and are found next to it.
-            var builder = WebApplication.CreateSlimBuilder(new WebApplicationOptions
-            {
-                ApplicationName = typeof(BuildAppWebHost).Assembly.GetName().Name,
-                ContentRootPath = AppContext.BaseDirectory,
-            });
-
-            // What serves wwwroot and _framework/blazor.web.js from a build output that contains
-            // neither: the runtime manifest maps them back to the source folders, and the
-            // endpoints manifest publishes a route per asset. A published layout has no runtime
-            // manifest and its own real wwwroot, and this call then does nothing.
-            builder.WebHost.UseStaticWebAssets();
-
-            // Nothing but warnings: this host shares a console with a REPL, and Kestrel's
-            // startup banner in the middle of a command reads as output the tool produced.
-            builder.Logging.ClearProviders();
-
-            builder.WebHost.UseUrls("http://127.0.0.1:0");
-
-            builder.Services.AddRazorComponents().AddInteractiveServerComponents();
-
-            // Singleton, so a second tab attaches to the running workflow rather than starting a
-            // rival one against the same workspace.
-            builder.Services.AddSingleton(session);
-
-            // The watch is one per host and the handler is one per circuit, which is the whole
-            // point of the pair: the handlers come and go with the tabs and the count does not.
-            var circuits = new CircuitWatch();
-
-            builder.Services.AddSingleton(circuits);
-            builder.Services.AddScoped<CircuitHandler, WorkflowCircuits>();
-
-            var app = builder.Build();
-
-            app.MapStaticAssets();
-
-            // MapRazorComponents stamps anti-forgery metadata on the endpoint, and the endpoint
-            // middleware refuses to run without the matching middleware in the pipeline.
-            app.UseAntiforgery();
-
-            // Before the component pipeline, so an untokened request never reaches a circuit.
-            app.Use(async (context, next) =>
-            {
-                if (context.Request.Path.StartsWithSegments("/build")
-                    && context.Request.Query[TokenParameter] != token)
-                {
-                    context.Response.StatusCode = StatusCodes.Status404NotFound;
-                    return;
-                }
-
-                await next(context);
-            });
-
-            app.MapRazorComponents<Components.App>().AddInteractiveServerRenderMode();
-
-            app.Start();
-
-            var bound = app.Urls.First();
-
-            host = new BuildAppWebHost(
-                app, $"{bound}/build?{TokenParameter}={token}", token, circuits);
-
-            return true;
-        }
-        catch (Exception ex) when (ex is IOException or InvalidOperationException
-                                      or System.Net.Sockets.SocketException)
-        {
+        // Singleton, so a second tab attaches to the running workflow rather than starting a
+        // rival one against the same workspace.
+        if (!LoopbackHost.TryStart(Route, s => s.AddSingleton(session), out var loopback))
             return false;
-        }
+
+        host = new BuildAppWebHost(loopback);
+
+        return true;
     }
 
     /// <summary>
@@ -254,17 +172,5 @@ internal sealed class BuildAppWebHost : IDisposable
         return ["", "To do the same again:", .. BuildCommandEcho.For(session)];
     }
 
-    public void Dispose()
-    {
-        try
-        {
-            _app.StopAsync(TimeSpan.FromSeconds(5)).GetAwaiter().GetResult();
-        }
-        catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException)
-        {
-            // Already going down. Nothing to add.
-        }
-
-        ((IDisposable)_app).Dispose();
-    }
+    public void Dispose() => _host.Dispose();
 }
