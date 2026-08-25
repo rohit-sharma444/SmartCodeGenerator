@@ -1,4 +1,6 @@
 using Bunit;
+using CodeGenerationEngine.Core;
+using CodeGenerationEngine.Models;
 using CodeGenerator.App;
 using CodeGenerator.Web.Chat;
 using CodeGenerator.Web.Components;
@@ -206,6 +208,65 @@ public class ChatPageTests
         chip.Click();
 
         Assert.AreEqual(text, offered);
+    }
+
+    /// <summary>
+    /// The root of the tree is the workspace the session loaded, not one the sidebar went looking
+    /// for on its own.
+    /// </summary>
+    /// <remarks>
+    /// The whole node hangs on one attribute being passed down, and a page that forgot to pass it
+    /// still draws a tree — one rooted in a nameless folder. The title is asserted rather than the
+    /// count, because every project any other test has registered is in that count too.
+    /// </remarks>
+    [TestMethod]
+    public void The_tree_is_rooted_in_the_workspace_the_session_loaded()
+    {
+        using var context = NewContext(out var session);
+
+        var project = Path.Combine(session.Root, "Acme.Web");
+
+        Directory.CreateDirectory(project);
+
+        File.WriteAllText(
+            Path.Combine(project, "Acme.Web.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+
+        // Declaring the project, because a solution that declares none fails to load and the
+        // workspace is then still rooted in the folder — which is what this test would be
+        // asserting about instead.
+        File.WriteAllText(
+            Path.Combine(session.Root, "Acme.slnx"),
+            """
+            <Solution>
+              <Project Path="Acme.Web/Acme.Web.csproj" />
+            </Solution>
+            """);
+
+        ProjectManager.Register(new ProjectMetaData
+        {
+            Success = true,
+            ProjectName = "Acme.Web",
+            ProjectPath = project,
+            CsProjPath = Path.Combine(project, "Acme.Web.csproj"),
+        });
+
+        session.ShowTree(true);
+
+        var page = context.Render<ChatPage>();
+        var root = page.Find(".tree-solution .tree-name");
+
+        Assert.AreEqual(session.Root, root.GetAttribute("title"));
+
+        // A folder was loaded, and there is an unopened solution file sitting in it. The node must
+        // say folder: naming that file would be the sidebar deciding what the workspace is.
+        StringAssert.Contains(root.TextContent, "Folder '");
+
+        session.Load(Path.Combine(session.Root, "Acme.slnx"));
+
+        page.Render();
+
+        StringAssert.Contains(
+            page.Find(".tree-solution .tree-name").TextContent, "Solution 'Acme'");
     }
 
     private static BunitContext NewContext()

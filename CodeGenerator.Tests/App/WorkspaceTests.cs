@@ -52,6 +52,51 @@ public class WorkspaceTests
             "a project the solution does not declare must not be registered");
     }
 
+    /// <summary>
+    /// The workspace keeps the solution it loaded, not just the fact that it loaded one.
+    /// </summary>
+    /// <remarks>
+    /// The chat page's tree names its root node from this. It used to go looking for a solution
+    /// file under the root instead, which on a repository holding four of them named whichever
+    /// sorted first — here, a project's own solution rather than the one that was opened.
+    /// </remarks>
+    [TestMethod]
+    public void The_workspace_remembers_the_solution_it_was_loaded_from()
+    {
+        var root = NewTree("Api", "Core");
+        var solution = Path.Combine(root, "App.slnx");
+
+        File.WriteAllText(solution, """
+            <Solution>
+              <Project Path="Api/Api.csproj" />
+            </Solution>
+            """);
+
+        var workspace = new Workspace(root, projectPathSet: false);
+
+        Assert.IsNull(workspace.SolutionPath, "nothing loaded yet");
+
+        workspace.LoadFrom(solution);
+
+        Assert.AreEqual(solution, workspace.SolutionPath);
+    }
+
+    /// <summary>A folder is a folder, and must not be reported as some solution inside it.</summary>
+    [TestMethod]
+    public void Loading_a_folder_leaves_the_workspace_with_no_solution()
+    {
+        var root = NewTree("Api");
+
+        File.WriteAllText(Path.Combine(root, "Api", "Api.slnx"), "<Solution />");
+
+        var workspace = new Workspace(root, projectPathSet: false);
+
+        workspace.LoadFrom(Path.Combine(root, "Api", "Api.slnx"));
+        workspace.LoadFrom(root);
+
+        Assert.IsNull(workspace.SolutionPath, "the folder load must clear the earlier solution");
+    }
+
     [TestMethod]
     public void Projects_outside_the_new_root_are_dropped()
     {

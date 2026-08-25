@@ -1,0 +1,164 @@
+@* The contents of one folder: the folders inside it, then the classes beside them.
+   Solution Explorer's order, and the reason a project no longer reads as one flat list.
+
+   This component renders the `<li>` items only — the `<ul>` around them belongs to whoever is
+   opening the folder, which is what lets one level's padding indent every level below it. For each
+   folder inside it, it renders itself again: the tree then goes exactly as deep as the project
+   does, with no level count anywhere in the markup.
+
+   The open sets are passed down rather than held here, and every toggle goes back up to the page.
+   A component that remembered which of its folders was open would forget the moment its parent
+   folder closed, so reopening a folder would collapse everything under it. *@
+
+@foreach (var folder in Folder.Folders)
+{
+    var folderOpen = OpenFolders.Contains(folder.Path);
+
+    <li class="tree-node">
+        <div class="tree-row tree-folder">
+            <button type="button" class="tree-twisty @(folderOpen ? "tree-twisty-open" : "")"
+                    aria-expanded="@folderOpen"
+                    title="@(folderOpen ? "Collapse" : "Expand")"
+                    @onclick="() => OnToggleFolder.InvokeAsync(folder.Path)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="m9 6 6 6-6 6" />
+                </svg>
+            </button>
+
+            <TreeIcon Kind="@(folderOpen ? TreeIconKind.FolderOpen : TreeIconKind.Folder)" />
+
+            <button type="button" class="tree-name"
+                    @onclick="() => OnToggleFolder.InvokeAsync(folder.Path)">
+                @folder.Name
+            </button>
+        </div>
+
+        @if (folderOpen)
+        {
+            <ul class="tree-list tree-children">
+                <TreeFolderView Folder="folder"
+                                Tree="Tree"
+                                OpenFolders="OpenFolders"
+                                OpenClasses="OpenClasses"
+                                Disabled="Disabled"
+                                OnCommand="OnCommand"
+                                OnToggleFolder="OnToggleFolder"
+                                OnToggleClass="OnToggleClass" />
+            </ul>
+        }
+    </li>
+}
+
+@* The loop variable is `entry`, never `class`: Razor treats `class` as reserved in an implicit
+   expression and `@class` in markup collides with the attribute of that name. And each command is
+   built into a local before the markup, because an interpolated string inside a double-quoted
+   attribute ends the attribute at its own first quote. *@
+@foreach (var entry in Folder.Classes)
+{
+    var entryOpen = OpenClasses.Contains(entry.File);
+    var show = $"show class {entry.Name}";
+    var found = entry.File.Length > 0;
+
+    <li class="tree-node">
+        <div class="tree-row tree-class">
+            <button type="button" class="tree-twisty @(entryOpen ? "tree-twisty-open" : "")"
+                    aria-expanded="@entryOpen"
+                    disabled="@(!found)"
+                    title="@(entryOpen ? "Collapse" : "Expand")"
+                    @onclick="() => OnToggleClass.InvokeAsync(entry.File)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="m9 6 6 6-6 6" />
+                </svg>
+            </button>
+
+            <TreeIcon Kind="TreeIconKind.Class" />
+
+            @* `show class` only reads. Running it on a click is safe, and a tree you have to click
+               twice to use is one people stop using. Nothing that writes is ever a click away
+               in here. *@
+            <button type="button" class="tree-name tree-open-class"
+                    disabled="@Disabled"
+                    title="@show"
+                    @onclick="() => Run(show)">@entry.Name</button>
+        </div>
+
+        @if (entryOpen)
+        {
+            <ul class="tree-list tree-members">
+                @if (Tree.MembersOf(entry).Count == 0)
+                {
+                    <li class="tree-none">Nothing public</li>
+                }
+
+                @foreach (var member in Tree.MembersOf(entry))
+                {
+                    <li class="tree-member">
+                        <TreeIcon Kind="@(member.IsMethod ? TreeIconKind.Method : TreeIconKind.Property)" />
+                        <span class="tree-member-name">@Label(member)</span>
+                        <span class="tree-member-type">@member.Type</span>
+                    </li>
+                }
+            </ul>
+        }
+    </li>
+}
+
+@if (Folder.Folders.Count == 0 && Folder.Classes.Count == 0)
+{
+    <li class="tree-none">No classes yet</li>
+}
+
+@code {
+    /// <summary>The folder whose contents these rows are.</summary>
+    [Parameter, EditorRequired]
+    public TreeFolder Folder { get; set; } = default!;
+
+    /// <summary>Reads the members of a class when one is opened.</summary>
+    [Parameter, EditorRequired]
+    public ProjectTree Tree { get; set; } = default!;
+
+    /// <summary>
+    /// Which folders are open, by absolute path.
+    /// </summary>
+    /// <remarks>
+    /// The page's own set, handed down rather than copied: a folder deep in one project and a
+    /// folder of the same name in the next are two different rows, and only the full path tells
+    /// them apart.
+    /// </remarks>
+    [Parameter, EditorRequired]
+    public HashSet<string> OpenFolders { get; set; } = default!;
+
+    /// <summary>Which classes are open, by file path.</summary>
+    [Parameter, EditorRequired]
+    public HashSet<string> OpenClasses { get; set; } = default!;
+
+    /// <summary>Whether a command is in flight, in which case nothing here may start another.</summary>
+    [Parameter]
+    public bool Disabled { get; set; }
+
+    /// <summary>Raised with a command the tree wants run.</summary>
+    [Parameter]
+    public EventCallback<string> OnCommand { get; set; }
+
+    /// <summary>Raised with the folder that was clicked.</summary>
+    [Parameter]
+    public EventCallback<string> OnToggleFolder { get; set; }
+
+    /// <summary>Raised with the file of the class that was clicked.</summary>
+    [Parameter]
+    public EventCallback<string> OnToggleClass { get; set; }
+
+    /// <summary>
+    /// The one place a command leaves this component, and the one place it can be refused.
+    /// </summary>
+    /// <remarks>
+    /// The button is disabled as well, but that only stops a pointer: the guard is what stops a
+    /// second command from being started while the first is still holding the console.
+    /// </remarks>
+    private Task Run(string command) => Disabled ? Task.CompletedTask : OnCommand.InvokeAsync(command);
+
+    /// <summary>A member as it reads in the tree. Brackets mark a method as a method.</summary>
+    private static string Label(TreeMember member) => member.IsMethod ? member.Name + "()" : member.Name;
+}
