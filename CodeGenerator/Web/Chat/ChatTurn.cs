@@ -32,3 +32,6 @@ public sealed record ChatTurn(
     CommandKind Kind,
     ChatVerdict Verdict,
     IReadOnlyList<OutputBlock> Blocks);
+
+/// <summary>A question the session is waiting on an answer to.</summary>
+public sealed record AiQuestion(string Text);

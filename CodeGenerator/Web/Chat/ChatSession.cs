@@ -76,6 +76,66 @@ public sealed class ChatSession
 
     public IReadOnlyList<string> History => _history;
 
+    private readonly Lock _questionGate = new();
+
+    private TaskCompletionSource<bool>? _answer;
+
+    /// <summary>The question every tab is showing, or null.</summary>
+    public AiQuestion? Question { get; private set; }
+
+    /// <summary>
+    /// Puts a question on every tab and blocks until one of them answers.
+    /// </summary>
+    /// <remarks>
+    /// Called from inside the pipeline, on the worker thread, because that is how
+    /// <c>confirmAi</c> is shaped: a synchronous <c>Func&lt;AiResolution, bool&gt;</c> invoked
+    /// from deep inside the command. Blocking here is the point, since the command genuinely
+    /// cannot continue until the answer arrives.
+    /// <para>
+    /// The one thing that must never happen is this thread waiting forever. A tab closed while the
+    /// question is on screen ends the session (the host abandons it after its grace period), and
+    /// <see cref="End"/> releases this with a no. Without that, the command hangs and the console
+    /// that started the chat hangs behind it.
+    /// </para>
+    /// </remarks>
+    internal bool Ask(AiQuestion question)
+    {
+        TaskCompletionSource<bool> pending;
+
+        lock (_questionGate)
+        {
+            if (Ended)
+                return false;
+
+            pending = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+
+            _answer = pending;
+            Question = question;
+        }
+
+        Raise();
+
+        var answered = pending.Task.GetAwaiter().GetResult();
+
+        lock (_questionGate)
+        {
+            Question = null;
+            _answer = null;
+        }
+
+        Raise();
+
+        return answered;
+    }
+
+    /// <summary>Answers the question on screen. Does nothing if there is none.</summary>
+    public void Answer(bool yes)
+    {
+        lock (_questionGate)
+            _answer?.TrySetResult(yes);
+    }
+
     /// <summary>
     /// Runs one message and adds its turn.
     /// </summary>
@@ -148,6 +208,12 @@ public sealed class ChatSession
     public void End()
     {
         Ended = true;
+
+        // Before the repaint, and with a no: a question nobody is left to answer must not hold
+        // the command, and the console behind it, open.
+        lock (_questionGate)
+            _answer?.TrySetResult(false);
+
         Raise();
     }
 
@@ -299,8 +365,10 @@ public sealed class ChatSession
             input, ref project, _workspace.Rules, _workspace.Root,
             r => ProjectManager.CurrentProject = r,
             onAnalyzed: null,
-            aiResolver: null,
-            confirmAi: null,
+            aiResolver: _ai.Resolver,
+            confirmAi: resolution => AiDecisionRecorder.ConfirmAndRecord(
+                resolution, input, _ai.DecisionLog,
+                r => Ask(new AiQuestion(AiConfirmPrompt.Title(r)))),
             ct: ct);
 
         _currentProject = project;
