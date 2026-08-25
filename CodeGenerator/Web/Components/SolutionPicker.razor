@@ -1,31 +1,68 @@
 @* Choosing a solution, a project or a folder. Listed by this process, because a browser file
    input never hands the server a real path and a native dialog opens behind the browser. *@
 
-<div class="picker">
-    <div class="picker-row">
-        <input class="picker-path" value="@_path" @onchange="OnPathChanged"
-               placeholder="Path to a .sln, .slnx, .csproj or folder" />
-        <button type="button" class="picker-load" @onclick="Load">Load</button>
+<section class="picker">
+    <div class="picker-inner">
+        <span class="picker-title">Work on</span>
+
+        <div class="picker-row">
+            <input class="picker-path" value="@_path" @onchange="OnPathChanged"
+                   placeholder="Path to a .sln, .slnx, .csproj or folder" />
+            <button type="button" class="picker-load" @onclick="Load">Load</button>
+        </div>
+
+        @if (_problem is not null)
+        {
+            <div class="picker-problem">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
+                     stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                     aria-hidden="true">
+                    <circle cx="12" cy="12" r="9" />
+                    <path d="M12 8v5" />
+                    <path d="M12 16h.01" />
+                </svg>
+                @_problem
+            </div>
+        }
+
+        <ul class="picker-list">
+            @if (FolderListing.ParentOf(_browsing) is { } parent)
+            {
+                <li class="picker-entry picker-up" @onclick="() => Browse(parent)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M12 19V6" />
+                        <path d="m6 12 6-6 6 6" />
+                    </svg>
+                    ..
+                </li>
+            }
+
+            @foreach (var entry in FolderListing.For(_browsing))
+            {
+                <li class="picker-entry @(entry.IsDirectory ? "" : "picker-solution")"
+                    @onclick="() => Choose(entry)">
+                    @if (entry.IsDirectory)
+                    {
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                        </svg>
+                    }
+                    else
+                    {
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+                            <path d="M14 3v5h5" />
+                        </svg>
+                    }
+                    @entry.Name
+                </li>
+            }
+        </ul>
     </div>
-
-    @if (_problem is not null)
-    {
-        <div class="picker-problem">@_problem</div>
-    }
-
-    <ul class="picker-list">
-        @if (FolderListing.ParentOf(_browsing) is { } parent)
-        {
-            <li class="picker-entry picker-up" @onclick="() => Browse(parent)">..</li>
-        }
-
-        @foreach (var entry in FolderListing.For(_browsing))
-        {
-            <li class="picker-entry @(entry.IsDirectory ? "" : "picker-solution")"
-                @onclick="() => Choose(entry)">@entry.Name</li>
-        }
-    </ul>
-</div>
+</section>
 
 @code {
     private string _path = string.Empty;
@@ -34,6 +71,14 @@
 
     [Parameter, EditorRequired]
     public ChatSession Session { get; set; } = default!;
+
+    /// <summary>Raised after a load that worked, so the page can put the panel away.</summary>
+    /// <remarks>
+    /// Only on success. A path that could not be loaded leaves the panel open with the problem
+    /// under the box it was typed into, which is where the mistake is fixed.
+    /// </remarks>
+    [Parameter]
+    public EventCallback OnLoaded { get; set; }
 
     protected override void OnInitialized()
     {
@@ -50,16 +95,16 @@
         _problem = null;
     }
 
-    private void Choose(FolderEntry entry)
+    private Task Choose(FolderEntry entry)
     {
         if (entry.IsDirectory)
         {
             Browse(entry.Path);
-            return;
+            return Task.CompletedTask;
         }
 
         _path = entry.Path;
-        Load();
+        return Load();
     }
 
     /// <summary>
@@ -69,13 +114,17 @@
     /// The session records the outcome as a turn either way, so the transcript says what happened;
     /// the problem is repeated here because the box is where the mistake was made.
     /// </remarks>
-    private void Load()
+    private async Task Load()
     {
         var load = Session.Load(_path);
 
         _problem = load.Ok ? null : load.Problem;
 
-        if (load.Ok)
-            _browsing = load.Root;
+        if (!load.Ok)
+            return;
+
+        _browsing = load.Root;
+
+        await OnLoaded.InvokeAsync();
     }
 }

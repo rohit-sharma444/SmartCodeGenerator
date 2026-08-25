@@ -234,6 +234,61 @@ public class ChatComposerTests
         Assert.AreEqual("list classes", composer.Find("textarea").GetAttribute("value"));
     }
 
+    /// <summary>The visible twin of the Enter rule. Enter stays the fast path; this is the one
+    /// that can be found without being told about.</summary>
+    [TestMethod]
+    public void The_send_button_sends_what_is_in_the_box()
+    {
+        using var context = NewContext();
+        string? sent = null;
+
+        var composer = context.Render<ChatComposer>(p => p
+            .Add(c => c.OnSend, (string s) => sent = s));
+
+        composer.Find("textarea").Input("status");
+        composer.Find(".composer-send").Click();
+
+        Assert.AreEqual("status", sent);
+    }
+
+    [TestMethod]
+    public void The_send_button_is_dead_until_something_is_typed()
+    {
+        using var context = NewContext();
+
+        var composer = context.Render<ChatComposer>();
+
+        Assert.IsTrue(composer.Find(".composer-send").HasAttribute("disabled"));
+
+        composer.Find("textarea").Input("status");
+
+        Assert.IsFalse(composer.Find(".composer-send").HasAttribute("disabled"));
+    }
+
+    /// <summary>Whitespace is not a command. The console prints nothing for an empty line, and a
+    /// live button over a box holding two spaces promises otherwise.</summary>
+    [TestMethod]
+    public void The_send_button_is_dead_for_whitespace()
+    {
+        using var context = NewContext();
+
+        var composer = context.Render<ChatComposer>();
+
+        composer.Find("textarea").Input("   ");
+
+        Assert.IsTrue(composer.Find(".composer-send").HasAttribute("disabled"));
+    }
+
+    [TestMethod]
+    public void The_send_button_is_dead_while_a_command_is_running()
+    {
+        using var context = NewContext();
+
+        var composer = context.Render<ChatComposer>(p => p.Add(c => c.Disabled, true));
+
+        Assert.IsTrue(composer.Find(".composer-send").HasAttribute("disabled"));
+    }
+
     /// <summary>Loose interop: the box takes the caret back after the component writes into it,
     /// and focusing is a call the strict default refuses.</summary>
     private static BunitContext NewContext()

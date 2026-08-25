@@ -1,263 +1,364 @@
-/* Self-contained: no CDN, no web font, the same constraint workflow.css works under. */
-
-/* Repeated from workflow.css rather than depended on, so this stylesheet stands on its own if
-   the two are ever served separately. The values are the same on purpose. */
-:root {
-    --ink: #1c1c1c;
-    --paper: #fbfbfa;
-    --line: #d3d3cf;
-    --pending: #8a8a85;
-    --active: #1f6feb;
-    --done: #1a7f37;
-    --failed: #b3261e;
-
-    /* Amber: the tool understood nothing, or would not attempt it. Neither is a fault. */
-    --unsure: #b26a00;
-}
+/* The chat page, top to bottom.
+ *
+ * Self-contained: no CDN, no web font, no icon font - the same constraint workflow.css works
+ * under, because the tool has to work with no network.
+ *
+ * Two things about the way this file is scoped are load-bearing.
+ *
+ * First, every colour is a custom property declared on `.chat`, not on `:root`. Both stylesheets
+ * are linked from App.razor on every page, so a `:root` block here would reach the workflow page
+ * as well - and this file has a dark theme, which that page has no rules for. Scoping to `.chat`
+ * makes it impossible for the dark palette below to half-repaint a page it was never designed for.
+ *
+ * Second, `.chat` is `position: fixed; inset: 0`. That is not a layout flourish: workflow.css puts
+ * `padding: 2rem` and the light `--paper` background on `body`, and taking the chat out of flow is
+ * how it escapes both without editing a file another page depends on. It also gives the transcript
+ * its own scroll container, so the composer stays put instead of being chased down the page. */
 
 .chat {
-    max-width: 1100px;
-    margin: 0 auto;
+    /* Light. The dark set overrides these below; nothing outside this block hardcodes a colour,
+       so a value missing from the dark set shows up as a light patch rather than as a hole. */
+    --surface: #f5f6f8;
+    --panel: #ffffff;
+    --sunken: #f7f8fa;
+
+    --ink: #16181d;
+    --ink-soft: #5b616e;
+    --ink-faint: #8a909c;
+
+    --line: #e3e5ea;
+    --line-strong: #cdd1d9;
+
+    --accent: #2563eb;
+    --accent-ink: #ffffff;
+    --accent-soft: #eef3ff;
+
+    --done: #15803d;
+    --done-soft: #ecf7f0;
+    --failed: #b3261e;
+    --failed-soft: #fdeeec;
+
+    /* Amber: the tool understood nothing, or would not attempt it. Neither is a fault. */
+    --unsure: #a75d00;
+    --unsure-soft: #fdf4e7;
+
+    /* Four roles, and nothing at all for plain text - colouring everything colours nothing. */
+    --tok-keyword: #0b5cd5;
+    --tok-text: #a31515;
+    --tok-comment: #15803d;
+    --tok-number: #098658;
+
+    --shadow-1: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.08);
+    --shadow-2: 0 6px 16px rgba(16, 24, 40, 0.08), 0 16px 32px rgba(16, 24, 40, 0.08);
+
+    --mono: 13px/1.55 Consolas, "Cascadia Mono", "SF Mono", Menlo, monospace;
+    --radius: 10px;
+    --radius-sm: 7px;
+
+    /* The centred column. Every full-bleed band inside sets this on its own inner element, so the
+       bands stretch edge to edge while their content stays in one column. */
+    --column: 1040px;
+
+    position: fixed;
+    inset: 0;
     display: flex;
     flex-direction: column;
-    gap: 1rem;
-}
-
-.transcript {
-    display: flex;
-    flex-direction: column;
-    gap: 1.25rem;
-}
-
-.turn {
-    border-left: 3px solid var(--line);
-    padding: 0 0 0 0.9rem;
-}
-
-.turn-succeeded { border-left-color: var(--done); }
-.turn-failed { border-left-color: var(--failed); }
-.turn-unrecognized { border-left-color: var(--unsure); }
-.turn-declined { border-left-color: var(--unsure); }
-
-/* The typed line, set apart from the answer so a long transcript still reads as a conversation. */
-.turn-said {
-    font-weight: 600;
-    margin: 0 0 0.5rem;
-    white-space: pre-wrap;
-    word-break: break-word;
-}
-
-.block-heading {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-    margin: 0.5rem 0 0.25rem;
-    color: var(--pending);
-    font-size: 0.85rem;
-}
-
-.block-text,
-.block-code {
-    margin: 0;
-    padding: 0.6rem 0.8rem;
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    background: #fff;
-    font: 13px/1.5 Consolas, "Cascadia Mono", monospace;
-
-    /* Inside its own box. The page body must never scroll sideways. */
-    overflow-x: auto;
-    white-space: pre;
-}
-
-/* A wide table scrolls in here rather than widening the page. */
-.block-scroll { overflow-x: auto; }
-
-.block-table {
-    border-collapse: collapse;
-    font: 13px/1.5 Consolas, "Cascadia Mono", monospace;
-}
-
-.block-table th,
-.block-table td {
-    border: 1px solid var(--line);
-    padding: 0.3rem 0.6rem;
-    text-align: left;
-    white-space: nowrap;
-}
-
-.block-table th { background: #f3f3f1; }
-
-.block-list {
-    margin: 0;
-    padding: 0 0 0 1.2rem;
-    font: 13px/1.6 Consolas, "Cascadia Mono", monospace;
-}
-
-.block-copy,
-.block-more,
-.working-stop {
-    border: 1px solid var(--line);
-    border-radius: 5px;
-    background: #fff;
+    background: var(--surface);
     color: var(--ink);
-    padding: 0.2rem 0.6rem;
-    font: inherit;
-    font-size: 0.8rem;
-    cursor: pointer;
+    font: 15px/1.55 "Segoe UI", system-ui, -apple-system, sans-serif;
+
+    /* So the textarea, the scrollbars and the caret follow the theme rather than staying light
+       inside a dark page. */
+    color-scheme: light;
 }
 
-.block-copy:hover,
-.block-more:hover,
-.working-stop:hover:not(:disabled) { border-color: var(--active); color: var(--active); }
+/* System-driven, deliberately: a toggle is a control with state to persist and to disagree about
+   across two tabs of one session. The OS already knows the answer. */
+@media (prefers-color-scheme: dark) {
+    .chat {
+        --surface: #131519;
+        --panel: #1b1e24;
+        --sunken: #16191e;
 
-.working-stop:disabled { color: var(--pending); cursor: default; }
+        --ink: #e6e8ec;
+        --ink-soft: #a3aab7;
+        --ink-faint: #79808f;
 
-.block-more { margin: 0.35rem 0 0; }
+        --line: #2b3038;
+        --line-strong: #3c434f;
 
-/* Four roles, and nothing at all for plain text — colouring everything colours nothing. */
-.tok-keyword { color: #0000c0; }
-.tok-text { color: #a31515; }
-.tok-comment { color: #1a7f37; font-style: italic; }
-.tok-number { color: #098658; }
+        --accent: #6ea8ff;
+        --accent-ink: #0d1117;
+        --accent-soft: #1b2740;
 
-.working {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    color: var(--pending);
-    font-size: 0.9rem;
+        --done: #56d68a;
+        --done-soft: #16251c;
+        --failed: #ff9187;
+        --failed-soft: #2b1a19;
+        --unsure: #eab145;
+        --unsure-soft: #2a2214;
+
+        --tok-keyword: #7bb0ff;
+        --tok-text: #ce9178;
+        --tok-comment: #6a9955;
+        --tok-number: #b5cea8;
+
+        --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+        --shadow-2: 0 6px 16px rgba(0, 0, 0, 0.45), 0 16px 32px rgba(0, 0, 0, 0.35);
+
+        color-scheme: dark;
+    }
 }
 
-/* The composer sits at the foot of the page and the dropdown opens above it, so a long list
-   never pushes the box off the bottom of the screen. */
-.composer {
-    display: flex;
-    flex-direction: column;
-    gap: 0.4rem;
-    position: sticky;
-    bottom: 0;
-    background: var(--paper);
-    padding: 0.5rem 0 0;
-}
+.chat *,
+.chat *::before,
+.chat *::after { box-sizing: border-box; }
 
-.composer textarea {
-    width: 100%;
-    box-sizing: border-box;
-    resize: vertical;
-    padding: 0.6rem 0.8rem;
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    background: #fff;
-    color: var(--ink);
-    font: 14px/1.5 Consolas, "Cascadia Mono", monospace;
-}
 
-.composer textarea:focus { outline: 2px solid var(--active); outline-offset: -1px; }
+/* --- The header band ------------------------------------------------------------------- */
 
-.composer textarea:disabled { background: #f3f3f1; color: var(--pending); }
-
-.suggestions {
-    margin: 0;
-    padding: 0;
-    list-style: none;
-    max-height: 15rem;
-    overflow-y: auto;
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    background: #fff;
-}
-
-.suggestion {
-    display: grid;
-    grid-template-columns: minmax(9rem, auto) 1fr;
-    gap: 0.1rem 0.9rem;
-    padding: 0.4rem 0.7rem;
-    cursor: pointer;
+/* What the next command acts on. Fixed at the top of the frame, because the answer to "where is
+   this going to write" must not be something you scroll back for. */
+.strip {
+    flex: 0 0 auto;
+    background: var(--panel);
     border-bottom: 1px solid var(--line);
 }
 
-.suggestion:last-child { border-bottom: none; }
-
-.suggestion-on { background: #eef4ff; }
-
-.suggestion-command {
-    grid-row: span 2;
-    font: 13px/1.5 Consolas, "Cascadia Mono", monospace;
-    font-weight: 600;
-}
-
-.suggestion-description { font-size: 0.85rem; }
-
-.suggestion-example {
-    font: 12px/1.4 Consolas, "Cascadia Mono", monospace;
-    color: var(--pending);
-}
-
-/* What the next command acts on. Sticky at the top, because the answer to "where is this going
-   to write" must not be something you scroll back for. */
-.strip {
+.strip-inner {
+    max-width: var(--column);
+    margin: 0 auto;
     display: flex;
+    align-items: center;
+    gap: 1.25rem;
+    padding: 0.7rem 1.25rem;
+}
+
+.brand {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex: 0 0 auto;
+}
+
+.brand-mark {
+    width: 26px;
+    height: 26px;
+    flex: 0 0 auto;
+    color: var(--accent);
+}
+
+.brand-text {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.15;
+}
+
+.brand-name {
+    font-size: 0.9rem;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+}
+
+.brand-sub {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--ink-faint);
+}
+
+/* Allowed to shrink, so a deep path gives way before the facts do rather than shoving the Change
+   button off the bar. */
+.strip-context {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem 0.9rem;
     flex-wrap: wrap;
-    align-items: baseline;
-    gap: 0.4rem 1rem;
-    position: sticky;
-    top: 0;
-    z-index: 1;
-    padding: 0.5rem 0.7rem;
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    background: #fff;
-    font-size: 0.85rem;
 }
 
 .strip-root {
-    font: 13px/1.5 Consolas, "Cascadia Mono", monospace;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font: var(--mono);
     font-weight: 600;
+    color: var(--ink);
+    padding: 0.2rem 0.55rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: var(--sunken);
 
-    /* A deep path truncates rather than wrapping the whole strip onto four lines. */
+    /* A deep path truncates rather than wrapping the whole bar onto four lines. */
     max-width: 100%;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
-.strip-fact { color: var(--pending); }
+.strip-root svg {
+    width: 13px;
+    height: 13px;
+    flex: 0 0 auto;
+    color: var(--ink-faint);
+}
 
-.question {
+.strip-facts {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 0.75rem;
-    padding: 0.6rem 0.8rem;
-    border: 1px solid var(--unsure);
-    border-radius: 6px;
-    background: #fff8ee;
+    gap: 0.3rem 0.5rem;
+    min-width: 0;
 }
 
-.question-text { flex: 1 1 20rem; }
+.strip-fact {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.78rem;
+    color: var(--ink-soft);
+    white-space: nowrap;
+}
+
+.strip-fact + .strip-fact::before {
+    content: "";
+    width: 3px;
+    height: 3px;
+    border-radius: 50%;
+    background: var(--line-strong);
+}
+
+.strip-fact-value { color: var(--ink); font-weight: 600; }
+
+/* On or off, said twice: the word for a reader, the colour for a glance. */
+.strip-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--line-strong);
+}
+
+.strip-dot-on { background: var(--done); }
+
+.strip-change {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-sm);
+    background: var(--panel);
+    color: var(--ink);
+    padding: 0.33rem 0.75rem;
+    font: inherit;
+    font-size: 0.8rem;
+    font-weight: 550;
+    cursor: pointer;
+    transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
+}
+
+.strip-change svg { width: 13px; height: 13px; }
+
+.strip-change:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-soft);
+}
+
+.strip-change-on {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--accent);
+}
+
+
+/* --- The question ---------------------------------------------------------------------- */
+
+/* A band rather than a card: the command behind it is blocked on the answer, so this is not
+   something to be skimmed past. */
+.question {
+    flex: 0 0 auto;
+    background: var(--unsure-soft);
+    border-bottom: 1px solid var(--unsure);
+}
+
+.question-inner {
+    max-width: var(--column);
+    margin: 0 auto;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.6rem 0.9rem;
+    padding: 0.7rem 1.25rem;
+}
+
+.question-mark {
+    width: 18px;
+    height: 18px;
+    flex: 0 0 auto;
+    color: var(--unsure);
+}
+
+.question-text {
+    flex: 1 1 20rem;
+    min-width: 0;
+    font-size: 0.9rem;
+    color: var(--ink);
+}
 
 .question-yes,
-.question-no,
-.picker-load {
-    border: 1px solid var(--line);
-    border-radius: 5px;
-    background: #fff;
+.question-no {
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-sm);
+    background: var(--panel);
     color: var(--ink);
-    padding: 0.25rem 0.9rem;
+    padding: 0.3rem 1rem;
     font: inherit;
+    font-size: 0.85rem;
+    font-weight: 550;
     cursor: pointer;
+    transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
 }
 
-.question-yes:hover,
-.question-no:hover,
-.picker-load:hover { border-color: var(--active); color: var(--active); }
+.question-yes {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: var(--accent-ink);
+}
 
+.question-yes:hover { filter: brightness(1.08); }
+
+.question-no:hover { border-color: var(--accent); color: var(--accent); }
+
+
+/* --- The solution picker --------------------------------------------------------------- */
+
+/* Collapsed until asked for. Open, it is a band under the header rather than a floating panel:
+   choosing where the tool writes is not a thing to do in a popover that a stray click closes. */
 .picker {
+    flex: 0 0 auto;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+    box-shadow: var(--shadow-1);
+}
+
+.picker-inner {
+    max-width: var(--column);
+    margin: 0 auto;
     display: flex;
     flex-direction: column;
-    gap: 0.4rem;
+    gap: 0.55rem;
+    padding: 0.9rem 1.25rem 1rem;
+}
+
+.picker-title {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--ink-faint);
+    font-weight: 650;
 }
 
 .picker-row { display: flex; gap: 0.5rem; }
@@ -265,57 +366,674 @@
 .picker-path {
     flex: 1 1 auto;
     min-width: 0;
-    padding: 0.35rem 0.6rem;
-    border: 1px solid var(--line);
-    border-radius: 5px;
-    background: #fff;
+    padding: 0.45rem 0.7rem;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-sm);
+    background: var(--sunken);
     color: var(--ink);
-    font: 13px/1.5 Consolas, "Cascadia Mono", monospace;
+    font: var(--mono);
 }
 
-.picker-problem { color: var(--failed); font-size: 0.85rem; }
+.picker-path:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: -1px;
+    background: var(--panel);
+}
+
+.picker-load {
+    flex: 0 0 auto;
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-sm);
+    background: var(--accent);
+    color: var(--accent-ink);
+    padding: 0.35rem 1.1rem;
+    font: inherit;
+    font-size: 0.85rem;
+    font-weight: 550;
+    cursor: pointer;
+    transition: filter 120ms ease;
+}
+
+.picker-load:hover { filter: brightness(1.08); }
+
+.picker-problem {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: var(--failed);
+    font-size: 0.83rem;
+}
 
 /* Capped, so a folder with two hundred subdirectories cannot push the composer off the screen. */
 .picker-list {
     margin: 0;
-    padding: 0;
+    padding: 0.25rem;
     list-style: none;
     max-height: 11rem;
     overflow-y: auto;
     border: 1px solid var(--line);
-    border-radius: 6px;
-    background: #fff;
+    border-radius: var(--radius-sm);
+    background: var(--sunken);
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-strong) transparent;
 }
 
 .picker-entry {
-    padding: 0.2rem 0.7rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 5px;
     cursor: pointer;
-    font: 13px/1.6 Consolas, "Cascadia Mono", monospace;
+    font: var(--mono);
+    color: var(--ink);
 }
 
-.picker-entry:hover { background: #eef4ff; }
+.picker-entry svg {
+    width: 13px;
+    height: 13px;
+    flex: 0 0 auto;
+    color: var(--ink-faint);
+}
 
-.picker-up { color: var(--pending); }
+.picker-entry:hover { background: var(--accent-soft); color: var(--accent); }
+
+.picker-entry:hover svg { color: var(--accent); }
+
+.picker-up { color: var(--ink-faint); }
 
 /* The thing you came to click. */
-.picker-solution { font-weight: 600; color: var(--active); }
+.picker-solution { font-weight: 650; color: var(--accent); }
+
+.picker-solution svg { color: var(--accent); }
+
+
+/* --- The scrolling middle -------------------------------------------------------------- */
+
+/* min-height: 0 is the whole trick - without it a flex child refuses to shrink below its content
+   and the transcript pushes the composer off the bottom instead of scrolling. */
+.chat-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-strong) transparent;
+}
+
+.transcript {
+    max-width: var(--column);
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    padding: 1.25rem;
+}
+
+
+/* --- A turn ---------------------------------------------------------------------------- */
+
+.turn {
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--line-strong);
+    border-radius: var(--radius);
+    background: var(--panel);
+    box-shadow: var(--shadow-1);
+    overflow: hidden;
+}
+
+.turn-succeeded { border-left-color: var(--done); }
+.turn-failed { border-left-color: var(--failed); }
+.turn-unrecognized { border-left-color: var(--unsure); }
+.turn-declined { border-left-color: var(--unsure); }
+
+/* What was typed, set apart from the answer so a long transcript still reads as a conversation. */
+.turn-head {
+    display: flex;
+    align-items: baseline;
+    gap: 0.7rem;
+    padding: 0.6rem 0.9rem;
+    background: var(--sunken);
+    border-bottom: 1px solid var(--line);
+}
+
+.turn-who {
+    flex: 0 0 auto;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink-faint);
+}
+
+.turn-said {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin: 0;
+    font: var(--mono);
+    font-weight: 600;
+    color: var(--ink);
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.turn-time {
+    flex: 0 0 auto;
+    font-size: 0.73rem;
+    color: var(--ink-faint);
+    font-variant-numeric: tabular-nums;
+}
+
+.turn-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.75rem 0.9rem 0.85rem;
+}
+
+/* The verdict in words as well as colour. Quiet for a success - that is the expected case and it
+   does not need announcing four times a screen - and legible for the three that are not. */
+.turn-verdict {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    align-self: flex-start;
+    font-size: 0.73rem;
+    font-weight: 650;
+    letter-spacing: 0.02em;
+    padding: 0.1rem 0.55rem 0.1rem 0.45rem;
+    border-radius: 999px;
+}
+
+.turn-verdict::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+}
+
+.turn-succeeded .turn-verdict { color: var(--done); background: var(--done-soft); }
+.turn-failed .turn-verdict { color: var(--failed); background: var(--failed-soft); }
+.turn-unrecognized .turn-verdict { color: var(--unsure); background: var(--unsure-soft); }
+.turn-declined .turn-verdict { color: var(--unsure); background: var(--unsure-soft); }
+
+
+/* --- Output blocks --------------------------------------------------------------------- */
+
+.block-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin: 0.25rem 0 -0.15rem;
+    color: var(--ink-soft);
+    font-size: 0.78rem;
+    font-weight: 600;
+}
+
+.block-text,
+.block-code {
+    margin: 0;
+    padding: 0.65rem 0.8rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: var(--sunken);
+    color: var(--ink);
+    font: var(--mono);
+
+    /* Inside its own box. The page body must never scroll sideways. */
+    overflow-x: auto;
+    white-space: pre;
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-strong) transparent;
+}
+
+/* A wide table scrolls in here rather than widening the page. */
+.block-scroll {
+    overflow-x: auto;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-strong) transparent;
+}
+
+.block-table {
+    border-collapse: collapse;
+    width: 100%;
+    font: var(--mono);
+}
+
+.block-table th,
+.block-table td {
+    border-bottom: 1px solid var(--line);
+    padding: 0.35rem 0.7rem;
+    text-align: left;
+    white-space: nowrap;
+}
+
+.block-table th {
+    background: var(--sunken);
+    color: var(--ink-soft);
+    font-weight: 650;
+}
+
+.block-table tbody tr:last-child td { border-bottom: none; }
+
+.block-table tbody tr:hover td { background: var(--accent-soft); }
+
+.block-list {
+    margin: 0;
+    padding: 0.55rem 0.8rem 0.6rem 1.9rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: var(--sunken);
+    font: var(--mono);
+}
+
+.block-list li { padding: 0.05rem 0; }
+
+.block-copy,
+.block-more {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    border: 1px solid var(--line-strong);
+    border-radius: 5px;
+    background: var(--panel);
+    color: var(--ink-soft);
+    padding: 0.2rem 0.6rem;
+    font: inherit;
+    font-size: 0.76rem;
+    font-weight: 550;
+    cursor: pointer;
+    transition: border-color 120ms ease, color 120ms ease, background 120ms ease;
+}
+
+.block-copy svg { width: 12px; height: 12px; }
+
+.block-copy:hover,
+.block-more:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-soft);
+}
+
+.block-more { align-self: flex-start; margin: 0; }
+
+.tok-keyword { color: var(--tok-keyword); }
+.tok-text { color: var(--tok-text); }
+.tok-comment { color: var(--tok-comment); font-style: italic; }
+.tok-number { color: var(--tok-number); }
 
 /* What it might have meant. One keystroke away, never a surprise execution. */
 .turn-chips {
     display: flex;
     flex-wrap: wrap;
+    align-items: center;
     gap: 0.4rem;
-    margin: 0.5rem 0 0;
+    margin: 0.15rem 0 0;
+}
+
+.turn-chips-label {
+    font-size: 0.76rem;
+    color: var(--ink-faint);
 }
 
 .turn-chip {
-    border: 1px solid var(--line);
+    border: 1px solid var(--line-strong);
     border-radius: 999px;
-    background: #fff;
+    background: var(--panel);
     color: var(--ink);
-    padding: 0.15rem 0.7rem;
-    font: 12px/1.6 Consolas, "Cascadia Mono", monospace;
+    padding: 0.17rem 0.75rem;
+    font: var(--mono);
+    font-size: 12px;
+    cursor: pointer;
+    transition: border-color 120ms ease, color 120ms ease, background 120ms ease;
+}
+
+.turn-chip:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-soft);
+}
+
+
+/* --- The empty state ------------------------------------------------------------------- */
+
+/* A blank page with a file browser on it is not an invitation. This is. */
+/* Centred in the scroller rather than pinned to the top of it: on a tall window the top-aligned
+   version leaves half a screen of empty grey under it and reads as a page that failed to load the
+   rest. min-height rather than height, so it still scrolls if it ever outgrows the box. */
+.welcome {
+    max-width: 640px;
+    min-height: 100%;
+    margin: 0 auto;
+    padding: 2.5rem 1.25rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: 0.5rem;
+}
+
+.welcome-mark {
+    width: 42px;
+    height: 42px;
+    color: var(--accent);
+    margin-bottom: 0.35rem;
+}
+
+.welcome-title {
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 650;
+    letter-spacing: -0.015em;
+}
+
+.welcome-lead {
+    margin: 0 0 1.1rem;
+    color: var(--ink-soft);
+    font-size: 0.9rem;
+    max-width: 44ch;
+}
+
+.welcome-chips {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 0.55rem;
+    width: 100%;
+    text-align: left;
+}
+
+.welcome-chip {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: var(--panel);
+    padding: 0.55rem 0.75rem;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    box-shadow: var(--shadow-1);
+    transition: border-color 120ms ease, transform 120ms ease, box-shadow 120ms ease;
+}
+
+.welcome-chip:hover {
+    border-color: var(--accent);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-2);
+}
+
+.welcome-chip-command {
+    font: var(--mono);
+    font-weight: 650;
+    color: var(--accent);
+}
+
+/* Clamped to two lines. These come from the command catalog, where `status` runs to four
+   sentences, and one card five lines deep beside three that are two makes the grid look broken
+   rather than dense. The whole description is a `help <name>` away. */
+.welcome-chip-what {
+    font-size: 0.79rem;
+    color: var(--ink-soft);
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+}
+
+.welcome-note {
+    margin: 1.1rem 0 0;
+    font-size: 0.78rem;
+    color: var(--ink-faint);
+}
+
+
+/* --- The foot: what is running, and the composer --------------------------------------- */
+
+.chat-foot {
+    flex: 0 0 auto;
+    background: var(--panel);
+    border-top: 1px solid var(--line);
+}
+
+.foot-inner {
+    max-width: var(--column);
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.75rem 1.25rem 0.85rem;
+}
+
+.working {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    color: var(--ink-soft);
+    font-size: 0.85rem;
+}
+
+.working-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.working-spinner {
+    flex: 0 0 auto;
+    width: 13px;
+    height: 13px;
+    border: 2px solid var(--line-strong);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: chat-spin 700ms linear infinite;
+}
+
+@keyframes chat-spin { to { transform: rotate(360deg); } }
+
+/* A spinner is decoration; the sentence beside it carries the meaning. */
+@media (prefers-reduced-motion: reduce) {
+    .working-spinner { animation: none; border-top-color: var(--line-strong); }
+    .welcome-chip:hover { transform: none; }
+}
+
+.working-stop {
+    flex: 0 0 auto;
+    border: 1px solid var(--line-strong);
+    border-radius: 5px;
+    background: var(--panel);
+    color: var(--ink);
+    padding: 0.2rem 0.7rem;
+    font: inherit;
+    font-size: 0.78rem;
+    font-weight: 550;
+    cursor: pointer;
+    transition: border-color 120ms ease, color 120ms ease;
+}
+
+.working-stop:hover:not(:disabled) { border-color: var(--failed); color: var(--failed); }
+
+.working-stop:disabled { color: var(--ink-faint); cursor: default; }
+
+/* The composer, and the dropdown that opens above it so a long list never pushes the box off the
+   bottom of the screen. */
+.composer {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+/* The box and its Send button, drawn as one control: the border lives out here and the textarea
+   inside has none, so focus rings the pair rather than half of it. */
+.composer-box {
+    display: flex;
+    align-items: flex-end;
+    gap: 0.5rem;
+    padding: 0.4rem 0.4rem 0.4rem 0.15rem;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius);
+    background: var(--sunken);
+    transition: border-color 120ms ease, box-shadow 120ms ease, background 120ms ease;
+}
+
+.composer-box:focus-within {
+    border-color: var(--accent);
+    background: var(--panel);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.composer textarea {
+    flex: 1 1 auto;
+    min-width: 0;
+    resize: vertical;
+    max-height: 40vh;
+    padding: 0.4rem 0.5rem;
+    border: none;
+    background: transparent;
+    color: var(--ink);
+    font: 14px/1.55 Consolas, "Cascadia Mono", "SF Mono", Menlo, monospace;
+}
+
+.composer textarea:focus { outline: none; }
+
+.composer textarea:disabled { color: var(--ink-faint); cursor: not-allowed; }
+
+.composer textarea::placeholder { color: var(--ink-faint); }
+
+.composer-send {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-sm);
+    background: var(--accent);
+    color: var(--accent-ink);
+    padding: 0.42rem 0.9rem;
+    font: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: filter 120ms ease;
+}
+
+.composer-send svg { width: 14px; height: 14px; }
+
+.composer-send:hover:not(:disabled) { filter: brightness(1.08); }
+
+/* Nothing typed, or a command in flight. Dimmed rather than hidden: a Send button that vanishes
+   is a Send button people stop looking for. */
+.composer-send:disabled {
+    border-color: var(--line-strong);
+    background: var(--line);
+    color: var(--ink-faint);
+    cursor: default;
+}
+
+.composer-hint {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem 0.8rem;
+    font-size: 0.74rem;
+    color: var(--ink-faint);
+}
+
+.composer-hint kbd {
+    font: var(--mono);
+    font-size: 11px;
+    padding: 0.03rem 0.3rem;
+    border: 1px solid var(--line-strong);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    background: var(--panel);
+    color: var(--ink-soft);
+}
+
+/* Above the box, and over whatever is behind it: this is a popover, so it must not push the
+   composer down as it grows. */
+.suggestions {
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    right: 0;
+    margin: 0 0 0.4rem;
+    padding: 0.25rem;
+    list-style: none;
+    max-height: 15rem;
+    overflow-y: auto;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius);
+    background: var(--panel);
+    box-shadow: var(--shadow-2);
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-strong) transparent;
+    z-index: 2;
+}
+
+.suggestion {
+    display: grid;
+    grid-template-columns: minmax(9rem, auto) 1fr;
+    gap: 0.05rem 0.9rem;
+    padding: 0.35rem 0.6rem;
+    border-radius: var(--radius-sm);
     cursor: pointer;
 }
 
-.turn-chip:hover { border-color: var(--active); color: var(--active); }
+.suggestion:hover { background: var(--sunken); }
+
+.suggestion-on { background: var(--accent-soft); }
+
+.suggestion-command {
+    grid-row: span 2;
+    align-self: center;
+    font: var(--mono);
+    font-weight: 650;
+    color: var(--ink);
+}
+
+.suggestion-on .suggestion-command { color: var(--accent); }
+
+.suggestion-description { font-size: 0.83rem; color: var(--ink); }
+
+.suggestion-example {
+    font: var(--mono);
+    font-size: 12px;
+    color: var(--ink-faint);
+}
+
+
+/* --- Narrow ---------------------------------------------------------------------------- */
+
+/* The bar carries four facts and a path. Below this there is not room for all of them side by
+   side, so the brand keeps its mark and drops its words, and the context wraps under. */
+@media (max-width: 760px) {
+    .strip-inner {
+        flex-wrap: wrap;
+        gap: 0.5rem 0.75rem;
+        padding: 0.6rem 0.9rem;
+    }
+
+    .brand-text { display: none; }
+
+    .strip-context { flex: 1 1 100%; order: 3; }
+
+    .transcript,
+    .foot-inner,
+    .picker-inner,
+    .question-inner { padding-left: 0.9rem; padding-right: 0.9rem; }
+
+    .welcome { padding-top: 2rem; }
+
+    .suggestion { grid-template-columns: 1fr; gap: 0; }
+
+    .suggestion-command { grid-row: auto; }
+}

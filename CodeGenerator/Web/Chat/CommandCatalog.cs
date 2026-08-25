@@ -43,6 +43,33 @@ public static class CommandCatalog
         return [.. prefix.Concat(contains).Take(limit)];
     }
 
+    /// <summary>
+    /// The handful of commands the empty page offers to start with.
+    /// </summary>
+    /// <remarks>
+    /// Named here but resolved out of <see cref="CommandDictionary.Commands"/>, so the wording
+    /// beside each one is the catalog's own and cannot drift from what <c>help</c> says. A name
+    /// that is renamed out of the catalog drops off this list rather than offering a command that
+    /// no longer exists.
+    /// <para>
+    /// All four only read. The first thing a page suggests should not be something that writes
+    /// files to a workspace the reader has not looked at yet.
+    /// </para>
+    /// </remarks>
+    public static IReadOnlyList<CommandInfo> Starters()
+    {
+        string[] wanted = ["list projects", "list classes", "status", "help"];
+
+        return
+        [
+            .. wanted
+                .Select(name => CommandDictionary.Commands.FirstOrDefault(
+                    c => string.Equals(c.Command, name, StringComparison.OrdinalIgnoreCase)))
+                .OfType<CommandInfo>()
+                .Where(Runnable)
+        ];
+    }
+
     private static bool Runnable(CommandInfo command)
         => !Declined.Any(d => command.Command.StartsWith(d, StringComparison.OrdinalIgnoreCase));
 }

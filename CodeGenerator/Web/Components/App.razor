@@ -21,6 +21,13 @@
     <script>
         window.chatCopy = text => navigator.clipboard?.writeText(text);
 
+        // The transcript scrolls inside its own box, so the newest turn has to be scrolled to
+        // rather than being wherever the page happens to end. Optional chaining because the
+        // element is gone by the time this arrives if the reader navigated away mid-command.
+        window.chatScrollToEnd = element => {
+            if (element) element.scrollTop = element.scrollHeight;
+        };
+
         // Enter sends, so the browser must not also type a newline into the box. Capture phase and
         // no stopPropagation, so Blazor's own keydown listener still receives the event and decides
         // what Enter means; this only stops the character. Shift+Enter is left alone, because that

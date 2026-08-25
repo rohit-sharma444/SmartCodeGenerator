@@ -19,14 +19,36 @@
         </ul>
     }
 
-    <textarea @key="_generation"
-              @ref="_box"
-              value="@_pushed"
-              disabled="@Disabled"
-              rows="2"
-              placeholder="Type a command…"
-              @oninput="OnInput"
-              @onkeydown="OnKeyDown"></textarea>
+    <div class="composer-box">
+        <textarea @key="_generation"
+                  @ref="_box"
+                  value="@_pushed"
+                  disabled="@Disabled"
+                  rows="2"
+                  placeholder="Type a command…"
+                  @oninput="OnInput"
+                  @onkeydown="OnKeyDown"></textarea>
+
+        @* The twin of the Enter rule below, and the discoverable one. Disabled rather than hidden
+           on an empty box: a button that comes and goes is a button people stop looking for. *@
+        <button type="button" class="composer-send"
+                disabled="@(Disabled || string.IsNullOrWhiteSpace(_text))"
+                @onclick="Send">
+            Send
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M4 12h15" />
+                <path d="m13 6 6 6-6 6" />
+            </svg>
+        </button>
+    </div>
+
+    @* The keyboard is the fast path and stays the fast path; this is where it is written down. *@
+    <div class="composer-hint">
+        <span><kbd>Enter</kbd> sends</span>
+        <span><kbd>Shift</kbd> + <kbd>Enter</kbd> for a new line</span>
+        <span><kbd>↑</kbd> for history</span>
+    </div>
 </div>
 
 @code {

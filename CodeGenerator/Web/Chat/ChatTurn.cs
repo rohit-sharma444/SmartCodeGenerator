@@ -26,12 +26,18 @@ public enum ChatVerdict
     Declined
 }
 
-/// <summary>One exchange: what was typed, what it was, and what came back.</summary>
+/// <summary>One exchange: what was typed, what it was, what came back, and when.</summary>
+/// <remarks>
+/// <paramref name="At"/> is last and optional so that the turns built in tests, which care about
+/// none of it, keep compiling. Unset it stays <c>default</c>, and the transcript draws no time at
+/// all rather than drawing the first of January in year one.
+/// </remarks>
 public sealed record ChatTurn(
     string Input,
     CommandKind Kind,
     ChatVerdict Verdict,
-    IReadOnlyList<OutputBlock> Blocks);
+    IReadOnlyList<OutputBlock> Blocks,
+    DateTimeOffset At = default);
 
 /// <summary>A question the session is waiting on an answer to.</summary>
 public sealed record AiQuestion(string Text);

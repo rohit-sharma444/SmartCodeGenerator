@@ -1,92 +1,122 @@
-@* One turn per exchange: what was typed, then what came back, tinted by how it turned out. *@
+@* One card per exchange: what was typed in the head, what came back in the body, tinted and
+   labelled by how it turned out. *@
 
 <div class="transcript">
     @foreach (var turn in Turns)
     {
-        <div class="turn turn-@Class(turn.Verdict)">
-            <div class="turn-said">@turn.Input</div>
-
-            @foreach (var block in turn.Blocks)
-            {
-                @switch (block)
+        <article class="turn turn-@Class(turn.Verdict)">
+            <div class="turn-head">
+                <span class="turn-who">You</span>
+                <div class="turn-said">@turn.Input</div>
+                @if (Time(turn) is { } time)
                 {
-                    case CodeBlock snippet:
-                        <div class="block-heading">
-                            <span>@snippet.Heading</span>
-                            <button type="button" class="block-copy"
-                                    @onclick="() => Copy(snippet.Code)">Copy</button>
-                        </div>
-                        <pre class="block-code">@foreach (var token in CSharpTokens.Scan(Shown(block, snippet.Code)))
-{<span class="tok-@token.Kind.ToString().ToLowerInvariant()">@token.Text</span>}</pre>
-                        @if (Collapsed(block, snippet.Code))
-                        {
-                            <button type="button" class="block-more"
-                                    @onclick="() => Expand(block)">Show all @Count(snippet.Code) lines</button>
-                        }
-                        break;
+                    <time class="turn-time">@time</time>
+                }
+            </div>
 
-                    case TableBlock table:
-                        <div class="block-heading"><span>@table.Heading</span></div>
-                        <div class="block-scroll">
-                            <table class="block-table">
-                                <thead>
-                                    <tr>
-                                        @foreach (var header in table.Headers)
-                                        {
-                                            <th>@header</th>
-                                        }
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach (var row in table.Rows)
-                                    {
+            <div class="turn-body">
+                @* The colour of the rail says this too. The word is here because a rail is not
+                   readable to someone who cannot separate the greens from the ambers, and because
+                   "Declined" and "Not understood" are different facts that share one colour. *@
+                <span class="turn-verdict">@Verdict(turn.Verdict)</span>
+
+                @foreach (var block in turn.Blocks)
+                {
+                    @switch (block)
+                    {
+                        case CodeBlock snippet:
+                            <div class="block-heading">
+                                <span>@snippet.Heading</span>
+                                <button type="button" class="block-copy"
+                                        @onclick="() => Copy(snippet.Code)">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                         stroke-width="2" stroke-linecap="round"
+                                         stroke-linejoin="round" aria-hidden="true">
+                                        <rect x="9" y="9" width="12" height="12" rx="2" />
+                                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                                    </svg>
+                                    Copy
+                                </button>
+                            </div>
+                            <pre class="block-code">@foreach (var token in CSharpTokens.Scan(Shown(block, snippet.Code)))
+{<span class="tok-@token.Kind.ToString().ToLowerInvariant()">@token.Text</span>}</pre>
+                            @if (Collapsed(block, snippet.Code))
+                            {
+                                <button type="button" class="block-more"
+                                        @onclick="() => Expand(block)">Show all @Count(snippet.Code) lines</button>
+                            }
+                            break;
+
+                        case TableBlock table:
+                            <div class="block-heading"><span>@table.Heading</span></div>
+                            <div class="block-scroll">
+                                <table class="block-table">
+                                    <thead>
                                         <tr>
-                                            @foreach (var cell in row)
+                                            @foreach (var header in table.Headers)
                                             {
-                                                <td>@cell</td>
+                                                <th>@header</th>
                                             }
                                         </tr>
-                                    }
-                                </tbody>
-                            </table>
-                        </div>
-                        break;
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var row in table.Rows)
+                                        {
+                                            <tr>
+                                                @foreach (var cell in row)
+                                                {
+                                                    <td>@cell</td>
+                                                }
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                            break;
 
-                    case ListBlock list:
-                        <div class="block-heading"><span>@list.Heading</span></div>
-                        <ul class="block-list">
-                            @foreach (var item in list.Items)
+                        case ListBlock list:
+                            <div class="block-heading"><span>@list.Heading</span></div>
+                            <ul class="block-list">
+                                @foreach (var item in list.Items)
+                                {
+                                    <li>@item</li>
+                                }
+                            </ul>
+                            break;
+
+                        case TextBlock text:
+                            <pre class="block-text">@Shown(block, text.Text)</pre>
+                            @if (Collapsed(block, text.Text))
                             {
-                                <li>@item</li>
+                                <button type="button" class="block-more"
+                                        @onclick="() => Expand(block)">Show all @Count(text.Text) lines</button>
                             }
-                        </ul>
-                        break;
-
-                    case TextBlock text:
-                        <pre class="block-text">@Shown(block, text.Text)</pre>
-                        @if (Collapsed(block, text.Text))
-                        {
-                            <button type="button" class="block-more"
-                                    @onclick="() => Expand(block)">Show all @Count(text.Text) lines</button>
-                        }
-                        break;
-                }
-            }
-
-            @* What it might have meant. These fill the box; they never run. These commands write
-               files and run `dotnet`, and a guess is not something to act on because someone
-               clicked near it. *@
-            @if (turn.Verdict == ChatVerdict.Unrecognized)
-            {
-                <div class="turn-chips">
-                    @foreach (var guess in CommandSuggester.Closest(turn.Input))
-                    {
-                        <button type="button" class="turn-chip"
-                                @onclick="() => Offer(guess)">@guess</button>
+                            break;
                     }
-                </div>
-            }
-        </div>
+                }
+
+                @* What it might have meant. These fill the box; they never run. These commands
+                   write files and run `dotnet`, and a guess is not something to act on because
+                   someone clicked near it. *@
+                @* Guessed once and held: the label must not be drawn by a condition the loop
+                   beneath it can then disagree with. Nothing at all is a real answer here — the
+                   suggester finds nothing for input far enough from every command — and a
+                   standing "Did you mean" with no guesses after it asks a question the page has
+                   no answer to. *@
+                @if (turn.Verdict == ChatVerdict.Unrecognized
+                     && CommandSuggester.Closest(turn.Input) is { Count: > 0 } guesses)
+                {
+                    <div class="turn-chips">
+                        <span class="turn-chips-label">Did you mean</span>
+                        @foreach (var guess in guesses)
+                        {
+                            <button type="button" class="turn-chip"
+                                    @onclick="() => Offer(guess)">@guess</button>
+                        }
+                    </div>
+                }
+            </div>
+        </article>
     }
 </div>
 
@@ -128,6 +158,29 @@
         ChatVerdict.Declined => "declined",
         _ => "unrecognized"
     };
+
+    /// <summary>The verdict as the badge says it.</summary>
+    /// <remarks>
+    /// "Not understood" rather than "Unrecognized": it is the same word the console uses to the
+    /// reader, and it says whose failure it was not.
+    /// </remarks>
+    private static string Verdict(ChatVerdict verdict) => verdict switch
+    {
+        ChatVerdict.Succeeded => "Succeeded",
+        ChatVerdict.Failed => "Failed",
+        ChatVerdict.Declined => "Declined",
+        _ => "Not understood"
+    };
+
+    /// <summary>
+    /// The clock time of a turn, or null for one that carries none.
+    /// </summary>
+    /// <remarks>
+    /// Turns built without a stamp — every one in the tests — leave <c>At</c> at its default, and
+    /// a head that quietly said 00:00 would be worse than a head with no time in it.
+    /// </remarks>
+    private static string? Time(ChatTurn turn)
+        => turn.At == default ? null : turn.At.ToString("HH:mm");
 
     private static string[] Lines(string text) => text.Replace("\r\n", "\n").Split('\n');
 

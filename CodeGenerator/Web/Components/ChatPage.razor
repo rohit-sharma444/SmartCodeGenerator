@@ -2,35 +2,77 @@
 @rendermode InteractiveServer
 @implements IDisposable
 @inject ChatSession Session
+@inject IJSRuntime Js
 
 @* Named ChatPage rather than Chat: a Chat component class beside the CodeGenerator.Web.Chat
    namespace is an ambiguity inside Components. *@
 
 <PageTitle>Chat — SmartCodeGenerator</PageTitle>
 
+@* The frame: a header band, an optional picker band, one scrolling middle, and a foot that stays
+   put. `.chat` is fixed to the viewport, which is also how it escapes the body padding and the
+   light background workflow.css sets for the other page. *@
 <div class="chat">
-    <ContextStrip Session="Session" />
-    <SolutionPicker Session="Session" />
+    <ContextStrip Session="Session" PickerOpen="_picking" OnChangeSolution="TogglePicker" />
 
-    <ChatTranscript Turns="Session.Turns" OnSuggestion="Prefill" />
-
-    @if (Session.Running)
+    @if (_picking)
     {
-        <div class="working">
-            <span>@(_stopping ? "Stopping" : "Working on") @Session.InFlight…</span>
-            <button type="button" class="working-stop" disabled="@_stopping"
-                    @onclick="Stop">Stop</button>
-        </div>
+        <SolutionPicker Session="Session" OnLoaded="ClosePicker" />
     }
 
-    <ChatComposer @ref="_composer"
-                  Disabled="Session.Running || Session.Ended"
-                  History="Session.History"
-                  OnSend="Send" />
+    <div class="chat-scroll" @ref="_scroll">
+        @if (Session.Turns.Count == 0)
+        {
+            <ChatWelcome OnPick="Prefill" />
+        }
+        else
+        {
+            <ChatTranscript Turns="Session.Turns" OnSuggestion="Prefill" />
+        }
+    </div>
+
+    <div class="chat-foot">
+        <div class="foot-inner">
+            @if (Session.Running)
+            {
+                <div class="working">
+                    <span class="working-spinner"></span>
+                    <span class="working-text">
+                        @(_stopping ? "Stopping" : "Working on") @Session.InFlight…
+                    </span>
+                    <button type="button" class="working-stop" disabled="@_stopping"
+                            @onclick="Stop">Stop</button>
+                </div>
+            }
+
+            <ChatComposer @ref="_composer"
+                          Disabled="Session.Running || Session.Ended"
+                          History="Session.History"
+                          OnSend="Send" />
+        </div>
+    </div>
 </div>
 
 @code {
     private bool _stopping;
+
+    /// <summary>Whether the solution picker band is showing.</summary>
+    /// <remarks>
+    /// Held here rather than inside the picker, because the header's button has to agree with it.
+    /// </remarks>
+    private bool _picking;
+
+    /// <summary>The scrolling middle, so a new turn can be scrolled to.</summary>
+    private ElementReference _scroll;
+
+    /// <summary>
+    /// How many turns were on screen the last time this scrolled to the bottom.
+    /// </summary>
+    /// <remarks>
+    /// Starts at -1 rather than 0 so the first render of a session resumed in a second tab scrolls
+    /// to the end of a transcript it did not itself produce.
+    /// </remarks>
+    private int _drawn = -1;
 
     /// <summary>The composer, so a "did you mean" chip can fill it.</summary>
     private ChatComposer? _composer;
@@ -44,9 +86,53 @@
     /// </remarks>
     private void Prefill(string command) => _composer?.Fill(command);
 
-    protected override void OnInitialized() => Session.Changed += Repaint;
+    /// <summary>
+    /// Opens the picker on a workspace with nothing in it.
+    /// </summary>
+    /// <remarks>
+    /// A folder with no projects is the one case where the first thing to do is choose somewhere
+    /// else, so the panel is already open. Everywhere else it stays behind its button: a file
+    /// listing wedged between the header and the conversation is not what the page is for.
+    /// </remarks>
+    protected override void OnInitialized()
+    {
+        _picking = Session.ProjectCount == 0;
+
+        Session.Changed += Repaint;
+    }
 
     public void Dispose() => Session.Changed -= Repaint;
+
+    private void TogglePicker() => _picking = !_picking;
+
+    private void ClosePicker() => _picking = false;
+
+    /// <summary>
+    /// Keeps the newest turn on screen.
+    /// </summary>
+    /// <remarks>
+    /// The transcript scrolls inside its own box now, so a turn that arrives while the reader is
+    /// at the bottom would otherwise appear below the fold and look like nothing happened. Only on
+    /// a change in the count, so this does not fight the reader scrolling back through a long
+    /// transcript on every unrelated repaint.
+    /// </remarks>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_drawn == Session.Turns.Count)
+            return;
+
+        _drawn = Session.Turns.Count;
+
+        try
+        {
+            await Js.InvokeVoidAsync("chatScrollToEnd", _scroll);
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+        {
+            // The circuit went away, or the element did. Neither is worth a turn in the
+            // transcript, and the page is about to stop existing either way.
+        }
+    }
 
     /// <summary>
     /// Repaints this circuit when the session changes.

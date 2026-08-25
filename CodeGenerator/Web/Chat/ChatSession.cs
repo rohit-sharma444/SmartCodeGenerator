@@ -243,7 +243,8 @@ public sealed class ChatSession
             path,
             CommandKind.Pipeline,
             load.Ok ? ChatVerdict.Succeeded : ChatVerdict.Failed,
-            [new TextBlock(text)]));
+            [new TextBlock(text)],
+            DateTimeOffset.Now));
 
         Raise();
 
@@ -263,7 +264,7 @@ public sealed class ChatSession
         if (Declined(kind) is { } decline)
         {
             return new ChatTurn(
-                input, kind, ChatVerdict.Declined, [new TextBlock(decline)]);
+                input, kind, ChatVerdict.Declined, [new TextBlock(decline)], DateTimeOffset.Now);
         }
 
         var verdict = ChatVerdict.Failed;
@@ -288,7 +289,8 @@ public sealed class ChatSession
             captured = capture.Text;
         }
 
-        return new ChatTurn(input, kind, verdict, OutputBlocks.Parse(input, captured));
+        return new ChatTurn(
+            input, kind, verdict, OutputBlocks.Parse(input, captured), DateTimeOffset.Now);
     }
 
     /// <summary>
