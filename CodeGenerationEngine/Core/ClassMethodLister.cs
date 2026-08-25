@@ -43,6 +43,12 @@ public static class ClassMethodLister
     /// First match by filename, which is the convention the whole tool works on: a class is a
     /// <c>.cs</c> file with its name. Build output is skipped, or a stale copy under <c>obj</c>
     /// wins the race against the source and the reader is shown yesterday's members.
+    /// <para>
+    /// <c>DeletedClasses</c> is skipped for the same reason and one more: it is skipped by
+    /// <c>ProjectManager.ClassNamesIn</c> as well, so a name that lives only in there is never
+    /// asked about — while a live class with a backup of an older namesake beside it was resolving
+    /// to the backup, that folder sorting before nearly every folder a project has.
+    /// </para>
     /// </remarks>
     public static string? FileOf(string searchRoot, string className)
     {
@@ -51,7 +57,9 @@ public static class ClassMethodLister
 
         return Directory
             .GetFiles(searchRoot, "*.cs", SearchOption.AllDirectories)
-            .Where(f => !f.Contains("\\bin\\") && !f.Contains("\\obj\\"))
+            .Where(f =>
+                !f.Contains("\\bin\\") && !f.Contains("\\obj\\") &&
+                !f.Contains("DeletedClasses", StringComparison.OrdinalIgnoreCase))
             .FirstOrDefault(f => Path.GetFileNameWithoutExtension(f)
                 .Equals(className, StringComparison.OrdinalIgnoreCase));
     }

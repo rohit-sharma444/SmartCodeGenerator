@@ -1,8 +1,11 @@
-@* The loaded solution as a tree: project, then class, then what the class declares. *@
+@* The loaded workspace as Solution Explorer draws it: the solution, then its projects, then the
+   folders inside each of those, and then what a class declares.
 
-@* The loop variables are `entry` and `member`, never `class`: Razor treats `class` as reserved in
-   an implicit expression and `@class` in markup collides with the attribute of that name. And each
-   command is built into a local before the markup, because an interpolated string inside a
+   Only the top two levels are here. Everything from a project's own folders downwards is drawn by
+   TreeFolderView, which renders itself again for each folder it holds — that is what lets the tree
+   go as deep as the project does with no level count anywhere in the markup.
+
+   Each command is built into a local before the markup: an interpolated string inside a
    double-quoted attribute ends the attribute at its own first quote. *@
 
 <nav class="tree" aria-label="Projects">
@@ -14,69 +17,49 @@
         </p>
     }
 
-    <ul class="tree-list">
-        @foreach (var project in Projects)
-        {
-            var open = _openProjects.Contains(project.ProjectName);
-            var use = $"use project {project.ProjectName}";
-            var current = ProjectTree.IsCurrent(project);
-
+    @* Nothing hangs anywhere but under the root node, so with nothing loaded there is no tree to
+       draw at all — the paragraph above says so on its own. *@
+    @if (Projects.Count > 0)
+    {
+        <ul class="tree-list">
             <li class="tree-node">
-                <div class="tree-row tree-project @(current ? "tree-current" : "")">
-                    <button type="button" class="tree-twisty @(open ? "tree-twisty-open" : "")"
-                            aria-expanded="@open"
-                            title="@(open ? "Collapse" : "Expand")"
-                            @onclick="() => ToggleProject(project.ProjectName)">
+                <div class="tree-row tree-solution">
+                    <button type="button" class="tree-twisty @(_rootOpen ? "tree-twisty-open" : "")"
+                            aria-expanded="@_rootOpen"
+                            title="@(_rootOpen ? "Collapse" : "Expand")"
+                            @onclick="ToggleRoot">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                             <path d="m9 6 6 6-6 6" />
                         </svg>
                     </button>
 
-                    <button type="button" class="tree-name"
-                            @onclick="() => ToggleProject(project.ProjectName)">
-                        @project.ProjectName
-                    </button>
+                    <TreeIcon Kind="TreeIconKind.Solution" />
 
-                    @* Only once the node is open. A count beside a collapsed project would mean
-                       walking every project on every repaint, which is exactly what the header
-                       refuses to do: a number that lags the command you just ran is worse than
-                       no number. Open, it is the length of the list underneath it. *@
-                    @if (open)
-                    {
-                        <span class="tree-count">@Tree.ClassesOf(project).Count</span>
-                    }
-
-                    @* Through the pipeline, never by setting ProjectManager.CurrentProject here:
-                       the session carries its own current project between turns and would
-                       overwrite anything set behind its back on the very next command. *@
-                    <button type="button" class="tree-use" title="@use"
-                            disabled="@(Disabled || current)"
-                            @onclick="() => Run(use)">Use</button>
+                    @* The number in the label is the length of the registry, which is why this node
+                       may carry one where a collapsed project may not: no folder is walked to
+                       produce it. The full path is the title, since the name on its own says
+                       nothing about which copy of a solution is loaded. *@
+                    <button type="button" class="tree-name" title="@Root"
+                            @onclick="ToggleRoot">@RootLabel()</button>
                 </div>
 
-                @if (open)
+                @if (_rootOpen)
                 {
-                    <ul class="tree-list tree-classes">
-                        @if (Tree.ClassesOf(project).Count == 0)
+                    <ul class="tree-list tree-children">
+                        @foreach (var project in Projects)
                         {
-                            <li class="tree-none">No classes yet</li>
-                        }
-
-                        @foreach (var entry in Tree.ClassesOf(project))
-                        {
-                            var entryOpen = _openClasses.Contains(entry.File);
-                            var show = $"show class {entry.Name}";
-                            var found = entry.File.Length > 0;
+                            var open = _openProjects.Contains(project.ProjectName);
+                            var use = $"use project {project.ProjectName}";
+                            var current = ProjectTree.IsCurrent(project);
 
                             <li class="tree-node">
-                                <div class="tree-row">
+                                <div class="tree-row tree-project @(current ? "tree-current" : "")">
                                     <button type="button"
-                                            class="tree-twisty @(entryOpen ? "tree-twisty-open" : "")"
-                                            aria-expanded="@entryOpen"
-                                            disabled="@(!found)"
-                                            title="@(entryOpen ? "Collapse" : "Expand")"
-                                            @onclick="() => ToggleClass(entry.File)">
+                                            class="tree-twisty @(open ? "tree-twisty-open" : "")"
+                                            aria-expanded="@open"
+                                            title="@(open ? "Collapse" : "Expand")"
+                                            @onclick="() => ToggleProject(project.ProjectName)">
                                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
                                              stroke-width="2.5" stroke-linecap="round"
                                              stroke-linejoin="round" aria-hidden="true">
@@ -84,32 +67,43 @@
                                         </svg>
                                     </button>
 
-                                    @* `show class` only reads. Running it on a click is safe, and a
-                                       tree you have to click twice to use is one people stop using.
-                                       Nothing that writes is ever a click away in here. *@
-                                    <button type="button" class="tree-name tree-open-class"
-                                            disabled="@Disabled"
-                                            title="@show"
-                                            @onclick="() => Run(show)">@entry.Name</button>
+                                    <TreeIcon Kind="TreeIconKind.Project" />
+
+                                    <button type="button" class="tree-name"
+                                            @onclick="() => ToggleProject(project.ProjectName)">
+                                        @project.ProjectName
+                                    </button>
+
+                                    @* Only once the node is open. A count beside a collapsed project
+                                       would mean walking every project on every repaint, which is
+                                       exactly what the header refuses to do: a number that lags the
+                                       command you just ran is worse than no number. Open, it is the
+                                       length of the list underneath it. *@
+                                    @if (open)
+                                    {
+                                        <span class="tree-count">@Tree.ClassesOf(project).Count</span>
+                                    }
+
+                                    @* Through the pipeline, never by setting
+                                       ProjectManager.CurrentProject here: the session carries its
+                                       own current project between turns and would overwrite
+                                       anything set behind its back on the very next command. *@
+                                    <button type="button" class="tree-use" title="@use"
+                                            disabled="@(Disabled || current)"
+                                            @onclick="() => Run(use)">Use</button>
                                 </div>
 
-                                @if (entryOpen)
+                                @if (open)
                                 {
-                                    <ul class="tree-list tree-members">
-                                        @if (Tree.MembersOf(entry).Count == 0)
-                                        {
-                                            <li class="tree-none">Nothing public</li>
-                                        }
-
-                                        @foreach (var member in Tree.MembersOf(entry))
-                                        {
-                                            <li class="tree-member">
-                                                <span class="tree-glyph @(member.IsMethod ? "tree-glyph-method" : "")"
-                                                      aria-hidden="true"></span>
-                                                <span class="tree-member-name">@Label(member)</span>
-                                                <span class="tree-member-type">@member.Type</span>
-                                            </li>
-                                        }
+                                    <ul class="tree-list tree-children">
+                                        <TreeFolderView Folder="Tree.FolderOf(project)"
+                                                        Tree="Tree"
+                                                        OpenFolders="_openFolders"
+                                                        OpenClasses="_openClasses"
+                                                        Disabled="Disabled"
+                                                        OnCommand="Run"
+                                                        OnToggleFolder="ToggleFolder"
+                                                        OnToggleClass="ToggleClass" />
                                     </ul>
                                 }
                             </li>
@@ -117,8 +111,8 @@
                     </ul>
                 }
             </li>
-        }
-    </ul>
+        </ul>
+    }
 </nav>
 
 @code {
@@ -134,8 +128,42 @@
     /// </remarks>
     private readonly HashSet<string> _openClasses = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// Which folders are open, by absolute path.
+    /// </summary>
+    /// <remarks>
+    /// The absolute folder, not the one relative to its project: nearly every project in a
+    /// solution has a <c>Core</c> or a <c>Models</c>, and both the bare name and the relative path
+    /// are the same string in each of them — so either would open all of them at once.
+    /// </remarks>
+    private readonly HashSet<string> _openFolders = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Whether the root node is open. It arrives open: a tree that opens shut is a wall.</summary>
+    private bool _rootOpen = true;
+
     [Parameter, EditorRequired]
     public ProjectTree Tree { get; set; } = default!;
+
+    /// <summary>
+    /// The loaded workspace, which the root node is named after.
+    /// </summary>
+    /// <remarks>
+    /// The session's own root, passed in rather than read from the engine here: the picker can
+    /// change it, and a component that went looking for it itself would name the wrong one for as
+    /// long as the page went unrepainted.
+    /// </remarks>
+    [Parameter]
+    public string Root { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The solution the workspace was loaded from, or empty when it was loaded from a folder.
+    /// </summary>
+    /// <remarks>
+    /// The root node says <em>Solution</em> exactly when this has something in it. Anything else
+    /// would be the sidebar deciding for itself what the workspace is.
+    /// </remarks>
+    [Parameter]
+    public string Solution { get; set; } = string.Empty;
 
     [Parameter, EditorRequired]
     public IReadOnlyList<ProjectMetaData> Projects { get; set; } = [];
@@ -153,13 +181,34 @@
     [Parameter]
     public EventCallback<string> OnCommand { get; set; }
 
-    /// <summary>A member as it reads in the tree. Brackets mark a method as a method.</summary>
-    private static string Label(TreeMember member) => member.IsMethod ? member.Name + "()" : member.Name;
+    /// <summary>
+    /// The root node's own label: what was loaded, and how many projects came out of it.
+    /// </summary>
+    /// <remarks>
+    /// Named without quotes when there is no name to quote, which is a workspace that was never
+    /// loaded from anywhere — the tests' own case, and no reason to draw an empty pair of quotes.
+    /// </remarks>
+    private string RootLabel()
+    {
+        var root = ProjectTree.RootOf(Root, Solution);
+        var kind = root.IsSolution ? "Solution" : "Folder";
+        var named = root.Name.Length == 0 ? kind : $"{kind} '{root.Name}'";
+
+        return $"{named} ({Projects.Count} project{(Projects.Count == 1 ? "" : "s")})";
+    }
+
+    private void ToggleRoot() => _rootOpen = !_rootOpen;
 
     private void ToggleProject(string name)
     {
         if (!_openProjects.Remove(name))
             _openProjects.Add(name);
+    }
+
+    private void ToggleFolder(string path)
+    {
+        if (!_openFolders.Remove(path))
+            _openFolders.Add(path);
     }
 
     private void ToggleClass(string file)

@@ -41,6 +41,17 @@ public sealed class Workspace
     /// <summary>Whether <c>PROJECTPATH</c> chose the root. Only used to word a notice.</summary>
     public bool ProjectPathSet { get; }
 
+    /// <summary>
+    /// The solution this workspace was loaded from, or null when it was loaded from a folder.
+    /// </summary>
+    /// <remarks>
+    /// Kept rather than only returned, because what was loaded is a fact about the workspace and
+    /// anything asking later has no other honest way to find out. The chat page's tree names its
+    /// root node from this: it went looking for a solution file under the root once, and on a
+    /// repository holding four of them it named whichever sorted first.
+    /// </remarks>
+    public string? SolutionPath { get; private set; }
+
     public List<PropertyRule> Rules { get; private set; } = [];
 
     public int ProjectCount { get; internal set; }
@@ -102,6 +113,11 @@ public sealed class Workspace
         }
 
         Root = Path.TrimEndingDirectorySeparator(root);
+
+        // Assigned on every load, including the one that clears it: a folder loaded after a
+        // solution is a folder, and leaving the old path here would have the tree still naming a
+        // solution nobody has open.
+        SolutionPath = solution;
 
         foreach (var project in projects)
         {

@@ -84,6 +84,13 @@ public sealed class ChatSession
 
     public string Root => _workspace.Root;
 
+    /// <summary>The solution this workspace was loaded from, or empty when it was a folder.</summary>
+    /// <remarks>
+    /// Empty rather than null, because the tree takes it as a Razor parameter and a component
+    /// parameter that may be null is one every reader has to check.
+    /// </remarks>
+    public string Solution => _workspace.SolutionPath ?? string.Empty;
+
     public int ProjectCount => _workspace.ProjectCount;
 
     public string? CurrentProject => ProjectManager.CurrentProject?.ProjectName;

@@ -26,7 +26,13 @@
     <div class="chat-body">
         @if (Session.TreeOpen)
         {
+            @* `Root="@Session.Root"` and never `Root="Session.Root"`: a string parameter takes its
+               attribute literally, so without the `@` the tree is rooted in those twelve characters
+               and the root node names a folder called Session.Root. A comment belongs out here as
+               well — inside the attribute list Razor reads one as an attribute of its own. *@
             <ProjectTreeView Tree="_tree"
+                             Root="@Session.Root"
+                             Solution="@Session.Solution"
                              Projects="ProjectTree.Projects()"
                              Disabled="Session.Running || Session.Ended"
                              OnCommand="Send" />

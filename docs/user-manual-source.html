@@ -892,10 +892,20 @@ registers only the projects that solution declares.</p>
 
 <h3>The project tree</h3>
 
-<p><strong>Tree</strong> in the header shows the loaded solution down the left: every registered project,
-the classes in each, and what each class declares. It opens a level at a time — a project is read when you
-open it, a class when you open that — so a solution of any size costs nothing until you go looking. The
+<p><strong>Tree</strong> in the header shows the loaded workspace down the left, laid out the way Solution
+Explorer lays it out: the solution at the top, the registered projects under it, the folders each project
+keeps its files in, and then what a class declares. The top row names what was loaded — <em>Solution
+'Acme' (4 projects)</em> when a solution was loaded, <em>Folder 'Acme'</em> when a folder was — and
+collapsing it collapses everything. It says what the session loaded and never goes looking: a repository
+can hold several solution files, and only one of them is open.</p>
+
+<p>It opens a level at a time: a project is read when you open it, a class when you open that, so a solution
+of any size costs nothing until you go looking. Folders come before files and both are in name order. The
 count beside a project appears once it is open, and is the length of the list underneath it.</p>
+
+<div class="note"><p>Folders are the folders on disk, so a class appears where its file is rather than in one
+long alphabetical list. Two projects that both have a <code>Models</code> folder open and close
+independently — the tree keeps them apart by their full path, not by name.</p></div>
 
 <p>Clicking a class runs <code>show class</code> on it and the source appears in the transcript. Nothing in
 the tree writes anything: the only other thing it can do is <strong>Use</strong>, on a project row, which
@@ -907,8 +917,12 @@ the tool: <code>list classes</code> lists exactly what the tree draws. A file de
 once, under the name of the file.</p></div>
 
 <p>Members are the public data and public methods a type declares — a record's parameters included. A
-square marks a property, a circle a method. Computed properties and static members are left out, because
+spanner marks a property and a box a method. Computed properties and static members are left out, because
 neither is data the type carries.</p>
+
+<p>Every row carries the glyph of what it is: a stack for the solution, a window for a project, a folder for
+a folder, a sheet for a class. Each has its own colour as well, but no two rows are told apart by colour
+alone.</p>
 
 <p>The tree hides itself on a narrow window, where a fixed pane would leave nothing to read the
 conversation in. Whether it is showing is remembered for as long as the <code>chat</code> session lasts,
