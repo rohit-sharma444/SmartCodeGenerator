@@ -869,12 +869,18 @@ header always says which solution is loaded and which project the next command w
 published and nothing leaves the machine. The console that opened it waits while you work, and the address
 is printed there in case the browser does not open by itself.</p>
 
+<p>Before you have typed anything the page offers four commands to start with. Clicking one fills the box;
+none of them runs on its own. The page follows whichever of light or dark your operating system is set to,
+and changes with it — there is no setting of its own to get out of step with.</p>
+
 <h3>Loading a solution</h3>
 
-<p>Until now the tool worked wherever it was started, or wherever <code>PROJECTPATH</code> pointed. The
-box at the top of the page takes a path to a <code>.sln</code>, a <code>.slnx</code>, a <code>.csproj</code>
-or a folder, and the list under it walks the filesystem so you can click your way there instead. Solution
-files are listed first, because that is usually what you came for.</p>
+<p>Until now the tool worked wherever it was started, or wherever <code>PROJECTPATH</code> pointed.
+<strong>Change…</strong> in the header opens a panel that takes a path to a <code>.sln</code>, a
+<code>.slnx</code>, a <code>.csproj</code> or a folder, and the list under the box walks the filesystem so
+you can click your way there instead. Solution files are listed first, because that is usually what you
+came for. The panel closes itself once a path loads, and it is already open when the tool starts somewhere
+with no projects in it — there, choosing somewhere else is the first thing to do.</p>
 
 <div class="note"><p>A solution is rooted at the common ancestor of the projects it declares, not at the
 folder the solution file happens to sit in. Many solutions keep the <code>.sln</code> in a folder of its
@@ -886,8 +892,11 @@ registers only the projects that solution declares.</p>
 
 <h3>Reading a command's output</h3>
 
-<p>Output is tinted by how the command turned out, exactly as it is in the terminal: green when it worked,
-red when it was understood and could not be done, amber when the words were not understood.</p>
+<p>Each exchange is a card: what you typed across the top with the time it ran, and what came back
+underneath. The card is tinted by how the command turned out, exactly as the terminal is: green when it
+worked, red when it was understood and could not be done, amber when the words were not understood. The
+verdict is written out as well as coloured — <em>Succeeded</em>, <em>Failed</em>, <em>Not understood</em> or
+<em>Declined</em> — because the last two share one colour and are not the same thing.</p>
 
 <table>
 <tr><th>Command</th><th>What the page draws</th></tr>
@@ -906,6 +915,7 @@ deliberate: output half-recognized and half-rearranged would be worse than outpu
 <tr><th>Key</th><th>What it does</th></tr>
 <tr><td><kbd>Enter</kbd></td><td>Sends the command — unless the completion list is open, in which case it inserts the highlighted one and the list closes. Press it again to send.</td></tr>
 <tr><td><kbd>Shift</kbd>+<kbd>Enter</kbd></td><td>Starts a new line without sending.</td></tr>
+<tr><td><strong>Send</strong></td><td>The button beside the box does what <kbd>Enter</kbd> does. It is greyed out while the box is empty and while a command is running.</td></tr>
 <tr><td><kbd>↑</kbd> <kbd>↓</kbd></td><td>Move through the completion list while it is open; walk your command history when it is closed.</td></tr>
 <tr><td><kbd>Esc</kbd></td><td>Closes the completion list.</td></tr>
 </table>
