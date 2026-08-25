@@ -1,0 +1,28 @@
+@* What the next command will act on, and any question standing in its way. *@
+
+<div class="strip">
+    <span class="strip-root" title="@Session.Root">@Session.Root</span>
+    <span class="strip-fact">@Session.ProjectCount projects</span>
+    <span class="strip-fact">project: @(Session.CurrentProject ?? "none")</span>
+    <span class="strip-fact">@Session.RuleCount rules</span>
+    <span class="strip-fact">AI: @Session.AiState</span>
+</div>
+
+@if (Session.Question is { } question)
+{
+    <div class="question">
+        <span class="question-text">@question.Text</span>
+        <button type="button" class="question-yes"
+                @onclick="() => Session.Answer(true)">Yes</button>
+        <button type="button" class="question-no"
+                @onclick="() => Session.Answer(false)">No</button>
+    </div>
+}
+
+@code {
+    @* No class count, deliberately: counting classes means enumerating *.cs across the workspace
+       after every turn, and a count that lags what the transcript just did is worse than none. *@
+
+    [Parameter, EditorRequired]
+    public ChatSession Session { get; set; } = default!;
+}

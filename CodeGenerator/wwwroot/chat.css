@@ -194,3 +194,108 @@
     font: 12px/1.4 Consolas, "Cascadia Mono", monospace;
     color: var(--pending);
 }
+
+/* What the next command acts on. Sticky at the top, because the answer to "where is this going
+   to write" must not be something you scroll back for. */
+.strip {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.4rem 1rem;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding: 0.5rem 0.7rem;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: #fff;
+    font-size: 0.85rem;
+}
+
+.strip-root {
+    font: 13px/1.5 Consolas, "Cascadia Mono", monospace;
+    font-weight: 600;
+
+    /* A deep path truncates rather than wrapping the whole strip onto four lines. */
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.strip-fact { color: var(--pending); }
+
+.question {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.6rem 0.8rem;
+    border: 1px solid var(--unsure);
+    border-radius: 6px;
+    background: #fff8ee;
+}
+
+.question-text { flex: 1 1 20rem; }
+
+.question-yes,
+.question-no,
+.picker-load {
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    background: #fff;
+    color: var(--ink);
+    padding: 0.25rem 0.9rem;
+    font: inherit;
+    cursor: pointer;
+}
+
+.question-yes:hover,
+.question-no:hover,
+.picker-load:hover { border-color: var(--active); color: var(--active); }
+
+.picker {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.picker-row { display: flex; gap: 0.5rem; }
+
+.picker-path {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 0.35rem 0.6rem;
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    background: #fff;
+    color: var(--ink);
+    font: 13px/1.5 Consolas, "Cascadia Mono", monospace;
+}
+
+.picker-problem { color: var(--failed); font-size: 0.85rem; }
+
+/* Capped, so a folder with two hundred subdirectories cannot push the composer off the screen. */
+.picker-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    max-height: 11rem;
+    overflow-y: auto;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: #fff;
+}
+
+.picker-entry {
+    padding: 0.2rem 0.7rem;
+    cursor: pointer;
+    font: 13px/1.6 Consolas, "Cascadia Mono", monospace;
+}
+
+.picker-entry:hover { background: #eef4ff; }
+
+.picker-up { color: var(--pending); }
+
+/* The thing you came to click. */
+.picker-solution { font-weight: 600; color: var(--active); }

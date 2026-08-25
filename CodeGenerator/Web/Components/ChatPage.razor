@@ -8,6 +8,9 @@
 <PageTitle>Chat — SmartCodeGenerator</PageTitle>
 
 <div class="chat">
+    <ContextStrip Session="Session" />
+    <SolutionPicker Session="Session" />
+
     <ChatTranscript Turns="Session.Turns" />
 
     @if (Session.Running)

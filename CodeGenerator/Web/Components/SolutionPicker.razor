@@ -1,0 +1,81 @@
+@* Choosing a solution, a project or a folder. Listed by this process, because a browser file
+   input never hands the server a real path and a native dialog opens behind the browser. *@
+
+<div class="picker">
+    <div class="picker-row">
+        <input class="picker-path" value="@_path" @onchange="OnPathChanged"
+               placeholder="Path to a .sln, .slnx, .csproj or folder" />
+        <button type="button" class="picker-load" @onclick="Load">Load</button>
+    </div>
+
+    @if (_problem is not null)
+    {
+        <div class="picker-problem">@_problem</div>
+    }
+
+    <ul class="picker-list">
+        @if (FolderListing.ParentOf(_browsing) is { } parent)
+        {
+            <li class="picker-entry picker-up" @onclick="() => Browse(parent)">..</li>
+        }
+
+        @foreach (var entry in FolderListing.For(_browsing))
+        {
+            <li class="picker-entry @(entry.IsDirectory ? "" : "picker-solution")"
+                @onclick="() => Choose(entry)">@entry.Name</li>
+        }
+    </ul>
+</div>
+
+@code {
+    private string _path = string.Empty;
+    private string _browsing = string.Empty;
+    private string? _problem;
+
+    [Parameter, EditorRequired]
+    public ChatSession Session { get; set; } = default!;
+
+    protected override void OnInitialized()
+    {
+        _browsing = Session.Root;
+        _path = Session.Root;
+    }
+
+    private void OnPathChanged(ChangeEventArgs e)
+        => _path = e.Value?.ToString() ?? string.Empty;
+
+    private void Browse(string directory)
+    {
+        _browsing = directory;
+        _problem = null;
+    }
+
+    private void Choose(FolderEntry entry)
+    {
+        if (entry.IsDirectory)
+        {
+            Browse(entry.Path);
+            return;
+        }
+
+        _path = entry.Path;
+        Load();
+    }
+
+    /// <summary>
+    /// Loads what is in the box.
+    /// </summary>
+    /// <remarks>
+    /// The session records the outcome as a turn either way, so the transcript says what happened;
+    /// the problem is repeated here because the box is where the mistake was made.
+    /// </remarks>
+    private void Load()
+    {
+        var load = Session.Load(_path);
+
+        _problem = load.Ok ? null : load.Problem;
+
+        if (load.Ok)
+            _browsing = load.Root;
+    }
+}
