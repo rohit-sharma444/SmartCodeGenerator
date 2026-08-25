@@ -47,7 +47,25 @@
             </span>
         </div>
 
-        <button type="button" class="strip-change @(PickerOpen ? "strip-change-on" : "")"
+        <button type="button" class="strip-change strip-tree @(TreeOpen ? "strip-change-on" : "")"
+                aria-expanded="@TreeOpen"
+                title="@(TreeOpen ? "Hide the project tree" : "Show the project tree")"
+                @onclick="OnToggleTree">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M4 5h16" />
+                <path d="M9 12h11" />
+                <path d="M9 19h11" />
+                <path d="M4 5v14" />
+            </svg>
+            Tree
+        </button>
+
+        @* `strip-change` is the shared look of a header button; `strip-picker` and `strip-tree`
+           are which one it is. Both are needed: without the second, every selector for "the
+           Change button" quietly matches Tree as well, which is how two tests started clicking
+           the wrong control the moment Tree was added. *@
+        <button type="button" class="strip-change strip-picker @(PickerOpen ? "strip-change-on" : "")"
                 aria-expanded="@PickerOpen" @onclick="OnChangeSolution">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -96,4 +114,12 @@
     /// <summary>Raised when the Change button is clicked.</summary>
     [Parameter]
     public EventCallback OnChangeSolution { get; set; }
+
+    /// <summary>Whether the project tree is showing, so the button can say which.</summary>
+    [Parameter]
+    public bool TreeOpen { get; set; }
+
+    /// <summary>Raised when the Tree button is clicked.</summary>
+    [Parameter]
+    public EventCallback OnToggleTree { get; set; }
 }

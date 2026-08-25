@@ -64,6 +64,24 @@ public sealed class ChatSession
     /// <summary>Raised whenever anything a tab draws has changed.</summary>
     public event Action? Changed;
 
+    /// <summary>
+    /// Whether the project tree is showing.
+    /// </summary>
+    /// <remarks>
+    /// On the session rather than in the browser, because the browser cannot hold it: the host
+    /// binds <c>127.0.0.1:0</c>, so the origin has a different port on every <c>chat</c> and
+    /// anything kept in local storage belongs to a page that will never be served again. Here it
+    /// survives a refresh, which is what it has to do; that both tabs then agree about it is the
+    /// same bargain everything else on this page makes.
+    /// </remarks>
+    public bool TreeOpen { get; private set; } = true;
+
+    public void ShowTree(bool open)
+    {
+        TreeOpen = open;
+        Raise();
+    }
+
     public string Root => _workspace.Root;
 
     public int ProjectCount => _workspace.ProjectCount;

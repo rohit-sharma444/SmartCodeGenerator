@@ -269,7 +269,12 @@ public static class ProjectManager
     // Distinct, alphabetically ordered class (file) names under a folder,
     // excluding build output and deleted-class backups. Same-named files across
     // projects collapse to a single entry so the listing has no duplicates.
-    private static List<string> ClassNamesIn(string folder)
+    //
+    // Public because the chat page's project tree draws the same list this
+    // command prints. Two enumerations of "the classes in a project" that could
+    // disagree with each other would be worse than one that is merely awkward
+    // to reach.
+    public static IReadOnlyList<string> ClassNamesIn(string folder)
         => Directory.GetFiles(folder, "*.cs", SearchOption.AllDirectories)
             .Where(x =>
                 !x.Contains("\\bin\\") && !x.Contains("\\obj\\") &&
@@ -283,10 +288,24 @@ public static class ProjectManager
 
     // ProjectPath is normally the project directory, but persisted/registered
     // entries occasionally hold the .csproj file path - handle both.
-    private static string ProjectFolderOf(ProjectMetaData project)
+    public static string ProjectFolderOf(ProjectMetaData project)
         => File.Exists(project.ProjectPath)
             ? Path.GetDirectoryName(project.ProjectPath)!
             : project.ProjectPath;
+
+    // The classes of one project, as data. Nothing is printed: this is what
+    // ListClassesForProject prints from, and what the chat page's tree draws,
+    // so the two cannot fall out of step. An unreadable or missing project
+    // folder yields nothing rather than throwing - a registry entry can outlive
+    // the folder it names, and a tree is not the place to discover that.
+    public static IReadOnlyList<string> ClassesOf(ProjectMetaData project)
+    {
+        var folder = ProjectFolderOf(project);
+
+        return string.IsNullOrWhiteSpace(folder) || !Directory.Exists(folder)
+            ? []
+            : ClassNamesIn(folder);
+    }
 
     public static bool ListClassesInProject(string projectName)
     {
@@ -313,7 +332,7 @@ public static class ProjectManager
         if (string.IsNullOrWhiteSpace(projectFolder) || !Directory.Exists(projectFolder))
             return false;
 
-        var classNames = ClassNamesIn(projectFolder);
+        var classNames = ClassesOf(project);
 
         Console.WriteLine();
         Console.WriteLine($"Classes in {Path.GetFileNameWithoutExtension(project.ProjectPath)}");
@@ -382,4 +401,4 @@ public static class ProjectManager
         return Path.GetFullPath(Directory.GetCurrentDirectory());
     }
 
-}
+}

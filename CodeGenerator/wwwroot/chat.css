@@ -450,15 +450,210 @@
 
 /* --- The scrolling middle -------------------------------------------------------------- */
 
-/* min-height: 0 is the whole trick - without it a flex child refuses to shrink below its content
-   and the transcript pushes the composer off the bottom instead of scrolling. */
+/* The tree and the transcript, side by side. min-height: 0 is the whole trick, and it is needed
+   on both this row and the scroller inside it - without it a flex child refuses to shrink below
+   its content and the transcript pushes the composer off the bottom instead of scrolling. */
+.chat-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    align-items: stretch;
+}
+
 .chat-scroll {
     flex: 1 1 auto;
+    min-width: 0;
     min-height: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
     scrollbar-width: thin;
     scrollbar-color: var(--line-strong) transparent;
+}
+
+
+/* --- The project tree ------------------------------------------------------------------ */
+
+/* Its own scroller, so opening a project with two hundred classes does not move the
+   conversation beside it. */
+.tree {
+    flex: 0 0 17rem;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 0.6rem 0.5rem 1rem;
+    border-right: 1px solid var(--line);
+    background: var(--panel);
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-strong) transparent;
+}
+
+.tree-empty {
+    margin: 0.4rem 0.4rem 0;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    color: var(--ink-faint);
+}
+
+.tree-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+/* Each level steps in by the width of a twisty, so a class lines up under its project's name
+   rather than under its arrow. */
+.tree-classes { padding-left: 0.85rem; }
+
+.tree-members { padding-left: 1.9rem; }
+
+.tree-row {
+    display: flex;
+    align-items: center;
+    gap: 0.15rem;
+    border-radius: var(--radius-sm);
+    padding-right: 0.25rem;
+}
+
+.tree-row:hover { background: var(--sunken); }
+
+.tree-twisty {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.1rem;
+    height: 1.35rem;
+    padding: 0;
+    border: none;
+    background: none;
+    color: var(--ink-faint);
+    cursor: pointer;
+}
+
+.tree-twisty svg {
+    width: 11px;
+    height: 11px;
+    transition: transform 120ms ease;
+}
+
+.tree-twisty-open svg { transform: rotate(90deg); }
+
+/* A class whose file could not be found cannot be opened. The arrow goes, the row stays. */
+.tree-twisty:disabled { visibility: hidden; cursor: default; }
+
+.tree-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 0.12rem 0.15rem;
+    border: none;
+    background: none;
+    color: var(--ink);
+    font: var(--mono);
+    text-align: left;
+    cursor: pointer;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tree-project .tree-name { font-weight: 650; }
+
+.tree-open-class:hover:not(:disabled) { color: var(--accent); text-decoration: underline; }
+
+.tree-open-class:disabled { color: var(--ink-faint); cursor: default; text-decoration: none; }
+
+/* The project the next command acts on. A left bar rather than a background, so it survives the
+   hover tint sitting on top of it. */
+.tree-current {
+    box-shadow: inset 2px 0 0 var(--accent);
+    background: var(--accent-soft);
+}
+
+.tree-current .tree-name { color: var(--accent); }
+
+/* Only drawn once the node is open, so it is the length of the list underneath it rather than a
+   number that would have to be kept true by walking every project on every repaint. */
+.tree-count {
+    flex: 0 0 auto;
+    font-size: 0.7rem;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink-faint);
+    padding: 0 0.3rem;
+}
+
+.tree-use {
+    flex: 0 0 auto;
+    border: 1px solid transparent;
+    border-radius: 5px;
+    background: none;
+    color: var(--ink-faint);
+    padding: 0.02rem 0.4rem;
+    font: inherit;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    cursor: pointer;
+
+    /* Out of the way until the row is under the pointer: one of these on every project turns the
+       tree into a column of buttons. */
+    opacity: 0;
+    transition: opacity 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.tree-row:hover .tree-use,
+.tree-use:focus-visible { opacity: 1; }
+
+.tree-use:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+
+/* Already the current project. Hidden rather than dimmed - the bar down the left already says so,
+   and a dead button beside it says it twice. */
+.tree-use:disabled { display: none; }
+
+.tree-member {
+    display: flex;
+    align-items: baseline;
+    gap: 0.4rem;
+    padding: 0.05rem 0.15rem;
+    font: var(--mono);
+    font-size: 12px;
+    color: var(--ink-soft);
+}
+
+.tree-glyph {
+    flex: 0 0 auto;
+    width: 5px;
+    height: 5px;
+    border-radius: 1px;
+    background: var(--ink-faint);
+    align-self: center;
+}
+
+/* Round for a method, square for a property. Shape rather than colour, so the two are still
+   distinguishable to a reader who cannot separate them by hue. */
+.tree-glyph-method {
+    border-radius: 50%;
+    background: var(--accent);
+}
+
+.tree-member-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tree-member-type {
+    margin-left: auto;
+    padding-left: 0.4rem;
+    color: var(--ink-faint);
+    flex: 0 0 auto;
+}
+
+.tree-none {
+    padding: 0.05rem 0.15rem 0.05rem 1.1rem;
+    font-size: 0.75rem;
+    color: var(--ink-faint);
 }
 
 .transcript {
@@ -469,6 +664,15 @@
     gap: 1rem;
     padding: 1.25rem;
 }
+
+/* With the tree open, `margin: 0 auto` centres the column inside what is left of the page, which
+   puts a gutter between the tree and the first card and leaves the transcript floating between
+   the two. Anchored to the tree instead: the conversation sits next to the thing you clicked to
+   produce it, and all the slack goes to the right where there is nothing to separate it from.
+
+   The empty state is deliberately not in this rule: it is a centred hero with nothing above it to
+   anchor to, and pushing it left would only make it look dropped. */
+.chat-scroll-beside .transcript { margin-left: 0; }
 
 
 /* --- A turn ---------------------------------------------------------------------------- */
@@ -1025,6 +1229,12 @@
     .brand-text { display: none; }
 
     .strip-context { flex: 1 1 100%; order: 3; }
+
+    /* A fixed pane of any width leaves the transcript unreadable here, and an overlay drawer is
+       a second way to navigate for a window nobody browses a solution in. Both the pane and the
+       button that would bring it back go. */
+    .tree,
+    .strip-tree { display: none; }
 
     .transcript,
     .foot-inner,

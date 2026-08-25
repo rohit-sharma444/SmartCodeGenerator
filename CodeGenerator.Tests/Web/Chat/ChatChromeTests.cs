@@ -30,7 +30,7 @@ public class ChatChromeTests
             .Add(c => c.Session, session)
             .Add(c => c.OnChangeSolution, () => asked++));
 
-        strip.Find(".strip-change").Click();
+        strip.Find(".strip-picker").Click();
 
         Assert.AreEqual(1, asked);
     }
@@ -47,7 +47,46 @@ public class ChatChromeTests
             .Add(c => c.Session, session)
             .Add(c => c.PickerOpen, true));
 
-        StringAssert.Contains(strip.Find(".strip-change").TextContent, "Close");
+        StringAssert.Contains(strip.Find(".strip-picker").TextContent, "Close");
+    }
+
+    [TestMethod]
+    public void The_tree_button_asks_the_page_to_toggle_the_tree()
+    {
+        using var context = new BunitContext();
+        var session = NewSession();
+        var asked = 0;
+
+        var strip = context.Render<ContextStrip>(p => p
+            .Add(c => c.Session, session)
+            .Add(c => c.OnToggleTree, () => asked++));
+
+        strip.Find(".strip-tree").Click();
+
+        Assert.AreEqual(1, asked);
+    }
+
+    /// <summary>
+    /// The two header buttons must stay separately addressable.
+    /// </summary>
+    /// <remarks>
+    /// They share `strip-change` for their look. When Tree was added it shared nothing else, so
+    /// every selector written for "the Change button" started matching Tree first and two tests
+    /// began clicking a control with no handler on it. This fails if that ever collapses again.
+    /// </remarks>
+    [TestMethod]
+    public void The_header_buttons_are_told_apart_by_more_than_their_order()
+    {
+        using var context = new BunitContext();
+        var session = NewSession();
+
+        var strip = context.Render<ContextStrip>(p => p.Add(c => c.Session, session));
+
+        Assert.HasCount(1, strip.FindAll(".strip-picker"));
+        Assert.HasCount(1, strip.FindAll(".strip-tree"));
+
+        StringAssert.Contains(strip.Find(".strip-tree").TextContent, "Tree");
+        StringAssert.Contains(strip.Find(".strip-picker").TextContent, "Change");
     }
 
     [TestMethod]
