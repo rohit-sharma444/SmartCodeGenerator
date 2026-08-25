@@ -32,7 +32,7 @@ creates or edits real .NET code on disk.</p>
 
 <p>This manual covers the tool as an end user meets it: how to start it, what each command does, and how to
 drive the two flows that do the most work — generating a whole application, and editing the classes of a
-project. Chapter 18 is a complete command reference you can skim.</p>
+project. Chapter 19 is a complete command reference you can skim.</p>
 
 <h3>Conventions</h3>
 <table>
@@ -858,9 +858,95 @@ ever <em>suggests</em> — it never runs a command you did not confirm.</p>
 
 <p>The web application has no window and therefore no layout: it is always this shell.</p>
 
-<h2>17. Troubleshooting</h2>
+<h2>17. The chat page</h2>
+
+<p>Every command in this manual is typed at the console prompt. <code>chat</code> opens the same tool as a
+page in your browser instead: you type a command, its whole output appears below what you typed, and a
+header always says which solution is loaded and which project the next command will act on. Type
+<code>ui</code> if you prefer the shorter name.</p>
+
+<p>The page runs inside the tool itself, on a loopback address with a one-time token in the URL. Nothing is
+published and nothing leaves the machine. The console that opened it waits while you work, and the address
+is printed there in case the browser does not open by itself.</p>
+
+<h3>Loading a solution</h3>
+
+<p>Until now the tool worked wherever it was started, or wherever <code>PROJECTPATH</code> pointed. The
+box at the top of the page takes a path to a <code>.sln</code>, a <code>.slnx</code>, a <code>.csproj</code>
+or a folder, and the list under it walks the filesystem so you can click your way there instead. Solution
+files are listed first, because that is usually what you came for.</p>
+
+<div class="note"><p>A solution is rooted at the common ancestor of the projects it declares, not at the
+folder the solution file happens to sit in. Many solutions keep the <code>.sln</code> in a folder of its
+own with every project a sibling of it; rooting at the file's own folder would find none of them.</p></div>
+
+<p>Loading moves the whole session, the console included — there is one workspace, and the transcript says
+so when it changes. Loading a folder registers every <code>.csproj</code> beneath it; loading a solution
+registers only the projects that solution declares.</p>
+
+<h3>Reading a command's output</h3>
+
+<p>Output is tinted by how the command turned out, exactly as it is in the terminal: green when it worked,
+red when it was understood and could not be done, amber when the words were not understood.</p>
+
+<table>
+<tr><th>Command</th><th>What the page draws</th></tr>
+<tr><td><code>show class &lt;name&gt;</code></td><td>The source, highlighted, with a button that copies it. Long files are shortened, with a <em>show all</em> under them.</td></tr>
+<tr><td><code>list properties &lt;name&gt;</code></td><td>A two-column table of type and name.</td></tr>
+<tr><td><code>list classes</code></td><td>A list under its heading.</td></tr>
+<tr><td>Everything else</td><td>The text the console would have printed, in a monospace block.</td></tr>
+</table>
+
+<p>Anything that does not match one of those shapes exactly falls back to the monospace block. That is
+deliberate: output half-recognized and half-rearranged would be worse than output shown plainly.</p>
+
+<h3>Typing</h3>
+
+<table>
+<tr><th>Key</th><th>What it does</th></tr>
+<tr><td><kbd>Enter</kbd></td><td>Sends the command — unless the completion list is open, in which case it inserts the highlighted one and the list closes. Press it again to send.</td></tr>
+<tr><td><kbd>Shift</kbd>+<kbd>Enter</kbd></td><td>Starts a new line without sending.</td></tr>
+<tr><td><kbd>↑</kbd> <kbd>↓</kbd></td><td>Move through the completion list while it is open; walk your command history when it is closed.</td></tr>
+<tr><td><kbd>Esc</kbd></td><td>Closes the completion list.</td></tr>
+</table>
+
+<p>The completion list is the command catalog itself — the same one <code>help</code> prints — so it cannot
+offer a command that does not exist or miss one that does. History is shared with the console: a command
+typed here is one the prompt's <kbd>↑</kbd> finds afterwards, and the other way round.</p>
+
+<p>When the words are not understood, the tool's closest guesses appear as buttons under the answer.
+Clicking one fills the box. It never runs the command — these commands write files, and a guess is not
+something to act on because you clicked near it.</p>
+
+<h3>What the page will not do</h3>
+
+<table>
+<tr><th>Command</th><th>Why</th></tr>
+<tr><td><code>build app</code></td><td>It asks questions as it goes, and has a workflow page of its own (chapter 4).</td></tr>
+<tr><td><code>batch</code></td><td>It asks you to review what it detected before it runs anything.</td></tr>
+<tr><td><code>demo</code></td><td>It asks before it writes anything.</td></tr>
+</table>
+
+<p>All three are declined in the page rather than half-run, with a line pointing at the console, where they
+work exactly as this manual describes.</p>
+
+<h3>Ending the session</h3>
+
+<p>Type <code>exit</code> in the page, close the tab, or press <kbd>Ctrl</kbd>+<kbd>C</kbd> at the console.
+Closing the last tab ends the session about ten seconds later — long enough that refreshing the page is not
+mistaken for leaving — and the console prompt comes back. Two tabs on the same address share one
+conversation; while a command is running the box is disabled in both, because there is one workspace and
+one command can be in flight at a time.</p>
+
+<p><code>chat</code> needs a browser. In a piped or scripted run, or with <code>CG_NO_WEB=1</code> set, it
+declines and says so; the console prompt is unaffected.</p>
+
+<h2>18. Troubleshooting</h2>
 <table>
 <tr><th>What you see</th><th>What it means</th></tr>
+<tr><td>&quot;<code>chat</code> opens a page in a browser, which this run has no way to reach&quot;</td><td>Input is piped, or <code>CG_NO_WEB=1</code> is set. The page needs a browser and someone to type into it; the console prompt does everything it does.</td></tr>
+<tr><td>Loading a solution in the page changed what the console prompt is working on</td><td>By design, and the transcript says so when it happens. There is one workspace and one project registry; two views that disagreed about which would be worse than one that moves.</td></tr>
+<tr><td>The chat page went away on its own</td><td>Closing the last tab ends the session after about ten seconds, and the console prompt comes back. Type <code>chat</code> again to reopen it; the address changes each time, because the token does.</td></tr>
 <tr><td>Generated files are not where you expected</td><td><code>PROJECTPATH</code> is set and points elsewhere. The tool prints the full path of everything it writes — trust that over your current directory.</td></tr>
 <tr><td>"No topic recognized online"</td><td>The description was too short or too unusual to match an article. Add a few words about what the system does, or add the classes by hand in the review loop.</td></tr>
 <tr><td>"Nothing to generate — the model is empty"</td><td>Discovery found no classes. Add at least one with <code>add &lt;name&gt;</code> before approving.</td></tr>
@@ -883,7 +969,7 @@ ever <em>suggests</em> — it never runs a command you did not confirm.</p>
 <tr><td>Your edits to a generated file are gone after regenerating</td><td>Answering <code>o</code> overwrites generated sources, which includes any changes you made inside them. Only <code>&lt;Class&gt;Validator.Custom.cs</code>, the project file and files you added yourself are preserved. Put your own code in new files, or in the <code>.Custom.cs</code> halves.</td></tr>
 </table>
 
-<h2>18. Command reference</h2>
+<h2>19. Command reference</h2>
 <p>Every command, by category. This is the same catalog <code>help all</code> prints; <code>help</code> on its
 own shows the shorter overview, and <code>help &lt;topic&gt;</code> shows one section of it.</p>
 <!-- APPENDIX:BEGIN - generated from CommandDictionary.GetHtmlReference().
