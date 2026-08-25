@@ -36,6 +36,17 @@ public class ChatWebHostTests
     }
 
     [TestMethod]
+    public async Task Serves_the_page_to_a_visitor_carrying_the_token()
+    {
+        using var host = Start(out _);
+        using var client = new HttpClient();
+
+        var response = await client.GetAsync(host.Url);
+
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [TestMethod]
     public void The_session_is_a_singleton_so_a_second_tab_joins_it()
     {
         using var host = Start(out var session);

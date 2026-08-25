@@ -1,0 +1,61 @@
+@page "/chat"
+@implements IDisposable
+@inject ChatSession Session
+
+@* Named ChatPage rather than Chat: a Chat component class beside the CodeGenerator.Web.Chat
+   namespace is an ambiguity inside Components. *@
+
+<PageTitle>Chat — SmartCodeGenerator</PageTitle>
+
+<div class="chat">
+    <ChatTranscript Turns="Session.Turns" />
+
+    @if (Session.Running)
+    {
+        <div class="working">
+            <span>@(_stopping ? "Stopping" : "Working on") @Session.InFlight…</span>
+            <button type="button" class="working-stop" disabled="@_stopping"
+                    @onclick="Stop">Stop</button>
+        </div>
+    }
+</div>
+
+@code {
+    private bool _stopping;
+
+    protected override void OnInitialized() => Session.Changed += Repaint;
+
+    public void Dispose() => Session.Changed -= Repaint;
+
+    /// <summary>
+    /// Repaints this circuit when the session changes.
+    /// </summary>
+    /// <remarks>
+    /// InvokeAsync because the event is raised from a worker thread: the command runs off the
+    /// circuit so the page can keep drawing while it does, and StateHasChanged called directly
+    /// from that thread throws.
+    /// </remarks>
+    private void Repaint()
+    {
+        // Cleared as the command that was being stopped finishes, so the next one starts with a
+        // live Stop button rather than one still labelled from the last run.
+        if (!Session.Running)
+            _stopping = false;
+
+        InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// Asks the running command to stop.
+    /// </summary>
+    /// <remarks>
+    /// Best-effort, and the label says so rather than claiming success. Plenty of what runs below
+    /// here is synchronous and takes no token; a button that said "Stopped" would be lying about
+    /// half the catalog.
+    /// </remarks>
+    private void Stop()
+    {
+        _stopping = true;
+        Session.Cancel();
+    }
+}

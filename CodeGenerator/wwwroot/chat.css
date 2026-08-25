@@ -1,0 +1,131 @@
+/* Self-contained: no CDN, no web font, the same constraint workflow.css works under. */
+
+/* Repeated from workflow.css rather than depended on, so this stylesheet stands on its own if
+   the two are ever served separately. The values are the same on purpose. */
+:root {
+    --ink: #1c1c1c;
+    --paper: #fbfbfa;
+    --line: #d3d3cf;
+    --pending: #8a8a85;
+    --active: #1f6feb;
+    --done: #1a7f37;
+    --failed: #b3261e;
+
+    /* Amber: the tool understood nothing, or would not attempt it. Neither is a fault. */
+    --unsure: #b26a00;
+}
+
+.chat {
+    max-width: 1100px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.transcript {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+}
+
+.turn {
+    border-left: 3px solid var(--line);
+    padding: 0 0 0 0.9rem;
+}
+
+.turn-succeeded { border-left-color: var(--done); }
+.turn-failed { border-left-color: var(--failed); }
+.turn-unrecognized { border-left-color: var(--unsure); }
+.turn-declined { border-left-color: var(--unsure); }
+
+/* The typed line, set apart from the answer so a long transcript still reads as a conversation. */
+.turn-said {
+    font-weight: 600;
+    margin: 0 0 0.5rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.block-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin: 0.5rem 0 0.25rem;
+    color: var(--pending);
+    font-size: 0.85rem;
+}
+
+.block-text,
+.block-code {
+    margin: 0;
+    padding: 0.6rem 0.8rem;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: #fff;
+    font: 13px/1.5 Consolas, "Cascadia Mono", monospace;
+
+    /* Inside its own box. The page body must never scroll sideways. */
+    overflow-x: auto;
+    white-space: pre;
+}
+
+/* A wide table scrolls in here rather than widening the page. */
+.block-scroll { overflow-x: auto; }
+
+.block-table {
+    border-collapse: collapse;
+    font: 13px/1.5 Consolas, "Cascadia Mono", monospace;
+}
+
+.block-table th,
+.block-table td {
+    border: 1px solid var(--line);
+    padding: 0.3rem 0.6rem;
+    text-align: left;
+    white-space: nowrap;
+}
+
+.block-table th { background: #f3f3f1; }
+
+.block-list {
+    margin: 0;
+    padding: 0 0 0 1.2rem;
+    font: 13px/1.6 Consolas, "Cascadia Mono", monospace;
+}
+
+.block-copy,
+.block-more,
+.working-stop {
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    background: #fff;
+    color: var(--ink);
+    padding: 0.2rem 0.6rem;
+    font: inherit;
+    font-size: 0.8rem;
+    cursor: pointer;
+}
+
+.block-copy:hover,
+.block-more:hover,
+.working-stop:hover:not(:disabled) { border-color: var(--active); color: var(--active); }
+
+.working-stop:disabled { color: var(--pending); cursor: default; }
+
+.block-more { margin: 0.35rem 0 0; }
+
+/* Four roles, and nothing at all for plain text — colouring everything colours nothing. */
+.tok-keyword { color: #0000c0; }
+.tok-text { color: #a31515; }
+.tok-comment { color: #1a7f37; font-style: italic; }
+.tok-number { color: #098658; }
+
+.working {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    color: var(--pending);
+    font-size: 0.9rem;
+}

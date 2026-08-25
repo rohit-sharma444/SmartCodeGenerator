@@ -1,0 +1,146 @@
+@* One turn per exchange: what was typed, then what came back, tinted by how it turned out. *@
+
+<div class="transcript">
+    @foreach (var turn in Turns)
+    {
+        <div class="turn turn-@Class(turn.Verdict)">
+            <div class="turn-said">@turn.Input</div>
+
+            @foreach (var block in turn.Blocks)
+            {
+                @switch (block)
+                {
+                    case CodeBlock snippet:
+                        <div class="block-heading">
+                            <span>@snippet.Heading</span>
+                            <button type="button" class="block-copy"
+                                    @onclick="() => Copy(snippet.Code)">Copy</button>
+                        </div>
+                        <pre class="block-code">@foreach (var token in CSharpTokens.Scan(Shown(block, snippet.Code)))
+{<span class="tok-@token.Kind.ToString().ToLowerInvariant()">@token.Text</span>}</pre>
+                        @if (Collapsed(block, snippet.Code))
+                        {
+                            <button type="button" class="block-more"
+                                    @onclick="() => Expand(block)">Show all @Count(snippet.Code) lines</button>
+                        }
+                        break;
+
+                    case TableBlock table:
+                        <div class="block-heading"><span>@table.Heading</span></div>
+                        <div class="block-scroll">
+                            <table class="block-table">
+                                <thead>
+                                    <tr>
+                                        @foreach (var header in table.Headers)
+                                        {
+                                            <th>@header</th>
+                                        }
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var row in table.Rows)
+                                    {
+                                        <tr>
+                                            @foreach (var cell in row)
+                                            {
+                                                <td>@cell</td>
+                                            }
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                        break;
+
+                    case ListBlock list:
+                        <div class="block-heading"><span>@list.Heading</span></div>
+                        <ul class="block-list">
+                            @foreach (var item in list.Items)
+                            {
+                                <li>@item</li>
+                            }
+                        </ul>
+                        break;
+
+                    case TextBlock text:
+                        <pre class="block-text">@Shown(block, text.Text)</pre>
+                        @if (Collapsed(block, text.Text))
+                        {
+                            <button type="button" class="block-more"
+                                    @onclick="() => Expand(block)">Show all @Count(text.Text) lines</button>
+                        }
+                        break;
+                }
+            }
+        </div>
+    }
+</div>
+
+@code {
+    /// <summary>
+    /// How many lines are shown before a block is collapsed.
+    /// </summary>
+    /// <remarks>
+    /// A `show class` on a real file runs to hundreds of lines, and three of those in a row buries
+    /// the composer. Enough to see what the command answered, and a button for the rest.
+    /// </remarks>
+    private const int CollapseAfter = 40;
+
+    /// <summary>
+    /// Which blocks the reader has opened.
+    /// </summary>
+    /// <remarks>
+    /// Compared by reference, deliberately. The blocks are records, so two turns that printed the
+    /// same text are equal by value, and expanding one of them would silently expand the other.
+    /// </remarks>
+    private readonly HashSet<object> _expanded = new(ReferenceEqualityComparer.Instance);
+
+    [Parameter, EditorRequired]
+    public IReadOnlyList<ChatTurn> Turns { get; set; } = [];
+
+    [Inject]
+    public IJSRuntime Js { get; set; } = default!;
+
+    /// <summary>The verdict as a CSS suffix. Declined and Unrecognized draw the same amber and
+    /// stay separate values, because the model must not call a decline "unrecognized".</summary>
+    private static string Class(ChatVerdict verdict) => verdict switch
+    {
+        ChatVerdict.Succeeded => "succeeded",
+        ChatVerdict.Failed => "failed",
+        ChatVerdict.Declined => "declined",
+        _ => "unrecognized"
+    };
+
+    private static string[] Lines(string text) => text.Replace("\r\n", "\n").Split('\n');
+
+    private static int Count(string text) => Lines(text).Length;
+
+    private bool Collapsed(object block, string text)
+        => Count(text) > CollapseAfter && !_expanded.Contains(block);
+
+    private string Shown(object block, string text)
+        => Collapsed(block, text)
+            ? string.Join("\n", Lines(text).Take(CollapseAfter))
+            : text;
+
+    private void Expand(object block) => _expanded.Add(block);
+
+    /// <summary>
+    /// Puts the code on the clipboard.
+    /// </summary>
+    /// <remarks>
+    /// Awaited rather than discarded: a dropped click task never repaints and swallows whatever
+    /// went wrong inside it.
+    /// </remarks>
+    private async Task Copy(string code)
+    {
+        try
+        {
+            await Js.InvokeVoidAsync("chatCopy", code);
+        }
+        catch (JSException)
+        {
+            // No clipboard permission. The code is on screen and selectable; nothing to report.
+        }
+    }
+}
