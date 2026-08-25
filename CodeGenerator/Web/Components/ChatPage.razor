@@ -18,6 +18,10 @@
                     @onclick="Stop">Stop</button>
         </div>
     }
+
+    <ChatComposer Disabled="Session.Running || Session.Ended"
+                  History="Session.History"
+                  OnSend="Send" />
 </div>
 
 @code {
@@ -44,6 +48,14 @@
 
         InvokeAsync(StateHasChanged);
     }
+
+    /// <summary>
+    /// Sends one message.
+    /// </summary>
+    /// <remarks>
+    /// Awaited, not discarded: a dropped task never repaints and swallows whatever it threw.
+    /// </remarks>
+    private async Task Send(string input) => await Session.Send(input);
 
     /// <summary>
     /// Asks the running command to stop.

@@ -129,3 +129,68 @@
     color: var(--pending);
     font-size: 0.9rem;
 }
+
+/* The composer sits at the foot of the page and the dropdown opens above it, so a long list
+   never pushes the box off the bottom of the screen. */
+.composer {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    position: sticky;
+    bottom: 0;
+    background: var(--paper);
+    padding: 0.5rem 0 0;
+}
+
+.composer textarea {
+    width: 100%;
+    box-sizing: border-box;
+    resize: vertical;
+    padding: 0.6rem 0.8rem;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: #fff;
+    color: var(--ink);
+    font: 14px/1.5 Consolas, "Cascadia Mono", monospace;
+}
+
+.composer textarea:focus { outline: 2px solid var(--active); outline-offset: -1px; }
+
+.composer textarea:disabled { background: #f3f3f1; color: var(--pending); }
+
+.suggestions {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    max-height: 15rem;
+    overflow-y: auto;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: #fff;
+}
+
+.suggestion {
+    display: grid;
+    grid-template-columns: minmax(9rem, auto) 1fr;
+    gap: 0.1rem 0.9rem;
+    padding: 0.4rem 0.7rem;
+    cursor: pointer;
+    border-bottom: 1px solid var(--line);
+}
+
+.suggestion:last-child { border-bottom: none; }
+
+.suggestion-on { background: #eef4ff; }
+
+.suggestion-command {
+    grid-row: span 2;
+    font: 13px/1.5 Consolas, "Cascadia Mono", monospace;
+    font-weight: 600;
+}
+
+.suggestion-description { font-size: 0.85rem; }
+
+.suggestion-example {
+    font: 12px/1.4 Consolas, "Cascadia Mono", monospace;
+    color: var(--pending);
+}

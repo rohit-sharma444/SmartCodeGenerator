@@ -1,0 +1,145 @@
+@* The input, and the dropdown over the command catalog. *@
+
+<div class="composer">
+    @if (_suggestions.Count > 0)
+    {
+        <ul class="suggestions">
+            @for (var i = 0; i < _suggestions.Count; i++)
+            {
+                var index = i;
+                var suggestion = _suggestions[i];
+
+                <li class="suggestion @(index == _selected ? "suggestion-on" : "")"
+                    @onclick="() => Insert(suggestion.Command)">
+                    <span class="suggestion-command">@suggestion.Command</span>
+                    <span class="suggestion-description">@suggestion.Description</span>
+                    <span class="suggestion-example">@suggestion.Example</span>
+                </li>
+            }
+        </ul>
+    }
+
+    <textarea value="@_text"
+              disabled="@Disabled"
+              rows="2"
+              placeholder="Type a command…"
+              @oninput="OnInput"
+              @onchange="OnChange"
+              @onkeydown="OnKeyDown"></textarea>
+</div>
+
+@code {
+    private string _text = string.Empty;
+    private int _selected;
+    private int _historyAt = -1;
+    private IReadOnlyList<CommandInfo> _suggestions = [];
+
+    [Parameter]
+    public bool Disabled { get; set; }
+
+    [Parameter]
+    public IReadOnlyList<string> History { get; set; } = [];
+
+    [Parameter]
+    public EventCallback<string> OnSend { get; set; }
+
+    private void OnInput(ChangeEventArgs e)
+    {
+        _text = e.Value?.ToString() ?? string.Empty;
+        _suggestions = CommandCatalog.Matches(_text);
+        _selected = 0;
+    }
+
+    /// <summary>
+    /// The box left focus with different text in it.
+    /// </summary>
+    /// <remarks>
+    /// Keeps the model in step without opening the dropdown: a list of suggestions appearing as
+    /// the box loses focus is a list nobody asked for.
+    /// </remarks>
+    private void OnChange(ChangeEventArgs e) => _text = e.Value?.ToString() ?? string.Empty;
+
+    /// <summary>
+    /// The keyboard, and the one rule this component exists to keep.
+    /// </summary>
+    /// <remarks>
+    /// While the dropdown is open, Enter completes and the arrows move the selection. Closed, Enter
+    /// sends and Up recalls history. Both meanings for one key is unavoidable, since this is the
+    /// arrangement every editor uses, but which one applies has to be decided by something the
+    /// user can see, and the open dropdown is that thing.
+    /// </remarks>
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (Disabled)
+            return;
+
+        var open = _suggestions.Count > 0;
+
+        switch (e.Key)
+        {
+            case "Escape" when open:
+                _suggestions = [];
+                return;
+
+            case "ArrowDown" when open:
+                _selected = Math.Min(_selected + 1, _suggestions.Count - 1);
+                return;
+
+            case "ArrowUp" when open:
+                _selected = Math.Max(_selected - 1, 0);
+                return;
+
+            case "Tab" when open:
+            case "Enter" when open && !e.ShiftKey:
+                Insert(_suggestions[_selected].Command);
+                return;
+
+            case "ArrowUp":
+                Recall(-1);
+                return;
+
+            case "ArrowDown":
+                Recall(1);
+                return;
+
+            case "Enter" when !e.ShiftKey:
+                await Send();
+                return;
+        }
+    }
+
+    private void Insert(string command)
+    {
+        _text = command;
+        _suggestions = [];
+        _selected = 0;
+    }
+
+    /// <summary>
+    /// Walks the shared history. Newest first going up, which is what every shell does.
+    /// </summary>
+    private void Recall(int direction)
+    {
+        if (History.Count == 0)
+            return;
+
+        _historyAt = _historyAt < 0
+            ? History.Count - 1
+            : Math.Clamp(_historyAt - direction, 0, History.Count - 1);
+
+        _text = History[_historyAt];
+    }
+
+    private async Task Send()
+    {
+        var text = _text;
+
+        // Cleared before the callback: the command runs on a worker and the page repaints while it
+        // does, so a box still holding the sent text reads as a command that did not go.
+        _text = string.Empty;
+        _suggestions = [];
+        _historyAt = -1;
+
+        await OnSend.InvokeAsync(text);
+    }
+}
