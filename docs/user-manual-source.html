@@ -890,6 +890,30 @@ own with every project a sibling of it; rooting at the file's own folder would f
 so when it changes. Loading a folder registers every <code>.csproj</code> beneath it; loading a solution
 registers only the projects that solution declares.</p>
 
+<h3>The project tree</h3>
+
+<p><strong>Tree</strong> in the header shows the loaded solution down the left: every registered project,
+the classes in each, and what each class declares. It opens a level at a time — a project is read when you
+open it, a class when you open that — so a solution of any size costs nothing until you go looking. The
+count beside a project appears once it is open, and is the length of the list underneath it.</p>
+
+<p>Clicking a class runs <code>show class</code> on it and the source appears in the transcript. Nothing in
+the tree writes anything: the only other thing it can do is <strong>Use</strong>, on a project row, which
+runs <code>use project</code> and moves what the next command acts on — the same command you could have
+typed, and it appears in the transcript as though you had.</p>
+
+<div class="note"><p>A class here is a <code>.cs</code> file, which is what the word means to the rest of
+the tool: <code>list classes</code> lists exactly what the tree draws. A file declaring two types shows
+once, under the name of the file.</p></div>
+
+<p>Members are the public data and public methods a type declares — a record's parameters included. A
+square marks a property, a circle a method. Computed properties and static members are left out, because
+neither is data the type carries.</p>
+
+<p>The tree hides itself on a narrow window, where a fixed pane would leave nothing to read the
+conversation in. Whether it is showing is remembered for as long as the <code>chat</code> session lasts,
+including across a refresh, and both tabs of one session agree about it.</p>
+
 <h3>Reading a command's output</h3>
 
 <p>Each exchange is a card: what you typed across the top with the time it ran, and what came back
