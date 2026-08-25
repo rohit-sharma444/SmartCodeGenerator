@@ -99,9 +99,11 @@ internal class CodeGeneratorStarter
 
         ProjectMetaData? currentProject = null;
 
+        var kind = CommandRoute.Classify(command);
+
         try
         {
-            if (BuildAppCommand.IsBuildApp(command))
+            if (kind == CommandKind.BuildApp)
             {
                 _buildApp.Handle(command, _workspaceRoot);
                 return true;
@@ -109,13 +111,13 @@ internal class CodeGeneratorStarter
 
             // Intercepted here too, so a scripted `help build app` gets the same answer as a
             // typed one rather than falling through to the NLP path.
-            if (HelpCommand.IsHelp(command))
+            if (kind == CommandKind.Help)
             {
                 Console.WriteLine(HelpCommand.Render(command));
                 return true;
             }
 
-            if (StatusCommand.IsStatus(command))
+            if (kind == CommandKind.Status)
             {
                 PrintStatus();
                 return true;
@@ -189,10 +191,12 @@ internal class CodeGeneratorStarter
             //if (string.IsNullOrWhiteSpace(input))
             //    continue;
 
-            if (input.Equals("exit", StringComparison.OrdinalIgnoreCase))
+            var kind = CommandRoute.Classify(input);
+
+            if (kind == CommandKind.Exit)
                 break;
 
-            if (ClearCommand.IsClear(input))
+            if (kind == CommandKind.Clear)
             {
                 // Screen-only wipe, then redraw the header so it stays put (the
                 // store-status report is NOT re-printed). Skipped when output
@@ -209,7 +213,7 @@ internal class CodeGeneratorStarter
                 continue;
             }
 
-            if (HistoryCommand.IsHistory(input))
+            if (kind == CommandKind.History)
             {
                 Console.WriteLine(HistoryView.Format(_commandHistory, 20));
                 continue;
@@ -217,7 +221,7 @@ internal class CodeGeneratorStarter
 
             // Ahead of the pipeline: LiteralCommandTable keys on the exact word "help", so
             // `help build app` matches nothing there. See HelpCommand.
-            if (HelpCommand.IsHelp(input))
+            if (kind == CommandKind.Help)
             {
                 // Paged: `help all` is around 250 lines, which otherwise scrolls the question and
                 // the answer's first half off the top of the screen.
@@ -225,19 +229,19 @@ internal class CodeGeneratorStarter
                 continue;
             }
 
-            if (StatusCommand.IsStatus(input))
+            if (kind == CommandKind.Status)
             {
                 PrintStatus();
                 continue;
             }
 
-            if (DemoCommand.IsDemo(input))
+            if (kind == CommandKind.Demo)
             {
                 RunDemo(ref currentProject);
                 continue;
             }
 
-            if (AiCommand.IsAiCommand(input))
+            if (kind == CommandKind.Ai)
             {
                 Console.WriteLine(AiCommand.Handle(input, _ai));
                 continue;
@@ -246,13 +250,13 @@ internal class CodeGeneratorStarter
             // FIX #9: Improved exception handling with specific catch blocks
             try
             {
-                if (BuildAppCommand.IsBuildApp(input))
+                if (kind == CommandKind.BuildApp)
                 {
                     _buildApp.Handle(input, _workspaceRoot, _ai);
                     continue;
                 }
 
-                if (BatchCommand.IsBatch(input))
+                if (kind == CommandKind.Batch)
                 {
                     _batch.Handle(ref currentProject, _configuredRules, _workspaceRoot,
                         r => ProjectManager.CurrentProject = r, _pipeline);
