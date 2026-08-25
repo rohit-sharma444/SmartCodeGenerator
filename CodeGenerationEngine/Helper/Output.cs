@@ -71,6 +71,17 @@ public static class Output
         return !outputRedirected || forceColourVariable is not null;
     }
 
+    /// <summary>
+    /// The transport actually in force, given that output may be being captured.
+    /// </summary>
+    /// <remarks>
+    /// Takes both as parameters for the reason <see cref="ColourAllowed"/> does: the test host
+    /// redirects output, so <see cref="ColourDelivery.Current"/> is <c>None</c> there and the
+    /// interesting cases are unreachable from a test that reads the process.
+    /// </remarks>
+    public static ColourTransport TransportFor(ColourTransport transport, bool suppressed)
+        => suppressed ? ColourTransport.None : transport;
+
     internal static bool Allowed
         => ColourAllowed(
             Console.IsOutputRedirected,
@@ -182,7 +193,7 @@ public static class Output
 
     private static void Write(string text, OutputRole role, bool newLine)
     {
-        switch (ColourDelivery.Current)
+        switch (TransportFor(ColourDelivery.Current, OutputCapture.Suppressed))
         {
             case ColourTransport.Ansi:
                 WritePlain(AnsiCodes.Wrap(text, role), newLine);
