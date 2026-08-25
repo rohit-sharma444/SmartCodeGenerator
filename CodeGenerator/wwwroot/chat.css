@@ -299,3 +299,23 @@
 
 /* The thing you came to click. */
 .picker-solution { font-weight: 600; color: var(--active); }
+
+/* What it might have meant. One keystroke away, never a surprise execution. */
+.turn-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin: 0.5rem 0 0;
+}
+
+.turn-chip {
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: #fff;
+    color: var(--ink);
+    padding: 0.15rem 0.7rem;
+    font: 12px/1.6 Consolas, "Cascadia Mono", monospace;
+    cursor: pointer;
+}
+
+.turn-chip:hover { border-color: var(--active); color: var(--active); }

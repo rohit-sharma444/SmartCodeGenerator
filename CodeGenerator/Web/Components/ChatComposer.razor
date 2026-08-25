@@ -19,17 +19,22 @@
         </ul>
     }
 
-    <textarea value="@_text"
+    <textarea @key="_generation"
+              @ref="_box"
+              value="@_pushed"
               disabled="@Disabled"
               rows="2"
               placeholder="Type a command…"
               @oninput="OnInput"
-              @onchange="OnChange"
               @onkeydown="OnKeyDown"></textarea>
 </div>
 
 @code {
     private string _text = string.Empty;
+    private string _pushed = string.Empty;
+    private int _generation;
+    private bool _refocus;
+    private ElementReference _box;
     private int _selected;
     private int _historyAt = -1;
     private IReadOnlyList<CommandInfo> _suggestions = [];
@@ -43,21 +48,62 @@
     [Parameter]
     public EventCallback<string> OnSend { get; set; }
 
+
+
+    /// <summary>
+    /// Puts text in the box without sending it.
+    /// </summary>
+    /// <remarks>
+    /// For the transcript's "did you mean" chips, which are one keystroke away from running and
+    /// never run themselves.
+    /// </remarks>
+    public void Fill(string text)
+    {
+        Push(text);
+        _suggestions = [];
+        _selected = 0;
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Writes text into the box.
+    /// </summary>
+    /// <remarks>
+    /// Blazor patches the DOM for any attribute whose rendered value differs from the last render.
+    /// With `value` bound to the text being typed, every keystroke sends a value back to the
+    /// browser and anything typed while that was in flight is rolled back. Measured in a real
+    /// browser on loopback: clean at ten characters a second, one lost at twenty, most of the line
+    /// above that.
+    /// <para>
+    /// So the rendered value is what this component last wrote, never what the user is typing, and
+    /// the key is bumped as well: setting the box back to what it was last set to is a change the
+    /// browser has to see, and an unchanged attribute is one Blazor does not send.
+    /// </para>
+    /// </remarks>
+    private void Push(string text)
+    {
+        _text = text;
+        _pushed = text;
+        _generation++;
+        _refocus = true;
+    }
+
+    /// <summary>Takes the caret back after a keyed element was replaced.</summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_refocus)
+            return;
+
+        _refocus = false;
+
+        await _box.FocusAsync();
+    }
     private void OnInput(ChangeEventArgs e)
     {
         _text = e.Value?.ToString() ?? string.Empty;
         _suggestions = CommandCatalog.Matches(_text);
         _selected = 0;
     }
-
-    /// <summary>
-    /// The box left focus with different text in it.
-    /// </summary>
-    /// <remarks>
-    /// Keeps the model in step without opening the dropdown: a list of suggestions appearing as
-    /// the box loses focus is a list nobody asked for.
-    /// </remarks>
-    private void OnChange(ChangeEventArgs e) => _text = e.Value?.ToString() ?? string.Empty;
 
     /// <summary>
     /// The keyboard, and the one rule this component exists to keep.
@@ -110,7 +156,7 @@
 
     private void Insert(string command)
     {
-        _text = command;
+        Push(command);
         _suggestions = [];
         _selected = 0;
     }
@@ -127,16 +173,21 @@
             ? History.Count - 1
             : Math.Clamp(_historyAt - direction, 0, History.Count - 1);
 
-        _text = History[_historyAt];
+        Push(History[_historyAt]);
     }
 
     private async Task Send()
     {
         var text = _text;
 
+        // Nothing typed, nothing sent. The console prints nothing for an empty line; here it
+        // would leave a turn with no input and no output, which stays on screen.
+        if (string.IsNullOrWhiteSpace(text))
+            return;
+
         // Cleared before the callback: the command runs on a worker and the page repaints while it
         // does, so a box still holding the sent text reads as a command that did not go.
-        _text = string.Empty;
+        Push(string.Empty);
         _suggestions = [];
         _historyAt = -1;
 

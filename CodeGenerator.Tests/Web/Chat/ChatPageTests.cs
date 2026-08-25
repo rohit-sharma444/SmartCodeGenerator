@@ -146,6 +146,68 @@ public class ChatPageTests
         two.WaitForAssertion(() => Assert.IsNotNull(two.Find(".turn")));
     }
 
+    [TestMethod]
+    public void An_unrecognised_turn_offers_what_it_might_have_meant()
+    {
+        using var context = NewContext();
+
+        var rendered = context.Render<ChatTranscript>(p => p.Add(
+            c => c.Turns,
+            new List<ChatTurn>
+            {
+                new("lst classes", CommandKind.Pipeline, ChatVerdict.Unrecognized,
+                    [new TextBlock("Command not recognized: 'lst classes'.")])
+            }));
+
+        Assert.IsNotEmpty(rendered.FindAll(".turn-chip"));
+    }
+
+    [TestMethod]
+    public void A_turn_that_worked_offers_nothing()
+    {
+        using var context = NewContext();
+
+        var rendered = context.Render<ChatTranscript>(p => p.Add(
+            c => c.Turns,
+            new List<ChatTurn>
+            {
+                new("list classes", CommandKind.Pipeline, ChatVerdict.Succeeded,
+                    [new TextBlock("Customer")])
+            }));
+
+        Assert.IsEmpty(rendered.FindAll(".turn-chip"));
+    }
+
+    /// <summary>
+    /// A chip fills the box. It never runs.
+    /// </summary>
+    /// <remarks>
+    /// One keystroke away and never a surprise execution: these commands write files and run
+    /// `dotnet`, and a guess of the tool's about what you meant is not something to act on because
+    /// you clicked near it.
+    /// </remarks>
+    [TestMethod]
+    public void A_chip_fills_the_composer_rather_than_running()
+    {
+        using var context = NewContext();
+        string? offered = null;
+
+        var rendered = context.Render<ChatTranscript>(p => p
+            .Add(c => c.Turns, new List<ChatTurn>
+            {
+                new("lst classes", CommandKind.Pipeline, ChatVerdict.Unrecognized,
+                    [new TextBlock("Command not recognized: 'lst classes'.")])
+            })
+            .Add(c => c.OnSuggestion, (string s) => offered = s));
+
+        var chip = rendered.FindAll(".turn-chip")[0];
+        var text = chip.TextContent.Trim();
+
+        chip.Click();
+
+        Assert.AreEqual(text, offered);
+    }
+
     private static BunitContext NewContext()
     {
         var context = new BunitContext();

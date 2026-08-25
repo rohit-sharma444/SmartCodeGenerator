@@ -402,6 +402,16 @@ public sealed class ChatSession
             return;
 
         _history.Add(input);
+
+        try
+        {
+            CommandHistoryFile.AppendLine(_workspace.HistoryPath, input);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // A history file that cannot be written is not a reason to refuse the command. The
+            // in-memory list above still serves the up-arrow for the rest of the session.
+        }
     }
 
     private void Raise() => Changed?.Invoke();

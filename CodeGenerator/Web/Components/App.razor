@@ -20,6 +20,18 @@
        this. Optional chaining because a browser with no permission has no clipboard object. *@
     <script>
         window.chatCopy = text => navigator.clipboard?.writeText(text);
+
+        // Enter sends, so the browser must not also type a newline into the box. Capture phase and
+        // no stopPropagation, so Blazor's own keydown listener still receives the event and decides
+        // what Enter means; this only stops the character. Shift+Enter is left alone, because that
+        // is the one that is meant to insert a line.
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Enter' && !e.shiftKey
+                && e.target instanceof HTMLTextAreaElement
+                && e.target.closest('.composer')) {
+                e.preventDefault();
+            }
+        }, true);
     </script>
     <script src="_framework/blazor.web.js"></script>
 </body>

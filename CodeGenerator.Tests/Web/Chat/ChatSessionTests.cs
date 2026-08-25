@@ -1,3 +1,4 @@
+using CodeGenerationEngine.Helper;
 using CodeGenerator.App;
 using CodeGenerator.Web.Chat;
 using CodeIntelligence;
@@ -174,6 +175,24 @@ public class ChatSessionTests
         Assert.IsFalse(load.Ok);
         Assert.AreEqual(before, session.Root);
         Assert.AreEqual(ChatVerdict.Failed, session.Turns[0].Verdict);
+    }
+
+    /// <summary>
+    /// A command typed here is in the file the console reads.
+    /// </summary>
+    /// <remarks>
+    /// One history, both surfaces. The in-memory list is shared already, so the console up-arrow
+    /// finds it for the rest of the session; the file is what makes that survive a restart, and
+    /// it is the same file <c>CommandLineEditor</c> appends to.
+    /// </remarks>
+    [TestMethod]
+    public async Task A_command_typed_here_is_in_the_history_the_console_reads()
+    {
+        var session = NewSession(out var workspace);
+
+        await session.Send("help");
+
+        Assert.Contains("help", CommandHistoryFile.ReadLines(workspace.HistoryPath));
     }
 
     private static ChatSession NewSession(out Workspace workspace)

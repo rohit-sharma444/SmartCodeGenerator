@@ -72,6 +72,20 @@
                         break;
                 }
             }
+
+            @* What it might have meant. These fill the box; they never run. These commands write
+               files and run `dotnet`, and a guess is not something to act on because someone
+               clicked near it. *@
+            @if (turn.Verdict == ChatVerdict.Unrecognized)
+            {
+                <div class="turn-chips">
+                    @foreach (var guess in CommandSuggester.Closest(turn.Input))
+                    {
+                        <button type="button" class="turn-chip"
+                                @onclick="() => Offer(guess)">@guess</button>
+                    }
+                </div>
+            }
         </div>
     }
 </div>
@@ -97,6 +111,10 @@
 
     [Parameter, EditorRequired]
     public IReadOnlyList<ChatTurn> Turns { get; set; } = [];
+
+    /// <summary>Raised when a "did you mean" chip is clicked, with the command it named.</summary>
+    [Parameter]
+    public EventCallback<string> OnSuggestion { get; set; }
 
     [Inject]
     public IJSRuntime Js { get; set; } = default!;
@@ -124,6 +142,9 @@
             : text;
 
     private void Expand(object block) => _expanded.Add(block);
+
+    /// <summary>Hands a guess to whoever owns the composer. Nothing is run here.</summary>
+    private Task Offer(string command) => OnSuggestion.InvokeAsync(command);
 
     /// <summary>
     /// Puts the code on the clipboard.

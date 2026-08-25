@@ -46,6 +46,34 @@ public class ChatWebHostTests
         Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
     }
 
+    /// <summary>
+    /// The page must be served as an interactive server component, not statically rendered.
+    /// </summary>
+    /// <remarks>
+    /// A page with no <c>@rendermode</c> draws its whole DOM and wires none of it: the strip, the
+    /// picker and the composer all look right, every button is inert, and nothing fails. No unit
+    /// test can see it either, because bUnit renders a component interactively by construction.
+    /// This was found by opening the page and clicking Load.
+    /// <para>
+    /// Asserted on the body rather than the whole document, because App.razor renders its
+    /// HeadOutlet interactively whatever the page does, and its marker sits in the head.
+    /// </para>
+    /// </remarks>
+    [TestMethod]
+    public async Task Serves_the_page_as_an_interactive_component()
+    {
+        using var host = Start(out _);
+        using var client = new HttpClient();
+
+        var html = await client.GetStringAsync(host.Url);
+        var body = html[html.IndexOf("<body>", StringComparison.Ordinal)..];
+
+        StringAssert.Contains(
+            body,
+            "\"type\":\"server\"",
+            "the chat page is statically rendered: it draws, and none of it responds");
+    }
+
     [TestMethod]
     public void The_session_is_a_singleton_so_a_second_tab_joins_it()
     {

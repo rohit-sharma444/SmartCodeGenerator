@@ -1,4 +1,5 @@
 @page "/chat"
+@rendermode InteractiveServer
 @implements IDisposable
 @inject ChatSession Session
 
@@ -11,7 +12,7 @@
     <ContextStrip Session="Session" />
     <SolutionPicker Session="Session" />
 
-    <ChatTranscript Turns="Session.Turns" />
+    <ChatTranscript Turns="Session.Turns" OnSuggestion="Prefill" />
 
     @if (Session.Running)
     {
@@ -22,13 +23,26 @@
         </div>
     }
 
-    <ChatComposer Disabled="Session.Running || Session.Ended"
+    <ChatComposer @ref="_composer"
+                  Disabled="Session.Running || Session.Ended"
                   History="Session.History"
                   OnSend="Send" />
 </div>
 
 @code {
     private bool _stopping;
+
+    /// <summary>The composer, so a "did you mean" chip can fill it.</summary>
+    private ChatComposer? _composer;
+
+    /// <summary>
+    /// Puts a guess in the box.
+    /// </summary>
+    /// <remarks>
+    /// Filled, never run. One keystroke away is close enough for a guess about what someone meant,
+    /// and these commands write files.
+    /// </remarks>
+    private void Prefill(string command) => _composer?.Fill(command);
 
     protected override void OnInitialized() => Session.Changed += Repaint;
 
