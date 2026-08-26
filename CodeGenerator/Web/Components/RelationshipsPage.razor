@@ -13,11 +13,12 @@
    gone, so a statically-rendered page opens no circuit, is never seen to close, and leaves the
    console holding the prompt until Ctrl-C. It also puts the PageTitle through the HeadOutlet,
    which App.razor renders interactively for the same reason. *@
-@* The "chat" class is load-bearing, not decoration: every colour token in chat.css is declared on
-   the .chat class rather than on :root, precisely so that one page's palette cannot repaint the
-   other. Without it here, every var() on this page resolves to nothing and the diagram comes out
-   unpainted. *@
-<div class="chat rel-page">
+@* Deliberately NOT carrying the chat class. It was here to borrow that page's colour tokens,
+   which are declared on it rather than on :root - but it also carries that page's dark theme,
+   which follows prefers-color-scheme, and this page turned dark on a machine set to dark while
+   every other page in the tool stayed light. The diagram now carries its own palette, so there is
+   nothing left to borrow. *@
+<div class="rel-page">
     <header class="rel-head">
         <h1>Relationships</h1>
         <p class="rel-root">@View.Root</p>
