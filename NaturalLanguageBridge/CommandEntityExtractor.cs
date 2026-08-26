@@ -756,6 +756,13 @@ public static class CommandEntityExtractor
                     });
             }
 
+            // Returning here is what drops `Customer Customer` out of
+            // `CustomerId int, Customer Customer`: one primitive matched, so the fallback parser
+            // below never runs and the rest of the list is never looked at again. The entries
+            // that go nowhere are recorded so the handler can say so instead of the user finding
+            // out by looking at the file.
+            command.IgnoredProperties.AddRange(Ignored(propertySection, matches));
+
             return;
         }
 
@@ -772,6 +779,45 @@ public static class CommandEntityExtractor
             if (!string.IsNullOrWhiteSpace(property.Name))
                 command.Properties.Add(property);
         }
+    }
+
+    /// <summary>
+    /// The entries in a property list that the primitive-matching path threw away.
+    /// </summary>
+    /// <remarks>
+    /// Reporting one is not the same as emitting it. A property typed as another class cannot
+    /// compile in the single-file check the create-class path runs, so it stays dropped - the
+    /// relationship offer is where the two classes are joined up, and the message says so.
+    /// </remarks>
+    public static IReadOnlyList<string> IgnoredPropertyEntries(string sentence)
+    {
+        var section = ExtractPropertySection(sentence);
+
+        if (string.IsNullOrWhiteSpace(section))
+            return [];
+
+        var matched = Regex.Matches(
+            section,
+            @"([A-Za-z_]\w*)\s+(string|int|long|bool|decimal|double|float|datetime|guid)\b",
+            RegexOptions.IgnoreCase);
+
+        // No primitive matched means the fallback parser ran and read the whole list, so nothing
+        // was skipped over.
+        return matched.Count == 0 ? [] : Ignored(section, matched);
+    }
+
+    private static IReadOnlyList<string> Ignored(string section, MatchCollection matched)
+    {
+        var kept = matched.Select(m => m.Value.Trim()).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        return
+        [
+            .. Regex
+                .Split(section, @"\s*(?:,|;|\band\b)\s*", RegexOptions.IgnoreCase)
+                .Select(t => t.Trim())
+                .Where(t => t.Length > 0
+                            && !kept.Any(k => t.StartsWith(k, StringComparison.OrdinalIgnoreCase)))
+        ];
     }
 
     public static string ExtractPropertySection(string sentence)

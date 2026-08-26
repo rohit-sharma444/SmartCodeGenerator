@@ -230,7 +230,34 @@ public static class CommandHandlingService
             return false;
         }
 
-        return GenerateAndSave(ctx);
+        var saved = GenerateAndSave(ctx);
+
+        // After the class is on disk, and only if it got there: a note about what was left out of
+        // a class that was never written would be the second confusing thing in a row.
+        if (saved)
+            ReportIgnoredProperties(command);
+
+        return saved;
+    }
+
+    /// <summary>
+    /// Says which entries in a property list went nowhere, and where they are handled instead.
+    /// </summary>
+    /// <remarks>
+    /// The list is carried on the command rather than re-derived here: it is found in
+    /// <c>CommandEntityExtractor</c>, which is in an assembly that references this one and not the
+    /// other way round, so the data has to travel and the handler has to be the one that speaks.
+    /// A warning rather than an error - nothing failed, the class was written, and part of what
+    /// was asked for was not.
+    /// </remarks>
+    private static void ReportIgnoredProperties(ParsedCommand command)
+    {
+        foreach (var ignored in command.IgnoredProperties)
+        {
+            Output.Warning(
+                $"Ignored '{ignored}': only primitive property types can be given here. "
+                + "Relationships between classes are set separately — the tool will offer.");
+        }
     }
 
     private static bool HandleShowClass(CommandExecutionContext ctx)
