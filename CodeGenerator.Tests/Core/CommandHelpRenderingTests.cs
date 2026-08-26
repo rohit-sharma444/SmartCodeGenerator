@@ -29,6 +29,105 @@ public class CommandHelpRenderingTests
     }
 
     [TestMethod]
+    public void Every_example_fits_on_one_line()
+    {
+        // The constraint belongs to the catalog, not to the renderer. Wrapping a long example
+        // would keep the output tidy and hand the reader a command they have to reassemble from
+        // two lines before they can type it, so the examples are kept short enough instead.
+        const int Gutter = 12;
+
+        foreach (var command in CommandDictionary.Commands)
+        {
+            Assert.IsLessThan(81, command.Example.Length + Gutter,
+                $"the example for `{command.Command}` is too long to print on one line");
+        }
+    }
+
+    [TestMethod]
+    public void No_help_rendering_wraps_on_an_eighty_column_console()
+    {
+        // The overview had this guarantee and the other two did not, which is exactly where the
+        // formatting went wrong:  printed a 45-character command column followed by a
+        // whole description, so entries ran past 150 characters and the terminal folded them at
+        // its own margin, mid-sentence, under the left edge.
+        var renderings = new List<(string What, string Text)>
+        {
+            ("help", CommandDictionary.GetOverview()),
+            ("help all", CommandDictionary.GetHelpText()),
+        };
+
+        renderings.AddRange(CommandDictionary.Categories
+            .Select(c => ($"help {c}", CommandDictionary.GetTopicHelp(c)!)));
+
+        foreach (var (what, text) in renderings)
+        {
+            foreach (var line in text.Split('\n'))
+            {
+                Assert.IsLessThan(81, line.TrimEnd().Length,
+                    $"{what} wraps at 80 columns ({line.TrimEnd().Length} chars): {line}");
+            }
+        }
+    }
+
+    [TestMethod]
+    public void Every_command_is_shown_with_what_it_does_and_how_it_is_typed()
+    {
+        // The format is three stacked lines per entry rather than a column, so the check is that
+        // all three are still there for every entry - a wrap that dropped one would look tidy.
+        foreach (var category in CommandDictionary.Categories)
+        {
+            var text = CommandDictionary.GetTopicHelp(category)!;
+
+            foreach (var command in CommandDictionary.Commands.Where(c => c.Category == category))
+            {
+                StringAssert.Contains(text, command.Command);
+                StringAssert.Contains(text, command.Example);
+            }
+        }
+    }
+
+    [TestMethod]
+    public void Overview_SaysWhatTheToolDoesWithoutBeingAsked()
+    {
+        // The relationship offer is not a command, so no amount of reading the catalog finds it.
+        // Someone working from the console would never learn it exists.
+        var overview = CommandDictionary.GetOverview();
+
+        StringAssert.Contains(overview, "Set for you");
+
+        foreach (var offer in CommandDictionary.Unprompted)
+            StringAssert.Contains(overview, offer.Command);
+    }
+
+    [TestMethod]
+    public void HelpAll_SaysIt_Too_AndAddsThePipedCase()
+    {
+        var full = CommandDictionary.GetHelpText();
+
+        StringAssert.Contains(full, "SET FOR YOU");
+
+        foreach (var offer in CommandDictionary.Unprompted)
+            StringAssert.Contains(full, offer.Summary);
+
+        // Only in the long form: someone whose scripted run never shows the offer needs to know
+        // that is deliberate, and the overview has no room to say so.
+        StringAssert.Contains(full, "never asked");
+    }
+
+    [TestMethod]
+    public void The_note_is_one_definition_rendered_three_ways()
+    {
+        // help, help all and docs/commands.md all render CommandDictionary.Unprompted. Two
+        // spellings of this is how the manual appendix drifted from the catalog once already.
+        foreach (var offer in CommandDictionary.Unprompted)
+        {
+            StringAssert.Contains(CommandDictionary.GetOverview(), offer.Command);
+            StringAssert.Contains(CommandDictionary.GetHelpText(), offer.Command);
+            StringAssert.Contains(CommandDictionary.GetMarkdownReference(), offer.Command);
+        }
+    }
+
+    [TestMethod]
     public void Overview_NamesEveryCategory()
     {
         var overview = CommandDictionary.GetOverview();
