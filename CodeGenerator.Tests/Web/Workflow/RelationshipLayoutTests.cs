@@ -143,7 +143,7 @@ public class RelationshipLayoutTests
         foreach (var box in layout.Boxes.Concat(layout.Unrelated))
         {
             Assert.IsLessThanOrEqualTo(layout.Width, box.X + RelationshipLayout.BoxWidth, box.Name);
-            Assert.IsLessThanOrEqualTo(layout.Height, box.Y + RelationshipLayout.BoxHeight, box.Name);
+            Assert.IsLessThanOrEqualTo(layout.Height, box.Y + box.Height, box.Name);
         }
     }
 
@@ -206,6 +206,99 @@ public class RelationshipLayoutTests
         var arrow = map.Arrows.Single();
 
         Assert.AreEqual(arrow.X1 + (arrow.X2 - arrow.X1) / 2, arrow.Turn);
+    }
+
+    [TestMethod]
+    public void A_box_is_as_tall_as_the_rows_it_shows()
+    {
+        // Boxes stopped being a fixed height when they started carrying columns, so a row position
+        // can no longer be derived from an index - the next box has to start below the previous
+        // one real bottom, or two of them overlap.
+        var map = RelationshipLayout.Of(
+        [
+            new RelationshipSource("Sale", ["Inventory", "Good"], ["Id", "Amount", "Method"]),
+            new RelationshipSource("Inventory", [], ["Id"]),
+            new RelationshipSource("Good", [], ["Id"])
+        ]);
+
+        var sale = map.Boxes.Single(b => b.Name == "Sale");
+        var inventory = map.Boxes.Single(b => b.Name == "Inventory");
+
+        // Id, InventoryId, GoodId, then a count of what is not drawn.
+        Assert.HasCount(3, sale.Rows);
+        Assert.AreEqual(2, sale.Hidden, "Amount and Method are counted, not drawn");
+        Assert.IsGreaterThan(inventory.Height, sale.Height);
+
+        // Order-independent, because which box stacks first is decided by name and a test that
+        // assumed one of them would pass or fail on the alphabet rather than on the layout.
+        foreach (var column in map.Boxes.GroupBy(b => b.X))
+        {
+            var stacked = column.OrderBy(b => b.Y).ToList();
+
+            for (var i = 1; i < stacked.Count; i++)
+            {
+                Assert.IsGreaterThanOrEqualTo(
+                    stacked[i - 1].Y + stacked[i - 1].Height,
+                    stacked[i].Y,
+                    $"{stacked[i].Name} overlaps {stacked[i - 1].Name}");
+            }
+        }
+    }
+
+    [TestMethod]
+    public void The_key_and_the_foreign_keys_are_the_rows_that_are_drawn()
+    {
+        var map = RelationshipLayout.Of(
+        [
+            new RelationshipSource("Order", ["Customer"], ["Id", "Reference", "Total"]),
+            new RelationshipSource("Customer", [], ["Id", "Name"])
+        ]);
+
+        var order = map.Boxes.Single(b => b.Name == "Order");
+
+        CollectionAssert.AreEqual(new[] { "Id", "CustomerId" }, order.Rows.Select(r => r.Name).ToList());
+        CollectionAssert.AreEqual(new[] { "PK", "FK" }, order.Rows.Select(r => r.Marker).ToList());
+    }
+
+    [TestMethod]
+    public void The_foreign_key_row_is_drawn_even_when_the_class_does_not_carry_it_yet()
+    {
+        // On the review page nothing has been generated, so Order has no CustomerId field at all.
+        // Showing what generating WILL add is the entire reason the picture is on that page.
+        var map = RelationshipLayout.Of(
+        [
+            new RelationshipSource("Order", ["Customer"], ["Id"]),
+            new RelationshipSource("Customer", [], ["Id"])
+        ]);
+
+        var order = map.Boxes.Single(b => b.Name == "Order");
+
+        Assert.IsTrue(order.Rows.Any(r => r.Name == "CustomerId"), "the foreign key to come");
+        Assert.AreEqual(0, order.Hidden);
+    }
+
+    [TestMethod]
+    public void A_line_leaves_the_row_of_the_foreign_key_that_carries_it()
+    {
+        // Not the middle of the box: leaving from the field is the difference between saying these
+        // two are related and saying which column relates them.
+        var map = RelationshipLayout.Of(
+        [
+            new RelationshipSource("Sale", ["Inventory", "Good"], ["Id"]),
+            new RelationshipSource("Inventory", [], ["Id"]),
+            new RelationshipSource("Good", [], ["Id"])
+        ]);
+
+        var sale = map.Boxes.Single(b => b.Name == "Sale");
+
+        foreach (var arrow in map.Arrows)
+        {
+            var row = sale.Rows.Single(r => r.Name == arrow.To + "Id");
+
+            Assert.AreEqual(row.Y, arrow.Y1, arrow.To);
+        }
+
+        Assert.HasCount(2, map.Arrows.Select(a => a.Y1).Distinct().ToList());
     }
 
     private static RelationshipSource Entity(string name, params string[] targets)

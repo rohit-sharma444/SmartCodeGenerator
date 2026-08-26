@@ -34,7 +34,10 @@ public static class WorkspaceRelationships
         [
             .. definitions
                 .OrderBy(d => d.Name, StringComparer.Ordinal)
-                .Select(d => new RelationshipSource(d.Name, ForeignKeys.TargetsOf(d, names)))
+                .Select(d => new RelationshipSource(
+                    d.Name,
+                    ForeignKeys.TargetsOf(d, names),
+                    [.. d.Properties.Select(p => p.Name)]))
         ];
     }
 }

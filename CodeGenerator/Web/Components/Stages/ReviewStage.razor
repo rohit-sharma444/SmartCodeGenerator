@@ -131,7 +131,8 @@
     private List<RelationshipSource> Sources() =>
         [.. Model.Entities.Select(e => new RelationshipSource(
             e.Name,
-            [.. e.Relationships.Select(r => r.Target)]))];
+            [.. e.Relationships.Select(r => r.Target)],
+            [.. e.Fields.Select(f => f.Name)]))];
 
     [Parameter, EditorRequired] public required BuildSession Session { get; set; }
     [Parameter, EditorRequired] public required StageNavigation Navigation { get; set; }

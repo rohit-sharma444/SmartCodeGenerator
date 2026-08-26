@@ -7,40 +7,63 @@ namespace CodeGenerator.Web.Workflow;
 /// Deliberately not <c>CandidateEntity</c>. The review page feeds this from the model discovery
 /// produced, and <c>show relationships</c> feeds it from the classes already on disk, which share
 /// no type at all. A layout that named either one would have to be duplicated for the other.
+/// <para>
+/// <paramref name="Fields"/> is every field the class has. The layout picks which of them to draw —
+/// the key, and the foreign key behind each relationship — and counts the rest. Passing the whole
+/// list rather than a pre-filtered one keeps that decision in one place.
+/// </para>
 /// </remarks>
-public sealed record RelationshipSource(string Name, IReadOnlyList<string> Targets);
+public sealed record RelationshipSource(
+    string Name,
+    IReadOnlyList<string> Targets,
+    IReadOnlyList<string> Fields)
+{
+    /// <summary>A class whose fields are not known, or not worth drawing.</summary>
+    public RelationshipSource(string name, IReadOnlyList<string> targets)
+        : this(name, targets, []) { }
+}
 
-/// <summary>One class, as a box on the diagram.</summary>
-public sealed record RelationshipBox(string Name, int X, int Y);
+/// <summary>One line inside a box: a field worth showing, and what marks it.</summary>
+/// <param name="Marker">"PK", "FK", or empty. Drawn in the gutter beside the name.</param>
+/// <param name="Y">The centre of the row, in diagram coordinates — so a line can leave from the
+/// exact field that carries the relationship rather than from the middle of the box.</param>
+public sealed record RelationshipRow(string Name, string Marker, int Y);
 
-/// <summary>One relationship, as an arrow between two boxes.</summary>
+/// <summary>One class, as a table on the diagram.</summary>
+public sealed record RelationshipBox(
+    string Name,
+    int X,
+    int Y,
+    int Height,
+    IReadOnlyList<RelationshipRow> Rows,
+    int Hidden);
+
 /// <summary>
-/// One relationship, as an arrow between two boxes.
+/// One relationship, as a line between two tables.
 /// </summary>
 /// <param name="Turn">
-/// Where the elbow turns, between the two columns. Every arrow crossing the same gap gets its own
-/// x here, which is not cosmetic: with a single turn in the middle of the gap, five arrows drew
+/// Where the elbow turns, between the two columns. Every line crossing the same gap gets its own
+/// x here, which is not cosmetic: with a single turn in the middle of the gap, five lines drew
 /// their vertical segments on top of one another and became one line that could not be traced back
-/// to any source. That was invisible to every assertion and obvious in the first screenshot.
+/// to any source.
 /// </param>
 public sealed record RelationshipArrow(
     string From, string To, int X1, int Y1, int X2, int Y2, int Turn);
 
 /// <summary>
-/// Where the boxes and arrows go on the review diagram.
+/// Where the tables and lines go on the relationship diagram.
 /// </summary>
 /// <remarks>
 /// Coordinates are worked out here rather than left to CSS, which is a deliberate departure from
 /// <c>StageDiagram</c>. That one draws its chain as a CSS grid with pseudo-element connectors
 /// precisely so that a node whose title wraps never needs the arrows re-measured — and that works
 /// because the pipeline is a straight line, where every connector joins one box to the next. A
-/// relationship graph is not a line: one class can have three arrows into it from three different
-/// columns, which no amount of grid can express. So the coordinates are real, and the determinism
-/// comes back from a fixed box size and a truncated name instead of from the layout engine.
+/// relationship graph is not a line: one class can have three lines into it from three different
+/// columns, which no amount of grid can express.
 /// <para>
-/// Pure, and no reference to the browser: layering, cycles and the unrelated band are the parts
-/// that can be wrong, and they are testable as arithmetic. Whether the result is legible is the
-/// part no assertion can answer, which is what a screenshot is for.
+/// Pure, and no reference to the browser: layering, cycles, row selection and the unrelated band
+/// are the parts that can be wrong, and they are testable as arithmetic. Whether the result is
+/// legible is the part no assertion can answer, which is what a screenshot is for.
 /// </para>
 /// <para>
 /// What it draws is what <c>DomainModelMapper</c> will write, so it applies the same two rules the
@@ -51,12 +74,32 @@ public sealed record RelationshipArrow(
 /// </remarks>
 public sealed class RelationshipLayout
 {
-    public const int BoxWidth = 150;
-    public const int BoxHeight = 40;
+    public const int BoxWidth = 208;
 
-    private const int ColumnGap = 90;
-    private const int RowGap = 18;
-    private const int BandGap = 46;
+    /// <summary>The title band carrying the class name.</summary>
+    public const int HeaderHeight = 30;
+
+    /// <summary>One field line.</summary>
+    public const int RowHeight = 20;
+
+    /// <summary>The height of a box in the unrelated band, which has no rows.</summary>
+    public const int BandBoxHeight = 30;
+
+    /// <summary>
+    /// The width of a box in the unrelated band.
+    /// </summary>
+    /// <remarks>
+    /// Narrower than an entity table, because it holds a name and nothing else. At the table width
+    /// a band of five was wider than the graph above it and put a horizontal scrollbar under a
+    /// diagram that otherwise fitted.
+    /// </remarks>
+    public const int BandBoxWidth = 150;
+
+    private const int RowsTop = 6;
+    private const int RowsBottom = 8;
+    private const int ColumnGap = 120;
+    private const int RowGap = 22;
+    private const int BandGap = 52;
 
     private RelationshipLayout(
         IReadOnlyList<RelationshipBox> boxes,
@@ -91,27 +134,23 @@ public sealed class RelationshipLayout
 
     public static RelationshipLayout Of(IReadOnlyList<RelationshipSource> entities)
     {
-        var names = entities
-            .Select(e => e.Name)
-            .Where(n => !string.IsNullOrWhiteSpace(n))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(n => n, StringComparer.Ordinal)
-            .ToList();
+        var byName = entities
+            .Where(e => !string.IsNullOrWhiteSpace(e.Name))
+            .GroupBy(e => e.Name, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
 
-        var canonical = names.ToDictionary(n => n, n => n, StringComparer.OrdinalIgnoreCase);
+        var names = byName.Keys.OrderBy(n => n, StringComparer.Ordinal).ToList();
 
-        var edges = Edges(entities, canonical);
+        var edges = Edges(entities, byName);
 
         var connected = names
             .Where(n => edges.Any(e => Same(e.From, n) || Same(e.To, n)))
             .ToList();
 
-        var layers = Layer(connected, edges);
-
-        var boxes = Place(layers);
+        var boxes = Place(Layer(connected, edges), byName, edges);
         var placed = boxes.ToDictionary(b => b.Name, StringComparer.OrdinalIgnoreCase);
 
-        var graphHeight = boxes.Count == 0 ? 0 : boxes.Max(b => b.Y) + BoxHeight;
+        var graphHeight = boxes.Count == 0 ? 0 : boxes.Max(b => b.Y + b.Height);
 
         var unrelated = Band(
             names.Where(n => !placed.ContainsKey(n)).ToList(),
@@ -125,31 +164,39 @@ public sealed class RelationshipLayout
             boxes,
             arrows,
             unrelated,
-            all.Count == 0 ? 0 : all.Max(b => b.X) + BoxWidth,
-            all.Count == 0 ? 0 : all.Max(b => b.Y) + BoxHeight);
+            all.Count == 0
+                ? 0
+                : Math.Max(
+                    boxes.Count == 0 ? 0 : boxes.Max(b => b.X) + BoxWidth,
+                    unrelated.Count == 0 ? 0 : unrelated.Max(b => b.X) + BandBoxWidth),
+            all.Count == 0 ? 0 : all.Max(b => b.Y + b.Height));
     }
+
+    /// <summary>The height a box needs for the rows it will show.</summary>
+    public static int HeightFor(int rows, bool hasHidden) =>
+        HeaderHeight + RowsTop + rows * RowHeight + (hasHidden ? RowHeight : 0) + RowsBottom;
 
     /// <summary>Every distinct pair, in the order the columns will read.</summary>
     private static List<(string From, string To)> Edges(
-        IReadOnlyList<RelationshipSource> entities, Dictionary<string, string> canonical)
+        IReadOnlyList<RelationshipSource> entities, Dictionary<string, RelationshipSource> byName)
     {
         var edges = new List<(string From, string To)>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var entity in entities.OrderBy(e => e.Name, StringComparer.Ordinal))
         {
-            if (!canonical.TryGetValue(entity.Name ?? string.Empty, out var from))
+            if (!byName.TryGetValue(entity.Name ?? string.Empty, out var from))
                 continue;
 
             foreach (var target in entity.Targets)
             {
-                if (!canonical.TryGetValue(target ?? string.Empty, out var to))
+                if (!byName.TryGetValue(target ?? string.Empty, out var to))
                     continue;
 
-                if (Same(from, to) || !seen.Add($"{from}->{to}"))
+                if (Same(from.Name, to.Name) || !seen.Add($"{from.Name}->{to.Name}"))
                     continue;
 
-                edges.Add((from, to));
+                edges.Add((from.Name, to.Name));
             }
         }
 
@@ -157,7 +204,7 @@ public sealed class RelationshipLayout
     }
 
     /// <summary>
-    /// Which column each class sits in: the longest path to it, so an arrow always points right.
+    /// Which column each class sits in: the longest path to it, so a line always points right.
     /// </summary>
     /// <remarks>
     /// A relaxation pass rather than a topological sort, capped at one round per class. Two classes
@@ -190,41 +237,116 @@ public sealed class RelationshipLayout
         return layer;
     }
 
-    private static List<RelationshipBox> Place(Dictionary<string, int> layers) =>
-    [
-        .. layers
-            .GroupBy(pair => pair.Value)
-            .OrderBy(column => column.Key)
-            .SelectMany(column => column
-                .Select(pair => pair.Key)
-                .OrderBy(name => name, StringComparer.Ordinal)
-                .Select((name, row) => new RelationshipBox(
-                    name,
-                    column.Key * (BoxWidth + ColumnGap),
-                    row * (BoxHeight + RowGap))))
-    ];
+    /// <summary>
+    /// The boxes, stacked down each column, each as tall as the rows it holds.
+    /// </summary>
+    /// <remarks>
+    /// Heights vary, so a row's position cannot be derived from an index the way it could when
+    /// every box was the same size — the next box starts below the previous one's real bottom.
+    /// </remarks>
+    private static List<RelationshipBox> Place(
+        Dictionary<string, int> layers,
+        Dictionary<string, RelationshipSource> byName,
+        List<(string From, string To)> edges)
+    {
+        var boxes = new List<RelationshipBox>();
+
+        foreach (var column in layers.GroupBy(pair => pair.Value).OrderBy(c => c.Key))
+        {
+            var x = column.Key * (BoxWidth + ColumnGap);
+            var y = 0;
+
+            foreach (var name in column.Select(p => p.Key).OrderBy(n => n, StringComparer.Ordinal))
+            {
+                var box = Box(byName[name], x, y, edges);
+
+                boxes.Add(box);
+
+                y += box.Height + RowGap;
+            }
+        }
+
+        return boxes;
+    }
+
+    /// <summary>
+    /// One class as a table: its key, the foreign key behind each relationship it owns, and a count
+    /// of everything else.
+    /// </summary>
+    /// <remarks>
+    /// Only the fields that explain the picture are drawn. Listing all eleven of Sale's would make
+    /// the box the tallest thing on the diagram while saying nothing about what it is joined to —
+    /// and the ones that do explain it are exactly the key and the foreign keys.
+    /// <para>
+    /// The foreign keys are named by the convention rather than looked for in the field list. On the
+    /// review page the class does not carry them yet, and showing what generating will add is the
+    /// whole point of the picture being there.
+    /// </para>
+    /// </remarks>
+    private static RelationshipBox Box(
+        RelationshipSource source, int x, int y, List<(string From, string To)> edges)
+    {
+        var shown = new List<string>();
+
+        var key = source.Fields.FirstOrDefault(
+            f => string.Equals(f, "Id", StringComparison.OrdinalIgnoreCase));
+
+        if (key is not null)
+            shown.Add(key);
+
+        var foreign = edges
+            .Where(e => Same(e.From, source.Name))
+            .Select(e => e.To + "Id")
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        shown.AddRange(foreign);
+
+        var hidden = source.Fields.Count(f => !shown.Contains(f, StringComparer.OrdinalIgnoreCase));
+
+        var rows = new List<RelationshipRow>();
+        var top = y + HeaderHeight + RowsTop;
+
+        for (var i = 0; i < shown.Count; i++)
+        {
+            var marker = i == 0 && key is not null ? "PK" : "FK";
+
+            rows.Add(new RelationshipRow(shown[i], marker, top + i * RowHeight + RowHeight / 2));
+        }
+
+        return new RelationshipBox(
+            source.Name, x, y, HeightFor(shown.Count, hidden > 0), rows, hidden);
+    }
 
     /// <summary>The unrelated classes, wrapped across rows under the graph.</summary>
     private static List<RelationshipBox> Band(IReadOnlyList<string> names, int top)
     {
         const int PerRow = 5;
+        const int Gap = 18;
 
         return
         [
             .. names.Select((name, i) => new RelationshipBox(
                 name,
-                i % PerRow * (BoxWidth + RowGap),
-                top + i / PerRow * (BoxHeight + RowGap)))
+                i % PerRow * (BandBoxWidth + Gap),
+                top + i / PerRow * (BandBoxHeight + Gap),
+                BandBoxHeight,
+                [],
+                0))
         ];
     }
 
     /// <summary>
-    /// The arrows, each with its own lane through the gap it crosses.
+    /// The lines, each leaving the row of the foreign key that carries it.
     /// </summary>
     /// <remarks>
-    /// Arrows are grouped by the gap they cross and spaced evenly across it, so no two share a
-    /// vertical segment. A single arrow still turns in the middle, which is where it would have
-    /// been anyway.
+    /// Leaving from the field rather than from the middle of the box is the difference between a
+    /// picture that says these two are related and one that says which column relates them — which
+    /// is the thing that otherwise means opening the file.
+    /// <para>
+    /// Lines are grouped by the gap they cross and spaced evenly across it, so no two share a
+    /// vertical segment.
+    /// </para>
     /// </remarks>
     private static List<RelationshipArrow> Route(
         List<(string From, string To)> edges, Dictionary<string, RelationshipBox> placed)
@@ -243,20 +365,28 @@ public sealed class RelationshipLayout
 
             var lane = 0;
 
-            foreach (var (edge, from, to) in gap.OrderBy(a => a.From.Y).ThenBy(a => a.To.Y))
+            foreach (var (edge, from, to) in gap
+                         .OrderBy(a => RowY(a.From, a.Edge.To + "Id"))
+                         .ThenBy(a => a.To.Y))
             {
                 lane++;
 
                 routed.Add(new RelationshipArrow(
                     edge.From, edge.To,
-                    start, from.Y + BoxHeight / 2,
-                    to.X, to.Y + BoxHeight / 2,
+                    start, RowY(from, edge.To + "Id"),
+                    to.X, RowY(to, "Id"),
                     start + span * lane / (lanes + 1)));
             }
         }
 
         return routed;
     }
+
+    /// <summary>The centre of a named row, or of the title band when the box has no such row.</summary>
+    private static int RowY(RelationshipBox box, string field) =>
+        box.Rows.FirstOrDefault(r => Same(r.Name, field))?.Y
+        ?? box.Rows.FirstOrDefault()?.Y
+        ?? box.Y + HeaderHeight / 2;
 
     private static bool Same(string a, string b) =>
         string.Equals(a, b, StringComparison.OrdinalIgnoreCase);

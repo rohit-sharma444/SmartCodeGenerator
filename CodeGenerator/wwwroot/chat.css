@@ -401,13 +401,39 @@
     margin: 0 0 1.25rem;
 }
 
-.rel-diagram > h3 {
+.rel-title {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.5rem 0.9rem;
     margin: 0 0 0.5rem;
+}
+
+.rel-title h3 {
+    margin: 0;
     font-size: 0.8rem;
     font-weight: 600;
     letter-spacing: 0.04em;
     text-transform: uppercase;
     color: var(--ink-soft);
+}
+
+/* The notation, explained where it is used. A crow's foot is only obvious to someone who has
+   already met one. */
+.rel-legend {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.78rem;
+    color: var(--ink-faint);
+}
+
+.rel-legend-mark {
+    width: 34px;
+    height: 12px;
+    stroke: var(--ink-faint);
+    stroke-width: 1.2;
+    fill: none;
 }
 
 .rel-empty,
@@ -432,17 +458,54 @@
     display: block;
 }
 
-.rel-box rect {
+/* --- one class, as a table ---------------------------------------------------------- */
+
+.rel-box-body {
     fill: var(--panel);
     stroke: var(--line-strong);
     stroke-width: 1;
 }
 
-.rel-box text {
+/* Tinted rather than dark. The review page is all light panels and a black title band would be
+   the heaviest thing on it, which is not where the eye should land. */
+.rel-box-head {
+    fill: var(--accent-soft);
+}
+
+.rel-box-rule {
+    stroke: var(--line-strong);
+    stroke-width: 1;
+}
+
+.rel-box-name {
     font: inherit;
     font-size: 0.82rem;
-    font-weight: 550;
+    font-weight: 650;
     fill: var(--ink);
+}
+
+.rel-field {
+    font: inherit;
+    font-size: 0.76rem;
+    fill: var(--ink);
+}
+
+/* The gutter marker. Tabular so PK and FK occupy the same width and the field names line up. */
+.rel-mark {
+    font: inherit;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+}
+
+.rel-mark.is-key { fill: var(--ink-faint); }
+
+.rel-mark.is-foreign { fill: var(--accent); }
+
+.rel-more {
+    font: inherit;
+    font-size: 0.7rem;
+    fill: var(--ink-faint);
 }
 
 /* Dashed and dimmed: still a class that will be generated, just joined to nothing. The border
@@ -454,17 +517,22 @@
 }
 
 .rel-box-alone text {
+    font: inherit;
+    font-size: 0.8rem;
     fill: var(--ink-soft);
 }
 
-.rel-edge {
-    fill: none;
-    stroke: var(--accent);
-    stroke-width: 1.5;
-}
+/* --- the lines ---------------------------------------------------------------------- */
 
-#rel-arrow path {
-    fill: var(--accent);
+/* Grey, not accent. Five accent-blue lines across a light panel is the loudest thing on the page,
+   and the boxes are what should be read first; the FK markers carry the colour instead. */
+.rel-edge-line,
+.rel-edge-end {
+    fill: none;
+    stroke: var(--ink-faint);
+    stroke-width: 1.4;
+    stroke-linecap: round;
+    stroke-linejoin: round;
 }
 
 

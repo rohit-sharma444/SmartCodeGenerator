@@ -76,7 +76,9 @@ public class RelationshipDiagramTests
         var page = context.Render<RelationshipDiagram>(p => p.Add(
             c => c.Sources, [Entity("Order", "Customer"), Entity("Customer")]));
 
-        var label = page.Find("svg").GetAttribute("aria-label");
+        // .rel-svg, not "svg": the legend beside the heading is an svg too, and it is the first
+        // one in the markup. A bare selector silently measured the wrong element.
+        var label = page.Find(".rel-svg").GetAttribute("aria-label");
 
         Assert.IsNotNull(label);
         StringAssert.Contains(label, "Order to Customer");
