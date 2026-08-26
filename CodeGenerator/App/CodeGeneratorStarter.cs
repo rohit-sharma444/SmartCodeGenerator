@@ -36,6 +36,7 @@ internal class CodeGeneratorStarter
     private readonly BuildAppCommand _buildApp = new();
     private readonly BatchCommand _batch = new();
     private readonly ChatCommand _chat = new();
+    private readonly ShowRelationshipsCommand _showRelationships = new();
     private readonly AiLayer _ai = AiLayer.Create();
 
     /// <summary>The input currently being handled, so the confirm callback can record
@@ -121,6 +122,14 @@ internal class CodeGeneratorStarter
             if (kind == CommandKind.BuildApp)
             {
                 _buildApp.Handle(command, _workspace.Root);
+                return true;
+            }
+
+            // Unlike chat, this has an answer that fits in a console, so a scripted run gets
+            // it as lines instead of being turned away.
+            if (kind == CommandKind.ShowRelationships)
+            {
+                _showRelationships.Handle(_workspace.Root);
                 return true;
             }
 
@@ -284,6 +293,14 @@ internal class CodeGeneratorStarter
                 if (kind == CommandKind.BuildApp)
                 {
                     _buildApp.Handle(input, _workspace.Root, _ai);
+                    continue;
+                }
+
+                // Streams live for the same reason build app does: it prints an address and then
+                // holds the prompt while a page is open, and CommandColour would buffer both.
+                if (kind == CommandKind.ShowRelationships)
+                {
+                    _showRelationships.Handle(_workspace.Root);
                     continue;
                 }
 

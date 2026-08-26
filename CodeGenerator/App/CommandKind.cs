@@ -27,6 +27,12 @@ public enum CommandKind
     /// <summary>Open the chat page. Declined inside the chat, which is already it.</summary>
     Chat,
 
+    /// <summary>
+    /// Draw the workspace's relationships. Its own kind rather than a pipeline command because it
+    /// opens a page, which the pipeline has no way to do — the same reason Chat is one.
+    /// </summary>
+    ShowRelationships,
+
     BuildApp,
 
     Batch,

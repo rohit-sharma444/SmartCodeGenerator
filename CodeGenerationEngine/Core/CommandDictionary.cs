@@ -364,6 +364,19 @@ public static class CommandDictionary
         },
         new()
         {
+            Category = "Class",
+            Command = "show relationships",
+            Description =
+                "Draws the classes in the workspace and what each one is related to, as boxes and "
+                + "arrows on a page in the browser. A relationship is a pair - an int <Target>Id "
+                + "and a property typed as that class - so a class carrying only one half of it is "
+                + "drawn apart, which is what the tool offers to finish. Classes related to "
+                + "nothing are shown too rather than hidden. Aliases: show relationship, list "
+                + "relationships, relationships. A piped run gets the same answer as lines.",
+            Example = "show relationships"
+        },
+        new()
+        {
             Category = "Utility",
             Command = "chat",
             Description =

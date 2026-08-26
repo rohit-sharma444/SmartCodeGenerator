@@ -1,0 +1,205 @@
+@* The model's relationships, before anything is written. The review page shows every class and
+   its fields, and said nothing at all about what is related to what — which is only visible by
+   opening the generated code afterwards, by which point changing it means regenerating.
+
+   Drawn as entity tables with crow's-foot notation, which is what anyone who has seen a schema
+   already knows how to read, and which lets the line leave the actual foreign-key row rather than
+   the middle of a box.
+
+   Inline SVG built from coordinates worked out server-side, not a diagram library: the chat host
+   serves this page with no network, so a script from a CDN is a script that never arrives. *@
+@using CodeGenerator.Web.Workflow
+
+@{
+    var map = RelationshipLayout.Of(Sources);
+}
+
+<section class="rel-diagram">
+    <header class="rel-title">
+        <h3>Relationships</h3>
+        @if (map.Arrows.Count > 0)
+        {
+            @* The notation, said once. A crow's foot means nothing to someone who has not met it,
+               and the alternative is a picture that has to be explained every time. *@
+            <span class="rel-legend">
+                <svg class="rel-legend-mark" viewBox="0 0 34 12" aria-hidden="true">
+                    <line x1="2" y1="6" x2="32" y2="6" />
+                    <path d="M12 1 L2 6 L12 11" />
+                    <line x1="27" y1="1" x2="27" y2="11" />
+                </svg>
+                many on the left, one on the right
+            </span>
+        }
+    </header>
+
+    @if (map.Boxes.Count == 0 && map.Unrelated.Count == 0)
+    {
+        <p class="rel-empty">No classes yet.</p>
+    }
+    else
+    {
+        @if (map.Arrows.Count == 0)
+        {
+            @* Said plainly rather than left as a picture of disconnected boxes, which reads as a
+               drawing that failed rather than as a model with nothing joined up. *@
+            <p class="rel-empty">
+                Nothing is related yet — every class below will be generated on its own.
+            </p>
+        }
+
+        <div class="rel-scroll">
+            @* role=img with a label, because everything below it is decorative shapes: a reader
+               that cannot see the picture gets the sentence instead of a list of coordinates. *@
+            <svg class="rel-svg" role="img" aria-label="@Summary(map)"
+                 width="@map.Width" height="@map.Height"
+                 viewBox="@($"0 0 {map.Width} {map.Height}")">
+                <defs>
+                    <filter id="rel-shadow" x="-20%" y="-20%" width="140%" height="140%">
+                        <feDropShadow dx="0" dy="1" stdDeviation="1.5"
+                                      flood-color="#16181d" flood-opacity="0.10" />
+                    </filter>
+                </defs>
+
+                @foreach (var arrow in map.Arrows)
+                {
+                    @* Drawn before the boxes so a line that passes behind one is covered by it
+                       rather than drawn across its name. *@
+                    <g class="rel-edge">
+                        <path class="rel-edge-line" d="@Elbow(arrow)" />
+
+                        @* Crow's foot on the owner: many of it per one of the target. The bar on
+                           the far end is the one. *@
+                        <path class="rel-edge-end" d="@Crow(arrow)" />
+                        <path class="rel-edge-end" d="@Bar(arrow)" />
+
+                        <title>many @Plural(arrow.From) per @arrow.To</title>
+                    </g>
+                }
+
+                @foreach (var box in map.Boxes)
+                {
+                    <g class="rel-box" filter="url(#rel-shadow)">
+                        <rect class="rel-box-body" x="@box.X" y="@box.Y"
+                              width="@RelationshipLayout.BoxWidth" height="@box.Height" rx="7" />
+                        <path class="rel-box-head" d="@Head(box)" />
+                        <line class="rel-box-rule"
+                              x1="@box.X" y1="@(box.Y + RelationshipLayout.HeaderHeight)"
+                              x2="@(box.X + RelationshipLayout.BoxWidth)"
+                              y2="@(box.Y + RelationshipLayout.HeaderHeight)" />
+
+                        <text class="rel-box-name" x="@(box.X + 14)"
+                              y="@(box.Y + RelationshipLayout.HeaderHeight / 2)"
+                              dominant-baseline="central">@Short(box.Name, 22)</text>
+
+                        @* Each row wrapped in a g, which is not decoration: inside a Razor code
+                           block a bare <text> tag is Razor own literal-content marker and cannot
+                           carry attributes, so the group is what puts these back in markup. *@
+                        @foreach (var row in box.Rows)
+                        {
+                            <g class="rel-row">
+                                <text class="rel-mark @(row.Marker == "PK" ? "is-key" : "is-foreign")"
+                                      x="@(box.X + 14)" y="@row.Y" dominant-baseline="central">@row.Marker</text>
+                                <text class="rel-field" x="@(box.X + 42)" y="@row.Y"
+                                      dominant-baseline="central">@Short(row.Name, 18)</text>
+                            </g>
+                        }
+
+                        @if (box.Hidden > 0)
+                        {
+                            <g class="rel-row">
+                                <text class="rel-more" x="@(box.X + 14)" y="@More(box)"
+                                      dominant-baseline="central">+ @box.Hidden more</text>
+                            </g>
+                        }
+
+                        <title>@box.Name</title>
+                    </g>
+                }
+
+                @foreach (var box in map.Unrelated)
+                {
+                    <g class="rel-box rel-box-alone">
+                        <rect x="@box.X" y="@box.Y" width="@RelationshipLayout.BandBoxWidth"
+                              height="@box.Height" rx="7" />
+                        <text x="@(box.X + RelationshipLayout.BandBoxWidth / 2)"
+                              y="@(box.Y + box.Height / 2)"
+                              dominant-baseline="central" text-anchor="middle">@Short(box.Name, 22)</text>
+                        <title>@box.Name — not related to anything</title>
+                    </g>
+                }
+            </svg>
+        </div>
+
+        @if (map.Unrelated.Count > 0)
+        {
+            <p class="rel-note">
+                @map.Unrelated.Count of @(map.Boxes.Count + map.Unrelated.Count)
+                @(map.Unrelated.Count == 1 ? "class is" : "classes are") related to nothing:
+                @string.Join(", ", map.Unrelated.Select(b => b.Name)).
+            </p>
+        }
+    }
+</section>
+
+@code {
+    /// <summary>The classes and what each points at.</summary>
+    /// <remarks>
+    /// A neutral shape rather than either caller's own model: the review page builds these from
+    /// what discovery found, and <c>show relationships</c> from the classes already on disk.
+    /// </remarks>
+    [Parameter, EditorRequired]
+    public IReadOnlyList<RelationshipSource> Sources { get; set; } = [];
+
+    /// <summary>
+    /// An elbow rather than a straight line.
+    /// </summary>
+    /// <remarks>
+    /// Three classes in one column pointing at one box in the next would otherwise arrive as three
+    /// lines at three different angles, crossing each other and the boxes between them. Leaving
+    /// each box horizontally, turning once in its own lane through the gap and arriving
+    /// horizontally keeps every arrival perpendicular to the box it lands on.
+    /// </remarks>
+    private static string Elbow(RelationshipArrow a) =>
+        $"M {a.X1} {a.Y1} H {a.Turn} V {a.Y2} H {a.X2}";
+
+    /// <summary>The many end, on the class that carries the foreign key.</summary>
+    private static string Crow(RelationshipArrow a) =>
+        $"M {a.X1 + 12} {a.Y1 - 6} L {a.X1} {a.Y1} L {a.X1 + 12} {a.Y1 + 6}";
+
+    /// <summary>The one end, on the class being pointed at.</summary>
+    private static string Bar(RelationshipArrow a) =>
+        $"M {a.X2 - 9} {a.Y2 - 6} V {a.Y2 + 6}";
+
+    /// <summary>The title band: rounded along the top, square along the rule beneath it.</summary>
+    private static string Head(RelationshipBox box)
+    {
+        var w = RelationshipLayout.BoxWidth;
+        var h = RelationshipLayout.HeaderHeight;
+
+        return $"M {box.X} {box.Y + 7} a 7 7 0 0 1 7 -7 h {w - 14} a 7 7 0 0 1 7 7 v {h - 7} h -{w} z";
+    }
+
+    private static int More(RelationshipBox box) =>
+        (box.Rows.Count == 0 ? box.Y + RelationshipLayout.HeaderHeight : box.Rows[^1].Y)
+        + RelationshipLayout.RowHeight;
+
+    /// <summary>
+    /// A name that fits. The full one is in the title, so nothing is lost.
+    /// </summary>
+    /// <remarks>
+    /// Truncation rather than a wider box or wrapped text: the box width is what makes the line
+    /// coordinates predictable, which is the whole reason the layout can be computed without
+    /// measuring anything.
+    /// </remarks>
+    private static string Short(string name, int fits) =>
+        name.Length <= fits ? name : name[..(fits - 1)] + "…";
+
+    /// <summary>Good enough for a tooltip. Not the generator's Pluralize, which this cannot see.</summary>
+    private static string Plural(string name) =>
+        name.EndsWith('s') ? name + "es" : name + "s";
+
+    private static string Summary(RelationshipLayout map) =>
+        map.Arrows.Count == 0
+            ? "No relationships between the classes."
+            : string.Join("; ", map.Arrows.Select(a => $"{a.From} to {a.To}"));
+}

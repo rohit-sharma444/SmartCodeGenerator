@@ -8,6 +8,12 @@
    edits a model the user cannot see. This is the fix. *@
 
 <div class="review">
+    @* Inside the panel grid and spanning both its columns, not floated above it: .review is
+       1fr + 220px, so a diagram outside it ran the full width while everything below stopped
+       220px short of the same right edge. Above the list rather than inside it, because a
+       relationship is between two classes and belongs to the model, not to either card. *@
+    <RelationshipDiagram Sources="Sources()" />
+
     <div class="entities">
         @foreach (var entity in Model.Entities.ToList())
         {
@@ -119,6 +125,17 @@
 </div>
 
 @code {
+    /// <summary>The model, in the shape the diagram takes.</summary>
+    /// <remarks>
+    /// The same resolution DomainModelMapper applies is left to the layout, so the picture and the
+    /// generator cannot disagree about which targets count.
+    /// </remarks>
+    private List<RelationshipSource> Sources() =>
+        [.. Model.Entities.Select(e => new RelationshipSource(
+            e.Name,
+            [.. e.Relationships.Select(r => r.Target)],
+            [.. e.Fields.Select(f => f.Name)]))];
+
     [Parameter, EditorRequired] public required BuildSession Session { get; set; }
     [Parameter, EditorRequired] public required StageNavigation Navigation { get; set; }
     [Parameter] public EventCallback OnAdvance { get; set; }

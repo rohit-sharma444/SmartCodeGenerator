@@ -55,6 +55,7 @@
 | `rename class` | Rename a class. | `rename class Employee to <newclass>` |
 | `restore class` | Restores a deleted class. | `restore class Employee` |
 | `show class` | Displays the class source code. | `show class Employee` |
+| `show relationships` | Draws the classes in the workspace and what each one is related to, as boxes and arrows on a page in the browser. A relationship is a pair - an int <Target>Id and a property typed as that class - so a class carrying only one half of it is drawn apart, which is what the tool offers to finish. Classes related to nothing are shown too rather than hidden. Aliases: show relationship, list relationships, relationships. A piped run gets the same answer as lines. | `show relationships` |
 
 ## Documentation
 
