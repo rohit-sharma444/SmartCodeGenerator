@@ -87,10 +87,16 @@
                 <path d="M12 17h.01" />
             </svg>
             <span class="question-text">@question.Text</span>
-            <button type="button" class="question-yes"
-                    @onclick="() => Session.Answer(true)">Yes</button>
-            <button type="button" class="question-no"
-                    @onclick="() => Session.Answer(false)">No</button>
+            @* `index` is captured per iteration on purpose: the loop variable itself would be
+               read at click time, by which point it is past the end and every button answers the
+               same thing. *@
+            @for (var i = 0; i < question.Options.Count; i++)
+            {
+                var index = i;
+                <button type="button"
+                        class="@(index == 0 ? "question-option is-primary" : "question-option")"
+                        @onclick="() => Session.Answer(index)">@question.Options[index]</button>
+            }
         </div>
     </div>
 }

@@ -40,4 +40,17 @@ public sealed record ChatTurn(
     DateTimeOffset At = default);
 
 /// <summary>A question the session is waiting on an answer to.</summary>
-public sealed record AiQuestion(string Text);
+/// <remarks>
+/// Options rather than yes/no, because the relationship flow asks which cardinality and that is
+/// four answers. The AI confirmation is the two-option case, built by <see cref="YesNo"/>, so
+/// there is one question mechanism on this page rather than two that drift.
+/// </remarks>
+public sealed record SessionQuestion(
+    string Text,
+    IReadOnlyList<string> Options,
+    int DefaultIndex)
+{
+    /// <summary>A yes/no question. The default points at No: a question that can change code must
+    /// not act because someone dismissed it.</summary>
+    public static SessionQuestion YesNo(string text) => new(text, ["Yes", "No"], 1);
+}

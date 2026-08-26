@@ -1,4 +1,4 @@
-/* The chat page, top to bottom.
+﻿/* The chat page, top to bottom.
  *
  * Self-contained: no CDN, no web font, no icon font - the same constraint workflow.css works
  * under, because the tool has to work with no network.
@@ -321,8 +321,9 @@
     color: var(--ink);
 }
 
-.question-yes,
-.question-no {
+/* One rule for every answer, however many there are. The cardinality question asks four, and
+   .question-inner already wraps, so a long label pushes the row down rather than out. */
+.question-option {
     border: 1px solid var(--line-strong);
     border-radius: var(--radius-sm);
     background: var(--panel);
@@ -335,15 +336,18 @@
     transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
 }
 
-.question-yes {
+/* The first option, which is the one the question is really offering: Yes on a confirmation,
+   and the likeliest cardinality on a relationship. This is what .question-yes used to be, so
+   the AI confirmation looks exactly as it did. */
+.question-option.is-primary {
     border-color: var(--accent);
     background: var(--accent);
     color: var(--accent-ink);
 }
 
-.question-yes:hover { filter: brightness(1.08); }
+.question-option.is-primary:hover { filter: brightness(1.08); }
 
-.question-no:hover { border-color: var(--accent); color: var(--accent); }
+.question-option:not(.is-primary):hover { border-color: var(--accent); color: var(--accent); }
 
 
 /* --- The solution picker --------------------------------------------------------------- */

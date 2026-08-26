@@ -1,4 +1,4 @@
-using CodeGenerator.App;
+﻿using CodeGenerator.App;
 using CodeGenerator.Web.Chat;
 using CodeIntelligence;
 
@@ -21,16 +21,16 @@ public class AiConfirmationTests
     public void An_answer_releases_the_waiting_command()
     {
         var session = NewSession();
-        var asked = new AiQuestion("Did you mean `list classes`?");
+        var asked = SessionQuestion.YesNo("Did you mean `list classes`?");
 
         var wait = Task.Run(() => session.Ask(asked));
 
         WaitUntil(() => session.Question is not null);
 
-        session.Answer(true);
+        session.Answer(0);
 
         Assert.IsTrue(wait.Wait(TimeSpan.FromSeconds(5)), "the answer must release the thread");
-        Assert.IsTrue(wait.Result);
+        Assert.AreEqual(0, wait.Result, "index 0 is Yes, which is the only thing that means yes");
         Assert.IsNull(session.Question, "the question must be cleared once answered");
     }
 
@@ -39,24 +39,24 @@ public class AiConfirmationTests
     {
         var session = NewSession();
 
-        var wait = Task.Run(() => session.Ask(new AiQuestion("Did you mean something?")));
+        var wait = Task.Run(() => session.Ask(SessionQuestion.YesNo("Did you mean something?")));
 
         WaitUntil(() => session.Question is not null);
 
-        session.Answer(false);
+        session.Answer(1);
 
         Assert.IsTrue(wait.Wait(TimeSpan.FromSeconds(5)));
-        Assert.IsFalse(wait.Result);
+        Assert.AreEqual(1, wait.Result);
     }
 
     [TestMethod]
-    public void Ending_the_session_releases_it_with_no()
+    public void Ending_the_session_releases_it_with_a_cancellation()
     {
         // The path that would otherwise hang forever: the tab is closed while the question is on
         // screen, the host abandons the session, and nobody is left to answer.
         var session = NewSession();
 
-        var wait = Task.Run(() => session.Ask(new AiQuestion("Did you mean something?")));
+        var wait = Task.Run(() => session.Ask(SessionQuestion.YesNo("Did you mean something?")));
 
         WaitUntil(() => session.Question is not null);
 
@@ -66,7 +66,9 @@ public class AiConfirmationTests
             wait.Wait(TimeSpan.FromSeconds(5)),
             "abandoning the session must release the thread, or the console waits forever");
 
-        Assert.IsFalse(wait.Result, "an unanswered question is a no");
+        // Null, not index 1: nobody answered, and a caller that read that as "they said No"
+        // could not tell it apart from a deliberate refusal.
+        Assert.IsNull(wait.Result, "an unanswered question is a cancellation");
     }
 
     [TestMethod]
@@ -74,7 +76,7 @@ public class AiConfirmationTests
     {
         var session = NewSession();
 
-        session.Answer(true);
+        session.Answer(0);
 
         Assert.IsNull(session.Question);
     }
@@ -87,13 +89,13 @@ public class AiConfirmationTests
 
         session.Changed += () => raised++;
 
-        var wait = Task.Run(() => session.Ask(new AiQuestion("Did you mean something?")));
+        var wait = Task.Run(() => session.Ask(SessionQuestion.YesNo("Did you mean something?")));
 
         WaitUntil(() => session.Question is not null);
 
         Assert.IsGreaterThan(0, raised);
 
-        session.Answer(false);
+        session.Answer(1);
         wait.Wait(TimeSpan.FromSeconds(5));
     }
 

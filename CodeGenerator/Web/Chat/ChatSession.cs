@@ -1,4 +1,4 @@
-using CodeGenerationEngine.Core;
+﻿using CodeGenerationEngine.Core;
 using CodeGenerationEngine.Helper;
 using CodeGenerationEngine.Models;
 using CodeGenerator.App;
@@ -103,10 +103,10 @@ public sealed class ChatSession
 
     private readonly Lock _questionGate = new();
 
-    private TaskCompletionSource<bool>? _answer;
+    private TaskCompletionSource<int?>? _answer;
 
     /// <summary>The question every tab is showing, or null.</summary>
-    public AiQuestion? Question { get; private set; }
+    public SessionQuestion? Question { get; private set; }
 
     /// <summary>
     /// Puts a question on every tab and blocks until one of them answers.
@@ -119,20 +119,26 @@ public sealed class ChatSession
     /// <para>
     /// The one thing that must never happen is this thread waiting forever. A tab closed while the
     /// question is on screen ends the session (the host abandons it after its grace period), and
-    /// <see cref="End"/> releases this with a no. Without that, the command hangs and the console
-    /// that started the chat hangs behind it.
+    /// <see cref="End"/> releases this with a cancellation. Without that, the command hangs and the
+    /// console that started the chat hangs behind it.
+    /// </para>
+    /// <para>
+    /// Null is that cancellation, and it is not an answer: an ended session, a closed tab or a
+    /// dismissed question all produce it, and no caller may read it as a choice. That is why this
+    /// returns an index rather than a bool — with two options, "false" is both "the user said No"
+    /// and "nobody said anything", and the second must never write code.
     /// </para>
     /// </remarks>
-    internal bool Ask(AiQuestion question)
+    internal int? Ask(SessionQuestion question)
     {
-        TaskCompletionSource<bool> pending;
+        TaskCompletionSource<int?> pending;
 
         lock (_questionGate)
         {
             if (Ended)
-                return false;
+                return null;
 
-            pending = new TaskCompletionSource<bool>(
+            pending = new TaskCompletionSource<int?>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
 
             _answer = pending;
@@ -155,10 +161,12 @@ public sealed class ChatSession
     }
 
     /// <summary>Answers the question on screen. Does nothing if there is none.</summary>
-    public void Answer(bool yes)
+    /// <remarks>Null is a cancellation — a closed tab, or a dismissed question — and is never
+    /// treated as a choice by any caller.</remarks>
+    public void Answer(int? index)
     {
         lock (_questionGate)
-            _answer?.TrySetResult(yes);
+            _answer?.TrySetResult(index);
     }
 
     /// <summary>
@@ -234,10 +242,11 @@ public sealed class ChatSession
     {
         Ended = true;
 
-        // Before the repaint, and with a no: a question nobody is left to answer must not hold
-        // the command, and the console behind it, open.
+        // Before the repaint, and with a cancellation: a question nobody is left to answer must
+        // not hold the command, and the console behind it, open. Not index 1 and not "No" - an
+        // abandoned question was never answered, and only a null can say so.
         lock (_questionGate)
-            _answer?.TrySetResult(false);
+            _answer?.TrySetResult(null);
 
         Raise();
     }
@@ -395,7 +404,9 @@ public sealed class ChatSession
             aiResolver: _ai.Resolver,
             confirmAi: resolution => AiDecisionRecorder.ConfirmAndRecord(
                 resolution, input, _ai.DecisionLog,
-                r => Ask(new AiQuestion(AiConfirmPrompt.Title(r)))),
+                // Only index 0 is a yes, which is AiConfirmPrompt.Accepted's rule without a
+                // second spelling of it. A cancelled question is null, which is not 0.
+                r => Ask(SessionQuestion.YesNo(AiConfirmPrompt.Title(r))) == 0),
             ct: ct);
 
         _currentProject = project;
