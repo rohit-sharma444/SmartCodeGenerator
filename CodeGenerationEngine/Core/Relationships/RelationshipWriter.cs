@@ -46,6 +46,13 @@ public static class RelationshipWriter
 
     public static RelationshipWritten Apply(string workspaceRoot, RelationshipProposal proposal)
     {
+        // A many-to-many is a different shape, not a variation on this one: neither side carries a
+        // foreign key, a third class does, and it is the only kind that creates a file.
+        if (proposal.Kind == RelationshipKind.ManyToMany)
+            return JoinClassWriter.Apply(
+                workspaceRoot, proposal.Owner, proposal.Target,
+                JoinClassWriter.DefaultName(proposal.Owner, proposal.Target));
+
         var classes = ClassSnapshots.Read(workspaceRoot);
 
         var owner = Find(classes, proposal.Owner);
