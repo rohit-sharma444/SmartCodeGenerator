@@ -91,6 +91,30 @@ public class AttributedPropertyWriterTests
         Assert.Contains("Missing", error);
     }
 
+    [TestMethod]
+    public void A_using_that_does_not_reach_the_file_is_a_failure_not_a_silent_success()
+    {
+        // The property carries [JsonIgnore], so a file left without the using behind it does not
+        // compile. Reporting that as success is the worst outcome available: the caller is told
+        // the write worked, and the damage shows up later as a build error in a file the user did
+        // not touch. "Not A Namespace" is not a name, so the directive built from it is not the
+        // one that was asked for - the stand-in here for every way the write can fail to land.
+        var file = WriteFile("""
+            namespace Shop;
+
+            public class Order
+            {
+                public int Id { get; set; }
+            }
+            """);
+
+        var ok = AttributedPropertyWriter.TryAdd(
+            file, "Order", Navigation("Customer", "Customer"), ["Not A Namespace"], out var error);
+
+        Assert.IsFalse(ok);
+        Assert.Contains("Not A Namespace", error);
+    }
+
     private static PropertyDefinition Navigation(string name, string type) =>
         new() { Name = name, Type = type, Attributes = { "JsonIgnore", "Browsable(false)" } };
 
