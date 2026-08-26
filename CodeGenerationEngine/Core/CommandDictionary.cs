@@ -630,7 +630,7 @@ public static class CommandDictionary
                         + "layout you chose on an earlier interactive run is remembered in "
                         + ".codegen/app-profile.json and kept, default or not, so a run that "
                         + "is using a remembered one says so and names the file.",
-            Example = "build app: a shop company \"Codis Ltd\" namespace CodisLtd theme dark layout sidebar"
+            Example = "build app: a shop company \"Codis Ltd\" namespace CodisLtd theme dark"
         },
         new()
         {
@@ -763,6 +763,108 @@ public static class CommandDictionary
         new("validate project", "compile it, report real errors"),
     ];
 
+    /// <summary>
+    /// What the tool does without being asked, which no command table can show.
+    /// </summary>
+    /// <remarks>
+    /// Here rather than written out in each renderer, for the reason the command list itself is:
+    /// help, the command reference and the manual appendix are three renderings of one catalog,
+    /// and the manual's appendix has already drifted once from being maintained separately.
+    /// <para>
+    /// Two lines, because <see cref="GetOverview"/> is a one-screen answer and a third would be
+    /// paid for out of the categories below it. The detail lives in the manual.
+    /// </para>
+    /// </remarks>
+    public static IReadOnlyList<StarterCommand> Unprompted { get; } =
+    [
+        // Both summaries fit an eighty-column console after the indent and the command column,
+        // which leaves 56 characters. A test pins that; the first draft ran to 161 and wrapped.
+        new("relationships", "offered after any command except creating a class"),
+        new("show relationships", "draws what is related to what, as boxes and arrows"),
+    ];
+
+    /// <summary>The heading those two sit under, in all three renderings.</summary>
+    private const string UnpromptedHeading = "Set for you";
+
+    /// <summary>
+    /// The width every help rendering is written to.
+    /// </summary>
+    /// <remarks>
+    /// Eighty, because that is the narrowest console anyone still uses and a line longer than the
+    /// window is re-wrapped by the terminal at whatever column it runs out of — which is how the
+    /// catalog came to be printed as ragged two-line entries with the second line starting
+    /// mid-sentence under the left margin.
+    /// </remarks>
+    private const int ConsoleWidth = 80;
+
+    /// <summary>
+    /// One catalog entry: the command, then what it does, then how it is typed.
+    /// </summary>
+    /// <remarks>
+    /// The command gets a line of its own rather than a column. Entries here run to 45 characters
+    /// (<c>create class &lt;class name&gt; with properties</c>), which leaves a column layout
+    /// about thirty for the description — so every description overflowed, and the overflow is
+    /// what made the output look broken. Stacked and indented, nothing wraps and the commands
+    /// still make a single scannable edge.
+    /// </remarks>
+    private static IEnumerable<string> Entry(CommandInfo command)
+    {
+        yield return "  " + command.Command;
+
+        foreach (var line in Wrap(command.Description, ConsoleWidth - 6))
+            yield return "      " + line;
+
+        // One line, never wrapped. An example is meant to be copied and typed back, and one
+        // folded across two lines is one the reader has to reassemble by hand. The catalog keeps
+        // them short enough to fit instead, which a test pins.
+        yield return "      e.g. " + command.Example;
+        yield return string.Empty;
+    }
+
+    /// <summary>A heading and the rule under it, sized to the heading rather than the screen.</summary>
+    /// <remarks>
+    /// A rule of eighty dashes under a five-letter word is the heaviest thing in the output and
+    /// draws the eye to a separator rather than to the heading it belongs to.
+    /// </remarks>
+    private static IEnumerable<string> Heading(string text)
+    {
+        yield return text.ToUpperInvariant();
+        yield return new string('-', Math.Max(text.Length, 12));
+        yield return string.Empty;
+    }
+
+    /// <summary>
+    /// Breaks text on whitespace so no line passes <paramref name="width"/>.
+    /// </summary>
+    /// <remarks>
+    /// A word longer than the width is left alone rather than cut: it will be a command name or a
+    /// path, and a broken one is worse than a long line.
+    /// </remarks>
+    private static List<string> Wrap(string text, int width)
+    {
+        var lines = new List<string>();
+        var line = new System.Text.StringBuilder();
+
+        foreach (var word in (text ?? string.Empty).Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (line.Length > 0 && line.Length + 1 + word.Length > width)
+            {
+                lines.Add(line.ToString());
+                line.Clear();
+            }
+
+            if (line.Length > 0)
+                line.Append(' ');
+
+            line.Append(word);
+        }
+
+        if (line.Length > 0)
+            lines.Add(line.ToString());
+
+        return lines.Count == 0 ? [string.Empty] : lines;
+    }
+
     /// <summary>How many categories are listed per line of the overview.</summary>
     private const int CategoriesPerRow = 4;
 
@@ -789,6 +891,14 @@ public static class CommandDictionary
 
         foreach (var starter in Starters)
             lines.Add("    " + starter.Command.PadRight(commandWidth) + starter.Summary);
+
+        lines.Add(string.Empty);
+        lines.Add("  " + UnpromptedHeading);
+
+        var unpromptedWidth = Unprompted.Max(s => s.Command.Length) + 2;
+
+        foreach (var offer in Unprompted)
+            lines.Add("    " + offer.Command.PadRight(unpromptedWidth) + offer.Summary);
 
         lines.Add(string.Empty);
         lines.Add("  Categories — `help <name>` for one");
@@ -856,20 +966,14 @@ public static class CommandDictionary
 
     private static string Render(string heading, IEnumerable<CommandInfo> commands)
     {
-        var lines = new List<string>
-        {
-            heading.ToUpperInvariant(),
-            new string('-', 80),
-        };
+        var lines = new List<string>();
+
+        lines.AddRange(Heading(heading));
 
         foreach (var command in commands.OrderBy(c => c.Command, StringComparer.Ordinal))
-        {
-            lines.Add($"{command.Command,-45} {command.Description}");
-            lines.Add($"    e.g. {command.Example}");
-            lines.Add(string.Empty);
-        }
+            lines.AddRange(Entry(command));
 
-        return string.Join(Environment.NewLine, lines);
+        return string.Join(Environment.NewLine, lines).TrimEnd();
     }
 
     /// <summary>
@@ -884,27 +988,46 @@ public static class CommandDictionary
     {
         var lines = new List<string>
         {
-            "CodeGenerationEngine Help",
-            new string('-', 80),
+            "Smart Code Generator — every command",
             string.Empty
         };
+
+        lines.AddRange(Heading(UnpromptedHeading));
+
+        foreach (var offer in Unprompted)
+        {
+            lines.Add("  " + offer.Command);
+
+            foreach (var line in Wrap(offer.Summary, ConsoleWidth - 6))
+                lines.Add("      " + line);
+
+            lines.Add(string.Empty);
+        }
+
+        // Said here and not in the overview, which has no room for it: a scripted run is never
+        // asked anything, and someone whose pipeline never shows the offer needs to know that is
+        // deliberate rather than broken.
+        foreach (var line in Wrap(
+                     "A piped or scripted run is never asked: with nobody at the keyboard there "
+                     + "is nobody to answer, so the offer does not appear at all.",
+                     ConsoleWidth - 2))
+        {
+            lines.Add("  " + line);
+        }
+
+        lines.Add(string.Empty);
 
         foreach (var group in Commands
                      .OrderBy(c => c.Category)
                      .GroupBy(c => c.Category))
         {
-            lines.Add(group.Key.ToUpperInvariant());
-            lines.Add(new string('-', 80));
+            lines.AddRange(Heading($"{group.Key} ({group.Count()})"));
 
             foreach (var command in group.OrderBy(c => c.Command))
-            {
-                lines.Add($"{command.Command,-45} {command.Description}");
-                lines.Add($"    e.g. {command.Example}");
-                lines.Add(string.Empty);
-            }
+                lines.AddRange(Entry(command));
         }
 
-        return string.Join(Environment.NewLine, lines);
+        return string.Join(Environment.NewLine, lines).TrimEnd();
     }
 
     /// <summary>
@@ -943,14 +1066,18 @@ public static class CommandDictionary
 
         // Not every behaviour is a command. The relationship offer is raised by the tool itself
         // after a command finishes, so it has no row in any table above and would otherwise be
-        // invisible to anyone reading only this file.
-        lines.Add("## Set for you");
+        // invisible to anyone reading only this file. Rendered from the same two entries `help`
+        // shows, so the two cannot drift.
+        lines.Add($"## {UnpromptedHeading}");
+        lines.Add(string.Empty);
+
+        foreach (var offer in Unprompted)
+            lines.Add($"- `{Cell(offer.Command)}` — {Cell(offer.Summary)}");
+
         lines.Add(string.Empty);
         lines.Add(
-            "Relationships between classes are not typed as a command. After any command except "
-            + "creating a class, the tool reads the classes in the workspace, works out which "
-            + "relationships are missing, and offers to set them - asking first, and never in a "
-            + "piped run. See \"Relationships between classes\" in the user manual.");
+            "A piped or scripted run is never asked. See \"Relationships between classes\" in "
+            + "the user manual for what a relationship is and what each answer writes.");
         lines.Add(string.Empty);
 
         return string.Join("\n", lines) + "\n";
