@@ -1,4 +1,4 @@
-﻿using CodeGenerator.App;
+using CodeGenerator.App;
 using CodeGenerator.Web.Chat;
 using CodeIntelligence;
 

@@ -1,4 +1,4 @@
-﻿using CodeGenerationEngine.Core;
+using CodeGenerationEngine.Core;
 using CodeGenerationEngine.Helper;
 using CodeGenerationEngine.Models;
 using CodeGenerator.App;

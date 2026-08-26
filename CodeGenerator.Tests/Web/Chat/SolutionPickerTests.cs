@@ -1,4 +1,4 @@
-﻿using Bunit;
+using Bunit;
 using CodeGenerator.App;
 using CodeGenerator.Web.Chat;
 using CodeGenerator.Web.Components;
