@@ -1,0 +1,27 @@
+@* The same diagram the review page draws, fed from the classes already on disk instead of from
+   the model discovery produced. Review answers "what will be written"; this answers "what is
+   written". *@
+@page "/relationships"
+@rendermode InteractiveServer
+@using CodeGenerator.Web.Relationships
+@inject RelationshipView View
+
+<PageTitle>Relationships</PageTitle>
+
+@* Interactive even though nothing on the page responds to anything, and that is the point: the
+   circuit IS the mechanism. CircuitWatch.ShouldAbandon only fires once a tab has connected and
+   gone, so a statically-rendered page opens no circuit, is never seen to close, and leaves the
+   console holding the prompt until Ctrl-C. It also puts the PageTitle through the HeadOutlet,
+   which App.razor renders interactively for the same reason. *@
+@* The "chat" class is load-bearing, not decoration: every colour token in chat.css is declared on
+   the .chat class rather than on :root, precisely so that one page's palette cannot repaint the
+   other. Without it here, every var() on this page resolves to nothing and the diagram comes out
+   unpainted. *@
+<div class="chat rel-page">
+    <header class="rel-head">
+        <h1>Relationships</h1>
+        <p class="rel-root">@View.Root</p>
+    </header>
+
+    <RelationshipDiagram Sources="View.Sources" />
+</div>

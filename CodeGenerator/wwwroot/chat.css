@@ -350,6 +350,50 @@
 .question-option:not(.is-primary):hover { border-color: var(--accent); color: var(--accent); }
 
 
+/* --- The relationships page (show relationships) --------------------------------------- */
+
+/* The .chat class is borrowed for its palette, because every colour token in this file is declared
+   on it rather than on :root. Its LAYOUT has to be undone: .chat is a viewport-fixed flex column,
+   built for a page with a header, one scrolling middle and a foot that stays put. Inherited here it
+   did two things wrong at once - every child shrank to its own content, so the heading sat 250px
+   wide while the diagram beside it was 832, and a model taller than the window had nowhere to
+   scroll. Written as .chat.rel-page so it wins on specificity rather than on being further down
+   the file. */
+.chat.rel-page {
+    position: static;
+    display: block;
+
+    /* Border-box, because .chat sets it on its DESCENDANTS and not on itself: as content-box the
+       page is 100vh PLUS its padding, which is a scrollbar on every model however small. */
+    box-sizing: border-box;
+    min-height: 100vh;
+    padding: 2rem 1.5rem;
+}
+
+.rel-head {
+    max-width: var(--column);
+    margin: 0 auto 1.25rem;
+}
+
+.rel-head h1 {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 600;
+}
+
+.rel-root {
+    margin: 0.2rem 0 0;
+    font-size: 0.85rem;
+    color: var(--ink-soft);
+    word-break: break-all;
+}
+
+.rel-page .rel-diagram {
+    max-width: var(--column);
+    margin: 0 auto;
+}
+
+
 /* --- The relationship diagram on the review stage ------------------------------------- */
 
 /* Above the entity list, so what is related to what is read before the fields are edited. */

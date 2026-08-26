@@ -46,6 +46,11 @@ internal static class CommandRoute
         if (ChatCommand.IsChat(text))
             return CommandKind.Chat;
 
+        // Before the pipeline, which would otherwise read "show relationships" as `show class`
+        // with a class called relationships.
+        if (ShowRelationshipsCommand.IsShowRelationships(text))
+            return CommandKind.ShowRelationships;
+
         if (BuildAppCommand.IsBuildApp(text))
             return CommandKind.BuildApp;
 
