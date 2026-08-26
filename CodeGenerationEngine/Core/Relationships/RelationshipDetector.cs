@@ -151,6 +151,19 @@ public static class RelationshipDetector
         var forwardOk = RelationshipConvention.CanAdd(ownerDefinition, forward.Name)
                         || HasNavigationTo(owner, target.Name);
 
-        return forwardOk && RelationshipConvention.CanAdd(targetDefinition, inverse.Name);
+        // The foreign key needs its own arm, and it is not the same shape as the forward one.
+        // CanAdd refuses a name that is already present whatever its type, and HasForeignKeyTo
+        // accepts it only when it is an int - so a class holding a `string CustomerId` fails both
+        // and is not proposed. Without this, the pair looks writable, the writer skips the
+        // property because the NAME is taken, everything compiles, and the user is told the two
+        // are related while ForeignKeys.TargetsOf still sees nothing.
+        var foreignKeyOk =
+            RelationshipConvention.CanAdd(
+                ownerDefinition, RelationshipConvention.ForeignKeyName(target.Name))
+            || HasForeignKeyTo(owner, target.Name);
+
+        return forwardOk
+               && foreignKeyOk
+               && RelationshipConvention.CanAdd(targetDefinition, inverse.Name);
     }
 }

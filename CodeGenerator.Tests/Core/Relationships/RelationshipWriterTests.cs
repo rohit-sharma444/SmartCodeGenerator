@@ -113,6 +113,31 @@ public class RelationshipWriterTests
         CollectionAssert.AreEquivalent(before, Snapshot(root));
     }
 
+    [TestMethod]
+    public void A_foreign_key_name_held_by_another_type_is_refused_not_reported_as_related()
+    {
+        // Order already has a `string CustomerId`. `int CustomerId` is what makes the pair
+        // visible to ForeignKeys.TargetsOf, and that name is taken by something that is not an
+        // int, so this relationship cannot be made. The dangerous outcome is not a crash: it is
+        // reporting success, because everything here compiles - the writer skips a property whose
+        // name is already present, so nothing is written that the compiler could object to, and
+        // the user is told the classes are related while every consumer of TargetsOf still sees
+        // no relationship at all.
+        var root = NewRoot();
+        Write(root, "Order.cs", "namespace Shop;\n\npublic class Order\n{\n    public int Id { get; set; }\n    public string CustomerId { get; set; } = string.Empty;\n}\n");
+        Write(root, "Customer.cs", "namespace Shop;\n\npublic class Customer\n{\n    public int Id { get; set; }\n}\n");
+
+        var before = Snapshot(root);
+
+        var result = RelationshipWriter.Apply(
+            root,
+            new RelationshipProposal("Order", "Customer", RelationshipKind.OneToMany, "because"));
+
+        Assert.IsFalse(result.Ok, "a relationship the foreign key cannot carry must not be reported as written");
+        Assert.Contains("CustomerId", result.Message);
+        CollectionAssert.AreEquivalent(before, Snapshot(root));
+    }
+
     private static Dictionary<string, string> Snapshot(string root) =>
         Directory.GetFiles(root, "*.cs", SearchOption.AllDirectories)
             .ToDictionary(f => Path.GetFileName(f), File.ReadAllText);

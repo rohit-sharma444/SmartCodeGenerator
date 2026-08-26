@@ -57,6 +57,9 @@ public static class RelationshipWriter
         if (target is null)
             return new RelationshipWritten(false, $"Class '{proposal.Target}' not found.", []);
 
+        if (Blocking(owner, target) is { } blocker)
+            return new RelationshipWritten(false, blocker, []);
+
         var originals = classes.ToDictionary(c => c.File, c => File.ReadAllText(c.File));
 
         var added = new List<string>();
@@ -93,6 +96,41 @@ public static class RelationshipWriter
             var rolledBack = Restore(originals, [], ex.Message);
             return new RelationshipWritten(rolledBack.Ok, rolledBack.Message, rolledBack.Added);
         }
+    }
+
+    /// <summary>
+    /// Why this relationship cannot be made, or <c>null</c> if it can.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="Parts"/> skips a property the class already has, matching on name. That is right
+    /// when the property is the one the convention wanted, and silently wrong when the name is
+    /// held by something else: a class carrying a <c>string CustomerId</c> gets no
+    /// <c>int CustomerId</c> written, nothing is added for the compiler to object to, the
+    /// verification passes, and the user is told the two classes are related while
+    /// <c>ForeignKeys.TargetsOf</c> - which requires exactly <c>int</c> - still sees no
+    /// relationship, and so do the seeder, the validators, the console picker and the screen
+    /// split. A refusal naming the property is the only honest answer.
+    /// <para>
+    /// Only the two properties <c>TargetsOf</c> reads are checked: the foreign key and the forward
+    /// reference, both on the owner. The inverse is not, because <c>TargetsOf</c> never looks at
+    /// it - an existing collection under a different type is a cosmetic mismatch, not a
+    /// relationship that fails to exist, and refusing over it would block pairs that work.
+    /// </para>
+    /// </remarks>
+    private static string? Blocking(ClassSnapshot owner, ClassSnapshot target) =>
+        Clash(owner, RelationshipConvention.ForeignKey(target.Name))
+        ?? Clash(owner, RelationshipConvention.Forward(target.Name));
+
+    private static string? Clash(ClassSnapshot owner, PropertyDefinition wanted)
+    {
+        var existing = owner.Properties.FirstOrDefault(
+            p => string.Equals(p.Name, wanted.Name, StringComparison.OrdinalIgnoreCase));
+
+        if (existing is null || string.Equals(existing.Type, wanted.Type, StringComparison.Ordinal))
+            return null;
+
+        return $"{owner.Name}.{existing.Name} is a {existing.Type}, not a {wanted.Type}, so it "
+             + "cannot carry this relationship. Nothing was changed.";
     }
 
     /// <summary>The properties this relationship needs, skipping any the class already has.</summary>

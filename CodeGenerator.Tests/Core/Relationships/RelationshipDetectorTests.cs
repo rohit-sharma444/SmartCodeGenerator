@@ -129,6 +129,24 @@ public class RelationshipDetectorTests
     }
 
     [TestMethod]
+    public void Nothing_is_proposed_when_the_foreign_key_name_is_held_by_another_type()
+    {
+        // Order carries a `string CustomerId` and a nav property with no foreign key beside it,
+        // so the orphan-navigation rule fires. But `int CustomerId` is what ForeignKeys.TargetsOf
+        // reads, and that name is taken by a string. Proposing this pair would produce a change
+        // the user accepts and that reports success while relating nothing: the writer skips a
+        // property whose name is already present, so the int is never written and the compile it
+        // is checked with passes.
+        var classes = new[]
+        {
+            Snapshot("Order", ("Id", "int"), ("CustomerId", "string"), ("Customer", "Customer")),
+            Snapshot("Customer", ("Id", "int"))
+        };
+
+        Assert.IsEmpty(RelationshipDetector.Detect(classes));
+    }
+
+    [TestMethod]
     public void A_proposal_keys_on_its_two_class_names_so_it_can_be_remembered()
         => Assert.AreEqual(
             "Order->Customer",
