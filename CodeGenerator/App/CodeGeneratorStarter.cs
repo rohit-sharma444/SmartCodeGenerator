@@ -1,6 +1,7 @@
-using CodeGenerationEngine.Core;
+﻿using CodeGenerationEngine.Core;
 using CodeGenerationEngine.Helper;
 using CodeGenerationEngine.Models;
+using CodeGenerator.App.Relationships;
 using CodeIntelligence;
 using DomainDiscovery;
 using DomainDiscovery.Wikipedia.Dump;
@@ -42,6 +43,17 @@ internal class CodeGeneratorStarter
     /// and is handed only the resolution, not the text it came from.</summary>
     private string _lastInput = string.Empty;
 
+    /// <summary>
+    /// The relationship conversation for this session, or null when input is redirected.
+    /// </summary>
+    /// <remarks>
+    /// Built once, because what it has already offered has to be remembered across commands — a
+    /// candidate the user has refused must not come back after every command for the rest of the
+    /// session. It reads the workspace root through a function rather than being handed one, since
+    /// <c>load</c> and <c>use project</c> re-root the workspace under it.
+    /// </remarks>
+    private readonly RelationshipFlow? _relationships;
+
     internal CodeGeneratorStarter()
     {
         _workspace = new Workspace(ResolveWorkspaceRoot(), _projectPathSet);
@@ -58,6 +70,14 @@ internal class CodeGeneratorStarter
         // Load per-workspace learned intent memory. Consult/capture honor
         // CG_NO_LEARN, but this init still loads the file regardless.
         LearnedIntentStore.Initialize(_workspace.Root);
+
+        // No asker when input is redirected, and no asker means no flow: a piped or scripted run
+        // must never be asked a question, or the script's next line is swallowed as the answer to
+        // a menu it could not see.
+        _relationships = RelationshipGate.For(
+            () => _workspace.Root,
+            Console.IsInputRedirected ? null : new ConsoleChoiceAsker(),
+            Output.Line);
 
         LoadCommandHistory();
     }
@@ -314,6 +334,16 @@ internal class CodeGeneratorStarter
                     // Inside the buffered region so it is part of the coloured block.
                     return CommandColour.Verdict(outcome.Recognized, outcome.Handled);
                 });
+
+                // After the buffered block, never inside it: CommandColour redirects Console.Out
+                // for the whole command, so a menu drawn in there is drawn into a buffer nobody
+                // sees while ReadKey waits on a blank screen. Creating a class is skipped so that
+                // a run of them is not interrupted; every other command is a moment the offer may
+                // appear. Only the interactive loop calls this — RunOnce handles one command and
+                // exits, so there is no session in which a refusal could be remembered, and it is
+                // the path scripts use.
+                if (!RelationshipGate.IsClassCreation(input))
+                    _relationships?.Run();
             }
             catch (ArgumentException ex)
             {
