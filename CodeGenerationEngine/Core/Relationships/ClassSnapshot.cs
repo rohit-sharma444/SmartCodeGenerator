@@ -29,6 +29,19 @@ public sealed record ClassSnapshot(
 /// not what the file was called. Properties come from
 /// <see cref="EntityExtractor.ExtractProperties"/>, the same reader the chat page's tree uses, so
 /// the two cannot disagree about what a class holds.
+/// <para>
+/// A file that declares more than one class contributes no snapshot at all, the same as a file
+/// with no class in it. <see cref="EntityExtractor.ExtractProperties"/> works per file, not per
+/// type: it walks every type declaration in the file - nested ones included - and merges all of
+/// their properties into one flat list with no record of which type each property came from. Once
+/// a file holds two classes there is no way to tell which properties are whose, so attributing
+/// that merged list to either class's name would silently hand the detector a class described
+/// with the other class's fields. A class that is skipped is recoverable - split the file and it
+/// shows up next run - a class silently described with someone else's fields is not, because
+/// nothing downstream can tell it happened. Nesting does not exempt a class from this: a class
+/// nested inside another is still a second type declaration in the file, so it counts the same as
+/// a second top-level class and the file still contributes nothing.
+/// </para>
 /// </remarks>
 public static class ClassSnapshots
 {
@@ -38,17 +51,17 @@ public static class ClassSnapshots
 
         foreach (var file in ClassFiles.Under(workspaceRoot))
         {
-            var root = CSharpSyntaxTree.ParseText(System.IO.File.ReadAllText(file)).GetRoot();
+            var root = CSharpSyntaxTree.ParseText(File.ReadAllText(file)).GetRoot();
 
-            var declared = root.DescendantNodes()
+            var classes = root.DescendantNodes()
                 .OfType<ClassDeclarationSyntax>()
-                .FirstOrDefault();
+                .ToList();
 
-            if (declared is null)
+            if (classes.Count != 1)
                 continue;
 
             snapshots.Add(new ClassSnapshot(
-                declared.Identifier.Text,
+                classes[0].Identifier.Text,
                 file,
                 EntityExtractor.ExtractProperties(file)));
         }
