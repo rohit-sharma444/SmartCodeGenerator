@@ -7,11 +7,13 @@
    thirty-class domain reprinted after every edit was unusable — so the review loop currently
    edits a model the user cannot see. This is the fix. *@
 
-@* Above the list, not inside it: a relationship is between two classes, so it belongs to the
-   model rather than to either of the entities below. *@
-<RelationshipDiagram Sources="Sources()" />
-
 <div class="review">
+    @* Inside the panel grid and spanning both its columns, not floated above it: .review is
+       1fr + 220px, so a diagram outside it ran the full width while everything below stopped
+       220px short of the same right edge. Above the list rather than inside it, because a
+       relationship is between two classes and belongs to the model, not to either card. *@
+    <RelationshipDiagram Sources="Sources()" />
+
     <div class="entities">
         @foreach (var entity in Model.Entities.ToList())
         {

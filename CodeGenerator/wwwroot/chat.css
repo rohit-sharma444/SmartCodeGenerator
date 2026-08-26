@@ -398,7 +398,32 @@
 
 /* Above the entity list, so what is related to what is read before the fields are edited. */
 .rel-diagram {
+    /* The diagram's own palette, resolved from whichever page it is on.
+       This is load-bearing, not tidiness. Every colour token in this file is declared on the
+       `.chat` class so that one page's palette cannot repaint the other -- but the review stage
+       is drawn on the BUILD page, which has no `.chat` ancestor and loads its tokens from
+       workflow.css instead. Referring to `--panel` directly there resolved to nothing, and an SVG
+       `fill` with no value falls back to BLACK: every table came out a solid black block with
+       near-black text on it, and the lines had `stroke: none` so they were not drawn at all.
+       Each token below falls back through workflow.css's palette to a literal, so the diagram
+       paints correctly on the build page, on the chat page, and on its own page -- and still
+       follows the chat page's dark set, because these re-resolve when those tokens change. */
+    --rel-panel: var(--panel, #ffffff);
+    --rel-ink: var(--ink, #1c1c1c);
+    --rel-line: var(--line-strong, var(--line, #d3d3cf));
+    --rel-line-soft: var(--line, #e3e5ea);
+    --rel-soft: var(--ink-soft, #5b616e);
+    --rel-faint: var(--ink-faint, #8a8a85);
+    --rel-accent: var(--accent, var(--active, #1f6feb));
+    --rel-head: var(--accent-soft, #eef3ff);
+
     margin: 0 0 1.25rem;
+}
+
+/* Spans both columns of the review panel grid, so its edges are the panel edges rather than the
+   edges of whatever happens to sit beside it. Ignored on the standalone page, which is not a grid. */
+.review > .rel-diagram {
+    grid-column: 1 / -1;
 }
 
 .rel-title {
@@ -415,7 +440,7 @@
     font-weight: 600;
     letter-spacing: 0.04em;
     text-transform: uppercase;
-    color: var(--ink-soft);
+    color: var(--rel-soft);
 }
 
 /* The notation, explained where it is used. A crow's foot is only obvious to someone who has
@@ -425,13 +450,13 @@
     align-items: center;
     gap: 0.4rem;
     font-size: 0.78rem;
-    color: var(--ink-faint);
+    color: var(--rel-faint);
 }
 
 .rel-legend-mark {
     width: 34px;
     height: 12px;
-    stroke: var(--ink-faint);
+    stroke: var(--rel-faint);
     stroke-width: 1.2;
     fill: none;
 }
@@ -440,7 +465,7 @@
 .rel-note {
     margin: 0.4rem 0 0;
     font-size: 0.85rem;
-    color: var(--ink-soft);
+    color: var(--rel-soft);
 }
 
 /* The SVG is sized to its content, which for a wide model is wider than the column. It scrolls
@@ -449,31 +474,35 @@
 .rel-scroll {
     overflow-x: auto;
     padding: 0.75rem 0.25rem 0.5rem;
-    border: 1px solid var(--line);
-    border-radius: var(--radius-sm);
-    background: var(--panel);
+    border: 1px solid var(--rel-line-soft);
+    border-radius: var(--radius-sm, 6px);
+    background: var(--rel-panel);
 }
 
+/* Centred when the graph is narrower than the panel, which is the usual case: a small model
+   pinned to the left of a wide panel reads as though the drawing were cut off. When it is wider
+   the auto margins collapse to nothing and .rel-scroll scrolls as before. */
 .rel-svg {
     display: block;
+    margin: 0 auto;
 }
 
 /* --- one class, as a table ---------------------------------------------------------- */
 
 .rel-box-body {
-    fill: var(--panel);
-    stroke: var(--line-strong);
+    fill: var(--rel-panel);
+    stroke: var(--rel-line);
     stroke-width: 1;
 }
 
 /* Tinted rather than dark. The review page is all light panels and a black title band would be
    the heaviest thing on it, which is not where the eye should land. */
 .rel-box-head {
-    fill: var(--accent-soft);
+    fill: var(--rel-head);
 }
 
 .rel-box-rule {
-    stroke: var(--line-strong);
+    stroke: var(--rel-line);
     stroke-width: 1;
 }
 
@@ -481,13 +510,13 @@
     font: inherit;
     font-size: 0.82rem;
     font-weight: 650;
-    fill: var(--ink);
+    fill: var(--rel-ink);
 }
 
 .rel-field {
     font: inherit;
     font-size: 0.76rem;
-    fill: var(--ink);
+    fill: var(--rel-ink);
 }
 
 /* The gutter marker. Tabular so PK and FK occupy the same width and the field names line up. */
@@ -498,28 +527,28 @@
     letter-spacing: 0.03em;
 }
 
-.rel-mark.is-key { fill: var(--ink-faint); }
+.rel-mark.is-key { fill: var(--rel-faint); }
 
-.rel-mark.is-foreign { fill: var(--accent); }
+.rel-mark.is-foreign { fill: var(--rel-accent); }
 
 .rel-more {
     font: inherit;
     font-size: 0.7rem;
-    fill: var(--ink-faint);
+    fill: var(--rel-faint);
 }
 
 /* Dashed and dimmed: still a class that will be generated, just joined to nothing. The border
    style carries it as well as the colour, so it survives being read in greyscale. */
 .rel-box-alone rect {
     fill: none;
-    stroke: var(--line);
+    stroke: var(--rel-line-soft);
     stroke-dasharray: 4 3;
 }
 
 .rel-box-alone text {
     font: inherit;
     font-size: 0.8rem;
-    fill: var(--ink-soft);
+    fill: var(--rel-soft);
 }
 
 /* --- the lines ---------------------------------------------------------------------- */
@@ -529,7 +558,7 @@
 .rel-edge-line,
 .rel-edge-end {
     fill: none;
-    stroke: var(--ink-faint);
+    stroke: var(--rel-faint);
     stroke-width: 1.4;
     stroke-linecap: round;
     stroke-linejoin: round;
