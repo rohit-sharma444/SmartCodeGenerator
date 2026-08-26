@@ -350,6 +350,80 @@
 .question-option:not(.is-primary):hover { border-color: var(--accent); color: var(--accent); }
 
 
+/* --- The relationship diagram on the review stage ------------------------------------- */
+
+/* Above the entity list, so what is related to what is read before the fields are edited. */
+.rel-diagram {
+    margin: 0 0 1.25rem;
+}
+
+.rel-diagram > h3 {
+    margin: 0 0 0.5rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+}
+
+.rel-empty,
+.rel-note {
+    margin: 0.4rem 0 0;
+    font-size: 0.85rem;
+    color: var(--ink-soft);
+}
+
+/* The SVG is sized to its content, which for a wide model is wider than the column. It scrolls
+   inside this rather than widening the page, because a review panel that scrolls sideways as a
+   whole moves the fields out from under the cursor. */
+.rel-scroll {
+    overflow-x: auto;
+    padding: 0.75rem 0.25rem 0.5rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: var(--panel);
+}
+
+.rel-svg {
+    display: block;
+}
+
+.rel-box rect {
+    fill: var(--panel);
+    stroke: var(--line-strong);
+    stroke-width: 1;
+}
+
+.rel-box text {
+    font: inherit;
+    font-size: 0.82rem;
+    font-weight: 550;
+    fill: var(--ink);
+}
+
+/* Dashed and dimmed: still a class that will be generated, just joined to nothing. The border
+   style carries it as well as the colour, so it survives being read in greyscale. */
+.rel-box-alone rect {
+    fill: none;
+    stroke: var(--line);
+    stroke-dasharray: 4 3;
+}
+
+.rel-box-alone text {
+    fill: var(--ink-soft);
+}
+
+.rel-edge {
+    fill: none;
+    stroke: var(--accent);
+    stroke-width: 1.5;
+}
+
+#rel-arrow path {
+    fill: var(--accent);
+}
+
+
 /* --- The solution picker --------------------------------------------------------------- */
 
 /* Collapsed until asked for. Open, it is a band under the header rather than a floating panel:

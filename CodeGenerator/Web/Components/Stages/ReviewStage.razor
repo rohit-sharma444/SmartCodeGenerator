@@ -7,6 +7,10 @@
    thirty-class domain reprinted after every edit was unusable — so the review loop currently
    edits a model the user cannot see. This is the fix. *@
 
+@* Above the list, not inside it: a relationship is between two classes, so it belongs to the
+   model rather than to either of the entities below. *@
+<RelationshipDiagram Sources="Sources()" />
+
 <div class="review">
     <div class="entities">
         @foreach (var entity in Model.Entities.ToList())
@@ -119,6 +123,16 @@
 </div>
 
 @code {
+    /// <summary>The model, in the shape the diagram takes.</summary>
+    /// <remarks>
+    /// The same resolution DomainModelMapper applies is left to the layout, so the picture and the
+    /// generator cannot disagree about which targets count.
+    /// </remarks>
+    private List<RelationshipSource> Sources() =>
+        [.. Model.Entities.Select(e => new RelationshipSource(
+            e.Name,
+            [.. e.Relationships.Select(r => r.Target)]))];
+
     [Parameter, EditorRequired] public required BuildSession Session { get; set; }
     [Parameter, EditorRequired] public required StageNavigation Navigation { get; set; }
     [Parameter] public EventCallback OnAdvance { get; set; }

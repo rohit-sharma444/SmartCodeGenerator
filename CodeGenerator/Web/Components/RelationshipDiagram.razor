@@ -1,0 +1,128 @@
+@* The model's relationships, before anything is written. The review page shows every class and
+   its fields, and said nothing at all about what is related to what — which is only visible by
+   opening the generated code afterwards, by which point changing it means regenerating.
+
+   Inline SVG built from coordinates worked out server-side, not a diagram library: the chat host
+   serves this page with no network, so a script from a CDN is a script that never arrives. *@
+@using CodeGenerator.Web.Workflow
+
+@{
+    var map = RelationshipLayout.Of(Sources);
+}
+
+<section class="rel-diagram">
+    <h3>Relationships</h3>
+
+    @if (map.Boxes.Count == 0 && map.Unrelated.Count == 0)
+    {
+        <p class="rel-empty">No classes yet.</p>
+    }
+    else
+    {
+        @if (map.Arrows.Count == 0)
+        {
+            @* Said plainly rather than left as a picture of disconnected boxes, which reads as a
+               drawing that failed rather than as a model with nothing joined up. *@
+            <p class="rel-empty">
+                Nothing is related yet — every class below will be generated on its own.
+            </p>
+        }
+
+        <div class="rel-scroll">
+            @* role=img with a label, because everything below it is decorative shapes: a reader
+               that cannot see the picture gets the sentence instead of a list of coordinates. *@
+            <svg class="rel-svg" role="img" aria-label="@Summary(map)"
+                 width="@map.Width" height="@map.Height"
+                 viewBox="@($"0 0 {map.Width} {map.Height}")">
+                <defs>
+                    <marker id="rel-arrow" viewBox="0 0 10 10" refX="9" refY="5"
+                            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                        <path d="M 0 0 L 10 5 L 0 10 z" />
+                    </marker>
+                </defs>
+
+                @foreach (var arrow in map.Arrows)
+                {
+                    @* Drawn before the boxes so a line that passes behind one is covered by it
+                       rather than drawn across its name. *@
+                    <path class="rel-edge" d="@Path(arrow)" marker-end="url(#rel-arrow)">
+                        <title>@arrow.From has a @arrow.To (@arrow.To gets a list of @arrow.From)</title>
+                    </path>
+                }
+
+                @foreach (var box in map.Boxes)
+                {
+                    <g class="rel-box">
+                        <rect x="@box.X" y="@box.Y"
+                              width="@RelationshipLayout.BoxWidth" height="@RelationshipLayout.BoxHeight"
+                              rx="6" />
+                        <text x="@(box.X + RelationshipLayout.BoxWidth / 2)"
+                              y="@(box.Y + RelationshipLayout.BoxHeight / 2)"
+                              dominant-baseline="central" text-anchor="middle">@Short(box.Name)</text>
+                        <title>@box.Name</title>
+                    </g>
+                }
+
+                @foreach (var box in map.Unrelated)
+                {
+                    <g class="rel-box rel-box-alone">
+                        <rect x="@box.X" y="@box.Y"
+                              width="@RelationshipLayout.BoxWidth" height="@RelationshipLayout.BoxHeight"
+                              rx="6" />
+                        <text x="@(box.X + RelationshipLayout.BoxWidth / 2)"
+                              y="@(box.Y + RelationshipLayout.BoxHeight / 2)"
+                              dominant-baseline="central" text-anchor="middle">@Short(box.Name)</text>
+                        <title>@box.Name — not related to anything</title>
+                    </g>
+                }
+            </svg>
+        </div>
+
+        @if (map.Unrelated.Count > 0)
+        {
+            <p class="rel-note">
+                @map.Unrelated.Count of @(map.Boxes.Count + map.Unrelated.Count)
+                @(map.Unrelated.Count == 1 ? "class is" : "classes are") related to nothing:
+                @string.Join(", ", map.Unrelated.Select(b => b.Name)).
+            </p>
+        }
+    }
+</section>
+
+@code {
+    /// <summary>The classes and what each points at.</summary>
+    /// <remarks>
+    /// A neutral shape rather than either caller's own model: the review page builds these from
+    /// what discovery found, and <c>show relationships</c> from the classes already on disk.
+    /// </remarks>
+    [Parameter, EditorRequired]
+    public IReadOnlyList<RelationshipSource> Sources { get; set; } = [];
+
+    /// <summary>
+    /// An elbow rather than a straight line.
+    /// </summary>
+    /// <remarks>
+    /// Three classes in one column pointing at one box in the next would otherwise arrive as three
+    /// lines at three different angles, crossing each other and the boxes between them. Leaving
+    /// each box horizontally, turning once in the gap between the columns and arriving horizontally
+    /// keeps every arrival perpendicular to the box it lands on.
+    /// </remarks>
+    private static string Path(RelationshipArrow a) =>
+        $"M {a.X1} {a.Y1} H {a.Turn} V {a.Y2} H {a.X2}";
+
+    /// <summary>
+    /// A name that fits the box. The full one is in the title, so nothing is lost.
+    /// </summary>
+    /// <remarks>
+    /// Truncation rather than a wider box or wrapped text: the box size is what makes the arrow
+    /// coordinates predictable, which is the whole reason the layout can be computed without
+    /// measuring anything.
+    /// </remarks>
+    private static string Short(string name) =>
+        name.Length <= 17 ? name : name[..16] + "…";
+
+    private static string Summary(RelationshipLayout map) =>
+        map.Arrows.Count == 0
+            ? "No relationships between the classes."
+            : string.Join("; ", map.Arrows.Select(a => $"{a.From} to {a.To}"));
+}
