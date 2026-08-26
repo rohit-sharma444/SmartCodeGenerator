@@ -103,6 +103,79 @@ public class ClassSnapshotTests
         Assert.IsEmpty(ClassSnapshots.Read(root));
     }
 
+    [TestMethod]
+    public void A_class_alongside_a_record_in_one_file_contributes_no_snapshot()
+    {
+        // EntityExtractor.ExtractProperties iterates every TypeDeclarationSyntax, and
+        // RecordDeclarationSyntax is a sibling of ClassDeclarationSyntax under that base, not a
+        // subtype of it - so a record sharing a file with a class is exactly as much a
+        // misattribution risk as a second class, even though there is only one
+        // ClassDeclarationSyntax in the file.
+        var root = NewRoot();
+        Write(root, "Two.cs", """
+            namespace Shop;
+            public class Order
+            {
+                public int Id { get; set; }
+                public int CustomerId { get; set; }
+            }
+            public record OrderNote(string Text, int Rating);
+            """);
+
+        Assert.IsEmpty(ClassSnapshots.Read(root));
+    }
+
+    [TestMethod]
+    public void A_class_alongside_a_struct_in_one_file_contributes_no_snapshot()
+    {
+        // StructDeclarationSyntax is also a TypeDeclarationSyntax that
+        // EntityExtractor.ExtractProperties merges over, so the same rule applies as for a record.
+        var root = NewRoot();
+        Write(root, "Two.cs", """
+            namespace Shop;
+            public class Order
+            {
+                public int Id { get; set; }
+                public int CustomerId { get; set; }
+            }
+            public struct OrderNote
+            {
+                public string Text { get; set; }
+                public int Rating { get; set; }
+            }
+            """);
+
+        Assert.IsEmpty(ClassSnapshots.Read(root));
+    }
+
+    [TestMethod]
+    public void Two_partial_fragments_of_the_same_class_contribute_one_snapshot_with_both_fragments_properties()
+    {
+        // Two `partial class Order` fragments declare the same name, so they collapse to one
+        // distinct type and the file is allowed - unlike the class+record/class+struct cases
+        // above, there is nothing to misattribute here: every property EntityExtractor.
+        // ExtractProperties finds genuinely belongs to the one class Order, wherever the fragment
+        // that declares it lives.
+        var root = NewRoot();
+        Write(root, "Order.cs", """
+            namespace Shop;
+            public partial class Order
+            {
+                public int Id { get; set; }
+            }
+            public partial class Order
+            {
+                public int CustomerId { get; set; }
+            }
+            """);
+
+        var snapshot = ClassSnapshots.Read(root).Single();
+
+        Assert.AreEqual("Order", snapshot.Name);
+        Assert.Contains("Id", snapshot.Properties.Select(p => p.Name).ToList());
+        Assert.Contains("CustomerId", snapshot.Properties.Select(p => p.Name).ToList());
+    }
+
     private static string NewRoot()
     {
         var root = Path.Combine(Path.GetTempPath(), "cs-" + Guid.NewGuid().ToString("N")[..8]);
