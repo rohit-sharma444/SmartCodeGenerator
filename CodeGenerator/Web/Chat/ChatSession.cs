@@ -2,6 +2,7 @@
 using CodeGenerationEngine.Helper;
 using CodeGenerationEngine.Models;
 using CodeGenerator.App;
+using CodeGenerator.App.Relationships;
 using CodeIntelligence;
 using NaturalLanguageBridge;
 
@@ -42,6 +43,16 @@ public sealed class ChatSession
     private ProjectMetaData? _currentProject;
 
     private CancellationTokenSource? _cancellation;
+
+    /// <summary>
+    /// The relationship conversation for this session, built on first use.
+    /// </summary>
+    /// <remarks>
+    /// Lazily, because the asker needs this session and the session cannot hand out a reference to
+    /// itself from a field initialiser. Built once all the same: what it has already offered has to
+    /// be remembered across messages, or a candidate the user refused comes back after every one.
+    /// </remarks>
+    private RelationshipFlow? _relationships;
 
     public ChatSession(Workspace workspace, AiLayer ai, List<string> history)
     {
@@ -212,6 +223,12 @@ public sealed class ChatSession
             var turn = await Task.Run(() => Run(input, kind, _cancellation.Token));
 
             _turns.Add(turn);
+
+            // After the turn is in the transcript, so the command's own output is on screen behind
+            // the question, and before Running is cleared, so the composer stays disabled while
+            // the question is up. A second message starting here would put a second question on
+            // the page and orphan the thread waiting on the first one.
+            await Offer(input);
         }
         finally
         {
@@ -247,6 +264,43 @@ public sealed class ChatSession
         // abandoned question was never answered, and only a null can say so.
         lock (_questionGate)
             _answer?.TrySetResult(null);
+
+        Raise();
+    }
+
+    /// <summary>
+    /// Puts the relationship offer up, once the message that may have created one is done with.
+    /// </summary>
+    /// <remarks>
+    /// On a worker rather than on the circuit: the flow blocks the thread it runs on until an
+    /// answer arrives, and the thread it would otherwise block is the one that has to repaint the
+    /// page with the question. Creating a class is skipped for the same reason the console skips
+    /// it — so that a run of them is not interrupted.
+    /// </remarks>
+    private async Task Offer(string input)
+    {
+        if (Ended || RelationshipGate.IsClassCreation(input))
+            return;
+
+        _relationships ??= RelationshipGate.For(
+            () => _workspace.Root, new ChatChoiceAsker(this), Narrate);
+
+        await Task.Run(() => _relationships?.Run());
+    }
+
+    /// <summary>Puts a line in the transcript that no command produced.</summary>
+    /// <remarks>
+    /// The relationship flow runs after a command's output has been captured and written, so it
+    /// cannot print into that turn. It gets its own, the way <see cref="Load"/> does.
+    /// </remarks>
+    public void Narrate(string text)
+    {
+        _turns.Add(new ChatTurn(
+            string.Empty,
+            CommandKind.Pipeline,
+            ChatVerdict.Succeeded,
+            [new TextBlock(text)],
+            DateTimeOffset.Now));
 
         Raise();
     }
