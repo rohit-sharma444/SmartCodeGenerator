@@ -592,6 +592,61 @@ where the old overwrite-without-asking behaviour is kept so that scripts are unc
 <tr><td><code>create interface &lt;name&gt;</code></td><td>Creates an interface.</td></tr>
 </table>
 
+<h3>Relationships between classes</h3>
+
+<p>A relationship is not a command you type. It is a shape in the code: the class that owns the
+relationship carries an <code>int &lt;Target&gt;Id</code>, and beside it a property typed as the
+target class. Both halves have to be there. With only the identifier, or only the reference, the
+seeder, the generated validators, the console picker and the master/transaction screen split all
+see two unrelated classes.</p>
+
+<p>Getting that pair right by hand is fiddly, so the tool does it for you. After any command
+except creating a class, it reads the classes in the workspace, works out which relationships are
+missing, and offers to set them. It asks; it never writes without an answer. Creating a class is
+left alone deliberately, so that entering several in a row is not interrupted.</p>
+
+<p>Three things make the tool believe two classes are related:</p>
+
+<ul>
+<li>an <code>int &lt;Target&gt;Id</code> whose target class exists, with no reference beside it —
+    <code>Order.CustomerId</code> where there is a <code>Customer</code>;</li>
+<li>a property typed as another class with no identifier beside it — an <code>Order</code> holding
+    a <code>Customer Customer</code> and no <code>CustomerId</code>;</li>
+<li>a class named after another — <code>OrderLine</code> where there is an <code>Order</code>. The
+    longest matching name wins, so <code>SalesOrderLine</code> belongs to <code>SalesOrder</code>
+    rather than to <code>Sales</code>.</li>
+</ul>
+
+<p>Every offer says which two classes and why, in those words, because you are approving a change
+to your own schema. Say no and that pair is not raised again for the rest of the session; classes
+you create afterwards are still offered.</p>
+
+<p>Once you accept, it asks how the two are related:</p>
+
+<table>
+<tr><th>Answer</th><th>What is written</th></tr>
+<tr><td>each Order has one Customer</td><td><code>Order.CustomerId</code>, <code>Order.Customer</code>, and a
+    <code>List&lt;Order&gt; Orders</code> on <code>Customer</code>.</td></tr>
+<tr><td>many each way</td><td>A third class — <code>OrderProduct</code> — carrying an identifier and a
+    reference for each side, and a collection of it on both.</td></tr>
+<tr><td>exactly one each way</td><td>As the first, but <code>Customer</code> gets a single
+    <code>Order</code> rather than a collection.</td></tr>
+<tr><td>skip this one</td><td>Nothing is written.</td></tr>
+</table>
+
+<p>Whatever it writes, it compiles the whole workspace afterwards. If the result does not compile,
+every file goes back to exactly the bytes it held before and you are told why — including deleting
+a join class it had just created. A half-written relationship is worse than none, because nothing
+downstream can tell that it is half-written.</p>
+
+<p>Two things worth knowing. A join class has two identifiers and no date of its own, so if you
+later build the project as an application it is read as a master and gets a screen of its own.
+And a piped or scripted run is never asked anything: with no one at the keyboard there is nobody
+to answer, so the offer does not appear at all.</p>
+
+<p>The same conversation happens on the chat page, as buttons under the header rather than a menu
+in the console.</p>
+
 <h2>10. Validation rules</h2>
 
 <p>Rules are declared in English and generated into a validator for the class.</p>

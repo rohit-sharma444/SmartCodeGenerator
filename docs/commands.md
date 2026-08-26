@@ -145,3 +145,7 @@
 | `show business validation <class name>` | Show business rules for a class. | `show business validation Booking` |
 | `show validation <class name>` | Show data validation rules for a class. | `show validation Employee` |
 
+## Set for you
+
+Relationships between classes are not typed as a command. After any command except creating a class, the tool reads the classes in the workspace, works out which relationships are missing, and offers to set them - asking first, and never in a piped run. See "Relationships between classes" in the user manual.
+
