@@ -49,20 +49,13 @@ public static class ClassMethodLister
     /// asked about — while a live class with a backup of an older namesake beside it was resolving
     /// to the backup, that folder sorting before nearly every folder a project has.
     /// </para>
+    /// <para>
+    /// The rule for which files count now lives in <see cref="ClassFiles"/>; this delegates to it
+    /// so the two cannot drift apart again.
+    /// </para>
     /// </remarks>
-    public static string? FileOf(string searchRoot, string className)
-    {
-        if (string.IsNullOrWhiteSpace(searchRoot) || !Directory.Exists(searchRoot))
-            return null;
-
-        return Directory
-            .GetFiles(searchRoot, "*.cs", SearchOption.AllDirectories)
-            .Where(f =>
-                !f.Contains("\\bin\\") && !f.Contains("\\obj\\") &&
-                !f.Contains("DeletedClasses", StringComparison.OrdinalIgnoreCase))
-            .FirstOrDefault(f => Path.GetFileNameWithoutExtension(f)
-                .Equals(className, StringComparison.OrdinalIgnoreCase));
-    }
+    public static string? FileOf(string searchRoot, string className) =>
+        ClassFiles.FileOf(searchRoot, className);
 
     public static bool ListMethods(string workspaceRoot, string className)
     {

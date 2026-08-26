@@ -2,6 +2,7 @@ using CodeGenerationEngine.Core;
 using CodeGenerationEngine.Helper;
 using CodeGenerationEngine.Models;
 using CodeGenerator.App;
+using CodeGenerator.App.Relationships;
 using CodeIntelligence;
 using NaturalLanguageBridge;
 
@@ -42,6 +43,16 @@ public sealed class ChatSession
     private ProjectMetaData? _currentProject;
 
     private CancellationTokenSource? _cancellation;
+
+    /// <summary>
+    /// The relationship conversation for this session, built on first use.
+    /// </summary>
+    /// <remarks>
+    /// Lazily, because the asker needs this session and the session cannot hand out a reference to
+    /// itself from a field initialiser. Built once all the same: what it has already offered has to
+    /// be remembered across messages, or a candidate the user refused comes back after every one.
+    /// </remarks>
+    private RelationshipFlow? _relationships;
 
     public ChatSession(Workspace workspace, AiLayer ai, List<string> history)
     {
@@ -103,10 +114,10 @@ public sealed class ChatSession
 
     private readonly Lock _questionGate = new();
 
-    private TaskCompletionSource<bool>? _answer;
+    private TaskCompletionSource<int?>? _answer;
 
     /// <summary>The question every tab is showing, or null.</summary>
-    public AiQuestion? Question { get; private set; }
+    public SessionQuestion? Question { get; private set; }
 
     /// <summary>
     /// Puts a question on every tab and blocks until one of them answers.
@@ -119,20 +130,26 @@ public sealed class ChatSession
     /// <para>
     /// The one thing that must never happen is this thread waiting forever. A tab closed while the
     /// question is on screen ends the session (the host abandons it after its grace period), and
-    /// <see cref="End"/> releases this with a no. Without that, the command hangs and the console
-    /// that started the chat hangs behind it.
+    /// <see cref="End"/> releases this with a cancellation. Without that, the command hangs and the
+    /// console that started the chat hangs behind it.
+    /// </para>
+    /// <para>
+    /// Null is that cancellation, and it is not an answer: an ended session, a closed tab or a
+    /// dismissed question all produce it, and no caller may read it as a choice. That is why this
+    /// returns an index rather than a bool — with two options, "false" is both "the user said No"
+    /// and "nobody said anything", and the second must never write code.
     /// </para>
     /// </remarks>
-    internal bool Ask(AiQuestion question)
+    internal int? Ask(SessionQuestion question)
     {
-        TaskCompletionSource<bool> pending;
+        TaskCompletionSource<int?> pending;
 
         lock (_questionGate)
         {
             if (Ended)
-                return false;
+                return null;
 
-            pending = new TaskCompletionSource<bool>(
+            pending = new TaskCompletionSource<int?>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
 
             _answer = pending;
@@ -155,10 +172,12 @@ public sealed class ChatSession
     }
 
     /// <summary>Answers the question on screen. Does nothing if there is none.</summary>
-    public void Answer(bool yes)
+    /// <remarks>Null is a cancellation — a closed tab, or a dismissed question — and is never
+    /// treated as a choice by any caller.</remarks>
+    public void Answer(int? index)
     {
         lock (_questionGate)
-            _answer?.TrySetResult(yes);
+            _answer?.TrySetResult(index);
     }
 
     /// <summary>
@@ -204,6 +223,12 @@ public sealed class ChatSession
             var turn = await Task.Run(() => Run(input, kind, _cancellation.Token));
 
             _turns.Add(turn);
+
+            // After the turn is in the transcript, so the command's own output is on screen behind
+            // the question, and before Running is cleared, so the composer stays disabled while
+            // the question is up. A second message starting here would put a second question on
+            // the page and orphan the thread waiting on the first one.
+            await Offer(input);
         }
         finally
         {
@@ -234,10 +259,48 @@ public sealed class ChatSession
     {
         Ended = true;
 
-        // Before the repaint, and with a no: a question nobody is left to answer must not hold
-        // the command, and the console behind it, open.
+        // Before the repaint, and with a cancellation: a question nobody is left to answer must
+        // not hold the command, and the console behind it, open. Not index 1 and not "No" - an
+        // abandoned question was never answered, and only a null can say so.
         lock (_questionGate)
-            _answer?.TrySetResult(false);
+            _answer?.TrySetResult(null);
+
+        Raise();
+    }
+
+    /// <summary>
+    /// Puts the relationship offer up, once the message that may have created one is done with.
+    /// </summary>
+    /// <remarks>
+    /// On a worker rather than on the circuit: the flow blocks the thread it runs on until an
+    /// answer arrives, and the thread it would otherwise block is the one that has to repaint the
+    /// page with the question. Creating a class is skipped for the same reason the console skips
+    /// it — so that a run of them is not interrupted.
+    /// </remarks>
+    private async Task Offer(string input)
+    {
+        if (Ended || RelationshipGate.IsClassCreation(input))
+            return;
+
+        _relationships ??= RelationshipGate.For(
+            () => _workspace.Root, new ChatChoiceAsker(this), Narrate);
+
+        await Task.Run(() => _relationships?.Run());
+    }
+
+    /// <summary>Puts a line in the transcript that no command produced.</summary>
+    /// <remarks>
+    /// The relationship flow runs after a command's output has been captured and written, so it
+    /// cannot print into that turn. It gets its own, the way <see cref="Load"/> does.
+    /// </remarks>
+    public void Narrate(string text)
+    {
+        _turns.Add(new ChatTurn(
+            string.Empty,
+            CommandKind.Pipeline,
+            ChatVerdict.Succeeded,
+            [new TextBlock(text)],
+            DateTimeOffset.Now));
 
         Raise();
     }
@@ -395,7 +458,9 @@ public sealed class ChatSession
             aiResolver: _ai.Resolver,
             confirmAi: resolution => AiDecisionRecorder.ConfirmAndRecord(
                 resolution, input, _ai.DecisionLog,
-                r => Ask(new AiQuestion(AiConfirmPrompt.Title(r)))),
+                // Only index 0 is a yes, which is AiConfirmPrompt.Accepted's rule without a
+                // second spelling of it. A cancelled question is null, which is not 0.
+                r => Ask(SessionQuestion.YesNo(AiConfirmPrompt.Title(r))) == 0),
             ct: ct);
 
         _currentProject = project;

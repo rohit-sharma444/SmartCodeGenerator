@@ -75,7 +75,7 @@ public class SolutionPickerTests
         using var context = new BunitContext();
         var session = NewSession(out _);
 
-        var wait = Task.Run(() => session.Ask(new AiQuestion("Did you mean `list classes`?")));
+        var wait = Task.Run(() => session.Ask(SessionQuestion.YesNo("Did you mean `list classes`?")));
 
         var deadline = DateTime.UtcNow.AddSeconds(5);
         while (session.Question is null && DateTime.UtcNow < deadline)
@@ -85,10 +85,14 @@ public class SolutionPickerTests
 
         StringAssert.Contains(page.Find(".question").TextContent, "list classes");
 
-        page.Find(".question-yes").Click();
+        // One button per option, drawn by the loop rather than hard-coded, so a four-answer
+        // question draws four. Clicking the primary one is answering with index 0.
+        Assert.HasCount(2, page.FindAll(".question-option"));
+
+        page.Find(".question-option.is-primary").Click();
 
         Assert.IsTrue(wait.Wait(TimeSpan.FromSeconds(5)));
-        Assert.IsTrue(wait.Result);
+        Assert.AreEqual(0, wait.Result);
     }
 
     private static ChatSession NewSession(out string root)

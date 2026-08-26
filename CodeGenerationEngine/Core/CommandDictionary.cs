@@ -928,6 +928,18 @@ public static class CommandDictionary
             lines.Add(string.Empty);
         }
 
+        // Not every behaviour is a command. The relationship offer is raised by the tool itself
+        // after a command finishes, so it has no row in any table above and would otherwise be
+        // invisible to anyone reading only this file.
+        lines.Add("## Set for you");
+        lines.Add(string.Empty);
+        lines.Add(
+            "Relationships between classes are not typed as a command. After any command except "
+            + "creating a class, the tool reads the classes in the workspace, works out which "
+            + "relationships are missing, and offers to set them - asking first, and never in a "
+            + "piped run. See \"Relationships between classes\" in the user manual.");
+        lines.Add(string.Empty);
+
         return string.Join("\n", lines) + "\n";
     }
 

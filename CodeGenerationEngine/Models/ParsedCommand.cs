@@ -23,6 +23,19 @@ public sealed class ParsedCommand
 
     public List<PropertyDefinition> Properties { get; set; } = [];
 
+    /// <summary>
+    /// The entries in a property list that the parser threw away.
+    /// </summary>
+    /// <remarks>
+    /// It travels here rather than being printed where it is found, because it is found in
+    /// NaturalLanguageBridge and reported in this assembly, which the bridge references and not
+    /// the other way round - and because an extractor that prints is an extractor no caller can
+    /// use quietly. A property typed as another class is still dropped: emitting it would fail
+    /// the isolated single-class compile the create-class path runs. What changes is that the
+    /// user is told, and told where relationships are handled instead.
+    /// </remarks>
+    public List<string> IgnoredProperties { get; set; } = [];
+
     // Single-property member operations (add/remove property on an existing class).
     public string PropertyName { get; set; } = string.Empty;
     public string PropertyType { get; set; } = "string";
@@ -122,6 +135,7 @@ public sealed class ParsedCommand
         Interfaces.Clear();
         Parameters.Clear();
         Properties.Clear();
+        IgnoredProperties.Clear();
         Methods.Clear();
         Tags.Clear();
         Metadata.Clear();

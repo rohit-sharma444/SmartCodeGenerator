@@ -1,4 +1,5 @@
-﻿using CodeGenerationEngine.Models;
+﻿using CodeGenerationEngine.Core.Relationships;
+using CodeGenerationEngine.Models;
 using DomainDiscovery.Model;
 
 namespace AppScaffolding;
@@ -44,44 +45,6 @@ public static class DomainModelMapper
         "Directory", "File", "Path", "Stream", "Dictionary", "List", "Queue", "Stack",
         "Enumerable", "IEnumerable",
     };
-
-    /// <summary>The namespace [JsonIgnore] lives in. Declared only by a class that uses it.</summary>
-    private const string JsonSerializationNamespace = "System.Text.Json.Serialization";
-
-    /// <summary>
-    /// Kept off the JSON file, not off the class. A navigation property is resolved from the
-    /// foreign key at load time (see RelationshipResolverTemplate), and serializing it as well
-    /// would make Order.Customer -> Customer.Orders -> Order a reference cycle, which
-    /// System.Text.Json throws on rather than writes.
-    /// </summary>
-    private const string JsonIgnoreAttribute = "JsonIgnore";
-
-    /// <summary>The namespace [Browsable] lives in. Declared only by a class that uses it.</summary>
-    /// <remarks>
-    /// Deliberately NOT <see cref="DataAnnotationsNamespace"/>, which is a child of it: a class
-    /// with validation attributes and no navigation property must not gain this one, or a using it
-    /// does not need appears in every generated model.
-    /// </remarks>
-    private const string ComponentModelNamespace = "System.ComponentModel";
-
-    /// <summary>
-    /// Kept out of a form, not off the class.
-    /// </summary>
-    /// <remarks>
-    /// WinForms builds its record editor from a <c>PropertyGrid</c> over the draft, which lists
-    /// every public property — so Order.Customer appeared as a greyed row nobody can fill in,
-    /// while WPF's emitted PropertyEditor omitted it by construction and the same model produced
-    /// two different forms. This is the frameworks' own way to say a property is not a field, and
-    /// it costs the other targets nothing: JSON never wrote it, Blazor's screens filter on scalars,
-    /// and a DataGridView skips it for free (the emitted column rules already dropped it by hand).
-    /// <para>
-    /// It carries an argument, which no attribute in this list did before. Roslyn prints an
-    /// identifier token's text verbatim, so <c>Attribute(IdentifierName("Browsable(false)"))</c>
-    /// emits valid syntax — pinned by a compile in <c>RoslynClassGeneratorTests</c>, because it
-    /// looks as though it should not work.
-    /// </para>
-    /// </remarks>
-    private const string NotBrowsableAttribute = "Browsable(false)";
 
     /// <summary>The namespace DataAnnotations attributes live in. Declared only by a class that uses one.</summary>
     private const string DataAnnotationsNamespace = "System.ComponentModel.DataAnnotations";
@@ -203,37 +166,28 @@ public static class DomainModelMapper
                     || !byName.TryGetValue(targetName, out var target))
                     continue;
 
-                AddNavigation(owner, targetName, targetName);
-                AddNavigation(target, Pluralize(ownerName), $"List<{ownerName}>");
+                AddNavigation(owner, RelationshipConvention.Forward(targetName));
+                AddNavigation(target, RelationshipConvention.InverseCollection(ownerName));
             }
         }
     }
 
     /// <summary>
-    /// Adds one [JsonIgnore] navigation property, unless its name is already taken or would
-    /// collide with the class's own name (CS0542).
+    /// Adds one navigation property built by <see cref="RelationshipConvention"/>, unless its
+    /// name is already taken or would collide with the class's own name (CS0542).
     /// </summary>
-    private static void AddNavigation(ClassDefinition definition, string name, string type)
+    private static void AddNavigation(ClassDefinition definition, PropertyDefinition navigation)
     {
-        if (string.Equals(name, definition.Name, StringComparison.OrdinalIgnoreCase))
+        if (!RelationshipConvention.CanAdd(definition, navigation.Name))
             return;
 
-        if (definition.Properties.Any(
-                p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase)))
-            return;
+        definition.Properties.Add(navigation);
 
-        definition.Properties.Add(new PropertyDefinition
-        {
-            Name = name,
-            Type = type,
-            Attributes = { JsonIgnoreAttribute, NotBrowsableAttribute }
-        });
+        if (!definition.Usings.Contains(RelationshipConvention.JsonSerializationNamespace))
+            definition.Usings.Add(RelationshipConvention.JsonSerializationNamespace);
 
-        if (!definition.Usings.Contains(JsonSerializationNamespace))
-            definition.Usings.Add(JsonSerializationNamespace);
-
-        if (!definition.Usings.Contains(ComponentModelNamespace))
-            definition.Usings.Add(ComponentModelNamespace);
+        if (!definition.Usings.Contains(RelationshipConvention.ComponentModelNamespace))
+            definition.Usings.Add(RelationshipConvention.ComponentModelNamespace);
     }
 
     /// <summary>
@@ -309,27 +263,6 @@ public static class DomainModelMapper
             property.Attributes.Add("Phone");
 
         return true;
-    }
-
-    /// <summary>
-    /// English plural, well enough for a collection property name. Not a linguistics engine: the
-    /// worst case is an inverse collection called "Companys", which compiles and reads oddly, and
-    /// the user can rename it in the review loop.
-    /// </summary>
-    private static string Pluralize(string name)
-    {
-        if (name.EndsWith("s", StringComparison.OrdinalIgnoreCase)
-            || name.EndsWith("x", StringComparison.OrdinalIgnoreCase)
-            || name.EndsWith("ch", StringComparison.OrdinalIgnoreCase)
-            || name.EndsWith("sh", StringComparison.OrdinalIgnoreCase))
-            return name + "es";
-
-        if (name.Length > 1
-            && name.EndsWith("y", StringComparison.OrdinalIgnoreCase)
-            && !"aeiou".Contains(char.ToLowerInvariant(name[^2])))
-            return name[..^1] + "ies";
-
-        return name + "s";
     }
 
     /// <summary>
