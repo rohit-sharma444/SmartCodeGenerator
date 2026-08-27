@@ -87,7 +87,17 @@ public static partial class CommandParser
         "an"
     ];
 
-    public static string Normalize(string input)
+    public static string Normalize(string input) => Normalize(input, removeStopWords: true);
+
+    /// <summary>
+    /// <paramref name="removeStopWords"/> = false keeps words like "the"/"a"/"an" that
+    /// several validation-rule parsers require verbatim ("must be in <c>the</c> past",
+    /// "must be <c>a</c> valid date", "must be <c>the</c> same as ..."). Stripping them
+    /// as English filler is fine for command prose but corrupts a rule fragment the user
+    /// typed on purpose, silently making those rules unreachable from the command line
+    /// while their own unit tests (which hand-build the fragment) keep passing.
+    /// </summary>
+    public static string Normalize(string input, bool removeStopWords)
     {
         if (string.IsNullOrWhiteSpace(input))
             return string.Empty;
@@ -104,7 +114,8 @@ public static partial class CommandParser
 
         input = NormalizeVerbs(input);
 
-        input = RemoveStopWords(input);
+        if (removeStopWords)
+            input = RemoveStopWords(input);
 
         input = NormalizePunctuation(input);
 

@@ -2,6 +2,7 @@ using CodeGenerationEngine.Core;
 using CodeGenerationEngine.Core.Validation;
 using CodeGenerationEngine.Models;
 using CodeGenerationEngine.Service;
+using NaturalLanguageBridge;
 
 namespace CodeGenerator.Tests.Core.Validation;
 
@@ -59,4 +60,29 @@ public class BusinessValidationCommandTests
         Assert.IsTrue(CommandHandlingService.IsSupported(IntentType.AddBusinessValidation));
         Assert.IsTrue(CommandHandlingService.IsSupported(IntentType.ShowBusinessValidation));
     }
+
+    // Drives "add business validation" from the raw sentence, the way the CLI does:
+    // CommandFront.Parse composes ValidationText before the catalog ever sees it,
+    // mirroring AddValidationPhrasingTests' end-to-end coverage for data rules.
+    private static bool Run(string sentence)
+    {
+        var command = CommandFront.Parse(sentence, "");
+        ProjectMetaData? project = null;
+        return CommandHandlingService.Execute(command, ref project, [], Path.GetTempPath(), _ => { });
+    }
+
+    private static void AssertRegistered(string sentence, string className, string expectedDescription)
+    {
+        Assert.IsTrue(Run(sentence), $"Command failed: {sentence}");
+
+        var rules = ValidationRegistry.Get(className, ValidationCategory.Business);
+        Assert.HasCount(1, rules);
+        Assert.AreEqual(expectedDescription, rules[0].Describe());
+    }
+
+    [TestMethod]
+    public void Either_or_phrasing_registers_a_business_rule() =>
+        AssertRegistered(
+            "add business validation Either Email or Phone must be provided in Customer",
+            "Customer", "Either Email or Phone must be provided");
 }
