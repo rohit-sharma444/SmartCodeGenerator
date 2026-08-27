@@ -80,4 +80,53 @@ public class NamedFormatRuleTests
         StringAssert.Contains(code, "InvariantCulture");
         AssertCompiles(code, "public string Born { get; set; } = string.Empty;");
     }
+
+    private static string PatternOf(string sentence)
+    {
+        new NamedFormatRuleParser().TryParse(Ctx(sentence), out var rule);
+        var described = rule!.Describe();
+        var at = described.IndexOf("must match ", System.StringComparison.Ordinal);
+        return described[(at + "must match ".Length)..];
+    }
+
+    /// <summary>
+    /// The values these patterns have to accept. They ship into a generated project and reject the
+    /// user's real data if they are wrong, so each one is pinned by an ordinary example rather than
+    /// by the pattern merely being a valid regex.
+    /// </summary>
+    [TestMethod]
+    [DataRow("Website must be a valid URL", "www.acme.com")]
+    [DataRow("Website must be a valid URL", "https://acme.co.uk/path")]
+    [DataRow("Website must be a valid URL", "acme.com")]
+    [DataRow("Phone must be a valid phone number", "020 7946 0958")]
+    [DataRow("Phone must be a valid phone number", "020-7946-0958")]
+    [DataRow("Phone must be a valid phone number", "020.7946.0958")]
+    [DataRow("Phone must be a valid phone number", "+44 20 7946 0958")]
+    [DataRow("Host must be a valid IP address", "192.168.0.1")]
+    [DataRow("Host must be a valid IP address", "::1")]
+    [DataRow("Host must be a valid IP address", "2001:db8::1")]
+    [DataRow("Reference must be a valid GUID", "3F2504E0-4F89-11D3-9A0C-0305E82C3301")]
+    [DataRow("Reference must be a valid GUID", "{3F2504E0-4F89-11D3-9A0C-0305E82C3301}")]
+    [DataRow("Reference must be a valid GUID", "3F2504E04F8911D39A0C0305E82C3301")]
+    [DataRow("Postcode must be a valid postcode", "SW1A 1AA")]
+    [DataRow("Postcode must be a valid postcode", "sw1a1aa")]
+    public void The_shipped_patterns_accept_ordinary_values(string sentence, string value) =>
+        Assert.IsTrue(
+            System.Text.RegularExpressions.Regex.IsMatch(value, PatternOf(sentence)),
+            $"{value} was rejected by {PatternOf(sentence)}");
+
+    /// <summary>
+    /// And what they still have to refuse, so the loosening above did not turn them into
+    /// "anything goes".
+    /// </summary>
+    [TestMethod]
+    [DataRow("Website must be a valid URL", "not a url")]
+    [DataRow("Website must be a valid URL", "acme")]
+    [DataRow("Phone must be a valid phone number", "abc")]
+    [DataRow("Host must be a valid IP address", "999.999.999.999")]
+    [DataRow("Reference must be a valid GUID", "not-a-guid")]
+    public void The_shipped_patterns_still_refuse_nonsense(string sentence, string value) =>
+        Assert.IsFalse(
+            System.Text.RegularExpressions.Regex.IsMatch(value, PatternOf(sentence)),
+            $"{value} was accepted by {PatternOf(sentence)}");
 }
