@@ -1621,6 +1621,61 @@ public class NamedFormatRuleTests
         AssertCompiles(code, "public string Phone { get; set; } = string.Empty;");
     }
 
+    private static string PatternOf(string sentence)
+    {
+        new NamedFormatRuleParser().TryParse(Ctx(sentence), out var rule);
+        var described = rule!.Describe();
+        var at = described.IndexOf("must match ", System.StringComparison.Ordinal);
+        return described[(at + "must match ".Length)..];
+    }
+
+    /// <summary>
+    /// The values these patterns have to accept.
+    /// </summary>
+    /// <remarks>
+    /// They ship into a generated project and reject the user's real data if they are wrong, so each
+    /// is pinned by an ordinary example rather than by the pattern merely being a valid regex.
+    /// Every case below is one the first draft of these patterns refused.
+    /// </remarks>
+    [TestMethod]
+    [DataRow("Website must be a valid URL", "www.acme.com")]
+    [DataRow("Website must be a valid URL", "https://acme.co.uk/path")]
+    [DataRow("Website must be a valid URL", "acme.com")]
+    [DataRow("Phone must be a valid phone number", "020 7946 0958")]
+    [DataRow("Phone must be a valid phone number", "020-7946-0958")]
+    [DataRow("Phone must be a valid phone number", "020.7946.0958")]
+    [DataRow("Phone must be a valid phone number", "+44 20 7946 0958")]
+    [DataRow("Host must be a valid IP address", "192.168.0.1")]
+    [DataRow("Host must be a valid IP address", "::1")]
+    [DataRow("Host must be a valid IP address", "2001:db8::1")]
+    [DataRow("Reference must be a valid GUID", "3F2504E0-4F89-11D3-9A0C-0305E82C3301")]
+    [DataRow("Reference must be a valid GUID", "{3F2504E0-4F89-11D3-9A0C-0305E82C3301}")]
+    [DataRow("Reference must be a valid GUID", "3F2504E04F8911D39A0C0305E82C3301")]
+    [DataRow("Postcode must be a valid postcode", "SW1A 1AA")]
+    [DataRow("Postcode must be a valid postcode", "sw1a1aa")]
+    public void The_shipped_patterns_accept_ordinary_values(string sentence, string value) =>
+        Assert.IsTrue(
+            System.Text.RegularExpressions.Regex.IsMatch(value, PatternOf(sentence)),
+            $"{value} was rejected by {PatternOf(sentence)}");
+
+    /// <summary>
+    /// And what they still refuse, so the loosening did not turn them into "anything goes".
+    /// </summary>
+    /// <remarks>
+    /// This half is the one that matters. A pattern relaxed until it accepts everything passes every
+    /// acceptance case above and validates nothing at all.
+    /// </remarks>
+    [TestMethod]
+    [DataRow("Website must be a valid URL", "not a url")]
+    [DataRow("Website must be a valid URL", "acme")]
+    [DataRow("Phone must be a valid phone number", "abc")]
+    [DataRow("Host must be a valid IP address", "999.999.999.999")]
+    [DataRow("Reference must be a valid GUID", "not-a-guid")]
+    public void The_shipped_patterns_still_refuse_nonsense(string sentence, string value) =>
+        Assert.IsFalse(
+            System.Text.RegularExpressions.Regex.IsMatch(value, PatternOf(sentence)),
+            $"{value} was accepted by {PatternOf(sentence)}");
+
     [TestMethod]
     public void Parses_and_emits_a_valid_date_check()
     {
@@ -1696,20 +1751,35 @@ public sealed class NamedFormatRuleParser : IValidationRuleParser
         @"^(?<prop>\w+)\s+must\s+be\s+(?:a\s+|an\s+)?valid\s+(?<format>phone\s+number|phone|url|web\s+address|postcode|post\s+code|guid|uuid|ip\s+address|ip)$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-    /// <summary>Deliberately loose where the real-world format is: a phone number pattern that
-    /// rejects a legitimate number is a pattern that gets deleted.</summary>
+    /// <summary>
+    /// Deliberately loose where the real-world format is: a phone number pattern that rejects a
+    /// legitimate number is a pattern that gets deleted.
+    /// </summary>
+    /// <remarks>
+    /// Loose is not a slogan here, it is the specification. The URL takes a bare domain, because
+    /// "www.acme.com" is what someone types into a Website field. The IP takes IPv6, because a Host
+    /// field is a realistic place for one and the generated message says only "format is invalid".
+    /// The phone takes dots, the GUID takes braces and the hyphen-less form. Each of those was a
+    /// real value the first draft refused. The tests below pin both halves — what each accepts, and
+    /// what it still refuses — because a pattern loosened until it accepts everything passes every
+    /// acceptance test there is.
+    /// <para>
+    /// The postcode is the deliberate exception: it refuses GIR 0AA, the sole UK postcode with an
+    /// all-letter outward code, and handling that one address is not worth the pattern it takes.
+    /// </para>
+    /// </remarks>
     private static readonly Dictionary<string, string> Patterns = new(System.StringComparer.OrdinalIgnoreCase)
     {
-        ["phone number"] = @"^\+?[0-9 ()\-]{7,20}$",
-        ["phone"] = @"^\+?[0-9 ()\-]{7,20}$",
-        ["url"] = @"^https?://[^\s]+$",
-        ["web address"] = @"^https?://[^\s]+$",
+        ["phone number"] = @"^\+?[0-9 ().\-]{7,20}$",
+        ["phone"] = @"^\+?[0-9 ().\-]{7,20}$",
+        ["url"] = @"^(?:https?://)?[^\s.]+(?:\.[^\s.]+)+$",
+        ["web address"] = @"^(?:https?://)?[^\s.]+(?:\.[^\s.]+)+$",
         ["postcode"] = @"^[A-Za-z]{1,2}[0-9][0-9A-Za-z]?\s*[0-9][A-Za-z]{2}$",
         ["post code"] = @"^[A-Za-z]{1,2}[0-9][0-9A-Za-z]?\s*[0-9][A-Za-z]{2}$",
-        ["guid"] = @"^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$",
-        ["uuid"] = @"^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$",
-        ["ip address"] = @"^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$",
-        ["ip"] = @"^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$"
+        ["guid"] = @"^\{?[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}\}?$|^[0-9a-fA-F]{32}$",
+        ["uuid"] = @"^\{?[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}\}?$|^[0-9a-fA-F]{32}$",
+        ["ip address"] = @"^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$|^[0-9A-Fa-f]{0,4}(?::[0-9A-Fa-f]{0,4}){2,7}$",
+        ["ip"] = @"^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$|^[0-9A-Fa-f]{0,4}(?::[0-9A-Fa-f]{0,4}){2,7}$"
     };
 
     public int Priority => 65;
@@ -2482,11 +2552,14 @@ Append to `AddValidationPhrasingTests.cs`, inside the existing class (it already
             "add validation must be positive on Salary in Employee",
             "Employee", "Salary must be positive");
 
+    // The expected description is the pattern the rule carries, so it has to be the pattern that
+    // actually shipped — not the one this plan first drafted. Read the value out of
+    // NamedFormatRuleParser.Patterns["url"] rather than retyping it here from memory.
     [TestMethod]
     public void Named_format_phrasing_registers_a_rule() =>
         AssertRegistered(
             "add validation must be a valid URL on Website in Employee",
-            "Employee", @"Website must match ^https?://[^\s]+$");
+            "Employee", @"Website must match ^(?:https?://)?[^\s.]+(?:\.[^\s.]+)+$");
 
     [TestMethod]
     public void Relative_date_phrasing_registers_a_rule() =>
