@@ -108,6 +108,8 @@ public class NamedFormatRuleTests
     [DataRow("Reference must be a valid GUID", "3F2504E0-4F89-11D3-9A0C-0305E82C3301")]
     [DataRow("Reference must be a valid GUID", "{3F2504E0-4F89-11D3-9A0C-0305E82C3301}")]
     [DataRow("Reference must be a valid GUID", "3F2504E04F8911D39A0C0305E82C3301")]
+    [DataRow("Host must be a valid IP address", "::")]
+    [DataRow("Host must be a valid IP address", "fe80::1")]
     [DataRow("Postcode must be a valid postcode", "SW1A 1AA")]
     [DataRow("Postcode must be a valid postcode", "sw1a1aa")]
     public void The_shipped_patterns_accept_ordinary_values(string sentence, string value) =>
@@ -125,6 +127,11 @@ public class NamedFormatRuleTests
     [DataRow("Phone must be a valid phone number", "abc")]
     [DataRow("Host must be a valid IP address", "999.999.999.999")]
     [DataRow("Reference must be a valid GUID", "not-a-guid")]
+    [DataRow("Host must be a valid IP address", ":::")]
+    [DataRow("Host must be a valid IP address", "::::::::")]
+    [DataRow("Host must be a valid IP address", "1:::2")]
+    [DataRow("Reference must be a valid GUID", "{3F2504E0-4F89-11D3-9A0C-0305E82C3301")]
+    [DataRow("Reference must be a valid GUID", "3F2504E0-4F89-11D3-9A0C-0305E82C3301}")]
     public void The_shipped_patterns_still_refuse_nonsense(string sentence, string value) =>
         Assert.IsFalse(
             System.Text.RegularExpressions.Regex.IsMatch(value, PatternOf(sentence)),
