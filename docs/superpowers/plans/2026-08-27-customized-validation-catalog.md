@@ -545,7 +545,7 @@ public sealed class InclusiveBoundRule : IValidationRule
 
 public sealed class MinValueRuleParser : IValidationRuleParser
 {
-    // Anchored on the number, so "at most 50 characters" falls through to the length parsers.
+    // Anchored on the number, so "at least 2 characters" falls through to the length parsers.
     private static readonly Regex Pattern = new(
         @"^(?<prop>\w+)\s+must\s+be\s+(?:at\s+least|no\s+less\s+than|greater\s+than\s+or\s+equal\s+to)\s+(?<value>[-+]?[0-9]*\.?[0-9]+)$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -572,6 +572,7 @@ public sealed class MinValueRuleParser : IValidationRuleParser
 
 public sealed class MaxValueRuleParser : IValidationRuleParser
 {
+    // Anchored on the number, so "at most 50 characters" falls through to the length parsers.
     private static readonly Regex Pattern = new(
         @"^(?<prop>\w+)\s+must\s+(?:be\s+(?:at\s+most|no\s+more\s+than|less\s+than\s+or\s+equal\s+to)|not\s+exceed)\s+(?<value>[-+]?[0-9]*\.?[0-9]+)$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
