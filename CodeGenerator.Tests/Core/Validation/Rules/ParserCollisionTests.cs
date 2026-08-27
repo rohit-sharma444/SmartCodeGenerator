@@ -55,4 +55,16 @@ public class ParserCollisionTests
             .TryParse(Ctx("EndDate must be after StartDate"), out var rule));
         Assert.AreEqual("EndDate must be after StartDate", rule!.Describe());
     }
+
+    /// <summary>
+    /// The ordinary English list. The guard is what refuses a bare " and "; the split must still
+    /// break on it, or the last two items fuse into one value the check can never match.
+    /// </summary>
+    [TestMethod]
+    public void A_comma_list_ending_in_and_keeps_all_three_values()
+    {
+        Assert.IsTrue(new AllowedValuesRuleParser()
+            .TryParse(Ctx("Status must be Draft, Sent and Paid"), out var rule));
+        Assert.AreEqual("Status must be one of: Draft, Sent, Paid", rule!.Describe());
+    }
 }
