@@ -55,12 +55,23 @@ public sealed class RelativeDateRule : IValidationRule
         ctx.Line("if (__ok) __d = (System.DateTime)__o;");
         ctx.Line("else __ok = System.DateTime.TryParse(__o?.ToString(), System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out __d);");
 
+        // Day-granular throughout, and each "X"/"NotX" pair is an exact complement of the
+        // other — no value satisfies both, every value satisfies exactly one:
+        //   Past passes iff strictly before today; NotPast passes iff today or later.
+        //   Future passes iff tomorrow or later; NotFuture passes iff today or earlier.
+        // Using System.DateTime.Now on only one side of a pair (as an earlier version of this
+        // code did for Past/NotPast) lets a value earlier today satisfy both — "must be in the
+        // past" and "must not be in the past" are not supposed to overlap. Day granularity is
+        // also why "StartDate must not be in the past" accepts a start date of today, which is
+        // the behaviour business date fields want; the cost is that "must be in the future"
+        // means tomorrow-or-later, not "later than this exact moment" — do not "helpfully"
+        // restore Now to one arm without re-checking this partition.
         var violation = _bound switch
         {
-            DateBound.Past => "__d >= System.DateTime.Now",
-            DateBound.Future => "__d <= System.DateTime.Now",
+            DateBound.Past => "__d >= System.DateTime.Today",
             DateBound.NotPast => "__d < System.DateTime.Today",
-            DateBound.NotFuture => "__d > System.DateTime.Now",
+            DateBound.Future => "__d < System.DateTime.Today.AddDays(1)",
+            DateBound.NotFuture => "__d >= System.DateTime.Today.AddDays(1)",
             DateBound.YearsAgo => $"__d > System.DateTime.Today.AddYears(-{_amount})",
             DateBound.WithinDays => $"__d < System.DateTime.Today.AddDays(-{_amount})",
             _ => throw new ArgumentOutOfRangeException(nameof(_bound), _bound, "Unhandled DateBound.")
