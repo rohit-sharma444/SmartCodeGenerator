@@ -10,6 +10,7 @@ public sealed class RequiredRule : IValidationRule
     public RequiredRule(string property) => _property = property;
 
     public ValidationCategory Category => ValidationCategory.Data;
+    public IReadOnlyList<string> Properties => [_property];
     public string Describe() => $"{_property} is required";
 
     public void Emit(ValidationEmitContext ctx)
@@ -31,6 +32,9 @@ public sealed class RequiredRuleParser : IValidationRuleParser
 
     public int Priority => 10;
     public ValidationCategory Category => ValidationCategory.Data;
+
+    public IReadOnlyList<string> Examples =>
+        ["Name is required", "Name must not be blank"];
 
     public bool TryParse(ValidationParseContext ctx, out IValidationRule? rule)
     {

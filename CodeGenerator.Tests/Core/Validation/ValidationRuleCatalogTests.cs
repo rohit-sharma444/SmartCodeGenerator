@@ -11,6 +11,7 @@ public class ValidationRuleCatalogTests
     {
         public ValidationCategory Category { get; init; }
         public string Text { get; init; } = "";
+        public IReadOnlyList<string> Properties => [Text];
         public string Describe() => Text;
         public void Emit(ValidationEmitContext ctx) => ctx.Line($"// {Text}");
     }
@@ -19,6 +20,7 @@ public class ValidationRuleCatalogTests
     {
         public int Priority => 10;
         public ValidationCategory Category => ValidationCategory.Data;
+        public IReadOnlyList<string> Examples => ["anything"];
         public bool TryParse(ValidationParseContext ctx, out IValidationRule? rule)
         {
             rule = new StubRule { Category = ValidationCategory.Data, Text = "high" };
@@ -30,6 +32,7 @@ public class ValidationRuleCatalogTests
     {
         public int Priority => 20;
         public ValidationCategory Category => ValidationCategory.Business;
+        public IReadOnlyList<string> Examples => ["anything"];
         public bool TryParse(ValidationParseContext ctx, out IValidationRule? rule)
         {
             rule = new StubRule { Category = ValidationCategory.Business, Text = "biz" };

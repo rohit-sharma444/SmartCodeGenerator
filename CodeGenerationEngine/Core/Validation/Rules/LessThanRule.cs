@@ -8,6 +8,7 @@ public sealed class LessThanRule : IValidationRule
     private readonly string _p; private readonly decimal _v;
     public LessThanRule(string p, decimal v) { _p = p; _v = v; }
     public ValidationCategory Category => ValidationCategory.Data;
+    public IReadOnlyList<string> Properties => [_p];
     public string Describe() => $"{_p} must be less than {_v.ToString(CultureInfo.InvariantCulture)}";
     public void Emit(ValidationEmitContext ctx)
     {
@@ -24,6 +25,7 @@ public sealed class LessThanRuleParser : IValidationRuleParser
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
     public int Priority => 50;
     public ValidationCategory Category => ValidationCategory.Data;
+    public IReadOnlyList<string> Examples => ["Discount must be less than 100"];
     public bool TryParse(ValidationParseContext ctx, out IValidationRule? rule)
     {
         var m = Pattern.Match(ctx.Fragment);

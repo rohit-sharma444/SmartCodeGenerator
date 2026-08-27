@@ -8,6 +8,7 @@ public sealed class AllowedValuesRule : IValidationRule
     private readonly string _p; private readonly IReadOnlyList<string> _values;
     public AllowedValuesRule(string p, IReadOnlyList<string> values) { _p = p; _values = values; }
     public ValidationCategory Category => ValidationCategory.Data;
+    public IReadOnlyList<string> Properties => [_p];
     public string Describe() => $"{_p} must be one of: {string.Join(", ", _values)}";
     public void Emit(ValidationEmitContext ctx)
     {
@@ -26,6 +27,8 @@ public sealed class AllowedValuesRuleParser : IValidationRuleParser
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
     public int Priority => 100; // catch-all: runs last
     public ValidationCategory Category => ValidationCategory.Data;
+    public IReadOnlyList<string> Examples =>
+        ["Status must be Draft, Sent, Paid", "Status must be Draft or Paid"];
     public bool TryParse(ValidationParseContext ctx, out IValidationRule? rule)
     {
         var m = Pattern.Match(ctx.Fragment);

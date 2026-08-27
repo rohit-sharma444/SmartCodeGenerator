@@ -10,6 +10,7 @@ public class ValidationRegistryTests
     private sealed class FakeRule : IValidationRule
     {
         public ValidationCategory Category { get; init; }
+        public IReadOnlyList<string> Properties => [Category.ToString()];
         public string Describe() => Category.ToString();
         public void Emit(ValidationEmitContext ctx) { }
     }

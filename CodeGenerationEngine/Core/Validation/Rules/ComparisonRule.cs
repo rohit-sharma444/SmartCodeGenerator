@@ -15,6 +15,7 @@ public sealed class ComparisonRule : IValidationRule
     }
 
     public ValidationCategory Category => ValidationCategory.Business;
+    public IReadOnlyList<string> Properties => [_left, _right];
     // Echo the original fragment verbatim rather than reconstructing it: reconstructing
     // via "{left} must be {phrase} {right}" is ungrammatical for phrases like "not exceed"
     // (produces "must be not exceed"), and this text is user-visible via `show validation`
@@ -46,6 +47,9 @@ public sealed class ComparisonRuleParser : IValidationRuleParser
 
     public int Priority => 20;
     public ValidationCategory Category => ValidationCategory.Business;
+
+    public IReadOnlyList<string> Examples =>
+        ["EndDate must be after StartDate", "Discount must not exceed Total"];
 
     public bool TryParse(ValidationParseContext ctx, out IValidationRule? rule)
     {
