@@ -38,9 +38,10 @@ public sealed class ComparisonRule : IValidationRule
 
 public sealed class ComparisonRuleParser : IValidationRuleParser
 {
-    // "<Left> must [be] <operator> <Right>" where Right is another property.
+    // <right> refuses an all-digit operand: it names a property, and "at least 18" is a bound on a
+    // number, which MinValueRuleParser owns on the data side.
     private static readonly Regex Pattern = new(
-        @"^(?<left>\w+)\s+must\s+(?:be\s+)?(?<op>after|before|greater\s+than\s+or\s+equal\s+to|less\s+than\s+or\s+equal\s+to|greater\s+than|less\s+than|at\s+least|at\s+most|not\s+exceed)\s+(?<right>\w+)$",
+        @"^(?<left>\w+)\s+must\s+(?:be\s+)?(?<op>after|before|greater\s+than\s+or\s+equal\s+to|less\s+than\s+or\s+equal\s+to|greater\s+than|less\s+than|at\s+least|at\s+most|not\s+exceed)\s+(?<right>(?!\d+$)\w+)$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     public int Priority => 20;

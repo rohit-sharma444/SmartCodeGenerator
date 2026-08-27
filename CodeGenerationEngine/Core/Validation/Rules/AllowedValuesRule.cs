@@ -33,11 +33,15 @@ public sealed class AllowedValuesRuleParser : IValidationRuleParser
         if (!m.Success) return false;
 
         var raw = m.Groups["values"].Value;
-        if (!raw.Contains(',') && !raw.Contains(" or ") && !raw.Contains(" and "))
+        // A list is a comma list or an "or" list. " and " in a rule sentence is a conjunction of
+        // two rules — the catalog already splits those on ';' and on newlines — and treating it as
+        // a separator turned "Age must be greater than 0 and less than 100" into an allowed-values
+        // check that can never pass.
+        if (!raw.Contains(',') && !raw.Contains(" or "))
             return false; // a single token is not an allowed-values list
 
         var parts = raw.Split(new[] { ',', ';' }, System.StringSplitOptions.RemoveEmptyEntries)
-            .SelectMany(p => p.Split(new[] { " or ", " and " }, System.StringSplitOptions.RemoveEmptyEntries))
+            .SelectMany(p => p.Split(new[] { " or " }, System.StringSplitOptions.RemoveEmptyEntries))
             .Select(x => x.Trim().Trim('"', '\''))
             .Where(x => x.Length > 0)
             .ToList();
