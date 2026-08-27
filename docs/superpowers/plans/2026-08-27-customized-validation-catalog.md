@@ -2396,12 +2396,17 @@ public sealed class ArithmeticRule : IValidationRule
             return;
         }
 
+        // Every arm named, and a throwing default. The operator set is closed — the parser's regex
+        // alternation is what defines it — so `_ => "/"` does not mean "the remaining case", it
+        // means "anything I did not think of is division". A later edit to that alternation would
+        // then misread silently rather than fail.
         var symbol = _op.ToLowerInvariant() switch
         {
             "times" or "multiplied by" => "*",
             "plus" => "+",
             "minus" => "-",
-            _ => "/"
+            "divided by" => "/",
+            _ => throw new System.InvalidOperationException($"Unhandled arithmetic operator: {_op}")
         };
 
         var message = SymbolDisplay.FormatLiteral(Describe() + ".", quote: true);
@@ -2412,6 +2417,13 @@ public sealed class ArithmeticRule : IValidationRule
         ctx.Line($"    && decimal.TryParse(((object)this.{_right})?.ToString(), {Parse}, out var __r))");
         ctx.Line("{");
 
+        // A zero divisor is a "cannot evaluate" state, and the rule stays silent about it on
+        // purpose: raising this rule's own message would say "Total must equal Amount divided by
+        // Rate" when the actual problem is that Rate is zero — a wrong diagnosis, which is worse
+        // than none. "Rate must not be zero" is its own rule, and the user can add it.
+        // The guard also is not what produces the silence: EmitSection wraps every rule in an empty
+        // catch, so an unguarded divide would throw and be swallowed to the same result. The guard
+        // is here to make that a deliberate branch rather than an accident of another file.
         if (symbol == "/")
             ctx.Line($"    if (__r != 0m && System.Math.Abs(__t - (__l / __r)) > 0.0001m) errors.Add({message});");
         else
