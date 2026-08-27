@@ -346,7 +346,7 @@ public IReadOnlyList<string> Examples => ["Discount must be less than 100"];
 public IReadOnlyList<string> Properties => [_p];
 // EmailRuleParser
 public IReadOnlyList<string> Examples => ["Email must be a valid email"];
-// RegexRuleParser
+// MatchRuleParser  (the second parser in RegexRule.cs; not named RegexRuleParser)
 public IReadOnlyList<string> Examples => [@"Code must match ^[A-Z]{3}$"];
 
 // AllowedValuesRule
