@@ -85,4 +85,13 @@ public class BusinessValidationCommandTests
         AssertRegistered(
             "add business validation Either Email or Phone must be provided in Customer",
             "Customer", "Either Email or Phone must be provided");
+
+    // SameAsRuleParser's pattern requires the literal article "the" ("must be the same
+    // as"), same shape of defect as RelativeDateRuleParser. This is the business-side
+    // half of the two parsers Finding 1 asked to be proven, not just assumed.
+    [TestMethod]
+    public void Same_as_phrasing_registers_a_business_rule() =>
+        AssertRegistered(
+            "add business validation BillingPostcode must be the same as ShippingPostcode in Customer",
+            "Customer", "BillingPostcode must be the same as ShippingPostcode");
 }

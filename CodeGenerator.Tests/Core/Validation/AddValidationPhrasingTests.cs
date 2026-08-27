@@ -141,4 +141,13 @@ public class AddValidationPhrasingTests
         AssertRegistered(
             "add validation must be uppercase on Code in Employee",
             "Employee", "Code must be uppercase");
+
+    // ValidDateRuleParser's pattern requires the literal article "a" ("must be a valid
+    // date"), same as RelativeDateRuleParser requires the literal "the" ("in the past").
+    // This is the second of the two parsers Finding 1 asked to be proven, not just assumed.
+    [TestMethod]
+    public void Valid_date_phrasing_registers_a_rule() =>
+        AssertRegistered(
+            "add validation must be a valid date on Born in Employee",
+            "Employee", "Born must be a valid date");
 }
