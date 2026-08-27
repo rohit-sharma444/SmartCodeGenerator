@@ -42,7 +42,8 @@ public sealed class ArithmeticRule : IValidationRule
             "times" or "multiplied by" => "*",
             "plus" => "+",
             "minus" => "-",
-            _ => "/"
+            "divided by" => "/",
+            _ => throw new System.InvalidOperationException($"Unhandled arithmetic operator: {_op}")
         };
 
         var message = SymbolDisplay.FormatLiteral(Describe() + ".", quote: true);
@@ -54,7 +55,14 @@ public sealed class ArithmeticRule : IValidationRule
         ctx.Line("{");
 
         if (symbol == "/")
+        {
+            // A zero divisor makes the identity uncomputable, not violated: this check stays
+            // silent rather than reporting an arithmetic mismatch that would misdiagnose the real
+            // problem (the divisor being zero, not the target). A complaint about a zero divisor
+            // belongs in its own rule, not this one.
+            ctx.Line("    // skipped when the divisor is 0: uncomputable, not a violation");
             ctx.Line($"    if (__r != 0m && System.Math.Abs(__t - (__l / __r)) > 0.0001m) errors.Add({message});");
+        }
         else
             ctx.Line($"    if (System.Math.Abs(__t - (__l {symbol} __r)) > 0.0001m) errors.Add({message});");
 

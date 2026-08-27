@@ -212,6 +212,22 @@ public class CrossPropertyRuleTests
         Assert.HasCount(0, errors);
     }
 
+    /// <summary>
+    /// The other three arithmetic tests using "divided by" only ever take the non-firing paths
+    /// (tolerance-satisfied, zero-divisor-skipped). This drives the guarded comparison's true
+    /// branch: a genuine "divided by" mismatch, with a non-zero divisor, must still raise an error.
+    /// </summary>
+    [TestMethod]
+    public void Arithmetic_division_violated_produces_an_error()
+    {
+        var errors = RunValidate(
+            "Total must equal Amount divided by Rate",
+            [("Total", "decimal"), ("Amount", "decimal"), ("Rate", "decimal")],
+            [("Total", 5m), ("Amount", 10m), ("Rate", 4m)]); // 10 / 4 = 2.5, not 5
+
+        Assert.HasCount(1, errors);
+    }
+
     [TestMethod]
     public void SameAs_equal_values_same_as_direction_produces_no_error()
     {
