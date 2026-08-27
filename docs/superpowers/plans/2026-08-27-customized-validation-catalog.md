@@ -966,8 +966,15 @@ public class LengthBoundRuleTests
         Assert.AreEqual("Name must be exactly 8 characters", rule!.Describe());
     }
 
-    /// <summary>The catalog, not the parser: this is the ordering that keeps a character
-    /// bound away from the numeric bound parsers added in Task 3.</summary>
+    /// <summary>
+    /// The whole catalog, not one parser: the sentence has to come out of `Parse` as a length rule.
+    /// </summary>
+    /// <remarks>
+    /// What keeps it away from the numeric bounds is NOT this rule's priority — it is that
+    /// MaxValueRuleParser anchors on the digits, so a trailing "characters" cannot match it at any
+    /// priority at all. The priority relationship is a separate claim and is pinned separately,
+    /// below. Do not let this test's passing be read as evidence about ordering.
+    /// </remarks>
     [TestMethod]
     public void The_catalog_routes_a_character_bound_to_the_length_rule()
     {
@@ -977,6 +984,31 @@ public class LengthBoundRuleTests
 
         Assert.HasCount(1, rules);
         Assert.AreEqual("Name must be at most 50 characters", rules[0].Describe());
+    }
+
+    /// <summary>
+    /// The length bounds run before the numeric bounds.
+    /// </summary>
+    /// <remarks>
+    /// Nothing in the catalog depends on this today — the two families' patterns are disjoint — but
+    /// the ordering is the reason a future length phrasing that DOES overlap a numeric one resolves
+    /// the way it should. Asserted here because the routing test above cannot see it.
+    /// </remarks>
+    [TestMethod]
+    public void Length_bounds_run_before_numeric_bounds()
+    {
+        Assert.IsLessThan(new MaxValueRuleParser().Priority, new MaxLengthRuleParser().Priority);
+        Assert.IsLessThan(new MinValueRuleParser().Priority, new MinLengthRuleParser().Priority);
+    }
+
+    [TestMethod]
+    public void Emitted_minimum_length_check_compiles()
+    {
+        new MinLengthRuleParser().TryParse(Ctx("Name must be at least 2 characters"), out var rule);
+        var code = Emit(rule!);
+
+        StringAssert.Contains(code, "__s.Length < 2");
+        AssertCompiles(code);
     }
 
     [TestMethod]
@@ -1042,11 +1074,14 @@ public sealed class LengthBoundRule : IValidationRule
 
     public IReadOnlyList<string> Properties => [_p];
 
+    // Every arm named, and a throwing default: a `_ =>` here would silently give any future enum
+    // member Exact's wording, which reads as a correct rule and is not one.
     public string Describe() => _bound switch
     {
         LengthBound.Min => $"{_p} must be at least {_length} characters",
         LengthBound.Max => $"{_p} must be at most {_length} characters",
-        _ => $"{_p} must be exactly {_length} characters"
+        LengthBound.Exact => $"{_p} must be exactly {_length} characters",
+        _ => throw new System.ArgumentOutOfRangeException(nameof(_bound))
     };
 
     public void Emit(ValidationEmitContext ctx)
@@ -1055,7 +1090,8 @@ public sealed class LengthBoundRule : IValidationRule
         {
             LengthBound.Min => $"__s.Length < {_length}",
             LengthBound.Max => $"__s.Length > {_length}",
-            _ => $"__s.Length != {_length}"
+            LengthBound.Exact => $"__s.Length != {_length}",
+            _ => throw new System.ArgumentOutOfRangeException(nameof(_bound))
         };
 
         var message = Microsoft.CodeAnalysis.CSharp.SymbolDisplay
