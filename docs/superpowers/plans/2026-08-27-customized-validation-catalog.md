@@ -1648,6 +1648,8 @@ public class NamedFormatRuleTests
     [DataRow("Host must be a valid IP address", "192.168.0.1")]
     [DataRow("Host must be a valid IP address", "::1")]
     [DataRow("Host must be a valid IP address", "2001:db8::1")]
+    [DataRow("Host must be a valid IP address", "fe80::1")]
+    [DataRow("Host must be a valid IP address", "::")]
     [DataRow("Reference must be a valid GUID", "3F2504E0-4F89-11D3-9A0C-0305E82C3301")]
     [DataRow("Reference must be a valid GUID", "{3F2504E0-4F89-11D3-9A0C-0305E82C3301}")]
     [DataRow("Reference must be a valid GUID", "3F2504E04F8911D39A0C0305E82C3301")]
@@ -1670,7 +1672,14 @@ public class NamedFormatRuleTests
     [DataRow("Website must be a valid URL", "acme")]
     [DataRow("Phone must be a valid phone number", "abc")]
     [DataRow("Host must be a valid IP address", "999.999.999.999")]
+    // The rows that matter. A first draft of the IPv6 alternation matched all of these, and the
+    // suite was green because its only IP rejection case exercised the IPv4 branch.
+    [DataRow("Host must be a valid IP address", ":::")]
+    [DataRow("Host must be a valid IP address", "::::::::")]
+    [DataRow("Host must be a valid IP address", "1:::2")]
     [DataRow("Reference must be a valid GUID", "not-a-guid")]
+    [DataRow("Reference must be a valid GUID", "{3F2504E0-4F89-11D3-9A0C-0305E82C3301")]
+    [DataRow("Reference must be a valid GUID", "3F2504E0-4F89-11D3-9A0C-0305E82C3301}")]
     public void The_shipped_patterns_still_refuse_nonsense(string sentence, string value) =>
         Assert.IsFalse(
             System.Text.RegularExpressions.Regex.IsMatch(value, PatternOf(sentence)),
@@ -1776,10 +1785,18 @@ public sealed class NamedFormatRuleParser : IValidationRuleParser
         ["web address"] = @"^(?:https?://)?[^\s.]+(?:\.[^\s.]+)+$",
         ["postcode"] = @"^[A-Za-z]{1,2}[0-9][0-9A-Za-z]?\s*[0-9][A-Za-z]{2}$",
         ["post code"] = @"^[A-Za-z]{1,2}[0-9][0-9A-Za-z]?\s*[0-9][A-Za-z]{2}$",
-        ["guid"] = @"^\{?[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}\}?$|^[0-9a-fA-F]{32}$",
-        ["uuid"] = @"^\{?[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}\}?$|^[0-9a-fA-F]{32}$",
-        ["ip address"] = @"^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$|^[0-9A-Fa-f]{0,4}(?::[0-9A-Fa-f]{0,4}){2,7}$",
-        ["ip"] = @"^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$|^[0-9A-Fa-f]{0,4}(?::[0-9A-Fa-f]{0,4}){2,7}$"
+        // Three alternatives, not two optional braces: `\{?` and `\}?` are matched independently,
+        // so an unbalanced brace passed.
+        ["guid"] = @"^\{[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}\}$|^[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$|^[0-9a-fA-F]{32}$",
+        ["uuid"] = @"^\{[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}\}$|^[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$|^[0-9a-fA-F]{32}$",
+        // The two lookaheads are the whole point. A first draft counted colon-delimited groups
+        // without ever requiring a hex digit, so `:::` matched as a valid address. `(?=…[0-9A-Fa-f])`
+        // demands at least one hex digit; `(?!.*:::)` rules out the runs the digit test alone still
+        // admits; `^::$` restores the unspecified address the digit test would otherwise refuse.
+        // Still not a complete IPv6 grammar — `1::2::3` has two zero-compressions and is admitted.
+        // That is the accepted trade; a string with no hex digits at all is not.
+        ["ip address"] = @"^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$|^::$|^(?=[0-9A-Fa-f:]*[0-9A-Fa-f])(?!.*:::)[0-9A-Fa-f]{0,4}(?::[0-9A-Fa-f]{0,4}){2,7}$",
+        ["ip"] = @"^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$|^::$|^(?=[0-9A-Fa-f:]*[0-9A-Fa-f])(?!.*:::)[0-9A-Fa-f]{0,4}(?::[0-9A-Fa-f]{0,4}){2,7}$"
     };
 
     public int Priority => 65;
