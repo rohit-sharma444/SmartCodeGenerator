@@ -32,7 +32,8 @@ public sealed class LengthBoundRule : IValidationRule
     {
         LengthBound.Min => $"{_p} must be at least {_length} characters",
         LengthBound.Max => $"{_p} must be at most {_length} characters",
-        _ => $"{_p} must be exactly {_length} characters"
+        LengthBound.Exact => $"{_p} must be exactly {_length} characters",
+        _ => throw new System.ArgumentOutOfRangeException(nameof(_bound))
     };
 
     public void Emit(ValidationEmitContext ctx)
@@ -41,7 +42,8 @@ public sealed class LengthBoundRule : IValidationRule
         {
             LengthBound.Min => $"__s.Length < {_length}",
             LengthBound.Max => $"__s.Length > {_length}",
-            _ => $"__s.Length != {_length}"
+            LengthBound.Exact => $"__s.Length != {_length}",
+            _ => throw new System.ArgumentOutOfRangeException(nameof(_bound))
         };
 
         var message = Microsoft.CodeAnalysis.CSharp.SymbolDisplay

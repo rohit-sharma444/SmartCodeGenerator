@@ -59,8 +59,14 @@ public class LengthBoundRuleTests
         Assert.AreEqual("Name must be exactly 8 characters", rule!.Describe());
     }
 
-    /// <summary>The catalog, not the parser: this is the ordering that keeps a character
-    /// bound away from the numeric bound parsers added in Task 3.</summary>
+    /// <summary>
+    /// The whole catalog, not one parser: the sentence has to come out of `Parse` as a length rule.
+    /// </summary>
+    /// <remarks>
+    /// What keeps it away from the numeric bounds is not this rule's priority — it is that
+    /// MaxValueRuleParser anchors on the digits, so a trailing "characters" cannot match it at any
+    /// priority. The priority relationship is pinned separately, below.
+    /// </remarks>
     [TestMethod]
     public void The_catalog_routes_a_character_bound_to_the_length_rule()
     {
@@ -70,6 +76,31 @@ public class LengthBoundRuleTests
 
         Assert.HasCount(1, rules);
         Assert.AreEqual("Name must be at most 50 characters", rules[0].Describe());
+    }
+
+    /// <summary>
+    /// The length bounds run before the numeric bounds.
+    /// </summary>
+    /// <remarks>
+    /// Nothing in the catalog currently depends on this — the two families' patterns are disjoint —
+    /// but the ordering is the reason a future length phrasing that DOES overlap a numeric one
+    /// resolves the way it should. Asserted here because the routing test cannot see it.
+    /// </remarks>
+    [TestMethod]
+    public void Length_bounds_run_before_numeric_bounds()
+    {
+        Assert.IsLessThan(new MaxValueRuleParser().Priority, new MaxLengthRuleParser().Priority);
+        Assert.IsLessThan(new MinValueRuleParser().Priority, new MinLengthRuleParser().Priority);
+    }
+
+    [TestMethod]
+    public void Emitted_minimum_length_check_compiles()
+    {
+        new MinLengthRuleParser().TryParse(Ctx("Name must be at least 2 characters"), out var rule);
+        var code = Emit(rule!);
+
+        StringAssert.Contains(code, "__s.Length < 2");
+        AssertCompiles(code);
     }
 
     [TestMethod]
