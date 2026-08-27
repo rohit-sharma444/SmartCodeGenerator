@@ -13,6 +13,7 @@
 ## Global Constraints
 
 - **Emitted C# must be compile-tested, never substring-tested alone.** Use `Compiler.Compile` from `CodeGenerationEngine.Core`. This project has shipped emitted code that passed substring assertions and did not compile.
+- **A rule whose check makes a decision needs at least one test that EXECUTES it.** Compiling proves the emitted C# is C#; it says nothing about what the check decides. `Compiler.Compile` returns `AssemblyBytes`, so a test can `Assembly.Load` the result, set the property and invoke `Validate()`. This constraint was added mid-plan, after a family of six date rules passed every parse, `Describe()` and compile test while two of them — "must be in the past" and "must not be in the past" — both accepted the same value. No amount of source-text assertion would have caught that.
 - **`ValidationEmitContext.Line` writes each line prefixed with exactly twelve spaces.** Do not change it — the second plan depends on that fixed base indent.
 - **Every emitted check is wrapped in its own `try`/`catch` by `ValidationEngine.EmitSection`.** A rule's `Emit` therefore owns its own scope and may reuse local names like `__n`, `__s`, `__d` freely.
 - **User text inside an emitted string literal goes through `Microsoft.CodeAnalysis.CSharp.SymbolDisplay.FormatLiteral(text, quote: true)`.** A rule value containing a quote must not be able to end the literal. `RequiredWhenRule` is the existing example.
@@ -2047,14 +2048,22 @@ public sealed class RelativeDateRule : IValidationRule
         ctx.Line("if (__ok) __d = (System.DateTime)__o;");
         ctx.Line("else __ok = System.DateTime.TryParse(__o?.ToString(), System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out __d);");
 
+        // Day-granular throughout, and complementary in pairs. An earlier draft mixed Now and
+        // Today, so a value earlier today satisfied BOTH "must be in the past" and "must not be in
+        // the past" — two rules that are English negations of each other, overlapping instead of
+        // partitioning time. Now-granularity also makes "StartDate must not be in the past" reject a
+        // start date of today from one second past midnight, which is the complaint these rules
+        // would earn first. YearsAgo and WithinDays already worked this way; this makes all six
+        // agree. Do not restore Now to one arm without restoring it to its partner.
         var violation = _bound switch
         {
-            DateBound.Past => "__d >= System.DateTime.Now",
-            DateBound.Future => "__d <= System.DateTime.Now",
+            DateBound.Past => "__d >= System.DateTime.Today",
             DateBound.NotPast => "__d < System.DateTime.Today",
-            DateBound.NotFuture => "__d > System.DateTime.Now",
+            DateBound.Future => "__d < System.DateTime.Today.AddDays(1)",
+            DateBound.NotFuture => "__d >= System.DateTime.Today.AddDays(1)",
             DateBound.YearsAgo => $"__d > System.DateTime.Today.AddYears(-{_amount})",
-            _ => $"__d < System.DateTime.Today.AddDays(-{_amount})"
+            DateBound.WithinDays => $"__d < System.DateTime.Today.AddDays(-{_amount})",
+            _ => throw new System.ArgumentOutOfRangeException(nameof(_bound))
         };
 
         ctx.Line($"if (__ok && {violation}) errors.Add({message});");
