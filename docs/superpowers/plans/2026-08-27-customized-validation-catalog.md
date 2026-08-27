@@ -86,6 +86,18 @@ public class ParserCollisionTests
         Assert.AreEqual("Status must be one of: Draft, Paid", rule!.Describe());
     }
 
+    /// <summary>
+    /// The ordinary English list. The guard is what refuses a bare " and "; the split must still
+    /// break on it, or the last two items fuse into one value the check can never match.
+    /// </summary>
+    [TestMethod]
+    public void A_comma_list_ending_in_and_keeps_all_three_values()
+    {
+        Assert.IsTrue(new AllowedValuesRuleParser()
+            .TryParse(Ctx("Status must be Draft, Sent and Paid"), out var rule));
+        Assert.AreEqual("Status must be one of: Draft, Sent, Paid", rule!.Describe());
+    }
+
     [TestMethod]
     public void A_numeric_operand_is_not_a_property_comparison()
     {
@@ -108,23 +120,27 @@ public class ParserCollisionTests
 
 Run: `dotnet test CodeGenerator.Tests/CodeGenerator.Tests.csproj --filter "FullyQualifiedName~ParserCollisionTests"`
 
-Expected: FAIL — `Conjoined_bounds_are_not_an_allowed_values_list` and `A_numeric_operand_is_not_a_property_comparison` fail; the other three pass.
+Expected: FAIL — `Conjoined_bounds_are_not_an_allowed_values_list` and `A_numeric_operand_is_not_a_property_comparison` fail; the other four pass. They pass because they pin behaviour that already works and must survive the change — which is exactly what makes them worth writing first.
 
 - [ ] **Step 3: Tighten the allowed-values catch-all**
 
-In `AllowedValuesRule.cs`, inside `AllowedValuesRuleParser.TryParse`, replace the guard and the split so neither mentions `" and "`:
+In `AllowedValuesRule.cs`, inside `AllowedValuesRuleParser.TryParse`, tighten **the guard only**. The split keeps every separator it had:
 
 ```csharp
         var raw = m.Groups["values"].Value;
-        // A list is a comma list or an "or" list. " and " in a rule sentence is a conjunction of
-        // two rules — the catalog already splits those on ';' and on newlines — and treating it as
-        // a separator turned "Age must be greater than 0 and less than 100" into an allowed-values
-        // check that can never pass.
+        // The guard decides whether this is a list at all, and " and " is not evidence that it is:
+        // in a rule sentence it nearly always joins two rules, and accepting it turned
+        // "Age must be greater than 0 and less than 100" into an allowed-values check that can
+        // never pass. A list is a comma list or an "or" list.
         if (!raw.Contains(',') && !raw.Contains(" or "))
             return false; // a single token is not an allowed-values list
 
+        // The split, by contrast, keeps " and ". By the time it runs the guard has already
+        // established this IS a list, and "Draft, Sent and Paid" is how people write one — dropping
+        // the separator here fused the last two values into the single literal "Sent and Paid",
+        // which the emitted check could never match.
         var parts = raw.Split(new[] { ',', ';' }, System.StringSplitOptions.RemoveEmptyEntries)
-            .SelectMany(p => p.Split(new[] { " or " }, System.StringSplitOptions.RemoveEmptyEntries))
+            .SelectMany(p => p.Split(new[] { " or ", " and " }, System.StringSplitOptions.RemoveEmptyEntries))
             .Select(x => x.Trim().Trim('"', '\''))
             .Where(x => x.Length > 0)
             .ToList();

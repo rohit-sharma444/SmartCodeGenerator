@@ -84,9 +84,15 @@ already refuses a single bare token (`raw.Contains(',')` and the " or " / " and 
 does swallow is any *conjoined* sentence no specific parser matched:
 "Age must be greater than 0 and less than 100" splits on " and " and becomes
 `Age must be one of: greater than 0, less than 100` — a check that can never pass, reported as a
-success. The fix is to stop splitting on " and ": an allowed-values list is a comma list or an " or "
-list. " and " in a rule sentence nearly always means a conjunction of two rules, and the catalog's
-own `Split` already gives the user `;` and newlines for that.
+success.
+
+The fix is in the **guard**, not the split: a fragment counts as an allowed-values list only when it
+carries a comma or an " or ". " and " in a rule sentence nearly always joins two rules, and the
+catalog's own splitting already gives the user `;` and newlines for that. The **split** keeps " and "
+as a separator, because by then the guard has established the fragment is a list, and
+"Draft, Sent and Paid" is how people write one — dropping it there fuses the last two values into
+the single literal "Sent and Paid", which is the same class of silently-wrong check in the other
+direction.
 
 `ComparisonRuleParser` (business, priority 20) matches `<left> must be at least <right>` where
 `right` is `\w+` — which matches digits. Once the data-side `at least` parser exists, a sentence
