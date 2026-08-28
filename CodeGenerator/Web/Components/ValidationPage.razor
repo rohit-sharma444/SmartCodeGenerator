@@ -10,6 +10,7 @@
 @using CodeGenerationEngine.Models
 @using CodeGenerationEngine.Core.Validation
 @using CodeGenerator.Web.Chat
+@using Microsoft.AspNetCore.WebUtilities
 @inject ChatSession Session
 @inject NavigationManager Nav
 
@@ -193,11 +194,22 @@
     }
 
     /// <summary>
-    /// The chat, with the token this page was reached by.
+    /// The chat, with the token this page was reached by and nothing else.
     /// </summary>
     /// <remarks>
-    /// Carried rather than rebuilt: the host mints a token per run and 404s without it, so a bare
-    /// "/chat" href is a link to a 404.
+    /// The token is carried rather than rebuilt: the host mints one per run and 404s without it,
+    /// so a bare "/chat" href is a link to a 404.
+    /// <para>
+    /// Only the token. Handing the whole query back put `class` and `file` on the chat's own
+    /// address, which the chat page has no parameters for and would show in the address bar as a
+    /// class the conversation is not about - visible the moment anyone used the link.
+    /// </para>
     /// </remarks>
-    private string BackToChat() => "/chat" + new Uri(Nav.Uri).Query;
+    private string BackToChat()
+    {
+        var token = QueryHelpers.ParseQuery(new Uri(Nav.Uri).Query)
+            .TryGetValue("t", out var values) ? values.ToString() : string.Empty;
+
+        return token.Length == 0 ? "/chat" : "/chat?t=" + Uri.EscapeDataString(token);
+    }
 }

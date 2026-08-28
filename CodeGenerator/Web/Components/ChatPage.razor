@@ -81,7 +81,7 @@
 @if (_menuFor is not null)
 {
     <div class="tree-menu-veil" @onclick="CloseMenu"></div>
-    <div class="tree-menu">
+    <div class="tree-menu" style="left:@(_menuAt.X)px; top:@(_menuAt.Y)px">
         <button type="button" @onclick="OpenValidation">Add validation…</button>
     </div>
 }
@@ -92,7 +92,18 @@
     /// <summary>The class the menu is open for, or null.</summary>
     private TreeClass? _menuFor;
 
-    private void OfferValidation(TreeClass entry) => _menuFor = entry;
+    /// <summary>Where the right-click was, in viewport coordinates.</summary>
+    /// <remarks>
+    /// Client coordinates and not page ones, because the menu is positioned `fixed` - which is
+    /// what keeps it out of the tree's own scrolling box rather than clipped inside it.
+    /// </remarks>
+    private (double X, double Y) _menuAt;
+
+    private void OfferValidation((TreeClass Entry, MouseEventArgs Mouse) menu)
+    {
+        _menuFor = menu.Entry;
+        _menuAt = (menu.Mouse.ClientX, menu.Mouse.ClientY);
+    }
 
     private void CloseMenu() => _menuFor = null;
 

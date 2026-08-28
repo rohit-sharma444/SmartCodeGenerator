@@ -138,6 +138,12 @@ public class ValidationPageTests
 
         var page = Open(context, "Employee", _file);
 
-        StringAssert.Contains(page.Find("a.val-back").GetAttribute("href"), "t=token");
+        var href = page.Find("a.val-back").GetAttribute("href");
+
+        Assert.AreEqual("/chat?t=token", href);
+
+        // Only the token. The whole query would put this page's class and file on the chat's own
+        // address, which has no parameters for either.
+        StringAssert.DoesNotMatch(href!, new System.Text.RegularExpressions.Regex("class=|file="));
     }
 }

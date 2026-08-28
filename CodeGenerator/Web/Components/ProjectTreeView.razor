@@ -184,7 +184,7 @@
 
     /// <summary>Raised with the class the user right-clicked.</summary>
     [Parameter]
-    public EventCallback<TreeClass> OnValidate { get; set; }
+    public EventCallback<(TreeClass Entry, MouseEventArgs Mouse)> OnValidate { get; set; }
 
     /// <summary>
     /// The root node's own label: what was loaded, and how many projects came out of it.

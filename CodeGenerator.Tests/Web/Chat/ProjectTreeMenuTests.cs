@@ -1,6 +1,7 @@
 using Bunit;
 using CodeGenerator.Web.Chat;
 using CodeGenerator.Web.Components;
+using Microsoft.AspNetCore.Components.Web;
 
 namespace CodeGenerator.Tests.Web.Chat;
 
@@ -21,19 +22,24 @@ public class ProjectTreeMenuTests
     {
         using var context = new BunitContext();
 
-        TreeClass? raised = null;
+        (TreeClass Entry, MouseEventArgs Mouse)? raised = null;
 
         var view = context.Render<TreeFolderView>(p => p
             .Add(c => c.Folder, OneClass("Employee", @"C:\ws\Employee.cs"))
             .Add(c => c.Tree, new ProjectTree())
             .Add(c => c.OpenFolders, new HashSet<string>())
             .Add(c => c.OpenClasses, new HashSet<string>())
-            .Add(c => c.OnValidate, (TreeClass entry) => raised = entry));
+            .Add(c => c.OnValidate,
+                ((TreeClass Entry, MouseEventArgs Mouse) menu) => raised = menu));
 
-        view.Find(".tree-class").ContextMenu();
+        view.Find(".tree-class").ContextMenu(new MouseEventArgs { ClientX = 120, ClientY = 240 });
 
         Assert.IsNotNull(raised);
-        Assert.AreEqual("Employee", raised!.Name);
+        Assert.AreEqual("Employee", raised!.Value.Entry.Name);
+
+        // The menu opens at the pointer, so the coordinates have to survive the trip.
+        Assert.AreEqual(120, raised.Value.Mouse.ClientX);
+        Assert.AreEqual(240, raised.Value.Mouse.ClientY);
     }
 
     [TestMethod]
@@ -41,7 +47,7 @@ public class ProjectTreeMenuTests
     {
         using var context = new BunitContext();
 
-        TreeClass? raised = null;
+        (TreeClass Entry, MouseEventArgs Mouse)? raised = null;
 
         var view = context.Render<TreeFolderView>(p => p
             .Add(c => c.Folder, OneClass("Employee", @"C:\ws\Employee.cs"))
@@ -49,9 +55,10 @@ public class ProjectTreeMenuTests
             .Add(c => c.OpenFolders, new HashSet<string>())
             .Add(c => c.OpenClasses, new HashSet<string>())
             .Add(c => c.Disabled, true)
-            .Add(c => c.OnValidate, (TreeClass entry) => raised = entry));
+            .Add(c => c.OnValidate,
+                ((TreeClass Entry, MouseEventArgs Mouse) menu) => raised = menu));
 
-        view.Find(".tree-class").ContextMenu();
+        view.Find(".tree-class").ContextMenu(new MouseEventArgs { ClientX = 120, ClientY = 240 });
 
         Assert.IsNull(raised, "a command is in flight; the tree must start nothing");
     }
@@ -68,16 +75,17 @@ public class ProjectTreeMenuTests
     {
         using var context = new BunitContext();
 
-        TreeClass? raised = null;
+        (TreeClass Entry, MouseEventArgs Mouse)? raised = null;
 
         var view = context.Render<TreeFolderView>(p => p
             .Add(c => c.Folder, OneClass("Ghost", string.Empty))
             .Add(c => c.Tree, new ProjectTree())
             .Add(c => c.OpenFolders, new HashSet<string>())
             .Add(c => c.OpenClasses, new HashSet<string>())
-            .Add(c => c.OnValidate, (TreeClass entry) => raised = entry));
+            .Add(c => c.OnValidate,
+                ((TreeClass Entry, MouseEventArgs Mouse) menu) => raised = menu));
 
-        view.Find(".tree-class").ContextMenu();
+        view.Find(".tree-class").ContextMenu(new MouseEventArgs { ClientX = 120, ClientY = 240 });
 
         Assert.IsNull(raised);
     }

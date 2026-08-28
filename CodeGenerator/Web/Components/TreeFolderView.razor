@@ -66,7 +66,7 @@
            than the name button so the whole row is the target - a right-click has no obvious
            affordance and a two-character hit area would be a feature nobody finds. *@
         <div class="tree-row tree-class"
-             @oncontextmenu="() => Validate(entry)"
+             @oncontextmenu="mouse => Validate(entry, mouse)"
              @oncontextmenu:preventDefault="true">
             <button type="button" class="tree-twisty @(entryOpen ? "tree-twisty-open" : "")"
                     aria-expanded="@entryOpen"
@@ -156,9 +156,15 @@
     [Parameter]
     public EventCallback<string> OnToggleClass { get; set; }
 
-    /// <summary>Raised with the class that was right-clicked.</summary>
+    /// <summary>
+    /// Raised with the class that was right-clicked, and where the pointer was.
+    /// </summary>
+    /// <remarks>
+    /// The mouse travels with it because the menu has to open at the pointer. A menu that appears
+    /// in the corner of the window instead reads as something else entirely having happened.
+    /// </remarks>
     [Parameter]
-    public EventCallback<TreeClass> OnValidate { get; set; }
+    public EventCallback<(TreeClass Entry, MouseEventArgs Mouse)> OnValidate { get; set; }
 
     /// <summary>
     /// The one place a right-click leaves this component, and the one place it can be refused.
@@ -168,8 +174,10 @@
     /// that tree is a page about a class that may not be there by the time it draws. A class the
     /// tree found no file for is refused too, because the file is what the page needs.
     /// </remarks>
-    private Task Validate(TreeClass entry) =>
-        Disabled || entry.File.Length == 0 ? Task.CompletedTask : OnValidate.InvokeAsync(entry);
+    private Task Validate(TreeClass entry, MouseEventArgs mouse) =>
+        Disabled || entry.File.Length == 0
+            ? Task.CompletedTask
+            : OnValidate.InvokeAsync((entry, mouse));
 
     /// <summary>
     /// The one place a command leaves this component, and the one place it can be refused.
