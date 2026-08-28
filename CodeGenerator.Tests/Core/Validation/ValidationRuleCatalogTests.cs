@@ -70,4 +70,35 @@ public class ValidationRuleCatalogTests
 
         Assert.HasCount(expected, ValidationRuleCatalog.Default.Parsers);
     }
+
+    /// <summary>
+    /// The stronger half of the discovery guarantee: every parser type declared in the engine is
+    /// in the catalog, whatever its constructor looks like.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="Default_discovers_every_parser_in_the_engine_assembly"/> counts only the types
+    /// reflection can construct, so a parser that lost its public parameterless constructor
+    /// disappears from both sides of that assertion and it stays green. This test does not filter,
+    /// which is what makes it able to name the parser that went missing.
+    /// </remarks>
+    [TestMethod]
+    public void Every_parser_declared_in_the_engine_is_discovered()
+    {
+        var declared = typeof(IValidationRuleParser).Assembly.GetTypes()
+            .Where(t => typeof(IValidationRuleParser).IsAssignableFrom(t)
+                        && !t.IsInterface && !t.IsAbstract)
+            .ToList();
+
+        Assert.IsGreaterThan(0, declared.Count);
+
+        var discovered = ValidationRuleCatalog.Default.Parsers
+            .Select(p => p.GetType())
+            .ToHashSet();
+
+        foreach (var type in declared)
+        {
+            Assert.Contains(type, discovered,
+                $"{type.Name} was not discovered - check it has a public parameterless constructor.");
+        }
+    }
 }
