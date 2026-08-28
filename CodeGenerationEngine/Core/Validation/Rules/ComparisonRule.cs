@@ -15,6 +15,7 @@ public sealed class ComparisonRule : IValidationRule
     }
 
     public ValidationCategory Category => ValidationCategory.Business;
+    public IReadOnlyList<string> Properties => [_left, _right];
     // Echo the original fragment verbatim rather than reconstructing it: reconstructing
     // via "{left} must be {phrase} {right}" is ungrammatical for phrases like "not exceed"
     // (produces "must be not exceed"), and this text is user-visible via `show validation`
@@ -38,13 +39,17 @@ public sealed class ComparisonRule : IValidationRule
 
 public sealed class ComparisonRuleParser : IValidationRuleParser
 {
-    // "<Left> must [be] <operator> <Right>" where Right is another property.
+    // <right> refuses an all-digit operand: it names a property, and "at least 18" is a bound on a
+    // number, which MinValueRuleParser owns on the data side.
     private static readonly Regex Pattern = new(
-        @"^(?<left>\w+)\s+must\s+(?:be\s+)?(?<op>after|before|greater\s+than\s+or\s+equal\s+to|less\s+than\s+or\s+equal\s+to|greater\s+than|less\s+than|at\s+least|at\s+most|not\s+exceed)\s+(?<right>\w+)$",
+        @"^(?<left>\w+)\s+must\s+(?:be\s+)?(?<op>after|before|greater\s+than\s+or\s+equal\s+to|less\s+than\s+or\s+equal\s+to|greater\s+than|less\s+than|at\s+least|at\s+most|not\s+exceed)\s+(?<right>(?!\d+$)\w+)$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     public int Priority => 20;
     public ValidationCategory Category => ValidationCategory.Business;
+
+    public IReadOnlyList<string> Examples =>
+        ["EndDate must be after StartDate", "Discount must not exceed Total"];
 
     public bool TryParse(ValidationParseContext ctx, out IValidationRule? rule)
     {

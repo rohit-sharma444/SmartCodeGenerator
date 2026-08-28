@@ -102,4 +102,52 @@ public class AddValidationPhrasingTests
         AssertRegistered(
             "add validation Number should not be blank in Bill",
             "Bill", "Number is required");
+
+    [TestMethod]
+    public void Inclusive_bound_phrasing_registers_a_rule() =>
+        AssertRegistered(
+            "add validation must be at least 18 on Age in Employee",
+            "Employee", "Age must be at least 18");
+
+    [TestMethod]
+    public void Character_bound_phrasing_registers_a_length_rule() =>
+        AssertRegistered(
+            "add validation must be at most 50 characters on Name in Employee",
+            "Employee", "Name must be at most 50 characters");
+
+    [TestMethod]
+    public void Sign_phrasing_registers_a_rule() =>
+        AssertRegistered(
+            "add validation must be positive on Salary in Employee",
+            "Employee", "Salary must be positive");
+
+    // The expected description is the pattern the rule carries, so it has to be the pattern that
+    // actually shipped — not the one this plan first drafted. Read the value out of
+    // NamedFormatRuleParser.Patterns["url"] rather than retyping it here from memory.
+    [TestMethod]
+    public void Named_format_phrasing_registers_a_rule() =>
+        AssertRegistered(
+            "add validation must be a valid URL on Website in Employee",
+            "Employee", @"Website must match ^(?:https?://)?[^\s.]+(?:\.[^\s.]+)+$");
+
+    [TestMethod]
+    public void Relative_date_phrasing_registers_a_rule() =>
+        AssertRegistered(
+            "add validation must be in the past on DateOfBirth in Employee",
+            "Employee", "DateOfBirth must be in the past");
+
+    [TestMethod]
+    public void Text_shape_phrasing_registers_a_rule() =>
+        AssertRegistered(
+            "add validation must be uppercase on Code in Employee",
+            "Employee", "Code must be uppercase");
+
+    // ValidDateRuleParser's pattern requires the literal article "a" ("must be a valid
+    // date"), same as RelativeDateRuleParser requires the literal "the" ("in the past").
+    // This is the second of the two parsers Finding 1 asked to be proven, not just assumed.
+    [TestMethod]
+    public void Valid_date_phrasing_registers_a_rule() =>
+        AssertRegistered(
+            "add validation must be a valid date on Born in Employee",
+            "Employee", "Born must be a valid date");
 }

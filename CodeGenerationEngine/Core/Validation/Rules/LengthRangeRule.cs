@@ -7,6 +7,7 @@ public sealed class LengthRangeRule : IValidationRule
     private readonly string _p; private readonly int _min; private readonly int _max;
     public LengthRangeRule(string p, int min, int max) { _p = p; _min = min; _max = max; }
     public ValidationCategory Category => ValidationCategory.Data;
+    public IReadOnlyList<string> Properties => [_p];
     public string Describe() => $"{_p} length must be between {_min} and {_max}";
     public void Emit(ValidationEmitContext ctx)
     {
@@ -23,6 +24,7 @@ public sealed class LengthRangeRuleParser : IValidationRuleParser
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
     public int Priority => 20;
     public ValidationCategory Category => ValidationCategory.Data;
+    public IReadOnlyList<string> Examples => ["Name length must be between 2 and 50"];
     public bool TryParse(ValidationParseContext ctx, out IValidationRule? rule)
     {
         var m = Pattern.Match(ctx.Fragment);

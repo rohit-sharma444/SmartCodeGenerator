@@ -8,6 +8,7 @@ public sealed class AllowedValuesRule : IValidationRule
     private readonly string _p; private readonly IReadOnlyList<string> _values;
     public AllowedValuesRule(string p, IReadOnlyList<string> values) { _p = p; _values = values; }
     public ValidationCategory Category => ValidationCategory.Data;
+    public IReadOnlyList<string> Properties => [_p];
     public string Describe() => $"{_p} must be one of: {string.Join(", ", _values)}";
     public void Emit(ValidationEmitContext ctx)
     {
@@ -26,6 +27,8 @@ public sealed class AllowedValuesRuleParser : IValidationRuleParser
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
     public int Priority => 100; // catch-all: runs last
     public ValidationCategory Category => ValidationCategory.Data;
+    public IReadOnlyList<string> Examples =>
+        ["Status must be Draft, Sent, Paid", "Status must be Draft or Paid"];
     public bool TryParse(ValidationParseContext ctx, out IValidationRule? rule)
     {
         var m = Pattern.Match(ctx.Fragment);
@@ -33,7 +36,11 @@ public sealed class AllowedValuesRuleParser : IValidationRuleParser
         if (!m.Success) return false;
 
         var raw = m.Groups["values"].Value;
-        if (!raw.Contains(',') && !raw.Contains(" or ") && !raw.Contains(" and "))
+        // The guard requires a comma or " or ", which rules out a bare " and " (e.g. "Age must be
+        // greater than 0 and less than 100"). The split still breaks on " and " because legitimate
+        // English lists use it ("Status must be Draft, Sent and Paid"), and by the time split runs,
+        // the guard has already established this fragment is a list.
+        if (!raw.Contains(',') && !raw.Contains(" or "))
             return false; // a single token is not an allowed-values list
 
         var parts = raw.Split(new[] { ',', ';' }, System.StringSplitOptions.RemoveEmptyEntries)

@@ -3,6 +3,7 @@
 @implements IDisposable
 @inject ChatSession Session
 @inject IJSRuntime Js
+@inject NavigationManager Nav
 
 @* Named ChatPage rather than Chat: a Chat component class beside the CodeGenerator.Web.Chat
    namespace is an ambiguity inside Components. *@
@@ -35,7 +36,8 @@
                              Solution="@Session.Solution"
                              Projects="ProjectTree.Projects()"
                              Disabled="Session.Running || Session.Ended"
-                             OnCommand="Send" />
+                             OnCommand="Send"
+                             OnValidate="OfferValidation" />
         }
 
         @* The class says the tree is beside it, so the transcript can stop centring itself in a
@@ -74,8 +76,57 @@
     </div>
 </div>
 
+@* The one-item menu. Drawn at the end of the frame so it is not clipped by the tree's own
+   scrolling box, and dismissed by a click anywhere. *@
+@if (_menuFor is not null)
+{
+    <div class="tree-menu-veil" @onclick="CloseMenu"></div>
+    <div class="tree-menu" style="left:@(_menuAt.X)px; top:@(_menuAt.Y)px">
+        <button type="button" @onclick="OpenValidation">Add validation…</button>
+    </div>
+}
+
 @code {
     private bool _stopping;
+
+    /// <summary>The class the menu is open for, or null.</summary>
+    private TreeClass? _menuFor;
+
+    /// <summary>Where the right-click was, in viewport coordinates.</summary>
+    /// <remarks>
+    /// Client coordinates and not page ones, because the menu is positioned `fixed` - which is
+    /// what keeps it out of the tree's own scrolling box rather than clipped inside it.
+    /// </remarks>
+    private (double X, double Y) _menuAt;
+
+    private void OfferValidation((TreeClass Entry, MouseEventArgs Mouse) menu)
+    {
+        _menuFor = menu.Entry;
+        _menuAt = (menu.Mouse.ClientX, menu.Mouse.ClientY);
+    }
+
+    private void CloseMenu() => _menuFor = null;
+
+    /// <summary>
+    /// Opens the validation page for the menu's class.
+    /// </summary>
+    /// <remarks>
+    /// The token is carried out of this page's own address rather than rebuilt: the host mints one
+    /// per run and 404s without it, so a bare path is a link to a 404. The file travels too - the
+    /// name alone does not say which Customer, on a solution where two projects declare one.
+    /// </remarks>
+    private void OpenValidation()
+    {
+        if (_menuFor is null) return;
+
+        var entry = _menuFor;
+        _menuFor = null;
+
+        Nav.NavigateTo(
+            "/chat/validation" + new Uri(Nav.Uri).Query
+            + "&class=" + Uri.EscapeDataString(entry.Name)
+            + "&file=" + Uri.EscapeDataString(entry.File));
+    }
 
     /// <summary>Whether the solution picker band is showing.</summary>
     /// <remarks>

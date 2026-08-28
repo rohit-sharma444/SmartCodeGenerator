@@ -16,7 +16,14 @@ public static class CommandEntityExtractor
     public static ParsedCommand Extract(string rawSentence,
         IntentType intent, string workspace)
     {
-        var sentence = CommandParser.Normalize(rawSentence);
+        // "add validation"/"add business validation" carry a rule fragment the user typed
+        // on purpose ("must be in the past", "must be a valid date", "must be the same
+        // as ..."); stripping "the"/"a"/"an" as English filler corrupts that fragment
+        // before ComposeRuleFragment or ExtractBusinessValidationInfo ever see it, so
+        // those two intents keep their stop words while every other intent still gets
+        // the friendlier, stopword-stripped prose.
+        var keepStopWords = intent is IntentType.AddValidation or IntentType.AddBusinessValidation;
+        var sentence = CommandParser.Normalize(rawSentence, removeStopWords: !keepStopWords);
 
         var command = new ParsedCommand
         {

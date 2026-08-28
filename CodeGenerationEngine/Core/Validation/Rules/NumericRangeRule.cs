@@ -8,6 +8,7 @@ public sealed class NumericRangeRule : IValidationRule
     private readonly string _p; private readonly decimal _min; private readonly decimal _max;
     public NumericRangeRule(string p, decimal min, decimal max) { _p = p; _min = min; _max = max; }
     public ValidationCategory Category => ValidationCategory.Data;
+    public IReadOnlyList<string> Properties => [_p];
     public string Describe() =>
         $"{_p} must be between {_min.ToString(CultureInfo.InvariantCulture)} and {_max.ToString(CultureInfo.InvariantCulture)}";
     public void Emit(ValidationEmitContext ctx)
@@ -29,6 +30,7 @@ public sealed class NumericRangeRuleParser : IValidationRuleParser
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
     public int Priority => 30;
     public ValidationCategory Category => ValidationCategory.Data;
+    public IReadOnlyList<string> Examples => ["Age must be between 18 and 65"];
     public bool TryParse(ValidationParseContext ctx, out IValidationRule? rule)
     {
         var m = Pattern.Match(ctx.Fragment);

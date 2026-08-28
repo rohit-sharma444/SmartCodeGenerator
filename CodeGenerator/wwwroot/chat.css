@@ -1520,3 +1520,72 @@
 
     .suggestion-command { grid-row: auto; }
 }
+
+/* The validation page.
+ *
+ * Its colour tokens live on `.val-page` and never on `:root`, for the reason at the top of this
+ * file: App.razor links every stylesheet on every page, so a `:root` block here would repaint the
+ * chat page and the workflow page too. Light only, like the workflow and relationship pages -
+ * workflow.css paints `body` light whatever the OS is set to, and a page that followed
+ * prefers-color-scheme on its own would be a dark card on a light page. */
+.val-page {
+    --val-bg: #ffffff;
+    --val-ink: #1c1c1c;
+    --val-muted: #666666;
+    --val-line: #e2e2e2;
+    --val-good: #1a7f37;
+    --val-bad: #b3261e;
+
+    max-width: 60rem;
+    margin: 0 auto;
+    padding: 1.5rem;
+    color: var(--val-ink);
+    background: var(--val-bg);
+    border: 1px solid var(--val-line);
+    border-radius: 10px;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+.val-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }
+.val-head h1 { margin: 0 0 .25rem; font-size: 1.35rem; }
+.val-target { margin: 0; font-weight: 600; }
+.val-path { display: block; font-weight: 400; font-size: .8rem; color: var(--val-muted); word-break: break-all; }
+.val-back { align-self: center; white-space: nowrap; }
+
+.val-page section { margin-top: 1.5rem; border-top: 1px solid var(--val-line); padding-top: 1rem; }
+.val-page h2 { font-size: .95rem; margin: 0 0 .5rem; }
+.val-page ul { margin: 0; padding-left: 1.1rem; }
+
+.val-prop-name { font-weight: 600; }
+.val-prop-type { color: var(--val-muted); margin-left: .5rem; font-size: .85rem; }
+.val-none, .val-hint { color: var(--val-muted); font-size: .875rem; }
+
+.val-box { width: 100%; box-sizing: border-box; font: inherit; padding: .6rem;
+           border: 1px solid var(--val-line); border-radius: 6px; resize: vertical; }
+.val-add { margin-top: .6rem; padding: .5rem 1rem; cursor: pointer; }
+.val-add:disabled { cursor: default; opacity: .5; }
+
+.val-added p { color: var(--val-good); margin: .25rem 0; }
+.val-refused p { color: var(--val-bad); margin: .25rem 0; }
+.val-refused-help { color: var(--val-muted) !important; font-size: .875rem; }
+.val-problem { color: var(--val-bad); }
+
+.val-phrasings { margin-top: 1.5rem; }
+.val-phrasings summary { cursor: pointer; font-size: .9rem; }
+.val-phrasings ul { columns: 2; margin-top: .5rem; font-size: .875rem; }
+
+@media (max-width: 40rem) { .val-phrasings ul { columns: 1; } }
+
+/* The tree's right-click menu. The veil is what dismisses it, and it sits under the menu.
+ *
+ * Both are `fixed`, and the menu's left/top come from the right-click's client coordinates, which
+ * are in the same frame of reference - so it opens under the pointer instead of in the corner, and
+ * it is not clipped by the tree's own scrolling box. The z-indexes clear `.chat`, which is fixed
+ * over the whole viewport. */
+.tree-menu-veil { position: fixed; inset: 0; z-index: 40; }
+.tree-menu { position: fixed; z-index: 41; background: #ffffff; color: #1c1c1c;
+             border: 1px solid #d0d0d0; border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,.18);
+             padding: .25rem; }
+.tree-menu button { display: block; width: 100%; text-align: left; padding: .4rem .9rem;
+                    background: none; border: 0; font: inherit; cursor: pointer; white-space: nowrap; }
+.tree-menu button:hover { background: #f0f0f0; }

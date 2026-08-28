@@ -10,7 +10,10 @@ namespace CodeGenerator.Tests.Core.Validation;
 /// open folder). The validator is written next to the class file, so the command
 /// must locate the class by searching the workspace root rather than refusing
 /// with "No project selected."</summary>
+// Same reason as GenerateValidatorEndToEndTests: this writes ValidationRegistry and
+// ProjectManager.CurrentProject, both process-wide statics.
 [TestClass]
+[DoNotParallelize]
 public class GenerateValidatorWithoutProjectTests
 {
     [TestMethod]

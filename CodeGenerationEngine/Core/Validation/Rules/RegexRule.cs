@@ -7,6 +7,7 @@ public sealed class RegexRule : IValidationRule
     private readonly string _p; private readonly string _pattern;
     public RegexRule(string p, string pattern) { _p = p; _pattern = pattern; }
     public ValidationCategory Category => ValidationCategory.Data;
+    public IReadOnlyList<string> Properties => [_p];
     public string Describe() => $"{_p} must match {_pattern}";
     public void Emit(ValidationEmitContext ctx)
     {
@@ -24,6 +25,7 @@ public sealed class EmailRuleParser : IValidationRuleParser
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
     public int Priority => 60;
     public ValidationCategory Category => ValidationCategory.Data;
+    public IReadOnlyList<string> Examples => ["Email must be a valid email"];
     public bool TryParse(ValidationParseContext ctx, out IValidationRule? rule)
     {
         var m = Pattern.Match(ctx.Fragment);
@@ -43,6 +45,7 @@ public sealed class MatchRuleParser : IValidationRuleParser
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
     public int Priority => 61;
     public ValidationCategory Category => ValidationCategory.Data;
+    public IReadOnlyList<string> Examples => [@"Code must match ^[A-Z]{3}$"];
     public bool TryParse(ValidationParseContext ctx, out IValidationRule? rule)
     {
         var m = Pattern.Match(ctx.Fragment);

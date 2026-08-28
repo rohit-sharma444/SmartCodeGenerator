@@ -12,7 +12,10 @@ namespace CodeGenerator.Tests.Core.Validation;
 /// combined output must actually compile (not just parse) against the declaring
 /// class's real properties. This is the convergence point of the two independent
 /// command paths (data rules vs. business rules) proven end to end.</summary>
+// ValidationRegistry is a process-wide static and MSTestSettings parallelizes at method
+// level, so a class that writes to it cannot run beside another that does.
 [TestClass]
+[DoNotParallelize]
 public class GenerateValidatorEndToEndTests
 {
     [TestMethod]
@@ -50,5 +53,68 @@ public class GenerateValidatorEndToEndTests
         var message = string.Join("\n", errors.Select(e => e.ToString()));
         Assert.IsTrue(result.Success, $"Compilation failed:\n{message}");
         Assert.IsEmpty(errors, $"Compilation errors:\n{message}");
+    }
+
+    /// <summary>
+    /// The pair that has never been compiled together. Every other test in this file supplies the
+    /// declaring half itself, already marked partial - so the fact that `create class` does not
+    /// mark it has been invisible.
+    /// </summary>
+    [TestMethod]
+    public void The_class_and_its_generated_validator_compile_together()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "gv-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(folder);
+
+        try
+        {
+            var classFile = Path.Combine(folder, "Booking.cs");
+            File.WriteAllText(classFile,
+                "namespace Acme\r\n" +
+                "{\r\n" +
+                "    public class Booking\r\n" +          // NOT partial, as create class writes it
+                "    {\r\n" +
+                "        public int Nights { get; set; }\r\n" +
+                "    }\r\n" +
+                "}\r\n");
+
+            ValidationRegistry.Clear();
+            ProjectManager.CurrentProject = null;
+
+            var ctx = new ValidationParseContext
+            {
+                Fragment = "Nights must be positive",
+                ClassName = "Booking"
+            };
+
+            foreach (var rule in ValidationRuleCatalog.Default
+                         .Parse(ctx.Fragment, ValidationCategory.Data, ctx))
+                ValidationRegistry.Add("Booking", rule);
+
+            var command = new ParsedCommand
+            {
+                Intent = IntentType.GenerateValidator,
+                ClassName = "Booking"
+            };
+
+            Assert.IsTrue(EntityExtractor.GenerateValidator(command, folder));
+
+            var validatorFile = Path.Combine(folder, "Booking.Validation.cs");
+            Assert.IsTrue(File.Exists(validatorFile));
+
+            var result = Compiler.CompileSources(
+            [
+                (classFile, File.ReadAllText(classFile)),
+                (validatorFile, File.ReadAllText(validatorFile))
+            ]);
+
+            Assert.IsTrue(result.Success,
+                string.Join("\n", result.Diagnostics.Select(d => d.ToString())));
+        }
+        finally
+        {
+            ValidationRegistry.Clear();
+            try { Directory.Delete(folder, recursive: true); } catch (IOException) { }
+        }
     }
 }

@@ -5,6 +5,17 @@ namespace CodeGenerationEngine.Core.Validation;
 public interface IValidationRule
 {
     ValidationCategory Category { get; }
+
+    /// <summary>
+    /// Every property this rule refers to.
+    /// </summary>
+    /// <remarks>
+    /// So a caller can refuse a rule naming a property the class does not have, rather than
+    /// emitting it and finding out at emit time — which is a skipped-rule comment and a reported
+    /// success over a check that is not there.
+    /// </remarks>
+    IReadOnlyList<string> Properties { get; }
+
     string Describe();
     void Emit(ValidationEmitContext ctx);
 }

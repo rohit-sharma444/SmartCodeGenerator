@@ -12,6 +12,7 @@ public sealed class RequiredWhenRule : IValidationRule
     }
 
     public ValidationCategory Category => ValidationCategory.Business;
+    public IReadOnlyList<string> Properties => [_target, _cond];
     public string Describe() => $"{_target} is required when {_cond} is {_value}";
 
     public void Emit(ValidationEmitContext ctx)
@@ -42,6 +43,8 @@ public sealed class RequiredWhenRuleParser : IValidationRuleParser
 
     public int Priority => 10;
     public ValidationCategory Category => ValidationCategory.Business;
+
+    public IReadOnlyList<string> Examples => ["ShippedDate is required when Status is Shipped"];
 
     public bool TryParse(ValidationParseContext ctx, out IValidationRule? rule)
     {

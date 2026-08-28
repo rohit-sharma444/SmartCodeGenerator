@@ -8,6 +8,7 @@ public sealed class GreaterThanRule : IValidationRule
     private readonly string _p; private readonly decimal _v;
     public GreaterThanRule(string p, decimal v) { _p = p; _v = v; }
     public ValidationCategory Category => ValidationCategory.Data;
+    public IReadOnlyList<string> Properties => [_p];
     public string Describe() => $"{_p} must be greater than {_v.ToString(CultureInfo.InvariantCulture)}";
     public void Emit(ValidationEmitContext ctx)
     {
@@ -24,6 +25,7 @@ public sealed class GreaterThanRuleParser : IValidationRuleParser
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
     public int Priority => 40;
     public ValidationCategory Category => ValidationCategory.Data;
+    public IReadOnlyList<string> Examples => ["Quantity must be greater than 0"];
     public bool TryParse(ValidationParseContext ctx, out IValidationRule? rule)
     {
         var m = Pattern.Match(ctx.Fragment);
