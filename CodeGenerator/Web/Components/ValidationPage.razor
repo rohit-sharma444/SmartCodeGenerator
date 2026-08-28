@@ -1,0 +1,203 @@
+@* Validation for one class, in plain English.
+
+   Served at /chat/validation and not at /validation: LoopbackHost guards exactly one path segment
+   with the session token, ChatWebHost passes "chat", and the check is StartsWithSegments — so a
+   top-level route would be served, unguarded, to every process on this machine. This page writes
+   source files. *@
+@page "/chat/validation"
+@rendermode InteractiveServer
+@using CodeGenerationEngine.Core
+@using CodeGenerationEngine.Models
+@using CodeGenerationEngine.Core.Validation
+@using CodeGenerator.Web.Chat
+@inject ChatSession Session
+@inject NavigationManager Nav
+
+<PageTitle>Validation — @ClassName</PageTitle>
+
+<div class="val-page">
+    <header class="val-head">
+        <div>
+            <h1>Validation</h1>
+            @* The class, and which copy of it: the name alone says nothing on a solution where two
+               projects each declare one. *@
+            <p class="val-target">@ClassName<span class="val-path">@(_target?.File)</span></p>
+        </div>
+        <a class="val-back" href="@BackToChat()">Back to the chat</a>
+    </header>
+
+    @if (_target is null)
+    {
+        <p class="val-problem">@_problem</p>
+    }
+    else
+    {
+        <section class="val-props">
+            <h2>Properties</h2>
+            <ul>
+                @foreach (var property in _properties)
+                {
+                    <li><span class="val-prop-name">@property.Name</span>
+                        <span class="val-prop-type">@property.Type</span></li>
+                }
+            </ul>
+        </section>
+
+        <section class="val-existing">
+            <h2>Rules on this class</h2>
+            @if (_existing.Count == 0)
+            {
+                <p class="val-none">None yet.</p>
+            }
+            else
+            {
+                <ul>
+                    @foreach (var rule in _existing)
+                    {
+                        <li>@rule</li>
+                    }
+                </ul>
+            }
+        </section>
+
+        <section class="val-write">
+            <h2>Add a validation</h2>
+            <p class="val-hint">
+                One rule per line. Name the property in the sentence — for example
+                <em>@(_properties.Count > 0 ? _properties[0].Name : "Age") is required</em>.
+            </p>
+
+            @* Not a form: a form posts, and this page is interactive. *@
+            <textarea class="val-box" rows="4" @bind="_text" @bind:event="oninput"
+                      placeholder="Age must be at least 18"></textarea>
+
+            <button type="button" class="val-add" disabled="@(_busy || _text.Trim().Length == 0)"
+                    @onclick="Add">Add validation</button>
+        </section>
+
+        @if (_added.Count > 0)
+        {
+            <section class="val-added">
+                @foreach (var line in _added)
+                {
+                    <p>@line</p>
+                }
+            </section>
+        }
+
+        @if (_refused.Count > 0)
+        {
+            <section class="val-refused">
+                @foreach (var line in _refused)
+                {
+                    <p>@line</p>
+                }
+                <p class="val-refused-help">Nothing was written for those.</p>
+            </section>
+        }
+
+        <details class="val-phrasings">
+            <summary>Phrasings I understand (@_phrasings.Count)</summary>
+            <ul>
+                @foreach (var phrasing in _phrasings)
+                {
+                    <li>@phrasing</li>
+                }
+            </ul>
+        </details>
+    }
+</div>
+
+@code {
+    private string _text = string.Empty;
+    private bool _busy;
+    private string _problem = string.Empty;
+    private ValidationTarget? _target;
+    private IReadOnlyList<PropertyDefinition> _properties = [];
+    private IReadOnlyList<string> _existing = [];
+    private List<string> _added = [];
+    private List<string> _refused = [];
+
+    /// <summary>
+    /// The phrasings panel, asked of the catalog once.
+    /// </summary>
+    /// <remarks>
+    /// Held in a field rather than called from the markup: the summary names the count and the list
+    /// draws every item, so calling it inline would build the whole list twice per render.
+    /// </remarks>
+    private static readonly IReadOnlyList<string> _phrasings = ValidationAdd.Phrasings();
+
+    /// <summary>The class to validate. `class` is reserved in C#, hence the query name.</summary>
+    [Parameter, SupplyParameterFromQuery(Name = "class")]
+    public string? ClassName { get; set; }
+
+    [Parameter, SupplyParameterFromQuery(Name = "file")]
+    public string? File { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        if (ValidationTargetReader.TryResolve(
+                ClassName, File, Session.Root, out var target, out var problem))
+        {
+            _target = target;
+            Reread();
+        }
+        else
+        {
+            _target = null;
+            _problem = problem;
+        }
+    }
+
+    private void Reread()
+    {
+        if (_target is null) return;
+
+        _properties = EntityExtractor.ExtractProperties(_target.File);
+        _existing = ClassValidationWriter.ExistingRules(_target.File, _target.ClassName);
+    }
+
+    /// <summary>
+    /// Applies the box.
+    /// </summary>
+    /// <remarks>
+    /// The page stays where it is afterwards, with the new rule now listed: a second rule should
+    /// not mean navigating back and right-clicking again. The transcript gets a line as well, so
+    /// the conversation remains the record of what the tool did.
+    /// </remarks>
+    private void Add()
+    {
+        if (_target is null) return;
+
+        _busy = true;
+
+        try
+        {
+            var outcome = ValidationAdd.Apply(_target, _text);
+
+            _added = outcome.Added.ToList();
+            _refused = outcome.Refused.ToList();
+
+            if (_added.Count > 0)
+            {
+                _text = string.Empty;
+                Session.Narrate(string.Join(" ", _added));
+            }
+
+            Reread();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    /// <summary>
+    /// The chat, with the token this page was reached by.
+    /// </summary>
+    /// <remarks>
+    /// Carried rather than rebuilt: the host mints a token per run and 404s without it, so a bare
+    /// "/chat" href is a link to a 404.
+    /// </remarks>
+    private string BackToChat() => "/chat" + new Uri(Nav.Uri).Query;
+}

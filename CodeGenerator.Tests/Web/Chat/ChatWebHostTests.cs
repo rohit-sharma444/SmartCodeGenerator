@@ -123,6 +123,54 @@ public class ChatWebHostTests
         Assert.IsTrue(session.Ended);
     }
 
+    /// <summary>
+    /// The validation page writes source files, and loopback is reachable by every process on this
+    /// machine. It has to be behind the same token as the chat page - which is why it is served
+    /// under /chat rather than at /validation.
+    /// </summary>
+    [TestMethod]
+    public async Task Refuses_the_validation_page_to_a_visitor_with_no_token()
+    {
+        using var host = Start(out _);
+        using var client = new HttpClient();
+
+        var response = await client.GetAsync(
+            new Uri(host.Url).GetLeftPart(UriPartial.Authority) + "/chat/validation");
+
+        Assert.AreEqual(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [TestMethod]
+    public async Task Serves_the_validation_page_to_a_visitor_carrying_the_token()
+    {
+        using var host = Start(out _);
+        using var client = new HttpClient();
+
+        var url = new Uri(host.Url);
+        var response = await client.GetAsync(
+            url.GetLeftPart(UriPartial.Authority) + "/chat/validation" + url.Query);
+
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [TestMethod]
+    public async Task Serves_the_validation_page_as_an_interactive_component()
+    {
+        using var host = Start(out _);
+        using var client = new HttpClient();
+
+        var url = new Uri(host.Url);
+        var html = await client.GetStringAsync(
+            url.GetLeftPart(UriPartial.Authority) + "/chat/validation" + url.Query);
+
+        var body = html[html.IndexOf("<body>", StringComparison.Ordinal)..];
+
+        StringAssert.Contains(
+            body,
+            "\"type\":\"server\"",
+            "the validation page is statically rendered: the box draws and the button does nothing");
+    }
+
     private static ChatWebHost Start(out ChatSession session)
     {
         var root = Path.Combine(Path.GetTempPath(), "cw-" + Guid.NewGuid().ToString("N")[..8]);
