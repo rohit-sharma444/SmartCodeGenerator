@@ -102,6 +102,7 @@
                                                         OpenClasses="_openClasses"
                                                         Disabled="Disabled"
                                                         OnCommand="Run"
+                                                        OnValidate="OnValidate"
                                                         OnToggleFolder="ToggleFolder"
                                                         OnToggleClass="ToggleClass" />
                                     </ul>
@@ -180,6 +181,10 @@
     /// <summary>Raised with a command the tree wants run.</summary>
     [Parameter]
     public EventCallback<string> OnCommand { get; set; }
+
+    /// <summary>Raised with the class the user right-clicked.</summary>
+    [Parameter]
+    public EventCallback<TreeClass> OnValidate { get; set; }
 
     /// <summary>
     /// The root node's own label: what was loaded, and how many projects came out of it.

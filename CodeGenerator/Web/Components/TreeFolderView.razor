@@ -43,6 +43,7 @@
                                 OpenClasses="OpenClasses"
                                 Disabled="Disabled"
                                 OnCommand="OnCommand"
+                                OnValidate="OnValidate"
                                 OnToggleFolder="OnToggleFolder"
                                 OnToggleClass="OnToggleClass" />
             </ul>
@@ -61,7 +62,12 @@
     var found = entry.File.Length > 0;
 
     <li class="tree-node">
-        <div class="tree-row tree-class">
+        @* preventDefault, or the browser's own menu covers ours. The event is on the row rather
+           than the name button so the whole row is the target - a right-click has no obvious
+           affordance and a two-character hit area would be a feature nobody finds. *@
+        <div class="tree-row tree-class"
+             @oncontextmenu="() => Validate(entry)"
+             @oncontextmenu:preventDefault="true">
             <button type="button" class="tree-twisty @(entryOpen ? "tree-twisty-open" : "")"
                     aria-expanded="@entryOpen"
                     disabled="@(!found)"
@@ -149,6 +155,21 @@
     /// <summary>Raised with the file of the class that was clicked.</summary>
     [Parameter]
     public EventCallback<string> OnToggleClass { get; set; }
+
+    /// <summary>Raised with the class that was right-clicked.</summary>
+    [Parameter]
+    public EventCallback<TreeClass> OnValidate { get; set; }
+
+    /// <summary>
+    /// The one place a right-click leaves this component, and the one place it can be refused.
+    /// </summary>
+    /// <remarks>
+    /// Same guard as <see cref="Run"/>: a page opened from a tree while a command is rewriting
+    /// that tree is a page about a class that may not be there by the time it draws. A class the
+    /// tree found no file for is refused too, because the file is what the page needs.
+    /// </remarks>
+    private Task Validate(TreeClass entry) =>
+        Disabled || entry.File.Length == 0 ? Task.CompletedTask : OnValidate.InvokeAsync(entry);
 
     /// <summary>
     /// The one place a command leaves this component, and the one place it can be refused.
