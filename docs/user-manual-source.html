@@ -659,17 +659,54 @@ in the console.</p>
 <tr><td><code>generate validator for &lt;class&gt;</code></td><td>Writes the validator.</td></tr>
 </table>
 <h3>Rules you can write</h3>
+
+<p>Field rules, on one property:</p>
 <ul>
   <li><code>required</code> — also phrased <code>should not be blank</code></li>
   <li><code>must be between &lt;min&gt; and &lt;max&gt;</code></li>
-  <li><code>length must be between &lt;min&gt; and &lt;max&gt;</code></li>
+  <li><code>must be at least &lt;n&gt;</code> / <code>must be at most &lt;n&gt;</code> — the bound
+      included, unlike <code>greater than</code> and <code>less than</code></li>
   <li><code>must be greater than &lt;n&gt;</code> / <code>must be less than &lt;n&gt;</code></li>
-  <li><code>must be a valid email</code></li>
+  <li><code>must be positive</code> / <code>must not be negative</code> / <code>must not be zero</code></li>
+  <li><code>must be a whole number</code> / <code>must be numeric</code></li>
+  <li><code>length must be between &lt;min&gt; and &lt;max&gt;</code></li>
+  <li><code>must be at least &lt;n&gt; characters</code> / <code>must be at most &lt;n&gt; characters</code>
+      / <code>must be exactly &lt;n&gt; characters</code></li>
+  <li><code>must start with "X"</code> / <code>must end with "X"</code></li>
+  <li><code>must contain "X"</code> / <code>must not contain "X"</code></li>
+  <li><code>must be uppercase</code> / <code>must be lowercase</code></li>
+  <li><code>must be digits only</code> / <code>letters only</code> / <code>alphanumeric</code></li>
+  <li><code>must be a valid email</code>, <code>URL</code>, <code>phone number</code>,
+      <code>postcode</code>, <code>GUID</code>, <code>IP address</code> or <code>date</code></li>
+  <li><code>must be in the past</code> / <code>in the future</code>, and their <code>must not be</code>
+      forms</li>
+  <li><code>must be at least &lt;n&gt; years ago</code> / <code>must be within the last &lt;n&gt; days</code></li>
   <li><code>must match &lt;regex&gt;</code></li>
   <li><code>must be &lt;value&gt;, &lt;value&gt;, ...</code> — one of a list</li>
 </ul>
+
+<p>Business rules, which name more than one property:</p>
+<ul>
+  <li><code>EndDate must be after StartDate</code> / <code>before</code> / <code>must not exceed</code></li>
+  <li><code>ShippedDate is required when Status is Shipped</code></li>
+  <li><code>Either Email or Phone must be provided</code></li>
+  <li><code>Total must equal Quantity times Price</code> — also <code>plus</code>, <code>minus</code> and
+      <code>divided by</code></li>
+  <li><code>BillingPostcode must be the same as ShippingPostcode</code> / <code>must be different from</code></li>
+</ul>
+
 <pre>add validation must be between 18 and 65 on Age in Employee
-add business validation EndDate must be after StartDate in Booking</pre>
+add validation must be at most 50 characters on Name in Employee
+add business validation Either Email or Phone must be provided in Customer</pre>
+
+<div class="note"><p>The chat page can add these without the surrounding command: right-click a class in
+its tree and type the rule on its own. See <em>Adding a validation from the tree</em> in chapter 17. The
+two routes understand exactly the same English, because they ask the same parser.</p></div>
+
+<div class="note"><p><code>generate validator</code> writes its half of the class into
+<code>&lt;Class&gt;.Validation.cs</code> as a <code>partial</code>, and marks the class&#39;s own
+declaration <code>partial</code> if it is not already — without that the two halves do not compile
+together.</p></div>
 
 <h2>11. Checking and documenting a project</h2>
 <table>
@@ -962,10 +999,11 @@ count beside a project appears once it is open, and is the length of the list un
 long alphabetical list. Two projects that both have a <code>Models</code> folder open and close
 independently — the tree keeps them apart by their full path, not by name.</p></div>
 
-<p>Clicking a class runs <code>show class</code> on it and the source appears in the transcript. Nothing in
-the tree writes anything: the only other thing it can do is <strong>Use</strong>, on a project row, which
-runs <code>use project</code> and moves what the next command acts on — the same command you could have
-typed, and it appears in the transcript as though you had.</p>
+<p>Clicking a class runs <code>show class</code> on it and the source appears in the transcript. Nothing
+in the tree writes anything on a plain click: the other things it can do are <strong>Use</strong>, on a
+project row, which runs <code>use project</code> and moves what the next command acts on — the same command
+you could have typed, and it appears in the transcript as though you had — and a right-click on a class,
+which offers the validation page described below.</p>
 
 <div class="note"><p>A class here is a <code>.cs</code> file, which is what the word means to the rest of
 the tool: <code>list classes</code> lists exactly what the tree draws. A file declaring two types shows
@@ -982,6 +1020,52 @@ alone.</p>
 <p>The tree hides itself on a narrow window, where a fixed pane would leave nothing to read the
 conversation in. Whether it is showing is remembered for as long as the <code>chat</code> session lasts,
 including across a refresh, and both tabs of one session agree about it.</p>
+
+<h3>Adding a validation from the tree</h3>
+
+<p>Right-clicking a class in the tree offers one thing — <strong>Add validation…</strong> — and clicking it
+opens a page about that class. A menu rather than opening the page straight away, because a right-click that
+moves the page without asking is one you learn not to use.</p>
+
+<p>The page names the class and the file it lives in, lists the properties you can refer to with their
+types, lists the rules already on the class, and gives you a box to type in. <strong>Phrasings I
+understand</strong> at the foot opens the whole list of accepted sentences, which is asked of the parser
+itself — it cannot list a phrasing the tool would refuse.</p>
+
+<p>One rule per line, and each line names the property it is about:</p>
+
+<pre>Age must be at least 18
+Name must be at most 50 characters
+Email must be a valid email
+Either Email or Phone must be provided</pre>
+
+<p>You never say whether a rule is a field rule or a business rule. The parser that recognizes the sentence
+is the thing that knows, so <code>Age must be at least 18</code> and <code>Either Email or Phone must be
+provided</code> go in the same box.</p>
+
+<p>Each check is written into the class&#39;s own source file, inside a <code>Validate()</code> method the
+tool creates the first time and adds to afterwards. Every check is preceded by the rule as you wrote it, as
+a comment — that comment is what you read to see what the class validates, and it is also how the tool
+knows a rule is already there. The file is compiled before it is saved, and if the edit would break a file
+that compiled before, nothing is written.</p>
+
+<div class="note"><p>The page stays where it is after a successful add, with the new rule now in the list,
+so a second rule does not mean going back and right-clicking again. A line is added to the transcript as
+well, so the conversation stays the record of what the tool did.</p></div>
+
+<p>It refuses, and writes nothing at all, when:</p>
+
+<table>
+<tr><th>When</th><th>What it says</th></tr>
+<tr><td>It cannot turn the sentence into a rule</td><td>The sentence back, in quotes, beside the properties and the accepted phrasings</td></tr>
+<tr><td>The rule names a property the class does not have</td><td>Which name it could not find, and which properties there are</td></tr>
+<tr><td>The class already has that rule</td><td>That it is already there</td></tr>
+<tr><td>The class has a <code>Validate()</code> you wrote</td><td>That it is yours, and to rename it — the tool only extends the one it made</td></tr>
+<tr><td>The class is a record with no <code>{ }</code> body</td><td>That there is nowhere to put a check</td></tr>
+</table>
+
+<p>A rule added here is registered with the session as well as written, so <code>show validation</code> at
+the console agrees with the file.</p>
 
 <h3>Reading a command's output</h3>
 
