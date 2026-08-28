@@ -28,7 +28,7 @@ public sealed class ValidationRuleCatalog
         if (string.IsNullOrWhiteSpace(text))
             return rules;
 
-        foreach (var fragment in Split(text))
+        foreach (var fragment in Fragments(text))
         {
             var fragCtx = new ValidationParseContext
             {
@@ -51,13 +51,21 @@ public sealed class ValidationRuleCatalog
         return rules;
     }
 
+    /// <summary>
+    /// One rule per line, or per semicolon.
+    /// </summary>
+    /// <remarks>
+    /// Public because the validation page parses fragment by fragment: it has to be able to say
+    /// which of the three lines someone typed was the one it could not understand.
+    /// </remarks>
     // Split on newlines and ';', trim, and drop a trailing sentence period without
     // harming decimals mid-string (e.g. "between 3.5 and 10").
-    private static IEnumerable<string> Split(string text) =>
-        text.Replace("\r", "")
+    public static IReadOnlyList<string> Fragments(string text) =>
+        (text ?? string.Empty).Replace("\r", "")
             .Split(new[] { '\n', ';' }, System.StringSplitOptions.RemoveEmptyEntries)
             .Select(s => s.Trim().TrimEnd('.').Trim())
-            .Where(s => s.Length > 0);
+            .Where(s => s.Length > 0)
+            .ToList();
 
     private static ValidationRuleCatalog DiscoverFromAssembly()
     {
