@@ -187,4 +187,110 @@ public class ClassValidationWriterTests
         Assert.IsTrue(result.Ok, result.Message);
         AssertCompiles(File.ReadAllText(file));
     }
+
+    [TestMethod]
+    public void A_second_rule_joins_the_first_in_one_method()
+    {
+        var file = WriteClass("Employee", PlainEmployee);
+
+        ClassValidationWriter.Add(file, "Employee", Rule("Age must be at least 18"));
+        var result = ClassValidationWriter.Add(file, "Employee", Rule("Name is required"));
+
+        Assert.IsTrue(result.Ok, result.Message);
+
+        var updated = File.ReadAllText(file);
+
+        Assert.AreEqual(1, Occurrences(updated, "List<string> Validate()"),
+            "a second method was added instead of the check joining the first");
+        StringAssert.Contains(updated, "// Age must be at least 18");
+        StringAssert.Contains(updated, "// Name is required");
+        AssertCompiles(updated);
+    }
+
+    [TestMethod]
+    public void The_same_rule_twice_is_refused_and_changes_nothing()
+    {
+        var file = WriteClass("Employee", PlainEmployee);
+
+        ClassValidationWriter.Add(file, "Employee", Rule("Age must be at least 18"));
+        var before = File.ReadAllText(file);
+
+        var result = ClassValidationWriter.Add(file, "Employee", Rule("Age must be at least 18"));
+
+        Assert.IsFalse(result.Ok);
+        StringAssert.Contains(result.Message, "already has that rule");
+        Assert.AreEqual(before, File.ReadAllText(file));
+    }
+
+    [TestMethod]
+    public void Both_rules_are_read_back()
+    {
+        var file = WriteClass("Employee", PlainEmployee);
+
+        ClassValidationWriter.Add(file, "Employee", Rule("Age must be at least 18"));
+        ClassValidationWriter.Add(file, "Employee", Rule("Name is required"));
+
+        var rules = ClassValidationWriter.ExistingRules(file, "Employee");
+
+        CollectionAssert.AreEquivalent(
+            new[] { "Age must be at least 18", "Name is required" }, rules.ToArray());
+    }
+
+    [TestMethod]
+    public void A_hand_written_validate_of_another_shape_is_left_alone()
+    {
+        var file = WriteClass("Employee",
+            "namespace Acme\r\n" +
+            "{\r\n" +
+            "    public class Employee\r\n" +
+            "    {\r\n" +
+            "        public int Age { get; set; }\r\n" +
+            "\r\n" +
+            "        public bool Validate() => Age > 0;\r\n" +
+            "    }\r\n" +
+            "}\r\n");
+
+        var before = File.ReadAllText(file);
+        var result = ClassValidationWriter.Add(file, "Employee", Rule("Age must be at least 18"));
+
+        Assert.IsFalse(result.Ok);
+        StringAssert.Contains(result.Message, "Validate()");
+        Assert.AreEqual(before, File.ReadAllText(file), "a hand-written method was edited");
+    }
+
+    [TestMethod]
+    public void A_validate_with_no_errors_list_is_left_alone()
+    {
+        var file = WriteClass("Employee",
+            "namespace Acme\r\n" +
+            "{\r\n" +
+            "    public class Employee\r\n" +
+            "    {\r\n" +
+            "        public int Age { get; set; }\r\n" +
+            "\r\n" +
+            "        public System.Collections.Generic.List<string> Validate()\r\n" +
+            "        {\r\n" +
+            "            return new System.Collections.Generic.List<string>();\r\n" +
+            "        }\r\n" +
+            "    }\r\n" +
+            "}\r\n");
+
+        var before = File.ReadAllText(file);
+        var result = ClassValidationWriter.Add(file, "Employee", Rule("Age must be at least 18"));
+
+        Assert.IsFalse(result.Ok);
+        Assert.AreEqual(before, File.ReadAllText(file));
+    }
+
+    private static int Occurrences(string text, string needle)
+    {
+        var count = 0;
+        var at = text.IndexOf(needle, StringComparison.Ordinal);
+        while (at >= 0)
+        {
+            count++;
+            at = text.IndexOf(needle, at + needle.Length, StringComparison.Ordinal);
+        }
+        return count;
+    }
 }

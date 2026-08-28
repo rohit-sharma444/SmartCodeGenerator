@@ -227,7 +227,39 @@ public static class ClassValidationWriter
         return sb.ToString();
     }
 
-    private static string? Unsuitable(MethodDeclarationSyntax method, string className) => null;
+    /// <summary>
+    /// Whether an existing <c>Validate()</c> is one this writer may extend, and why not.
+    /// </summary>
+    /// <remarks>
+    /// The bar is deliberately high. A method that is not obviously the one this writer created is
+    /// the user's, and a tool that splices statements into a method someone wrote is a tool people
+    /// stop pointing at their code.
+    /// </remarks>
+    private static string? Unsuitable(MethodDeclarationSyntax method, string className)
+    {
+        if (method.Body is null)
+            return $"{className} already has an expression-bodied Validate(). "
+                 + "Give it a { } body, or rename it, and try again.";
+
+        if (!method.ReturnType.ToString().Replace(" ", "").EndsWith("List<string>",
+                System.StringComparison.Ordinal))
+            return $"{className} already has a Validate() returning "
+                 + $"{method.ReturnType}. This writer only extends one returning List<string>.";
+
+        var declaresErrors = method.Body.Statements
+            .OfType<LocalDeclarationStatementSyntax>()
+            .SelectMany(s => s.Declaration.Variables)
+            .Any(v => v.Identifier.ValueText == "errors");
+
+        if (!declaresErrors)
+            return $"{className}'s Validate() does not declare an 'errors' list, so it was "
+                 + "written by hand. Rename it and try again.";
+
+        if (!method.Body.Statements.OfType<ReturnStatementSyntax>().Any())
+            return $"{className}'s Validate() has no return statement to insert before.";
+
+        return null;
+    }
 
     private static string? Verify(string before, string after) => null;
 }
