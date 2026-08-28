@@ -261,5 +261,33 @@ public static class ClassValidationWriter
         return null;
     }
 
-    private static string? Verify(string before, string after) => null;
+    /// <summary>
+    /// Whether the edit is safe to save, and why not.
+    /// </summary>
+    /// <remarks>
+    /// Compared against the file as it was, not against nothing: a class referring to a type
+    /// declared in another file has never compiled on its own, which is the normal case in a real
+    /// project. Refusing there would make the feature useless. So the rule is that the writer may
+    /// not make things worse - and a file that no longer parses is always worse.
+    /// </remarks>
+    private static string? Verify(string before, string after)
+    {
+        var parse = CSharpSyntaxTree.ParseText(after).GetDiagnostics()
+            .FirstOrDefault(d => d.Severity == DiagnosticSeverity.Error);
+
+        if (parse is not null)
+            return $"The edit would not parse ({parse.GetMessage()}), so nothing was written.";
+
+        if (!Compiler.Compile(before).Success)
+            return null; // it did not compile before this either; not ours to judge
+
+        var result = Compiler.Compile(after);
+        if (result.Success)
+            return null;
+
+        var first = result.Diagnostics
+            .FirstOrDefault(d => d.Severity == DiagnosticSeverity.Error);
+
+        return $"The check would not compile ({first?.GetMessage()}), so nothing was written.";
+    }
 }

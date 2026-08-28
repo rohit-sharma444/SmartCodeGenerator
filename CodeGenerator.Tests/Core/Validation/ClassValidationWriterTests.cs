@@ -293,4 +293,105 @@ public class ClassValidationWriterTests
         }
         return count;
     }
+
+    /// <summary>
+    /// The class refers to a type that is not in this file, so it never compiled on its own. That
+    /// is the normal case in a real project, and it must not stop a rule being added.
+    /// </summary>
+    [TestMethod]
+    public void A_class_that_did_not_compile_alone_can_still_take_a_rule()
+    {
+        var file = WriteClass("Order",
+            "namespace Acme\r\n" +
+            "{\r\n" +
+            "    public class Order\r\n" +
+            "    {\r\n" +
+            "        public int Quantity { get; set; }\r\n" +
+            "\r\n" +
+            "        public Customer Buyer { get; set; }\r\n" + // Customer is elsewhere
+            "    }\r\n" +
+            "}\r\n");
+
+        var ctx = new ValidationParseContext { Fragment = "Quantity must be positive", ClassName = "Order" };
+        var rule = ValidationRuleCatalog.Default
+            .Parse(ctx.Fragment, ValidationCategory.Data, ctx)[0];
+
+        var result = ClassValidationWriter.Add(file, "Order", rule);
+
+        Assert.IsTrue(result.Ok, result.Message);
+        StringAssert.Contains(File.ReadAllText(file), "// Quantity must be positive");
+    }
+
+    [TestMethod]
+    public void A_file_that_does_not_parse_is_refused_and_untouched()
+    {
+        var file = WriteClass("Broken",
+            "namespace Acme\r\n" +
+            "{\r\n" +
+            "    public class Broken\r\n" +
+            "    {\r\n" +
+            "        public int Age { get; set; }\r\n" +
+            // no closing braces at all
+            "\r\n");
+
+        var before = File.ReadAllText(file);
+        var ctx = new ValidationParseContext { Fragment = "Age must be positive", ClassName = "Broken" };
+        var rules = ValidationRuleCatalog.Default.Parse(ctx.Fragment, ValidationCategory.Data, ctx);
+
+        var result = ClassValidationWriter.Add(file, "Broken", rules[0]);
+
+        Assert.IsFalse(result.Ok);
+        Assert.AreEqual(before, File.ReadAllText(file));
+    }
+
+    [TestMethod]
+    public void A_rule_naming_a_property_the_class_does_not_have_is_refused()
+    {
+        var file = WriteClass("Employee", PlainEmployee);
+        var before = File.ReadAllText(file);
+
+        var ctx = new ValidationParseContext { Fragment = "Salary must be positive", ClassName = "Employee" };
+        var rule = ValidationRuleCatalog.Default
+            .Parse(ctx.Fragment, ValidationCategory.Data, ctx)[0];
+
+        var result = ClassValidationWriter.Add(file, "Employee", rule);
+
+        Assert.IsFalse(result.Ok);
+        StringAssert.Contains(result.Message, "no property called Salary");
+        StringAssert.Contains(result.Message, "Age");            // it says what there is
+        Assert.AreEqual(before, File.ReadAllText(file));
+    }
+
+    [TestMethod]
+    public void A_class_that_is_not_in_the_file_is_refused()
+    {
+        var file = WriteClass("Employee", PlainEmployee);
+
+        var result = ClassValidationWriter.Add(file, "Customer", Rule("Age must be at least 18"));
+
+        Assert.IsFalse(result.Ok);
+        StringAssert.Contains(result.Message, "No class called 'Customer'");
+    }
+
+    [TestMethod]
+    public void A_positional_record_with_no_body_is_refused()
+    {
+        var file = WriteClass("Money",
+            "namespace Acme\r\n" +
+            "{\r\n" +
+            "    public record Money(decimal Amount);\r\n" +
+            "}\r\n");
+
+        var before = File.ReadAllText(file);
+
+        var ctx = new ValidationParseContext { Fragment = "Amount must be positive", ClassName = "Money" };
+        var rule = ValidationRuleCatalog.Default
+            .Parse(ctx.Fragment, ValidationCategory.Data, ctx)[0];
+
+        var result = ClassValidationWriter.Add(file, "Money", rule);
+
+        Assert.IsFalse(result.Ok);
+        StringAssert.Contains(result.Message, "body");
+        Assert.AreEqual(before, File.ReadAllText(file));
+    }
 }
