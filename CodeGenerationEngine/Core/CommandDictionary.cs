@@ -297,10 +297,14 @@ public static class CommandDictionary
         {
             Category = "Validation",
             Command = "add validation <rule> on <property> in <class name>",
-            Description = "Adds a field-level data rule to a class. Rules: required (or 'should not be blank'), "
-                        + "must be between <min> and <max>, length must be between <min> and <max>, "
-                        + "must be greater/less than <n>, must be a valid email, must match <regex>, "
-                        + "must be <value>, <value>, ...",
+            Description = "Adds a field-level data rule to a class in plain English. Understands "
+                        + "required (or 'should not be blank'), numeric bounds (between, at least, "
+                        + "at most, greater/less than, positive, not negative, not zero, whole "
+                        + "number), text bounds (length between, at most <n> characters, starts "
+                        + "or ends with, contains, uppercase, digits only), named formats (email, "
+                        + "URL, phone number, postcode, GUID, IP address, date), relative dates "
+                        + "(in the past, in the future, at least <n> years ago, within the last "
+                        + "<n> days), must match <regex>, and a list of allowed values.",
             Example = "add validation must be between 18 and 65 on Age in Employee"
         },
         new()
@@ -321,7 +325,10 @@ public static class CommandDictionary
         {
             Category = "Validation",
             Command = "add business validation <rule> in <class name>",
-            Description = "Adds an entity-level business rule to a class.",
+            Description = "Adds an entity-level business rule, spanning more than one property: "
+                        + "comparisons (after, before, must not exceed), required-when, "
+                        + "either/or, arithmetic (equals A times B, plus, minus, divided by) and "
+                        + "sameness (same as, different from).",
             Example = "add business validation EndDate must be after StartDate in Booking"
         },
         new()

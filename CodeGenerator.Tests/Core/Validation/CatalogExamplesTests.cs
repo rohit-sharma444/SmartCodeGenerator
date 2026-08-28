@@ -1,4 +1,6 @@
+using CodeGenerationEngine.Core;
 using CodeGenerationEngine.Core.Validation;
+using NaturalLanguageBridge;
 
 namespace CodeGenerator.Tests.Core.Validation;
 
@@ -47,6 +49,44 @@ public class CatalogExamplesTests
 
             Assert.IsGreaterThan(0, rule!.Properties.Count,
                 $"{rule.GetType().Name} names no property for: {example}");
+        }
+    }
+
+    /// <summary>
+    /// The help entry's example has to be a phrasing the catalog still parses. An example that
+    /// stopped working is worse than no example: it is the tool telling you to type something it
+    /// will refuse.
+    /// </summary>
+    [TestMethod]
+    public void The_help_examples_for_validation_still_parse()
+    {
+        var entries = CommandDictionary.Commands
+            .Where(e => e.Category == "Validation"
+                        && e.Command.StartsWith("add ", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        Assert.IsGreaterThan(0, entries.Count);
+
+        foreach (var entry in entries)
+        {
+            var command = CommandFront.Parse(entry.Example, "");
+
+            Assert.IsFalse(string.IsNullOrWhiteSpace(command.ValidationText),
+                $"No rule text came out of the help example: {entry.Example}");
+
+            var ctx = new ValidationParseContext
+            {
+                Fragment = command.ValidationText,
+                ClassName = command.ClassName
+            };
+
+            var data = ValidationRuleCatalog.Default.Parse(
+                command.ValidationText, ValidationCategory.Data, ctx);
+            var business = ValidationRuleCatalog.Default.Parse(
+                command.ValidationText, ValidationCategory.Business, ctx);
+
+            Assert.IsGreaterThan(0, data.Count + business.Count,
+                $"The catalog no longer parses the help example: {entry.Example}");
         }
     }
 }
