@@ -54,6 +54,11 @@ public static class EntityExtractor
             return false;
         }
 
+        // The generated file declares `public partial class <Class>`. A class this tool created is
+        // not partial, and that pair does not compile - so the declaring half is marked here rather
+        // than emitting a file that cannot build beside it.
+        Validation.ClassValidationWriter.EnsurePartial(classFile, command.ClassName);
+
         var properties = ExtractProperties(classFile);
 
         var namespaceName = ExtractNamespace(classFile);

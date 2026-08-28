@@ -125,6 +125,35 @@ public static class ClassValidationWriter
             $"{rule.Describe()} - added to {className} in {Path.GetFileName(classFile)}.");
     }
 
+    /// <summary>
+    /// Marks a class <c>partial</c> when it is not, so a sibling partial file can compile beside it.
+    /// </summary>
+    /// <remarks>
+    /// <c>create class</c> writes <c>public class X</c> and <c>generate validator</c> writes
+    /// <c>public partial class X</c> next to it. That pair is CS0260, and it shipped because every
+    /// test of the generated half supplied a declaring half it had marked partial itself.
+    /// </remarks>
+    public static bool EnsurePartial(string classFile, string className)
+    {
+        if (!File.Exists(classFile))
+            return false;
+
+        var source = SourceFileText.Read(classFile, out var hasBom, out _);
+
+        var type = FindType(source, className);
+        if (type is null)
+            return false;
+
+        if (type.Modifiers.Any(m => m.IsKind(SyntaxKind.PartialKeyword)))
+            return false;
+
+        var updated = source.Insert(type.Keyword.SpanStart, "partial ");
+
+        SourceFileText.Write(classFile, updated, hasBom);
+
+        return true;
+    }
+
     private static TypeDeclarationSyntax? FindType(string source, string className) =>
         CSharpSyntaxTree.ParseText(source).GetCompilationUnitRoot()
             .DescendantNodes().OfType<TypeDeclarationSyntax>()
