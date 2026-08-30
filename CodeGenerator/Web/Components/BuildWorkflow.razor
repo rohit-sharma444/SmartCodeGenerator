@@ -13,111 +13,142 @@
 <main class="workflow">
     <h1>Build an application</h1>
 
-    <StageDiagram Session="Session" Navigation="_navigation" OnRevisit="Revisit"
-                  OnContinue="Continue" />
+    @* The end of the run, and the only thing on the page once it is over. The diagram and the
+       panel go together rather than being left up and greyed: every box on the diagram is a click
+       into BuildSession.GoTo, which throws on a workflow that has ended, and the panel behind it
+       offers steps that would do the same. A screen of controls that can only fail is worse than
+       no screen at all.
 
-    @if (Session.FailureMessage is not null)
+       Before this there was no such view: Done changed nothing here, and the next thing to happen
+       was the host stopping underneath the page — which the browser reported as a server it could
+       no longer find. *@
+    @if (Session.Phase != SessionPhase.Running)
     {
-        <p class="failure" role="alert">@Session.FailureMessage</p>
-    }
+        <div class="finished" role="status">
+            <h2>@Heading</h2>
 
-    @if (Session.PendingCancel is not null)
-    {
-        @* Above the panel, not inside it: cancelling is about the whole run rather than the answer
-           being edited, which is what separates this from the discard question below. *@
-        <div class="cancel-question" role="alertdialog" aria-live="assertive">
-            <p>@Session.PendingCancel</p>
+            @* The console's own report rather than a second wording of it. The user watched this
+               happen in the browser and then goes back to a prompt, and the two surfaces saying
+               different things about one run is how a report stops being believed. *@
+            @foreach (var line in BuildAppWebHost.OutcomeFor(Session).Lines.Where(l => l.Length > 0))
+            {
+                <p class="finished-line">@line</p>
+            }
 
-            <div class="actions">
-                @* Carrying on is the safe answer, so it is the one the eye lands on. *@
-                <button type="button" class="cancel-keep" @onclick="KeepBuilding">
-                    Keep building
-                </button>
-                <button type="button" class="cancel-confirm" @onclick="EndTheBuild">
-                    Cancel the build
-                </button>
-            </div>
+            <p class="finished-close">
+                The tool has finished with this page — you can close this tab.
+            </p>
         </div>
     }
+    else
+    {
+        <StageDiagram Session="Session" Navigation="_navigation" OnRevisit="Revisit"
+                      OnContinue="Continue" />
 
-    @* tabindex so the section itself can hold the keyboard: the panel that opens is where the
-       next answer is typed, and without this the focus falls back to the document after every
-       step and the whole wizard needs a mouse. *@
-    <section class="panel" tabindex="-1" @ref="_panel" @onkeydown="Typed">
-        <h2>@StageGraph.Nodes.First(n => n.Stage == Session.Current).Title</h2>
-
-        @if (Session.PendingDiscard is not null)
+        @if (Session.FailureMessage is not null)
         {
-            @* Inside the panel, above the answer that raised it: the question is about what was
-               just typed, and it belongs next to it rather than at the top of the page. *@
-            <div class="discard-question" role="alertdialog" aria-live="assertive">
-                <p>@Session.PendingDiscard</p>
+            <p class="failure" role="alert">@Session.FailureMessage</p>
+        }
+
+        @if (Session.PendingCancel is not null)
+        {
+            @* Above the panel, not inside it: cancelling is about the whole run rather than
+               the answer being edited, which is what separates this from the discard question
+               below. *@
+            <div class="cancel-question" role="alertdialog" aria-live="assertive">
+                <p>@Session.PendingCancel</p>
 
                 <div class="actions">
-                    @* Keeping is first and Change is the plainer control, because the safe answer
-                       should be the easy one to hit. *@
-                    <button type="button" class="discard-keep" @onclick="KeepTheModel">
-                        Keep the model
+                    @* Carrying on is the safe answer, so it is the one the eye lands on. *@
+                    <button type="button" class="cancel-keep" @onclick="KeepBuilding">
+                        Keep building
                     </button>
-                    <button type="button" class="discard-confirm" @onclick="ChangeAnyway">
-                        Change anyway
+                    <button type="button" class="cancel-confirm" @onclick="EndTheBuild">
+                        Cancel the build
                     </button>
                 </div>
             </div>
         }
 
-        @* Everything that reads a file or starts a process is inside this. A throw used to end
-           the circuit, which froze the page and had the console report a closed tab. *@
-        <PanelErrorBoundary @ref="_boundary" OnError="PanelFailed">
-            <ChildContent>
-        @* Keyed on the stage, so revisiting a node builds a fresh panel rather than reusing the
-           one next door with its draft fields still in it. *@
-        @switch (Session.Current)
-        {
-            case BuildStage.Describe:
-                <DescribeStage @key="BuildStage.Describe" Session="Session"
+        @* tabindex so the section itself can hold the keyboard: the panel that opens is where the
+           next answer is typed, and without this the focus falls back to the document after every
+           step and the whole wizard needs a mouse. *@
+        <section class="panel" tabindex="-1" @ref="_panel" @onkeydown="Typed">
+            <h2>@StageGraph.Nodes.First(n => n.Stage == Session.Current).Title</h2>
+
+            @if (Session.PendingDiscard is not null)
+            {
+                @* Inside the panel, above the answer that raised it: the question is about what was
+                   just typed, and it belongs next to it rather than at the top of the page. *@
+                <div class="discard-question" role="alertdialog" aria-live="assertive">
+                    <p>@Session.PendingDiscard</p>
+
+                    <div class="actions">
+                        @* Keeping is first and Change is the plainer control, because the
+                           safe answer should be the easy one to hit. *@
+                        <button type="button" class="discard-keep" @onclick="KeepTheModel">
+                            Keep the model
+                        </button>
+                        <button type="button" class="discard-confirm" @onclick="ChangeAnyway">
+                            Change anyway
+                        </button>
+                    </div>
+                </div>
+            }
+
+            @* Everything that reads a file or starts a process is inside this. A throw used to end
+               the circuit, which froze the page and had the console report a closed tab. *@
+            <PanelErrorBoundary @ref="_boundary" OnError="PanelFailed">
+                <ChildContent>
+            @* Keyed on the stage, so revisiting a node builds a fresh panel rather than reusing the
+               one next door with its draft fields still in it. *@
+            @switch (Session.Current)
+            {
+                case BuildStage.Describe:
+                    <DescribeStage @key="BuildStage.Describe" Session="Session"
+                                   Navigation="_navigation" OnAdvance="Refresh" />
+                    break;
+                case BuildStage.AppType:
+                    <AppTypeStage @key="BuildStage.AppType" Session="Session"
+                                  Navigation="_navigation" OnAdvance="Refresh" />
+                    break;
+                case BuildStage.Data:
+                    <DataStage @key="BuildStage.Data" Session="Session"
                                Navigation="_navigation" OnAdvance="Refresh" />
-                break;
-            case BuildStage.AppType:
-                <AppTypeStage @key="BuildStage.AppType" Session="Session"
+                    break;
+                case BuildStage.Look:
+                    <LookStage @key="BuildStage.Look" Session="Session"
+                               Navigation="_navigation" OnAdvance="Refresh" />
+                    break;
+                case BuildStage.Discover:
+                    <DiscoverStage @key="BuildStage.Discover" Session="Session"
+                                   Navigation="_navigation" OnAdvance="Refresh" />
+                    break;
+                case BuildStage.Review:
+                    <ReviewStage @key="BuildStage.Review" Session="Session"
+                                 Navigation="_navigation" OnAdvance="Refresh" />
+                    break;
+                case BuildStage.Generate:
+                    <GenerateStage @key="BuildStage.Generate" Session="Session"
+                                   Navigation="_navigation" OnAdvance="Refresh" />
+                    break;
+                case BuildStage.Run:
+                    <RunStage @key="BuildStage.Run" Session="Session"
                               Navigation="_navigation" OnAdvance="Refresh" />
-                break;
-            case BuildStage.Data:
-                <DataStage @key="BuildStage.Data" Session="Session"
-                           Navigation="_navigation" OnAdvance="Refresh" />
-                break;
-            case BuildStage.Look:
-                <LookStage @key="BuildStage.Look" Session="Session"
-                           Navigation="_navigation" OnAdvance="Refresh" />
-                break;
-            case BuildStage.Discover:
-                <DiscoverStage @key="BuildStage.Discover" Session="Session"
-                               Navigation="_navigation" OnAdvance="Refresh" />
-                break;
-            case BuildStage.Review:
-                <ReviewStage @key="BuildStage.Review" Session="Session"
-                             Navigation="_navigation" OnAdvance="Refresh" />
-                break;
-            case BuildStage.Generate:
-                <GenerateStage @key="BuildStage.Generate" Session="Session"
-                               Navigation="_navigation" OnAdvance="Refresh" />
-                break;
-            case BuildStage.Run:
-                <RunStage @key="BuildStage.Run" Session="Session"
-                          Navigation="_navigation" OnAdvance="Refresh" />
-                break;
-        }
-            </ChildContent>
-            <ErrorContent>
-                @* The message itself is above, on the failure line, because the session records it
-                   and both tabs then say the same thing. *@
-                <p class="panel-broken" role="alert">
-                    This step could not finish. Its box is red — click it to try again, or a green
-                    box to change an answer first.
-                </p>
-            </ErrorContent>
-        </PanelErrorBoundary>
-    </section>
+                    break;
+            }
+                </ChildContent>
+                <ErrorContent>
+                    @* The message itself is above, on the failure line, because the session
+                       records it and both tabs then say the same thing. *@
+                    <p class="panel-broken" role="alert">
+                        This step could not finish. Its box is red — click it to try again,
+                        or a green box to change an answer first.
+                    </p>
+                </ErrorContent>
+            </PanelErrorBoundary>
+        </section>
+    }
 </main>
 
 @code {
@@ -158,10 +189,24 @@
         Session.Changed += Repaint;
     }
 
+    /// <summary>
+    /// What the closing view leads with. A run that wrote a project and a run cancelled before it
+    /// did are not the same news, so they do not share a heading.
+    /// </summary>
+    private string Heading => Session.Phase switch
+    {
+        SessionPhase.Generated => "Finished",
+        SessionPhase.Cancelled => "Cancelled",
+        _ => "Closed",
+    };
+
     /// <summary>Gives the keyboard to the panel that has just opened.</summary>
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (_focused == Session.Current)
+        // Nothing to focus once the workflow is over — the panel is not rendered, and _panel is
+        // then a reference to an element that never existed, which the browser answers with an
+        // error rather than a no-op.
+        if (Session.Phase != SessionPhase.Running || _focused == Session.Current)
             return;
 
         _focused = Session.Current;

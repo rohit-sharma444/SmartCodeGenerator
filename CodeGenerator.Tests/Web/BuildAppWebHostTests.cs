@@ -84,6 +84,28 @@ public class BuildAppWebHostTests
         }
     }
 
+    /// <summary>
+    /// The element the page supplies so that Blazor does not build its own lost-connection
+    /// dialog.
+    /// </summary>
+    /// <remarks>
+    /// Nothing fails if this goes. Blazor quietly falls back to its default overlay, which covers
+    /// the page with a message about a server it cannot find — over the closing view that has
+    /// just been drawn to explain why the connection went. That is the report this feature had in
+    /// the first place, and the only thing standing between it and here is markup no other test
+    /// looks at.
+    /// </remarks>
+    [TestMethod]
+    public async Task Serves_the_page_with_its_own_lost_connection_element()
+    {
+        using var host = Start(out _);
+        using var client = new HttpClient();
+
+        var html = await client.GetStringAsync(host.Url);
+
+        StringAssert.Contains(html, "id=\"components-reconnect-modal\"");
+    }
+
     // Any process on this machine can reach a loopback port, and this one writes files and runs
     // `dotnet`. The token is what makes that safe.
     [TestMethod]
@@ -202,6 +224,61 @@ public class BuildAppWebHostTests
         handler.OnConnectionDownAsync(null!, CancellationToken.None).GetAwaiter().GetResult();
 
         Assert.IsTrue(host.Circuits.ShouldAbandon(TimeSpan.Zero, DateTimeOffset.UtcNow.AddDays(1)));
+    }
+
+    /// <summary>
+    /// The pause that lets the browser draw the end of the run before the server it is talking to
+    /// goes away.
+    /// </summary>
+    /// <remarks>
+    /// Without it the poll below notices the ended workflow within
+    /// <c>PollInterval</c> and disposes the host, which races the render carrying the finished
+    /// view — and a tab that loses its circuit first shows a lost-server message over a page still
+    /// displaying the panel the user had just finished with.
+    /// </remarks>
+    [TestMethod]
+    public void Run_gives_the_browser_a_moment_to_draw_the_end_of_the_run()
+    {
+        using var host = Start(out var session);
+
+        var linger = TimeSpan.FromMilliseconds(400);
+
+        session.Cancel();
+
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+
+        host.Run(session, CancellationToken.None, TimeSpan.Zero, linger);
+
+        clock.Stop();
+
+        Assert.IsTrue(
+            clock.Elapsed >= TimeSpan.FromMilliseconds(300),
+            $"Run returned after {clock.ElapsedMilliseconds}ms, too soon for the last render");
+    }
+
+    /// <summary>
+    /// The counterpart: nobody is reading the page, so nothing is owed to it. A console being
+    /// interrupted should come back at once, and an abandoned tab has already gone.
+    /// </summary>
+    [TestMethod]
+    public void Run_does_not_wait_for_a_browser_that_is_not_there()
+    {
+        using var host = Start(out var session);
+
+        host.Circuits.Opened(DateTimeOffset.UtcNow);
+        host.Circuits.Closed(DateTimeOffset.UtcNow);
+
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+
+        var outcome = host.Run(
+            session, CancellationToken.None, TimeSpan.Zero, TimeSpan.FromSeconds(30));
+
+        clock.Stop();
+
+        Assert.AreEqual(SessionPhase.Abandoned, outcome.Phase);
+        Assert.IsTrue(
+            clock.Elapsed < TimeSpan.FromSeconds(10),
+            $"Run lingered {clock.ElapsedMilliseconds}ms over a tab that had already closed");
     }
 
     private static BuildAppWebHost Start(out BuildSession session)
