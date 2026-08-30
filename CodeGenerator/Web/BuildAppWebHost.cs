@@ -36,13 +36,25 @@ internal sealed class BuildAppWebHost : IDisposable
     /// </remarks>
     private static readonly TimeSpan AbandonGrace = TimeSpan.FromSeconds(10);
 
+    /// <summary>
+    /// How long a workflow ended in the browser waits before the host it is talking to goes away.
+    /// </summary>
+    /// <remarks>
+    /// The page draws a closing view when the workflow ends, and that render has to reach the tab
+    /// before the circuit carrying it is torn down — otherwise the last thing on screen is the
+    /// panel the user had just finished with, under the browser's own lost-server message. Only a
+    /// render round-trip over loopback has to fit in here, so this is far longer than it needs to
+    /// be and still short enough not to be felt at the prompt.
+    /// </remarks>
+    private static readonly TimeSpan FinishGrace = TimeSpan.FromSeconds(1);
+
     private readonly LoopbackHost _host;
 
     private BuildAppWebHost(LoopbackHost host) => _host = host;
 
     /// <summary>The tabs connected to this host. Written by <see cref="WorkflowCircuits"/> from
     /// the circuits Blazor raises, and read by <see cref="Run(BuildSession, CancellationToken,
-    /// TimeSpan?)"/>.</summary>
+    /// TimeSpan?, TimeSpan?)"/>.</summary>
     public CircuitWatch Circuits => _host.Circuits;
 
     /// <summary>What the running host resolves its services from — the container Blazor takes
@@ -79,8 +91,9 @@ internal sealed class BuildAppWebHost : IDisposable
     /// <remarks>
     /// For a caller with no use for the URL. The interactive command uses
     /// <see cref="TryStart"/> and the instance <see cref="Run(BuildSession, CancellationToken,
-    /// TimeSpan?)"/> instead, because it has to print the address before the waiting begins —
-    /// and because the tabs must be counted on the host the browser is actually looking at.
+    /// TimeSpan?, TimeSpan?)"/> instead, because it has to print the address before the waiting
+    /// begins — and because the tabs must be counted on the host the browser is actually looking
+    /// at.
     /// </remarks>
     public static BuildOutcome Run(BuildSession session, CancellationToken ct)
     {
@@ -105,26 +118,42 @@ internal sealed class BuildAppWebHost : IDisposable
     /// How long the last tab must have been gone. Defaults to <see cref="AbandonGrace"/>; passed
     /// explicitly by the tests, which have no interest in waiting ten real seconds.
     /// </param>
-    public BuildOutcome Run(BuildSession session, CancellationToken ct, TimeSpan? grace = null)
+    /// <param name="linger">
+    /// How long a workflow ended in the browser is given to draw its closing view before the host
+    /// stops. Defaults to <see cref="FinishGrace"/>, and is not waited at all where there is no
+    /// reader to draw to.
+    /// </param>
+    public BuildOutcome Run(
+        BuildSession session, CancellationToken ct, TimeSpan? grace = null, TimeSpan? linger = null)
     {
         var window = grace ?? AbandonGrace;
+
+        // Whether this loop ended the workflow itself, as opposed to finding it already ended.
+        // Only the second case has a reader waiting on one more render: an interrupted console has
+        // stopped looking at the browser, and an abandoned workflow has no tab left to draw to.
+        var endedHere = false;
 
         while (session.Phase == SessionPhase.Running)
         {
             if (ct.IsCancellationRequested)
             {
                 session.Cancel();
+                endedHere = true;
                 break;
             }
 
             if (Circuits.ShouldAbandon(window, DateTimeOffset.UtcNow))
             {
                 session.Abandon();
+                endedHere = true;
                 break;
             }
 
             Thread.Sleep(PollInterval);
         }
+
+        if (!endedHere)
+            Thread.Sleep(linger ?? FinishGrace);
 
         return OutcomeFor(session);
     }

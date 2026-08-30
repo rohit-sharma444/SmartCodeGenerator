@@ -7,8 +7,9 @@
  *
  * First, every colour is a custom property declared on `.chat`, not on `:root`. Both stylesheets
  * are linked from App.razor on every page, so a `:root` block here would reach the workflow page
- * as well - and this file has a dark theme, which that page has no rules for. Scoping to `.chat`
- * makes it impossible for the dark palette below to half-repaint a page it was never designed for.
+ * as well, and these tokens are not the ones that page is drawn from. Scoping to `.chat` makes it
+ * impossible for this palette to half-repaint a page it was never designed for. (It also carried
+ * a dark set, followed from the OS, until the tool was asked for one light grey look throughout.)
  *
  * Second, `.chat` is `position: fixed; inset: 0`. That is not a layout flourish: workflow.css puts
  * `padding: 2rem` and the light `--paper` background on `body`, and taking the chat out of flow is
@@ -16,9 +17,9 @@
  * its own scroll container, so the composer stays put instead of being chased down the page. */
 
 .chat {
-    /* Light. The dark set overrides these below; nothing outside this block hardcodes a colour,
-       so a value missing from the dark set shows up as a light patch rather than as a hole. */
-    --surface: #f5f6f8;
+    /* Every colour the page uses, in one place: nothing below hardcodes one, so changing the
+       look is changing this block rather than hunting through a thousand lines of rules. */
+    --surface: #e9ebef;
     --panel: #ffffff;
     --sunken: #f7f8fa;
 
@@ -75,52 +76,9 @@
     color: var(--ink);
     font: 15px/1.55 "Segoe UI", system-ui, -apple-system, sans-serif;
 
-    /* So the textarea, the scrollbars and the caret follow the theme rather than staying light
-       inside a dark page. */
+    /* Stated rather than left to the browser: on a machine set to dark, the textarea, the
+       scrollbars and the caret would otherwise come out dark inside a light grey page. */
     color-scheme: light;
-}
-
-/* System-driven, deliberately: a toggle is a control with state to persist and to disagree about
-   across two tabs of one session. The OS already knows the answer. */
-@media (prefers-color-scheme: dark) {
-    .chat {
-        --surface: #131519;
-        --panel: #1b1e24;
-        --sunken: #16191e;
-
-        --ink: #e6e8ec;
-        --ink-soft: #a3aab7;
-        --ink-faint: #79808f;
-
-        --line: #2b3038;
-        --line-strong: #3c434f;
-
-        --accent: #6ea8ff;
-        --accent-ink: #0d1117;
-        --accent-soft: #1b2740;
-
-        --done: #56d68a;
-        --done-soft: #16251c;
-        --failed: #ff9187;
-        --failed-soft: #2b1a19;
-        --unsure: #eab145;
-        --unsure-soft: #2a2214;
-
-        --node-solution: #c0a3f0;
-        --node-folder: #e0b155;
-        --node-property: #7fc4e0;
-        --node-method: #c0a3f0;
-
-        --tok-keyword: #7bb0ff;
-        --tok-text: #ce9178;
-        --tok-comment: #6a9955;
-        --tok-number: #b5cea8;
-
-        --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
-        --shadow-2: 0 6px 16px rgba(0, 0, 0, 0.45), 0 16px 32px rgba(0, 0, 0, 0.35);
-
-        color-scheme: dark;
-    }
 }
 
 .chat *,
@@ -353,15 +311,15 @@
 /* --- The relationships page (show relationships) --------------------------------------- */
 
 /* Plain, and the same light look as the rest of the tool. It does not carry the chat class:
-   that was only ever here to borrow colour tokens, and it brought the chat page's dark theme with
-   it - so this page went dark on a machine set to dark while the build page beside it did not.
+   that was only ever here to borrow colour tokens, and it brought the chat page's whole
+   viewport-fixed layout with it.
    The colours come from workflow.css's :root palette, which is what every other page uses, with
    literals behind them so nothing depends on a stylesheet load order. */
 .rel-page {
     box-sizing: border-box;
     min-height: 100vh;
     padding: 2rem 1.5rem;
-    background: var(--paper, #fbfbfa);
+    background: var(--paper, #e9ebef);
     color: var(--ink, #1c1c1c);
     font: 15px/1.55 "Segoe UI", system-ui, -apple-system, sans-serif;
 }
@@ -407,7 +365,7 @@
        near-black text on it, and the lines had `stroke: none` so they were not drawn at all.
        Each token below falls back through workflow.css's palette to a literal, so the diagram
        paints correctly on the build page, on the chat page, and on its own page -- and still
-       follows the chat page's dark set, because these re-resolve when those tokens change. */
+       follows those pages, because these re-resolve when the tokens behind them change. */
     --rel-panel: var(--panel, #ffffff);
     --rel-ink: var(--ink, #1c1c1c);
     --rel-line: var(--line-strong, var(--line, #d3d3cf));

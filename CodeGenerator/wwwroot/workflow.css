@@ -1,7 +1,7 @@
 /* Self-contained: no CDN, no web font. The tool must work with no network. */
 :root {
     --ink: #1c1c1c;
-    --paper: #fbfbfa;
+    --paper: #e9ebef;
     --line: #d3d3cf;
     --pending: #8a8a85;
     --active: #1f6feb;
@@ -457,3 +457,85 @@ body {
 .settled { grid-column: 2; font-size: 0.88em; }
 .edit-report { margin-top: 1rem; font-style: italic; }
 .evidence { font-family: ui-monospace, Consolas, monospace; font-size: 0.82em; }
+
+/* The end of a run, in place of the diagram and the panel. A card like the panel it replaces —
+   the page has not become a different page, it has stopped asking questions. */
+.finished {
+    padding: 1.25rem 1.5rem;
+    border: 1px solid var(--line);
+    border-left: 4px solid var(--done);
+    border-radius: 6px;
+    background: #fff;
+}
+
+.finished h2 { margin: 0 0 0.75rem; font-size: 1.15rem; }
+
+/* The console's lines, kept as lines: several of them are a path or a command to retype, and
+   running them together into a paragraph is what would make those unusable. */
+.finished-line {
+    margin: 0.3rem 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+/* Quieter than the report above it, because it is housekeeping rather than news. */
+.finished-close {
+    margin: 1.25rem 0 0;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--line);
+    color: var(--pending);
+}
+
+/* The lost-connection message, in place of Blazor's own. See App.razor for why the page supplies
+   this element at all.
+ *
+ * A bar along the bottom rather than the framework's full-screen overlay, and that is the point
+ * of replacing it: the workflow page draws a closing view at the moment the tool stops, and an
+ * overlay would cover the one thing on screen that explains why the connection has gone.
+ *
+ * Hidden by default and shown by the class Blazor puts on it. Both of the messages inside are
+ * hidden too, so a state this file has no rule for shows an empty bar rather than both messages
+ * at once.
+ *
+ * Every rule that reveals something carries the id as well. Measured, not guessed: an id beats
+ * two classes, so `.components-reconnect-show .reconnect-trying` lost to the `#…modal p` rule
+ * that hides them, and the bar came up in the browser with nothing written in it. */
+#components-reconnect-modal {
+    display: none;
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 1000;
+    padding: 0.6rem 1rem;
+    border-top: 1px solid var(--line);
+    background: #fff;
+    box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.08);
+    color: var(--ink);
+    font: 14px/1.45 "Segoe UI", system-ui, sans-serif;
+    text-align: center;
+}
+
+#components-reconnect-modal.components-reconnect-show,
+#components-reconnect-modal.components-reconnect-failed,
+#components-reconnect-modal.components-reconnect-rejected { display: block; }
+
+#components-reconnect-modal p { display: none; margin: 0; }
+
+#components-reconnect-modal.components-reconnect-show .reconnect-trying { display: block; }
+
+#components-reconnect-modal.components-reconnect-failed .reconnect-gone,
+#components-reconnect-modal.components-reconnect-rejected .reconnect-gone { display: block; }
+
+/* Not on a page that has already said its goodbyes.
+ *
+ * The closing view appears at the moment the tool stops, so on that page the connection going is
+ * the expected end of the run and not news — and Blazor keeps retrying for something like two
+ * minutes before it will admit the server is gone, so what the reader would otherwise be shown
+ * under "you can close this tab" is a bar saying it is still trying to reconnect.
+ *
+ * `:has` rather than a flag set from the circuit, because the circuit is the thing that has just
+ * died: anything the page had to send at that moment is a race, and this is decided by the DOM
+ * that is already on screen. A browser too old for `:has` drops this rule and gets the bar, which
+ * is the behaviour without it rather than a broken page. */
+body:has(.finished) #components-reconnect-modal { display: none; }

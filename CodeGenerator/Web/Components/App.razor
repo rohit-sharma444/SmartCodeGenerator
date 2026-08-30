@@ -16,6 +16,25 @@
 </head>
 <body>
     <Routes />
+
+    @* Blazor's own lost-connection dialog, replaced.
+
+       It only builds its default one when the page supplies no element with this id, and its
+       default is a full-screen overlay that says the server cannot be found. That is the wrong
+       news here twice over: this server is the tool itself, so it going away is how a run ENDS
+       rather than a fault, and an overlay hides the closing view that has just been drawn to
+       explain exactly that.
+
+       Two messages, because Blazor tells the two apart and so should the page: while it is still
+       retrying the connection may yet come back, and only once it has given up is the tool
+       actually gone. *@
+    <div id="components-reconnect-modal">
+        <p class="reconnect-trying">Reconnecting to SmartCodeGenerator&hellip;</p>
+        <p class="reconnect-gone">
+            SmartCodeGenerator is not running any more. This page is served by the tool itself, so
+            it goes quiet when the tool stops — which is how a run ends. You can close this tab.
+        </p>
+    </div>
     @* The clipboard is behind an API the server cannot reach, so the copy button calls out to
        this. Optional chaining because a browser with no permission has no clipboard object. *@
     <script>
