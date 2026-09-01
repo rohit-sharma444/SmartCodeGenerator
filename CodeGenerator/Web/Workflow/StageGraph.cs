@@ -16,7 +16,7 @@ public static class StageGraph
     public static IReadOnlyList<StageNode> Nodes { get; } =
     [
         new(BuildStage.Describe, "Describe", "What are we building?"),
-        new(BuildStage.AppType,  "App type", "Which kind of application"),
+        new(BuildStage.AppType,  "Application Type", "Which kind of application"),
         new(BuildStage.Data,     "Data",     "A file to read, or discover from the web"),
         new(BuildStage.Look,     "Look",     "Branding, theme and features"),
         new(BuildStage.Discover, "Discover", "Work out the classes"),
