@@ -20,7 +20,7 @@ namespace CodeGenerator.Web.Workflow;
 /// <para>
 /// The application type is deliberately a second line. The `build app:` grammar has no type on it:
 /// the console chooses one at the review prompt with `approve &lt;target&gt;`, which is exactly what
-/// the page's App type stage answers.
+/// the page's Application Type stage answers.
 /// </para>
 /// </remarks>
 internal static class BuildCommandEcho
@@ -41,7 +41,7 @@ internal static class BuildCommandEcho
         var lines = new List<string> { line };
 
         // `approve` is the review prompt's command, so it is only worth showing once a type has
-        // actually been chosen — and it is how the console answers the App type stage.
+        // actually been chosen — and it is how the console answers the Application Type stage.
         if (session.Target is not null)
             lines.Add($"approve {session.Target.Key}");
 
