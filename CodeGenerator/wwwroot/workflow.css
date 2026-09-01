@@ -23,7 +23,7 @@
 
 body {
     margin: 0;
-    padding: 2rem;
+    padding: 1.25rem 2rem;
     background: var(--paper);
     color: var(--ink);
     font: 15px/1.5 "Segoe UI", system-ui, sans-serif;
@@ -43,7 +43,11 @@ body {
 }
 
 /* The heading spans both columns, or it would sit in the rail. */
-.workflow > h1 { grid-column: 1 / -1; margin: 0 0 1.25rem; }
+.workflow > h1 {
+    grid-column: 1 / -1;
+    margin: 0 0 0.9rem;
+    font-size: 1.5rem;
+}
 
 /* Narrow: one column, and the diagram returns to the wrapped row it has always been. */
 @media (max-width: 900px) {
@@ -56,7 +60,12 @@ body {
 .stage-diagram {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    gap: 0.9rem;
+
+    /* Every measurement in this block is paying for the same thing: all eight boxes on screen
+       at once. Measured at 1280x720 the rail was 814px tall against 595px of room below the
+       heading, so its last two boxes were off the bottom - on the page whose whole purpose is
+       to show you where you are in a run of eight steps. */
+    gap: 0.4rem;
     margin: 0;
     padding: 0;
     list-style: none;
@@ -64,7 +73,7 @@ body {
     /* The panel is far taller than the rail, so the rail follows you down it. Every stage
        stays reachable without scrolling back up, which is the point of moving it here. */
     position: sticky;
-    top: 2rem;
+    top: 1.25rem;
 }
 
 /* Too narrow for seven: wrap, and drop the connectors with the row. A connector drawn to the
@@ -92,9 +101,9 @@ body {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 0.15rem;
-    min-height: 3.2rem;
-    padding: 0.55rem 1.4rem;
+    gap: 0.05rem;
+    min-height: 2.2rem;
+    padding: 0.3rem 1.1rem;
     border: 2px solid var(--line);
     border-radius: 999px;
     background: #fff;
@@ -108,14 +117,14 @@ body {
 
 /* Inside the curve. At the old corner offset the tick sat ON the rounded edge - fine on a 6px
    radius, wrong on a stadium, where the corner is most of the end. */
-.stage-node .stage-mark { top: 0.5rem; right: 1.3rem; }
+.stage-node .stage-mark { top: 0.3rem; right: 1rem; }
 
 /* The one box that cannot be a small pill: it carries the back arrow and the step forward.
    It keeps the stadium ends but is allowed the height its buttons need, so it reads as the
    same shape grown rather than a different one. */
 .stage-node.active {
-    padding: 0.7rem 1.2rem;
-    border-radius: 1.6rem;
+    padding: 0.45rem 1rem;
+    border-radius: 1.3rem;
 }
 
 /* Depth by state, so the rail can be read at a glance without reading a word of it: a stage
@@ -152,8 +161,8 @@ body {
     content: "";
     position: absolute;
     left: 50%;
-    top: -0.75rem;
-    height: 0.6rem;
+    top: -0.4rem;
+    height: 0.3rem;
     border-left: 2px solid var(--line);
 }
 
@@ -176,7 +185,7 @@ body {
     cursor: pointer;
     display: flex;
     flex-direction: column;
-    gap: 0.35rem;
+    gap: 0.05rem;
     width: 100%;
 }
 
@@ -201,18 +210,35 @@ body {
     display: block;
     font-size: 0.84em;
     color: var(--ink);
-
-    /* A project name or a file name has no spaces to break at, and a box is 130px wide. */
-    overflow-wrap: anywhere;
 }
 
-/* Only on hover and focus, so eight boxes are not eight invitations at once. */
+/* Clamped to one line so eight boxes fit the screen. The full string is on each element's title
+   attribute - see StageDiagram.Detail - which is what a truncated project name needs, and it was
+   never readable in a 190px box anyway: it used to wrap to three lines of five characters. */
+.stage-blurb,
+.stage-answer {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Only on hover and focus, so eight boxes are not eight invitations at once.
+ *
+ * DRAWN only then, rather than drawn always at zero opacity: as a permanent invisible line it
+ * reserved about 17px on every answered box - roughly 90px of rail - for a word nobody can see,
+ * and 90px is most of what this whole exercise set out to save.
+ *
+ * On a line of its own rather than tucked into the corner beside the tick, which is where this
+ * went first. A 190px box has no room for a word beside its text: hovering "Application Type"
+ * measured the label running 13px into the title, and the answer line is no wider. The box grows
+ * by one small line while the pointer is on it, which the rail has room for - it now sits 117px
+ * clear of the fold. */
 .stage-change {
-    display: block;
+    display: none;
     font-size: 0.76em;
+    line-height: 1.3;
     color: var(--active);
-    opacity: 0;
-    transition: opacity 120ms ease;
 }
 
 .stage-node.done:hover,
@@ -220,7 +246,7 @@ body {
 
 .stage-node.done:hover .stage-change,
 .stage-node.failed:hover .stage-change,
-.node-open:focus-visible .stage-change { opacity: 1; }
+.node-open:focus-visible .stage-change { display: block; }
 
 .node-open:focus-visible {
     outline: 2px solid var(--active);
@@ -555,11 +581,14 @@ body {
    DateTime, the longest of the five ModelEditor accepts. */
 .fields { list-style: none; padding: 0; margin: 0.5rem 0; }
 
+/* The type track grew from 4.5rem to hold a SELECT reading "DateTime" rather than the word on
+   its own, and the action track shrank from 2rem to pay for it - it holds one x, and x was
+   already left-aligned in it. Both rows below use the same three, or they stop lining up. */
 .fields li {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 4.5rem 2rem;
+    grid-template-columns: minmax(0, 1fr) 5.25rem 1.5rem;
     gap: 0.4rem;
-    align-items: baseline;
+    align-items: center;
     padding: 0.1rem 0;
 }
 
@@ -568,6 +597,53 @@ body {
 .fields .unfield { justify-self: start; }
 
 .field-type { font-size: 0.8em; color: var(--pending); }
+
+/* Editable in place, and it has to LOOK editable. The first version of this borrowed
+   .entity-name's transparent-until-focus treatment, and a screenshot settled it: beside a row of
+   bordered type controls the names read as static labels, so the one thing this feature adds -
+   that a property's name can be corrected - was invisible. A card that is already a form does not
+   get quieter by having half its controls pretend otherwise.
+   The rule stays lighter than the select next to it: an underline rather than a box, because the
+   name is text being edited and the type is one of five things being picked. */
+.fields input.field-name {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    padding: 0.05rem 0.15rem;
+    border: 1px solid transparent;
+    border-bottom-color: var(--line);
+    border-radius: 3px 3px 0 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 0.85em;
+}
+
+.fields input.field-name:hover { border-color: var(--line); border-radius: 3px; }
+
+.fields input.field-name:focus {
+    border-color: var(--active);
+    border-radius: 3px;
+    background: #fff;
+}
+
+/* Sized to its track rather than to its longest option, or the browser widens it past the column
+   and the crosses stop making an edge. Small and grey, because the type is a fact about the
+   property and not the property. */
+.fields select.field-type {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    padding: 0.05rem 0.1rem;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    background: #fff;
+    color: var(--pending);
+    font: inherit;
+    font-size: 0.78em;
+}
+
+.fields select.field-type:focus { color: var(--ink); }
 
 /* minmax(0, ...) above rather than a bare 1fr, because a bare 1fr keeps an automatic MINIMUM: a row
    whose field name is longer than its fair share widened its own first column, and the types went
@@ -584,7 +660,7 @@ body {
    out of step with every row above it, which measurement caught and the eye would have too. */
 .add-field-row {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 4.5rem 2rem;
+    grid-template-columns: minmax(0, 1fr) 5.25rem 1.5rem;
     gap: 0.4rem;
     align-items: center;
     margin-top: 0.5rem;
