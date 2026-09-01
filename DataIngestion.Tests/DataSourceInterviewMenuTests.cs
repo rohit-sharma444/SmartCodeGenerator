@@ -105,37 +105,39 @@ public class DataSourceInterviewMenuTests
         }
     }
 
+    /// <summary>
+    /// SQL is offered plainly now that it has a reader. This asserted the opposite until the
+    /// SQL Server branch, and the row is built by FormatLabel, which appends the caveat only
+    /// for a kind TryCreate cannot build - so a bare row is the evidence the reader is wired
+    /// all the way to the menu.
+    /// </summary>
     [Fact]
-    public void AFormatWithNoReader_SaysSoOnItsRow()
+    public void EveryFormatIsOfferedWithoutACaveat()
     {
         var (_, chooser, _) = Run(string.Empty, 0, null);
 
-        var sql = chooser.Asked[1].Labels[Row("sql")];
+        var labels = chooser.Asked[1].Labels;
 
-        // Visible before it is chosen, rather than only after.
-        Assert.Contains("sql", sql);
-        Assert.Contains("not in this build", sql);
+        Assert.Equal("sql", labels[Row("sql")]);
+        Assert.DoesNotContain(labels, label => label.Contains("not in this build"));
     }
 
+    /// <summary>
+    /// Choosing SQL now goes straight on to the location question instead of being refused
+    /// and re-asked. What replaces the old assertion is that the format menu is asked ONCE:
+    /// a second Format round would mean the refusal path had fired.
+    /// </summary>
     [Fact]
-    public void ChoosingAFormatWithNoReader_ExplainsAndAsksAgain()
+    public void ChoosingSqlGoesStraightOnToTheLocation()
     {
-        var path = TempCsv();
+        var (outcome, chooser, written) = Run(
+            "Server=.;Database=Northwind;Trusted_Connection=True\n", 0, Row("sql"));
 
-        try
-        {
-            var (outcome, chooser, written) = Run(path + "\n", 0, Row("sql"), Row("csv"));
+        Assert.DoesNotContain("not in this build", written);
 
-            Assert.Contains("not in this build", written);
-
-            // Asked again rather than abandoned: the gate, then Format twice.
-            Assert.Equal(3, chooser.Asked.Count);
-            Assert.Equal(DataSourceKind.Csv, outcome.Source!.Kind);
-        }
-        finally
-        {
-            File.Delete(path);
-        }
+        // The gate, then Format once. A third round would be the refusal re-asking.
+        Assert.Equal(2, chooser.Asked.Count);
+        Assert.Equal(DataSourceKind.Sql, outcome.Source!.Kind);
     }
 
     [Fact]

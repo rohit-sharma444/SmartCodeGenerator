@@ -86,23 +86,19 @@ public class DataSourceInterviewTests
     /// <summary>SQL is on the menu but has no reader here -- Excel had one added, so SQL is now the
     /// only kind that exercises this branch. The user gets the reason and the alternative, then
     /// another go -- not a crash and not a silent fallback.</summary>
+    /// <summary>
+    /// Typing sql now asks for the location rather than refusing. Until the SQL Server
+    /// branch this test asserted the refusal, using sql as the one kind with no reader.
+    /// </summary>
     [Fact]
-    public void AFormatWithNoReader_SaysSoAndReAsks()
+    public void TypingSqlAsksForTheConnectionRatherThanRefusing()
     {
-        var path = TempCsv();
+        var outcome = Run(
+            "y\nsql\nServer=.;Database=Northwind;Trusted_Connection=True\n", out var written);
 
-        try
-        {
-            var outcome = Run($"y\nsql\ncsv\n{path}\n", out var written);
-
-            Assert.Equal(InterviewDecision.Source, outcome.Decision);
-            Assert.Contains("not in this build yet", written);
-            Assert.Contains("csv", written);
-        }
-        finally
-        {
-            File.Delete(path);
-        }
+        Assert.Equal(InterviewDecision.Source, outcome.Decision);
+        Assert.Equal(DataSourceKind.Sql, outcome.Source!.Kind);
+        Assert.DoesNotContain("not in this build", written);
     }
 
     /// <summary>A mistyped path is the most likely thing to go wrong here, so it re-asks -- the same
