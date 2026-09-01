@@ -1047,6 +1047,81 @@ public class GeneratedProjectBuildTests
         }
     }
 
+    /// <summary>
+    /// A project still builds after a class is ADDED to it, on every target with screens.
+    /// </summary>
+    /// <remarks>
+    /// Here rather than beside the other incremental tests, so it uses the one
+    /// <see cref="RunDotNet"/> this suite already has instead of inventing a second way to
+    /// run a build.
+    /// <para>
+    /// Every target, not just the one the feature was demonstrated on: composition differs
+    /// between them, and a rule right for WPF and wrong for Blazor is exactly the defect shape
+    /// this repository keeps producing. Note what this canNOT catch - a class with no seed
+    /// data, or an unregistered validator, compiles perfectly. Those are covered by
+    /// IncrementalScaffolderTests naming the three composition files directly.
+    /// </para>
+    /// </remarks>
+    [TestMethod]
+    [TestCategory("Integration")]
+    [DataRow("wpf")]
+    [DataRow("winforms")]
+    [DataRow("blazor")]
+    public void ProjectWithAnAddedClass_StillBuilds(string targetKey)
+    {
+        if ((targetKey == "wpf" || targetKey == "winforms") && !OperatingSystem.IsWindows())
+            Assert.Inconclusive($"The {targetKey} target needs the Windows desktop targeting pack.");
+
+        Assert.IsTrue(TargetScaffolders.TryResolve(targetKey, out var target));
+
+        // Short, because staging plus a project name plus Models\Whatever.cs blows MAX_PATH.
+        var workspace = Path.Combine(@"C:\cg-t", Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(workspace);
+
+        try
+        {
+            var first = new AppScaffolder().Scaffold(
+                ScaffoldRequest.For(AddModel("Customer"), "Sample", workspace, target));
+
+            Assert.IsTrue(first.Success, "scaffold failed: " + first.Message);
+
+            var added = AppScaffolding.Incremental.IncrementalScaffolder.Add(
+                ScaffoldRequest.For(
+                    AddModel("Customer", "Supplier"), "Sample", workspace, target),
+                ["Supplier"]);
+
+            Assert.IsTrue(added.Success, "add failed: " + added.Message);
+            Assert.IsNotEmpty(added.Written, "the add wrote nothing at all");
+
+            var (exit, output) = RunDotNet($"build \"{first.ProjectPath}\" -c Release");
+
+            Assert.AreEqual(
+                0, exit, $"{targetKey} did not build after a class was added:\n{output}");
+        }
+        finally
+        {
+            TryDeleteDirectory(workspace);
+        }
+    }
+
+    /// <summary>A model of plain masters, for the add tests.</summary>
+    private static CandidateDomainModel AddModel(params string[] names)
+    {
+        var model = new CandidateDomainModel();
+
+        foreach (var name in names)
+        {
+            var entity = new CandidateEntity { Name = name, Provenance = Provenance.Wiki };
+            entity.Fields.Add(new CandidateField
+            {
+                Name = "Title", Type = "string", Provenance = Provenance.Wiki
+            });
+            model.Entities.Add(entity);
+        }
+
+        return model;
+    }
+
     private static (int ExitCode, string Output) RunDotNet(string arguments)
     {
         var psi = new ProcessStartInfo("dotnet", arguments)
