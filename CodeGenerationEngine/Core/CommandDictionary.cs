@@ -590,7 +590,10 @@ public static class CommandDictionary
                         + "carries the step forward and an arrow back one stage, the next box "
                         + "lights up when that step is ready, and clicking a finished box goes back "
                         + "to change it — there are no Back and Next buttons. Generate and Run stay "
-                        + "disabled until the project has actually been written. A long step "
+                        + "disabled until the project has actually been written. Review states the "
+                        + "screen each class will get — master, transaction, or the transaction a "
+                        + "line is edited inside — and lets you change it before anything is "
+                        + "written. A long step "
                         + "reports its progress as it works, "
                         + "and changing the description or the data source asks first, because "
                         + "it discards the model that was discovered from the old one; Cancel asks "
@@ -663,7 +666,13 @@ public static class CommandDictionary
                         + "and which are masters (everything else); these name the ones it got "
                         + "wrong. Comma-joined with no spaces, or quoted. Naming a line entity "
                         + "as a master gives it a screen of its own instead of editing it "
-                        + "inside its parent.",
+                        + "inside its parent. Interactively you need name nothing: the workflow "
+                        + "page's Review stage states the screen each class will get, on that "
+                        + "class's own card, and lets you change it there - which is the first "
+                        + "point at which you know what the classes are called. A line names the "
+                        + "transaction it is edited inside and offers one button to pull it out. "
+                        + "Only the classes you move are recorded, so the run's command line "
+                        + "names those and no others.",
             Example = "build app: a shop transactions Order,Invoice masters Region"
         },
         // The rest of this category is only valid at the review-loop prompt that

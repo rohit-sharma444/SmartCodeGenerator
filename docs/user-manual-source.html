@@ -862,6 +862,30 @@ ever <em>suggests</em> — it never runs a command you did not confirm.</p>
    screen of its own instead of editing it inside its parent. Naming a class both ways is a
    contradiction, and master wins.</p>
 
+<h3>Correcting it in the browser</h3>
+
+<p>Typing names is the awkward way round, because both of those questions are asked before discovery
+   has run &mdash; you are naming classes you have not seen yet. On the workflow page you do not have
+   to. The <strong>Review</strong> stage states the screen each class will get on that class&#x27;s own
+   card, under its name:</p>
+
+<pre>Customer                 OrderLine
+why   remove             why   remove
+SCREEN [ master v ]      lines of Order   [ own screen ]</pre>
+
+<p>Change the drop-down and the split is recalculated in front of you &mdash; the summary beside it,
+   and the <em>same run as a command</em> line, both follow immediately. A line is not given the
+   drop-down, because asking for a line to be a transaction is an answer the classifier would drop:
+   it is told which transaction holds it, and offered the one correction that does work.</p>
+
+<p>Only the classes you actually <em>move</em> are recorded. Choosing the screen a class already had
+   leaves nothing behind, which is why the command line at the bottom of the page names the ones you
+   overruled and no others. The consequence is worth knowing: agreeing with the tool does not pin a
+   class, so if you then edit the model such that it classifies differently &mdash; taking the date
+   off a transaction, say &mdash; it will move. You will see it move.</p>
+
+<p>The question is not put at all for an application type that has no screens.</p>
+
 <h2>16. The business shell</h2>
 
 <p>This is what a generated application looks like when you say nothing about its shape. It is the
