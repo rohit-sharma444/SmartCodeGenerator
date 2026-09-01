@@ -615,10 +615,29 @@ public static class CommandDictionary
             Command = "build app: <description> from <format> <location>",
             Description = "Builds the model from existing data with no prompts when piped; "
                         + "interactively the file is already answered and the workflow page opens "
-                        + "on what is left. Formats: csv, "
-                        + "txt, json, excel (sql is not in this build yet). Add 'normalize' to "
-                        + "apply every normalization change the data needs.",
+                        + "on what is left. Formats: csv, txt, json, excel, sql. For sql the "
+                        + "location is a SQL Server connection string rather than a path. Add "
+                        + "'normalize' to apply every normalization change the data needs.",
             Example = "build app: order tracking from csv D:\\data\\orders.csv normalize"
+        },
+        new()
+        {
+            Category = "Build App",
+            Command = "build app: <description> from sql \"<connection>\" [tables <A,B>]",
+            Description = "Builds the model from a SQL Server database. Interactively the "
+                        + "Data stage lists the tables with their column and row counts and "
+                        + "you tick the ones you want; nothing is read until you take the "
+                        + "step, and every row of what you ticked is then read, with no cap - "
+                        + "which is why the counts are shown before you choose. 'tables "
+                        + "A,B,C' names them for a piped run, and naming none reads them all. "
+                        + "Column types come from the database instead of being inferred from "
+                        + "the text, and declared foreign keys become relationships rather "
+                        + "than being guessed from column names. A bigint column becomes int "
+                        + "and a uniqueidentifier becomes string; both are reported. Composite "
+                        + "foreign keys are skipped. Any password in the connection string is "
+                        + "masked wherever the run is echoed back, so the replay line needs "
+                        + "the password typed in again before it will run.",
+            Example = "build app: order tracking from sql \"Server=.;Database=Northwind;Trusted_Connection=True\" tables Customers,Orders"
         },
         new()
         {
