@@ -375,6 +375,52 @@ public class ReviewStageTests
         Assert.IsNotEmpty(rendered.FindAll("[data-entity=OrderLine] .screen button.own-screen"));
     }
 
+    /// <summary>
+    /// The edits are what a closed tab loses, and they do not go through Change() - the panel
+    /// calls ModelEditor directly and mutates the model in place. Asserted at the PANEL rather
+    /// than on the session, because a test on the session alone passes happily while the panel
+    /// bypasses it, which is the defect this exists to prevent.
+    /// </summary>
+    [TestMethod]
+    public void Every_edit_asks_the_session_to_save()
+    {
+        using var context = new BunitContext();
+        var rendered = Render(context, out var session);
+
+        var saves = 0;
+        session.Autosave = _ => saves++;
+
+        rendered.Find("[data-entity=Book] button.remove").Click();
+        Assert.IsGreaterThan(0, saves, "remove did not ask to be saved");
+
+        saves = 0;
+        rendered.Find("input.new-class").Change("Member");
+        rendered.Find("button.add-class").Click();
+        Assert.IsGreaterThan(0, saves, "add class did not ask to be saved");
+
+        saves = 0;
+        rendered.Find("button.promote").Click();
+        Assert.IsGreaterThan(0, saves, "promoting a suggestion did not ask to be saved");
+    }
+
+    [TestMethod]
+    public void Renaming_and_field_edits_ask_the_session_to_save()
+    {
+        using var context = new BunitContext();
+        var rendered = Render(context, out var session);
+
+        var saves = 0;
+        session.Autosave = _ => saves++;
+
+        rendered.Find("[data-entity=Book] input.field-name").Change("Isbn");
+        rendered.Find("[data-entity=Book] button.add-field").Click();
+        Assert.IsGreaterThan(0, saves, "add field did not ask to be saved");
+
+        saves = 0;
+        rendered.Find("[data-entity=Book] input.entity-name").Change("Volume");
+        Assert.IsGreaterThan(0, saves, "rename did not ask to be saved");
+    }
+
     private static IRenderedComponent<ReviewStage> Render(
         BunitContext context, out BuildSession session, StageNavigation? navigation = null)
     {

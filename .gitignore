@@ -48,6 +48,9 @@ Thumbs.db
 
 # Smart Code Generator
 .codegen_history
+# In-progress build state. The FOLDER is deliberately not ignored: .codegen/learned.json is
+# committed, so ignoring .codegen/ wholesale would untrack it.
+.codegen/build-in-progress.json
 .dd-cache/
 
 # Wikipedia dump and the store built from it (tens of GB; never commit)

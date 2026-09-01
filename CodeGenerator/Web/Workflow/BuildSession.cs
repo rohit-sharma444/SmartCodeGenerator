@@ -84,6 +84,43 @@ public sealed class BuildSession
     /// </remarks>
     public event Action? Changed;
 
+    /// <summary>
+    /// Invoked whenever this session has changed in a way worth persisting.
+    /// </summary>
+    /// <remarks>
+    /// A callback rather than a call to a store, for two reasons. This type is in
+    /// <c>Web.Workflow</c> and knows nothing about disk - the seam keeps it that way. And
+    /// every existing test constructs a session; null-by-default means none of them starts
+    /// writing files.
+    /// </remarks>
+    public Action<BuildSession>? Autosave { get; set; }
+
+    /// <summary>
+    /// Says that the model has been edited in place, so the session can be saved.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="Change"/> cannot see these. <c>ReviewStage</c> calls <c>ModelEditor</c>
+    /// directly - rename, remove, add field, promote - and every one of them mutates the
+    /// model object this session already holds. Without this method an autosave hooked to
+    /// answers alone would save every stage transition and lose every edit, which is
+    /// precisely the work worth keeping.
+    /// <para>
+    /// It deliberately does not raise <see cref="Changed"/>: the panel that made the edit has
+    /// already re-rendered, and the other tab is repainted by the edit's own broadcast.
+    /// </para>
+    /// </remarks>
+    public void ModelEdited() => Autosave?.Invoke(this);
+
+    /// <summary>
+    /// Invoked when this build is over for good - generated, or cancelled.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately NOT invoked by <see cref="Abandon"/>. A closed tab is the case a saved
+    /// snapshot exists for; clearing on abandon would delete the work at exactly the moment
+    /// it becomes worth keeping.
+    /// </remarks>
+    public Action<BuildSession>? OnFinished { get; set; }
+
     public string WorkspaceRoot { get; }
 
     public BuildStage Current { get; private set; }
@@ -460,6 +497,11 @@ public sealed class BuildSession
             if (invalidated == BuildStage.Generate)
                 Generated = null;
         }
+
+        // Here rather than in Change, which returns early while it is holding a pending
+        // discard - a snapshot taken then would record an answer this session has not
+        // accepted yet.
+        Autosave?.Invoke(this);
     }
 
     /// <summary>Marks the open node answered and opens the next one.</summary>
@@ -522,9 +564,15 @@ public sealed class BuildSession
         Phase = SessionPhase.Cancelled;
 
         Changed?.Invoke();
+        OnFinished?.Invoke(this);
     }
 
     /// <summary>The tab was closed. Distinct from <see cref="Cancel"/>: nothing was decided.</summary>
+    /// <remarks>
+    /// Deliberately does NOT invoke <see cref="OnFinished"/>, and its absence is the point:
+    /// a closed tab is what a saved snapshot exists for, so clearing here would delete the
+    /// work at the one moment it is worth keeping. Cancel and Complete both invoke it.
+    /// </remarks>
     public void Abandon()
     {
         Phase = SessionPhase.Abandoned;
@@ -547,6 +595,7 @@ public sealed class BuildSession
         Phase = SessionPhase.Generated;
 
         Changed?.Invoke();
+        OnFinished?.Invoke(this);
     }
 
     private void RequireRunning()
