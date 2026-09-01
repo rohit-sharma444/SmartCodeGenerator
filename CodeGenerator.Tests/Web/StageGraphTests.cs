@@ -98,7 +98,7 @@ public class StageGraphTests
         var opening = StageGraph.TabTitle(session);
 
         StringAssert.Contains(opening, $"of {StageGraph.Nodes.Count}");
-        StringAssert.Contains(opening, "App type");
+        StringAssert.Contains(opening, "Application Type");
         StringAssert.Contains(opening, "Build an application");
         StringAssert.Contains(opening, "2 of");
 

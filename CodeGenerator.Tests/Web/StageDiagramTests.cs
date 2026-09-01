@@ -314,7 +314,7 @@ public class StageDiagramTests
         var current = rendered.FindAll("[aria-current=step]");
 
         Assert.HasCount(1, current);
-        StringAssert.Contains(current[0].TextContent, "App type");
+        StringAssert.Contains(current[0].TextContent, "Application Type");
     }
 
     private static IRenderedComponent<StageDiagram> Render(

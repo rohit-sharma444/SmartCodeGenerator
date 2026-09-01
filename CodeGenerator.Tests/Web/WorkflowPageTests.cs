@@ -296,7 +296,7 @@ public class WorkflowPageTests
         var content = title.Instance.ChildContent;
 
         Assert.IsNotNull(content, "the page set a title with nothing in it");
-        StringAssert.Contains(context.Render(content).Markup, "App type");
+        StringAssert.Contains(context.Render(content).Markup, "Application Type");
     }
 
     /// <summary>A session parked on the review node, where the step forward is named.</summary>
@@ -319,10 +319,10 @@ public class WorkflowPageTests
         return session;
     }
 
-    /// <summary>The App type box, which is green and clickable because the fixture answered
+    /// <summary>The Application Type box, which is green and clickable because the fixture answered
     /// it.</summary>
     private static AngleSharp.Dom.IElement AppTypeBox(IRenderedComponent<BuildWorkflow> page)
-        => page.FindAll(".node-open").First(b => b.TextContent.Contains("App type"));
+        => page.FindAll(".node-open").First(b => b.TextContent.Contains("Application Type"));
 
     private static BunitContext PageFor(BuildSession session, out BuildSession registered)
     {

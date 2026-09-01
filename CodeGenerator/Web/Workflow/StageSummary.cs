@@ -9,7 +9,7 @@ namespace CodeGenerator.Web.Workflow;
 /// </summary>
 /// <remarks>
 /// The diagram is the summary of every decision as well as the navigation: a box that says only
-/// "App type" makes the user open it to remember what they chose, and going back to look is the
+/// "Application Type" makes the user open it to remember what they chose, and going back to look is the
 /// thing this feature exists to make cheap.
 /// <para>
 /// Pure, so every line of it is asserted directly rather than read off a rendered page.
