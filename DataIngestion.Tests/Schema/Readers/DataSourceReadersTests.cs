@@ -11,28 +11,42 @@ public class DataSourceReadersTests
     [InlineData(DataSourceKind.Txt)]
     [InlineData(DataSourceKind.Json)]
     [InlineData(DataSourceKind.Excel)]
+    [InlineData(DataSourceKind.Sql)]
     public void SupportedKinds_HaveAReader(DataSourceKind kind)
     {
         Assert.True(DataSourceReaders.TryCreate(kind, out var reader));
         Assert.NotNull(reader);
     }
 
-    /// <summary>SQL is the last kind with no reader.</summary>
+    /// <summary>
+    /// Every kind the prompt offers can now be read. This replaces a test asserting that
+    /// SQL could not be - the one thing the SQL Server branch existed to change - and is
+    /// written over the enum so a kind added without a reader fails here rather than at the
+    /// moment a user picks it.
+    /// </summary>
     [Fact]
-    public void SqlIsTheOnlyKindWithNoReader()
-        => Assert.False(DataSourceReaders.TryCreate(DataSourceKind.Sql, out _));
+    public void EveryDeclaredKindHasAReader()
+    {
+        foreach (var kind in Enum.GetValues<DataSourceKind>())
+            Assert.True(
+                DataSourceReaders.TryCreate(kind, out _),
+                $"{kind} is offered at the prompt but has no reader");
+    }
 
-    /// <summary>A refusal without an alternative leaves the user at a dead end, so the message
-    /// must name the formats that do work — Excel now among them.</summary>
+    /// <summary>
+    /// The message is unreachable now that every kind has a reader, but it must not lie if a
+    /// later kind is declared before its reader exists: it names what TryCreate can actually
+    /// build rather than a list written by hand, which is how it came to advertise csv, txt,
+    /// json and excel while sql sat beside them unread.
+    /// </summary>
     [Fact]
-    public void NotSupportedMessage_NamesTheWorkingFormats()
+    public void NotSupportedMessage_NamesTheFormatsThatActuallyWork()
     {
         var message = DataSourceReaders.NotSupportedMessage(DataSourceKind.Sql);
 
         Assert.Contains("csv", message);
-        Assert.Contains("txt", message);
-        Assert.Contains("json", message);
         Assert.Contains("excel", message);
+        Assert.Contains("sql", message);
     }
 
     /// <summary>Every kind is offered at the prompt, including the one with no reader.</summary>

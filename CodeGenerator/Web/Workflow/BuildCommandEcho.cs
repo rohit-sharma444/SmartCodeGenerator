@@ -1,4 +1,5 @@
 ﻿using AppScaffolding;
+using DataIngestion;
 
 namespace CodeGenerator.Web.Workflow;
 
@@ -30,7 +31,10 @@ internal static class BuildCommandEcho
         var line = $"build app: {session.Description.Trim()}";
 
         if (session.Source is { } source)
-            line += $" from {source.Kind.ToString().ToLowerInvariant()} \"{source.Location}\"";
+            // Redacted, because for SQL the location IS a connection string and this line is
+            // both shown on the review page and printed to the console when the run ends.
+            line += $" from {source.Kind.ToString().ToLowerInvariant()} "
+                  + $"\"{ConnectionSecret.Redact(source.Location)}\"";
 
         line += Options(session.Customization);
 

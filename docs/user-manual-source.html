@@ -312,11 +312,57 @@ build app from excel D:\data\shop.xlsx</pre>
 <tr><td><code>txt</code></td><td>Delimited text.</td></tr>
 <tr><td><code>json</code></td><td>An array of objects.</td></tr>
 <tr><td><code>excel</code></td><td>An <code>.xlsx</code> workbook. Each visible sheet becomes a class; hidden sheets are ignored.</td></tr>
-<tr><td><code>sql</code></td><td>Recognized but not supported in this build — the tool tells you so rather than failing quietly.</td></tr>
+<tr><td><code>sql</code></td><td>A SQL Server database. The location is a connection string, not a path &mdash; see <em>Building from a SQL Server database</em> below.</td></tr>
 </table>
 <div class="warn"><p><strong>The location is taken as the rest of the line</strong>, because Windows paths
 contain spaces. Anything you want to add after it must be one of the recognized options in chapter 7 —
 otherwise it becomes part of the path.</p></div>
+
+<h3>Building from a SQL Server database</h3>
+
+<p>The location for <code>sql</code> is a connection string rather than a path. Nothing is read
+   when you give it: the tool lists what the database holds and waits.</p>
+
+<pre>Northwind on .\SQLEXPRESS
+
+  [x] dbo.Customers        11 cols        91 rows
+  [x] dbo.Orders           14 cols       830 rows
+  [ ] dbo.Employees        18 cols         9 rows
+  [ ] dbo.__EFMigrations    2 cols         1 rows
+
+  2 of 4 tables, every row of each.</pre>
+
+<p>The counts are there because <strong>every row of every table you tick is read</strong>, with
+   no cap on the read &mdash; so the number beside each table is what makes ticking it an
+   informed choice rather than a guess. Ticking nothing reads them all, which is also what
+   leaving <code>tables</code> off a scripted line means.</p>
+
+<div class="note"><p>Reading and <em>seeding</em> are not the same limit. Every row is read, and
+   normalization looks at all of them; the rows written into the generated project as starting
+   data are capped per class, and the build says so out loud when it applies &mdash;
+   <code>Imported the first 1000 of 25069 rows from dbo.BulkDeals as seed data.</code> A table
+   of forty million rows is therefore a memory problem at the read, not a seeding one.</p></div>
+
+<p>A row count shown as <code>&mdash;</code> means the login could not read it. That needs the
+   <code>VIEW DATABASE STATE</code> permission; the table can still be read without it.</p>
+
+<p>Two things come across that a CSV export would have thrown away. <strong>Column types</strong>
+   are the database&#x27;s own, so none of the guessing described above happens on this path at
+   all. <strong>Foreign keys</strong> become relationships &mdash; read from the constraint that
+   enforces them, rather than inferred from a column being called <code>CustomerId</code>.</p>
+
+<p>The generator has five types, so two mappings lose something and say so: a <code>bigint</code>
+   becomes an <code>int</code>, and a <code>uniqueidentifier</code> becomes a <code>string</code>.
+   Composite foreign keys are skipped rather than half-emitted.</p>
+
+<p>For a scripted run, name the tables on the line. Naming none reads all of them:</p>
+
+<pre>build app: order tracking from sql &quot;Server=.;Database=Northwind;Trusted_Connection=True&quot; tables Customers,Orders</pre>
+
+<div class="note"><p>A password in the connection string is masked wherever the run is echoed
+   back &mdash; on the review page, in the console sign-off, and in the replay line &mdash; and
+   the connection string is never written to <code>.codegen/</code>. That means the replay line
+   needs the password typing in again before it will run.</p></div>
 
 <h3>Normalization</h3>
 <p>Real spreadsheets repeat themselves. The tool inspects what you gave it and reports what it found: a
@@ -1222,7 +1268,8 @@ own shows the shorter overview, and <code>help &lt;topic&gt;</code> shows one se
 <tr><td><code>build app: &lt;description&gt; [customization options]</code></td><td>Customizes the generated application. Options go LAST on the line, after any data source: company &quot;&lt;name&gt;&quot; sets the company (used in the project metadata, the window title and a copyright header); theme light|dark and accent #rrggbb colour the desktop front ends; icon &lt;path&gt; supplies a .ico or .png; title &quot;&lt;pattern&gt;&quot; overrides the window title, where {company} and {app} are substituted; namespace &lt;prefix&gt; puts the generated code under that namespace root (CodisLtd.Shop), leaving the project and assembly names alone; layout tabs|sidebar|master-detail|dashboard|business chooses the shape of the window (wpf and winforms only); business is the default and is the shell with a dashboard home, a rail grouped into masters and transactions, and an editor for every record; the web app is always that shell, which is why naming a layout does not apply to it. A layout you chose on an earlier interactive run is remembered in .codegen/app-profile.json and kept, default or not, so a run that is using a remembered one says so and names the file.</td><td><code>build app: a shop company &quot;Codis Ltd&quot; namespace CodisLtd theme dark</code></td></tr>
 <tr><td><code>build app: &lt;description&gt; [novalidation] [logging] [noseed] [nologin]</code></td><td>Chooses which optional layers are generated. &#x27;novalidation&#x27; omits the Validation folder and its per-model validators; &#x27;logging&#x27; adds a logging layer (off by default); &#x27;noseed&#x27; omits the sample seed rows (rows imported from your own data file are unaffected); &#x27;nologin&#x27; omits the login screen, the user accounts and the Users screen, which an app with screens is given by default. Interactively these are asked by the &#x27;Customize appearance and features?&#x27; step, which remembers your answers in .codegen/app-profile.json.</td><td><code>build app: a shop novalidation logging noseed nologin</code></td></tr>
 <tr><td><code>build app: &lt;description&gt; [transactions &lt;A,B&gt;] [masters &lt;A,B&gt;]</code></td><td>Overrules how the generator split your model into screens. It decides by itself which classes are transactions (a class with a foreign key AND either a date of its own or a transactional name) and which are masters (everything else); these name the ones it got wrong. Comma-joined with no spaces, or quoted. Naming a line entity as a master gives it a screen of its own instead of editing it inside its parent. Interactively you need name nothing: the workflow page&#x27;s Review stage states the screen each class will get, on that class&#x27;s own card, and lets you change it there - which is the first point at which you know what the classes are called. A line names the transaction it is edited inside and offers one button to pull it out. Only the classes you move are recorded, so the run&#x27;s command line names those and no others.</td><td><code>build app: a shop transactions Order,Invoice masters Region</code></td></tr>
-<tr><td><code>build app: &lt;description&gt; from &lt;format&gt; &lt;location&gt;</code></td><td>Builds the model from existing data with no prompts when piped; interactively the file is already answered and the workflow page opens on what is left. Formats: csv, txt, json, excel (sql is not in this build yet). Add &#x27;normalize&#x27; to apply every normalization change the data needs.</td><td><code>build app: order tracking from csv D:\data\orders.csv normalize</code></td></tr>
+<tr><td><code>build app: &lt;description&gt; from &lt;format&gt; &lt;location&gt;</code></td><td>Builds the model from existing data with no prompts when piped; interactively the file is already answered and the workflow page opens on what is left. Formats: csv, txt, json, excel, sql. For sql the location is a SQL Server connection string rather than a path. Add &#x27;normalize&#x27; to apply every normalization change the data needs.</td><td><code>build app: order tracking from csv D:\data\orders.csv normalize</code></td></tr>
+<tr><td><code>build app: &lt;description&gt; from sql &quot;&lt;connection&gt;&quot; [tables &lt;A,B&gt;]</code></td><td>Builds the model from a SQL Server database. Interactively the Data stage lists the tables with their column and row counts and you tick the ones you want; nothing is read until you take the step, and every row of what you ticked is then read, which is why the counts are shown before you choose - the rows SEEDED into the generated project are capped per class and the build says so. &#x27;tables A,B,C&#x27; names them for a piped run, and naming none reads them all. Column types come from the database instead of being inferred from the text, and declared foreign keys become relationships rather than being guessed from column names. A bigint column becomes int and a uniqueidentifier becomes string; both are reported. Composite foreign keys are skipped. Any password in the connection string is masked wherever the run is echoed back, so the replay line needs the password typed in again before it will run.</td><td><code>build app: a shop from sql &quot;Server=.;Database=Shop&quot; tables Customer</code></td></tr>
 <tr><td><code>cancel</code></td><td>Review loop: abandons the model without generating anything. Alias: c.</td><td><code>cancel</code></td></tr>
 <tr><td><code>field &lt;class&gt; &lt;name&gt;[:&lt;type&gt;]</code></td><td>Review loop: adds a field to a class. Omit the type to have it inferred; explicit types are string, int, decimal, bool or DateTime.</td><td><code>field Book Title:string</code></td></tr>
 <tr><td><code>remove &lt;name&gt;</code></td><td>Review loop: removes a class from the candidate model.</td><td><code>remove Reservation</code></td></tr>

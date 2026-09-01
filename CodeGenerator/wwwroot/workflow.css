@@ -570,3 +570,13 @@ body {
  * that is already on screen. A browser too old for `:has` drops this rule and gets the bar, which
  * is the behaviour without it rather than a broken page. */
 body:has(.finished) #components-reconnect-modal { display: none; }
+
+/* The table picker. Counts are right-aligned because they are read as a column of magnitudes -
+   which table is the big one - rather than as labels. Every row of a ticked table is read, so
+   that column is the one thing making the choice informed. */
+.tables { border-collapse: collapse; margin: 0.5rem 0; font-size: 0.9em; }
+.tables td { padding: 0.15rem 0.6rem 0.15rem 0; }
+.tables .table-name { font-family: ui-monospace, Consolas, monospace; }
+.tables .cols, .tables .rows { text-align: right; color: var(--pending); }
+
+.picked { font-style: italic; margin: 0.25rem 0 0; }

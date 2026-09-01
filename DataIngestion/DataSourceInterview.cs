@@ -165,7 +165,66 @@ public static class DataSourceInterview
         }
     }
 
+    /// <summary>
+    /// Where the data is. A file for every kind but SQL, whose location is a connection
+    /// string.
+    /// </summary>
+    /// <remarks>
+    /// The split exists because this asked for a "SQL file path" and then refused anything
+    /// File.Exists could not find - so the console interview could offer SQL and never
+    /// accept it. The two branches share the cancel and the re-ask; nothing else about them
+    /// is the same, since a connection string cannot be checked without opening it.
+    /// </remarks>
     private static InterviewOutcome ResolveLocation(
+        DataSourceKind kind, TextReader reader, TextWriter writer)
+        => kind == DataSourceKind.Sql
+            ? ResolveConnection(reader, writer)
+            : ResolveFile(kind, reader, writer);
+
+    /// <summary>
+    /// The connection string, taken as typed.
+    /// </summary>
+    /// <remarks>
+    /// Not validated here beyond being non-empty: the only way to know a connection string
+    /// works is to open it, and the discovery step already reports what the server said in
+    /// terms far better than anything invented at this prompt.
+    /// <para>
+    /// No table is named, which means every table is read. The console interview asks its
+    /// questions before anything has been read, so there is no list to choose from yet - the
+    /// browser workflow is where tables are picked, and a scripted run names them with
+    /// <c>tables A,B,C</c>.
+    /// </para>
+    /// </remarks>
+    private static InterviewOutcome ResolveConnection(TextReader reader, TextWriter writer)
+    {
+        while (true)
+        {
+            writer.Write("SQL Server connection string (c to cancel): ");
+            var line = reader.ReadLine();
+
+            if (line is null)
+                return Cancelled;
+
+            var text = line.Trim();
+
+            if (IsCancel(text))
+                return Cancelled;
+
+            if (text.Length == 0)
+                continue;
+
+            var connection = Unquote(text);
+
+            return new InterviewOutcome(
+                InterviewDecision.Source,
+                new DataSourceSpec(
+                    DataSourceKind.Sql,
+                    connection,
+                    SqlConnectionInfo.DatabaseOf(connection)));
+        }
+    }
+
+    private static InterviewOutcome ResolveFile(
         DataSourceKind kind, TextReader reader, TextWriter writer)
     {
         while (true)
@@ -184,13 +243,10 @@ public static class DataSourceInterview
             if (text.Length == 0)
                 continue;
 
-            // A path pasted from Explorer arrives quoted.
-            var path = text.Length >= 2 && text[0] == '"' && text[^1] == '"'
-                ? text[1..^1]
-                : text;
+            var path = Unquote(text);
 
             // A mistyped path is the likeliest thing to go wrong here, so re-ask rather than
-            // abort — the same way ResolveTarget re-asks on an unknown target key.
+            // abort - the same way ResolveTarget re-asks on an unknown target key.
             if (!File.Exists(path))
             {
                 writer.WriteLine($"  No file at {path}.");
@@ -201,6 +257,13 @@ public static class DataSourceInterview
                 InterviewDecision.Source, new DataSourceSpec(kind, path));
         }
     }
+
+    /// <summary>A value pasted from Explorer, or a connection string typed with quotes
+    /// around it, arrives quoted.</summary>
+    private static string Unquote(string text)
+        => text.Length >= 2 && text[0] == '"' && text[^1] == '"'
+            ? text[1..^1]
+            : text;
 
     private static bool IsCancel(string text)
         => string.Equals(text, "c", StringComparison.OrdinalIgnoreCase)

@@ -68,10 +68,16 @@ public class ManualAppendixDocTests
 
         foreach (var command in commands)
         {
+            // All five characters CommandDictionary.Html escapes, not just the brackets. It
+            // mirrored three of them until a catalog command carried a double quote - the SQL
+            // form, build app: ... from sql "<connection>" - at which point this test failed on
+            // a row that was perfectly correct.
             var expected = command.Command
                 .Replace("&", "&amp;", StringComparison.Ordinal)
                 .Replace("<", "&lt;", StringComparison.Ordinal)
-                .Replace(">", "&gt;", StringComparison.Ordinal);
+                .Replace(">", "&gt;", StringComparison.Ordinal)
+                .Replace("\"", "&quot;", StringComparison.Ordinal)
+                .Replace("'", "&#x27;", StringComparison.Ordinal);
 
             StringAssert.Contains(html, expected, $"{command.Command} is missing from the appendix");
         }

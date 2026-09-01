@@ -1,6 +1,7 @@
 @using CodeGenerator.Web.Workflow
 @using DataIngestion
 @using DataIngestion.Schema.Readers
+@using DataIngestion.Schema.Readers.Sql
 @using Microsoft.AspNetCore.Components.Forms
 
 <p>Is there data to read, or should the domain be discovered from the web?</p>
@@ -30,22 +31,64 @@
             </select>
         </label>
 
-        @* A path box rather than only a file picker: the server IS this machine, and a path is
-           what DataSourceSpec.Location holds. The drop zone below is the convenience. *@
-        <label>
-            Path
-            <input class="path answer" value="@_path" @onchange="PathGiven" />
-        </label>
-
-        @if (_peek is not null)
+        @if (IsSql)
         {
-            @* Said before the click, not after: a wrong file costs a discovery run to find out
-               about otherwise. *@
-            <p class="peek" aria-live="polite">@_peek</p>
-        }
+            @* A connection string, not a path - and nothing is read until the tables are
+               listed and one is ticked. *@
+            <label>
+                Connection
+                <input class="connection answer" value="@_connection"
+                       @onchange="e => _connection = e.Value?.ToString() ?? string.Empty" />
+            </label>
 
-        <InputFile OnChange="Upload" class="drop answer" />
-        <span class="hint">…or drop a file here to copy it into the workspace cache.</span>
+            <button type="button" class="connect" @onclick="Connect">connect</button>
+
+            @if (_tables.Count > 0)
+            {
+                @* Counts before the choice, not after. Every row of what is ticked is read,
+                   with no cap, so the number beside each table is what makes ticking it an
+                   informed decision rather than a guess. *@
+                <table class="tables">
+                    <tbody>
+                    @foreach (var table in _tables)
+                    {
+                        <tr>
+                            <td>
+                                <input type="checkbox" class="table-pick"
+                                       checked="@_picked.Contains(table.Name)"
+                                       @onchange="e => Pick(table.Name, (bool?)e.Value ?? false)" />
+                            </td>
+                            <td class="table-name">@($"{table.Schema}.{table.Name}")</td>
+                            <td class="cols">@table.Columns cols</td>
+                            <td class="rows">@RowCount(table.Rows) rows</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+
+                <p class="picked" aria-live="polite">@Picked()</p>
+            }
+        }
+        else
+        {
+            @* A path box rather than only a file picker: the server IS this machine, and a
+               path is what DataSourceSpec.Location holds. The drop zone below is the
+               convenience. *@
+            <label>
+                Path
+                <input class="path answer" value="@_path" @onchange="PathGiven" />
+            </label>
+
+            @if (_peek is not null)
+            {
+                @* Said before the click, not after: a wrong file costs a discovery run to
+                   find out about otherwise. *@
+                <p class="peek" aria-live="polite">@_peek</p>
+            }
+
+            <InputFile OnChange="Upload" class="drop answer" />
+            <span class="hint">…or drop a file here to copy it into the workspace cache.</span>
+        }
     </div>
 }
 
@@ -72,6 +115,23 @@
     private string? _error;
     private string? _peek;
 
+    private string _connection = string.Empty;
+    private IReadOnlyList<SqlTableInfo> _tables = [];
+    private readonly HashSet<string> _picked = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Where the table list comes from. A test supplies a database; a real run gets SqlClient.
+    /// </summary>
+    /// <remarks>
+    /// A parameter with a default rather than an injected service, so nothing has to be
+    /// registered and every existing render of this panel keeps working untouched. Constructing
+    /// the adapter costs nothing - it opens no connection until a method on it is called.
+    /// </remarks>
+    [Parameter] public ISqlSchemaSource SchemaSource { get; set; } = new SqlClientSchemaSource();
+
+    private bool IsSql
+        => string.Equals(_format, "sql", StringComparison.OrdinalIgnoreCase);
+
     protected override void OnInitialized()
     {
         // Offered unconditionally: a path that does not exist is reported after the click, which
@@ -82,8 +142,21 @@
             return;
 
         _hasFile = true;
-        _path = Session.Source.Location;
         _format = Session.Source.Kind.ToString().ToLowerInvariant();
+
+        if (Session.Source.Kind == DataSourceKind.Sql)
+        {
+            // Coming back to this node holds the connection and the tables that were ticked,
+            // but not the listing - re-reading it would open a connection nobody asked for.
+            _connection = Session.Source.Location;
+
+            foreach (var name in Session.Source.SqlTables ?? [])
+                _picked.Add(name);
+
+            return;
+        }
+
+        _path = Session.Source.Location;
 
         // Coming back to this node shows what the answer it holds actually contains, rather than
         // only the path it was given.
@@ -126,6 +199,49 @@
         if (DiscoveryStep.TryRead(new DataSourceSpec(kind, path), out var read, out _))
             _peek = DataPeek.Describe(read);
     }
+
+    /// <summary>
+    /// Lists what the database holds. Reads no data.
+    /// </summary>
+    /// <remarks>
+    /// Whatever the server said is what the user is shown. A driver naming a bad password or
+    /// an unreachable host says it far better than anything invented here, and the stage
+    /// stays usable so the connection can be corrected in place.
+    /// </remarks>
+    private void Connect()
+    {
+        _error = null;
+        _tables = [];
+        _picked.Clear();
+
+        try
+        {
+            _tables = new SqlServerCatalog(SchemaSource).List(_connection);
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private void Pick(string name, bool on)
+    {
+        if (on)
+            _picked.Add(name);
+        else
+            _picked.Remove(name);
+    }
+
+    /// <summary>How many of the listed tables are ticked, and what that will cost.</summary>
+    private string Picked()
+        => _picked.Count == 0
+            ? $"Nothing ticked — all {_tables.Count} tables will be read."
+            : $"{_picked.Count} of {_tables.Count} tables, every row of each.";
+
+    /// <summary>An unreadable count is an em dash, not a zero: "I do not know" and "there is
+    /// nothing in it" are different answers.</summary>
+    private static string RowCount(long? rows)
+        => rows is null ? "—" : rows.Value.ToString("N0");
 
     /// <summary>A path pasted from Explorer arrives quoted, exactly as it does in the console.</summary>
     private static string Unquoted(string value)
@@ -205,6 +321,9 @@
             return Task.FromResult(Session.SetNoData());
         }
 
+        if (IsSql)
+            return Task.FromResult(TakeConnection());
+
         var path = Unquoted(_path);
 
         if (!File.Exists(path))
@@ -226,6 +345,32 @@
         }
 
         return Task.FromResult(Session.SetSource(new DataSourceSpec(kind, path)));
+    }
+
+    /// <summary>
+    /// Records the connection and the tables ticked.
+    /// </summary>
+    /// <remarks>
+    /// Ticking nothing reads every table, which is the same meaning <c>tables A,B,C</c> has
+    /// on the command line when it is left off - one rule, not two. Not validated beyond
+    /// being non-empty: the only way to know a connection string works is to open it, and
+    /// the discover step reports what the server said.
+    /// </remarks>
+    private bool TakeConnection()
+    {
+        var connection = Unquoted(_connection);
+
+        if (connection.Length == 0)
+        {
+            _error = "Give a SQL Server connection string, or choose another format.";
+            return false;
+        }
+
+        return Session.SetSource(new DataSourceSpec(
+            DataSourceKind.Sql,
+            connection,
+            SqlConnectionInfo.DatabaseOf(connection),
+            _picked.Count == 0 ? null : [.. _picked]));
     }
 
 }

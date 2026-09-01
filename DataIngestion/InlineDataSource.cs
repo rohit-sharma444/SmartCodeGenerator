@@ -21,6 +21,10 @@ public static class InlineDataSource
     /// scripted run reports the findings and changes nothing, so scripts stay deterministic.</summary>
     public const string NormalizeKeyword = "normalize";
 
+    /// <summary>Names the SQL tables to read, comma-joined. Only meaningful for the sql
+    /// kind: a path may legitimately contain the word.</summary>
+    public const string TablesKeyword = "tables";
+
     public static InlineBuildRequest Parse(string tail)
     {
         var text = (tail ?? string.Empty).Trim();
@@ -55,6 +59,16 @@ public static class InlineDataSource
                 location = location[..^NormalizeKeyword.Length].Trim();
             }
 
+            // AFTER normalize and before the location is settled. Both are trailing
+            // keywords on a location that is the REST OF THE LINE, and normalize is the
+            // outermost - taking tables first swallows it, turning `tables Orders normalize`
+            // into a table called "Orders normalize" and losing the flag in silence.
+            // Only for sql: "tables" is an ordinary English word and a path may contain it.
+            IReadOnlyList<string>? sqlTables = null;
+
+            if (kind == DataSourceKind.Sql)
+                (location, sqlTables) = SplitTables(location);
+
             location = Unquote(location);
 
             // `from csv` with nothing after it names no file. Returning a spec with an empty
@@ -63,10 +77,43 @@ public static class InlineDataSource
                 continue;
 
             return new InlineBuildRequest(
-                description, new DataSourceSpec(kind, location), normalize);
+                description,
+                new DataSourceSpec(
+                    kind,
+                    location,
+                    kind == DataSourceKind.Sql ? SqlConnectionInfo.DatabaseOf(location) : null,
+                    sqlTables),
+                normalize);
         }
 
         return new InlineBuildRequest(text, null, false);
+    }
+
+    /// <summary>
+    /// Splits a trailing <c>tables A,B,C</c> off a location.
+    /// </summary>
+    /// <remarks>
+    /// Searched from the RIGHT, so a connection string that happens to contain the word - in
+    /// a password, or an Application Name - cannot be mistaken for the keyword. Returns the
+    /// location unchanged when there is no such tail, which is what a run naming no tables
+    /// looks like.
+    /// </remarks>
+    private static (string Location, IReadOnlyList<string>? Tables) SplitTables(string location)
+    {
+        var marker = location.LastIndexOf(
+            " " + TablesKeyword + " ", StringComparison.OrdinalIgnoreCase);
+
+        if (marker < 0)
+            return (location, null);
+
+        var names = Unquote(location[(marker + TablesKeyword.Length + 2)..].Trim());
+
+        var split = names.Split(
+            ',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        return split.Length == 0
+            ? (location, null)
+            : (location[..marker].Trim(), split);
     }
 
     private static string Unquote(string text)

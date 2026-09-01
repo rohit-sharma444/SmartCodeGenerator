@@ -163,4 +163,29 @@ public class BuildCommandEchoTests
 
     private static BuildSession Session(string description)
         => new(description, @"C:\ws", AppCustomization.Default);
+
+    /// <summary>
+    /// The echo prints the location, and for SQL the location IS the connection string. This line
+    /// is shown on the review page AND printed to the console when the command finishes, so
+    /// without redaction an ordinary SQL-auth password lands in the terminal scrollback and in
+    /// anything the user pastes the line into.
+    /// </summary>
+    [TestMethod]
+    public void A_sql_password_is_not_echoed()
+    {
+        var session = new BuildSession(
+            "a shop",
+            Path.GetTempPath(),
+            AppCustomization.Default,
+            new DataSourceSpec(
+                DataSourceKind.Sql,
+                "Server=.;Database=Northwind;User ID=sa;Password=hunter2",
+                SqlDatabase: "Northwind"));
+
+        var echo = string.Join(Environment.NewLine, BuildCommandEcho.For(session));
+
+        StringAssert.Contains(echo, "Password=***");
+        StringAssert.Contains(echo, "Database=Northwind");
+        Assert.DoesNotContain("hunter2", echo, "the password reached the echo");
+    }
 }

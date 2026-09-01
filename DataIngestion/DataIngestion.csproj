@@ -5,4 +5,11 @@
     <ProjectReference Include="..\AppScaffolding\AppScaffolding.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- The only third-party dependency in this project. TDS is a network protocol, so
+         there is no hand-written route the way ExcelReader avoided a package by parsing a
+         zip. Confined to Schema/Readers/Sql/SqlClientSchemaSource.cs. -->
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="6.0.2" />
+  </ItemGroup>
+
 </Project>

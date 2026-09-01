@@ -22,6 +22,9 @@ public sealed class TabularTable
     /// <summary>One entry per row, each as long as <see cref="Columns"/>.</summary>
     public List<string?[]> Rows { get; } = new();
 
+    /// <summary>The foreign keys the source declared, or empty when it declares none.</summary>
+    public List<TabularForeignKey> ForeignKeys { get; } = new();
+
     /// <summary>What to call the source in a message to the user ("Orders.csv"). Falls back to
     /// <see cref="Name"/>.</summary>
     public string? SourceLabel { get; init; }

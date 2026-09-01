@@ -51,6 +51,9 @@ public static class DataSourceReaders
             case DataSourceKind.Excel:
                 reader = new ExcelReader();
                 return true;
+            case DataSourceKind.Sql:
+                reader = new Sql.SqlServerReader(new Sql.SqlClientSchemaSource());
+                return true;
             default:
                 reader = null!;
                 return false;
@@ -58,8 +61,19 @@ public static class DataSourceReaders
     }
 
     /// <summary>What to tell a user who picked a kind this build cannot read.</summary>
+    /// <remarks>
+    /// Every declared kind has a reader as of the SQL Server branch, so nothing reaches this
+    /// today. It stays because <see cref="TryCreate"/> is the one place that knows, and a
+    /// kind added to <see cref="DataSourceKind"/> before its reader needs something to say.
+    /// <para>
+    /// The working formats are ASKED FOR rather than listed here. The hand-written list this
+    /// replaces went stale the moment Excel shipped, and again the moment SQL did.
+    /// </para>
+    /// </remarks>
     public static string NotSupportedMessage(DataSourceKind kind)
-        => $"{kind} is not in this build yet — it lands in a follow-on branch. "
-         + "Working formats: csv, txt, json, excel. Export the tables you want as CSV and "
-         + "choose csv, or put them in a workbook and choose excel.";
+        => $"{kind} is not in this build yet. Working formats: "
+         + string.Join(
+               ", ",
+               Keys.Where(key => TryParseKind(key, out var parsed) && TryCreate(parsed, out _)))
+         + ".";
 }

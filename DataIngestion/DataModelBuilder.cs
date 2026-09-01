@@ -82,6 +82,9 @@ public static class DataModelBuilder
                 $"{table.Columns.Count} column(s) in {table.Label}");
         }
 
+        // Declared first, so the convention pass below sees what is already there. These
+        // are read from the constraint a database enforces; that one infers from a name.
+        AddDeclaredRelationships(model, tables, entityNames);
         AddRelationships(model, entityNames);
         RecordNormalization(model, applied);
         return model;
@@ -305,6 +308,73 @@ public static class DataModelBuilder
     }
 
     /// <summary>
+    /// Turns the foreign keys a source DECLARED into relationships, before the
+    /// <c>&lt;Target&gt;Id</c> convention gets a look at the same columns.
+    /// </summary>
+    /// <remarks>
+    /// A foreign key's target is a RAW table name, and entity names have been through
+    /// <see cref="NameNormalizer.ToUserTypedEntityName"/> - so it is normalized the same way
+    /// before being matched. Comparing the two directly matches nothing, and loses every
+    /// relationship without a word.
+    /// <para>
+    /// Same two refusals as <see cref="AddRelationships"/>, for the same reasons: a target
+    /// that is not an entity this run produced would become a navigation property typed as a
+    /// class that is never generated, and a self-reference has no second class to point at.
+    /// </para>
+    /// </remarks>
+    private static void AddDeclaredRelationships(
+        CandidateDomainModel model,
+        IReadOnlyList<TabularTable> tables,
+        HashSet<string> entityNames)
+    {
+        foreach (var table in tables)
+        {
+            if (table.ForeignKeys.Count == 0)
+                continue;
+
+            var entityName = NameNormalizer.ToUserTypedEntityName(table.Name);
+
+            var entity = model.Entities.FirstOrDefault(
+                e => string.Equals(e.Name, entityName, StringComparison.OrdinalIgnoreCase));
+
+            if (entity is null)
+                continue;
+
+            foreach (var key in table.ForeignKeys)
+            {
+                var target = NameNormalizer.ToUserTypedEntityName(key.TargetTable);
+
+                if (target.Length == 0
+                    || !entityNames.Contains(target)
+                    || string.Equals(target, entity.Name, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                if (HasRelationshipTo(entity, target))
+                    continue;
+
+                entity.Relationships.Add(new CandidateRelationship
+                {
+                    Target = target,
+                    Role = ReferencesRole
+                });
+            }
+        }
+    }
+
+    /// <summary>
+    /// Whether <paramref name="entity"/> already references <paramref name="target"/>.
+    /// </summary>
+    /// <remarks>
+    /// What stops a declared key and the convention emitting the same relationship twice.
+    /// Twice would have <c>DomainModelMapper.AddNavigationProperties</c> write one navigation
+    /// property twice, and a SQL foreign key on a column called <c>CustomerId</c> is seen by
+    /// both passes by construction.
+    /// </remarks>
+    private static bool HasRelationshipTo(CandidateEntity entity, string target)
+        => entity.Relationships.Any(
+            r => string.Equals(r.Target, target, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
     /// Pairs each <c>&lt;Target&gt;Id</c> field with a relationship to that target, but only when
     /// the target is an entity this run produced. Without that check a column named
     /// <c>LegacyId</c> would emit a navigation property typed as a class that is never generated,
@@ -326,6 +396,9 @@ public static class DataModelBuilder
                 if (target.Length == 0
                     || !entityNames.Contains(target)
                     || string.Equals(target, entity.Name, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                if (HasRelationshipTo(entity, target))
                     continue;
 
                 entity.Relationships.Add(new CandidateRelationship
