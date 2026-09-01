@@ -111,6 +111,16 @@ public sealed class BuildSession
     /// </remarks>
     public void ModelEdited() => Autosave?.Invoke(this);
 
+    /// <summary>
+    /// Invoked when this build is over for good - generated, or cancelled.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately NOT invoked by <see cref="Abandon"/>. A closed tab is the case a saved
+    /// snapshot exists for; clearing on abandon would delete the work at exactly the moment
+    /// it becomes worth keeping.
+    /// </remarks>
+    public Action<BuildSession>? OnFinished { get; set; }
+
     public string WorkspaceRoot { get; }
 
     public BuildStage Current { get; private set; }
@@ -554,9 +564,15 @@ public sealed class BuildSession
         Phase = SessionPhase.Cancelled;
 
         Changed?.Invoke();
+        OnFinished?.Invoke(this);
     }
 
     /// <summary>The tab was closed. Distinct from <see cref="Cancel"/>: nothing was decided.</summary>
+    /// <remarks>
+    /// Deliberately does NOT invoke <see cref="OnFinished"/>, and its absence is the point:
+    /// a closed tab is what a saved snapshot exists for, so clearing here would delete the
+    /// work at the one moment it is worth keeping. Cancel and Complete both invoke it.
+    /// </remarks>
     public void Abandon()
     {
         Phase = SessionPhase.Abandoned;
@@ -579,6 +595,7 @@ public sealed class BuildSession
         Phase = SessionPhase.Generated;
 
         Changed?.Invoke();
+        OnFinished?.Invoke(this);
     }
 
     private void RequireRunning()

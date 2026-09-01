@@ -1,5 +1,6 @@
 using AppScaffolding;
 using AppScaffolding.Targets;
+using CodeGenerator.Web;
 using CodeGenerator.Web.Workflow;
 using DomainDiscovery.Model;
 
@@ -70,6 +71,45 @@ public class BuildSessionAutosaveTests
         session.SetDescription("a library");
         session.SetModel(new CandidateDomainModel());
         session.ModelEdited();
+    }
+
+    [TestMethod]
+    public void A_completed_build_is_not_offered_again()
+    {
+        var finished = 0;
+        var session = New();
+        session.OnFinished = _ => finished++;
+
+        session.Complete(new BuildOutcome(SessionPhase.Generated, []));
+
+        Assert.AreEqual(1, finished);
+    }
+
+    [TestMethod]
+    public void A_cancelled_build_is_not_offered_again()
+    {
+        var finished = 0;
+        var session = New();
+        session.OnFinished = _ => finished++;
+
+        session.Cancel();
+
+        Assert.AreEqual(1, finished);
+    }
+
+    /// <summary>
+    /// The closed tab, and the entire point of the feature. Abandoning must NOT clear.
+    /// </summary>
+    [TestMethod]
+    public void An_abandoned_build_is_kept()
+    {
+        var finished = 0;
+        var session = New();
+        session.OnFinished = _ => finished++;
+
+        session.Abandon();
+
+        Assert.AreEqual(0, finished);
     }
 
     private static BuildSession New()
