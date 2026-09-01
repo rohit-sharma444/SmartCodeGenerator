@@ -1,3 +1,5 @@
+using AppScaffolding.Incremental;
+
 namespace CodeGenerator.App;
 
 /// <summary>What to do about a project folder that already holds a generated project.</summary>
@@ -10,7 +12,13 @@ internal enum OverwriteAction
     Rename,
 
     /// <summary>Write nothing. The reviewed model survives, so the loop can be tried again.</summary>
-    Cancel
+    Cancel,
+
+    /// <summary>
+    /// Write only the classes this model has that the app does not, plus whatever has to
+    /// change for them to appear. Every other generated file is left as it is.
+    /// </summary>
+    Add
 }
 
 /// <summary>
@@ -42,6 +50,7 @@ internal static class OverwritePrompt
 
         return text.ToLowerInvariant() switch
         {
+            "a" or "add" => OverwriteAction.Add,
             "o" or "overwrite" => OverwriteAction.Overwrite,
             "r" or "rename" => OverwriteAction.Rename,
             "c" or "cancel" => OverwriteAction.Cancel,
@@ -67,4 +76,59 @@ internal static class OverwritePrompt
         string.Empty,
         "  [o]verwrite   [r]ename   [c]ancel   (Enter cancels)"
     ];
+
+    /// <summary>
+    /// As <see cref="Warning(string)"/>, also saying what this model has that the app does
+    /// not — and offering to write just that.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="OverwriteAction.Add"/> appears only when something is new. An answer that
+    /// would do nothing must not be on the menu; offering it would be a lie about what the
+    /// tool can do.
+    /// <para>
+    /// A CHANGED class is named rather than glossed. Adding will not reconcile it and
+    /// overwriting would, so someone choosing "add" has to be able to see that Customer stays
+    /// as it is.
+    /// </para>
+    /// </remarks>
+    public static IReadOnlyList<string> Warning(
+        string projectFolder, IReadOnlyList<ClassDelta> delta)
+    {
+        var onDisk = delta.Count(d => d.Fate != ClassFate.New);
+        var added = delta.Count(d => d.Fate == ClassFate.New);
+        var changed = delta.Where(d => d.Fate == ClassFate.Changed).Select(d => d.Name).ToList();
+
+        var lines = new List<string>
+        {
+            string.Empty,
+            $"{projectFolder} already holds a generated project.",
+            $"It has {onDisk} class(es); this model has {delta.Count}, of which {added} "
+            + (added == 1 ? "is new." : "are new."),
+        };
+
+        if (changed.Count > 0)
+        {
+            lines.Add(
+                $"{Classes(changed.Count)} differs: {string.Join(", ", changed)}. "
+                + "Adding leaves them as they are.");
+        }
+
+        lines.AddRange(
+        [
+            string.Empty,
+            "Regenerating overwrites its generated sources — Models, Data, Views and the",
+            "*.Generated.cs validator halves. Your .Custom.cs rules, the project file and",
+            "anything you added yourself are kept.",
+            string.Empty,
+            added > 0
+                ? $"  [a]dd the {added} new   [o]verwrite all   [r]ename   [c]ancel   (Enter cancels)"
+                : "  [o]verwrite   [r]ename   [c]ancel   (Enter cancels)",
+        ]);
+
+        return lines;
+    }
+
+    /// <summary>"1 class", "2 classes" — a line reading "1 classes" about a user's own model
+    /// is the kind of detail that makes output look machine-made.</summary>
+    private static string Classes(int n) => n == 1 ? "1 class" : $"{n} classes";
 }
