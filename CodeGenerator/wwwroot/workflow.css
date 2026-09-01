@@ -7,6 +7,18 @@
     --active: #1f6feb;
     --done: #1a7f37;
     --failed: #b3261e;
+
+    /* Depth, as three steps rather than shadows scattered through the file. The rail reads
+       as "these happened, this is happening, those have not" by ELEVATION as well as by
+       colour - a third channel beside the border and the mark, which the mark already exists
+       to provide for anyone who cannot see the colour. */
+    --lift-flat: 0 1px 3px rgba(28, 28, 28, 0.13), 0 1px 2px rgba(28, 28, 28, 0.09);
+    --lift-raised: 0 5px 12px rgba(28, 28, 28, 0.14), 0 2px 4px rgba(28, 28, 28, 0.10);
+    --lift-active: 0 0 0 3px rgb(31 111 235 / 15%), 0 14px 30px rgba(31, 111, 235, 0.24), 0 4px 10px rgba(28, 28, 28, 0.14);
+
+    /* A stage still to come is RECESSED rather than merely unlifted, which is what widens the
+       range enough for the depth to be read at a glance: sunk, flat, raised, floating. */
+    --lift-sunk: inset 0 1px 3px rgba(28, 28, 28, 0.07);
 }
 
 body {
@@ -17,48 +29,144 @@ body {
     font: 15px/1.5 "Segoe UI", system-ui, sans-serif;
 }
 
-.workflow { max-width: 1100px; margin: 0 auto; }
+/* The rail and the panel. A FIXED rail, so the panel's left edge is constant across all eight
+   stages - it used to shift every time the horizontal diagram rewrapped, which is what made
+   the page feel unaligned. align-items: start so the rail does not stretch to the height of a
+   long panel. */
+.workflow {
+    max-width: 1180px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 190px minmax(0, 1fr);
+    align-items: start;
+    gap: 1.75rem;
+}
 
-/* One row of seven while there is room for one, so the pipeline reads as a pipeline and the
-   connectors join nodes that are actually side by side. */
+/* The heading spans both columns, or it would sit in the rail. */
+.workflow > h1 { grid-column: 1 / -1; margin: 0 0 1.25rem; }
+
+/* Narrow: one column, and the diagram returns to the wrapped row it has always been. */
+@media (max-width: 900px) {
+    .workflow { grid-template-columns: minmax(0, 1fr); gap: 0; }
+}
+
+/* A rail down the left. One column, so the eight stages stack and the pipeline reads top to
+   bottom - and every box stays visible and clickable however far through the run you are,
+   which a wrapped horizontal row could not promise. */
 .stage-diagram {
     display: grid;
-    grid-template-columns: repeat(8, minmax(0, 1fr));
-    gap: 0.75rem 1.75rem;
-    margin: 0 0 2rem;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.9rem;
+    margin: 0;
     padding: 0;
     list-style: none;
+
+    /* The panel is far taller than the rail, so the rail follows you down it. Every stage
+       stays reachable without scrolling back up, which is the point of moving it here. */
+    position: sticky;
+    top: 2rem;
 }
 
 /* Too narrow for seven: wrap, and drop the connectors with the row. A connector drawn to the
    left of the first node of a wrapped row points at nothing — there is no selector for
    "first in row", so the honest answer is to draw none. */
 @media (max-width: 900px) {
-    .stage-diagram { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+    .stage-diagram {
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 0.75rem 1.75rem;
+        margin: 0 0 2rem;
+
+        /* A sticky row across the top would cover the panel it belongs to. */
+        position: static;
+    }
+
     .stage-node + .stage-node::before { display: none; }
 }
 
+/* A stadium, not a true ellipse. An ellipse would clip the corners of two lines of text and
+   waste most of its own width; the rounded-end shape reads as oval and still holds a title
+   and an answer. */
 .stage-node {
     position: relative;
     display: flex;
     flex-direction: column;
-    gap: 0.35rem;
-    padding: 0.7rem 0.9rem;
+    align-items: center;
+    justify-content: center;
+    gap: 0.15rem;
+    min-height: 3.2rem;
+    padding: 0.55rem 1.4rem;
     border: 2px solid var(--line);
-    border-radius: 6px;
+    border-radius: 999px;
     background: #fff;
+    text-align: center;
     transition: border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+}
+
+/* Smaller, to match. The rail is a map of where you are, not a place to read from. */
+.stage-node .stage-title { font-size: 0.92em; }
+.stage-node .stage-answer { font-size: 0.78em; }
+
+/* Inside the curve. At the old corner offset the tick sat ON the rounded edge - fine on a 6px
+   radius, wrong on a stadium, where the corner is most of the end. */
+.stage-node .stage-mark { top: 0.5rem; right: 1.3rem; }
+
+/* The one box that cannot be a small pill: it carries the back arrow and the step forward.
+   It keeps the stadium ends but is allowed the height its buttons need, so it reads as the
+   same shape grown rather than a different one. */
+.stage-node.active {
+    padding: 0.7rem 1.2rem;
+    border-radius: 1.6rem;
+}
+
+/* Depth by state, so the rail can be read at a glance without reading a word of it: a stage
+   still to come is sunk into the page, a finished one sits flat on it, and the one being
+   answered floats above it. */
+.stage-node.pending {
+    box-shadow: var(--lift-sunk);
+    background: #f4f5f7;
+}
+
+.stage-node.done { box-shadow: var(--lift-flat); }
+
+.stage-node.active {
+    box-shadow: var(--lift-active);
+    transform: translateY(-1px);
+}
+
+.stage-node.failed { box-shadow: var(--lift-flat); }
+
+/* Only where there is something to click. Lifting a pending box invites a click it refuses. */
+.stage-node.done:hover,
+.stage-node.next:hover {
+    box-shadow: var(--lift-raised);
+    transform: translateY(-1px);
 }
 
 /* The connector. On the node rather than between nodes, so it cannot get out of step with the
    grid's own wrapping; hidden on the last of a row by the grid overflowing invisibly. */
+/* Rotated with the rail: the stub is drawn ABOVE each node rather than to its left. Still on
+   the node rather than between nodes, so it cannot get out of step with the grid. */
+/* Centred under the pill above rather than left-aligned, because the boxes are now centred
+   shapes rather than left-aligned cards. */
 .stage-node + .stage-node::before {
     content: "";
     position: absolute;
-    left: -1.4rem;
-    top: 50%;
-    width: 1rem;
-    border-top: 2px solid var(--line);
+    left: 50%;
+    top: -0.75rem;
+    height: 0.6rem;
+    border-left: 2px solid var(--line);
+}
+
+/* Narrow, where the rail is a row again: back to a horizontal stub on the left. */
+@media (max-width: 900px) {
+    .stage-node + .stage-node::before {
+        left: -1.4rem;
+        top: 50%;
+        width: 1rem;
+        height: auto;
+        border-left: 0;
+        border-top: 2px solid var(--line);
+    }
 }
 
 /* The whole box is the click target where the box is clickable: a small link inside a card is a
@@ -258,7 +366,10 @@ body {
 }
 
 .stage-node.pending { color: var(--pending); }
-.stage-node.active  { border-color: var(--active); box-shadow: 0 0 0 3px rgb(31 111 235 / 15%); }
+/* Colour only. The ring this used to add lived here, later in the file than the elevation
+   rules, so it silently replaced the active stage's lift - the one box meant to float highest
+   had no shadow at all. The ring is now part of --lift-active instead of competing with it. */
+.stage-node.active  { border-color: var(--active); }
 .stage-node.done    { border-color: var(--done); }
 .stage-node.failed  { border-color: var(--failed); }
 
@@ -302,6 +413,9 @@ body {
     border: 1px solid var(--line);
     border-radius: 6px;
     background: #fff;
+
+    /* The 3D is on the PAGE, not only on the rail - the panel is the biggest thing on it. */
+    box-shadow: var(--lift-raised);
 }
 
 /* Progress. A finished step is ticked and quiet; the running one is the loud line, because it is
@@ -384,7 +498,16 @@ body {
    worse (808px of room, and three 260s want 812), which is scrolling on a twenty-class model. */
 .entities { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 1rem; }
 
-.entity { border: 1px solid var(--line); border-radius: 6px; padding: 0.75rem; }
+.entity {
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 0.75rem;
+    background: #fff;
+    box-shadow: var(--lift-flat);
+    transition: box-shadow 120ms ease;
+}
+
+.entity:hover { box-shadow: var(--lift-raised); }
 .entity header { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
 .entity-name { font-weight: 600; border: 1px solid transparent; background: transparent; }
 .entity-name:focus { border-color: var(--active); background: #fff; }
