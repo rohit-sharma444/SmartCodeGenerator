@@ -56,7 +56,7 @@ public class ReviewStageTests
         using var context = new BunitContext();
         var rendered = Render(context, out _);
 
-        rendered.Find("[data-entity=Book] input.field-name").Change("Book");
+        rendered.Find("[data-entity=Book] .add-field-row input.field-name").Change("Book");
         rendered.Find("[data-entity=Book] button.add-field").Click();
 
         StringAssert.Contains(rendered.Markup, "Could not add");
@@ -68,7 +68,7 @@ public class ReviewStageTests
         using var context = new BunitContext();
         var rendered = Render(context, out _);
 
-        var options = rendered.FindAll("[data-entity=Book] select.field-type option");
+        var options = rendered.FindAll("[data-entity=Book] .add-field-row select.field-type option");
 
         Assert.HasCount(5, options);
     }
@@ -412,13 +412,147 @@ public class ReviewStageTests
         var saves = 0;
         session.Autosave = _ => saves++;
 
-        rendered.Find("[data-entity=Book] input.field-name").Change("Isbn");
+        rendered.Find("[data-entity=Book] .add-field-row input.field-name").Change("Isbn");
         rendered.Find("[data-entity=Book] button.add-field").Click();
         Assert.IsGreaterThan(0, saves, "add field did not ask to be saved");
 
         saves = 0;
         rendered.Find("[data-entity=Book] input.entity-name").Change("Volume");
         Assert.IsGreaterThan(0, saves, "rename did not ask to be saved");
+    }
+
+    /// <summary>
+    /// A property's name is editable in place, the way its class's name already was. Until now
+    /// the only way to correct one was to delete it and add it back, which loses its type.
+    /// </summary>
+    [TestMethod]
+    public void Renaming_a_property_renames_it_in_the_model()
+    {
+        using var context = new BunitContext();
+        var rendered = Render(context, out var session);
+
+        rendered.Find("[data-entity=Book] .fields input.field-name").Change("Heading");
+
+        var field = session.Model!.Entities.Single(e => e.Name == "Book").Fields.Single();
+
+        Assert.AreEqual("Heading", field.Name);
+        Assert.AreEqual("string", field.Type);
+    }
+
+    /// <summary>
+    /// The rules are ModelEditor's and are tested there; what matters here is that a refusal is
+    /// reported rather than swallowed, which is what makes a control that did nothing legible.
+    /// </summary>
+    [TestMethod]
+    public void A_refused_property_rename_is_reported()
+    {
+        using var context = new BunitContext();
+        var rendered = Render(context, out var session);
+
+        // CS0542: a property may not share its class's name.
+        rendered.Find("[data-entity=Book] .fields input.field-name").Change("Book");
+
+        Assert.AreEqual("Title", session.Model!.Entities.Single().Fields.Single().Name);
+        StringAssert.Contains(rendered.Find(".edit-report").TextContent.ToLowerInvariant(), "could not");
+    }
+
+    /// <summary>
+    /// The type a property was inferred to have is a guess, and this is the last screen before
+    /// Roslyn emits it. "Servings" infers string and means int.
+    /// </summary>
+    [TestMethod]
+    public void Changing_a_propertys_type_changes_it_in_the_model()
+    {
+        using var context = new BunitContext();
+        var rendered = Render(context, out var session);
+
+        rendered.Find("[data-entity=Book] .fields select.field-type").Change("int");
+
+        Assert.AreEqual("int", session.Model!.Entities.Single().Fields.Single().Type);
+    }
+
+    /// <summary>The control has to show the type the property HAS, or it reads as a choice
+    /// nobody has made yet and the first thing it says about every property is wrong.</summary>
+    [TestMethod]
+    public void The_type_control_shows_the_type_the_property_already_has()
+    {
+        using var context = new BunitContext();
+
+        var rendered = RenderShop(context, out _);
+
+        Assert.AreEqual(
+            "DateTime",
+            rendered.Find("[data-entity=Order] .fields select.field-type").GetAttribute("value"));
+    }
+
+    /// <summary>
+    /// Every type control is built from the list the editor enforces. Three copies of five
+    /// strings is a copy waiting to drift into offering a sixth that compiles here and fails in
+    /// the generated project.
+    /// </summary>
+    [TestMethod]
+    public void Every_type_control_offers_exactly_the_types_the_editor_accepts()
+    {
+        using var context = new BunitContext();
+        var rendered = Render(context, out _);
+
+        foreach (var select in rendered.FindAll("[data-entity=Book] select.field-type"))
+            Assert.AreEqual(
+                string.Join(",", DomainDiscovery.Review.ModelEditor.SupportedTypes),
+                string.Join(",", select.QuerySelectorAll("option").Select(o => o.TextContent)));
+    }
+
+    /// <summary>
+    /// Both new edits mutate the model in place rather than going through Change(), so — like
+    /// every other control on this panel — they have to ask for the save themselves or a closed
+    /// tab loses them.
+    /// </summary>
+    [TestMethod]
+    public void Editing_a_property_asks_the_session_to_save()
+    {
+        using var context = new BunitContext();
+        var rendered = Render(context, out var session);
+
+        var saves = 0;
+        session.Autosave = _ => saves++;
+
+        rendered.Find("[data-entity=Book] .fields select.field-type").Change("int");
+        Assert.IsGreaterThan(0, saves, "changing a type did not ask to be saved");
+
+        saves = 0;
+        rendered.Find("[data-entity=Book] .fields input.field-name").Change("Heading");
+        Assert.IsGreaterThan(0, saves, "renaming a property did not ask to be saved");
+    }
+
+    /// <summary>
+    /// Choosing the type a property already has is not a failure. ModelEditor answers "no change"
+    /// to it, correctly, and the panel reports what the editor answered - so without a guard the
+    /// screen said "could not change that type" to someone who picked the right one.
+    /// </summary>
+    [TestMethod]
+    public void Choosing_the_type_a_property_already_has_reports_nothing()
+    {
+        using var context = new BunitContext();
+        var rendered = Render(context, out _);
+
+        rendered.Find("[data-entity=Book] .fields select.field-type").Change("string");
+
+        Assert.IsEmpty(rendered.FindAll(".edit-report"));
+    }
+
+    /// <summary>
+    /// Retyping a property the same way it is already spelt is not a failure either, for the
+    /// same reason.
+    /// </summary>
+    [TestMethod]
+    public void Retyping_a_propertys_own_name_reports_nothing()
+    {
+        using var context = new BunitContext();
+        var rendered = Render(context, out _);
+
+        rendered.Find("[data-entity=Book] .fields input.field-name").Change("Title");
+
+        Assert.IsEmpty(rendered.FindAll(".edit-report"));
     }
 
     private static IRenderedComponent<ReviewStage> Render(

@@ -21,8 +21,20 @@ public enum Provenance
 
 public sealed class CandidateField
 {
-    public required string Name { get; init; }
-    public required string Type { get; init; }
+    /// <summary>
+    /// Settable for the same reason <see cref="CandidateEntity.Name"/> is: the review loop lets
+    /// the user rename a property, and every other reference to this field is a lookup by name
+    /// rather than a held reference.
+    /// </summary>
+    public required string Name { get; set; }
+
+    /// <summary>
+    /// Settable so the review loop can overrule a type the pipeline inferred. Where the name came
+    /// from does not change when its declared type does, which is why
+    /// <see cref="Provenance"/> below stays init-only.
+    /// </summary>
+    public required string Type { get; set; }
+
     public Provenance Provenance { get; init; }
 }
 

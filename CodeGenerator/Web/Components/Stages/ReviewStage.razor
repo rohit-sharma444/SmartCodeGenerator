@@ -29,7 +29,8 @@
         {
             <article class="entity" data-entity="@entity.Name">
                 <header>
-                    <input class="entity-name" value="@entity.Name"
+                    @* Keyed on _refusals for the reason spelled out at that field. *@
+                    <input class="entity-name" value="@entity.Name" @key="(entity, _refusals)"
                            @onchange="e => Rename(entity, e.Value?.ToString())" />
                     <span class="provenance">@entity.Provenance</span>
                     <button type="button" class="why" @onclick="() => Why(entity.Name)">why</button>
@@ -76,9 +77,36 @@
                 <ul class="fields">
                     @foreach (var field in entity.Fields.ToList())
                     {
-                        <li>
-                            <span class="field-name">@field.Name</span>
-                            <span class="field-type">@field.Type</span>
+                        @* Keyed on _refusals, which is what puts the real name back in the box
+                           when the editor says no. Blazor does not repaint an attribute whose
+                           value has not changed, so after a refusal the model still held "Title"
+                           while the box on screen read "Book" - the card stating a name the model
+                           does not have. Changing the key discards the row and builds a new one
+                           from the model.
+
+                           On the row rather than on the two controls inside it: two siblings may
+                           not share a key, and one key for the row says the plainer thing anyway.
+
+                           Found by typing into the real page. No bUnit test can see it, because
+                           .Change() dispatches the event without ever putting the text in the DOM,
+                           so the box it reads back was never the one the user typed into. *@
+                        <li @key="(field, _refusals)">
+                            @* Editable in place, like the class name above it. Until now the only
+                               way to correct a property was to delete it and add it back, which
+                               loses the type it had. *@
+                            <input class="field-name" value="@field.Name"
+                                   @onchange="e => RenameField(entity.Name, field, e.Value?.ToString())" />
+
+                            @* The type discovery inferred is a guess, and this is the last screen
+                               before Roslyn emits it. *@
+                            <select class="field-type" value="@field.Type"
+                                    @onchange="e => Retype(entity.Name, field, e.Value?.ToString())">
+                                @foreach (var type in ModelEditor.SupportedTypes)
+                                {
+                                    <option value="@type" selected="@(type == field.Type)">@type</option>
+                                }
+                            </select>
+
                             <button type="button" class="unfield"
                                     @onclick="() => RemoveField(entity.Name, field.Name)">
                                 ×
@@ -91,13 +119,13 @@
                     <input class="field-name" placeholder="new field"
                            @onchange="e => _newField = e.Value?.ToString() ?? string.Empty" />
 
-                    @* The five ModelEditor accepts. A sixth here would compile and then fail. *@
+                    @* Built from the list the editor enforces, so a type this offers cannot be
+                       one it will refuse. *@
                     <select class="field-type" @onchange="TypeChosen">
-                        <option value="string">string</option>
-                        <option value="int">int</option>
-                        <option value="decimal">decimal</option>
-                        <option value="bool">bool</option>
-                        <option value="DateTime">DateTime</option>
+                        @foreach (var type in ModelEditor.SupportedTypes)
+                        {
+                            <option value="@type">@type</option>
+                        }
                     </select>
 
                     <button type="button" class="add-field" @onclick="() => AddField(entity.Name)">
@@ -203,6 +231,7 @@
     private string _newField = string.Empty;
     private string _newType = "string";
     private string? _message;
+    private int _refusals;
     private List<string> _why = [];
 
     /// <summary>
@@ -220,6 +249,12 @@
     private void Report(bool changed, string ok, string fail)
     {
         _message = changed ? ok : fail;
+
+        // What the keyed inputs above hang off. A refused edit leaves text in a box that the
+        // model did not accept, and the only way to get it back in step is to replace the
+        // element - which Blazor does when its key changes and not otherwise.
+        if (!changed)
+            _refusals++;
 
         // Here rather than at each caller, because this is the one place all of them pass
         // through - and an edit that is not saved is the work a closed tab loses. Called even
@@ -239,6 +274,50 @@
             ModelEditor.RemoveField(Model, entityName, fieldName),
             $"Removed {fieldName}.",
             "Could not remove that field — Name and a class's last field both stay.");
+
+    /// <summary>
+    /// Corrects a property's name in place, keeping the type and provenance it already had.
+    /// </summary>
+    /// <remarks>
+    /// A blank box is left alone rather than reported: clearing the field and tabbing out is how
+    /// someone abandons an edit, and answering that with "could not rename" reads as a failure
+    /// where nothing was asked. <see cref="ModelEditor.RenameField"/> also treats a name that
+    /// normalizes to the one already there as no change, so retyping the same name is silent too
+    /// — hence the guard here rather than a bare call.
+    /// </remarks>
+    private void RenameField(string entityName, CandidateField field, string? typed)
+    {
+        var name = (typed ?? string.Empty).Trim();
+        var fieldName = field.Name;
+
+        if (name.Length == 0 || name == fieldName)
+            return;
+
+        Report(
+            ModelEditor.RenameField(Model, entityName, fieldName, name),
+            $"Renamed {fieldName} to {name}.",
+            "Could not rename that property. The name must be new to the class, a valid "
+            + "identifier, and neither 'Id' (generated) nor the class's own name.");
+    }
+
+    /// <summary>Overrules the type <c>TypeInference</c> guessed for a property.</summary>
+    /// <remarks>
+    /// Picking the type the property already has is left alone rather than reported. The editor
+    /// answers "no change" to it - correctly, nothing changed - and reporting that as "could not
+    /// change that type" would put a failure on screen for choosing the right answer.
+    /// </remarks>
+    private void Retype(string entityName, CandidateField field, string? chosen)
+    {
+        if (chosen is null || chosen == field.Type)
+            return;
+
+        var fieldName = field.Name;
+
+        Report(
+            ModelEditor.ChangeFieldType(Model, entityName, fieldName, chosen),
+            $"{fieldName} is now {chosen}.",
+            "Could not change that type.");
+    }
 
     private void TypeChosen(ChangeEventArgs e)
         => _newType = e.Value?.ToString() ?? "string";

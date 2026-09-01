@@ -14,10 +14,17 @@ public static class ModelEditor
     /// Types a generated property may declare. An unknown type would not compile, and the
     /// review loop is the last place to catch it before Roslyn emits the class.
     /// </summary>
-    private static readonly HashSet<string> SupportedTypes = new(StringComparer.Ordinal)
-    {
-        "string", "int", "decimal", "bool", "DateTime"
-    };
+    /// <remarks>
+    /// Public, and ordered, because every control that offers a type is built from it. The
+    /// review screen used to hard-code the same five in its own mark-up under a comment warning
+    /// that a sixth would compile and then fail at run time - which is a copy waiting to drift,
+    /// and there are three such controls now.
+    /// </remarks>
+    public static IReadOnlyList<string> SupportedTypes { get; } =
+        ["string", "int", "decimal", "bool", "DateTime"];
+
+    private static readonly HashSet<string> Supported =
+        new(SupportedTypes, StringComparer.Ordinal);
 
     /// <summary>
     /// Adds an entity the user named. It is shaped from <see cref="DomainFieldLexicon"/> when
@@ -112,7 +119,7 @@ public static class ModelEditor
             return false;
 
         var resolved = type ?? TypeInference.Infer(normalized);
-        if (!SupportedTypes.Contains(resolved))
+        if (!Supported.Contains(resolved))
             return false;
 
         owner.Fields.Add(new CandidateField
@@ -142,6 +149,77 @@ public static class ModelEditor
             return false;
 
         owner.Fields.Remove(field);
+        return true;
+    }
+
+    /// <summary>
+    /// Renames <paramref name="fieldName"/> on <paramref name="entityName"/>, keeping the type
+    /// and provenance it already had.
+    /// </summary>
+    /// <remarks>
+    /// The new name has to clear everything <see cref="AddField"/> demands of one, because the
+    /// class this ends up in cannot tell how the property got its name: a valid identifier, not
+    /// already taken, not <c>Id</c> (generated, and assigned by reflection), and not the entity's
+    /// own name (CS0542).
+    /// <para>
+    /// Renaming <see cref="DefaultFields.NameField"/> is allowed even though
+    /// <see cref="RemoveField"/> refuses to delete it. That guard exists because deleting it can
+    /// leave a grid whose only column is a read-only Id; a rename leaves a column standing, so it
+    /// is a different question with a different answer.
+    /// </para>
+    /// </remarks>
+    public static bool RenameField(
+        CandidateDomainModel model, string entityName, string fieldName, string newName)
+    {
+        var owner = Find(model, NameNormalizer.ToEntityName(entityName));
+        var field = owner is null ? null : FindField(owner, NameNormalizer.ToFieldName(fieldName));
+
+        if (owner is null || field is null)
+            return false;
+
+        var normalized = NameNormalizer.ToFieldName(newName);
+        if (!NameNormalizer.IsValidIdentifier(normalized))
+            return false;
+
+        // Nothing to do, and saying otherwise would report an edit that did not happen. Checked
+        // before the collision test below, which the field would otherwise fail against itself.
+        if (string.Equals(normalized, field.Name, StringComparison.Ordinal))
+            return false;
+
+        if (FindField(owner, normalized) is not null)
+            return false;
+
+        if (string.Equals(normalized, "Id", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        if (string.Equals(normalized, owner.Name, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        field.Name = normalized;
+        return true;
+    }
+
+    /// <summary>
+    /// Declares <paramref name="fieldName"/> as <paramref name="type"/> instead of whatever
+    /// <see cref="SeedExtraction.TypeInference"/> guessed for it.
+    /// </summary>
+    /// <remarks>
+    /// Returns false for a type the field already has: it is not a failure, but it is not a
+    /// change either, and every caller of this class reports what actually happened.
+    /// </remarks>
+    public static bool ChangeFieldType(
+        CandidateDomainModel model, string entityName, string fieldName, string type)
+    {
+        if (!Supported.Contains(type))
+            return false;
+
+        var owner = Find(model, NameNormalizer.ToEntityName(entityName));
+        var field = owner is null ? null : FindField(owner, NameNormalizer.ToFieldName(fieldName));
+
+        if (field is null || string.Equals(field.Type, type, StringComparison.Ordinal))
+            return false;
+
+        field.Type = type;
         return true;
     }
 

@@ -348,4 +348,157 @@ public class ModelEditorTests
 
         Assert.Empty(model.Entities);
     }
+    [Fact]
+    public void RenameField_RenamesMatch_CaseInsensitive()
+    {
+        var model = ModelWith("Recipe");
+        Assert.True(ModelEditor.AddField(model, "Recipe", "title"));
+
+        Assert.True(ModelEditor.RenameField(model, "recipe", "TITLE", "heading"));
+
+        Assert.Equal(new[] { "Heading" }, model.Entities[0].Fields.Select(f => f.Name));
+    }
+
+    [Fact]
+    public void RenameField_KeepsTheTypeAndProvenance_ItAlreadyHad()
+    {
+        var model = ModelWith("Recipe");
+        Assert.True(ModelEditor.AddField(model, "Recipe", "servings", "int"));
+
+        Assert.True(ModelEditor.RenameField(model, "Recipe", "Servings", "portions"));
+
+        var field = Assert.Single(model.Entities[0].Fields);
+        Assert.Equal("Portions", field.Name);
+        Assert.Equal("int", field.Type);
+    }
+
+    [Fact]
+    public void RenameField_RejectsUnknownEntity_UnknownField_AndACollision()
+    {
+        var model = ModelWith("Recipe");
+        Assert.True(ModelEditor.AddField(model, "Recipe", "title"));
+        Assert.True(ModelEditor.AddField(model, "Recipe", "difficulty"));
+
+        Assert.False(ModelEditor.RenameField(model, "Nope", "Title", "Heading"));
+        Assert.False(ModelEditor.RenameField(model, "Recipe", "Missing", "Heading"));
+        Assert.False(ModelEditor.RenameField(model, "Recipe", "Title", "DIFFICULTY"));
+
+        Assert.Equal(new[] { "Title", "Difficulty" }, model.Entities[0].Fields.Select(f => f.Name));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("!!!")]
+    [InlineData("2nd course")]
+    public void RenameField_RejectsNamesCSharpCannotDeclare(string newName)
+    {
+        var model = ModelWith("Recipe");
+        Assert.True(ModelEditor.AddField(model, "Recipe", "title"));
+
+        Assert.False(ModelEditor.RenameField(model, "Recipe", "Title", newName));
+
+        Assert.Equal(new[] { "Title" }, model.Entities[0].Fields.Select(f => f.Name));
+    }
+
+    [Fact]
+    public void RenameField_RejectsIdAndTheEntitysOwnName_JustAsAddFieldDoes()
+    {
+        var model = ModelWith("Recipe");
+        Assert.True(ModelEditor.AddField(model, "Recipe", "title"));
+
+        // Id is generated and assigned by reflection; a property named after its class is CS0542.
+        Assert.False(ModelEditor.RenameField(model, "Recipe", "Title", "id"));
+        Assert.False(ModelEditor.RenameField(model, "Recipe", "Title", "recipe"));
+
+        Assert.Equal(new[] { "Title" }, model.Entities[0].Fields.Select(f => f.Name));
+    }
+
+    [Fact]
+    public void RenameField_NormalizesTheNewName_TheWayAddFieldDoes()
+    {
+        var model = ModelWith("Recipe");
+        Assert.True(ModelEditor.AddField(model, "Recipe", "title"));
+
+        Assert.True(ModelEditor.RenameField(model, "Recipe", "Title", "prep time"));
+
+        Assert.Equal(new[] { "PrepTime" }, model.Entities[0].Fields.Select(f => f.Name));
+    }
+
+    [Fact]
+    public void RenameField_ReportsNoChange_WhenTheNameNormalizesToWhatItAlreadyIs()
+    {
+        var model = ModelWith("Recipe");
+        Assert.True(ModelEditor.AddField(model, "Recipe", "prep time"));
+
+        // "prep time" normalizes to the name the field already has. Nothing changed, so the
+        // field must not be reported as renamed - and must not collide with itself either.
+        Assert.False(ModelEditor.RenameField(model, "Recipe", "PrepTime", "prep time"));
+
+        Assert.Equal(new[] { "PrepTime" }, model.Entities[0].Fields.Select(f => f.Name));
+    }
+
+    [Fact]
+    public void RenameField_AllowsRenamingName_WhichRemoveFieldRefusesToDelete()
+    {
+        var model = new CandidateDomainModel();
+        Assert.True(ModelEditor.AddEntity(model, "widget"));
+
+        // Deleting Name leaves a grid with nothing but a read-only Id, which is why RemoveField
+        // refuses it. A rename leaves a column standing, so it is a different question.
+        Assert.True(ModelEditor.RenameField(model, "Widget", "Name", "Label"));
+
+        Assert.Equal(new[] { "Label" }, model.Entities[0].Fields.Select(f => f.Name));
+    }
+
+    [Fact]
+    public void ChangeFieldType_ChangesIt_CaseInsensitiveOnBothNames()
+    {
+        var model = ModelWith("Recipe");
+        Assert.True(ModelEditor.AddField(model, "Recipe", "servings"));
+
+        Assert.True(ModelEditor.ChangeFieldType(model, "recipe", "SERVINGS", "int"));
+
+        Assert.Equal("int", Assert.Single(model.Entities[0].Fields).Type);
+    }
+
+    [Fact]
+    public void ChangeFieldType_RejectsAnUnsupportedType()
+    {
+        var model = ModelWith("Recipe");
+        Assert.True(ModelEditor.AddField(model, "Recipe", "servings", "int"));
+
+        Assert.False(ModelEditor.ChangeFieldType(model, "Recipe", "Servings", "Widget"));
+
+        Assert.Equal("int", Assert.Single(model.Entities[0].Fields).Type);
+    }
+
+    [Fact]
+    public void ChangeFieldType_ReportsNoChange_WhenItIsAlreadyThatType()
+    {
+        var model = ModelWith("Recipe");
+        Assert.True(ModelEditor.AddField(model, "Recipe", "servings", "int"));
+
+        // Not a failure, but not a change either: the caller reports what actually happened.
+        Assert.False(ModelEditor.ChangeFieldType(model, "Recipe", "Servings", "int"));
+    }
+
+    [Fact]
+    public void ChangeFieldType_RejectsUnknownEntityAndUnknownField()
+    {
+        var model = ModelWith("Recipe");
+        Assert.True(ModelEditor.AddField(model, "Recipe", "servings", "int"));
+
+        Assert.False(ModelEditor.ChangeFieldType(model, "Nope", "Servings", "string"));
+        Assert.False(ModelEditor.ChangeFieldType(model, "Recipe", "Missing", "string"));
+    }
+
+    [Fact]
+    public void SupportedTypes_AreTheOnesEveryTypeControlOffers()
+    {
+        // Public so the review screen's drop-downs are driven from the list the editor enforces,
+        // rather than from a copy of it that can drift into offering a sixth.
+        Assert.Equal(
+            new[] { "string", "int", "decimal", "bool", "DateTime" },
+            ModelEditor.SupportedTypes);
+    }
 }
