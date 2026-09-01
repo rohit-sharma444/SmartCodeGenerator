@@ -390,6 +390,37 @@ body {
 .entity-name:focus { border-color: var(--active); background: #fff; }
 
 .provenance { font-size: 0.72em; text-transform: uppercase; color: var(--pending); }
+
+/* The screen a class will get, on its own row under the name. Small and quiet: a control the size
+   of the class name would read as the card's subject rather than as one fact about it, and in the
+   header it read as a third action beside why and remove. */
+.entity .screen { display: flex; align-items: center; gap: 0.35rem; margin: 0.35rem 0 0; }
+
+.screen-label { font-size: 0.72em; text-transform: uppercase; color: var(--pending); }
+
+.entity .screen select.role {
+    font: inherit;
+    font-size: 0.78em;
+    padding: 0.05rem 0.2rem;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    background: #fff;
+    color: var(--ink);
+}
+
+/* A line has no choice to make, so it states its fact in the space the select would occupy and
+   offers the one correction that works. Italic rather than a disabled select: a greyed-out
+   control invites clicking at something that cannot answer. */
+.entity .screen .role-line {
+    font-size: 0.78em;
+    font-style: italic;
+    color: var(--pending);
+}
+
+.entity .screen button.own-screen { font-size: 0.78em; }
+
+.screen-summary { font-style: italic; }
+
 /* The model, as a table rather than as sentences.
    Every field row shares one set of column tracks — name, type, remove — so the types line up down
    the card and the remove buttons make a single edge. Flex put each row's type wherever that row's
