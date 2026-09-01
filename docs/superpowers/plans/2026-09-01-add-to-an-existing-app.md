@@ -461,121 +461,120 @@ git commit -m "feat: the overwrite guard can offer to add just what is new"
 - Test: `CodeGenerator.Tests/App/Incremental/IncrementalFilesTests.cs`
 
 **Interfaces:**
-- Consumes: `ITargetScaffolder`, `PersistenceKind`.
+- Consumes: nothing.
 - Produces: `public static class IncrementalFiles` with
-  `public static bool ShouldCopy(string relativePath, IReadOnlyList<string> newClassNames, ITargetScaffolder target, PersistenceKind persistence)`.
+  `public static bool ShouldCopy(string relativePath, string? stagedContent, string? existingContent)`.
 
-Pure — it decides on a **relative path string**, so every rule is testable with no filesystem at all. This is the whole of the "which files" decision, in one place, matching the spec's three rules.
+#### Why this is a content comparison and not a file list
+
+The original plan named the files by pattern. **Generating a real app disproved it twice.**
+
+The per-class files are only `Models/<Name>.cs`, `Data/<Name>Repository.cs` and the two
+`Validation/<Name>Validator.{Generated,Custom}.cs`. There is no `<Name>Screen.xaml` and no
+`<Name>ViewModel.cs` — screens are generic (`MasterScreenViewModel`, `EntityViewModel`,
+`ScreenTemplateSelector`) and driven at runtime from a list.
+
+And **three** files name the entities, not one: `ViewModels/MainViewModel.cs`,
+`Data/SeedData.cs` and `Validation/ValidatorFactory.cs`. A list naming only `MainViewModel`
+would have left a new class with **no seed data and an unregistered validator** — both of
+which compile perfectly and fail silently, so Task 5's build check would not have caught
+either.
+
+A hand-written list was therefore already wrong for WPF, would need re-deriving for WinForms
+and Blazor, and nothing would say when it drifted. Since the staged generate and the real
+folder come from the same inputs, comparing them answers the question directly:
+
+1. **Never overwrite an existing `*.Custom.cs`.** Write-once, and `OverwritePrompt` promises
+   in as many words that it survives. This rule comes first so nothing below can reach it.
+2. **Copy when the file is not on disk** — every file of a new class.
+3. **Copy when it is on disk and the staged content differs** — exactly the composition
+   files, and only because the new class changed them.
+
+Target-independent, derived from the mechanism rather than a maintained list, and it makes
+"an unchanged file is byte-identical" true by construction: a file whose content did not
+change is never written at all.
+
+The trade-off, accepted with Rohit: a hand edit inside a *generated* file that is not
+`.Custom.cs` is reverted by an add. That is what `OverwritePrompt` already warns about for a
+regenerate; an add doing it is more surprising, and the report naming every file written is
+what makes it visible.
 
 - [ ] **Step 1: Write the failing test**
 
 ```csharp
-using AppScaffolding;
 using AppScaffolding.Incremental;
-using AppScaffolding.Targets;
 
 namespace CodeGenerator.Tests.App.Incremental;
 
 /// <summary>
-/// The three rules from the design, as a decision on one relative path.
+/// Which generated files an add is allowed to write, decided by comparing what a full
+/// generate would produce against what is already there.
 /// </summary>
 [TestClass]
 public class IncrementalFilesTests
 {
-    private static readonly string[] TwoNew = ["Supplier", "PurchaseOrder"];
-
-    private static bool Copy(string path, PersistenceKind persistence = PersistenceKind.Json)
-        => IncrementalFiles.ShouldCopy(path, TwoNew, new WpfTarget(), persistence);
-
     [TestMethod]
-    public void A_new_class_model_is_copied()
-        => Assert.IsTrue(Copy(@"Models\Supplier.cs"));
-
-    [TestMethod]
-    public void An_existing_class_model_is_not()
-        => Assert.IsFalse(Copy(@"Models\Customer.cs"));
-
-    /// <summary>Every file a new class owns, not only its model — the screen, the view model, the
-    /// validator, the repository and the seed all carry its name.</summary>
-    [TestMethod]
-    public void Every_file_named_for_a_new_class_is_copied()
-    {
-        Assert.IsTrue(Copy(@"Views\SupplierScreen.xaml"));
-        Assert.IsTrue(Copy(@"Views\SupplierScreen.xaml.cs"));
-        Assert.IsTrue(Copy(@"ViewModels\SupplierViewModel.cs"));
-        Assert.IsTrue(Copy(@"Validation\SupplierValidator.Generated.cs"));
-        Assert.IsTrue(Copy(@"Data\Seed\PurchaseOrder.json"));
-    }
-
-    [TestMethod]
-    public void No_file_named_for_an_existing_class_is_copied()
-    {
-        Assert.IsFalse(Copy(@"Views\CustomerScreen.xaml"));
-        Assert.IsFalse(Copy(@"ViewModels\CustomerViewModel.cs"));
-        Assert.IsFalse(Copy(@"Data\Seed\Customer.json"));
-    }
+    public void A_file_that_is_not_there_is_copied()
+        => Assert.IsTrue(IncrementalFiles.ShouldCopy(
+            @"Models\Supplier.cs", "class Supplier {}", existingContent: null));
 
     /// <summary>
-    /// Rule 2. MainViewModel is the single list the shell and dashboard are built from, so it has
-    /// to change for a new screen to exist at all.
+    /// The assertion the whole feature rests on. An untouched file is not written at all, so
+    /// "byte-identical" is true by construction rather than by a filter being right.
     /// </summary>
     [TestMethod]
-    public void The_entity_list_is_copied_for_a_target_with_screens()
-        => Assert.IsTrue(Copy(@"ViewModels\MainViewModel.cs"));
-
-    [TestMethod]
-    public void The_entity_list_is_not_copied_for_a_target_with_no_screens()
+    public void A_file_whose_content_has_not_changed_is_left_alone()
         => Assert.IsFalse(IncrementalFiles.ShouldCopy(
-            @"ViewModels\MainViewModel.cs", TwoNew, new ConsoleTarget(), PersistenceKind.Json));
-
-    /// <summary>Rule 3, and independent of rule 2: a Web API has no screens and still has a
-    /// context.</summary>
-    [TestMethod]
-    public void The_context_is_copied_only_under_sqlite()
-    {
-        Assert.IsTrue(Copy(@"Data\AppDbContext.cs", PersistenceKind.Sqlite));
-        Assert.IsFalse(Copy(@"Data\AppDbContext.cs"));
-
-        Assert.IsTrue(IncrementalFiles.ShouldCopy(
-            @"Data\AppDbContext.cs", TwoNew, new WebApiTarget(), PersistenceKind.Sqlite));
-    }
+            @"Models\Customer.cs", "class Customer {}", "class Customer {}"));
 
     /// <summary>
-    /// Everything else is left alone. This is the assertion that makes the feature what it is —
-    /// a shell, a project file, a hand-written custom validator, all untouched.
+    /// The composition files - MainViewModel, SeedData, ValidatorFactory - and nothing else.
+    /// They change precisely because the new class is in them.
     /// </summary>
     [TestMethod]
-    public void Nothing_else_is_copied()
-    {
-        Assert.IsFalse(Copy(@"ViewModels\ShellViewModel.cs"));
-        Assert.IsFalse(Copy(@"MainWindow.xaml"));
-        Assert.IsFalse(Copy(@"App.xaml.cs"));
-        Assert.IsFalse(Copy(@"Shop.Wpf.csproj"));
-        Assert.IsFalse(Copy(@"Validation\CustomerValidator.Custom.cs"));
-        Assert.IsFalse(Copy(@"Auth\AppRole.cs"));
-    }
+    public void A_file_the_new_class_changed_is_copied()
+        => Assert.IsTrue(IncrementalFiles.ShouldCopy(
+            @"ViewModels\MainViewModel.cs",
+            "Entities = [Customer, Supplier];",
+            "Entities = [Customer];"));
 
     /// <summary>
-    /// A class called Order must not make OrderLine look like its file. The match is on the file
-    /// name's leading identifier, not a substring.
+    /// OverwritePrompt promises in as many words that .Custom.cs rules are kept. A user who
+    /// has written a rule there must not lose it to an add, and the staged copy is always an
+    /// empty stub, so "differs" would otherwise overwrite it every time.
     /// </summary>
     [TestMethod]
-    public void A_longer_name_beginning_with_a_new_one_is_not_matched()
-    {
-        var justOrder = new[] { "Order" };
+    public void An_existing_custom_validator_is_never_overwritten()
+        => Assert.IsFalse(IncrementalFiles.ShouldCopy(
+            @"Validation\CustomerValidator.Custom.cs",
+            "// add your rules here",
+            "if (Age < 18) yield return \"too young\";"));
 
-        Assert.IsTrue(IncrementalFiles.ShouldCopy(
-            @"Models\Order.cs", justOrder, new WpfTarget(), PersistenceKind.Json));
+    /// <summary>But a NEW class's stub has to be written, or its validator half is missing.</summary>
+    [TestMethod]
+    public void A_new_custom_validator_stub_is_written()
+        => Assert.IsTrue(IncrementalFiles.ShouldCopy(
+            @"Validation\SupplierValidator.Custom.cs",
+            "// add your rules here",
+            existingContent: null));
 
-        Assert.IsFalse(IncrementalFiles.ShouldCopy(
-            @"Models\OrderLine.cs", justOrder, new WpfTarget(), PersistenceKind.Json));
-    }
+    [TestMethod]
+    public void A_generated_validator_half_is_copied_when_it_changed()
+        => Assert.IsTrue(IncrementalFiles.ShouldCopy(
+            @"Validation\SupplierValidator.Generated.cs", "new", "old"));
 
-    /// <summary>Paths arrive from Directory enumeration, so the separator is whatever the platform
-    /// used; the rules must not depend on it.</summary>
+    /// <summary>Case, because Windows file names are case-insensitive and the rule must not
+    /// be defeated by CUSTOM.CS.</summary>
+    [TestMethod]
+    public void The_custom_rule_is_not_defeated_by_casing()
+        => Assert.IsFalse(IncrementalFiles.ShouldCopy(
+            @"Validation\CustomerValidator.CUSTOM.CS", "stub", "my rules"));
+
+    /// <summary>Paths come from Directory enumeration, so the separator is the platform's.</summary>
     [TestMethod]
     public void A_forward_slash_path_reads_the_same()
-        => Assert.IsTrue(Copy("Models/Supplier.cs"));
+        => Assert.IsFalse(IncrementalFiles.ShouldCopy(
+            "Validation/CustomerValidator.Custom.cs", "stub", "my rules"));
 }
 ```
 
@@ -583,8 +582,6 @@ public class IncrementalFilesTests
 
 Run: `dotnet test CodeGenerator.Tests/CodeGenerator.Tests.csproj --filter "FullyQualifiedName~IncrementalFilesTests"`
 Expected: FAIL to compile — `IncrementalFiles` does not exist.
-
-**Before implementing, confirm the real file names** by generating one app and listing its files (`dotnet run` the CLI, or read `AppScaffolder`'s write calls). The names above are what this codebase appears to emit; if a screen is `SupplierView.xaml` rather than `SupplierScreen.xaml` the rule is unaffected — it matches the leading identifier — but the test should name the real files.
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -595,89 +592,50 @@ namespace AppScaffolding.Incremental;
 /// Whether one generated file belongs to an incremental add.
 /// </summary>
 /// <remarks>
-/// The whole of the "which files" decision, in one pure function over a RELATIVE PATH — so every
-/// rule is assertable with no filesystem, no scaffolder and no target actually writing anything.
+/// Decided by comparing what a full generate WOULD produce against what is already on disk,
+/// rather than by a list of file-name patterns. A list was tried first and a real generate
+/// disproved it twice: the per-class files are fewer than expected (no per-entity screen or
+/// view model exists — those are generic and data-driven), and THREE files name the entities
+/// rather than one. A list naming only MainViewModel would have left a new class with no seed
+/// data and an unregistered validator, both of which compile and fail silently.
 /// <para>
-/// Three rules, from the design. Always the files a new class owns; the entity-enumerating file
-/// when the target has screens, because that list is what a screen has to appear in; and the
-/// context under SQLite, independently, because a Web API has no screens and still has one.
+/// Comparing content is target-independent, cannot drift, and makes "an unchanged file is
+/// byte-identical" true by construction — such a file is never written at all.
 /// </para>
 /// </remarks>
 public static class IncrementalFiles
 {
-    /// <summary>The file that enumerates entities, per target family. Rule 2.</summary>
-    private const string DesktopEntityList = "MainViewModel.cs";
-
-    /// <summary>Rule 3.</summary>
-    private const string Context = "AppDbContext.cs";
-
-    public static bool ShouldCopy(
-        string relativePath,
-        IReadOnlyList<string> newClassNames,
-        ITargetScaffolder target,
-        PersistenceKind persistence)
-    {
-        var fileName = Path.GetFileName(Normalized(relativePath));
-
-        // Rule 3 first: it does not depend on the target's screens, and a context named after no
-        // class would otherwise fall through to rule 1 and be refused.
-        if (persistence == PersistenceKind.Sqlite
-            && string.Equals(fileName, Context, StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        // Rule 2.
-        if (target.HasScreens
-            && string.Equals(fileName, DesktopEntityList, StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        // Rule 1.
-        return newClassNames.Any(name => BelongsTo(fileName, name));
-    }
+    private const string WriteOnceSuffix = ".Custom.cs";
 
     /// <summary>
-    /// Whether <paramref name="fileName"/> is one of <paramref name="className"/>'s files.
+    /// Whether <paramref name="relativePath"/> should be written.
     /// </summary>
-    /// <remarks>
-    /// The leading identifier, not a substring: a new class called Order must not claim
-    /// <c>OrderLine.cs</c>. The character after the name has to be a '.' or an upper-case letter,
-    /// which covers <c>Order.cs</c>, <c>OrderScreen.xaml</c>, <c>OrderViewModel.cs</c> and
-    /// <c>OrderValidator.Generated.cs</c> while refusing <c>OrderLine</c> — whose next character
-    /// is 'L', upper-case, so the rule needs the whole remainder to be a KNOWN suffix rather than
-    /// merely capitalised.
-    /// </remarks>
-    private static bool BelongsTo(string fileName, string className)
+    /// <param name="stagedContent">What a full generate produces for it now.</param>
+    /// <param name="existingContent">What is on disk, or null when nothing is.</param>
+    public static bool ShouldCopy(
+        string relativePath, string? stagedContent, string? existingContent)
     {
-        if (!fileName.StartsWith(className, StringComparison.OrdinalIgnoreCase))
+        // First, so nothing below can reach it. OverwritePrompt promises in as many words
+        // that .Custom.cs rules are kept, and the staged copy is always an empty stub - so
+        // "differs" would overwrite a user's rules every single time.
+        if (existingContent is not null && IsWriteOnce(relativePath))
             return false;
 
-        var rest = fileName[className.Length..];
-
-        if (rest.StartsWith('.'))
+        if (existingContent is null)
             return true;
 
-        // Everything the generator appends to a class name. Anything else - OrderLine's "Line" -
-        // is a different class, not a file of this one.
-        foreach (var suffix in Suffixes)
-            if (rest.StartsWith(suffix, StringComparison.Ordinal))
-                return true;
-
-        return false;
+        return !string.Equals(stagedContent, existingContent, StringComparison.Ordinal);
     }
 
-    /// <summary>What the generator appends to a class name when it names a file after it.</summary>
-    private static readonly string[] Suffixes =
-        ["Screen", "View", "ViewModel", "Validator", "Repository", "Store", "Form", "Page"];
-
-    private static string Normalized(string path) => path.Replace('/', Path.DirectorySeparatorChar);
+    private static bool IsWriteOnce(string relativePath)
+        => relativePath.EndsWith(WriteOnceSuffix, StringComparison.OrdinalIgnoreCase);
 }
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `dotnet test CodeGenerator.Tests/CodeGenerator.Tests.csproj --filter "FullyQualifiedName~IncrementalFilesTests"`
-Expected: PASS, 11 tests.
-
-**If `Suffixes` turns out to be missing one the generator uses**, a file of a new class is silently left behind — which is the defect shape this whole plan is guarding against. Task 4 Step 3's on-disk test is what catches it: it asserts every file the full generate produced for a new class was copied.
+Expected: PASS, 8 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -829,8 +787,8 @@ public class IncrementalScaffolderTests
 
     /// <summary>
     /// Every file the full generate produced for the new class must have been copied. This is what
-    /// catches a missing entry in IncrementalFiles.Suffixes - a file left behind is silent
-    /// otherwise, until the project does not compile.
+    /// proves the staging-and-copy mechanism actually carries every file a new class owns - one
+    /// left behind is silent otherwise, until the project does not compile.
     /// </summary>
     [TestMethod]
     public void No_file_of_a_new_class_is_left_behind()
@@ -962,7 +920,7 @@ public static class IncrementalScaffolder
 
             var source = GeneratedProjectPath.Folder(staging, request.AppName, request.Target);
 
-            var written = Copy(source, destination, newClassNames, request);
+            var written = Copy(source, destination);
 
             return new IncrementalResult(
                 true,
@@ -980,9 +938,7 @@ public static class IncrementalScaffolder
         }
     }
 
-    private static List<string> Copy(
-        string source, string destination, IReadOnlyList<string> newClassNames,
-        ScaffoldRequest request)
+    private static List<string> Copy(string source, string destination)
     {
         var written = new List<string>();
 
@@ -990,11 +946,12 @@ public static class IncrementalScaffolder
         {
             var relative = Path.GetRelativePath(source, file);
 
-            if (!IncrementalFiles.ShouldCopy(
-                    relative, newClassNames, request.Target, request.Persistence))
-                continue;
-
             var target = Path.Combine(destination, relative);
+
+            var existing = File.Exists(target) ? File.ReadAllText(target) : null;
+
+            if (!IncrementalFiles.ShouldCopy(relative, File.ReadAllText(file), existing))
+                continue;
 
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
             File.Copy(file, target, overwrite: true);
@@ -1463,6 +1420,6 @@ git commit -m "docs: adding to an app you already made"
 
 **Three places a task must read the code rather than trust this plan**, all flagged inline: the real generated file names in Task 3, the existing build helper in Task 5, and the exact shape of the overwrite loop in Task 6. None changes what is being built.
 
-**Known weak point.** `IncrementalFiles.Suffixes` is a hand-written list of what the generator appends to a class name. A missing entry silently leaves a file behind. Task 4's `No_file_of_a_new_class_is_left_behind` is what catches it, by diffing against a full generate — that test is load-bearing, not decorative.
+**The weak point is gone.** An earlier draft had `IncrementalFiles.Suffixes`, a hand-written list of what the generator appends to a class name, whose missing entries would silently leave files behind. Generating a real app disproved the list approach outright, and the content comparison that replaced it has nothing to maintain. Task 4's `No_file_of_a_new_class_is_left_behind` stays anyway: it is now a check that the staging-and-copy mechanism works, rather than a guard on a list.
 
 **Ordering.** Tasks 1, 2 and 3 are pure and independent. Task 4 needs 1 and 3. Task 5 needs 4. Task 6 needs everything. Task 7 is last so the catalog's final wording is what gets generated.
