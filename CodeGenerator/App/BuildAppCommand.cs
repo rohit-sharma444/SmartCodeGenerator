@@ -767,20 +767,25 @@ internal sealed class BuildAppCommand
         ImportedData importedData, ITargetScaffolder target, PersistenceKind persistence,
         AppCustomization customization)
     {
-        var name = ResolveOverwrite(appName, workspaceRoot, target);
+        var outcome = ResolveOverwrite(model, appName, workspaceRoot, target);
 
-        if (name is null)
+        if (outcome.Name is not { } name)
         {
             Console.WriteLine("Nothing was written. The model is still here — approve again when ready.");
             Console.WriteLine("");
             return false;
         }
 
+        var request = new ScaffoldRequest(
+            model, name, workspaceRoot, target, persistence, importedData,
+            customization, DateTime.Now.Year);
+
+        if (outcome.AddOnly)
+            return AddOnly(request, workspaceRoot, name, target);
+
         // The year is read here rather than inside a template: a template reading the clock would
         // turn every golden-output test red on 1 January.
-        var scaffold = new AppScaffolder().Scaffold(new ScaffoldRequest(
-            model, name, workspaceRoot, target, persistence, importedData,
-            customization, DateTime.Now.Year));
+        var scaffold = new AppScaffolder().Scaffold(request);
 
         if (scaffold.Success)
         {
@@ -837,20 +842,61 @@ internal sealed class BuildAppCommand
     /// the same question rather than silently overwriting a different project.
     /// </para>
     /// </remarks>
-    private static string? ResolveOverwrite(
-        string appName, string workspaceRoot, ITargetScaffolder target)
+    /// <summary>
+    /// Writes only the classes this app does not have, and says what it left alone.
+    /// </summary>
+    /// <remarks>
+    /// No build and no offer to run: the project was already built and may already be
+    /// running, and rebuilding it here would be a side effect nobody asked for. The report
+    /// names every file written and how many were not.
+    /// </remarks>
+    private static bool AddOnly(
+        ScaffoldRequest request, string workspaceRoot, string name, ITargetScaffolder target)
+    {
+        var folder = GeneratedProjectPath.Folder(workspaceRoot, name, target);
+
+        var added = AppScaffolding.Incremental.IncrementalScaffolder.Add(
+            request,
+            AppScaffolding.Incremental.ModelDelta.NewNames(
+                DeltaAgainst(request.Model, folder)));
+
+        foreach (var line in AddReport.Lines(added, folder))
+            Console.WriteLine(line);
+
+        Console.WriteLine("");
+
+        return added.Success;
+    }
+
+    /// <summary>
+    /// What the overwrite question settled on: the name to write under, and whether to write
+    /// only what is new.
+    /// </summary>
+    /// <remarks>
+    /// A record rather than the bare <c>string?</c> this returned before, because "add" is a
+    /// third outcome that a name alone cannot express. <c>Name</c> null still means cancel.
+    /// </remarks>
+    private sealed record OverwriteOutcome(string? Name, bool AddOnly = false);
+
+    private static OverwriteOutcome ResolveOverwrite(
+        CandidateDomainModel model, string appName, string workspaceRoot,
+        ITargetScaffolder target)
     {
         var name = appName;
 
         while (GeneratedProjectPath.Exists(workspaceRoot, name, target))
         {
+            // A piped run overwrites in silence, as it always has - and so can never reach
+            // the add branch, for the same reason it never reads a profile.
             if (Console.IsInputRedirected)
-                return name;
+                return new OverwriteOutcome(name);
+
+            var folder = GeneratedProjectPath.Folder(workspaceRoot, name, target);
+            var delta = DeltaAgainst(model, folder);
 
             // A question about losing work: yellow, so it is not skimmed past on the way to the
             // prompt. Not red — nothing has gone wrong, and answering 'o' is a legitimate choice.
-            foreach (var line in OverwritePrompt.Warning(
-                GeneratedProjectPath.Folder(workspaceRoot, name, target)))
+            foreach (var line in OverwritePrompt.Warning(folder, delta))
             {
                 Output.Warning(line);
             }
@@ -858,21 +904,39 @@ internal sealed class BuildAppCommand
             var action = AskOverwriteAction();
 
             if (action == OverwriteAction.Overwrite)
-                return name;
+                return new OverwriteOutcome(name);
+
+            if (action == OverwriteAction.Add)
+                return new OverwriteOutcome(name, AddOnly: true);
 
             if (action == OverwriteAction.Cancel)
-                return null;
+                return new OverwriteOutcome(null);
 
             var renamed = AskNewAppName();
 
             if (renamed is null)
-                return null;
+                return new OverwriteOutcome(null);
 
             name = renamed;
         }
 
-        return name;
+        return new OverwriteOutcome(name);
     }
+
+    /// <summary>
+    /// What this model has that the app in <paramref name="projectFolder"/> does not.
+    /// </summary>
+    /// <remarks>
+    /// Scoped to the Models folder, not the workspace: <c>ClassSnapshots.Read</c> recurses
+    /// whatever root it is given, and a workspace may hold several generated apps - reading
+    /// all of them would diff this app against everybody's classes.
+    /// </remarks>
+    private static IReadOnlyList<AppScaffolding.Incremental.ClassDelta> DeltaAgainst(
+        CandidateDomainModel model, string projectFolder)
+        => AppScaffolding.Incremental.ModelDelta.Between(
+            CodeGenerationEngine.Core.Relationships.ClassSnapshots.Read(
+                Path.Combine(projectFolder, "Models")),
+            DomainModelMapper.ToClassDefinitions(model));
 
     /// <summary>Puts the overwrite question until it gets an answer it understands.</summary>
     private static OverwriteAction AskOverwriteAction()

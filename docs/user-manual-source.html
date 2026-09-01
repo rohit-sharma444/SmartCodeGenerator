@@ -445,6 +445,48 @@ pickers, with your earlier choice pre-selected so Enter simply confirms it.</p>
 <div class="note"><p>An empty model cannot be generated — if discovery found nothing, add at least one class
 first.</p></div>
 
+<h3>Adding to an app you already made</h3>
+
+<p>Run <code>build app</code> again with more in the description, and when the guard notices
+   the project is already there it now says what is different:</p>
+
+<pre>D:\SampleProjects\Shop.Wpf already holds a generated project.
+It has 8 class(es); this model has 10, of which 2 are new.
+
+  [a]dd the 2 new   [o]verwrite all   [r]ename   [c]ancel   (Enter cancels)</pre>
+
+<p>Answering <code>a</code> writes those two classes &mdash; the model, its repository and its
+   validator &mdash; together with the few files that list the entities, so the new screens
+   appear. <strong>Nothing else is written at all.</strong> The run tells you how many files
+   it left alone, because that is the half worth checking:</p>
+
+<pre>  Written:
+    Models\Supplier.cs
+    Data\SupplierRepository.cs
+    ViewModels\MainViewModel.cs
+
+  41 file(s) untouched.</pre>
+
+<p>It knows what is already there by <strong>reading the generated code</strong>, not by
+   consulting a file it wrote earlier. So it works on applications made by any earlier version
+   of the tool, and it cannot be wrong about what is on disk.</p>
+
+<div class="note"><p>Your <code>.Custom.cs</code> validator rules are never overwritten by an
+   add, and a class that is already there with <em>different</em> fields is named and left
+   alone &mdash; adding will not reconcile it and overwriting would, so the choice stays
+   yours. <code>a</code> is offered only when the model really does contain something new: an
+   answer that would do nothing is not put on the menu.</p></div>
+
+<div class="warn"><p>A hand edit inside a <em>generated</em> file that is not
+   <code>.Custom.cs</code> is reverted by an add, just as it is by a regenerate. The list of
+   files written is how you see it happen.</p></div>
+
+<p>What it cannot recover from the code is your <em>answers</em>: the theme, the layout and the
+   master/transaction split are not in the C#, so they come from the profile in
+   <code>.codegen</code> or from what you chose on this run. And a piped run overwrites in
+   silence exactly as it always has &mdash; the question is only asked when there is somebody
+   to answer it.</p>
+
 <h2>7. Customizing the generated application</h2>
 
 <p>By default the generated application is plain and unbranded. You can change how it looks, what it is called,
@@ -1301,6 +1343,7 @@ own shows the shorter overview, and <code>help &lt;topic&gt;</code> shows one se
 <table>
 <tr><th>Command</th><th>Description</th><th>Example</th></tr>
 <tr><td><code>add &lt;name&gt;</code></td><td>Review loop: adds a class to the candidate model. The name keeps the shape you type, so a compound survives; several words become one class name.</td><td><code>add cash register</code></td></tr>
+<tr><td><code>approve (when the app already exists)</code></td><td>Offers to add only what is new. When the project folder already holds a generated app, the guard reads the classes already there and compares them with the model you just reviewed: it has 8 class(es), this model has 10, of which 2 are new. Answering a writes those 2 classes and the files that list the entities so their screens appear - and nothing else, so every other generated file is left byte-identical. The run says how many files it did not touch. A class that exists with DIFFERENT fields is named and left alone: adding will not reconcile it, overwriting would. Your .Custom.cs validator rules are never overwritten. a is offered only when something really is new, Enter still cancels, and a piped run overwrites in silence as it always has.</td><td><code>approve wpf</code></td></tr>
 <tr><td><code>approve [target] [sqlite]</code></td><td>Review loop: generates the app using the type chosen at the start. Name a target to override it: wpf (default), winforms, console, webapi, blazor, classlib, worker. Add &#x27;sqlite&#x27; for EF Core persistence (JSON is the default; the wpf and winforms targets are JSON-only). Alias: a.</td><td><code>approve webapi sqlite</code></td></tr>
 <tr><td><code>build app</code></td><td>Starts the same flow with nothing filled in. Interactively it opens a workflow page in the browser drawn as eight connected stages, ending in one that starts the application it just built. The stages are the navigation: each box shows the answer it holds, the box being answered carries the step forward and an arrow back one stage, the next box lights up when that step is ready, and clicking a finished box goes back to change it — there are no Back and Next buttons. Generate and Run stay disabled until the project has actually been written. Review states the screen each class will get — master, transaction, or the transaction a line is edited inside — and lets you change it before anything is written. A long step reports its progress as it works, and changing the description or the data source asks first, because it discards the model that was discovered from the old one; Cancel asks the same way once there is an answer to lose. The panel that opens holds the keyboard and Enter takes the step it offers — never Generate or Run, which stay deliberate clicks. A named data file is summarised — how many rows and columns — before anything is built from it; a step that fails says why and stays clickable rather than ending the run; the application the last stage starts can be stopped from the page; and the console signs off with the `build app:` line that would do the same run again. Two tabs on the same workflow stay in step, and closing the last one ends the command. Piped runs keep the console wizard, as does CG_NO_WEB=1.</td><td><code>build app</code></td></tr>
 <tr><td><code>build app (with an unfinished build in the workspace)</code></td><td>Offers the build you left. Closing the browser tab no longer loses the work: the answers and the reviewed model - renames, added and removed fields, promoted suggestions, the master/transaction split - are saved to .codegen/build-in-progress.json after every change, and the next interactive run in that workspace offers to resume, start fresh or discard. Enter starts fresh and deletes nothing. Your DATA is not saved, only where it came from, so the source is re-read on resume; a file that has moved, or a SQL connection string (which is never saved), opens the data stage instead of failing. A finished or cancelled build clears the snapshot; one abandoned by closing the tab keeps it. Piped runs neither write one nor read one.</td><td><code>build app</code></td></tr>

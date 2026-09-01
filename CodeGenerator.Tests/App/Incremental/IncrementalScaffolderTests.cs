@@ -1,0 +1,211 @@
+using AppScaffolding;
+using AppScaffolding.Incremental;
+using AppScaffolding.Targets;
+using DomainDiscovery.Model;
+
+namespace CodeGenerator.Tests.App.Incremental;
+
+/// <summary>
+/// The claim the whole feature rests on: an add writes the new classes and leaves everything else
+/// byte-identical.
+/// </summary>
+/// <remarks>
+/// A real generate to a real folder. Under C:\cg-t\ and not the temp path, because a GUID plus a
+/// project name plus Models\Whatever.cs blows MAX_PATH and the tell is MSB3030 claiming a file is
+/// missing that is plainly there.
+/// </remarks>
+[TestClass]
+public class IncrementalScaffolderTests
+{
+    private string _root = string.Empty;
+
+    [TestInitialize]
+    public void Setup()
+    {
+        _root = Path.Combine(@"C:\cg-t", Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(_root);
+    }
+
+    [TestCleanup]
+    public void Cleanup()
+    {
+        try
+        {
+            if (Directory.Exists(_root))
+                Directory.Delete(_root, recursive: true);
+        }
+        catch (IOException)
+        {
+            // A generated project's obj folder can hold a lock briefly. A leftover under C:\cg-t
+            // is not worth failing a green test over.
+        }
+    }
+
+    private static CandidateDomainModel Model(params string[] names)
+    {
+        var model = new CandidateDomainModel();
+
+        foreach (var name in names)
+        {
+            var entity = new CandidateEntity { Name = name, Provenance = Provenance.Wiki };
+            entity.Fields.Add(new CandidateField
+            {
+                Name = "Title", Type = "string", Provenance = Provenance.Wiki
+            });
+            model.Entities.Add(entity);
+        }
+
+        return model;
+    }
+
+    /// <summary>
+    /// The assumption the temp-and-copy approach depends on. If this fails, the approach is
+    /// invalid and the plan needs revisiting — a copied file would differ from what a generate in
+    /// place would have written.
+    /// </summary>
+    [TestMethod]
+    public void Generated_content_does_not_depend_on_the_output_folder()
+    {
+        var target = new WpfTarget();
+        var a = Path.Combine(_root, "a");
+        var b = Path.Combine(_root, "b");
+        Directory.CreateDirectory(a);
+        Directory.CreateDirectory(b);
+
+        new AppScaffolder().Scaffold(ScaffoldRequest.For(Model("Customer"), "Shop", a, target));
+        new AppScaffolder().Scaffold(ScaffoldRequest.For(Model("Customer"), "Shop", b, target));
+
+        var one = Path.Combine(
+            GeneratedProjectPath.Folder(a, "Shop", target), "Models", "Customer.cs");
+        var two = Path.Combine(
+            GeneratedProjectPath.Folder(b, "Shop", target), "Models", "Customer.cs");
+
+        Assert.IsTrue(File.Exists(one), one);
+        Assert.IsTrue(File.Exists(two), two);
+
+        CollectionAssert.AreEqual(File.ReadAllBytes(one), File.ReadAllBytes(two));
+    }
+
+    [TestMethod]
+    public void An_add_writes_the_new_class_and_leaves_the_rest_alone()
+    {
+        var target = new WpfTarget();
+
+        var first = new AppScaffolder().Scaffold(
+            ScaffoldRequest.For(Model("Customer", "Order"), "Shop", _root, target));
+
+        Assert.IsTrue(first.Success, first.Message);
+
+        var folder = GeneratedProjectPath.Folder(_root, "Shop", target);
+        var customerPath = Path.Combine(folder, "Models", "Customer.cs");
+
+        Assert.IsTrue(File.Exists(customerPath), customerPath);
+
+        var customerBefore = File.ReadAllBytes(customerPath);
+
+        var result = IncrementalScaffolder.Add(
+            ScaffoldRequest.For(Model("Customer", "Order", "Supplier"), "Shop", _root, target),
+            ["Supplier"]);
+
+        Assert.IsTrue(result.Success, result.Message);
+
+        Assert.IsTrue(File.Exists(Path.Combine(folder, "Models", "Supplier.cs")));
+
+        // THE ASSERTION THIS FEATURE EXISTS FOR.
+        // CollectionAssert, because Assert.AreEqual on two byte[] compares references and
+        // would fail even on identical content - a false red that would send someone hunting
+        // a bug in the copy instead of in the test.
+        CollectionAssert.AreEqual(
+            customerBefore,
+            File.ReadAllBytes(customerPath),
+            "an existing class was rewritten by an add");
+    }
+
+    /// <summary>
+    /// The three files that enumerate the entities. Miss any one and the new class has no
+    /// screen, no seed data, or no registered validator - and the last two compile perfectly.
+    /// </summary>
+    [TestMethod]
+    public void The_three_composition_files_learn_about_the_new_class()
+    {
+        var target = new WpfTarget();
+
+        new AppScaffolder().Scaffold(
+            ScaffoldRequest.For(Model("Customer"), "Shop", _root, target));
+
+        var folder = GeneratedProjectPath.Folder(_root, "Shop", target);
+
+        IncrementalScaffolder.Add(
+            ScaffoldRequest.For(Model("Customer", "Supplier"), "Shop", _root, target),
+            ["Supplier"]);
+
+        foreach (var relative in new[]
+                 {
+                     Path.Combine("ViewModels", "MainViewModel.cs"),
+                     Path.Combine("Data", "SeedData.cs"),
+                     Path.Combine("Validation", "ValidatorFactory.cs"),
+                 })
+        {
+            var path = Path.Combine(folder, relative);
+
+            Assert.IsTrue(File.Exists(path), path);
+            StringAssert.Contains(
+                File.ReadAllText(path), "Supplier", $"{relative} does not know about it");
+        }
+    }
+
+    /// <summary>
+    /// Every file the full generate produced for the new class must have arrived. This proves
+    /// the staging-and-copy mechanism carries them all - one left behind is silent otherwise,
+    /// until the project does not compile.
+    /// </summary>
+    [TestMethod]
+    public void No_file_of_a_new_class_is_left_behind()
+    {
+        var target = new WpfTarget();
+
+        new AppScaffolder().Scaffold(
+            ScaffoldRequest.For(Model("Customer"), "Shop", _root, target));
+
+        var folder = GeneratedProjectPath.Folder(_root, "Shop", target);
+
+        IncrementalScaffolder.Add(
+            ScaffoldRequest.For(Model("Customer", "Supplier"), "Shop", _root, target),
+            ["Supplier"]);
+
+        // A full generate of the same model, elsewhere, is the reference.
+        var reference = Path.Combine(_root, "ref");
+        Directory.CreateDirectory(reference);
+
+        new AppScaffolder().Scaffold(
+            ScaffoldRequest.For(Model("Customer", "Supplier"), "Shop", reference, target));
+
+        var referenceFolder = GeneratedProjectPath.Folder(reference, "Shop", target);
+
+        var missing = Directory
+            .GetFiles(referenceFolder, "*", SearchOption.AllDirectories)
+            .Select(f => Path.GetRelativePath(referenceFolder, f))
+            .Where(r => !r.StartsWith("obj", StringComparison.OrdinalIgnoreCase))
+            .Where(r => !r.StartsWith("bin", StringComparison.OrdinalIgnoreCase))
+            .Where(r => Path.GetFileName(r).StartsWith("Supplier", StringComparison.Ordinal))
+            .Where(r => !File.Exists(Path.Combine(folder, r)))
+            .ToList();
+
+        Assert.IsEmpty(
+            missing, $"files of the new class were not copied: {string.Join(", ", missing)}");
+    }
+
+    [TestMethod]
+    public void Adding_nothing_writes_nothing()
+    {
+        var target = new WpfTarget();
+
+        new AppScaffolder().Scaffold(
+            ScaffoldRequest.For(Model("Customer"), "Shop", _root, target));
+
+        var result = IncrementalScaffolder.Add(
+            ScaffoldRequest.For(Model("Customer"), "Shop", _root, target), []);
+
+        Assert.IsEmpty(result.Written);
+    }
+}

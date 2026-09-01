@@ -730,6 +730,24 @@ public static class CommandDictionary
         new()
         {
             Category = "Build App",
+            Command = "approve (when the app already exists)",
+            Description = "Offers to add only what is new. When the project folder already "
+                        + "holds a generated app, the guard reads the classes already there "
+                        + "and compares them with the model you just reviewed: it has 8 "
+                        + "class(es), this model has 10, of which 2 are new. Answering a "
+                        + "writes those 2 classes and the files that list the entities so "
+                        + "their screens appear - and nothing else, so every other generated "
+                        + "file is left byte-identical. The run says how many files it did "
+                        + "not touch. A class that exists with DIFFERENT fields is named and "
+                        + "left alone: adding will not reconcile it, overwriting would. Your "
+                        + ".Custom.cs validator rules are never overwritten. a is offered "
+                        + "only when something really is new, Enter still cancels, and a "
+                        + "piped run overwrites in silence as it always has.",
+            Example = "approve wpf"
+        },
+        new()
+        {
+            Category = "Build App",
             Command = "add <name>",
             Description = "Review loop: adds a class to the candidate model. The name keeps the "
                         + "shape you type, so a compound survives; several words become one class "
