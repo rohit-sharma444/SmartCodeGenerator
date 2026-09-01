@@ -637,7 +637,7 @@ public static class CommandDictionary
                         + "foreign keys are skipped. Any password in the connection string is "
                         + "masked wherever the run is echoed back, so the replay line needs "
                         + "the password typed in again before it will run.",
-            Example = "build app: order tracking from sql \"Server=.;Database=Northwind;Trusted_Connection=True\" tables Customers,Orders"
+            Example = "build app: a shop from sql \"Server=.;Database=Shop\" tables Customer"
         },
         new()
         {
