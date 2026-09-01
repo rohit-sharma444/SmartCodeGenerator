@@ -98,12 +98,27 @@ internal sealed class BuildAppCommand
             var saved = CustomizationDefaults.Load(workspaceRoot);
             var webStart = Merge(saved, inline);
 
-            // Before the page opens, so the layout the workflow will start pre-filled with is one
-            // the user has been told about rather than one they have to notice.
-            WriteRememberedLayoutNotice(workspaceRoot, saved, inline.Layout);
+            // Asked here, in the console, and before the page opens. Safe because this
+            // command is dispatched OUTSIDE CommandColour.Run - deliberately, since it
+            // prints an address and then blocks - which is why OverwritePrompt is visible
+            // too. A prompt inside a buffered command would not be.
+            var resumed = OfferToResume(workspaceRoot);
 
-            var session = new Web.Workflow.BuildSession(
+            // Before the page opens, so the layout the workflow will start pre-filled with is one
+            // the user has been told about rather than one they have to notice. Skipped for a
+            // resumed build: its layout came from the snapshot, not from the profile.
+            if (resumed is null)
+                WriteRememberedLayoutNotice(workspaceRoot, saved, inline.Layout);
+
+            var session = resumed ?? new Web.Workflow.BuildSession(
                 description, workspaceRoot, webStart, source);
+
+            // Attached AFTER any restore, so replaying a snapshot does not write a dozen
+            // partial ones over the good one.
+            session.Autosave = s => Resume.BuildSnapshotStore.Save(
+                workspaceRoot, Resume.BuildSnapshot.Of(s));
+
+            session.OnFinished = _ => Resume.BuildSnapshotStore.Clear(workspaceRoot);
 
             if (Web.BuildAppWebHost.TryStart(session, out var host))
             {
@@ -1127,6 +1142,60 @@ internal sealed class BuildAppCommand
     /// failing the build over it would be out of proportion.
     /// </remarks>
     /// <summary>Prints the remembered-layout notice when there is one.</summary>
+    /// <summary>
+    /// Offers an unfinished build, and returns the session to carry on with - or null to
+    /// start fresh.
+    /// </summary>
+    /// <remarks>
+    /// Interactive only. A redirected-stdin run neither writes a snapshot nor reads one: a
+    /// scripted build must not have its output changed by a file it never mentioned, which is
+    /// the same determinism <c>CustomizationDefaults</c> and <c>normalize</c> already protect.
+    /// </remarks>
+    private static Web.Workflow.BuildSession? OfferToResume(string workspaceRoot)
+    {
+        if (Console.IsInputRedirected)
+            return null;
+
+        var snapshot = Resume.BuildSnapshotStore.Load(workspaceRoot);
+
+        if (snapshot is null)
+            return null;
+
+        while (true)
+        {
+            foreach (var line in Resume.ResumeOffer.Lines(snapshot, DateTimeOffset.UtcNow))
+                Console.WriteLine(line);
+
+            Console.Write("> ");
+
+            switch (Resume.ResumeOffer.Parse(Console.ReadLine()))
+            {
+                case Resume.ResumeChoice.Resume:
+                    var session = Resume.ResumedSession.From(
+                        snapshot, workspaceRoot, out var notice);
+
+                    if (notice is not null)
+                        Output.Warning("  " + notice);
+
+                    return session;
+
+                case Resume.ResumeChoice.Fresh:
+                    // Left on disk deliberately: starting fresh is not a decision to throw
+                    // the old work away, and the next run can still offer it.
+                    return null;
+
+                case Resume.ResumeChoice.Discard:
+                    Resume.BuildSnapshotStore.Clear(workspaceRoot);
+                    Console.WriteLine("  Discarded.");
+                    return null;
+
+                default:
+                    Console.WriteLine("  Answer r, f or d.");
+                    continue;
+            }
+        }
+    }
+
     private static void WriteRememberedLayoutNotice(
         string workspaceRoot, AppCustomization saved, AppLayout? namedOnTheLine)
     {
