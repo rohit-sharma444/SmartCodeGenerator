@@ -65,7 +65,7 @@ internal static class DiscoveryStep
 
         // The file, not tables[0].Label: a workbook labels each table with its own sheet, and a
         // check covering every sheet must not claim to be about the first one.
-        var fileLabel = Path.GetFileName(source.Location);
+        var fileLabel = DataSourceLabel.For(source);
 
         var report = BuildAppCommand.CombineReports(tables);
 

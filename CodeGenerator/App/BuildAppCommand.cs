@@ -308,7 +308,7 @@ internal sealed class BuildAppCommand
         // The file, not tables[0].Label: a workbook labels each table with its own sheet
         // ("shop.xlsx [Orders]"), and a check that covers every sheet must not claim to be about
         // the first one. Each finding still carries the sheet it came from.
-        var fileLabel = Path.GetFileName(source.Location);
+        var fileLabel = DataSourceLabel.For(source);
 
         Console.WriteLine(
             $"Read {tables.Count} table(s) from {fileLabel}: "

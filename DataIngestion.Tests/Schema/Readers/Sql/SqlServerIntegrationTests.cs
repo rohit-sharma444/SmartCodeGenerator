@@ -34,14 +34,19 @@ public class SqlServerIntegrationTests
         var tables = source.Tables(Connection);
         Assert.NotEmpty(tables);
 
-        var first = tables[0];
-        Assert.NotEmpty(source.Columns(Connection, first.Schema, first.Name));
+        // The SMALLEST table, not the first. Rows() reads a table in full, and pointed at a real
+        // database the first one alphabetically can be enormous - the one this was first run
+        // against had 47 million rows in it. An unreadable count sorts last rather than first,
+        // since it might be anything.
+        var smallest = tables.OrderBy(t => t.Rows ?? long.MaxValue).First();
+
+        Assert.NotEmpty(source.Columns(Connection, smallest.Schema, smallest.Name));
 
         // Not asserted non-empty: a database may legitimately declare no foreign keys. That the
         // query runs at all is the thing being proved.
         _ = source.ForeignKeys(Connection);
 
-        // Reading the first table proves the SELECT and the value rendering, whatever it holds.
-        _ = source.Rows(Connection, first.Schema, first.Name);
+        // Proves the SELECT and the value rendering, whatever the table holds.
+        _ = source.Rows(Connection, smallest.Schema, smallest.Name);
     }
 }
