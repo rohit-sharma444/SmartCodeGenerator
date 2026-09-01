@@ -217,7 +217,16 @@
     /// by double quotes cannot contain a double-quoted C# string.
     /// </para>
     /// </remarks>
-    private void Report(bool changed, string ok, string fail) => _message = changed ? ok : fail;
+    private void Report(bool changed, string ok, string fail)
+    {
+        _message = changed ? ok : fail;
+
+        // Here rather than at each caller, because this is the one place all of them pass
+        // through - and an edit that is not saved is the work a closed tab loses. Called even
+        // when the editor refused: changed=false means the model is as it was, and a needless
+        // save is far cheaper than a missed one.
+        Session.ModelEdited();
+    }
 
     private void Remove(string entityName)
         => Report(
@@ -253,9 +262,14 @@
         // always the name typed: promoting a suggestion keeps the suggestion's own spelling.
         _message = BuildAppCommand.AddLine(Model, ["add", _newClass]);
         _newClass = string.Empty;
+        Session.ModelEdited();
     }
 
-    private void Promote(string name) => _message = BuildAppCommand.AddLine(Model, ["add", name]);
+    private void Promote(string name)
+    {
+        _message = BuildAppCommand.AddLine(Model, ["add", name]);
+        Session.ModelEdited();
+    }
 
     private void AddField(string entityName)
     {
