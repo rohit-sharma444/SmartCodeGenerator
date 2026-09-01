@@ -85,10 +85,17 @@ public class SetupStageTests
             rendered.FindAll("input[type=radio]"));
     }
 
-    // A format with no reader in this build is refused before it is chosen, not after — the same
-    // courtesy DataSourceInterview.FormatLabel pays.
+    /// <summary>
+    /// Every format on the menu can be read, so none is disabled. This asserted the opposite
+    /// until the SQL Server branch, using sql as the one kind with no reader.
+    /// </summary>
+    /// <remarks>
+    /// Written over the catalog rather than naming formats, so a kind added without a reader
+    /// fails here - the row is built by Label(), which appends the caveat only for a kind
+    /// TryCreate cannot build.
+    /// </remarks>
     [TestMethod]
-    public void The_data_panel_disables_a_format_this_build_cannot_read()
+    public void The_data_panel_offers_every_format_without_a_caveat()
     {
         using var context = new BunitContext();
 
@@ -99,17 +106,16 @@ public class SetupStageTests
 
         rendered.Find("input[type=radio][value=file]").Change(true);
 
-        var unreadable = DataSourceReaders.Keys
-            .Where(k => DataSourceReaders.TryParseKind(k, out var kind)
-                        && !DataSourceReaders.TryCreate(kind, out _))
-            .ToList();
+        foreach (var key in DataSourceReaders.Keys)
+        {
+            var option = rendered.Find($"option[value={key}]");
 
-        Assert.IsNotEmpty(unreadable);
+            Assert.IsFalse(
+                option.HasAttribute("disabled"),
+                $"{key} is on the menu and should be selectable");
 
-        foreach (var key in unreadable)
-            Assert.IsTrue(
-                rendered.Find($"option[value={key}]").HasAttribute("disabled"),
-                $"{key} has no reader and should not be selectable");
+            Assert.AreEqual(key, option.TextContent.Trim());
+        }
     }
 
     /// <summary>
