@@ -612,6 +612,25 @@ public static class CommandDictionary
         new()
         {
             Category = "Build App",
+            Command = "build app (with an unfinished build in the workspace)",
+            Description = "Offers the build you left. Closing the browser tab no longer "
+                        + "loses the work: the answers and the reviewed model - renames, "
+                        + "added and removed fields, promoted suggestions, the "
+                        + "master/transaction split - are saved to "
+                        + ".codegen/build-in-progress.json after every change, and the next "
+                        + "interactive run in that workspace offers to resume, start fresh "
+                        + "or discard. Enter starts fresh and deletes nothing. Your DATA is "
+                        + "not saved, only where it came from, so the source is re-read on "
+                        + "resume; a file that has moved, or a SQL connection string (which "
+                        + "is never saved), opens the data stage instead of failing. A "
+                        + "finished or cancelled build clears the snapshot; one abandoned by "
+                        + "closing the tab keeps it. Piped runs neither write one nor read "
+                        + "one.",
+            Example = "build app"
+        },
+        new()
+        {
+            Category = "Build App",
             Command = "build app: <description> from <format> <location>",
             Description = "Builds the model from existing data with no prompts when piped; "
                         + "interactively the file is already answered and the workflow page opens "
