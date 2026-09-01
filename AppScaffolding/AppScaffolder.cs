@@ -285,21 +285,19 @@ public sealed class AppScaffolder
         // same WriteSource, and a `//` banner would corrupt both.
         var header = FileHeader.For(request.Customization.Company, request.Year);
 
-        // Decided here rather than beside the file list further down: the auth core occupies
-        // the name "User", and a discovered entity can only be renamed around it if that is
-        // known before the classes are built.
-        var auth = request.Customization.Login && target.HasScreens;
+        // All of it in one call, because the build workflow's review panel shows this same split
+        // before anything is written and the two must not be able to disagree. It settles, in
+        // order: whether the auth core is emitted (it occupies "User", so a discovered entity can
+        // only be renamed around it if that is known BEFORE the classes are built), the classes,
+        // and the roles — classified here rather than at the point of use so the summary is
+        // reported whether or not any screen reads them yet, making a misclassification visible
+        // from the first build rather than from the first launch.
+        var plan = ScreenPlan.For(model, request.Customization, target);
 
-        var classes = DomainModelMapper.ToClassDefinitions(
-            model, out var classNames, auth ? AuthCoreFiles.ReservedNames : []);
-
-        // Classified here rather than at the point of use: the summary is reported whether or
-        // not any screen reads the roles yet, so a misclassification is visible from the first
-        // build rather than from the first launch.
-        var roles = EntityRoles.Classify(
-            classes,
-            ScreenOverrides.Parse(
-                request.Customization.Transactions, request.Customization.Masters));
+        var auth = plan.Login;
+        var classes = plan.Classes;
+        var classNames = plan.ClassNames;
+        var roles = plan.Roles;
 
         // Through GeneratedProjectPath, not composed here, so the CLI's overwrite guard and this
         // writer cannot drift apart — see that type's remarks.
