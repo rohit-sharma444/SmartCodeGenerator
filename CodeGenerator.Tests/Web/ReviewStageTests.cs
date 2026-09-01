@@ -331,8 +331,13 @@ public class ReviewStageTests
 
         var rendered = RenderShop(context, out _, new ConsoleTarget());
 
+        // The cards first. Three absences on a panel that rendered nothing at all would pass
+        // just as well, and prove nothing.
+        Assert.HasCount(3, rendered.FindAll(".entity"));
+
         Assert.IsEmpty(rendered.FindAll("select.role"));
         Assert.IsEmpty(rendered.FindAll("button.own-screen"));
+        Assert.IsEmpty(rendered.FindAll(".screen-summary"));
     }
 
     /// <summary>The same sentence the build output has always ended with, moved to where it can
