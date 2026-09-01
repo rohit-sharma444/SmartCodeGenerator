@@ -84,6 +84,33 @@ public sealed class BuildSession
     /// </remarks>
     public event Action? Changed;
 
+    /// <summary>
+    /// Invoked whenever this session has changed in a way worth persisting.
+    /// </summary>
+    /// <remarks>
+    /// A callback rather than a call to a store, for two reasons. This type is in
+    /// <c>Web.Workflow</c> and knows nothing about disk - the seam keeps it that way. And
+    /// every existing test constructs a session; null-by-default means none of them starts
+    /// writing files.
+    /// </remarks>
+    public Action<BuildSession>? Autosave { get; set; }
+
+    /// <summary>
+    /// Says that the model has been edited in place, so the session can be saved.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="Change"/> cannot see these. <c>ReviewStage</c> calls <c>ModelEditor</c>
+    /// directly - rename, remove, add field, promote - and every one of them mutates the
+    /// model object this session already holds. Without this method an autosave hooked to
+    /// answers alone would save every stage transition and lose every edit, which is
+    /// precisely the work worth keeping.
+    /// <para>
+    /// It deliberately does not raise <see cref="Changed"/>: the panel that made the edit has
+    /// already re-rendered, and the other tab is repainted by the edit's own broadcast.
+    /// </para>
+    /// </remarks>
+    public void ModelEdited() => Autosave?.Invoke(this);
+
     public string WorkspaceRoot { get; }
 
     public BuildStage Current { get; private set; }
@@ -460,6 +487,11 @@ public sealed class BuildSession
             if (invalidated == BuildStage.Generate)
                 Generated = null;
         }
+
+        // Here rather than in Change, which returns early while it is holding a pending
+        // discard - a snapshot taken then would record an answer this session has not
+        // accepted yet.
+        Autosave?.Invoke(this);
     }
 
     /// <summary>Marks the open node answered and opens the next one.</summary>
