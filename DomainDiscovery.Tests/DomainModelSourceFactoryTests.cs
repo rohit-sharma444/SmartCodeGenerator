@@ -31,7 +31,11 @@ public class DomainModelSourceFactoryTests
         var source = DomainModelSourceFactory.Create(
             new DiscoveryConfig(), Wikipedia, new FakeOllamaClient { Available = false });
 
-        Assert.IsType<StubSource>(source);
+        var outcome = source.Discover("a shop");
+
+        // The underlying source really is the Wikipedia stub — wrapped now, to annotate the
+        // outcome, but the discovery it runs is still Wikipedia's.
+        Assert.StartsWith("Wikipedia", outcome.SourceLabel);
     }
 
     [Fact]
@@ -56,5 +60,46 @@ public class DomainModelSourceFactoryTests
             new FakeOllamaClient { Available = true });
 
         Assert.Equal(0, built);
+    }
+
+    [Fact]
+    public void AnnotatesTheOutcomeWhenFallingBackBecauseOllamaIsUnavailable()
+    {
+        var source = DomainModelSourceFactory.Create(
+            new DiscoveryConfig(), Wikipedia, new FakeOllamaClient { Available = false });
+
+        var outcome = source.Discover("a shop");
+
+        Assert.True(
+            outcome.SourceLabel.Contains("Ollama", StringComparison.OrdinalIgnoreCase)
+            || (outcome.Message?.Contains("Ollama", StringComparison.OrdinalIgnoreCase) ?? false));
+    }
+
+    [Fact]
+    public void DoesNotAnnotateWhenWikipediaIsExplicitlyConfigured()
+    {
+        var config = new DiscoveryConfig { Source = DiscoveryConfig.WikipediaSource };
+
+        var source = DomainModelSourceFactory.Create(
+            config, Wikipedia, new FakeOllamaClient { Available = true });
+
+        var outcome = source.Discover("a shop");
+
+        Assert.Equal("Wikipedia", outcome.SourceLabel);
+        Assert.False(outcome.Message?.Contains("Ollama", StringComparison.OrdinalIgnoreCase) ?? false);
+    }
+
+    [Fact]
+    public void NamesTheUnrecognisedSourceValueWhenFallingBack()
+    {
+        var config = new DiscoveryConfig { Source = "olama" };
+
+        var source = DomainModelSourceFactory.Create(
+            config, Wikipedia, new FakeOllamaClient { Available = true });
+
+        var outcome = source.Discover("a shop");
+
+        Assert.NotNull(outcome.Message);
+        Assert.Contains("olama", outcome.Message);
     }
 }
