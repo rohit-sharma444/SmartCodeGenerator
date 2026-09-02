@@ -47,7 +47,18 @@ public static class LlmModelNormalizer
             }
 
             if (accepted.Any(a => a.Entity.Name == name))
+            {
+                // A second class normalizing to the same name would otherwise vanish with no
+                // trail at all — the invalid-identifier branch above both rejects and records;
+                // this path must match it, or `why <Class>` goes unanswerable for it.
+                model.Rejected.Add(llmClass.Name);
+                model.Record(
+                    llmClass.Name,
+                    DecisionStage.ModelProposal,
+                    DecisionOutcome.Rejected,
+                    DecisionReasons.AlreadyNamed);
                 continue;
+            }
 
             var entity = new CandidateEntity
             {
@@ -195,6 +206,14 @@ public static class LlmModelNormalizer
         // IsKeyOf, not f.Name == "Id": qwen2.5:3b names Sale's key "SaleID", and an exact match
         // would add a second key beside the one the model already gave us.
         if (entity.Fields.Any(f => IsKeyOf(f.Name, entity.Name)))
+            return;
+
+        // A class itself named "Id" must not get a field named "Id" inserted here: that emits
+        // `class Id { public int Id { get; set; } }`, which is CS0542 and will not compile.
+        // DefaultFields.ApplyTo carries the identical guard for its own "Name" field; this is
+        // its analogue for the key. The class still gets an editable grid, because
+        // DefaultFields.ApplyTo runs afterward and gives it a Name field instead.
+        if (string.Equals(entity.Name, "Id", StringComparison.OrdinalIgnoreCase))
             return;
 
         entity.Fields.Insert(0, new CandidateField

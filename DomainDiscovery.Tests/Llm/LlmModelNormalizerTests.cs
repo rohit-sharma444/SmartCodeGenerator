@@ -241,4 +241,47 @@ public class LlmModelNormalizerTests
 
         Assert.Empty(LlmModelNormalizer.Normalize(raw).Entities.Single().Relationships);
     }
+
+    /// <summary>
+    /// A class named "Id" must not get a field named "Id" inserted by EnsureKey — that emits
+    /// `class Id { public int Id { get; set; } }`, which is CS0542 and will not compile.
+    /// DefaultFields.ApplyTo still gives it a Name field, so the grid stays editable.
+    /// </summary>
+    [Fact]
+    public void GivesAClassNamedIdASaneShapeInsteadOfADuplicateMember()
+    {
+        var raw = new LlmDomainModel
+        {
+            Classes = { Class("Id", "None", Property("Id", "int")) }
+        };
+
+        var entity = LlmModelNormalizer.Normalize(raw).Entities.Single(e => e.Name == "Id");
+
+        Assert.DoesNotContain(entity.Fields, f => f.Name == "Id");
+        Assert.Contains(entity.Fields, f => f.Name == DefaultFields.NameField);
+    }
+
+    /// <summary>A second class normalizing to a name already taken must not vanish silently —
+    /// `why` needs a trail for it just like the invalid-identifier branch above it.</summary>
+    [Fact]
+    public void RecordsADuplicateClassNameAsRejectedRatherThanDroppingItSilently()
+    {
+        var raw = new LlmDomainModel
+        {
+            Classes =
+            {
+                Class("Order", "Transaction", Property("Total", "decimal")),
+                Class("order", "Transaction", Property("Note", "string"))
+            }
+        };
+
+        var model = LlmModelNormalizer.Normalize(raw);
+
+        Assert.Contains(model.Rejected, r => r == "order");
+        Assert.Contains(model.Decisions, d =>
+            d.Name == "order"
+            && d.Stage == DecisionStage.ModelProposal
+            && d.Outcome == DecisionOutcome.Rejected
+            && d.Reason == DecisionReasons.AlreadyNamed);
+    }
 }
