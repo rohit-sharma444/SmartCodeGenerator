@@ -1,5 +1,11 @@
 @page "/build"
-@rendermode InteractiveServer
+@* Prerendering off: with the default InteractiveServer mode, the initial HTTP response runs the
+   component tree's OnInitializedAsync synchronously as part of that request. DiscoverStage's
+   discovery call is a real 3-5 minute Ollama round trip, so a fresh GET landing on this page
+   (a reload, a second tab, a backgrounded tab reloading) would block that entire HTTP response
+   for the full duration — and could race BuildAppWebHost.Run's AbandonGrace teardown before any
+   circuit ever connects. See .superpowers/web-zero-classes-investigation.md recommendation 3. *@
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using CodeGenerator.Web.Components.Stages
 @using CodeGenerator.Web.Workflow
 @using Microsoft.AspNetCore.Components.Web
