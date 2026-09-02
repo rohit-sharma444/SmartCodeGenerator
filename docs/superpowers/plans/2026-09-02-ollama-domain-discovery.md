@@ -1938,7 +1938,13 @@ public class OllamaIntegrationTests
                 DomainDiscovery.SeedExtraction.NameNormalizer.IsValidIdentifier(entity.Name),
                 $"'{entity.Name}' would not compile as a class name.");
 
-            Assert.Contains(entity.Fields, f => f.Name == "Id");
+            // A KEY, not a field literally named "Id". The default model names Sale's key
+            // "SaleID", and LlmModelNormalizer.EnsureKey deliberately accepts that rather than
+            // adding a second one — so asserting the exact string here would fail against the
+            // real model's actual output.
+            Assert.Contains(entity.Fields, f =>
+                f.Name.Equals("Id", StringComparison.OrdinalIgnoreCase)
+                || f.Name.Equals($"{entity.Name}Id", StringComparison.OrdinalIgnoreCase));
 
             // The rule a 3B model reproduces the mistakes of: only a Document, Transaction or
             // Event may carry a foreign key.
@@ -2014,6 +2020,14 @@ Run: `dotnet run --project CodeGenerator -- "build app: a point of sale system f
 Confirm on screen: the spinner appears; a line names the source (`Classes from qwen2.5:3b (Ollama).`); the classes listed are plausible; no class name starts with a digit; every class has an `Id`.
 
 Expect this to take one to three minutes at the discovery step — that is the local model generating, not a hang.
+
+**Guard against a prompt stalling the run.** `HandleFromDescription` ends in `RunReviewLoop`, which is interactive. Feed it end-of-input and cap the wall clock so a waiting prompt cannot hang you for the full timeout:
+
+```bash
+echo "" | timeout 600 dotnet run --project CodeGenerator -- "build app: a point of sale system for a retail shop" 2>&1 | tee /tmp/build-app-run.log
+```
+
+If it exits at the review loop without generating, that is fine and expected — the thing being verified here is the discovery output and the source line, both printed before the loop starts. Say so in your report rather than treating it as a failure.
 
 - [ ] **Step 4: Run the same description through the web stage**
 
