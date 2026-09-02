@@ -22,20 +22,54 @@ public sealed class OllamaClient : IOllamaClient, IDisposable
     /// </summary>
     private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(5);
 
+    /// <summary>
+    /// What the model is told before the user's description.
+    /// </summary>
+    /// <remarks>
+    /// Every clause here was put in by measurement, not taste, because a 3B model's output moves
+    /// sharply with wording and no unit test can see any of it. Measured on qwen2.5:3b against
+    /// "Inventory Management system":
+    /// <list type="bullet">
+    /// <item>Asking only for "the data model" returned THREE classes. Asking for a complete model
+    /// and saying not to stop at the obvious ones returned NINE. That instruction is the whole
+    /// difference between a usable starting point and a toy.</item>
+    /// <item>Naming the roles without forbidding them as names returned classes literally called
+    /// Item and Transaction. Saying which ones are always wrong, with the right name beside each,
+    /// returned zero role-word names.</item>
+    /// <item>With a terse description the model prefixed every class with the system's own name —
+    /// InventoryItem, InventoryLog, InventoryPolicy — so it is told to name the thing, not the
+    /// system, and not to emit near-duplicates.</item>
+    /// </list>
+    /// The cost is real and unavoidable: more classes means more tokens, and discovery went from
+    /// ~42s to ~3 minutes on a CPU-only machine. Thoroughness is what was asked for.
+    /// <para>
+    /// If you edit this, re-measure against a running model. A schema-validity test passes either
+    /// way, so the suite cannot tell you that you have made the output worse.
+    /// </para>
+    /// </remarks>
     private const string SystemPrompt =
         "You are a domain modelling assistant. Given a description of a business system, return "
-        + "the data model: the classes, their properties with C# types, and the relationships "
-        + "between classes. "
-        + "Each class has two SEPARATE fields, and they must never be confused: "
-        + "\"name\": a concrete domain noun taken from the description itself, e.g. Customer, "
-        + "Product, Sale, Order, Employee. NEVER use a role word (see below) as a class name. "
-        + "\"role\": a classification tag for the class, chosen from exactly this list: Party (a "
-        + "person or organisation), Device, Place, Item (a thing bought or held), Document (a "
-        + "record of something that happened), Transaction (value changing hands), Event "
-        + "(something scheduled). "
-        + "Example: a class named \"Customer\" gets role \"Party\". A class named \"Sale\" gets "
-        + "role \"Transaction\". The role word is metadata about the class; it must never appear "
-        + "as the class's name. "
+        + "the complete data model a developer would need to build it. "
+        + "Be thorough: cover the things the system tracks, the people and organisations "
+        + "involved, the documents and transactions it records, and the reference data it needs. "
+        + "Do not stop at the two or three most obvious classes. "
+        + "Each class needs a name, a role, a one-line purpose, its properties with C# types, and "
+        + "its relationships. "
+        + "The name must be a concrete business noun (Product, Supplier, PurchaseOrder, "
+        + "StockMovement, Warehouse). It must NEVER be one of the role words below, which are "
+        + "classification tags and not names: a class named exactly Item, Transaction, Document, "
+        + "Party, Event, Device or Place is always wrong. Name the real thing instead: Product "
+        + "not Item, StockMovement not Transaction, Supplier not Party. "
+        + "The role is a separate field, chosen from exactly this list: Party (a person or "
+        + "organisation), Device, Place, Item (a thing bought or held), Document (a record of "
+        + "something that happened), Transaction (value changing hands), Event (something "
+        + "scheduled). "
+        + "Name each class for the thing itself, never for the system it belongs to: in an "
+        + "inventory system use Product, Supplier, Warehouse, StockMovement, PurchaseOrder - not "
+        + "InventoryProduct or InventoryItem. Do not prefix every class with the system name. Do "
+        + "not emit several near-duplicate classes that mean the same thing. "
+        + "Example for a shop: Product [Item], Supplier [Party], Customer [Party], Sale "
+        + "[Transaction], SaleLine [Document], Store [Place], Employee [Party]. "
         + "Return only JSON matching the schema.";
 
     private readonly DiscoveryConfig _config;
