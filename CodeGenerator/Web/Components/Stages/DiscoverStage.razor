@@ -125,6 +125,19 @@ else
         if (!owner)
             return;
 
+        // A failed outcome used to be handed to SetModel anyway — an empty CandidateDomainModel,
+        // labelled with the failure text, that Advance() then walked straight past onto Review.
+        // The user saw the failure line flash for a moment and then a Review page with nothing on
+        // it: "nothing happened". Fail() instead leaves Current on Discover, marks its node red,
+        // and puts the reason on Session.FailureMessage where BuildWorkflow always shows it — and
+        // the panel below falls back to its own "Start" button, since neither _busy nor _read is
+        // set, so there is a way forward without hunting for the right node to click.
+        if (!outcome.Succeeded)
+        {
+            Session.Fail(outcome.Describe());
+            return;
+        }
+
         // Which source produced these classes, always — not only when something went wrong. A
         // customer whose Ollama service has stopped must be able to see that, rather than watch
         // the tool quietly get worse. It goes on the SESSION, not on _label: Advance() below tears

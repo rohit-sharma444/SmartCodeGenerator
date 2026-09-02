@@ -7,15 +7,16 @@ namespace DomainDiscovery.Tests.Llm;
 internal sealed class FakeOllamaClient : IOllamaClient
 {
     public LlmDomainModel? Answer { get; set; }
+    public string? Error { get; set; }
     public bool Available { get; set; } = true;
     public string? LastDescription { get; private set; }
 
     public bool IsAvailable() => Available;
 
-    public LlmDomainModel? Ask(string description)
+    public OllamaAnswer Ask(string description)
     {
         LastDescription = description;
-        return Answer;
+        return Answer is not null ? OllamaAnswer.Success(Answer) : OllamaAnswer.Failure(Error ?? "no answer");
     }
 }
 
@@ -56,6 +57,22 @@ public class OllamaDomainModelSourceTests
         Assert.False(outcome.Succeeded);
         Assert.NotNull(outcome.Message);
         Assert.Empty(outcome.Model.Entities);
+    }
+
+    [Fact]
+    public void ThePublishedMessageCarriesTheClientsActualReason()
+    {
+        // Before OllamaAnswer, every one of these collapsed into the same unhelpful sentence -
+        // this is what stops that: the specific reason the client determined must survive all the
+        // way to the string the user reads.
+        var outcome = new OllamaDomainModelSource(
+                new FakeOllamaClient { Answer = null, Error = "the server returned 500 Internal Server Error: {\"error\":\"boom\"}" },
+                "qwen2.5:3b")
+            .Discover("a shop");
+
+        Assert.False(outcome.Succeeded);
+        Assert.Contains("the server returned 500", outcome.Message);
+        Assert.Contains("boom", outcome.Message);
     }
 
     [Fact]

@@ -19,16 +19,16 @@ public sealed class OllamaDomainModelSource : IDomainModelSource
 
     public DiscoveryOutcome Discover(string description)
     {
-        var raw = _client.Ask(description);
+        var answer = _client.Ask(description);
 
-        if (raw is null)
+        if (answer.Model is null)
             return new DiscoveryOutcome(
                 new CandidateDomainModel(),
                 Label,
                 false,
-                $"{_modelName} did not answer. Check that Ollama is running and the model is pulled.");
+                $"{_modelName} did not answer: {answer.Error ?? "no reason was reported."}");
 
-        var model = LlmModelNormalizer.Normalize(raw);
+        var model = LlmModelNormalizer.Normalize(answer.Model);
 
         if (model.Entities.Count == 0)
             return new DiscoveryOutcome(
