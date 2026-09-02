@@ -265,31 +265,28 @@ internal sealed class BuildAppCommand
         }
 
         var cacheDir = Path.Combine(workspaceRoot, ".dd-cache");
-        var pipeline = DomainDiscoveryPipeline.CreateDefault(cacheDir);
+        var source = DomainModelSourceFactory.Create(
+            DiscoveryConfig.Load(),
+            () => new WikipediaDomainModelSource(DomainDiscoveryPipeline.CreateDefault(cacheDir)));
 
-        // The longest silence in the tool: a first fetch for an unseen topic can take many seconds,
-        // and an unmoving line reads as hung. Piped runs print the label once, exactly as before.
-        DiscoveryResult result;
+        // The longest silence in the tool. A local model measured 64-72 seconds for a small
+        // domain, and a first Wikipedia fetch is no quicker; an unmoving line reads as hung.
+        DiscoveryOutcome outcome;
 
         Console.WriteLine("\n");
-        using (Spinner.Start("Discovering domain (this may fetch from Wikipedia the first time)"))
+        using (Spinner.Start("Discovering the domain (this can take a minute or two)"))
         {
-            result = pipeline.Discover(description);
+            outcome = source.Discover(description);
         }
 
-        if (result.Topic.IsRecognized)
-        {
-            // Where the rest of the classes came from. Without this a Borrower appearing in a
-            // library model looks like a guess, when it was read out of an article by name.
-            //if (result.Topic.SupportingTitles.Count > 0)
-            //    Console.WriteLine("Also read: " + string.Join(", ", result.Topic.SupportingTitles));
-        }
+        // Which source answered, always — the command line says exactly what the web panel says.
+        if (outcome.Succeeded)
+            Console.WriteLine($"Classes from {outcome.SourceLabel}.");
         else
-            Console.WriteLine("No topic recognized online — showing seed classes only. " +
-                              "You can add classes by hand below.");
+            Console.WriteLine($"{outcome.Message} (Source: {outcome.SourceLabel})");
 
         RunReviewLoop(
-            result.Model, DomainAppName.FromDescription(description), workspaceRoot,
+            outcome.Model, DomainAppName.FromDescription(description), workspaceRoot,
             ImportedData.None, target, customization, reviewAi);
     }
 
