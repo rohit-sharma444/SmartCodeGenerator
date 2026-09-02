@@ -374,6 +374,47 @@ shows one name's whole trail: the stage, the reason, and the evidence (chapter 6
 shows only the classes it took from your words. A very short description — two or three words — often finds
 nothing. Add a few more words about what the system does, or add the classes by hand in the review loop.</p></div>
 
+<h3>Configuring discovery</h3>
+<p>Which source discovery uses, and how, is read from <code>discovery.json</code> beside the tool's own
+<code>.exe</code> — the same folder and the same pattern as <code>ai.json</code> (chapter 12). It is optional:
+a missing or unreadable file is silently treated as the defaults below, so a fresh install works with nothing
+to configure.</p>
+<table>
+<tr><th>Field</th><th>Default</th><th>Meaning</th></tr>
+<tr><td><code>Source</code></td><td><code>Ollama</code></td><td>Which source to use. <code>Ollama</code> asks
+the local model first and falls back to Wikipedia when it is unreachable or the configured model is not
+pulled (see below). <code>Wikipedia</code> skips Ollama entirely and always reads the local Wikipedia store —
+choose this when a run needs to be exactly repeatable, since a local model is sampled and can answer a
+little differently between runs even at the low temperature this tool asks for. Anything else falls back to
+Wikipedia too, with a note that the value was not recognized.</td></tr>
+<tr><td><code>Model</code></td><td><code>qwen2.5:3b</code></td><td>The Ollama model to ask, by the name
+<code>ollama list</code> shows for it.</td></tr>
+<tr><td><code>Endpoint</code></td><td><code>http://localhost:11434</code></td><td>Where Ollama is listening.
+Change this only if Ollama runs on another machine or a non-default port.</td></tr>
+<tr><td><code>TimeoutMinutes</code></td><td><code>10</code></td><td>How long to wait for Ollama's answer. A
+small domain measured 64-72 seconds on a CPU-only machine; the default leaves headroom well beyond that.</td></tr>
+</table>
+<pre>{
+  "Source": "Ollama",
+  "Model": "qwen2.5:3b",
+  "Endpoint": "http://localhost:11434",
+  "TimeoutMinutes": 10
+}</pre>
+<h4>Installing Ollama and pulling the model</h4>
+<p>Install Ollama from <a href="https://ollama.com">ollama.com</a> — it runs as a background service once
+installed, with no separate step to start it. Then pull the default model from a console:</p>
+<pre>ollama pull qwen2.5:3b</pre>
+<p>To use a different model instead, pull it the same way and set <code>Model</code> in
+<code>discovery.json</code> to match. Before it commits to Ollama the tool checks, quickly, that the
+configured model is actually in <code>ollama list</code> — a reachable Ollama with the wrong (or no) model
+pulled falls back to Wikipedia exactly as an unreachable one does, rather than failing partway through with
+no classes.</p>
+<h4>Pinning to Wikipedia</h4>
+<p>Set <code>"Source": "Wikipedia"</code> to skip Ollama and always use the local Wikipedia store. This is the
+option for a run that must be repeatable — a CI job, a demonstration you will run more than once and expect
+to look the same — since a local model is a sampled source and Wikipedia's lookup, for a topic it has already
+met, is not.</p>
+
 <h2>5. Building from your own data</h2>
 
 <p>If you already have the data, it is a better source than any description: the tool reads the real columns and
