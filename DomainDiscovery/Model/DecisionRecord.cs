@@ -20,6 +20,12 @@ public enum DecisionStage
     Normalization,
 
     /// <summary>
+    /// Asking a language model for the domain's classes outright. Distinct from
+    /// <see cref="Enrichment"/>, which mines candidates out of an article's prose.
+    /// </summary>
+    ModelProposal,
+
+    /// <summary>
     /// The user's own edits in the review loop. Discovery is over by this point, but an edit can
     /// still change what a later `why` has to explain — a rename moves an entity away from the
     /// name its whole trail is filed under.
