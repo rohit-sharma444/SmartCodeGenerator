@@ -215,8 +215,24 @@ public sealed class BuildSession
             _lookAnswered = true;
         });
 
-    public bool SetModel(CandidateDomainModel model)
-        => Change(BuildStage.Discover, changed: true, () => Model = model);
+    /// <summary>
+    /// Which source produced <see cref="Model"/> — "qwen2.5:3b (Ollama)", "Wikipedia", or a
+    /// fallback note. Empty when nothing said.
+    /// </summary>
+    /// <remarks>
+    /// It lives here rather than on the Discover panel because that panel does not survive its
+    /// own success: discovery ends with <see cref="Advance"/>, and BuildWorkflow renders one
+    /// stage at a time, so the component is torn down before anything it set could be painted.
+    /// Review is the first surface the user actually sees afterwards.
+    /// </remarks>
+    public string ModelSource { get; private set; } = string.Empty;
+
+    public bool SetModel(CandidateDomainModel model, string? sourceLabel = null)
+        => Change(BuildStage.Discover, changed: true, () =>
+        {
+            Model = model;
+            ModelSource = sourceLabel ?? string.Empty;
+        });
 
     public void SetImportedData(ImportedData imported)
     {

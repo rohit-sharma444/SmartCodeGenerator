@@ -81,24 +81,27 @@ else
         }
 
         _busy = true;
-        _label = "Discovering the domain — the first fetch for a new topic is the slow one";
+        _label = "Discovering the domain — a local model can take a minute or two";
         _seconds = 0;
         StartClock();
 
         // Off the circuit's thread, so the label above is actually painted before the wait.
-        var discovered = await Task.Run(
+        var outcome = await Task.Run(
             () => DiscoveryStep.Discover(Session.Description, Session.WorkspaceRoot));
 
         _busy = false;
         StopClock();
 
-        if (!discovered.TopicRecognized)
-        {
-            _label = "No topic recognized online — showing seed classes only. "
-                     + "You can add classes by hand in the review.";
-        }
+        // Which source produced these classes, always — not only when something went wrong. A
+        // customer whose Ollama service has stopped must be able to see that, rather than watch
+        // the tool quietly get worse. It goes on the SESSION, not on _label: Advance() below tears
+        // this panel down, so anything set on the component here is never painted.
+        Session.SetModel(
+            outcome.Model,
+            outcome.Succeeded
+                ? $"Classes from {outcome.SourceLabel}."
+                : $"{outcome.Message} (Source: {outcome.SourceLabel})");
 
-        Session.SetModel(discovered.Model);
         Session.Advance();
 
         await OnAdvance.InvokeAsync();
