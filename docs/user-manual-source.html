@@ -345,8 +345,9 @@ description, data source and every option you chose, as one line you can keep or
 review screen shows it too, under <em>Will generate</em>.</p>
 
 <h3>Knowing it is still working</h3>
-<p>Three of the stages take real time: the first Wikipedia fetch for a subject the tool has not met
-before, writing the project, and compiling it. None of them leaves you looking at a still page.</p>
+<p>Three of the stages take real time: discovery — asking the local model can take a minute or two,
+longer still if it has sat idle and has to be reloaded first — writing the project, and compiling it.
+None of them leaves you looking at a still page.</p>
 <p>Each one names what it is doing with the seconds counting up beside it, and ticks itself off when
 it is done, so the panel reads as a short list of what has happened and what is happening now:</p>
 <pre>&#x2713; Wrote 96 file(s)
@@ -356,21 +357,27 @@ is going to fail starts telling you before it finishes. A first build restores p
 slow one; later builds of the same project are quick.</p>
 
 <h3>Discovery</h3>
-<p>From a description, the tool works out which classes your domain needs. It reads a local Wikipedia
-knowledge store and may fetch from Wikipedia the first time it meets a topic, which is why the first run on a
-new subject can pause for a moment — the page says so while it waits. What it settles on goes straight into the
-review stage, where you can add to it, take from it, and ask about it before anything is written.</p>
+<p>From a description, the tool asks a local model — Ollama, running on your own machine — which classes
+the domain needs. Answering can take a minute or two, longer the first time in a while if the model has to
+be loaded first; the page says so while it waits. If no model is configured, or it does not answer, the tool
+falls back to a local Wikipedia knowledge store instead — reading it, and fetching from Wikipedia the first
+time it meets a topic, which is its own wait the first time. Either way you are told which one actually
+produced the classes, on the console and on the review screen: <code>Classes from qwen2.5:3b (Ollama).</code>
+normally, or, on a fallback, <code>Classes from Wikipedia (fallback). qwen2.5:3b (Ollama) was configured but
+did not answer. Falling back to Wikipedia.</code> — the reason is always given, never just the fact that it
+happened. What it settles on goes straight into the review stage, where you can add to it, take from it, and
+ask about it before anything is written.</p>
 <p>To see what it decided, use <code>why</code> there. On its own it groups every decision by outcome — the
 classes it kept, the ones it suggested and passed over, the ones it rejected — and <code>why &lt;name&gt;</code>
 shows one name's whole trail: the stage, the reason, and the evidence (chapter 6).</p>
-<div class="note"><p><strong>If no topic is recognized</strong> the tool says so and shows only the classes it
-took from your words. A very short description — two or three words — often finds nothing. Add a few more
-words about what the system does, or add the classes by hand in the review loop.</p></div>
+<div class="note"><p><strong>On the Wikipedia path, if no topic is recognized</strong> the tool says so and
+shows only the classes it took from your words. A very short description — two or three words — often finds
+nothing. Add a few more words about what the system does, or add the classes by hand in the review loop.</p></div>
 
 <h2>5. Building from your own data</h2>
 
 <p>If you already have the data, it is a better source than any description: the tool reads the real columns and
-types instead of guessing. There is no Wikipedia lookup on this path, so it is fast and works offline.</p>
+types instead of guessing. There is no model or Wikipedia lookup on this path, so it is fast and works offline.</p>
 
 <h3>Naming the source inline</h3>
 <pre>build app: order tracking from csv D:\data\orders.csv
