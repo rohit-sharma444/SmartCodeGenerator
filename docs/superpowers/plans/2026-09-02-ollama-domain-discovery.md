@@ -1631,6 +1631,7 @@ git commit -m "Choose the discovery source, probing Ollama before committing to 
 - [ ] **Step 1: Write the failing test**
 
 ```csharp
+using AppScaffolding;
 using CodeGenerator.Web.Workflow;
 using DomainDiscovery;
 using DomainDiscovery.Model;
@@ -1661,7 +1662,8 @@ public class DiscoveryStepSourceTests
     [TestMethod]
     public void TheSourceLabelSurvivesOnTheSession()
     {
-        var session = new BuildSession("a shop that sells bicycles", Path.GetTempPath());
+        var session = new BuildSession(
+            "a shop that sells bicycles", Path.GetTempPath(), AppCustomization.Default);
 
         session.SetModel(new CandidateDomainModel(), "qwen2.5:3b (Ollama)");
 
@@ -1671,7 +1673,8 @@ public class DiscoveryStepSourceTests
     [TestMethod]
     public void ASetModelCallerThatNamesNoSourceLeavesItEmpty()
     {
-        var session = new BuildSession("a shop that sells bicycles", Path.GetTempPath());
+        var session = new BuildSession(
+            "a shop that sells bicycles", Path.GetTempPath(), AppCustomization.Default);
 
         session.SetModel(new CandidateDomainModel());
 
@@ -1680,7 +1683,7 @@ public class DiscoveryStepSourceTests
 }
 ```
 
-The `BuildSession` constructor arguments above are a guess at its current signature — **read `CodeGenerator/Web/Workflow/BuildSession.cs` and use its real constructor**, or copy the construction used by an existing test in `CodeGenerator.Tests/Web/BuildSessionTests.cs`.
+`BuildSession`'s constructor is `(string description, string workspaceRoot, AppCustomization start, DataSourceSpec? source = null)` — the third argument has **no default**, so it must be passed. `AppCustomization.Default` lives in `AppScaffolding`. This matches the construction in `CodeGenerator.Tests/Web/BuildSessionTests.cs:47`.
 
 - [ ] **Step 2: Run the test to verify it fails**
 
