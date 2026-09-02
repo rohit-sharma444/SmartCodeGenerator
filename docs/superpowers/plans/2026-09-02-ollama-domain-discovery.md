@@ -1875,9 +1875,17 @@ Use the `browser-automation` skill for this rather than asking the user to look.
 
 - [ ] **Step 5: Prove the fallback with your own eyes**
 
-Stop the Ollama service, repeat Step 3, and confirm the run falls back to Wikipedia and *says so* rather than failing or silently producing different classes.
+**Do NOT stop the Ollama service.** The machine's owner has explicitly ruled that out. Point the config at a dead port instead, which exercises the identical code path — `IsAvailable()` returns false either way.
 
-Restart Ollama afterwards.
+Write `discovery.json` beside the CodeGenerator binary with a dead endpoint:
+
+```json
+{ "Source": "Ollama", "Model": "qwen2.5:3b", "Endpoint": "http://localhost:1", "TimeoutMinutes": 10 }
+```
+
+Repeat Step 3 and confirm the run falls back to Wikipedia and *says so* on screen, rather than failing or silently producing different classes.
+
+Delete `discovery.json` afterwards so the default configuration is restored.
 
 - [ ] **Step 6: Commit any documentation the run proved wrong**
 
