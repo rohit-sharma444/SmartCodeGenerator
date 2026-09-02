@@ -251,7 +251,8 @@ internal sealed class BuildAppCommand
         + "transactions <A,B>  masters <A,B>  "
         + "novalidation  logging  noseed  nologin";
 
-    /// <summary>The unchanged path: NLE seeds, Wikipedia topic, enrichment, review loop.</summary>
+    /// <summary>The description path: resolves a discovery source (Ollama, or Wikipedia — directly
+    /// or as its fallback), then the usual NLE seeds, topic enrichment and review loop.</summary>
     private static void HandleFromDescription(
         string description, string workspaceRoot, ITargetScaffolder? target,
         AppCustomization customization, PhraseResolver? reviewAi = null)

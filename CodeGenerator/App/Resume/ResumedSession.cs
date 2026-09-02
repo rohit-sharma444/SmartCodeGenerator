@@ -57,7 +57,7 @@ internal static class ResumedSession
         session.Advance();
 
         if (snapshot.ToModel() is { } model)
-            session.SetModel(model);
+            session.SetModel(model, "Restored from a saved session");
 
         WalkTo(session, StageToResumeAt(snapshot, notice, session));
 

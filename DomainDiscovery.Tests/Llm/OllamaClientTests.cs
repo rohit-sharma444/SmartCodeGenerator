@@ -106,4 +106,60 @@ public class OllamaClientTests
 
         Assert.False(client.IsAvailable());
     }
+
+    [Fact]
+    public void IsNotAvailableWhenTheConfiguredModelIsNotInThePulledList()
+    {
+        // Ollama answers 200 and lists models - just not the one discovery.json names. Before the
+        // fix this returned true on the status code alone, which is exactly the "Ollama is up but
+        // the model was never pulled" case that sent the user to Review with zero classes.
+        var client = new OllamaClient(
+            new DiscoveryConfig { Model = "qwen2.5:3b" },
+            new HttpClient(new StubHandler("""{"models":[{"name":"llama3.2:3b"},{"name":"mistral:7b"}]}""")));
+
+        Assert.False(client.IsAvailable());
+    }
+
+    [Fact]
+    public void IsNotAvailableWhenNoModelsArePulledAtAll()
+    {
+        var client = new OllamaClient(
+            new DiscoveryConfig { Model = "qwen2.5:3b" },
+            new HttpClient(new StubHandler("""{"models":[]}""")));
+
+        Assert.False(client.IsAvailable());
+    }
+
+    [Fact]
+    public void IsAvailableWhenTheConfiguredModelIsListedAmongOthers()
+    {
+        var client = new OllamaClient(
+            new DiscoveryConfig { Model = "qwen2.5:3b" },
+            new HttpClient(new StubHandler(
+                """{"models":[{"name":"llama3.2:3b"},{"name":"qwen2.5:3b"},{"name":"mistral:7b"}]}""")));
+
+        Assert.True(client.IsAvailable());
+    }
+
+    [Fact]
+    public void AConfiguredModelWithNoTagMatchesTheLatestTag()
+    {
+        // A configured "qwen2.5" (no tag) means "whatever's pulled under the default tag" - Ollama
+        // stores a plain "ollama pull qwen2.5" under "qwen2.5:latest".
+        var client = new OllamaClient(
+            new DiscoveryConfig { Model = "qwen2.5" },
+            new HttpClient(new StubHandler("""{"models":[{"name":"qwen2.5:latest"}]}""")));
+
+        Assert.True(client.IsAvailable());
+    }
+
+    [Fact]
+    public void AConfiguredModelWithNoTagDoesNotMatchAnUnrelatedTag()
+    {
+        var client = new OllamaClient(
+            new DiscoveryConfig { Model = "qwen2.5" },
+            new HttpClient(new StubHandler("""{"models":[{"name":"qwen2.5:3b"}]}""")));
+
+        Assert.False(client.IsAvailable());
+    }
 }

@@ -12,6 +12,14 @@ internal sealed class StubSource : IDomainModelSource
         => new(new CandidateDomainModel(), "Wikipedia", true, null);
 }
 
+/// <summary>A Wikipedia stub that, like the real one when no topic is recognised, has its own
+/// message to report — so a fallback wrapping it has two things to say, not one.</summary>
+internal sealed class StubSourceWithMessage : IDomainModelSource
+{
+    public DiscoveryOutcome Discover(string description)
+        => new(new CandidateDomainModel(), "Wikipedia", false, "No topic was recognised.");
+}
+
 public class DomainModelSourceFactoryTests
 {
     private static IDomainModelSource Wikipedia() => new StubSource();
@@ -87,6 +95,21 @@ public class DomainModelSourceFactoryTests
 
         Assert.Equal("Wikipedia", outcome.SourceLabel);
         Assert.False(outcome.Message?.Contains("Ollama", StringComparison.OrdinalIgnoreCase) ?? false);
+    }
+
+    [Fact]
+    public void ConcatenatesTheFallbackReasonWithTheInnerSourcesOwnMessage()
+    {
+        // Ollama down AND Wikipedia recognising no topic either: the user needs both facts, not
+        // whichever one happened to overwrite the other.
+        var source = DomainModelSourceFactory.Create(
+            new DiscoveryConfig(), () => new StubSourceWithMessage(), new FakeOllamaClient { Available = false });
+
+        var outcome = source.Discover("a shop");
+
+        Assert.NotNull(outcome.Message);
+        Assert.Contains("Ollama", outcome.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("No topic was recognised.", outcome.Message);
     }
 
     [Fact]

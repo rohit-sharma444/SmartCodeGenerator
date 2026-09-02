@@ -61,9 +61,11 @@ public static class DomainModelSourceFactory
             return outcome with
             {
                 SourceLabel = $"{outcome.SourceLabel} (fallback)",
-                // The inner source's own message wins when it set one (Wikipedia does, when no
-                // topic was recognised) — the fallback reason must not overwrite it.
-                Message = outcome.Message ?? _reason
+                // Both, when the inner source also has something to say (Wikipedia does, when no
+                // topic was recognised): the fallback reason on its own would hide that second
+                // cause, e.g. Ollama being down AND Wikipedia recognising no topic either — the
+                // user needs both facts, not whichever one happened to be written last.
+                Message = outcome.Message is null ? _reason : $"{_reason} {outcome.Message}"
             };
         }
     }
