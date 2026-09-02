@@ -16,9 +16,17 @@ public sealed class OllamaClient : IOllamaClient
     private const string SystemPrompt =
         "You are a domain modelling assistant. Given a description of a business system, return "
         + "the data model: the classes, their properties with C# types, and the relationships "
-        + "between classes. Each class must carry a role, one of: Party (a person or organisation), "
-        + "Device, Place, Item (a thing bought or held), Document (a record of something that "
-        + "happened), Transaction (value changing hands), Event (something scheduled). "
+        + "between classes. "
+        + "Each class has two SEPARATE fields, and they must never be confused: "
+        + "\"name\": a concrete domain noun taken from the description itself, e.g. Customer, "
+        + "Product, Sale, Order, Employee. NEVER use a role word (see below) as a class name. "
+        + "\"role\": a classification tag for the class, chosen from exactly this list: Party (a "
+        + "person or organisation), Device, Place, Item (a thing bought or held), Document (a "
+        + "record of something that happened), Transaction (value changing hands), Event "
+        + "(something scheduled). "
+        + "Example: a class named \"Customer\" gets role \"Party\". A class named \"Sale\" gets "
+        + "role \"Transaction\". The role word is metadata about the class; it must never appear "
+        + "as the class's name. "
         + "Return only JSON matching the schema.";
 
     private readonly DiscoveryConfig _config;

@@ -50,9 +50,12 @@ public class DiscoveryStepSourceTests
 
     /// <summary>
     /// A fallback outcome still has <c>Succeeded == true</c> — the factory recovered — but its
-    /// <c>Message</c> carries the reason Ollama was skipped. Composing the label the way
-    /// DiscoverStage (and BuildAppCommand) now do for the success path must not drop that reason;
-    /// otherwise the user sees "Classes from Wikipedia (fallback)." with no explanation why.
+    /// <c>Message</c> carries the reason Ollama was skipped. This exercises the actual
+    /// composition — <see cref="DiscoveryOutcomeDescription.Describe"/>, the same helper
+    /// DiscoverStage and BuildAppCommand both call — through the session, so it would fail if
+    /// either call site stopped calling it or the helper dropped the reason. Coverage of
+    /// <c>Describe</c>'s own cases with exact strings lives in
+    /// DomainDiscovery.Tests.DiscoveryOutcomeDescriptionTests.
     /// </summary>
     [TestMethod]
     public void TheFallbackReasonSurvivesOnTheSession()
@@ -64,7 +67,9 @@ public class DiscoveryStepSourceTests
         const string message = "qwen2.5:3b (Ollama) was configured but did not answer. "
             + "Falling back to Wikipedia.";
 
-        session.SetModel(new CandidateDomainModel(), $"Classes from {sourceLabel}. {message}");
+        var outcome = new DiscoveryOutcome(new CandidateDomainModel(), sourceLabel, true, message);
+
+        session.SetModel(new CandidateDomainModel(), outcome.Describe());
 
         StringAssert.Contains(session.ModelSource, sourceLabel);
         StringAssert.Contains(session.ModelSource, message);

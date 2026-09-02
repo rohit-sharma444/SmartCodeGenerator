@@ -1,5 +1,6 @@
 @using CodeGenerator.Web.Workflow
 @using DataIngestion.Normalization
+@using DomainDiscovery
 @implements IDisposable
 
 @if (_busy)
@@ -96,13 +97,7 @@ else
         // customer whose Ollama service has stopped must be able to see that, rather than watch
         // the tool quietly get worse. It goes on the SESSION, not on _label: Advance() below tears
         // this panel down, so anything set on the component here is never painted.
-        Session.SetModel(
-            outcome.Model,
-            outcome.Succeeded
-                ? string.IsNullOrWhiteSpace(outcome.Message)
-                    ? $"Classes from {outcome.SourceLabel}."
-                    : $"Classes from {outcome.SourceLabel}. {outcome.Message}"
-                : $"{outcome.Message} (Source: {outcome.SourceLabel})");
+        Session.SetModel(outcome.Model, outcome.Describe());
 
         Session.Advance();
 
