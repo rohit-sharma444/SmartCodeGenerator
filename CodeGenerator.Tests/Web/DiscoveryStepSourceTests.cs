@@ -47,4 +47,26 @@ public class DiscoveryStepSourceTests
 
         Assert.AreEqual(string.Empty, session.ModelSource);
     }
+
+    /// <summary>
+    /// A fallback outcome still has <c>Succeeded == true</c> — the factory recovered — but its
+    /// <c>Message</c> carries the reason Ollama was skipped. Composing the label the way
+    /// DiscoverStage (and BuildAppCommand) now do for the success path must not drop that reason;
+    /// otherwise the user sees "Classes from Wikipedia (fallback)." with no explanation why.
+    /// </summary>
+    [TestMethod]
+    public void TheFallbackReasonSurvivesOnTheSession()
+    {
+        var session = new BuildSession(
+            "a shop that sells bicycles", Path.GetTempPath(), AppCustomization.Default);
+
+        const string sourceLabel = "Wikipedia (fallback)";
+        const string message = "qwen2.5:3b (Ollama) was configured but did not answer. "
+            + "Falling back to Wikipedia.";
+
+        session.SetModel(new CandidateDomainModel(), $"Classes from {sourceLabel}. {message}");
+
+        StringAssert.Contains(session.ModelSource, sourceLabel);
+        StringAssert.Contains(session.ModelSource, message);
+    }
 }

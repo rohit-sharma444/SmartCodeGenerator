@@ -281,9 +281,15 @@ internal sealed class BuildAppCommand
 
         // Which source answered, always — the command line says exactly what the web panel says.
         if (outcome.Succeeded)
-            Console.WriteLine($"Classes from {outcome.SourceLabel}.");
+        {
+            Console.WriteLine(string.IsNullOrWhiteSpace(outcome.Message)
+                ? $"Classes from {outcome.SourceLabel}."
+                : $"Classes from {outcome.SourceLabel}. {outcome.Message}");
+        }
         else
+        {
             Console.WriteLine($"{outcome.Message} (Source: {outcome.SourceLabel})");
+        }
 
         RunReviewLoop(
             outcome.Model, DomainAppName.FromDescription(description), workspaceRoot,

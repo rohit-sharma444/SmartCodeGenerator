@@ -99,7 +99,9 @@ else
         Session.SetModel(
             outcome.Model,
             outcome.Succeeded
-                ? $"Classes from {outcome.SourceLabel}."
+                ? string.IsNullOrWhiteSpace(outcome.Message)
+                    ? $"Classes from {outcome.SourceLabel}."
+                    : $"Classes from {outcome.SourceLabel}. {outcome.Message}"
                 : $"{outcome.Message} (Source: {outcome.SourceLabel})");
 
         Session.Advance();
