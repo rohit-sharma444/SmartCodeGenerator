@@ -70,11 +70,19 @@ public class StageGraphTests
     {
         var invalidated = StageGraph.Invalidates(BuildStage.Discover);
 
-        Assert.HasCount(3, invalidated);
+        Assert.HasCount(4, invalidated);
         Assert.Contains(BuildStage.Review, invalidated);
         Assert.Contains(BuildStage.Generate, invalidated);
         Assert.Contains(BuildStage.Run, invalidated);
     }
+
+    // The self-inclusion is the fix for the zero-classes defect: a SECOND completed discovery is
+    // exactly as worthless to a model already discovered as a changed description is, and without
+    // Discover listing itself here, BuildSession.WouldDiscardModel could never be true for a
+    // second SetModel call — so it silently overwrote the model instead of asking first.
+    [TestMethod]
+    public void Discovery_invalidates_itself_so_a_second_completion_is_not_silently_applied()
+        => Assert.Contains(BuildStage.Discover, StageGraph.Invalidates(BuildStage.Discover));
 
     [TestMethod]
     public void Changing_an_answer_read_only_at_generate_invalidates_nothing()

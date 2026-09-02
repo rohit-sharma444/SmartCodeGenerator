@@ -1,6 +1,7 @@
 using AppScaffolding;
 using CodeGenerator.Web;
 using DataIngestion;
+using DomainDiscovery;
 using DomainDiscovery.Model;
 
 namespace CodeGenerator.Web.Workflow;
@@ -233,6 +234,64 @@ public sealed class BuildSession
             Model = model;
             ModelSource = sourceLabel ?? string.Empty;
         });
+
+    /// <summary>Guards <see cref="_discoveryInFlight"/> against two threads landing on it at the
+    /// same instant — a real possibility, not a theoretical one: Razor's default prerendering
+    /// runs a fresh top-level navigation's <c>OnInitializedAsync</c> as part of handling that HTTP
+    /// request, on whatever thread pool thread Kestrel gave it, so a reload or a second tab can
+    /// call <see cref="JoinDiscovery"/> from a genuinely different thread than the call already in
+    /// flight.</summary>
+    private readonly object _discoveryGate = new();
+
+    /// <summary>The discovery call currently running, when one is. Held here — not on the panel
+    /// that started it — because this session is the singleton every circuit shares, which is
+    /// what lets a second panel find it at all.</summary>
+    private Task<DiscoveryOutcome>? _discoveryInFlight;
+
+    /// <summary>
+    /// Starts <paramref name="discover"/>, or, if a call is already running, hands back that same
+    /// task instead of starting a second one.
+    /// </summary>
+    /// <remarks>
+    /// This is what stops a reload or a second tab landing on <see cref="BuildStage.Discover"/>
+    /// from launching a real, independent second call to the local model — wasted minutes, and
+    /// contention on the one model instance — while the first is still in flight. It is also half
+    /// of what stops the two calls' outcomes from racing each other into <see cref="SetModel"/>:
+    /// only the <em>owner</em> — the caller this returns <c>true</c> for — should ever act on the
+    /// outcome. A caller that joined has nothing left to do once the shared task completes; acting
+    /// on it too is exactly the double completion that used to overwrite a good model with a stale
+    /// or empty one and advance <see cref="Current"/> twice for a node it never showed.
+    /// </remarks>
+    /// <returns>The task to await, and whether this caller is the one that started it.</returns>
+    public (Task<DiscoveryOutcome> Task, bool Owner) JoinDiscovery(
+        Func<Task<DiscoveryOutcome>> discover)
+    {
+        lock (_discoveryGate)
+        {
+            if (_discoveryInFlight is { } running)
+                return (running, false);
+
+            var task = discover();
+            _discoveryInFlight = task;
+
+            return (task, true);
+        }
+    }
+
+    /// <summary>
+    /// Clears the in-flight discovery call, so the next <see cref="JoinDiscovery"/> starts a
+    /// fresh one rather than joining a call that has already finished.
+    /// </summary>
+    /// <remarks>
+    /// Only the owner <see cref="JoinDiscovery"/> returned should call this — it is what makes
+    /// "try again" from a failed discovery actually try again, rather than replaying the same
+    /// finished (or faulted) task forever.
+    /// </remarks>
+    public void DiscoveryFinished()
+    {
+        lock (_discoveryGate)
+            _discoveryInFlight = null;
+    }
 
     public void SetImportedData(ImportedData imported)
     {
@@ -499,6 +558,17 @@ public sealed class BuildSession
 
         foreach (var invalidated in StageGraph.Invalidates(stage))
         {
+            // A stage never invalidates itself: `apply()` just wrote the new answer, and
+            // Discover's self-entry in StageGraph.Invalidates exists purely so a SECOND SetModel
+            // call is caught by WouldDiscardModel before Apply ever runs — not so this, the first
+            // (and only genuinely applied) call, immediately deletes the model it just set. That
+            // would otherwise happen for any caller who calls SetModel before Current has reached
+            // Discover — every real one does, since the panel that calls it IS the Discover node,
+            // but a couple of tests call it directly without walking there first, and both are
+            // right to expect the model to stick.
+            if (invalidated == stage)
+                continue;
+
             if (_states[invalidated] == StageState.Active)
                 continue;
 

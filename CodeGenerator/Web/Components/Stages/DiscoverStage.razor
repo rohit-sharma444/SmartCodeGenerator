@@ -81,23 +81,61 @@ else
             return;
         }
 
+        // Discovery already produced a model — there is nothing left for this entry to do. Only
+        // reachable when a fresh navigation (a reload, a second tab, a browser restoring a
+        // backgrounded tab) lands here after the first call already finished and moved the
+        // workflow on; without this check it would launch a wasted, real second call to the local
+        // model purely to throw its answer away.
+        if (Session.Model is not null)
+            return;
+
         _busy = true;
         _label = "Discovering the domain — a local model can take a minute or two";
         _seconds = 0;
         StartClock();
 
-        // Off the circuit's thread, so the label above is actually painted before the wait.
-        var outcome = await Task.Run(
-            () => DiscoveryStep.Discover(Session.Description, Session.WorkspaceRoot));
+        // BuildSession is the singleton every circuit shares. A second Start() landing while the
+        // first call is still running — the same reload/second-tab/restored-tab cases above, just
+        // caught mid-flight instead of after — JOINS that same task instead of racing it with a
+        // second, real call to the local model. Only the owner (the caller JoinDiscovery actually
+        // started the task for) applies the outcome below; a caller that joined has nothing left
+        // to do once its own busy state clears — acting on the outcome twice is exactly the
+        // double SetModel/Advance that used to corrupt the session.
+        var (task, owner) = Session.JoinDiscovery(
+            () => Task.Run(() => DiscoveryStep.Discover(Session.Description, Session.WorkspaceRoot)));
+
+        DiscoveryOutcome outcome;
+
+        try
+        {
+            outcome = await task;
+        }
+        finally
+        {
+            // Only the owner clears the slot — and only once it has the outcome in hand, success
+            // or failure alike — so a later "try again" starts a genuinely fresh call rather than
+            // replaying this one's result.
+            if (owner)
+                Session.DiscoveryFinished();
+        }
 
         _busy = false;
         StopClock();
+
+        if (!owner)
+            return;
 
         // Which source produced these classes, always — not only when something went wrong. A
         // customer whose Ollama service has stopped must be able to see that, rather than watch
         // the tool quietly get worse. It goes on the SESSION, not on _label: Advance() below tears
         // this panel down, so anything set on the component here is never painted.
-        Session.SetModel(outcome.Model, outcome.Describe());
+        //
+        // SetModel's bool return says whether it actually applied — false means a PendingDiscard
+        // question is on screen instead, asking about a model this call would discard, and
+        // advancing past a node that never actually applied its answer would move Current on for
+        // work the page never showed.
+        if (!Session.SetModel(outcome.Model, outcome.Describe()))
+            return;
 
         Session.Advance();
 
