@@ -19,7 +19,7 @@
 - `DomainDiscovery` must not gain a reference to `CodeIntelligence`. Its only project reference is `NaturalLanguageEngine`.
 - Config defaults, verbatim: Source `Ollama`, Model `qwen2.5:3b`, Endpoint `http://localhost:11434`, TimeoutMinutes `10`.
 - Config loading **never throws**. A missing or unreadable file yields defaults, matching `AiConfig.Load`.
-- No test may require Ollama to be installed. The one integration test skips itself when `/api/tags` does not answer.
+- No test may require Ollama to be installed. The one integration test goes inert (returns early) when `/api/tags` does not answer, following the existing `SqlServerIntegrationTests` pattern. **No new NuGet package may be added** — this repo has already declined `Xunit.SkippableFact` for exactly this situation.
 - Ollama measured on this machine takes 64–72 seconds for a small domain. Never set an `HttpClient` timeout below the configured value; the 100-second default would kill real requests.
 
 ---
@@ -935,6 +935,35 @@ public class LlmModelNormalizerTests
     }
 
     /// <summary>
+    /// A class the model returned with no properties would otherwise scaffold a grid holding
+    /// nothing but a read-only Id. EntityShaper, DataModelBuilder and ModelEditor all guarantee
+    /// against that on their own paths; this path bypasses EntityShaper, so it must do it here.
+    /// </summary>
+    [Fact]
+    public void GivesAnEditableFieldToAClassTheModelLeftEmpty()
+    {
+        var raw = new LlmDomainModel { Classes = { Class("Cash", "None") } };
+
+        var entity = LlmModelNormalizer.Normalize(raw).Entities.Single();
+
+        Assert.Contains(entity.Fields, f => f.Name == DefaultFields.NameField);
+    }
+
+    /// <summary>A class the model DID give fields to keeps exactly those — an Order has no Name.</summary>
+    [Fact]
+    public void DoesNotInventANameFieldForAClassThatAlreadyHasFields()
+    {
+        var raw = new LlmDomainModel
+        {
+            Classes = { Class("Order", "Transaction", Property("Total", "decimal")) }
+        };
+
+        var order = LlmModelNormalizer.Normalize(raw).Entities.Single();
+
+        Assert.DoesNotContain(order.Fields, f => f.Name == DefaultFields.NameField);
+    }
+
+    /// <summary>
     /// Both measured models name compound classes SaleItem and OrderItem. ToEntityName would
     /// reduce those to "Saleitem" and "Orderitem" — a class name no user typed and no scaffolder
     /// should emit. This is why the normalizer uses ToUserTypedEntityName.
@@ -1134,6 +1163,16 @@ public static class LlmModelNormalizer
 
             EnsureKey(entity);
 
+            // Every other path into CandidateDomainModel guarantees an editable grid:
+            // EntityShaper does it for a discovered class, DataModelBuilder for an imported one,
+            // ModelEditor for one the user adds by hand. This path bypasses EntityShaper, so it
+            // is the only one that could hand scaffolding a class whose grid shows nothing but a
+            // read-only Id — exactly what DefaultFields was written to prevent. Applied only when
+            // the model actually left the class empty; a class with real fields keeps them alone,
+            // because an Order legitimately has no Name.
+            if (!entity.Fields.Any(f => !IsKeyOf(f.Name, entity.Name)))
+                DefaultFields.ApplyTo(entity, Provenance.Model);
+
             model.Entities.Add(entity);
         }
 
@@ -1265,7 +1304,7 @@ public static class LlmModelNormalizer
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `dotnet test SmartCodeGenerator/SmartCodeGenerator.slnx --filter "FullyQualifiedName~LlmModelNormalizerTests"`
-Expected: PASS, 13 tests.
+Expected: PASS, 15 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -1772,20 +1811,32 @@ using Xunit;
 namespace DomainDiscovery.Tests.Llm;
 
 /// <summary>
-/// The only test that needs a running Ollama. It SKIPS rather than fails when there is none:
-/// CI has no Ollama installed, and a red suite there would be a false alarm about this feature.
+/// The only test that needs a running Ollama.
 /// </summary>
+/// <remarks>
+/// Everything else on this path is covered by unit tests over a fake client; this is the only
+/// thing that proves a real model's output survives normalization. It does nothing when Ollama
+/// is not answering — CI has no Ollama installed, and a red suite there would be a false alarm.
+/// <para>
+/// A plain <c>[Fact]</c> that returns early rather than a skippable one, following
+/// <c>DataIngestion.Tests.Schema.Readers.Sql.SqlServerIntegrationTests</c>: expressing the skip
+/// properly would need Xunit.SkippableFact, and this repository has already declined to add that
+/// package for exactly this situation. The cost is that a machine with no Ollama reports this
+/// test as passed rather than skipped; the alternative is a new dependency for one test.
+/// </para>
+/// </remarks>
 public class OllamaIntegrationTests
 {
     private static bool OllamaIsRunning(DiscoveryConfig config)
         => new OllamaClient(config).IsAvailable();
 
-    [SkippableFact]
+    [Fact]
     public void ProposesAModelForAPointOfSaleSystem()
     {
         var config = new DiscoveryConfig();
 
-        Skip.IfNot(OllamaIsRunning(config), "Ollama is not running on this machine.");
+        if (!OllamaIsRunning(config))
+            return;   // no local model server — see the class remarks
 
         var outcome = new OllamaDomainModelSource(new OllamaClient(config), config.Model)
             .Discover("A point of sale system for a retail shop");
@@ -1815,31 +1866,29 @@ public class OllamaIntegrationTests
 }
 ```
 
-- [ ] **Step 2: Add the Xunit.SkippableFact package**
+- [ ] **Step 2: Add no package**
 
-Add to `DomainDiscovery.Tests/DomainDiscovery.Tests.csproj` inside the existing `PackageReference` `ItemGroup`:
-
-```xml
-    <PackageReference Include="Xunit.SkippableFact" Version="1.4.13" />
-```
+`DomainDiscovery.Tests.csproj` is **not** modified by this task. The early-return pattern above needs nothing beyond xUnit, which is the whole reason for using it — see the class remarks.
 
 - [ ] **Step 3: Run it with Ollama running**
 
 Run: `dotnet test SmartCodeGenerator/SmartCodeGenerator.slnx --filter "FullyQualifiedName~OllamaIntegrationTests"`
 Expected: PASS. It may take one to three minutes — that is the model generating, not a hang.
 
-- [ ] **Step 4: Prove it skips when Ollama is absent**
+- [ ] **Step 4: Prove it returns early when Ollama is absent**
 
-Point the config at a dead port by temporarily changing `DefaultEndpoint` usage in the test to `new DiscoveryConfig { Endpoint = "http://localhost:1" }`, run the filter again, confirm the result is **Skipped** rather than Failed, then revert that edit.
+Temporarily change the test's config line to `new DiscoveryConfig { Endpoint = "http://localhost:1" }` — a dead port — and run the filter again. Confirm it passes **in well under a second**, which is the observable proof it took the early return rather than talking to a model. Then revert that edit.
+
+Do **not** stop the Ollama service to test this.
 
 Run: `dotnet test SmartCodeGenerator/SmartCodeGenerator.slnx --filter "FullyQualifiedName~OllamaIntegrationTests"`
-Expected: Skipped, 0 failed.
+Expected: PASS, 0 failed, and a run time far below the one-to-three minutes a real model call takes.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add DomainDiscovery.Tests/Llm/OllamaIntegrationTests.cs DomainDiscovery.Tests/DomainDiscovery.Tests.csproj
-git commit -m "Add a skippable integration test against a real local model"
+git add DomainDiscovery.Tests/Llm/OllamaIntegrationTests.cs
+git commit -m "Add an integration test against a real local model, inert without one"
 ```
 
 ---
@@ -1856,10 +1905,16 @@ Tests do not catch the defects that matter most here — this codebase's record 
 Run: `dotnet build SmartCodeGenerator/SmartCodeGenerator.slnx -c Release -warnaserror --no-incremental`
 Expected: 0 errors, 0 warnings.
 
-- [ ] **Step 2: Full suite**
+`--no-incremental` is not optional: without it MSBuild prints "Build succeeded" without re-running analyzers, so a `-warnaserror` check on an unchanged tree proves nothing.
 
-Run: `dotnet test SmartCodeGenerator/SmartCodeGenerator.slnx`
-Expected: PASS. Record the count.
+- [ ] **Step 2: Full suite in BOTH configurations**
+
+Every task up to here ran the tests in Debug, but CI runs them in **Release** — and this repository has hit failures visible in only one configuration in each direction (Release-only analyzer errors, and a Debug-only timing failure in `ProcessRunnerTests` under load). Passing one configuration is not evidence about the other.
+
+Run Debug: `dotnet test SmartCodeGenerator/SmartCodeGenerator.slnx`
+Run Release, exactly as CI does: `dotnet test SmartCodeGenerator/SmartCodeGenerator.slnx -c Release --no-build`
+
+Expected: PASS in both. Record both counts. If the two totals differ, say so explicitly rather than reporting the larger one.
 
 - [ ] **Step 3: Run a real build through the console path**
 
