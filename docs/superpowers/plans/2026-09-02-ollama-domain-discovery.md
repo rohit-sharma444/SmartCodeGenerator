@@ -1613,26 +1613,33 @@ git commit -m "Choose the discovery source, probing Ollama before committing to 
 
 **Files:**
 - Modify: `CodeGenerator/Web/Workflow/DiscoveryStep.cs:104-118` (the `Discover` method)
+- Modify: `CodeGenerator/Web/Workflow/BuildSession.cs:218` (`SetModel`)
 - Modify: `CodeGenerator/Web/Components/Stages/DiscoverStage.razor:83-105`
+- Modify: `CodeGenerator/Web/Components/Stages/ReviewStage.razor` (a source line above the entity list)
 - Test: `CodeGenerator.Tests/Web/DiscoveryStepSourceTests.cs`
 
 **Interfaces:**
 - Consumes: `DomainModelSourceFactory.Create` (Task 7), `DiscoveryConfig` (Task 2), `DiscoveryOutcome` (Task 1).
-- Produces: `DiscoveryStep.Discover(string description, string workspaceRoot) -> DiscoveryOutcome` — the return type changes from `(CandidateDomainModel Model, bool TopicRecognized)`.
+- Produces: `DiscoveryStep.Discover(string description, string workspaceRoot) -> DiscoveryOutcome` — the return type changes from `(CandidateDomainModel Model, bool TopicRecognized)`; `BuildSession.ModelSource` (string); `BuildSession.SetModel(CandidateDomainModel, string? sourceLabel = null)`.
 
 `CodeGenerator.Tests` is MSTest. Use `Assert.HasCount`, never `Assert.AreEqual(n, x.Count)` — MSTEST0037 is an error under `-warnaserror`.
+
+> **Why this task does not just set `_label`.**
+> `BuildWorkflow.razor` renders exactly ONE stage, chosen by a `switch` on the current stage. The moment `DiscoverStage` calls `Session.Advance()`, the page swaps to `ReviewStage` and the Discover panel is gone. **Anything assigned to `_label` after `_busy = false` is never rendered** — the existing "No topic recognized online" message on line 97 is already dead code that no user has ever seen. The spec requires the user be told which source produced their classes, so the label has to live somewhere that outlives the Discover stage: on the session, rendered by Review.
+> `SetModel` has 25 call sites, so it gains an **optional** parameter rather than a changed signature — no existing caller breaks.
 
 - [ ] **Step 1: Write the failing test**
 
 ```csharp
 using CodeGenerator.Web.Workflow;
 using DomainDiscovery;
+using DomainDiscovery.Model;
 
 namespace CodeGenerator.Tests.Web;
 
 /// <summary>
-/// That the step returns a labelled outcome. The source itself is covered in
-/// DomainDiscovery.Tests; this is about the shape the panel consumes.
+/// That the step returns a labelled outcome, and that the label survives to the stage that
+/// actually renders it. The source itself is covered in DomainDiscovery.Tests.
 /// </summary>
 [TestClass]
 public class DiscoveryStepSourceTests
@@ -1646,8 +1653,34 @@ public class DiscoveryStepSourceTests
         Assert.IsFalse(string.IsNullOrWhiteSpace(outcome.SourceLabel));
         Assert.IsNotNull(outcome.Model);
     }
+
+    /// <summary>
+    /// The Discover panel is torn down by Advance() the instant discovery finishes, so the source
+    /// label cannot live on that component. It has to reach Review through the session.
+    /// </summary>
+    [TestMethod]
+    public void TheSourceLabelSurvivesOnTheSession()
+    {
+        var session = new BuildSession("a shop that sells bicycles", Path.GetTempPath());
+
+        session.SetModel(new CandidateDomainModel(), "qwen2.5:3b (Ollama)");
+
+        Assert.AreEqual("qwen2.5:3b (Ollama)", session.ModelSource);
+    }
+
+    [TestMethod]
+    public void ASetModelCallerThatNamesNoSourceLeavesItEmpty()
+    {
+        var session = new BuildSession("a shop that sells bicycles", Path.GetTempPath());
+
+        session.SetModel(new CandidateDomainModel());
+
+        Assert.AreEqual(string.Empty, session.ModelSource);
+    }
 }
 ```
+
+The `BuildSession` constructor arguments above are a guess at its current signature — **read `CodeGenerator/Web/Workflow/BuildSession.cs` and use its real constructor**, or copy the construction used by an existing test in `CodeGenerator.Tests/Web/BuildSessionTests.cs`.
 
 - [ ] **Step 2: Run the test to verify it fails**
 
@@ -1679,7 +1712,32 @@ Replace the `Discover` method in `CodeGenerator/Web/Workflow/DiscoveryStep.cs` w
     }
 ```
 
-- [ ] **Step 4: Change the component to use it**
+- [ ] **Step 4: Carry the source label on the session**
+
+In `CodeGenerator/Web/Workflow/BuildSession.cs`, add the property and give `SetModel` an **optional** second parameter, so none of its 25 existing callers change:
+
+```csharp
+    /// <summary>
+    /// Which source produced <see cref="Model"/> — "qwen2.5:3b (Ollama)", "Wikipedia", or a
+    /// fallback note. Empty when nothing said.
+    /// </summary>
+    /// <remarks>
+    /// It lives here rather than on the Discover panel because that panel does not survive its
+    /// own success: discovery ends with <see cref="Advance"/>, and BuildWorkflow renders one
+    /// stage at a time, so the component is torn down before anything it set could be painted.
+    /// Review is the first surface the user actually sees afterwards.
+    /// </remarks>
+    public string ModelSource { get; private set; } = string.Empty;
+
+    public bool SetModel(CandidateDomainModel model, string? sourceLabel = null)
+        => Change(BuildStage.Discover, changed: true, () =>
+        {
+            Model = model;
+            ModelSource = sourceLabel ?? string.Empty;
+        });
+```
+
+- [ ] **Step 5: Change the component to use it**
 
 In `CodeGenerator/Web/Components/Stages/DiscoverStage.razor`, replace the block from `var discovered = await Task.Run(` through `await OnAdvance.InvokeAsync();` with:
 
@@ -1692,12 +1750,14 @@ In `CodeGenerator/Web/Components/Stages/DiscoverStage.razor`, replace the block 
 
         // Which source produced these classes, always — not only when something went wrong. A
         // customer whose Ollama service has stopped must be able to see that, rather than watch
-        // the tool quietly get worse.
-        _label = outcome.Succeeded
-            ? $"Classes from {outcome.SourceLabel}."
-            : $"{outcome.Message} (Source: {outcome.SourceLabel})";
+        // the tool quietly get worse. It goes on the SESSION, not on _label: Advance() below tears
+        // this panel down, so anything set on the component here is never painted.
+        Session.SetModel(
+            outcome.Model,
+            outcome.Succeeded
+                ? $"Classes from {outcome.SourceLabel}."
+                : $"{outcome.Message} (Source: {outcome.SourceLabel})");
 
-        Session.SetModel(outcome.Model);
         Session.Advance();
 
         await OnAdvance.InvokeAsync();
@@ -1709,21 +1769,34 @@ Also change the busy label set just above `StartClock()` to name the wait honest
         _label = "Discovering the domain — a local model can take a minute or two";
 ```
 
-- [ ] **Step 5: Run the test to verify it passes**
+- [ ] **Step 6: Show it where the user will actually see it**
+
+In `CodeGenerator/Web/Components/Stages/ReviewStage.razor`, inside `<div class="review">` and immediately **above** the `<RelationshipDiagram .../>` line, add:
+
+```razor
+    @* Where these classes came from. The Discover panel cannot say it — Advance() removes that
+       panel the instant discovery finishes — so this is the first surface that can. *@
+    @if (!string.IsNullOrWhiteSpace(Session.ModelSource))
+    {
+        <p class="model-source">@Session.ModelSource</p>
+    }
+```
+
+- [ ] **Step 7: Run the test to verify it passes**
 
 Run: `dotnet test SmartCodeGenerator/SmartCodeGenerator.slnx --filter "FullyQualifiedName~DiscoveryStepSourceTests"`
-Expected: PASS, 1 test.
+Expected: PASS, 3 tests.
 
-- [ ] **Step 6: Run the whole suite**
+- [ ] **Step 8: Run the whole suite**
 
 Run: `dotnet test SmartCodeGenerator/SmartCodeGenerator.slnx`
-Expected: PASS. Compare the total against the count recorded in Task 3 Step 5.
+Expected: PASS, **3786 tests plus the ones this task added**. That baseline was measured at Task 3. A total BELOW it means something was silently dropped — say so rather than reporting the number alone.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
-git add CodeGenerator/Web/Workflow/DiscoveryStep.cs CodeGenerator/Web/Components/Stages/DiscoverStage.razor CodeGenerator.Tests/Web/DiscoveryStepSourceTests.cs
-git commit -m "Discover stage picks its source and says which one produced the classes"
+git add CodeGenerator/Web/Workflow/DiscoveryStep.cs CodeGenerator/Web/Workflow/BuildSession.cs CodeGenerator/Web/Components/Stages/DiscoverStage.razor CodeGenerator/Web/Components/Stages/ReviewStage.razor CodeGenerator.Tests/Web/DiscoveryStepSourceTests.cs
+git commit -m "Discover stage picks its source, and Review says which one produced the classes"
 ```
 
 ---
