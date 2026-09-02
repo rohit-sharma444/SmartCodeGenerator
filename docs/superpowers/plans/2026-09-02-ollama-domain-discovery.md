@@ -1807,7 +1807,7 @@ git commit -m "Discover stage picks its source, and Review says which one produc
 ### Task 9: Wire the console `build app` path
 
 **Files:**
-- Modify: `CodeGenerator/App/BuildAppCommand.cs:267-288`
+- Modify: `CodeGenerator/App/BuildAppCommand.cs:268-292` (inside `HandleFromDescription`, which ends at line 294)
 
 **Interfaces:**
 - Consumes: `DomainModelSourceFactory.Create` (Task 7), `DiscoveryOutcome` (Task 1).
@@ -1841,11 +1841,20 @@ In `CodeGenerator/App/BuildAppCommand.cs`, replace from `var pipeline = DomainDi
 
 - [ ] **Step 2: Fix the references to the old `result` variable**
 
-Search the rest of `HandleFromDescription` for `result.Model` and `result.Topic`:
+Exactly one reference survives the replacement: the `RunReviewLoop(result.Model, ...)` call at line 292 (line numbers as they were before your edit). Change that one to `outcome.Model`.
 
-Run: `grep -n "result\.Model\|result\.Topic" CodeGenerator/App/BuildAppCommand.cs`
+**Do not do a blanket `result.` rename.** `BuildAppCommand.cs` contains a SECOND, unrelated `result` variable further down the file — around lines 1051 and 1074, `result.TimedOut` and `result.StandardOutput`, which belong to a process-run result and have nothing to do with discovery. Renaming those breaks the build.
 
-Replace each `result.Model` with `outcome.Model`. Any remaining `result.Topic` use must be deleted — the LLM path has no topic, which is the whole reason `DiscoveryOutcome` exists.
+Confirm with: `grep -n "result\.Model\|result\.Topic" CodeGenerator/App/BuildAppCommand.cs`
+Expected after your change: no matches. Any remaining `result.Topic` use must be deleted — the LLM path has no topic, which is the whole reason `DiscoveryOutcome` exists.
+
+For reference, the block you are replacing ends with this `else`, whose `if` half has a body that is **entirely commented out**, so deleting it loses no behaviour:
+
+```csharp
+        else
+            Console.WriteLine("No topic recognized online — showing seed classes only. " +
+                              "You can add classes by hand below.");
+```
 
 - [ ] **Step 3: Build to verify it compiles**
 
