@@ -42,10 +42,13 @@ Why a new record rather than reusing `DiscoveryResult`: `TopicResult.IsRecognize
 
 ```csharp
 using DomainDiscovery;
-using DomainDiscovery.Model;
-using DomainDiscovery.Tests.Fakes;
 using DomainDiscovery.Enrichment;
+using DomainDiscovery.Model;
+using DomainDiscovery.Recognition;   // NOT `Recognition.X`: DomainDiscovery.Tests.Recognition
+                                     // already exists and would win the name lookup.
 using DomainDiscovery.SeedExtraction;
+using DomainDiscovery.Tests.Fakes;
+using NaturalLanguageEngine.Models.Semantics;
 using Xunit;
 
 namespace DomainDiscovery.Tests;
@@ -54,11 +57,11 @@ public class WikipediaDomainModelSourceTests
 {
     private static DomainDiscoveryPipeline PipelineOver(FakeWikipediaClient client)
     {
-        var analyzer = new StubAnalyzer(new NaturalLanguageEngine.Models.Semantics.SemanticResult());
+        var analyzer = new StubAnalyzer(new SemanticResult());
         return new DomainDiscoveryPipeline(
             analyzer,
             new SeedEntityExtractor(),
-            new Recognition.WikipediaTopicRecognizer(client),
+            new WikipediaTopicRecognizer(client),
             new DomainEnricher(client, analyzer, new EntityHarvester()),
             new EntityShaper(client),
             client);
@@ -804,7 +807,7 @@ git commit -m "Add OllamaClient: schema-constrained chat, ten-minute timeout, nu
 - Test: `DomainDiscovery.Tests/Llm/LlmModelNormalizerTests.cs`
 
 **Interfaces:**
-- Consumes: `LlmDomainModel` (Task 4), `Provenance.Model` / `DecisionStage.ModelProposal` / `DecisionReasons.ProposedByTheModel` / `DecisionReasons.TheModelGaveNoUsableName` (Task 3), existing `NameNormalizer.ToEntityName`, `NameNormalizer.ToFieldName`, `NameNormalizer.IsValidIdentifier`, `EntityRole`, `EntityRoleRank.CanReference`, `CandidateDomainModel`.
+- Consumes: `LlmDomainModel` (Task 4), `Provenance.Model` / `DecisionStage.ModelProposal` / `DecisionReasons.ProposedByTheModel` / `DecisionReasons.TheModelGaveNoUsableName` (Task 3), existing `NameNormalizer.ToUserTypedEntityName`, `NameNormalizer.ToFieldName`, `NameNormalizer.IsValidIdentifier`, `EntityRole`, `EntityRoleRank.CanReference`, `CandidateDomainModel`.
 - Produces: `LlmModelNormalizer.Normalize(LlmDomainModel raw) -> CandidateDomainModel`.
 
 This is the deterministic heart of the feature and carries the real test coverage. Every repair below is driven by measured output: `llama3.2:3b` emitted `customer_id`, `order_date` and the type `datetime`; `qwen2.5:3b` emitted a `SaleItem` with no key.
@@ -932,6 +935,22 @@ public class LlmModelNormalizerTests
     }
 
     /// <summary>
+    /// Both measured models name compound classes SaleItem and OrderItem. ToEntityName would
+    /// reduce those to "Saleitem" and "Orderitem" — a class name no user typed and no scaffolder
+    /// should emit. This is why the normalizer uses ToUserTypedEntityName.
+    /// </summary>
+    [Fact]
+    public void KeepsACompoundClassNameAsTheModelWroteIt()
+    {
+        var raw = new LlmDomainModel
+        {
+            Classes = { Class("SaleItem", "Document", Property("Quantity", "int")) }
+        };
+
+        Assert.Equal("SaleItem", LlmModelNormalizer.Normalize(raw).Entities.Single().Name);
+    }
+
+    /// <summary>
     /// The default model writes SaleID, not SaleId. Case-sensitive suffix checks would miss
     /// every foreign key it produces and then add a duplicate key beside the one it gave.
     /// </summary>
@@ -1053,7 +1072,12 @@ public static class LlmModelNormalizer
 
         foreach (var llmClass in raw.Classes)
         {
-            var name = NameNormalizer.ToEntityName(llmClass.Name);
+            // ToUserTypedEntityName, NOT ToEntityName. ToEntityName reduces a phrase to its head
+            // noun and lowercases everything after the first character, which turns SaleItem into
+            // "Saleitem" and OrderItem into "Orderitem" — and those are the exact class names both
+            // measured models produce. This one preserves a compound the way it was written, which
+            // is what its own summary says it exists for. It still rejects "2nd course".
+            var name = NameNormalizer.ToUserTypedEntityName(llmClass.Name);
 
             if (!NameNormalizer.IsValidIdentifier(name))
             {
@@ -1097,7 +1121,8 @@ public static class LlmModelNormalizer
 
             foreach (var relationship in llmClass.Relationships)
             {
-                var target = NameNormalizer.ToEntityName(relationship.Target);
+                // The same normalizer the class names went through, or the lookup misses.
+                var target = NameNormalizer.ToUserTypedEntityName(relationship.Target);
 
                 if (target == entity.Name || !byName.TryGetValue(target, out var targetEntity))
                     continue;
@@ -1240,7 +1265,7 @@ public static class LlmModelNormalizer
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `dotnet test SmartCodeGenerator/SmartCodeGenerator.slnx --filter "FullyQualifiedName~LlmModelNormalizerTests"`
-Expected: PASS, 12 tests.
+Expected: PASS, 13 tests.
 
 - [ ] **Step 5: Commit**
 
