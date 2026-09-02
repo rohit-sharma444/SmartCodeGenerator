@@ -1991,9 +1991,17 @@ Expected: PASS in both. Record both counts. If the two totals differ, say so exp
 
 - [ ] **Step 3: Run a real build through the console path**
 
+`CodeGenerator/Program.cs` joins any arguments into one command and runs it non-interactively, so this form works:
+
 Run: `dotnet run --project CodeGenerator -- "build app: a point of sale system for a retail shop"`
 
+**This writes a real project to disk**, under `D:\SampleProjects\` — not the working directory. Before running, list that directory. Afterwards, report the exact path written.
+
+**Never overwrite or delete anything already there.** If the build would land on an existing project, stop and report it rather than proceeding — a non-interactive run cannot reach the overwrite prompt, so the guard has to be you. At the time of writing, `D:\SampleProjects\Generated` held only a stray `Employee.cs` and no app folder, so a collision is not expected.
+
 Confirm on screen: the spinner appears; a line names the source (`Classes from qwen2.5:3b (Ollama).`); the classes listed are plausible; no class name starts with a digit; every class has an `Id`.
+
+Expect this to take one to three minutes at the discovery step — that is the local model generating, not a hang.
 
 - [ ] **Step 4: Run the same description through the web stage**
 
