@@ -293,16 +293,22 @@ public class PurchaseOrder
         return (Name("Code"), Name("Date"), Name("Status"));
     }
 
+    /// <summary>Notes is declared before the real code property so a Code resolution loosened
+    /// from EndsWith to Contains would resolve to it instead of OrderNo. CreatedOn and ModifiedOn
+    /// are declared before OrderDate so a date resolution with the audit filter deleted would
+    /// return one of them instead of OrderDate -- declaration order alone must not be what makes
+    /// these tests pass.</summary>
     private const string OrderStub = """
 using System;
 
 public class Order
 {
     public int Id { get; set; }
+    public string Notes { get; set; } = string.Empty;
     public string OrderNo { get; set; } = string.Empty;
-    public DateTime OrderDate { get; set; }
     public DateTime CreatedOn { get; set; }
     public DateTime ModifiedOn { get; set; }
+    public DateTime OrderDate { get; set; }
     public string Status { get; set; } = string.Empty;
     public decimal Total { get; set; }
 }
@@ -319,10 +325,29 @@ public class Order
     }
 
     /// <summary>The audit fields every model carries are never what a user means by "the date" --
-    /// the exclusion TransactionScreenViewModel and ScreenFields both already make.</summary>
+    /// the exclusion TransactionScreenViewModel and ScreenFields both already make. CreatedOn is
+    /// declared before OrderDate in OrderStub specifically so this fails if the audit filter is
+    /// ever removed, rather than passing by declaration-order coincidence.</summary>
     [TestMethod]
     public void The_audit_dates_are_never_the_header_date()
         => Assert.AreNotEqual("CreatedOn", Key(OrderStub, "Order").Date);
+
+    /// <summary>A model whose only dates are the audit pair must show no date at all in the
+    /// header, not fall back to one of them.</summary>
+    private const string AuditOnlyDatesStub = """
+using System;
+
+public class Ticket
+{
+    public int Id { get; set; }
+    public DateTime CreatedOn { get; set; }
+    public DateTime ModifiedOn { get; set; }
+}
+""";
+
+    [TestMethod]
+    public void A_model_with_only_audit_dates_has_no_header_date()
+        => Assert.IsNull(Key(AuditOnlyDatesStub, "Ticket").Date);
 
     /// <summary>The assertion this whole member exists for.</summary>
     [TestMethod]
@@ -331,6 +356,8 @@ public class Order
         var source = EmittedSource.Flatten(
             OrderStub,
             FieldGroupsTemplate.Source("Acme").Replace("namespace Acme.Screens;", string.Empty));
+
+        EmittedSource.AssertCompiles(source);
 
         var assembly = Assembly.Load(Compiler.Compile(source).AssemblyBytes!);
         var groups = (System.Collections.IEnumerable)assembly.GetType("FieldGroups")!
@@ -344,6 +371,7 @@ public class Order
         CollectionAssert.DoesNotContain(shown, "OrderNo");
         CollectionAssert.DoesNotContain(shown, "OrderDate");
         CollectionAssert.DoesNotContain(shown, "Status");
+        CollectionAssert.DoesNotContain(shown, "Notes");
         CollectionAssert.Contains(shown, "Total");
     }
 
