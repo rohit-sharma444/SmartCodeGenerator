@@ -416,4 +416,60 @@ public class WpfBusinessLayoutTests
             Assert.DoesNotContain("ILineSet", code, StringComparison.Ordinal);
         }
     }
+
+    [TestMethod]
+    public void The_entry_controls_compile()
+    {
+        var context = Context();
+
+        EmittedDesktopSource.AssertCompilesTogether(
+            ("Screens/FieldGroups.cs", FieldGroupsTemplate.Source("Payroll")),
+            ("Screens/RequiredFields.cs", RequiredFieldsTemplate.Source("Payroll", null)),
+            ("Views/EntryHeader.cs", WpfEntryControls.Header(context)),
+            ("Views/EntryForm.cs", WpfEntryControls.Form(context)),
+            ("Views/EntryNotes.cs", WpfEntryControls.Notes(context)));
+    }
+
+    /// <summary>A foreign key is a lookup, not a text box -- dropping it would leave no way to set
+    /// a document's supplier at all.</summary>
+    [TestMethod]
+    public void The_form_renders_a_foreign_key_as_a_lookup()
+    {
+        var source = WpfEntryControls.Form(Context());
+
+        StringAssert.Contains(source, "FieldGroups.NavigationFor(property)");
+        StringAssert.Contains(source, "new ComboBox");
+    }
+
+    [TestMethod]
+    public void The_form_marks_required_fields()
+        => StringAssert.Contains(
+            WpfEntryControls.Form(Context()), "RequiredFields.IsRequired(");
+
+    /// <summary>
+    /// The forbidden set is widened past the two entity names the brief names ("Customer" and
+    /// "Order"): <see cref="Context"/> carries no entity list at all, so those two exact words could
+    /// never appear under any implementation except a literal hardcode of them. "Book" is the name
+    /// nearly every other fixture in this repository uses, and would sail straight through a check
+    /// that stopped at "Customer" and "Order".
+    /// </summary>
+    [TestMethod]
+    public void No_entity_name_appears_in_any_control()
+    {
+        var forbidden = new[]
+        {
+            "Customer", "Order", "Book", "Supplier", "PurchaseOrder", "Ticket", "Employee",
+            "ShipToLocation",
+        };
+
+        foreach (var source in new[]
+                 {
+                     WpfEntryControls.Header(Context()), WpfEntryControls.Form(Context()),
+                     WpfEntryControls.Notes(Context()),
+                 })
+        {
+            foreach (var name in forbidden)
+                Assert.DoesNotContain(name, source);
+        }
+    }
 }
