@@ -397,6 +397,10 @@ public sealed class BuildSession
             // there is one — even though its own step is an action rather than an answer.
             BuildStage.Discover => Model is not null,
             BuildStage.Review => Model is not null,
+
+            // Same rule as Review, and for the same reason: this node describes the model it is
+            // shown beside, so it stays answered for as long as there is one.
+            BuildStage.Output => Model is not null,
             BuildStage.Generate => Generated is not null,
             BuildStage.Run => Started,
             _ => false,

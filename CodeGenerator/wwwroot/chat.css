@@ -19,28 +19,32 @@
 .chat {
     /* Every colour the page uses, in one place: nothing below hardcodes one, so changing the
        look is changing this block rather than hunting through a thousand lines of rules. */
-    --surface: #e9ebef;
+    /* The same palette workflow.css declares, under this page's own names. The names are kept
+       because a thousand rules below read them; only the values moved, so the two surfaces stop
+       looking like two products. Still scoped to .chat and never :root, for the reason at the
+       top of this file. */
+    --surface: #eceff4;
     --panel: #ffffff;
-    --sunken: #f7f8fa;
+    --sunken: #f2f5f9;
 
-    --ink: #16181d;
-    --ink-soft: #5b616e;
-    --ink-faint: #8a909c;
+    --ink: #161d26;
+    --ink-soft: #5c6875;
+    --ink-faint: #8a94a1;
 
-    --line: #e3e5ea;
-    --line-strong: #cdd1d9;
+    --line: #e4e9ef;
+    --line-strong: #d5dce4;
 
-    --accent: #2563eb;
+    --accent: #1e5fa8;
     --accent-ink: #ffffff;
-    --accent-soft: #eef3ff;
+    --accent-soft: #e6eef8;
 
-    --done: #15803d;
-    --done-soft: #ecf7f0;
+    --done: #1a7f4b;
+    --done-soft: #e4f2ea;
     --failed: #b3261e;
     --failed-soft: #fdeeec;
 
     /* Amber: the tool understood nothing, or would not attempt it. Neither is a fault. */
-    --unsure: #a75d00;
+    --unsure: #a8620a;
     --unsure-soft: #fdf4e7;
 
     /* One hue per kind of node in the tree. The shapes differ as well, so nothing here is the
@@ -60,7 +64,7 @@
     --shadow-1: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.08);
     --shadow-2: 0 6px 16px rgba(16, 24, 40, 0.08), 0 16px 32px rgba(16, 24, 40, 0.08);
 
-    --mono: 13px/1.55 Consolas, "Cascadia Mono", "SF Mono", Menlo, monospace;
+    --mono: 13px/1.6 "Cascadia Code", "Cascadia Mono", Consolas, ui-monospace, "SF Mono", Menlo, monospace;
     --radius: 10px;
     --radius-sm: 7px;
 
@@ -319,9 +323,11 @@
     box-sizing: border-box;
     min-height: 100vh;
     padding: 2rem 1.5rem;
-    background: var(--paper, #e9ebef);
-    color: var(--ink, #1c1c1c);
-    font: 15px/1.55 "Segoe UI", system-ui, -apple-system, sans-serif;
+    /* Reads workflow.css's tokens, which this page is always served alongside. The fallbacks
+       are the same values, so the page is still right if it is ever served on its own. */
+    background: var(--paper, #eceff4);
+    color: var(--ink, #161d26);
+    font: 15px/1.55 var(--sans, "Segoe UI Variable Text"), "Segoe UI", system-ui, -apple-system, sans-serif;
 }
 
 .rel-page *,
@@ -1488,10 +1494,10 @@
  * prefers-color-scheme on its own would be a dark card on a light page. */
 .val-page {
     --val-bg: #ffffff;
-    --val-ink: #1c1c1c;
-    --val-muted: #666666;
-    --val-line: #e2e2e2;
-    --val-good: #1a7f37;
+    --val-ink: #161d26;
+    --val-muted: #5c6875;
+    --val-line: #d5dce4;
+    --val-good: #1a7f4b;
     --val-bad: #b3261e;
 
     max-width: 60rem;

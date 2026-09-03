@@ -6,30 +6,20 @@
 
 @* The model, on screen. In the console PrintModel is almost entirely commented out because a
    thirty-class domain reprinted after every edit was unusable — so the review loop currently
-   edits a model the user cannot see. This is the fix. *@
+   edits a model the user cannot see. This is the fix.
 
-@* Once per render rather than per class: every card asks it, and it is worked out from the model
-   as it stands right now — an edit made a moment ago has to be able to move a class across. Null
-   for a target with no screens, which is the whole question not being put. *@
-@{
-    var plan = Session.Target?.HasScreens == true
-        ? ScreenPlan.For(Model, Session.Customization, Session.Target)
-        : null;
-}
+   Node 6 of 9, and structure only: what the classes are called and what is in them. How they
+   connect, which of them get a screen, and what will be written are node 7's, because one page
+   carrying all four made the confirmation something you reached by scrolling past the thing
+   being confirmed. *@
 
 <div class="review">
-    @* Inside the panel grid and spanning both its columns, not floated above it: .review is
-       1fr + 220px, so a diagram outside it ran the full width while everything below stopped
-       220px short of the same right edge. Above the list rather than inside it, because a
-       relationship is between two classes and belongs to the model, not to either card. *@
     @* Where these classes came from. The Discover panel cannot say it — Advance() removes that
        panel the instant discovery finishes — so this is the first surface that can. *@
     @if (!string.IsNullOrWhiteSpace(Session.ModelSource))
     {
         <p class="model-source">@Session.ModelSource</p>
     }
-
-    <RelationshipDiagram Sources="Sources()" />
 
     <div class="entities">
         @foreach (var entity in Model.Entities.ToList())
@@ -39,47 +29,20 @@
                     @* Keyed on _refusals for the reason spelled out at that field. *@
                     <input class="entity-name" value="@entity.Name" @key="(entity, _refusals)"
                            @onchange="e => Rename(entity, e.Value?.ToString())" />
+                    @* What kind of thing this is, before its name is read. EntityRole.None is
+                       the classifier saying it could not tell, which is not a fact worth a chip
+                       of its own — an empty label would read as a role called "none". *@
+                    @if (entity.Role != DomainDiscovery.Enrichment.EntityRole.None)
+                    {
+                        <span class="role-chip role-@entity.Role.ToString().ToLowerInvariant()">@entity.Role</span>
+                    }
+
                     <span class="provenance">@entity.Provenance</span>
                     <button type="button" class="why" @onclick="() => Why(entity.Name)">why</button>
                     <button type="button" class="remove" @onclick="() => Remove(entity.Name)">
                         remove
                     </button>
                 </header>
-
-                @* Its own row rather than a fourth item in the header. The screen a class gets is
-                   a FACT about it, and beside why and remove it read as a third action — while on
-                   a line card, whose control is a phrase AND a button, it pushed remove onto a
-                   third row on its own. *@
-                @if (plan is not null)
-                {
-                    var role = plan.RoleOfEntity(entity.Name);
-
-                    <div class="screen">
-                        @* A line is not offered the two-way choice. Asking for "transaction" on
-                           one is an answer EntityRoles drops in its second pass — only a MASTER
-                           override skips line detection — so the single correction that does work
-                           is the only one offered. *@
-                        @if (role == EntityRole.DocumentLine)
-                        {
-                            <span class="role-line">lines of @plan.TransactionHolding(entity.Name)</span>
-                            <button type="button" class="own-screen"
-                                    @onclick="() => OwnScreen(entity.Name)">
-                                own screen
-                            </button>
-                        }
-                        else
-                        {
-                            <span class="screen-label">screen</span>
-                            <select class="role" value="@role"
-                                    @onchange="e => ChooseRole(entity.Name, e.Value?.ToString())">
-                                <option value="@nameof(EntityRole.Master)"
-                                        selected="@(role == EntityRole.Master)">master</option>
-                                <option value="@nameof(EntityRole.Transaction)"
-                                        selected="@(role == EntityRole.Transaction)">transaction</option>
-                            </select>
-                        }
-                    </div>
-                }
 
                 <ul class="fields">
                     @foreach (var field in entity.Fields.ToList())
@@ -158,28 +121,6 @@
             }
         </aside>
     }
-
-    <aside class="settled">
-        <h3>Will generate</h3>
-        <p>@(Session.Target is null ? "not chosen" : ApplicationTypeMenu.LabelFor(Session.Target))</p>
-        @foreach (var line in CustomizationSummary.Lines(Session.Customization))
-        {
-            <p>@line</p>
-        }
-
-        @* The sentence the build output has always ended with, moved to where it can still be
-           acted on rather than reporting a split after the code carrying it was written. *@
-        @if (plan is not null)
-        {
-            <p class="screen-summary">@ScreenSummary.Describe(plan.Roles)</p>
-        }
-
-        @* Every answer so far, as the line that would give them all at once. Here rather than at
-           the end because this is where the answers are settled and where someone deciding to do
-           it differently is standing. *@
-        <h3>The same run as a command</h3>
-        <pre class="command-echo">@string.Join(Environment.NewLine, BuildCommandEcho.For(Session))</pre>
-    </aside>
 </div>
 
 <div class="add-class-row">
@@ -212,27 +153,29 @@
 </div>
 
 @code {
-    /// <summary>The model, in the shape the diagram takes.</summary>
-    /// <remarks>
-    /// The same resolution DomainModelMapper applies is left to the layout, so the picture and the
-    /// generator cannot disagree about which targets count.
-    /// </remarks>
-    private List<RelationshipSource> Sources() =>
-        [.. Model.Entities.Select(e => new RelationshipSource(
-            e.Name,
-            [.. e.Relationships.Select(r => r.Target)],
-            [.. e.Fields.Select(f => f.Name)]))];
-
     [Parameter, EditorRequired] public required BuildSession Session { get; set; }
     [Parameter, EditorRequired] public required StageNavigation Navigation { get; set; }
     [Parameter] public EventCallback OnAdvance { get; set; }
 
     private CandidateDomainModel Model => Session.Model!;
 
-    /// <summary>A model with no classes has nothing to generate, so the step is offered and
-    /// disabled rather than hidden — the user can see what they are working towards.</summary>
+    /// <summary>
+    /// The step forward is Output, not Generate: this node settles what the classes ARE, and the
+    /// next one settles what comes out of them and how they connect.
+    /// </summary>
+    /// <remarks>
+    /// A model with no classes has nothing to carry forward, so the step is offered and disabled
+    /// rather than hidden — the user can see what they are working towards.
+    /// <para>
+    /// Nothing to apply: the model has been edited in place all along, so this stage's step is
+    /// purely the move to the next node.
+    /// </para>
+    /// </remarks>
     protected override void OnInitialized()
-        => Navigation.Offer(Generate, ready: () => Model.Entities.Count > 0, label: "Generate");
+        => Navigation.Offer(
+            static () => Task.FromResult(true),
+            ready: () => Model.Entities.Count > 0,
+            label: "Output");
 
     private string _newClass = string.Empty;
     private string _newField = string.Empty;
@@ -371,46 +314,4 @@
     }
 
     private void Why(string name) => _why = [.. DecisionReport.ForName(Model, name)];
-
-    /// <summary>Pulls a line out to a screen of its own — the master override, which is what
-    /// <c>EntityRoles</c> lets skip line detection.</summary>
-    private void OwnScreen(string entityName) => Choose(entityName, EntityRole.Master);
-
-    private void ChooseRole(string entityName, string? value)
-    {
-        if (Enum.TryParse<EntityRole>(value, out var chosen))
-            Choose(entityName, chosen);
-    }
-
-    /// <summary>
-    /// Records the choice as <see cref="ScreenChoice"/> wants it: against the role the classifier
-    /// reaches on its own.
-    /// </summary>
-    /// <remarks>
-    /// The baseline is computed from a customization with this class's own answer taken OUT,
-    /// rather than from the heuristic in isolation: the other classes' answers can move this one
-    /// (a line's parent is a line's parent because of how the parent was classified), and using
-    /// the wrong baseline would record an override that agrees with what was going to happen
-    /// anyway — putting a class in the replay line that nobody moved.
-    /// <para>
-    /// The name recorded is the CLASS name, not the entity name on screen. They differ when the
-    /// mapper renames a collision, and <c>ScreenOverrides</c> is matched against the class — so
-    /// storing what the card is labelled with would be an answer the generator quietly ignores.
-    /// </para>
-    /// </remarks>
-    private void Choose(string entityName, EntityRole chosen)
-    {
-        var target = Session.Target!;
-        var className = ScreenPlan.For(Model, Session.Customization, target).ClassNameOf(entityName);
-
-        var cleared = ScreenChoice.Clear(Session.Customization, className);
-        var baseline = ScreenPlan.For(Model, cleared, target).RoleOfEntity(entityName);
-
-        Session.SetCustomization(
-            ScreenChoice.Set(Session.Customization, className, chosen, baseline));
-    }
-
-    /// <summary>Nothing to apply: the model has been edited in place all along, so this stage's
-    /// step is purely the move to the generate node.</summary>
-    private static Task<bool> Generate() => Task.FromResult(true);
 }

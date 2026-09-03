@@ -37,6 +37,12 @@ public static class StageSummary
             BuildStage.Review => session.Model is null
                 ? null
                 : Classes(session.Model.Entities.Count),
+
+            // The links, not the classes: the node before it already counts those, and two boxes
+            // both saying "9 classes" would tell the user nothing about what the second holds.
+            BuildStage.Output => session.Model is null
+                ? null
+                : Links(session.Model.Entities.Sum(e => e.Relationships.Count)),
             BuildStage.Generate => session.Generated is null
                 ? null
                 : Path.GetFileName(session.Generated.Scaffold.ProjectPath),
@@ -86,6 +92,9 @@ public static class StageSummary
     }
 
     private static string Classes(int count) => count == 1 ? "1 class" : $"{count} classes";
+
+    private static string Links(int count)
+        => count == 1 ? "1 relationship" : $"{count} relationships";
 
     /// <summary>Trimmed to a box's worth. A description can be a paragraph.</summary>
     private static string? Text(string value)

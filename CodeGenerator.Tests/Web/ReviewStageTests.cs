@@ -73,35 +73,44 @@ public class ReviewStageTests
         Assert.HasCount(5, options);
     }
 
+    /// <summary>
+    /// What this panel is NOT, since that is the whole point of the split: the diagram, the screen
+    /// choice and the build summary all belong to the node after it now. A page carrying them
+    /// again would put the confirmation back below a screen of entity cards.
+    /// </summary>
     [TestMethod]
-    public void Shows_the_target_and_the_customization_that_generate_will_use()
+    public void Carries_no_diagram_no_screen_choice_and_no_build_summary()
     {
         using var context = new BunitContext();
 
-        var markup = Render(context, out _).Markup;
+        var rendered = Render(context, out _);
 
-        StringAssert.Contains(markup, CodeGenerator.App.ApplicationTypeMenu.LabelFor(new WpfTarget()));
+        Assert.IsEmpty(rendered.FindAll(".command-echo"));
+        Assert.IsEmpty(rendered.FindAll(".screen-summary"));
+        Assert.IsEmpty(rendered.FindAll("select.role"));
+
+        // The classes themselves are still very much here.
+        Assert.IsNotEmpty(rendered.FindAll(".entity"));
     }
 
-    // Generating is this stage's step forward, so it is named in the box rather than buried under
-    // a screen of entity cards.
+    // Reviewing the classes settles what they ARE; the node after it settles what comes out.
     [TestMethod]
-    public async Task Generate_is_the_step_forward_and_advances_to_the_last_node()
+    public async Task Output_is_the_step_forward_and_advances_to_it()
     {
         using var context = new BunitContext();
         var navigation = new StageNavigation();
         Render(context, out var session, navigation);
 
-        Assert.AreEqual("Generate", navigation.Label);
+        Assert.AreEqual("Output", navigation.Label);
 
         Assert.IsTrue(await navigation.ApplyAsync());
         session.Advance();
 
-        Assert.AreEqual(BuildStage.Generate, session.Current);
+        Assert.AreEqual(BuildStage.Output, session.Current);
     }
 
     [TestMethod]
-    public void Generate_is_refused_on_an_empty_model()
+    public void The_step_forward_is_refused_on_an_empty_model()
     {
         using var context = new BunitContext();
         var navigation = new StageNavigation();
@@ -201,19 +210,6 @@ public class ReviewStageTests
         Assert.IsNotEmpty(session.Model!.Entities.Single(e => e.Name == "Member").Fields);
     }
 
-    /// <summary>Where someone deciding to do it differently is standing, with every answer so far
-    /// as one line they can copy.</summary>
-    [TestMethod]
-    public void Shows_the_command_that_would_do_the_same_run()
-    {
-        using var context = new BunitContext();
-
-        var echo = Render(context, out _).Find(".command-echo").TextContent;
-
-        StringAssert.Contains(echo, "build app: a library");
-        StringAssert.Contains(echo, "approve ");
-    }
-
     /// <summary>
     /// The three columns the card's grid draws are positional: name, then type, then the control.
     /// Reordering the markup would leave the CSS quietly putting a type under a name — which a
@@ -249,130 +245,6 @@ public class ReviewStageTests
         StringAssert.Contains(cells[0], "field-name");
         StringAssert.Contains(cells[1], "field-type");
         StringAssert.Contains(cells[2], "add-field");
-    }
-
-    /// <summary>
-    /// The split decides which classes get a screen and which shape it takes, and until now it
-    /// was visible only in the build output — after the code had been written. A class that got
-    /// it wrong could only be corrected by retyping the whole run in the console.
-    /// </summary>
-    [TestMethod]
-    public void Shows_the_screen_each_class_will_get()
-    {
-        using var context = new BunitContext();
-
-        var rendered = Render(context, out _);
-
-        Assert.AreEqual("Master", rendered.Find("[data-entity=Book] select.role").GetAttribute("value"));
-    }
-
-    [TestMethod]
-    public void Choosing_a_different_screen_records_it_for_generate()
-    {
-        using var context = new BunitContext();
-        var rendered = Render(context, out var session);
-
-        rendered.Find("[data-entity=Book] select.role").Change("Transaction");
-
-        StringAssert.Contains(session.Customization.Transactions, "Book");
-    }
-
-    /// <summary>
-    /// Choosing back records nothing rather than pinning the class — the rule
-    /// <c>ScreenChoice</c> exists for, asserted here because this is the only place a person
-    /// can exercise it.
-    /// </summary>
-    [TestMethod]
-    public void Choosing_the_screen_it_already_had_leaves_no_override_behind()
-    {
-        using var context = new BunitContext();
-        var rendered = Render(context, out var session);
-
-        rendered.Find("[data-entity=Book] select.role").Change("Transaction");
-        rendered.Find("[data-entity=Book] select.role").Change("Master");
-
-        Assert.AreEqual(string.Empty, session.Customization.Masters);
-        Assert.AreEqual(string.Empty, session.Customization.Transactions);
-    }
-
-    /// <summary>
-    /// A line gets no screen of its own, so it is not offered the two-way choice: asking for
-    /// "transaction" on a line is an answer <c>EntityRoles</c> would silently drop in its second
-    /// pass. The one correction that does work is offered instead.
-    /// </summary>
-    [TestMethod]
-    public void A_line_is_told_which_transaction_holds_it_rather_than_offered_a_role()
-    {
-        using var context = new BunitContext();
-
-        var rendered = RenderShop(context, out _);
-
-        Assert.IsEmpty(rendered.FindAll("[data-entity=OrderLine] select.role"));
-        StringAssert.Contains(rendered.Find("[data-entity=OrderLine] .role-line").TextContent, "Order");
-    }
-
-    [TestMethod]
-    public void A_line_can_be_pulled_out_to_a_screen_of_its_own()
-    {
-        using var context = new BunitContext();
-        var rendered = RenderShop(context, out var session);
-
-        rendered.Find("[data-entity=OrderLine] button.own-screen").Click();
-
-        StringAssert.Contains(session.Customization.Masters, "OrderLine");
-        Assert.IsNotEmpty(rendered.FindAll("[data-entity=OrderLine] select.role"));
-    }
-
-    /// <summary>A console app has no screens to split, so the question is not put at all.</summary>
-    [TestMethod]
-    public void A_target_without_screens_is_not_asked_about_the_split()
-    {
-        using var context = new BunitContext();
-
-        var rendered = RenderShop(context, out _, new ConsoleTarget());
-
-        // The cards first. Three absences on a panel that rendered nothing at all would pass
-        // just as well, and prove nothing.
-        Assert.HasCount(3, rendered.FindAll(".entity"));
-
-        Assert.IsEmpty(rendered.FindAll("select.role"));
-        Assert.IsEmpty(rendered.FindAll("button.own-screen"));
-        Assert.IsEmpty(rendered.FindAll(".screen-summary"));
-    }
-
-    /// <summary>The same sentence the build output has always ended with, moved to where it can
-    /// still be acted on.</summary>
-    [TestMethod]
-    public void Summarises_the_split_the_way_the_build_output_does()
-    {
-        using var context = new BunitContext();
-
-        var summary = RenderShop(context, out _).Find(".screen-summary").TextContent;
-
-        StringAssert.Contains(summary, "1 master");
-        StringAssert.Contains(summary, "1 transaction");
-
-        // The transaction holding lines, which is how ScreenSummary words it — the LINE's own
-        // name is on its card, not in this sentence.
-        StringAssert.Contains(summary, "Order has 1 line");
-    }
-
-    /// <summary>
-    /// The screen a class gets is a FACT about it, not a third action. In the header it sat
-    /// beside why and remove and read as another button — and on a line card, whose control is an
-    /// italic phrase plus a button, it pushed remove onto a third row of its own. Its own row
-    /// keeps every card's header identical and the statement legible.
-    /// </summary>
-    [TestMethod]
-    public void The_screen_is_stated_on_its_own_row_not_among_the_header_actions()
-    {
-        using var context = new BunitContext();
-
-        var rendered = RenderShop(context, out _);
-
-        Assert.IsEmpty(rendered.FindAll("[data-entity=Customer] header select.role"));
-        Assert.IsNotEmpty(rendered.FindAll("[data-entity=Customer] .screen select.role"));
-        Assert.IsNotEmpty(rendered.FindAll("[data-entity=OrderLine] .screen button.own-screen"));
     }
 
     /// <summary>
