@@ -29,6 +29,14 @@
                     @* Keyed on _refusals for the reason spelled out at that field. *@
                     <input class="entity-name" value="@entity.Name" @key="(entity, _refusals)"
                            @onchange="e => Rename(entity, e.Value?.ToString())" />
+                    @* What kind of thing this is, before its name is read. EntityRole.None is
+                       the classifier saying it could not tell, which is not a fact worth a chip
+                       of its own — an empty label would read as a role called "none". *@
+                    @if (entity.Role != DomainDiscovery.Enrichment.EntityRole.None)
+                    {
+                        <span class="role-chip role-@entity.Role.ToString().ToLowerInvariant()">@entity.Role</span>
+                    }
+
                     <span class="provenance">@entity.Provenance</span>
                     <button type="button" class="why" @onclick="() => Why(entity.Name)">why</button>
                     <button type="button" class="remove" @onclick="() => Remove(entity.Name)">

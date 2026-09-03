@@ -140,79 +140,64 @@ body {
     .stage-node + .stage-node::before { display: none; }
 }
 
-/* A stadium, not a true ellipse. An ellipse would clip the corners of two lines of text and
-   waste most of its own width; the rounded-end shape reads as oval and still holds a title
-   and an answer. */
+/* A row, not a pill. The stadium held a centred title over a centred answer, which cost width
+   on both sides of every line and made a nine-step rail taller than the fold. A left-aligned
+   row starts each title at the same x, so the rail reads as a list of steps rather than a
+   column of shapes - and it is shorter, which is what buys room for the ninth box. */
 .stage-node {
     position: relative;
     display: flex;
     flex-direction: column;
-    align-items: center;
+    align-items: flex-start;
     justify-content: center;
-    gap: 0.05rem;
-    min-height: 2.2rem;
-    padding: 0.3rem 1.1rem;
-    border: 2px solid var(--line);
-    border-radius: 999px;
-    background: #fff;
-    text-align: center;
-    transition: border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+    gap: 1px;
+
+    /* Left padding clears the mark, which stays absolutely positioned: it is a sibling of the
+       title inside an <li> on some nodes and inside a <button> on others, so a grid column for
+       it would have to be declared twice and kept in step. */
+    padding: var(--space-2) var(--space-2) var(--space-2) 30px;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    text-align: left;
+    transition: border-color 120ms ease, box-shadow 120ms ease, background 120ms ease;
 }
 
 /* Smaller, to match. The rail is a map of where you are, not a place to read from. */
-.stage-node .stage-title { font-size: 0.92em; }
-.stage-node .stage-answer { font-size: 0.78em; }
+.stage-node .stage-title { font-size: 0.86em; font-weight: 600; }
+.stage-node .stage-answer { font-size: 0.76em; }
 
-/* Inside the curve. At the old corner offset the tick sat ON the rounded edge - fine on a 6px
-   radius, wrong on a stadium, where the corner is most of the end. */
-.stage-node .stage-mark { top: 0.3rem; right: 1rem; }
+/* The one box that is allowed to grow: it carries the back arrow and the step forward. */
+.stage-node.active { padding-top: var(--space-2); padding-bottom: var(--space-2); }
 
-/* The one box that cannot be a small pill: it carries the back arrow and the step forward.
-   It keeps the stadium ends but is allowed the height its buttons need, so it reads as the
-   same shape grown rather than a different one. */
-.stage-node.active {
-    padding: 0.45rem 1rem;
-    border-radius: 1.3rem;
-}
+/* State by weight rather than by depth. Every box carrying its own shadow made nine of them a
+   column of floating chips; now only the ACTIVE one is a surface, and the rest are text on the
+   page. The mark still says the state for anyone who cannot see the colour. */
+.stage-node.pending { opacity: 0.62; }
+.stage-node.pending .stage-title { font-weight: 500; color: var(--muted); }
 
-/* Depth by state, so the rail can be read at a glance without reading a word of it: a stage
-   still to come is sunk into the page, a finished one sits flat on it, and the one being
-   answered floats above it. */
-.stage-node.pending {
-    box-shadow: var(--lift-sunk);
-    background: #f4f5f7;
-}
-
-.stage-node.done { box-shadow: var(--lift-flat); }
+.stage-node.done .stage-title { color: var(--ink); }
 
 .stage-node.active {
-    box-shadow: var(--lift-active);
-    transform: translateY(-1px);
+    background: var(--surface);
+    border-color: var(--accent);
+    box-shadow: var(--lift-raised);
 }
 
-.stage-node.failed { box-shadow: var(--lift-flat); }
+.stage-node.active .stage-title { color: var(--accent-ink); }
+
+.stage-node.failed { background: var(--surface); border-color: var(--failed); }
 
 /* Only where there is something to click. Lifting a pending box invites a click it refuses. */
 .stage-node.done:hover,
-.stage-node.next:hover {
-    box-shadow: var(--lift-raised);
-    transform: translateY(-1px);
-}
+.stage-node.next:hover { background: var(--line-soft); }
 
 /* The connector. On the node rather than between nodes, so it cannot get out of step with the
    grid's own wrapping; hidden on the last of a row by the grid overflowing invisibly. */
-/* Rotated with the rail: the stub is drawn ABOVE each node rather than to its left. Still on
-   the node rather than between nodes, so it cannot get out of step with the grid. */
-/* Centred under the pill above rather than left-aligned, because the boxes are now centred
-   shapes rather than left-aligned cards. */
-.stage-node + .stage-node::before {
-    content: "";
-    position: absolute;
-    left: 50%;
-    top: -0.4rem;
-    height: 0.3rem;
-    border-left: 2px solid var(--line);
-}
+/* No connector between rows. It was drawn for centred pills, where the eye needed help getting
+   from one shape to the next; rows four pixels apart already read as one list, and a stub
+   hanging off the left of each one only added ink. */
+.stage-node + .stage-node::before { content: none; }
 
 /* Narrow, where the rail is a row again: back to a horizontal stub on the left. */
 @media (max-width: 900px) {
@@ -233,24 +218,32 @@ body {
     cursor: pointer;
     display: flex;
     flex-direction: column;
-    gap: 0.05rem;
+    align-items: flex-start;
+    gap: 1px;
     width: 100%;
 }
 
-/* The mark in the corner. Quiet, because the border colour is what carries the state — this is
-   for anyone who cannot see the colour. */
+/* A badge on the left, on the title's first line. Quiet, because the weight and the colour
+   already carry the state — this is for anyone who cannot see the colour. */
 .stage-mark {
     position: absolute;
-    top: 0.45rem;
-    right: 0.6rem;
-    font-size: 0.8em;
+    left: var(--space-2);
+    top: var(--space-2);
+    width: 16px;
+    height: 16px;
+    display: grid;
+    place-items: center;
+    border: 1.5px solid var(--line);
+    border-radius: 50%;
+    font-size: 0.62em;
     line-height: 1;
-    color: var(--pending);
+    color: var(--faint);
 }
 
-.stage-node.done .stage-mark { color: var(--done); }
-.stage-node.active .stage-mark { color: var(--active); }
-.stage-node.failed .stage-mark { color: var(--failed); }
+.stage-node.done .stage-mark { background: var(--ok-wash); border-color: var(--done); }
+.stage-node.active .stage-mark { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+.stage-node.failed .stage-mark { color: var(--failed); border-color: var(--failed); }
 
 /* The answer the box holds. Darker than the blurb it replaces: it is what the user came back to
    the diagram to read. */
@@ -421,12 +414,18 @@ body {
 .command-echo {
     margin: 0.35rem 0 0;
     padding: 0.5rem 0.6rem;
-    border: 1px solid var(--line);
-    background: #f8f9fb;
-    font-family: ui-monospace, Consolas, monospace;
-    font-size: 0.8em;
+    border: 1px solid var(--line-soft);
+    border-radius: var(--radius-sm);
+    background: var(--machine);
+    font-family: var(--mono);
+    font-size: 0.78em;
+    line-height: 1.6;
     white-space: pre-wrap;
-    word-break: break-all;
+
+    /* Wrapped at spaces, not mid-word. break-all put "retail" across two lines as "reta" and
+       "il", which reads as a typo in a command the user is being invited to copy. */
+    word-break: normal;
+    overflow-wrap: break-word;
 }
 
 .build-log {
@@ -571,28 +570,199 @@ body {
     font-weight: 600;
 }
 
-.review { display: grid; grid-template-columns: 1fr 220px; gap: 1.5rem; }
+/* One column. The 220px track held .settled, which belongs to the relationships node now —
+   left behind it reserved a fifth of the page for nothing. */
+.review { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-5); }
+
+/* Node 7 takes the two-column shape the review page used to have: the diagram and the screen
+   table on the left, what will be generated down the right. */
+.relationships {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 280px;
+    gap: var(--space-4) var(--space-5);
+    align-items: start;
+}
+
+/* The diagram gets the full width; the table and the summary share the row beneath it.
+   Measured, not chosen by eye: this model's diagram wants 872px and the left column of a
+   two-column grid gives it 608, so putting it beside the summary meant scrolling a picture whose
+   whole job is to be taken in at a glance. It scrolls itself when it still does not fit - the
+   component brings its own .rel-scroll - so the PAGE never scrolls sideways either way. */
+.relationships > .rel-diagram {
+    grid-column: 1 / -1;
+    min-width: 0;
+}
+
+.relationships > .settled { grid-column: 2; }
+
+@media (max-width: 980px) {
+    .relationships { grid-template-columns: minmax(0, 1fr); }
+    .relationships > .rel-diagram,
+    .relationships > .settled { grid-column: 1; }
+}
+
+.screens-block { grid-column: 1; min-width: 0; }
+.screens-block h3,
+.settled h3 {
+    margin: 0 0 var(--space-2);
+    font-size: 0.72em;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
+/* The screen every class will get, read down rather than hunted for card by card. */
+.screens { width: 100%; border-collapse: collapse; }
+.screens th {
+    text-align: left;
+    padding: 0 var(--space-3) var(--space-2) 0;
+    border-bottom: 1px solid var(--line);
+    font-size: 0.68em;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+.screens td {
+    padding: var(--space-2) var(--space-3) var(--space-2) 0;
+    border-bottom: 1px solid var(--line-soft);
+    vertical-align: middle;
+}
+
+/* A class name is code, and set in code type wherever it appears. */
+.screen-class { font-family: var(--mono); font-weight: 600; font-size: 0.9em; }
 /* 240 kept, because the card was never the problem — the columns were. With the action track at
    2rem rather than 5.5rem the name column comes out at about 100px, which fits the field names the
    generator produces, and three cards still fit across the panel: 260 measured one card per row
    worse (808px of room, and three 260s want 812), which is scrolling on a twenty-class model. */
 .entities { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 1rem; }
 
+/* A card with a header and a body, rather than one padded box. The header is the class - its
+   name and what kind of thing it is - and the body is its properties, on the tinted ground
+   every machine-owned surface in this tool uses. */
 .entity {
     border: 1px solid var(--line);
-    border-radius: 6px;
-    padding: 0.75rem;
-    background: #fff;
+    border-radius: var(--radius-sm);
+    background: var(--surface);
     box-shadow: var(--lift-flat);
-    transition: box-shadow 120ms ease;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: border-color 120ms ease, box-shadow 120ms ease;
 }
 
-.entity:hover { box-shadow: var(--lift-raised); }
-.entity header { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
-.entity-name { font-weight: 600; border: 1px solid transparent; background: transparent; }
-.entity-name:focus { border-color: var(--active); background: #fff; }
+.entity:hover { border-color: var(--accent); box-shadow: var(--lift-raised); }
 
-.provenance { font-size: 0.72em; text-transform: uppercase; color: var(--pending); }
+/* Two rows, not one. The header carries a name, a role, a provenance and two actions, and on a
+   240px card those cannot share a line - a screenshot showed the NAME as the thing that gave
+   way, rendering "Sale" as "Sal" and "SaleLine" as "Salel". The name is the one item on the card
+   that must never be clipped, so it gets the full width and everything else sits under it. */
+.entity header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+    padding: var(--space-2) var(--space-3);
+    border-bottom: 1px solid var(--line-soft);
+}
+
+.entity header .entity-name { flex: 1 0 100%; }
+
+/* The name is code, so it is set in code type. Quiet until reached for: unlike the property
+   rows below it, a class name sits alone on its line with nothing bordered beside it, so it
+   does not need a box to look editable - and the card reads as a statement about a class
+   rather than as a form. */
+.entity-name {
+    min-width: 0;
+    font: 600 1em/1.3 var(--mono);
+    color: var(--ink);
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    padding: 2px 4px;
+    margin-left: -4px;
+}
+
+.entity-name:hover { border-color: var(--line); background: var(--machine); }
+.entity-name:focus { border-color: var(--active); background: var(--surface); }
+
+.provenance { font-size: 0.7em; text-transform: uppercase; color: var(--faint); }
+
+/* Every quiet action on the page - why, remove, add field, add class, promote, own screen -
+   takes one treatment. Left as browser defaults they were five different shapes on one card,
+   which is what made a considered palette still look unfinished. */
+.entity .why,
+.entity .remove,
+.add-field-row .add-field,
+.add-class-row .add-class,
+.suggestions button.promote,
+.screens button.own-screen {
+    padding: 4px var(--space-2);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--muted);
+    font: 600 0.76em/1 var(--sans);
+    cursor: pointer;
+}
+
+.entity .why:hover,
+.add-field-row .add-field:hover,
+.add-class-row .add-class:hover,
+.suggestions button.promote:hover,
+.screens button.own-screen:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-wash);
+}
+
+/* Removing a class is the one destructive thing on this page, so it is the one that turns red
+   under the pointer rather than accent-blue like its neighbours. */
+.entity .remove:hover { border-color: var(--failed); color: var(--failed); background: #fdeeed; }
+
+.entity .why:focus-visible,
+.entity .remove:focus-visible,
+.add-field-row .add-field:focus-visible,
+.add-class-row .add-class:focus-visible,
+.suggestions button.promote:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+
+/* The x on a field row. Not given the button treatment above: it sits inside the tinted machine
+   surface, one per row, and a bordered box on every line would out-shout the names. */
+.fields .unfield {
+    border: 0;
+    background: none;
+    color: var(--faint);
+    font: 1em/1 var(--mono);
+    cursor: pointer;
+    border-radius: 4px;
+    padding: 0 3px;
+}
+
+.fields .unfield:hover { color: var(--failed); background: var(--surface); }
+
+/* What kind of thing the class is, as a chip rather than a word: a card's kind reads before
+   its name does, and the roles are a small closed set that colour can carry. Semantic colours
+   are NOT reused here - a role is not a status - so these are their own quiet washes. */
+.role-chip {
+    padding: 3px 6px;
+    border-radius: 4px;
+    font-size: 0.63em;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    background: var(--accent-wash);
+    color: var(--accent-ink);
+}
+
+.role-transaction { background: #f4ecdf; color: #7d4b0c; }
+.role-document    { background: #ece9f6; color: #4b3f8c; }
+.role-place       { background: #e3f0e8; color: #12603a; }
+.role-device      { background: #eceff4; color: #40506b; }
 
 /* The screen a class will get, on its own row under the name. Small and quiet: a control the size
    of the class name would read as the card's subject rather than as one fact about it, and in the
@@ -633,7 +803,15 @@ body {
    item would line the columns up too, and take the list semantics out of the accessibility tree
    with it. A fixed type column is what makes identical tracks align across rows — wide enough for
    DateTime, the longest of the five ModelEditor accepts. */
-.fields { list-style: none; padding: 0; margin: 0.5rem 0; }
+/* The tinted ground. Everything in here belongs to the machine - property names, C# types -
+   and the change of surface is what says so without a word of explanation. */
+.fields {
+    list-style: none;
+    padding: var(--space-1) 0;
+    margin: 0;
+    background: var(--machine);
+    flex: 1;
+}
 
 /* The type track grew from 4.5rem to hold a SELECT reading "DateTime" rather than the word on
    its own, and the action track shrank from 2rem to pay for it - it holds one x, and x was
@@ -643,8 +821,17 @@ body {
     grid-template-columns: minmax(0, 1fr) 5.25rem 1.5rem;
     gap: 0.4rem;
     align-items: center;
-    padding: 0.1rem 0;
+    padding: 1px var(--space-3);
 }
+
+.fields li:hover { background: var(--surface); }
+
+/* A property name and a C# type are both code, so the row is set in code type. This is the
+   distinction the whole page is built on: what the machine owns is monospace on the tinted
+   ground, what the user wrote is proportional on the white. */
+.fields li,
+.fields input.field-name,
+.fields select.field-type { font-family: var(--mono); }
 
 /* Left of its cell, so the crosses make a column with the button below them rather than drifting
    out to the card's edge. */
@@ -712,6 +899,14 @@ body {
    its type, and the control at the end. The third track is fixed rather than `auto` because `auto`
    sizes to its own content — the wider "add field" button shrank the name column and put this row
    out of step with every row above it, which measurement caught and the eye would have too. */
+/* Below the tinted list rather than in it: adding a field is the user's action, and the ground
+   changes back to say so. */
+.add-field-row {
+    border-top: 1px solid var(--line-soft);
+    padding: var(--space-2) var(--space-3);
+    background: var(--surface);
+}
+
 .add-field-row {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 5.25rem 1.5rem;
@@ -738,7 +933,10 @@ body {
 }
 
 .suggestions button.promote { margin: 0 0.3rem 0.3rem 0; }
-.settled { grid-column: 2; font-size: 0.88em; }
+/* The right-hand column of the relationships grid. grid-column is no longer stated: it was
+   pinned to column 2 of the review grid, and that grid has one column now. */
+.settled { font-size: 0.88em; display: grid; gap: var(--space-2); align-content: start; }
+.settled p { margin: 0; }
 .edit-report { margin-top: 1rem; font-style: italic; }
 .evidence { font-family: ui-monospace, Consolas, monospace; font-size: 0.82em; }
 
