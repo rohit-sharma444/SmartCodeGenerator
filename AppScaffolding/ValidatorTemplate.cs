@@ -120,6 +120,18 @@ internal sealed class NullValidator<T> : IValidator<T>
     private const string MaxLengthRule = "maxlength";
 
     /// <summary>
+    /// Whether <paramref name="property"/> carries the required rule DomainModelMapper recorded.
+    /// </summary>
+    /// <remarks>
+    /// The one predicate both this validator's generated check and
+    /// <see cref="Screens.RequiredFieldsTemplate"/>'s emitted map call, so the asterisk and the
+    /// validator read a single scan rather than two independent copies that merely happen to
+    /// agree today.
+    /// </remarks>
+    internal static bool IsRequired(PropertyDefinition property)
+        => property.Rules.Any(r => string.Equals(r.Name, RequiredRule, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
     /// Source of <c>Validation/&lt;Model&gt;Validator.Generated.cs</c>: the inferred rules, plus the
     /// call to the hand-written hook. Regenerated on every build, so nothing here may be edited.
     /// </summary>
@@ -291,7 +303,7 @@ public sealed partial class {{className}}Validator
 
         var name = property.Name;
 
-        if (property.Rules.Any(r => string.Equals(r.Name, RequiredRule, StringComparison.OrdinalIgnoreCase)))
+        if (IsRequired(property))
         {
             checks.Add($"if (string.IsNullOrWhiteSpace(item.{name}))");
             checks.Add($"    errors.Add(\"{name} is required.\");");

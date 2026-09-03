@@ -18,15 +18,16 @@ namespace AppScaffolding.Screens;
 /// </remarks>
 public static class RequiredFieldsTemplate
 {
-    private const string RequiredRule = "required";
-
     /// <summary>Source of <c>Screens/RequiredFields.cs</c>.</summary>
     public static string Source(string rootNamespace, IReadOnlyList<ClassDefinition>? classes)
     {
+        // ValidatorTemplate.IsRequired is the one predicate: calling it here rather than
+        // re-testing property.Rules is what makes "the same scan" true rather than merely
+        // asserted -- a second accepted spelling or a new rule name changes both call sites at
+        // once, and cannot make the map and the validator disagree by drifting apart.
         var entries = (classes ?? [])
             .Select(c => (c.Name, Required: c.Properties
-                .Where(p => p.Rules.Any(r =>
-                    string.Equals(r.Name, RequiredRule, StringComparison.OrdinalIgnoreCase)))
+                .Where(ValidatorTemplate.IsRequired)
                 .Select(p => p.Name)
                 .ToList()))
             .Where(x => x.Required.Count > 0)
@@ -36,10 +37,11 @@ public static class RequiredFieldsTemplate
 
         // The map carries its own outer braces so the $$ literal below only ever needs a plain
         // {{map}} hole -- no {{{...}}} escaping to get right, and a valid initializer either way:
-        // "{ }" with no entries, or "{ <entries> }" with them.
+        // "{ }" with no entries, or "{ <entries> }" with them. Joined with "\n", matching every
+        // other emitted block (ValidatorTemplate.Generated/Factory) in this LF source file.
         var map = entries.Count == 0
             ? "{ }"
-            : "{\r\n" + string.Join("\r\n", entries) + "\r\n    }";
+            : "{\n" + string.Join("\n", entries) + "\n    }";
 
         return $$"""
 using System;

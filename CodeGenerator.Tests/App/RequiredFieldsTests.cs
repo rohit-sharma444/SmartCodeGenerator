@@ -63,6 +63,12 @@ public class RequiredFieldsTests
     public void An_empty_map_compiles_and_answers_false()
         => Assert.IsFalse(IsRequired(Emit(), "Name"));
 
+    /// <summary>Task 8 and Task 10 call <c>Source("Payroll", null)</c> directly — a null list, not
+    /// merely an empty one — so that exact call must also compile and answer false.</summary>
+    [TestMethod]
+    public void A_null_classes_list_compiles_and_answers_false()
+        => Assert.IsFalse(IsRequired(Emit(null!), "Name"));
+
     [TestMethod]
     public void Both_desktop_targets_emit_the_file()
     {
@@ -76,6 +82,27 @@ public class RequiredFieldsTests
                 .ToList();
 
             CollectionAssert.Contains(names, "RequiredFields.cs", target.Key);
+        }
+    }
+
+    /// <summary>
+    /// Pins every threading link a null-by-construction test cannot: AppScaffolder's classes
+    /// reaching FrontEndContext.Classes, each target's FrontEndFiles(FrontEndContext) forwarding
+    /// it, and DesktopViewModelFiles.Build passing it to RequiredFieldsTemplate — by reading the
+    /// actual emitted file's content rather than only its name.
+    /// </summary>
+    [TestMethod]
+    public void The_classes_reach_the_emitted_map_through_the_context()
+    {
+        foreach (var target in new ITargetScaffolder[]
+                 { new WpfTarget(), new WinFormsTarget() })
+        {
+            var source = target.FrontEndFiles(new FrontEndContext(
+                    "Shop", ["Customer"], AppCustomization.Default with { Layout = AppLayout.Business },
+                    EntityRoleMap.Empty, [Customer()]))
+                .Single(f => f.Name == "RequiredFields.cs").Source;
+
+            StringAssert.Contains(source, "[\"Customer\"] = [\"Name\"]", target.Key);
         }
     }
 }
