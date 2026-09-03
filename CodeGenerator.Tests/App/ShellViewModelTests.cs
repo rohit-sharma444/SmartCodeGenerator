@@ -47,6 +47,7 @@ public sealed class FakeEditor : IRecordEditor
     public bool IsDirty { get; set; }
     public string Title => "Editing";
     public IReadOnlyList<ILineSet> Lines => System.Array.Empty<ILineSet>();
+    public IReadOnlyList<LineTotal> Totals => System.Array.Empty<LineTotal>();
 }
 """;
 

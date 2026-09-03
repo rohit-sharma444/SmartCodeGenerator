@@ -330,4 +330,45 @@ public class OrderLine
 
         Assert.IsInstanceOfType<System.ComponentModel.IBindingList>(items);
     }
+
+    [TestMethod]
+    public void Clearing_a_line_set_empties_it_and_marks_it_dirty()
+    {
+        var source = LineSetTemplate.Source("Acme");
+
+        StringAssert.Contains(source, "void Clear();");
+        StringAssert.Contains(source, "public void Clear()");
+    }
+
+    /// <summary>Clearing empties the set and leaves it dirty, so Cancel can still put the lines
+    /// back — nothing has reached the store.</summary>
+    [TestMethod]
+    public void Clearing_empties_a_loaded_set_and_marks_it_dirty()
+    {
+        var (set, _) = SetOverTwoParents();
+
+        Load(set, 1);
+
+        Assert.IsFalse(IsDirty(set));
+
+        set.GetType().GetMethod("Clear")!.Invoke(set, null);
+
+        Assert.IsEmpty(Items(set));
+        Assert.IsTrue(IsDirty(set));
+    }
+
+    /// <summary>Nothing is written until the editor saves — the same bargain Add and Remove
+    /// already make.</summary>
+    [TestMethod]
+    public void Clearing_writes_nothing_to_the_store()
+    {
+        var (set, assembly) = SetOverTwoParents();
+
+        Load(set, 1);
+        var before = Rows(assembly).Count;
+
+        set.GetType().GetMethod("Clear")!.Invoke(set, null);
+
+        Assert.HasCount(before, Rows(assembly));
+    }
 }

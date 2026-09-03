@@ -350,11 +350,18 @@ public class WinFormsBusinessLayoutTests
             int Count { get; }
         }
 
-        public interface IRecordEditor
+        public sealed record LineTotal(string Column, decimal Value, bool IsGrand);
+
+        public interface IDirtyScreen
         {
             bool IsDirty { get; }
+        }
+
+        public interface IRecordEditor : IDirtyScreen
+        {
             string Title { get; }
             IReadOnlyList<ILineSet> Lines { get; }
+            IReadOnlyList<LineTotal> Totals { get; }
         }
 
         public sealed record NavGroup(string Title, IReadOnlyList<IEntityViewModel> Entities);

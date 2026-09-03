@@ -99,7 +99,13 @@ public interface IRecordEditor : IDirtyScreen
     /// <summary>The lines this record holds, or empty. A master has none; a transaction has one
     /// set per kind of line.</summary>
     IReadOnlyList<ILineSet> Lines { get; }
+
+    /// <summary>One row per money column of the lines, summed across them.</summary>
+    IReadOnlyList<LineTotal> Totals { get; }
 }
+
+/// <summary>One money column of a document's lines, summed over them.</summary>
+public sealed record LineTotal(string Column, decimal Value, bool IsGrand);
 
 /// <summary>One record, edited in a copy so Cancel can genuinely cancel.</summary>
 public sealed class RecordEditorViewModel<T> : ObservableObject, IRecordEditor where T : class, new()
@@ -144,6 +150,57 @@ public sealed class RecordEditorViewModel<T> : ObservableObject, IRecordEditor w
     /// <summary>Whether to show a lines area at all. A view binds this so a master's editor is not
     /// a form with an empty grid under it.</summary>
     public bool HasLines => Lines.Count > 0;
+
+    /// <summary>Whether this record has long-text fields, and so an Additional Information tab.
+    /// A view binds it so a model with none does not show an empty tab.</summary>
+    public bool HasAdditional => FieldGroups.Additional(typeof(T)).Count > 0;
+
+    /// <summary>
+    /// One row per money column of the lines, summed across them.
+    /// </summary>
+    /// <remarks>
+    /// Every decimal and double that is neither an Id nor a foreign key, rather than guessing
+    /// which single column is the document's total — the rule TransactionScreenViewModel already
+    /// applies to a list, for the reason written there: a generated application showing one
+    /// confidently wrong number is worse than one showing several honest ones.
+    /// <para>
+    /// IsGrand only when a set has exactly one money column, which is the only case where naming
+    /// a grand total is not a guess.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<LineTotal> Totals
+    {
+        get
+        {
+            var totals = new List<LineTotal>();
+
+            foreach (var set in Lines)
+            {
+                var columns = set.LineType.GetProperties()
+                    .Where(p => p.PropertyType == typeof(decimal) || p.PropertyType == typeof(double))
+                    .Where(p => !string.Equals(p.Name, "Id", StringComparison.OrdinalIgnoreCase)
+                                && !p.Name.EndsWith("Id", StringComparison.Ordinal))
+                    .ToList();
+
+                foreach (var column in columns)
+                {
+                    var sum = set.Items.Cast<object>().Sum(line => ToDecimal(column.GetValue(line)));
+
+                    totals.Add(new LineTotal(column.Name, sum, columns.Count == 1));
+                }
+            }
+
+            return totals;
+        }
+    }
+
+    private static decimal ToDecimal(object? value)
+        => value switch
+        {
+            decimal d => d,
+            double d => (decimal)d,
+            _ => 0m,
+        };
 
     public bool IsNew { get; }
 

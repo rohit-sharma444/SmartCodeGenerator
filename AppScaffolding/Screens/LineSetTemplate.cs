@@ -72,6 +72,10 @@ public interface ILineSet
     /// <summary>Removes one line. Nothing reaches the store until the editor saves.</summary>
     void Remove(object? line);
 
+    /// <summary>Removes every line. Nothing reaches the store until the editor saves, so this is
+    /// undone by Cancel like any other line edit.</summary>
+    void Clear();
+
     /// <summary>Writes the lines back, stamped with the parent's id. Called AFTER the parent is
     /// saved, because a new parent has no id before that.</summary>
     bool Save(int parentId);
@@ -137,6 +141,12 @@ public sealed class LineSet<TLine> : ILineSet where TLine : class, new()
 
         if (ReferenceEquals(Selected, typed))
             Selected = null;
+    }
+
+    public void Clear()
+    {
+        _lines.Clear();
+        Selected = null;
     }
 
     /// <summary>
