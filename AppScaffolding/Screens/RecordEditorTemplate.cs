@@ -145,6 +145,11 @@ public sealed class RecordEditorViewModel<T> : ObservableObject, IRecordEditor w
         // constructor is still running. IsDirty is deliberately not announced with it: it also
         // turns on the draft's own fields, which are a plain generated model with nothing to
         // subscribe to, so it is a question the shell asks rather than a value a view binds.
+        // The invariant this depends on: every set an application of this shape creates is a
+        // LineSet<T>, whose Items IS a BindingList<T> -- chosen because it is the one collection
+        // both desktop grids refresh from, and relied on again here. ILineSet.Items is typed
+        // IEnumerable, so the cast is how that fact is reached, not a doubt about it. A set that
+        // somehow is not one keeps working; only its totals stop repainting.
         foreach (var set in Lines)
         {
             if (set.Items is IBindingList list)

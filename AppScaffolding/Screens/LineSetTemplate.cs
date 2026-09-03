@@ -84,6 +84,11 @@ public interface ILineSet
     /// value into it reaches the object without the set -- or anything derived from the set, such
     /// as the editor's totals band -- hearing about it. Add, Remove and Clear announce themselves;
     /// this is how a view says what only it saw.
+    /// <para>
+    /// EVERY front end owes this call. Whatever a view uses to know an edit was committed -- WPF's
+    /// CellEditEnding, a WinForms CellEndEdit, a web field losing focus -- must end in this method,
+    /// or that front end shows a total that ignores what was just typed into the grid under it.
+    /// </para>
     /// </remarks>
     void LineEdited();
 

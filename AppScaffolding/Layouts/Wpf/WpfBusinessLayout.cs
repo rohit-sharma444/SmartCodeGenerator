@@ -181,7 +181,11 @@ public sealed class WpfBusinessLayout : IAppLayout
                          not a record list. The transaction screen's cannot: see EditorTemplate. -->
                     <TabItem Header="{{{additionalTitle}}}"
                              Visibility="{Binding HasAdditional, Converter={StaticResource BoolToVisibility}}">
-                        <views:EntryNotes Record="{Binding Editor.Draft}" />
+                        <!-- Scrolled, because EntryNotes stacks a 90px box per long-text field and
+                             a tab clips whatever does not fit. -->
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <views:EntryNotes Record="{Binding Editor.Draft}" />
+                        </ScrollViewer>
                     </TabItem>
                 </TabControl>
             </DockPanel>
@@ -255,19 +259,33 @@ public sealed class WpfBusinessLayout : IAppLayout
                      has no DataContext inside a DataTemplate and binds nothing, which parses
                      cleanly and renders an empty strip. The master screen keeps a real tab,
                      because both of its tabs are static. -->
+                <!-- MaxHeight, and a DockPanel rather than a StackPanel inside it. A docked child
+                     takes its whole desired height before the fill child gets any, and EntryNotes
+                     asks for 90px per long-text field with no ceiling: three of them plus the band,
+                     the form and the action bar exceed this window's 640, and a DockPanel CLIPS
+                     what does not fit rather than scrolling it. Uncapped, the lines grid below
+                     would be arranged at zero height and the document's lines, which are the whole
+                     point of this screen, would silently not be there. The ScrollViewer is the last
+                     child of a DockPanel and not of a StackPanel for the same reason: a StackPanel
+                     hands a child its full desired height, so a ScrollViewer inside one is clipped
+                     instead of scrolling. -->
                 <Border DockPanel.Dock="Bottom"
                         BorderBrush="{{{rule}}}"
                         BorderThickness="1"
                         Margin="10,0,10,10"
                         Padding="12,8"
+                        MaxHeight="180"
                         Visibility="{Binding HasAdditional, Converter={StaticResource BoolToVisibility}}">
-                    <StackPanel>
-                        <TextBlock Text="{{{additionalTitle}}}"
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Top"
+                                   Text="{{{additionalTitle}}}"
                                    FontWeight="SemiBold"
                                    Foreground="{{{accentBrush}}}"
                                    Margin="0,0,0,6" />
-                        <views:EntryNotes Record="{Binding Draft}" />
-                    </StackPanel>
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <views:EntryNotes Record="{Binding Draft}" />
+                        </ScrollViewer>
+                    </DockPanel>
                 </Border>
 
                 <!-- The totals sit beside the lines, and both are hidden for a master: an editor

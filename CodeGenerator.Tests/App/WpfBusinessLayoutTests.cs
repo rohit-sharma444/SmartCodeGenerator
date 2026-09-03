@@ -24,35 +24,60 @@ public class WpfBusinessLayoutTests
             .Single(f => f.Name == "MainWindow.xaml").Source;
 
     /// <summary>
-    /// The slice of the window between two markers, so a template's assertions cannot be satisfied
-    /// by markup that belongs to a different template.
+    /// The markup of one keyed <c>DataTemplate</c>, ending at its OWN closing tag, so a template's
+    /// assertions cannot be satisfied by markup belonging to a different template.
     /// </summary>
     /// <remarks>
     /// Moving markup from one template to another leaves a whole-file <c>Contains</c> passing with
-    /// the element in the wrong place, and an absence assertion passing vacuously.
+    /// the element in the wrong place, and an absence assertion passing vacuously — which is why
+    /// every assertion about a template is scoped through here.
+    /// <para>
+    /// The end is COUNTED rather than cut at a marker, and both marker choices are why. Cutting at
+    /// the first <c>&lt;/DataTemplate&gt;</c> fails closed but is wrong the moment a template grows
+    /// a nested one. Cutting at what FOLLOWS the template — the selector — fails OPEN: adding a
+    /// fifth template after this one silently widens the slice to swallow it, and every assertion
+    /// scoped by it weakens with nothing going red to say so. Matching the tags gives the exact
+    /// element under either change.
+    /// </para>
     /// </remarks>
-    private static string Between(string source, string start, string end)
+    private static string TemplateSlice(string key)
     {
-        var from = source.IndexOf(start, StringComparison.Ordinal);
+        var xaml = Xaml();
+        var from = xaml.IndexOf($"x:Key=\"{key}\"", StringComparison.Ordinal);
 
-        Assert.IsGreaterThan(-1, from, $"'{start}' not found");
+        Assert.IsGreaterThan(-1, from, $"no template keyed '{key}'");
 
-        var to = source.IndexOf(end, from, StringComparison.Ordinal);
+        // The opening tag is already behind `from`, which points inside it.
+        var depth = 1;
+        var at = from;
 
-        Assert.IsGreaterThan(from, to, $"'{end}' not found after '{start}'");
+        while (depth > 0)
+        {
+            var opened = xaml.IndexOf("<DataTemplate", at + 1, StringComparison.Ordinal);
+            var closed = xaml.IndexOf("</DataTemplate>", at + 1, StringComparison.Ordinal);
 
-        return source.Substring(from, to - from);
+            Assert.IsGreaterThan(-1, closed, $"'{key}' is never closed");
+
+            if (opened >= 0 && opened < closed)
+            {
+                depth++;
+                at = opened;
+
+                continue;
+            }
+
+            depth--;
+            at = closed;
+        }
+
+        return xaml.Substring(from, at - from);
     }
 
-    /// <summary>The master screen's template. It holds no nested DataTemplate, so the first
-    /// closing tag after the key is its own.</summary>
-    private static string MasterTemplate()
-        => Between(Xaml(), "x:Key=\"MasterTemplate\"", "</DataTemplate>");
+    /// <summary>The master screen's template.</summary>
+    private static string MasterTemplate() => TemplateSlice("MasterTemplate");
 
-    /// <summary>The editor's template, which DOES hold nested DataTemplates — so it is sliced to
-    /// the selector that follows it rather than to a closing tag.</summary>
-    private static string EditorTemplate()
-        => Between(Xaml(), "x:Key=\"EditorTemplate\"", "<views:ScreenTemplateSelector");
+    /// <summary>The editor's template, which holds nested DataTemplates of its own.</summary>
+    private static string EditorTemplate() => TemplateSlice("EditorTemplate");
 
     [TestMethod]
     public void The_registry_resolves_the_business_key()
@@ -218,6 +243,38 @@ public class WpfBusinessLayoutTests
         StringAssert.Contains(editor, "Click=\"OnRemoveLine\"");
     }
 
+    /// <summary>
+    /// The lines grid reports a committed cell edit, or the totals beside it go stale.
+    /// </summary>
+    /// <remarks>
+    /// The one line-change a set cannot see for itself: the grid writes the typed value straight
+    /// into the line, which is a plain generated model. Without this attribute a purchase order
+    /// shows the OLD total after a quantity is typed — the most visible number on the screen,
+    /// silently wrong — and nothing else in this suite moves.
+    /// </remarks>
+    [TestMethod]
+    public void The_lines_grid_reports_a_committed_cell_edit()
+        => StringAssert.Contains(EditorTemplate(), "CellEditEnding=\"OnLineCellEdited\"");
+
+    /// <summary>
+    /// The notes section on the editor is capped, and scrolls inside its cap.
+    /// </summary>
+    /// <remarks>
+    /// It is docked to the bottom of a DockPanel, so it takes its whole desired height before the
+    /// lines grid — the fill child — gets any, and EntryNotes asks for 90px per long-text field
+    /// with no ceiling. Uncapped, a document with three of them arranges the lines at zero height
+    /// on this window's default 640, and a DockPanel clips rather than scrolls: the lines simply
+    /// are not there. Nothing else in this suite can see that, which is why the cap is pinned here.
+    /// </remarks>
+    [TestMethod]
+    public void The_editors_notes_section_is_capped_and_scrolls()
+    {
+        var editor = EditorTemplate();
+
+        StringAssert.Contains(editor, "MaxHeight=\"180\"");
+        StringAssert.Contains(editor, "<ScrollViewer VerticalScrollBarVisibility=\"Auto\">");
+    }
+
     /// <summary>The long-text fields are reachable on both screens, and on neither of them are
     /// they also in a panel — FieldGroups.For excludes them, and this is the view half of that.</summary>
     [TestMethod]
@@ -226,6 +283,35 @@ public class WpfBusinessLayoutTests
         StringAssert.Contains(MasterTemplate(), "Header=\"Additional Information\"");
         StringAssert.Contains(EditorTemplate(), "Text=\"Additional Information\"");
         StringAssert.Contains(Xaml(), "<BooleanToVisibilityConverter x:Key=\"BoolToVisibility\" />");
+    }
+
+    /// <summary>
+    /// The three areas that exist only for some models are BOUND to the property that says so.
+    /// </summary>
+    /// <remarks>
+    /// This layout emits no per-entity XAML, so an Additional Information tab, its editor-side
+    /// section and the lines area cannot be emitted only for the models that have them: each is
+    /// drawn always and hidden by a binding. Delete the three attributes and a model with no
+    /// long-text fields grows an empty tab and an empty titled section, and a master's editor grows
+    /// an empty lines area — with every other test in this file green, and the reflection test
+    /// unmoved (33 paths become 30, still above its floor).
+    /// <para>
+    /// The needle is the whole attribute, not the property name: the editor's own comment says "which
+    /// is what HasLines says", so a bare <c>HasLines</c> is satisfied by prose after the binding is
+    /// gone. Scoped per template as well, because all three would otherwise be interchangeable.
+    /// </para>
+    /// </remarks>
+    [TestMethod]
+    public void Every_optional_area_is_hidden_by_the_property_that_says_it_is_empty()
+    {
+        const string additional =
+            "Visibility=\"{Binding HasAdditional, Converter={StaticResource BoolToVisibility}}\"";
+
+        StringAssert.Contains(MasterTemplate(), additional);
+        StringAssert.Contains(EditorTemplate(), additional);
+        StringAssert.Contains(
+            EditorTemplate(),
+            "Visibility=\"{Binding HasLines, Converter={StaticResource BoolToVisibility}}\"");
     }
 
     /// <summary>
@@ -264,6 +350,8 @@ public class WpfBusinessLayoutTests
     public void The_layout_emits_the_three_entry_controls()
     {
         var names = new WpfBusinessLayout().ViewFiles(Context()).Select(f => f.Name).ToList();
+        var master = MasterTemplate();
+        var editor = EditorTemplate();
 
         foreach (var file in new[]
                  {
@@ -271,8 +359,15 @@ public class WpfBusinessLayoutTests
                      WpfEntryControls.NotesFileName,
                  })
         {
+            var element = $"<views:{file.Replace(".cs", string.Empty)}";
+
             Assert.Contains(file, names);
-            StringAssert.Contains(Xaml(), $"<views:{file.Replace(".cs", string.Empty)}");
+
+            // Scoped to the two templates that name them, not to the file: a whole-file assertion
+            // is satisfied by a control that appears only in TransactionTemplate, which would leave
+            // an entry screen missing the control while the registration test stayed green.
+            StringAssert.Contains(master, element);
+            StringAssert.Contains(editor, element);
         }
     }
 
@@ -465,6 +560,13 @@ public class WpfBusinessLayoutTests
         StringAssert.Contains(code, "private void OnRemoveLine(");
         StringAssert.Contains(code, "private void OnClearLines(");
         StringAssert.Contains(code, "lines.Clear()");
+        StringAssert.Contains(code, "private void OnLineCellEdited(");
+
+        // The whole call, not the name: the dispatcher hop is the load-bearing half. CellEditEnding
+        // runs BEFORE the cell's binding writes the typed value, so a total recomputed inside the
+        // handler sums the values the grid is about to replace -- a wrong number rather than a
+        // stale one, which is worse.
+        StringAssert.Contains(code, "Dispatcher.BeginInvoke(new Action(lines.LineEdited))");
 
         // The DataContext of the button, the same way the rail's buttons carry their screen.
         StringAssert.Contains(code, "DataContext: ILineSet lines");
