@@ -88,11 +88,17 @@ public class EntryScreenViewModelTests
         StringAssert.Contains(source, "!p.Name.EndsWith(\"Id\", StringComparison.Ordinal)");
     }
 
-    /// <summary>A line whose Id and foreign key are large, nonzero numbers, so a leaked exclusion
-    /// would visibly change the sum -- a substring match on the exclusion predicate cannot show
-    /// that it is actually applied. Two money columns, so IsGrand must be false for both, and one
-    /// of them a double, since ToDecimal converts it and nothing else would notice if that arm
-    /// broke.</summary>
+    /// <summary>
+    /// A set with two money columns, one of them a double, so the sums (not merely a declaration)
+    /// are proved -- and IsGrand must be false for both, since neither is alone with its column.
+    /// </summary>
+    /// <remarks>
+    /// OrderLine's Id and BookId are plain <c>int</c>, so the exclusion predicate's TYPE clause
+    /// alone already keeps them out of the band regardless of their value -- proving the NAME
+    /// clause (an Id typed as money) is
+    /// <c>Totals_excludes_a_money_typed_foreign_key_by_name_and_marks_the_remaining_column_grand</c>'s
+    /// job, not this test's.
+    /// </remarks>
     [TestMethod]
     public void Totals_sums_each_money_column_by_value_and_excludes_id_and_foreign_key()
     {
@@ -110,35 +116,86 @@ public class EntryScreenViewModelTests
         var unitPrice = totals.Single(t => ColumnOf(t) == "UnitPrice");
         var weight = totals.Single(t => ColumnOf(t) == "Weight");
 
-        Assert.AreEqual(15.75m, ValueOf(unitPrice), "the Id and foreign key, both 900, must not leak in");
+        Assert.AreEqual(15.75m, ValueOf(unitPrice), "the two lines' UnitPrice values, summed");
         Assert.AreEqual(4.0m, ValueOf(weight), "a double column is summed too");
         Assert.IsFalse(IsGrandOf(unitPrice), "two money columns means neither is the grand total");
         Assert.IsFalse(IsGrandOf(weight));
     }
 
-    /// <summary>IsGrand is only true when a set has exactly one money column -- the reverse of the
-    /// two-column case above, because a rule proved in one direction is only half proved.</summary>
+    /// <summary>
+    /// IsGrand is only true when a set has exactly one money column -- the reverse of the
+    /// two-column case above, because a rule proved in one direction is only half proved.
+    /// </summary>
+    /// <remarks>
+    /// InvoiceLine also carries SupplierId: money-TYPED (decimal) but foreign-key-SHAPED (ends
+    /// with "Id"). OrderLine's Id/BookId are int, so the type filter alone already keeps them out
+    /// of the band -- seeding them large proves nothing about the name predicate. SupplierId is
+    /// the case that actually exercises it: seeded 900 on both lines, if the name predicate were
+    /// deleted it would join the band as an 1800 row and Amount's only-column count would rise to
+    /// two, flipping IsGrand false.
+    /// </remarks>
     [TestMethod]
-    public void Totals_marks_a_sets_only_money_column_as_the_grand_total()
+    public void Totals_excludes_a_money_typed_foreign_key_by_name_and_marks_the_remaining_column_grand()
     {
         var assembly = EmitWithTotals();
 
-        SeedLine(assembly, "InvoiceLine", id: 900, bookId: 900, ("Amount", 40m));
-        SeedLine(assembly, "InvoiceLine", id: 901, bookId: 900, ("Amount", 60m));
+        SeedLine(assembly, "InvoiceLine", id: 900, bookId: 900, ("Amount", 40m), ("SupplierId", 900m));
+        SeedLine(assembly, "InvoiceLine", id: 901, bookId: 900, ("Amount", 60m), ("SupplierId", 900m));
 
         var set = LineSetOf(assembly, "InvoiceLine", "BookId");
         set.GetType().GetMethod("Load")!.Invoke(set, [900]);
 
         var editor = EditorOverBookWith(assembly, set);
-        var total = Totals(editor).Single();
+        var totals = Totals(editor);
+
+        Assert.HasCount(1, totals, "SupplierId is money-typed but named like a foreign key and must not join the band");
+
+        var total = totals.Single();
 
         Assert.AreEqual("Amount", ColumnOf(total));
-        Assert.AreEqual(100m, ValueOf(total));
+        Assert.AreEqual(100m, ValueOf(total), "SupplierId, seeded 900 on each line, must not leak into the sum");
         Assert.IsTrue(IsGrandOf(total), "one money column is the only case where a grand total is not a guess");
     }
 
-    /// <summary>Two line types, one with a single money column and one with two, so IsGrand can be
-    /// proved both ways without a second compiled fixture.</summary>
+    /// <summary>
+    /// IsGrand is decided per SET, not across the whole band.
+    /// </summary>
+    /// <remarks>
+    /// Two sets, each with exactly one money column of its own, so a mutation that scopes IsGrand
+    /// globally (comparing against the total money-column count across every set) or that only
+    /// walks the first set (<c>Lines.Take(1)</c>) both surface here: the first shows up as
+    /// IsGrand:false on a set that is genuinely alone with its column, and the second shows up as
+    /// a missing row for the second set entirely.
+    /// </remarks>
+    [TestMethod]
+    public void Totals_marks_the_grand_total_of_each_set_independently()
+    {
+        var assembly = EmitWithTotals();
+
+        SeedLine(assembly, "InvoiceLine", id: 900, bookId: 900, ("Amount", 40m), ("SupplierId", 900m));
+        SeedLine(assembly, "PaymentLine", id: 900, bookId: 900, ("Received", 25m));
+
+        var invoiceSet = LineSetOf(assembly, "InvoiceLine", "BookId");
+        invoiceSet.GetType().GetMethod("Load")!.Invoke(invoiceSet, [900]);
+
+        var paymentSet = LineSetOf(assembly, "PaymentLine", "BookId");
+        paymentSet.GetType().GetMethod("Load")!.Invoke(paymentSet, [900]);
+
+        var editor = EditorOverBookWith(assembly, invoiceSet, paymentSet);
+        var totals = Totals(editor);
+
+        Assert.HasCount(2, totals, "each set contributes its own row -- neither is dropped");
+
+        var amount = totals.Single(t => ColumnOf(t) == "Amount");
+        var received = totals.Single(t => ColumnOf(t) == "Received");
+
+        Assert.IsTrue(IsGrandOf(amount), "Invoice's only money column is its own grand total");
+        Assert.IsTrue(IsGrandOf(received), "Payment's only money column is its own grand total, independent of Invoice's");
+    }
+
+    /// <summary>Three line types: one with two money columns, and two others each with exactly one
+    /// -- of different names, so IsGrand's per-set scoping can be proved without a second compiled
+    /// fixture.</summary>
     private const string TotalsLineStubs = """
 public class OrderLine
 {
@@ -153,6 +210,14 @@ public class InvoiceLine
     public int Id { get; set; }
     public int BookId { get; set; }
     public decimal Amount { get; set; }
+    public decimal SupplierId { get; set; }
+}
+
+public class PaymentLine
+{
+    public int Id { get; set; }
+    public int BookId { get; set; }
+    public decimal Received { get; set; }
 }
 """;
 

@@ -332,7 +332,7 @@ public class OrderLine
     }
 
     [TestMethod]
-    public void Clearing_a_line_set_empties_it_and_marks_it_dirty()
+    public void The_line_set_declares_clear_on_both_the_interface_and_the_class()
     {
         var source = LineSetTemplate.Source("Acme");
 
@@ -341,13 +341,16 @@ public class OrderLine
     }
 
     /// <summary>Clearing empties the set and leaves it dirty, so Cancel can still put the lines
-    /// back — nothing has reached the store.</summary>
+    /// back — nothing has reached the store. It also drops whatever was selected: a bound grid's
+    /// Clear All button must not leave Selected pointing at a line that is no longer in the
+    /// list.</summary>
     [TestMethod]
     public void Clearing_empties_a_loaded_set_and_marks_it_dirty()
     {
         var (set, _) = SetOverTwoParents();
 
         Load(set, 1);
+        set.GetType().GetProperty("Selected")!.SetValue(set, Items(set)[0]);
 
         Assert.IsFalse(IsDirty(set));
 
@@ -355,6 +358,7 @@ public class OrderLine
 
         Assert.IsEmpty(Items(set));
         Assert.IsTrue(IsDirty(set));
+        Assert.IsNull(set.GetType().GetProperty("Selected")!.GetValue(set), "a cleared set must not still point Selected at a gone line");
     }
 
     /// <summary>Nothing is written until the editor saves — the same bargain Add and Remove
