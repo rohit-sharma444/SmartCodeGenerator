@@ -102,10 +102,12 @@ public class Customer
             new[] { "ContactPerson", "Email" },
             Groups()["Contact Information"]);
 
+    /// <summary>Code is excluded here, not merely missing: FieldGroups.Key claims it for the
+    /// header now, so it must not also draw in a panel below.</summary>
     [TestMethod]
     public void Everything_unmatched_stays_in_basic_information()
         => CollectionAssert.AreEquivalent(
-            new[] { "Code", "Name", "CreditLimit", "Reference", "DeliveryDay", "TermsAccepted" },
+            new[] { "Name", "CreditLimit", "Reference", "DeliveryDay", "TermsAccepted" },
             Groups()["Basic Information"]);
 
     /// <summary>Asserted directly, not just by absence elsewhere: without this, IsActive being
@@ -271,5 +273,89 @@ public class PurchaseOrder
 
             CollectionAssert.Contains(names, "FieldGroups.cs", target.Key);
         }
+    }
+
+    private static (string? Code, string? Date, string? Status) Key(string modelStub, string typeName)
+    {
+        var source = EmittedSource.Flatten(
+            modelStub,
+            FieldGroupsTemplate.Source("Acme").Replace("namespace Acme.Screens;", string.Empty));
+
+        EmittedSource.AssertCompiles(source);
+
+        var assembly = Assembly.Load(Compiler.Compile(source).AssemblyBytes!);
+        var key = assembly.GetType("FieldGroups")!
+            .GetMethod("Key")!.Invoke(null, [assembly.GetType(typeName)!])!;
+
+        string? Name(string part)
+            => (key.GetType().GetProperty(part)!.GetValue(key) as PropertyInfo)?.Name;
+
+        return (Name("Code"), Name("Date"), Name("Status"));
+    }
+
+    private const string OrderStub = """
+using System;
+
+public class Order
+{
+    public int Id { get; set; }
+    public string OrderNo { get; set; } = string.Empty;
+    public DateTime OrderDate { get; set; }
+    public DateTime CreatedOn { get; set; }
+    public DateTime ModifiedOn { get; set; }
+    public string Status { get; set; } = string.Empty;
+    public decimal Total { get; set; }
+}
+""";
+
+    [TestMethod]
+    public void The_header_takes_the_code_the_date_and_the_status()
+    {
+        var key = Key(OrderStub, "Order");
+
+        Assert.AreEqual("OrderNo", key.Code);
+        Assert.AreEqual("OrderDate", key.Date);
+        Assert.AreEqual("Status", key.Status);
+    }
+
+    /// <summary>The audit fields every model carries are never what a user means by "the date" --
+    /// the exclusion TransactionScreenViewModel and ScreenFields both already make.</summary>
+    [TestMethod]
+    public void The_audit_dates_are_never_the_header_date()
+        => Assert.AreNotEqual("CreatedOn", Key(OrderStub, "Order").Date);
+
+    /// <summary>The assertion this whole member exists for.</summary>
+    [TestMethod]
+    public void A_header_field_appears_in_no_panel()
+    {
+        var source = EmittedSource.Flatten(
+            OrderStub,
+            FieldGroupsTemplate.Source("Acme").Replace("namespace Acme.Screens;", string.Empty));
+
+        var assembly = Assembly.Load(Compiler.Compile(source).AssemblyBytes!);
+        var groups = (System.Collections.IEnumerable)assembly.GetType("FieldGroups")!
+            .GetMethod("For")!.Invoke(null, [assembly.GetType("Order")!])!;
+
+        var shown = groups.Cast<object>()
+            .SelectMany(g => (IEnumerable<PropertyInfo>)g.GetType().GetProperty("Fields")!.GetValue(g)!)
+            .Select(p => p.Name)
+            .ToList();
+
+        CollectionAssert.DoesNotContain(shown, "OrderNo");
+        CollectionAssert.DoesNotContain(shown, "OrderDate");
+        CollectionAssert.DoesNotContain(shown, "Status");
+        CollectionAssert.Contains(shown, "Total");
+    }
+
+    [TestMethod]
+    public void A_model_with_no_code_date_or_status_yields_none()
+    {
+        var key = Key(
+            "public class Note { public int Id { get; set; } public string Text { get; set; } = string.Empty; }",
+            "Note");
+
+        Assert.IsNull(key.Code);
+        Assert.IsNull(key.Date);
+        Assert.IsNull(key.Status);
     }
 }

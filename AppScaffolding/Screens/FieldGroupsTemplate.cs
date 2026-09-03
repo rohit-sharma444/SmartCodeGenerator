@@ -72,8 +72,37 @@ public static class FieldGroups
         "remark", "note", "terms", "condition", "description",
     ];
 
-    /// <summary>Replaced in full by the key-field resolution. Present so For() compiles.</summary>
-    public static KeyFields Key(Type type) => new(null, null, null);
+    private static readonly string[] AuditFields = ["CreatedOn", "ModifiedOn"];
+
+    private static readonly string[] CodeSuffixes = ["Code", "No", "Number"];
+
+    /// <summary>
+    /// What the header band shows. Excluded from every panel.
+    /// </summary>
+    /// <remarks>
+    /// Without the exclusion the same property is drawn twice on one screen: Status matches the
+    /// Other Information bucket, and a transaction's date matches it by type. Two live inputs
+    /// bound to one property is a defect rather than a style.
+    /// </remarks>
+    public static KeyFields Key(Type type)
+    {
+        var pool = Displayable(type);
+
+        var code = pool.FirstOrDefault(p =>
+            p.PropertyType == typeof(string)
+            && CodeSuffixes.Any(s => p.Name.EndsWith(s, StringComparison.Ordinal)));
+
+        // The same date the transaction list filters on, and excluded for the same reason: every
+        // model carries CreatedOn and ModifiedOn, which are not what a user means by "the date".
+        var date = pool.FirstOrDefault(p =>
+            IsDate(p) && !AuditFields.Contains(p.Name, StringComparer.OrdinalIgnoreCase));
+
+        var status = pool.FirstOrDefault(p =>
+            string.Equals(p.Name, "Status", StringComparison.Ordinal)
+            || string.Equals(p.Name, "State", StringComparison.Ordinal));
+
+        return new KeyFields(code, date, status);
+    }
 
     /// <summary>
     /// The fields an entry form shows.
