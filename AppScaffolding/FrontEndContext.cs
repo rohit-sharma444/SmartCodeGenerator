@@ -16,8 +16,11 @@ namespace AppScaffolding;
 /// disagree with the summary the build has already printed.
 /// </para>
 /// </remarks>
+/// <param name="Classes">The mapped classes, for the front end that has to know which properties
+/// are required. Null for a caller that has only names.</param>
 public sealed record FrontEndContext(
     string ProjectName,
     IReadOnlyList<string> EntityNames,
     AppCustomization Customization,
-    EntityRoleMap Roles);
+    EntityRoleMap Roles,
+    IReadOnlyList<CodeGenerationEngine.Models.ClassDefinition>? Classes = null);
