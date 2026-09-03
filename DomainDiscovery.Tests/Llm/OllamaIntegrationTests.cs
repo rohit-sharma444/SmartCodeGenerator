@@ -32,10 +32,10 @@ public class OllamaIntegrationTests
         if (!OllamaIsRunning(config))
             return;   // no local model server — see the class remarks
 
-        var progress = new List<IReadOnlyList<string>>();
+        var progress = new List<DiscoveryProgress>();
 
         var outcome = new OllamaDomainModelSource(new OllamaClient(config), config.Model)
-            .Discover("A point of sale system for a retail shop", found => progress.Add(found));
+            .Discover("A point of sale system for a retail shop", progress.Add);
 
         Assert.True(outcome.Succeeded, outcome.Message);
 
@@ -44,14 +44,23 @@ public class OllamaIntegrationTests
         // what the Discover panel draws instead of a blank wait for all of it.
         Assert.NotEmpty(progress);
 
-        // Reported as it goes, not once at the end - the first report must be shorter than the
+        // Reported as it goes, not once at the end - the first report must know less than the
         // last, or nothing was actually incremental.
         Assert.True(
-            progress[0].Count < progress[^1].Count || progress.Count == 1,
-            $"progress went straight to {progress[0].Count} classes in one step");
+            progress[0].Total < progress[^1].Total || progress.Count == 1,
+            $"progress went straight to {progress[0].Total} classes in one step");
 
-        Assert.All(progress, found => Assert.All(found, line => Assert.False(
-            string.IsNullOrWhiteSpace(line), "a progress line was blank")));
+        Assert.All(progress, p => Assert.All(
+            p.Done.Concat(p.Pending),
+            line => Assert.False(string.IsNullOrWhiteSpace(line), "a progress line was blank")));
+
+        // The two-phase route's whole promise: at some point the complete class list is known and
+        // none of it is finished yet. Proven against the real model, since only a real roster call
+        // can show that the split actually happens.
+        Assert.Contains(progress, p => p.Done.Count == 0 && p.Pending.Count > 1);
+
+        // And by the end every class the roster named has been accounted for.
+        Assert.Equal(outcome.Model.Entities.Count, progress[^1].Total);
 
         // Deliberately weak: the model is sampled, so asserting exact class names would make
         // this test flaky. What is asserted is that the normalizer produced something usable.

@@ -6,10 +6,12 @@
 @if (_busy)
 {
     @* The longest silence in the tool, and it is genuinely long: a local model on a CPU takes
-       two and a half minutes for an ordinary domain. The seconds counting up say it is still
-       going; the classes listed above it say what it has actually produced, which is what
-       stops a real wait from reading as a hang. *@
-    <ProgressList Done="Session.Discovered" Current="@_label" Seconds="_seconds" />
+       minutes for an ordinary domain. The seconds counting up say it is still going; the classes
+       above and below the current line say what it has produced and what it still owes, which is
+       what stops a real wait from reading as a hang. The step label comes from the discovery
+       itself where it has one, since only it knows which of its two passes is running. *@
+    <ProgressList Done="Session.Discovered.Done" Pending="Session.Discovered.Pending"
+                  Current="@(Session.Discovered.Step ?? _label)" Seconds="_seconds" />
 }
 else if (_read is not null)
 {
@@ -110,7 +112,7 @@ else
         // would be a render for work the timer already covers.
         var (task, owner) = Session.JoinDiscovery(
             () => Task.Run(() => DiscoveryStep.Discover(
-                Session.Description, Session.WorkspaceRoot, Session.DiscoveryProgress)));
+                Session.Description, Session.WorkspaceRoot, Session.RecordDiscoveryProgress)));
 
         DiscoveryOutcome outcome;
 

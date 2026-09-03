@@ -1,8 +1,8 @@
 namespace DomainDiscovery.Llm;
 
 /// <summary>
-/// What <see cref="IOllamaClient.Ask"/> produced: the parsed model on success, or — on
-/// failure — a one-line, human-readable reason.
+/// What an ask produced: the parsed model on success, or — on failure — a one-line,
+/// human-readable reason.
 /// </summary>
 /// <remarks>
 /// Introduced because a bare <c>null</c> collapsed five genuinely different failures (a
@@ -45,20 +45,43 @@ public sealed record OllamaAnswer(
         => new(null, error, doneReason);
 }
 
-/// <summary>Talks to a local Ollama server. Never throws — see <see cref="Ask"/>.</summary>
+/// <summary>Talks to a local Ollama server. Never throws — every ask reports failure in its
+/// <see cref="OllamaAnswer"/> instead.</summary>
+/// <remarks>
+/// <paramref name="onClasses"/> on every ask is called with the classes completed so far, each
+/// time another one is finished, while the model is still generating. Optional, and called on
+/// whatever thread the read completes on — a UI caller must marshal. It exists because these calls
+/// take minutes on a CPU: without it the only honest thing to show for that time is a blank
+/// screen.
+/// </remarks>
 public interface IOllamaClient
 {
     /// <summary>Whether the server answers at all. A millisecond call, used to decide whether
     /// to run this source or fall back.</summary>
     bool IsAvailable();
 
-    /// <summary>The model's proposed domain, or — on failure — why there is none. Never throws;
-    /// the caller's job is to fall back or report, not to catch.</summary>
-    /// <param name="onProgress">
-    /// Called with the classes named so far, each time another one is complete, while the model is
-    /// still generating. Optional, and called on whatever thread the read completes on — a UI
-    /// caller must marshal. It exists because this call takes minutes on a CPU: without it the
-    /// only honest thing to show for that time is a blank screen.
-    /// </param>
-    OllamaAnswer Ask(string description, Action<IReadOnlyList<string>>? onProgress = null);
+    /// <summary>The whole model in one call — names, roles, properties and relationships.</summary>
+    OllamaAnswer Ask(string description, Action<IReadOnlyList<LlmClass>>? onClasses = null);
+
+    /// <summary>
+    /// Phase one of the two-phase route: which classes exist, with roles and purposes, and nothing
+    /// else.
+    /// </summary>
+    /// <remarks>
+    /// Measured at 42-68 seconds against 158 for <see cref="Ask"/>, because the schema it is given
+    /// has no room for properties — so this is what puts a complete class list in front of the
+    /// user while the long pass is still to come.
+    /// </remarks>
+    OllamaAnswer AskForClasses(string description, Action<IReadOnlyList<LlmClass>>? onClasses = null);
+
+    /// <summary>
+    /// Phase two: the properties and relationships of classes that have already been chosen.
+    /// </summary>
+    /// <remarks>
+    /// The model is told not to add, remove or rename anything, and
+    /// <see cref="TwoPhaseModel.Merge"/> enforces that regardless — a 3B model obeys such an
+    /// instruction most of the time rather than always.
+    /// </remarks>
+    OllamaAnswer AskForDetail(
+        string description, LlmDomainModel roster, Action<IReadOnlyList<LlmClass>>? onClasses = null);
 }

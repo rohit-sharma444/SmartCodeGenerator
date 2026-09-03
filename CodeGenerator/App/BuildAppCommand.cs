@@ -281,8 +281,7 @@ internal sealed class BuildAppCommand
         {
             outcome = source.Discover(
                 description,
-                found => Spinner.Describe(
-                    spinner, $"Discovering the domain — {found.Count} class(es) so far"));
+                progress => Spinner.Describe(spinner, ConsoleProgress(progress)));
         }
 
         // Which source answered, always — the command line says exactly what the web panel says.
@@ -291,6 +290,19 @@ internal sealed class BuildAppCommand
         RunReviewLoop(
             outcome.Model, DomainAppName.FromDescription(description), workspaceRoot,
             ImportedData.None, target, customization, reviewAi);
+    }
+
+    /// <summary>
+    /// One line for the spinner. The console has a single line to say this on, so the class names
+    /// the web panel lists cannot go here — the count and the step do.
+    /// </summary>
+    private static string ConsoleProgress(DiscoveryProgress progress)
+    {
+        var step = progress.Step ?? "Discovering the domain";
+
+        return progress.Total == 0
+            ? step
+            : $"{step} ({progress.Done.Count} of {progress.Total} class(es))";
     }
 
     /// <summary>

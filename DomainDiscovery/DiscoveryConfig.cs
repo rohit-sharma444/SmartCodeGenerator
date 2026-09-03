@@ -52,11 +52,31 @@ public sealed class DiscoveryConfig
     /// </remarks>
     public const int DefaultStallSeconds = 120;
 
+    /// <summary>
+    /// How many calls a discovery makes: 2 to ask which classes exist and then what is in them,
+    /// 1 to ask for everything at once.
+    /// </summary>
+    /// <remarks>
+    /// Two by default, measured on a point-of-sale system against the real model:
+    /// <list type="bullet">
+    /// <item>Two phases put the COMPLETE list of twelve classes on screen at 42 seconds, and
+    /// finished at 229.</item>
+    /// <item>One phase produced its first class at about 17 seconds and its tenth — the last — at
+    /// 158, so there is no moment before the end where the whole list can be seen.</item>
+    /// </list>
+    /// The split costs about 45% more in total and buys two things: a readable class list in a
+    /// quarter of the time, and much better behaviour when a run is cut short, since the roster
+    /// decides which classes exist and it is the pass that almost always finishes. Set this to 1
+    /// for the shortest total wait.
+    /// </remarks>
+    public const int DefaultPhases = 2;
+
     public string Source { get; set; } = OllamaSource;
     public string Model { get; set; } = DefaultModel;
     public string Endpoint { get; set; } = DefaultEndpoint;
     public int TimeoutMinutes { get; set; } = DefaultTimeoutMinutes;
     public int StallSeconds { get; set; } = DefaultStallSeconds;
+    public int Phases { get; set; } = DefaultPhases;
 
     public static string DefaultPath =>
         Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "discovery.json");

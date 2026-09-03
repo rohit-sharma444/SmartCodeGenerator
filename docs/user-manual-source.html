@@ -400,13 +400,18 @@ another class before it is stopped and what it produced is kept. A healthy run f
 seconds, so this cannot interrupt one that is merely slow — it exists to end a generation that has stopped
 finishing anything, which would otherwise run until <code>TimeoutMinutes</code>. Raise it on a markedly
 slower machine.</td></tr>
+<tr><td><code>Phases</code></td><td><code>2</code></td><td>How many calls a discovery makes. <code>2</code>
+asks which classes exist and then, in a second call, what is in them — so the complete class list appears
+early. <code>1</code> asks for everything at once, which reaches a finished model sooner but shows nothing
+complete until it is nearly done. See <em>Two passes, and why</em> below.</td></tr>
 </table>
 <pre>{
   "Source": "Ollama",
   "Model": "qwen2.5:3b",
   "Endpoint": "http://localhost:11434",
   "TimeoutMinutes": 5,
-  "StallSeconds": 120
+  "StallSeconds": 120,
+  "Phases": 2
 }</pre>
 <h4>Installing Ollama and pulling the model</h4>
 <p>Install Ollama from <a href="https://ollama.com">ollama.com</a> — it runs as a background service once
@@ -417,15 +422,31 @@ installed, with no separate step to start it. Then pull the default model from a
 configured model is actually in <code>ollama list</code> — a reachable Ollama with the wrong (or no) model
 pulled falls back to Wikipedia exactly as an unreachable one does, rather than failing partway through with
 no classes.</p>
-<h4>What the wait looks like</h4>
-<p>A local model on a machine with no usable graphics card generates a few tokens a second, so discovery
-genuinely takes minutes — about two and a half for an ordinary domain, longer for a large one. The Discover
-step does not sit blank for that: it names each class as the model finishes writing it, so you can see the
-list growing. On the command line the same progress appears as a class count beside the spinner.</p>
+<h4>Two passes, and why</h4>
+<p>A local model on a machine with no usable graphics card generates only a few tokens a second, so discovery
+genuinely takes minutes. Because of that it is done in two passes by default. The first asks only which
+classes exist, with a role and a purpose for each and nothing else — a small answer, so it comes back
+quickly. The second asks what is inside those classes, which is the long part.</p>
+<p>The point is what you can see while you wait. Measured on a point-of-sale system:</p>
+<table>
+<tr><th></th><th>Complete class list on screen</th><th>Finished model</th></tr>
+<tr><td>Two passes (<code>"Phases": 2</code>, the default)</td><td>42 seconds</td><td>229 seconds</td></tr>
+<tr><td>One pass (<code>"Phases": 1</code>)</td><td>158 seconds — only at the end</td><td>158 seconds</td></tr>
+</table>
+<p>So the split costs about 45% more in total and buys the class list in a quarter of the time. During the
+second pass the Discover step lists every class it is going to fill in, ticks each one as its properties
+arrive, and counts them off (<em>"Filling in the properties — 6 of 12"</em>); the classes still to come are
+listed below with an open circle rather than a tick, because they have not been written yet. On the command
+line the same progress appears as a count beside the spinner. Set <code>"Phases": 1</code> if you would
+rather have the shortest total wait.</p>
+<h4>When a run is cut short</h4>
 <p>If a run is stopped before the model has finished — by <code>TimeoutMinutes</code>, by
-<code>StallSeconds</code>, or by the connection dropping — the classes it had already written are kept and
-the review step says so, for example <em>"6 class(es) were kept from a run that stopped at the 5 minute(s)
-limit"</em>. You get a shorter model rather than none, and running discovery again is always an option.</p>
+<code>StallSeconds</code>, or by the connection dropping — nothing already produced is thrown away.</p>
+<p>With two passes this degrades particularly well, because the pass that decides which classes exist is the
+short one and almost always finishes: you keep <em>every</em> class, with properties filled in as far as the
+second pass got, and the review step says so — for example <em>"4 of 12 class(es) have no properties yet —
+the pass that fills them in did not finish"</em>. A class with no properties still gets an identifier, and
+you can add fields to it in the review step or simply run discovery again.</p>
 <h4>Pinning to Wikipedia</h4>
 <p>Set <code>"Source": "Wikipedia"</code> to skip Ollama and always use the local Wikipedia store. This is the
 option for a run that must be repeatable — a CI job, a demonstration you will run more than once and expect

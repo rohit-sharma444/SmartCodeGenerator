@@ -32,7 +32,7 @@ public static class DomainModelSourceFactory
         // unreachable Ollama costs one probe rather than a long timeout.
         if (client.IsAvailable())
             return new FallbackWhenUnsuccessfulSource(
-                new OllamaDomainModelSource(client, config.Model), wikipedia);
+                new OllamaDomainModelSource(client, config.Model, config.Phases), wikipedia);
 
         return new AnnotatedFallbackSource(
             wikipedia,
@@ -68,7 +68,7 @@ public static class DomainModelSourceFactory
             _reason = reason;
         }
 
-        public DiscoveryOutcome Discover(string description, Action<IReadOnlyList<string>>? onProgress = null)
+        public DiscoveryOutcome Discover(string description, Action<DiscoveryProgress>? onProgress = null)
             => Annotate(_inner().Discover(description, onProgress), _reason);
     }
 
@@ -100,7 +100,7 @@ public static class DomainModelSourceFactory
             _fallback = fallback;
         }
 
-        public DiscoveryOutcome Discover(string description, Action<IReadOnlyList<string>>? onProgress = null)
+        public DiscoveryOutcome Discover(string description, Action<DiscoveryProgress>? onProgress = null)
         {
             var outcome = _preferred.Discover(description, onProgress);
 

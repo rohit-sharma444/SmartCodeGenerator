@@ -8,7 +8,7 @@ namespace DomainDiscovery.Tests;
 
 internal sealed class StubSource : IDomainModelSource
 {
-    public DiscoveryOutcome Discover(string description, Action<IReadOnlyList<string>>? onProgress = null)
+    public DiscoveryOutcome Discover(string description, Action<DiscoveryProgress>? onProgress = null)
         => new(new CandidateDomainModel(), "Wikipedia", true, null);
 }
 
@@ -16,7 +16,7 @@ internal sealed class StubSource : IDomainModelSource
 /// message to report — so a fallback wrapping it has two things to say, not one.</summary>
 internal sealed class StubSourceWithMessage : IDomainModelSource
 {
-    public DiscoveryOutcome Discover(string description, Action<IReadOnlyList<string>>? onProgress = null)
+    public DiscoveryOutcome Discover(string description, Action<DiscoveryProgress>? onProgress = null)
         => new(new CandidateDomainModel(), "Wikipedia", false, "No topic was recognised.");
 }
 
@@ -47,7 +47,7 @@ public class DomainModelSourceFactoryTests
         var source = DomainModelSourceFactory.Create(
             new DiscoveryConfig(),
             () => { built++; return new StubSource(); },
-            new FakeOllamaClient { Available = true, Answer = OneClass() });
+            new FakeOllamaClient { Available = true, Roster = OneClass(), Detail = OneClass() });
 
         var outcome = source.Discover("a shop");
 
@@ -65,7 +65,7 @@ public class DomainModelSourceFactoryTests
         var source = DomainModelSourceFactory.Create(
             new DiscoveryConfig(),
             Wikipedia,
-            new FakeOllamaClient { Available = true, Answer = null, Error = "it stopped early" });
+            new FakeOllamaClient { Available = true, Roster = null, RosterError = "it stopped early" });
 
         var outcome = source.Discover("a shop");
 
@@ -79,7 +79,7 @@ public class DomainModelSourceFactoryTests
         var source = DomainModelSourceFactory.Create(
             new DiscoveryConfig(),
             Wikipedia,
-            new FakeOllamaClient { Available = true, Answer = null, Error = "it stopped early" });
+            new FakeOllamaClient { Available = true, Roster = null, RosterError = "it stopped early" });
 
         var outcome = source.Discover("a shop");
 
@@ -100,7 +100,10 @@ public class DomainModelSourceFactoryTests
             () => { built++; return new StubSource(); },
             new FakeOllamaClient
             {
-                Available = true, Answer = OneClass(), Warning = "1 class(es) were kept"
+                Available = true,
+                Roster = OneClass(),
+                Detail = OneClass(),
+                DetailWarning = "1 class(es) were kept"
             });
 
         var outcome = source.Discover("a shop");
@@ -114,19 +117,24 @@ public class DomainModelSourceFactoryTests
     [Fact]
     public void PassesProgressStraightThroughToWhoeverIsDrawingIt()
     {
-        var seen = new List<IReadOnlyList<string>>();
+        var seen = new List<DiscoveryProgress>();
 
         var source = DomainModelSourceFactory.Create(
             new DiscoveryConfig(),
             Wikipedia,
             new FakeOllamaClient
             {
-                Available = true, Answer = OneClass(), ProgressSteps = ["Customer [Party]"]
+                Available = true,
+                Roster = OneClass(),
+                Detail = OneClass(),
+                RosterProgress = OneClass().Classes
             });
 
-        source.Discover("a shop", found => seen.Add(found));
+        source.Discover("a shop", seen.Add);
 
-        Assert.Equal(["Customer [Party]"], Assert.Single(seen));
+        // Whatever else it reports, the class the model named reaches the caller unchanged.
+        Assert.Contains(seen, p => p.Done.Contains("Customer [Party]")
+                                   || p.Pending.Contains("Customer [Party]"));
     }
 
     [Fact]

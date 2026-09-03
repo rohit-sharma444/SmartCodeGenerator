@@ -112,12 +112,12 @@ internal static class DiscoveryStep
     /// no quicker.
     /// </remarks>
     /// <param name="onProgress">
-    /// Called with the classes found so far while the model is still generating, so the panel can
-    /// show them rather than a blank wait. Called from the background thread the discovery runs
+    /// Called with what the discovery has finished and what it still has to do, so the panel can
+    /// show that rather than a blank wait. Called from the background thread the discovery runs
     /// on — the caller marshals.
     /// </param>
     public static DiscoveryOutcome Discover(
-        string description, string workspaceRoot, Action<IReadOnlyList<string>>? onProgress = null)
+        string description, string workspaceRoot, Action<DiscoveryProgress>? onProgress = null)
     {
         var cacheDir = Path.Combine(workspaceRoot, ".dd-cache");
 

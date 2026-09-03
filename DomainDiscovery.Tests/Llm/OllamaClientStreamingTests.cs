@@ -152,7 +152,9 @@ public class OllamaClientStreamingTests
 
         var seen = new List<IReadOnlyList<string>>();
 
-        Client(handler).Ask("a shop", found => seen.Add(found));
+        Client(handler).Ask(
+            "a shop",
+            found => seen.Add(found.Select(PartialLlmJson.Describe).ToList()));
 
         // The point of the callback: the first class is reported before the second one exists, so
         // the panel can draw it rather than showing a blank wait for the whole generation.
@@ -229,6 +231,58 @@ public class OllamaClientStreamingTests
         Assert.False(answer.Succeeded);
         Assert.NotNull(answer.Error);
         Assert.Contains("stopped", answer.Error!, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void TheRosterAskLeavesNoRoomForPropertiesInItsSchema()
+    {
+        // Ollama constrains decoding to the schema, so a field the schema does not have is one the
+        // model cannot spend tokens on however the prompt is worded. That is what makes phase one
+        // fast enough to be worth doing on its own - measured at 42s against 158s for the
+        // single-call ask.
+        var handler = new StreamingHandler(
+            [Chunk("{\"classes\":[{\"name\":\"Product\",\"role\":\"Item\",\"purpose\":\"a thing\"}]}"), Last()]);
+
+        var answer = Client(handler).AskForClasses("a shop");
+
+        Assert.True(answer.Succeeded);
+        Assert.Equal("Product", Assert.Single(answer.Model!.Classes).Name);
+
+        var body = handler.LastRequestBody!;
+
+        // The SCHEMA, not the whole body: the prompt legitimately uses the words "properties" and
+        // "relationships" to tell the model not to write any, and asserting over the whole request
+        // matches that instruction instead of the thing under test.
+        using var request = System.Text.Json.JsonDocument.Parse(body);
+
+        var fields = request.RootElement
+            .GetProperty("format").GetProperty("properties").GetProperty("classes")
+            .GetProperty("items").GetProperty("properties")
+            .EnumerateObject().Select(f => f.Name).ToList();
+
+        Assert.Equal(["name", "role", "purpose"], fields);
+        Assert.Contains("\"num_predict\":1024", body);
+    }
+
+    [Fact]
+    public void TheDetailAskCarriesTheClassesAlreadyChosen()
+    {
+        var handler = new StreamingHandler([Chunk("{\"classes\":[" + ProductClass + "]}"), Last()]);
+
+        var roster = new LlmDomainModel();
+        roster.Classes.Add(new LlmClass { Name = "Product", Role = "Item" });
+        roster.Classes.Add(new LlmClass { Name = "Sale", Role = "Transaction" });
+
+        Client(handler).AskForDetail("a shop", roster);
+
+        var body = handler.LastRequestBody!;
+
+        // Both names, so the second pass returns the list it was given rather than inventing one,
+        // and the description too - a class called Sale means different things in a shop and in a
+        // securities system, and this is the pass choosing its fields.
+        Assert.Contains("Product", body);
+        Assert.Contains("Sale", body);
+        Assert.Contains("a shop", body);
     }
 
     [Fact]

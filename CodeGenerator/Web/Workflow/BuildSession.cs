@@ -258,19 +258,20 @@ public sealed class BuildSession
     /// it is genuinely waiting on. Whole-reference assignment under the same gate, since the
     /// discovery reports progress from a background thread while circuits render on others.
     /// </remarks>
-    private IReadOnlyList<string> _discovered = [];
+    private DiscoveryProgress _discovered = DiscoveryProgress.None;
 
-    /// <summary>What the running discovery has found so far. Empty when none is running.</summary>
-    public IReadOnlyList<string> Discovered
+    /// <summary>What the running discovery has done and still has to do. Empty when none is
+    /// running.</summary>
+    public DiscoveryProgress Discovered
     {
         get { lock (_discoveryGate) return _discovered; }
     }
 
-    /// <summary>Records what the running discovery has found, for every tab watching it.</summary>
-    public void DiscoveryProgress(IReadOnlyList<string> found)
+    /// <summary>Records how the running discovery is getting on, for every tab watching it.</summary>
+    public void RecordDiscoveryProgress(DiscoveryProgress progress)
     {
         lock (_discoveryGate)
-            _discovered = found;
+            _discovered = progress;
     }
 
     /// <summary>
@@ -321,7 +322,7 @@ public sealed class BuildSession
             // Cleared with the call itself: the next run starts from nothing found, so a retry
             // after a failure cannot show the previous attempt's classes as though they were this
             // one's.
-            _discovered = [];
+            _discovered = DiscoveryProgress.None;
         }
     }
 

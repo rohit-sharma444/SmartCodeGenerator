@@ -59,21 +59,22 @@ public static class PartialLlmJson
     }
 
     /// <summary>
-    /// The complete classes as "<c>Name [Role]</c>" lines — what the Discover panel lists while
-    /// the model is still generating. Empty rather than null, since a caller drawing a list wants
-    /// a list.
+    /// The classes complete in <paramref name="prefix"/>. Empty rather than null, since a caller
+    /// watching a generation wants a list either way.
+    /// </summary>
+    public static IReadOnlyList<LlmClass> CompleteClasses(string? prefix)
+        => Salvage(prefix)?.Classes ?? [];
+
+    /// <summary>
+    /// The complete classes as "<c>Name [Role]</c>" lines — how the Discover panel names them
+    /// while the model is still generating.
     /// </summary>
     public static IReadOnlyList<string> ClassesSoFar(string? prefix)
-    {
-        var model = Salvage(prefix);
+        => CompleteClasses(prefix).Select(Describe).ToList();
 
-        if (model is null)
-            return [];
-
-        return model.Classes
-            .Select(c => string.IsNullOrWhiteSpace(c.Role) ? c.Name : $"{c.Name} [{c.Role}]")
-            .ToList();
-    }
+    /// <summary>One class as the panel and the console both name it.</summary>
+    public static string Describe(LlmClass c)
+        => string.IsNullOrWhiteSpace(c.Role) ? c.Name : $"{c.Name} [{c.Role}]";
 
     /// <summary>
     /// The index of the <c>}</c> closing the last complete class, or -1 when there is none.

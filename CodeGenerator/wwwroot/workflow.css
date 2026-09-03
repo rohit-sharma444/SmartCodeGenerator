@@ -461,6 +461,12 @@ body {
 .step-current::before { content: "\00b7\00a0"; }
 .step-current .elapsed { font-weight: 400; color: var(--pending); }
 
+/* Known about, not yet done. Dimmer than a finished step, and marked with an open circle rather
+   than a tick: the two-phase discovery lists every class it means to write minutes before it has
+   written any of them, and a tick there would claim work that has not happened. */
+.step-waiting { color: var(--pending); opacity: 0.7; }
+.step-waiting::before { content: "\25cb\00a0"; }
+
 .next-steps {
     margin: 1rem 0;
     padding-left: 1.1rem;
