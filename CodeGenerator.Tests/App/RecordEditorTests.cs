@@ -77,11 +77,20 @@ public class Book
     /// <remarks>
     /// LineSet travels with it: the editor's own signature names ILineSet, so the two do not
     /// compile apart. Callers that do not care about lines get the types anyway and ignore them.
+    /// <para>
+    /// FieldGroups travels with it for the same reason, one step further out: the master screen
+    /// every caller of this helper builds on asks it whether the record has an Additional
+    /// Information tab, and <c>using Acme.Screens;</c> is stripped from the flattened source, so
+    /// the name would not resolve in any of these fixtures.
+    /// </para>
     /// </remarks>
     internal static string Editor(bool validation)
         => AppScaffolding.Screens.LineSetTemplate.Source("Acme")
                .Replace("namespace Acme.Screens;", string.Empty)
                .Replace("using Acme.Data;", string.Empty)
+           + Environment.NewLine
+           + AppScaffolding.Screens.FieldGroupsTemplate.Source("Acme")
+               .Replace("namespace Acme.Screens;", string.Empty)
            + Environment.NewLine
            + RecordEditorTemplate.Source("Acme", validation)
                .Replace("namespace Acme.ViewModels;", string.Empty)

@@ -62,6 +62,9 @@ public sealed class TransactionScreenViewModel<T> : MasterScreenViewModel<T> whe
     public override EntityRole Role => EntityRole.Transaction;
 
     /// <inheritdoc />
+    protected override bool EditsInline => false;
+
+    /// <inheritdoc />
     protected override IReadOnlyList<ILineSet> LineSets() => _lines?.Invoke() ?? [];
 
     /// <summary>The date the range filters on, or empty when the model has none — in which case

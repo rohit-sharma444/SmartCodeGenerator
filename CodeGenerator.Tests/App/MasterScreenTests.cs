@@ -5,8 +5,10 @@ using AppScaffolding.Screens;
 
 namespace CodeGenerator.Tests.App;
 
-/// <summary>The list finds a record; the editor changes it. The list itself has no edit path at
-/// all, which is what makes the whole application edit one way.</summary>
+/// <summary>The form and the list are one screen: selecting a row loads it into the form above,
+/// and nothing navigates. A transaction is the same class with that turned off, and both halves
+/// are proved here — over compiled emitted code, because a screen that edited a row in place
+/// rather than a copy would compile perfectly.</summary>
 [TestClass]
 public class MasterScreenTests
 {
@@ -18,9 +20,29 @@ public static class Session
 }
 """;
 
-    internal static Assembly Emit()
-        => RecordEditorTests.Emit(
+    /// <summary>A second model, with the long-text field Book has none of, so the Additional
+    /// Information tab can be asserted both ways round in one assembly.</summary>
+    private const string MemoStub = """
+public class Memo
+{
+    public int Id { get; set; }
+    public string Title { get; set; } = string.Empty;
+    public string Remarks { get; set; } = string.Empty;
+}
+""";
+
+    internal static Assembly Emit() => Emit(withTransaction: false);
+
+    /// <summary>The master screen and the transaction screen that derives from it, in one
+    /// assembly — the only way to exercise the one flag that separates the two.</summary>
+    private static Assembly EmitWithTransaction() => Emit(withTransaction: true);
+
+    private static Assembly Emit(bool withTransaction)
+    {
+        string[] sources =
+        [
             SessionStub,
+            MemoStub,
             ScreenTemplates.RoleEnum("Acme").Replace("namespace Acme.Screens;", string.Empty),
             ViewModelTemplates.EntityViewModelInterface("Acme")
                 .Replace("namespace Acme.ViewModels;", string.Empty)
@@ -29,7 +51,20 @@ public static class Session
                 .Replace("namespace Acme.ViewModels;", string.Empty)
                 .Replace("using Acme.Auth;", string.Empty)
                 .Replace("using Acme.Data;", string.Empty)
-                .Replace("using Acme.Screens;", string.Empty));
+                .Replace("using Acme.Screens;", string.Empty),
+        ];
+
+        if (!withTransaction)
+            return RecordEditorTests.Emit(sources);
+
+        return RecordEditorTests.Emit(
+            [
+                .. sources,
+                TransactionScreenTemplate.Source("Acme")
+                    .Replace("namespace Acme.ViewModels;", string.Empty)
+                    .Replace("using Acme.Screens;", string.Empty),
+            ]);
+    }
 
     internal static object Screen(Assembly assembly, string typeName, params string[] titles)
     {
@@ -49,12 +84,37 @@ public static class Session
 
         var screenType = assembly.GetType(typeName + "`1")!.MakeGenericType(bookType);
 
-        return Activator.CreateInstance(screenType, ["Book"])!;
+        // The title, and a null for anything else the screen takes: Activator does not fill an
+        // optional parameter, and a transaction screen's constructor has a second one — the
+        // line-set factory.
+        var arguments = new object?[screenType.GetConstructors().Single().GetParameters().Length];
+        arguments[0] = "Book";
+
+        return Activator.CreateInstance(screenType, arguments)!;
     }
 
     private static IList Items(object screen)
         => ((IEnumerable)screen.GetType().GetProperty("Items")!.GetValue(screen)!)
             .Cast<object>().ToList();
+
+    /// <summary>The form at the top of the screen, which is never null.</summary>
+    private static object EditorOf(object screen)
+        => screen.GetType().GetProperty("Editor")!.GetValue(screen)!;
+
+    private static object Draft(object editor)
+        => editor.GetType().GetProperty("Draft")!.GetValue(editor)!;
+
+    private static bool IsNew(object editor)
+        => (bool)editor.GetType().GetProperty("IsNew")!.GetValue(editor)!;
+
+    private static string TitleOf(object record)
+        => (string)record.GetType().GetProperty("Title")!.GetValue(record)!;
+
+    private static void SetTitle(object record, string value)
+        => record.GetType().GetProperty("Title")!.SetValue(record, value);
+
+    private static void Select(object screen, object? row)
+        => screen.GetType().GetProperty("Selected")!.SetValue(screen, row);
 
     /// <summary>
     /// Captures the editor the screen asks for.
@@ -120,33 +180,72 @@ public static class Session
         Assert.HasCount(1, Items(screen));
     }
 
-    /// <summary>Opening asks the shell for an editor rather than editing in place — the list has
-    /// no edit path at all, by construction.</summary>
+    /// <summary>
+    /// A master edits on its own surface and asks the shell for nothing.
+    /// </summary>
+    /// <remarks>
+    /// One of the pair of guards on the flag that separates the two screens. This one fails if a
+    /// master is ever routed to the shell again — the editor would open OVER the list it is
+    /// supposed to sit above — and the transaction guard below fails if a transaction is ever made
+    /// to edit inline, which would leave its lines nowhere to be entered.
+    /// </remarks>
     [TestMethod]
-    public void Opening_a_record_raises_an_editor_request()
-    {
-        var screen = Screen(Emit(), "MasterScreenViewModel", "One");
-        var capture = Listen(screen);
-
-        screen.GetType().GetProperty("Selected")!.SetValue(screen, Items(screen)[0]);
-        RecordEditorTests.Execute(screen, "OpenCommand");
-
-        Assert.IsNotNull(capture.Requested);
-        Assert.IsFalse(
-            (bool)capture.Requested!.GetType().GetProperty("IsNew")!.GetValue(capture.Requested)!);
-    }
-
-    [TestMethod]
-    public void New_raises_an_editor_request_for_a_new_record()
+    public void A_master_edits_inline_and_asks_the_shell_for_nothing()
     {
         var screen = Screen(Emit(), "MasterScreenViewModel", "One");
         var capture = Listen(screen);
 
         RecordEditorTests.Execute(screen, "NewCommand");
 
+        var blank = EditorOf(screen);
+
+        Select(screen, Items(screen)[0]);
+
+        Assert.IsNull(capture.Requested, "a master asked the shell for an editor screen");
+        Assert.AreNotSame(blank, EditorOf(screen), "selecting a row did not move the inline form");
+        Assert.IsFalse(IsNew(EditorOf(screen)), "the row went into the form as a new record");
+    }
+
+    /// <summary>
+    /// A transaction's list is a list: it opens a record on a screen of its own, which is the
+    /// ONLY route to a transaction's entry screen.
+    /// </summary>
+    /// <remarks>
+    /// Both bindings that reach it go through <c>OpenCommand</c> — WPF's transaction template and
+    /// the WinForms list's Open button and double-click — so deleting the command, or making the
+    /// screen swallow the request by editing inline, would leave no way to open a purchase order
+    /// at all.
+    /// </remarks>
+    [TestMethod]
+    public void A_transaction_opens_a_record_on_a_screen_of_its_own()
+    {
+        var screen = Screen(EmitWithTransaction(), "TransactionScreenViewModel", "One");
+        var capture = Listen(screen);
+
+        Select(screen, Items(screen)[0]);
+
+        Assert.IsNull(capture.Requested, "selecting a row on a transaction list opened it");
+
+        RecordEditorTests.Execute(screen, "OpenCommand");
+
+        Assert.IsNotNull(capture.Requested, "nothing can reach the transaction's entry screen");
+        Assert.IsFalse(IsNew(capture.Requested!), "the selected record opened as a new one");
+        Assert.AreNotSame(
+            capture.Requested, EditorOf(screen), "the transaction edited inline after all");
+    }
+
+    /// <summary>The half of the old behaviour that survives: New on a transaction list still asks
+    /// the shell, because that is where its lines are entered.</summary>
+    [TestMethod]
+    public void New_on_a_transaction_still_asks_for_an_editor_screen()
+    {
+        var screen = Screen(EmitWithTransaction(), "TransactionScreenViewModel", "One");
+        var capture = Listen(screen);
+
+        RecordEditorTests.Execute(screen, "NewCommand");
+
         Assert.IsNotNull(capture.Requested);
-        Assert.IsTrue(
-            (bool)capture.Requested!.GetType().GetProperty("IsNew")!.GetValue(capture.Requested)!);
+        Assert.IsTrue(IsNew(capture.Requested!));
     }
 
     [TestMethod]
@@ -202,5 +301,196 @@ public static class Session
         screen.GetType().GetMethod("Reload")!.Invoke(screen, null);
 
         Assert.HasCount(2, Items(screen));
+    }
+
+    // ---- the form the screen holds ----
+
+    [TestMethod]
+    public void The_screen_opens_on_a_blank_editor()
+        => Assert.IsTrue(IsNew(EditorOf(Screen(Emit(), "MasterScreenViewModel", "Dune"))));
+
+    [TestMethod]
+    public void Selecting_a_row_loads_it_into_the_editor()
+    {
+        var screen = Screen(Emit(), "MasterScreenViewModel", "Dune");
+
+        Select(screen, Items(screen)[0]);
+
+        Assert.AreEqual("Dune", TitleOf(Draft(EditorOf(screen))));
+        Assert.IsFalse(IsNew(EditorOf(screen)));
+    }
+
+    /// <summary>A fresh instance, not a mutated one: the draft is a clone, and reusing the
+    /// instance would leave the previous record's snapshot in place and make IsDirty lie.</summary>
+    [TestMethod]
+    public void Selecting_a_second_row_replaces_the_editor()
+    {
+        var screen = Screen(Emit(), "MasterScreenViewModel", "Dune", "Emma");
+        var rows = Items(screen);
+
+        Select(screen, rows[0]);
+
+        var first = EditorOf(screen);
+
+        Select(screen, rows[1]);
+
+        Assert.AreNotSame(first, EditorOf(screen));
+        Assert.AreEqual("Emma", TitleOf(Draft(EditorOf(screen))));
+    }
+
+    [TestMethod]
+    public void New_blanks_the_editor()
+    {
+        var screen = Screen(Emit(), "MasterScreenViewModel", "Dune");
+
+        Select(screen, Items(screen)[0]);
+        RecordEditorTests.Execute(screen, "NewCommand");
+
+        Assert.IsTrue(IsNew(EditorOf(screen)));
+    }
+
+    /// <summary>Clear blanks the form and leaves the selection, so the list still shows where you
+    /// were; Cancel drops both.</summary>
+    [TestMethod]
+    public void Clear_keeps_the_selection_and_Cancel_drops_it()
+    {
+        var screen = Screen(Emit(), "MasterScreenViewModel", "Dune");
+        var selected = screen.GetType().GetProperty("Selected")!;
+
+        Select(screen, Items(screen)[0]);
+        RecordEditorTests.Execute(screen, "ClearCommand");
+
+        Assert.IsNotNull(selected.GetValue(screen));
+        Assert.IsTrue(IsNew(EditorOf(screen)));
+
+        Select(screen, Items(screen)[0]);
+        RecordEditorTests.Execute(screen, "CancelCommand");
+
+        Assert.IsNull(selected.GetValue(screen));
+        Assert.IsTrue(IsNew(EditorOf(screen)));
+    }
+
+    /// <summary>Edit is what the action bar's button and the grid's double-click both run, and it
+    /// loads the selection whether or not selecting it already did.</summary>
+    [TestMethod]
+    public void Edit_loads_the_selected_row_into_the_editor()
+    {
+        var screen = Screen(Emit(), "MasterScreenViewModel", "Dune");
+
+        Select(screen, Items(screen)[0]);
+        RecordEditorTests.Execute(screen, "ClearCommand");
+        RecordEditorTests.Execute(screen, "EditCommand");
+
+        Assert.IsFalse(IsNew(EditorOf(screen)));
+        Assert.AreEqual("Dune", TitleOf(Draft(EditorOf(screen))));
+    }
+
+    [TestMethod]
+    public void Saving_writes_the_editor_and_reloads_the_list()
+    {
+        var screen = Screen(Emit(), "MasterScreenViewModel", "Dune");
+
+        SetTitle(Draft(EditorOf(screen)), "New Book");
+        RecordEditorTests.Execute(screen, "SaveCommand");
+
+        CollectionAssert.Contains(Items(screen).Cast<object>().Select(TitleOf).ToList(), "New Book");
+    }
+
+    /// <summary>
+    /// Pressing Save twice must not enter the record twice.
+    /// </summary>
+    /// <remarks>
+    /// The editor no longer closes over the list — it stays on screen with the Save button under
+    /// the cursor — and an editor still marked new adds its draft again every time it is saved.
+    /// </remarks>
+    [TestMethod]
+    public void Saving_twice_enters_the_record_once()
+    {
+        var assembly = Emit();
+        var screen = Screen(assembly, "MasterScreenViewModel");
+
+        SetTitle(Draft(EditorOf(screen)), "New Book");
+        RecordEditorTests.Execute(screen, "SaveCommand");
+        RecordEditorTests.Execute(screen, "SaveCommand");
+
+        Assert.HasCount(1, RecordEditorTests.Rows(assembly));
+    }
+
+    /// <summary>
+    /// The form is still a copy after a save, not the row the list is showing.
+    /// </summary>
+    /// <remarks>
+    /// The store takes the draft OBJECT rather than a copy of it, so the row the reloaded list
+    /// shows and the record in the form are the same instance. Typing on into it would change a
+    /// stored row with nothing saved, and Cancel would not put it back.
+    /// </remarks>
+    [TestMethod]
+    public void Typing_after_a_save_does_not_reach_the_stored_row()
+    {
+        var assembly = Emit();
+        var screen = Screen(assembly, "MasterScreenViewModel");
+
+        SetTitle(Draft(EditorOf(screen)), "Saved");
+        RecordEditorTests.Execute(screen, "SaveCommand");
+
+        SetTitle(Draft(EditorOf(screen)), "typed on, never saved");
+
+        Assert.AreEqual("Saved", TitleOf(RecordEditorTests.Rows(assembly)[0]!));
+    }
+
+    [TestMethod]
+    public void The_screen_is_dirty_when_its_inline_editor_is()
+    {
+        var screen = Screen(Emit(), "MasterScreenViewModel", "Dune");
+        var isDirty = screen.GetType().GetProperty("IsDirty")!;
+
+        Assert.IsFalse((bool)isDirty.GetValue(screen)!);
+
+        SetTitle(Draft(EditorOf(screen)), "typed");
+
+        Assert.IsTrue((bool)isDirty.GetValue(screen)!);
+    }
+
+    /// <summary>
+    /// The screen the shell can ask, and NOT the one it renders as an editor.
+    /// </summary>
+    /// <remarks>
+    /// ScreenTemplateSelector tests IRecordEditor BEFORE IEntityViewModel, so a master screen
+    /// implementing it to get the dirty check would draw as the editor template on every screen in
+    /// the application — it compiles, it passes the dirty check, and only a running app shows it.
+    /// </remarks>
+    [TestMethod]
+    public void The_screen_is_a_dirty_screen_and_not_a_record_editor()
+    {
+        var screen = Screen(Emit(), "MasterScreenViewModel", "Dune");
+
+        Assert.IsNotNull(
+            screen.GetType().GetInterface("IDirtyScreen"),
+            "the shell cannot ask this screen whether it has unsaved work");
+        Assert.IsNull(
+            screen.GetType().GetInterface("IRecordEditor"),
+            "a master screen that is an IRecordEditor renders as the editor template");
+    }
+
+    /// <summary>A model with no long-text field must not grow an empty Additional Information
+    /// tab — the same rule that drops an empty panel. Asserted both ways round, over two models in
+    /// one assembly, because a hardcoded answer would satisfy either one alone.</summary>
+    [TestMethod]
+    public void Only_a_model_with_long_text_has_an_additional_tab()
+    {
+        var assembly = Emit();
+
+        Assert.IsFalse(HasAdditional(assembly, "Book"), "Book has no long-text field");
+        Assert.IsTrue(HasAdditional(assembly, "Memo"), "Memo.Remarks is a long-text field");
+    }
+
+    private static bool HasAdditional(Assembly assembly, string model)
+    {
+        var screenType = assembly.GetType("MasterScreenViewModel`1")!
+            .MakeGenericType(assembly.GetType(model)!);
+
+        var screen = Activator.CreateInstance(screenType, [model])!;
+
+        return (bool)screenType.GetProperty("HasAdditional")!.GetValue(screen)!;
     }
 }

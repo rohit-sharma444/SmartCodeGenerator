@@ -116,13 +116,17 @@ public sealed class FakeEditor : IRecordEditor
         => (bool)shell.GetType().GetMethod("TryShow")!.Invoke(shell, [screen])!;
 
     /// <summary>
-    /// The same shell over a REAL master screen, which is the only way to exercise the editor
-    /// request.
+    /// The same shell over REAL screens, which is the only way to exercise the editor request.
     /// </summary>
     /// <remarks>
     /// FakePane has no such event, so every test above passes whether the shell routes one or not
     /// — and it did not: the WPF window showed a list whose New button did nothing at all, because
     /// the request was raised into a void. Found by clicking New in a built application.
+    /// <para>
+    /// The screen that exercises it is the TRANSACTION one. A master now edits inline and asks the
+    /// shell for nothing, so routing it would prove nothing; the transaction list is the only
+    /// screen that still raises the event, and the only route to a transaction's entry screen.
+    /// </para>
     /// </remarks>
     private static Assembly EmitWithRealScreen()
     {
@@ -141,6 +145,9 @@ public sealed class FakeEditor : IRecordEditor
                 .Replace("using Acme.Auth;", string.Empty)
                 .Replace("using Acme.Data;", string.Empty)
                 .Replace("using Acme.Screens;", string.Empty),
+            TransactionScreenTemplate.Source("Acme")
+                .Replace("namespace Acme.ViewModels;", string.Empty)
+                .Replace("using Acme.Screens;", string.Empty),
             ShellTemplate.Dashboard("Acme")
                 .Replace("namespace Acme.ViewModels;", string.Empty)
                 .Replace("using Acme.Screens;", string.Empty),
@@ -158,10 +165,12 @@ public sealed class FakeEditor : IRecordEditor
         return assembly;
     }
 
-    /// <summary>A shell whose only entity is a real master screen over two books.</summary>
-    private static (object Shell, object Screen) ShellOverARealScreen(Assembly assembly)
+    /// <summary>A shell whose only entity is a real screen over two books — a transaction list by
+    /// default, because that is the screen that asks the shell for an editor.</summary>
+    private static (object Shell, object Screen) ShellOverARealScreen(
+        Assembly assembly, string typeName = "TransactionScreenViewModel")
     {
-        var screen = MasterScreenTests.Screen(assembly, "MasterScreenViewModel", "First", "Second");
+        var screen = MasterScreenTests.Screen(assembly, typeName, "First", "Second");
 
         var listType = typeof(List<>).MakeGenericType(assembly.GetType("IEntityViewModel")!);
         var entities = (IList)Activator.CreateInstance(listType)!;
@@ -214,6 +223,31 @@ public sealed class FakeEditor : IRecordEditor
         var items = (IEnumerable)screen.GetType().GetProperty("Items")!.GetValue(screen)!;
 
         Assert.HasCount(3, items.Cast<object>().ToList());
+    }
+
+    /// <summary>
+    /// A master screen with something typed into its inline form is guarded too.
+    /// </summary>
+    /// <remarks>
+    /// It is not an IRecordEditor — deliberately, or every screen would render as the editor
+    /// template — so the guard reaches it only through IDirtyScreen. Over a FakeEditor this
+    /// passes either way; over a real master screen it does not.
+    /// </remarks>
+    [TestMethod]
+    public void Navigating_away_from_a_master_with_a_typed_in_form_asks_first()
+    {
+        var assembly = EmitWithRealScreen();
+        var (shell, screen) = ShellOverARealScreen(assembly, "MasterScreenViewModel");
+
+        var editor = screen.GetType().GetProperty("Editor")!.GetValue(screen)!;
+        var draft = editor.GetType().GetProperty("Draft")!.GetValue(editor)!;
+
+        draft.GetType().GetProperty("Title")!.SetValue(draft, "half typed");
+
+        shell.GetType().GetProperty("ConfirmDiscard")!.SetValue(shell, new Func<bool>(() => false));
+
+        Assert.IsFalse(TryShow(shell, Pane(assembly, "Customer", "Master")));
+        Assert.AreSame(screen, Current(shell));
     }
 
     [TestMethod]
