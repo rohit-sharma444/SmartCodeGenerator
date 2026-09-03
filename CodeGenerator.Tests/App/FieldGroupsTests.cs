@@ -388,6 +388,12 @@ public class Ticket
     }
 
     private static List<List<string>> Columns(string modelStub, string typeName)
+        => Columns(modelStub, typeName, out _);
+
+    /// <summary>Same as <see cref="Columns(string,string)"/>, but also hands back the loaded
+    /// assembly -- so a caller that needs both the column shape and the panel field counts (the
+    /// split test) compiles the model once rather than twice.</summary>
+    private static List<List<string>> Columns(string modelStub, string typeName, out Assembly assembly)
     {
         var source = EmittedSource.Flatten(
             modelStub,
@@ -395,7 +401,7 @@ public class Ticket
 
         EmittedSource.AssertCompiles(source);
 
-        var assembly = Assembly.Load(Compiler.Compile(source).AssemblyBytes!);
+        assembly = Assembly.Load(Compiler.Compile(source).AssemblyBytes!);
         var columns = (System.Collections.IEnumerable)assembly.GetType("FieldGroups")!
             .GetMethod("Columns")!.Invoke(null, [assembly.GetType(typeName)!])!;
 
@@ -413,7 +419,12 @@ public class Ticket
             Columns("public class Note { public int Id { get; set; } public string Text { get; set; } = string.Empty; }", "Note"));
 
     /// <summary>The master mockup's shape: Basic alone, Address alone, Contact and Other stacked
-    /// in the third column.</summary>
+    /// in the third column. Column identity is asserted, not just shape counts -- a "fewest
+    /// GROUPS, ties left" rule (ignoring field counts) would stack Basic+Other instead of
+    /// Contact+Other over this same fixture while still passing a 3-columns/1-stacked/4-total
+    /// check, and reversing the packer's tie comparator to `&lt;=` would move Basic to a
+    /// different column while still pairing Contact+Other -- neither is visible without naming
+    /// which titles land in which column.</summary>
     [TestMethod]
     public void Four_groups_stack_the_smallest_two_together()
     {
@@ -423,6 +434,10 @@ public class Ticket
         Assert.HasCount(3, columns);
         Assert.HasCount(1, stacked);
         Assert.HasCount(4, columns.SelectMany(c => c).ToList());
+
+        CollectionAssert.AreEqual(new[] { "Basic Information" }, columns[0]);
+        CollectionAssert.AreEqual(new[] { "Address Information" }, columns[1]);
+        CollectionAssert.AreEqual(new[] { "Contact Information", "Other Information" }, columns[2]);
     }
 
     [TestMethod]
@@ -447,20 +462,13 @@ public class Ticket
             "\n", Enumerable.Range(1, 15).Select(i => $"    public string Field{i} {{ get; set; }} = string.Empty;"));
         var modelStub = $"public class Wide\n{{\n    public int Id {{ get; set; }}\n{fields}\n}}";
 
-        var titles = Columns(modelStub, "Wide")
+        var titles = Columns(modelStub, "Wide", out var assembly)
             .SelectMany(c => c)
             .ToList();
 
         CollectionAssert.Contains(titles, "Basic Information");
         CollectionAssert.Contains(titles, "More Information");
 
-        var source = EmittedSource.Flatten(
-            modelStub,
-            FieldGroupsTemplate.Source("Acme").Replace("namespace Acme.Screens;", string.Empty));
-
-        EmittedSource.AssertCompiles(source);
-
-        var assembly = Assembly.Load(Compiler.Compile(source).AssemblyBytes!);
         var groups = GroupsOf(assembly, assembly.GetType("Wide")!);
 
         Assert.HasCount(12, groups["Basic Information"]);
