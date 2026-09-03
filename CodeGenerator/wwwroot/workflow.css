@@ -839,52 +839,77 @@ body {
 
 .field-type { font-size: 0.8em; color: var(--pending); }
 
-/* Editable in place, and it has to LOOK editable. The first version of this borrowed
-   .entity-name's transparent-until-focus treatment, and a screenshot settled it: beside a row of
-   bordered type controls the names read as static labels, so the one thing this feature adds -
-   that a property's name can be corrected - was invisible. A card that is already a form does not
-   get quieter by having half its controls pretend otherwise.
-   The rule stays lighter than the select next to it: an underline rather than a box, because the
-   name is text being edited and the type is one of five things being picked. */
+/* Quiet until the row is reached for, and the WHOLE row together.
+ *
+ * This reverses an earlier decision, so the history is worth keeping rather than deleting. The
+ * first version of this was quiet, a screenshot rejected it, and the reason it gave was specific:
+ * "beside a row of bordered type controls the names read as static labels". The name was quiet
+ * while the select next to it was boxed, and the asymmetry is what made it read as a label -
+ * every other bordered thing on the row was announcing itself as a control, so the one that was
+ * not looked like text.
+ *
+ * Both are quiet now, and both light up on hovering the ROW rather than each control separately.
+ * That removes the asymmetry the screenshot actually objected to instead of ignoring it: nothing
+ * on the row claims to be a control while its neighbour does, and reaching for any part of the
+ * row offers all of it. A card then reads as a statement about a class, which is what it mostly
+ * is - twenty cards of bordered boxes read as a form to be filled in rather than a model to be
+ * checked. */
 .fields input.field-name {
     box-sizing: border-box;
     width: 100%;
     min-width: 0;
     padding: 0.05rem 0.15rem;
     border: 1px solid transparent;
-    border-bottom-color: var(--line);
-    border-radius: 3px 3px 0 0;
+    border-radius: 3px;
     background: transparent;
     color: inherit;
     font: inherit;
     font-size: 0.85em;
 }
 
-.fields input.field-name:hover { border-color: var(--line); border-radius: 3px; }
+/* The row, not the control: pointing anywhere on a property offers every part of it. */
+.fields li:hover input.field-name,
+.fields input.field-name:hover {
+    border-color: var(--line);
+    background: var(--surface);
+}
 
 .fields input.field-name:focus {
     border-color: var(--active);
-    border-radius: 3px;
-    background: #fff;
+    background: var(--surface);
 }
 
 /* Sized to its track rather than to its longest option, or the browser widens it past the column
    and the crosses stop making an edge. Small and grey, because the type is a fact about the
-   property and not the property. */
+   property and not the property.
+ *
+ * Quiet on the same terms as the name beside it - see the note above for why the two have to
+ * agree. A select keeps its own disclosure arrow whatever the border does, so this one never
+ * loses the thing that says it can be opened. */
 .fields select.field-type {
     box-sizing: border-box;
     width: 100%;
     min-width: 0;
     padding: 0.05rem 0.1rem;
-    border: 1px solid var(--line);
+    border: 1px solid transparent;
     border-radius: 3px;
-    background: #fff;
-    color: var(--pending);
+    background: transparent;
+    color: var(--muted);
     font: inherit;
     font-size: 0.78em;
 }
 
-.fields select.field-type:focus { color: var(--ink); }
+.fields li:hover select.field-type,
+.fields select.field-type:hover {
+    border-color: var(--line);
+    background: var(--surface);
+}
+
+.fields select.field-type:focus {
+    border-color: var(--active);
+    background: var(--surface);
+    color: var(--ink);
+}
 
 /* minmax(0, ...) above rather than a bare 1fr, because a bare 1fr keeps an automatic MINIMUM: a row
    whose field name is longer than its fair share widened its own first column, and the types went
