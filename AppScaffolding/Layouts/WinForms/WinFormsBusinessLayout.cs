@@ -1,3 +1,5 @@
+using AppScaffolding.Screens;
+
 namespace AppScaffolding.Layouts.WinForms;
 
 /// <summary>
@@ -30,6 +32,19 @@ public sealed class WinFormsBusinessLayout : IAppLayout
         var railFill = context.Palette is null
             ? "SystemColors.Control"
             : $"ColorTranslator.FromHtml(\"{context.Palette.Surface}\")";
+
+        // The entry screens' accent, the same one the WPF business layout paints the header band
+        // and the panel headings with, so the two front ends do not disagree about it. Color.FromArgb
+        // rather than ColorTranslator when unthemed, the same reason railFill branches above: an
+        // unthemed app's MainForm.cs must contain no "ColorTranslator" at all.
+        var accent = context.Palette is null
+            ? "Color.FromArgb(0x25, 0x63, 0xEB)"
+            : $"ColorTranslator.FromHtml(\"{context.Palette.Accent}\")";
+
+        // The one string that names the long-text tab, read rather than spelled again here: the
+        // emitted FieldGroups.AdditionalTitle the WPF layout writes into markup is built from the
+        // same constant.
+        var additionalTitle = FieldGroupsTemplate.AdditionalTitle;
 
         // Read off disk beside the binary rather than embedded, as every other layout does:
         // AppScaffolder registers the copy as content copied to the output directory. Guarded, so
@@ -219,10 +234,19 @@ public sealed class MainForm : Form
         if (screen is DashboardViewModel dashboard)
             return BuildDashboard(dashboard);
 
+        // A transaction's list stays a list: rewriting BuildList into the entry screen would
+        // convert transaction lists too and leave no route to a purchase order's lines.
+        if (screen is IEntityViewModel { Role: EntityRole.Transaction })
+            return BuildList(screen);
+
+        // A transaction's entry screen is a RecordEditorViewModel<T>, so it arrives here. A
+        // master's own screen is never mistaken for it: it implements IDirtyScreen, not this --
+        // Task 5 moved IsDirty down to IDirtyScreen for exactly that reason.
         if (screen is IRecordEditor editor)
             return BuildEditor(editor);
 
-        return BuildList(screen);
+        // Everything else is a master: the entry form and the list are one screen.
+        return BuildEntry(screen);
     }
 
     private Control BuildDashboard(DashboardViewModel dashboard)
@@ -270,60 +294,566 @@ public sealed class MainForm : Form
         return flow;
     }
 
-    private Control BuildEditor(IRecordEditor editor)
+    /// <summary>
+    /// A master's screen: the entry form and the list of what has been entered, one screen.
+    /// </summary>
+    /// <remarks>
+    /// Reached only by the fall-through in <see cref="BuildScreen"/>: a master implements neither
+    /// <c>Role.Transaction</c> nor <c>IRecordEditor</c> -- Task 5 moved <c>IsDirty</c> down to
+    /// <c>IDirtyScreen</c> for exactly that reason, so a master's own dirty check is never mistaken
+    /// for the transaction editor here.
+    /// </remarks>
+    private Control BuildEntry(object screen)
     {
-        // A row for the lines only when there are lines: a master's editor is a form and a button
-        // row, exactly as it was before transactions had any.
-        var hasLines = editor.Lines.Count > 0;
+        var editor = screen.GetType().GetProperty("Editor")?.GetValue(screen);
+        var record = editor?.GetType().GetProperty("Draft")?.GetValue(editor);
 
-        var layout = new TableLayoutPanel
+        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4 };
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 74f));
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40f));
+
+        layout.Controls.Add(BuildEntryHeader(screen, record), 0, 0);
+
+        if (record is not null)
+            layout.Controls.Add(BuildEntryForm(record), 0, 1);
+
+        var tabs = new TabControl { Dock = DockStyle.Fill };
+
+        var title = screen.GetType().GetProperty("Title")?.GetValue(screen) as string ?? string.Empty;
+        var listPage = new TabPage(title);
+        listPage.Controls.Add(BuildRecordList(screen));
+        tabs.TabPages.Add(listPage);
+
+        if (record is not null && HasAdditional(screen))
+            AddAdditionalTab(tabs, record);
+
+        layout.Controls.Add(tabs, 0, 2);
+        layout.Controls.Add(
+            BuildEntryActionBar(
+                screen,
+                ("NewCommand", "New"), ("EditCommand", "Edit"), ("DeleteCommand", "Delete"),
+                ("SaveCommand", "Save"), ("ClearCommand", "Clear"), ("CancelCommand", "Cancel")),
+            0, 3);
+
+        return layout;
+    }
+
+    /// <summary>
+    /// The record list inside a master's tab: a search box and the read-only grid.
+    /// </summary>
+    /// <remarks>
+    /// Selecting a row IS opening it -- the master screen loads it into the form itself once
+    /// Selected is set, which is why this needs no Open button and no double-click handler, unlike
+    /// <see cref="BuildList"/>.
+    /// </remarks>
+    private Control BuildRecordList(object screen)
+    {
+        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2 };
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30f));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
+
+        var search = new TextBox { Width = 200 };
+        search.TextChanged += (_, _) =>
         {
-            Dock = DockStyle.Fill, ColumnCount = 1, RowCount = hasLines ? 4 : 3,
+            screen.GetType().GetProperty("Search")?.SetValue(screen, search.Text);
+            Refresh(screen, layout);
         };
 
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34f));
-        layout.RowStyles.Add(new RowStyle(SizeType.Percent, hasLines ? 45f : 100f));
+        layout.Controls.Add(search, 0, 0);
 
-        if (hasLines)
-            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 55f));
-
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 44f));
-
-        layout.Controls.Add(new Label
-        {
-            Text = editor.Title,
-            Dock = DockStyle.Fill,
-            Font = new Font(SystemFonts.DefaultFont, FontStyle.Bold),
-        }, 0, 0);
-
-        // A PropertyGrid over the DRAFT, so every field is editable without this file naming one.
-        //
-        // NoSort is not a preference: the default sorts the fields alphabetically and puts them
-        // under a "Misc" category header, so an Order reads CreatedOn, Currency, Id, ... and looks
-        // nothing like the ordered form WPF builds from the same class. Declaration order is the
-        // order the model was written in, which is the order a person expects to fill in. The
-        // master-detail pane has set this since it was written.
-        var grid = new PropertyGrid
+        var grid = new DataGridView
         {
             Dock = DockStyle.Fill,
-            SelectedObject = editor.GetType().GetProperty("Draft")?.GetValue(editor),
-            ToolbarVisible = false,
-            PropertySort = PropertySort.NoSort,
+            AutoGenerateColumns = true,
+            ReadOnly = true,
+            AllowUserToAddRows = false,
+            AllowUserToDeleteRows = false,
+            MultiSelect = false,
+            SelectionMode = DataGridViewSelectionMode.FullRowSelect,
+            Name = "Grid",
         };
+
+        grid.SelectionChanged += (_, _) =>
+            screen.GetType().GetProperty("Selected")?.SetValue(screen, grid.CurrentRow?.DataBoundItem);
 
         layout.Controls.Add(grid, 0, 1);
 
-        if (hasLines)
-            layout.Controls.Add(BuildLines(editor), 0, 2);
+        Bind(screen, grid);
+
+        return layout;
+    }
+
+    /// <summary>
+    /// Whether the owner has long-text fields, and so an Additional Information tab.
+    /// </summary>
+    /// <remarks>
+    /// Read by reflection because neither <c>IEntityViewModel</c> nor <c>IRecordEditor</c> declares
+    /// it: a master's screen and a transaction's editor each compute it the same way, from
+    /// FieldGroups, but on their own concrete class.
+    /// </remarks>
+    private static bool HasAdditional(object owner)
+        => owner.GetType().GetProperty("HasAdditional")?.GetValue(owner) is true;
+
+    /// <summary>The grouped panels, in the three columns FieldGroups packs them into.</summary>
+    private Control BuildEntryForm(object record)
+    {
+        var host = new TableLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            ColumnCount = 3,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+        };
+
+        var columns = FieldGroups.Columns(record.GetType());
+
+        for (var i = 0; i < columns.Count; i++)
+        {
+            host.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f / columns.Count));
+
+            var stack = new FlowLayoutPanel
+            {
+                FlowDirection = FlowDirection.TopDown,
+                Dock = DockStyle.Fill,
+                AutoSize = true,
+                WrapContents = false,
+            };
+
+            foreach (var group in columns[i])
+                stack.Controls.Add(BuildPanel(record, group));
+
+            host.Controls.Add(stack, i, 0);
+        }
+
+        return host;
+    }
+
+    /// <summary>
+    /// One titled panel.
+    /// </summary>
+    /// <remarks>
+    /// A bordered Panel with a Label of its own, not a GroupBox: a GroupBox caption cannot take
+    /// the accent colour, which is the whole visual signature of these panels.
+    /// </remarks>
+    private Control BuildPanel(object record, FieldGroup group)
+    {
+        var body = new FlowLayoutPanel
+        {
+            FlowDirection = FlowDirection.TopDown,
+            Dock = DockStyle.Fill,
+            AutoSize = true,
+            WrapContents = false,
+            Padding = new Padding(10),
+        };
+
+        body.Controls.Add(new Label
+        {
+            Text = group.Title,
+            ForeColor = {{accent}},
+            Font = new Font(Font, FontStyle.Bold),
+            AutoSize = true,
+            Margin = new Padding(0, 0, 0, 6),
+        });
+
+        foreach (var field in group.Fields)
+            body.Controls.Add(BuildFieldRow(record, field));
+
+        var panel = new Panel
+        {
+            BorderStyle = BorderStyle.FixedSingle,
+            AutoSize = true,
+            Margin = new Padding(6),
+        };
+
+        panel.Controls.Add(body);
+
+        return panel;
+    }
+
+    /// <summary>A label, an asterisk when the field is required, and the control it is typed
+    /// into.</summary>
+    private Control BuildFieldRow(object record, PropertyInfo field)
+    {
+        var row = new FlowLayoutPanel
+        {
+            FlowDirection = FlowDirection.LeftToRight,
+            AutoSize = true,
+            WrapContents = false,
+            Margin = new Padding(0, 0, 0, 4),
+        };
+
+        var required = RequiredFields.IsRequired(record.GetType(), field.Name);
+
+        row.Controls.Add(new Label
+        {
+            Text = FieldGroups.LabelOf(field),
+            AutoSize = false,
+            Width = 108,
+            TextAlign = ContentAlignment.MiddleLeft,
+        });
+
+        row.Controls.Add(new Label
+        {
+            Text = required ? "*" : string.Empty,
+            ForeColor = Color.Red,
+            AutoSize = false,
+            Width = 12,
+            TextAlign = ContentAlignment.MiddleLeft,
+        });
+
+        row.Controls.Add(BuildFieldEditor(record, field));
+
+        return row;
+    }
+
+    /// <summary>
+    /// The control a field is typed into.
+    /// </summary>
+    /// <remarks>
+    /// A foreign key becomes a picker over the entity it points at, the same convention the grids
+    /// apply. Rendering it as a text box, or dropping it, would leave no way to set a document's
+    /// supplier at all.
+    /// </remarks>
+    private Control BuildFieldEditor(object record, PropertyInfo field)
+    {
+        var underlying = Nullable.GetUnderlyingType(field.PropertyType) ?? field.PropertyType;
+
+        if (FieldGroups.NavigationFor(field) is { } nav)
+        {
+            var lookup = new ComboBox
+            {
+                Width = 190,
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                DisplayMember = "Id",
+                ValueMember = "Id",
+                DataSource = LookupRows(nav.PropertyType),
+            };
+
+            lookup.DataBindings.Add(
+                new Binding("SelectedValue", record, field.Name, true, DataSourceUpdateMode.OnPropertyChanged));
+
+            return lookup;
+        }
+
+        if (underlying == typeof(bool))
+        {
+            var check = new CheckBox { Width = 190 };
+
+            check.DataBindings.Add(
+                new Binding("Checked", record, field.Name, true, DataSourceUpdateMode.OnPropertyChanged));
+
+            return check;
+        }
+
+        if (underlying == typeof(DateTime))
+        {
+            var picker = new DateTimePicker { Width = 190, Format = DateTimePickerFormat.Short };
+
+            picker.DataBindings.Add(
+                new Binding("Value", record, field.Name, true, DataSourceUpdateMode.OnPropertyChanged));
+
+            return picker;
+        }
+
+        if (underlying.IsEnum)
+        {
+            var combo = new ComboBox
+            {
+                Width = 190,
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                DataSource = Enum.GetValues(underlying),
+            };
+
+            combo.DataBindings.Add(
+                new Binding("SelectedItem", record, field.Name, true, DataSourceUpdateMode.OnPropertyChanged));
+
+            return combo;
+        }
+
+        var box = new TextBox { Width = 190 };
+
+        box.DataBindings.Add(
+            new Binding("Text", record, field.Name, true, DataSourceUpdateMode.OnPropertyChanged));
+
+        return box;
+    }
+
+    /// <summary>
+    /// The accent band at the top of an entry screen: a title, a subtitle, and the record's key
+    /// fields held out of the panels below.
+    /// </summary>
+    private Control BuildEntryHeader(object owner, object? record)
+    {
+        var heading = owner.GetType().GetProperty("Title")?.GetValue(owner) as string ?? string.Empty;
+
+        var band = new Panel { Dock = DockStyle.Top, Height = 74, BackColor = {{accent}} };
+
+        var titles = new FlowLayoutPanel
+        {
+            FlowDirection = FlowDirection.TopDown,
+            Dock = DockStyle.Left,
+            AutoSize = true,
+            WrapContents = false,
+            Padding = new Padding(18, 16, 0, 0),
+        };
+
+        titles.Controls.Add(new Label
+        {
+            Text = heading,
+            ForeColor = Color.White,
+            Font = new Font(Font.FontFamily, 14f, FontStyle.Bold),
+            AutoSize = true,
+        });
+
+        var subtitle = heading.Length == 0
+            ? string.Empty
+            : $"Create and manage {heading.ToLowerInvariant()} records";
+
+        titles.Controls.Add(new Label { Text = subtitle, ForeColor = Color.White, AutoSize = true });
+
+        band.Controls.Add(titles);
+
+        if (record is not null)
+            band.Controls.Add(BuildKeyStrip(record));
+
+        return band;
+    }
+
+    /// <summary>The record's code, date and status, held out of every panel so they are not drawn
+    /// twice on one screen.</summary>
+    private Control BuildKeyStrip(object record)
+    {
+        var strip = new FlowLayoutPanel
+        {
+            FlowDirection = FlowDirection.LeftToRight,
+            Dock = DockStyle.Right,
+            AutoSize = true,
+            WrapContents = false,
+            Padding = new Padding(0, 20, 18, 0),
+        };
+
+        var key = FieldGroups.Key(record.GetType());
+
+        foreach (var field in new[] { key.Code, key.Date, key.Status })
+        {
+            if (field is null)
+                continue;
+
+            var cell = new FlowLayoutPanel
+            {
+                FlowDirection = FlowDirection.TopDown,
+                AutoSize = true,
+                WrapContents = false,
+                Margin = new Padding(14, 0, 0, 0),
+            };
+
+            cell.Controls.Add(new Label
+            {
+                Text = FieldGroups.LabelOf(field),
+                ForeColor = Color.White,
+                Font = new Font(Font, FontStyle.Bold),
+                AutoSize = true,
+            });
+
+            cell.Controls.Add(BuildFieldEditor(record, field));
+
+            strip.Controls.Add(cell);
+        }
+
+        return strip;
+    }
+
+    /// <summary>The Additional Information tab: the long-text fields, as multi-line boxes.</summary>
+    private void AddAdditionalTab(TabControl tabs, object record)
+    {
+        var fields = FieldGroups.Additional(record.GetType());
+
+        if (fields.Count == 0)
+            return;
+
+        var body = new FlowLayoutPanel
+        {
+            FlowDirection = FlowDirection.TopDown,
+            Dock = DockStyle.Fill,
+            WrapContents = false,
+            AutoScroll = true,
+            Padding = new Padding(10),
+        };
+
+        foreach (var field in fields)
+        {
+            body.Controls.Add(new Label { Text = FieldGroups.LabelOf(field), AutoSize = true });
+
+            var box = new TextBox
+            {
+                Multiline = true,
+                ScrollBars = ScrollBars.Vertical,
+                Width = 520,
+                Height = 90,
+                Margin = new Padding(0, 0, 0, 10),
+            };
+
+            box.DataBindings.Add(
+                new Binding("Text", record, field.Name, true, DataSourceUpdateMode.OnPropertyChanged));
+
+            body.Controls.Add(box);
+        }
+
+        var page = new TabPage("{{additionalTitle}}");
+
+        page.Controls.Add(body);
+        tabs.TabPages.Add(page);
+    }
+
+    /// <summary>The rows a lookup offers, from the pane that holds that entity. Empty when the
+    /// application has no pane for it, which is what a line type gets.</summary>
+    /// <remarks>
+    /// Reads AllRecords rather than Items: Items is the search-filtered list a screen shows, so a
+    /// lookup built on it would silently drop every row that does not match text left in that
+    /// screen's own search box -- a supplier the user is mid-search on elsewhere vanishing from a
+    /// purchase order's supplier picker, with no indication why.
+    /// </remarks>
+    private IList LookupRows(Type entityType)
+    {
+        foreach (var group in _shell.Groups)
+        {
+            foreach (var entity in group.Entities)
+            {
+                if (!string.Equals(entity.Title, entityType.Name, StringComparison.Ordinal))
+                    continue;
+
+                var all = entity.GetType().GetProperty("AllRecords")?.GetValue(entity) as IEnumerable;
+
+                return all?.Cast<object>().ToList() ?? new List<object>();
+            }
+        }
+
+        return new List<object>();
+    }
+
+    /// <summary>The bar every entry screen ends in: a status label and whichever commands the
+    /// owner actually has.</summary>
+    /// <remarks>
+    /// CommandButton resolves its command by name and no-ops when the owner has none, so a
+    /// master's six-button bar and a transaction editor's two-button bar can share this rather
+    /// than each writing its own click handlers.
+    /// </remarks>
+    private Control BuildEntryActionBar(object owner, params (string Command, string Text)[] commands)
+    {
+        var bar = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1 };
+        bar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+        bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+
+        var status = new Label { Dock = DockStyle.Fill, Name = "Status" };
 
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft };
 
-        buttons.Controls.Add(CommandButton(editor, "SaveCommand", "Save"));
-        buttons.Controls.Add(CommandButton(editor, "CancelCommand", "Cancel"));
+        foreach (var (command, text) in commands)
+            buttons.Controls.Add(CommandButton(owner, command, text));
 
-        layout.Controls.Add(buttons, 0, hasLines ? 3 : 2);
+        bar.Controls.Add(status, 0, 0);
+        bar.Controls.Add(buttons, 1, 0);
+
+        return bar;
+    }
+
+    /// <summary>
+    /// A transaction's entry screen: the same header and form as a master, with its lines and
+    /// their totals under it.
+    /// </summary>
+    /// <remarks>
+    /// Reached only through the <c>IRecordEditor</c> test in <see cref="BuildScreen"/>: a master's
+    /// inline editor is never shown through here, because a master's own screen implements
+    /// <c>IDirtyScreen</c>, not this.
+    /// </remarks>
+    private Control BuildEditor(IRecordEditor editor)
+    {
+        var draft = editor.GetType().GetProperty("Draft")?.GetValue(editor);
+
+        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4 };
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 74f));
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40f));
+
+        layout.Controls.Add(BuildEntryHeader(editor, draft), 0, 0);
+
+        if (draft is not null)
+            layout.Controls.Add(BuildEntryForm(draft), 0, 1);
+
+        var tabs = new TabControl { Dock = DockStyle.Fill };
+
+        // A row for the lines only when there are lines: a master's own editor has none, and a
+        // tab with an empty grid under it would be worse than no tab at all.
+        if (editor.Lines.Count > 0)
+        {
+            var linesPage = new TabPage(editor.Title);
+
+            var linesHost = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1 };
+            linesHost.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+            linesHost.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 240f));
+
+            linesHost.Controls.Add(BuildLines(editor), 0, 0);
+            linesHost.Controls.Add(BuildTotals(editor), 1, 0);
+
+            linesPage.Controls.Add(linesHost);
+            tabs.TabPages.Add(linesPage);
+        }
+
+        if (draft is not null && HasAdditional(editor))
+            AddAdditionalTab(tabs, draft);
+
+        layout.Controls.Add(tabs, 0, 2);
+        layout.Controls.Add(
+            BuildEntryActionBar(editor, ("SaveCommand", "Save"), ("CancelCommand", "Cancel")), 0, 3);
 
         return layout;
+    }
+
+    /// <summary>
+    /// The lines' column totals, as right-aligned label pairs, the grand total in bold.
+    /// </summary>
+    /// <remarks>
+    /// Typed against <c>IRecordEditor.Totals</c> directly rather than through <c>dynamic</c>: Task
+    /// 7 already put <c>IReadOnlyList&lt;LineTotal&gt; Totals</c> on the interface for exactly this
+    /// reason, so there is no open generic here to work around.
+    /// </remarks>
+    private Control BuildTotals(IRecordEditor editor)
+    {
+        var panel = new FlowLayoutPanel
+        {
+            FlowDirection = FlowDirection.TopDown,
+            Dock = DockStyle.Fill,
+            WrapContents = false,
+            BorderStyle = BorderStyle.FixedSingle,
+            Padding = new Padding(10),
+        };
+
+        foreach (var total in editor.Totals)
+        {
+            var row = new FlowLayoutPanel
+            {
+                FlowDirection = FlowDirection.LeftToRight,
+                AutoSize = true,
+                WrapContents = false,
+            };
+
+            row.Controls.Add(new Label { Text = total.Column, Width = 120, AutoSize = false });
+            row.Controls.Add(new Label
+            {
+                Text = total.Value.ToString("N2"),
+                Width = 90,
+                AutoSize = false,
+                TextAlign = ContentAlignment.MiddleRight,
+                Font = total.IsGrand ? new Font(Font, FontStyle.Bold) : Font,
+            });
+
+            panel.Controls.Add(row);
+        }
+
+        return panel;
     }
 
     /// <summary>
@@ -374,6 +904,12 @@ public sealed class MainForm : Form
                     column.Visible = false;
             };
 
+            // A typed value reaches the line object directly, so nothing derived from the lines --
+            // the totals beside them -- hears about it. Telling the set is what makes that band
+            // recompute. Unlike WPF's CellEditEnding, CellEndEdit fires AFTER the grid has pushed
+            // the typed value into the bound line, so this needs no dispatcher hop to see it.
+            grid.CellEndEdit += (_, _) => lines.LineEdited();
+
             panel.Controls.Add(grid, 0, 1);
 
             var buttons = new FlowLayoutPanel
@@ -387,8 +923,16 @@ public sealed class MainForm : Form
             var add = new Button { Text = "Add line", Width = 88, Margin = new Padding(4, 0, 0, 0) };
             add.Click += (_, _) => lines.Add();
 
+            // No re-bind after Clear, the same as Add and Remove above: the grid's DataSource IS
+            // lines.Items, a BindingList<T>, and Clear() raises its ListChanged itself. Rebinding
+            // here would replace it with a static snapshot List<object>, and Add/Remove after that
+            // would stop reaching the grid at all.
+            var clear = new Button { Text = "Clear All", Width = 88 };
+            clear.Click += (_, _) => lines.Clear();
+
             buttons.Controls.Add(remove);
             buttons.Controls.Add(add);
+            buttons.Controls.Add(clear);
 
             panel.Controls.Add(buttons, 0, 2);
 

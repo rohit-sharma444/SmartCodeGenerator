@@ -139,6 +139,62 @@ public class WinFormsBusinessLayoutTests
         StringAssert.Contains(source, "return BuildList(screen);");
     }
 
+    /// <summary>
+    /// A transaction's LIST stays on BuildList. This is the whole reason the three-way dispatch
+    /// exists: rewriting BuildList into the entry screen would convert transaction lists too and
+    /// leave no route to a purchase order's lines.
+    /// </summary>
+    [TestMethod]
+    public void A_transaction_list_is_routed_to_BuildList()
+    {
+        var source = Source();
+
+        var transaction = source.IndexOf(
+            "if (screen is IEntityViewModel { Role: EntityRole.Transaction })", StringComparison.Ordinal);
+        Assert.IsGreaterThan(-1, transaction, "no Role.Transaction test in the dispatch");
+
+        var recordEditor = source.IndexOf("if (screen is IRecordEditor", transaction, StringComparison.Ordinal);
+        Assert.IsGreaterThan(-1, recordEditor, "no IRecordEditor branch after the transaction test");
+
+        // The transaction branch's own return, before the next branch begins.
+        StringAssert.Contains(
+            source.Substring(transaction, recordEditor - transaction), "return BuildList(screen);");
+    }
+
+    /// <summary>A transaction's stand-alone entry screen -- a RecordEditorViewModel -- is routed
+    /// to BuildEditor.</summary>
+    [TestMethod]
+    public void A_transaction_editor_is_routed_to_BuildEditor()
+    {
+        var source = Source();
+
+        var branch = source.IndexOf("if (screen is IRecordEditor editor)", StringComparison.Ordinal);
+        Assert.IsGreaterThan(-1, branch, "no IRecordEditor test in the dispatch");
+
+        StringAssert.Contains(
+            source.Substring(branch, Math.Min(160, source.Length - branch)), "return BuildEditor(editor);");
+    }
+
+    /// <summary>
+    /// A master's own screen implements neither Role.Transaction nor IRecordEditor, so it falls
+    /// through to the new BuildEntry -- the opposite of routing the entry screen off
+    /// Role.Transaction, which would send a TRANSACTION's list to the entry screen instead of a
+    /// master's.
+    /// </summary>
+    [TestMethod]
+    public void A_master_screen_falls_through_to_BuildEntry()
+    {
+        var source = Source();
+
+        var branch = source.IndexOf("if (screen is IRecordEditor editor)", StringComparison.Ordinal);
+        var editorReturn = source.IndexOf("return BuildEditor(editor);", branch, StringComparison.Ordinal);
+        Assert.IsGreaterThan(-1, editorReturn, "no BuildEditor return after the IRecordEditor test");
+
+        var tail = source.Substring(editorReturn);
+        StringAssert.Contains(tail, "return BuildEntry(screen);");
+        Assert.DoesNotContain("return BuildList(screen);", tail);
+    }
+
     /// <summary>The list finds; the editor changes. A typeable grid would put the application back
     /// to editing two different ways.</summary>
     [TestMethod]
@@ -150,18 +206,6 @@ public class WinFormsBusinessLayoutTests
         StringAssert.Contains(source, "AllowUserToAddRows = false,");
         StringAssert.Contains(source, "CommandButton(screen, \"OpenCommand\", \"Open\")");
         StringAssert.Contains(source, "grid.CellDoubleClick");
-    }
-
-    [TestMethod]
-    public void The_editor_edits_the_draft_and_offers_save_and_cancel()
-    {
-        var source = Source();
-
-        // The PropertyGrid binds the DRAFT, not the record: the copy is what makes Cancel mean
-        // something, and binding the record would edit it live behind the editor.
-        StringAssert.Contains(source, "GetProperty(\"Draft\")");
-        StringAssert.Contains(source, "CommandButton(editor, \"SaveCommand\", \"Save\")");
-        StringAssert.Contains(source, "CommandButton(editor, \"CancelCommand\", \"Cancel\")");
     }
 
     /// <summary>
@@ -185,15 +229,85 @@ public class WinFormsBusinessLayoutTests
         StringAssert.Contains(source, "grid.Columns[lines.ForeignKey]");
     }
 
-    /// <summary>A master's editor keeps the three rows it always had.</summary>
+    /// <summary>A master's own editor has no lines, and a tab with an empty grid under it would be
+    /// worse than no tab at all -- so the lines tab is added only when there are some.</summary>
     [TestMethod]
-    public void An_editor_with_no_lines_grows_no_row_for_them()
+    public void An_editor_with_no_lines_adds_no_lines_tab()
+        => StringAssert.Contains(Source(), "if (editor.Lines.Count > 0)");
+
+    [TestMethod]
+    public void The_form_builds_a_header_a_grouped_form_and_a_tab_strip()
     {
         var source = Source();
 
-        StringAssert.Contains(source, "var hasLines = editor.Lines.Count > 0;");
-        StringAssert.Contains(source, "RowCount = hasLines ? 4 : 3,");
-        StringAssert.Contains(source, "layout.Controls.Add(buttons, 0, hasLines ? 3 : 2);");
+        StringAssert.Contains(source, "private Control BuildEntryHeader(");
+        StringAssert.Contains(source, "private Control BuildEntryForm(");
+        StringAssert.Contains(source, "new TabControl");
+        StringAssert.Contains(source, "FieldGroups.Columns(");
+    }
+
+    /// <summary>A GroupBox caption cannot take the accent colour, so the panel is a bordered Panel
+    /// with a Label of its own.</summary>
+    [TestMethod]
+    public void A_panel_is_not_a_group_box()
+        => Assert.DoesNotContain("new GroupBox", Source());
+
+    [TestMethod]
+    public void The_form_marks_required_fields_and_renders_lookups()
+    {
+        var source = Source();
+
+        StringAssert.Contains(source, "RequiredFields.IsRequired(");
+        StringAssert.Contains(source, "FieldGroups.NavigationFor(");
+    }
+
+    [TestMethod]
+    public void The_action_bar_offers_only_commands_that_exist()
+    {
+        var source = Source();
+
+        foreach (var command in new[]
+                 { "NewCommand", "EditCommand", "DeleteCommand", "SaveCommand", "ClearCommand", "CancelCommand" })
+        {
+            StringAssert.Contains(source, command);
+        }
+
+        foreach (var absent in new[] { "\"Print\"", "\"Export\"", "\"Import Items\"" })
+            Assert.DoesNotContain(absent, source);
+    }
+
+    [TestMethod]
+    public void The_editor_shows_the_line_totals_and_can_clear_a_set()
+    {
+        var source = Source();
+
+        StringAssert.Contains(source, "Totals");
+        StringAssert.Contains(source, "\"Clear All\"");
+    }
+
+    /// <summary>
+    /// R42: every front end owes ILineSet.LineEdited() on a committed cell edit, or the totals
+    /// band beside the grid goes stale the moment someone types a new quantity into a line.
+    /// </summary>
+    /// <remarks>
+    /// CellEndEdit, not CellValueChanged: WPF needed a Dispatcher hop because its CellEditEnding
+    /// fires BEFORE the grid pushes the typed value into the bound object, but WinForms'
+    /// CellEndEdit fires AFTER the push, so the call can go straight in the handler.
+    /// </remarks>
+    [TestMethod]
+    public void A_committed_line_edit_is_reported_to_the_set()
+        => StringAssert.Contains(Source(), "grid.CellEndEdit += (_, _) => lines.LineEdited();");
+
+    /// <summary>Behind HasAdditional on both screens, so a model with no long-text fields shows no
+    /// empty tab -- the same rule that drops an empty panel.</summary>
+    [TestMethod]
+    public void The_additional_fields_are_shown_only_when_there_are_some()
+    {
+        var source = Source();
+
+        StringAssert.Contains(source, "HasAdditional");
+        StringAssert.Contains(source, "FieldGroups.Additional(");
+        StringAssert.Contains(source, "\"Additional Information\"");
     }
 
     [TestMethod]
@@ -250,43 +364,24 @@ public class WinFormsBusinessLayoutTests
             => [.. Enumerable.Range(1, 20).Select(i => $"Entity{i}")];
     }
 
+    /// <summary>
+    /// The emitted form compiles against the emitted screens it binds to.
+    /// </summary>
+    /// <remarks>
+    /// FieldGroups and RequiredFields travel with it now: the entry screens reflect over both, so
+    /// a compile test that omitted them would no longer say anything true about the file it claims
+    /// to prove compiles.
+    /// </remarks>
     [TestMethod]
-    public void The_form_compiles_against_the_screens_it_binds_to()
+    public void The_form_compiles()
     {
         EmittedDesktopSource.AssertCompilesTogether(
             ("Views/MainForm.cs", Source()),
             ("Screens/EntityRole.cs", RoleStub),
+            ("Screens/FieldGroups.cs", FieldGroupsTemplate.Source(Root)),
+            ("Screens/RequiredFields.cs", RequiredFieldsTemplate.Source(Root, null)),
             ("ViewModels/Shell.cs", ShellStub),
             ("Auth/Session.cs", SessionStub));
-    }
-
-    /// <summary>
-    /// The editor lists a record's fields in the order the class declares them.
-    /// </summary>
-    /// <remarks>
-    /// A PropertyGrid left at its default sorts alphabetically UNDER a category header, so an
-    /// Order opened as "CreatedOn, Currency, Id, InventoryId, IssuedOn, …" beneath the word
-    /// "Misc" — reported from a running app, and nothing like the ordered form WPF emits from the
-    /// same model. The master-detail layout has set this since it was written; the business
-    /// editor was simply missing it.
-    /// </remarks>
-    [TestMethod]
-    public void The_editor_lists_fields_in_declaration_order()
-    {
-        var source = Source();
-
-        // Anchored to the editor's own grid rather than to the file: the master and transaction
-        // screens hold grids of their own, and one of those carrying the setting proves nothing
-        // about the editor.
-        var editor = source.IndexOf("A PropertyGrid over the DRAFT", StringComparison.Ordinal);
-        Assert.IsGreaterThan(-1, editor, "the editor's PropertyGrid is not where this test thinks");
-
-        var initializerEnd = source.IndexOf("};", editor, StringComparison.Ordinal);
-        var sort = source.IndexOf(
-            "PropertySort = PropertySort.NoSort", editor, StringComparison.Ordinal);
-
-        Assert.IsGreaterThan(-1, sort, "the editor's grid does not set PropertySort");
-        Assert.IsLessThan(initializerEnd, sort, "PropertySort is set on a later control");
     }
 
     [TestMethod]
@@ -295,6 +390,8 @@ public class WinFormsBusinessLayoutTests
         EmittedDesktopSource.AssertCompilesTogether(
             ("Views/MainForm.cs", Source(AppCustomization.Default with { Theme = AppTheme.Dark })),
             ("Screens/EntityRole.cs", RoleStub),
+            ("Screens/FieldGroups.cs", FieldGroupsTemplate.Source(Root)),
+            ("Screens/RequiredFields.cs", RequiredFieldsTemplate.Source(Root, null)),
             ("ViewModels/Shell.cs", ShellStub),
             ("Auth/Session.cs", SessionStub));
     }
@@ -316,6 +413,8 @@ public class WinFormsBusinessLayoutTests
             void Load(int parentId);
             void Add();
             void Remove(object? line);
+            void Clear();
+            void LineEdited();
             bool Save(int parentId);
         }
         """;
