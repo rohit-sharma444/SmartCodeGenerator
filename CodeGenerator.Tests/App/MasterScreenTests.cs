@@ -31,13 +31,17 @@ public class Memo
 }
 """;
 
-    internal static Assembly Emit() => Emit(withTransaction: false);
+    internal static Assembly Emit() => Emit(withTransaction: false, validation: false);
 
     /// <summary>The master screen and the transaction screen that derives from it, in one
     /// assembly — the only way to exercise the one flag that separates the two.</summary>
-    private static Assembly EmitWithTransaction() => Emit(withTransaction: true);
+    private static Assembly EmitWithTransaction() => Emit(withTransaction: true, validation: false);
 
-    private static Assembly Emit(bool withTransaction)
+    /// <summary>The screen over an app generated WITH validators, where a book with no title is
+    /// refused — the only way a fixture here can produce a save that did not go through.</summary>
+    private static Assembly EmitValidating() => Emit(withTransaction: false, validation: true);
+
+    private static Assembly Emit(bool withTransaction, bool validation)
     {
         string[] sources =
         [
@@ -55,9 +59,10 @@ public class Memo
         ];
 
         if (!withTransaction)
-            return RecordEditorTests.Emit(sources);
+            return RecordEditorTests.Emit(validation, sources);
 
         return RecordEditorTests.Emit(
+            validation,
             [
                 .. sources,
                 TransactionScreenTemplate.Source("Acme")
@@ -115,6 +120,9 @@ public class Memo
 
     private static void Select(object screen, object? row)
         => screen.GetType().GetProperty("Selected")!.SetValue(screen, row);
+
+    private static string StatusOf(object screen)
+        => (string)screen.GetType().GetProperty("Status")!.GetValue(screen)!;
 
     /// <summary>
     /// Captures the editor the screen asks for.
@@ -222,16 +230,21 @@ public class Memo
         var screen = Screen(EmitWithTransaction(), "TransactionScreenViewModel", "One");
         var capture = Listen(screen);
 
+        // The form this screen would hold if it edited inline, taken BEFORE the select so the
+        // select can be shown not to have touched it. Comparing the requested editor against
+        // EditorOf afterwards proves nothing: the two are built by separate calls either way.
+        var untouched = EditorOf(screen);
+
         Select(screen, Items(screen)[0]);
 
         Assert.IsNull(capture.Requested, "selecting a row on a transaction list opened it");
+        Assert.AreSame(
+            untouched, EditorOf(screen), "selecting a row loaded it into a form of the list's own");
 
         RecordEditorTests.Execute(screen, "OpenCommand");
 
         Assert.IsNotNull(capture.Requested, "nothing can reach the transaction's entry screen");
         Assert.IsFalse(IsNew(capture.Requested!), "the selected record opened as a new one");
-        Assert.AreNotSame(
-            capture.Requested, EditorOf(screen), "the transaction edited inline after all");
     }
 
     /// <summary>The half of the old behaviour that survives: New on a transaction list still asks
@@ -363,11 +376,18 @@ public class Memo
         Assert.IsNotNull(selected.GetValue(screen));
         Assert.IsTrue(IsNew(EditorOf(screen)));
 
-        Select(screen, Items(screen)[0]);
+        // Edit rather than a second Select: Items hands back the very instances already selected,
+        // so re-selecting one sets nothing and the setter never reloads the form. The form would
+        // still be blank when Cancel ran, and the closing assertion would pass with Cancel doing
+        // nothing at all.
+        RecordEditorTests.Execute(screen, "EditCommand");
+
+        Assert.IsFalse(IsNew(EditorOf(screen)), "Edit did not put the row back in the form");
+
         RecordEditorTests.Execute(screen, "CancelCommand");
 
         Assert.IsNull(selected.GetValue(screen));
-        Assert.IsTrue(IsNew(EditorOf(screen)));
+        Assert.IsTrue(IsNew(EditorOf(screen)), "Cancel left the record in the form");
     }
 
     /// <summary>Edit is what the action bar's button and the grid's double-click both run, and it
@@ -436,6 +456,155 @@ public class Memo
         SetTitle(Draft(EditorOf(screen)), "typed on, never saved");
 
         Assert.AreEqual("Saved", TitleOf(RecordEditorTests.Rows(assembly)[0]!));
+    }
+
+    /// <summary>
+    /// Editing a saved record and saving again must not write the pre-edit values back.
+    /// </summary>
+    /// <remarks>
+    /// The editor puts its draft OBJECT into the store in place of the row it was opened over, so
+    /// after the reload the instance <c>Selected</c> points at is in no list at all. Left there,
+    /// Edit loads those pre-edit values back into the form and the next Save writes them over what
+    /// was just saved, by id, reporting success. WPF happens to mask it — replacing the list
+    /// pushes SelectedItem back through the two-way binding — and WinForms, which rebinds only
+    /// from the search box, does not, so the view model has to be right on its own.
+    /// </remarks>
+    [TestMethod]
+    public void Editing_a_saved_record_again_does_not_write_the_old_values_back()
+    {
+        var assembly = Emit();
+        var screen = Screen(assembly, "MasterScreenViewModel", "Original");
+
+        Select(screen, Items(screen)[0]);
+        SetTitle(Draft(EditorOf(screen)), "Edited");
+        RecordEditorTests.Execute(screen, "SaveCommand");
+
+        RecordEditorTests.Execute(screen, "EditCommand");
+        RecordEditorTests.Execute(screen, "SaveCommand");
+
+        Assert.HasCount(1, RecordEditorTests.Rows(assembly));
+        Assert.AreEqual(
+            "Edited",
+            TitleOf(RecordEditorTests.Rows(assembly)[0]!),
+            "the second save reverted the record to what it held before the first");
+    }
+
+    /// <summary>
+    /// A refused save leaves the form exactly as it was typed.
+    /// </summary>
+    /// <remarks>
+    /// The only thing the Closed/written signal in <c>Save</c> is for. Swap the form for a fresh
+    /// one unconditionally and every other test here still passes — the swap is right on a
+    /// save that went through; on a refused one it throws away what the user typed, and takes the
+    /// message telling them why with it.
+    /// </remarks>
+    [TestMethod]
+    public void A_refused_save_leaves_the_typed_text_in_the_form()
+    {
+        var assembly = EmitValidating();
+        var screen = Screen(assembly, "MasterScreenViewModel", "Dune");
+
+        Select(screen, Items(screen)[0]);
+
+        var form = EditorOf(screen);
+
+        SetTitle(Draft(form), string.Empty);
+        RecordEditorTests.Execute(screen, "SaveCommand");
+
+        Assert.AreSame(form, EditorOf(screen), "the refused save replaced the form under the user");
+        Assert.AreEqual(
+            string.Empty, TitleOf(Draft(EditorOf(screen))), "the typed text was thrown away");
+        Assert.AreEqual(
+            "Dune", TitleOf(RecordEditorTests.Rows(assembly)[0]!), "the store took a refused record");
+        StringAssert.Contains(StatusOf(screen), "Title is required.");
+    }
+
+    /// <summary>The second, validator-free way a save is refused: the record was deleted from
+    /// somewhere else while the form was open. The editor says so, and the screen must show what
+    /// the editor said rather than a success it did not have.</summary>
+    [TestMethod]
+    public void A_save_of_a_record_that_is_gone_keeps_the_form_and_says_why()
+    {
+        var assembly = Emit();
+        var screen = Screen(assembly, "MasterScreenViewModel", "Dune");
+
+        Select(screen, Items(screen)[0]);
+
+        var form = EditorOf(screen);
+
+        RecordEditorTests.Rows(assembly).Clear();
+        RecordEditorTests.Execute(screen, "SaveCommand");
+
+        Assert.AreSame(form, EditorOf(screen), "the refused save replaced the form under the user");
+        StringAssert.Contains(StatusOf(screen), "no longer exists");
+    }
+
+    /// <summary>
+    /// A save that went through leaves the screen saying so.
+    /// </summary>
+    /// <remarks>
+    /// The editor sets no status on success — it used to close, and a closed editor says
+    /// nothing — so taking its status unconditionally would leave the line blank AND wipe
+    /// whatever the screen itself had just said. The wording is Task 12's to settle on a
+    /// running app; that there is any is this task's.
+    /// </remarks>
+    [TestMethod]
+    public void A_successful_save_says_so_instead_of_blanking_the_status_line()
+    {
+        var screen = Screen(Emit(), "MasterScreenViewModel");
+
+        // Delete with nothing selected: a message of the screen's own, and one the save used
+        // to wipe on its way past.
+        RecordEditorTests.Execute(screen, "DeleteCommand");
+
+        Assert.IsNotEmpty(StatusOf(screen), "the screen said nothing for the save to wipe");
+
+        SetTitle(Draft(EditorOf(screen)), "New Book");
+        RecordEditorTests.Execute(screen, "SaveCommand");
+
+        Assert.IsNotEmpty(StatusOf(screen), "a successful save blanked the status line");
+    }
+
+    /// <summary>
+    /// Save on a transaction LIST enters nothing.
+    /// </summary>
+    /// <remarks>
+    /// The hazard the inline editor brought with it, and the reason the flag reaches <c>Save</c>
+    /// at all: a transaction's records are entered on a screen of their own, so the form this
+    /// class holds is never filled in on the list — and saving it would build a blank one on
+    /// the spot and enter an empty purchase order.
+    /// </remarks>
+    [TestMethod]
+    public void Save_on_a_transaction_list_enters_nothing()
+    {
+        var assembly = EmitWithTransaction();
+        var screen = Screen(assembly, "TransactionScreenViewModel", "One");
+
+        RecordEditorTests.Execute(screen, "SaveCommand");
+
+        Assert.HasCount(1, RecordEditorTests.Rows(assembly));
+    }
+
+    /// <summary>
+    /// A transaction list has nothing unsaved, and builds no form to work that out.
+    /// </summary>
+    /// <remarks>
+    /// The EditsInline half of IsDirty is an allocation guard as much as an answer: without it
+    /// every dirty check — one per attempt to navigate — would build a
+    /// RecordEditorViewModel the screen never shows, whose constructor reads every line set out of
+    /// the store. The answer is false either way, so only the field can tell the two apart.
+    /// </remarks>
+    [TestMethod]
+    public void A_transaction_list_is_not_dirty_and_builds_no_form_to_say_so()
+    {
+        var screen = Screen(EmitWithTransaction(), "TransactionScreenViewModel", "One");
+
+        Assert.IsFalse((bool)screen.GetType().GetProperty("IsDirty")!.GetValue(screen)!);
+
+        var editor = screen.GetType().BaseType!
+            .GetField("_editor", BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+        Assert.IsNull(editor.GetValue(screen), "the dirty check built a form the screen never shows");
     }
 
     [TestMethod]

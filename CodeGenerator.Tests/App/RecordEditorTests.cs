@@ -56,15 +56,23 @@ public class Book
          + Environment.NewLine
          + ViewModelTemplates.PortableRelayCommand("Acme").Replace("namespace Acme.ViewModels;", string.Empty);
 
-    internal static Assembly Emit(params string[] extra)
+    internal static Assembly Emit(params string[] extra) => Emit(validation: false, extra: extra);
+
+    /// <summary>
+    /// The emitted editor, with whatever is stacked on top of it, compiled and loaded.
+    /// </summary>
+    /// <remarks>
+    /// With <paramref name="validation"/> on, the validator seam comes with it and a book with no
+    /// title is REFUSED — the only way a fixture built on this helper can produce a save that did
+    /// not go through, which is the one case the screens' save behaviour turns on.
+    /// </remarks>
+    internal static Assembly Emit(bool validation, params string[] extra)
     {
-        var source = EmittedSource.Flatten(
-            [
-                StoreAndModelStub,
-                ObservableAndCommand,
-                Editor(validation: false),
-                .. extra,
-            ]);
+        string[] core = validation
+            ? [StoreAndModelStub, ValidatorStub, ObservableAndCommand, Editor(validation: true)]
+            : [StoreAndModelStub, ObservableAndCommand, Editor(validation: false)];
+
+        var source = EmittedSource.Flatten([.. core, .. extra]);
 
         EmittedSource.AssertCompiles(source);
 
@@ -102,18 +110,11 @@ public class Book
     /// The editor an app generated with validation on gets, over a validator that rejects a book
     /// with no title.
     /// </summary>
-    private static Assembly EmitValidating()
-    {
-        var source = EmittedSource.Flatten(StoreAndModelStub, ValidatorStub, ObservableAndCommand, Editor(validation: true));
-
-        EmittedSource.AssertCompiles(source);
-
-        return Assembly.Load(Compiler.Compile(source).AssemblyBytes!);
-    }
+    private static Assembly EmitValidating() => Emit(validation: true);
 
     /// <summary>The validation seam the generated app really has: an IValidator&lt;T&gt; resolved
     /// by a ValidatorFactory, degrading to no rules for an unmapped type.</summary>
-    private const string ValidatorStub = """
+    internal const string ValidatorStub = """
 using System;
 using System.Collections.Generic;
 

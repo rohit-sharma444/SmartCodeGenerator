@@ -285,16 +285,28 @@ public class MasterScreenViewModel<T> : ObservableObject, IEntityViewModel, IDir
             editor.Closed -= OnWritten;
         }
 
-        Status = editor.Status;
+        // A save that went through says so; a refused one says why, in the editor's own words.
+        // Taking the editor's status unconditionally would leave a successful save silent -- it
+        // sets none, having once closed the screen -- and WIPE whatever this screen had just said.
+        Status = written ? "Saved." : editor.Status;
         Reload();
+
+        if (!written)
+            return;
 
         // The store took the draft OBJECT, not a copy of it, so it is now the very row the
         // reloaded list is showing. Left in the form, typing on would change that stored row with
         // nothing saved -- and a second Save would enter the record all over again, because the
         // editor still believes it is new. A fresh editor over what was just saved is a copy
         // again, which is the rule the editor exists to keep.
-        if (written)
-            Editor = NewEditor(editor.Draft, isNew: false);
+        Editor = NewEditor(editor.Draft, isNew: false);
+
+        // The selection has to move with it. Saving an existing record REPLACES it in the store,
+        // so the instance Selected still points at is in no list any more: Edit would load those
+        // pre-edit values back into the form, and the next Save would write them over what was
+        // just saved, by id, reporting success. WPF happens to mask that -- replacing the list
+        // pushes SelectedItem back through the two-way binding -- and WinForms does not.
+        Selected = null;
     }
 
     /// <summary>Deletes the selected row. Administrators only, which is one of the role's two
