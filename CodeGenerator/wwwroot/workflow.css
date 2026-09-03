@@ -1,32 +1,80 @@
-/* Self-contained: no CDN, no web font. The tool must work with no network. */
-:root {
-    --ink: #1c1c1c;
-    --paper: #e9ebef;
-    --line: #d3d3cf;
-    --pending: #8a8a85;
-    --active: #1f6feb;
-    --done: #1a7f37;
-    --failed: #b3261e;
+/* Self-contained: no CDN, no web font. The tool must work with no network — so this page's
+   character has to come from colour, spacing and weight rather than from a typeface nobody has.
 
-    /* Depth, as three steps rather than shadows scattered through the file. The rail reads
-       as "these happened, this is happening, those have not" by ELEVATION as well as by
-       colour - a third channel beside the border and the mark, which the mark already exists
-       to provide for anyone who cannot see the colour. */
-    --lift-flat: 0 1px 3px rgba(28, 28, 28, 0.13), 0 1px 2px rgba(28, 28, 28, 0.09);
-    --lift-raised: 0 5px 12px rgba(28, 28, 28, 0.14), 0 2px 4px rgba(28, 28, 28, 0.10);
-    --lift-active: 0 0 0 3px rgb(31 111 235 / 15%), 0 14px 30px rgba(31, 111, 235, 0.24), 0 4px 10px rgba(28, 28, 28, 0.14);
+   Declared on :root DELIBERATELY, despite the rule that a page's tokens belong on its own root
+   class. #components-reconnect-modal is Blazor's own element and lives at body level, outside
+   .workflow entirely, and it reads --line and --ink; scoping these to .workflow leaves the
+   lost-connection bar unstyled, on a surface no test covers and that only appears when the
+   server has already gone. What must NEVER be added here is a dark-mode block: App.razor links
+   this stylesheet on the chat page too, so a :root dark block would repaint a page this file
+   knows nothing about. That defect has shipped once already. */
+:root {
+    /* Neutrals with a slight blue bias rather than a flat grey, so the ground reads as chosen. */
+    --paper:       #eceff4;
+    --surface:     #ffffff;
+    --ink:         #161d26;
+    --muted:       #5c6875;
+    --faint:       #8a94a1;
+    --line:        #d5dce4;
+    --line-soft:   #e4e9ef;
+
+    /* The surface anything the MACHINE owns sits on. This tool turns prose into code, and the
+       page says which is which: a class name, a field, a C# type and the command echo are all
+       set in --mono on this ground; anything the user wrote stays proportional on --surface. */
+    --machine:     #f2f5f9;
+
+    --accent:      #1e5fa8;
+    --accent-ink:  #14446f;
+    --accent-wash: #e6eef8;
+
+    /* Semantic, and kept apart from the accent: "this went well" must not be sayable only by
+       being the same blue as "this is where you are". */
+    --ok:          #1a7f4b;
+    --ok-wash:     #e4f2ea;
+    --warn:        #a8620a;
+    --stop:        #b3261e;
+
+    /* The names the rest of this file already uses, re-pointed rather than replaced: renaming
+       them would touch every rule below for no gain. */
+    --pending: var(--muted);
+    --active:  var(--accent);
+    --done:    var(--ok);
+    --failed:  var(--stop);
+
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 24px;
+    --space-6: 32px;
+
+    --radius:    10px;
+    --radius-sm: 6px;
+
+    --sans: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+    --mono: "Cascadia Code", "Cascadia Mono", Consolas, ui-monospace, monospace;
+
+    /* Depth, as steps rather than shadows scattered through the file. The rail reads as "these
+       happened, this is happening, those have not" by ELEVATION as well as by colour - a third
+       channel beside the border and the mark, which the mark already exists to provide for
+       anyone who cannot see the colour. Lighter than they were: the old shadows were sized for
+       a heavier, greyer page and read as grubby against this one. */
+    --lift-flat: 0 1px 2px rgba(22, 29, 38, 0.06), 0 1px 3px rgba(22, 29, 38, 0.05);
+    --lift-raised: 0 2px 4px rgba(22, 29, 38, 0.05), 0 8px 20px rgba(22, 29, 38, 0.07);
+    --lift-active: 0 0 0 3px rgb(30 95 168 / 15%), 0 8px 22px rgba(30, 95, 168, 0.18), 0 2px 6px rgba(22, 29, 38, 0.10);
 
     /* A stage still to come is RECESSED rather than merely unlifted, which is what widens the
        range enough for the depth to be read at a glance: sunk, flat, raised, floating. */
-    --lift-sunk: inset 0 1px 3px rgba(28, 28, 28, 0.07);
+    --lift-sunk: inset 0 1px 3px rgba(22, 29, 38, 0.06);
 }
 
 body {
     margin: 0;
-    padding: 1.25rem 2rem;
+    padding: var(--space-5) var(--space-6);
     background: var(--paper);
     color: var(--ink);
-    font: 15px/1.5 "Segoe UI", system-ui, sans-serif;
+    font: 15px/1.55 var(--sans);
+    -webkit-font-smoothing: antialiased;
 }
 
 /* The rail and the panel. A FIXED rail, so the panel's left edge is constant across all eight

@@ -201,6 +201,26 @@ public class StageSummaryTests
         Assert.AreEqual("did not build", StageSummary.For(session, BuildStage.Run));
     }
 
+    [TestMethod]
+    public void The_relationships_node_counts_the_links()
+    {
+        var session = New("a shop");
+
+        Assert.IsNull(StageSummary.For(session, BuildStage.Relationships));
+
+        var model = new CandidateDomainModel();
+        var order = new CandidateEntity { Name = "Order" };
+        order.Relationships.Add(new CandidateRelationship { Target = "Customer", Role = "references" });
+        model.Entities.Add(order);
+        model.Entities.Add(new CandidateEntity { Name = "Customer" });
+
+        session.SetModel(model);
+
+        // The links, not the classes: the node beside it already counts those, and two boxes
+        // saying "2 classes" would tell the user nothing about what the second one holds.
+        Assert.AreEqual("1 relationship", StageSummary.For(session, BuildStage.Relationships));
+    }
+
     private static BuildSession New(string description = "")
         => new(description, @"C:\ws", AppCustomization.Default);
 

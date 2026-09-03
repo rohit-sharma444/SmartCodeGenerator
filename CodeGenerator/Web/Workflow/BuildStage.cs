@@ -1,7 +1,7 @@
 namespace CodeGenerator.Web.Workflow;
 
 /// <summary>
-/// The eight nodes of the `build app` workflow, in the order the diagram draws them.
+/// The nine nodes of the `build app` workflow, in the order the diagram draws them.
 /// </summary>
 /// <remarks>
 /// The order matters twice: <see cref="StageGraph.Next"/> and
@@ -18,6 +18,25 @@ public enum BuildStage
     Look,
     Discover,
     Review,
+
+    /// <summary>
+    /// How the classes connect, which of them get a screen, and what will be written.
+    /// </summary>
+    /// <remarks>
+    /// Split out of <see cref="Review"/>, which carried four separate jobs on one page: editing
+    /// the classes, reading the relationship diagram, choosing each class's screen, and
+    /// confirming what would be generated — the last of which the user had to scroll past the
+    /// whole model to reach. Structure is settled at <see cref="Review"/>; how it connects and
+    /// what comes out of it are settled here.
+    /// <para>
+    /// Inserting a member here does NOT invalidate a saved run. <c>BuildSnapshot</c> writes the
+    /// stage as <c>session.Current.ToString()</c> and <c>ResumedSession</c> reads it back with
+    /// <c>Enum.TryParse&lt;BuildStage&gt;</c> — by name, never by ordinal — so a snapshot written
+    /// before this existed still resolves.
+    /// </para>
+    /// </remarks>
+    Relationships,
+
     Generate,
 
     /// <summary>
