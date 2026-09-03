@@ -193,6 +193,101 @@ public class EntryScreenViewModelTests
         Assert.IsTrue(IsGrandOf(received), "Payment's only money column is its own grand total, independent of Invoice's");
     }
 
+    // ---- the band repaints when the lines change ----
+
+    /// <summary>
+    /// A line added to the set announces the totals.
+    /// </summary>
+    /// <remarks>
+    /// <c>Totals</c> is a computed property, and a computed property announces nothing by itself:
+    /// a band bound to it paints once and then goes stale — the mockup's most visible number,
+    /// silently wrong. The lines are the thing that changes and the editor is the thing bound, so
+    /// the set publishes the change on the list event both desktop grids already listen to, and
+    /// the editor translates it into the one property that derives from it.
+    /// </remarks>
+    [TestMethod]
+    public void Adding_a_line_announces_the_totals()
+    {
+        var assembly = EmitWithTotals();
+        var set = LineSetOf(assembly, "PaymentLine", "BookId");
+        var editor = EditorOverBookWith(assembly, set);
+        var announced = Announcements(editor);
+
+        set.GetType().GetMethod("Add")!.Invoke(set, null);
+
+        Assert.Contains("Totals", announced);
+    }
+
+    /// <summary>Removing and clearing go the same way: every collection change the set can see
+    /// reaches the band.</summary>
+    [TestMethod]
+    public void Removing_and_clearing_lines_announce_the_totals()
+    {
+        var assembly = EmitWithTotals();
+
+        SeedLine(assembly, "PaymentLine", id: 910, bookId: 900, ("Received", 4m));
+        SeedLine(assembly, "PaymentLine", id: 911, bookId: 900, ("Received", 6m));
+
+        var set = LineSetOf(assembly, "PaymentLine", "BookId");
+        var editor = EditorOverBookWith(assembly, set);
+        var announced = Announcements(editor);
+
+        set.GetType().GetMethod("Remove")!.Invoke(set, [LinesOf(set)[0]]);
+
+        Assert.Contains("Totals", announced);
+
+        announced.Clear();
+        set.GetType().GetMethod("Clear")!.Invoke(set, null);
+
+        Assert.Contains("Totals", announced);
+    }
+
+    /// <summary>
+    /// A value typed into a line announces the totals, and the band shows the NEW sum.
+    /// </summary>
+    /// <remarks>
+    /// The case the collection events cannot cover: a grid writes a typed value straight into the
+    /// line object, which is a plain generated model with no change notification, so the set never
+    /// sees it. The middle assertion is what proves the announcement comes from
+    /// <c>LineEdited</c> — without it, a fix that announced the totals on any activity at all
+    /// would pass.
+    /// </remarks>
+    [TestMethod]
+    public void A_value_typed_into_a_line_announces_the_totals_and_the_new_sum()
+    {
+        var assembly = EmitWithTotals();
+
+        SeedLine(assembly, "PaymentLine", id: 920, bookId: 900, ("Received", 4m));
+
+        var set = LineSetOf(assembly, "PaymentLine", "BookId");
+        var editor = EditorOverBookWith(assembly, set);
+        var announced = Announcements(editor);
+
+        var line = LinesOf(set)[0];
+        line.GetType().GetProperty("Received")!.SetValue(line, 11m);
+
+        Assert.IsEmpty(announced, "a plain model cannot announce its own change");
+
+        set.GetType().GetMethod("LineEdited")!.Invoke(set, null);
+
+        Assert.Contains("Totals", announced);
+        Assert.AreEqual(11m, ValueOf(Totals(editor).Single()), "the band recomputed rather than repainting");
+    }
+
+    /// <summary>Every property name the editor announces, in the order it announced them.</summary>
+    private static List<string> Announcements(object editor)
+    {
+        var announced = new List<string>();
+
+        ((System.ComponentModel.INotifyPropertyChanged)editor).PropertyChanged +=
+            (_, e) => announced.Add(e.PropertyName!);
+
+        return announced;
+    }
+
+    private static List<object> LinesOf(object set)
+        => ((IEnumerable)set.GetType().GetProperty("Items")!.GetValue(set)!).Cast<object>().ToList();
+
     /// <summary>Three line types: one with two money columns, and two others each with exactly one
     /// -- of different names, so IsGrand's per-set scoping can be proved without a second compiled
     /// fixture.</summary>

@@ -60,6 +60,7 @@ public static class RecordEditorTemplate
         return $$"""
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
 using System.Text.Json;
 using System.Windows.Input;
@@ -132,6 +133,22 @@ public sealed class RecordEditorViewModel<T> : ObservableObject, IRecordEditor w
         {
             foreach (var set in Lines)
                 set.Load(IdOf(Draft));
+        }
+
+        // Totals is computed, and a computed property announces nothing by itself: a band bound to
+        // it would paint once and then go stale the moment a line was added, removed, edited or
+        // cleared -- the most visible number on a document, silently wrong. The lines are the thing
+        // that changes and this editor is the thing bound, so the set publishes the change and the
+        // editor translates it into the one property that derives from it.
+        //
+        // Subscribed AFTER the load above, which would otherwise announce the totals while this
+        // constructor is still running. IsDirty is deliberately not announced with it: it also
+        // turns on the draft's own fields, which are a plain generated model with nothing to
+        // subscribe to, so it is a question the shell asks rather than a value a view binds.
+        foreach (var set in Lines)
+        {
+            if (set.Items is IBindingList list)
+                list.ListChanged += (_, _) => OnPropertyChanged(nameof(Totals));
         }
 
         SaveCommand = new RelayCommand(Save);

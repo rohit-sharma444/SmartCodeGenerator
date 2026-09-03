@@ -17,6 +17,19 @@ namespace AppScaffolding.Screens;
 /// </remarks>
 public static class FieldGroupsTemplate
 {
+    /// <summary>
+    /// The heading of the long-text tab, held here so the ONE string is reachable both to the
+    /// emitted <c>FieldGroups.AdditionalTitle</c> below and to a layout that has to write it into
+    /// markup rather than call it.
+    /// </summary>
+    /// <remarks>
+    /// The WPF business layout emits XAML, where the emitted constant is reachable only through an
+    /// <c>x:Static</c> reference and an extra xmlns; it reads this instead. The WinForms layout
+    /// builds that tab in code and reads the emitted constant. Two spellings of one heading is the
+    /// drift this exists to prevent.
+    /// </remarks>
+    public const string AdditionalTitle = "Additional Information";
+
     /// <summary>Source of <c>Screens/FieldGroups.cs</c>.</summary>
     public static string Source(string rootNamespace) => $$"""
 using System;
@@ -44,9 +57,9 @@ public static class FieldGroups
     public const string Other = "Other Information";
 
     /// <summary>The heading for the long-text tab <see cref="Additional"/> feeds. Not read inside
-    /// this file: it exists for the WPF and WinForms layouts (Tasks 8 and 10) that build that
-    /// tab, so both targets have one shared name for it rather than each hardcoding the string.</summary>
-    public const string AdditionalTitle = "Additional Information";
+    /// this file: it exists for the layouts that build that tab, so every target has one shared
+    /// name for it rather than each hardcoding the string.</summary>
+    public const string AdditionalTitle = "{{AdditionalTitle}}";
 
     /// <summary>The point at which Basic Information stops fitting the panel height and splits.
     /// A layout constant, not a claim about meaning.</summary>

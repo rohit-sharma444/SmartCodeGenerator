@@ -340,6 +340,17 @@ public class OrderLine
         StringAssert.Contains(source, "public void Clear()");
     }
 
+    /// <summary>The same pairing for <c>LineEdited</c>: a view can only call it through the
+    /// interface, which is all any of the three front ends holds.</summary>
+    [TestMethod]
+    public void The_line_set_declares_line_edited_on_both_the_interface_and_the_class()
+    {
+        var source = LineSetTemplate.Source("Acme");
+
+        StringAssert.Contains(source, "void LineEdited();");
+        StringAssert.Contains(source, "public void LineEdited()");
+    }
+
     /// <summary>Clearing empties the set and leaves it dirty, so Cancel can still put the lines
     /// back — nothing has reached the store. It also drops whatever was selected: a bound grid's
     /// Clear All button must not leave Selected pointing at a line that is no longer in the
@@ -359,6 +370,35 @@ public class OrderLine
         Assert.IsEmpty(Items(set));
         Assert.IsTrue(IsDirty(set));
         Assert.IsNull(set.GetType().GetProperty("Selected")!.GetValue(set), "a cleared set must not still point Selected at a gone line");
+    }
+
+    /// <summary>
+    /// A value typed straight into a line is announced on the same channel an add is.
+    /// </summary>
+    /// <remarks>
+    /// A generated model is a plain class with no change notification, so a grid writing a typed
+    /// value into a line reaches the object without the set — or anything derived from it, such as
+    /// the editor's totals band — hearing about it. <c>LineEdited</c> is how a view says so, and
+    /// it raises the set's own list event rather than inventing a second channel: every consumer
+    /// already listens to that one, because it is what makes both desktop grids see an add.
+    /// </remarks>
+    [TestMethod]
+    public void LineEdited_announces_a_change_the_set_cannot_see_for_itself()
+    {
+        var (set, _) = SetOverTwoParents();
+
+        Load(set, 1);
+
+        var raised = 0;
+        ((System.ComponentModel.IBindingList)set.GetType().GetProperty("Items")!.GetValue(set)!)
+            .ListChanged += (_, _) => raised++;
+
+        SetItem(Items(set)[0], "Typed into");
+        Assert.AreEqual(0, raised, "a plain model cannot announce its own change");
+
+        set.GetType().GetMethod("LineEdited")!.Invoke(set, null);
+
+        Assert.IsGreaterThan(0, raised);
     }
 
     /// <summary>Nothing is written until the editor saves — the same bargain Add and Remove

@@ -1,4 +1,5 @@
-﻿using AppScaffolding;
+﻿using System.Xml.Linq;
+using AppScaffolding;
 using AppScaffolding.Layouts;
 using AppScaffolding.Layouts.Wpf;
 using AppScaffolding.Screens;
@@ -21,6 +22,37 @@ public class WpfBusinessLayoutTests
     private static string Xaml(AppCustomization? customization = null)
         => new WpfBusinessLayout().ViewFiles(Context(customization))
             .Single(f => f.Name == "MainWindow.xaml").Source;
+
+    /// <summary>
+    /// The slice of the window between two markers, so a template's assertions cannot be satisfied
+    /// by markup that belongs to a different template.
+    /// </summary>
+    /// <remarks>
+    /// Moving markup from one template to another leaves a whole-file <c>Contains</c> passing with
+    /// the element in the wrong place, and an absence assertion passing vacuously.
+    /// </remarks>
+    private static string Between(string source, string start, string end)
+    {
+        var from = source.IndexOf(start, StringComparison.Ordinal);
+
+        Assert.IsGreaterThan(-1, from, $"'{start}' not found");
+
+        var to = source.IndexOf(end, from, StringComparison.Ordinal);
+
+        Assert.IsGreaterThan(from, to, $"'{end}' not found after '{start}'");
+
+        return source.Substring(from, to - from);
+    }
+
+    /// <summary>The master screen's template. It holds no nested DataTemplate, so the first
+    /// closing tag after the key is its own.</summary>
+    private static string MasterTemplate()
+        => Between(Xaml(), "x:Key=\"MasterTemplate\"", "</DataTemplate>");
+
+    /// <summary>The editor's template, which DOES hold nested DataTemplates — so it is sliced to
+    /// the selector that follows it rather than to a closing tag.</summary>
+    private static string EditorTemplate()
+        => Between(Xaml(), "x:Key=\"EditorTemplate\"", "<views:ScreenTemplateSelector");
 
     [TestMethod]
     public void The_registry_resolves_the_business_key()
@@ -111,44 +143,316 @@ public class WpfBusinessLayoutTests
         StringAssert.Contains(xaml, "ItemsSource=\"{Binding Totals}\"");
     }
 
-    /// <summary>The list finds; the editor changes. A typeable grid would put the application back
-    /// to editing two different ways.</summary>
+    /// <summary>The master mockup's shape: one screen holding the form and the list.</summary>
     [TestMethod]
-    public void The_lists_are_read_only()
+    public void The_master_template_holds_a_header_a_form_and_a_list()
     {
-        var xaml = Xaml();
+        var master = MasterTemplate();
 
-        Assert.AreEqual(2, xaml.Split("IsReadOnly=\"True\"").Length - 1);
+        StringAssert.Contains(master, "<views:EntryHeader");
+        StringAssert.Contains(master, "<views:EntryForm");
+        StringAssert.Contains(master, "<TabControl");
+        StringAssert.Contains(master, "<DataGrid");
     }
 
     [TestMethod]
-    public void The_editor_template_offers_save_and_cancel()
+    public void The_master_template_binds_the_inline_editor()
+        => StringAssert.Contains(MasterTemplate(), "Record=\"{Binding Editor.Draft}\"");
+
+    [TestMethod]
+    public void The_action_bar_offers_only_commands_that_exist()
+    {
+        var master = MasterTemplate();
+
+        foreach (var command in new[]
+                 { "NewCommand", "EditCommand", "DeleteCommand", "SaveCommand", "ClearCommand", "CancelCommand" })
+        {
+            StringAssert.Contains(master, command);
+        }
+    }
+
+    /// <summary>Spec departure 1: a button that does nothing is output that misinforms.</summary>
+    [TestMethod]
+    public void No_button_without_behaviour_is_emitted()
     {
         var xaml = Xaml();
 
-        StringAssert.Contains(xaml, "Command=\"{Binding SaveCommand}\"");
-        StringAssert.Contains(xaml, "Command=\"{Binding CancelCommand}\"");
+        foreach (var absent in new[] { "Print", "Export", "Save &amp; Print", "Import Items" })
+            Assert.DoesNotContain($"Content=\"{absent}\"", xaml);
     }
 
     /// <summary>
-    /// The third thing a transaction adds: its lines, inside the editor.
+    /// The list finds; the entry form changes. A typeable list would put the application back to
+    /// editing two different ways.
     /// </summary>
     /// <remarks>
-    /// An ItemsControl over an empty collection renders nothing, which IS the no-lines fallback —
-    /// a master's editor is a form and a button row, with no empty grid under it.
+    /// Scoped to each template rather than counted across the file: the count assertion this
+    /// replaces stayed green when a grid moved from one template to another, and said nothing
+    /// about WHICH grid was read-only. The lines grid IS the editor for a line, which has no
+    /// screen of its own, so it is the one grid that must NOT be read-only.
     /// </remarks>
     [TestMethod]
-    public void The_editor_shows_the_lines_of_a_transaction()
+    public void The_master_list_is_read_only_and_the_lines_grid_is_not()
+    {
+        StringAssert.Contains(MasterTemplate(), "IsReadOnly=\"True\"");
+        Assert.DoesNotContain("IsReadOnly", EditorTemplate());
+    }
+
+    [TestMethod]
+    public void The_editor_template_holds_the_lines_in_tabs_with_their_totals()
+    {
+        var editor = EditorTemplate();
+
+        StringAssert.Contains(editor, "<views:EntryHeader");
+        StringAssert.Contains(editor, "<views:EntryForm");
+        StringAssert.Contains(editor, "ItemsSource=\"{Binding Lines}\"");
+        StringAssert.Contains(editor, "ItemsSource=\"{Binding Totals}\"");
+        StringAssert.Contains(editor, "OnClearLines");
+        StringAssert.Contains(editor, "<views:EntryNotes");
+
+        // Save and Cancel, asserted inside the slice: the master's action bar carries both names
+        // too, so a whole-file assertion passed with the editor's bar deleted outright.
+        StringAssert.Contains(editor, "Command=\"{Binding SaveCommand}\"");
+        StringAssert.Contains(editor, "Command=\"{Binding CancelCommand}\"");
+        StringAssert.Contains(editor, "Click=\"OnAddLine\"");
+        StringAssert.Contains(editor, "Click=\"OnRemoveLine\"");
+    }
+
+    /// <summary>The long-text fields are reachable on both screens, and on neither of them are
+    /// they also in a panel — FieldGroups.For excludes them, and this is the view half of that.</summary>
+    [TestMethod]
+    public void Both_screens_show_the_additional_fields_behind_HasAdditional()
+    {
+        StringAssert.Contains(MasterTemplate(), "Header=\"Additional Information\"");
+        StringAssert.Contains(EditorTemplate(), "Text=\"Additional Information\"");
+        StringAssert.Contains(Xaml(), "<BooleanToVisibilityConverter x:Key=\"BoolToVisibility\" />");
+    }
+
+    /// <summary>
+    /// The heading on both bands is the one string the generated app already holds for that tab.
+    /// </summary>
+    /// <remarks>
+    /// Two constants for one string is how this branch's other headings drifted: the layout must
+    /// read <c>FieldGroupsTemplate.AdditionalTitle</c>, which is also what the emitted
+    /// <c>FieldGroups.AdditionalTitle</c> the WinForms layout reads is built from, rather than
+    /// spelling it a third time here.
+    /// </remarks>
+    [TestMethod]
+    public void The_additional_heading_comes_from_the_one_constant_that_names_it()
     {
         var xaml = Xaml();
 
-        StringAssert.Contains(xaml, "ItemsSource=\"{Binding Lines}\"");
-        StringAssert.Contains(xaml, "Click=\"OnAddLine\"");
-        StringAssert.Contains(xaml, "Click=\"OnRemoveLine\"");
+        StringAssert.Contains(xaml, $"Header=\"{FieldGroupsTemplate.AdditionalTitle}\"");
+        StringAssert.Contains(xaml, $"Text=\"{FieldGroupsTemplate.AdditionalTitle}\"");
+        StringAssert.Contains(
+            FieldGroupsTemplate.Source("Payroll"),
+            $"public const string AdditionalTitle = \"{FieldGroupsTemplate.AdditionalTitle}\";");
+    }
 
-        // The lines grid IS the editor for a line, so unlike the two lists it is typed into.
-        StringAssert.Contains(xaml, "SelectedItem=\"{Binding Selected}\"");
-        Assert.AreEqual(2, xaml.Split("IsReadOnly=\"True\"").Length - 1);
+    // ---- what the layout registers (Task 9, R6) ----
+
+    /// <summary>
+    /// All THREE entry controls are registered, because both rewritten templates name all three.
+    /// </summary>
+    /// <remarks>
+    /// A layout owns the files its views name. Registering two of the three emits an application
+    /// whose MainWindow.xaml references a <c>views:EntryNotes</c> that no file declares, which is
+    /// a compile error in the generated app rather than a failure here — the exact way a green
+    /// test suite has shipped a broken app on this branch before.
+    /// </remarks>
+    [TestMethod]
+    public void The_layout_emits_the_three_entry_controls()
+    {
+        var names = new WpfBusinessLayout().ViewFiles(Context()).Select(f => f.Name).ToList();
+
+        foreach (var file in new[]
+                 {
+                     WpfEntryControls.HeaderFileName, WpfEntryControls.FormFileName,
+                     WpfEntryControls.NotesFileName,
+                 })
+        {
+            Assert.Contains(file, names);
+            StringAssert.Contains(Xaml(), $"<views:{file.Replace(".cs", string.Empty)}");
+        }
+    }
+
+    /// <summary>
+    /// The flat property editor is gone from THIS layout.
+    /// </summary>
+    /// <remarks>
+    /// Not deleted as a file: the four pre-business layouts still emit it, and their neutrality
+    /// tests pin it byte for byte. Emitting it here as well would ship a second editor for the
+    /// same record that nothing draws.
+    /// </remarks>
+    [TestMethod]
+    public void The_business_layout_no_longer_emits_the_flat_property_editor()
+    {
+        var names = new WpfBusinessLayout().ViewFiles(Context()).Select(f => f.Name).ToList();
+
+        Assert.DoesNotContain(PropertyEditorTemplate.FileName, names);
+        Assert.DoesNotContain("<views:PropertyEditor", Xaml());
+    }
+
+    // ---- the bindings resolve against the real view models (Task 9, R36) ----
+
+    /// <summary>
+    /// The window must be well-formed XML, or the generated app does not build at all.
+    /// </summary>
+    /// <remarks>
+    /// XAML is read by an XML reader, and XML forbids the string <c>--</c> inside a comment. Two
+    /// hyphens in an explanatory comment — the natural way this repository writes an aside — is
+    /// therefore a build error in every generated app, which no substring assertion over the
+    /// emitted text can see.
+    /// </remarks>
+    [TestMethod]
+    public void The_window_is_well_formed_xml()
+    {
+        foreach (var xaml in new[]
+                 { Xaml(), Xaml(AppCustomization.Default with { Theme = AppTheme.Dark }) })
+        {
+            Assert.IsNotNull(XDocument.Parse(xaml).Root);
+        }
+    }
+
+    /// <summary>
+    /// Every binding path the two entry templates declare, resolved against the view models the
+    /// application really emits.
+    /// </summary>
+    /// <remarks>
+    /// The substring assertions above prove a string is in the file and nothing more. A WPF
+    /// binding to a property that does not exist throws nothing, logs nothing and renders blank,
+    /// so <c>Record="{Binding Editor.Draft}"</c> is satisfied whether or not anything answers it —
+    /// and Task 6 reshaped exactly this surface.
+    /// <para>
+    /// The paths are EXTRACTED from the markup rather than listed here, so a binding added later
+    /// is covered without this test being touched, and each is walked segment by segment against
+    /// the compiled <c>MasterScreenViewModel&lt;Book&gt;</c> / <c>RecordEditorViewModel&lt;Book&gt;</c>
+    /// — not against this fixture's own stubs, which would prove only that the view agrees with
+    /// the stub.
+    /// </para>
+    /// <para>
+    /// A nested DataTemplate is resolved against the ITEM type of the nearest ItemsSource above it,
+    /// which is how the lines tab strip's <c>Title</c> is known to be ILineSet's rather than the
+    /// editor's.
+    /// </para>
+    /// </remarks>
+    [TestMethod]
+    public void Every_binding_in_the_two_entry_templates_resolves_on_the_emitted_view_models()
+    {
+        var assembly = MasterScreenTests.Emit();
+        var book = assembly.GetType("Book")!;
+
+        var screen = assembly.GetType("MasterScreenViewModel`1")!.MakeGenericType(book);
+        var editor = assembly.GetType("RecordEditorViewModel`1")!.MakeGenericType(book);
+
+        var window = XDocument.Parse(Xaml()).Root!;
+        var unresolved = new List<string>();
+
+        var checked_ = CheckBindings(TemplateKeyed(window, "MasterTemplate"), screen, unresolved)
+                       + CheckBindings(TemplateKeyed(window, "EditorTemplate"), editor, unresolved);
+
+        Assert.IsEmpty(unresolved, $"bindings nothing answers: {string.Join("; ", unresolved)}");
+
+        // Or an extraction that quietly found nothing would report every binding as correct.
+        Assert.IsGreaterThan(24, checked_, "far fewer bindings than these two templates declare");
+    }
+
+    /// <summary>The keyed template of one screen, as XML.</summary>
+    private static XElement TemplateKeyed(XElement window, string key)
+    {
+        var x = XNamespace.Get("http://schemas.microsoft.com/winfx/2006/xaml");
+
+        return window.Descendants()
+            .Single(e => e.Name.LocalName == "DataTemplate" && (string?)e.Attribute(x + "Key") == key);
+    }
+
+    /// <summary>Resolves every binding in one DataContext scope, and returns how many it checked.</summary>
+    private static int CheckBindings(XElement scope, Type context, ICollection<string> unresolved)
+    {
+        var count = 0;
+
+        foreach (var attribute in scope.Attributes())
+        {
+            if (BindingPathOf(attribute.Value) is not { } path)
+                continue;
+
+            count++;
+
+            if (Resolve(context, path) is null)
+                unresolved.Add($"{context.Name}.{path} ({scope.Name.LocalName}.{attribute.Name.LocalName})");
+        }
+
+        foreach (var child in scope.Elements())
+        {
+            count += child.Name.LocalName == "DataTemplate"
+                ? CheckBindings(child, ItemTypeOf(child, context), unresolved)
+                : CheckBindings(child, context, unresolved);
+        }
+
+        return count;
+    }
+
+    /// <summary>The path a binding declares, or null for markup that is not a binding.</summary>
+    private static string? BindingPathOf(string value)
+    {
+        const string opener = "{Binding ";
+
+        if (!value.StartsWith(opener, StringComparison.Ordinal))
+            return null;
+
+        var rest = value[opener.Length..];
+        var end = rest.IndexOfAny([',', '}']);
+        var path = (end < 0 ? rest : rest[..end]).Trim();
+
+        // A form this extractor does not understand must fail rather than be skipped, or the
+        // binding it hides is silently reported as correct.
+        Assert.IsGreaterThan(0, path.Length, $"a binding with no path: {value}");
+        Assert.IsLessThan(0, path.IndexOf('='), $"an unhandled binding form: {value}");
+
+        return path;
+    }
+
+    /// <summary>The item type a nested DataTemplate is applied to: what the nearest ItemsSource
+    /// above it holds.</summary>
+    private static Type ItemTypeOf(XElement template, Type context)
+    {
+        var source = template.Ancestors()
+            .Select(a => a.Attribute("ItemsSource")?.Value)
+            .FirstOrDefault(v => v is not null);
+
+        Assert.IsNotNull(source, "a nested DataTemplate with no ItemsSource above it");
+
+        var path = BindingPathOf(source!);
+
+        Assert.IsNotNull(path, $"an ItemsSource that is not a binding: {source}");
+
+        var collection = Resolve(context, path!);
+
+        Assert.IsNotNull(collection, $"ItemsSource '{path}' does not resolve on {context.Name}");
+        Assert.IsTrue(
+            collection!.IsGenericType,
+            $"{collection.Name} does not say what it holds, so '{path}' cannot be checked");
+
+        return collection.GetGenericArguments()[0];
+    }
+
+    /// <summary>The type one binding path ends at, walked segment by segment, or null where a
+    /// segment names nothing.</summary>
+    private static Type? Resolve(Type context, string path)
+    {
+        var current = context;
+
+        foreach (var segment in path.Split('.'))
+        {
+            var property = current.GetProperty(segment);
+
+            if (property is null)
+                return null;
+
+            current = property.PropertyType;
+        }
+
+        return current;
     }
 
     [TestMethod]
@@ -159,10 +463,31 @@ public class WpfBusinessLayoutTests
 
         StringAssert.Contains(code, "private void OnAddLine(");
         StringAssert.Contains(code, "private void OnRemoveLine(");
+        StringAssert.Contains(code, "private void OnClearLines(");
+        StringAssert.Contains(code, "lines.Clear()");
 
         // The DataContext of the button, the same way the rail's buttons carry their screen.
         StringAssert.Contains(code, "DataContext: ILineSet lines");
         StringAssert.Contains(code, "lines.Remove(lines.Selected)");
+    }
+
+    /// <summary>
+    /// The line handlers call only members the emitted <c>ILineSet</c> really declares.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="RoleStub"/> is this fixture's own hand-written copy of that interface, so
+    /// <see cref="The_selector_and_the_code_behind_compile"/> would happily compile a handler
+    /// against a member only the stub has — the "a stub thinner (or fatter) than the type it
+    /// stands in for" failure this file already records once. The real declaration is asserted
+    /// here instead.
+    /// </remarks>
+    [TestMethod]
+    public void The_line_handlers_call_only_members_the_emitted_line_set_declares()
+    {
+        var lineSet = LineSetTemplate.Source("Payroll");
+
+        foreach (var member in new[] { "void Add();", "void Remove(object? line);", "void Clear();", "void LineEdited();" })
+            StringAssert.Contains(lineSet, member);
     }
 
     /// <summary>Theming stays orthogonal, as it is for every other layout.</summary>
@@ -211,6 +536,13 @@ public class WpfBusinessLayoutTests
         StringAssert.Contains(code, "Close();");
     }
 
+    /// <summary>
+    /// Every C# file this layout emits, compiled as one assembly.
+    /// </summary>
+    /// <remarks>
+    /// The entry controls are in that set now, so FieldGroups and RequiredFields travel with it:
+    /// they are what those controls reflect over, and a generated app really does have both.
+    /// </remarks>
     [TestMethod]
     public void The_selector_and_the_code_behind_compile()
     {
@@ -222,6 +554,8 @@ public class WpfBusinessLayoutTests
                         .Select(f => (f.Name, f.Source)),
                 ("Views/MainWindow.g.cs", XamlPartialStub),
                 ("Screens/EntityRole.cs", RoleStub),
+                ("Screens/FieldGroups.cs", FieldGroupsTemplate.Source("Payroll")),
+                ("Screens/RequiredFields.cs", RequiredFieldsTemplate.Source("Payroll", null)),
                 ("ViewModels/Shell.cs", ShellStub),
                 ("Auth/Session.cs", SessionStub),
             ]);
@@ -257,6 +591,8 @@ public class WpfBusinessLayoutTests
             void Load(int parentId);
             void Add();
             void Remove(object? line);
+            void Clear();
+            void LineEdited();
             bool Save(int parentId);
         }
         """;
@@ -438,8 +774,10 @@ public class WpfBusinessLayoutTests
     /// Needles unique to the foreign-key branch: <c>new ComboBox</c> alone also matches the enum
     /// branch, so replacing this branch's body with <c>return new TextBox();</c> (keeping the
     /// <c>if</c>) passed a version of this test that asserted only that pair. "FieldGroups.NavigationFor("
-    /// without the parameter name survives a parameter rename; SelectedValuePath is set nowhere
-    /// else in the file.
+    /// without the parameter name survives a parameter rename. The bare word
+    /// <c>SelectedValuePath</c> appears in that branch's own explanatory comment as well, so the
+    /// needle is the ASSIGNMENT: swapping the ComboBox for a TextBox and leaving the comment
+    /// behind passed the version of this test that asserted only the word.
     /// </remarks>
     [TestMethod]
     public void The_form_renders_a_foreign_key_as_a_lookup()
@@ -447,7 +785,7 @@ public class WpfBusinessLayoutTests
         var source = WpfEntryControls.Form(Context());
 
         StringAssert.Contains(source, "FieldGroups.NavigationFor(");
-        StringAssert.Contains(source, "SelectedValuePath");
+        StringAssert.Contains(source, "SelectedValuePath = \"Id\"");
     }
 
     /// <summary>
@@ -629,9 +967,17 @@ public class WpfBusinessLayoutTests
     public void The_header_key_strip_gets_type_aware_editors()
         => StringAssert.Contains(WpfEntryControls.Header(Context()), "EntryForm.Editor(property, record)");
 
-    /// <summary>Minor 11. An EntryHeader whose Record is never set must still draw its band: the
-    /// invariant chrome (height, background, columns) belongs in the constructor, not only inside
-    /// the change callback.</summary>
+    /// <summary>
+    /// Minor 11. An EntryHeader whose Record is never set must still draw its band: the invariant
+    /// chrome (height, background, columns) belongs in the constructor, not only inside the change
+    /// callback.
+    /// </summary>
+    /// <remarks>
+    /// The ACCENT is pinned as well as the height, because the accent is the symptom that rule
+    /// exists to prevent: a band drawn with no background at all. Moving the height alone back
+    /// into <c>Build</c> is the harmless half of the mutation, and pinning only the height left
+    /// the harmful half green.
+    /// </remarks>
     [TestMethod]
     public void The_headers_invariant_chrome_is_set_in_the_constructor()
     {
@@ -639,12 +985,16 @@ public class WpfBusinessLayoutTests
 
         var ctor = source.IndexOf("public EntryHeader()", StringComparison.Ordinal);
         var height = source.IndexOf("Height = 74;", StringComparison.Ordinal);
+        var accent = source.IndexOf("SetAccent(this, BackgroundProperty);", StringComparison.Ordinal);
         var build = source.IndexOf("private void Build()", StringComparison.Ordinal);
 
         Assert.IsGreaterThan(-1, ctor);
         Assert.IsGreaterThan(-1, height);
+        Assert.IsGreaterThan(-1, accent);
         Assert.IsGreaterThan(-1, build);
         Assert.IsLessThan(build, height, "the invariant chrome moved into Build");
+        Assert.IsLessThan(build, accent, "the band's own background moved into Build");
         Assert.IsLessThan(height, ctor, "the chrome is set before the constructor that should hold it");
+        Assert.IsLessThan(accent, ctor, "the accent is set before the constructor that should hold it");
     }
 }
