@@ -69,6 +69,21 @@ using {{rootNamespace}}.Screens;
 namespace {{rootNamespace}}.ViewModels;
 
 /// <summary>
+/// A screen that can be left with unsaved changes.
+/// </summary>
+/// <remarks>
+/// Separate from IRecordEditor because a master screen holds its editor INLINE: it is dirty in
+/// exactly the same way, and it is deliberately not an IRecordEditor — ScreenTemplateSelector
+/// tests that interface before IEntityViewModel, so a master implementing it would draw as the
+/// editor template on every screen in the application.
+/// </remarks>
+public interface IDirtyScreen
+{
+    /// <summary>Whether anything has been typed since the screen was opened or last saved.</summary>
+    bool IsDirty { get; }
+}
+
+/// <summary>
 /// What the shell can ask an editor without knowing which entity it edits.
 /// </summary>
 /// <remarks>
@@ -76,11 +91,8 @@ namespace {{rootNamespace}}.ViewModels;
 /// <c>RecordEditorViewModel&lt;T&gt;</c> — and <c>RecordEditorViewModel&lt;object&gt;</c> compiles
 /// while being always false. This interface is how the dirty check is reachable at all.
 /// </remarks>
-public interface IRecordEditor
+public interface IRecordEditor : IDirtyScreen
 {
-    /// <summary>Whether anything has been typed since the editor opened.</summary>
-    bool IsDirty { get; }
-
     /// <summary>The heading the shell shows while this editor is on screen.</summary>
     string Title { get; }
 

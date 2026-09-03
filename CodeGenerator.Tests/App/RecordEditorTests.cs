@@ -278,7 +278,7 @@ internal sealed class NullValidator<T> : IValidator<T>
     {
         var (editor, _) = OpenExisting(Emit());
 
-        var contract = editor.GetType().GetInterface("IRecordEditor");
+        var contract = editor.GetType().GetInterface("IDirtyScreen");
 
         Assert.IsNotNull(contract, "the shell cannot ask a closed generic whether it is dirty");
         Assert.IsFalse((bool)contract!.GetProperty("IsDirty")!.GetValue(editor)!);
