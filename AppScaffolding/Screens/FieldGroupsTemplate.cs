@@ -42,6 +42,10 @@ public static class FieldGroups
     public const string Address = "Address Information";
     public const string Contact = "Contact Information";
     public const string Other = "Other Information";
+
+    /// <summary>The heading for the long-text tab <see cref="Additional"/> feeds. Not read inside
+    /// this file: it exists for the WPF and WinForms layouts (Tasks 8 and 10) that build that
+    /// tab, so both targets have one shared name for it rather than each hardcoding the string.</summary>
     public const string AdditionalTitle = "Additional Information";
 
     /// <summary>The point at which Basic Information stops fitting the panel height and splits.
@@ -49,12 +53,11 @@ public static class FieldGroups
     private const int PanelLimit = 12;
 
     // Tested in order, first match wins. Address BEFORE contact, so ContactAddress is an address
-    // and ContactPerson is not; pincode before pin, so PinCode is not matched by the shorter word
-    // inside it.
+    // and ContactPerson is not.
     private static readonly string[] AddressWords =
     [
         "address", "street", "city", "province", "district", "postal", "pincode", "pin", "zip",
-        "country", "region", "state",
+        "country", "region", "state", "location",
     ];
 
     private static readonly string[] ContactWords =

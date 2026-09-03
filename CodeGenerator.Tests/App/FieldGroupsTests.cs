@@ -11,8 +11,8 @@ namespace CodeGenerator.Tests.App;
 /// </summary>
 /// <remarks>
 /// The order of the buckets is the substance, not an implementation detail: ContactAddress is an
-/// address and ContactPerson is a contact, so `address` has to be tested before `contact`, and
-/// `pincode` before `pin`. A substring assertion over the emitted source could not tell those apart.
+/// address and ContactPerson is a contact, so `address` has to be tested before `contact`. A
+/// substring assertion over the emitted source could not tell those apart.
 /// </remarks>
 [TestClass]
 public class FieldGroupsTests
@@ -62,7 +62,14 @@ public class Customer
     private static Dictionary<string, string[]> Groups()
     {
         var assembly = Emit();
-        var model = assembly.GetType("Customer")!;
+        return GroupsOf(assembly, assembly.GetType("Customer")!);
+    }
+
+    /// <summary>Same as <see cref="Groups"/>, generalised to whichever assembly and model type a
+    /// test has compiled -- the foreign-key tests below need a second model, PurchaseOrder,
+    /// rather than Customer.</summary>
+    private static Dictionary<string, string[]> GroupsOf(Assembly assembly, Type model)
+    {
         var groups = (System.Collections.IEnumerable)assembly.GetType("FieldGroups")!
             .GetMethod("For")!.Invoke(null, [model])!;
 
@@ -100,6 +107,14 @@ public class Customer
         => CollectionAssert.AreEquivalent(
             new[] { "Code", "Name", "CreditLimit", "Reference", "DeliveryDay", "TermsAccepted" },
             Groups()["Basic Information"]);
+
+    /// <summary>Asserted directly, not just by absence elsewhere: without this, IsActive being
+    /// dropped from every bucket would go unnoticed.</summary>
+    [TestMethod]
+    public void An_other_word_lands_in_other_information()
+        => CollectionAssert.AreEquivalent(
+            new[] { "IsActive" },
+            Groups()["Other Information"]);
 
     /// <summary>The desktop form shows enums and Guids; the web list's IsScalar does not. Reusing
     /// the web predicate here would silently drop both.</summary>
@@ -154,6 +169,92 @@ public class Customer
             .GetMethod("For")!.Invoke(null, [assembly.GetType("Note")!])!;
 
         Assert.HasCount(1, groups.Cast<object>().ToList());
+    }
+
+    /// <summary>A second model, for the foreign-key tests: an int &lt;Nav&gt;Id with a real
+    /// sibling nav property (twice, one of which must bucket by address), and one that ends in
+    /// Id but has no sibling at all.</summary>
+    private const string PurchaseOrderStub = """
+public class Supplier
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+}
+
+public class ShipToLocation
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+}
+
+public class PurchaseOrder
+{
+    public int Id { get; set; }
+    public int SupplierId { get; set; }
+    public Supplier Supplier { get; set; } = new();
+    public int ShipToLocationId { get; set; }
+    public ShipToLocation ShipToLocation { get; set; } = new();
+
+    // Ends in Id but has no sibling nav property -- NavigationFor must not match it.
+    public int LegacyId { get; set; }
+}
+""";
+
+    private static Assembly EmitPurchaseOrder()
+    {
+        var source = EmittedSource.Flatten(
+            PurchaseOrderStub,
+            FieldGroupsTemplate.Source("Acme").Replace("namespace Acme.Screens;", string.Empty));
+
+        EmittedSource.AssertCompiles(source);
+
+        return Assembly.Load(Compiler.Compile(source).AssemblyBytes!);
+    }
+
+    /// <summary>A foreign key is kept, not dropped, and labelled by the entity it points at --
+    /// not the raw *Id name -- because that is also what the picker column's header reads
+    /// (Tasks 8 and 10).</summary>
+    [TestMethod]
+    public void A_foreign_key_is_kept_and_labelled_by_its_navigation_property()
+    {
+        var assembly = EmitPurchaseOrder();
+        var model = assembly.GetType("PurchaseOrder")!;
+        var supplierId = model.GetProperty("SupplierId")!;
+
+        var label = (string)assembly.GetType("FieldGroups")!
+            .GetMethod("LabelOf")!.Invoke(null, [supplierId])!;
+
+        Assert.AreEqual("Supplier", label);
+        CollectionAssert.Contains(
+            GroupsOf(assembly, model).Values.SelectMany(f => f).ToList(), "SupplierId");
+    }
+
+    /// <summary>The bucket decision uses the nav name, not the raw *Id name: ShipToLocationId
+    /// only reaches Address Information because its label is ShipToLocation.</summary>
+    [TestMethod]
+    public void A_foreign_key_buckets_on_its_navigation_name()
+    {
+        var assembly = EmitPurchaseOrder();
+        var model = assembly.GetType("PurchaseOrder")!;
+
+        CollectionAssert.Contains(
+            GroupsOf(assembly, model)["Address Information"], "ShipToLocationId");
+    }
+
+    /// <summary>The negative case: an *Id property with no sibling navigation property must not
+    /// be mistaken for a foreign key, or NavigationFor is matching too eagerly.</summary>
+    [TestMethod]
+    public void An_id_with_no_sibling_navigation_keeps_its_own_name_and_stays_in_basic()
+    {
+        var assembly = EmitPurchaseOrder();
+        var model = assembly.GetType("PurchaseOrder")!;
+        var legacyId = model.GetProperty("LegacyId")!;
+
+        var label = (string)assembly.GetType("FieldGroups")!
+            .GetMethod("LabelOf")!.Invoke(null, [legacyId])!;
+
+        Assert.AreEqual("LegacyId", label);
+        CollectionAssert.Contains(GroupsOf(assembly, model)["Basic Information"], "LegacyId");
     }
 
     [TestMethod]
