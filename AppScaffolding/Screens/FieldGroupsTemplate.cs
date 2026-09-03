@@ -168,6 +168,37 @@ public static class FieldGroups
         => Displayable(type).Where(IsLongText).ToList();
 
     /// <summary>
+    /// The panels packed into the three columns the mockups use.
+    /// </summary>
+    /// <remarks>
+    /// Always three lists, so a view can lay out a fixed grid; any of them may be empty, and the
+    /// view collapses an empty one so a small model is not two-thirds whitespace. Each group goes
+    /// to whichever column holds the fewest fields, ties going left -- which reproduces the master
+    /// mockup for the four-group case: Basic alone, Address alone, Contact and Other stacked.
+    /// </remarks>
+    public static IReadOnlyList<IReadOnlyList<FieldGroup>> Columns(Type type)
+    {
+        var columns = new List<FieldGroup>[] { new(), new(), new() };
+        var weights = new int[3];
+
+        foreach (var group in For(type))
+        {
+            var target = 0;
+
+            for (var i = 1; i < weights.Length; i++)
+            {
+                if (weights[i] < weights[target])
+                    target = i;
+            }
+
+            columns[target].Add(group);
+            weights[target] += group.Fields.Count;
+        }
+
+        return columns;
+    }
+
+    /// <summary>
     /// The label a field is shown under.
     /// </summary>
     /// <remarks>

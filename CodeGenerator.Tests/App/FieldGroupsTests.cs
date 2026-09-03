@@ -386,4 +386,84 @@ public class Ticket
         Assert.IsNull(key.Date);
         Assert.IsNull(key.Status);
     }
+
+    private static List<List<string>> Columns(string modelStub, string typeName)
+    {
+        var source = EmittedSource.Flatten(
+            modelStub,
+            FieldGroupsTemplate.Source("Acme").Replace("namespace Acme.Screens;", string.Empty));
+
+        EmittedSource.AssertCompiles(source);
+
+        var assembly = Assembly.Load(Compiler.Compile(source).AssemblyBytes!);
+        var columns = (System.Collections.IEnumerable)assembly.GetType("FieldGroups")!
+            .GetMethod("Columns")!.Invoke(null, [assembly.GetType(typeName)!])!;
+
+        return columns.Cast<System.Collections.IEnumerable>()
+            .Select(c => c.Cast<object>()
+                .Select(g => (string)g.GetType().GetProperty("Title")!.GetValue(g)!)
+                .ToList())
+            .ToList();
+    }
+
+    [TestMethod]
+    public void There_are_always_three_columns()
+        => Assert.HasCount(
+            3,
+            Columns("public class Note { public int Id { get; set; } public string Text { get; set; } = string.Empty; }", "Note"));
+
+    /// <summary>The master mockup's shape: Basic alone, Address alone, Contact and Other stacked
+    /// in the third column.</summary>
+    [TestMethod]
+    public void Four_groups_stack_the_smallest_two_together()
+    {
+        var columns = Columns(ModelStub, "Customer");
+        var stacked = columns.Where(c => c.Count > 1).ToList();
+
+        Assert.HasCount(3, columns);
+        Assert.HasCount(1, stacked);
+        Assert.HasCount(4, columns.SelectMany(c => c).ToList());
+    }
+
+    [TestMethod]
+    public void One_group_leaves_two_columns_empty()
+    {
+        var columns = Columns(
+            "public class Note { public int Id { get; set; } public string Text { get; set; } = string.Empty; }",
+            "Note");
+
+        Assert.HasCount(1, columns.Where(c => c.Count > 0).ToList());
+        Assert.HasCount(2, columns.Where(c => c.Count == 0).ToList());
+    }
+
+    /// <summary>Past the panel limit Basic splits, and the overflow is titled rather than
+    /// silently appended to a panel that no longer fits. The sizes are pinned, not just the
+    /// titles: a title-only assertion would pass just the same for a PanelLimit of 12, 13 or 14,
+    /// and this is the one test in the plan that covers the split rule at all.</summary>
+    [TestMethod]
+    public void A_long_basic_group_splits_into_more_information()
+    {
+        var fields = string.Join(
+            "\n", Enumerable.Range(1, 15).Select(i => $"    public string Field{i} {{ get; set; }} = string.Empty;"));
+        var modelStub = $"public class Wide\n{{\n    public int Id {{ get; set; }}\n{fields}\n}}";
+
+        var titles = Columns(modelStub, "Wide")
+            .SelectMany(c => c)
+            .ToList();
+
+        CollectionAssert.Contains(titles, "Basic Information");
+        CollectionAssert.Contains(titles, "More Information");
+
+        var source = EmittedSource.Flatten(
+            modelStub,
+            FieldGroupsTemplate.Source("Acme").Replace("namespace Acme.Screens;", string.Empty));
+
+        EmittedSource.AssertCompiles(source);
+
+        var assembly = Assembly.Load(Compiler.Compile(source).AssemblyBytes!);
+        var groups = GroupsOf(assembly, assembly.GetType("Wide")!);
+
+        Assert.HasCount(12, groups["Basic Information"]);
+        Assert.HasCount(3, groups["More Information"]);
+    }
 }
