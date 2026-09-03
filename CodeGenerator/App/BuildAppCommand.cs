@@ -251,7 +251,8 @@ internal sealed class BuildAppCommand
         + "transactions <A,B>  masters <A,B>  "
         + "novalidation  logging  noseed  nologin";
 
-    /// <summary>The unchanged path: NLE seeds, Wikipedia topic, enrichment, review loop.</summary>
+    /// <summary>The description path: resolves a discovery source (Ollama, or Wikipedia — directly
+    /// or as its fallback), then the usual NLE seeds, topic enrichment and review loop.</summary>
     private static void HandleFromDescription(
         string description, string workspaceRoot, ITargetScaffolder? target,
         AppCustomization customization, PhraseResolver? reviewAi = null)
@@ -265,32 +266,43 @@ internal sealed class BuildAppCommand
         }
 
         var cacheDir = Path.Combine(workspaceRoot, ".dd-cache");
-        var pipeline = DomainDiscoveryPipeline.CreateDefault(cacheDir);
+        var source = DomainModelSourceFactory.Create(
+            DiscoveryConfig.Load(),
+            () => new WikipediaDomainModelSource(DomainDiscoveryPipeline.CreateDefault(cacheDir)));
 
-        // The longest silence in the tool: a first fetch for an unseen topic can take many seconds,
-        // and an unmoving line reads as hung. Piped runs print the label once, exactly as before.
-        DiscoveryResult result;
+        // The longest silence in the tool, and a genuinely long one: a local model on a CPU
+        // measured two and a half minutes for an ordinary domain, and a first Wikipedia fetch is
+        // no quicker. The spinner says it is alive; the class count says it is getting somewhere,
+        // which is what stops a real wait from reading as a hang.
+        DiscoveryOutcome outcome;
 
         Console.WriteLine("\n");
-        using (Spinner.Start("Discovering domain (this may fetch from Wikipedia the first time)"))
+        using (var spinner = Spinner.Start("Discovering the domain (this can take a few minutes)"))
         {
-            result = pipeline.Discover(description);
+            outcome = source.Discover(
+                description,
+                progress => Spinner.Describe(spinner, ConsoleProgress(progress)));
         }
 
-        if (result.Topic.IsRecognized)
-        {
-            // Where the rest of the classes came from. Without this a Borrower appearing in a
-            // library model looks like a guess, when it was read out of an article by name.
-            //if (result.Topic.SupportingTitles.Count > 0)
-            //    Console.WriteLine("Also read: " + string.Join(", ", result.Topic.SupportingTitles));
-        }
-        else
-            Console.WriteLine("No topic recognized online — showing seed classes only. " +
-                              "You can add classes by hand below.");
+        // Which source answered, always — the command line says exactly what the web panel says.
+        Console.WriteLine(outcome.Describe());
 
         RunReviewLoop(
-            result.Model, DomainAppName.FromDescription(description), workspaceRoot,
+            outcome.Model, DomainAppName.FromDescription(description), workspaceRoot,
             ImportedData.None, target, customization, reviewAi);
+    }
+
+    /// <summary>
+    /// One line for the spinner. The console has a single line to say this on, so the class names
+    /// the web panel lists cannot go here — the count and the step do.
+    /// </summary>
+    private static string ConsoleProgress(DiscoveryProgress progress)
+    {
+        var step = progress.Step ?? "Discovering the domain";
+
+        return progress.Total == 0
+            ? step
+            : $"{step} ({progress.Done.Count} of {progress.Total} class(es))";
     }
 
     /// <summary>

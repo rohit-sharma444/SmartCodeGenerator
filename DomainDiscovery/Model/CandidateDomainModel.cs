@@ -16,7 +16,14 @@ public enum Provenance
     /// Distinct from <see cref="Seed"/> because the review loop prints this verbatim, and calling
     /// a real column "Seed" would claim the pipeline guessed at something it was told.
     /// </summary>
-    Data
+    Data,
+
+    /// <summary>
+    /// Proposed by a language model asked directly for a data model. Distinct from
+    /// <see cref="Wiki"/> because the review page prints this verbatim, and calling a model's
+    /// proposal "Wiki" would name a source that was never read.
+    /// </summary>
+    Model
 }
 
 public sealed class CandidateField

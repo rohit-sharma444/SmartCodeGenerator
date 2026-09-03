@@ -45,6 +45,10 @@ public static class DecisionReasons
     public const string ExtractedFromAPartialDependency = "extracted from a partial dependency";
     public const string DroppedAsADerivedColumn = "dropped: it is computed from other columns";
 
+    // --- Model proposal ---
+    public const string ProposedByTheModel = "proposed by the model";
+    public const string TheModelGaveNoUsableName = "the model gave it no usable class name";
+
     // --- Review loop ---
     public const string YouRenamedIt = "you renamed it";
 }

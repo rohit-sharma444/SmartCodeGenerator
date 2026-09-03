@@ -477,15 +477,40 @@ internal class CodeGeneratorStarter
         if (!File.Exists(databasePath))
         {
             // The store lives in a git-ignored directory, so an external clean, a disk-cleanup tool or
-            // a manual delete removes it, and the app would otherwise slip to the online API without a
-            // word. Say so, loudly — but do not stop. A fresh clone that never imported the store
-            // depends on exactly that fallback to run 'build app:' at all.
+            // a manual delete removes it, and the app would otherwise slip to a worse discovery path
+            // without a word. Say so, loudly — but do not stop.
+            //
+            // What the missing store actually costs depends on discovery.json's Source: with Ollama
+            // configured (the default) discovery does not touch this store at all unless Ollama itself
+            // is unreachable or the model is not pulled — at which point there is now NO fallback, and
+            // 'build app:' lands the user in Review with zero classes rather than the online API. Only
+            // when Source is pinned to Wikipedia does the old story hold: this store is the direct path,
+            // and its absence means every run pays for the online API instead.
+            var usesWikipediaDirectly = string.Equals(
+                DiscoveryConfig.Load().Source, DiscoveryConfig.WikipediaSource, StringComparison.OrdinalIgnoreCase);
+
+            if (usesWikipediaDirectly)
+            {
+                return
+                ([
+                    $"Wikipedia store: NOT FOUND at {databasePath}.",
+                    "  discovery.json pins discovery to Wikipedia, so 'build app:' will fall back to the",
+                    "  online Wikipedia API — slower, rate-limited, and it needs a connection. If you had",
+                    "  already imported the store, it has been moved or deleted. To (re)build it locally",
+                    "  (a one-time import), run:",
+                    string.Empty,
+                    "      dotnet run --project WikipediaDumpImporter -c Release",
+                ], false);
+            }
+
             return
             ([
                 $"Wikipedia store: NOT FOUND at {databasePath}.",
-                "  'build app:' will fall back to the online Wikipedia API — slower, rate-limited, and",
-                "  it needs a connection. If you had already imported the store, it has been moved or",
-                "  deleted. To (re)build it locally (a one-time import), run:",
+                "  This does not slow ordinary runs down: discovery asks the local Ollama model first.",
+                "  But it means Ollama has no fallback here — if it is unreachable, or the configured",
+                "  model is not pulled, 'build app:' will land you in Review with zero classes instead",
+                "  of falling back to Wikipedia. Pull the model ('ollama pull <model>'), or build this",
+                "  store as a safety net (a one-time import):",
                 string.Empty,
                 "      dotnet run --project WikipediaDumpImporter -c Release",
             ], false);

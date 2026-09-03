@@ -22,6 +22,13 @@
        1fr + 220px, so a diagram outside it ran the full width while everything below stopped
        220px short of the same right edge. Above the list rather than inside it, because a
        relationship is between two classes and belongs to the model, not to either card. *@
+    @* Where these classes came from. The Discover panel cannot say it — Advance() removes that
+       panel the instant discovery finishes — so this is the first surface that can. *@
+    @if (!string.IsNullOrWhiteSpace(Session.ModelSource))
+    {
+        <p class="model-source">@Session.ModelSource</p>
+    }
+
     <RelationshipDiagram Sources="Sources()" />
 
     <div class="entities">

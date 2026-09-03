@@ -1,13 +1,17 @@
 @using CodeGenerator.Web.Workflow
 @using DataIngestion.Normalization
+@using DomainDiscovery
 @implements IDisposable
 
 @if (_busy)
 {
-    @* The longest silence in the tool. A first fetch for an unseen topic runs many seconds, and
-       an unmoving screen reads as hung — this is the spinner's replacement, and the seconds
-       counting up are what say it is still going. *@
-    <ProgressList Current="@_label" Seconds="_seconds" />
+    @* The longest silence in the tool, and it is genuinely long: a local model on a CPU takes
+       minutes for an ordinary domain. The seconds counting up say it is still going; the classes
+       above and below the current line say what it has produced and what it still owes, which is
+       what stops a real wait from reading as a hang. The step label comes from the discovery
+       itself where it has one, since only it knows which of its two passes is running. *@
+    <ProgressList Done="Session.Discovered.Done" Pending="Session.Discovered.Pending"
+                  Current="@(Session.Discovered.Step ?? _label)" Seconds="_seconds" />
 }
 else if (_read is not null)
 {
@@ -80,25 +84,82 @@ else
             return;
         }
 
+        // Discovery already produced a model — there is nothing left for this entry to do. Only
+        // reachable when a fresh navigation (a reload, a second tab, a browser restoring a
+        // backgrounded tab) lands here after the first call already finished and moved the
+        // workflow on; without this check it would launch a wasted, real second call to the local
+        // model purely to throw its answer away.
+        if (Session.Model is not null)
+            return;
+
         _busy = true;
-        _label = "Discovering the domain — the first fetch for a new topic is the slow one";
+        _label = "Discovering the domain — a local model can take a few minutes";
         _seconds = 0;
         StartClock();
 
-        // Off the circuit's thread, so the label above is actually painted before the wait.
-        var discovered = await Task.Run(
-            () => DiscoveryStep.Discover(Session.Description, Session.WorkspaceRoot));
+        // BuildSession is the singleton every circuit shares. A second Start() landing while the
+        // first call is still running — the same reload/second-tab/restored-tab cases above, just
+        // caught mid-flight instead of after — JOINS that same task instead of racing it with a
+        // second, real call to the local model. Only the owner (the caller JoinDiscovery actually
+        // started the task for) applies the outcome below; a caller that joined has nothing left
+        // to do once its own busy state clears — acting on the outcome twice is exactly the
+        // double SetModel/Advance that used to corrupt the session.
+        //
+        // The progress goes on the SESSION, not on this component: a reload or a second tab joins
+        // the call already running, and a list kept here would leave every joiner watching a blank
+        // panel for the rest of a generation it is really waiting on. The one-second clock below
+        // is what repaints it, so the callback does no rendering of its own — a render per class
+        // would be a render for work the timer already covers.
+        var (task, owner) = Session.JoinDiscovery(
+            () => Task.Run(() => DiscoveryStep.Discover(
+                Session.Description, Session.WorkspaceRoot, Session.RecordDiscoveryProgress)));
+
+        DiscoveryOutcome outcome;
+
+        try
+        {
+            outcome = await task;
+        }
+        finally
+        {
+            // Only the owner clears the slot — and only once it has the outcome in hand, success
+            // or failure alike — so a later "try again" starts a genuinely fresh call rather than
+            // replaying this one's result.
+            if (owner)
+                Session.DiscoveryFinished();
+        }
 
         _busy = false;
         StopClock();
 
-        if (!discovered.TopicRecognized)
+        if (!owner)
+            return;
+
+        // A failed outcome used to be handed to SetModel anyway — an empty CandidateDomainModel,
+        // labelled with the failure text, that Advance() then walked straight past onto Review.
+        // The user saw the failure line flash for a moment and then a Review page with nothing on
+        // it: "nothing happened". Fail() instead leaves Current on Discover, marks its node red,
+        // and puts the reason on Session.FailureMessage where BuildWorkflow always shows it — and
+        // the panel below falls back to its own "Start" button, since neither _busy nor _read is
+        // set, so there is a way forward without hunting for the right node to click.
+        if (!outcome.Succeeded)
         {
-            _label = "No topic recognized online — showing seed classes only. "
-                     + "You can add classes by hand in the review.";
+            Session.Fail(outcome.Describe());
+            return;
         }
 
-        Session.SetModel(discovered.Model);
+        // Which source produced these classes, always — not only when something went wrong. A
+        // customer whose Ollama service has stopped must be able to see that, rather than watch
+        // the tool quietly get worse. It goes on the SESSION, not on _label: Advance() below tears
+        // this panel down, so anything set on the component here is never painted.
+        //
+        // SetModel's bool return says whether it actually applied — false means a PendingDiscard
+        // question is on screen instead, asking about a model this call would discard, and
+        // advancing past a node that never actually applied its answer would move Current on for
+        // work the page never showed.
+        if (!Session.SetModel(outcome.Model, outcome.Describe()))
+            return;
+
         Session.Advance();
 
         await OnAdvance.InvokeAsync();

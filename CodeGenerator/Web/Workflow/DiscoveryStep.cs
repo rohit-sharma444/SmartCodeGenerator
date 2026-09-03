@@ -103,16 +103,28 @@ internal static class DiscoveryStep
     }
 
     /// <summary>
-    /// The description-driven path: NLE seeds, Wikipedia topic, enrichment. Slow on a first fetch
-    /// for an unseen topic, which is why the component runs it on a background task.
+    /// The description-driven path. The source is whatever <c>discovery.json</c> configures —
+    /// a local model by default, the Wikipedia pipeline when Ollama is not running.
     /// </summary>
-    public static (CandidateDomainModel Model, bool TopicRecognized) Discover(
-        string description, string workspaceRoot)
+    /// <remarks>
+    /// Slow either way, which is why the component runs it on a background task: a local model
+    /// measured two and a half minutes for a small domain on a CPU, and a first Wikipedia fetch is
+    /// no quicker.
+    /// </remarks>
+    /// <param name="onProgress">
+    /// Called with what the discovery has finished and what it still has to do, so the panel can
+    /// show that rather than a blank wait. Called from the background thread the discovery runs
+    /// on — the caller marshals.
+    /// </param>
+    public static DiscoveryOutcome Discover(
+        string description, string workspaceRoot, Action<DiscoveryProgress>? onProgress = null)
     {
         var cacheDir = Path.Combine(workspaceRoot, ".dd-cache");
 
-        var result = DomainDiscoveryPipeline.CreateDefault(cacheDir).Discover(description);
+        var source = DomainModelSourceFactory.Create(
+            DiscoveryConfig.Load(),
+            () => new WikipediaDomainModelSource(DomainDiscoveryPipeline.CreateDefault(cacheDir)));
 
-        return (result.Model, result.Topic.IsRecognized);
+        return source.Discover(description, onProgress);
     }
 }

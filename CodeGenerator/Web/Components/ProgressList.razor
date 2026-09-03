@@ -1,10 +1,10 @@
 @* What a long step is doing, while it is still doing it.
 
-   Its own component because three stages need the same thing — discovery, generation and the run
-   — and because a panel mid-work cannot be rendered from a test: the work has to really happen.
+   Its own component because three stages need the same thing — discovery, generation and the run —
+   and because a panel mid-work cannot be rendered from a test: the work has to really happen.
    Lifted out, the thing that draws progress is assertable on its own. *@
 
-@if (Done.Count > 0 || Current is not null)
+@if (Done.Count > 0 || Pending.Count > 0 || Current is not null)
 {
     <ul class="progress">
         @foreach (var step in Done)
@@ -20,6 +20,15 @@
                 @Current<span class="elapsed"> — @Seconds s</span>
             </li>
         }
+
+        @* Below the current step, because these have not happened yet. Deliberately drawn without
+           the tick Done carries: the two-phase discovery knows every class it intends to write
+           long before it has written any of them, and a tick beside one it has not reached would
+           claim work that has not been done. *@
+        @foreach (var step in Pending)
+        {
+            <li class="step-waiting">@step</li>
+        }
     </ul>
 }
 
@@ -29,6 +38,12 @@
 
     /// <summary>What is happening now, or null when nothing is.</summary>
     [Parameter] public string? Current { get; set; }
+
+    /// <summary>
+    /// Steps this run already knows it still has to do. Empty for a step that cannot know its own
+    /// total, which is every one of them except the two-phase discovery's second pass.
+    /// </summary>
+    [Parameter] public IReadOnlyList<string> Pending { get; set; } = [];
 
     /// <summary>How long the current step has been going. Counted rather than measured so the
     /// caller owns the clock — a stage that finishes must be able to stop it.</summary>

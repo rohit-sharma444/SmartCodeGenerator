@@ -67,6 +67,15 @@ public static class StageGraph
     /// A total switch, so a stage added to <see cref="BuildStage"/> cannot compile without a
     /// decision being made here.
     /// </para>
+    /// <para>
+    /// <see cref="BuildStage.Discover"/> lists itself: a second completed discovery is exactly
+    /// as worthless to a model already discovered as a changed description is, and without this
+    /// entry <c>BuildSession.WouldDiscardModel</c> can never be true for a second
+    /// <c>SetModel</c> call — which is how a second, unguarded discovery call used to silently
+    /// overwrite a good model instead of asking first. This is safe on the ordinary first
+    /// completion: <c>Apply</c> already skips resetting whichever stage is <c>Active</c>, which
+    /// is Discover itself for as long as its own panel is the one calling <c>SetModel</c>.
+    /// </para>
     /// </remarks>
     public static IReadOnlyList<BuildStage> Invalidates(BuildStage changed)
         => changed switch
@@ -75,7 +84,8 @@ public static class StageGraph
                 [BuildStage.Discover, BuildStage.Review, BuildStage.Generate, BuildStage.Run],
             BuildStage.Data     =>
                 [BuildStage.Discover, BuildStage.Review, BuildStage.Generate, BuildStage.Run],
-            BuildStage.Discover => [BuildStage.Review, BuildStage.Generate, BuildStage.Run],
+            BuildStage.Discover =>
+                [BuildStage.Discover, BuildStage.Review, BuildStage.Generate, BuildStage.Run],
             BuildStage.AppType  => [],
             BuildStage.Look     => [],
             BuildStage.Review   => [],

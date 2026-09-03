@@ -189,6 +189,7 @@ internal static class DecisionReport
         DecisionStage.Enrichment => "enrichment",
         DecisionStage.Shaping => "shaping",
         DecisionStage.ReviewLoop => "review loop",
+        DecisionStage.ModelProposal => "model proposal",
         _ => stage.ToString().ToLowerInvariant()
     };
 }

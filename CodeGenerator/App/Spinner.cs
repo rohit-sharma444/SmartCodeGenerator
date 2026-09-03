@@ -51,7 +51,17 @@ internal sealed class Spinner : IDisposable
     /// </remarks>
     public const string WorkingLabel = "Working";
 
-    private readonly string _label;
+    /// <summary>
+    /// What the spinner says it is doing. Not readonly, because a long step that learns something
+    /// part-way through should be able to say so.
+    /// </summary>
+    /// <remarks>
+    /// Written and read under <see cref="_gate"/> along with the rest of the drawing state: the
+    /// caller updating it is on a different thread from the one drawing frames, and the erase in
+    /// <see cref="Dispose"/> sizes itself from a width this can change.
+    /// </remarks>
+    private string _label;
+
     private readonly TimeSpan _delay;
 
     /// <summary>
@@ -123,6 +133,24 @@ internal sealed class Spinner : IDisposable
     /// </remarks>
     public static IDisposable Start(string label)
         => Start(label, Enabled(Console.IsOutputRedirected, Console.IsInputRedirected));
+
+    /// <summary>
+    /// Changes what the spinner says while it is still spinning.
+    /// </summary>
+    /// <remarks>
+    /// For a step whose progress is only knowable once it has started — domain discovery, which
+    /// cannot say how many classes it will find until it has found some. A console that is not
+    /// animating ignores this entirely: <see cref="NoSpinner"/> has already printed its one line,
+    /// and a piped transcript must not grow a line per update.
+    /// </remarks>
+    public static void Describe(IDisposable spinner, string label)
+    {
+        if (spinner is not Spinner running)
+            return;
+
+        lock (running._gate)
+            running._label = label;
+    }
 
     /// <summary>
     /// As <see cref="Start(string)"/>, with the decision supplied.
