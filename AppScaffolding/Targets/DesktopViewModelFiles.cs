@@ -49,6 +49,10 @@ public static class DesktopViewModelFiles
             // into the same folder for the same screens.
             files.Add(new("Screens", "LineSet.cs", LineSetTemplate.Source(rootNamespace)));
 
+            // Beside LineSet for the same reason: what the model is, rather than how a window
+            // shows it. Both desktop layouts reflect over it; nothing else does.
+            files.Add(new("Screens", "FieldGroups.cs", FieldGroupsTemplate.Source(rootNamespace)));
+
             files.Add(new("ViewModels", "RecordEditorViewModel.cs",
                 RecordEditorTemplate.Source(rootNamespace, validation)));
             files.Add(new("ViewModels", "MasterScreenViewModel.cs",
