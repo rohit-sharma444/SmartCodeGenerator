@@ -102,6 +102,10 @@ public class Memo
         => ((IEnumerable)screen.GetType().GetProperty("Items")!.GetValue(screen)!)
             .Cast<object>().ToList();
 
+    private static IList AllRecords(object screen)
+        => ((IEnumerable)screen.GetType().GetProperty("AllRecords")!.GetValue(screen)!)
+            .Cast<object>().ToList();
+
     /// <summary>The form at the top of the screen, which is never null.</summary>
     private static object EditorOf(object screen)
         => screen.GetType().GetProperty("Editor")!.GetValue(screen)!;
@@ -186,6 +190,26 @@ public class Memo
         screen.GetType().GetProperty("Search")!.SetValue(screen, "ALPHA");
 
         Assert.HasCount(1, Items(screen));
+    }
+
+    /// <summary>
+    /// The full-list accessor a foreign-key picker on another screen's form reads.
+    /// </summary>
+    /// <remarks>
+    /// A lookup over <see cref="Items"/> would silently drop every row that does not match text
+    /// left in THIS screen's own search box — a supplier the user is mid-search on here vanishing
+    /// from the picker on a purchase order form, with no indication why. AllRecords must stay full
+    /// exactly where Items narrows.
+    /// </remarks>
+    [TestMethod]
+    public void AllRecords_ignores_Search_where_Items_narrows()
+    {
+        var screen = Screen(Emit(), "MasterScreenViewModel", "Alpha", "Beta");
+
+        screen.GetType().GetProperty("Search")!.SetValue(screen, "alph");
+
+        Assert.HasCount(1, Items(screen));
+        Assert.HasCount(2, AllRecords(screen));
     }
 
     /// <summary>

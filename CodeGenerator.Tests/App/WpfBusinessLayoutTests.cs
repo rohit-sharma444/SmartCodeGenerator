@@ -425,26 +425,44 @@ public class WpfBusinessLayoutTests
         EmittedDesktopSource.AssertCompilesTogether(
             ("Screens/FieldGroups.cs", FieldGroupsTemplate.Source("Payroll")),
             ("Screens/RequiredFields.cs", RequiredFieldsTemplate.Source("Payroll", null)),
-            ("Views/EntryHeader.cs", WpfEntryControls.Header(context)),
-            ("Views/EntryForm.cs", WpfEntryControls.Form(context)),
-            ("Views/EntryNotes.cs", WpfEntryControls.Notes(context)));
+            ($"Views/{WpfEntryControls.HeaderFileName}", WpfEntryControls.Header(context)),
+            ($"Views/{WpfEntryControls.FormFileName}", WpfEntryControls.Form(context)),
+            ($"Views/{WpfEntryControls.NotesFileName}", WpfEntryControls.Notes(context)));
     }
 
-    /// <summary>A foreign key is a lookup, not a text box -- dropping it would leave no way to set
-    /// a document's supplier at all.</summary>
+    /// <summary>
+    /// A foreign key is a lookup, not a text box -- dropping it would leave no way to set a
+    /// document's supplier at all.
+    /// </summary>
+    /// <remarks>
+    /// Needles unique to the foreign-key branch: <c>new ComboBox</c> alone also matches the enum
+    /// branch, so replacing this branch's body with <c>return new TextBox();</c> (keeping the
+    /// <c>if</c>) passed a version of this test that asserted only that pair. "FieldGroups.NavigationFor("
+    /// without the parameter name survives a parameter rename; SelectedValuePath is set nowhere
+    /// else in the file.
+    /// </remarks>
     [TestMethod]
     public void The_form_renders_a_foreign_key_as_a_lookup()
     {
         var source = WpfEntryControls.Form(Context());
 
-        StringAssert.Contains(source, "FieldGroups.NavigationFor(property)");
-        StringAssert.Contains(source, "new ComboBox");
+        StringAssert.Contains(source, "FieldGroups.NavigationFor(");
+        StringAssert.Contains(source, "SelectedValuePath");
     }
 
+    /// <summary>
+    /// The required marker sits in a POSITIVE guard, so the guard cannot be inverted (asterisking
+    /// every optional field) or short-circuited to a discard (<c>_ = RequiredFields.IsRequired(...)</c>,
+    /// with the asterisk never added) without failing.
+    /// </summary>
     [TestMethod]
     public void The_form_marks_required_fields()
-        => StringAssert.Contains(
-            WpfEntryControls.Form(Context()), "RequiredFields.IsRequired(");
+    {
+        var source = WpfEntryControls.Form(Context());
+
+        StringAssert.Contains(source, "if (RequiredFields.IsRequired(");
+        StringAssert.Contains(source, "\" *\"");
+    }
 
     /// <summary>
     /// The forbidden set is widened past the two entity names the brief names ("Customer" and
@@ -471,5 +489,162 @@ public class WpfBusinessLayoutTests
             foreach (var name in forbidden)
                 Assert.DoesNotContain(name, source);
         }
+    }
+
+    // ---- each control genuinely emits content (fix round 1, Important 4) ----
+
+    /// <summary>Catches the three-column loop being replaced by a single column that stacks every
+    /// group without ever asking FieldGroups how to pack them.</summary>
+    [TestMethod]
+    public void The_form_lays_out_the_columns_FieldGroups_packs()
+        => StringAssert.Contains(WpfEntryControls.Form(Context()), "FieldGroups.Columns(");
+
+    /// <summary>Catches EntryHeader being reduced to an empty Grid: it compiles, and the
+    /// no-entity-name test passes trivially, but the header would show no key fields at all.</summary>
+    [TestMethod]
+    public void The_header_reads_the_records_key_fields()
+        => StringAssert.Contains(WpfEntryControls.Header(Context()), "FieldGroups.Key(");
+
+    /// <summary>Catches EntryNotes.Build() being emptied out: it compiles, and a record with
+    /// long-text fields would show no Additional Information content at all.</summary>
+    [TestMethod]
+    public void The_notes_tab_reads_the_long_text_fields_FieldGroups_finds()
+        => StringAssert.Contains(WpfEntryControls.Notes(Context()), "FieldGroups.Additional(");
+
+    /// <summary>
+    /// Catches every <c>SetBinding</c> call being deleted from EntryForm: every editor branch
+    /// (text, check, date, enum, and the foreign-key lookup) attaches its control through one, and
+    /// deleting them all would leave every field on the form permanently blank no matter what the
+    /// record held.
+    /// </summary>
+    /// <remarks>
+    /// The needle is <c>.SetBinding(</c> with the leading dot, not bare <c>SetBinding</c>: this
+    /// file's own doc comments mention the word "SetBinding" in prose (see the remarks on
+    /// <c>Editor</c>'s foreign-key branch), so the bare word matches even after every real call is
+    /// deleted -- caught only by actually running the mutation, which is why this needle is dotted.
+    /// </remarks>
+    [TestMethod]
+    public void The_form_binds_every_field_it_draws()
+        => StringAssert.Contains(WpfEntryControls.Form(Context()), ".SetBinding(");
+
+    /// <summary>The same guard as <see cref="The_form_binds_every_field_it_draws"/>, for the one
+    /// binding EntryNotes builds directly rather than through EntryForm's shared editor.</summary>
+    [TestMethod]
+    public void The_notes_tab_binds_the_fields_it_draws()
+        => StringAssert.Contains(WpfEntryControls.Notes(Context()), ".SetBinding(");
+
+    /// <summary>
+    /// EntryHeader has no <c>SetBinding</c> call of its own after fix round 1 (Important 9): its
+    /// key strip is built by <see cref="EntryForm.Editor"/>, so the equivalent "this control still
+    /// emits real content" guard is that the delegation itself is present -- deleting it (leaving
+    /// the key strip drawing labels with no editors under them) is what this catches. Deleting a
+    /// <c>SetBinding</c> call INSIDE EntryForm.Editor is caught by
+    /// <see cref="The_form_binds_every_field_it_draws"/> instead, since that is where the call
+    /// actually lives now.
+    /// </summary>
+    [TestMethod]
+    public void The_header_wires_its_key_fields_through_the_shared_editor()
+        => StringAssert.Contains(WpfEntryControls.Header(Context()), "EntryForm.Editor(");
+
+    // ---- fix round 1: behaviour, covered ----
+
+    /// <summary>
+    /// Critical 1. The themed branch used to hand the literal string
+    /// <c>"{DynamicResource AppAccentBrush}"</c> to <c>BrushConverter.ConvertFromString</c>, which
+    /// parses colour strings only and threw FormatException the first time a record reached a
+    /// themed app's entry screen. It must now hand the resource KEY to SetResourceReference
+    /// instead, in both controls that carry a themed brush.
+    /// </summary>
+    [TestMethod]
+    public void A_themed_context_sets_the_accent_by_resource_reference_not_a_converter()
+    {
+        var themed = Context(AppCustomization.Default with { Theme = AppTheme.Dark });
+
+        foreach (var source in new[] { WpfEntryControls.Header(themed), WpfEntryControls.Form(themed) })
+        {
+            Assert.DoesNotContain("ConvertFromString(\"{DynamicResource", source);
+            StringAssert.Contains(source, "SetResourceReference(property, \"AppAccentBrush\")");
+        }
+    }
+
+    /// <summary>The unthemed branch is the one every other test in this file exercises through
+    /// <see cref="Context"/>; asserted here too so both halves of Themed are covered by name in one
+    /// place next to the themed assertion above.</summary>
+    [TestMethod]
+    public void An_unthemed_context_still_uses_the_plain_hex_accent()
+        => StringAssert.Contains(WpfEntryControls.Header(Context()), "#2563EB");
+
+    /// <summary>
+    /// Important 5. DisplayMemberPath used to be hardcoded to "Id", which resolves -- there is no
+    /// binding error -- and renders a lookup of bare integers instead of the code a person
+    /// recognises. It must read the navigation entity's own code field instead.
+    /// </summary>
+    [TestMethod]
+    public void The_lookup_displays_the_navigation_entitys_code_not_its_id()
+        => StringAssert.Contains(
+            WpfEntryControls.Form(Context()),
+            "DisplayMemberPath = FieldGroups.Key(nav.PropertyType).Code?.Name ?? \"Id\"");
+
+    /// <summary>
+    /// Important 6. ItemsSource, DisplayMemberPath and SelectedValuePath must all be set before the
+    /// SelectedValue binding is attached -- a Selector cannot resolve a bound value against a path
+    /// or a list that do not exist yet, and attaching the binding first left an existing record's
+    /// picker blank.
+    /// </summary>
+    [TestMethod]
+    public void The_lookups_items_and_paths_are_set_before_its_binding_is_attached()
+    {
+        var source = WpfEntryControls.Form(Context());
+
+        var itemsSource = source.IndexOf("ItemsSource = Rows(", StringComparison.Ordinal);
+        var setBinding = source.IndexOf("lookup.SetBinding(", StringComparison.Ordinal);
+
+        Assert.IsGreaterThan(-1, itemsSource);
+        Assert.IsGreaterThan(-1, setBinding);
+        Assert.IsLessThan(
+            setBinding, itemsSource,
+            "the binding was attached before the lookup's items source existed");
+    }
+
+    /// <summary>
+    /// Important 7. The lookup must read AllRecords, not Items: Items is the search-narrowed list a
+    /// screen shows, so a picker built on it would silently drop every row that does not match text
+    /// left in that OTHER screen's own search box.
+    /// </summary>
+    [TestMethod]
+    public void The_lookup_reads_the_screens_full_list_not_its_search_filtered_one()
+    {
+        var source = WpfEntryControls.Form(Context());
+
+        StringAssert.Contains(source, "GetProperty(\"AllRecords\")");
+        Assert.DoesNotContain("GetProperty(\"Items\")", source);
+    }
+
+    /// <summary>
+    /// Important 9, the other half: the key strip fields must go through the same type-aware editor
+    /// as an ordinary panel field, so a DateTime key gets a DatePicker and an enum key gets a
+    /// ComboBox rather than a free-text box an unparseable value silently fails to save.
+    /// </summary>
+    [TestMethod]
+    public void The_header_key_strip_gets_type_aware_editors()
+        => StringAssert.Contains(WpfEntryControls.Header(Context()), "EntryForm.Editor(property, record)");
+
+    /// <summary>Minor 11. An EntryHeader whose Record is never set must still draw its band: the
+    /// invariant chrome (height, background, columns) belongs in the constructor, not only inside
+    /// the change callback.</summary>
+    [TestMethod]
+    public void The_headers_invariant_chrome_is_set_in_the_constructor()
+    {
+        var source = WpfEntryControls.Header(Context());
+
+        var ctor = source.IndexOf("public EntryHeader()", StringComparison.Ordinal);
+        var height = source.IndexOf("Height = 74;", StringComparison.Ordinal);
+        var build = source.IndexOf("private void Build()", StringComparison.Ordinal);
+
+        Assert.IsGreaterThan(-1, ctor);
+        Assert.IsGreaterThan(-1, height);
+        Assert.IsGreaterThan(-1, build);
+        Assert.IsLessThan(build, height, "the invariant chrome moved into Build");
+        Assert.IsLessThan(height, ctor, "the chrome is set before the constructor that should hold it");
     }
 }

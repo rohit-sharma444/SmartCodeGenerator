@@ -68,11 +68,23 @@ public class MasterScreenViewModel<T> : ObservableObject, IEntityViewModel, IDir
 
     public int Count => Records.Count;
 
-    /// <summary>Everything the store holds. <see cref="Items"/> is what the screen shows.</summary>
+    /// <summary>Everything the store holds. <see cref="Items"/> is what the screen shows;
+    /// <see cref="AllRecords"/> is what another screen's lookup reads.</summary>
     protected ObservableCollection<T> Records { get; }
 
     /// <summary>The rows matching <see cref="Search"/>, or all of them when it is empty.</summary>
     public virtual IEnumerable Items => Matching(Records);
+
+    /// <summary>
+    /// Every row the store holds, ignoring <see cref="Search"/>.
+    /// </summary>
+    /// <remarks>
+    /// A foreign-key picker on another entry screen reads this rather than <see cref="Items"/>: the
+    /// list this screen shows is search-narrowed, and a supplier picker on a purchase order must not
+    /// silently drop every supplier that does not match text left in the Suppliers screen's own
+    /// search box.
+    /// </remarks>
+    public IReadOnlyList<T> AllRecords => Records;
 
     /// <summary>Narrows the list. Never touches the store.</summary>
     public string Search
