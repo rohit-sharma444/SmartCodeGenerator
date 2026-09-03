@@ -17,7 +17,7 @@ namespace CodeGenerator.Tests.Web;
 /// can read down. Most of these tests moved here with the markup they cover.
 /// </remarks>
 [TestClass]
-public class RelationshipsStageTests
+public class OutputStageTests
 {
     [TestMethod]
     public void Draws_the_relationship_diagram()
@@ -26,7 +26,7 @@ public class RelationshipsStageTests
 
         var rendered = RenderShop(context, out _);
 
-        Assert.IsNotEmpty(rendered.FindAll(".relationships"));
+        Assert.IsNotEmpty(rendered.FindAll(".output"));
 
         // Named in it, which is what makes it a picture of THIS model rather than a decoration.
         StringAssert.Contains(rendered.Markup, "Order");
@@ -210,7 +210,7 @@ public class RelationshipsStageTests
         using var context = new BunitContext();
         var navigation = new StageNavigation();
 
-        context.Render<RelationshipsStage>(p => p
+        context.Render<OutputStage>(p => p
             .Add(c => c.Session, SessionWith(new CandidateDomainModel()))
             .Add(c => c.Navigation, navigation)
             .Add(c => c.OnAdvance, () => { }));
@@ -219,7 +219,7 @@ public class RelationshipsStageTests
         Assert.IsFalse(navigation.CanContinue);
     }
 
-    private static IRenderedComponent<RelationshipsStage> RenderShop(
+    private static IRenderedComponent<OutputStage> RenderShop(
         BunitContext context, out BuildSession session,
         ITargetScaffolder? target = null, StageNavigation? navigation = null)
     {
@@ -227,7 +227,7 @@ public class RelationshipsStageTests
 
         var captured = session;
 
-        return context.Render<RelationshipsStage>(p => p
+        return context.Render<OutputStage>(p => p
             .Add(c => c.Session, captured)
             .Add(c => c.Navigation, navigation ?? new StageNavigation())
             .Add(c => c.OnAdvance, () => { }));

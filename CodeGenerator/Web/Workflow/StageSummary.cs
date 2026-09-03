@@ -40,7 +40,7 @@ public static class StageSummary
 
             // The links, not the classes: the node before it already counts those, and two boxes
             // both saying "9 classes" would tell the user nothing about what the second holds.
-            BuildStage.Relationships => session.Model is null
+            BuildStage.Output => session.Model is null
                 ? null
                 : Links(session.Model.Entities.Sum(e => e.Relationships.Count)),
             BuildStage.Generate => session.Generated is null

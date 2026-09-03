@@ -202,11 +202,11 @@ public class StageSummaryTests
     }
 
     [TestMethod]
-    public void The_relationships_node_counts_the_links()
+    public void The_output_node_counts_the_links()
     {
         var session = New("a shop");
 
-        Assert.IsNull(StageSummary.For(session, BuildStage.Relationships));
+        Assert.IsNull(StageSummary.For(session, BuildStage.Output));
 
         var model = new CandidateDomainModel();
         var order = new CandidateEntity { Name = "Order" };
@@ -218,7 +218,7 @@ public class StageSummaryTests
 
         // The links, not the classes: the node beside it already counts those, and two boxes
         // saying "2 classes" would tell the user nothing about what the second one holds.
-        Assert.AreEqual("1 relationship", StageSummary.For(session, BuildStage.Relationships));
+        Assert.AreEqual("1 relationship", StageSummary.For(session, BuildStage.Output));
     }
 
     private static BuildSession New(string description = "")

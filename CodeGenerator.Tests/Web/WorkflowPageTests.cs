@@ -196,8 +196,8 @@ public class WorkflowPageTests
     public void Enter_does_nothing_where_no_step_is_offered()
     {
         var session = OnReview();
-        session.Advance();   // review -> relationships
-        session.Advance();   // relationships -> generate, which offers no step of its own
+        session.Advance();   // review -> output
+        session.Advance();   // output -> generate, which offers no step of its own
 
         using var context = PageFor(session, out _);
 

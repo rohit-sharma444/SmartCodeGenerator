@@ -93,20 +93,20 @@ public class ReviewStageTests
         Assert.IsNotEmpty(rendered.FindAll(".entity"));
     }
 
-    // Reviewing the classes settles what they ARE; the node after it settles how they connect.
+    // Reviewing the classes settles what they ARE; the node after it settles what comes out.
     [TestMethod]
-    public async Task Relationships_is_the_step_forward_and_advances_to_it()
+    public async Task Output_is_the_step_forward_and_advances_to_it()
     {
         using var context = new BunitContext();
         var navigation = new StageNavigation();
         Render(context, out var session, navigation);
 
-        Assert.AreEqual("Relationships", navigation.Label);
+        Assert.AreEqual("Output", navigation.Label);
 
         Assert.IsTrue(await navigation.ApplyAsync());
         session.Advance();
 
-        Assert.AreEqual(BuildStage.Relationships, session.Current);
+        Assert.AreEqual(BuildStage.Output, session.Current);
     }
 
     [TestMethod]

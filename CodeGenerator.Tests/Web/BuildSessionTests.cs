@@ -224,8 +224,8 @@ public class BuildSessionTests
     public void Completing_marks_the_node_it_was_completed_from()
     {
         var session = Discovered();
-        session.Advance();                                    // review -> relationships
-        session.Advance();                                    // relationships -> generate
+        session.Advance();                                    // review -> output
+        session.Advance();                                    // output -> generate
         session.Advance();                                    // generate -> run
 
         Assert.AreEqual(BuildStage.Run, session.Current);
@@ -242,8 +242,8 @@ public class BuildSessionTests
     public void Leaving_a_node_that_holds_nothing_leaves_it_pending()
     {
         var session = Discovered();
-        session.Advance();                                    // review -> relationships
-        session.Advance();                                    // relationships -> generate, nothing written
+        session.Advance();                                    // review -> output
+        session.Advance();                                    // output -> generate, nothing written
 
         Assert.AreEqual(BuildStage.Generate, session.Current);
 

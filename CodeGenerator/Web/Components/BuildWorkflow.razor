@@ -134,8 +134,8 @@
                     <ReviewStage @key="BuildStage.Review" Session="Session"
                                  Navigation="_navigation" OnAdvance="Refresh" />
                     break;
-                case BuildStage.Relationships:
-                    <RelationshipsStage @key="BuildStage.Relationships" Session="Session"
+                case BuildStage.Output:
+                    <OutputStage @key="BuildStage.Output" Session="Session"
                                         Navigation="_navigation" OnAdvance="Refresh" />
                     break;
                 case BuildStage.Generate:

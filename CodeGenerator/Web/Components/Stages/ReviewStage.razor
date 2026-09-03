@@ -160,8 +160,8 @@
     private CandidateDomainModel Model => Session.Model!;
 
     /// <summary>
-    /// The step forward is Relationships, not Generate: this node settles what the classes ARE,
-    /// and the next one settles how they connect and what comes out of it.
+    /// The step forward is Output, not Generate: this node settles what the classes ARE, and the
+    /// next one settles what comes out of them and how they connect.
     /// </summary>
     /// <remarks>
     /// A model with no classes has nothing to carry forward, so the step is offered and disabled
@@ -175,7 +175,7 @@
         => Navigation.Offer(
             static () => Task.FromResult(true),
             ready: () => Model.Entities.Count > 0,
-            label: "Relationships");
+            label: "Output");
 
     private string _newClass = string.Empty;
     private string _newField = string.Empty;

@@ -19,13 +19,13 @@ public class StageGraphTests
     }
 
     [TestMethod]
-    public void Relationships_follows_review_and_precedes_generate()
+    public void Output_follows_review_and_precedes_generate()
     {
         // The split: Review settles what the classes ARE, Relationships settles how they connect
         // and what gets written.
-        Assert.AreEqual(BuildStage.Relationships, StageGraph.Next(BuildStage.Review));
-        Assert.AreEqual(BuildStage.Generate, StageGraph.Next(BuildStage.Relationships));
-        Assert.AreEqual(BuildStage.Review, StageGraph.Previous(BuildStage.Relationships));
+        Assert.AreEqual(BuildStage.Output, StageGraph.Next(BuildStage.Review));
+        Assert.AreEqual(BuildStage.Generate, StageGraph.Next(BuildStage.Output));
+        Assert.AreEqual(BuildStage.Review, StageGraph.Previous(BuildStage.Output));
     }
 
     [TestMethod]
@@ -39,21 +39,21 @@ public class StageGraphTests
     }
 
     [TestMethod]
-    public void Anything_that_discards_the_model_discards_the_relationships_too()
+    public void Anything_that_discards_the_model_discards_the_output_node_too()
     {
         // Relationships is derived from the model, so whatever throws the model away throws this
         // away with it. Missing one of these would leave a green tick on a node describing a
         // model that no longer exists.
         foreach (var changed in new[] { BuildStage.Describe, BuildStage.Data, BuildStage.Discover })
             Assert.Contains(
-                BuildStage.Relationships,
+                BuildStage.Output,
                 StageGraph.Invalidates(changed),
-                $"{changed} should invalidate Relationships");
+                $"{changed} should invalidate Output");
     }
 
     [TestMethod]
-    public void Answering_relationships_invalidates_nothing()
-        => Assert.IsEmpty(StageGraph.Invalidates(BuildStage.Relationships));
+    public void Answering_the_output_node_invalidates_nothing()
+        => Assert.IsEmpty(StageGraph.Invalidates(BuildStage.Output));
 
     [TestMethod]
     public void Every_node_has_a_title_and_a_blurb()
@@ -92,7 +92,7 @@ public class StageGraphTests
         Assert.HasCount(5, invalidated);
         Assert.Contains(BuildStage.Discover, invalidated);
         Assert.Contains(BuildStage.Review, invalidated);
-        Assert.Contains(BuildStage.Relationships, invalidated);
+        Assert.Contains(BuildStage.Output, invalidated);
         Assert.Contains(BuildStage.Generate, invalidated);
 
         // What was generated and run came from the old answer, so neither survives it either.
@@ -110,7 +110,7 @@ public class StageGraphTests
 
         Assert.HasCount(5, invalidated);
         Assert.Contains(BuildStage.Review, invalidated);
-        Assert.Contains(BuildStage.Relationships, invalidated);
+        Assert.Contains(BuildStage.Output, invalidated);
         Assert.Contains(BuildStage.Generate, invalidated);
         Assert.Contains(BuildStage.Run, invalidated);
     }

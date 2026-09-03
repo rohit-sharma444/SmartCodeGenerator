@@ -21,7 +21,7 @@ public static class StageGraph
         new(BuildStage.Look,     "Look",     "Branding, theme and features"),
         new(BuildStage.Discover, "Discover", "Work out the classes"),
         new(BuildStage.Review,        "Review classes", "Change the model before it is written"),
-        new(BuildStage.Relationships, "Relationships",  "How they connect, and what gets built"),
+        new(BuildStage.Output,        "Output",         "What gets built, and how it connects"),
         new(BuildStage.Generate, "Generate", "Write it and build it"),
         new(BuildStage.Run,      "Run",      "Start it and watch it come up"),
     ];
@@ -82,13 +82,13 @@ public static class StageGraph
         => changed switch
         {
             BuildStage.Describe =>
-                [BuildStage.Discover, BuildStage.Review, BuildStage.Relationships,
+                [BuildStage.Discover, BuildStage.Review, BuildStage.Output,
                  BuildStage.Generate, BuildStage.Run],
             BuildStage.Data     =>
-                [BuildStage.Discover, BuildStage.Review, BuildStage.Relationships,
+                [BuildStage.Discover, BuildStage.Review, BuildStage.Output,
                  BuildStage.Generate, BuildStage.Run],
             BuildStage.Discover =>
-                [BuildStage.Discover, BuildStage.Review, BuildStage.Relationships,
+                [BuildStage.Discover, BuildStage.Review, BuildStage.Output,
                  BuildStage.Generate, BuildStage.Run],
             BuildStage.AppType       => [],
             BuildStage.Look          => [],
@@ -96,7 +96,7 @@ public static class StageGraph
 
             // Nothing downstream reads a screen choice until Generate, and Generate has no stored
             // answer to discard — so changing one here costs nothing, exactly as Look does.
-            BuildStage.Relationships => [],
+            BuildStage.Output => [],
             BuildStage.Generate      => [],
             BuildStage.Run           => [],
             _ => throw new InvalidOperationException($"No invalidation rule for {changed}."),

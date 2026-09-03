@@ -576,7 +576,7 @@ body {
 
 /* Node 7 takes the two-column shape the review page used to have: the diagram and the screen
    table on the left, what will be generated down the right. */
-.relationships {
+.output {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 280px;
     gap: var(--space-4) var(--space-5);
@@ -588,17 +588,17 @@ body {
    two-column grid gives it 608, so putting it beside the summary meant scrolling a picture whose
    whole job is to be taken in at a glance. It scrolls itself when it still does not fit - the
    component brings its own .rel-scroll - so the PAGE never scrolls sideways either way. */
-.relationships > .rel-diagram {
+.output > .rel-diagram {
     grid-column: 1 / -1;
     min-width: 0;
 }
 
-.relationships > .settled { grid-column: 2; }
+.output > .settled { grid-column: 2; }
 
 @media (max-width: 980px) {
-    .relationships { grid-template-columns: minmax(0, 1fr); }
-    .relationships > .rel-diagram,
-    .relationships > .settled { grid-column: 1; }
+    .output { grid-template-columns: minmax(0, 1fr); }
+    .output > .rel-diagram,
+    .output > .settled { grid-column: 1; }
 }
 
 .screens-block { grid-column: 1; min-width: 0; }

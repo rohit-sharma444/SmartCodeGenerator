@@ -400,7 +400,7 @@ public sealed class BuildSession
 
             // Same rule as Review, and for the same reason: this node describes the model it is
             // shown beside, so it stays answered for as long as there is one.
-            BuildStage.Relationships => Model is not null,
+            BuildStage.Output => Model is not null,
             BuildStage.Generate => Generated is not null,
             BuildStage.Run => Started,
             _ => false,
