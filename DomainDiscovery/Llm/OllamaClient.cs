@@ -8,12 +8,17 @@ namespace DomainDiscovery.Llm;
 /// </summary>
 /// <remarks>
 /// Uses schema-constrained output (<c>format</c>), which Ollama applies during decoding — that is
-/// what makes a 3B model's JSON reliably parseable. <c>temperature:0</c> for as much run-to-run
-/// stability as a sampled model can offer — not perfect stability, though: a CPU, multi-threaded
-/// backend does not guarantee bit-identical floating-point results run to run even at greedy
-/// decoding, which is the likeliest explanation for the one-in-several-runs non-terminating
-/// generation documented on <see cref="ContextWindow"/>. <see cref="ResponseTokenCap"/> exists
-/// because of it.
+/// what makes a 3B model's JSON reliably parseable, and what lets <see cref="PartialLlmJson"/>
+/// trust a half-received answer. <c>temperature:0</c> for as much run-to-run stability as a
+/// sampled model can offer.
+/// <para>
+/// The response is <em>streamed</em>. That is not a refinement: on a CPU-only machine this model
+/// generates at 4-10 tokens/s (median 6.9, measured over 3935 samples from the server's own log),
+/// so a thorough answer of ~1100 tokens takes two and a half minutes and a large one much longer.
+/// Without a stream there is nothing to show for that whole wait, and nothing to keep if it ends
+/// badly. With one, <see cref="Ask"/> reports each class as it arrives and salvages every complete
+/// class if the generation is stopped early.
+/// </para>
 /// </remarks>
 public sealed class OllamaClient : IOllamaClient, IDisposable
 {
@@ -44,8 +49,8 @@ public sealed class OllamaClient : IOllamaClient, IDisposable
     /// InventoryItem, InventoryLog, InventoryPolicy — so it is told to name the thing, not the
     /// system, and not to emit near-duplicates.</item>
     /// </list>
-    /// The cost is real and unavoidable: more classes means more tokens, and discovery went from
-    /// ~42s to ~3 minutes on a CPU-only machine. Thoroughness is what was asked for.
+    /// The cost is real and unavoidable: more classes means more tokens, and more tokens means
+    /// minutes on a CPU. That cost is paid for by streaming rather than by asking for less.
     /// <para>
     /// If you edit this, re-measure against a running model. A schema-validity test passes either
     /// way, so the suite cannot tell you that you have made the output worse.
@@ -89,11 +94,12 @@ public sealed class OllamaClient : IOllamaClient, IDisposable
         _config = config;
         _ownsHttp = http is null;
 
-        // The framework's 100-second default would kill an ordinary request: a small domain
-        // measured 64-72 seconds on a CPU-only machine.
         _http = http ?? new HttpClient();
 
         if (http is null)
+            // The transport's own last resort. The stall detector below almost always fires long
+            // before this does, but a connection that goes silent at the socket level rather than
+            // at the token level is not something the stall detector can see.
             _http.Timeout = TimeSpan.FromMinutes(Math.Max(1, config.TimeoutMinutes));
     }
 
@@ -108,7 +114,7 @@ public sealed class OllamaClient : IOllamaClient, IDisposable
         try
         {
             // A short-lived token of its own: this probe must stay a millisecond call even though
-            // _http's own Timeout is set for Ask()'s ten-minute generation.
+            // _http's own Timeout is set for Ask()'s long generation.
             using var cts = new CancellationTokenSource(ProbeTimeout);
 
             using var response = _http
@@ -166,170 +172,287 @@ public sealed class OllamaClient : IOllamaClient, IDisposable
     }
 
     /// <summary>
-    /// Passed as <c>options.num_ctx</c> on every request — the shared window that counts the
-    /// system prompt, the user's description, AND the model's own reply together.
+    /// Passed as <c>options.num_ctx</c> — the shared window that counts the system prompt, the
+    /// user's description AND the model's own reply together.
     /// </summary>
     /// <remarks>
-    /// Measured against the running server, not guessed. First attempt: set only <c>num_ctx</c>,
-    /// to the model's full advertised 32768. That made things WORSE, not better — one otherwise
-    /// ordinary "Inventory Management system" call (the exact input that measured 1031 tokens and
-    /// a clean <c>done_reason: "stop"</c> at the small default window) instead ran for the entire
-    /// 10-minute client timeout, still generating past 4700 tokens with no stop token in sight
-    /// (confirmed in Ollama's own <c>server.log</c>: <c>tg</c> around 5-7 tokens/s the whole way,
-    /// never slowing to finish). Two other same-size calls at the same 32768 window completed
-    /// normally around 900-1150 tokens. So the failure is not context truncation on every call —
-    /// it is an occasional non-terminating generation (plausible on a CPU multi-threaded backend
-    /// even at <c>temperature:0</c>, since floating-point summation order is not fully
-    /// deterministic across threads), and a SMALL context window was accidentally the only thing
-    /// stopping it: hitting <c>num_ctx</c> forces a hard, fast stop with <c>done_reason: "length"</c>
-    /// — exactly the ORIGINAL "did not answer" bug, now explained. Removing that ceiling let a
-    /// rare runaway run free instead of being caught.
-    /// <para>
-    /// The fix is therefore <c>num_predict</c>, not <c>num_ctx</c> alone: <see cref="ResponseTokenCap"/>
-    /// puts the hard stop back deliberately, sized well above any legitimate answer rather than by
-    /// accident, and <c>num_ctx</c> only needs to be sized to comfortably hold prompt + that cap.
-    /// </para>
+    /// Sized for headroom over a long description rather than for the reply, which
+    /// <see cref="ResponseTokenCap"/> bounds independently and much lower. Ollama may or may not
+    /// honour this on a runner it has already loaded at another size; both outcomes are safe
+    /// precisely because the cap fits inside the smaller of them.
     /// </remarks>
     private const int ContextWindow = 8192;
 
     /// <summary>
     /// Passed as <c>options.num_predict</c> — the hard cap on how many tokens the model may
-    /// generate before Ollama stops it itself and reports <c>done_reason: "length"</c>.
+    /// generate before Ollama stops it and reports <c>done_reason: "length"</c>.
     /// </summary>
     /// <remarks>
-    /// This is the actual fix for the runaway generation described on <see cref="ContextWindow"/>:
-    /// left unset (Ollama's default is effectively unbounded for <c>/api/chat</c>), a rare
-    /// non-terminating generation runs until the CLIENT's own <see cref="HttpClient.Timeout"/>
-    /// gives up — ten minutes of nothing, reported as an opaque timeout rather than the
-    /// self-explaining <c>done_reason: "length"</c> message <see cref="Ask"/> now produces. 4096
-    /// is roughly 3-4x the largest legitimate answer measured so far (869-1155 tokens, across
-    /// several runs and domains) — real headroom for a bigger domain (more classes, more
-    /// properties) — while still stopping a runaway well inside the client timeout at every
-    /// generation speed observed on this machine (4.7-9 tokens/s), so the informative failure
-    /// fires before the uninformative one can.
+    /// 3072, and the exact number matters. Ollama starts a CPU runner with <c>-c 4096</c> by
+    /// default and reuses a runner it has already loaded, so a request cannot assume it got the
+    /// <see cref="ContextWindow"/> it asked for. It also starts every runner with
+    /// <c>--context-shift</c>: when a generation reaches the end of the window llama.cpp does not
+    /// stop it, it discards the oldest half of the context and carries on — which is how a
+    /// generation becomes non-terminating, since the model loses the beginning of the JSON it is
+    /// still supposed to be closing. The server's log shows exactly this, 32 times
+    /// (<c>slot context shift, n_keep = 4, n_left = 4091, n_discard = 2045</c>).
+    /// <para>
+    /// So the reply cap plus the prompt must fit inside 4096, not merely inside
+    /// <see cref="ContextWindow"/>: 3072 + the 354-token system prompt leaves ~670 tokens of
+    /// description before a shift becomes possible at all.
+    /// </para>
+    /// <para>
+    /// This replaces a 4096 cap that could not do its job. At the speeds actually observed on this
+    /// hardware, 4096 tokens takes 7.6 minutes at best and 16.6 at worst — so for over half of all
+    /// runs the cap could only fire AFTER the client had already given up, and the self-explaining
+    /// <c>done_reason: "length"</c> it exists to produce was unreachable. The real bound on how
+    /// long a run may take is now wall-clock (<see cref="DiscoveryConfig.StallSeconds"/> and
+    /// <see cref="DiscoveryConfig.TimeoutMinutes"/>), which is the only bound that does not depend
+    /// on how fast the machine happens to be.
+    /// </para>
     /// </remarks>
-    private const int ResponseTokenCap = 4096;
+    private const int ResponseTokenCap = 3072;
 
-    public OllamaAnswer Ask(string description)
+    public OllamaAnswer Ask(string description, Action<IReadOnlyList<string>>? onProgress = null)
+        => AskAsync(description, onProgress).GetAwaiter().GetResult();
+
+    private async Task<OllamaAnswer> AskAsync(
+        string description, Action<IReadOnlyList<string>>? onProgress)
     {
-        string envelope;
+        // The two wall-clock bounds. `budget` is the whole call; `stall` is reset every time a
+        // class is completed, so a generation that is still making progress is never interrupted
+        // however long it takes, and one that has stopped making progress is not waited out.
+        using var budget = new CancellationTokenSource(Budget);
+        using var stall = new CancellationTokenSource(StallWindow);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(budget.Token, stall.Token);
+
+        var content = new StringBuilder();
+        string? doneReason = null;
+        var reported = 0;
 
         try
         {
-            var request = new
+            using var request = new HttpRequestMessage(
+                HttpMethod.Post, $"{_config.Endpoint}/api/chat")
             {
-                model = _config.Model,
-                stream = false,
-                options = new { temperature = 0, num_ctx = ContextWindow, num_predict = ResponseTokenCap },
-                messages = new object[]
-                {
-                    new { role = "system", content = SystemPrompt },
-                    new { role = "user", content = description }
-                },
-                format = Schema()
+                Content = new StringContent(
+                    JsonSerializer.Serialize(RequestBody(description)), Encoding.UTF8,
+                    "application/json")
             };
 
-            var body = new StringContent(
-                JsonSerializer.Serialize(request), Encoding.UTF8, "application/json");
-
-            using var response = _http
-                .PostAsync($"{_config.Endpoint}/api/chat", body)
-                .GetAwaiter().GetResult();
+            using var response = await _http.SendAsync(
+                request, HttpCompletionOption.ResponseHeadersRead, linked.Token);
 
             if (!response.IsSuccessStatusCode)
             {
-                var errorBody = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+                var errorBody = await response.Content.ReadAsStringAsync(linked.Token);
 
                 return OllamaAnswer.Failure(
                     $"the server returned {(int)response.StatusCode} {response.StatusCode}"
                     + (string.IsNullOrWhiteSpace(errorBody) ? "." : $": {errorBody.Trim()}"));
             }
 
-            envelope = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+            await using var body = await response.Content.ReadAsStreamAsync(linked.Token);
+            using var reader = new StreamReader(body);
+
+            while (await reader.ReadLineAsync(linked.Token) is { } line)
+            {
+                if (string.IsNullOrWhiteSpace(line))
+                    continue;
+
+                if (!TryReadChunk(line, out var piece, out var chunkDoneReason, out var done))
+                    continue;
+
+                doneReason ??= chunkDoneReason;
+
+                if (piece.Length > 0)
+                {
+                    content.Append(piece);
+
+                    // Only when a class may have closed. Rescanning the whole buffer on every
+                    // token would be wasted work; a class cannot complete without a '}'.
+                    if (piece.Contains('}'))
+                    {
+                        var found = PartialLlmJson.ClassesSoFar(content.ToString());
+
+                        if (found.Count > reported)
+                        {
+                            reported = found.Count;
+
+                            // Progress is progress: the run is alive, so the stall clock restarts.
+                            stall.CancelAfter(StallWindow);
+
+                            onProgress?.Invoke(found);
+                        }
+                    }
+                }
+
+                if (done)
+                    break;
+            }
+        }
+        catch (OperationCanceledException) when (stall.IsCancellationRequested)
+        {
+            return Stopped(
+                content, $"stopped after {Describe(StallWindow)} with no further classes — "
+                + $"{_config.Model} was still connected but had stopped producing complete "
+                + "classes");
+        }
+        catch (OperationCanceledException) when (budget.IsCancellationRequested)
+        {
+            return Stopped(
+                content, $"stopped at the {Describe(Budget)} limit — {_config.Model} was still "
+                + "generating");
         }
         catch (TaskCanceledException)
         {
-            // Ask hands PostAsync no cancellation token of its own, so a TaskCanceledException
-            // here can only be _http.Timeout expiring (HttpClient wraps that as this type, with a
-            // TimeoutException inside, since .NET 5) — never a caller-requested cancellation.
-            return OllamaAnswer.Failure($"the request timed out after {TimeoutDescription()}");
+            // Not one of ours: HttpClient.Timeout, which it reports as this type with a
+            // TimeoutException inside. Ask hands SendAsync no token but `linked`, so anything else
+            // would have matched a filter above.
+            return Stopped(content, $"the request timed out after {TimeoutDescription()}");
         }
         catch (HttpRequestException ex)
         {
-            return OllamaAnswer.Failure($"could not reach {_config.Endpoint}: {ex.Message}");
+            return Stopped(content, $"could not reach {_config.Endpoint}: {ex.Message}");
         }
         catch (Exception ex)
         {
-            return OllamaAnswer.Failure($"the request failed: {ex.Message}");
+            return Stopped(content, $"the request failed: {ex.Message}");
         }
+
+        return Finished(content.ToString(), doneReason);
+    }
+
+    /// <summary>
+    /// The end of a stream that ran to completion — or stopped without ever saying <c>done</c>.
+    /// </summary>
+    private static OllamaAnswer Finished(string content, string? doneReason)
+    {
+        if (string.IsNullOrWhiteSpace(content))
+            return OllamaAnswer.Failure(
+                $"the server returned an empty response{DoneReasonNote(doneReason)}", doneReason);
+
+        // The whole document first: that is the ordinary case and it keeps every class.
+        try
+        {
+            if (JsonSerializer.Deserialize<LlmDomainModel>(content) is { } model)
+                return OllamaAnswer.Success(model, doneReason);
+        }
+        catch (JsonException)
+        {
+            // Falls through to salvage - see below.
+        }
+
+        // It did not parse whole, so it was cut off. Everything already generated is still good.
+        if (PartialLlmJson.Salvage(content) is { } salvaged)
+            return OllamaAnswer.Partial(
+                salvaged,
+                $"{salvaged.Classes.Count} class(es) were read from an answer that was cut short"
+                + DoneReasonNote(doneReason),
+                doneReason);
+
+        return OllamaAnswer.Failure(
+            "the response could not be parsed as JSON "
+            + $"({content.Length} characters, ending \"...{Tail(content)}\")"
+            + DoneReasonNote(doneReason),
+            doneReason);
+    }
+
+    /// <summary>
+    /// A run that ended early, for any reason. Whatever the model had already finished saying is
+    /// kept and reported as a partial answer; only a run with nothing complete in it is a failure.
+    /// </summary>
+    /// <remarks>
+    /// This is the difference the user actually sees. Before it, every one of these paths returned
+    /// null and the panel said "qwen2.5:3b did not answer" — throwing away, in the measured case,
+    /// five complete classes that had already cost two minutes to generate.
+    /// </remarks>
+    private static OllamaAnswer Stopped(StringBuilder content, string reason)
+    {
+        if (PartialLlmJson.Salvage(content.ToString()) is { } salvaged)
+            return OllamaAnswer.Partial(
+                salvaged,
+                $"{salvaged.Classes.Count} class(es) were kept from a run that {reason}.");
+
+        return OllamaAnswer.Failure(reason + ".");
+    }
+
+    /// <summary>
+    /// One line of the NDJSON stream. False for a line that is not a chunk at all, which is
+    /// skipped rather than failed: one unreadable line must not lose an answer that is otherwise
+    /// arriving fine.
+    /// </summary>
+    private static bool TryReadChunk(
+        string line, out string content, out string? doneReason, out bool done)
+    {
+        content = string.Empty;
+        doneReason = null;
+        done = false;
 
         try
         {
-            using var document = JsonDocument.Parse(envelope);
+            using var chunk = JsonDocument.Parse(line);
+            var root = chunk.RootElement;
 
-            // "length" is the single most likely cause of the parse failure below: Ollama stopped
-            // generating before the model reached its own stop token, because num_ctx or
-            // num_predict ran out first, and whatever content arrived is a JSON document cut off
-            // mid-stream. Read here, before the parse is even attempted, so a truncated response
-            // is reported as exactly that rather than as an unexplained parse failure.
-            var doneReason = document.RootElement.TryGetProperty("done_reason", out var doneReasonProperty)
-                ? doneReasonProperty.GetString()
-                : null;
+            if (root.TryGetProperty("message", out var message)
+                && message.TryGetProperty("content", out var piece)
+                && piece.ValueKind == JsonValueKind.String)
+                content = piece.GetString() ?? string.Empty;
 
-            var content = document.RootElement
-                .GetProperty("message")
-                .GetProperty("content")
-                .GetString();
+            if (root.TryGetProperty("done_reason", out var reason))
+                doneReason = reason.GetString();
 
-            if (string.IsNullOrWhiteSpace(content))
-                return OllamaAnswer.Failure(
-                    $"the server returned an empty response{DoneReasonNote(doneReason)}", doneReason);
+            done = root.TryGetProperty("done", out var doneProperty)
+                   && doneProperty.ValueKind == JsonValueKind.True;
 
-            try
-            {
-                var model = JsonSerializer.Deserialize<LlmDomainModel>(content);
-
-                if (model is null)
-                    return OllamaAnswer.Failure(
-                        $"the response parsed to nothing{DoneReasonNote(doneReason)}", doneReason);
-
-                return OllamaAnswer.Success(model, doneReason);
-            }
-            catch (JsonException)
-            {
-                // Length and tail rather than the whole thing: a truncated response is often
-                // thousands of characters, and the useful evidence — does it just stop mid-object,
-                // is done_reason "length" — is at the end.
-                return OllamaAnswer.Failure(
-                    "the response could not be parsed as JSON "
-                    + $"({content.Length} characters, ending \"...{Tail(content)}\")"
-                    + DoneReasonNote(doneReason),
-                    doneReason);
-            }
+            return true;
         }
-        catch (Exception ex)
+        catch (JsonException)
         {
-            // The envelope itself was not the {"message":{"content":...}} shape expected — not
-            // covered by the five cases above, but still reported rather than collapsed to null.
-            return OllamaAnswer.Failure($"the response could not be read: {ex.Message}");
+            return false;
         }
     }
 
-    private string TimeoutDescription()
+    private object RequestBody(string description) => new
     {
-        var timeout = _http.Timeout;
+        model = _config.Model,
+        stream = true,
+        options = new { temperature = 0, num_ctx = ContextWindow, num_predict = ResponseTokenCap },
+        messages = new object[]
+        {
+            new { role = "system", content = SystemPrompt },
+            new { role = "user", content = description }
+        },
+        format = Schema()
+    };
 
-        return timeout.TotalSeconds < 60
-            ? $"{timeout.TotalSeconds:0.#} second(s)"
-            : $"{timeout.TotalMinutes:0.#} minute(s)";
-    }
+    /// <summary>How long one call may run in total, however well it is going.</summary>
+    private TimeSpan Budget => TimeSpan.FromMinutes(Math.Max(1, _config.TimeoutMinutes));
+
+    /// <summary>
+    /// How long a call may go without completing another class before it is stopped and whatever
+    /// it has is kept.
+    /// </summary>
+    /// <remarks>
+    /// A healthy run completes a class every 12-15 seconds (measured: 14 classes over 127
+    /// seconds), so the default of two minutes is many times the real gap and cannot interrupt a
+    /// run that is merely slow. It is what turns a non-terminating generation from ten minutes of
+    /// nothing into two minutes and a usable answer.
+    /// </remarks>
+    private TimeSpan StallWindow => TimeSpan.FromSeconds(Math.Max(1, _config.StallSeconds));
+
+    private string TimeoutDescription() => Describe(_http.Timeout);
+
+    private static string Describe(TimeSpan span) => span.TotalSeconds < 60
+        ? $"{span.TotalSeconds:0.#} second(s)"
+        : $"{span.TotalMinutes:0.#} minute(s)";
 
     private static string Tail(string content) => content.Length <= 200 ? content : content[^200..];
 
     /// <summary>
     /// Nothing for a clean stop (<c>"stop"</c>) or no reason at all — the ordinary cases, worth no
-    /// extra words. Called out explicitly for <c>"length"</c>, the truncation signal this whole
-    /// change exists to surface. Any other value is still shown, since it is still evidence.
+    /// extra words. Called out explicitly for <c>"length"</c>, the truncation signal. Any other
+    /// value is still shown, since it is still evidence.
     /// </summary>
     private static string DoneReasonNote(string? doneReason) => doneReason switch
     {

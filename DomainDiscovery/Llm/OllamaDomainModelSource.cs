@@ -17,9 +17,9 @@ public sealed class OllamaDomainModelSource : IDomainModelSource
     /// <summary>Named so the Discover panel can say which model produced the classes.</summary>
     public string Label => $"{_modelName} (Ollama)";
 
-    public DiscoveryOutcome Discover(string description)
+    public DiscoveryOutcome Discover(string description, Action<IReadOnlyList<string>>? onProgress = null)
     {
-        var answer = _client.Ask(description);
+        var answer = _client.Ask(description, onProgress);
 
         if (answer.Model is null)
             return new DiscoveryOutcome(
@@ -37,6 +37,9 @@ public sealed class OllamaDomainModelSource : IDomainModelSource
                 false,
                 $"{_modelName} proposed no usable classes for that description.");
 
-        return new DiscoveryOutcome(model, Label, true, null);
+        // A run that was stopped early still succeeded — it produced classes, and they are as good
+        // as any others. The warning says the list may be shorter than it would have been, which
+        // is the honest thing to tell someone who can simply run it again.
+        return new DiscoveryOutcome(model, Label, true, answer.Warning);
     }
 }

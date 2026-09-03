@@ -382,8 +382,8 @@ to configure.</p>
 <table>
 <tr><th>Field</th><th>Default</th><th>Meaning</th></tr>
 <tr><td><code>Source</code></td><td><code>Ollama</code></td><td>Which source to use. <code>Ollama</code> asks
-the local model first and falls back to Wikipedia when it is unreachable or the configured model is not
-pulled (see below). <code>Wikipedia</code> skips Ollama entirely and always reads the local Wikipedia store —
+the local model first and falls back to Wikipedia when it is unreachable, when the configured model is not
+pulled (see below), or when the model runs but produces nothing usable. <code>Wikipedia</code> skips Ollama entirely and always reads the local Wikipedia store —
 choose this when a run needs to be exactly repeatable, since a local model is sampled and can answer a
 little differently between runs even at the low temperature this tool asks for. Anything else falls back to
 Wikipedia too, with a note that the value was not recognized.</td></tr>
@@ -391,14 +391,22 @@ Wikipedia too, with a note that the value was not recognized.</td></tr>
 <code>ollama list</code> shows for it.</td></tr>
 <tr><td><code>Endpoint</code></td><td><code>http://localhost:11434</code></td><td>Where Ollama is listening.
 Change this only if Ollama runs on another machine or a non-default port.</td></tr>
-<tr><td><code>TimeoutMinutes</code></td><td><code>10</code></td><td>How long to wait for Ollama's answer. A
-small domain measured 64-72 seconds on a CPU-only machine; the default leaves headroom well beyond that.</td></tr>
+<tr><td><code>TimeoutMinutes</code></td><td><code>5</code></td><td>The longest a single call may run,
+however well it is going. An ordinary domain measured about two and a half minutes on a CPU-only machine, so
+the default leaves real headroom; a run stopped here keeps every class the model had already finished, so a
+lower value trades length of answer for time rather than losing the answer.</td></tr>
+<tr><td><code>StallSeconds</code></td><td><code>120</code></td><td>How long a call may go without producing
+another class before it is stopped and what it produced is kept. A healthy run finishes a class every 12-15
+seconds, so this cannot interrupt one that is merely slow — it exists to end a generation that has stopped
+finishing anything, which would otherwise run until <code>TimeoutMinutes</code>. Raise it on a markedly
+slower machine.</td></tr>
 </table>
 <pre>{
   "Source": "Ollama",
   "Model": "qwen2.5:3b",
   "Endpoint": "http://localhost:11434",
-  "TimeoutMinutes": 10
+  "TimeoutMinutes": 5,
+  "StallSeconds": 120
 }</pre>
 <h4>Installing Ollama and pulling the model</h4>
 <p>Install Ollama from <a href="https://ollama.com">ollama.com</a> — it runs as a background service once
@@ -409,6 +417,15 @@ installed, with no separate step to start it. Then pull the default model from a
 configured model is actually in <code>ollama list</code> — a reachable Ollama with the wrong (or no) model
 pulled falls back to Wikipedia exactly as an unreachable one does, rather than failing partway through with
 no classes.</p>
+<h4>What the wait looks like</h4>
+<p>A local model on a machine with no usable graphics card generates a few tokens a second, so discovery
+genuinely takes minutes — about two and a half for an ordinary domain, longer for a large one. The Discover
+step does not sit blank for that: it names each class as the model finishes writing it, so you can see the
+list growing. On the command line the same progress appears as a class count beside the spinner.</p>
+<p>If a run is stopped before the model has finished — by <code>TimeoutMinutes</code>, by
+<code>StallSeconds</code>, or by the connection dropping — the classes it had already written are kept and
+the review step says so, for example <em>"6 class(es) were kept from a run that stopped at the 5 minute(s)
+limit"</em>. You get a shorter model rather than none, and running discovery again is always an option.</p>
 <h4>Pinning to Wikipedia</h4>
 <p>Set <code>"Source": "Wikipedia"</code> to skip Ollama and always use the local Wikipedia store. This is the
 option for a run that must be repeatable — a CI job, a demonstration you will run more than once and expect

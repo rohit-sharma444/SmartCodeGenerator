@@ -108,9 +108,16 @@ internal static class DiscoveryStep
     /// </summary>
     /// <remarks>
     /// Slow either way, which is why the component runs it on a background task: a local model
-    /// measured 64-72 seconds for a small domain, and a first Wikipedia fetch is no quicker.
+    /// measured two and a half minutes for a small domain on a CPU, and a first Wikipedia fetch is
+    /// no quicker.
     /// </remarks>
-    public static DiscoveryOutcome Discover(string description, string workspaceRoot)
+    /// <param name="onProgress">
+    /// Called with the classes found so far while the model is still generating, so the panel can
+    /// show them rather than a blank wait. Called from the background thread the discovery runs
+    /// on — the caller marshals.
+    /// </param>
+    public static DiscoveryOutcome Discover(
+        string description, string workspaceRoot, Action<IReadOnlyList<string>>? onProgress = null)
     {
         var cacheDir = Path.Combine(workspaceRoot, ".dd-cache");
 
@@ -118,6 +125,6 @@ internal static class DiscoveryStep
             DiscoveryConfig.Load(),
             () => new WikipediaDomainModelSource(DomainDiscoveryPipeline.CreateDefault(cacheDir)));
 
-        return source.Discover(description);
+        return source.Discover(description, onProgress);
     }
 }

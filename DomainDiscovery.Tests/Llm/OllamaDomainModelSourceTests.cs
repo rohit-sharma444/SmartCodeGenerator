@@ -8,15 +8,31 @@ internal sealed class FakeOllamaClient : IOllamaClient
 {
     public LlmDomainModel? Answer { get; set; }
     public string? Error { get; set; }
+
+    /// <summary>Set to make the answer a partial one - a run that was stopped but kept classes.</summary>
+    public string? Warning { get; set; }
+
     public bool Available { get; set; } = true;
     public string? LastDescription { get; private set; }
 
+    /// <summary>What this reports through the progress callback before answering, if anything.</summary>
+    public IReadOnlyList<string> ProgressSteps { get; set; } = [];
+
     public bool IsAvailable() => Available;
 
-    public OllamaAnswer Ask(string description)
+    public OllamaAnswer Ask(string description, Action<IReadOnlyList<string>>? onProgress = null)
     {
         LastDescription = description;
-        return Answer is not null ? OllamaAnswer.Success(Answer) : OllamaAnswer.Failure(Error ?? "no answer");
+
+        for (var i = 1; i <= ProgressSteps.Count; i++)
+            onProgress?.Invoke(ProgressSteps.Take(i).ToList());
+
+        if (Answer is null)
+            return OllamaAnswer.Failure(Error ?? "no answer");
+
+        return Warning is null
+            ? OllamaAnswer.Success(Answer)
+            : OllamaAnswer.Partial(Answer, Warning);
     }
 }
 

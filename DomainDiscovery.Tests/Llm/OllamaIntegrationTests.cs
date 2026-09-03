@@ -32,10 +32,26 @@ public class OllamaIntegrationTests
         if (!OllamaIsRunning(config))
             return;   // no local model server — see the class remarks
 
+        var progress = new List<IReadOnlyList<string>>();
+
         var outcome = new OllamaDomainModelSource(new OllamaClient(config), config.Model)
-            .Discover("A point of sale system for a retail shop");
+            .Discover("A point of sale system for a retail shop", found => progress.Add(found));
 
         Assert.True(outcome.Succeeded, outcome.Message);
+
+        // The progress callback against the REAL model, which is the only place it can be proven:
+        // a stub can be made to report anything. A generation takes minutes on a CPU, and this is
+        // what the Discover panel draws instead of a blank wait for all of it.
+        Assert.NotEmpty(progress);
+
+        // Reported as it goes, not once at the end - the first report must be shorter than the
+        // last, or nothing was actually incremental.
+        Assert.True(
+            progress[0].Count < progress[^1].Count || progress.Count == 1,
+            $"progress went straight to {progress[0].Count} classes in one step");
+
+        Assert.All(progress, found => Assert.All(found, line => Assert.False(
+            string.IsNullOrWhiteSpace(line), "a progress line was blank")));
 
         // Deliberately weak: the model is sampled, so asserting exact class names would make
         // this test flaky. What is asserted is that the normalizer produced something usable.

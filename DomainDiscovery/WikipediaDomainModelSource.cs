@@ -10,7 +10,7 @@ public sealed class WikipediaDomainModelSource : IDomainModelSource
 
     public WikipediaDomainModelSource(DomainDiscoveryPipeline pipeline) => _pipeline = pipeline;
 
-    public DiscoveryOutcome Discover(string description)
+    public DiscoveryOutcome Discover(string description, Action<IReadOnlyList<string>>? onProgress = null)
     {
         var result = _pipeline.Discover(description);
 

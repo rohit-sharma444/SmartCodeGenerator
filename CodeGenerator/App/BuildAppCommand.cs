@@ -270,14 +270,19 @@ internal sealed class BuildAppCommand
             DiscoveryConfig.Load(),
             () => new WikipediaDomainModelSource(DomainDiscoveryPipeline.CreateDefault(cacheDir)));
 
-        // The longest silence in the tool. A local model measured 64-72 seconds for a small
-        // domain, and a first Wikipedia fetch is no quicker; an unmoving line reads as hung.
+        // The longest silence in the tool, and a genuinely long one: a local model on a CPU
+        // measured two and a half minutes for an ordinary domain, and a first Wikipedia fetch is
+        // no quicker. The spinner says it is alive; the class count says it is getting somewhere,
+        // which is what stops a real wait from reading as a hang.
         DiscoveryOutcome outcome;
 
         Console.WriteLine("\n");
-        using (Spinner.Start("Discovering the domain (this can take a minute or two)"))
+        using (var spinner = Spinner.Start("Discovering the domain (this can take a few minutes)"))
         {
-            outcome = source.Discover(description);
+            outcome = source.Discover(
+                description,
+                found => Spinner.Describe(
+                    spinner, $"Discovering the domain — {found.Count} class(es) so far"));
         }
 
         // Which source answered, always — the command line says exactly what the web panel says.

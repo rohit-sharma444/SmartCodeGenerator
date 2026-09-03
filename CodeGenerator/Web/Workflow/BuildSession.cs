@@ -249,6 +249,31 @@ public sealed class BuildSession
     private Task<DiscoveryOutcome>? _discoveryInFlight;
 
     /// <summary>
+    /// The classes the running discovery has found so far, for the panel to draw while it waits.
+    /// </summary>
+    /// <remarks>
+    /// On the session for exactly the reason <see cref="_discoveryInFlight"/> is: a reload or a
+    /// second tab JOINS the call already in flight rather than starting one, so a panel that kept
+    /// this to itself would leave every joiner watching a blank list for the rest of a generation
+    /// it is genuinely waiting on. Whole-reference assignment under the same gate, since the
+    /// discovery reports progress from a background thread while circuits render on others.
+    /// </remarks>
+    private IReadOnlyList<string> _discovered = [];
+
+    /// <summary>What the running discovery has found so far. Empty when none is running.</summary>
+    public IReadOnlyList<string> Discovered
+    {
+        get { lock (_discoveryGate) return _discovered; }
+    }
+
+    /// <summary>Records what the running discovery has found, for every tab watching it.</summary>
+    public void DiscoveryProgress(IReadOnlyList<string> found)
+    {
+        lock (_discoveryGate)
+            _discovered = found;
+    }
+
+    /// <summary>
     /// Starts <paramref name="discover"/>, or, if a call is already running, hands back that same
     /// task instead of starting a second one.
     /// </summary>
@@ -290,7 +315,14 @@ public sealed class BuildSession
     public void DiscoveryFinished()
     {
         lock (_discoveryGate)
+        {
             _discoveryInFlight = null;
+
+            // Cleared with the call itself: the next run starts from nothing found, so a retry
+            // after a failure cannot show the previous attempt's classes as though they were this
+            // one's.
+            _discovered = [];
+        }
     }
 
     public void SetImportedData(ImportedData imported)

@@ -5,10 +5,11 @@
 
 @if (_busy)
 {
-    @* The longest silence in the tool. A first fetch for an unseen topic runs many seconds, and
-       an unmoving screen reads as hung — this is the spinner's replacement, and the seconds
-       counting up are what say it is still going. *@
-    <ProgressList Current="@_label" Seconds="_seconds" />
+    @* The longest silence in the tool, and it is genuinely long: a local model on a CPU takes
+       two and a half minutes for an ordinary domain. The seconds counting up say it is still
+       going; the classes listed above it say what it has actually produced, which is what
+       stops a real wait from reading as a hang. *@
+    <ProgressList Done="Session.Discovered" Current="@_label" Seconds="_seconds" />
 }
 else if (_read is not null)
 {
@@ -90,7 +91,7 @@ else
             return;
 
         _busy = true;
-        _label = "Discovering the domain — a local model can take a minute or two";
+        _label = "Discovering the domain — a local model can take a few minutes";
         _seconds = 0;
         StartClock();
 
@@ -101,8 +102,15 @@ else
         // started the task for) applies the outcome below; a caller that joined has nothing left
         // to do once its own busy state clears — acting on the outcome twice is exactly the
         // double SetModel/Advance that used to corrupt the session.
+        //
+        // The progress goes on the SESSION, not on this component: a reload or a second tab joins
+        // the call already running, and a list kept here would leave every joiner watching a blank
+        // panel for the rest of a generation it is really waiting on. The one-second clock below
+        // is what repaints it, so the callback does no rendering of its own — a render per class
+        // would be a render for work the timer already covers.
         var (task, owner) = Session.JoinDiscovery(
-            () => Task.Run(() => DiscoveryStep.Discover(Session.Description, Session.WorkspaceRoot)));
+            () => Task.Run(() => DiscoveryStep.Discover(
+                Session.Description, Session.WorkspaceRoot, Session.DiscoveryProgress)));
 
         DiscoveryOutcome outcome;
 

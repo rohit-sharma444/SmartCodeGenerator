@@ -68,31 +68,31 @@ public class OllamaClientTests
 
         Assert.Equal("http://localhost:11434/api/chat", handler.LastRequestUri!.ToString());
         Assert.Contains("llama3.2:3b", handler.LastRequestBody!);
-        Assert.Contains("\"stream\":false", handler.LastRequestBody!);
+        Assert.Contains("\"stream\":true", handler.LastRequestBody!);
         Assert.Contains("\"format\"", handler.LastRequestBody!);
     }
 
     [Fact]
-    public void SendsAContextWindowAndAResponseCapWithRealHeadroom()
+    public void SendsAContextWindowAndAResponseCapThatFitTheSmallestLikelyRunner()
     {
-        // Two failure modes this guards against, both measured against the running server rather
-        // than assumed:
-        //  - num_ctx: the shared prompt+reply window defaults to something in the 2048-4096 range,
-        //    and a thorough answer for a large domain can exceed that - the reply is cut mid-stream
-        //    and no longer parses as JSON.
-        //  - num_predict: left unset, a rare non-terminating generation (observed directly against
-        //    the real server - see OllamaClient's ContextWindow/ResponseTokenCap remarks) runs for
-        //    the client's entire timeout with no signal at all. Capping it turns that into a fast,
-        //    self-explaining done_reason:"length" instead.
-        // Neither value is the model's full 32768 context: that was tried first and made the
-        // second failure mode worse, not better, by removing the accidental ceiling that used to
-        // stop a runaway generation early.
+        // Both values are measured against the running server rather than assumed.
+        //  - num_ctx: the shared prompt+reply window. Sized for headroom over a long description,
+        //    not for the reply.
+        //  - num_predict: 3072 rather than the 4096 it was, and the difference is the whole bug.
+        //    Ollama starts a CPU runner at -c 4096 by default and reuses a loaded one, so a
+        //    request cannot assume it got the num_ctx it asked for; it also passes
+        //    --context-shift, which turns an overrun into a NON-TERMINATING generation rather
+        //    than a stop. The reply cap plus the 354-token system prompt must therefore fit
+        //    inside 4096, not merely inside num_ctx.
+        // The 4096 cap it replaces could not do its job at all: at the 4-10 tokens/s this
+        // hardware actually manages, 4096 tokens takes 7.6 to 16.6 minutes, so for most runs the
+        // cap could only fire after the client had already given up.
         var handler = new StubHandler(ChatResponse);
 
         new OllamaClient(new DiscoveryConfig(), new HttpClient(handler)).Ask("a shop");
 
         Assert.Contains("\"num_ctx\":8192", handler.LastRequestBody!);
-        Assert.Contains("\"num_predict\":4096", handler.LastRequestBody!);
+        Assert.Contains("\"num_predict\":3072", handler.LastRequestBody!);
     }
 
     [Fact]

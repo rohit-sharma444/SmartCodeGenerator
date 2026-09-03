@@ -21,14 +21,42 @@ public sealed class DiscoveryConfig
 
     public const string DefaultEndpoint = "http://localhost:11434";
 
-    /// <summary>Ten minutes, not HttpClient's 100 seconds. A small domain measured 64-72s on a
-    /// CPU-only machine, so the framework default would kill ordinary requests.</summary>
-    public const int DefaultTimeoutMinutes = 10;
+    /// <summary>
+    /// The whole-call ceiling, not the framework's 100 seconds: a thorough answer measured 2.5
+    /// minutes on a CPU-only machine and a large domain considerably more, so the default would
+    /// kill ordinary requests.
+    /// </summary>
+    /// <remarks>
+    /// Five rather than the ten it was. Ten was chosen when a run that went wrong produced nothing
+    /// at all, so waiting longer could only help; now a run that is stopped keeps every class it
+    /// had already written, which makes a shorter ceiling strictly better. In practice
+    /// <see cref="StallSeconds"/> ends a bad run long before this does.
+    /// </remarks>
+    public const int DefaultTimeoutMinutes = 5;
+
+    /// <summary>
+    /// How long a generation may go without completing another class before it is stopped and
+    /// whatever it produced is kept.
+    /// </summary>
+    /// <remarks>
+    /// This is the bound that actually fixes the "it hangs and then says the model did not answer"
+    /// failure. A healthy run completes a class every 12-15 seconds, so two minutes cannot
+    /// interrupt one that is merely slow; a generation that has stopped terminating (llama.cpp's
+    /// --context-shift lets one run indefinitely) is caught in two minutes instead of ten, with
+    /// its finished classes intact.
+    /// <para>
+    /// Raise it on a markedly slower machine. A token cap cannot do this job: the number of
+    /// seconds a token budget takes depends on the hardware, which is exactly what made the
+    /// previous 4096-token cap unreachable before the timeout it was supposed to beat.
+    /// </para>
+    /// </remarks>
+    public const int DefaultStallSeconds = 120;
 
     public string Source { get; set; } = OllamaSource;
     public string Model { get; set; } = DefaultModel;
     public string Endpoint { get; set; } = DefaultEndpoint;
     public int TimeoutMinutes { get; set; } = DefaultTimeoutMinutes;
+    public int StallSeconds { get; set; } = DefaultStallSeconds;
 
     public static string DefaultPath =>
         Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "discovery.json");
