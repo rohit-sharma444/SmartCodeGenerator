@@ -50,6 +50,42 @@ public class WinFormsBusinessLayoutTests
         return source[start..end];
     }
 
+    /// <summary>
+    /// Asserts that a switch case's body is the call it is supposed to make.
+    /// </summary>
+    /// <remarks>
+    /// Adjacency, not presence, and it is the whole point here. RepaintRecord, RepaintTotals and
+    /// ShowStatus are each called TWICE in their method -- once to paint the screen, once from the
+    /// switch that keeps it painted -- so a bare Contains on the call goes on passing after the
+    /// case has been cut back to a bare break and the screen has gone deaf, which is exactly the
+    /// defect these tests exist for. Only refreshList, called once, was ever really pinned.
+    /// <para>
+    /// Bounded by the case's own break rather than joining the two lines with a newline: a raw
+    /// string literal carries the line endings of the file it is written in, both files here are
+    /// CRLF, and a needle spelling "\n" between its lines would match nothing. No needle below
+    /// contains a line ending at all, so there is no line-ending assumption left to get wrong.
+    /// </para>
+    /// </remarks>
+    private static void CaseRuns(string source, string label, string call)
+    {
+        var at = source.IndexOf(label, StringComparison.Ordinal);
+        Assert.IsGreaterThan(-1, at, $"the emitted form has no '{label}'");
+
+        var rest = source[(at + label.Length)..];
+        var end = rest.IndexOf("break;", StringComparison.Ordinal);
+        Assert.IsGreaterThan(-1, end, $"'{label}' never breaks");
+
+        StringAssert.Contains(rest[..end], call, $"'{label}' does not run '{call}'");
+    }
+
+    /// <summary>Asserts a call is made twice: once to paint the screen, once to keep it
+    /// painted.</summary>
+    private static void RunsTwice(string source, string call)
+        => Assert.AreNotEqual(
+            source.IndexOf(call, StringComparison.Ordinal),
+            source.LastIndexOf(call, StringComparison.Ordinal),
+            $"'{call}' is called once, so either the first paint or the live update is missing");
+
     private static string EntryBody()
         => Body(
             Source(),
@@ -392,8 +428,12 @@ public class WinFormsBusinessLayoutTests
         StringAssert.Contains(body, "totals = BuildTotals(editor);");
         StringAssert.Contains(body, "linesHost.Controls.Add(totals, 1, 0);");
         StringAssert.Contains(body, "if (editor is INotifyPropertyChanged notify)");
-        StringAssert.Contains(body, "case \"Totals\":");
-        StringAssert.Contains(body, "RepaintTotals();");
+
+        // The case RUNS the rebuild, and the rebuild happens twice: once beside the grid when the
+        // tab is built, once from here. See CaseRuns -- naming the call alone left the band free to
+        // go back to painting once and never listening, which is the finding itself.
+        CaseRuns(body, "case \"Totals\":", "RepaintTotals();");
+        RunsTwice(body, "RepaintTotals();");
 
         // The old band goes with it, or the panel grows a second copy on top of the first.
         StringAssert.Contains(body, "linesHost.Controls.Remove(totals);");
@@ -452,9 +492,13 @@ public class WinFormsBusinessLayoutTests
         StringAssert.Contains(body, "tabs.TabPages.Remove(additionalPage);");
 
         StringAssert.Contains(body, "if (screen is INotifyPropertyChanged notify)");
-        StringAssert.Contains(body, "case \"Editor\":");
-        StringAssert.Contains(body, "RepaintRecord();");
         StringAssert.Contains(body, "notify.PropertyChanged += handler;");
+
+        // The case RUNS the repaint, and the repaint happens twice: once for the first paint and
+        // once from here. Naming the two separately let the case be cut back to a bare break --
+        // paint once, then go deaf -- with the initial call keeping every needle green.
+        CaseRuns(body, "case \"Editor\":", "RepaintRecord();");
+        RunsTwice(body, "RepaintRecord();");
 
         var repaint = body.IndexOf("void RepaintRecord()", StringComparison.Ordinal);
         var read = body.IndexOf("GetProperty(\"Draft\")", StringComparison.Ordinal);
@@ -480,8 +524,11 @@ public class WinFormsBusinessLayoutTests
         var body = EntryBody();
 
         StringAssert.Contains(body, "var (listControl, refreshList) = BuildRecordList(screen);");
-        StringAssert.Contains(body, "case \"Items\":");
-        StringAssert.Contains(body, "refreshList();");
+
+        // Through CaseRuns like the rest, though refreshList happens to be called only here: that
+        // is what made this the one test of the four the bare-presence form did pin, and it should
+        // not go on depending on staying that way.
+        CaseRuns(body, "case \"Items\":", "refreshList();");
 
         // The far end: Save re-reads the store through Reload, which announces exactly that name.
         StringAssert.Contains(MasterScreenTemplate.Source(Root), "OnPropertyChanged(nameof(Items));");
@@ -552,11 +599,14 @@ public class WinFormsBusinessLayoutTests
         var editor = EditorBody();
 
         // Painted when the screen is built, and again on every change: a screen the rail returns to
-        // is rebuilt from scratch, and whatever it last reported is still its Status.
-        StringAssert.Contains(entry, "ShowStatus(bar, screen);");
-        StringAssert.Contains(entry, "case \"Status\":");
-        StringAssert.Contains(editor, "ShowStatus(bar, editor);");
-        StringAssert.Contains(editor, "case \"Status\":");
+        // is rebuilt from scratch, and whatever it last reported is still its Status. Both, on both
+        // screens -- naming the call alone was satisfied by the first paint while the case beside
+        // it did nothing, which is the permanently blank status line all over again.
+        CaseRuns(entry, "case \"Status\":", "ShowStatus(bar, screen);");
+        RunsTwice(entry, "ShowStatus(bar, screen);");
+
+        CaseRuns(editor, "case \"Status\":", "ShowStatus(bar, editor);");
+        RunsTwice(editor, "ShowStatus(bar, editor);");
 
         // Both screens raise it through SetField, whose CallerMemberName is the property name.
         StringAssert.Contains(MasterScreenTemplate.Source(Root), "protected set => SetField(ref _status, value);");

@@ -211,9 +211,14 @@ public sealed class MainForm : Form
     /// BuildEditor use to unsubscribe the PropertyChanged handler they attach to the screen, so a
     /// rail click does not leak a handler onto a screen this form no longer shows.
     /// <para>
-    /// Snapshotted with ToArray first: Control.Dispose takes the control out of this very
-    /// collection, so disposing straight out of a foreach over _content.Controls modifies what that
-    /// foreach is enumerating -- which throws on the first rail click, not on some later one.
+    /// Snapshotted with ToArray first, because Control.Dispose takes the control out of this very
+    /// collection. ControlCollection's enumerator has no version check, so a foreach that disposes
+    /// as it walks _content.Controls does NOT throw: the controls behind the disposed one shift
+    /// down into an index the enumerator has already passed, so it silently disposes only every
+    /// second one -- measured on a real collection: three controls left one alive, fifty left
+    /// twenty-five. Half the discarded tree would stay alive with its DataBindings still registered
+    /// in this form's BindingContext and its screen subscription still attached, looking for all
+    /// the world like it had been cleaned up.
     /// </para>
     /// </remarks>
     private void Show(object? screen)
