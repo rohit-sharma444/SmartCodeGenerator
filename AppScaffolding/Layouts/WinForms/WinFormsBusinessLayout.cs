@@ -1,5 +1,3 @@
-using AppScaffolding.Screens;
-
 namespace AppScaffolding.Layouts.WinForms;
 
 /// <summary>
@@ -40,11 +38,6 @@ public sealed class WinFormsBusinessLayout : IAppLayout
         var accent = context.Palette is null
             ? "Color.FromArgb(0x25, 0x63, 0xEB)"
             : $"ColorTranslator.FromHtml(\"{context.Palette.Accent}\")";
-
-        // The one string that names the long-text tab, read rather than spelled again here: the
-        // emitted FieldGroups.AdditionalTitle the WPF layout writes into markup is built from the
-        // same constant.
-        var additionalTitle = FieldGroupsTemplate.AdditionalTitle;
 
         // Read off disk beside the binary rather than embedded, as every other layout does:
         // AppScaffolder registers the copy as content copied to the output directory. Guarded, so
@@ -212,8 +205,22 @@ public sealed class MainForm : Form
     }
 
     /// <summary>Swaps the content panel to whatever the shell is showing.</summary>
+    /// <remarks>
+    /// Disposing the discarded tree, not just clearing it: Control.Dispose cascades to every child,
+    /// which is also what fires each control's own Disposed event -- the signal BuildEntry and
+    /// BuildEditor use to unsubscribe the PropertyChanged handler they attach to the screen, so a
+    /// rail click does not leak a handler onto a screen this form no longer shows.
+    /// <para>
+    /// Snapshotted with ToArray first: Control.Dispose takes the control out of this very
+    /// collection, so disposing straight out of a foreach over _content.Controls modifies what that
+    /// foreach is enumerating -- which throws on the first rail click, not on some later one.
+    /// </para>
+    /// </remarks>
     private void Show(object? screen)
     {
+        foreach (var discarded in _content.Controls.Cast<Control>().ToArray())
+            discarded.Dispose();
+
         _content.Controls.Clear();
 
         if (screen is null)
@@ -302,40 +309,122 @@ public sealed class MainForm : Form
     /// <c>Role.Transaction</c> nor <c>IRecordEditor</c> -- Task 5 moved <c>IsDirty</c> down to
     /// <c>IDirtyScreen</c> for exactly that reason, so a master's own dirty check is never mistaken
     /// for the transaction editor here.
+    /// <para>
+    /// A master's <c>Editor</c> is REPLACED, not mutated, every time a row is selected, New/Edit is
+    /// clicked, Clear is clicked, or Save succeeds (<c>MasterScreenTemplate.cs</c>: the
+    /// <c>Selected</c> setter, <c>Edit</c>, <c>Clear</c>, and after <c>Save</c>). Reading
+    /// <c>screen.Editor.Draft</c> once and handing it to every control's <c>DataBindings</c> would
+    /// leave the form on screen bound to the ORIGINAL draft forever: selecting a row would not load
+    /// it, and Save would write back whatever the blank draft happened to hold while the model
+    /// believed a different record was open. So the header and the form are rebuilt from scratch on
+    /// every <c>"Editor"</c> change, the same way WPF's <c>Record="{Binding Editor.Draft}"</c>
+    /// re-resolves when <c>Editor</c> raises <c>PropertyChanged</c>.
+    /// </para>
     /// </remarks>
     private Control BuildEntry(object screen)
     {
-        var editor = screen.GetType().GetProperty("Editor")?.GetValue(screen);
-        var record = editor?.GetType().GetProperty("Draft")?.GetValue(editor);
-
-        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4 };
+        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4, AutoScroll = true };
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 74f));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40f));
 
-        layout.Controls.Add(BuildEntryHeader(screen, record), 0, 0);
-
-        if (record is not null)
-            layout.Controls.Add(BuildEntryForm(record), 0, 1);
-
         var tabs = new TabControl { Dock = DockStyle.Fill };
 
         var title = screen.GetType().GetProperty("Title")?.GetValue(screen) as string ?? string.Empty;
         var listPage = new TabPage(title);
-        listPage.Controls.Add(BuildRecordList(screen));
+
+        var (listControl, refreshList) = BuildRecordList(screen);
+        listPage.Controls.Add(listControl);
         tabs.TabPages.Add(listPage);
 
-        if (record is not null && HasAdditional(screen))
-            AddAdditionalTab(tabs, record);
+        Control? header = null;
+        Control? form = null;
+        TabPage? additionalPage = null;
+
+        // Repaints everything bound to the CURRENT draft. Called once for the initial paint and
+        // again every time the screen replaces its Editor -- see the remarks above.
+        void RepaintRecord()
+        {
+            var editor = screen.GetType().GetProperty("Editor")?.GetValue(screen);
+            var record = editor?.GetType().GetProperty("Draft")?.GetValue(editor);
+
+            if (header is not null)
+            {
+                layout.Controls.Remove(header);
+                header.Dispose();
+            }
+
+            if (form is not null)
+            {
+                layout.Controls.Remove(form);
+                form.Dispose();
+            }
+
+            if (additionalPage is not null)
+            {
+                tabs.TabPages.Remove(additionalPage);
+                additionalPage.Dispose();
+                additionalPage = null;
+            }
+
+            header = BuildEntryHeader(screen, record);
+            layout.Controls.Add(header, 0, 0);
+
+            form = record is not null ? BuildEntryForm(record) : null;
+
+            if (form is not null)
+                layout.Controls.Add(form, 0, 1);
+
+            if (record is not null && HasAdditional(screen))
+                additionalPage = AddAdditionalTab(tabs, record);
+        }
+
+        RepaintRecord();
 
         layout.Controls.Add(tabs, 0, 2);
-        layout.Controls.Add(
-            BuildEntryActionBar(
-                screen,
-                ("NewCommand", "New"), ("EditCommand", "Edit"), ("DeleteCommand", "Delete"),
-                ("SaveCommand", "Save"), ("ClearCommand", "Clear"), ("CancelCommand", "Cancel")),
-            0, 3);
+
+        var bar = BuildEntryActionBar(
+            screen,
+            ("NewCommand", "New"), ("EditCommand", "Edit"), ("DeleteCommand", "Delete"),
+            ("SaveCommand", "Save"), ("ClearCommand", "Clear"), ("CancelCommand", "Cancel"));
+
+        layout.Controls.Add(bar, 0, 3);
+
+        // Painted once here as well as on every change: a screen the rail comes back to is rebuilt
+        // from scratch, and whatever it last reported is still its Status.
+        ShowStatus(bar, screen);
+
+        // Three things this screen shows that a one-shot snapshot cannot: the form re-pointed at a
+        // freshly opened record, the list re-read after a save or delete on THIS screen (unlike the
+        // old flat editor, saving no longer happens on a different screen that re-runs Show), and
+        // the status line a master's own commands write to.
+        if (screen is INotifyPropertyChanged notify)
+        {
+            PropertyChangedEventHandler handler = (_, e) =>
+            {
+                switch (e.PropertyName)
+                {
+                    case "Editor":
+                        RepaintRecord();
+                        break;
+
+                    case "Items":
+                        refreshList();
+                        break;
+
+                    case "Status":
+                        ShowStatus(bar, screen);
+                        break;
+                }
+            };
+
+            notify.PropertyChanged += handler;
+
+            // Unsubscribed when Show discards this screen's control tree, or every rail click
+            // leaves another handler on the screen this form no longer shows.
+            layout.Disposed += (_, _) => notify.PropertyChanged -= handler;
+        }
 
         return layout;
     }
@@ -346,22 +435,19 @@ public sealed class MainForm : Form
     /// <remarks>
     /// Selecting a row IS opening it -- the master screen loads it into the form itself once
     /// Selected is set, which is why this needs no Open button and no double-click handler, unlike
-    /// <see cref="BuildList"/>.
+    /// <see cref="BuildList"/>. That is also the trap: <c>DataGridView.DataSource</c> auto-selects
+    /// a row the moment it is set, so every rebind -- the initial paint, a keystroke in search, a
+    /// refresh after Save -- would otherwise fire <c>SelectionChanged</c> and silently replace
+    /// whatever the user has open in the form above with row 0. The suppress flag is what tells a
+    /// rebind apart from an actual click, and the returned <c>Rebind</c> action is what lets
+    /// <see cref="BuildEntry"/> drive the same guarded rebind when the screen announces a fresh
+    /// <c>Items</c> list.
     /// </remarks>
-    private Control BuildRecordList(object screen)
+    private (Control Control, Action Rebind) BuildRecordList(object screen)
     {
         var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2 };
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30f));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
-
-        var search = new TextBox { Width = 200 };
-        search.TextChanged += (_, _) =>
-        {
-            screen.GetType().GetProperty("Search")?.SetValue(screen, search.Text);
-            Refresh(screen, layout);
-        };
-
-        layout.Controls.Add(search, 0, 0);
 
         var grid = new DataGridView
         {
@@ -375,14 +461,47 @@ public sealed class MainForm : Form
             Name = "Grid",
         };
 
-        grid.SelectionChanged += (_, _) =>
-            screen.GetType().GetProperty("Selected")?.SetValue(screen, grid.CurrentRow?.DataBoundItem);
+        var suppressSelection = false;
 
+        grid.SelectionChanged += (_, _) =>
+        {
+            if (suppressSelection)
+                return;
+
+            screen.GetType().GetProperty("Selected")?.SetValue(screen, grid.CurrentRow?.DataBoundItem);
+        };
+
+        void Rebind()
+        {
+            suppressSelection = true;
+
+            try
+            {
+                Bind(screen, grid);
+            }
+            finally
+            {
+                suppressSelection = false;
+            }
+        }
+
+        var search = new TextBox { Width = 200 };
+
+        // Rebound here rather than left to the screen's own Items notification: this file reaches
+        // Search by reflection, so it cannot assume the screen announces anything at all. A screen
+        // that does announce it simply rebinds twice, which costs a list copy and nothing else.
+        search.TextChanged += (_, _) =>
+        {
+            screen.GetType().GetProperty("Search")?.SetValue(screen, search.Text);
+            Rebind();
+        };
+
+        layout.Controls.Add(search, 0, 0);
         layout.Controls.Add(grid, 0, 1);
 
-        Bind(screen, grid);
+        Rebind();
 
-        return layout;
+        return (layout, Rebind);
     }
 
     /// <summary>
@@ -665,13 +784,21 @@ public sealed class MainForm : Form
         return strip;
     }
 
-    /// <summary>The Additional Information tab: the long-text fields, as multi-line boxes.</summary>
-    private void AddAdditionalTab(TabControl tabs, object record)
+    /// <summary>
+    /// The Additional Information tab: the long-text fields, as multi-line boxes.
+    /// </summary>
+    /// <remarks>
+    /// Returns the page it added, or null when the record has no long-text fields: a caller whose
+    /// record can change under it -- <see cref="BuildEntry"/>, when Editor is replaced -- has to be
+    /// able to remove and dispose the page bound to the OLD record before adding a fresh one, or the
+    /// tab keeps writing into a draft nothing else references any more.
+    /// </remarks>
+    private TabPage? AddAdditionalTab(TabControl tabs, object record)
     {
         var fields = FieldGroups.Additional(record.GetType());
 
         if (fields.Count == 0)
-            return;
+            return null;
 
         var body = new FlowLayoutPanel
         {
@@ -701,10 +828,17 @@ public sealed class MainForm : Form
             body.Controls.Add(box);
         }
 
-        var page = new TabPage("{{additionalTitle}}");
+        // The emitted constant, not the string again: unlike the WPF layout -- which writes this
+        // heading into XAML, where the constant is reachable only through an x:Static reference and
+        // an extra xmlns -- this tab is built in code, so it can simply call it. Spelling the
+        // heading twice in one shipped app is exactly the drift FieldGroups.AdditionalTitle exists
+        // to prevent.
+        var page = new TabPage(FieldGroups.AdditionalTitle);
 
         page.Controls.Add(body);
         tabs.TabPages.Add(page);
+
+        return page;
     }
 
     /// <summary>The rows a lookup offers, from the pane that holds that entity. Empty when the
@@ -767,12 +901,21 @@ public sealed class MainForm : Form
     /// Reached only through the <c>IRecordEditor</c> test in <see cref="BuildScreen"/>: a master's
     /// inline editor is never shown through here, because a master's own screen implements
     /// <c>IDirtyScreen</c>, not this.
+    /// <para>
+    /// <c>Totals</c> is COMPUTED from the lines, so nothing about it can be data-bound to a Label:
+    /// the numbers are painted, and the only thing that says they are stale is the editor raising
+    /// <c>PropertyChanged</c> for it -- which it does whenever a line is added, removed, cleared or
+    /// edited. Painting once and never listening leaves the most visible numbers on a document
+    /// silently wrong, which is what WPF's <c>ItemsSource="{Binding Totals}"</c> avoids by being a
+    /// binding. Unlike a master's, this editor's <c>Draft</c> is never replaced, so the form above
+    /// needs no repaint of its own.
+    /// </para>
     /// </remarks>
     private Control BuildEditor(IRecordEditor editor)
     {
         var draft = editor.GetType().GetProperty("Draft")?.GetValue(editor);
 
-        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4 };
+        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4, AutoScroll = true };
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 74f));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
@@ -785,18 +928,38 @@ public sealed class MainForm : Form
 
         var tabs = new TabControl { Dock = DockStyle.Fill };
 
+        TableLayoutPanel? linesHost = null;
+        Control? totals = null;
+
+        // Rebuilds the band beside the grid from the editor's CURRENT totals. Called for the first
+        // paint and again on every Totals change -- see the remarks above.
+        void RepaintTotals()
+        {
+            if (linesHost is null)
+                return;
+
+            if (totals is not null)
+            {
+                linesHost.Controls.Remove(totals);
+                totals.Dispose();
+            }
+
+            totals = BuildTotals(editor);
+            linesHost.Controls.Add(totals, 1, 0);
+        }
+
         // A row for the lines only when there are lines: a master's own editor has none, and a
         // tab with an empty grid under it would be worse than no tab at all.
         if (editor.Lines.Count > 0)
         {
             var linesPage = new TabPage(editor.Title);
 
-            var linesHost = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1 };
+            linesHost = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1 };
             linesHost.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
             linesHost.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 240f));
 
             linesHost.Controls.Add(BuildLines(editor), 0, 0);
-            linesHost.Controls.Add(BuildTotals(editor), 1, 0);
+            RepaintTotals();
 
             linesPage.Controls.Add(linesHost);
             tabs.TabPages.Add(linesPage);
@@ -806,8 +969,38 @@ public sealed class MainForm : Form
             AddAdditionalTab(tabs, draft);
 
         layout.Controls.Add(tabs, 0, 2);
-        layout.Controls.Add(
-            BuildEntryActionBar(editor, ("SaveCommand", "Save"), ("CancelCommand", "Cancel")), 0, 3);
+
+        var bar = BuildEntryActionBar(editor, ("SaveCommand", "Save"), ("CancelCommand", "Cancel"));
+
+        layout.Controls.Add(bar, 0, 3);
+
+        ShowStatus(bar, editor);
+
+        // Two things this screen shows that a one-shot paint cannot: the totals under a line that
+        // has just been typed into, and the reason a Save was refused -- a validator's message, or
+        // "That record no longer exists.", neither of which the editor reports any other way.
+        if (editor is INotifyPropertyChanged notify)
+        {
+            PropertyChangedEventHandler handler = (_, e) =>
+            {
+                switch (e.PropertyName)
+                {
+                    case "Totals":
+                        RepaintTotals();
+                        break;
+
+                    case "Status":
+                        ShowStatus(bar, editor);
+                        break;
+                }
+            };
+
+            notify.PropertyChanged += handler;
+
+            // Unsubscribed when Show discards this screen's control tree, or every rail click
+            // leaves another handler on the editor this form no longer shows.
+            layout.Disposed += (_, _) => notify.PropertyChanged -= handler;
+        }
 
         return layout;
     }
@@ -999,6 +1192,22 @@ public sealed class MainForm : Form
     {
         if (host.Controls.Find("Grid", true).FirstOrDefault() is DataGridView grid)
             Bind(screen, grid);
+    }
+
+    /// <summary>
+    /// Writes the owner's Status onto the status label of the bar it was built with.
+    /// </summary>
+    /// <remarks>
+    /// The label BuildEntryActionBar places has nothing bound to it, and cannot have: it is built
+    /// before the owner is known to notify at all, and the owner arrives here as an object rather
+    /// than as a screen this file can name. Without this, every message a screen's own commands
+    /// report is raised into a line that stays permanently blank -- including the ones that say a
+    /// save did NOT happen, which the user has no other way of finding out.
+    /// </remarks>
+    private static void ShowStatus(Control bar, object owner)
+    {
+        if (bar.Controls.Find("Status", true).FirstOrDefault() is Label status)
+            status.Text = owner.GetType().GetProperty("Status")?.GetValue(owner) as string ?? string.Empty;
     }
 
     private static void Bind(object screen, DataGridView grid)

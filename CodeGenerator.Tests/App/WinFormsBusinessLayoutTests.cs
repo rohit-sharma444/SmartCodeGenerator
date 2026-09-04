@@ -30,6 +30,35 @@ public class WinFormsBusinessLayoutTests
         => new WinFormsBusinessLayout().ViewFiles(Context(customization))
             .Single(f => f.Name == "MainForm.cs").Source;
 
+    /// <summary>
+    /// One emitted method, from its signature up to the next member named.
+    /// </summary>
+    /// <remarks>
+    /// The emitted form is one class of three screens that build the same kinds of control, so an
+    /// unscoped needle is routinely satisfied by the identical line in a DIFFERENT screen -- which
+    /// is how the action-bar test came to pass with half the master's bar deleted. Anything that
+    /// claims a screen does something is asserted inside that screen's own body.
+    /// </remarks>
+    private static string Body(string source, string signature, string nextSignature)
+    {
+        var start = source.IndexOf(signature, StringComparison.Ordinal);
+        Assert.IsGreaterThan(-1, start, $"the emitted form has no '{signature}'");
+
+        var end = source.IndexOf(nextSignature, start, StringComparison.Ordinal);
+        Assert.IsGreaterThan(start, end, $"the emitted form has no '{nextSignature}' after '{signature}'");
+
+        return source[start..end];
+    }
+
+    private static string EntryBody()
+        => Body(
+            Source(),
+            "private Control BuildEntry(object screen)",
+            "private (Control Control, Action Rebind) BuildRecordList(");
+
+    private static string EditorBody()
+        => Body(Source(), "private Control BuildEditor(IRecordEditor editor)", "private Control BuildTotals(");
+
     [TestMethod]
     public void The_registry_resolves_the_business_key()
     {
@@ -235,6 +264,16 @@ public class WinFormsBusinessLayoutTests
     public void An_editor_with_no_lines_adds_no_lines_tab()
         => StringAssert.Contains(Source(), "if (editor.Lines.Count > 0)");
 
+    /// <summary>
+    /// The header, the grouped form, the tab strip -- and the three columns the groups are packed
+    /// into.
+    /// </summary>
+    /// <remarks>
+    /// The column count and the cell each stack is added at are asserted together, inside
+    /// BuildEntryForm's own body: a ColumnCount of 1 with every stack added at (0, 0) still calls
+    /// FieldGroups.Columns, so naming the call alone leaves the three-column packing -- which is
+    /// what Tasks 1-3 exist for -- free to collapse into one column with the suite green.
+    /// </remarks>
     [TestMethod]
     public void The_form_builds_a_header_a_grouped_form_and_a_tab_strip()
     {
@@ -243,7 +282,13 @@ public class WinFormsBusinessLayoutTests
         StringAssert.Contains(source, "private Control BuildEntryHeader(");
         StringAssert.Contains(source, "private Control BuildEntryForm(");
         StringAssert.Contains(source, "new TabControl");
-        StringAssert.Contains(source, "FieldGroups.Columns(");
+
+        var form = Body(source, "private Control BuildEntryForm(object record)", "private Control BuildPanel(");
+
+        StringAssert.Contains(form, "ColumnCount = 3,");
+        StringAssert.Contains(form, "var columns = FieldGroups.Columns(record.GetType());");
+        StringAssert.Contains(form, "host.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f / columns.Count));");
+        StringAssert.Contains(form, "host.Controls.Add(stack, i, 0);");
     }
 
     /// <summary>A GroupBox caption cannot take the accent colour, so the panel is a bordered Panel
@@ -252,37 +297,114 @@ public class WinFormsBusinessLayoutTests
     public void A_panel_is_not_a_group_box()
         => Assert.DoesNotContain("new GroupBox", Source());
 
+    /// <summary>
+    /// A required field is marked with an asterisk, and a foreign key is a picker over the entity
+    /// it points at.
+    /// </summary>
+    /// <remarks>
+    /// Both halves are asserted, not just the two calls: <c>Text = string.Empty</c> keeps the
+    /// IsRequired call and paints no asterisk at all, and a lookup that never reads LookupRows is
+    /// an empty drop-down -- neither of which naming <c>RequiredFields.IsRequired(</c> and
+    /// <c>FieldGroups.NavigationFor(</c> can tell apart from the working screen.
+    /// </remarks>
     [TestMethod]
     public void The_form_marks_required_fields_and_renders_lookups()
     {
         var source = Source();
 
-        StringAssert.Contains(source, "RequiredFields.IsRequired(");
-        StringAssert.Contains(source, "FieldGroups.NavigationFor(");
+        StringAssert.Contains(source, "var required = RequiredFields.IsRequired(record.GetType(), field.Name);");
+        StringAssert.Contains(source, "Text = required ? \"*\" : string.Empty,");
+        StringAssert.Contains(source, "ForeColor = Color.Red,");
+
+        StringAssert.Contains(source, "if (FieldGroups.NavigationFor(field) is { } nav)");
+        StringAssert.Contains(source, "DataSource = LookupRows(nav.PropertyType),");
     }
 
+    /// <summary>
+    /// Each entry screen's bar, as the tuple list it is actually built from.
+    /// </summary>
+    /// <remarks>
+    /// Naming the six commands one at a time proved almost nothing: NewCommand and DeleteCommand
+    /// also appear in BuildList and SaveCommand/CancelCommand in BuildEditor, so only EditCommand
+    /// and ClearCommand were pinned to the master's bar at all -- half of it could be deleted with
+    /// the suite green. The tuple lines are asserted whole instead, and the transaction editor's
+    /// two-button bar with them.
+    /// </remarks>
     [TestMethod]
     public void The_action_bar_offers_only_commands_that_exist()
     {
         var source = Source();
 
-        foreach (var command in new[]
-                 { "NewCommand", "EditCommand", "DeleteCommand", "SaveCommand", "ClearCommand", "CancelCommand" })
-        {
-            StringAssert.Contains(source, command);
-        }
+        StringAssert.Contains(
+            source, "(\"NewCommand\", \"New\"), (\"EditCommand\", \"Edit\"), (\"DeleteCommand\", \"Delete\"),");
+        StringAssert.Contains(
+            source, "(\"SaveCommand\", \"Save\"), (\"ClearCommand\", \"Clear\"), (\"CancelCommand\", \"Cancel\"));");
+
+        StringAssert.Contains(
+            source,
+            "var bar = BuildEntryActionBar(editor, (\"SaveCommand\", \"Save\"), (\"CancelCommand\", \"Cancel\"));");
 
         foreach (var absent in new[] { "\"Print\"", "\"Export\"", "\"Import Items\"" })
             Assert.DoesNotContain(absent, source);
     }
 
+    /// <summary>
+    /// The band beside the lines is built from the editor's totals, and is put on the screen.
+    /// </summary>
+    /// <remarks>
+    /// The word "Totals" alone was satisfied by the METHOD NAME BuildTotals and by the prose
+    /// <c>IRecordEditor.Totals</c> in that method's own remarks, so reducing BuildTotals to
+    /// <c>return new Panel();</c> -- or dropping the call to it altogether -- left the suite green.
+    /// The loop and the two lines that put its result on the screen are asserted instead.
+    /// </remarks>
     [TestMethod]
     public void The_editor_shows_the_line_totals_and_can_clear_a_set()
     {
         var source = Source();
 
-        StringAssert.Contains(source, "Totals");
-        StringAssert.Contains(source, "\"Clear All\"");
+        StringAssert.Contains(source, "foreach (var total in editor.Totals)");
+        StringAssert.Contains(source, "Text = total.Value.ToString(\"N2\"),");
+        StringAssert.Contains(source, "totals = BuildTotals(editor);");
+        StringAssert.Contains(source, "linesHost.Controls.Add(totals, 1, 0);");
+
+        StringAssert.Contains(source, "var clear = new Button { Text = \"Clear All\", Width = 88 };");
+        StringAssert.Contains(source, "clear.Click += (_, _) => lines.Clear();");
+    }
+
+    /// <summary>
+    /// The totals band recomputes: a line added, removed, cleared or typed into repaints it.
+    /// </summary>
+    /// <remarks>
+    /// Totals is COMPUTED from the lines, so there is nothing on it a Label can bind to -- it was
+    /// painted once from a snapshot and never listened for anything, which left the most visible
+    /// numbers on a document silently wrong while R42's whole CellEndEdit chain
+    /// (LineEdited -> ResetBindings -> OnPropertyChanged(nameof(Totals))) terminated in no
+    /// listener at all. That chain is asserted end to end here: the editor RAISES the name this
+    /// form SWITCHES ON, or the subscription is deaf and nothing says so.
+    /// </remarks>
+    [TestMethod]
+    public void The_totals_band_recomputes_when_the_lines_change()
+    {
+        var source = Source();
+        var body = Body(source, "private Control BuildEditor(IRecordEditor editor)", "private Control BuildTotals(");
+
+        StringAssert.Contains(body, "void RepaintTotals()");
+        StringAssert.Contains(body, "totals = BuildTotals(editor);");
+        StringAssert.Contains(body, "linesHost.Controls.Add(totals, 1, 0);");
+        StringAssert.Contains(body, "if (editor is INotifyPropertyChanged notify)");
+        StringAssert.Contains(body, "case \"Totals\":");
+        StringAssert.Contains(body, "RepaintTotals();");
+
+        // The old band goes with it, or the panel grows a second copy on top of the first.
+        StringAssert.Contains(body, "linesHost.Controls.Remove(totals);");
+        StringAssert.Contains(body, "totals.Dispose();");
+
+        // The far end of the same wire: the grid tells the set, the set tells the editor, and the
+        // editor raises the very property name the switch above is written against.
+        StringAssert.Contains(source, "grid.CellEndEdit += (_, _) => lines.LineEdited();");
+        StringAssert.Contains(
+            RecordEditorTemplate.Source(Root, validation: false), "OnPropertyChanged(nameof(Totals));");
+        StringAssert.Contains(LineSetTemplate.Source(Root), "public void LineEdited()");
     }
 
     /// <summary>
@@ -298,16 +420,234 @@ public class WinFormsBusinessLayoutTests
     public void A_committed_line_edit_is_reported_to_the_set()
         => StringAssert.Contains(Source(), "grid.CellEndEdit += (_, _) => lines.LineEdited();");
 
-    /// <summary>Behind HasAdditional on both screens, so a model with no long-text fields shows no
-    /// empty tab -- the same rule that drops an empty panel.</summary>
+    /// <summary>
+    /// The form follows the editor the screen replaces, rather than the one it happened to hold
+    /// when the screen was drawn.
+    /// </summary>
+    /// <remarks>
+    /// A master REPLACES its whole Editor -- and with it Draft -- on select, New, Edit, Clear and
+    /// after a successful Save, so a Draft read once and handed to every control's DataBindings is
+    /// a record nothing else references any more. Worse, it is wrong before anyone touches the
+    /// screen: setting the grid's DataSource selects row 0, which replaces the Editor while the
+    /// form is still bound to the blank draft, and Save then writes the untouched row 0 and
+    /// discards everything typed. The read has to happen INSIDE the repaint, which is what the
+    /// ordering assertion below is for -- hoisting it back to the top of BuildEntry leaves every
+    /// needle here present and the screen broken again.
+    /// </remarks>
+    [TestMethod]
+    public void The_entry_form_is_repainted_from_the_editor_the_screen_currently_holds()
+    {
+        var body = EntryBody();
+
+        StringAssert.Contains(body, "void RepaintRecord()");
+        StringAssert.Contains(body, "var editor = screen.GetType().GetProperty(\"Editor\")?.GetValue(screen);");
+        StringAssert.Contains(body, "var record = editor?.GetType().GetProperty(\"Draft\")?.GetValue(editor);");
+
+        StringAssert.Contains(body, "header = BuildEntryHeader(screen, record);");
+        StringAssert.Contains(body, "form = record is not null ? BuildEntryForm(record) : null;");
+
+        // The old form and header go with it, or the screen stacks a second copy over the first.
+        StringAssert.Contains(body, "layout.Controls.Remove(header);");
+        StringAssert.Contains(body, "layout.Controls.Remove(form);");
+        StringAssert.Contains(body, "tabs.TabPages.Remove(additionalPage);");
+
+        StringAssert.Contains(body, "if (screen is INotifyPropertyChanged notify)");
+        StringAssert.Contains(body, "case \"Editor\":");
+        StringAssert.Contains(body, "RepaintRecord();");
+        StringAssert.Contains(body, "notify.PropertyChanged += handler;");
+
+        var repaint = body.IndexOf("void RepaintRecord()", StringComparison.Ordinal);
+        var read = body.IndexOf("GetProperty(\"Draft\")", StringComparison.Ordinal);
+        Assert.IsGreaterThan(repaint, read, "the draft is read outside the repaint, so it is captured once");
+
+        // The name the switch is written against is the one the screen raises: Editor's setter
+        // goes through SetField, whose CallerMemberName IS the property name.
+        StringAssert.Contains(MasterScreenTemplate.Source(Root), "public RecordEditorViewModel<T> Editor");
+        StringAssert.Contains(MasterScreenTemplate.Source(Root), "private set => SetField(ref _editor, value);");
+    }
+
+    /// <summary>
+    /// Saving or deleting on the entry screen re-reads the list under it.
+    /// </summary>
+    /// <remarks>
+    /// On the old flat screens this was invisible: saving happened on a DIFFERENT screen, and
+    /// coming back re-ran Show and rebuilt everything. Here the form and the list are one screen,
+    /// so a customer entered and saved simply never appears in the list below.
+    /// </remarks>
+    [TestMethod]
+    public void A_save_on_the_entry_screen_refreshes_the_list_under_it()
+    {
+        var body = EntryBody();
+
+        StringAssert.Contains(body, "var (listControl, refreshList) = BuildRecordList(screen);");
+        StringAssert.Contains(body, "case \"Items\":");
+        StringAssert.Contains(body, "refreshList();");
+
+        // The far end: Save re-reads the store through Reload, which announces exactly that name.
+        StringAssert.Contains(MasterScreenTemplate.Source(Root), "OnPropertyChanged(nameof(Items));");
+    }
+
+    /// <summary>
+    /// A rebind of the record list does not throw away what is open in the form above it.
+    /// </summary>
+    /// <remarks>
+    /// DataGridView.DataSource selects a row the moment it is set, and this screen's
+    /// SelectionChanged writes Selected -- whose setter replaces the whole Editor. So without a
+    /// guard, one keystroke in the search box, or the refresh after a Save, silently discards an
+    /// in-progress entry. BuildList had the same chain and no form to lose.
+    /// </remarks>
+    [TestMethod]
+    public void A_rebind_of_the_record_list_does_not_discard_the_entry_in_progress()
+    {
+        var body = Body(
+            Source(),
+            "private (Control Control, Action Rebind) BuildRecordList(object screen)",
+            "private static bool HasAdditional(");
+
+        StringAssert.Contains(body, "var suppressSelection = false;");
+        StringAssert.Contains(body, "if (suppressSelection)");
+        StringAssert.Contains(body, "suppressSelection = true;");
+        StringAssert.Contains(body, "suppressSelection = false;");
+
+        // In a finally, or a throw inside Bind leaves the grid permanently deaf to real clicks.
+        StringAssert.Contains(body, "finally");
+
+        // The guard is read BEFORE Selected is written, and every rebind goes through it: no bare
+        // Bind and no Refresh left behind to set DataSource around the outside of the flag.
+        var guard = body.IndexOf("if (suppressSelection)", StringComparison.Ordinal);
+        var write = body.IndexOf("SetValue(screen, grid.CurrentRow?.DataBoundItem)", StringComparison.Ordinal);
+        Assert.IsGreaterThan(guard, write, "Selected is written before the guard is consulted");
+
+        Assert.DoesNotContain("Refresh(screen, layout);", body);
+
+        var bind = body.IndexOf("Bind(screen, grid);", StringComparison.Ordinal);
+        Assert.IsGreaterThan(-1, bind, "BuildRecordList never binds the grid");
+        Assert.AreEqual(
+            bind,
+            body.LastIndexOf("Bind(screen, grid);", StringComparison.Ordinal),
+            "a second, unguarded Bind would set DataSource around the outside of the flag");
+    }
+
+    /// <summary>
+    /// The status line on both entry screens shows what the screen reports.
+    /// </summary>
+    /// <remarks>
+    /// BuildList always carried an unbound status Label; the old flat editor carried none at all,
+    /// so the entry screens introduced a permanently blank status line onto screens whose own
+    /// commands write to Status -- including every message that says a Save did NOT happen, which
+    /// the user has no other way of finding out.
+    /// </remarks>
+    [TestMethod]
+    public void The_status_line_shows_what_the_screen_reports()
+    {
+        var source = Source();
+
+        StringAssert.Contains(source, "private static void ShowStatus(Control bar, object owner)");
+        StringAssert.Contains(source, "if (bar.Controls.Find(\"Status\", true).FirstOrDefault() is Label status)");
+        StringAssert.Contains(
+            source,
+            "status.Text = owner.GetType().GetProperty(\"Status\")?.GetValue(owner) as string ?? string.Empty;");
+
+        var entry = EntryBody();
+        var editor = EditorBody();
+
+        // Painted when the screen is built, and again on every change: a screen the rail returns to
+        // is rebuilt from scratch, and whatever it last reported is still its Status.
+        StringAssert.Contains(entry, "ShowStatus(bar, screen);");
+        StringAssert.Contains(entry, "case \"Status\":");
+        StringAssert.Contains(editor, "ShowStatus(bar, editor);");
+        StringAssert.Contains(editor, "case \"Status\":");
+
+        // Both screens raise it through SetField, whose CallerMemberName is the property name.
+        StringAssert.Contains(MasterScreenTemplate.Source(Root), "protected set => SetField(ref _status, value);");
+        StringAssert.Contains(
+            RecordEditorTemplate.Source(Root, validation: false), "private set => SetField(ref _status, value);");
+    }
+
+    /// <summary>
+    /// A model with many field groups scrolls rather than squeezing the rest of the screen out.
+    /// </summary>
+    /// <remarks>
+    /// Both entry screens' root rows are Absolute 74 / AutoSize / Percent 100 / Absolute 40. When
+    /// the AutoSize form row grows past the remaining height the Percent row collapses to zero --
+    /// the tab strip holding the record list, or the lines and their totals, simply disappears --
+    /// and the action bar under it clips. The_form_does_not_grow_with_the_model varies entity
+    /// COUNT, not field count, so it says nothing about this. BuildDashboard already scrolls for
+    /// exactly this reason.
+    /// </remarks>
+    [TestMethod]
+    public void A_tall_form_scrolls_rather_than_squeezing_out_the_rest_of_the_screen()
+    {
+        const string root =
+            "var layout = new TableLayoutPanel "
+            + "{ Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4, AutoScroll = true };";
+
+        StringAssert.Contains(EntryBody(), root);
+        StringAssert.Contains(EditorBody(), root);
+    }
+
+    /// <summary>
+    /// A screen the rail navigates away from is disposed, and every subscription onto it is undone.
+    /// </summary>
+    /// <remarks>
+    /// The discarded tree is dozens of controls, each holding DataBindings registered in the form's
+    /// BindingContext and Fonts of their own, so clearing without disposing leaks a little GDI on
+    /// every rail click. The subscriptions matter more: the entry screens now attach a
+    /// PropertyChanged handler to the screen itself, and a screen outlives the controls built over
+    /// it, so the fix for the repaint would otherwise be a handler leak on every rail click.
+    /// </remarks>
+    [TestMethod]
+    public void A_screen_navigated_away_from_is_disposed_with_its_subscriptions()
+    {
+        var source = Source();
+
+        // Snapshotted first: Control.Dispose takes the control out of _content.Controls, so
+        // disposing straight out of a foreach over it modifies the collection being enumerated.
+        StringAssert.Contains(source, "foreach (var discarded in _content.Controls.Cast<Control>().ToArray())");
+        StringAssert.Contains(source, "discarded.Dispose();");
+
+        var show = source.IndexOf("private void Show(object? screen)", StringComparison.Ordinal);
+        Assert.IsGreaterThan(-1, show, "the emitted form has no Show");
+
+        var dispose = source.IndexOf("discarded.Dispose();", show, StringComparison.Ordinal);
+        var clear = source.IndexOf("_content.Controls.Clear();", show, StringComparison.Ordinal);
+        Assert.IsGreaterThan(dispose, clear, "Clear runs first, so there is nothing left to dispose");
+
+        const string unsubscribe = "layout.Disposed += (_, _) => notify.PropertyChanged -= handler;";
+
+        StringAssert.Contains(EntryBody(), unsubscribe);
+        StringAssert.Contains(EditorBody(), unsubscribe);
+    }
+
+    /// <summary>
+    /// Behind HasAdditional on both screens, so a model with no long-text fields shows no empty tab
+    /// -- the same rule that drops an empty panel.
+    /// </summary>
+    /// <remarks>
+    /// The heading comes off the emitted <c>FieldGroups.AdditionalTitle</c> rather than being
+    /// spelled a second time. Unlike WPF -- which writes it into XAML, where the constant is
+    /// reachable only through an x:Static reference and an extra xmlns -- this tab is built in
+    /// code, so it can just call it, and the literal must not reappear: two spellings of one
+    /// heading in one shipped app is the drift the constant exists to prevent.
+    /// </remarks>
     [TestMethod]
     public void The_additional_fields_are_shown_only_when_there_are_some()
     {
         var source = Source();
 
-        StringAssert.Contains(source, "HasAdditional");
-        StringAssert.Contains(source, "FieldGroups.Additional(");
-        StringAssert.Contains(source, "\"Additional Information\"");
+        StringAssert.Contains(source, "if (record is not null && HasAdditional(screen))");
+        StringAssert.Contains(source, "if (draft is not null && HasAdditional(editor))");
+        StringAssert.Contains(source, "var fields = FieldGroups.Additional(record.GetType());");
+        StringAssert.Contains(source, "if (fields.Count == 0)");
+
+        StringAssert.Contains(source, "var page = new TabPage(FieldGroups.AdditionalTitle);");
+        Assert.DoesNotContain($"\"{FieldGroupsTemplate.AdditionalTitle}\"", source);
+
+        // The constant the call resolves to. The Screens/FieldGroups.cs the compile tests below
+        // hand the form is this same source, so a rename there fails them rather than this.
+        StringAssert.Contains(
+            FieldGroupsTemplate.Source(Root),
+            $"public const string AdditionalTitle = \"{FieldGroupsTemplate.AdditionalTitle}\";");
     }
 
     [TestMethod]
