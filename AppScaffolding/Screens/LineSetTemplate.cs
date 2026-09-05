@@ -169,11 +169,32 @@ public sealed class LineSet<TLine> : ILineSet where TLine : class, new()
     /// Raises the list's own change event, which is the channel every consumer already listens to.
     /// </summary>
     /// <remarks>
-    /// ResetBindings rather than a second event of this class's own: it is what Add, Remove and
-    /// Clear already reach through the BindingList, so an editor watching the lines needs no
+    /// The list's own event rather than a second one of this class's own: it is what Add, Remove
+    /// and Clear already reach through the BindingList, so an editor watching the lines needs no
     /// knowledge of where a change came from -- and a bound grid re-reads the row for free.
+    /// <para>
+    /// ResetItem for the edited row, NOT ResetBindings for the whole list. A reset tells a grid
+    /// that everything it is showing may have changed, and a DataGridView answers that by
+    /// rebuilding its rows and putting the caret back at the top: measured on a running app,
+    /// typing into row 3 and pressing Tab left the cursor on ROW 1, so entering a document's
+    /// lines threw the user back to the first line after every single cell. ResetItem says only
+    /// what is true -- one row changed -- and the caret stays where the user put it.
+    /// </para>
+    /// <para>
+    /// The row is the selected one because a cell cannot be edited without being current, and
+    /// both grids set Selected as the selection moves. If it is somehow not in the list, this
+    /// falls back to the whole-list reset: a moved caret is worth less than a stale total.
+    /// </para>
     /// </remarks>
-    public void LineEdited() => _lines.ResetBindings();
+    public void LineEdited()
+    {
+        var index = Selected is TLine typed ? _lines.IndexOf(typed) : -1;
+
+        if (index >= 0)
+            _lines.ResetItem(index);
+        else
+            _lines.ResetBindings();
+    }
 
     /// <summary>
     /// Replaces this parent's lines with what is on screen.

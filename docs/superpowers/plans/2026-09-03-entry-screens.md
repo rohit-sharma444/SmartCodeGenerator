@@ -8,7 +8,7 @@
 
 **Tech Stack:** C# / .NET 10, WPF, Windows Forms, MSTest, Roslyn (`CodeGenerationEngine.Core.Compiler`).
 
-**Spec:** `docs/superpowers/specs/2026-09-03-entry-screens-design.md` — read it before Task 1. It records five deliberate departures from the mockups, each of which will otherwise look like a bug.
+**Spec:** `docs/superpowers/specs/2026-09-03-entry-screens-design.md` — read it before Task 1. It records SEVEN deliberate departures from the mockups, each of which will otherwise look like a bug, and a Known gaps section for what running the apps found and left.
 
 ## Global Constraints
 
@@ -3163,5 +3163,5 @@ Update the spec's departures list to say so when this branch is finished.
   been looked at.
 - The full solution builds Release with `-warnaserror` and the whole suite is green.
 - `WpfLayoutNeutralityTests` and `WinFormsLayoutNeutralityTests` are green **and unedited**.
-- The five departures in the spec are still true of the output, or the spec has been updated to say
+- The departures in the spec are still true of the output, or the spec has been updated to say
   otherwise.

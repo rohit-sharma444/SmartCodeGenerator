@@ -123,13 +123,22 @@ Ordering matters and is the reason the table is ordered: `ContactAddress` is an 
 **Displayable** follows the existing convention: public, readable, writable, not `Id`, not a
 navigation property, not `[Browsable(false)]`.
 
-**Foreign keys are kept, and rendered as lookups.** An `int <Nav>Id` whose sibling `<Nav>` is an
-entity type is already turned into a picker by the shared `OnAutoGeneratingColumn` rule that
-`MainWindowTemplate` emits — header taken from the nav name, rows from that entity's pane,
-`DisplayMemberPath` from `DisplayMember(nav.PropertyType)`. `EntryForm` applies the same
-convention: `SupplierId` becomes a **Supplier** combo box, which is what the transaction mockup's
-Supplier Code lookup is. Dropping foreign keys from the panels would leave no way to set a
-purchase order's supplier at all.
+**Foreign keys are kept, and rendered as lookups on the entry FORM.** `EntryForm` turns an
+`int <Nav>Id` whose sibling `<Nav>` is an entity type into a combo box over that entity's rows, so
+`SupplierId` becomes a **Supplier** picker — which is what the transaction mockup's Supplier Code
+lookup is. Dropping foreign keys from the panels would leave no way to set a purchase order's
+supplier at all. The display property is chosen by `FieldGroups.LookupLabel`: the code field, then
+Name, then Title, then any string, and only then `Id`.
+
+> **Correction, made while checking a running app.** This section previously said an `int <Nav>Id`
+> was "already turned into a picker by the shared `OnAutoGeneratingColumn` rule that
+> `MainWindowTemplate` emits". That is not true of this layout and never was. The shared rule ends
+> in `if (DataContext is not MainViewModel main) return false;`, and the business shell binds a
+> `ShellViewModel` — so the rule bails out for **every grid in the business layout**, and the
+> WinForms business layout has no foreign-key column rule at all. In a generated app the master
+> list, the transaction list and the lines grid therefore show `SupplierId` and `ProductId` as
+> plain integer columns. Left as it stands by decision: the number shown is the real one, so this
+> is a picker that is absent rather than output that misinforms. See "Known gaps" below.
 
 The bucket a foreign key falls into is decided on the **nav name**, not the `*Id` name, so
 `ShipToLocationId` is labelled `ShipToLocation` and lands in Address Information.
@@ -376,6 +385,28 @@ Stated so they are choices on the record rather than things that were missed.
 6. **A header field is not repeated in a panel.** Both mockups show Customer Code and Status in
    the header strip *and* again in a panel below. Two live inputs bound to one property is a
    defect in generated output, so the header wins and the panel drops the field.
+
+7. **On the WPF transaction entry screen, Additional Information is a titled section under the
+   lines, not a tab beside them.** The lines tab strip is driven by `ItemsSource="{Binding Lines}"`,
+   and mixing a static `TabItem` into it needs a `CompositeCollection`, whose `CollectionContainer`
+   is not in the visual tree — inside a `DataTemplate` it has no `DataContext`, binds nothing, and
+   renders an EMPTY tab strip. That parses cleanly and no test would catch it. The master screen
+   keeps a real tab, because both of its tabs are static, and Windows Forms keeps a real `TabPage`
+   on both screens, because it adds pages in code either way.
+
+## Known gaps
+
+Found by running the generated apps, and left in place deliberately rather than missed.
+
+- **Foreign keys in GRIDS are integer columns, not pickers** — the master list, the transaction
+  list and the lines grid all show `SupplierId` / `ProductId` as numbers. The cause is above: the
+  shared WPF rule cannot fire under a `ShellViewModel`, and WinForms has no such rule. The entry
+  FORM's pickers are unaffected and work on both targets. Not fixed here because the value shown is
+  correct — the picker is absent, not wrong.
+- **The Windows Forms entry screen wants more than the form's own default 1000x640.** On a model
+  with several line sets the content is wider and taller than the default window, so the screen
+  opens with scrollbars and the header's Status can sit off the right edge until the window is
+  maximised. Nothing is unreachable.
 
 ## Deferred, not rejected
 
