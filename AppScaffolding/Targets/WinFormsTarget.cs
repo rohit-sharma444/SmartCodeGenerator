@@ -29,15 +29,16 @@ public sealed class WinFormsTarget : ITargetScaffolder
     /// </summary>
     public IReadOnlyList<GeneratedFile> FrontEndFiles(FrontEndContext context)
         => FrontEndFiles(
-            context.ProjectName, context.EntityNames, context.Customization, context.Roles);
+            context.ProjectName, context.EntityNames, context.Customization,
+            context.Roles, context.Classes);
 
     public IReadOnlyList<GeneratedFile> FrontEndFiles(
         string projectName, IReadOnlyList<string> entityNames, AppCustomization customization)
-        => FrontEndFiles(projectName, entityNames, customization, roles: null);
+        => FrontEndFiles(projectName, entityNames, customization, roles: null, classes: null);
 
     private IReadOnlyList<GeneratedFile> FrontEndFiles(
         string projectName, IReadOnlyList<string> entityNames, AppCustomization customization,
-        Screens.EntityRoleMap? roles)
+        Screens.EntityRoleMap? roles, IReadOnlyList<ClassDefinition>? classes)
     {
         // Roles reach the view models only for the business shell; the four older layouts
         // bind to EntityViewModel and must go on emitting exactly what they always did.
@@ -51,7 +52,7 @@ public sealed class WinFormsTarget : ITargetScaffolder
         var files = DesktopViewModelFiles.Build(
             ns, entityNames, ViewModelTemplates.PortableRelayCommand(ns),
             customization.Validation, customization.SampleSeedData, customization.Login,
-            screenRoles);
+            screenRoles, classes);
 
         var palette = ThemePalette.Resolve(customization.Theme, customization.Accent);
 

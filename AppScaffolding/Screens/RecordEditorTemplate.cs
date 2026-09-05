@@ -60,6 +60,7 @@ public static class RecordEditorTemplate
         return $$"""
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
 using System.Text.Json;
 using System.Windows.Input;
@@ -69,6 +70,21 @@ using {{rootNamespace}}.Screens;
 namespace {{rootNamespace}}.ViewModels;
 
 /// <summary>
+/// A screen that can be left with unsaved changes.
+/// </summary>
+/// <remarks>
+/// Separate from IRecordEditor because a master screen holds its editor INLINE: it is dirty in
+/// exactly the same way, and it is deliberately not an IRecordEditor — ScreenTemplateSelector
+/// tests that interface before IEntityViewModel, so a master implementing it would draw as the
+/// editor template on every screen in the application.
+/// </remarks>
+public interface IDirtyScreen
+{
+    /// <summary>Whether anything has been typed since the screen was opened or last saved.</summary>
+    bool IsDirty { get; }
+}
+
+/// <summary>
 /// What the shell can ask an editor without knowing which entity it edits.
 /// </summary>
 /// <remarks>
@@ -76,18 +92,21 @@ namespace {{rootNamespace}}.ViewModels;
 /// <c>RecordEditorViewModel&lt;T&gt;</c> — and <c>RecordEditorViewModel&lt;object&gt;</c> compiles
 /// while being always false. This interface is how the dirty check is reachable at all.
 /// </remarks>
-public interface IRecordEditor
+public interface IRecordEditor : IDirtyScreen
 {
-    /// <summary>Whether anything has been typed since the editor opened.</summary>
-    bool IsDirty { get; }
-
     /// <summary>The heading the shell shows while this editor is on screen.</summary>
     string Title { get; }
 
     /// <summary>The lines this record holds, or empty. A master has none; a transaction has one
     /// set per kind of line.</summary>
     IReadOnlyList<ILineSet> Lines { get; }
+
+    /// <summary>One row per money column of the lines, summed across them.</summary>
+    IReadOnlyList<LineTotal> Totals { get; }
 }
+
+/// <summary>One money column of a document's lines, summed over them.</summary>
+public sealed record LineTotal(string Column, decimal Value, bool IsGrand);
 
 /// <summary>One record, edited in a copy so Cancel can genuinely cancel.</summary>
 public sealed class RecordEditorViewModel<T> : ObservableObject, IRecordEditor where T : class, new()
@@ -116,6 +135,27 @@ public sealed class RecordEditorViewModel<T> : ObservableObject, IRecordEditor w
                 set.Load(IdOf(Draft));
         }
 
+        // Totals is computed, and a computed property announces nothing by itself: a band bound to
+        // it would paint once and then go stale the moment a line was added, removed, edited or
+        // cleared -- the most visible number on a document, silently wrong. The lines are the thing
+        // that changes and this editor is the thing bound, so the set publishes the change and the
+        // editor translates it into the one property that derives from it.
+        //
+        // Subscribed AFTER the load above, which would otherwise announce the totals while this
+        // constructor is still running. IsDirty is deliberately not announced with it: it also
+        // turns on the draft's own fields, which are a plain generated model with nothing to
+        // subscribe to, so it is a question the shell asks rather than a value a view binds.
+        // The invariant this depends on: every set an application of this shape creates is a
+        // LineSet<T>, whose Items IS a BindingList<T> -- chosen because it is the one collection
+        // both desktop grids refresh from, and relied on again here. ILineSet.Items is typed
+        // IEnumerable, so the cast is how that fact is reached, not a doubt about it. A set that
+        // somehow is not one keeps working; only its totals stop repainting.
+        foreach (var set in Lines)
+        {
+            if (set.Items is IBindingList list)
+                list.ListChanged += (_, _) => OnPropertyChanged(nameof(Totals));
+        }
+
         SaveCommand = new RelayCommand(Save);
         CancelCommand = new RelayCommand(Cancel);
     }
@@ -132,6 +172,57 @@ public sealed class RecordEditorViewModel<T> : ObservableObject, IRecordEditor w
     /// <summary>Whether to show a lines area at all. A view binds this so a master's editor is not
     /// a form with an empty grid under it.</summary>
     public bool HasLines => Lines.Count > 0;
+
+    /// <summary>Whether this record has long-text fields, and so an Additional Information tab.
+    /// A view binds it so a model with none does not show an empty tab.</summary>
+    public bool HasAdditional => FieldGroups.Additional(typeof(T)).Count > 0;
+
+    /// <summary>
+    /// One row per money column of the lines, summed across them.
+    /// </summary>
+    /// <remarks>
+    /// Every decimal and double that is neither an Id nor a foreign key, rather than guessing
+    /// which single column is the document's total — the rule TransactionScreenViewModel already
+    /// applies to a list, for the reason written there: a generated application showing one
+    /// confidently wrong number is worse than one showing several honest ones.
+    /// <para>
+    /// IsGrand only when a set has exactly one money column, which is the only case where naming
+    /// a grand total is not a guess.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<LineTotal> Totals
+    {
+        get
+        {
+            var totals = new List<LineTotal>();
+
+            foreach (var set in Lines)
+            {
+                var columns = set.LineType.GetProperties()
+                    .Where(p => p.PropertyType == typeof(decimal) || p.PropertyType == typeof(double))
+                    .Where(p => !string.Equals(p.Name, "Id", StringComparison.OrdinalIgnoreCase)
+                                && !p.Name.EndsWith("Id", StringComparison.Ordinal))
+                    .ToList();
+
+                foreach (var column in columns)
+                {
+                    var sum = set.Items.Cast<object>().Sum(line => ToDecimal(column.GetValue(line)));
+
+                    totals.Add(new LineTotal(column.Name, sum, columns.Count == 1));
+                }
+            }
+
+            return totals;
+        }
+    }
+
+    private static decimal ToDecimal(object? value)
+        => value switch
+        {
+            decimal d => d,
+            double d => (decimal)d,
+            _ => 0m,
+        };
 
     public bool IsNew { get; }
 

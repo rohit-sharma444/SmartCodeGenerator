@@ -72,6 +72,26 @@ public interface ILineSet
     /// <summary>Removes one line. Nothing reaches the store until the editor saves.</summary>
     void Remove(object? line);
 
+    /// <summary>Removes every line. Nothing reaches the store until the editor saves, so this is
+    /// undone by Cancel like any other line edit.</summary>
+    void Clear();
+
+    /// <summary>
+    /// Announces that a value was typed into one of the lines.
+    /// </summary>
+    /// <remarks>
+    /// A line is a plain generated model with no change notification, so a grid writing a typed
+    /// value into it reaches the object without the set -- or anything derived from the set, such
+    /// as the editor's totals band -- hearing about it. Add, Remove and Clear announce themselves;
+    /// this is how a view says what only it saw.
+    /// <para>
+    /// EVERY front end owes this call. Whatever a view uses to know an edit was committed -- WPF's
+    /// CellEditEnding, a WinForms CellEndEdit, a web field losing focus -- must end in this method,
+    /// or that front end shows a total that ignores what was just typed into the grid under it.
+    /// </para>
+    /// </remarks>
+    void LineEdited();
+
     /// <summary>Writes the lines back, stamped with the parent's id. Called AFTER the parent is
     /// saved, because a new parent has no id before that.</summary>
     bool Save(int parentId);
@@ -138,6 +158,22 @@ public sealed class LineSet<TLine> : ILineSet where TLine : class, new()
         if (ReferenceEquals(Selected, typed))
             Selected = null;
     }
+
+    public void Clear()
+    {
+        _lines.Clear();
+        Selected = null;
+    }
+
+    /// <summary>
+    /// Raises the list's own change event, which is the channel every consumer already listens to.
+    /// </summary>
+    /// <remarks>
+    /// ResetBindings rather than a second event of this class's own: it is what Add, Remove and
+    /// Clear already reach through the BindingList, so an editor watching the lines needs no
+    /// knowledge of where a change came from -- and a bound grid re-reads the row for free.
+    /// </remarks>
+    public void LineEdited() => _lines.ResetBindings();
 
     /// <summary>
     /// Replaces this parent's lines with what is on screen.

@@ -1,5 +1,6 @@
 ﻿using AppScaffolding.Auth;
 using AppScaffolding.Screens;
+using CodeGenerationEngine.Models;
 
 namespace AppScaffolding.Targets;
 
@@ -25,7 +26,7 @@ public static class DesktopViewModelFiles
     public static List<GeneratedFile> Build(
         string rootNamespace, IReadOnlyList<string> entityNames, string relayCommandSource,
         bool validation = true, bool seed = true, bool login = false,
-        EntityRoleMap? roles = null)
+        EntityRoleMap? roles = null, IReadOnlyList<ClassDefinition>? classes = null)
     {
         var files = new List<GeneratedFile>
         {
@@ -48,6 +49,15 @@ public static class DesktopViewModelFiles
             // what the model is, rather than how a window shows it -- and the web target emits it
             // into the same folder for the same screens.
             files.Add(new("Screens", "LineSet.cs", LineSetTemplate.Source(rootNamespace)));
+
+            // Beside LineSet for the same reason: what the model is, rather than how a window
+            // shows it. Both desktop layouts reflect over it; nothing else does.
+            files.Add(new("Screens", "FieldGroups.cs", FieldGroupsTemplate.Source(rootNamespace)));
+
+            // Empty when validation is off: the Validation/ folder that rule scan reads is not
+            // generated either, so there is nothing for the map to agree with.
+            files.Add(new("Screens", "RequiredFields.cs",
+                RequiredFieldsTemplate.Source(rootNamespace, validation ? classes : null)));
 
             files.Add(new("ViewModels", "RecordEditorViewModel.cs",
                 RecordEditorTemplate.Source(rootNamespace, validation)));

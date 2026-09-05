@@ -1,0 +1,562 @@
+﻿using System.Reflection;
+using AppScaffolding;
+using AppScaffolding.Screens;
+using AppScaffolding.Targets;
+using CodeGenerationEngine.Core;
+
+namespace CodeGenerator.Tests.App;
+
+/// <summary>
+/// The bucket rules, compiled and run rather than matched as text.
+/// </summary>
+/// <remarks>
+/// The order of the buckets is the substance, not an implementation detail: ContactAddress is an
+/// address and ContactPerson is a contact, so `address` has to be tested before `contact`. A
+/// substring assertion over the emitted source could not tell those apart.
+/// </remarks>
+[TestClass]
+public class FieldGroupsTests
+{
+    /// <summary>A model wide enough to reach every bucket, plus the two shapes that have to be
+    /// kept — an enum and a Guid, which the desktop form shows and the web list does not.</summary>
+    private const string ModelStub = """
+using System;
+
+public class Customer
+{
+    public int Id { get; set; }
+    public string Code { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public decimal CreditLimit { get; set; }
+    public Guid Reference { get; set; }
+    public DayOfWeek DeliveryDay { get; set; }
+
+    public string AddressLine1 { get; set; } = string.Empty;
+    public string City { get; set; } = string.Empty;
+    public string PinCode { get; set; } = string.Empty;
+    public string ContactAddress { get; set; } = string.Empty;
+
+    public string ContactPerson { get; set; } = string.Empty;
+    public string Email { get; set; } = string.Empty;
+    public bool IsActive { get; set; }
+
+    public string Remarks { get; set; } = string.Empty;
+    public bool TermsAccepted { get; set; }
+
+    public List<string> Tags { get; set; } = new();
+}
+""";
+
+    private static Assembly Emit()
+    {
+        var source = EmittedSource.Flatten(
+            ModelStub,
+            FieldGroupsTemplate.Source("Acme").Replace("namespace Acme.Screens;", string.Empty));
+
+        EmittedSource.AssertCompiles(source);
+
+        return Assembly.Load(Compiler.Compile(source).AssemblyBytes!);
+    }
+
+    /// <summary>Title → the field names in it, from the compiled emitted code.</summary>
+    private static Dictionary<string, string[]> Groups()
+    {
+        var assembly = Emit();
+        return GroupsOf(assembly, assembly.GetType("Customer")!);
+    }
+
+    /// <summary>Same as <see cref="Groups"/>, generalised to whichever assembly and model type a
+    /// test has compiled -- the foreign-key tests below need a second model, PurchaseOrder,
+    /// rather than Customer.</summary>
+    private static Dictionary<string, string[]> GroupsOf(Assembly assembly, Type model)
+    {
+        var groups = (System.Collections.IEnumerable)assembly.GetType("FieldGroups")!
+            .GetMethod("For")!.Invoke(null, [model])!;
+
+        var result = new Dictionary<string, string[]>();
+
+        foreach (var group in groups)
+        {
+            var type = group.GetType();
+            var title = (string)type.GetProperty("Title")!.GetValue(group)!;
+            var fields = ((IEnumerable<PropertyInfo>)type.GetProperty("Fields")!.GetValue(group)!)
+                .Select(p => p.Name)
+                .ToArray();
+
+            result[title] = fields;
+        }
+
+        return result;
+    }
+
+    [TestMethod]
+    public void Address_names_land_in_address_information()
+        => CollectionAssert.AreEquivalent(
+            new[] { "AddressLine1", "City", "PinCode", "ContactAddress" },
+            Groups()["Address Information"]);
+
+    /// <summary>The ordering assertion. ContactAddress is an address; ContactPerson is not.</summary>
+    [TestMethod]
+    public void Contact_is_tested_after_address()
+        => CollectionAssert.AreEquivalent(
+            new[] { "ContactPerson", "Email" },
+            Groups()["Contact Information"]);
+
+    /// <summary>Code is excluded here, not merely missing: FieldGroups.Key claims it for the
+    /// header now, so it must not also draw in a panel below.</summary>
+    [TestMethod]
+    public void Everything_unmatched_stays_in_basic_information()
+        => CollectionAssert.AreEquivalent(
+            new[] { "Name", "CreditLimit", "Reference", "DeliveryDay", "TermsAccepted" },
+            Groups()["Basic Information"]);
+
+    /// <summary>Asserted directly, not just by absence elsewhere: without this, IsActive being
+    /// dropped from every bucket would go unnoticed.</summary>
+    [TestMethod]
+    public void An_other_word_lands_in_other_information()
+        => CollectionAssert.AreEquivalent(
+            new[] { "IsActive" },
+            Groups()["Other Information"]);
+
+    /// <summary>The desktop form shows enums and Guids; the web list's IsScalar does not. Reusing
+    /// the web predicate here would silently drop both.</summary>
+    [TestMethod]
+    public void An_enum_and_a_guid_reach_a_panel()
+    {
+        var basic = Groups()["Basic Information"];
+
+        CollectionAssert.Contains(basic, "DeliveryDay");
+        CollectionAssert.Contains(basic, "Reference");
+    }
+
+    [TestMethod]
+    public void Id_and_collections_are_not_shown()
+    {
+        var all = Groups().Values.SelectMany(f => f).ToList();
+
+        CollectionAssert.DoesNotContain(all, "Id");
+        CollectionAssert.DoesNotContain(all, "Tags");
+    }
+
+    /// <summary>Only strings, so a TermsAccepted bool stays a checkbox in a panel rather than
+    /// becoming a multi-line box in a tab.</summary>
+    [TestMethod]
+    public void Only_long_text_strings_reach_the_additional_tab()
+    {
+        var assembly = Emit();
+        var additional = ((IEnumerable<PropertyInfo>)assembly.GetType("FieldGroups")!
+            .GetMethod("Additional")!.Invoke(null, [assembly.GetType("Customer")!])!)
+            .Select(p => p.Name)
+            .ToArray();
+
+        CollectionAssert.AreEquivalent(new[] { "Remarks" }, additional);
+        CollectionAssert.DoesNotContain(
+            Groups().Values.SelectMany(f => f).ToList(), "Remarks");
+        CollectionAssert.Contains(Groups()["Basic Information"], "TermsAccepted");
+    }
+
+    /// <summary>A heading with nothing under it is noise — the rule DashboardViewModel.Group
+    /// already follows.</summary>
+    [TestMethod]
+    public void An_empty_group_is_not_emitted()
+    {
+        var source = EmittedSource.Flatten(
+            "public class Note { public int Id { get; set; } public string Text { get; set; } = string.Empty; }",
+            FieldGroupsTemplate.Source("Acme").Replace("namespace Acme.Screens;", string.Empty));
+
+        EmittedSource.AssertCompiles(source);
+
+        var assembly = Assembly.Load(Compiler.Compile(source).AssemblyBytes!);
+        var groups = (System.Collections.IEnumerable)assembly.GetType("FieldGroups")!
+            .GetMethod("For")!.Invoke(null, [assembly.GetType("Note")!])!;
+
+        Assert.HasCount(1, groups.Cast<object>().ToList());
+    }
+
+    /// <summary>A second model, for the foreign-key tests: an int &lt;Nav&gt;Id with a real
+    /// sibling nav property (twice, one of which must bucket by address), and one that ends in
+    /// Id but has no sibling at all.</summary>
+    private const string PurchaseOrderStub = """
+public class Supplier
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+}
+
+public class ShipToLocation
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+}
+
+public class PurchaseOrder
+{
+    public int Id { get; set; }
+    public int SupplierId { get; set; }
+    public Supplier Supplier { get; set; } = new();
+    public int ShipToLocationId { get; set; }
+    public ShipToLocation ShipToLocation { get; set; } = new();
+
+    // Ends in Id but has no sibling nav property -- NavigationFor must not match it.
+    public int LegacyId { get; set; }
+}
+""";
+
+    private static Assembly EmitPurchaseOrder()
+    {
+        var source = EmittedSource.Flatten(
+            PurchaseOrderStub,
+            FieldGroupsTemplate.Source("Acme").Replace("namespace Acme.Screens;", string.Empty));
+
+        EmittedSource.AssertCompiles(source);
+
+        return Assembly.Load(Compiler.Compile(source).AssemblyBytes!);
+    }
+
+    /// <summary>A foreign key is kept, not dropped, and labelled by the entity it points at --
+    /// not the raw *Id name -- because that is also what the picker column's header reads
+    /// (Tasks 8 and 10).</summary>
+    [TestMethod]
+    public void A_foreign_key_is_kept_and_labelled_by_its_navigation_property()
+    {
+        var assembly = EmitPurchaseOrder();
+        var model = assembly.GetType("PurchaseOrder")!;
+        var supplierId = model.GetProperty("SupplierId")!;
+
+        var label = (string)assembly.GetType("FieldGroups")!
+            .GetMethod("LabelOf")!.Invoke(null, [supplierId])!;
+
+        Assert.AreEqual("Supplier", label);
+        CollectionAssert.Contains(
+            GroupsOf(assembly, model).Values.SelectMany(f => f).ToList(), "SupplierId");
+    }
+
+    /// <summary>The bucket decision uses the nav name, not the raw *Id name: ShipToLocationId
+    /// only reaches Address Information because its label is ShipToLocation.</summary>
+    [TestMethod]
+    public void A_foreign_key_buckets_on_its_navigation_name()
+    {
+        var assembly = EmitPurchaseOrder();
+        var model = assembly.GetType("PurchaseOrder")!;
+
+        CollectionAssert.Contains(
+            GroupsOf(assembly, model)["Address Information"], "ShipToLocationId");
+    }
+
+    /// <summary>The negative case: an *Id property with no sibling navigation property must not
+    /// be mistaken for a foreign key, or NavigationFor is matching too eagerly.</summary>
+    [TestMethod]
+    public void An_id_with_no_sibling_navigation_keeps_its_own_name_and_stays_in_basic()
+    {
+        var assembly = EmitPurchaseOrder();
+        var model = assembly.GetType("PurchaseOrder")!;
+        var legacyId = model.GetProperty("LegacyId")!;
+
+        var label = (string)assembly.GetType("FieldGroups")!
+            .GetMethod("LabelOf")!.Invoke(null, [legacyId])!;
+
+        Assert.AreEqual("LegacyId", label);
+        CollectionAssert.Contains(GroupsOf(assembly, model)["Basic Information"], "LegacyId");
+    }
+
+    [TestMethod]
+    public void Both_desktop_targets_emit_the_file()
+    {
+        foreach (var target in new ITargetScaffolder[]
+                 { new WpfTarget(), new WinFormsTarget() })
+        {
+            var names = target.FrontEndFiles(
+                    "Shop", ["Order"],
+                    AppCustomization.Default with { Layout = AppLayout.Business })
+                .Select(f => f.Name)
+                .ToList();
+
+            CollectionAssert.Contains(names, "FieldGroups.cs", target.Key);
+        }
+    }
+
+    private static (string? Code, string? Date, string? Status) Key(string modelStub, string typeName)
+    {
+        var source = EmittedSource.Flatten(
+            modelStub,
+            FieldGroupsTemplate.Source("Acme").Replace("namespace Acme.Screens;", string.Empty));
+
+        EmittedSource.AssertCompiles(source);
+
+        var assembly = Assembly.Load(Compiler.Compile(source).AssemblyBytes!);
+        var key = assembly.GetType("FieldGroups")!
+            .GetMethod("Key")!.Invoke(null, [assembly.GetType(typeName)!])!;
+
+        string? Name(string part)
+            => (key.GetType().GetProperty(part)!.GetValue(key) as PropertyInfo)?.Name;
+
+        return (Name("Code"), Name("Date"), Name("Status"));
+    }
+
+    /// <summary>Notes is declared before the real code property so a Code resolution loosened
+    /// from EndsWith to Contains would resolve to it instead of OrderNo. CreatedOn and ModifiedOn
+    /// are declared before OrderDate so a date resolution with the audit filter deleted would
+    /// return one of them instead of OrderDate -- declaration order alone must not be what makes
+    /// these tests pass.</summary>
+    private const string OrderStub = """
+using System;
+
+public class Order
+{
+    public int Id { get; set; }
+    public string Notes { get; set; } = string.Empty;
+    public string OrderNo { get; set; } = string.Empty;
+    public DateTime CreatedOn { get; set; }
+    public DateTime ModifiedOn { get; set; }
+    public DateTime OrderDate { get; set; }
+    public string Status { get; set; } = string.Empty;
+    public decimal Total { get; set; }
+}
+""";
+
+    [TestMethod]
+    public void The_header_takes_the_code_the_date_and_the_status()
+    {
+        var key = Key(OrderStub, "Order");
+
+        Assert.AreEqual("OrderNo", key.Code);
+        Assert.AreEqual("OrderDate", key.Date);
+        Assert.AreEqual("Status", key.Status);
+    }
+
+    /// <summary>The audit fields every model carries are never what a user means by "the date" --
+    /// the exclusion TransactionScreenViewModel and ScreenFields both already make. CreatedOn is
+    /// declared before OrderDate in OrderStub specifically so this fails if the audit filter is
+    /// ever removed, rather than passing by declaration-order coincidence.</summary>
+    [TestMethod]
+    public void The_audit_dates_are_never_the_header_date()
+        => Assert.AreNotEqual("CreatedOn", Key(OrderStub, "Order").Date);
+
+    /// <summary>A model whose only dates are the audit pair must show no date at all in the
+    /// header, not fall back to one of them.</summary>
+    private const string AuditOnlyDatesStub = """
+using System;
+
+public class Ticket
+{
+    public int Id { get; set; }
+    public DateTime CreatedOn { get; set; }
+    public DateTime ModifiedOn { get; set; }
+}
+""";
+
+    [TestMethod]
+    public void A_model_with_only_audit_dates_has_no_header_date()
+        => Assert.IsNull(Key(AuditOnlyDatesStub, "Ticket").Date);
+
+    /// <summary>The assertion this whole member exists for.</summary>
+    [TestMethod]
+    public void A_header_field_appears_in_no_panel()
+    {
+        var source = EmittedSource.Flatten(
+            OrderStub,
+            FieldGroupsTemplate.Source("Acme").Replace("namespace Acme.Screens;", string.Empty));
+
+        EmittedSource.AssertCompiles(source);
+
+        var assembly = Assembly.Load(Compiler.Compile(source).AssemblyBytes!);
+        var groups = (System.Collections.IEnumerable)assembly.GetType("FieldGroups")!
+            .GetMethod("For")!.Invoke(null, [assembly.GetType("Order")!])!;
+
+        var shown = groups.Cast<object>()
+            .SelectMany(g => (IEnumerable<PropertyInfo>)g.GetType().GetProperty("Fields")!.GetValue(g)!)
+            .Select(p => p.Name)
+            .ToList();
+
+        CollectionAssert.DoesNotContain(shown, "OrderNo");
+        CollectionAssert.DoesNotContain(shown, "OrderDate");
+        CollectionAssert.DoesNotContain(shown, "Status");
+        CollectionAssert.DoesNotContain(shown, "Notes");
+        CollectionAssert.Contains(shown, "Total");
+    }
+
+    [TestMethod]
+    public void A_model_with_no_code_date_or_status_yields_none()
+    {
+        var key = Key(
+            "public class Note { public int Id { get; set; } public string Text { get; set; } = string.Empty; }",
+            "Note");
+
+        Assert.IsNull(key.Code);
+        Assert.IsNull(key.Date);
+        Assert.IsNull(key.Status);
+    }
+
+    private static List<List<string>> Columns(string modelStub, string typeName)
+        => Columns(modelStub, typeName, out _);
+
+    /// <summary>Same as <see cref="Columns(string,string)"/>, but also hands back the loaded
+    /// assembly -- so a caller that needs both the column shape and the panel field counts (the
+    /// split test) compiles the model once rather than twice.</summary>
+    private static List<List<string>> Columns(string modelStub, string typeName, out Assembly assembly)
+    {
+        var source = EmittedSource.Flatten(
+            modelStub,
+            FieldGroupsTemplate.Source("Acme").Replace("namespace Acme.Screens;", string.Empty));
+
+        EmittedSource.AssertCompiles(source);
+
+        assembly = Assembly.Load(Compiler.Compile(source).AssemblyBytes!);
+        var columns = (System.Collections.IEnumerable)assembly.GetType("FieldGroups")!
+            .GetMethod("Columns")!.Invoke(null, [assembly.GetType(typeName)!])!;
+
+        return columns.Cast<System.Collections.IEnumerable>()
+            .Select(c => c.Cast<object>()
+                .Select(g => (string)g.GetType().GetProperty("Title")!.GetValue(g)!)
+                .ToList())
+            .ToList();
+    }
+
+    [TestMethod]
+    public void There_are_always_three_columns()
+        => Assert.HasCount(
+            3,
+            Columns("public class Note { public int Id { get; set; } public string Text { get; set; } = string.Empty; }", "Note"));
+
+    /// <summary>The master mockup's shape: Basic alone, Address alone, Contact and Other stacked
+    /// in the third column. Column identity is asserted, not just shape counts -- a "fewest
+    /// GROUPS, ties left" rule (ignoring field counts) would stack Basic+Other instead of
+    /// Contact+Other over this same fixture while still passing a 3-columns/1-stacked/4-total
+    /// check, and reversing the packer's tie comparator to `&lt;=` would move Basic to a
+    /// different column while still pairing Contact+Other -- neither is visible without naming
+    /// which titles land in which column.</summary>
+    [TestMethod]
+    public void Four_groups_stack_the_smallest_two_together()
+    {
+        var columns = Columns(ModelStub, "Customer");
+        var stacked = columns.Where(c => c.Count > 1).ToList();
+
+        Assert.HasCount(3, columns);
+        Assert.HasCount(1, stacked);
+        Assert.HasCount(4, columns.SelectMany(c => c).ToList());
+
+        CollectionAssert.AreEqual(new[] { "Basic Information" }, columns[0]);
+        CollectionAssert.AreEqual(new[] { "Address Information" }, columns[1]);
+        CollectionAssert.AreEqual(new[] { "Contact Information", "Other Information" }, columns[2]);
+    }
+
+    [TestMethod]
+    public void One_group_leaves_two_columns_empty()
+    {
+        var columns = Columns(
+            "public class Note { public int Id { get; set; } public string Text { get; set; } = string.Empty; }",
+            "Note");
+
+        Assert.HasCount(1, columns.Where(c => c.Count > 0).ToList());
+        Assert.HasCount(2, columns.Where(c => c.Count == 0).ToList());
+    }
+
+    /// <summary>Past the panel limit Basic splits, and the overflow is titled rather than
+    /// silently appended to a panel that no longer fits. The sizes are pinned, not just the
+    /// titles: a title-only assertion would pass just the same for a PanelLimit of 12, 13 or 14,
+    /// and this is the one test in the plan that covers the split rule at all.</summary>
+    [TestMethod]
+    public void A_long_basic_group_splits_into_more_information()
+    {
+        var fields = string.Join(
+            "\n", Enumerable.Range(1, 15).Select(i => $"    public string Field{i} {{ get; set; }} = string.Empty;"));
+        var modelStub = $"public class Wide\n{{\n    public int Id {{ get; set; }}\n{fields}\n}}";
+
+        var titles = Columns(modelStub, "Wide", out var assembly)
+            .SelectMany(c => c)
+            .ToList();
+
+        CollectionAssert.Contains(titles, "Basic Information");
+        CollectionAssert.Contains(titles, "More Information");
+
+        var groups = GroupsOf(assembly, assembly.GetType("Wide")!);
+
+        Assert.HasCount(12, groups["Basic Information"]);
+        Assert.HasCount(3, groups["More Information"]);
+    }
+
+    /// <summary>What a picker shows for a referenced record, compiled and run rather than matched
+    /// as text.</summary>
+    /// <remarks>
+    /// The rule these pin is the one both desktop pickers now call. It matters that they are
+    /// executed: the defect was a fallback landing on "Id" for a class whose label is Name, and
+    /// a substring assertion over the emitted source would have read the word "Name" in the method
+    /// and passed while every supplier still listed as 1, 2, 3.
+    /// </remarks>
+    private static string LabelFor(string modelStub, string typeName)
+    {
+        var source = EmittedSource.Flatten(
+            modelStub,
+            FieldGroupsTemplate.Source("Acme").Replace("namespace Acme.Screens;", string.Empty));
+
+        EmittedSource.AssertCompiles(source);
+
+        var assembly = Assembly.Load(Compiler.Compile(source).AssemblyBytes!);
+
+        return (string)assembly.GetType("FieldGroups")!
+            .GetMethod("LookupLabel")!
+            .Invoke(null, [assembly.GetType(typeName)!])!;
+    }
+
+    [TestMethod]
+    public void A_picker_shows_the_code_a_record_is_filed_under()
+        => Assert.AreEqual(
+            "SupplierCode",
+            LabelFor(
+                "public class Supplier { public int Id { get; set; } "
+                + "public string SupplierCode { get; set; } = string.Empty; "
+                + "public string Name { get; set; } = string.Empty; }",
+                "Supplier"));
+
+    /// <summary>The defect itself: no code field, and the class is known by its Name.</summary>
+    [TestMethod]
+    public void A_picker_falls_back_to_the_name_not_the_id()
+        => Assert.AreEqual(
+            "Name",
+            LabelFor(
+                "public class Supplier { public int Id { get; set; } "
+                + "public string Name { get; set; } = string.Empty; "
+                + "public string ContactInfo { get; set; } = string.Empty; }",
+                "Supplier"));
+
+    /// <summary>Name is preferred over an earlier-declared string, so declaration order cannot
+    /// decide what a supplier is called.</summary>
+    [TestMethod]
+    public void Name_beats_a_string_declared_before_it()
+        => Assert.AreEqual(
+            "Name",
+            LabelFor(
+                "public class Supplier { public int Id { get; set; } "
+                + "public string Address { get; set; } = string.Empty; "
+                + "public string Name { get; set; } = string.Empty; }",
+                "Supplier"));
+
+    [TestMethod]
+    public void A_picker_uses_a_title_when_there_is_no_name()
+        => Assert.AreEqual(
+            "Title",
+            LabelFor(
+                "public class Doc { public int Id { get; set; } "
+                + "public string Body { get; set; } = string.Empty; "
+                + "public string Title { get; set; } = string.Empty; }",
+                "Doc"));
+
+    [TestMethod]
+    public void A_picker_uses_any_string_before_it_uses_the_id()
+        => Assert.AreEqual(
+            "Label",
+            LabelFor(
+                "public class Tag { public int Id { get; set; } "
+                + "public string Label { get; set; } = string.Empty; }",
+                "Tag"));
+
+    /// <summary>Only when there is nothing else to show. Without this the fallback could be
+    /// removed entirely and every test above would still pass.</summary>
+    [TestMethod]
+    public void A_picker_falls_back_to_the_id_only_when_there_is_no_string_at_all()
+        => Assert.AreEqual(
+            "Id",
+            LabelFor(
+                "public class Reading { public int Id { get; set; } public decimal Value { get; set; } }",
+                "Reading"));
+}

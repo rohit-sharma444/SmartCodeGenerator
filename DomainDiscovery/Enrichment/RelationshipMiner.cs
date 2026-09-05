@@ -213,33 +213,14 @@ public sealed class RelationshipMiner
 
     /// <summary>
     /// Records one surviving relationship: the structural link, unconditionally, plus a
-    /// best-effort <c>&lt;Target&gt;Id</c> field. The field is skipped — never the relationship
-    /// — when it would collide with a field the entity already has, would be literally named
-    /// "Id" (which is generated, not declared: see <see cref="Review.ModelEditor.AddField"/>),
-    /// or would equal the referencing entity's own name (<c>class Order { int Order }</c> is
-    /// CS0542). These are the exact same guards <see cref="Review.ModelEditor.AddField"/>
-    /// applies to a user-typed field name; a mined field is not exempt from any of them.
+    /// best-effort <c>&lt;Target&gt;Id</c> field.
     /// </summary>
+    /// <remarks>
+    /// Both halves live in <see cref="CandidateReference"/>, which the language-model normalizer
+    /// calls too — the guards on the field, and the reason a relationship without one is worse
+    /// than no relationship at all, are documented there. Mining decides WHETHER a reference
+    /// exists; that type decides what a recorded one is made of.
+    /// </remarks>
     private static void Apply(CandidateEntity referencing, CandidateEntity target)
-    {
-        referencing.Relationships.Add(new CandidateRelationship { Target = target.Name, Role = "references" });
-
-        var fieldName = $"{target.Name}Id";
-
-        if (referencing.Fields.Any(f => string.Equals(f.Name, fieldName, StringComparison.OrdinalIgnoreCase)))
-            return;
-
-        if (string.Equals(fieldName, "Id", StringComparison.OrdinalIgnoreCase))
-            return;
-
-        if (string.Equals(fieldName, referencing.Name, StringComparison.OrdinalIgnoreCase))
-            return;
-
-        referencing.Fields.Add(new CandidateField
-        {
-            Name = fieldName,
-            Type = "int",
-            Provenance = referencing.Provenance
-        });
-    }
+        => CandidateReference.Record(referencing, target, "references");
 }

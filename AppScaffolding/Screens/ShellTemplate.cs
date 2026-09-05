@@ -144,7 +144,7 @@ public sealed class ShellViewModel : ObservableObject
     /// </remarks>
     public bool TryShow(object screen)
     {
-        if (_current is IRecordEditor { IsDirty: true } && !ConfirmDiscard())
+        if (_current is IDirtyScreen { IsDirty: true } && !ConfirmDiscard())
             return false;
 
         // Leaving an editor drops the history: Back means "back to the list", never "back to the
@@ -169,7 +169,7 @@ public sealed class ShellViewModel : ObservableObject
 
     private void SignOut()
     {
-        if (_current is IRecordEditor { IsDirty: true } && !ConfirmDiscard())
+        if (_current is IDirtyScreen { IsDirty: true } && !ConfirmDiscard())
             return;
 
         Session.RequestSignOut();

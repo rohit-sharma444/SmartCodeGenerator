@@ -56,15 +56,23 @@ public class Book
          + Environment.NewLine
          + ViewModelTemplates.PortableRelayCommand("Acme").Replace("namespace Acme.ViewModels;", string.Empty);
 
-    internal static Assembly Emit(params string[] extra)
+    internal static Assembly Emit(params string[] extra) => Emit(validation: false, extra: extra);
+
+    /// <summary>
+    /// The emitted editor, with whatever is stacked on top of it, compiled and loaded.
+    /// </summary>
+    /// <remarks>
+    /// With <paramref name="validation"/> on, the validator seam comes with it and a book with no
+    /// title is REFUSED — the only way a fixture built on this helper can produce a save that did
+    /// not go through, which is the one case the screens' save behaviour turns on.
+    /// </remarks>
+    internal static Assembly Emit(bool validation, params string[] extra)
     {
-        var source = EmittedSource.Flatten(
-            [
-                StoreAndModelStub,
-                ObservableAndCommand,
-                Editor(validation: false),
-                .. extra,
-            ]);
+        string[] core = validation
+            ? [StoreAndModelStub, ValidatorStub, ObservableAndCommand, Editor(validation: true)]
+            : [StoreAndModelStub, ObservableAndCommand, Editor(validation: false)];
+
+        var source = EmittedSource.Flatten([.. core, .. extra]);
 
         EmittedSource.AssertCompiles(source);
 
@@ -77,11 +85,20 @@ public class Book
     /// <remarks>
     /// LineSet travels with it: the editor's own signature names ILineSet, so the two do not
     /// compile apart. Callers that do not care about lines get the types anyway and ignore them.
+    /// <para>
+    /// FieldGroups travels with it for the same reason, one step further out: the master screen
+    /// every caller of this helper builds on asks it whether the record has an Additional
+    /// Information tab, and <c>using Acme.Screens;</c> is stripped from the flattened source, so
+    /// the name would not resolve in any of these fixtures.
+    /// </para>
     /// </remarks>
     internal static string Editor(bool validation)
         => AppScaffolding.Screens.LineSetTemplate.Source("Acme")
                .Replace("namespace Acme.Screens;", string.Empty)
                .Replace("using Acme.Data;", string.Empty)
+           + Environment.NewLine
+           + AppScaffolding.Screens.FieldGroupsTemplate.Source("Acme")
+               .Replace("namespace Acme.Screens;", string.Empty)
            + Environment.NewLine
            + RecordEditorTemplate.Source("Acme", validation)
                .Replace("namespace Acme.ViewModels;", string.Empty)
@@ -93,18 +110,11 @@ public class Book
     /// The editor an app generated with validation on gets, over a validator that rejects a book
     /// with no title.
     /// </summary>
-    private static Assembly EmitValidating()
-    {
-        var source = EmittedSource.Flatten(StoreAndModelStub, ValidatorStub, ObservableAndCommand, Editor(validation: true));
-
-        EmittedSource.AssertCompiles(source);
-
-        return Assembly.Load(Compiler.Compile(source).AssemblyBytes!);
-    }
+    private static Assembly EmitValidating() => Emit(validation: true);
 
     /// <summary>The validation seam the generated app really has: an IValidator&lt;T&gt; resolved
     /// by a ValidatorFactory, degrading to no rules for an unmapped type.</summary>
-    private const string ValidatorStub = """
+    internal const string ValidatorStub = """
 using System;
 using System.Collections.Generic;
 
@@ -278,7 +288,7 @@ internal sealed class NullValidator<T> : IValidator<T>
     {
         var (editor, _) = OpenExisting(Emit());
 
-        var contract = editor.GetType().GetInterface("IRecordEditor");
+        var contract = editor.GetType().GetInterface("IDirtyScreen");
 
         Assert.IsNotNull(contract, "the shell cannot ask a closed generic whether it is dirty");
         Assert.IsFalse((bool)contract!.GetProperty("IsDirty")!.GetValue(editor)!);
