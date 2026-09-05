@@ -65,6 +65,12 @@ public class WinFormsBusinessLayoutTests
     /// CRLF, and a needle spelling "\n" between its lines would match nothing. No needle below
     /// contains a line ending at all, so there is no line-ending assumption left to get wrong.
     /// </para>
+    /// <para>
+    /// The slice stops at the next case label when one comes first, because bounding on break;
+    /// alone still failed open. Two labels sharing one body is legal C#, and the shared body would
+    /// have read as this label's own: green while an Items change repainted the whole record too.
+    /// A label that falls through owns no body, so the slice is empty and the assertion goes red.
+    /// </para>
     /// </remarks>
     private static void CaseRuns(string source, string label, string call)
     {
@@ -75,16 +81,37 @@ public class WinFormsBusinessLayoutTests
         var end = rest.IndexOf("break;", StringComparison.Ordinal);
         Assert.IsGreaterThan(-1, end, $"'{label}' never breaks");
 
+        var next = rest.IndexOf("case \"", StringComparison.Ordinal);
+        if (next >= 0 && next < end)
+        {
+            end = next;
+        }
+
         StringAssert.Contains(rest[..end], call, $"'{label}' does not run '{call}'");
     }
 
     /// <summary>Asserts a call is made twice: once to paint the screen, once to keep it
     /// painted.</summary>
-    private static void RunsTwice(string source, string call)
-        => Assert.AreNotEqual(
-            source.IndexOf(call, StringComparison.Ordinal),
+    /// <remarks>
+    /// Counting is not placing. Two occurrences BOTH inside the case body satisfy a count while the
+    /// screen opens blank and stays blank until the first event arrives, so the first call must
+    /// also come before the case label -- ahead of the switch, on the path that builds the screen.
+    /// </remarks>
+    private static void RunsTwice(string source, string label, string call)
+    {
+        var first = source.IndexOf(call, StringComparison.Ordinal);
+        Assert.AreNotEqual(
+            first,
             source.LastIndexOf(call, StringComparison.Ordinal),
             $"'{call}' is called once, so either the first paint or the live update is missing");
+
+        var at = source.IndexOf(label, StringComparison.Ordinal);
+        Assert.IsGreaterThan(-1, at, $"the emitted form has no '{label}'");
+        Assert.IsLessThan(
+            at,
+            first,
+            $"'{call}' is not called before '{label}', so the screen paints nothing until an event arrives");
+    }
 
     private static string EntryBody()
         => Body(
@@ -422,7 +449,7 @@ public class WinFormsBusinessLayoutTests
     public void The_totals_band_recomputes_when_the_lines_change()
     {
         var source = Source();
-        var body = Body(source, "private Control BuildEditor(IRecordEditor editor)", "private Control BuildTotals(");
+        var body = EditorBody();
 
         StringAssert.Contains(body, "void RepaintTotals()");
         StringAssert.Contains(body, "totals = BuildTotals(editor);");
@@ -433,7 +460,7 @@ public class WinFormsBusinessLayoutTests
         // tab is built, once from here. See CaseRuns -- naming the call alone left the band free to
         // go back to painting once and never listening, which is the finding itself.
         CaseRuns(body, "case \"Totals\":", "RepaintTotals();");
-        RunsTwice(body, "RepaintTotals();");
+        RunsTwice(body, "case \"Totals\":", "RepaintTotals();");
 
         // The old band goes with it, or the panel grows a second copy on top of the first.
         StringAssert.Contains(body, "linesHost.Controls.Remove(totals);");
@@ -498,7 +525,7 @@ public class WinFormsBusinessLayoutTests
         // once from here. Naming the two separately let the case be cut back to a bare break --
         // paint once, then go deaf -- with the initial call keeping every needle green.
         CaseRuns(body, "case \"Editor\":", "RepaintRecord();");
-        RunsTwice(body, "RepaintRecord();");
+        RunsTwice(body, "case \"Editor\":", "RepaintRecord();");
 
         var repaint = body.IndexOf("void RepaintRecord()", StringComparison.Ordinal);
         var read = body.IndexOf("GetProperty(\"Draft\")", StringComparison.Ordinal);
@@ -603,10 +630,10 @@ public class WinFormsBusinessLayoutTests
         // screens -- naming the call alone was satisfied by the first paint while the case beside
         // it did nothing, which is the permanently blank status line all over again.
         CaseRuns(entry, "case \"Status\":", "ShowStatus(bar, screen);");
-        RunsTwice(entry, "ShowStatus(bar, screen);");
+        RunsTwice(entry, "case \"Status\":", "ShowStatus(bar, screen);");
 
         CaseRuns(editor, "case \"Status\":", "ShowStatus(bar, editor);");
-        RunsTwice(editor, "ShowStatus(bar, editor);");
+        RunsTwice(editor, "case \"Status\":", "ShowStatus(bar, editor);");
 
         // Both screens raise it through SetField, whose CallerMemberName is the property name.
         StringAssert.Contains(MasterScreenTemplate.Source(Root), "protected set => SetField(ref _status, value);");

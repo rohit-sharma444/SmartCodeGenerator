@@ -218,7 +218,9 @@ public sealed class MainForm : Form
     /// second one -- measured on a real collection: three controls left one alive, fifty left
     /// twenty-five. Half the discarded tree would stay alive with its DataBindings still registered
     /// in this form's BindingContext and its screen subscription still attached, looking for all
-    /// the world like it had been cleaned up.
+    /// the world like it had been cleaned up. Today Show clears and adds exactly one control, so
+    /// the count never exceeds one and every-second-one disposes correctly either way: the
+    /// snapshot is what keeps that true the day this panel holds two.
     /// </para>
     /// </remarks>
     private void Show(object? screen)
