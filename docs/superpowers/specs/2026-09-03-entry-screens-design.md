@@ -403,6 +403,12 @@ Found by running the generated apps, and left in place deliberately rather than 
   shared WPF rule cannot fire under a `ShellViewModel`, and WinForms has no such rule. The entry
   FORM's pickers are unaffected and work on both targets. Not fixed here because the value shown is
   correct — the picker is absent, not wrong.
+- **`LineSet.LineEdited` raises a whole-list reset, not a per-row change.** Suspected of moving a
+  `DataGridView`'s caret on every committed cell edit. **Measured, and it does not**: clicking
+  `Quantity` on row 3, typing, and pressing Tab lands on `Price` row 3 both with the reset and with
+  a per-row `ResetItem`. Left alone deliberately — the change was written, tested, and reverted once
+  the premise failed. Over-broad as a notification, harmless in both desktop grids.
+
 - **The Windows Forms entry screen wants more than the form's own default 1000x640.** On a model
   with several line sets the content is wider and taller than the default window, so the screen
   opens with scrollbars and the header's Status can sit off the right edge until the window is

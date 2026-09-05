@@ -1,4 +1,4 @@
-﻿using System.Collections;
+using System.Collections;
 using System.Reflection;
 using AppScaffolding;
 using AppScaffolding.Screens;
@@ -399,70 +399,6 @@ public class OrderLine
         set.GetType().GetMethod("LineEdited")!.Invoke(set, null);
 
         Assert.IsGreaterThan(0, raised);
-    }
-
-    /// <summary>
-    /// The edited ROW is announced, not the whole list.
-    /// </summary>
-    /// <remarks>
-    /// The test above only asks that something was raised, and a whole-list Reset satisfies that
-    /// while being the defect: a DataGridView answers Reset by rebuilding its rows and moving the
-    /// caret to the top. Measured on a running generated app before this was fixed -- typing into
-    /// row 3 and pressing Tab left the cursor on ROW 1, so entering a document's lines threw the
-    /// user back to the first line after every cell. The type of the change is the substance here,
-    /// which is why this asserts ListChangedType and the position, and why asserting a count
-    /// could never have caught it.
-    /// </remarks>
-    [TestMethod]
-    public void LineEdited_announces_the_edited_row_rather_than_resetting_the_list()
-    {
-        var (set, _) = SetOverTwoParents();
-
-        Load(set, 1);
-
-        var lines = Items(set);
-        Assert.IsGreaterThan(1, lines.Count, "this test needs a row that is not the first");
-
-        // A cell cannot be edited without being current, and both grids set Selected as the
-        // selection moves -- so the set is told which row without the interface carrying an index.
-        set.GetType().GetProperty("Selected")!.SetValue(set, lines[1]);
-
-        var changes = new List<System.ComponentModel.ListChangedEventArgs>();
-        ((System.ComponentModel.IBindingList)set.GetType().GetProperty("Items")!.GetValue(set)!)
-            .ListChanged += (_, e) => changes.Add(e);
-
-        SetItem(lines[1], "Typed into");
-        set.GetType().GetMethod("LineEdited")!.Invoke(set, null);
-
-        Assert.HasCount(1, changes);
-        Assert.AreEqual(System.ComponentModel.ListChangedType.ItemChanged, changes[0].ListChangedType);
-        Assert.AreEqual(1, changes[0].NewIndex, "the row announced is not the row that was edited");
-    }
-
-    /// <summary>
-    /// With nothing selected there is still an announcement, so a total can never go stale.
-    /// </summary>
-    /// <remarks>
-    /// The fallback is deliberate and has to be covered: without it, a set whose Selected is null
-    /// would announce nothing at all and the totals band would silently stop following the lines
-    /// -- trading a visible caret jump for an invisible wrong number, which is the worse defect.
-    /// </remarks>
-    [TestMethod]
-    public void LineEdited_still_announces_when_no_row_is_selected()
-    {
-        var (set, _) = SetOverTwoParents();
-
-        Load(set, 1);
-        set.GetType().GetProperty("Selected")!.SetValue(set, null);
-
-        var changes = new List<System.ComponentModel.ListChangedEventArgs>();
-        ((System.ComponentModel.IBindingList)set.GetType().GetProperty("Items")!.GetValue(set)!)
-            .ListChanged += (_, e) => changes.Add(e);
-
-        set.GetType().GetMethod("LineEdited")!.Invoke(set, null);
-
-        Assert.HasCount(1, changes);
-        Assert.AreEqual(System.ComponentModel.ListChangedType.Reset, changes[0].ListChangedType);
     }
 
     /// <summary>Nothing is written until the editor saves — the same bargain Add and Remove
