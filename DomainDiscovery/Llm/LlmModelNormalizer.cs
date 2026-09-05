@@ -136,9 +136,10 @@ public static class LlmModelNormalizer
 
         if (TryForeignKeyTarget(name, byName, out var target)
             && target.Name != entity.Name
-            && Link(entity, target, "has"))
+            && Declared(entity, target, "has"))
         {
-            // Became a relationship; the scalar would now be a duplicate of it.
+            // Became a relationship, which carries the scalar with it under the canonical
+            // <Target>Id spelling. Returning here drops the model's own spelling, not the field.
             return;
         }
 
@@ -188,16 +189,41 @@ public static class LlmModelNormalizer
     /// <returns>True when the relationship was added.</returns>
     private static bool Link(CandidateEntity from, CandidateEntity to, string role)
     {
-        if (!EntityRoleRank.CanReference(from.Role))
+        if (EntityRoleRank.RankOf(from.Role) <= EntityRoleRank.RankOf(to.Role))
             return false;
 
-        if (EntityRoleRank.RankOf(from.Role) <= EntityRoleRank.RankOf(to.Role))
+        return Declared(from, to, role);
+    }
+
+    /// <summary>
+    /// Records a reference the model stated outright, by writing a <c>&lt;Target&gt;Id</c> column
+    /// on the class that carries it.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="EntityRoleRank.CanReference"/> still applies: a Place does not carry foreign
+    /// keys however confidently a 3B model says otherwise, which is the Restaurant.CustomerId
+    /// defect and it is about plausibility, not direction.
+    /// <para>
+    /// The RANK COMPARISON does not apply here, and that is the point of this method existing
+    /// beside <see cref="Link"/>. Rank breaks the symmetry of co-occurrence evidence — as
+    /// <see cref="EntityRoleRank"/> puts it, two classes in one sentence says they are related and
+    /// never which way a key points. A declared column has no symmetry to break: the model has
+    /// already said which class holds the key. Equal ranks refusing each other is right for an
+    /// inference and wrong for a statement, and it was wrong here in the most visible way
+    /// available — Document and Transaction share rank 4, so a PurchaseOrderLine could not
+    /// reference the PurchaseOrder whose lines it holds, and every lines grid came out empty.
+    /// </para>
+    /// </remarks>
+    /// <returns>True when the relationship was added.</returns>
+    private static bool Declared(CandidateEntity from, CandidateEntity to, string role)
+    {
+        if (!EntityRoleRank.CanReference(from.Role))
             return false;
 
         if (from.Relationships.Any(r => r.Target == to.Name))
             return false;
 
-        from.Relationships.Add(new CandidateRelationship { Target = to.Name, Role = role });
+        CandidateReference.Record(from, to, role);
         return true;
     }
 

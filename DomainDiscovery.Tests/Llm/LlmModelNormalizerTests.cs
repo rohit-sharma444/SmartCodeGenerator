@@ -59,8 +59,19 @@ public class LlmModelNormalizerTests
         Assert.Equal("int", id.Type);
     }
 
+    /// <summary>
+    /// The relationship AND the key, which is the whole of a reference and not two views of one.
+    /// </summary>
+    /// <remarks>
+    /// This test used to assert the opposite of its second line — that the scalar was DROPPED,
+    /// because the relationship had replaced it. Downstream that is not true of anything:
+    /// DomainModelMapper turns a relationship into navigation properties only, so the class came
+    /// out with a Customer reference and no CustomerId beside it, and ForeignKeys.TargetsOf — which
+    /// wants both — saw no foreign key at all. Seven masters, zero transactions, on a purchase
+    /// ordering model. Asserting the field's TYPE as well: an int is what TargetsOf will accept.
+    /// </remarks>
     [Fact]
-    public void TurnsAForeignKeyColumnIntoARelationship()
+    public void TurnsAForeignKeyColumnIntoARelationshipAndKeepsTheKey()
     {
         var raw = new LlmDomainModel
         {
@@ -74,7 +85,64 @@ public class LlmModelNormalizerTests
         var order = LlmModelNormalizer.Normalize(raw).Entities.Single(e => e.Name == "Order");
 
         Assert.Contains(order.Relationships, r => r.Target == "Customer");
-        Assert.DoesNotContain(order.Fields, f => f.Name == "CustomerId");
+        Assert.Contains(order.Fields, f => f.Name == "CustomerId" && f.Type == "int");
+
+        // The model's own spelling is what gets dropped, not the field: one key, not two.
+        Assert.Single(order.Fields, f => f.Name.Equals("CustomerId", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(order.Fields, f => f.Name == "customer_id");
+    }
+
+    /// <summary>
+    /// A document line referencing the document it belongs to — the relationship every lines grid
+    /// in the tool is built on, and the one the rank rule refused.
+    /// </summary>
+    /// <remarks>
+    /// Document and Transaction deliberately share rank 4, and equal ranks link in neither
+    /// direction. That is right for a MINED link, where two classes in one sentence says nothing
+    /// about which way a key points — and wrong for a column the model declared, where the
+    /// direction is already stated. PurchaseOrderLine.PurchaseOrderId was refused on rank, kept as
+    /// a stray int with no relationship, and no lines ever attached to any document.
+    /// </remarks>
+    [Fact]
+    public void LetsALineReferenceTheDocumentItBelongsTo()
+    {
+        var raw = new LlmDomainModel
+        {
+            Classes =
+            {
+                Class("PurchaseOrderLine", "Document", Property("purchase_order_id", "int")),
+                Class("PurchaseOrder", "Transaction", Property("TotalPrice", "decimal"))
+            }
+        };
+
+        var line = LlmModelNormalizer.Normalize(raw).Entities.Single(e => e.Name == "PurchaseOrderLine");
+
+        Assert.Contains(line.Relationships, r => r.Target == "PurchaseOrder");
+        Assert.Contains(line.Fields, f => f.Name == "PurchaseOrderId" && f.Type == "int");
+    }
+
+    /// <summary>
+    /// A relationship the model states in its own relationships array, rather than by writing a
+    /// column, arrives with the same key. Both routes go through CandidateReference.
+    /// </summary>
+    [Fact]
+    public void GivesARelationshipTheModelDeclaredItsForeignKeyToo()
+    {
+        var raw = new LlmDomainModel
+        {
+            Classes =
+            {
+                Class("Order", "Transaction", Property("Reference", "string")),
+                Class("Customer", "Party", Property("Name", "string"))
+            }
+        };
+
+        raw.Classes[0].Relationships.Add(new LlmRelationship { Target = "Customer", Role = "has" });
+
+        var order = LlmModelNormalizer.Normalize(raw).Entities.Single(e => e.Name == "Order");
+
+        Assert.Contains(order.Relationships, r => r.Target == "Customer");
+        Assert.Contains(order.Fields, f => f.Name == "CustomerId" && f.Type == "int");
     }
 
     /// <summary>
