@@ -967,4 +967,38 @@ public class WinFormsBusinessLayoutTests
             body.Contains("new List<object>()", StringComparison.Ordinal),
             "LookupRows still builds an untyped list, which resolves no display member");
     }
+
+    /// <summary>
+    /// The record count over the master's list -- which this target emitted none of at all.
+    /// </summary>
+    /// <remarks>
+    /// The spec puts a search box and a record count on the master's list and says this target is
+    /// the same shape through the same seam. WPF emitted a count and this one did not, and no test
+    /// on either side named it, so the two front ends disagreed about what the same screen shows
+    /// with the whole suite green. Scoped to BuildRecordList: "Total Records" anywhere in a
+    /// 1,100-line form says nothing about the list it belongs over.
+    /// </remarks>
+    [TestMethod]
+    public void The_master_list_says_how_many_records_it_is_showing()
+    {
+        var body = Body(
+            Source(),
+            "private (Control Control, Action Rebind) BuildRecordList(object screen)",
+            "private static bool HasAdditional(");
+
+        StringAssert.Contains(body, "Total Records: {shown}");
+
+        // Shown, not Count: the label sits over a grid the search box narrows, and Count is the
+        // whole store. MasterScreenTests proves the two differ on compiled code.
+        StringAssert.Contains(body, "GetProperty(\"Shown\")");
+        Assert.IsFalse(
+            body.Contains("GetProperty(\"Count\")", StringComparison.Ordinal),
+            "the count over the list reads the store total rather than what the list shows");
+
+        // Set inside Rebind, or it is painted once and never follows the search box.
+        var rebind = body.IndexOf("void Rebind()", StringComparison.Ordinal);
+        var assigned = body.IndexOf("count.Text =", StringComparison.Ordinal);
+        Assert.IsGreaterThan(-1, rebind, "BuildRecordList has no Rebind");
+        Assert.IsGreaterThan(rebind, assigned, "the count is not set inside Rebind, so it never updates");
+    }
 }

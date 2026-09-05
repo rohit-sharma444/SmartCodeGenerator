@@ -161,7 +161,7 @@ public sealed class WpfBusinessLayout : IAppLayout
                         <DockPanel>
                             <DockPanel DockPanel.Dock="Top" Margin="0,6,0,6">
                                 <TextBlock DockPanel.Dock="Right"
-                                           Text="{Binding Count, StringFormat='Total Records: {0}'}"
+                                           Text="{Binding Shown, StringFormat='Total Records: {0}'}"
                                            Foreground="{{{muted}}}"
                                            VerticalAlignment="Center" />
                                 <TextBox Text="{Binding Search, UpdateSourceTrigger=PropertyChanged}"

@@ -1,4 +1,5 @@
-using System.Collections;
+﻿using System.Collections;
+using System.ComponentModel;
 using System.Reflection;
 using AppScaffolding;
 using AppScaffolding.Screens;
@@ -190,6 +191,55 @@ public class Memo
         screen.GetType().GetProperty("Search")!.SetValue(screen, "ALPHA");
 
         Assert.HasCount(1, Items(screen));
+    }
+
+    /// <summary>
+    /// The count beside the search box counts what the grid is showing.
+    /// </summary>
+    /// <remarks>
+    /// Both desktop targets label this "Total Records", and it sits directly above the grid the
+    /// search box narrows. Bound to Count -- every row the store holds -- it read "Total Records: 3"
+    /// over a single filtered row, which is a statement about the screen that is not true of it.
+    /// Count itself stays whole: the dashboard card for this entity counts the store, not a
+    /// filtered view of it, so both numbers are asserted here and the fix cannot be to change Count.
+    /// </remarks>
+    [TestMethod]
+    public void The_record_count_follows_the_search_where_the_store_total_does_not()
+    {
+        var screen = Screen(Emit(), "MasterScreenViewModel", "Alpha", "Beta");
+
+        Assert.AreEqual(2, screen.GetType().GetProperty("Shown")!.GetValue(screen));
+
+        screen.GetType().GetProperty("Search")!.SetValue(screen, "alph");
+
+        Assert.AreEqual(1, screen.GetType().GetProperty("Shown")!.GetValue(screen));
+        Assert.AreEqual(2, screen.GetType().GetProperty("Count")!.GetValue(screen));
+        Assert.HasCount(1, Items(screen));
+    }
+
+    /// <summary>
+    /// A view only repaints what it is told changed, so the count has to be announced.
+    /// </summary>
+    /// <remarks>
+    /// Without this the property is correct and the label is stale: WPF holds the old number until
+    /// something else on the screen happens to raise it, and the WinForms label repaints only
+    /// because its Rebind runs on the same keystroke. Asserted for the search path AND the reload
+    /// path, which are the two ways the number changes.
+    /// </remarks>
+    [TestMethod]
+    public void A_changed_record_count_is_announced()
+    {
+        var screen = Screen(Emit(), "MasterScreenViewModel", "Alpha", "Beta");
+
+        var raised = new List<string>();
+        ((INotifyPropertyChanged)screen).PropertyChanged += (_, e) => raised.Add(e.PropertyName!);
+
+        screen.GetType().GetProperty("Search")!.SetValue(screen, "alph");
+        CollectionAssert.Contains(raised, "Shown", "typing in the search box never announced Shown");
+
+        raised.Clear();
+        screen.GetType().GetMethod("Reload")!.Invoke(screen, null);
+        CollectionAssert.Contains(raised, "Shown", "reloading the list never announced Shown");
     }
 
     /// <summary>

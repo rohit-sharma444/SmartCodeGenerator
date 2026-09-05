@@ -1106,4 +1106,19 @@ public class WpfBusinessLayoutTests
         Assert.IsLessThan(height, ctor, "the chrome is set before the constructor that should hold it");
         Assert.IsLessThan(accent, ctor, "the accent is set before the constructor that should hold it");
     }
+
+    /// <summary>
+    /// The record count over the master's list, bound to what the list shows.
+    /// </summary>
+    /// <remarks>
+    /// Neither target had a test naming this, and it showed: WinForms emitted no count at all
+    /// while this one emitted a count of the whole store, so the same screen disagreed with itself
+    /// across the two front ends and with its own grid whenever the search box had text in it.
+    /// Shown, not Count -- MasterScreenTests proves the difference on compiled code.
+    /// </remarks>
+    [TestMethod]
+    public void The_master_list_says_how_many_records_it_is_showing()
+        => StringAssert.Contains(
+            MasterTemplate(),
+            "Text=\"{Binding Shown, StringFormat='Total Records: {0}'}\"");
 }

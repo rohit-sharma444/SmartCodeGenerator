@@ -1,4 +1,4 @@
-namespace AppScaffolding.Screens;
+﻿namespace AppScaffolding.Screens;
 
 /// <summary>Emits <c>ViewModels/MasterScreenViewModel.cs</c>: an entry form with its list under it.</summary>
 /// <remarks>
@@ -68,6 +68,15 @@ public class MasterScreenViewModel<T> : ObservableObject, IEntityViewModel, IDir
 
     public int Count => Records.Count;
 
+    /// <summary>How many rows the list is actually showing.</summary>
+    /// <remarks>
+    /// Not <see cref="Count"/>, which is every row the store holds and is what the dashboard card
+    /// for this entity counts. The record count beside the search box sits directly above the
+    /// grid, and reading "Total Records: 3" over a single filtered row is a statement about the
+    /// screen that is not true of it. Both desktop targets show this one.
+    /// </remarks>
+    public int Shown => Matching(Records).Count();
+
     /// <summary>Everything the store holds. <see cref="Items"/> is what the screen shows;
     /// <see cref="AllRecords"/> is what another screen's lookup reads.</summary>
     protected ObservableCollection<T> Records { get; }
@@ -93,7 +102,10 @@ public class MasterScreenViewModel<T> : ObservableObject, IEntityViewModel, IDir
         set
         {
             if (SetField(ref _search, value))
+            {
                 OnPropertyChanged(nameof(Items));
+                OnPropertyChanged(nameof(Shown));
+            }
         }
     }
 
@@ -181,6 +193,7 @@ public class MasterScreenViewModel<T> : ObservableObject, IEntityViewModel, IDir
 
         OnPropertyChanged(nameof(Items));
         OnPropertyChanged(nameof(Count));
+        OnPropertyChanged(nameof(Shown));
     }
 
     /// <summary>Rows whose text matches the search, matched across every string property so a user

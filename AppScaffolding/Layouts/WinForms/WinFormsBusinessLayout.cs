@@ -1,4 +1,4 @@
-namespace AppScaffolding.Layouts.WinForms;
+﻿namespace AppScaffolding.Layouts.WinForms;
 
 /// <summary>
 /// The business shell in Windows Forms: a grouped tree for the rail, a header naming the signed-in
@@ -468,6 +468,18 @@ public sealed class MainForm : Form
             Name = "Grid",
         };
 
+        // The record count the spec puts beside the search box. WPF bound one and this target
+        // emitted none at all, so the same screen counted its records on one front end and not the
+        // other -- and nothing failed, because no test named it on either.
+        var count = new Label
+        {
+            Dock = DockStyle.Right,
+            Width = 160,
+            AutoSize = false,
+            TextAlign = ContentAlignment.MiddleRight,
+            Name = "RecordCount",
+        };
+
         var suppressSelection = false;
 
         grid.SelectionChanged += (_, _) =>
@@ -490,9 +502,18 @@ public sealed class MainForm : Form
             {
                 suppressSelection = false;
             }
+
+            // Shown, not Count: Count is every row the store holds, and this label sits directly
+            // above a grid the search box narrows.
+            var shown = screen.GetType().GetProperty("Shown")?.GetValue(screen);
+            count.Text = shown is null ? string.Empty : $"Total Records: {shown}";
         }
 
-        var search = new TextBox { Width = 200 };
+        var search = new TextBox { Width = 200, Dock = DockStyle.Left };
+
+        var searchRow = new Panel { Dock = DockStyle.Fill };
+        searchRow.Controls.Add(count);
+        searchRow.Controls.Add(search);
 
         // Rebound here rather than left to the screen's own Items notification: this file reaches
         // Search by reflection, so it cannot assume the screen announces anything at all. A screen
@@ -503,7 +524,7 @@ public sealed class MainForm : Form
             Rebind();
         };
 
-        layout.Controls.Add(search, 0, 0);
+        layout.Controls.Add(searchRow, 0, 0);
         layout.Controls.Add(grid, 0, 1);
 
         Rebind();
