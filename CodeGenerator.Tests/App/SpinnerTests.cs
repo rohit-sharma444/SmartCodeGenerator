@@ -324,14 +324,40 @@ public class SpinnerTests
         // prove liveness while the machine is busy may not depend on that queue being short.
         ThreadPool.GetMinThreads(out var workers, out _);
 
-        using var release = new ManualResetEventSlim(false);
-
         // Enough to hold every worker the pool starts with and fill the queue behind them, so a
         // work item submitted now waits on thread injection rather than running.
-        for (var queued = 0; queued < workers + 4; queued++)
-            ThreadPool.UnsafeQueueUserWorkItem(_ => release.Wait(), null);
+        var held = workers + 4;
+
+        using var release = new ManualResetEventSlim(false);
+
+        // Every held item signals on its way out, and this test does not finish until all of them
+        // have. Without it, `release` was disposed the moment the method returned while items were
+        // still inside Wait() -- or had not been given a thread yet and were about to enter it --
+        // and the ObjectDisposedException that followed came from a THREAD-POOL thread, where it is
+        // unhandled: it killed the whole test host. Green run, no failed test, "Test Run Aborted",
+        // exit 1. Seen on CI, where a loaded runner leaves items unstarted for longer; never on a
+        // developer machine, which is what kept it hidden.
+        using var drained = new CountdownEvent(held);
+
+        for (var queued = 0; queued < held; queued++)
+        {
+            ThreadPool.UnsafeQueueUserWorkItem(
+                _ =>
+                {
+                    try
+                    {
+                        release.Wait();
+                    }
+                    finally
+                    {
+                        drained.Signal();
+                    }
+                },
+                null);
+        }
 
         Capture screen;
+        bool allOut;
 
         try
         {
@@ -343,9 +369,15 @@ public class SpinnerTests
         finally
         {
             // Before the assertion, so a red run does not leave the pool starved for the tests
-            // after it.
+            // after it. Then wait for every held item to actually leave, because releasing them is
+            // not the same as them being gone, and `release` is disposed on the way out of here.
             release.Set();
+            allOut = drained.Wait(TimeSpan.FromSeconds(30));
         }
+
+        // Bounded, so a wedged pool fails this test rather than hanging the job -- and asserted,
+        // because a drain nothing checks is exactly the kind of guard that quietly stops draining.
+        Assert.IsTrue(allOut, "held work items were still running when the test released them");
 
         StringAssert.Contains(screen.ToString(), "Working");
     }
