@@ -134,6 +134,43 @@ public static class FieldGroups
             .Where(p => IsDisplayable(p.PropertyType))
             .ToArray();
 
+    /// <summary>
+    /// The property a picker shows for a referenced record: what a person calls that row.
+    /// </summary>
+    /// <remarks>
+    /// Both desktop targets render a foreign key as a picker over the entity it points at, and
+    /// both used to decide the display property for themselves. WinForms said "Id" outright;
+    /// WPF took the code field and fell back to "Id". Neither looked at Name, so a supplier
+    /// lookup on a class whose only label IS Name listed 1, 2, 3 -- the exact thing the WPF
+    /// comment beside it said it existed to avoid, on the one screen the mockup shows a supplier
+    /// being chosen by name.
+    /// <para>
+    /// Code first, because a document that has one is filed under it and that is what the mockup
+    /// labels "Supplier Code". Then Name, then Title, then any string at all, and only then Id --
+    /// the convention the console picker and the two main-window templates already emit, gathered
+    /// here so a fifth spelling of it cannot appear.
+    /// </para>
+    /// </remarks>
+    public static string LookupLabel(Type type)
+    {
+        var code = Key(type).Code;
+
+        if (code is not null)
+            return code.Name;
+
+        var pool = Displayable(type);
+
+        var label = pool.FirstOrDefault(p =>
+                p.PropertyType == typeof(string)
+                && string.Equals(p.Name, "Name", StringComparison.Ordinal))
+            ?? pool.FirstOrDefault(p =>
+                p.PropertyType == typeof(string)
+                && string.Equals(p.Name, "Title", StringComparison.Ordinal))
+            ?? pool.FirstOrDefault(p => p.PropertyType == typeof(string));
+
+        return label?.Name ?? "Id";
+    }
+
     /// <summary>The titled panels, in display order. Never contains an empty group.</summary>
     public static IReadOnlyList<FieldGroup> For(Type type)
     {

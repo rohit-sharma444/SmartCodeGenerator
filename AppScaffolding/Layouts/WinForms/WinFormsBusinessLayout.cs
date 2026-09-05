@@ -648,11 +648,14 @@ public sealed class MainForm : Form
 
         if (FieldGroups.NavigationFor(field) is { } nav)
         {
+            // DisplayMember is what a person calls the row, not its key: listing suppliers as
+            // 1, 2, 3 is no way to choose one, and the mockup picks a supplier by name.
+            // FieldGroups.LookupLabel makes that choice once, for this target and for WPF.
             var lookup = new ComboBox
             {
                 Width = 190,
                 DropDownStyle = ComboBoxStyle.DropDownList,
-                DisplayMember = "Id",
+                DisplayMember = FieldGroups.LookupLabel(nav.PropertyType),
                 ValueMember = "Id",
                 DataSource = LookupRows(nav.PropertyType),
             };
@@ -855,9 +858,19 @@ public sealed class MainForm : Form
     /// lookup built on it would silently drop every row that does not match text left in that
     /// screen's own search box -- a supplier the user is mid-search on elsewhere vanishing from a
     /// purchase order's supplier picker, with no indication why.
+    /// <para>
+    /// A List&lt;entityType&gt; and not a List&lt;object&gt;. WinForms resolves DisplayMember and
+    /// ValueMember against the list's ITEM TYPE, and object has no properties at all -- so a
+    /// List&lt;object&gt; binds a picker that can show no name and return no value, whatever the
+    /// rows in it happen to be, and an EMPTY one has nothing to infer a type from either. Building
+    /// the list typed is what lets FieldGroups.LookupLabel name a property that will actually
+    /// resolve.
+    /// </para>
     /// </remarks>
     private IList LookupRows(Type entityType)
     {
+        var rows = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(entityType))!;
+
         foreach (var group in _shell.Groups)
         {
             foreach (var entity in group.Entities)
@@ -865,13 +878,17 @@ public sealed class MainForm : Form
                 if (!string.Equals(entity.Title, entityType.Name, StringComparison.Ordinal))
                     continue;
 
-                var all = entity.GetType().GetProperty("AllRecords")?.GetValue(entity) as IEnumerable;
+                if (entity.GetType().GetProperty("AllRecords")?.GetValue(entity) is IEnumerable all)
+                {
+                    foreach (var row in all)
+                        rows.Add(row);
+                }
 
-                return all?.Cast<object>().ToList() ?? new List<object>();
+                return rows;
             }
         }
 
-        return new List<object>();
+        return rows;
     }
 
     /// <summary>The bar every entry screen ends in: a status label and whichever commands the

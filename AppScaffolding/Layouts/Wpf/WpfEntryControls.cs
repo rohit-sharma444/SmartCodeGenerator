@@ -347,15 +347,17 @@ public sealed class EntryForm : Grid
 
         if (FieldGroups.NavigationFor(field) is { } nav)
         {
-            // DisplayMemberPath reads the navigation entity's own code field -- Id would list
-            // suppliers as 1, 2, 3 rather than the code a person recognises. ItemsSource,
+            // DisplayMemberPath reads whatever a person calls that row -- Id would list suppliers
+            // as 1, 2, 3 rather than the name they are known by, which is what this comment always
+            // claimed and what falling back to "Id" on a class with no code field actually did.
+            // FieldGroups.LookupLabel is that choice, made once for both targets. ItemsSource,
             // DisplayMemberPath and SelectedValuePath are all set before SetBinding, in the object
             // initializer: a Selector cannot resolve a bound SelectedValue against a path or a list
             // that do not exist yet, and attaching the binding first left an existing record's
             // picker blank.
             var lookup = new ComboBox
             {
-                DisplayMemberPath = FieldGroups.Key(nav.PropertyType).Code?.Name ?? "Id",
+                DisplayMemberPath = FieldGroups.LookupLabel(nav.PropertyType),
                 SelectedValuePath = "Id",
                 ItemsSource = Rows(nav.PropertyType),
             };

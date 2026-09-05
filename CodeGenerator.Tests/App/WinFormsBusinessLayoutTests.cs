@@ -923,4 +923,48 @@ public class WinFormsBusinessLayoutTests
             public static void RequestSignOut() => SignOutRequested = true;
         }
         """;
+
+    /// <summary>
+    /// The foreign-key picker shows what a person calls the row, not its key.
+    /// </summary>
+    /// <remarks>
+    /// This target had no test here at all, which is why it sat on a hardcoded "Id" while WPF's
+    /// equivalent was fixed and tested: a supplier picker listing 1, 2, 3 on the screen whose
+    /// mockup picks a supplier by name. The choice lives in FieldGroups.LookupLabel now, called by
+    /// both targets, and FieldGroupsTests compiles and runs the rule itself.
+    /// </remarks>
+    [TestMethod]
+    public void The_lookup_shows_what_a_person_calls_the_record_not_its_id()
+    {
+        var body = Body(
+            Source(),
+            "private Control BuildFieldEditor(object record, PropertyInfo field)",
+            "private Control BuildEntryHeader(object owner, object? record)");
+
+        StringAssert.Contains(body, "DisplayMember = FieldGroups.LookupLabel(nav.PropertyType)");
+
+        // ValueMember stays the key: it is what the bound property holds.
+        StringAssert.Contains(body, "ValueMember = \"Id\"");
+    }
+
+    /// <summary>
+    /// The rows a picker binds to are typed as the entity, not as object.
+    /// </summary>
+    /// <remarks>
+    /// WinForms resolves DisplayMember and ValueMember against the list's ITEM type. A
+    /// List&lt;object&gt; has no properties to resolve either against, so naming a display property
+    /// would have bound a picker that shows nothing and returns nothing -- and an EMPTY
+    /// List&lt;object&gt; gives it nothing to infer from either. Asserted on the construction
+    /// rather than on the return type, because IList is the return type either way.
+    /// </remarks>
+    [TestMethod]
+    public void The_lookup_rows_are_typed_as_the_entity_they_list()
+    {
+        var body = Body(Source(), "private IList LookupRows(Type entityType)", "private Control BuildEntryActionBar(");
+
+        StringAssert.Contains(body, "typeof(List<>).MakeGenericType(entityType)");
+        Assert.IsFalse(
+            body.Contains("new List<object>()", StringComparison.Ordinal),
+            "LookupRows still builds an untyped list, which resolves no display member");
+    }
 }

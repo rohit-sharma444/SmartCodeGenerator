@@ -1016,14 +1016,21 @@ public class WpfBusinessLayoutTests
 
     /// <summary>
     /// Important 5. DisplayMemberPath used to be hardcoded to "Id", which resolves -- there is no
-    /// binding error -- and renders a lookup of bare integers instead of the code a person
-    /// recognises. It must read the navigation entity's own code field instead.
+    /// binding error -- and renders a lookup of bare integers instead of the name a person
+    /// recognises.
     /// </summary>
+    /// <remarks>
+    /// Reading the code field was only half a fix, and running a generated app is what showed it:
+    /// a Supplier whose only label is Name has no code field, the "?? Id" fell through, and the
+    /// picker listed 1, 2, 3 on the very screen the mockup chooses a supplier on. The choice now
+    /// belongs to FieldGroups.LookupLabel, which both desktop targets call -- so this asserts the
+    /// CALL, and FieldGroupsTests compiles and runs the rule behind it.
+    /// </remarks>
     [TestMethod]
-    public void The_lookup_displays_the_navigation_entitys_code_not_its_id()
+    public void The_lookup_displays_what_a_person_calls_the_record_not_its_id()
         => StringAssert.Contains(
             WpfEntryControls.Form(Context()),
-            "DisplayMemberPath = FieldGroups.Key(nav.PropertyType).Code?.Name ?? \"Id\"");
+            "DisplayMemberPath = FieldGroups.LookupLabel(nav.PropertyType)");
 
     /// <summary>
     /// Important 6. ItemsSource, DisplayMemberPath and SelectedValuePath must all be set before the

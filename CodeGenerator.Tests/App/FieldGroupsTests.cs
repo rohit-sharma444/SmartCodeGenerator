@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using AppScaffolding;
 using AppScaffolding.Screens;
 using AppScaffolding.Targets;
@@ -474,4 +474,89 @@ public class Ticket
         Assert.HasCount(12, groups["Basic Information"]);
         Assert.HasCount(3, groups["More Information"]);
     }
+
+    /// <summary>What a picker shows for a referenced record, compiled and run rather than matched
+    /// as text.</summary>
+    /// <remarks>
+    /// The rule these pin is the one both desktop pickers now call. It matters that they are
+    /// executed: the defect was a fallback landing on "Id" for a class whose label is Name, and
+    /// a substring assertion over the emitted source would have read the word "Name" in the method
+    /// and passed while every supplier still listed as 1, 2, 3.
+    /// </remarks>
+    private static string LabelFor(string modelStub, string typeName)
+    {
+        var source = EmittedSource.Flatten(
+            modelStub,
+            FieldGroupsTemplate.Source("Acme").Replace("namespace Acme.Screens;", string.Empty));
+
+        EmittedSource.AssertCompiles(source);
+
+        var assembly = Assembly.Load(Compiler.Compile(source).AssemblyBytes!);
+
+        return (string)assembly.GetType("FieldGroups")!
+            .GetMethod("LookupLabel")!
+            .Invoke(null, [assembly.GetType(typeName)!])!;
+    }
+
+    [TestMethod]
+    public void A_picker_shows_the_code_a_record_is_filed_under()
+        => Assert.AreEqual(
+            "SupplierCode",
+            LabelFor(
+                "public class Supplier { public int Id { get; set; } "
+                + "public string SupplierCode { get; set; } = string.Empty; "
+                + "public string Name { get; set; } = string.Empty; }",
+                "Supplier"));
+
+    /// <summary>The defect itself: no code field, and the class is known by its Name.</summary>
+    [TestMethod]
+    public void A_picker_falls_back_to_the_name_not_the_id()
+        => Assert.AreEqual(
+            "Name",
+            LabelFor(
+                "public class Supplier { public int Id { get; set; } "
+                + "public string Name { get; set; } = string.Empty; "
+                + "public string ContactInfo { get; set; } = string.Empty; }",
+                "Supplier"));
+
+    /// <summary>Name is preferred over an earlier-declared string, so declaration order cannot
+    /// decide what a supplier is called.</summary>
+    [TestMethod]
+    public void Name_beats_a_string_declared_before_it()
+        => Assert.AreEqual(
+            "Name",
+            LabelFor(
+                "public class Supplier { public int Id { get; set; } "
+                + "public string Address { get; set; } = string.Empty; "
+                + "public string Name { get; set; } = string.Empty; }",
+                "Supplier"));
+
+    [TestMethod]
+    public void A_picker_uses_a_title_when_there_is_no_name()
+        => Assert.AreEqual(
+            "Title",
+            LabelFor(
+                "public class Doc { public int Id { get; set; } "
+                + "public string Body { get; set; } = string.Empty; "
+                + "public string Title { get; set; } = string.Empty; }",
+                "Doc"));
+
+    [TestMethod]
+    public void A_picker_uses_any_string_before_it_uses_the_id()
+        => Assert.AreEqual(
+            "Label",
+            LabelFor(
+                "public class Tag { public int Id { get; set; } "
+                + "public string Label { get; set; } = string.Empty; }",
+                "Tag"));
+
+    /// <summary>Only when there is nothing else to show. Without this the fallback could be
+    /// removed entirely and every test above would still pass.</summary>
+    [TestMethod]
+    public void A_picker_falls_back_to_the_id_only_when_there_is_no_string_at_all()
+        => Assert.AreEqual(
+            "Id",
+            LabelFor(
+                "public class Reading { public int Id { get; set; } public decimal Value { get; set; } }",
+                "Reading"));
 }
