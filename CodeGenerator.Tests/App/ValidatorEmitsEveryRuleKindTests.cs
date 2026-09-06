@@ -1,5 +1,8 @@
+using System.Linq;
 using AppScaffolding;
+using CodeGenerationEngine.Core;
 using CodeGenerationEngine.Models;
+using Microsoft.CodeAnalysis;
 
 namespace CodeGenerator.Tests.App;
 
@@ -41,7 +44,9 @@ public class ValidatorEmitsEveryRuleKindTests
         var source = GeneratedFor("OrderedOn", "DateTime",
             new PropertyRule { Name = "mindate", MinDate = "1753-01-01" });
 
-        StringAssert.Contains(source, "1753");
+        // A bare "1753" would pass even sitting in a comment or on an unrelated property —
+        // assert the actual comparison shape against the right property instead.
+        StringAssert.Contains(source, "item.OrderedOn < DateTime.Parse(\"1753-01-01\"");
     }
 
     [TestMethod]
@@ -71,8 +76,11 @@ public class ValidatorEmitsEveryRuleKindTests
 
     /// <summary>Stands in for the real StoreEntityLookup, which would drag the whole store seam
     /// in. The generated validator's parameterless constructor news this up, so it must exist —
-    /// mirrors the stub in ValidatorCompilesTests.</summary>
+    /// declared under the same Acme.Validation namespace as IEntityLookup, kept real rather than
+    /// stripped, so this test would also catch a wrong namespace on the generated files.</summary>
     private const string LookupStub = """
+namespace Acme.Validation;
+
 public sealed class StoreEntityLookup : IEntityLookup
 {
     public bool Exists<TEntity>(int id) where TEntity : class, new() => true;
@@ -106,6 +114,10 @@ public sealed class StoreEntityLookup : IEntityLookup
         definition.Properties.Add(ordered);
 
         var models = """
+using System;
+
+namespace Acme.Models;
+
 public class Product
 {
     public int Id { get; set; }
@@ -115,16 +127,27 @@ public class Product
 }
 """;
 
-        // Both halves together, plus the seams they bind against — the same pattern
-        // ValidatorCompilesTests uses, so a missing `m` suffix fails a compile and not
-        // merely a substring assertion.
-        EmittedSource.AssertCompiles(EmittedSource.Flatten(
-            ValidatorTemplate.ValidatorInterface("Acme"),
-            ValidatorTemplate.EntityLookupInterface("Acme"),
-            LookupStub,
-            models,
-            ValidatorTemplate.Generated("Acme", definition, []),
-            ValidatorTemplate.CustomStub("Acme", definition.Name)));
+        // Compiler.CompileSources, not EmittedSource.Flatten: each file keeps its own real
+        // namespace and using directives instead of having them stripped and hoisted, so a wrong
+        // namespace or a missing using in the emitted output would show up here as a genuine
+        // compile error rather than being silently normalised away. The two partial halves of
+        // ProductValidator (Generated + CustomStub) are still compiled together, as separate
+        // syntax trees in one compilation — Roslyn resolves partial declarations across the
+        // whole compilation, not per syntax tree, so this does not weaken CS0260 detection.
+        var result = Compiler.CompileSources(new (string Path, string Code)[]
+        {
+            ("Validation/IValidator.cs", ValidatorTemplate.ValidatorInterface("Acme")),
+            ("Validation/IEntityLookup.cs", ValidatorTemplate.EntityLookupInterface("Acme")),
+            ("Validation/StoreEntityLookup.cs", LookupStub),
+            ("Models/Product.cs", models),
+            ("Validation/ProductValidator.Generated.cs", ValidatorTemplate.Generated("Acme", definition, [])),
+            ("Validation/ProductValidator.Custom.cs", ValidatorTemplate.CustomStub("Acme", definition.Name)),
+        });
+
+        var errors = result.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error).ToList();
+        var message = string.Join("\n", errors.Select(e => e.ToString()));
+        Assert.IsTrue(result.Success, $"Compilation failed:\n{message}");
+        Assert.IsEmpty(errors, $"Compilation errors:\n{message}");
     }
 
     private static string GeneratedFor(string propertyName, string type, PropertyRule rule)
