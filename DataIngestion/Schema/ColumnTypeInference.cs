@@ -1,4 +1,5 @@
 using System.Globalization;
+using CodeGenerationEngine.Models;
 using DomainDiscovery.Enrichment;
 
 namespace DataIngestion.Schema;
@@ -120,5 +121,52 @@ public static class ColumnTypeInference
             return "DateTime";
 
         return "string";
+    }
+
+    /// <summary>
+    /// What a complete pass over <paramref name="values"/> proves about the column, for a source
+    /// that declares nothing.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately NOT limited to <see cref="TypeSampleSize"/>. The sample decides the type,
+    /// which is a property of the column's domain; the facts here become RULES, and a rule drawn
+    /// from a sample can reject data the source itself contains — a longer value at row 50,000
+    /// would be refused by a bound learned from row 1.
+    /// </remarks>
+    public static TypeFacts Evidence(IEnumerable<string?> values, string inferredType)
+    {
+        var longest = 0;
+        var scale = 0;
+        var sawBlank = false;
+
+        foreach (var value in values)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                sawBlank = true;
+                continue;
+            }
+
+            if (value.Length > longest)
+                longest = value.Length;
+
+            var point = value.IndexOf('.');
+
+            if (point >= 0 && value.Length - point - 1 > scale)
+                scale = value.Length - point - 1;
+        }
+
+        return new TypeFacts
+        {
+            IsNullable = sawBlank,
+            // A length bound belongs only to text. "42" being two characters says nothing
+            // about an int, and a bound emitted from it would be meaningless.
+            MaxLength = inferredType == "string" && longest > 0 ? longest : null,
+            // Zero observed decimals is the ABSENCE of evidence, not evidence of a bound.
+            // A price column whose sampled rows all happen to be whole would otherwise
+            // produce a "0 decimal places" rule that refuses 9.99 for ever after — the same
+            // shape as the observed-range failure the Global Constraints forbid.
+            Scale = inferredType == "decimal" && scale > 0 ? scale : null
+        };
     }
 }
