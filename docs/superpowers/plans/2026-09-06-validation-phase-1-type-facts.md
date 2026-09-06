@@ -14,8 +14,8 @@
 
 - **Build must pass `-warnaserror` in Release.** CI runs `dotnet build SmartCodeGenerator/SmartCodeGenerator.slnx -c Release --no-restore -warnaserror` then `dotnet test ... --no-build`. A local Debug build of one project hides analyzer errors — see the incremental-build trap below.
 - **Analyzers only surface on a non-incremental build.** `dotnet build` prints "Build succeeded" without rerunning analyzers when nothing changed. Any `-warnaserror` check needs `--no-incremental`.
-- **MSTest, not xUnit.** `[TestClass]`, `[TestMethod]`, `Assert.*`, `CollectionAssert.*`.
-- **MSTEST0037 rejects `Assert.AreEqual(n, x.Count)`.** Use `Assert.HasCount(n, collection)`.
+- **The test framework follows the project — this repo is mixed.** `CodeGenerator.Tests` is MSTest (`[TestClass]`, `[TestMethod]`, `Assert.*`, `CollectionAssert.*`). `DataIngestion.Tests`, `DomainDiscovery.Tests`, `CodeIntelligence.Tests` and `NaturalLanguageEngine.Tests` are all xUnit (`[Fact]`, `[Theory]`, `Assert.Equal`). Write each test in the idiom of the project it lands in; the test bodies in this plan are written in MSTest and must be translated when the task's test project is an xUnit one. Tasks 3 targets `DataIngestion.Tests` (xUnit); Tasks 1, 4, 5, 6, 7 and 8 target `CodeGenerator.Tests` (MSTest).
+- **MSTEST0037 rejects `Assert.AreEqual(n, x.Count)`.** Use `Assert.HasCount(n, collection)`. MSTest projects only.
 - **Emitted C# is tested by compiling it**, never by substring assertions. Use `Compiler.Compile` / `CompileSources`. Where a class is emitted as two partial halves, compile **both files together** with `CompileSources` — a concatenation hides CS0260.
 - **Never propose a rule from a sample.** Phase 1 only carries *declared* facts and *complete-scan* evidence. Nothing in this phase infers from the 200-row sample.
 - **Ranges come from declared bounds only**, never from observed minimum and maximum values.
