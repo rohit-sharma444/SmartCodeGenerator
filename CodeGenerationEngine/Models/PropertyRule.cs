@@ -33,6 +33,15 @@ public class PropertyRule
 
     public decimal? MaxValue { get; set; }
 
+    /// <summary>Digits allowed after the decimal point. Distinct from MaxLength, which counts
+    /// characters — one rule reading the other's field is how a check lands on the wrong
+    /// property kind.</summary>
+    public int? Scale { get; set; }
+
+    /// <summary>The earliest date allowed, ISO-8601. A string rather than a DateTime so the
+    /// recorded rule and the emitted literal are the same text.</summary>
+    public string? MinDate { get; set; }
+
     public List<string> AllowedValues { get; set; } = new();
 
     // Primary regex property

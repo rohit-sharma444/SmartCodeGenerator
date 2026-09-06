@@ -119,6 +119,23 @@ internal sealed class NullValidator<T> : IValidator<T>
     /// <summary>Rule name recorded by DomainModelMapper for a length bound.</summary>
     private const string MaxLengthRule = "maxlength";
 
+    private const string MinValueRule = "minvalue";
+    private const string MaxValueRule = "maxvalue";
+    private const string ScaleRule = "scale";
+    private const string MinDateRule = "mindate";
+    private const string DateOnlyRule = "dateonly";
+
+    /// <summary>
+    /// Every rule name <see cref="Checks"/> knows how to emit. Inference is tested against this,
+    /// so a rule kind recorded with no emitter fails a test rather than vanishing into a
+    /// generated validator that reports success over a check that is not there.
+    /// </summary>
+    public static IReadOnlyCollection<string> EmittableRuleNames { get; } =
+    [
+        RequiredRule, MaxLengthRule, MinValueRule, MaxValueRule,
+        ScaleRule, MinDateRule, DateOnlyRule
+    ];
+
     /// <summary>
     /// Whether <paramref name="property"/> carries the required rule DomainModelMapper recorded.
     /// </summary>
@@ -298,55 +315,109 @@ public sealed partial class {{className}}Validator
     private static List<string> Checks(PropertyDefinition property)
     {
         var checks = new List<string>();
-        if (property.Type != "string")
-            return checks;
-
         var name = property.Name;
 
-        if (IsRequired(property))
+        if (property.Type == "string")
         {
-            checks.Add($"if (string.IsNullOrWhiteSpace(item.{name}))");
-            checks.Add($"    errors.Add(\"{name} is required.\");");
+            if (IsRequired(property))
+            {
+                checks.Add($"if (string.IsNullOrWhiteSpace(item.{name}))");
+                checks.Add($"    errors.Add(\"{name} is required.\");");
+            }
+
+            var max = property.Rules
+                .FirstOrDefault(r => string.Equals(r.Name, MaxLengthRule, StringComparison.OrdinalIgnoreCase))
+                ?.MaxLength;
+
+            if (max.HasValue)
+            {
+                checks.Add($"if (item.{name} is {{ Length: > {max.Value} }})");
+                checks.Add($"    errors.Add(\"{name} must be {max.Value} characters or fewer.\");");
+            }
+
+            // Deliberately loose: these exist to match what [EmailAddress]/[Phone] already give the
+            // console and WPF front-ends, not to be authoritative format validators.
+            if (property.Attributes.Contains("EmailAddress"))
+            {
+                checks.Add($"if (!string.IsNullOrWhiteSpace(item.{name}))");
+                checks.Add("{");
+                checks.Add($"    var at = item.{name}!.IndexOf('@');");
+                checks.Add($"    if (at <= 0 || at == item.{name}!.Length - 1)");
+                checks.Add($"        errors.Add(\"{name} is not a valid email address.\");");
+                checks.Add("}");
+            }
+
+            if (property.Attributes.Contains("Phone"))
+            {
+                checks.Add($"if (!string.IsNullOrWhiteSpace(item.{name}))");
+                checks.Add("{");
+                checks.Add($"    foreach (var character in item.{name}!)");
+                checks.Add("    {");
+                checks.Add("        if (!char.IsDigit(character) && character != ' ' && character != '+'");
+                checks.Add("            && character != '-' && character != '(' && character != ')')");
+                checks.Add("        {");
+                checks.Add($"            errors.Add(\"{name} is not a valid phone number.\");");
+                checks.Add("            break;");
+                checks.Add("        }");
+                checks.Add("    }");
+                checks.Add("}");
+            }
         }
 
-        var max = property.Rules
-            .FirstOrDefault(r => string.Equals(r.Name, MaxLengthRule, StringComparison.OrdinalIgnoreCase))
-            ?.MaxLength;
-
-        if (max.HasValue)
+        if (property.Type is "int" or "decimal")
         {
-            checks.Add($"if (item.{name} is {{ Length: > {max.Value} }})");
-            checks.Add($"    errors.Add(\"{name} must be {max.Value} characters or fewer.\");");
+            var min = Rule(property, MinValueRule)?.MinValue;
+
+            if (min.HasValue)
+            {
+                checks.Add($"if (item.{name} < {Literal(min.Value, property.Type)})");
+                checks.Add($"    errors.Add(\"{name} must be {min.Value} or more.\");");
+            }
+
+            var max = Rule(property, MaxValueRule)?.MaxValue;
+
+            if (max.HasValue)
+            {
+                checks.Add($"if (item.{name} > {Literal(max.Value, property.Type)})");
+                checks.Add($"    errors.Add(\"{name} must be {max.Value} or less.\");");
+            }
         }
 
-        // Deliberately loose: these exist to match what [EmailAddress]/[Phone] already give the
-        // console and WPF front-ends, not to be authoritative format validators.
-        if (property.Attributes.Contains("EmailAddress"))
+        if (property.Type == "decimal" && Rule(property, ScaleRule)?.Scale is { } places)
         {
-            checks.Add($"if (!string.IsNullOrWhiteSpace(item.{name}))");
-            checks.Add("{");
-            checks.Add($"    var at = item.{name}!.IndexOf('@');");
-            checks.Add($"    if (at <= 0 || at == item.{name}!.Length - 1)");
-            checks.Add($"        errors.Add(\"{name} is not a valid email address.\");");
-            checks.Add("}");
+            checks.Add($"if (decimal.Round(item.{name}, {places}) != item.{name})");
+            checks.Add($"    errors.Add(\"{name} must have {places} decimal places or fewer.\");");
         }
 
-        if (property.Attributes.Contains("Phone"))
+        if (property.Type == "DateTime")
         {
-            checks.Add($"if (!string.IsNullOrWhiteSpace(item.{name}))");
-            checks.Add("{");
-            checks.Add($"    foreach (var character in item.{name}!)");
-            checks.Add("    {");
-            checks.Add("        if (!char.IsDigit(character) && character != ' ' && character != '+'");
-            checks.Add("            && character != '-' && character != '(' && character != ')')");
-            checks.Add("        {");
-            checks.Add($"            errors.Add(\"{name} is not a valid phone number.\");");
-            checks.Add("            break;");
-            checks.Add("        }");
-            checks.Add("    }");
-            checks.Add("}");
+            if (Rule(property, MinDateRule)?.MinDate is { } floor)
+            {
+                checks.Add($"if (item.{name} < DateTime.Parse(\"{floor}\", System.Globalization.CultureInfo.InvariantCulture))");
+                checks.Add($"    errors.Add(\"{name} must be on or after {floor}.\");");
+            }
+
+            if (Rule(property, DateOnlyRule) is not null)
+            {
+                checks.Add($"if (item.{name}.TimeOfDay != TimeSpan.Zero)");
+                checks.Add($"    errors.Add(\"{name} must be a date with no time of day.\");");
+            }
         }
 
         return checks;
     }
+
+    private static PropertyRule? Rule(PropertyDefinition property, string ruleName)
+        => property.Rules.FirstOrDefault(
+            r => string.Equals(r.Name, ruleName, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// A decimal literal that compiles against the property's own type. Emitting a bare
+    /// <c>255</c> against a decimal is fine, but <c>2.5</c> against one needs the <c>m</c>
+    /// suffix or the generated file will not compile.
+    /// </summary>
+    private static string Literal(decimal value, string type)
+        => type == "decimal"
+            ? value.ToString(System.Globalization.CultureInfo.InvariantCulture) + "m"
+            : ((long)value).ToString(System.Globalization.CultureInfo.InvariantCulture);
 }
