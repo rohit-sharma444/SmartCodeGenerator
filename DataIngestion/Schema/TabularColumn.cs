@@ -14,4 +14,11 @@ public sealed class TabularColumn
     /// <c>ModelEditor.SupportedTypes</c> allows. Defaults to string so a column is never
     /// untyped.</summary>
     public string Type { get; set; } = "string";
+
+    /// <summary>
+    /// What the source declared about this column. Settable for the same reason
+    /// <see cref="Type"/> is: a reader produces the name, and the schema source or
+    /// <see cref="ColumnTypeInference"/> fills the facts in afterwards.
+    /// </summary>
+    public CodeGenerationEngine.Models.TypeFacts? Facts { get; set; }
 }

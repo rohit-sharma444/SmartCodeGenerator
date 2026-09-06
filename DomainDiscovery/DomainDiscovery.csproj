@@ -5,6 +5,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\NaturalLanguageEngine\NaturalLanguageEngine.csproj" />
+    <ProjectReference Include="..\CodeGenerationEngine\CodeGenerationEngine.csproj" />
   </ItemGroup>
 
   <ItemGroup>

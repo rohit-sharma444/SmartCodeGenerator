@@ -16,5 +16,12 @@ public class PropertyDefinition
     /// </summary>
     public List<string> Attributes { get; set; } = new List<string>();
 
+    /// <summary>
+    /// What the source declared about this property's column, or null when nothing is known.
+    /// Read by DomainModelMapper.InferValidation to derive rules from the type rather than the
+    /// name.
+    /// </summary>
+    public TypeFacts? Facts { get; set; }
+
     public override string ToString() => $"{Type} {Name}";
 }

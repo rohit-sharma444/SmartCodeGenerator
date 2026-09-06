@@ -43,6 +43,12 @@ public sealed class CandidateField
     public required string Type { get; set; }
 
     public Provenance Provenance { get; init; }
+
+    /// <summary>
+    /// What the source declared about this field's column, carried from the reader so a rename in
+    /// the review loop cannot orphan it. Null for a field no data source produced.
+    /// </summary>
+    public CodeGenerationEngine.Models.TypeFacts? Facts { get; set; }
 }
 
 public sealed class CandidateRelationship
