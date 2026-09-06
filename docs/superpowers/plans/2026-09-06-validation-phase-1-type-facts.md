@@ -518,6 +518,16 @@ public class ColumnEvidenceTests
     }
 
     [TestMethod]
+    public void AllWholeNumbers_YieldNoScaleBound()
+    {
+        // Every sampled value being whole does not mean the column forbids decimals.
+        // Recording scale 0 here would refuse 9.99 for ever after.
+        var facts = ColumnTypeInference.Evidence(["1", "2", "3"], "decimal");
+
+        Assert.IsNull(facts.Scale);
+    }
+
+    [TestMethod]
     public void NonStringTypes_CarryNoLengthBound()
     {
         // "3" being one character is not a bound on an int. Emitting one would be nonsense.
@@ -577,7 +587,11 @@ Add to `DataIngestion/Schema/ColumnTypeInference.cs`:
             // A length bound belongs only to text. "42" being two characters says nothing
             // about an int, and a bound emitted from it would be meaningless.
             MaxLength = inferredType == "string" && longest > 0 ? longest : null,
-            Scale = inferredType == "decimal" ? scale : null
+            // Zero observed decimals is the ABSENCE of evidence, not evidence of a bound.
+            // A price column whose sampled rows all happen to be whole would otherwise
+            // produce a "0 decimal places" rule that refuses 9.99 for ever after — the same
+            // shape as the observed-range failure the Global Constraints forbid.
+            Scale = inferredType == "decimal" && scale > 0 ? scale : null
         };
     }
 ```
@@ -587,7 +601,7 @@ Add `using CodeGenerationEngine.Models;` to the file's usings.
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `dotnet test SmartCodeGenerator/SmartCodeGenerator.slnx --filter ColumnEvidenceTests`
-Expected: PASS, 6 tests.
+Expected: PASS, 7 tests.
 
 - [ ] **Step 5: Call it from the file readers**
 
