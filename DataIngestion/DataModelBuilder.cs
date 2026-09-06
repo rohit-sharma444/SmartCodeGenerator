@@ -1,3 +1,4 @@
+using CodeGenerationEngine.Models;
 using DataIngestion.Schema;
 using DomainDiscovery.Model;
 using DomainDiscovery.SeedExtraction;
@@ -140,7 +141,8 @@ public static class DataModelBuilder
         DroppedDuplicate
     }
 
-    private sealed record ColumnOutcome(string Column, string? Field, string Type, ColumnFate Fate);
+    private sealed record ColumnOutcome(
+        string Column, string? Field, string Type, ColumnFate Fate, TypeFacts? Facts);
 
     /// <summary>
     /// What each of <paramref name="table"/>'s columns becomes on an entity named
@@ -174,7 +176,7 @@ public static class DataModelBuilder
             if (!NameNormalizer.IsValidIdentifier(fieldName))
             {
                 outcomes.Add(new ColumnOutcome(
-                    column.Name, null, column.Type, ColumnFate.DroppedUnusableName));
+                    column.Name, null, column.Type, ColumnFate.DroppedUnusableName, column.Facts));
                 continue;
             }
 
@@ -183,7 +185,7 @@ public static class DataModelBuilder
             if (IsOwnKey(fieldName, entityName))
             {
                 outcomes.Add(new ColumnOutcome(
-                    column.Name, null, column.Type, ColumnFate.DroppedGeneratedKey));
+                    column.Name, null, column.Type, ColumnFate.DroppedGeneratedKey, column.Facts));
                 continue;
             }
 
@@ -193,7 +195,7 @@ public static class DataModelBuilder
             if (resolved is null)
             {
                 outcomes.Add(new ColumnOutcome(
-                    column.Name, null, column.Type, ColumnFate.DroppedDuplicate));
+                    column.Name, null, column.Type, ColumnFate.DroppedDuplicate, column.Facts));
                 continue;
             }
 
@@ -203,7 +205,8 @@ public static class DataModelBuilder
                 column.Name, resolved, column.Type,
                 string.Equals(resolved, fieldName, StringComparison.Ordinal)
                     ? ColumnFate.Kept
-                    : ColumnFate.RenamedOffItsClassName));
+                    : ColumnFate.RenamedOffItsClassName,
+                column.Facts));
         }
 
         return outcomes;
@@ -260,7 +263,7 @@ public static class DataModelBuilder
                 Name = outcome.Field!,
                 Type = outcome.Type,
                 Provenance = Provenance.Data,
-                Facts = table.Columns.FirstOrDefault(c => c.Name == outcome.Column)?.Facts
+                Facts = outcome.Facts
             });
         }
     }
