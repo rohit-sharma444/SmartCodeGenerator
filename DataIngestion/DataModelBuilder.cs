@@ -259,7 +259,8 @@ public static class DataModelBuilder
             {
                 Name = outcome.Field!,
                 Type = outcome.Type,
-                Provenance = Provenance.Data
+                Provenance = Provenance.Data,
+                Facts = table.Columns.FirstOrDefault(c => c.Name == outcome.Column)?.Facts
             });
         }
     }

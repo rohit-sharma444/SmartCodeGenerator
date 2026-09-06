@@ -120,8 +120,12 @@ public static class DomainModelMapper
                 definition.Properties.Add(new PropertyDefinition { Name = "Id", Type = "int" });
 
             foreach (var field in entity.Fields)
-                definition.Properties.Add(
-                    new PropertyDefinition { Name = field.Name, Type = field.Type });
+                definition.Properties.Add(new PropertyDefinition
+                {
+                    Name = field.Name,
+                    Type = field.Type,
+                    Facts = field.Facts
+                });
 
             classes.Add(definition);
         }
