@@ -218,10 +218,28 @@ public static class DomainModelMapper
     }
 
     /// <summary>
-    /// Adds inferred DataAnnotations to each property from its name and type: a key on Id, a
-    /// required, length-bounded name field, and length limits (plus an email/phone shape) on
-    /// strings. Declarative only -- the interactive front-ends run Validator.TryValidateObject to
-    /// enforce them. A class that gains any attribute also gains the DataAnnotations using.
+    /// Rule names <see cref="CodeGenerationEngine.Core.RoslynClassGenerator"/> renders as
+    /// DataAnnotations attributes on the emitted model, rather than as a check in the generated
+    /// validator.
+    /// </summary>
+    /// <remarks>
+    /// A class carrying one of these needs the DataAnnotations using even though nothing added an
+    /// entry to <see cref="PropertyDefinition.Attributes"/> — the attribute is derived from the
+    /// rule inside <c>RoslynClassGenerator.CreateProperty</c>, which never sees this list. Without
+    /// the scan below, an entity that declares its own non-int Id (so no <c>[Key]</c>) and no field
+    /// named for an email or a phone reaches the generator with a <c>[StringLength]</c> it cannot
+    /// resolve, and the generated app does not compile.
+    /// </remarks>
+    private static readonly HashSet<string> DataAnnotationRuleNames =
+        new(StringComparer.OrdinalIgnoreCase) { "required", "maxlength", "minlength" };
+
+    /// <summary>
+    /// Adds inferred DataAnnotations to each property from its declared type and the facts its
+    /// source supplied: a key on Id, and the rules of the kinds
+    /// <see cref="ValidatorTemplate.EmittableRuleNames"/> lists. Declarative only -- the
+    /// interactive front-ends run Validator.TryValidateObject to enforce them. A class that gains
+    /// any attribute, or any rule the model emitter renders as one, also gains the DataAnnotations
+    /// using.
     /// </summary>
     private static void AddValidation(List<ClassDefinition> classes)
     {
@@ -231,6 +249,9 @@ public static class DomainModelMapper
             foreach (var property in definition.Properties)
                 added |= InferValidation(property);
 
+            added |= definition.Properties.Any(
+                p => p.Rules.Any(r => DataAnnotationRuleNames.Contains(r.Name)));
+
             if (added && !definition.Usings.Contains(DataAnnotationsNamespace))
                 definition.Usings.Add(DataAnnotationsNamespace);
         }
@@ -238,9 +259,14 @@ public static class DomainModelMapper
 
     /// <summary>
     /// Applies the inference rules to one property, mutating its Rules/Attributes in place, and
-    /// returns whether it added a DataAnnotations attribute. A navigation property (typed as
-    /// another class or a List&lt;&gt;) is not a string and carries no Id name, so it is left alone.
+    /// returns whether it added a DataAnnotations attribute.
     /// </summary>
+    /// <remarks>
+    /// Driven by the property's declared type and the facts the source supplied, not by its name.
+    /// A navigation property (typed as another class or a List&lt;&gt;) matches none of the five
+    /// emitted types and is left alone. Every rule name recorded here must appear in
+    /// <see cref="ValidatorTemplate.EmittableRuleNames"/>, or it is dropped silently.
+    /// </remarks>
     private static bool InferValidation(PropertyDefinition property)
     {
         if (string.Equals(property.Name, "Id", StringComparison.OrdinalIgnoreCase)
@@ -250,23 +276,117 @@ public static class DomainModelMapper
             return true;
         }
 
-        if (property.Type != "string")
-            return false;
+        var facts = property.Facts;
 
-        var isNameField = string.Equals(property.Name, "Name", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(property.Name, "Title", StringComparison.OrdinalIgnoreCase);
-
-        if (isNameField)
+        // A column the source declared NOT NULL is required, whatever it is called. Unknown
+        // nullability infers nothing: a discovered domain must not become stricter than the
+        // user described it.
+        if (facts?.IsNullable == false && property.Type != "bool")
             property.Rules.Add(new PropertyRule { Name = "required" });
 
-        property.Rules.Add(new PropertyRule { Name = "maxlength", MaxLength = DefaultStringLength });
+        switch (property.Type)
+        {
+            case "string":
+                if (!(facts?.IsUnbounded ?? false))
+                    property.Rules.Add(new PropertyRule
+                    {
+                        Name = "maxlength",
+                        MaxLength = facts?.MaxLength ?? DefaultStringLength
+                    });
 
+                return AddFormatAttribute(property);
+
+            case "int":
+                AddIntegerRange(property, facts?.DeclaredType);
+                return false;
+
+            case "decimal":
+                AddDecimalRules(property, facts);
+                return false;
+
+            case "DateTime":
+                // SQL Server's own floor, and only for the type that actually carries it:
+                // datetime2 starts at year 1, and a rule from the wrong type would refuse
+                // dates the column accepts.
+                if (string.Equals(facts?.DeclaredType, "datetime", StringComparison.OrdinalIgnoreCase))
+                    property.Rules.Add(new PropertyRule { Name = "mindate", MinDate = "1753-01-01" });
+
+                if (string.Equals(facts?.DeclaredType, "date", StringComparison.OrdinalIgnoreCase))
+                    property.Rules.Add(new PropertyRule { Name = "dateonly" });
+
+                return false;
+
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>
+    /// Adds the DataAnnotations attribute a string property's shape calls for, and returns
+    /// whether it added one.
+    /// </summary>
+    private static bool AddFormatAttribute(PropertyDefinition property)
+    {
         if (property.Name.Contains("email", StringComparison.OrdinalIgnoreCase))
+        {
             property.Attributes.Add("EmailAddress");
-        else if (property.Name.Contains("phone", StringComparison.OrdinalIgnoreCase))
-            property.Attributes.Add("Phone");
+            return true;
+        }
 
-        return true;
+        if (property.Name.Contains("phone", StringComparison.OrdinalIgnoreCase))
+        {
+            property.Attributes.Add("Phone");
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// What decimal(P,S) actually constrains: S digits after the point, and P-S before it.
+    /// </summary>
+    /// <remarks>
+    /// The integer-part bound is the half that is easy to forget and the one the database will
+    /// enforce anyway — decimal(18,2) overflows at 10^16, and without this rule the app accepts
+    /// the value and the insert fails. A file source supplies a scale from evidence but no
+    /// precision, so it gets the scale rule alone.
+    /// </remarks>
+    private static void AddDecimalRules(PropertyDefinition property, TypeFacts? facts)
+    {
+        if (facts?.Scale is { } scale)
+            property.Rules.Add(new PropertyRule { Name = "scale", Scale = scale });
+
+        if (facts?.Precision is not { } precision || facts.Scale is not { } places)
+            return;
+
+        var integerDigits = precision - places;
+
+        if (integerDigits <= 0 || integerDigits > 28)
+            return;
+
+        var bound = decimal.Parse(
+            new string('9', integerDigits) + "." + new string('9', places),
+            System.Globalization.CultureInfo.InvariantCulture);
+
+        property.Rules.Add(new PropertyRule { Name = "maxvalue", MaxValue = bound });
+        property.Rules.Add(new PropertyRule { Name = "minvalue", MinValue = -bound });
+    }
+
+    /// <summary>The bounds SqlTypeMap collapses away when it maps every integer width to int.</summary>
+    private static void AddIntegerRange(PropertyDefinition property, string? declaredType)
+    {
+        var (min, max) = declaredType?.ToLowerInvariant() switch
+        {
+            "tinyint" => (0m, 255m),
+            "smallint" => (-32768m, 32767m),
+            _ => (0m, 0m)
+        };
+
+        if (min == 0m && max == 0m)
+            return;
+
+        property.Rules.Add(new PropertyRule { Name = "minvalue", MinValue = min });
+        property.Rules.Add(new PropertyRule { Name = "maxvalue", MaxValue = max });
     }
 
     /// <summary>
