@@ -52,7 +52,8 @@ public sealed class SqlClientSchemaSource : ISqlSchemaSource
         string connectionString, string schema, string table)
     {
         const string sql = """
-            SELECT  COLUMN_NAME, DATA_TYPE, IS_NULLABLE
+            SELECT  COLUMN_NAME, DATA_TYPE, IS_NULLABLE,
+                    CHARACTER_MAXIMUM_LENGTH, NUMERIC_PRECISION, NUMERIC_SCALE
             FROM    INFORMATION_SCHEMA.COLUMNS
             WHERE   TABLE_SCHEMA = @schema AND TABLE_NAME = @table
             ORDER BY ORDINAL_POSITION;
@@ -66,11 +67,22 @@ public sealed class SqlClientSchemaSource : ISqlSchemaSource
                 (string)row["COLUMN_NAME"],
                 (string)row["DATA_TYPE"],
                 string.Equals(
-                    (string)row["IS_NULLABLE"], "YES", StringComparison.OrdinalIgnoreCase)));
+                    (string)row["IS_NULLABLE"], "YES", StringComparison.OrdinalIgnoreCase),
+                AsInt(row["CHARACTER_MAXIMUM_LENGTH"]),
+                AsInt(row["NUMERIC_PRECISION"]),
+                AsInt(row["NUMERIC_SCALE"])));
         }
 
         return columns;
     }
+
+    /// <summary>
+    /// One INFORMATION_SCHEMA numeric, or null. The columns are DBNull for types they do not
+    /// apply to, and their declared types vary — NUMERIC_PRECISION is tinyint, and
+    /// CHARACTER_MAXIMUM_LENGTH is int — so an unboxing cast to int would throw on real schemas.
+    /// </summary>
+    private static int? AsInt(object? value)
+        => value is null || value is DBNull ? null : Convert.ToInt32(value);
 
     public IReadOnlyList<TabularForeignKey> ForeignKeys(string connectionString)
     {

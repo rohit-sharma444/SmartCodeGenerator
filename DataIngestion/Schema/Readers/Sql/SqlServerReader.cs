@@ -1,3 +1,5 @@
+using CodeGenerationEngine.Models;
+
 namespace DataIngestion.Schema.Readers.Sql;
 
 /// <summary>
@@ -39,7 +41,18 @@ public sealed class SqlServerReader(ISqlSchemaSource source) : IDataSourceReader
                 table.Columns.Add(new TabularColumn
                 {
                     Name = column.Name,
-                    Type = SqlTypeMap.ToModelType(column.SqlType)
+                    Type = SqlTypeMap.ToModelType(column.SqlType),
+                    Facts = new TypeFacts
+                    {
+                        IsNullable = column.Nullable,
+                        // -1 is INFORMATION_SCHEMA's spelling of nvarchar(max): a known
+                        // absence of a bound, not a bound of -1.
+                        MaxLength = column.MaxLength is > 0 ? column.MaxLength : null,
+                        IsUnbounded = column.MaxLength == -1,
+                        Precision = column.Precision,
+                        Scale = column.Scale,
+                        DeclaredType = column.SqlType
+                    }
                 });
 
                 var note = SqlTypeMap.LossNote(column.SqlType, column.Name);
