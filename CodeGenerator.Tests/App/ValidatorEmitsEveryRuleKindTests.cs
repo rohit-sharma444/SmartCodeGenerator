@@ -47,6 +47,10 @@ public class ValidatorEmitsEveryRuleKindTests
         // A bare "1753" would pass even sitting in a comment or on an unrelated property —
         // assert the actual comparison shape against the right property instead.
         StringAssert.Contains(source, "item.OrderedOn < DateTime.Parse(\"1753-01-01\"");
+
+        // And the guard that keeps an untouched optional date fillable. Pinned here as well as
+        // in the run-it test, so the shape of the emitted line is not quietly lost.
+        StringAssert.Contains(source, "item.OrderedOn != default(DateTime)");
     }
 
     [TestMethod]
@@ -57,21 +61,167 @@ public class ValidatorEmitsEveryRuleKindTests
         StringAssert.Contains(source, "item.DueOn.TimeOfDay");
     }
 
-    [TestMethod]
-    public void EveryRuleNameInferenceCanRecord_HasAnEmitter()
-    {
-        // The anti-silent-drop guard. If a later task teaches inference a new rule name
-        // and forgets the emitter, this goes red instead of shipping a missing check.
-        foreach (var name in ValidatorTemplate.EmittableRuleNames)
-            Assert.IsFalse(string.IsNullOrWhiteSpace(name));
+    /// <summary>The rule names inference can record, each with a value its emitter would read.</summary>
+    private static readonly (string Name, PropertyRule Rule)[] EveryRuleKind =
+    [
+        ("required", new PropertyRule { Name = "required" }),
+        ("maxlength", new PropertyRule { Name = "maxlength", MaxLength = 50 }),
+        ("minvalue", new PropertyRule { Name = "minvalue", MinValue = 0 }),
+        ("maxvalue", new PropertyRule { Name = "maxvalue", MaxValue = 255 }),
+        ("scale", new PropertyRule { Name = "scale", Scale = 2 }),
+        ("mindate", new PropertyRule { Name = "mindate", MinDate = "1753-01-01" }),
+        ("dateonly", new PropertyRule { Name = "dateonly" }),
+    ];
 
-        Assert.IsTrue(ValidatorTemplate.EmittableRuleNames.Contains("required"));
-        Assert.IsTrue(ValidatorTemplate.EmittableRuleNames.Contains("maxlength"));
-        Assert.IsTrue(ValidatorTemplate.EmittableRuleNames.Contains("minvalue"));
-        Assert.IsTrue(ValidatorTemplate.EmittableRuleNames.Contains("maxvalue"));
-        Assert.IsTrue(ValidatorTemplate.EmittableRuleNames.Contains("scale"));
-        Assert.IsTrue(ValidatorTemplate.EmittableRuleNames.Contains("mindate"));
-        Assert.IsTrue(ValidatorTemplate.EmittableRuleNames.Contains("dateonly"));
+    /// <summary>The five types DomainModelMapper maps a column to.</summary>
+    private static readonly string[] EveryEmittedType = ["string", "int", "decimal", "DateTime", "bool"];
+
+    /// <summary>What Generated emits in place of a body when no check was produced at all.</summary>
+    private const string NoChecks = "// This model declares no inferred rules.";
+
+    [TestMethod]
+    public void EveryPairEmittableRulesDeclares_ReallyEmitsACheck()
+    {
+        // Half one of the anti-silent-drop guard, and what makes EmittableRules honest rather
+        // than merely asserted: every pair it claims is driven through Checks and must produce a
+        // check that names the property. A pair added to the list with no emitter fails here.
+        foreach (var (type, ruleName) in ValidatorTemplate.EmittableRules)
+        {
+            var rule = EveryRuleKind.Single(r => r.Name == ruleName).Rule;
+            var source = GeneratedFor("Field", type, rule);
+
+            StringAssert.Contains(source, "item.Field",
+                $"EmittableRules claims ('{type}', '{ruleName}') but Checks emitted no check.");
+            Assert.DoesNotContain(NoChecks, source,
+                $"EmittableRules claims ('{type}', '{ruleName}') but the validator body is empty.");
+        }
+    }
+
+    [TestMethod]
+    public void EveryPairEmittableRulesOmits_ReallyEmitsNothing()
+    {
+        // Half two, and the half a bare list of names cannot express. Checks guards every check
+        // on the property's TYPE, so a rule on the wrong type emits nothing whatever -- a scale
+        // rule on an int, or a required rule on a DateTime. Asserting the omissions is what
+        // stops the list quietly claiming less than Checks does, which would let inference
+        // record a pair that emits nothing and still pass the guard above.
+        foreach (var type in EveryEmittedType)
+            foreach (var (ruleName, rule) in EveryRuleKind)
+            {
+                if (ValidatorTemplate.CanEmit(type, ruleName))
+                    continue;
+
+                StringAssert.Contains(GeneratedFor("Field", type, rule), NoChecks,
+                    $"Checks emits something for ('{type}', '{ruleName}'), "
+                    + "which EmittableRules does not declare.");
+            }
+    }
+
+    [TestMethod]
+    public void EveryRuleNameInferenceCanRecord_IsPairedWithAtLeastOneType()
+    {
+        // A name dropped from EmittableRules altogether would make both halves above pass
+        // vacuously -- nothing claims it, and nothing emits it. This is the third leg.
+        foreach (var (name, _) in EveryRuleKind)
+            Assert.IsTrue(
+                ValidatorTemplate.EmittableRules.Any(pair => pair.Rule == name),
+                $"No type is paired with '{name}', so nothing emits it.");
+    }
+
+    [TestMethod]
+    public void RequiredIsPairedWithStringAlone()
+    {
+        // The pair that was wrong, pinned by name. string.IsNullOrWhiteSpace is the only
+        // meaningful emptiness test among the five types; a non-nullable int cannot be null and
+        // 0 is a legitimate value, so a required check on one would assert nothing true.
+        var types = ValidatorTemplate.EmittableRules
+            .Where(pair => pair.Rule == "required")
+            .Select(pair => pair.Type)
+            .ToList();
+
+        Assert.HasCount(1, types);
+        Assert.AreEqual("string", types[0]);
+    }
+
+    [TestMethod]
+    public void AnUnsetDate_PassesTheFloorCheck_ButADateBelowItStillFails()
+    {
+        // Runs the generated validator rather than reading its source, because the defect this
+        // pins is a runtime one: the generated model types every date column as a non-nullable
+        // DateTime, so an untouched field arrives as 0001-01-01 -- below SQL Server's own floor.
+        // Without the default(DateTime) guard the validator refuses every record saved with an
+        // optional date left blank, which makes the form unusable, and no substring assertion
+        // over the emitted source would have noticed.
+        var validate = CompiledValidator();
+
+        var unset = System.Activator.CreateInstance(validate.EntityType)!;
+
+        Assert.IsEmpty(validate.Errors(unset), "an untouched date must not be refused");
+
+        var typed = System.Activator.CreateInstance(validate.EntityType)!;
+        validate.EntityType.GetProperty("OrderedOn")!
+            .SetValue(typed, new System.DateTime(1600, 5, 4));
+
+        var errors = validate.Errors(typed);
+
+        Assert.HasCount(1, errors);
+        StringAssert.Contains(errors[0], "must be on or after 1753-01-01");
+
+        var allowed = System.Activator.CreateInstance(validate.EntityType)!;
+        validate.EntityType.GetProperty("OrderedOn")!
+            .SetValue(allowed, new System.DateTime(2026, 9, 6));
+
+        Assert.IsEmpty(validate.Errors(allowed), "a date above the floor must pass");
+    }
+
+    /// <summary>
+    /// Compiles a one-property Order model plus its generated validator, loads the assembly, and
+    /// hands back the entity type with a delegate that runs Validate over an instance.
+    /// </summary>
+    private static (System.Type EntityType, System.Func<object, IReadOnlyList<string>> Errors)
+        CompiledValidator()
+    {
+        var definition = new ClassDefinition { Name = "Order" };
+        definition.Properties.Add(new PropertyDefinition { Name = "Id", Type = "int" });
+
+        var ordered = new PropertyDefinition { Name = "OrderedOn", Type = "DateTime" };
+        ordered.Rules.Add(new PropertyRule { Name = "mindate", MinDate = "1753-01-01" });
+        definition.Properties.Add(ordered);
+
+        var models = """
+using System;
+
+namespace Acme.Models;
+
+public class Order
+{
+    public int Id { get; set; }
+    public DateTime OrderedOn { get; set; }
+}
+""";
+
+        var result = Compiler.CompileSources(new (string Path, string Code)[]
+        {
+            ("Validation/IValidator.cs", ValidatorTemplate.ValidatorInterface("Acme")),
+            ("Validation/IEntityLookup.cs", ValidatorTemplate.EntityLookupInterface("Acme")),
+            ("Validation/StoreEntityLookup.cs", LookupStub),
+            ("Models/Order.cs", models),
+            ("Validation/OrderValidator.Generated.cs", ValidatorTemplate.Generated("Acme", definition, [])),
+            ("Validation/OrderValidator.Custom.cs", ValidatorTemplate.CustomStub("Acme", definition.Name)),
+        });
+
+        var message = string.Join("\n",
+            result.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error).Select(e => e.ToString()));
+        Assert.IsTrue(result.Success, $"Compilation failed:\n{message}");
+
+        var assembly = System.Reflection.Assembly.Load(result.AssemblyBytes!);
+        var entityType = assembly.GetType("Acme.Models.Order")!;
+        var validatorType = assembly.GetType("Acme.Validation.OrderValidator")!;
+        var validator = System.Activator.CreateInstance(validatorType)!;
+        var validateMethod = validatorType.GetMethod("Validate")!;
+
+        return (entityType,
+            item => (IReadOnlyList<string>)validateMethod.Invoke(validator, [item])!);
     }
 
     /// <summary>Stands in for the real StoreEntityLookup, which would drag the whole store seam

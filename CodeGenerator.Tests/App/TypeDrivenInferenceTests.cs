@@ -138,24 +138,52 @@ public class TypeDrivenInferenceTests
     }
 
     [TestMethod]
-    public void EveryRuleInferenceRecords_HasAnEmitter()
+    public void ANotNullNumberOrDate_GetsNoRequiredRule()
     {
-        // Closes the silent-drop risk across the whole table above: any rule name
-        // inference produces that ValidatorTemplate cannot emit fails here.
+        // required is recorded for a string and nothing else. A non-nullable int cannot be null
+        // and 0 is a legitimate value, so the rule would assert nothing true while still putting
+        // [Required] on the model and an asterisk on a field the user may correctly leave at
+        // zero. ValidatorTemplate emits a required check inside its `string` guard alone, so the
+        // rule would also produce no check at all -- the silent drop the guard below now catches.
+        var notNull = new TypeFacts { IsNullable = false };
+
+        Assert.IsNull(Rule(Mapped("Quantity", "int", notNull), "required"));
+        Assert.IsNull(Rule(Mapped("Price", "decimal", notNull), "required"));
+        Assert.IsNull(Rule(Mapped("OrderedOn", "DateTime", notNull), "required"));
+        Assert.IsNull(Rule(Mapped("IsActive", "bool", notNull), "required"));
+
+        // The string still gets it: this is the behaviour change the phase exists for.
+        Assert.IsNotNull(Rule(Mapped("Surname", "string", notNull), "required"));
+    }
+
+    [TestMethod]
+    public void EveryRuleInferenceRecords_HasAnEmitterForTheTypeItIsRecordedOn()
+    {
+        // Closes the silent-drop risk across the whole table above. Asserts PAIRS, not names:
+        // ValidatorTemplate.Checks guards every check on the property's type, so a rule recorded
+        // on the wrong type -- a scale rule on an int, a required rule on a DateTime -- emits
+        // nothing whatever while a bare-name assertion calls it emittable. Every fixture below
+        // is NOT NULL as well as typed, so a required rule leaking onto a value type fails here.
         var properties = new[]
         {
             Mapped("Surname", "string", new TypeFacts { MaxLength = 50, IsNullable = false }),
-            Mapped("Rating", "int", new TypeFacts { DeclaredType = "tinyint" }),
-            Mapped("Price", "decimal", new TypeFacts { DeclaredType = "decimal", Precision = 18, Scale = 2 }),
-            Mapped("OrderedOn", "DateTime", new TypeFacts { DeclaredType = "datetime" }),
-            Mapped("DueOn", "DateTime", new TypeFacts { DeclaredType = "date" })
+            Mapped("Notes", "string", new TypeFacts { IsUnbounded = true, IsNullable = false }),
+            Mapped("Rating", "int", new TypeFacts { DeclaredType = "tinyint", IsNullable = false }),
+            Mapped("Year", "int", new TypeFacts { DeclaredType = "smallint", IsNullable = false }),
+            Mapped("Price", "decimal",
+                new TypeFacts { DeclaredType = "decimal", Precision = 18, Scale = 2, IsNullable = false }),
+            Mapped("Cost", "decimal", new TypeFacts { Scale = 2, IsNullable = false }),
+            Mapped("OrderedOn", "DateTime", new TypeFacts { DeclaredType = "datetime", IsNullable = false }),
+            Mapped("DueOn", "DateTime", new TypeFacts { DeclaredType = "date", IsNullable = false }),
+            Mapped("IsActive", "bool", new TypeFacts { DeclaredType = "bit", IsNullable = false })
         };
 
         foreach (var property in properties)
             foreach (var rule in property.Rules)
                 Assert.IsTrue(
-                    ValidatorTemplate.EmittableRuleNames.Contains(rule.Name),
-                    $"Inference records '{rule.Name}' but ValidatorTemplate cannot emit it.");
+                    ValidatorTemplate.CanEmit(property.Type, rule.Name),
+                    $"Inference records '{rule.Name}' on a {property.Type} "
+                    + "but ValidatorTemplate emits nothing for that pair.");
     }
 
     private static PropertyDefinition Mapped(string name, string type, TypeFacts? facts)

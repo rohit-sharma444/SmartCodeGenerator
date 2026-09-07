@@ -236,7 +236,7 @@ public static class DomainModelMapper
     /// <summary>
     /// Adds inferred DataAnnotations to each property from its declared type and the facts its
     /// source supplied: a key on Id, and the rules of the kinds
-    /// <see cref="ValidatorTemplate.EmittableRuleNames"/> lists. Declarative only -- the
+    /// <see cref="ValidatorTemplate.EmittableRules"/> lists. Declarative only -- the
     /// interactive front-ends run Validator.TryValidateObject to enforce them. A class that gains
     /// any attribute, or any rule the model emitter renders as one, also gains the DataAnnotations
     /// using.
@@ -264,8 +264,10 @@ public static class DomainModelMapper
     /// <remarks>
     /// Driven by the property's declared type and the facts the source supplied, not by its name.
     /// A navigation property (typed as another class or a List&lt;&gt;) matches none of the five
-    /// emitted types and is left alone. Every rule name recorded here must appear in
-    /// <see cref="ValidatorTemplate.EmittableRuleNames"/>, or it is dropped silently.
+    /// emitted types and is left alone. Every rule recorded here must appear in
+    /// <see cref="ValidatorTemplate.EmittableRules"/> PAIRED WITH THE TYPE it is recorded on, or
+    /// it is dropped silently: the emitter guards every check on the property's type, so a rule
+    /// on the wrong type emits nothing at all.
     /// </remarks>
     private static bool InferValidation(PropertyDefinition property)
     {
@@ -278,15 +280,23 @@ public static class DomainModelMapper
 
         var facts = property.Facts;
 
-        // A column the source declared NOT NULL is required, whatever it is called. Unknown
-        // nullability infers nothing: a discovered domain must not become stricter than the
-        // user described it.
-        if (facts?.IsNullable == false && property.Type != "bool")
-            property.Rules.Add(new PropertyRule { Name = "required" });
-
         switch (property.Type)
         {
             case "string":
+                // A column the source declared NOT NULL is required, whatever it is called.
+                // Unknown nullability infers nothing: a discovered domain must not become
+                // stricter than the user described it.
+                //
+                // Recorded for a string and no other type, which is why it sits inside this arm
+                // rather than above the switch. string.IsNullOrWhiteSpace is the only meaningful
+                // emptiness test among the five types the generator emits: a non-nullable int
+                // cannot be null and 0 is a legitimate value, so a required rule there asserts
+                // nothing true while still putting an asterisk on a field the user may correctly
+                // leave at zero. ValidatorTemplate.EmittableRules pairs "required" with "string"
+                // alone for the same reason, and the guard test holds the two together.
+                if (facts?.IsNullable == false)
+                    property.Rules.Add(new PropertyRule { Name = "required" });
+
                 if (!(facts?.IsUnbounded ?? false))
                     property.Rules.Add(new PropertyRule
                     {
