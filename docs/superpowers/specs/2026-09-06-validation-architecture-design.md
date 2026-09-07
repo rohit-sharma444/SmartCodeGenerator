@@ -174,6 +174,24 @@ Each field earns its place by unlocking a category that is otherwise
 inexpressible: `Stored` for 11 and 16, `Op` for 15, `User` for 12 and 17, and
 the lookup's new counting method for 15.
 
+`Validate(T item)` is REPLACED, not supplemented. A convenience overload would have to
+invent the context -- an operation, and a null user -- so any caller reaching for it gets
+an inert Security stage and a validator reporting success over a check that never ran.
+Replacing it outright makes the compiler enumerate every call site, in a generated app as
+well as in the templates.
+
+Errors carry their property from the point they are raised, which is what `SaveResult`
+attribution later reads:
+
+```csharp
+public sealed record ValidationError(string? Property, string Message);   // null = whole record
+
+public sealed record ValidationOutcome(IReadOnlyList<ValidationError> Errors)
+{
+    public bool IsValid => Errors.Count == 0;
+}
+```
+
 `IEntityLookup` grows exactly one method:
 
 ```csharp
@@ -218,8 +236,11 @@ prevents a range check running against a value that is not a number, and what
 makes requirement 10 a property of the design: a `Post` commits only if all
 seven stages returned nothing.
 
-A stage with no rules emits no code. For a simple three-entity app most stages
-are empty and the generated output is no heavier than today's.
+A stage with no rules emits no code. Stages are private methods on each generated
+validator with one ordered list of the non-empty ones, not seven classes per entity, which
+is what makes that literally true rather than aspirational: a three-entity CRUD app gets
+one stage method per validator and two lines of list. `ValidationPipeline.Run` is a single
+small shared helper holding the ordering and the short-circuit.
 
 ### Where inference meets the existing rules
 
@@ -260,8 +281,10 @@ A typed rule wins for its property; inference fills the rest.
 ### 1. Security
 
 Generalises the single hardcoded `Session.IsAdmin` check into a permission
-matrix, and — the point of the exercise — moves enforcement from the view model
-to the store boundary, where every front end passes through it.
+matrix, and — the point of the exercise — moves enforcement out of the view model
+to the three points named under Emission, so that a front end cannot simply not ask. It
+is not one point: `IStore<T>` cannot express an operation, so the coarse guard sits there
+and the operation-aware checks sit in `Repository<T>` and at the grid's delete button.
 
 The default matrix preserves today's behaviour exactly: an Admin may do
 anything; a User may do anything except delete a master record or reach the
@@ -470,9 +493,34 @@ The stage list and the short-circuit ordering live in a single
 
 Generated models gain `partial`, which shows in every diff.
 
-**Store boundary.** `RepositoryTemplate`, `EfStoreTemplate` and
-`JsonStoreTemplate` call the pipeline on insert, update, delete and post.
+**Enforcement points -- three, not one.** An earlier draft of this section said the
+store boundary was where "every front end passes through it". That is not true of this
+code: `IStore<T>` is `GetAll()` and `SaveAll(List<T>)`, a whole-collection overwrite that
+cannot express an operation, and the desktop and Blazor grids bypass `Repository<T>`
+entirely -- the WPF grid does `Records.Remove(item)`, says "Not saved yet", and later
+writes the whole list. A pipeline needing `Op` and `Stored` cannot be driven from
+`SaveAll`. So:
+
+| Where | What it can enforce | Who it protects |
+|---|---|---|
+| `Repository<T>` | The full pipeline, all four operations, `Stored` available | Console, Web API, worker, generated tests |
+| `IStore<T>.SaveAll` | "May this user write this type at all" -- coarse, but unbypassable | Everything, including the grids |
+| Desktop / Blazor grid | The pipeline with a `Delete` context, at the moment the user asks to remove the row | The deferred-save UI, which cannot express the operation at save time |
+
+Stated plainly because it will otherwise be found in a generated app: under the default
+matrix the coarse guard refuses NOTHING except the Users entity, since a User may write
+every business entity and is barred only from deleting a master record. It is real and
+unbypassable, and nearly inert. The teeth are in rows one and three.
+
+Row three replaces the hardcoded `if (!Session.IsAdmin)` in `MasterScreenTemplate` with a
+call through the same permission matrix, and gives `ViewModelTemplates.Delete()` -- which
+has no check whatever today -- its first one.
+
 Delete is a new call site: nothing validates a delete today.
+
+`IStore<T>.SaveAll` returns `bool`, so a permission refusal would surface as "Could not
+write Customer.json", which is a lie. It widens to carry an optional refusal reason, and
+the `SaveAll` call sites take their status message from that reason when there is one.
 
 **Class path.** `create class` and `generate validator` have no store, so
 uniqueness and reference counting cannot run. They emit a
@@ -480,9 +528,16 @@ uniqueness and reference counting cannot run. They emit a
 `RoslynClassGenerator` needs `PartialKeyword` — the `create class` path already
 has `ClassValidationWriter.EnsurePartial`.
 
-**`SaveResult`** gains a per-property attribution so a front end can highlight
-the field rather than only listing sentences. `Errors` stays as it is for
-compatibility, and `AsDictionary` keeps its current shape.
+**`SaveResult`** gains `Failures` -- the same errors with their property -- so a front
+end can highlight the field rather than only listing sentences. `Errors` stays a list of
+sentences, so nothing reading it breaks.
+
+`AsDictionary` is keyed BY PROPERTY, falling back to the empty key for whole-record errors.
+An earlier draft kept its current single-empty-key shape for compatibility; that would
+leave the Web API gaining nothing at all from attribution, which is most of the point, and
+the only thing that can break is a hand-written client of a previously generated API -- the
+app itself is regenerated from scratch. Keyed by property is the standard ASP.NET 400
+payload, and the Web API is the one front end where the right behaviour is unambiguous.
 
 ## The Review card
 
@@ -508,11 +563,14 @@ values in a drag-order list, with a "final" tick per value.
   not row 5. The whole point is that a sample would have passed.
 - **A rule that would reject the source's own data must never be proposed.**
   Direct test per candidate kind.
-- **Delete refusal** tested through the store, not the view model, since the
-  store is where the check newly lives.
+- **Delete refusal** tested at each of the three enforcement points, since no single
+  one of them covers every front end: through `Repository<T>` for the console and Web
+  API, and through the grid's delete for the deferred-save UI. A test that exercised only
+  the repository would leave the desktop path unproven, which is the path that had the
+  decorative check.
 - **Security stage tested with `novalidation`**, proving permissions survive it.
-- **Every front end**, since the store boundary is shared but the surfacing is
-  not.
+- **Every front end**, since the enforcement is shared but the surfacing is not, and
+  one of the three points lives in the front ends themselves.
 
 Roslyn compilation, not substring assertions: emitted code is tested by
 compiling it.
