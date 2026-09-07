@@ -12,7 +12,7 @@ namespace CodeGenerator.Tests.App;
 [TestClass]
 public class WholeWordFormatMatchingTests
 {
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("Email")]
     [DataRow("EmailAddress")]
     [DataRow("CustomerEmail")]
@@ -21,7 +21,7 @@ public class WholeWordFormatMatchingTests
     public void AWholeEmailWord_Matches(string propertyName)
         => Assert.Contains("EmailAddress", Mapped(propertyName).Attributes);
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("Phone")]
     [DataRow("PhoneNumber")]
     [DataRow("MobilePhone")]
@@ -29,7 +29,7 @@ public class WholeWordFormatMatchingTests
     public void AWholePhoneWord_Matches(string propertyName)
         => Assert.Contains("Phone", Mapped(propertyName).Attributes);
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("Emailer")]
     [DataRow("Headphones")]
     [DataRow("Microphone")]
@@ -44,7 +44,7 @@ public class WholeWordFormatMatchingTests
         Assert.DoesNotContain("Phone", property.Attributes);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("EMAIL", "EmailAddress")]
     [DataRow("EMAILADDRESS", "EmailAddress")]
     [DataRow("PHONE", "Phone")]
