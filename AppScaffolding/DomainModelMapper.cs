@@ -120,8 +120,12 @@ public static class DomainModelMapper
                 definition.Properties.Add(new PropertyDefinition { Name = "Id", Type = "int" });
 
             foreach (var field in entity.Fields)
-                definition.Properties.Add(
-                    new PropertyDefinition { Name = field.Name, Type = field.Type });
+                definition.Properties.Add(new PropertyDefinition
+                {
+                    Name = field.Name,
+                    Type = field.Type,
+                    Facts = field.Facts
+                });
 
             classes.Add(definition);
         }
@@ -214,10 +218,28 @@ public static class DomainModelMapper
     }
 
     /// <summary>
-    /// Adds inferred DataAnnotations to each property from its name and type: a key on Id, a
-    /// required, length-bounded name field, and length limits (plus an email/phone shape) on
-    /// strings. Declarative only -- the interactive front-ends run Validator.TryValidateObject to
-    /// enforce them. A class that gains any attribute also gains the DataAnnotations using.
+    /// Rule names <see cref="CodeGenerationEngine.Core.RoslynClassGenerator"/> renders as
+    /// DataAnnotations attributes on the emitted model, rather than as a check in the generated
+    /// validator.
+    /// </summary>
+    /// <remarks>
+    /// A class carrying one of these needs the DataAnnotations using even though nothing added an
+    /// entry to <see cref="PropertyDefinition.Attributes"/> — the attribute is derived from the
+    /// rule inside <c>RoslynClassGenerator.CreateProperty</c>, which never sees this list. Without
+    /// the scan below, an entity that declares its own non-int Id (so no <c>[Key]</c>) and no field
+    /// named for an email or a phone reaches the generator with a <c>[StringLength]</c> it cannot
+    /// resolve, and the generated app does not compile.
+    /// </remarks>
+    private static readonly HashSet<string> DataAnnotationRuleNames =
+        new(StringComparer.OrdinalIgnoreCase) { "required", "maxlength", "minlength" };
+
+    /// <summary>
+    /// Adds inferred DataAnnotations to each property from its declared type and the facts its
+    /// source supplied: a key on Id, and the rules of the kinds
+    /// <see cref="ValidatorTemplate.EmittableRules"/> lists. Declarative only -- the
+    /// interactive front-ends run Validator.TryValidateObject to enforce them. A class that gains
+    /// any attribute, or any rule the model emitter renders as one, also gains the DataAnnotations
+    /// using.
     /// </summary>
     private static void AddValidation(List<ClassDefinition> classes)
     {
@@ -227,6 +249,9 @@ public static class DomainModelMapper
             foreach (var property in definition.Properties)
                 added |= InferValidation(property);
 
+            added |= definition.Properties.Any(
+                p => p.Rules.Any(r => DataAnnotationRuleNames.Contains(r.Name)));
+
             if (added && !definition.Usings.Contains(DataAnnotationsNamespace))
                 definition.Usings.Add(DataAnnotationsNamespace);
         }
@@ -234,9 +259,16 @@ public static class DomainModelMapper
 
     /// <summary>
     /// Applies the inference rules to one property, mutating its Rules/Attributes in place, and
-    /// returns whether it added a DataAnnotations attribute. A navigation property (typed as
-    /// another class or a List&lt;&gt;) is not a string and carries no Id name, so it is left alone.
+    /// returns whether it added a DataAnnotations attribute.
     /// </summary>
+    /// <remarks>
+    /// Driven by the property's declared type and the facts the source supplied, not by its name.
+    /// A navigation property (typed as another class or a List&lt;&gt;) matches none of the five
+    /// emitted types and is left alone. Every rule recorded here must appear in
+    /// <see cref="ValidatorTemplate.EmittableRules"/> PAIRED WITH THE TYPE it is recorded on, or
+    /// it is dropped silently: the emitter guards every check on the property's type, so a rule
+    /// on the wrong type emits nothing at all.
+    /// </remarks>
     private static bool InferValidation(PropertyDefinition property)
     {
         if (string.Equals(property.Name, "Id", StringComparison.OrdinalIgnoreCase)
@@ -246,23 +278,189 @@ public static class DomainModelMapper
             return true;
         }
 
-        if (property.Type != "string")
-            return false;
+        var facts = property.Facts;
 
-        var isNameField = string.Equals(property.Name, "Name", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(property.Name, "Title", StringComparison.OrdinalIgnoreCase);
+        switch (property.Type)
+        {
+            case "string":
+                // A column the source declared NOT NULL is required, whatever it is called.
+                // Unknown nullability infers nothing: a discovered domain must not become
+                // stricter than the user described it.
+                //
+                // Recorded for a string and no other type, which is why it sits inside this arm
+                // rather than above the switch. string.IsNullOrWhiteSpace is the only meaningful
+                // emptiness test among the five types the generator emits: a non-nullable int
+                // cannot be null and 0 is a legitimate value, so a required rule there asserts
+                // nothing true while still putting an asterisk on a field the user may correctly
+                // leave at zero. ValidatorTemplate.EmittableRules pairs "required" with "string"
+                // alone for the same reason, and the guard test holds the two together.
+                if (facts?.IsNullable == false)
+                    property.Rules.Add(new PropertyRule { Name = "required" });
 
-        if (isNameField)
-            property.Rules.Add(new PropertyRule { Name = "required" });
+                if (!(facts?.IsUnbounded ?? false))
+                    property.Rules.Add(new PropertyRule
+                    {
+                        Name = "maxlength",
+                        MaxLength = facts?.MaxLength ?? DefaultStringLength
+                    });
 
-        property.Rules.Add(new PropertyRule { Name = "maxlength", MaxLength = DefaultStringLength });
+                return AddFormatAttribute(property);
 
-        if (property.Name.Contains("email", StringComparison.OrdinalIgnoreCase))
+            case "int":
+                AddIntegerRange(property, facts?.DeclaredType);
+                return false;
+
+            case "decimal":
+                AddDecimalRules(property, facts);
+                return false;
+
+            case "DateTime":
+                // SQL Server's own floor, and only for the type that actually carries it:
+                // datetime2 starts at year 1, and a rule from the wrong type would refuse
+                // dates the column accepts.
+                if (string.Equals(facts?.DeclaredType, "datetime", StringComparison.OrdinalIgnoreCase))
+                    property.Rules.Add(new PropertyRule { Name = "mindate", MinDate = "1753-01-01" });
+
+                if (string.Equals(facts?.DeclaredType, "date", StringComparison.OrdinalIgnoreCase))
+                    property.Rules.Add(new PropertyRule { Name = "dateonly" });
+
+                return false;
+
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>
+    /// Adds the DataAnnotations attribute a string property's shape calls for, and returns
+    /// whether it added one.
+    /// </summary>
+    /// <remarks>
+    /// These two are the only name-driven rules left -- every other rule now comes from the
+    /// column's type -- and they are matched on whole words. Substring matching is what put a
+    /// phone-number rule on Headphones, Microphone and Saxophone, refusing every value the user
+    /// could type into them.
+    /// </remarks>
+    private static bool AddFormatAttribute(PropertyDefinition property)
+    {
+        if (NameContainsWord(property.Name, "email"))
+        {
             property.Attributes.Add("EmailAddress");
-        else if (property.Name.Contains("phone", StringComparison.OrdinalIgnoreCase))
-            property.Attributes.Add("Phone");
+            return true;
+        }
 
-        return true;
+        if (NameContainsWord(property.Name, "phone"))
+        {
+            property.Attributes.Add("Phone");
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Whether <paramref name="word"/> is one of the words in <paramref name="name"/>, or is
+    /// contained in one of its shouted runs.
+    /// </summary>
+    /// <remarks>
+    /// The shouted-run allowance is not a loophole, it is the only reading available.
+    /// <see cref="DomainDiscovery.SeedExtraction.NameNormalizer.ToFieldName"/> capitalizes each word's first letter and leaves
+    /// the rest alone, so a SQL Server column named EMAIL or PHONE_NUMBER arrives here as EMAIL
+    /// and PHONENUMBER -- and all-capitals column names are the norm in real databases. A run of
+    /// capitals carries no word boundaries whatsoever, so containment within the run is the whole
+    /// of the evidence; HEADPHONES is indistinguishable from PHONENUMBER by any rule and matches,
+    /// which is no worse than the substring matching this replaces and reaches shouted names only.
+    /// </remarks>
+    private static bool NameContainsWord(string name, string word)
+        => Words(name).Any(candidate =>
+            string.Equals(candidate, word, StringComparison.OrdinalIgnoreCase)
+            || (IsShouted(candidate) && candidate.Contains(word, StringComparison.OrdinalIgnoreCase)));
+
+    /// <summary>Whether a word is written in capitals throughout, so it may be several.</summary>
+    private static bool IsShouted(string word) => word.Length > 1 && !word.Any(char.IsLower);
+
+    /// <summary>
+    /// The words in an identifier: "BillingEmailAddress" becomes Billing, Email, Address.
+    /// A capital following another capital does not start a word, so a shouted run stays whole
+    /// rather than becoming one word per letter.
+    /// </summary>
+    private static IReadOnlyList<string> Words(string name)
+    {
+        var words = new List<string>();
+        var current = new System.Text.StringBuilder();
+
+        foreach (var character in name)
+        {
+            if (!char.IsLetterOrDigit(character))
+            {
+                Flush();
+                continue;
+            }
+
+            // "MobilePhone" breaks before the P; "PHONENUMBER" does not break inside the run.
+            if (char.IsUpper(character) && current.Length > 0 && !char.IsUpper(current[^1]))
+                Flush();
+
+            current.Append(character);
+        }
+
+        Flush();
+        return words;
+
+        void Flush()
+        {
+            if (current.Length > 0)
+                words.Add(current.ToString());
+
+            current.Clear();
+        }
+    }
+
+    /// <summary>
+    /// What decimal(P,S) actually constrains: S digits after the point, and P-S before it.
+    /// </summary>
+    /// <remarks>
+    /// The integer-part bound is the half that is easy to forget and the one the database will
+    /// enforce anyway — decimal(18,2) overflows at 10^16, and without this rule the app accepts
+    /// the value and the insert fails. A file source supplies a scale from evidence but no
+    /// precision, so it gets the scale rule alone.
+    /// </remarks>
+    private static void AddDecimalRules(PropertyDefinition property, TypeFacts? facts)
+    {
+        if (facts?.Scale is { } scale)
+            property.Rules.Add(new PropertyRule { Name = "scale", Scale = scale });
+
+        if (facts?.Precision is not { } precision || facts.Scale is not { } places)
+            return;
+
+        var integerDigits = precision - places;
+
+        if (integerDigits <= 0 || integerDigits > 28)
+            return;
+
+        var bound = decimal.Parse(
+            new string('9', integerDigits) + "." + new string('9', places),
+            System.Globalization.CultureInfo.InvariantCulture);
+
+        property.Rules.Add(new PropertyRule { Name = "maxvalue", MaxValue = bound });
+        property.Rules.Add(new PropertyRule { Name = "minvalue", MinValue = -bound });
+    }
+
+    /// <summary>The bounds SqlTypeMap collapses away when it maps every integer width to int.</summary>
+    private static void AddIntegerRange(PropertyDefinition property, string? declaredType)
+    {
+        var (min, max) = declaredType?.ToLowerInvariant() switch
+        {
+            "tinyint" => (0m, 255m),
+            "smallint" => (-32768m, 32767m),
+            _ => (0m, 0m)
+        };
+
+        if (min == 0m && max == 0m)
+            return;
+
+        property.Rules.Add(new PropertyRule { Name = "minvalue", MinValue = min });
+        property.Rules.Add(new PropertyRule { Name = "maxvalue", MaxValue = max });
     }
 
     /// <summary>

@@ -384,10 +384,16 @@ public class DomainModelMapperValidationTests
     }
 
     [TestMethod]
-    public void NameField_IsRequiredAndLengthBounded()
+    public void NameField_IsLengthBounded_ButNotRequiredWithoutANullabilityFact()
     {
+        // This model is a discovered one: no source declared anything about these columns, so
+        // there is no IS_NULLABLE to read. `required` used to be given to any field literally
+        // called Name or Title; it now follows the fact instead, and an absent fact infers
+        // nothing rather than making the app stricter than the user described it. The 200
+        // fallback survives, because a text box still needs a bound.
         var name = Prop(EmployeeModel(), "Name");
-        Assert.IsTrue(name.Rules.Any(r => r.Name == "required"), "expected [Required]");
+        Assert.IsFalse(name.Rules.Any(r => r.Name == "required"),
+            "an unknown nullability infers no [Required]");
         Assert.IsTrue(name.Rules.Any(r => r.Name == "maxlength" && r.MaxLength == 200),
             "expected [StringLength(200)]");
     }
@@ -399,7 +405,7 @@ public class DomainModelMapperValidationTests
         CollectionAssert.Contains(email.Attributes, "EmailAddress");
         Assert.IsTrue(email.Rules.Any(r => r.Name == "maxlength" && r.MaxLength == 200));
         Assert.IsFalse(email.Rules.Any(r => r.Name == "required"),
-            "a non-name string is not required");
+            "a string with no nullability fact is not required");
     }
 
     [TestMethod]
@@ -417,6 +423,28 @@ public class DomainModelMapperValidationTests
         var salary = Prop(EmployeeModel(), "Salary");
         Assert.IsEmpty(salary.Rules);
         Assert.IsEmpty(salary.Attributes);
+    }
+
+    [TestMethod]
+    public void AClassWhoseOnlyAnnotationComesFromARule_StillDeclaresTheUsing()
+    {
+        // RoslynClassGenerator renders the required/maxlength/minlength RULES as
+        // [Required]/[StringLength]/[MinLength] on the emitted model, so a class carrying one
+        // needs the using even though nothing put an entry in PropertyDefinition.Attributes.
+        // An entity that declares its own non-int Id gets no [Key], and a string field with no
+        // "email" or "phone" in its name gets no format attribute -- so this class reaches the
+        // generator with attributes and, without the rule scan, no using to resolve them.
+        var model = new CandidateDomainModel();
+        var entity = new CandidateEntity { Name = "Ledger" };
+        entity.Fields.Add(new CandidateField { Name = "Id", Type = "string" });
+        entity.Fields.Add(new CandidateField { Name = "Reference", Type = "string" });
+        model.Entities.Add(entity);
+
+        var definition = DomainModelMapper.ToClassDefinitions(model).Single();
+        var source = CodeGenerationEngine.Core.RoslynClassGenerator.Generate(definition, "Probe.Models");
+
+        Assert.Contains("[StringLength(200)]", source, "the rule reaches the model as an attribute");
+        CollectionAssert.Contains(definition.Usings, "System.ComponentModel.DataAnnotations");
     }
 
     [TestMethod]

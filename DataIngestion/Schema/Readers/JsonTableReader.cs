@@ -69,8 +69,10 @@ public sealed class JsonTableReader : IDataSourceReader
 
             foreach (var table in tables)
                 foreach (var column in table.Columns)
-                    column.Type = ColumnTypeInference.Infer(
-                        table.ColumnValues(column.Name), column.Name);
+                {
+                    var values = table.ColumnValues(column.Name).ToList();
+                    column.Type = ColumnTypeInference.Infer(values, column.Name);
+                }
 
             return tables;
         }

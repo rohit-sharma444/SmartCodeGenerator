@@ -1,3 +1,4 @@
+using CodeGenerationEngine.Models;
 using DataIngestion.Schema;
 using DomainDiscovery.Model;
 using Xunit;
@@ -166,5 +167,53 @@ public class DataModelBuilderTests
 
         Assert.Single(model.Entities);
         Assert.Contains(model.Decisions, d => d.Reason == DecisionReasons.AlreadyNamed);
+    }
+
+    /// <summary>The declared facts a schema source hangs on a <see cref="TabularColumn"/> must
+    /// reach the <see cref="CandidateField"/> AddFields creates from it -- this is the copy Task 4
+    /// exists to make, and the risk it exists to guard is exactly this path, not the hand-built
+    /// <see cref="CandidateField"/> constructions the mapper-level tests use.</summary>
+    [Fact]
+    public void FactsDeclaredOnAColumnSurviveIntoItsField()
+    {
+        var table = new TabularTable { Name = "Orders", SourceLabel = "orders.csv" };
+        table.Columns.Add(new TabularColumn
+        {
+            Name = "Ref",
+            Type = "string",
+            Facts = new TypeFacts { MaxLength = 50, IsNullable = false }
+        });
+        table.Rows.Add(new string?[] { "x" });
+
+        var model = DataModelBuilder.Build([table]);
+
+        var field = Assert.Single(Assert.Single(model.Entities).Fields);
+        Assert.Equal("Ref", field.Name);
+        Assert.Equal(50, field.Facts!.MaxLength);
+        Assert.False(field.Facts.IsNullable!.Value);
+    }
+
+    /// <summary>A column that collides with its own class name is renamed (internally,
+    /// <c>ColumnFate.RenamedOffItsClassName</c>) before it becomes a field. If facts were ever
+    /// carried by a lookup keyed on the FIELD name rather than the column itself, this is the
+    /// case that would silently come back null.</summary>
+    [Fact]
+    public void FactsSurviveWhenTheColumnIsRenamedOffItsClassName()
+    {
+        var table = new TabularTable { Name = "Products", SourceLabel = "products.csv" };
+        table.Columns.Add(new TabularColumn
+        {
+            Name = "Product",
+            Type = "string",
+            Facts = new TypeFacts { MaxLength = 100 }
+        });
+        table.Columns.Add(new TabularColumn { Name = "Sku", Type = "string" });
+        table.Rows.Add(new string?[] { "x", "y" });
+
+        var model = DataModelBuilder.Build([table]);
+
+        var product = Assert.Single(model.Entities);
+        var renamed = Assert.Single(product.Fields, f => f.Name == "ProductName");
+        Assert.Equal(100, renamed.Facts!.MaxLength);
     }
 }
