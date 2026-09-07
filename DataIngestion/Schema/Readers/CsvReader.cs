@@ -171,7 +171,6 @@ public sealed class CsvReader : IDataSourceReader
         {
             var values = table.ColumnValues(column.Name).ToList();
             column.Type = ColumnTypeInference.Infer(values, column.Name);
-            column.Facts = ColumnTypeInference.Evidence(values, column.Type);
         }
 
         return table;

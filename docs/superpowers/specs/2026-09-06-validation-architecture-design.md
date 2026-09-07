@@ -117,6 +117,7 @@ branch or company scoping.
 | Where do workflow transitions come from? | The user orders the discovered status values on the Review card and marks the final ones. The values come from data; only the order is stated. |
 | What does Calculation do? | Verifies arithmetic the data proves, such as `LineTotal = Quantity * Price`. The field stays stored and editable. |
 | When is a rule proposed? | Only when a counter-example scan over the source returns zero rows. See below. |
+| Do a FILE source's contents constrain anything? | No. A file declares no width, no scale and no nullability, so it supplies no facts and no rule follows from one. Its contents are evidence about the rows in the file, not a bound the source stated: a CSV holding Smith, Bardsley and Khan must not generate an app that refuses "Fotheringham", nor create its own column as narrow as the sample. Only a database, which really does declare its lengths, produces facts. A complete scan may still PROPOSE a rule for the Review card to tick (Phase 3); it may never constrain silently. |
 
 ## The counter-example scan
 
