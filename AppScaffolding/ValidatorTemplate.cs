@@ -1,4 +1,4 @@
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
 using CodeGenerationEngine.Models;
 
 namespace AppScaffolding;
@@ -411,7 +411,12 @@ public sealed partial class {{className}}Validator
         if (property.Type == "decimal" && Rule(property, ScaleRule)?.Scale is { } places)
         {
             checks.Add($"if (decimal.Round(item.{name}, {places}) != item.{name})");
-            checks.Add($"    errors.Add(\"{name} must have {places} decimal places or fewer.\");");
+            // "0 decimal places or fewer" is what a decimal(18,0) column showed the user, and
+            // there is no fewer than none. decimal(P,0) is a common declaration, so that
+            // sentence would be the one such a column shows every time it refuses a value.
+            checks.Add(places == 0
+                ? $"    errors.Add(\"{name} must be a whole number.\");"
+                : $"    errors.Add(\"{name} must have {places} decimal places or fewer.\");");
         }
 
         if (property.Type == "DateTime")

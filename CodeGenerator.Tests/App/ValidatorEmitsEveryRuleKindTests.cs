@@ -1,4 +1,4 @@
-using System.Linq;
+﻿using System.Linq;
 using AppScaffolding;
 using CodeGenerationEngine.Core;
 using CodeGenerationEngine.Models;
@@ -36,6 +36,21 @@ public class ValidatorEmitsEveryRuleKindTests
             new PropertyRule { Name = "scale", Scale = 2 });
 
         StringAssert.Contains(source, "decimal.Round(item.Price, 2)");
+    }
+
+    [TestMethod]
+    public void AZeroScaleRule_SaysWholeNumber_NotZeroPlacesOrFewer()
+    {
+        // Found by running a generated app over a real decimal(18,0) column: the sentence the
+        // user read was "PAIDUPVALUE must have 0 decimal places or fewer", and there is no fewer
+        // than none. The check itself was right; only the sentence was unreadable. decimal(18,0)
+        // is a common declaration, so this is the message such a column shows every time.
+        var source = GeneratedFor("PaidUpValue", "decimal",
+            new PropertyRule { Name = "scale", Scale = 0 });
+
+        StringAssert.Contains(source, "decimal.Round(item.PaidUpValue, 0)");
+        StringAssert.Contains(source, "PaidUpValue must be a whole number.");
+        Assert.DoesNotContain("0 decimal places or fewer", source);
     }
 
     [TestMethod]
