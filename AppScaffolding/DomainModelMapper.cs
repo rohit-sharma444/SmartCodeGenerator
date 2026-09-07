@@ -335,21 +335,85 @@ public static class DomainModelMapper
     /// Adds the DataAnnotations attribute a string property's shape calls for, and returns
     /// whether it added one.
     /// </summary>
+    /// <remarks>
+    /// These two are the only name-driven rules left -- every other rule now comes from the
+    /// column's type -- and they are matched on whole words. Substring matching is what put a
+    /// phone-number rule on Headphones, Microphone and Saxophone, refusing every value the user
+    /// could type into them.
+    /// </remarks>
     private static bool AddFormatAttribute(PropertyDefinition property)
     {
-        if (property.Name.Contains("email", StringComparison.OrdinalIgnoreCase))
+        if (NameContainsWord(property.Name, "email"))
         {
             property.Attributes.Add("EmailAddress");
             return true;
         }
 
-        if (property.Name.Contains("phone", StringComparison.OrdinalIgnoreCase))
+        if (NameContainsWord(property.Name, "phone"))
         {
             property.Attributes.Add("Phone");
             return true;
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Whether <paramref name="word"/> is one of the words in <paramref name="name"/>, or is
+    /// contained in one of its shouted runs.
+    /// </summary>
+    /// <remarks>
+    /// The shouted-run allowance is not a loophole, it is the only reading available.
+    /// <see cref="DomainDiscovery.SeedExtraction.NameNormalizer.ToFieldName"/> capitalizes each word's first letter and leaves
+    /// the rest alone, so a SQL Server column named EMAIL or PHONE_NUMBER arrives here as EMAIL
+    /// and PHONENUMBER -- and all-capitals column names are the norm in real databases. A run of
+    /// capitals carries no word boundaries whatsoever, so containment within the run is the whole
+    /// of the evidence; HEADPHONES is indistinguishable from PHONENUMBER by any rule and matches,
+    /// which is no worse than the substring matching this replaces and reaches shouted names only.
+    /// </remarks>
+    private static bool NameContainsWord(string name, string word)
+        => Words(name).Any(candidate =>
+            string.Equals(candidate, word, StringComparison.OrdinalIgnoreCase)
+            || (IsShouted(candidate) && candidate.Contains(word, StringComparison.OrdinalIgnoreCase)));
+
+    /// <summary>Whether a word is written in capitals throughout, so it may be several.</summary>
+    private static bool IsShouted(string word) => word.Length > 1 && !word.Any(char.IsLower);
+
+    /// <summary>
+    /// The words in an identifier: "BillingEmailAddress" becomes Billing, Email, Address.
+    /// A capital following another capital does not start a word, so a shouted run stays whole
+    /// rather than becoming one word per letter.
+    /// </summary>
+    private static IReadOnlyList<string> Words(string name)
+    {
+        var words = new List<string>();
+        var current = new System.Text.StringBuilder();
+
+        foreach (var character in name)
+        {
+            if (!char.IsLetterOrDigit(character))
+            {
+                Flush();
+                continue;
+            }
+
+            // "MobilePhone" breaks before the P; "PHONENUMBER" does not break inside the run.
+            if (char.IsUpper(character) && current.Length > 0 && !char.IsUpper(current[^1]))
+                Flush();
+
+            current.Append(character);
+        }
+
+        Flush();
+        return words;
+
+        void Flush()
+        {
+            if (current.Length > 0)
+                words.Add(current.ToString());
+
+            current.Clear();
+        }
     }
 
     /// <summary>
