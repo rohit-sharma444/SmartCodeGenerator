@@ -71,8 +71,12 @@ public sealed class EntityMenu<T> where T : class, new()
         var result = _repository.Create(item);
         if (!result.Success)
         {
-            foreach (var error in result.Errors)
-                System.Console.WriteLine("  " + error);
+            foreach (var failure in result.Failures)
+            {
+                System.Console.WriteLine(failure.Property is null
+                    ? "  " + failure.Message
+                    : $"  {failure.Property}: {failure.Message}");
+            }
             System.Console.WriteLine("Not added.");
             return;
         }

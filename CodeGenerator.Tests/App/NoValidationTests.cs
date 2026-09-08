@@ -27,7 +27,14 @@ public class NoValidationTests
     [TestMethod]
     public void A_repository_without_validation_compiles_without_the_validation_seams()
     {
+        // SaveResult now names ValidationError from the Validation namespace even when the
+        // repository it returns to never populates Failures - the type has to resolve, so the
+        // files that declare it join the compile list. Neither carries a validator: Permissions
+        // and ValidationContext survive novalidation on their own (spec Decision 4), which is
+        // exactly why SaveResult can still reference them here.
         var source = EmittedSource.Flatten(
+            ValidationContextTemplate.Source("Acme"),
+            ValidatorTemplate.EntityLookupInterface("Acme"),
             StoreSeamTemplate.Source("Acme"),
             SaveResultTemplate.Source("Acme"),
             StoreFactoryTemplate.Source("Acme", PersistenceKind.Json),

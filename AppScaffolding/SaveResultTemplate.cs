@@ -7,6 +7,7 @@ public static class SaveResultTemplate
     public static string Source(string rootNamespace) => $$"""
 using System;
 using System.Collections.Generic;
+using {{rootNamespace}}.Validation;
 
 namespace {{rootNamespace}}.Data;
 
@@ -30,11 +31,45 @@ public sealed class SaveResult<T>
     /// <summary>Human-readable validation messages. Empty when Success is true.</summary>
     public IReadOnlyList<string> Errors { get; init; } = Array.Empty<string>();
 
-    /// <summary>Every message under a single empty key, the shape Results.ValidationProblem wants.
-    /// Messages are whole sentences rather than per-property, so they surface as top-level errors
-    /// rather than being attributed to individual fields.</summary>
-    public Dictionary<string, string[]> AsDictionary() =>
-        new() { [string.Empty] = Errors is null ? Array.Empty<string>() : [.. Errors] };
+    /// <summary>Every broken rule with the property it belongs to. Empty when Success is true.</summary>
+    /// <remarks>
+    /// Alongside <see cref="Errors"/> rather than replacing it: a front end that only prints
+    /// sentences should not have to unpack a record to do so.
+    /// </remarks>
+    public IReadOnlyList<ValidationError> Failures { get; init; } = Array.Empty<ValidationError>();
+
+    /// <summary>The failures keyed by property, with whole-record errors under the empty key —
+    /// the shape Results.ValidationProblem wants.</summary>
+    public Dictionary<string, string[]> AsDictionary()
+    {
+        var byProperty = new Dictionary<string, List<string>>();
+
+        foreach (var failure in Failures)
+        {
+            var key = failure.Property ?? string.Empty;
+
+            if (!byProperty.TryGetValue(key, out var messages))
+                byProperty[key] = messages = new List<string>();
+
+            messages.Add(failure.Message);
+        }
+
+        // Repository does not populate Failures until the pipeline is wired into it (a later
+        // step than this file); until then every validation failure still arrives only as
+        // Errors. Without this fallback the Web API's 400 payload would come back empty on
+        // every one of those failures, not just on a store failure that truly carries no
+        // attribution. Keep it even after Repository catches up: a store failure (the write
+        // itself throwing, say) still has only a sentence to offer, never a property.
+        if (byProperty.Count == 0 && Errors is { Count: > 0 })
+            byProperty[string.Empty] = new List<string>(Errors);
+
+        var result = new Dictionary<string, string[]>();
+
+        foreach (var pair in byProperty)
+            result[pair.Key] = pair.Value.ToArray();
+
+        return result;
+    }
 }
 """;
 }
