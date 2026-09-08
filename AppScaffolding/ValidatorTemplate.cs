@@ -72,9 +72,17 @@ public sealed class StoreEntityLookup : IEntityLookup
         var property = typeof(TEntity).GetProperty(foreignKeyProperty,
             BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
 
+        // A name that is not there counts nothing rather than throwing. The name came from
+        // ForeignKeys at generation time; if a rename ever leaves the two disagreeing, a quiet
+        // zero leaves the delete behaving as it did before this phase, where a reflection
+        // exception would refuse every delete in the app. It also skips a full-table scan for a
+        // property that was never going to match on this large a store.
+        if (property is null)
+            return 0;
+
         var count = 0;
         foreach (var item in StoreFactory.Create<TEntity>().GetAll())
-            if (property?.GetValue(item) is int value && value == id)
+            if (property.GetValue(item) is int value && value == id)
                 count++;
 
         return count;
