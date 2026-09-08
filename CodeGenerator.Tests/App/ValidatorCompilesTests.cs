@@ -16,6 +16,9 @@ public class ValidatorCompilesTests
 public sealed class StoreEntityLookup : IEntityLookup
 {
     public bool Exists<TEntity>(int id) where TEntity : class, new() => true;
+
+    public int CountReferencing<TEntity>(string foreignKeyProperty, int id)
+        where TEntity : class, new() => 0;
 }
 """;
 
@@ -24,8 +27,11 @@ public sealed class StoreEntityLookup : IEntityLookup
     private static string Compose(
         string modelDeclarations, ClassDefinition definition, IReadOnlyList<string> foreignKeyTargets) =>
         EmittedSource.Flatten(
+            ValidationContextTemplate.Source("Acme"),
             ValidatorTemplate.ValidatorInterface("Acme"),
             ValidatorTemplate.EntityLookupInterface("Acme"),
+            ValidationPipelineTemplate.Source("Acme"),
+            PermissionsTemplate.Source("Acme", []),
             LookupStub,
             modelDeclarations,
             ValidatorTemplate.Generated("Acme", definition, foreignKeyTargets),

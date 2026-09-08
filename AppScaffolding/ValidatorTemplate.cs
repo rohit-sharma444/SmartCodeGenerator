@@ -66,6 +66,20 @@ public sealed class StoreEntityLookup : IEntityLookup
         return false;
     }
 
+    /// <inheritdoc />
+    public int CountReferencing<TEntity>(string foreignKeyProperty, int id) where TEntity : class, new()
+    {
+        var property = typeof(TEntity).GetProperty(foreignKeyProperty,
+            BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
+
+        var count = 0;
+        foreach (var item in StoreFactory.Create<TEntity>().GetAll())
+            if (property?.GetValue(item) is int value && value == id)
+                count++;
+
+        return count;
+    }
+
     private static int IdOf<TEntity>(TEntity item)
     {
         var property = typeof(TEntity).GetProperty("Id",
@@ -111,7 +125,7 @@ public static class ValidatorFactory
 internal sealed class NullValidator<T> : IValidator<T>
 {
     /// <inheritdoc />
-    public IReadOnlyList<string> Validate(T item) => Array.Empty<string>();
+    public ValidationOutcome Validate(ValidationContext<T> context) => ValidationOutcome.Valid;
 }
 """;
     }
@@ -196,11 +210,14 @@ internal sealed class NullValidator<T> : IValidator<T>
             if (Checks(property) is { Count: > 0 } checks)
                 blocks.Add(Block(checks));
 
+        // Reads context.Lookup rather than a constructor-injected field: a static stage method
+        // has no instance to hold one, and the context is exactly what Repository<T> supplies it
+        // through at the call site.
         foreach (var target in foreignKeyTargets)
             blocks.Add(Block(new List<string>
             {
-                $"if (item.{target}Id != 0 && !_lookup.Exists<{target}>(item.{target}Id))",
-                $"    errors.Add(\"{target}Id does not refer to a known {target}.\");",
+                $"if (item.{target}Id != 0 && !context.Lookup.Exists<{target}>(item.{target}Id))",
+                $"    errors.Add(new ValidationError(\"{target}Id\", \"{target}Id does not refer to a known {target}.\"));",
             }));
 
         var body = blocks.Count == 0
@@ -216,34 +233,52 @@ namespace {{rootNamespace}}.Validation;
 
 /// <summary>Inferred rules for {{definition.Name}}. REGENERATED — edit
 /// {{definition.Name}}Validator.Custom.cs instead.</summary>
+/// <remarks>
+/// No field, no constructor: every stage is a static method, and the one thing a stage used to
+/// reach through an injected field — the entity lookup — now arrives on the context each call
+/// carries, so there is nothing left for an instance to hold.
+/// </remarks>
 public sealed partial class {{definition.Name}}Validator : IValidator<{{definition.Name}}>
 {
-    private readonly IEntityLookup _lookup;
-
-    /// <summary>Validates against the real store.</summary>
-    public {{definition.Name}}Validator() : this(new StoreEntityLookup()) { }
-
-    /// <summary>Validates against the supplied lookup. Tests pass a fake.</summary>
-    public {{definition.Name}}Validator(IEntityLookup lookup) => _lookup = lookup;
+    /// <summary>Security first, then the inferred field rules. Always both: Security exists
+    /// because of the operation rather than the data, and Field always owns the null guard and
+    /// the hand-written hook, whether or not this model has any inferred rule at all.</summary>
+    private static readonly ValidationPipeline.Stage<{{definition.Name}}>[] Stages =
+    [
+        Security,
+        Field,
+    ];
 
     /// <inheritdoc />
-    public IReadOnlyList<string> Validate({{definition.Name}} item)
+    public ValidationOutcome Validate(ValidationContext<{{definition.Name}}> context)
+        => ValidationPipeline.Run(Stages, context);
+
+    /// <summary>Refuses an operation this user may not perform, before any field is examined —
+    /// so an unauthorised caller is never told which fields were wrong.</summary>
+    private static void Security(ValidationContext<{{definition.Name}}> context, List<ValidationError> errors)
     {
-        var errors = new List<string>();
+        if (!Permissions.Allows(context.Op, "{{definition.Name}}", context.UserRole))
+            errors.Add(new ValidationError(null, Permissions.Refusal(context.Op, "{{definition.Name}}")));
+    }
+
+    /// <summary>The inferred per-property rules, every declared foreign key, and the
+    /// hand-written hook — in that order, after Security has already let the caller through.</summary>
+    private static void Field(ValidationContext<{{definition.Name}}> context, List<ValidationError> errors)
+    {
+        var item = context.Item;
         if (item is null)
         {
-            errors.Add("{{definition.Name}} is null.");
-            return errors;
+            errors.Add(new ValidationError(null, "{{definition.Name}} is null."));
+            return;
         }
 
 {{body}}
 
         ValidateCustom(item, errors);
-        return errors;
     }
 
     /// <summary>Hand-written rules, implemented in {{definition.Name}}Validator.Custom.cs.</summary>
-    partial void ValidateCustom({{definition.Name}} item, List<string> errors);
+    private static partial void ValidateCustom({{definition.Name}} item, List<ValidationError> errors);
 }
 """;
     }
@@ -260,7 +295,7 @@ public sealed partial class {{className}}Validator
 {
     /// <summary>Add rules the generator cannot infer — cross-field checks, business rules.
     /// Regenerating the app never overwrites this file.</summary>
-    partial void ValidateCustom({{className}} item, List<string> errors)
+    private static partial void ValidateCustom({{className}} item, List<ValidationError> errors)
     {
     }
 }
@@ -350,7 +385,7 @@ public sealed partial class {{className}}Validator
             if (IsRequired(property))
             {
                 checks.Add($"if (string.IsNullOrWhiteSpace(item.{name}))");
-                checks.Add($"    errors.Add(\"{name} is required.\");");
+                checks.Add($"    errors.Add(new ValidationError(\"{name}\", \"{name} is required.\"));");
             }
 
             var max = property.Rules
@@ -360,7 +395,7 @@ public sealed partial class {{className}}Validator
             if (max.HasValue)
             {
                 checks.Add($"if (item.{name} is {{ Length: > {max.Value} }})");
-                checks.Add($"    errors.Add(\"{name} must be {max.Value} characters or fewer.\");");
+                checks.Add($"    errors.Add(new ValidationError(\"{name}\", \"{name} must be {max.Value} characters or fewer.\"));");
             }
 
             // Deliberately loose: these exist to match what [EmailAddress]/[Phone] already give the
@@ -371,7 +406,7 @@ public sealed partial class {{className}}Validator
                 checks.Add("{");
                 checks.Add($"    var at = item.{name}!.IndexOf('@');");
                 checks.Add($"    if (at <= 0 || at == item.{name}!.Length - 1)");
-                checks.Add($"        errors.Add(\"{name} is not a valid email address.\");");
+                checks.Add($"        errors.Add(new ValidationError(\"{name}\", \"{name} is not a valid email address.\"));");
                 checks.Add("}");
             }
 
@@ -384,7 +419,7 @@ public sealed partial class {{className}}Validator
                 checks.Add("        if (!char.IsDigit(character) && character != ' ' && character != '+'");
                 checks.Add("            && character != '-' && character != '(' && character != ')')");
                 checks.Add("        {");
-                checks.Add($"            errors.Add(\"{name} is not a valid phone number.\");");
+                checks.Add($"            errors.Add(new ValidationError(\"{name}\", \"{name} is not a valid phone number.\"));");
                 checks.Add("            break;");
                 checks.Add("        }");
                 checks.Add("    }");
@@ -399,7 +434,7 @@ public sealed partial class {{className}}Validator
             if (min.HasValue)
             {
                 checks.Add($"if (item.{name} < {Literal(min.Value, property.Type)})");
-                checks.Add($"    errors.Add(\"{name} must be {min.Value} or more.\");");
+                checks.Add($"    errors.Add(new ValidationError(\"{name}\", \"{name} must be {min.Value} or more.\"));");
             }
 
             var max = Rule(property, MaxValueRule)?.MaxValue;
@@ -407,7 +442,7 @@ public sealed partial class {{className}}Validator
             if (max.HasValue)
             {
                 checks.Add($"if (item.{name} > {Literal(max.Value, property.Type)})");
-                checks.Add($"    errors.Add(\"{name} must be {max.Value} or less.\");");
+                checks.Add($"    errors.Add(new ValidationError(\"{name}\", \"{name} must be {max.Value} or less.\"));");
             }
         }
 
@@ -418,8 +453,8 @@ public sealed partial class {{className}}Validator
             // there is no fewer than none. decimal(P,0) is a common declaration, so that
             // sentence would be the one such a column shows every time it refuses a value.
             checks.Add(places == 0
-                ? $"    errors.Add(\"{name} must be a whole number.\");"
-                : $"    errors.Add(\"{name} must have {places} decimal places or fewer.\");");
+                ? $"    errors.Add(new ValidationError(\"{name}\", \"{name} must be a whole number.\"));"
+                : $"    errors.Add(new ValidationError(\"{name}\", \"{name} must have {places} decimal places or fewer.\"));");
         }
 
         if (property.Type == "DateTime")
@@ -434,13 +469,13 @@ public sealed partial class {{className}}Validator
                 // refused, which is the rule's whole purpose; a genuine blank is left to the
                 // database, which stores it as NULL.
                 checks.Add($"if (item.{name} != default(DateTime) && item.{name} < DateTime.Parse(\"{floor}\", System.Globalization.CultureInfo.InvariantCulture))");
-                checks.Add($"    errors.Add(\"{name} must be on or after {floor}.\");");
+                checks.Add($"    errors.Add(new ValidationError(\"{name}\", \"{name} must be on or after {floor}.\"));");
             }
 
             if (Rule(property, DateOnlyRule) is not null)
             {
                 checks.Add($"if (item.{name}.TimeOfDay != TimeSpan.Zero)");
-                checks.Add($"    errors.Add(\"{name} must be a date with no time of day.\");");
+                checks.Add($"    errors.Add(new ValidationError(\"{name}\", \"{name} must be a date with no time of day.\"));");
             }
         }
 
