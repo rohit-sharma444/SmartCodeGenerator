@@ -143,6 +143,12 @@ public class WinFormsLoginTemplateTests
                 ("IStore.cs", StoreSeamTemplate.Source("Shop")),
                 ("JsonStore.cs", JsonStoreTemplate.Source("Shop.Data")),
                 ("StoreFactory.cs", StoreFactoryTemplate.Source("Shop", PersistenceKind.Json)),
+                // JsonStore now asks Permissions before every write (Task 7's coarse store guard).
+                // ValidationContext.cs in turn names IEntityLookup, which Permissions does not use
+                // directly but still has to resolve for the file to compile.
+                ("Validation/ValidationContext.cs", ValidationContextTemplate.Source("Shop")),
+                ("Validation/IEntityLookup.cs", ValidatorTemplate.EntityLookupInterface("Shop")),
+                ("Validation/Permissions.cs", PermissionsTemplate.Source("Shop", Array.Empty<string>())),
             ]);
 
     /// <summary>The entry point compiles against both forms and the session it loops on.</summary>
@@ -160,5 +166,11 @@ public class WinFormsLoginTemplateTests
                 ("IStore.cs", StoreSeamTemplate.Source("Shop")),
                 ("JsonStore.cs", JsonStoreTemplate.Source("Shop.Data")),
                 ("StoreFactory.cs", StoreFactoryTemplate.Source("Shop", PersistenceKind.Json)),
+                // JsonStore now asks Permissions before every write (Task 7's coarse store guard).
+                // ValidationContext.cs in turn names IEntityLookup, which Permissions does not use
+                // directly but still has to resolve for the file to compile.
+                ("Validation/ValidationContext.cs", ValidationContextTemplate.Source("Shop")),
+                ("Validation/IEntityLookup.cs", ValidatorTemplate.EntityLookupInterface("Shop")),
+                ("Validation/Permissions.cs", PermissionsTemplate.Source("Shop", Array.Empty<string>())),
             ]);
 }

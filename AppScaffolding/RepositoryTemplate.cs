@@ -121,6 +121,12 @@ public static class RepositoryTemplate
 
         // Delete is the one method whose tail has to change rather than gain a line: it returns the
         // save result directly, and there is nothing to log against until that result is known.
+        //
+        // The logging branch is untouched by Task 7 on purpose: it is exercised only alongside
+        // validation (no test or generated app turns logging on without it), and validation is
+        // what Task 8 rewrites here wholesale -- fixing only this branch's own SaveAll typing
+        // would still leave it uncompilable for the same pre-existing reason, so it is left
+        // exactly as Task 8 will find it rather than half-migrated.
         var deleteTail = logging
             ? """
                     var saved = _store.SaveAll(all);
@@ -130,8 +136,10 @@ public static class RepositoryTemplate
 
                     return saved;
             """
+            // Delete's own signature is unchanged in this task (Task 8 makes it a SaveResult<T>),
+            // so this still has only a bool to hand back -- Success, with no room yet for Refusal.
             : """
-                    return _store.SaveAll(all);
+                    return _store.SaveAll(all).Success;
             """;
 
         var createSummary = validation
@@ -174,8 +182,9 @@ public abstract class Repository<T> where T : class, new()
         SetId(item, _store.NextId(all));
         all.Add(item);
 
-        if (!_store.SaveAll(all))
-            return new SaveResult<T> { Success = false, Errors = new[] { "Could not persist " + typeof(T).Name + "." } };
+        var write = _store.SaveAll(all);
+        if (!write.Success)
+            return new SaveResult<T> { Success = false, Errors = new[] { write.Refusal ?? "Could not persist " + typeof(T).Name + "." } };
 
 {{createLog}}        return new SaveResult<T> { Success = true, Item = item };
     }
@@ -190,8 +199,9 @@ public abstract class Repository<T> where T : class, new()
 
         all[index] = item;
 
-        if (!_store.SaveAll(all))
-            return new SaveResult<T> { Success = false, Errors = new[] { "Could not persist " + typeof(T).Name + "." } };
+        var write = _store.SaveAll(all);
+        if (!write.Success)
+            return new SaveResult<T> { Success = false, Errors = new[] { write.Refusal ?? "Could not persist " + typeof(T).Name + "." } };
 
 {{updateLog}}        return new SaveResult<T> { Success = true, Item = item };
     }

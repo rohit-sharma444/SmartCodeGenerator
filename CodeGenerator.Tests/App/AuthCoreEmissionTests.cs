@@ -145,6 +145,12 @@ public class AuthCoreEmissionTests
             ("UserSeed.cs", Read("Auth", "UserSeed.cs")),
             ("IStore.cs", Read("Data", "IStore.cs")),
             ("JsonStore.cs", Read("Data", "JsonStore.cs")),
-            ("StoreFactory.cs", Read("Data", "StoreFactory.cs")));
+            ("StoreFactory.cs", Read("Data", "StoreFactory.cs")),
+            // JsonStore now asks Permissions before every write (Task 7's coarse store guard);
+            // read from the same real scaffold, not a fixture, for the same reason as everything
+            // else here.
+            ("ValidationContext.cs", Read("Validation", "ValidationContext.cs")),
+            ("IEntityLookup.cs", Read("Validation", "IEntityLookup.cs")),
+            ("Permissions.cs", Read("Validation", "Permissions.cs")));
     }
 }

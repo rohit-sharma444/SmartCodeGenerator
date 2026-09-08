@@ -745,9 +745,10 @@ else
             all[index] = _draft;
         }
 
-        if (!_store.SaveAll(all))
+        var write = _store.SaveAll(all);
+        if (!write.Success)
         {
-            _status = "Could not save.";
+            _status = write.Refusal ?? "Could not save.";
             return;
         }
 
@@ -870,7 +871,8 @@ else
                       var all = _store.GetAll();
                       all.RemoveAll(stored => ScreenFields.IdOf(stored) == ScreenFields.IdOf(record));
 
-                      _status = _store.SaveAll(all) ? "Deleted." : "Could not delete.";
+                      var write = _store.SaveAll(all);
+                      _status = write.Success ? "Deleted." : write.Refusal ?? "Could not delete.";
                       _selected = null;
 
                       Reload();
@@ -887,7 +889,8 @@ else
                       var all = _store.GetAll();
                       all.RemoveAll(stored => ScreenFields.IdOf(stored) == ScreenFields.IdOf(record));
 
-                      _status = _store.SaveAll(all) ? "Deleted." : "Could not delete.";
+                      var write = _store.SaveAll(all);
+                      _status = write.Success ? "Deleted." : write.Refusal ?? "Could not delete.";
                       _selected = null;
 
                       Reload();

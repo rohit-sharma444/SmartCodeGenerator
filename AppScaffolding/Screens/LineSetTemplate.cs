@@ -201,7 +201,7 @@ public sealed class LineSet<TLine> : ILineSet where TLine : class, new()
             all.Add(line);
         }
 
-        if (!_store.SaveAll(all))
+        if (!_store.SaveAll(all).Success)
             return false;
 
         _openedAs = Snapshot();

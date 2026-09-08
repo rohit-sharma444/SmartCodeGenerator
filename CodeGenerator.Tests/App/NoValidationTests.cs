@@ -31,10 +31,14 @@ public class NoValidationTests
         // repository it returns to never populates Failures - the type has to resolve, so the
         // files that declare it join the compile list. Neither carries a validator: Permissions
         // and ValidationContext survive novalidation on their own (spec Decision 4), which is
-        // exactly why SaveResult can still reference them here.
+        // exactly why SaveResult can still reference them here. JsonStore now asks Permissions
+        // before every write (Task 7's coarse store guard), so Permissions.cs joins the list too
+        // -- it was already emitted unconditionally by AppScaffolder, this is just the first test
+        // that needs it present to compile.
         var source = EmittedSource.Flatten(
             ValidationContextTemplate.Source("Acme"),
             ValidatorTemplate.EntityLookupInterface("Acme"),
+            PermissionsTemplate.Source("Acme", Array.Empty<string>()),
             StoreSeamTemplate.Source("Acme"),
             SaveResultTemplate.Source("Acme"),
             StoreFactoryTemplate.Source("Acme", PersistenceKind.Json),
@@ -55,8 +59,10 @@ public class NoValidationTests
         StringAssert.Contains(source, "public SaveResult<T> Update(T item)");
 
         // The result still carries an Errors collection, so every caller of Create/Update —
-        // the console menu, the Web API's ValidationProblem — compiles unchanged.
-        StringAssert.Contains(source, "Errors = new[] { \"Could not persist \"");
+        // the console menu, the Web API's ValidationProblem — compiles unchanged. The message
+        // itself now prefers the store's own refusal reason (Task 7's StoreWrite) and falls back
+        // to this sentence only when the store gave none.
+        StringAssert.Contains(source, "\"Could not persist \"");
     }
 
     [TestMethod]

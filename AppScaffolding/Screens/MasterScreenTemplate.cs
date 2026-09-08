@@ -356,7 +356,8 @@ public class MasterScreenViewModel<T> : ObservableObject, IEntityViewModel, IDir
         if (index >= 0)
             all.RemoveAt(index);
 
-        Status = _store.SaveAll(all) ? "Deleted." : "Could not delete.";
+        var write = _store.SaveAll(all);
+        Status = write.Success ? "Deleted." : write.Refusal ?? "Could not delete.";
 
         Selected = null;
         Reload();

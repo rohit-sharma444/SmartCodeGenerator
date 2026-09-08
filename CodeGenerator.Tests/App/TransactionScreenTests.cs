@@ -18,10 +18,15 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
+public sealed record StoreWrite(bool Success, string? Refusal)
+{
+    public static StoreWrite Ok { get; } = new(true, null);
+}
+
 public interface IStore<T> where T : new()
 {
     List<T> GetAll();
-    bool SaveAll(List<T> all);
+    StoreWrite SaveAll(List<T> all);
     int NextId(IEnumerable<T> existing);
     T NewItem(IEnumerable<T> existing);
 }
@@ -30,7 +35,7 @@ public sealed class MemoryStore<T> : IStore<T> where T : class, new()
 {
     public static readonly List<T> Rows = new();
     public List<T> GetAll() => Rows.ToList();
-    public bool SaveAll(List<T> all) { Rows.Clear(); Rows.AddRange(all); return true; }
+    public StoreWrite SaveAll(List<T> all) { Rows.Clear(); Rows.AddRange(all); return StoreWrite.Ok; }
     public int NextId(IEnumerable<T> existing) => Rows.Count + 1;
     public T NewItem(IEnumerable<T> existing) => new();
 }

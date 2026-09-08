@@ -272,9 +272,10 @@ public sealed class RecordEditorViewModel<T> : ObservableObject, IRecordEditor w
             all[index] = Draft;
         }
 
-        if (!_store.SaveAll(all))
+        var write = _store.SaveAll(all);
+        if (!write.Success)
         {
-            Status = "Could not save.";
+            Status = write.Refusal ?? "Could not save.";
             return;
         }
 

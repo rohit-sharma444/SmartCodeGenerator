@@ -30,11 +30,15 @@ public class EntityLookupCountingTests
     [TestMethod]
     public void ItCompilesWithTheRestOfTheFolder()
     {
+        // JsonStore now asks Permissions before every write (Task 7's coarse store guard), so
+        // Permissions.cs joins the compile list -- ValidationContext.cs was already here, since
+        // Permissions itself names ValidationOperation.
         var result = CodeGenerationEngine.Core.Compiler.CompileSources(new (string Path, string Code)[]
         {
             ("Validation/ValidationContext.cs", ValidationContextTemplate.Source("Acme")),
             ("Validation/IEntityLookup.cs", ValidatorTemplate.EntityLookupInterface("Acme")),
             ("Validation/StoreEntityLookup.cs", ValidatorTemplate.StoreEntityLookup("Acme")),
+            ("Validation/Permissions.cs", PermissionsTemplate.Source("Acme", Array.Empty<string>())),
             ("Data/StoreFactory.cs", StoreFactoryTemplate.Source("Acme", PersistenceKind.Json)),
             ("Data/IStore.cs", StoreSeamTemplate.Source("Acme")),
             ("Data/JsonStore.cs", JsonStoreTemplate.Source("Acme.Data")),

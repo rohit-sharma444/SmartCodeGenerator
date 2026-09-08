@@ -174,6 +174,12 @@ public interface IEntityViewModel
 
         // The whole loop goes, not just the Validate call: with nothing to reject, a foreach that
         // saved nothing and skipped nothing would be dead code in every generated app.
+        //
+        // Built with Update: this loop cannot tell an insert from an update any more than SaveAll
+        // can -- a newly-added row and an edited one look identical by the time they reach here --
+        // which is the same reason the coarse store guard is built with Update. ValidationContext
+        // .For supplies no Stored version and no acting user, same as before the pipeline existed:
+        // this path predates CurrentRole()/CurrentUserId() and stays that way here.
         var validateRecords = validation
             ? """
                     // This path writes through _store, not Repository, so it has to run the generated
@@ -181,10 +187,12 @@ public interface IEntityViewModel
                     var validator = ValidatorFactory.Create<T>();
                     foreach (var record in Records)
                     {
-                        var errors = validator.Validate(record!);
-                        if (errors.Count > 0)
+                        var outcome = validator.Validate(
+                            ValidationContext<T>.For(record!, ValidationOperation.Update, new StoreEntityLookup()));
+
+                        if (!outcome.IsValid)
                         {
-                            Status = $"Cannot save: {errors[0]}";
+                            Status = $"Cannot save: {outcome.Messages[0]}";
                             return;
                         }
                     }
@@ -274,9 +282,11 @@ public sealed class EntityViewModel<T> : ObservableObject, IEntityViewModel wher
 
     private void Save()
     {
-{{validateRecords}}        Status = _store.SaveAll(Records.ToList())
+{{validateRecords}}        var write = _store.SaveAll(Records.ToList());
+
+        Status = write.Success
             ? $"Saved {Records.Count} {Title} record(s)."
-            : $"Could not write {typeof(T).Name}.json.";
+            : write.Refusal ?? $"Could not write {typeof(T).Name}.json.";
     }
 }
 """;

@@ -84,7 +84,7 @@ public static class AuthService
         user.PasswordSalt = salt;
         user.ModifiedOn = DateTime.Now;
 
-        return store.SaveAll(all);
+        return store.SaveAll(all).Success;
     }
 }
 """;
