@@ -101,9 +101,11 @@ public class NoValidationTests
     }
 
     /// <summary>A whole generated app with validation off must build. This is the check that
-    /// catches a call site nobody remembered.</summary>
+    /// catches a call site nobody remembered — and, since Security sits outside the flag, the
+    /// check that the Validation folder survives novalidation holding only what permissions need.
+    /// </summary>
     [TestMethod]
-    public void A_generated_app_without_validation_has_no_validation_folder()
+    public void A_generated_app_without_validation_keeps_only_the_permission_matrix()
     {
         var root = Path.Combine(Path.GetTempPath(), "nov-" + Guid.NewGuid().ToString("N")[..8]);
         Directory.CreateDirectory(root);
@@ -117,7 +119,21 @@ public class NoValidationTests
             var result = new AppScaffolder().Scaffold(request);
 
             Assert.IsTrue(result.Success, result.Message);
-            Assert.IsFalse(Directory.Exists(Path.Combine(result.ProjectPath, "Validation")));
+
+            // The Validation folder is not gone: Security sits outside the novalidation flag (spec
+            // Decision 4), so turning validation off must not turn permissions off. It holds
+            // exactly Permissions.cs, ValidationContext.cs (which Permissions names
+            // ValidationOperation from) and IEntityLookup.cs (which ValidationContext<T> names) —
+            // and nothing that only the validation pipeline needs.
+            var validationFolder = Path.Combine(result.ProjectPath, "Validation");
+            Assert.IsTrue(Directory.Exists(validationFolder));
+            Assert.IsTrue(File.Exists(Path.Combine(validationFolder, "Permissions.cs")));
+            Assert.IsTrue(File.Exists(Path.Combine(validationFolder, "ValidationContext.cs")));
+            Assert.IsTrue(File.Exists(Path.Combine(validationFolder, "IEntityLookup.cs")));
+            Assert.IsFalse(File.Exists(Path.Combine(validationFolder, "ValidatorFactory.cs")));
+            Assert.IsFalse(File.Exists(Path.Combine(validationFolder, "OrderValidator.Generated.cs")));
+            Assert.IsFalse(File.Exists(Path.Combine(validationFolder, "OrderValidator.Custom.cs")));
+
             Assert.IsFalse(
                 File.ReadAllText(Path.Combine(result.ProjectPath, "Data", "Repository.cs"))
                     .Contains("Validator", StringComparison.Ordinal));
@@ -126,6 +142,41 @@ public class NoValidationTests
             Assert.IsNotNull(result.TestProjectPath);
             Assert.IsFalse(File.Exists(Path.Combine(
                 Path.GetDirectoryName(result.TestProjectPath)!, "OrderValidatorTests.cs")));
+        }
+        finally
+        {
+            try { Directory.Delete(root, recursive: true); }
+            catch (IOException) { }
+        }
+    }
+
+    /// <summary>The whole reason Security sits outside the flag: turning validation off must not
+    /// turn permissions off. Asserted against the emitted file list, because this is the one
+    /// guarantee a user cannot see until something is refused in a running app.</summary>
+    [TestMethod]
+    public void NoValidation_StillEmitsThePermissionMatrix()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "nov-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(root);
+
+        try
+        {
+            var request = ScaffoldRequest.For(
+                    TestModels.OneEntity(), "Shop", root, new ConsoleTarget())
+                with { Customization = AppCustomization.Default with { Validation = false } };
+
+            var result = new AppScaffolder().Scaffold(request);
+            Assert.IsTrue(result.Success, result.Message);
+
+            var files = Directory.GetFiles(result.ProjectPath, "*.cs", SearchOption.AllDirectories);
+
+            Assert.IsTrue(files.Any(f => f.EndsWith("Permissions.cs", StringComparison.Ordinal)),
+                "novalidation dropped the permission matrix");
+            Assert.IsTrue(files.Any(f => f.EndsWith("ValidationContext.cs", StringComparison.Ordinal)),
+                "Permissions names ValidationOperation, so the context must survive the flag too");
+
+            Assert.IsFalse(files.Any(f => f.EndsWith("ValidationPipeline.cs", StringComparison.Ordinal)),
+                "novalidation must still drop the pipeline");
         }
         finally
         {

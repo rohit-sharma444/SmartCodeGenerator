@@ -432,6 +432,10 @@ public sealed class AppScaffolder
         // console menu and the Web API's ValidationProblem are untouched by turning validation off.
         if (validation)
         {
+            files.Add((validationFolder, "ValidationContext.cs",
+                ValidationContextTemplate.Source(rootNamespace)));
+            files.Add((validationFolder, "ValidationPipeline.cs",
+                ValidationPipelineTemplate.Source(rootNamespace)));
             files.Add((validationFolder, "IValidator.cs",
                 ValidatorTemplate.ValidatorInterface(rootNamespace)));
             files.Add((validationFolder, "IEntityLookup.cs",
@@ -441,6 +445,23 @@ public sealed class AppScaffolder
             files.Add((validationFolder, "ValidatorFactory.cs",
                 ValidatorTemplate.Factory(rootNamespace, entityNames)));
         }
+        else
+        {
+            // Permissions.cs (added below, unconditionally) names ValidationOperation and
+            // IEntityLookup, so both have to survive novalidation even though nothing else in
+            // this branch does. Security sits outside the flag on purpose — see PermissionsTemplate.
+            files.Add((validationFolder, "ValidationContext.cs",
+                ValidationContextTemplate.Source(rootNamespace)));
+            files.Add((validationFolder, "IEntityLookup.cs",
+                ValidatorTemplate.EntityLookupInterface(rootNamespace)));
+        }
+
+        // Emitted whether or not `validation` is true: turning validation off must not turn
+        // permissions off. masterNames comes from the same role classification the review summary
+        // and the screens use, so a screen and its permission cannot disagree.
+        var masterNames = roles.Names(EntityRole.Master);
+        files.Add((validationFolder, "Permissions.cs",
+            PermissionsTemplate.Source(rootNamespace, masterNames)));
 
         // Persistence backend behind the seam.
         if (persistence == PersistenceKind.Sqlite)
