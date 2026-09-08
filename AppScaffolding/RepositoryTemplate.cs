@@ -122,22 +122,21 @@ public static class RepositoryTemplate
         // Delete is the one method whose tail has to change rather than gain a line: it returns the
         // save result directly, and there is nothing to log against until that result is known.
         //
-        // The logging branch is untouched by Task 7 on purpose: it is exercised only alongside
-        // validation (no test or generated app turns logging on without it), and validation is
-        // what Task 8 rewrites here wholesale -- fixing only this branch's own SaveAll typing
-        // would still leave it uncompilable for the same pre-existing reason, so it is left
-        // exactly as Task 8 will find it rather than half-migrated.
+        // Both branches keep Delete's own bool signature (Task 8 makes it a SaveResult<T>), so
+        // both still have only a bool to hand back -- Success, with no room yet for Refusal.
+        // Validation and logging are independent flags (validation: false, logging: true is a
+        // real `novalidation logging` build), so this branch is reachable with no validateCall
+        // above it and must compile and behave correctly on its own, not just alongside Task 8's
+        // rewrite of the validation seam.
         var deleteTail = logging
             ? """
                     var saved = _store.SaveAll(all);
 
-                    if (saved)
+                    if (saved.Success)
                         Log.LogInformation("Deleted {Entity} {Id}.", typeof(T).Name, id);
 
-                    return saved;
+                    return saved.Success;
             """
-            // Delete's own signature is unchanged in this task (Task 8 makes it a SaveResult<T>),
-            // so this still has only a bool to hand back -- Success, with no room yet for Refusal.
             : """
                     return _store.SaveAll(all).Success;
             """;

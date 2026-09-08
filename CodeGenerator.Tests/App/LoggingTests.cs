@@ -61,8 +61,67 @@ public class LoggingTests
         var source = RepositoryTemplate.Base("Acme", validation: true, logging: true);
 
         StringAssert.Contains(source, "var saved = _store.SaveAll(all);");
-        StringAssert.Contains(source, "return saved;");
+        StringAssert.Contains(source, "return saved.Success;");
     }
+
+    /// <summary>
+    /// Validation and logging are independent flags: a `novalidation logging` build reaches
+    /// Delete's logging branch with no <c>validateCall</c> above it, so that branch has to compile
+    /// and behave correctly entirely on its own. Every other test that exercises this branch pairs
+    /// it with the DEFAULT (on) validation, whose own unrelated old-seam errors mask a second,
+    /// independent defect in the same file -- which is exactly how the SaveAll/StoreWrite widening
+    /// broke this branch (CS0029 on `if (saved)` and `return saved;`) without any substring test
+    /// noticing. <c>ProjectWithLoggingAndNoValidation_Builds</c> proves the same thing with a real
+    /// `dotnet build`; this is the fast, unit-level companion that isolates just this file.
+    /// </summary>
+    /// <remarks>
+    /// Hand-rolled <c>ILogger</c>/<c>AppLog</c> stand-ins, not the real
+    /// <c>Microsoft.Extensions.Logging</c> package: <c>Compiler.Compile</c> does not reference it
+    /// (see this class's own remarks), which is also why the class doc calls a compile test
+    /// impractical for the FULL logging feature -- it remains practical for this one branch, whose
+    /// only dependency on the package is the two method names it calls.
+    /// </remarks>
+    [TestMethod]
+    public void ADeleteWithLoggingButNoValidation_Compiles()
+    {
+        var repository = RepositoryTemplate.Base("Acme", validation: false, logging: true)
+            .Replace("using Microsoft.Extensions.Logging;", string.Empty)
+            .Replace("using Acme.Logging;", string.Empty);
+
+        var source = EmittedSource.Flatten(
+            ValidationContextTemplate.Source("Acme"),
+            ValidatorTemplate.EntityLookupInterface("Acme"),
+            PermissionsTemplate.Source("Acme", Array.Empty<string>()),
+            StoreSeamTemplate.Source("Acme"),
+            SaveResultTemplate.Source("Acme"),
+            StoreFactoryTemplate.Source("Acme", PersistenceKind.Json),
+            JsonStoreTemplate.Source("Acme.Data"),
+            LoggerStub,
+            repository);
+
+        EmittedSource.AssertCompiles(source);
+    }
+
+    /// <summary>A minimal stand-in for the two <c>Microsoft.Extensions.Logging</c> members
+    /// <c>Repository.cs</c> actually calls, declared with no namespace so it lands in the same
+    /// flattened, namespace-less unit as everything else <see cref="EmittedSource.Flatten"/>
+    /// joins.</summary>
+    private const string LoggerStub = """
+        public interface ILogger
+        {
+        }
+
+        public static class AppLog
+        {
+            public static ILogger For<T>() => null!;
+        }
+
+        public static class LoggerExtensions
+        {
+            public static void LogInformation(this ILogger logger, string message, params object?[] args) { }
+            public static void LogWarning(this ILogger logger, string message, params object?[] args) { }
+        }
+        """;
 
     [TestMethod]
     public void Every_declared_package_has_a_real_version()

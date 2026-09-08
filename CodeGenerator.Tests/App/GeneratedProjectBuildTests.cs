@@ -383,6 +383,46 @@ public class GeneratedProjectBuildTests
     }
 
     /// <summary>
+    /// Validation and logging are independent flags -- `novalidation logging` reaches Delete's
+    /// logging branch in <c>Repository.cs</c> with no <c>validateCall</c> above it, which is
+    /// exactly the combination that let a StoreWrite/bool typing bug through uncaught: every other
+    /// build test pairs logging with the DEFAULT (on) validation, whose own unrelated old-seam
+    /// errors would have masked a second defect in the same file. This is the one real build that
+    /// isolates the logging branch on its own.
+    /// </summary>
+    [TestMethod]
+    [TestCategory("Integration")]
+    public void ProjectWithLoggingAndNoValidation_Builds()
+    {
+        Assert.IsTrue(TargetScaffolders.TryResolve("console", out var target));
+
+        var workspace = Path.Combine(Path.GetTempPath(), "gen_" + Path.GetRandomFileName());
+        Directory.CreateDirectory(workspace);
+        try
+        {
+            var result = new AppScaffolder().Scaffold(
+                ScaffoldRequest.For(SampleModel(), "Sample", workspace, target)
+                with
+                {
+                    Customization = AppCustomization.Default
+                        with
+                        { Logging = true, Validation = false },
+                });
+
+            Assert.IsTrue(result.Success, "scaffold failed: " + result.Message);
+            Assert.IsTrue(File.Exists(Path.Combine(
+                result.ProjectPath, LoggingTemplate.FolderName, LoggingTemplate.FileName)));
+
+            var (exit, output) = RunDotNet($"build \"{result.ProjectPath}\" -c Release");
+            Assert.AreEqual(0, exit, $"dotnet build failed:\n{output}");
+        }
+        finally
+        {
+            TryDeleteDirectory(workspace);
+        }
+    }
+
+    /// <summary>
     /// An app generated without sample data builds. SeedData.EnsureSeeded() is called from four
     /// separate entry points, so every target is a row here: a missed call site is a CS0103 on a
     /// class the app no longer generates, and the console row's generated tests prove nothing left
