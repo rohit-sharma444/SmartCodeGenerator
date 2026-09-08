@@ -17,15 +17,14 @@ public static class ValidatorTemplate
 {
     /// <summary>Source of <c>Validation/IValidator.cs</c>.</summary>
     public static string ValidatorInterface(string rootNamespace) => $$"""
-using System.Collections.Generic;
-
 namespace {{rootNamespace}}.Validation;
 
-/// <summary>Validates one entity, returning a message per broken rule.</summary>
+/// <summary>Validates one entity against the whole picture: the record, the operation, the stored
+/// version, other records, and the acting user.</summary>
 public interface IValidator<T>
 {
-    /// <summary>Every rule this entity breaks. Empty means valid.</summary>
-    IReadOnlyList<string> Validate(T item);
+    /// <summary>Every rule this operation breaks. An outcome with no errors means valid.</summary>
+    ValidationOutcome Validate(ValidationContext<T> context);
 }
 """;
 
@@ -33,12 +32,16 @@ public interface IValidator<T>
     public static string EntityLookupInterface(string rootNamespace) => $$"""
 namespace {{rootNamespace}}.Validation;
 
-/// <summary>Existence checks a validator needs for foreign keys. Injected so a validator can be
+/// <summary>Existence and reference counts a validator needs. Injected so a validator can be
 /// unit-tested with a fake and no store on disk.</summary>
 public interface IEntityLookup
 {
     /// <summary>True when a record of this type with this Id exists.</summary>
     bool Exists<TEntity>(int id) where TEntity : class, new();
+
+    /// <summary>How many records of this type carry this foreign key value.</summary>
+    int CountReferencing<TEntity>(string foreignKeyProperty, int id)
+        where TEntity : class, new();
 }
 """;
 
