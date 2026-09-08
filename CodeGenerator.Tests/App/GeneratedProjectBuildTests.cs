@@ -463,9 +463,22 @@ public class GeneratedProjectBuildTests
                 });
 
             Assert.IsTrue(result.Success, "scaffold failed: " + result.Message);
-            Assert.IsFalse(
-                Directory.Exists(Path.Combine(result.ProjectPath, "Validation")),
-                "the Validation folder was generated anyway");
+
+            // The Validation folder is not gone: Security sits outside the novalidation flag
+            // (spec Decision 4), so turning validation off must not turn permissions off. It
+            // holds exactly Permissions.cs, ValidationContext.cs and IEntityLookup.cs — and
+            // nothing that only the validation pipeline needs. See NoValidationTests for the
+            // same assertion against a single-target scaffold.
+            var validationFolder = Path.Combine(result.ProjectPath, "Validation");
+            Assert.IsTrue(Directory.Exists(validationFolder), "the Validation folder was not generated");
+            Assert.IsTrue(File.Exists(Path.Combine(validationFolder, "Permissions.cs")));
+            Assert.IsTrue(File.Exists(Path.Combine(validationFolder, "ValidationContext.cs")));
+            Assert.IsTrue(File.Exists(Path.Combine(validationFolder, "IEntityLookup.cs")));
+            Assert.IsFalse(File.Exists(Path.Combine(validationFolder, "ValidatorFactory.cs")));
+            Assert.IsFalse(File.Exists(Path.Combine(validationFolder, "BookValidator.Generated.cs")));
+            Assert.IsFalse(File.Exists(Path.Combine(validationFolder, "BookValidator.Custom.cs")));
+            Assert.IsFalse(File.Exists(Path.Combine(validationFolder, "MemberValidator.Generated.cs")));
+            Assert.IsFalse(File.Exists(Path.Combine(validationFolder, "MemberValidator.Custom.cs")));
 
             var (exit, output) = RunDotNet($"build \"{result.ProjectPath}\" -c Release");
             Assert.AreEqual(0, exit, $"dotnet build failed for {targetKey}:\n{output}");
