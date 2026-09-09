@@ -311,8 +311,11 @@ public class BlazorScreenTests
         Assert.Contains("<AuthorizeView Roles=\"Admin\">", list);
 
         // Hidden is not the same as refused. A button that is not rendered has no handler to
-        // invoke, but the check that would still hold if it moved is the one in the handler.
-        Assert.Contains("state?.User.IsInRole(\"Admin\") != true", list);
+        // invoke, but the check that would still hold if it moved is the one in the handler --
+        // and it asks the permission matrix, so this screen and the store behind it cannot
+        // disagree about who may delete what.
+        Assert.Contains(
+            "Permissions.Allows(ValidationOperation.Delete, typeof(TRecord).Name, role)", list);
     }
 
     /// <summary>

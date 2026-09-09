@@ -1,4 +1,5 @@
 using System.Linq;
+using AppScaffolding;
 using CodeGenerationEngine.Core;
 using Microsoft.CodeAnalysis;
 
@@ -56,6 +57,25 @@ internal static class EmittedSource
 
         return string.Join("\n", usings.Distinct()) + "\n" + string.Join("\n", bodies);
     }
+
+    /// <summary>
+    /// The permission matrix a screen's delete button asks, and the operation enum it names.
+    /// </summary>
+    /// <remarks>
+    /// The real templates rather than a stub: a stub matrix could agree with a fixture while
+    /// disagreeing with the app the generator emits, which is the whole failure the one matrix
+    /// exists to prevent.
+    /// </remarks>
+    /// <param name="masterEntityNames">
+    /// The entities this build classified as masters. The default matrix refuses a plain user a
+    /// delete on those alone, so a fixture naming none can never see a refusal.
+    /// </param>
+    public static string PermissionMatrix(params string[] masterEntityNames)
+        => string.Join(
+            Environment.NewLine,
+            ValidationContextTemplate.Source("Acme"),
+            ValidatorTemplate.EntityLookupInterface("Acme"),
+            PermissionsTemplate.Source("Acme", masterEntityNames));
 
     /// <summary>Asserts <paramref name="source"/> compiles with no errors.</summary>
     public static void AssertCompiles(string source)

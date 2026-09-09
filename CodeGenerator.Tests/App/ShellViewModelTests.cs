@@ -141,6 +141,10 @@ public sealed class FakeEditor : IRecordEditor
             RecordEditorTests.StoreAndModelStub,
             RecordEditorTests.Editor(validation: false),
             Stub,
+
+            // The master screen's delete asks the matrix. No masters here: this fixture is about
+            // what the shell routes, not about who may delete from a screen it routed to.
+            EmittedSource.PermissionMatrix(),
             MasterScreenTemplate.Source("Acme")
                 .Replace("namespace Acme.ViewModels;", string.Empty)
                 .Replace("using Acme.Auth;", string.Empty)

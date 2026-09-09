@@ -76,6 +76,10 @@ public class Note
     {
         var source = EmittedSource.Flatten(
             OrderStub,
+
+            // The base screen's delete asks the matrix. No masters here: this fixture is about
+            // what a transaction list shows, not about who may delete from it.
+            EmittedSource.PermissionMatrix(),
             ViewModelTemplates.ObservableObject("Acme").Replace("namespace Acme.ViewModels;", string.Empty),
             ViewModelTemplates.PortableRelayCommand("Acme").Replace("namespace Acme.ViewModels;", string.Empty),
             ScreenTemplates.RoleEnum("Acme").Replace("namespace Acme.Screens;", string.Empty),

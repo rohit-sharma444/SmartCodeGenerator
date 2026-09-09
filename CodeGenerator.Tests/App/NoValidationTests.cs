@@ -72,13 +72,19 @@ public class NoValidationTests
 
     /// <summary>The second hard dependency: this Save path writes through the store rather than
     /// Repository, so it runs the validator itself.</summary>
+    /// <remarks>
+    /// It still names the Validation NAMESPACE, and must: its delete button asks the permission
+    /// matrix, which survives novalidation on its own (spec Decision 4) — the same reason
+    /// JsonStore names it. What has to go is the validator.
+    /// </remarks>
     [TestMethod]
     public void A_desktop_view_model_without_validation_names_no_validator()
     {
         var source = ViewModelTemplates.EntityViewModel("Acme", validation: false);
 
         Assert.IsFalse(source.Contains("ValidatorFactory", StringComparison.Ordinal));
-        Assert.IsFalse(source.Contains("Acme.Validation", StringComparison.Ordinal));
+        Assert.IsFalse(source.Contains("IValidator", StringComparison.Ordinal));
+        Assert.IsFalse(source.Contains("ValidationContext", StringComparison.Ordinal));
 
         // ...and still saves.
         StringAssert.Contains(source, "_store.SaveAll(Records.ToList())");

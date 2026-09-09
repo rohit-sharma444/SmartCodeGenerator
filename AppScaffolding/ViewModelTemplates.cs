@@ -145,21 +145,19 @@ public interface IEntityViewModel
 
     /// <summary>
     /// Source of <c>ViewModels/EntityViewModel.cs</c>. With <paramref name="validation"/> false the
-    /// Validation folder is not generated, so this file's own validator resolution has to go — the
-    /// second of the two places generated code hard-depends on that folder.
+    /// validator resolution has to go — the second of the two places generated code hard-depends
+    /// on the pipeline. The Validation folder itself stays: permissions sit outside the flag, and
+    /// this screen's Delete asks them.
     /// </summary>
-    public static string EntityViewModel(string rootNamespace, bool validation)
+    /// <param name="login">
+    /// Whether the app has a desktop <c>Session</c> to read the acting user from. Emitted beside
+    /// these view models under the same flag, so naming one without it would not compile.
+    /// </param>
+    public static string EntityViewModel(string rootNamespace, bool validation, bool login = false)
     {
         // Raw string literals rather than "\n" concatenation: these are lines lifted out of the
         // template below, and a raw literal carries the same line endings that template does. See
         // RepositoryTemplate.Base, which lifts its validation out the same way.
-        var validationUsing = validation
-            ? $"""
-            using {rootNamespace}.Validation;
-
-            """
-            : string.Empty;
-
         var constraintReason = validation
             ? """
               /// <remarks>T is constrained to a reference type because this view-model resolves the entity's
@@ -201,6 +199,24 @@ public interface IEntityViewModel
             """
             : string.Empty;
 
+        // The same helper the two store templates and Repository<T> emit, for the same reason:
+        // each names Session from a different folder and none of them may depend on another. This
+        // file imports no Auth namespace, so it is named in full, exactly as they name it.
+        var currentRole = login
+            ? $$"""
+
+                private static string? CurrentRole() => {{rootNamespace}}.Auth.Session.Current?.Role.ToString();
+
+            """
+            : """
+
+                // No desktop session to read a user from, so there is nobody to attribute the
+                // delete to. Not a stub to fill in later: an app generated without a login has
+                // nobody to refuse, which is exactly what the matrix reads a null role as.
+                private static string? CurrentRole() => null;
+
+            """;
+
         return $$"""
 using System.Collections;
 using System.Collections.ObjectModel;
@@ -209,7 +225,8 @@ using System.Collections.Generic;
 using System.Windows.Input;
 using {{rootNamespace}}.Data;
 using {{rootNamespace}}.Screens;
-{{validationUsing}}
+using {{rootNamespace}}.Validation;
+
 namespace {{rootNamespace}}.ViewModels;
 
 /// <summary>One entity's records, edited in memory and persisted on Save.</summary>
@@ -275,6 +292,14 @@ public sealed class EntityViewModel<T> : ObservableObject, IEntityViewModel wher
         if (_selected is not T item)
             return;
 
+        // Checked HERE, not at Save: this screen defers every change to one SaveAll, and a
+        // whole-list write cannot tell that a record was removed. There is nowhere later to ask.
+        if (!Permissions.Allows(ValidationOperation.Delete, typeof(T).Name, CurrentRole()))
+        {
+            Status = Permissions.Refusal(ValidationOperation.Delete, typeof(T).Name);
+            return;
+        }
+
         Records.Remove(item);
         Selected = null;
         Status = $"Removed a {Title}. Not saved yet.";
@@ -288,7 +313,7 @@ public sealed class EntityViewModel<T> : ObservableObject, IEntityViewModel wher
             ? $"Saved {Records.Count} {Title} record(s)."
             : write.Refusal ?? $"Could not write {typeof(T).Name}.json.";
     }
-}
+{{currentRole}}}
 """;
     }
 }

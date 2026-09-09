@@ -36,7 +36,7 @@ public static class DesktopViewModelFiles
             new("ViewModels", "RelayCommand.cs", relayCommandSource),
             new("ViewModels", "IEntityViewModel.cs", ViewModelTemplates.EntityViewModelInterface(rootNamespace)),
             new("ViewModels", "EntityViewModel.cs",
-                ViewModelTemplates.EntityViewModel(rootNamespace, validation)),
+                ViewModelTemplates.EntityViewModel(rootNamespace, validation, login)),
             new("ViewModels", "MainViewModel.cs",
                 MainViewModelTemplate.Build(rootNamespace, entityNames, seed, login, roles)),
         };
@@ -62,7 +62,7 @@ public static class DesktopViewModelFiles
             files.Add(new("ViewModels", "RecordEditorViewModel.cs",
                 RecordEditorTemplate.Source(rootNamespace, validation)));
             files.Add(new("ViewModels", "MasterScreenViewModel.cs",
-                MasterScreenTemplate.Source(rootNamespace)));
+                MasterScreenTemplate.Source(rootNamespace, login)));
             files.Add(new("ViewModels", "TransactionScreenViewModel.cs",
                 TransactionScreenTemplate.Source(rootNamespace)));
             files.Add(new("ViewModels", "DashboardViewModel.cs",

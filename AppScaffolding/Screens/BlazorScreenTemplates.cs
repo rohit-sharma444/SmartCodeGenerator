@@ -230,9 +230,10 @@ public static class ScreenFields
     /// </remarks>
     public static string MasterScreen(string rootNamespace, bool login) => $$"""
 @typeparam TRecord where TRecord : class, new()
-@using System.Reflection
+@using System.Reflection{{ClaimsUsing(login)}}
 @using {{rootNamespace}}.Data
-@using {{rootNamespace}}.Screens{{AuthorizationUsing(login)}}
+@using {{rootNamespace}}.Screens
+@using {{rootNamespace}}.Validation{{AuthorizationUsing(login)}}
 @inject NavigationManager Navigation
 
 <h1>@Title</h1>
@@ -342,9 +343,10 @@ else
     /// </remarks>
     public static string TransactionScreen(string rootNamespace, bool login) => $$"""
 @typeparam TRecord where TRecord : class, new()
-@using System.Reflection
+@using System.Reflection{{ClaimsUsing(login)}}
 @using {{rootNamespace}}.Data
-@using {{rootNamespace}}.Screens{{AuthorizationUsing(login)}}
+@using {{rootNamespace}}.Screens
+@using {{rootNamespace}}.Validation{{AuthorizationUsing(login)}}
 @inject NavigationManager Navigation
 
 <h1>@Title</h1>
@@ -843,7 +845,22 @@ else
               """
             : string.Empty;
 
-    /// <summary>Delete acts on the list selection, and only an administrator may.</summary>
+    /// <summary>The claims namespace the login variant reads the acting role from.</summary>
+    /// <remarks>
+    /// Only that variant: a component with no login has no authentication state to read, and an
+    /// import nothing names is noise in a generated file.
+    /// </remarks>
+    private static string ClaimsUsing(bool login)
+        => login ? "\r\n@using System.Security.Claims" : string.Empty;
+
+    /// <summary>Delete acts on the list selection, if the permission matrix allows this role
+    /// to.</summary>
+    /// <remarks>
+    /// Blazor has no <c>Session</c> — that is emitted for the two desktop targets alone — so the
+    /// acting role comes off the cascading authentication state's role claim rather than from a
+    /// <c>CurrentRole()</c> helper. Asked here rather than left to the store: <c>SaveAll</c> is
+    /// handed the whole list and cannot tell a delete from any other edit.
+    /// </remarks>
     private static string DeleteHandler(bool login)
         => login
             ? """
@@ -854,12 +871,14 @@ else
                           return;
 
                       // The button is hidden from a plain user; this is the check that would hold
-                      // even if it were not.
+                      // even if it were not. One matrix decides it, so this screen and the store
+                      // behind it cannot disagree about who may delete what.
                       var state = AuthState is null ? null : await AuthState;
+                      var role = state?.User.FindFirst(ClaimTypes.Role)?.Value;
 
-                      if (state?.User.IsInRole("Admin") != true)
+                      if (!Permissions.Allows(ValidationOperation.Delete, typeof(TRecord).Name, role))
                       {
-                          _status = "Only an administrator can delete a record.";
+                          _status = Permissions.Refusal(ValidationOperation.Delete, typeof(TRecord).Name);
                           return;
                       }
 
@@ -885,6 +904,17 @@ else
                   {
                       if (_selected is not { } record)
                           return;
+
+                      // No login, so there is nobody to attribute the delete to and the matrix
+                      // reads a null role as "no notion of who is acting" -- it can refuse
+                      // nothing here today. Asked anyway, so the two variants of this handler
+                      // cannot drift apart, and so this is the line that starts refusing the day
+                      // the matrix tells an anonymous caller from a signed-in one.
+                      if (!Permissions.Allows(ValidationOperation.Delete, typeof(TRecord).Name, null))
+                      {
+                          _status = Permissions.Refusal(ValidationOperation.Delete, typeof(TRecord).Name);
+                          return;
+                      }
 
                       var all = _store.GetAll();
                       all.RemoveAll(stored => ScreenFields.IdOf(stored) == ScreenFields.IdOf(record));
