@@ -1,3 +1,4 @@
+using System;
 using System.IO;
 using AppScaffolding;
 using AppScaffolding.Targets;
@@ -58,6 +59,67 @@ public class PipelineEndToEndTests
         {
             Directory.Delete(workspace, recursive: true);
         }
+    }
+
+    /// <summary>
+    /// The console menu's four delete outcomes, each of which was driven by hand in a running
+    /// generated app before this test was written.
+    /// </summary>
+    /// <remarks>
+    /// Nothing covered these branches at all — a later edit collapsing "no such record" back into
+    /// the refusal arm, or dropping the parse guard, would have been caught by no assertion of any
+    /// kind. Asserted as strings because they ARE the observable behaviour: what the person at the
+    /// console reads is the whole of the difference between a missing record and a refused one.
+    /// </remarks>
+    [TestMethod]
+    public void TheConsoleMenuSeparatesEveryDeleteOutcome()
+    {
+        var source = ConsoleMenuTemplate.Source("Acme");
+
+        StringAssert.Contains(source, "\"That is not a number.\"");
+        StringAssert.Contains(source, "\"Deleted.\"");
+        StringAssert.Contains(source, "\"No record with that Id.\"");
+        StringAssert.Contains(source, "\"Not deleted.\"");
+
+        // Order matters as much as presence: success returns first, then the missing record, and
+        // only what is left over is a refusal with reasons to print. A NotFound checked after the
+        // reasons loop would print an empty list and then "Not deleted." for an Id nobody has.
+        var deleted = source.IndexOf("\"Deleted.\"", StringComparison.Ordinal);
+        var notFound = source.IndexOf("result.NotFound", StringComparison.Ordinal);
+        var reasons = source.IndexOf("foreach (var error in result.Errors)", StringComparison.Ordinal);
+
+        Assert.IsGreaterThan(0, notFound, "the delete should test NotFound");
+        Assert.IsGreaterThan(0, reasons, "a refused delete should print its reasons");
+        Assert.IsLessThan(notFound, deleted, "success is decided before a missing record");
+        Assert.IsLessThan(reasons, notFound, "a missing record is decided before any reason is printed");
+    }
+
+    /// <summary>
+    /// The Web API's three delete outcomes. Driven against a running app: 204 for a delete that
+    /// went through, 404 for an Id nobody has, and 400 carrying the reason keyed by the property
+    /// it belongs to.
+    /// </summary>
+    [TestMethod]
+    public void TheWebApiKeepsAllThreeDeleteOutcomes()
+    {
+        var source = WebApiProgramTemplate.Build("Acme", new[] { "Customer" }, "Acme", seed: false);
+
+        var mapDelete = source.IndexOf("MapDelete", StringComparison.Ordinal);
+        Assert.IsGreaterThan(0, mapDelete, "the delete route should be mapped");
+
+        var delete = source[mapDelete..];
+
+        StringAssert.Contains(delete, "Results.NoContent()");
+        StringAssert.Contains(delete, "Results.NotFound()");
+        StringAssert.Contains(delete, "Results.ValidationProblem(result.AsDictionary())");
+
+        // The 400 arm is the one a later edit would collapse back into the 404: a refusal is not
+        // a missing record, and AsDictionary is what keys the messages by property name rather
+        // than dropping them all under one empty key.
+        Assert.IsLessThan(
+            delete.IndexOf("Results.ValidationProblem", StringComparison.Ordinal),
+            delete.IndexOf("Results.NotFound()", StringComparison.Ordinal),
+            "a missing record must be answered before a refusal");
     }
 
     /// <summary>The temp workspace as well as the project inside it, so a run leaves nothing
