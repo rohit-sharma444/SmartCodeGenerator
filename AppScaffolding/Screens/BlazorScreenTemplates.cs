@@ -828,21 +828,31 @@ else
         => login ? "\r\n@using Microsoft.AspNetCore.Components.Authorization" : string.Empty;
 
     /// <summary>
-    /// Delete, for an administrator only.
+    /// Delete, offered to whoever the permission matrix allows to delete this record.
     /// </summary>
     /// <remarks>
+    /// The same <c>MayDelete</c> the handler enforces, so the affordance and the refusal cannot
+    /// disagree. A hardcoded <c>Roles="Admin"</c> here did disagree: this button is shared by both
+    /// grids, so a plain user was hidden a delete on a TRANSACTION screen that the matrix permits
+    /// and that the same user gets on WinForms and WPF — hidden-but-permitted, the mirror image of
+    /// the check the matrix replaced.
+    /// <para>
     /// Hidden rather than disabled, and hiding it is a real guard here rather than decoration: a
     /// button that is not rendered has no handler to invoke, unlike a URL that can be typed. The
-    /// handler checks the role again anyway, because that is the check that would still hold if the
-    /// button moved.
+    /// handler asks again anyway, because that is the check that would still hold if the button
+    /// moved.
+    /// </para>
     /// </remarks>
     private static string DeleteButton(bool login)
         => login
             ? """
-                  <AuthorizeView Roles="Admin">
+                  <AuthorizeView>
                       <Authorized>
-                          <button class="btn btn-outline-danger" @onclick="Delete"
-                                  disabled="@(_selected is null)">Delete</button>
+                          @if (MayDelete(context))
+                          {
+                              <button class="btn btn-outline-danger" @onclick="Delete"
+                                      disabled="@(_selected is null)">Delete</button>
+                          }
                       </Authorized>
                   </AuthorizeView>
 
@@ -857,7 +867,8 @@ else
         => login
             ? """
 
-                  /// <summary>Who is signed in, so Delete can refuse a plain user.</summary>
+                  /// <summary>Who is signed in, so the matrix can be asked what they may
+                  /// delete.</summary>
                   [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
 
               """
@@ -878,6 +889,11 @@ else
     /// acting role comes off the cascading authentication state's role claim rather than from a
     /// <c>CurrentRole()</c> helper. Asked here rather than left to the store: <c>SaveAll</c> is
     /// handed the whole list and cannot tell a delete from any other edit.
+    /// <para>
+    /// <c>MayDelete</c> is the one call, read by <see cref="DeleteButton"/> for the button's
+    /// visibility and by the handler for the refusal: two calls would be two places to change,
+    /// which is how the button came to hide a delete the handler would have allowed.
+    /// </para>
     /// </remarks>
     private static string DeleteHandler(bool login)
         => login
@@ -888,13 +904,13 @@ else
                       if (_selected is not { } record)
                           return;
 
-                      // The button is hidden from a plain user; this is the check that would hold
-                      // even if it were not. One matrix decides it, so this screen and the store
-                      // behind it cannot disagree about who may delete what.
+                      // The button is not rendered for a user the matrix refuses; this is the
+                      // check that would hold even if it were, and it is the SAME call -- so the
+                      // affordance and the refusal cannot disagree, and neither can this screen
+                      // and the store behind it.
                       var state = AuthState is null ? null : await AuthState;
-                      var role = state?.User.FindFirst(ClaimTypes.Role)?.Value;
 
-                      if (!Permissions.Allows(ValidationOperation.Delete, typeof(TRecord).Name, role))
+                      if (!MayDelete(state))
                       {
                           _status = Permissions.Refusal(ValidationOperation.Delete, typeof(TRecord).Name);
                           return;
@@ -902,6 +918,14 @@ else
 
                       Remove(record);
                   }
+
+                  /// <summary>Whether the signed-in user may delete a record of this type. A null
+                  /// state means nobody is acting, which the matrix reads as nothing to refuse --
+                  /// the same answer a component with no login at all gets.</summary>
+                  private static bool MayDelete(AuthenticationState? state)
+                      => Permissions.Allows(
+                          ValidationOperation.Delete, typeof(TRecord).Name,
+                          state?.User.FindFirst(ClaimTypes.Role)?.Value);
 
                   private void Remove(TRecord record)
                   {

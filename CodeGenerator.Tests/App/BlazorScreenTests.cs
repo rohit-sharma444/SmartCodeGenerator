@@ -307,20 +307,56 @@ public class BlazorScreenTests
         Assert.Contains(">Delete</button>", list);
     }
 
-    /// <summary>Delete is one of the role's two effects, and the only one on a master screen.</summary>
+    /// <summary>
+    /// Delete is offered to exactly the roles its handler will accept.
+    /// </summary>
+    /// <remarks>
+    /// The button used to be wrapped in <c>AuthorizeView Roles="Admin"</c> while the handler asked
+    /// the permission matrix, so the two disagreed the moment the matrix did — and this button is
+    /// shared by both grids, so a plain user was hidden a delete on a TRANSACTION screen that the
+    /// matrix permits and that the same user gets on WinForms and WPF. Hidden-but-permitted is the
+    /// mirror image of the hardcoded check the matrix replaced.
+    /// <para>
+    /// Hidden is still not the same as refused: the handler asks again, because a button that can
+    /// be reached another way must still be refused. The point is that both ask the SAME call.
+    /// </para>
+    /// </remarks>
     [TestMethod]
-    public void Only_an_administrator_can_delete()
+    public void The_delete_button_and_its_handler_ask_one_matrix_call()
     {
-        var list = Source("MasterScreen.razor");
+        foreach (var screen in new[] { "MasterScreen.razor", "TransactionScreen.razor" })
+        {
+            var list = Source(screen);
 
-        Assert.Contains("<AuthorizeView Roles=\"Admin\">", list);
+            Assert.Contains("<AuthorizeView>", list, screen);
+            Assert.Contains("@if (MayDelete(context))", list, screen);
+            Assert.Contains("if (!MayDelete(state))", list, screen);
+            Assert.Contains(
+                "private static bool MayDelete(AuthenticationState? state)", list, screen);
 
-        // Hidden is not the same as refused. A button that is not rendered has no handler to
-        // invoke, but the check that would still hold if it moved is the one in the handler --
-        // and it asks the permission matrix, so this screen and the store behind it cannot
-        // disagree about who may delete what.
-        Assert.Contains(
-            "Permissions.Allows(ValidationOperation.Delete, typeof(TRecord).Name, role)", list);
+            // One decision, asked twice. Two calls would be two places to change, which is what
+            // let the button and the handler drift in the first place.
+            Assert.AreEqual(
+                1,
+                Occurrences(list, "Permissions.Allows("),
+                $"{screen} asks the matrix more than once");
+
+            Assert.DoesNotContain("Roles=\"Admin\"", list, screen);
+        }
+    }
+
+    private static int Occurrences(string text, string value)
+    {
+        var count = 0;
+
+        for (var at = text.IndexOf(value, StringComparison.Ordinal);
+             at >= 0;
+             at = text.IndexOf(value, at + value.Length, StringComparison.Ordinal))
+        {
+            count++;
+        }
+
+        return count;
     }
 
     /// <summary>

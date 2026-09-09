@@ -107,10 +107,9 @@ public class GridDeletePermissionTests
         {
             StringAssert.Contains(component, "@using System.Security.Claims");
             StringAssert.Contains(component, "@using Acme.Validation");
-            StringAssert.Contains(component, "var role = state?.User.FindFirst(ClaimTypes.Role)?.Value;");
-            StringAssert.Contains(
-                component,
-                "Permissions.Allows(ValidationOperation.Delete, typeof(TRecord).Name, role)");
+            StringAssert.Contains(component, "private static bool MayDelete(AuthenticationState? state)");
+            StringAssert.Contains(component, "state?.User.FindFirst(ClaimTypes.Role)?.Value);");
+            StringAssert.Contains(component, "ValidationOperation.Delete, typeof(TRecord).Name,");
             StringAssert.Contains(
                 component, "_status = Permissions.Refusal(ValidationOperation.Delete, typeof(TRecord).Name);");
 
@@ -119,9 +118,12 @@ public class GridDeletePermissionTests
             Assert.DoesNotContain("IsInRole(\"Admin\")", component);
             Assert.DoesNotContain("Only an administrator can delete a record.", component);
 
-            // The button is still hidden from a plain user. Hidden is not refused, and the
-            // handler's check is the one that would hold if the button moved.
-            StringAssert.Contains(component, "<AuthorizeView Roles=\"Admin\">");
+            // The button is still hidden from a user this matrix refuses -- but from that user
+            // and no other. `Roles="Admin"` hid it from a plain user on a transaction screen too,
+            // where the matrix permits the delete the handler would have allowed.
+            StringAssert.Contains(component, "<AuthorizeView>");
+            StringAssert.Contains(component, "@if (MayDelete(context))");
+            Assert.DoesNotContain("Roles=\"Admin\"", component);
         }
     }
 
