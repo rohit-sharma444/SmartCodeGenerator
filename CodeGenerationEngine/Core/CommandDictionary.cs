@@ -691,7 +691,9 @@ public static class CommandDictionary
             Category = "Build App",
             Command = "build app: <description> [novalidation] [logging] [noseed] [nologin]",
             Description = "Chooses which optional layers are generated. 'novalidation' omits the "
-                        + "Validation folder and its per-model validators; 'logging' adds a "
+                        + "per-model validators and the field, entity and business checks; the "
+                        + "permission matrix is always generated, because turning validation off "
+                        + "must not turn permissions off; 'logging' adds a "
                         + "logging layer (off by default); 'noseed' omits the sample seed rows "
                         + "(rows imported from your own data file are unaffected); 'nologin' "
                         + "omits the login screen, the user accounts and the Users screen, "

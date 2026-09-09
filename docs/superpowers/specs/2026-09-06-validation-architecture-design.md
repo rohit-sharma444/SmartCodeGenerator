@@ -585,8 +585,13 @@ All deliberate, all visible in existing generated apps.
   `Title` did. Some generated apps become stricter, correctly but noticeably.
 - Transactions reject an unset foreign key that they previously accepted.
 - Deletes are validated for the first time, and can now be refused.
-- Permission checks are enforced at the store, so a Web API or console caller
-  that previously deleted a master record freely is now refused.
+- Permission checks are enforced rather than displayed, at all three points. This reaches
+  the WPF, WinForms and Blazor targets, which are the only ones that HAVE a user:
+  `ScreenPlan.For` emits the auth core only for a target with screens, so a console,
+  webapi or worker app has no role to check and its Security stage is genuinely empty.
+  Giving those targets their own authentication is a feature, not part of this phase.
+  (Only WinForms and WPF emit `Auth.Session`; Blazor carries the signed-in user via a
+  cascading `AuthenticationState` instead — the mechanism differs, but all three have one.)
 - `novalidation` no longer means "no validation code at all" — the Security
   stage survives it. The manual and `docs/commands.md` both need this, and
   chapter 18's appendix is generated from `CommandDictionary`, so both
