@@ -12,9 +12,11 @@ namespace CodeGenerator.Tests.App;
 /// return value.
 /// </summary>
 /// <remarks>
-/// Both tests here are regression PINS, not red-then-green tests. Neither behaviour is new —
-/// they exist so that a later edit which changes either one has to change a test that says why
-/// it was that way.
+/// The two scaffold tests and the two front-end tests here are regression PINS, not
+/// red-then-green tests: none of the four behaviours is new, and they exist so that a later edit
+/// which changes one has to change a test that says why it was that way. Each was confirmed to
+/// bite by mutating the template it reads. <see cref="AThrowingAssertionStillLeavesNoWorkspaceBehind"/>
+/// is the exception — it covers a real bug this file itself had.
 /// </remarks>
 [TestClass]
 public class PipelineEndToEndTests
@@ -24,21 +26,15 @@ public class PipelineEndToEndTests
     {
         // The mitigation for "seven stages is more machinery than a three-entity CRUD app
         // needs", measured on a real scaffold rather than on one template's output.
-        var (workspace, folder) = Scaffold();
-
-        try
+        InAScaffold((_, project) =>
         {
             var validator = File.ReadAllText(
-                Path.Combine(folder, "Validation", "CustomerValidator.Generated.cs"));
+                Path.Combine(project, "Validation", "CustomerValidator.Generated.cs"));
 
             Assert.DoesNotContain("private static void Workflow(", validator);
             Assert.DoesNotContain("private static void Transaction(", validator);
             StringAssert.Contains(validator, "private static void Security(");
-        }
-        finally
-        {
-            Directory.Delete(workspace, recursive: true);
-        }
+        });
     }
 
     [TestMethod]
@@ -46,19 +42,44 @@ public class PipelineEndToEndTests
     {
         // The limit this phase cannot lift, pinned so nobody later "fixes" CurrentRole into
         // something that names a Session the console target never emits.
-        var (workspace, folder) = Scaffold();
-
-        try
+        InAScaffold((_, project) =>
         {
-            var repository = File.ReadAllText(Path.Combine(folder, "Data", "Repository.cs"));
+            var repository = File.ReadAllText(Path.Combine(project, "Data", "Repository.cs"));
 
             StringAssert.Contains(repository, "private static string? CurrentRole() => null;");
             Assert.DoesNotContain("Session.Current", repository);
-        }
-        finally
+        });
+    }
+
+    /// <summary>
+    /// The temp workspace goes even when the scaffold, or an assertion over it, throws.
+    /// </summary>
+    /// <remarks>
+    /// This file's first version returned the two paths to the caller and left the caller to
+    /// delete them in a <c>finally</c> — so the <c>Assert.IsTrue(result.Success)</c> guard threw
+    /// BEFORE any <c>finally</c> existed, and a scaffold that failed leaked its directory every
+    /// time. That is the leak <c>InAScaffold</c>'s own <c>finally</c> now closes, and this is what
+    /// holds it closed: nothing about a passing run can tell you whether the failing path cleans
+    /// up, so the failing path is what gets asserted.
+    /// <para>
+    /// The exact workspace is checked rather than counting <c>%TEMP%</c>: this assembly runs
+    /// method-level parallel, and <c>GeneratedProjectBuildTests</c> is making and removing temp
+    /// directories of its own at the same time.
+    /// </para>
+    /// </remarks>
+    [TestMethod]
+    public void AThrowingAssertionStillLeavesNoWorkspaceBehind()
+    {
+        string? leaked = null;
+
+        Assert.ThrowsExactly<AssertFailedException>(() => InAScaffold((workspace, _) =>
         {
-            Directory.Delete(workspace, recursive: true);
-        }
+            leaked = workspace;
+            Assert.Fail("deliberate, to prove the workspace is removed regardless");
+        }));
+
+        Assert.IsNotNull(leaked, "the scaffold should have reached the assertion");
+        Assert.IsFalse(Directory.Exists(leaked), "the temp workspace leaked: " + leaked);
     }
 
     /// <summary>
@@ -122,9 +143,17 @@ public class PipelineEndToEndTests
             "a missing record must be answered before a refusal");
     }
 
-    /// <summary>The temp workspace as well as the project inside it, so a run leaves nothing
-    /// behind in <c>%TEMP%</c>.</summary>
-    private static (string Workspace, string Project) Scaffold()
+    /// <summary>
+    /// Scaffolds the two-entity console app into a fresh temp workspace, hands
+    /// <paramref name="assert"/> the workspace and the project inside it, and deletes the
+    /// workspace afterwards whatever happened.
+    /// </summary>
+    /// <remarks>
+    /// The scaffold call, the success guard and the caller's assertions are all inside the one
+    /// <c>try</c>, which is the whole point: a guard that throws outside the <c>finally</c> is how
+    /// the first version of this file leaked a directory per failed run.
+    /// </remarks>
+    private static void InAScaffold(Action<string, string> assert)
     {
         var model = new CandidateDomainModel();
         model.Entities.Add(new CandidateEntity
@@ -143,11 +172,18 @@ public class PipelineEndToEndTests
         var workspace = Path.Combine(Path.GetTempPath(), "gen_" + Path.GetRandomFileName());
         Directory.CreateDirectory(workspace);
 
-        var result = new AppScaffolder().Scaffold(
-            ScaffoldRequest.For(model, "Shop", workspace, target));
+        try
+        {
+            var result = new AppScaffolder().Scaffold(
+                ScaffoldRequest.For(model, "Shop", workspace, target));
 
-        Assert.IsTrue(result.Success, "scaffold failed: " + result.Message);
+            Assert.IsTrue(result.Success, "scaffold failed: " + result.Message);
 
-        return (workspace, result.ProjectPath);
+            assert(workspace, result.ProjectPath);
+        }
+        finally
+        {
+            Directory.Delete(workspace, recursive: true);
+        }
     }
 }
