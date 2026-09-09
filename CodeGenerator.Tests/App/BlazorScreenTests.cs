@@ -126,16 +126,21 @@ public class BlazorScreenTests
     }
 
     /// <summary>
-    /// The editor runs the generated validators.
+    /// The editor runs the generated validators, through the pipeline.
     /// </summary>
     /// <remarks>
     /// It writes through the store rather than through Repository&lt;T&gt;, so nothing else on this
-    /// path would run them — and the web would then accept records the API rejects.
+    /// path would run them — and the web would then accept records the API rejects. A context
+    /// rather than a bare record: <c>Validate(T item)</c> no longer exists, and the operation and
+    /// the acting user are what a Security stage reads.
     /// </remarks>
     [TestMethod]
     public void The_editor_validates_when_the_app_has_validators()
     {
-        Assert.Contains("ValidatorFactory.Create<TRecord>().Validate(_draft)", Source("RecordEditor.razor"));
+        var editor = Source("RecordEditor.razor");
+
+        Assert.Contains("ValidatorFactory.Create<TRecord>().Validate(context)", editor);
+        Assert.Contains("ValidationContext<TRecord>.For(", editor);
 
         // With validation off there is no Validation folder to resolve one from, so naming it would
         // not compile.

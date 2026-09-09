@@ -535,13 +535,15 @@ else
 
             @if (ScreenFields.InputType(field) == "checkbox")
             {
-                <input type="checkbox" class="form-check-input d-block" id="@field.Name"
+                <input type="checkbox" id="@field.Name"
+                       class="form-check-input d-block @CssFor(field)"
                        checked="@(field.GetValue(_draft) as bool? == true)"
                        @onchange="e => Set(field, e.Value?.ToString())" />
             }
             else
             {
-                <input type="@ScreenFields.InputType(field)" class="form-control" id="@field.Name"
+                <input type="@ScreenFields.InputType(field)" id="@field.Name"
+                       class="form-control @CssFor(field)"
                        value="@ScreenFields.Display(field.GetValue(_draft))"
                        @onchange="e => Set(field, e.Value?.ToString())" />
             }
@@ -618,6 +620,10 @@ else
     private bool _missing;
     private bool _loaded;
     private int? _loadedId;
+
+    /// <summary>The properties the last refused save named, so their inputs can be marked. Stays
+    /// empty in an app generated with no validators: nothing names a field there.</summary>
+    private readonly HashSet<string> _invalid = new(StringComparer.Ordinal);
 
     /// <summary>Whichever record the URL named, or null for a new one.</summary>
     [Parameter] public int? Id { get; set; }
@@ -722,6 +728,18 @@ else
     /// than swallowing it.</summary>
     private void Set(PropertyInfo field, string? text)
         => _status = ScreenFields.Assign(_draft, field, text) ?? string.Empty;
+
+    /// <summary>
+    /// Bootstrap's own marker for an input the pipeline refused, or nothing.
+    /// </summary>
+    /// <remarks>
+    /// Bootstrap's class rather than one of this application's: it arrives already styled with the
+    /// project template, and nothing here writes a stylesheet to add a rule to. Empty for every
+    /// field in an app generated with no validators, so the markup that reads it is the same
+    /// either way.
+    /// </remarks>
+    private string CssFor(PropertyInfo field)
+        => _invalid.Contains(field.Name) ? "is-invalid" : string.Empty;
 
     private void Save()
     {
@@ -931,15 +949,41 @@ else
     private static string ValidationUsing(string rootNamespace, bool validation)
         => validation ? $"\r\n@using {rootNamespace}.Validation" : string.Empty;
 
-    /// <summary>The validators, run by the editor because nothing else on this path would.</summary>
+    /// <summary>
+    /// The pipeline, run by the editor because nothing else on this path would.
+    /// </summary>
+    /// <remarks>
+    /// Insert or Update from <c>IsNew</c>, which is what the save below already branches on and
+    /// what the draft's own Id says: a new record has none until <c>SetId</c> stamps it. The
+    /// default matrix treats the two identically, so nothing observable turns on the choice today.
+    /// <para>
+    /// The failing properties are kept, not just the first sentence: <c>CssFor</c> marks each
+    /// input the outcome named, and the status line still says what was wrong first.
+    /// </para>
+    /// </remarks>
     private static string ValidateCall(bool validation)
         => validation
             ? """
-                      var errors = ValidatorFactory.Create<TRecord>().Validate(_draft);
+                      _invalid.Clear();
 
-                      if (errors.Count > 0)
+                      var context = ValidationContext<TRecord>.For(
+                          _draft,
+                          IsNew ? ValidationOperation.Insert : ValidationOperation.Update,
+                          new StoreEntityLookup());
+
+                      var outcome = ValidatorFactory.Create<TRecord>().Validate(context);
+
+                      if (!outcome.IsValid)
                       {
-                          _status = $"Cannot save: {errors[0]}";
+                          // A whole-record error carries no property -- there is no input to mark,
+                          // and the status line below is where it is shown.
+                          foreach (var error in outcome.Errors)
+                          {
+                              if (error.Property is { } property)
+                                  _invalid.Add(property);
+                          }
+
+                          _status = $"Cannot save: {outcome.Messages[0]}";
                           return;
                       }
 

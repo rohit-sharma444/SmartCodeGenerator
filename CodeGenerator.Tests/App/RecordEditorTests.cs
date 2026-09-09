@@ -115,22 +115,48 @@ public class Book
     /// The editor an app generated with validation on gets, over a validator that rejects a book
     /// with no title.
     /// </summary>
-    private static Assembly EmitValidating() => Emit(validation: true);
+    /// <remarks>
+    /// The matrix travels with it because <see cref="ValidatorStub"/> deliberately does not declare
+    /// the context and outcome types itself — see its own remarks.
+    /// </remarks>
+    internal static Assembly EmitValidating()
+        => Emit(validation: true, EmittedSource.PermissionMatrix());
 
-    /// <summary>The validation seam the generated app really has: an IValidator&lt;T&gt; resolved
-    /// by a ValidatorFactory, degrading to no rules for an unmapped type.</summary>
-    internal const string ValidatorStub = """
-using System;
-using System.Collections.Generic;
+    /// <summary>
+    /// The validation seam the generated app really has, on the pipeline: the emitted
+    /// <c>IValidator&lt;T&gt;</c>, a <c>ValidatorFactory</c> that resolves one from a type and
+    /// degrades to no rules for an unmapped one, and a Book validator that refuses a book with no
+    /// title — ATTRIBUTED to Title, which is what the editor now keeps against the field.
+    /// </summary>
+    /// <remarks>
+    /// The interface is the real template rather than a hand-written copy of it: a fixture
+    /// interface can agree with these tests while disagreeing with the one a generated app
+    /// compiles against, which is exactly how the editor's old call site stayed green here while
+    /// being uncompilable in every real generated app.
+    /// <para>
+    /// The context, outcome, error and lookup types are NOT declared here. They arrive with
+    /// <see cref="EmittedSource.PermissionMatrix"/>, which every fixture built on this one already
+    /// supplies — a type may be declared only once in a compilation.
+    /// </para>
+    /// </remarks>
+    internal static string ValidatorStub
+        => ValidatorTemplate.ValidatorInterface("Acme")
+           + Environment.NewLine
+           + """
+public sealed class StoreEntityLookup : IEntityLookup
+{
+    public bool Exists<TEntity>(int id) where TEntity : class, new() => true;
 
-public interface IValidator<T> { IReadOnlyList<string> Validate(T item); }
+    public int CountReferencing<TEntity>(string foreignKeyProperty, int id)
+        where TEntity : class, new() => 0;
+}
 
 public sealed class BookValidator : IValidator<Book>
 {
-    public IReadOnlyList<string> Validate(Book item)
-        => string.IsNullOrWhiteSpace(item.Title)
-            ? new[] { "Title is required." }
-            : Array.Empty<string>();
+    public ValidationOutcome Validate(ValidationContext<Book> context)
+        => string.IsNullOrWhiteSpace(context.Item.Title)
+            ? new ValidationOutcome(new[] { new ValidationError("Title", "Title is required.") })
+            : ValidationOutcome.Valid;
 }
 
 public static class ValidatorFactory
@@ -146,7 +172,7 @@ public static class ValidatorFactory
 
 internal sealed class NullValidator<T> : IValidator<T>
 {
-    public IReadOnlyList<string> Validate(T item) => Array.Empty<string>();
+    public ValidationOutcome Validate(ValidationContext<T> context) => ValidationOutcome.Valid;
 }
 """;
 
