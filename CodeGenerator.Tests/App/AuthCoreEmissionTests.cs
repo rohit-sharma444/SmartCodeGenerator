@@ -143,6 +143,11 @@ public class AuthCoreEmissionTests
             ("PasswordHasher.cs", Read("Auth", "PasswordHasher.cs")),
             ("AuthService.cs", Read("Auth", "AuthService.cs")),
             ("UserSeed.cs", Read("Auth", "UserSeed.cs")),
+            // The desktop store and repository read the acting user from Session, so a WPF build
+            // now names it from Data/ — see ITargetScaffolder.HasDesktopSession. Session.cs is
+            // emitted beside the view models rather than by AuthCoreFiles, which is why it was
+            // not already here.
+            ("Session.cs", Read("Auth", "Session.cs")),
             ("IStore.cs", Read("Data", "IStore.cs")),
             ("JsonStore.cs", Read("Data", "JsonStore.cs")),
             ("StoreFactory.cs", Read("Data", "StoreFactory.cs")),

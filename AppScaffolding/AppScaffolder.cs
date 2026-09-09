@@ -295,6 +295,13 @@ public sealed class AppScaffolder
         var plan = ScreenPlan.For(model, request.Customization, target);
 
         var auth = plan.Login;
+
+        // Narrower than `auth`, and the two must not be confused: Session is a desktop-only static
+        // that DesktopViewModelFiles alone emits, so a Blazor app has a login and no Session at
+        // all. Repository and the two stores read the acting user from it, and naming it in a
+        // Blazor app would emit code that cannot compile.
+        var sessionAuth = auth && target.HasDesktopSession;
+
         var classes = plan.Classes;
         var classNames = plan.ClassNames;
         var roles = plan.Roles;
@@ -392,7 +399,7 @@ public sealed class AppScaffolder
             (dataFolder, "IStore.cs", StoreSeamTemplate.Source(rootNamespace)),
             (dataFolder, "StoreFactory.cs", StoreFactoryTemplate.Source(rootNamespace, persistence)),
             (dataFolder, "Repository.cs",
-                RepositoryTemplate.Base(rootNamespace, validation, logging)),
+                RepositoryTemplate.Base(rootNamespace, validation, logging, sessionAuth)),
         };
 
         if (logging)
@@ -472,14 +479,15 @@ public sealed class AppScaffolder
                 ? entityNames.Append(AuthCoreFiles.EntityName).ToList()
                 : entityNames;
 
-            files.Add((dataFolder, "EfStore.cs", EfStoreTemplate.Source(rootNamespace)));
+            files.Add((dataFolder, "EfStore.cs", EfStoreTemplate.Source(rootNamespace, sessionAuth)));
             files.Add((dataFolder, "AppDbContext.cs",
                 DbContextTemplate.Source(
                     projectName, contextEntities, EnvVarName(projectName), rootNamespace)));
         }
         else
         {
-            files.Add((dataFolder, "JsonStore.cs", JsonStoreTemplate.Source($"{rootNamespace}.Data")));
+            files.Add((dataFolder, "JsonStore.cs",
+                JsonStoreTemplate.Source($"{rootNamespace}.Data", sessionAuth)));
         }
 
         foreach (var name in entityNames)

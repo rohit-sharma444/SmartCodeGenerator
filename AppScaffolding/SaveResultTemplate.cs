@@ -22,7 +22,7 @@ public sealed class SaveResult<T>
     /// <summary>True when the record validated and was persisted.</summary>
     public bool Success { get; init; }
 
-    /// <summary>True when no record with this Id exists. Only ever set by Update.</summary>
+    /// <summary>True when no record with this Id exists. Set by Update and by Delete.</summary>
     public bool NotFound { get; init; }
 
     /// <summary>The persisted record, or null when the write did not happen.</summary>

@@ -16,6 +16,9 @@ public sealed class WinFormsTarget : ITargetScaffolder
     public string Description => "a runnable Windows Forms CRUD app";
     public bool HasScreens => true;
 
+    /// <summary>One of the two targets DesktopViewModelFiles emits Session.cs for.</summary>
+    public bool HasDesktopSession => true;
+
     public DotNetProjectType ProjectType => DotNetProjectType.WinForms;
     public string FolderSuffix => ".WinForms";
 

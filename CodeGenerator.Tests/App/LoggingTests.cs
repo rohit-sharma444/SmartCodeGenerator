@@ -54,14 +54,17 @@ public class LoggingTests
     }
 
     /// <summary>Delete still answers whether it deleted anything: the logging variant holds the
-    /// save result in a local rather than returning it straight out, and must not lose it.</summary>
+    /// save result in a local rather than returning it straight out, and must not lose it — nor
+    /// the store's own refusal, which is the only thing that can say why a save did not
+    /// happen.</summary>
     [TestMethod]
     public void A_logging_delete_still_returns_whether_it_saved()
     {
         var source = RepositoryTemplate.Base("Acme", validation: true, logging: true);
 
         StringAssert.Contains(source, "var saved = _store.SaveAll(all);");
-        StringAssert.Contains(source, "return saved.Success;");
+        StringAssert.Contains(source, "return saved.Success");
+        StringAssert.Contains(source, "new SaveResult<T> { Success = false, Errors = new[] { saved.Refusal");
     }
 
     /// <summary>

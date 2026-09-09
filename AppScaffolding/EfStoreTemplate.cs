@@ -19,8 +19,10 @@ public static class EfStoreTemplate
 
             """
             : """
-                // No login in this app, so there is nobody to attribute a write to. Not a
-                // stub to fill in later: a target without screens emits no auth core.
+                // No desktop session to read a user from, so there is nobody to attribute a
+                // write to. Not a stub to fill in later: a target without screens emits no auth
+                // core at all, and a Blazor app has one but reads its user from the
+                // authentication state rather than a static Session.
                 private static string? CurrentRole() => null;
 
             """;

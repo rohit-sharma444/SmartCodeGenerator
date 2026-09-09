@@ -44,7 +44,8 @@ public class RepositoryRoundTripTests
         var updated = repository.Update(created.Item!);
         Assert.True(updated.Success, string.Join("; ", updated.Errors));
 
-        Assert.True(repository.Delete(id));
+        var deleted = repository.Delete(id);
+        Assert.True(deleted.Success, string.Join("; ", deleted.Errors));
         Assert.Null(repository.GetById(id));
     }
 

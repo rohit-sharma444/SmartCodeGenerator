@@ -79,8 +79,16 @@ static void MapEntity<T>(WebApplication app, string route, Repository<T> reposit
             : Results.ValidationProblem(result.AsDictionary());
     });
 
+    // Three outcomes, not two: an unknown Id is a 404, and a delete the validation pipeline
+    // refused is a 400 carrying its reason, exactly as a rejected create or update is.
     app.MapDelete($"/{route}/{{id:int}}", (int id) =>
-        repository.Delete(id) ? Results.NoContent() : Results.NotFound());
+    {
+        var result = repository.Delete(id);
+
+        return result.Success ? Results.NoContent()
+            : result.NotFound ? Results.NotFound()
+            : Results.ValidationProblem(result.AsDictionary());
+    });
 }
 """;
     }
