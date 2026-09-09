@@ -45,6 +45,14 @@ public class FieldHighlightTests
         // save attempt so a fixed field stops being marked.
         StringAssert.Contains(source, "_invalid.Add(property)");
         StringAssert.Contains(source, "_invalid.Clear();");
+
+        // ...and cleared again BEFORE Save, which is Load: this component is reused when the URL
+        // moves from one record to another, so a mark left from the record before would sit on a
+        // field of this one with nothing on screen saying why.
+        Assert.IsLessThan(
+            source.IndexOf("private void Save()", StringComparison.Ordinal),
+            source.IndexOf("_invalid.Clear();", StringComparison.Ordinal),
+            "the marks are not cleared when the editor is reused for another record");
     }
 
     /// <summary>

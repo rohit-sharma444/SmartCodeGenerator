@@ -698,6 +698,11 @@ else
         _missing = false;
         _status = string.Empty;
 
+        // Beside the status, and for the same reason: this component is REUSED when the URL moves
+        // from one record to another, so a mark left over from the record before would sit on a
+        // field of this one with nothing on screen saying why.
+        _invalid.Clear();
+
         var stored = Id is { } id
             ? _store.GetAll().FirstOrDefault(record => ScreenFields.IdOf(record) == id)
             : null;
