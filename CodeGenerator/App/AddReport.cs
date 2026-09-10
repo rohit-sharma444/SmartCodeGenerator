@@ -25,6 +25,18 @@ internal static class AddReport
         lines.Add(string.Empty);
         lines.Add($"  {result.UntouchedFiles} file(s) untouched.");
 
+        // Last, and after the count, because it is the one thing here that needs doing rather
+        // than reading: the regenerated half of these validators declares a hook the kept
+        // .Custom.cs half does not, and the project will not compile until they are changed.
+        if (result.OutdatedValidatorStubs.Count > 0)
+        {
+            lines.Add(string.Empty);
+            lines.Add("  Written before the validation pipeline, and kept:");
+
+            foreach (var stub in result.OutdatedValidatorStubs)
+                lines.Add("    " + stub);
+        }
+
         return lines;
     }
 }

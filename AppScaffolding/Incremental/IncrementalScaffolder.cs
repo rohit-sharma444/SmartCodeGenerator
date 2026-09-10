@@ -5,7 +5,20 @@ public sealed record IncrementalResult(
     bool Success,
     IReadOnlyList<string> Written,
     int UntouchedFiles,
-    string Message);
+    string Message)
+{
+    /// <summary>
+    /// The write-once validator stubs that still declare the hand-written hook in the shape
+    /// emitted before the validation pipeline, one sentence each.
+    /// </summary>
+    /// <remarks>
+    /// Its own member rather than more text inside <see cref="Message"/>: an add's message is not
+    /// printed at all on the success path (see <c>AddReport</c>), and this has to be read. Set
+    /// through an initializer so the four positional arguments every existing caller passes are
+    /// untouched.
+    /// </remarks>
+    public IReadOnlyList<string> OutdatedValidatorStubs { get; init; } = [];
+}
 
 /// <summary>
 /// Writes only what an application is missing.
@@ -60,13 +73,17 @@ public static class IncrementalScaffolder
 
             var source = GeneratedProjectPath.Folder(staging, request.AppName, request.Target);
 
-            var written = Copy(source, destination);
+            var outdatedStubs = new List<string>();
+            var written = Copy(source, destination, outdatedStubs);
 
             return new IncrementalResult(
                 true,
                 written,
                 Math.Max(0, before - written.Count),
-                $"Added {newClassNames.Count} class(es).");
+                $"Added {newClassNames.Count} class(es).")
+            {
+                OutdatedValidatorStubs = outdatedStubs,
+            };
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -79,13 +96,22 @@ public static class IncrementalScaffolder
     }
 
     /// <summary>
-    /// Copies the files that belong to this add, and returns what was written.
+    /// Copies the files that belong to this add, returns what was written, and collects a
+    /// sentence into <paramref name="outdatedStubs"/> for every write-once validator stub kept
+    /// whose hand-written hook predates the validation pipeline.
     /// </summary>
     /// <remarks>
     /// <c>obj</c> and <c>bin</c> are skipped: they are build output, they are enormous, and
     /// copying them over a folder that has already been built is meaningless.
+    /// <para>
+    /// The stub check sits on the SKIPPED path on purpose. A kept stub is exactly the file that
+    /// does not get the new hook, while the <c>.Generated.cs</c> beside it differs and so is
+    /// copied — which is what leaves the pair uncompilable. Reported, never rewritten: see
+    /// <c>ValidatorTemplate.HasOutdatedCustomHook</c> for why a rewrite is the worse outcome.
+    /// </para>
     /// </remarks>
-    private static List<string> Copy(string source, string destination)
+    private static List<string> Copy(
+        string source, string destination, List<string> outdatedStubs)
     {
         var written = new List<string>();
 
@@ -100,7 +126,17 @@ public static class IncrementalScaffolder
             var existing = File.Exists(target) ? File.ReadAllText(target) : null;
 
             if (!IncrementalFiles.ShouldCopy(relative, File.ReadAllText(file), existing))
+            {
+                if (existing is not null
+                    && IncrementalFiles.IsWriteOnce(relative)
+                    && ValidatorTemplate.HasOutdatedCustomHook(existing))
+                {
+                    outdatedStubs.Add(ValidatorTemplate.OutdatedCustomHookReport(
+                        relative, ModelNameOf(relative)));
+                }
+
                 continue;
+            }
 
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
             File.Copy(file, target, overwrite: true);
@@ -109,6 +145,16 @@ public static class IncrementalScaffolder
         }
 
         return written;
+    }
+
+    /// <summary>The model a <c>&lt;Model&gt;Validator.Custom.cs</c> belongs to, so the reported
+    /// replacement line names the real type rather than a placeholder.</summary>
+    private static string ModelNameOf(string relativePath)
+    {
+        var name = Path.GetFileName(relativePath);
+        var validator = name.IndexOf("Validator.", StringComparison.OrdinalIgnoreCase);
+
+        return validator > 0 ? name[..validator] : "<Model>";
     }
 
     private static bool IsBuildOutput(string relativePath)

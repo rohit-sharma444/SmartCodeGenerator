@@ -573,6 +573,12 @@ public sealed class AppScaffolder
         // and app-rooted usings repointed on every run, the same as the app csproj, the test
         // csproj and (for WPF) App.xaml/App.xaml.cs -- otherwise a re-scaffold under a changed
         // prefix leaves it importing a namespace no generated file declares any more.
+        //
+        // The same write-once rule is why an app generated before the validation pipeline needs
+        // TELLING: its stub keeps a hook the regenerated half no longer declares, and the pair
+        // does not compile. Reported, never rewritten -- see ValidatorTemplate.HasOutdatedCustomHook.
+        var outdatedStubs = new List<string>();
+
         foreach (var definition in validation ? classes : Array.Empty<ClassDefinition>())
         {
             var fileName = $"{definition.Name}Validator.Custom.cs";
@@ -581,6 +587,11 @@ public sealed class AppScaffolder
             if (File.Exists(customPath))
             {
                 ValidatorTemplate.ReconcileCustomStubNamespace(customPath, rootNamespace);
+
+                if (ValidatorTemplate.HasOutdatedCustomHookAt(customPath))
+                    outdatedStubs.Add(ValidatorTemplate.OutdatedCustomHookReport(
+                        $"Validation/{fileName}", definition.Name));
+
                 continue;
             }
 
@@ -607,14 +618,25 @@ public sealed class AppScaffolder
 
         var renameNote = renamed.Count == 0 ? string.Empty : " " + string.Join("; ", renamed) + ".";
 
-        var message = allWritten
+        // Appended to whichever message was chosen, and empty in every ordinary run: an app this
+        // version of the tool generated has no outdated stub, so no existing message moves.
+        var stubNote = outdatedStubs.Count == 0
+            ? string.Empty
+            : " " + string.Join("; ", outdatedStubs)
+                  + ". These files are never overwritten, so the app will not compile until each "
+                  + "is changed by hand.";
+
+        var message = (allWritten
             ? $"Generated {classes.Count} class(es) + {target.Description}.{renameNote}"
             : $"Generated {written.Count} of {expected} file(s); " +
-              "some files could not be written.";
+              "some files could not be written.") + stubNote;
 
         return new ScaffoldResult(
             allWritten, outputFolder, written, message, testProjectPath,
-            ScreenSummary.Describe(roles));
+            ScreenSummary.Describe(roles))
+        {
+            OutdatedValidatorStubs = outdatedStubs,
+        };
     }
 
     /// <summary>

@@ -110,6 +110,12 @@ internal static class GenerateStep
         if (scaffold.TestProjectPath is not null)
             lines.Add($"Generated test project at {scaffold.TestProjectPath}");
 
+        // Before the next steps, because it is the reason the next step will fail: a .Custom.cs
+        // stub written before the validation pipeline is never overwritten, so it survives a
+        // regenerate declaring a hook the regenerated half no longer has.
+        foreach (var stub in scaffold.OutdatedValidatorStubs)
+            lines.Add(stub + ".");
+
         // Printed whether or not the build was green: a user whose app does not compile still
         // needs to know where the seed rows are and how to run it once it does.
         lines.AddRange(NextSteps.Lines(
