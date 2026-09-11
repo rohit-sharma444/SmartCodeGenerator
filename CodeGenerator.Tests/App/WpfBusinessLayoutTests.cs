@@ -79,6 +79,9 @@ public class WpfBusinessLayoutTests
     /// <summary>The editor's template, which holds nested DataTemplates of its own.</summary>
     private static string EditorTemplate() => TemplateSlice("EditorTemplate");
 
+    /// <summary>The transaction screen's template.</summary>
+    private static string TransactionTemplate() => TemplateSlice("TransactionTemplate");
+
     [TestMethod]
     public void The_registry_resolves_the_business_key()
     {
@@ -167,6 +170,12 @@ public class WpfBusinessLayoutTests
         StringAssert.Contains(xaml, "SelectedDate=\"{Binding To}\"");
         StringAssert.Contains(xaml, "ItemsSource=\"{Binding Totals}\"");
     }
+
+    /// <summary>The master and editor templates have always bound it. A refusal written into
+    /// Status by the delete handler is invisible on this screen until it does too.</summary>
+    [TestMethod]
+    public void The_transaction_template_shows_the_status_line()
+        => StringAssert.Contains(TransactionTemplate(), "{Binding Status}");
 
     /// <summary>The master mockup's shape: one screen holding the form and the list.</summary>
     [TestMethod]
