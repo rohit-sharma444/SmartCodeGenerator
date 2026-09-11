@@ -223,8 +223,11 @@ suite proves less here than anyone would like.
 ## Out of scope
 
 - **Bounding the unbounded read.** `SqlClientSchemaSource.cs:125` issues
-  `SELECT * FROM [schema].[table]` with no cap. It is filed as its own issue.
-  This branch depends on the rows being in memory and does not make that worse.
+  `SELECT * FROM [schema].[table]` with no cap — **issue #131**. It is not a
+  one-line `TOP`: a cap low enough to protect memory would turn every inferred
+  rule back into a sample-derived guess, which is what this phase exists to
+  prevent. This branch depends on the rows being in memory and does not make it
+  worse.
 - Composite unique keys and composite foreign keys, for the parent spec's
   reason: half of a composite is wrong rather than incomplete.
 - Inventing regexes from data.
