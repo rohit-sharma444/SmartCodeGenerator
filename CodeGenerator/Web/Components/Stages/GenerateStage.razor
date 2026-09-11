@@ -133,6 +133,13 @@ else
         if (app.Scaffold.TestProjectPath is not null)
             _report.Add($"Generated test project at {app.Scaffold.TestProjectPath}");
 
+        // Repeated on a reload for the reason it was said at all: the kept stub is still on
+        // disk and still unfixed, and the streamed build log that carried CS0759 went with
+        // the circuit that watched it. A rebuilt panel that omits this is the one panel
+        // whose user has nothing left to read the failure from.
+        foreach (var stub in app.Scaffold.OutdatedValidatorStubs)
+            _report.Add(stub + ".");
+
         // Written already, so the way on is the box's, exactly as it is after a fresh write.
         Navigation.Offer(Continue);
 
@@ -210,6 +217,15 @@ else
 
         if (scaffold.TestProjectPath is not null)
             _report.Add($"Generated test project at {scaffold.TestProjectPath}");
+
+        // Before the compiler starts, because it is the reason the compiler is about to
+        // fail: a .Custom.cs stub written before the validation pipeline is never
+        // overwritten, so it survives a regenerate declaring a hook the regenerated half no
+        // longer has. Said on the page and not only in the console sign-off, which arrives
+        // after the whole workflow has finished — by then the user has already watched
+        // CS0759 and CS8795 scroll past the build log with nothing naming the cause.
+        foreach (var stub in scaffold.OutdatedValidatorStubs)
+            _report.Add(stub + ".");
 
         StateHasChanged();
 

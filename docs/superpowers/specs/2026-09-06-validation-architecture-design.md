@@ -626,7 +626,10 @@ All deliberate, all visible in existing generated apps.
   `.Custom.cs` does not implement — CS0759 on one half, CS8795 on the other — and an UNTOUCHED
   empty stub breaks it exactly as an edited one does. The tool DETECTS this and REPORTS it,
   naming the file and the replacement line, on both paths and on all three surfaces
-  (`BuildAppCommand`, `AddReport`, the workflow page). It deliberately does NOT rewrite the file:
+  (`BuildAppCommand`, `AddReport`, and the workflow page — `GenerateStage` adds it to the
+  Generate panel's report before the compiler starts, and again when a reload rebuilds that
+  panel from the session, while `GenerateStep.OutcomeFor` repeats it in the console epilogue
+  the browser run ends with). It deliberately does NOT rewrite the file:
   changing the declaration would leave a hand-written body calling `errors.Add("a sentence")`
   failing CS1503 instead — a half-migrated file whose remaining error no longer names the
   thing that moved. Documented in the manual's *Regenerating over an existing project* and in

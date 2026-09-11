@@ -121,6 +121,36 @@ public class RunStageTests
         StringAssert.Contains(rendered.Markup, @"C:\ws\Shop");
     }
 
+    /// <summary>
+    /// The one line on that panel that needs doing rather than reading. A .Custom.cs stub
+    /// written before the validation pipeline is never overwritten, so a regenerate leaves it
+    /// declaring a hook the regenerated half no longer has and the pair fails CS0759/CS8795.
+    /// The panel says why; the reloaded panel has to say it again, because the streamed build
+    /// log that carried the error went with the circuit that watched it.
+    /// </summary>
+    [TestMethod]
+    public void The_generate_panel_says_which_validator_stub_will_stop_the_build()
+    {
+        using var context = new BunitContext();
+
+        var kept = Written with
+        {
+            OutdatedValidatorStubs =
+                ["Validation/BookValidator.Custom.cs declares ValidateCustom in the shape "
+                 + "emitted before the validation pipeline"],
+        };
+
+        var session = SessionOnTheRunStage(buildSucceeded: false, scaffold: kept);
+        session.GoTo(BuildStage.Generate);
+
+        var rendered = context.Render<GenerateStage>(p => p
+            .Add(c => c.Session, session)
+            .Add(c => c.Navigation, new StageNavigation())
+            .Add(c => c.OnAdvance, () => { }));
+
+        StringAssert.Contains(rendered.Markup, "BookValidator.Custom.cs");
+    }
+
     // The step the review panel offered outlives that panel, so a generate panel that did not
     // withdraw it would show "Generate →" and walk on to the run stage with nothing written.
     [TestMethod]
@@ -241,7 +271,8 @@ public class RunStageTests
             .Add(c => c.OnAdvance, () => { }));
     }
 
-    private static BuildSession SessionOnTheRunStage(bool buildSucceeded)
+    private static BuildSession SessionOnTheRunStage(
+        bool buildSucceeded, ScaffoldResult? scaffold = null)
     {
         var session = new BuildSession("a shop", Path.GetTempPath(), AppCustomization.Default);
 
@@ -254,7 +285,8 @@ public class RunStageTests
         session.SetModel(new CandidateDomainModel());
         session.Advance();   // review
         session.Advance();   // generate
-        session.SetGenerated(new GeneratedApp(Written, "Build succeeded.", buildSucceeded));
+        session.SetGenerated(
+            new GeneratedApp(scaffold ?? Written, "Build succeeded.", buildSucceeded));
         session.Advance();   // run
 
         return session;
