@@ -295,6 +295,13 @@ public sealed class AppScaffolder
         var plan = ScreenPlan.For(model, request.Customization, target);
 
         var auth = plan.Login;
+
+        // Narrower than `auth`, and the two must not be confused: Session is a desktop-only static
+        // that DesktopViewModelFiles alone emits, so a Blazor app has a login and no Session at
+        // all. Repository and the two stores read the acting user from it, and naming it in a
+        // Blazor app would emit code that cannot compile.
+        var sessionAuth = auth && target.HasDesktopSession;
+
         var classes = plan.Classes;
         var classNames = plan.ClassNames;
         var roles = plan.Roles;
@@ -331,7 +338,14 @@ public sealed class AppScaffolder
         // Not for the Web API: the ASP.NET Core framework reference already carries these
         // assemblies, and NuGet reports a reference to one of them as NU1510 — "likely
         // unnecessary" — on every build of the generated project.
-        if (request.Customization.Logging && target.ProjectType != DotNetProjectType.WebApi)
+        // Not for the worker either: Microsoft.Extensions.Hosting, which the worker project
+        // already references, brings all three in transitively at whatever version it
+        // resolves — and pinning LoggingTemplate's literal version alongside it is a
+        // downgrade the moment Hosting moves ahead of that literal, which fails restore
+        // with NU1605 under warnings-as-errors.
+        if (request.Customization.Logging
+            && target.ProjectType != DotNetProjectType.WebApi
+            && target.ProjectType != DotNetProjectType.WorkerService)
         {
             foreach (var (id, version) in LoggingTemplate.Packages)
                 InjectPackage(csprojPath, id, version);
@@ -392,7 +406,7 @@ public sealed class AppScaffolder
             (dataFolder, "IStore.cs", StoreSeamTemplate.Source(rootNamespace)),
             (dataFolder, "StoreFactory.cs", StoreFactoryTemplate.Source(rootNamespace, persistence)),
             (dataFolder, "Repository.cs",
-                RepositoryTemplate.Base(rootNamespace, validation, logging)),
+                RepositoryTemplate.Base(rootNamespace, validation, logging, sessionAuth)),
         };
 
         if (logging)
@@ -432,6 +446,10 @@ public sealed class AppScaffolder
         // console menu and the Web API's ValidationProblem are untouched by turning validation off.
         if (validation)
         {
+            files.Add((validationFolder, "ValidationContext.cs",
+                ValidationContextTemplate.Source(rootNamespace)));
+            files.Add((validationFolder, "ValidationPipeline.cs",
+                ValidationPipelineTemplate.Source(rootNamespace)));
             files.Add((validationFolder, "IValidator.cs",
                 ValidatorTemplate.ValidatorInterface(rootNamespace)));
             files.Add((validationFolder, "IEntityLookup.cs",
@@ -441,6 +459,23 @@ public sealed class AppScaffolder
             files.Add((validationFolder, "ValidatorFactory.cs",
                 ValidatorTemplate.Factory(rootNamespace, entityNames)));
         }
+        else
+        {
+            // Permissions.cs (added below, unconditionally) names ValidationOperation and
+            // IEntityLookup, so both have to survive novalidation even though nothing else in
+            // this branch does. Security sits outside the flag on purpose — see PermissionsTemplate.
+            files.Add((validationFolder, "ValidationContext.cs",
+                ValidationContextTemplate.Source(rootNamespace)));
+            files.Add((validationFolder, "IEntityLookup.cs",
+                ValidatorTemplate.EntityLookupInterface(rootNamespace)));
+        }
+
+        // Emitted whether or not `validation` is true: turning validation off must not turn
+        // permissions off. masterNames comes from the same role classification the review summary
+        // and the screens use, so a screen and its permission cannot disagree.
+        var masterNames = roles.Names(EntityRole.Master);
+        files.Add((validationFolder, "Permissions.cs",
+            PermissionsTemplate.Source(rootNamespace, masterNames)));
 
         // Persistence backend behind the seam.
         if (persistence == PersistenceKind.Sqlite)
@@ -451,14 +486,15 @@ public sealed class AppScaffolder
                 ? entityNames.Append(AuthCoreFiles.EntityName).ToList()
                 : entityNames;
 
-            files.Add((dataFolder, "EfStore.cs", EfStoreTemplate.Source(rootNamespace)));
+            files.Add((dataFolder, "EfStore.cs", EfStoreTemplate.Source(rootNamespace, sessionAuth)));
             files.Add((dataFolder, "AppDbContext.cs",
                 DbContextTemplate.Source(
                     projectName, contextEntities, EnvVarName(projectName), rootNamespace)));
         }
         else
         {
-            files.Add((dataFolder, "JsonStore.cs", JsonStoreTemplate.Source($"{rootNamespace}.Data")));
+            files.Add((dataFolder, "JsonStore.cs",
+                JsonStoreTemplate.Source($"{rootNamespace}.Data", sessionAuth)));
         }
 
         foreach (var name in entityNames)
@@ -544,6 +580,12 @@ public sealed class AppScaffolder
         // and app-rooted usings repointed on every run, the same as the app csproj, the test
         // csproj and (for WPF) App.xaml/App.xaml.cs -- otherwise a re-scaffold under a changed
         // prefix leaves it importing a namespace no generated file declares any more.
+        //
+        // The same write-once rule is why an app generated before the validation pipeline needs
+        // TELLING: its stub keeps a hook the regenerated half no longer declares, and the pair
+        // does not compile. Reported, never rewritten -- see ValidatorTemplate.HasOutdatedCustomHook.
+        var outdatedStubs = new List<string>();
+
         foreach (var definition in validation ? classes : Array.Empty<ClassDefinition>())
         {
             var fileName = $"{definition.Name}Validator.Custom.cs";
@@ -552,6 +594,11 @@ public sealed class AppScaffolder
             if (File.Exists(customPath))
             {
                 ValidatorTemplate.ReconcileCustomStubNamespace(customPath, rootNamespace);
+
+                if (ValidatorTemplate.HasOutdatedCustomHookAt(customPath))
+                    outdatedStubs.Add(ValidatorTemplate.OutdatedCustomHookReport(
+                        $"Validation/{fileName}", definition.Name));
+
                 continue;
             }
 
@@ -578,14 +625,25 @@ public sealed class AppScaffolder
 
         var renameNote = renamed.Count == 0 ? string.Empty : " " + string.Join("; ", renamed) + ".";
 
-        var message = allWritten
+        // Appended to whichever message was chosen, and empty in every ordinary run: an app this
+        // version of the tool generated has no outdated stub, so no existing message moves.
+        var stubNote = outdatedStubs.Count == 0
+            ? string.Empty
+            : " " + string.Join("; ", outdatedStubs)
+                  + ". These files are never overwritten, so the app will not compile until each "
+                  + "is changed by hand.";
+
+        var message = (allWritten
             ? $"Generated {classes.Count} class(es) + {target.Description}.{renameNote}"
             : $"Generated {written.Count} of {expected} file(s); " +
-              "some files could not be written.";
+              "some files could not be written.") + stubNote;
 
         return new ScaffoldResult(
             allWritten, outputFolder, written, message, testProjectPath,
-            ScreenSummary.Describe(roles));
+            ScreenSummary.Describe(roles))
+        {
+            OutdatedValidatorStubs = outdatedStubs,
+        };
     }
 
     /// <summary>

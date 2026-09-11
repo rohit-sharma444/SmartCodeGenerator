@@ -136,9 +136,11 @@ public sealed class UsersViewModel : ObservableObject, IEntityViewModel
 
     private void Save()
     {
-        Status = _store.SaveAll(Accounts.ToList())
+        var write = _store.SaveAll(Accounts.ToList());
+
+        Status = write.Success
             ? "Saved."
-            : "Could not save the accounts.";
+            : write.Refusal ?? "Could not save the accounts.";
     }
 
     /// <summary>

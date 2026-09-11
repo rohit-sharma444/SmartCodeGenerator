@@ -86,7 +86,7 @@ public class ValidatorScaffoldingTests
 
             // The foreign key reached the validator, so TargetsOf really was fed the mapped classes.
             var bookValidator = File.ReadAllText(Path.Combine(validation, "BookValidator.Generated.cs"));
-            StringAssert.Contains(bookValidator, "_lookup.Exists<Author>(item.AuthorId)");
+            StringAssert.Contains(bookValidator, "context.Lookup.Exists<Author>(item.AuthorId)");
         }
         finally
         {

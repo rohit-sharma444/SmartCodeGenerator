@@ -66,6 +66,37 @@ public class GenerateStepTests
     }
 
     /// <summary>
+    /// The sign-off the console prints after the browser is done has to carry the one thing
+    /// on it that needs doing rather than reading: an app generated before the validation
+    /// pipeline keeps a write-once .Custom.cs stub declaring a hook the regenerated half no
+    /// longer has, and the pair does not compile. Before the next steps, because it is the
+    /// reason the next step will fail.
+    /// </summary>
+    [TestMethod]
+    public void The_outcome_names_a_validator_stub_the_regenerate_could_not_replace()
+    {
+        var scaffold = new ScaffoldResult(
+            Success: true,
+            ProjectPath: @"D:\ws\LibrarySystem",
+            FilesWritten: [],
+            Message: string.Empty)
+        {
+            OutdatedValidatorStubs =
+                ["Validation/BookValidator.Custom.cs declares ValidateCustom in the shape "
+                 + "emitted before the validation pipeline"],
+        };
+
+        var outcome = GenerateStep.OutcomeFor(scaffold, new WpfTarget());
+
+        var lines = outcome.Lines.ToList();
+        var stub = lines.FindIndex(l => l.Contains("BookValidator.Custom.cs"));
+        var next = lines.FindIndex(l => l.Contains("Next steps:"));
+
+        Assert.IsGreaterThanOrEqualTo(0, stub, "the kept stub should be named");
+        Assert.IsLessThan(next, stub, "it should be read before the next steps it breaks");
+    }
+
+    /// <summary>
     /// The console path catches this exactly (BuildAppCommand: "Could not start `dotnet` —
     /// skipping the build check") and the design's error table promises it on the web too, where
     /// nothing caught it: ProcessRunner.RunStreaming documents that it throws Win32Exception when

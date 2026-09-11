@@ -25,7 +25,7 @@ public class RepositoryTemplateTests
         StringAssert.Contains(source, "public T? GetById(int id)");
         StringAssert.Contains(source, "public SaveResult<T> Create(T item)");
         StringAssert.Contains(source, "public SaveResult<T> Update(T item)");
-        StringAssert.Contains(source, "public bool Delete(int id)");
+        StringAssert.Contains(source, "public SaveResult<T> Delete(int id)");
     }
 
     [TestMethod]
@@ -49,13 +49,23 @@ public class RepositoryTemplateTests
     {
         // Scoped to each write's own body: _store.GetAll() also appears in GetAll and GetById,
         // which precede both writes, so comparing indexes across the whole file proves nothing.
-        foreach (var signature in new[] { "public SaveResult<T> Create(T item)", "public SaveResult<T> Update(T item)" })
+        //
+        // Reading the record under judgement is not "touching the store" in the sense that
+        // matters: Update and Delete both go through GetById first, precisely so the pipeline can
+        // see what is on disk. What must not happen before a stage has spoken is the WRITE, and
+        // every write in this file begins with `var all = _store.GetAll();`.
+        foreach (var signature in new[]
+                 {
+                     "public SaveResult<T> Create(T item)",
+                     "public SaveResult<T> Update(T item)",
+                     "public SaveResult<T> Delete(int id)",
+                 })
         {
             var start = RepositoryTemplate.Base("Acme").IndexOf(signature, StringComparison.Ordinal);
             Assert.IsGreaterThan(0, start, signature + " should be emitted");
 
             var body = RepositoryTemplate.Base("Acme")[start..];
-            var validate = body.IndexOf("_validator.Validate(item)", StringComparison.Ordinal);
+            var validate = body.IndexOf("_validator.Validate(new ValidationContext<T>(", StringComparison.Ordinal);
             var load = body.IndexOf("_store.GetAll()", StringComparison.Ordinal);
 
             Assert.IsGreaterThan(0, validate, signature + " should validate");

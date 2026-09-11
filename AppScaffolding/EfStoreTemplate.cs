@@ -3,15 +3,45 @@ namespace AppScaffolding;
 /// <summary>Emits <c>Data/EfStore.cs</c>: the EF Core + SQLite implementation of
 /// <see cref="IStore{T}"/>. Deliberately faithful to JsonStore's contract — client-assigned int
 /// Ids and whole-store SaveAll semantics — so Repository and SeedData need no behavioral change.</summary>
+/// <remarks>
+/// The permission guard this emits into <c>SaveAll</c> cannot refuse anything as the tool stands,
+/// and a reader should not assume otherwise: sqlite is refused for the WinForms and WPF targets,
+/// so <paramref name="auth"/> — <c>AppScaffolder</c>'s <c>sessionAuth</c>, which needs
+/// <c>HasDesktopSession</c> — is false for every EF build. The emitted <c>CurrentRole()</c> is
+/// therefore always the null-returning half, and a null role is allowed. The guard is emitted
+/// anyway so that a target which gains both a user and sqlite is already covered on this path.
+/// </remarks>
 public static class EfStoreTemplate
 {
-    /// <summary>Source of <c>Data/EfStore.cs</c> in <paramref name="rootNamespace"/>.Data.</summary>
-    public static string Source(string rootNamespace) => $$"""
+    /// <summary>Source of <c>Data/EfStore.cs</c> in <paramref name="rootNamespace"/>.Data. Unlike
+    /// <see cref="JsonStoreTemplate.Source"/>, this parameter already IS the root: EfStore lives
+    /// directly in <c>{root}.Data</c>, never behind a caller-supplied full namespace.</summary>
+    public static string Source(string rootNamespace, bool auth = false)
+    {
+        // Task 8 adds the same pair, plus CurrentUserId(), to Repository<T>. Duplicated rather
+        // than shared because the store and the repository are emitted into different folders and
+        // neither may depend on the other.
+        var currentUser = auth
+            ? $$"""
+                private static string? CurrentRole() => {{rootNamespace}}.Auth.Session.Current?.Role.ToString();
+
+            """
+            : """
+                // No desktop session to read a user from, so there is nobody to attribute a
+                // write to. Not a stub to fill in later: a target without screens emits no auth
+                // core at all, and a Blazor app has one but reads its user from the
+                // authentication state rather than a static Session.
+                private static string? CurrentRole() => null;
+
+            """;
+
+        return $$"""
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Microsoft.EntityFrameworkCore;
+using {{rootNamespace}}.Validation;
 
 namespace {{rootNamespace}}.Data;
 
@@ -27,9 +57,19 @@ public sealed class EfStore<T> : IStore<T> where T : class, new()
     }
 
     /// <summary>Overwrites the store with <paramref name="all"/> (clear then insert), matching
-    /// JsonStore.SaveAll. False if the write failed.</summary>
-    public bool SaveAll(List<T> all)
+    /// JsonStore.SaveAll.</summary>
+    /// <remarks>
+    /// The coarse enforcement point, and the only one no front end can go round. SaveAll is handed
+    /// a whole list, so it cannot tell an insert from a delete and can only ask whether this user
+    /// may write this type at all. The operation-aware checks live in Repository and at the
+    /// grids' delete buttons. Under the default matrix this refuses nothing except the app's own
+    /// User records.
+    /// </remarks>
+    public StoreWrite SaveAll(List<T> all)
     {
+        if (!Permissions.Allows(ValidationOperation.Update, typeof(T).Name, CurrentRole()))
+            return new StoreWrite(false, Permissions.Refusal(ValidationOperation.Update, typeof(T).Name));
+
         try
         {
             using var context = new AppDbContext();
@@ -37,11 +77,11 @@ public sealed class EfStore<T> : IStore<T> where T : class, new()
             set.RemoveRange(set.ToList());
             set.AddRange(all);
             context.SaveChanges();
-            return true;
+            return StoreWrite.Ok;
         }
         catch (DbUpdateException)
         {
-            return false;
+            return new StoreWrite(false, null);
         }
     }
 
@@ -66,6 +106,8 @@ public sealed class EfStore<T> : IStore<T> where T : class, new()
             ?? throw new InvalidOperationException(typeof(T).Name + " has no Id property.");
 
     private static int GetId(T item) => (int)(IdProperty.GetValue(item) ?? 0);
-}
+
+{{currentUser}}}
 """;
+    }
 }

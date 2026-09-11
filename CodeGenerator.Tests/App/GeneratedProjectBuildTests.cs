@@ -383,6 +383,46 @@ public class GeneratedProjectBuildTests
     }
 
     /// <summary>
+    /// Validation and logging are independent flags -- `novalidation logging` reaches Delete's
+    /// logging branch in <c>Repository.cs</c> with no <c>validateCall</c> above it, which is
+    /// exactly the combination that let a StoreWrite/bool typing bug through uncaught: every other
+    /// build test pairs logging with the DEFAULT (on) validation, whose own unrelated old-seam
+    /// errors would have masked a second defect in the same file. This is the one real build that
+    /// isolates the logging branch on its own.
+    /// </summary>
+    [TestMethod]
+    [TestCategory("Integration")]
+    public void ProjectWithLoggingAndNoValidation_Builds()
+    {
+        Assert.IsTrue(TargetScaffolders.TryResolve("console", out var target));
+
+        var workspace = Path.Combine(Path.GetTempPath(), "gen_" + Path.GetRandomFileName());
+        Directory.CreateDirectory(workspace);
+        try
+        {
+            var result = new AppScaffolder().Scaffold(
+                ScaffoldRequest.For(SampleModel(), "Sample", workspace, target)
+                with
+                {
+                    Customization = AppCustomization.Default
+                        with
+                        { Logging = true, Validation = false },
+                });
+
+            Assert.IsTrue(result.Success, "scaffold failed: " + result.Message);
+            Assert.IsTrue(File.Exists(Path.Combine(
+                result.ProjectPath, LoggingTemplate.FolderName, LoggingTemplate.FileName)));
+
+            var (exit, output) = RunDotNet($"build \"{result.ProjectPath}\" -c Release");
+            Assert.AreEqual(0, exit, $"dotnet build failed:\n{output}");
+        }
+        finally
+        {
+            TryDeleteDirectory(workspace);
+        }
+    }
+
+    /// <summary>
     /// An app generated without sample data builds. SeedData.EnsureSeeded() is called from four
     /// separate entry points, so every target is a row here: a missed call site is a CS0103 on a
     /// class the app no longer generates, and the console row's generated tests prove nothing left
@@ -440,10 +480,17 @@ public class GeneratedProjectBuildTests
     /// the console target proves Repository, the wpf target proves the view models, and the
     /// generated test project proves nothing left behind still names a validator.
     /// </summary>
+    /// <remarks>
+    /// The blazor row earns its place separately: <c>BlazorScreenTemplates</c> emits
+    /// <c>@using {root}.Validation</c> UNCONDITIONALLY in both grids, and Razor markup is
+    /// compiled by nothing short of a whole-app build — no unit test over the emitted string can
+    /// tell you whether that using resolves with the pipeline files absent.
+    /// </remarks>
     [TestMethod]
     [TestCategory("Integration")]
     [DataRow("console")]
     [DataRow("wpf")]
+    [DataRow("blazor")]
     public void ProjectWithoutValidation_BuildsAndItsTestsPass(string targetKey)
     {
         if (targetKey == "wpf" && !OperatingSystem.IsWindows())
@@ -463,15 +510,30 @@ public class GeneratedProjectBuildTests
                 });
 
             Assert.IsTrue(result.Success, "scaffold failed: " + result.Message);
-            Assert.IsFalse(
-                Directory.Exists(Path.Combine(result.ProjectPath, "Validation")),
-                "the Validation folder was generated anyway");
+
+            // The Validation folder is not gone: Security sits outside the novalidation flag
+            // (spec Decision 4), so turning validation off must not turn permissions off. It
+            // holds exactly Permissions.cs, ValidationContext.cs and IEntityLookup.cs — and
+            // nothing that only the validation pipeline needs. See NoValidationTests for the
+            // same assertion against a single-target scaffold.
+            var validationFolder = Path.Combine(result.ProjectPath, "Validation");
+            Assert.IsTrue(Directory.Exists(validationFolder), "the Validation folder was not generated");
+            Assert.IsTrue(File.Exists(Path.Combine(validationFolder, "Permissions.cs")));
+            Assert.IsTrue(File.Exists(Path.Combine(validationFolder, "ValidationContext.cs")));
+            Assert.IsTrue(File.Exists(Path.Combine(validationFolder, "IEntityLookup.cs")));
+            Assert.IsFalse(File.Exists(Path.Combine(validationFolder, "ValidatorFactory.cs")));
+            Assert.IsFalse(File.Exists(Path.Combine(validationFolder, "BookValidator.Generated.cs")));
+            Assert.IsFalse(File.Exists(Path.Combine(validationFolder, "BookValidator.Custom.cs")));
+            Assert.IsFalse(File.Exists(Path.Combine(validationFolder, "MemberValidator.Generated.cs")));
+            Assert.IsFalse(File.Exists(Path.Combine(validationFolder, "MemberValidator.Custom.cs")));
 
             var (exit, output) = RunDotNet($"build \"{result.ProjectPath}\" -c Release");
             Assert.AreEqual(0, exit, $"dotnet build failed for {targetKey}:\n{output}");
 
-            // The wpf target gets no test project of its own (its tests would need the desktop
-            // pack), so the console row is the one that proves the generated suite.
+            // Neither the wpf nor the blazor row gets a test project of its own, so the console
+            // row is the one that proves the generated suite. What the other two prove is that
+            // the app itself compiles with the pipeline files absent — which for blazor means
+            // its Razor markup, and nothing short of this build compiles that.
             if (targetKey != "console")
                 return;
 

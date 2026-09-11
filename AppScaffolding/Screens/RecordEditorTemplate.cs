@@ -41,15 +41,35 @@ public static class RecordEditorTemplate
 
         // Two blank lines before the closing delimiter, so the fragment ends with the blank line
         // that separates the guard from the body.
+        //
+        // Insert or Update from IsNew, which is what the save below already branches on and what
+        // the draft's own Id says: a new record has none until SetId stamps it further down. The
+        // default matrix treats the two identically, so nothing observable turns on the choice
+        // today -- it is said accurately because a stage that reads the operation is the point of
+        // carrying one.
         var validateCall = validation
             ? """
-                    // This path writes through _store, not Repository, so it has to run the generated
-                    // validator itself. Without this the business shell would accept records the
-                    // layout it replaced rejected, from the same model in the same application.
-                    var errors = _validator.Validate(Draft);
-                    if (errors.Count > 0)
+                    // This path writes through _store, not Repository, so it has to run the pipeline
+                    // itself. Without this the business shell would accept records the layout it
+                    // replaced rejected, from the same model in the same application.
+                    _errors.Clear();
+
+                    var context = ValidationContext<T>.For(
+                        Draft, IsNew ? ValidationOperation.Insert : ValidationOperation.Update,
+                        new StoreEntityLookup());
+
+                    var outcome = _validator.Validate(context);
+
+                    if (!outcome.IsValid)
                     {
-                        Status = $"Cannot save: {errors[0]}";
+                        // The first message per property, so a view can put each complaint beside
+                        // the field it belongs to. A whole-record error carries no property and
+                        // lands under the empty key -- the shape SaveResult.AsDictionary already
+                        // gives the Web API.
+                        foreach (var error in outcome.Errors)
+                            _errors.TryAdd(error.Property ?? string.Empty, error.Message);
+
+                        Status = $"Cannot save: {outcome.Messages[0]}";
                         return;
                     }
 
@@ -115,6 +135,11 @@ public sealed class RecordEditorViewModel<T> : ObservableObject, IRecordEditor w
     private string _openedAs;
     private string _status = string.Empty;
 {{validatorField}}
+    /// <summary>The first message the last refused save found against each property, and the
+    /// whole-record ones under the empty key. Stays empty in an app generated with no validators:
+    /// nothing populates it there.</summary>
+    private readonly Dictionary<string, string> _errors = new(StringComparer.Ordinal);
+
     /// <param name="lines">
     /// The line sets this record's editor shows, supplied by the screen that opened it. Null for a
     /// master, and for a transaction whose lines the classifier did not find.
@@ -245,6 +270,17 @@ public sealed class RecordEditorViewModel<T> : ObservableObject, IRecordEditor w
         private set => SetField(ref _status, value);
     }
 
+    /// <summary>
+    /// Why the last save was refused for one property, or empty when that field is not why.
+    /// </summary>
+    /// <remarks>
+    /// The status line above says the FIRST thing that was wrong, which on a form with several bad
+    /// fields is a sentence about one of them. This is the same refusal reachable by the name of
+    /// the field it belongs to, so a view can mark that field and show its message beside it.
+    /// </remarks>
+    public string ErrorFor(string property)
+        => _errors.TryGetValue(property, out var message) ? message : string.Empty;
+
     public ICommand SaveCommand { get; }
     public ICommand CancelCommand { get; }
 
@@ -272,9 +308,10 @@ public sealed class RecordEditorViewModel<T> : ObservableObject, IRecordEditor w
             all[index] = Draft;
         }
 
-        if (!_store.SaveAll(all))
+        var write = _store.SaveAll(all);
+        if (!write.Success)
         {
-            Status = "Could not save.";
+            Status = write.Refusal ?? "Could not save.";
             return;
         }
 

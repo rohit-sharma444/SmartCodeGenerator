@@ -143,8 +143,19 @@ public class AuthCoreEmissionTests
             ("PasswordHasher.cs", Read("Auth", "PasswordHasher.cs")),
             ("AuthService.cs", Read("Auth", "AuthService.cs")),
             ("UserSeed.cs", Read("Auth", "UserSeed.cs")),
+            // The desktop store and repository read the acting user from Session, so a WPF build
+            // now names it from Data/ — see ITargetScaffolder.HasDesktopSession. Session.cs is
+            // emitted beside the view models rather than by AuthCoreFiles, which is why it was
+            // not already here.
+            ("Session.cs", Read("Auth", "Session.cs")),
             ("IStore.cs", Read("Data", "IStore.cs")),
             ("JsonStore.cs", Read("Data", "JsonStore.cs")),
-            ("StoreFactory.cs", Read("Data", "StoreFactory.cs")));
+            ("StoreFactory.cs", Read("Data", "StoreFactory.cs")),
+            // JsonStore now asks Permissions before every write (Task 7's coarse store guard);
+            // read from the same real scaffold, not a fixture, for the same reason as everything
+            // else here.
+            ("ValidationContext.cs", Read("Validation", "ValidationContext.cs")),
+            ("IEntityLookup.cs", Read("Validation", "IEntityLookup.cs")),
+            ("Permissions.cs", Read("Validation", "Permissions.cs")));
     }
 }

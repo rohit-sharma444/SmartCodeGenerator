@@ -13,4 +13,19 @@ public sealed record ScaffoldResult(
     IReadOnlyList<string> FilesWritten,
     string Message,
     string? TestProjectPath = null,
-    string ScreenSummary = "");
+    string ScreenSummary = "")
+{
+    /// <summary>
+    /// The write-once validator stubs this run kept that still declare the hand-written hook in
+    /// the shape emitted before the validation pipeline, one sentence each.
+    /// </summary>
+    /// <remarks>
+    /// Also in <see cref="Message"/>, and here as well because <see cref="Message"/> is a
+    /// failure-only channel on the console: <c>BuildAppCommand</c> prints it under "Generation
+    /// failed" and nowhere else, so a note folded only into it would never be read on the run
+    /// that matters — a regenerate that SUCCEEDS and leaves a folder that cannot compile. An
+    /// init-only property rather than another positional parameter, so every existing
+    /// construction site is untouched.
+    /// </remarks>
+    public IReadOnlyList<string> OutdatedValidatorStubs { get; init; } = [];
+}

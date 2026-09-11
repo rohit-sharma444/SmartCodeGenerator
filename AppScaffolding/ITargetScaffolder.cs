@@ -59,6 +59,19 @@ public interface ITargetScaffolder
     /// </remarks>
     bool HasScreens => false;
 
+    /// <summary>
+    /// Whether this target emits the desktop <c>Session</c>: the static holding the signed-in user.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately narrower than <see cref="HasScreens"/>. <c>Session.cs</c> is emitted from
+    /// exactly one place — <c>DesktopViewModelFiles</c> — which only WinForms and WPF reach: a
+    /// Blazor app has screens AND a login, and reads its user from an authentication state rather
+    /// than from a process-wide static. <c>Repository&lt;T&gt;</c> and the two stores name this
+    /// type to find out who is acting, so gating them on the login alone would emit a Blazor app
+    /// that does not compile.
+    /// </remarks>
+    bool HasDesktopSession => false;
+
     /// <summary>Optional post-create reconciliation of the files `dotnet new` emitted.
     /// Runs only against a project the scaffolder just created. No-op by default.</summary>
     void FixupProject(string outputFolder) { }

@@ -71,8 +71,12 @@ public sealed class EntityMenu<T> where T : class, new()
         var result = _repository.Create(item);
         if (!result.Success)
         {
-            foreach (var error in result.Errors)
-                System.Console.WriteLine("  " + error);
+            foreach (var failure in result.Failures)
+            {
+                System.Console.WriteLine(failure.Property is null
+                    ? "  " + failure.Message
+                    : $"  {failure.Property}: {failure.Message}");
+            }
             System.Console.WriteLine("Not added.");
             return;
         }
@@ -83,10 +87,34 @@ public sealed class EntityMenu<T> where T : class, new()
     private void Delete()
     {
         System.Console.Write("Id to delete: ");
-        if (int.TryParse(System.Console.ReadLine(), out var id) && _repository.Delete(id))
+
+        if (!int.TryParse(System.Console.ReadLine(), out var id))
+        {
+            System.Console.WriteLine("That is not a number.");
+            return;
+        }
+
+        // A delete can be refused as well as missed, and the two read differently: "no such
+        // record" for an Id nobody has, the validation pipeline's own sentences for a rule or a
+        // permission that said no.
+        var result = _repository.Delete(id);
+
+        if (result.Success)
+        {
             System.Console.WriteLine("Deleted.");
-        else
-            System.Console.WriteLine("No such record.");
+            return;
+        }
+
+        if (result.NotFound)
+        {
+            System.Console.WriteLine("No record with that Id.");
+            return;
+        }
+
+        foreach (var error in result.Errors)
+            System.Console.WriteLine("  " + error);
+
+        System.Console.WriteLine("Not deleted.");
     }
 
     // A foreign key is an int <Nav>Id whose sibling <Nav> is one of the app's entity types.

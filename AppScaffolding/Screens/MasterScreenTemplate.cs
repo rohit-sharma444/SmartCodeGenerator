@@ -18,8 +18,35 @@
 /// </remarks>
 public static class MasterScreenTemplate
 {
-    /// <summary>Source of <c>ViewModels/MasterScreenViewModel.cs</c>.</summary>
-    public static string Source(string rootNamespace) => $$"""
+    /// <summary>
+    /// Source of <c>ViewModels/MasterScreenViewModel.cs</c>. With <paramref name="login"/> false
+    /// there is no <c>Session</c> to read the acting user from — it is emitted beside these view
+    /// models, under the same flag — so the delete guard asks the matrix about nobody.
+    /// </summary>
+    public static string Source(string rootNamespace, bool login = false)
+    {
+        // The same helper the two store templates and Repository<T> emit, for the same reason:
+        // each names Session from a different folder and none of them may depend on another. Read
+        // unqualified, unlike theirs, because this file already imports {root}.Auth.
+        //
+        // Raw string literals rather than "\n" concatenation: these are lines lifted out of the
+        // template below, and a raw literal carries the same line endings that template does.
+        var currentRole = login
+            ? """
+
+                private static string? CurrentRole() => Session.Current?.Role.ToString();
+
+            """
+            : """
+
+                // No desktop session to read a user from, so there is nobody to attribute the
+                // delete to. Not a stub to fill in later: an app generated without a login has
+                // nobody to refuse, which is exactly what the matrix reads a null role as.
+                private static string? CurrentRole() => null;
+
+            """;
+
+        return $$"""
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -30,6 +57,7 @@ using System.Windows.Input;
 using {{rootNamespace}}.Auth;
 using {{rootNamespace}}.Data;
 using {{rootNamespace}}.Screens;
+using {{rootNamespace}}.Validation;
 
 namespace {{rootNamespace}}.ViewModels;
 
@@ -334,8 +362,12 @@ public class MasterScreenViewModel<T> : ObservableObject, IEntityViewModel, IDir
         Selected = null;
     }
 
-    /// <summary>Deletes the selected row. Administrators only, which is one of the role's two
-    /// effects.</summary>
+    /// <summary>Deletes the selected row, if the permission matrix allows this role to.</summary>
+    /// <remarks>
+    /// Asked here rather than left to the store: SaveAll below is handed the whole list and
+    /// cannot tell a delete from any other edit, so the coarse guard it carries would judge this
+    /// as an Update. One matrix decides it, so the screen and the store cannot disagree.
+    /// </remarks>
     private void Delete()
     {
         if (Selected is not T record)
@@ -344,9 +376,9 @@ public class MasterScreenViewModel<T> : ObservableObject, IEntityViewModel, IDir
             return;
         }
 
-        if (!Session.IsAdmin)
+        if (!Permissions.Allows(ValidationOperation.Delete, typeof(T).Name, CurrentRole()))
         {
-            Status = "Only an administrator can delete a record.";
+            Status = Permissions.Refusal(ValidationOperation.Delete, typeof(T).Name);
             return;
         }
 
@@ -356,7 +388,8 @@ public class MasterScreenViewModel<T> : ObservableObject, IEntityViewModel, IDir
         if (index >= 0)
             all.RemoveAt(index);
 
-        Status = _store.SaveAll(all) ? "Deleted." : "Could not delete.";
+        var write = _store.SaveAll(all);
+        Status = write.Success ? "Deleted." : write.Refusal ?? "Could not delete.";
 
         Selected = null;
         Reload();
@@ -364,6 +397,7 @@ public class MasterScreenViewModel<T> : ObservableObject, IEntityViewModel, IDir
 
     private static int IdOf(T record)
         => (int)(typeof(T).GetProperty("Id")?.GetValue(record) ?? 0);
-}
+{{currentRole}}}
 """;
+    }
 }

@@ -217,8 +217,11 @@ public class Order
 
         var result = Compiler.CompileSources(new (string Path, string Code)[]
         {
+            ("Validation/ValidationContext.cs", ValidationContextTemplate.Source("Acme")),
             ("Validation/IValidator.cs", ValidatorTemplate.ValidatorInterface("Acme")),
             ("Validation/IEntityLookup.cs", ValidatorTemplate.EntityLookupInterface("Acme")),
+            ("Validation/ValidationPipeline.cs", ValidationPipelineTemplate.Source("Acme")),
+            ("Validation/Permissions.cs", PermissionsTemplate.Source("Acme", [])),
             ("Validation/StoreEntityLookup.cs", LookupStub),
             ("Models/Order.cs", models),
             ("Validation/OrderValidator.Generated.cs", ValidatorTemplate.Generated("Acme", definition, [])),
@@ -235,8 +238,19 @@ public class Order
         var validator = System.Activator.CreateInstance(validatorType)!;
         var validateMethod = validatorType.GetMethod("Validate")!;
 
-        return (entityType,
-            item => (IReadOnlyList<string>)validateMethod.Invoke(validator, [item])!);
+        var lookupType = assembly.GetType("Acme.Validation.StoreEntityLookup")!;
+        var contextType = assembly.GetType("Acme.Validation.ValidationContext`1")!
+            .MakeGenericType(entityType);
+        var forMethod = contextType.GetMethod("For")!;
+        var insert = assembly.GetType("Acme.Validation.ValidationOperation")!
+            .GetField("Insert")!.GetValue(null)!;
+
+        return (entityType, item =>
+        {
+            var context = forMethod.Invoke(null, [item, insert, System.Activator.CreateInstance(lookupType)]);
+            var outcome = validateMethod.Invoke(validator, [context])!;
+            return (IReadOnlyList<string>)outcome.GetType().GetProperty("Messages")!.GetValue(outcome)!;
+        });
     }
 
     /// <summary>Stands in for the real StoreEntityLookup, which would drag the whole store seam
@@ -249,6 +263,9 @@ namespace Acme.Validation;
 public sealed class StoreEntityLookup : IEntityLookup
 {
     public bool Exists<TEntity>(int id) where TEntity : class, new() => true;
+
+    public int CountReferencing<TEntity>(string foreignKeyProperty, int id)
+        where TEntity : class, new() => 0;
 }
 """;
 
@@ -301,8 +318,11 @@ public class Product
         // whole compilation, not per syntax tree, so this does not weaken CS0260 detection.
         var result = Compiler.CompileSources(new (string Path, string Code)[]
         {
+            ("Validation/ValidationContext.cs", ValidationContextTemplate.Source("Acme")),
             ("Validation/IValidator.cs", ValidatorTemplate.ValidatorInterface("Acme")),
             ("Validation/IEntityLookup.cs", ValidatorTemplate.EntityLookupInterface("Acme")),
+            ("Validation/ValidationPipeline.cs", ValidationPipelineTemplate.Source("Acme")),
+            ("Validation/Permissions.cs", PermissionsTemplate.Source("Acme", [])),
             ("Validation/StoreEntityLookup.cs", LookupStub),
             ("Models/Product.cs", models),
             ("Validation/ProductValidator.Generated.cs", ValidatorTemplate.Generated("Acme", definition, [])),

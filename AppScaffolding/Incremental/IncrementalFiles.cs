@@ -50,6 +50,9 @@ public static class IncrementalFiles
         return !string.Equals(stagedContent, existingContent, StringComparison.Ordinal);
     }
 
-    private static bool IsWriteOnce(string relativePath)
+    /// <summary>Whether this file is the half the user owns. Internal rather than private so
+    /// <see cref="IncrementalScaffolder"/> can ask the same question when it decides whether a
+    /// skipped file is a stub worth reporting on.</summary>
+    internal static bool IsWriteOnce(string relativePath)
         => relativePath.EndsWith(WriteOnceSuffix, StringComparison.OrdinalIgnoreCase);
 }

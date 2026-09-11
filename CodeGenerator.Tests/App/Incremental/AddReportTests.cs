@@ -50,6 +50,45 @@ public class AddReportTests
         Assert.DoesNotContain("untouched", text);
     }
 
+    /// <summary>
+    /// A kept <c>.Custom.cs</c> stub written before the validation pipeline reaches the console.
+    /// </summary>
+    /// <remarks>
+    /// It cannot ride on <see cref="IncrementalResult.Message"/>: this report never prints the
+    /// message on the success path, so a note folded into it would be invisible on exactly the run
+    /// that leaves a folder unable to compile.
+    /// </remarks>
+    [TestMethod]
+    public void Names_a_validator_stub_that_predates_the_pipeline()
+    {
+        var result = new IncrementalResult(
+            true, [Path.Combine(Folder, "Models", "Supplier.cs")], 41, "Added 1 class(es).")
+        {
+            OutdatedValidatorStubs =
+            [
+                @"Validation\CustomerValidator.Custom.cs declares ValidateCustom in the old shape",
+            ],
+        };
+
+        var text = string.Join("\n", AddReport.Lines(result, Folder));
+
+        StringAssert.Contains(text, "CustomerValidator.Custom.cs");
+        StringAssert.Contains(text, "before the validation pipeline");
+    }
+
+    /// <summary>An ordinary add says nothing about stubs, so the report does not grow a section
+    /// for every user who has nothing to fix.</summary>
+    [TestMethod]
+    public void Says_nothing_about_stubs_when_there_are_none()
+    {
+        var result = new IncrementalResult(
+            true, [Path.Combine(Folder, "Models", "Supplier.cs")], 41, "Added 1 class(es).");
+
+        var text = string.Join("\n", AddReport.Lines(result, Folder));
+
+        Assert.DoesNotContain("pipeline", text);
+    }
+
     /// <summary>Relative, because the absolute path is already on the line above and repeating it
     /// forty times turns a report into a wall.</summary>
     [TestMethod]

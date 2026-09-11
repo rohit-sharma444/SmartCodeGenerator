@@ -691,7 +691,9 @@ public static class CommandDictionary
             Category = "Build App",
             Command = "build app: <description> [novalidation] [logging] [noseed] [nologin]",
             Description = "Chooses which optional layers are generated. 'novalidation' omits the "
-                        + "Validation folder and its per-model validators; 'logging' adds a "
+                        + "per-model validators and the field, entity and business checks; the "
+                        + "permission matrix is always generated, because turning validation off "
+                        + "must not turn permissions off; 'logging' adds a "
                         + "logging layer (off by default); 'noseed' omits the sample seed rows "
                         + "(rows imported from your own data file are unaffected); 'nologin' "
                         + "omits the login screen, the user accounts and the Users screen, "
@@ -744,7 +746,11 @@ public static class CommandDictionary
                         + "file is left byte-identical. The run says how many files it did "
                         + "not touch. A class that exists with DIFFERENT fields is named and "
                         + "left alone: adding will not reconcile it, overwriting would. Your "
-                        + ".Custom.cs validator rules are never overwritten. a is offered "
+                        + ".Custom.cs validator rules are never overwritten - which is also "
+                        + "why an app generated before the validation pipeline needs one hand "
+                        + "edit: its kept stub still declares the old ValidateCustom hook, so "
+                        + "the run names each such file and the line to put in it, and the "
+                        + "project will not compile until you change them. a is offered "
                         + "only when something really is new, Enter still cancels, and a "
                         + "piped run overwrites in silence as it always has.",
             Example = "approve wpf"

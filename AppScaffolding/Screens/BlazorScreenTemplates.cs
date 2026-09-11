@@ -230,9 +230,10 @@ public static class ScreenFields
     /// </remarks>
     public static string MasterScreen(string rootNamespace, bool login) => $$"""
 @typeparam TRecord where TRecord : class, new()
-@using System.Reflection
+@using System.Reflection{{ClaimsUsing(login)}}
 @using {{rootNamespace}}.Data
-@using {{rootNamespace}}.Screens{{AuthorizationUsing(login)}}
+@using {{rootNamespace}}.Screens
+@using {{rootNamespace}}.Validation{{AuthorizationUsing(login)}}
 @inject NavigationManager Navigation
 
 <h1>@Title</h1>
@@ -342,9 +343,10 @@ else
     /// </remarks>
     public static string TransactionScreen(string rootNamespace, bool login) => $$"""
 @typeparam TRecord where TRecord : class, new()
-@using System.Reflection
+@using System.Reflection{{ClaimsUsing(login)}}
 @using {{rootNamespace}}.Data
-@using {{rootNamespace}}.Screens{{AuthorizationUsing(login)}}
+@using {{rootNamespace}}.Screens
+@using {{rootNamespace}}.Validation{{AuthorizationUsing(login)}}
 @inject NavigationManager Navigation
 
 <h1>@Title</h1>
@@ -533,13 +535,15 @@ else
 
             @if (ScreenFields.InputType(field) == "checkbox")
             {
-                <input type="checkbox" class="form-check-input d-block" id="@field.Name"
+                <input type="checkbox" id="@field.Name"
+                       class="form-check-input d-block @CssFor(field)"
                        checked="@(field.GetValue(_draft) as bool? == true)"
                        @onchange="e => Set(field, e.Value?.ToString())" />
             }
             else
             {
-                <input type="@ScreenFields.InputType(field)" class="form-control" id="@field.Name"
+                <input type="@ScreenFields.InputType(field)" id="@field.Name"
+                       class="form-control @CssFor(field)"
                        value="@ScreenFields.Display(field.GetValue(_draft))"
                        @onchange="e => Set(field, e.Value?.ToString())" />
             }
@@ -617,6 +621,10 @@ else
     private bool _loaded;
     private int? _loadedId;
 
+    /// <summary>The properties the last refused save named, so their inputs can be marked. Stays
+    /// empty in an app generated with no validators: nothing names a field there.</summary>
+    private readonly HashSet<string> _invalid = new(StringComparer.Ordinal);
+
     /// <summary>Whichever record the URL named, or null for a new one.</summary>
     [Parameter] public int? Id { get; set; }
 
@@ -690,6 +698,11 @@ else
         _missing = false;
         _status = string.Empty;
 
+        // Beside the status, and for the same reason: this component is REUSED when the URL moves
+        // from one record to another, so a mark left over from the record before would sit on a
+        // field of this one with nothing on screen saying why.
+        _invalid.Clear();
+
         var stored = Id is { } id
             ? _store.GetAll().FirstOrDefault(record => ScreenFields.IdOf(record) == id)
             : null;
@@ -721,6 +734,18 @@ else
     private void Set(PropertyInfo field, string? text)
         => _status = ScreenFields.Assign(_draft, field, text) ?? string.Empty;
 
+    /// <summary>
+    /// Bootstrap's own marker for an input the pipeline refused, or nothing.
+    /// </summary>
+    /// <remarks>
+    /// Bootstrap's class rather than one of this application's: it arrives already styled with the
+    /// project template, and nothing here writes a stylesheet to add a rule to. Empty for every
+    /// field in an app generated with no validators, so the markup that reads it is the same
+    /// either way.
+    /// </remarks>
+    private string CssFor(PropertyInfo field)
+        => _invalid.Contains(field.Name) ? "is-invalid" : string.Empty;
+
     private void Save()
     {
 {{ValidateCall(validation)}}        var all = _store.GetAll();
@@ -745,9 +770,10 @@ else
             all[index] = _draft;
         }
 
-        if (!_store.SaveAll(all))
+        var write = _store.SaveAll(all);
+        if (!write.Success)
         {
-            _status = "Could not save.";
+            _status = write.Refusal ?? "Could not save.";
             return;
         }
 
@@ -807,21 +833,31 @@ else
         => login ? "\r\n@using Microsoft.AspNetCore.Components.Authorization" : string.Empty;
 
     /// <summary>
-    /// Delete, for an administrator only.
+    /// Delete, offered to whoever the permission matrix allows to delete this record.
     /// </summary>
     /// <remarks>
+    /// The same <c>MayDelete</c> the handler enforces, so the affordance and the refusal cannot
+    /// disagree. A hardcoded <c>Roles="Admin"</c> here did disagree: this button is shared by both
+    /// grids, so a plain user was hidden a delete on a TRANSACTION screen that the matrix permits
+    /// and that the same user gets on WinForms and WPF — hidden-but-permitted, the mirror image of
+    /// the check the matrix replaced.
+    /// <para>
     /// Hidden rather than disabled, and hiding it is a real guard here rather than decoration: a
     /// button that is not rendered has no handler to invoke, unlike a URL that can be typed. The
-    /// handler checks the role again anyway, because that is the check that would still hold if the
-    /// button moved.
+    /// handler asks again anyway, because that is the check that would still hold if the button
+    /// moved.
+    /// </para>
     /// </remarks>
     private static string DeleteButton(bool login)
         => login
             ? """
-                  <AuthorizeView Roles="Admin">
+                  <AuthorizeView>
                       <Authorized>
-                          <button class="btn btn-outline-danger" @onclick="Delete"
-                                  disabled="@(_selected is null)">Delete</button>
+                          @if (MayDelete(context))
+                          {
+                              <button class="btn btn-outline-danger" @onclick="Delete"
+                                      disabled="@(_selected is null)">Delete</button>
+                          }
                       </Authorized>
                   </AuthorizeView>
 
@@ -836,13 +872,34 @@ else
         => login
             ? """
 
-                  /// <summary>Who is signed in, so Delete can refuse a plain user.</summary>
+                  /// <summary>Who is signed in, so the matrix can be asked what they may
+                  /// delete.</summary>
                   [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
 
               """
             : string.Empty;
 
-    /// <summary>Delete acts on the list selection, and only an administrator may.</summary>
+    /// <summary>The claims namespace the login variant reads the acting role from.</summary>
+    /// <remarks>
+    /// Only that variant: a component with no login has no authentication state to read, and an
+    /// import nothing names is noise in a generated file.
+    /// </remarks>
+    private static string ClaimsUsing(bool login)
+        => login ? "\r\n@using System.Security.Claims" : string.Empty;
+
+    /// <summary>Delete acts on the list selection, if the permission matrix allows this role
+    /// to.</summary>
+    /// <remarks>
+    /// Blazor has no <c>Session</c> — that is emitted for the two desktop targets alone — so the
+    /// acting role comes off the cascading authentication state's role claim rather than from a
+    /// <c>CurrentRole()</c> helper. Asked here rather than left to the store: <c>SaveAll</c> is
+    /// handed the whole list and cannot tell a delete from any other edit.
+    /// <para>
+    /// <c>MayDelete</c> is the one call, read by <see cref="DeleteButton"/> for the button's
+    /// visibility and by the handler for the refusal: two calls would be two places to change,
+    /// which is how the button came to hide a delete the handler would have allowed.
+    /// </para>
+    /// </remarks>
     private static string DeleteHandler(bool login)
         => login
             ? """
@@ -852,25 +909,36 @@ else
                       if (_selected is not { } record)
                           return;
 
-                      // The button is hidden from a plain user; this is the check that would hold
-                      // even if it were not.
+                      // The button is not rendered for a user the matrix refuses; this is the
+                      // check that would hold even if it were, and it is the SAME call -- so the
+                      // affordance and the refusal cannot disagree, and neither can this screen
+                      // and the store behind it.
                       var state = AuthState is null ? null : await AuthState;
 
-                      if (state?.User.IsInRole("Admin") != true)
+                      if (!MayDelete(state))
                       {
-                          _status = "Only an administrator can delete a record.";
+                          _status = Permissions.Refusal(ValidationOperation.Delete, typeof(TRecord).Name);
                           return;
                       }
 
                       Remove(record);
                   }
 
+                  /// <summary>Whether the signed-in user may delete a record of this type. A null
+                  /// state means nobody is acting, which the matrix reads as nothing to refuse --
+                  /// the same answer a component with no login at all gets.</summary>
+                  private static bool MayDelete(AuthenticationState? state)
+                      => Permissions.Allows(
+                          ValidationOperation.Delete, typeof(TRecord).Name,
+                          state?.User.FindFirst(ClaimTypes.Role)?.Value);
+
                   private void Remove(TRecord record)
                   {
                       var all = _store.GetAll();
                       all.RemoveAll(stored => ScreenFields.IdOf(stored) == ScreenFields.IdOf(record));
 
-                      _status = _store.SaveAll(all) ? "Deleted." : "Could not delete.";
+                      var write = _store.SaveAll(all);
+                      _status = write.Success ? "Deleted." : write.Refusal ?? "Could not delete.";
                       _selected = null;
 
                       Reload();
@@ -884,10 +952,22 @@ else
                       if (_selected is not { } record)
                           return;
 
+                      // No login, so there is nobody to attribute the delete to and the matrix
+                      // reads a null role as "no notion of who is acting" -- it can refuse
+                      // nothing here today. Asked anyway, so the two variants of this handler
+                      // cannot drift apart, and so this is the line that starts refusing the day
+                      // the matrix tells an anonymous caller from a signed-in one.
+                      if (!Permissions.Allows(ValidationOperation.Delete, typeof(TRecord).Name, null))
+                      {
+                          _status = Permissions.Refusal(ValidationOperation.Delete, typeof(TRecord).Name);
+                          return;
+                      }
+
                       var all = _store.GetAll();
                       all.RemoveAll(stored => ScreenFields.IdOf(stored) == ScreenFields.IdOf(record));
 
-                      _status = _store.SaveAll(all) ? "Deleted." : "Could not delete.";
+                      var write = _store.SaveAll(all);
+                      _status = write.Success ? "Deleted." : write.Refusal ?? "Could not delete.";
                       _selected = null;
 
                       Reload();
@@ -898,15 +978,41 @@ else
     private static string ValidationUsing(string rootNamespace, bool validation)
         => validation ? $"\r\n@using {rootNamespace}.Validation" : string.Empty;
 
-    /// <summary>The validators, run by the editor because nothing else on this path would.</summary>
+    /// <summary>
+    /// The pipeline, run by the editor because nothing else on this path would.
+    /// </summary>
+    /// <remarks>
+    /// Insert or Update from <c>IsNew</c>, which is what the save below already branches on and
+    /// what the draft's own Id says: a new record has none until <c>SetId</c> stamps it. The
+    /// default matrix treats the two identically, so nothing observable turns on the choice today.
+    /// <para>
+    /// The failing properties are kept, not just the first sentence: <c>CssFor</c> marks each
+    /// input the outcome named, and the status line still says what was wrong first.
+    /// </para>
+    /// </remarks>
     private static string ValidateCall(bool validation)
         => validation
             ? """
-                      var errors = ValidatorFactory.Create<TRecord>().Validate(_draft);
+                      _invalid.Clear();
 
-                      if (errors.Count > 0)
+                      var context = ValidationContext<TRecord>.For(
+                          _draft,
+                          IsNew ? ValidationOperation.Insert : ValidationOperation.Update,
+                          new StoreEntityLookup());
+
+                      var outcome = ValidatorFactory.Create<TRecord>().Validate(context);
+
+                      if (!outcome.IsValid)
                       {
-                          _status = $"Cannot save: {errors[0]}";
+                          // A whole-record error carries no property -- there is no input to mark,
+                          // and the status line below is where it is shown.
+                          foreach (var error in outcome.Errors)
+                          {
+                              if (error.Property is { } property)
+                                  _invalid.Add(property);
+                          }
+
+                          _status = $"Cannot save: {outcome.Messages[0]}";
                           return;
                       }
 

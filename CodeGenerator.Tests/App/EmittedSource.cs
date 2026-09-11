@@ -1,4 +1,5 @@
 using System.Linq;
+using AppScaffolding;
 using CodeGenerationEngine.Core;
 using Microsoft.CodeAnalysis;
 
@@ -16,10 +17,11 @@ internal static class EmittedSource
     /// Flattens several emitted Validation/ or Data/ files (and any other C# snippets) into one
     /// compilable unit: strips each file's own namespace declaration — a compilation unit may
     /// declare only one file-scoped namespace, so joining a Data/ file to a Validation/ one needs
-    /// both gone — and its &lt;App&gt;.Models/&lt;App&gt;.Data
-    /// using (the callers' stubs stand in for those types), then hoists every remaining
-    /// <c>using</c> directive to the front of the result. The fixture app is always named
-    /// <c>Acme</c>.
+    /// both gone — and its &lt;App&gt;.Models/&lt;App&gt;.Data/&lt;App&gt;.Validation
+    /// using (the callers' stubs stand in for those types, or the type is being merged in from
+    /// its own source and lands in the same flattened, namespace-less file), then hoists every
+    /// remaining <c>using</c> directive to the front of the result. The fixture app is always
+    /// named <c>Acme</c>.
     /// </summary>
     /// <remarks>
     /// A <c>using</c> directive may not follow a type declaration anywhere in a single
@@ -40,6 +42,7 @@ internal static class EmittedSource
             var stripped = source
                 .Replace("using Acme.Models;", string.Empty)
                 .Replace("using Acme.Data;", string.Empty)
+                .Replace("using Acme.Validation;", string.Empty)
                 .Replace("namespace Acme.Validation;", string.Empty)
                 .Replace("namespace Acme.Data;", string.Empty);
 
@@ -54,6 +57,25 @@ internal static class EmittedSource
 
         return string.Join("\n", usings.Distinct()) + "\n" + string.Join("\n", bodies);
     }
+
+    /// <summary>
+    /// The permission matrix a screen's delete button asks, and the operation enum it names.
+    /// </summary>
+    /// <remarks>
+    /// The real templates rather than a stub: a stub matrix could agree with a fixture while
+    /// disagreeing with the app the generator emits, which is the whole failure the one matrix
+    /// exists to prevent.
+    /// </remarks>
+    /// <param name="masterEntityNames">
+    /// The entities this build classified as masters. The default matrix refuses a plain user a
+    /// delete on those alone, so a fixture naming none can never see a refusal.
+    /// </param>
+    public static string PermissionMatrix(params string[] masterEntityNames)
+        => string.Join(
+            Environment.NewLine,
+            ValidationContextTemplate.Source("Acme"),
+            ValidatorTemplate.EntityLookupInterface("Acme"),
+            PermissionsTemplate.Source("Acme", masterEntityNames));
 
     /// <summary>Asserts <paramref name="source"/> compiles with no errors.</summary>
     public static void AssertCompiles(string source)

@@ -13,6 +13,9 @@ public sealed class WpfTarget : ITargetScaffolder
     public string Description => "a runnable WPF CRUD app";
     public bool HasScreens => true;
 
+    /// <summary>One of the two targets DesktopViewModelFiles emits Session.cs for.</summary>
+    public bool HasDesktopSession => true;
+
     public DotNetProjectType ProjectType => DotNetProjectType.Wpf;
     public string FolderSuffix => "";
 

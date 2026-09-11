@@ -21,7 +21,7 @@ public class JsonStoreTemplateTests
         var source = JsonStoreTemplate.Source("Payroll.Data");
 
         StringAssert.Contains(source, "public List<T> GetAll()");
-        StringAssert.Contains(source, "public bool SaveAll(List<T> all)");
+        StringAssert.Contains(source, "public StoreWrite SaveAll(List<T> all)");
         StringAssert.Contains(source, "public int NextId(IEnumerable<T> existing)");
         StringAssert.Contains(source, "public T NewItem(IEnumerable<T> existing)");
     }

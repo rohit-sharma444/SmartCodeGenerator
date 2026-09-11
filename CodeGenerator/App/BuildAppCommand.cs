@@ -810,6 +810,16 @@ internal sealed class BuildAppCommand
             // a screen is missing.
             if (ScreensLine(target, customization, scaffold.ScreenSummary) is { } screens)
                 Console.WriteLine(screens);
+
+            // An app generated before the validation pipeline keeps a .Custom.cs stub declaring a
+            // hook the regenerated half no longer has, and the pair does not compile. Said here
+            // rather than left to the build error, which names CS0759 and CS8795 and not the
+            // reason: the write-once file is the one thing regeneration is not allowed to fix.
+            // Warning and not Error: the generate itself succeeded, and calling it an error would
+            // say the files are not there. What failed is the pair, and only after the next build.
+            foreach (var stub in scaffold.OutdatedValidatorStubs)
+                Output.Warning("  " + stub + ".");
+
             Console.WriteLine("");
             //foreach (var file in scaffold.FilesWritten)
             //    Console.WriteLine($"  {Path.GetRelativePath(scaffold.ProjectPath, file)}");

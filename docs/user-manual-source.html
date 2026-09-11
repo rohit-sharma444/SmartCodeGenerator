@@ -600,7 +600,11 @@ It has 8 class(es); this model has 10, of which 2 are new.
    add, and a class that is already there with <em>different</em> fields is named and left
    alone &mdash; adding will not reconcile it and overwriting would, so the choice stays
    yours. <code>a</code> is offered only when the model really does contain something new: an
-   answer that would do nothing is not put on the menu.</p></div>
+   answer that would do nothing is not put on the menu.</p>
+   <p>In an application generated <em>before</em> this version, that same rule is what leaves it
+   unable to compile until you change a line in each stub &mdash; see <em>Regenerating over an
+   existing project</em> in chapter 8. An add reports it the same way a regenerate does, under
+   <em>Written before the validation pipeline, and kept</em>.</p></div>
 
 <div class="warn"><p>A hand edit inside a <em>generated</em> file that is not
    <code>.Custom.cs</code> is reverted by an add, just as it is by a regenerate. The list of
@@ -671,7 +675,7 @@ command line is not a remembered one and is never announced.</p>
 <tr><td><code>accent #rrggbb</code></td><td>An accent colour. Valid on its own — "the normal look, in our colour". A malformed colour is ignored rather than failing the build.</td></tr>
 <tr><td><code>icon &lt;path&gt;</code></td><td>Copies a <code>.ico</code> or <code>.png</code> into the project as the application icon. A <code>.ico</code> also becomes the icon the built <code>.exe</code> carries.</td></tr>
 <tr><td><code>namespace &lt;prefix&gt;</code></td><td>Puts the generated code under your own namespace root: <code>CodisLtd.Shop.Models</code> rather than <code>Shop.Models</code>. The project name, the folder, the assembly name, the database file and the connection-string environment variable are all deliberately left alone — only namespaces move. <code>namespace none</code> clears a remembered prefix. Unlike the other settings, a prefix that is not a legal C# namespace is refused rather than ignored, because it would not compile.</td></tr>
-<tr><td><code>novalidation</code></td><td>Omits the validation layer entirely — no <code>Validation</code> folder and no per-class validators.</td></tr>
+<tr><td><code>novalidation</code></td><td>Omits the per-class validators and the field, entity and business checks. The <code>Validation</code> folder is still written — the permission matrix is always generated, because turning validation off must not turn permissions off.</td></tr>
 <tr><td><code>logging</code></td><td>Adds a small logging layer (off by default). The repository logs each write, and each rejected write when validation is on.</td></tr>
 <tr><td><code>noseed</code></td><td>Omits the generated sample rows. Rows imported from your own data file are unaffected — those always come with the project.</td></tr>
 </table>
@@ -710,6 +714,12 @@ between classes. <code>business</code> is a different application, and chapter 1
 the storage are identical whichever you pick, so it is safe to regenerate an existing project with a different
 layout. <code>layout tabs</code> together with <code>nologin</code> is byte-for-byte what this generator
 produced before either the login or the business shell existed.</p></div>
+<div class="note"><p><strong>One behaviour changed in the four older shapes in this version.</strong>
+   Their <em>Delete</em> button had no permission check at all: anybody signed in could remove any
+   row. It now asks the same permission matrix the business shell asks, so a plain user pressing
+   <em>Delete</em> on a master class is refused, and the refusal appears on the status line rather
+   than the row disappearing. Chapter 14 has the matrix; nothing about a transaction class
+   changed, and an administrator sees no difference.</p></div>
 
 <h3>Web application pages</h3>
 <p>The <code>blazor</code> type is the browser version of the same application rather than a second Web API,
@@ -736,7 +746,8 @@ read the JSON store directly. The tool tells you rather than generating somethin
   Shop.csproj
   Models/        one file per class
   Data/          the store, one repository per class, sample data
-  Validation/    the rule interfaces and one validator per class   (omitted by novalidation)
+  Validation/    one validator per class                            (omitted by novalidation)
+                 the permission matrix                              (always generated)
   Logging/       AppLog.cs                                          (only with logging)
   Assets/        your icon                                          (only with icon)
   Views/ ViewModels/   the front end, for the desktop types
@@ -745,6 +756,14 @@ Shop.Tests/      a companion test project, generated with the app</pre>
 <code>Update</code> and <code>Delete</code>. Each validator comes in two halves: a
 <code>.Generated.cs</code> file that is rewritten every time, and a <code>.Custom.cs</code> file that is written
 once and left alone afterwards — that is where your own rules go, and regenerating will not discard them.</p>
+<div class="note"><p><strong>Two signatures changed in this version.</strong>
+   <code>Repository&lt;T&gt;.Delete</code> returns a <code>SaveResult&lt;T&gt;</code> where it used to
+   return a <code>bool</code>, and <code>IStore&lt;T&gt;.SaveAll</code> returns a
+   <code>StoreWrite</code> where it used to return a <code>bool</code>. Both changed for the same
+   reason: a write can now be refused, and a refusal has a sentence to carry that a
+   <code>true</code> or <code>false</code> cannot. Generated code moves with them because it is
+   regenerated &mdash; but code <em>you</em> wrote against an earlier generated application does
+   not, and will not compile until it reads <code>.Success</code> instead of the old boolean.</p></div>
 
 <h3>After it generates</h3>
 <p>Writing the files is not the last step. The tool compiles what it has just written and tells you the result,
@@ -805,6 +824,27 @@ anything you added yourself are kept.
 <tr><td><code>r</code></td><td>Asks for another name and generates under that instead, leaving the existing project untouched. The name is tidied the same way a name taken from your description is, so <em>cash book</em> becomes <code>CashBook</code>. If the new name is also taken, you are asked again.</td></tr>
 <tr><td><code>c</code> or Enter</td><td>Writes nothing and returns you to the review loop. Your model is not lost — you can rename, adjust it and approve again.</td></tr>
 </table>
+<div class="warn"><p><strong>An application generated before this version needs one hand edit per
+   validator.</strong> The validation rules moved onto a pipeline, and with them the signature of
+   the hand-written hook inside each <code>&lt;Class&gt;Validator.Custom.cs</code>. That file is the
+   one file a regenerate is not allowed to touch, so the regenerated <code>.Generated.cs</code> half
+   declares a hook the kept <code>.Custom.cs</code> half does not implement, and the project does not
+   compile &mdash; <code>CS0759</code> on one half and <code>CS8795</code> on the other. The run tells
+   you before the compiler does, naming every such file and the line to put in it:</p>
+<pre>Validation/CustomerValidator.Custom.cs declares ValidateCustom in the shape
+emitted before the validation pipeline; change it to 'private static partial
+void ValidateCustom(Customer item, List&lt;ValidationError&gt; errors)' and have
+each of its rules add a ValidationError rather than a string.</pre>
+<p>Your rules themselves need the second half of that sentence: where one read
+   <code>errors.Add("Surname is required")</code> it becomes
+   <code>errors.Add(new ValidationError(nameof(Customer.Surname), "Surname is required"))</code>, or
+   <code>new ValidationError(null, "...")</code> for something about the record as a whole. Naming the
+   property is what lets a screen highlight the field rather than only listing the sentence.</p>
+<p>The tool reports this instead of rewriting it, deliberately. Changing the declaration for you
+   would leave your own rules inside it still adding strings &mdash; a file the tool had half
+   migrated, failing on an error that no longer names the thing that moved. Two lines you change
+   knowingly beat a file changed for you that still does not build. An add reports the same thing
+   the same way, under <em>Written before the validation pipeline, and kept</em>.</p></div>
 <div class="note"><p>Pressing Enter cancels rather than overwrites, deliberately: the effortless answer is the one
 that cannot lose work. The question is asked only when a project of that name is already there, so it never
 interrupts a first build, and — like the build and the run offer — it is skipped entirely when input is piped,
@@ -1053,6 +1093,12 @@ ever <em>suggests</em> — it never runs a command you did not confirm.</p>
   <li>Only an Admin can delete a master record.</li>
 </ul>
 
+<p>Both of these are <em>enforced</em> from this version onwards, wherever the delete is asked for
+   &mdash; the business shell, all four of the older window layouts, the browser pages and, for the
+   types with no window at all, the repository. Earlier versions showed the rule on some screens and
+   checked it on none, so an application regenerated from an earlier one refuses deletes it used to
+   allow. That is the intended change, not a regression.</p>
+
 <p>Both roles can create, edit and save everything else. A new account is created with no password
    and cannot sign in until an administrator gives it one &mdash; a new account is not a way in
    until somebody decides it is. Nobody can delete the account they are signed in with, which is
@@ -1167,8 +1213,8 @@ SCREEN [ master v ]      lines of Order   [ own screen ]</pre>
 <p>A master screen is a <strong>read-only list</strong> and a <strong>dedicated editor</strong>. The
    list finds a record &mdash; a search box narrows it across every text column, so you do not have
    to know which column holds what &mdash; and <em>New</em> or <em>Open</em> (or a double-click)
-   opens the editor. <em>Delete</em> acts on the selected row and is available to an administrator
-   only.</p>
+   opens the editor. <em>Delete</em> acts on the selected row; a master record's delete is available
+   to an administrator only, while a transaction's may also be done by a plain user.</p>
 
 <p>The list cannot be typed into. That is deliberate: an application that edits records two
    different ways teaches its users that a Customer changes differently from an Order, and this one
@@ -1468,13 +1514,13 @@ own shows the shorter overview, and <code>help &lt;topic&gt;</code> shows one se
 <table>
 <tr><th>Command</th><th>Description</th><th>Example</th></tr>
 <tr><td><code>add &lt;name&gt;</code></td><td>Review loop: adds a class to the candidate model. The name keeps the shape you type, so a compound survives; several words become one class name.</td><td><code>add cash register</code></td></tr>
-<tr><td><code>approve (when the app already exists)</code></td><td>Offers to add only what is new. When the project folder already holds a generated app, the guard reads the classes already there and compares them with the model you just reviewed: it has 8 class(es), this model has 10, of which 2 are new. Answering a writes those 2 classes and the files that list the entities so their screens appear - and nothing else, so every other generated file is left byte-identical. The run says how many files it did not touch. A class that exists with DIFFERENT fields is named and left alone: adding will not reconcile it, overwriting would. Your .Custom.cs validator rules are never overwritten. a is offered only when something really is new, Enter still cancels, and a piped run overwrites in silence as it always has.</td><td><code>approve wpf</code></td></tr>
+<tr><td><code>approve (when the app already exists)</code></td><td>Offers to add only what is new. When the project folder already holds a generated app, the guard reads the classes already there and compares them with the model you just reviewed: it has 8 class(es), this model has 10, of which 2 are new. Answering a writes those 2 classes and the files that list the entities so their screens appear - and nothing else, so every other generated file is left byte-identical. The run says how many files it did not touch. A class that exists with DIFFERENT fields is named and left alone: adding will not reconcile it, overwriting would. Your .Custom.cs validator rules are never overwritten - which is also why an app generated before the validation pipeline needs one hand edit: its kept stub still declares the old ValidateCustom hook, so the run names each such file and the line to put in it, and the project will not compile until you change them. a is offered only when something really is new, Enter still cancels, and a piped run overwrites in silence as it always has.</td><td><code>approve wpf</code></td></tr>
 <tr><td><code>approve [target] [sqlite]</code></td><td>Review loop: generates the app using the type chosen at the start. Name a target to override it: wpf (default), winforms, console, webapi, blazor, classlib, worker. Add &#x27;sqlite&#x27; for EF Core persistence (JSON is the default; the wpf and winforms targets are JSON-only). Alias: a.</td><td><code>approve webapi sqlite</code></td></tr>
 <tr><td><code>build app</code></td><td>Starts the same flow with nothing filled in. Interactively it opens a workflow page in the browser drawn as nine connected stages, ending in one that starts the application it just built. The stages are the navigation: each box shows the answer it holds, the box being answered carries the step forward and an arrow back one stage, the next box lights up when that step is ready, and clicking a finished box goes back to change it — there are no Back and Next buttons. Generate and Run stay disabled until the project has actually been written. Review classes is where the model is corrected: every class can be renamed or removed and every property renamed, retyped or deleted, on the card itself. Output, the stage after it, draws how the classes connect and states in one table the screen each class will get — master, transaction, or the transaction a line is edited inside — and lets you change it before anything is written. A long step reports its progress as it works, and changing the description or the data source asks first, because it discards the model that was discovered from the old one; Cancel asks the same way once there is an answer to lose. The panel that opens holds the keyboard and Enter takes the step it offers — never Generate or Run, which stay deliberate clicks. A named data file is summarised — how many rows and columns — before anything is built from it; a step that fails says why and stays clickable rather than ending the run; the application the last stage starts can be stopped from the page; and the console signs off with the `build app:` line that would do the same run again. Two tabs on the same workflow stay in step, and closing the last one ends the command. Piped runs keep the console wizard, as does CG_NO_WEB=1.</td><td><code>build app</code></td></tr>
 <tr><td><code>build app (with an unfinished build in the workspace)</code></td><td>Offers the build you left. Closing the browser tab no longer loses the work: the answers and the reviewed model - renames, added and removed fields, promoted suggestions, the master/transaction split - are saved to .codegen/build-in-progress.json after every change, and the next interactive run in that workspace offers to resume, start fresh or discard. Enter starts fresh and deletes nothing. Your DATA is not saved, only where it came from, so the source is re-read on resume; a file that has moved, or a SQL connection string (which is never saved), opens the data stage instead of failing. A finished or cancelled build clears the snapshot; one abandoned by closing the tab keeps it. Piped runs neither write one nor read one.</td><td><code>build app</code></td></tr>
 <tr><td><code>build app: &lt;description&gt;</code></td><td>Describes a system in plain English. Interactively this opens a workflow page in the browser — the console prints the address and waits — where the rest of the build happens: application type, data, look, domain discovery, model review, generate-and-build, then running the finished application. Every step that takes a while says what it is doing and how long it has been doing it, and the compiler&#x27;s output appears line by line as it builds. Piped runs are unchanged, and CG_NO_WEB=1 keeps the console wizard.</td><td><code>build app: a library that lends books to members</code></td></tr>
 <tr><td><code>build app: &lt;description&gt; [customization options]</code></td><td>Customizes the generated application. Options go LAST on the line, after any data source: company &quot;&lt;name&gt;&quot; sets the company (used in the project metadata, the window title and a copyright header); theme light|dark and accent #rrggbb colour the desktop front ends; icon &lt;path&gt; supplies a .ico or .png; title &quot;&lt;pattern&gt;&quot; overrides the window title, where {company} and {app} are substituted; namespace &lt;prefix&gt; puts the generated code under that namespace root (CodisLtd.Shop), leaving the project and assembly names alone; layout tabs|sidebar|master-detail|dashboard|business chooses the shape of the window (wpf and winforms only); business is the default and is the shell with a dashboard home, a rail grouped into masters and transactions, and an editor for every record; the web app is always that shell, which is why naming a layout does not apply to it. A layout you chose on an earlier interactive run is remembered in .codegen/app-profile.json and kept, default or not, so a run that is using a remembered one says so and names the file.</td><td><code>build app: a shop company &quot;Codis Ltd&quot; namespace CodisLtd theme dark</code></td></tr>
-<tr><td><code>build app: &lt;description&gt; [novalidation] [logging] [noseed] [nologin]</code></td><td>Chooses which optional layers are generated. &#x27;novalidation&#x27; omits the Validation folder and its per-model validators; &#x27;logging&#x27; adds a logging layer (off by default); &#x27;noseed&#x27; omits the sample seed rows (rows imported from your own data file are unaffected); &#x27;nologin&#x27; omits the login screen, the user accounts and the Users screen, which an app with screens is given by default. Interactively these are asked by the &#x27;Customize appearance and features?&#x27; step, which remembers your answers in .codegen/app-profile.json.</td><td><code>build app: a shop novalidation logging noseed nologin</code></td></tr>
+<tr><td><code>build app: &lt;description&gt; [novalidation] [logging] [noseed] [nologin]</code></td><td>Chooses which optional layers are generated. &#x27;novalidation&#x27; omits the per-model validators and the field, entity and business checks; the permission matrix is always generated, because turning validation off must not turn permissions off; &#x27;logging&#x27; adds a logging layer (off by default); &#x27;noseed&#x27; omits the sample seed rows (rows imported from your own data file are unaffected); &#x27;nologin&#x27; omits the login screen, the user accounts and the Users screen, which an app with screens is given by default. Interactively these are asked by the &#x27;Customize appearance and features?&#x27; step, which remembers your answers in .codegen/app-profile.json.</td><td><code>build app: a shop novalidation logging noseed nologin</code></td></tr>
 <tr><td><code>build app: &lt;description&gt; [transactions &lt;A,B&gt;] [masters &lt;A,B&gt;]</code></td><td>Overrules how the generator split your model into screens. It decides by itself which classes are transactions (a class with a foreign key AND either a date of its own or a transactional name) and which are masters (everything else); these name the ones it got wrong. Comma-joined with no spaces, or quoted. Naming a line entity as a master gives it a screen of its own instead of editing it inside its parent. Interactively you need name nothing: the workflow page&#x27;s Output stage states the screen each class will get, in one table, and lets you change it there - which is the first point at which you know what the classes are called. A line names the transaction it is edited inside and offers one button to pull it out. Only the classes you move are recorded, so the run&#x27;s command line names those and no others.</td><td><code>build app: a shop transactions Order,Invoice masters Region</code></td></tr>
 <tr><td><code>build app: &lt;description&gt; from &lt;format&gt; &lt;location&gt;</code></td><td>Builds the model from existing data with no prompts when piped; interactively the file is already answered and the workflow page opens on what is left. Formats: csv, txt, json, excel, sql. For sql the location is a SQL Server connection string rather than a path. Add &#x27;normalize&#x27; to apply every normalization change the data needs.</td><td><code>build app: order tracking from csv D:\data\orders.csv normalize</code></td></tr>
 <tr><td><code>build app: &lt;description&gt; from sql &quot;&lt;connection&gt;&quot; [tables &lt;A,B&gt;]</code></td><td>Builds the model from a SQL Server database. Interactively the Data stage lists the tables with their column and row counts and you tick the ones you want; nothing is read until you take the step, and every row of what you ticked is then read, which is why the counts are shown before you choose - the rows SEEDED into the generated project are capped per class and the build says so. &#x27;tables A,B,C&#x27; names them for a piped run, and naming none reads them all. Column types come from the database instead of being inferred from the text, and declared foreign keys become relationships rather than being guessed from column names. A bigint column becomes int and a uniqueidentifier becomes string; both are reported. Composite foreign keys are skipped. Any password in the connection string is masked wherever the run is echoed back, so the replay line needs the password typed in again before it will run.</td><td><code>build app: a shop from sql &quot;Server=.;Database=Shop&quot; tables Customer</code></td></tr>

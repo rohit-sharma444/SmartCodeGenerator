@@ -13,11 +13,21 @@ namespace CodeGenerator.Tests.App;
 [TestClass]
 public class MasterScreenTests
 {
-    /// <summary>A session stub: the delete guard asks whether an administrator is signed in.</summary>
+    /// <summary>A session stub: the delete guard reads the signed-in user's role off it, the same
+    /// way the store and the repository do.</summary>
+    /// <remarks>
+    /// The real <c>Session.Current</c> is a <c>User</c> whose <c>Role</c> is an <c>AppRole</c>,
+    /// and the guard calls <c>ToString()</c> on it — a string here spells the same names.
+    /// </remarks>
     private const string SessionStub = """
+public sealed class SignedInUser
+{
+    public string Role { get; set; } = "Admin";
+}
+
 public static class Session
 {
-    public static bool IsAdmin { get; set; } = true;
+    public static SignedInUser? Current { get; set; } = new SignedInUser();
 }
 """;
 
@@ -48,11 +58,15 @@ public class Memo
         [
             SessionStub,
             MemoStub,
+
+            // Book is the master here, which is what makes a plain user's delete refusable: the
+            // default matrix refuses a delete on a master and allows one anywhere else.
+            EmittedSource.PermissionMatrix("Book"),
             ScreenTemplates.RoleEnum("Acme").Replace("namespace Acme.Screens;", string.Empty),
             ViewModelTemplates.EntityViewModelInterface("Acme")
                 .Replace("namespace Acme.ViewModels;", string.Empty)
                 .Replace("using Acme.Screens;", string.Empty),
-            MasterScreenTemplate.Source("Acme")
+            MasterScreenTemplate.Source("Acme", login: true)
                 .Replace("namespace Acme.ViewModels;", string.Empty)
                 .Replace("using Acme.Auth;", string.Empty)
                 .Replace("using Acme.Data;", string.Empty)
@@ -349,11 +363,16 @@ public class Memo
 
     /// <summary>One of the role's two effects, and it has to bite on the screen rather than only
     /// in the navigation.</summary>
+    /// <remarks>
+    /// Routed through the permission matrix rather than a hardcoded administrator check, so the
+    /// refusal the screen gives and the one the store would give are the same sentence decided in
+    /// the same place.
+    /// </remarks>
     [TestMethod]
     public void A_plain_user_cannot_delete_a_record()
     {
         var assembly = Emit();
-        assembly.GetType("Session")!.GetProperty("IsAdmin")!.SetValue(null, false);
+        SetRole(assembly, "User");
 
         try
         {
@@ -364,12 +383,22 @@ public class Memo
 
             Assert.HasCount(2, Items(screen));
             StringAssert.Contains(
-                (string)screen.GetType().GetProperty("Status")!.GetValue(screen)!, "administrator");
+                (string)screen.GetType().GetProperty("Status")!.GetValue(screen)!,
+                "not permitted to delete a Book record");
         }
         finally
         {
-            assembly.GetType("Session")!.GetProperty("IsAdmin")!.SetValue(null, true);
+            SetRole(assembly, "Admin");
         }
+    }
+
+    /// <summary>The signed-in user's role on the fixture's session stub.</summary>
+    private static void SetRole(Assembly assembly, string role)
+    {
+        var session = assembly.GetType("Session")!;
+        var current = session.GetProperty("Current")!.GetValue(null)!;
+
+        current.GetType().GetProperty("Role")!.SetValue(current, role);
     }
 
     /// <summary>The shell calls this when an editor closes, so a saved change shows without

@@ -10,7 +10,13 @@ public class SaveResultTemplateTests
     [TestMethod]
     public void Emitted_save_result_compiles()
     {
-        EmittedSource.AssertCompiles(SaveResultTemplate.Source("Acme"));
+        // SaveResult now names ValidationError from the Validation namespace, so the file that
+        // declares it joins the compile — and that file in turn names IEntityLookup, so its
+        // interface has to come along too, or this is compiling neither file on its own.
+        EmittedSource.AssertCompiles(EmittedSource.Flatten(
+            ValidationContextTemplate.Source("Acme"),
+            ValidatorTemplate.EntityLookupInterface("Acme"),
+            SaveResultTemplate.Source("Acme")));
     }
 
     [TestMethod]

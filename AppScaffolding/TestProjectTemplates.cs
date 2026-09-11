@@ -44,7 +44,8 @@ public class RepositoryRoundTripTests
         var updated = repository.Update(created.Item!);
         Assert.True(updated.Success, string.Join("; ", updated.Errors));
 
-        Assert.True(repository.Delete(id));
+        var deleted = repository.Delete(id);
+        Assert.True(deleted.Success, string.Join("; ", deleted.Errors));
         Assert.Null(repository.GetById(id));
     }
 
@@ -69,7 +70,9 @@ public class RepositoryRoundTripTests
     [Fact]
     public void A_blank_{{entityName}}_reports_its_required_field()
     {
-        var errors = new {{entityName}}Validator(new AlwaysFound()).Validate(new {{entityName}}());
+        var context = ValidationContext<{{entityName}}>.For(
+            new {{entityName}}(), ValidationOperation.Insert, new AlwaysFound());
+        var errors = new {{entityName}}Validator().Validate(context).Messages;
 
         Assert.Contains("{{requiredPropertyName}} is required.", errors);
     }
@@ -89,6 +92,9 @@ public class {{entityName}}ValidatorTests
     private sealed class AlwaysFound : IEntityLookup
     {
         public bool Exists<TEntity>(int id) where TEntity : class, new() => true;
+
+        public int CountReferencing<TEntity>(string foreignKeyProperty, int id)
+            where TEntity : class, new() => 0;
     }
 
     [Fact]
@@ -97,7 +103,8 @@ public class {{entityName}}ValidatorTests
         var item = new {{entityName}}();
         TestSupport.Fill(item);
 
-        var errors = new {{entityName}}Validator(new AlwaysFound()).Validate(item);
+        var context = ValidationContext<{{entityName}}>.For(item, ValidationOperation.Insert, new AlwaysFound());
+        var errors = new {{entityName}}Validator().Validate(context).Messages;
 
         Assert.Empty(errors);
     }
@@ -105,7 +112,8 @@ public class {{entityName}}ValidatorTests
     [Fact]
     public void A_null_{{entityName}}_is_reported_rather_than_throwing()
     {
-        var errors = new {{entityName}}Validator(new AlwaysFound()).Validate(null!);
+        var context = ValidationContext<{{entityName}}>.For(null!, ValidationOperation.Insert, new AlwaysFound());
+        var errors = new {{entityName}}Validator().Validate(context).Messages;
 
         Assert.NotEmpty(errors);
     }

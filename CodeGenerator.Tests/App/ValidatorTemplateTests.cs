@@ -33,7 +33,7 @@ public class Customer { public int Id { get; set; } }
 
 public sealed class CustomerValidator : IValidator<Customer>
 {
-    public IReadOnlyList<string> Validate(Customer item) => Array.Empty<string>();
+    public ValidationOutcome Validate(ValidationContext<Customer> context) => ValidationOutcome.Valid;
 }
 """;
 
@@ -42,7 +42,8 @@ public sealed class CustomerValidator : IValidator<Customer>
     {
         var source = ValidatorTemplate.ValidatorInterface("Acme");
         Assert.Contains("namespace Acme.Validation", source);
-        EmittedSource.AssertCompiles(source);
+        EmittedSource.AssertCompiles(Flatten(
+            ValidationContextTemplate.Source("Acme"), ValidatorTemplate.EntityLookupInterface("Acme"), source));
     }
 
     [TestMethod]
@@ -55,8 +56,10 @@ public sealed class CustomerValidator : IValidator<Customer>
     public void Store_entity_lookup_compiles_against_the_store_seam()
     {
         // Stubs' CustomerValidator implements IValidator<Customer>, so this seam test also needs
-        // that interface declared -- ValidatorInterface, flattened alongside it.
+        // that interface declared -- ValidatorInterface, flattened alongside it -- and both it and
+        // ValidatorInterface name ValidationContext/ValidationOutcome, so the context seam comes too.
         EmittedSource.AssertCompiles(Flatten(
+            ValidationContextTemplate.Source("Acme"),
             Stubs,
             ValidatorTemplate.EntityLookupInterface("Acme"),
             ValidatorTemplate.StoreEntityLookup("Acme"),
@@ -71,7 +74,9 @@ public sealed class CustomerValidator : IValidator<Customer>
         Assert.Contains("typeof(Customer)", source);
         Assert.Contains("new CustomerValidator()", source);
 
-        EmittedSource.AssertCompiles(Flatten(Stubs, ValidatorTemplate.ValidatorInterface("Acme"), source));
+        EmittedSource.AssertCompiles(Flatten(
+            ValidationContextTemplate.Source("Acme"), ValidatorTemplate.EntityLookupInterface("Acme"),
+            Stubs, ValidatorTemplate.ValidatorInterface("Acme"), source));
     }
 
     [TestMethod]
@@ -86,6 +91,8 @@ public sealed class CustomerValidator : IValidator<Customer>
         const string unmappedEntity = "public class Order { public int Id { get; set; } }";
 
         var source = Flatten(
+            ValidationContextTemplate.Source("Acme"),
+            ValidatorTemplate.EntityLookupInterface("Acme"),
             Stubs,
             unmappedEntity,
             ValidatorTemplate.ValidatorInterface("Acme"),
@@ -110,7 +117,9 @@ public sealed class CustomerValidator : IValidator<Customer>
         var source = ValidatorTemplate.Factory("Acme", System.Array.Empty<string>());
 
         Assert.Contains("NullValidator", source);
-        EmittedSource.AssertCompiles(Flatten(Stubs, ValidatorTemplate.ValidatorInterface("Acme"), source));
+        EmittedSource.AssertCompiles(Flatten(
+            ValidationContextTemplate.Source("Acme"), ValidatorTemplate.EntityLookupInterface("Acme"),
+            Stubs, ValidatorTemplate.ValidatorInterface("Acme"), source));
     }
 
     private static CodeGenerationEngine.Models.ClassDefinition ClassWith(
@@ -191,7 +200,7 @@ public sealed class CustomerValidator : IValidator<Customer>
             "Acme", ClassWith("Order"), new[] { "Customer" });
 
         Assert.Contains("item.CustomerId != 0", source);
-        Assert.Contains("_lookup.Exists<Customer>(item.CustomerId)", source);
+        Assert.Contains("context.Lookup.Exists<Customer>(item.CustomerId)", source);
         Assert.Contains("\"CustomerId does not refer to a known Customer.\"", source);
     }
 
@@ -202,7 +211,7 @@ public sealed class CustomerValidator : IValidator<Customer>
             "Acme", ClassWith("Customer"), System.Array.Empty<string>());
 
         Assert.Contains("ValidateCustom(item, errors);", source);
-        Assert.Contains("partial void ValidateCustom(Customer item, List<string> errors);", source);
+        Assert.Contains("private static partial void ValidateCustom(Customer item, List<ValidationError> errors);", source);
     }
 
     [TestMethod]
@@ -211,7 +220,7 @@ public sealed class CustomerValidator : IValidator<Customer>
         var source = ValidatorTemplate.CustomStub("Acme", "Customer");
 
         Assert.Contains("public sealed partial class CustomerValidator", source);
-        Assert.Contains("partial void ValidateCustom(Customer item, List<string> errors)", source);
+        Assert.Contains("private static partial void ValidateCustom(Customer item, List<ValidationError> errors)", source);
     }
 
     /// <summary>

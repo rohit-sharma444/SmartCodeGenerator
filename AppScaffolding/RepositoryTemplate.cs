@@ -40,10 +40,23 @@ public static class RepositoryTemplate
     /// Web API, worker, generated tests — goes through here.
     /// </remarks>
     public static string Base(string appName, bool validation, bool logging)
+        => Base(appName, validation, logging, auth: false);
+
+    /// <summary>
+    /// As <see cref="Base(string, bool, bool)"/>, reading the acting user from the desktop
+    /// <c>Session</c> when <paramref name="auth"/>.
+    /// </summary>
+    /// <remarks>
+    /// Narrower than "this app has a login": <c>Session</c> is emitted from exactly one place,
+    /// <c>DesktopViewModelFiles</c>, which only the WinForms and WPF targets reach — see
+    /// <c>ITargetScaffolder.HasDesktopSession</c>. A Blazor app has a login, has no Session, and
+    /// would not compile if this named one; its own delete is guarded at the grid instead.
+    /// </remarks>
+    public static string Base(string appName, bool validation, bool logging, bool auth)
     {
         // Raw string literals, not "\n" concatenation: a raw literal carries the line endings of
         // the source file it is written in, which is exactly what the template below carries. These
-        // three fragments are lines lifted OUT of that template, so anything else would leave the
+        // fragments are lines lifted OUT of that template, so anything else would leave the
         // default output one CR per line different from what this generator has always produced.
         var validationUsing = validation
             ? $"""
@@ -59,34 +72,78 @@ public static class RepositoryTemplate
             """
             : string.Empty;
 
-        // Two blank lines before the closing delimiter, so the fragment ends with the blank line
+        // What every write does when a stage said no: only what each puts in the context differs.
+        // A rejected write is worth a line in the log — it is the one outcome that is neither a
+        // success nor an exception, so nothing else would record it.
+        //
+        // The three fragments below splice this in at the MARGIN, because an interpolation does
+        // not re-indent the lines of a multi-line value: the indentation these lines need in the
+        // emitted file is baked in here.
+        var refuse = logging
+            ? """
+                    if (!outcome.IsValid)
+                    {
+                        var messages = outcome.Messages;
+
+                        Log.LogWarning("Rejected {Entity}: {Error}", typeof(T).Name, messages[0]);
+                        return new SaveResult<T> { Success = false, Failures = outcome.Errors, Errors = messages };
+                    }
+            """
+            : """
+                    if (!outcome.IsValid)
+                        return new SaveResult<T> { Success = false, Failures = outcome.Errors, Errors = outcome.Messages };
+            """;
+
+        // Two blank lines before the closing delimiter, so each fragment ends with the blank line
         // that separates the guard from the body — the last newline of a raw literal is its
         // delimiter's, and is not part of the value.
-        var validateCall = (validation, logging) switch
-        {
-            (false, _) => string.Empty,
+        var validateCreate = validation
+            ? $$"""
+                    var outcome = _validator.Validate(new ValidationContext<T>(
+                        item, ValidationOperation.Insert, null, new StoreEntityLookup(),
+                        CurrentRole(), CurrentUserId()));
 
-            // A rejected write is worth a line in the log: it is the one outcome that is neither a
-            // success nor an exception, so nothing else would record it.
-            (true, true) => """
-                    var errors = _validator.Validate(item);
-                    if (errors.Count > 0)
-                    {
-                        Log.LogWarning("Rejected {Entity}: {Error}", typeof(T).Name, errors[0]);
-                        return new SaveResult<T> { Success = false, Errors = errors };
-                    }
+            {{refuse}}
 
 
-            """,
+            """
+            : string.Empty;
 
-            _ => """
-                    var errors = _validator.Validate(item);
-                    if (errors.Count > 0)
-                        return new SaveResult<T> { Success = false, Errors = errors };
+        // Update reads what is on disk first: that is the whole point of the Stored field. An
+        // immutable-field rule and a status transition are inexpressible without it.
+        var validateUpdate = validation
+            ? $$"""
+                    var stored = GetById(GetId(item));
+
+                    var outcome = _validator.Validate(new ValidationContext<T>(
+                        item, ValidationOperation.Update, stored, new StoreEntityLookup(),
+                        CurrentRole(), CurrentUserId()));
+
+            {{refuse}}
 
 
-            """,
-        };
+            """
+            : string.Empty;
+
+        // Delete judges the record that is about to go, not a submitted one — it is both the item
+        // and the stored version. A record that is not there is NotFound, which is a different
+        // outcome from a refusal and is deliberately not logged as one.
+        var validateDelete = validation
+            ? $$"""
+                    var doomed = GetById(id);
+
+                    if (doomed is null)
+                        return new SaveResult<T> { Success = false, NotFound = true };
+
+                    var outcome = _validator.Validate(new ValidationContext<T>(
+                        doomed, ValidationOperation.Delete, doomed, new StoreEntityLookup(),
+                        CurrentRole(), CurrentUserId()));
+
+            {{refuse}}
+
+
+            """
+            : string.Empty;
 
         var loggingUsings = logging
             ? $"""
@@ -119,20 +176,19 @@ public static class RepositoryTemplate
             """
             : string.Empty;
 
-        // Delete is the one method whose tail has to change rather than gain a line: it returns the
-        // save result directly, and there is nothing to log against until that result is known.
-        var deleteTail = logging
+        // Delete's line, unlike Create's and Update's, waits inside the method rather than after
+        // the write it reports: there is nothing to record until the save result is known.
+        // Validation and logging are independent flags (validation: false, logging: true is a real
+        // `novalidation logging` build), so this reaches Delete with no context built above it and
+        // must compile and behave correctly on its own.
+        var deleteLog = logging
             ? """
-                    var saved = _store.SaveAll(all);
-
-                    if (saved)
+                    if (saved.Success)
                         Log.LogInformation("Deleted {Entity} {Id}.", typeof(T).Name, id);
 
-                    return saved;
+
             """
-            : """
-                    return _store.SaveAll(all);
-            """;
+            : string.Empty;
 
         var createSummary = validation
             ? "Validates, then assigns the next Id, appends the record and persists it."
@@ -141,6 +197,42 @@ public static class RepositoryTemplate
         var updateSummary = validation
             ? "Validates, then replaces the record sharing this item's Id."
             : "Replaces the record sharing this item's Id.";
+
+        // Neither summary promises a bool any more, and neither may say "false when there is
+        // none": the result now separates a missing record from a refusal, and a refusal carries
+        // its reason. Both are possible with validation off too — the store asks the permission
+        // matrix on its own.
+        var deleteSummary = validation
+            ? "Validates the record about to go, then removes it, or says why not."
+            : "Removes the record with this Id, or says why not.";
+
+        // Only the fragments above call these, so a novalidation build emits neither: nothing in
+        // that repository has a context to fill. The leading blank line belongs to the fragment so
+        // that an empty one leaves the emitted class exactly as it was.
+        var currentUser = (validation, auth) switch
+        {
+            (false, _) => string.Empty,
+
+            (true, true) => $$"""
+
+                private static string? CurrentRole() => {{appName}}.Auth.Session.Current?.Role.ToString();
+
+                private static int? CurrentUserId() => {{appName}}.Auth.Session.Current?.Id;
+
+            """,
+
+            _ => """
+
+                // This app has no desktop session to read a user from, so there is nobody to
+                // attribute a write to and the Security stage has nothing to refuse. Not a stub
+                // to fill in later: a target without screens emits no auth core at all, and a
+                // Blazor app reads its user from the authentication state instead.
+                private static string? CurrentRole() => null;
+
+                private static int? CurrentUserId() => null;
+
+            """,
+        };
 
         return $$"""
 using System;
@@ -170,12 +262,13 @@ public abstract class Repository<T> where T : class, new()
     /// <summary>{{createSummary}}</summary>
     public SaveResult<T> Create(T item)
     {
-{{validateCall}}        var all = _store.GetAll();
+{{validateCreate}}        var all = _store.GetAll();
         SetId(item, _store.NextId(all));
         all.Add(item);
 
-        if (!_store.SaveAll(all))
-            return new SaveResult<T> { Success = false, Errors = new[] { "Could not persist " + typeof(T).Name + "." } };
+        var write = _store.SaveAll(all);
+        if (!write.Success)
+            return new SaveResult<T> { Success = false, Errors = new[] { write.Refusal ?? "Could not persist " + typeof(T).Name + "." } };
 
 {{createLog}}        return new SaveResult<T> { Success = true, Item = item };
     }
@@ -183,27 +276,33 @@ public abstract class Repository<T> where T : class, new()
     /// <summary>{{updateSummary}}</summary>
     public SaveResult<T> Update(T item)
     {
-{{validateCall}}        var all = _store.GetAll();
+{{validateUpdate}}        var all = _store.GetAll();
         var index = all.FindIndex(existing => GetId(existing) == GetId(item));
         if (index < 0)
             return new SaveResult<T> { Success = false, NotFound = true };
 
         all[index] = item;
 
-        if (!_store.SaveAll(all))
-            return new SaveResult<T> { Success = false, Errors = new[] { "Could not persist " + typeof(T).Name + "." } };
+        var write = _store.SaveAll(all);
+        if (!write.Success)
+            return new SaveResult<T> { Success = false, Errors = new[] { write.Refusal ?? "Could not persist " + typeof(T).Name + "." } };
 
 {{updateLog}}        return new SaveResult<T> { Success = true, Item = item };
     }
 
-    /// <summary>Removes the record with this Id. False when there is none.</summary>
-    public bool Delete(int id)
+    /// <summary>{{deleteSummary}}</summary>
+    public SaveResult<T> Delete(int id)
     {
-        var all = _store.GetAll();
-        if (all.RemoveAll(item => GetId(item) == id) == 0)
-            return false;
+{{validateDelete}}        var all = _store.GetAll();
 
-{{deleteTail}}
+        if (all.RemoveAll(item => GetId(item) == id) == 0)
+            return new SaveResult<T> { Success = false, NotFound = true };
+
+        var saved = _store.SaveAll(all);
+
+{{deleteLog}}        return saved.Success
+            ? new SaveResult<T> { Success = true }
+            : new SaveResult<T> { Success = false, Errors = new[] { saved.Refusal ?? "Could not persist " + typeof(T).Name + "." } };
     }
 
     private static PropertyInfo IdProperty =>
@@ -214,7 +313,7 @@ public abstract class Repository<T> where T : class, new()
     private static int GetId(T item) => (int)(IdProperty.GetValue(item) ?? 0);
 
     private static void SetId(T item, int id) => IdProperty.SetValue(item, id);
-}
+{{currentUser}}}
 """;
     }
 

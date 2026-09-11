@@ -20,7 +20,7 @@ public class StoreSeamTemplateTests
         var source = StoreSeamTemplate.Source("Payroll");
 
         StringAssert.Contains(source, "List<T> GetAll();");
-        StringAssert.Contains(source, "bool SaveAll(List<T> all);");
+        StringAssert.Contains(source, "StoreWrite SaveAll(List<T> all);");
         StringAssert.Contains(source, "int NextId(IEnumerable<T> existing);");
         StringAssert.Contains(source, "T NewItem(IEnumerable<T> existing);");
     }

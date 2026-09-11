@@ -276,7 +276,10 @@ public static class BlazorLoginTemplate
     }
 
     private void Save()
-        => _status = _store.SaveAll(_accounts) ? "Saved." : "Could not save the accounts.";
+    {
+        var write = _store.SaveAll(_accounts);
+        _status = write.Success ? "Saved." : write.Refusal ?? "Could not save the accounts.";
+    }
 
     private void SetPassword()
     {

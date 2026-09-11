@@ -174,6 +174,24 @@ Each field earns its place by unlocking a category that is otherwise
 inexpressible: `Stored` for 11 and 16, `Op` for 15, `User` for 12 and 17, and
 the lookup's new counting method for 15.
 
+`Validate(T item)` is REPLACED, not supplemented. A convenience overload would have to
+invent the context -- an operation, and a null user -- so any caller reaching for it gets
+an inert Security stage and a validator reporting success over a check that never ran.
+Replacing it outright makes the compiler enumerate every call site, in a generated app as
+well as in the templates.
+
+Errors carry their property from the point they are raised, which is what `SaveResult`
+attribution later reads:
+
+```csharp
+public sealed record ValidationError(string? Property, string Message);   // null = whole record
+
+public sealed record ValidationOutcome(IReadOnlyList<ValidationError> Errors)
+{
+    public bool IsValid => Errors.Count == 0;
+}
+```
+
 `IEntityLookup` grows exactly one method:
 
 ```csharp
@@ -218,8 +236,11 @@ prevents a range check running against a value that is not a number, and what
 makes requirement 10 a property of the design: a `Post` commits only if all
 seven stages returned nothing.
 
-A stage with no rules emits no code. For a simple three-entity app most stages
-are empty and the generated output is no heavier than today's.
+A stage with no rules emits no code. Stages are private methods on each generated
+validator with one ordered list of the non-empty ones, not seven classes per entity, which
+is what makes that literally true rather than aspirational: a three-entity CRUD app gets
+one stage method per validator and two lines of list. `ValidationPipeline.Run` is a single
+small shared helper holding the ordering and the short-circuit.
 
 ### Where inference meets the existing rules
 
@@ -260,8 +281,10 @@ A typed rule wins for its property; inference fills the rest.
 ### 1. Security
 
 Generalises the single hardcoded `Session.IsAdmin` check into a permission
-matrix, and — the point of the exercise — moves enforcement from the view model
-to the store boundary, where every front end passes through it.
+matrix, and — the point of the exercise — moves enforcement out of the view model
+to the three points named under Emission, so that a front end cannot simply not ask. It
+is not one point: `IStore<T>` cannot express an operation, so the coarse guard sits there
+and the operation-aware checks sit in `Repository<T>` and at the grid's delete button.
 
 The default matrix preserves today's behaviour exactly: an Admin may do
 anything; a User may do anything except delete a master record or reach the
@@ -470,9 +493,54 @@ The stage list and the short-circuit ordering live in a single
 
 Generated models gain `partial`, which shows in every diff.
 
-**Store boundary.** `RepositoryTemplate`, `EfStoreTemplate` and
-`JsonStoreTemplate` call the pipeline on insert, update, delete and post.
+**Enforcement points -- three, not one.** An earlier draft of this section said the
+store boundary was where "every front end passes through it". That is not true of this
+code: `IStore<T>` is `GetAll()` and `SaveAll(List<T>)`, a whole-collection overwrite that
+cannot express an operation, and the desktop and Blazor grids bypass `Repository<T>`
+entirely -- the WPF grid does `Records.Remove(item)`, says "Not saved yet", and later
+writes the whole list. A pipeline needing `Op` and `Stored` cannot be driven from
+`SaveAll`. So:
+
+| Where | What it can enforce | Who it protects |
+|---|---|---|
+| `Repository<T>` | The full pipeline, all four operations, `Stored` available | Console, Web API, worker, generated tests |
+| `IStore<T>.SaveAll` | "May this user write this type at all" -- coarse, but unbypassable | Everything, including the grids |
+| Desktop / Blazor grid | The permission matrix for a `Delete`, at the moment the user asks to remove the row | The deferred-save UI, which cannot express the operation at save time |
+
+Stated plainly because it will otherwise be found in a generated app: under the default
+matrix the coarse guard refuses NOTHING except the Users entity, since a User may write
+every business entity and is barred only from deleting a master record. It is real and
+unbypassable, and nearly inert. The teeth are in rows one and three.
+
+Row three replaces the hardcoded `if (!Session.IsAdmin)` in `MasterScreenTemplate` with a
+call through the same permission matrix, and gives `ViewModelTemplates.Delete()` -- which
+has no check whatever today -- its first one.
+
+**Row three asks the MATRIX, not the pipeline.** An earlier draft of this row said "the pipeline
+with a `Delete` context", and the plan specified the matrix; the three call sites --
+`MasterScreenTemplate.cs:379`, `ViewModelTemplates.cs:293` and `BlazorScreenTemplates`'
+`MayDelete` -- each call `Permissions.Allows` directly. The two are equivalent TODAY, because
+Security is the only stage that can refuse a delete, and the grids are the one place where the
+affordance and the refusal must agree: the button's enabled state reads the same answer the
+handler does, which a whole pipeline run cannot cheaply give it. **They stop being equivalent in
+phase 3**, when referential integrity on delete arrives: at that point the deferred-save grid --
+the very thing row three exists to protect -- would remove a row the pipeline would have refused,
+and say nothing. Moving these three call sites onto a pipeline call is therefore a **phase-3
+entry condition**, to be done before the first delete-time referential check lands, not after.
+
+The UI half of the same problem, found by driving a generated WPF app: the WPF **transaction**
+screen has no status line at all. `WpfBusinessLayout`'s `MasterTemplate` and `EditorTemplate`
+each bind `{Binding Status}`; `TransactionTemplate` binds it nowhere, even though
+`TransactionScreenViewModel<T>` inherits `Status` from `MasterScreenViewModel<T>` and its delete
+writes a refusal into it. Nothing is lost under the default matrix -- a plain User may delete a
+transaction, so that refusal never fires -- but any matrix change that refuses a transaction
+delete would refuse it silently on WPF. Phase 3 owns the status line as well as the call site.
+
 Delete is a new call site: nothing validates a delete today.
+
+`IStore<T>.SaveAll` returns `bool`, so a permission refusal would surface as "Could not
+write Customer.json", which is a lie. It widens to carry an optional refusal reason, and
+the `SaveAll` call sites take their status message from that reason when there is one.
 
 **Class path.** `create class` and `generate validator` have no store, so
 uniqueness and reference counting cannot run. They emit a
@@ -480,9 +548,16 @@ uniqueness and reference counting cannot run. They emit a
 `RoslynClassGenerator` needs `PartialKeyword` — the `create class` path already
 has `ClassValidationWriter.EnsurePartial`.
 
-**`SaveResult`** gains a per-property attribution so a front end can highlight
-the field rather than only listing sentences. `Errors` stays as it is for
-compatibility, and `AsDictionary` keeps its current shape.
+**`SaveResult`** gains `Failures` -- the same errors with their property -- so a front
+end can highlight the field rather than only listing sentences. `Errors` stays a list of
+sentences, so nothing reading it breaks.
+
+`AsDictionary` is keyed BY PROPERTY, falling back to the empty key for whole-record errors.
+An earlier draft kept its current single-empty-key shape for compatibility; that would
+leave the Web API gaining nothing at all from attribution, which is most of the point, and
+the only thing that can break is a hand-written client of a previously generated API -- the
+app itself is regenerated from scratch. Keyed by property is the standard ASP.NET 400
+payload, and the Web API is the one front end where the right behaviour is unambiguous.
 
 ## The Review card
 
@@ -508,11 +583,14 @@ values in a drag-order list, with a "final" tick per value.
   not row 5. The whole point is that a sample would have passed.
 - **A rule that would reject the source's own data must never be proposed.**
   Direct test per candidate kind.
-- **Delete refusal** tested through the store, not the view model, since the
-  store is where the check newly lives.
+- **Delete refusal** tested at each of the three enforcement points, since no single
+  one of them covers every front end: through `Repository<T>` for the console and Web
+  API, and through the grid's delete for the deferred-save UI. A test that exercised only
+  the repository would leave the desktop path unproven, which is the path that had the
+  decorative check.
 - **Security stage tested with `novalidation`**, proving permissions survive it.
-- **Every front end**, since the store boundary is shared but the surfacing is
-  not.
+- **Every front end**, since the enforcement is shared but the surfacing is not, and
+  one of the three points lives in the front ends themselves.
 
 Roslyn compilation, not substring assertions: emitted code is tested by
 compiling it.
@@ -527,13 +605,47 @@ All deliberate, all visible in existing generated apps.
   `Title` did. Some generated apps become stricter, correctly but noticeably.
 - Transactions reject an unset foreign key that they previously accepted.
 - Deletes are validated for the first time, and can now be refused.
-- Permission checks are enforced at the store, so a Web API or console caller
-  that previously deleted a master record freely is now refused.
+- Permission checks are enforced rather than displayed, at all three points. This reaches
+  the WPF, WinForms and Blazor targets, which are the only ones that HAVE a user:
+  `ScreenPlan.For` emits the auth core only for a target with screens, so a console,
+  webapi or worker app has no role to check and its Security stage is genuinely empty.
+  Giving those targets their own authentication is a feature, not part of this phase.
+  (Only WinForms and WPF emit `Auth.Session`; Blazor carries the signed-in user via a
+  cascading `AuthenticationState` instead — the mechanism differs, but all three have one.)
 - `novalidation` no longer means "no validation code at all" — the Security
   stage survives it. The manual and `docs/commands.md` both need this, and
   chapter 18's appendix is generated from `CommandDictionary`, so both
   regenerate together or `ManualAppendixDocTests` goes red.
 - Generated models gain `partial`.
+- **Regenerating an app generated before this phase does not compile until the user edits each
+  `<Model>Validator.Custom.cs` by hand.** This phase changed the hand-written hook from an
+  instance `partial void ValidateCustom(T item, List<string> errors)` to
+  `private static partial void ValidateCustom(T item, List<ValidationError> errors)`, and that
+  file is write-once: `AppScaffolder` skips it when it exists, and `IncrementalFiles` skips it on
+  the add path for the same reason. So the regenerated `.Generated.cs` declares a hook the kept
+  `.Custom.cs` does not implement — CS0759 on one half, CS8795 on the other — and an UNTOUCHED
+  empty stub breaks it exactly as an edited one does. The tool DETECTS this and REPORTS it,
+  naming the file and the replacement line, on both paths and on all three surfaces
+  (`BuildAppCommand`, `AddReport`, and the workflow page — `GenerateStage` adds it to the
+  Generate panel's report before the compiler starts, and again when a reload rebuilds that
+  panel from the session, while `GenerateStep.OutcomeFor` repeats it in the console epilogue
+  the browser run ends with). It deliberately does NOT rewrite the file:
+  changing the declaration would leave a hand-written body calling `errors.Add("a sentence")`
+  failing CS1503 instead — a half-migrated file whose remaining error no longer names the
+  thing that moved. Documented in the manual's *Regenerating over an existing project* and in
+  `CommandDictionary`'s `approve (when the app already exists)` entry, which is what generates
+  `docs/commands.md` and chapter 18's appendix.
+- **Two return types on the generated API changed**, which breaks hand-written code held against
+  a previously generated app: `Repository<T>.Delete` went `bool` -> `SaveResult<T>`, and
+  `IStore<T>.SaveAll` went `bool` -> `StoreWrite`. Both because a write can now be refused and a
+  refusal carries a sentence a boolean cannot. Generated code moves with them because it is
+  regenerated; the user's own code does not, and reads `.Success` instead.
+- **In the four older desktop layouts a plain user loses delete on master rows.**
+  `EntityViewModel.Delete` — the grid shared by `tabs`, `sidebar`, `master-detail` and
+  `dashboard` — had no permission check of any kind; it now asks the same matrix the business
+  shell asks, and writes the refusal to the status line those layouts already have. The manual's
+  permission sentence had been updated for the business shell only; chapter 8's *Window layouts*
+  and chapter 14's *Roles* now both say it holds everywhere.
 
 ## Risks
 
@@ -565,3 +677,82 @@ All deliberate, all visible in existing generated apps.
 - Reading a SQL Server computed column definition, and stating a calculation by
   hand. Both are natural extensions once verified arithmetic is in.
 - Recalculating stored values. Calculations are verified, never rewritten.
+
+## Phase 3 entry conditions
+
+Recorded by the phase-2 whole-branch review. Each is a decision taken here and deliberately NOT
+shipped here, with the reason, so phase 3 starts from the ruling rather than rediscovering it.
+
+- **Move the three grid delete call sites onto a pipeline call.** See *Enforcement points* above:
+  the grids ask `Permissions.Allows` directly, which is equivalent to a pipeline run only while
+  Security is the only stage that can refuse a delete. Do this BEFORE the first delete-time
+  referential-integrity check lands, or the deferred-save grid bypasses it silently. The WPF
+  transaction screen also needs a status line before a refusal set there can be seen at all.
+- **Separate "this app has no login" from "nobody is signed in".** Emitted `Permissions.Allows`
+  does `if (role is null) return true;`. In a WinForms or WPF app `CurrentRole()` is
+  `Session.Current?.Role.ToString()`, which is null before sign-in and after sign-out, so the
+  same permissive answer covers both situations. This is **hardening, not a live hole**: the
+  shell only runs post-login, `UserSeed.EnsureAdminSeeded` runs pre-session deliberately, both
+  `AuthService.ChangePassword` callers are Admin-only, and the permissive default is REQUIRED for
+  the four targets with no auth core — this spec's own named danger is that "a matrix that refused
+  a NULL role would brick every console and Web API app". The mechanism: emit a
+  `private const bool AppHasLogin` from the flag `PermissionsTemplate` can already see, and
+  refuse a null role only when it is true. Not shipped in phase 2 because it is precisely the
+  one-line security change that compiles, passes and is wrong in a way only a real run of every
+  target finds, and phase 2's real-run budget was spent. `PermissionsTemplate`'s remarks now
+  state the signed-out case so the next reader is not misled. Cost of the delay: a signed-out
+  desktop window stays permissive for one more phase — the same state as before this branch.
+- **Move the FK "Reference exists" check from the Field stage to stage 3, Entity**, where
+  *Stage by stage* assigns it. Plan-directed, so this is a plan defect rather than an
+  implementation one. Moving it changes which errors a record reports and needs the stage-order
+  tests re-reasoned. Until then a record with both a bad field and a bad FK reports both instead
+  of stopping after the field.
+- **The Entity stage's first task owns the runtime early-return test for `CountReferencing`.**
+  Nothing executes it today and neither test asserts the early return's ORDER; the Entity stage
+  is its first caller, and the early return is what stops a full scan over a 47-million-row
+  store.
+- **One emitted `Validation/ActingUser.cs`** in place of the five emitted `CurrentRole()` copies
+  in three shapes. Inert today — all five product call sites pass the flag explicitly — so it is
+  cleanup, not a fix.
+- **Shared test helpers** for the six copies of the mixed-line-endings loop and the four
+  `Occurrences`-shaped counters. Test-only churn, deferred off the end of phase 2 rather than
+  landing it there.
+- **A unit test for the plain grid's delete guard** (`ViewModelTemplates.Delete`). It is compiled
+  but never executed as a unit test; its twin is
+  (`MasterScreenTests.A_plain_user_cannot_delete_a_record`), and task 13 drove the real WPF app,
+  so this is a coverage gap rather than an unproven behaviour.
+
+## Follow-up tickets
+
+Opened on GitHub. None was a phase-2 merge blocker; the first two are pre-existing and red on
+`main` as well. #127 was then fixed on this branch rather than left open — see its entry.
+
+- **#126 — `nologin` desktop apps do not compile: CS0234 from four unconditional `Auth`
+  references.** `DesktopViewModelFiles.cs:77-79` emits `Auth/Session.cs` only under `if (login)`,
+  while four sites name it regardless: `ShellTemplate.cs:59` (with `Session` used at `:86`,
+  `:117`, `:119` and `:175`), `MasterScreenTemplate.cs:57`, `WpfBusinessLayout.cs:508-512` and
+  `WinFormsBusinessLayout.cs:64` (with `Session` at `:149`). `MasterScreenTemplate` is a culprit
+  for its unconditional `using` only — its `Session` use at `:37` IS gated by `login`. This is the
+  DEFAULT layout of both desktop targets, and fixing `ShellTemplate` alone will not fix it.
+  Pre-existing at `94d0e85`.
+- **#127 — the `worker` target failed NU1605. FIXED on this branch.** `LoggingTemplate.cs` pinned
+  the three logging packages to 10.0.11, and the worker project template already references
+  `Microsoft.Extensions.Hosting`, which resolved 10.0.12 — a downgrade, which is an error under
+  warnings-as-errors. Bumping the pin would only postpone it to the next Hosting release, so the
+  worker now emits no explicit logging `PackageReference` at all and takes all three transitively
+  from Hosting; every other target keeps its explicit references, because nothing else supplies
+  them. The exclusion sits beside the Web API's in `AppScaffolder`, with its own reason recorded.
+  `ProjectWithLogging_Builds("worker")` builds the app for real and is now green, and
+  `LoggingTests.A_logging_worker_takes_its_logging_from_hosting` pins both halves: no logging
+  package in the csproj, and the Hosting reference that makes that safe still present.
+- **#128 — desktop transaction footer totals go stale after every write.** `Refilter()`
+  (`TransactionScreenTemplate.cs:155-158`) has exactly two callers, the `From` setter at `:82`
+  and the `To` setter at `:92` — both date setters. Nothing recomputes the totals after a save or a
+  delete, so the footer keeps showing what the list held before the write.
+- **#129 — the WinForms and WPF editors carry per-field validation errors but never paint them.**
+  `SaveResult.Failures` reaches the desktop editors and is listed as sentences only. The spec is
+  permissive here by construction ("so a front end CAN highlight"), and Blazor DOES paint it —
+  `is-invalid` at `BlazorScreenTemplates.cs:747`. `ErrorFor` appears nowhere under
+  `AppScaffolding/Layouts/`, and it could not simply be added: `ErrorFor(string)` is a
+  parameterised method, which a WPF binding cannot target at all, so painting needs an
+  `IReadOnlyDictionary` plus `PropertyChanged` rather than a method call.
