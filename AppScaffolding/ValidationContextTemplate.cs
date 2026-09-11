@@ -13,6 +13,7 @@ public static class ValidationContextTemplate
     /// <summary>Source of <c>Validation/ValidationContext.cs</c> in
     /// <paramref name="rootNamespace"/>.Validation.</summary>
     public static string Source(string rootNamespace) => $$"""
+using System;
 using System.Collections.Generic;
 
 namespace {{rootNamespace}}.Validation;
@@ -37,7 +38,12 @@ public sealed record ValidationError(string? Property, string Message);
 public sealed record ValidationOutcome(IReadOnlyList<ValidationError> Errors)
 {
     /// <summary>An outcome with nothing in it.</summary>
-    public static ValidationOutcome Valid { get; } = new(new List<ValidationError>());
+    /// <remarks>
+    /// Array.Empty rather than an empty List: this is a shared static that every passing
+    /// validation in the app hands back, so a mutable list behind the IReadOnlyList would be one
+    /// cast away from being appended to by one caller and seen by all of them.
+    /// </remarks>
+    public static ValidationOutcome Valid { get; } = new(Array.Empty<ValidationError>());
 
     /// <summary>True when no rule was broken.</summary>
     public bool IsValid => Errors.Count == 0;
@@ -66,9 +72,9 @@ public sealed record ValidationOutcome(IReadOnlyList<ValidationError> Errors)
 /// that needs it must handle null rather than assume an Update always has one.
 /// </param>
 /// <param name="UserRole">
-/// The acting user's role, or null when this app has no login at all. Null means "no notion of
-/// who is acting", which the permission matrix reads as allowed — an app generated without a
-/// login has nobody to refuse.
+/// The acting user's role, or null. The permission matrix reads null as allowed. Null arrives two
+/// ways: an app with no login at all has nobody to refuse, and a desktop app that HAS a login
+/// reports null before anyone has signed in and again after a sign-out. See Permissions.Allows.
 /// </param>
 public sealed record ValidationContext<T>(
     T Item,

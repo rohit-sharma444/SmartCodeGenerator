@@ -54,12 +54,12 @@ public sealed class SaveResult<T>
             messages.Add(failure.Message);
         }
 
-        // Repository does not populate Failures until the pipeline is wired into it (a later
-        // step than this file); until then every validation failure still arrives only as
-        // Errors. Without this fallback the Web API's 400 payload would come back empty on
-        // every one of those failures, not just on a store failure that truly carries no
-        // attribution. Keep it even after Repository catches up: a store failure (the write
-        // itself throwing, say) still has only a sentence to offer, never a property.
+        // Not every failure has a property to blame. A store failure -- the write itself
+        // throwing, or a permission refused at the store, where the whole list is written at
+        // once -- carries a sentence and nothing else. Without this fallback the Web API's 400
+        // payload would come back empty on exactly those, so the unattributed sentences go
+        // under the empty key, which is where a caller reading the payload already looks for
+        // a whole-record error.
         if (byProperty.Count == 0 && Errors is { Count: > 0 })
             byProperty[string.Empty] = new List<string>(Errors);
 

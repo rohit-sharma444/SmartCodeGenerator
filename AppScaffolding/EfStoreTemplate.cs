@@ -3,6 +3,14 @@ namespace AppScaffolding;
 /// <summary>Emits <c>Data/EfStore.cs</c>: the EF Core + SQLite implementation of
 /// <see cref="IStore{T}"/>. Deliberately faithful to JsonStore's contract — client-assigned int
 /// Ids and whole-store SaveAll semantics — so Repository and SeedData need no behavioral change.</summary>
+/// <remarks>
+/// The permission guard this emits into <c>SaveAll</c> cannot refuse anything as the tool stands,
+/// and a reader should not assume otherwise: sqlite is refused for the WinForms and WPF targets,
+/// so <paramref name="auth"/> — <c>AppScaffolder</c>'s <c>sessionAuth</c>, which needs
+/// <c>HasDesktopSession</c> — is false for every EF build. The emitted <c>CurrentRole()</c> is
+/// therefore always the null-returning half, and a null role is allowed. The guard is emitted
+/// anyway so that a target which gains both a user and sqlite is already covered on this path.
+/// </remarks>
 public static class EfStoreTemplate
 {
     /// <summary>Source of <c>Data/EfStore.cs</c> in <paramref name="rootNamespace"/>.Data. Unlike

@@ -10,6 +10,23 @@ namespace AppScaffolding;
 /// delete a master record or reach the Users screen — and the change is that it is now ENFORCED
 /// rather than only shown.
 /// </para>
+/// <para>
+/// A null role is allowed, and that answer covers two different situations. One is an app with
+/// no login at all — the console, webapi, worker and classlib targets, which emit no auth core,
+/// have nobody to refuse and must not be refused. The other is a WinForms or WPF app BEFORE
+/// sign-in and AFTER sign-out, where <c>Session.Current</c> is null and the same permissive
+/// answer comes back. That second case is hardening rather than a live hole: the shell only runs
+/// post-login, the one deliberate pre-session caller is <c>UserSeed.EnsureAdminSeeded</c>, and
+/// both <c>AuthService.ChangePassword</c> callers are Admin-only.
+/// </para>
+/// <para>
+/// The mechanism for separating the two — emitting a <c>private const bool AppHasLogin</c> from
+/// the flag this template can already see, and refusing a null role when it is true — is
+/// deliberately NOT done here. It is recorded as a phase-3 entry condition in
+/// <c>docs/superpowers/specs/2026-09-06-validation-architecture-design.md</c>, because a matrix
+/// that refuses a null role is exactly the one-line security change that compiles, passes and is
+/// wrong in a way only a real run of every target finds.
+/// </para>
 /// </remarks>
 public static class PermissionsTemplate
 {
@@ -44,10 +61,12 @@ public static class Permissions
     /// <summary>Whether <paramref name="role"/> may perform <paramref name="op"/> on
     /// <paramref name="entity"/>.</summary>
     /// <remarks>
-    /// A null role means this app has no login at all — the auth core is emitted only for a
-    /// target with screens — so there is no notion of who is acting and nothing to refuse.
-    /// Returning false for a null role would refuse every write in every console, Web API and
-    /// worker app.
+    /// A null role is allowed. It means there is no notion of who is acting, which happens two
+    /// ways: an app generated with no login at all has nobody to refuse — the auth core is
+    /// emitted only for a target with screens, so returning false here would refuse every write
+    /// in every console, Web API and worker app — and a desktop app that DOES have a login
+    /// reports null before anyone has signed in and again after a sign-out. The window only runs
+    /// once somebody has signed in, so the second case is not reachable from a screen.
     /// </remarks>
     public static bool Allows(ValidationOperation op, string entity, string? role)
     {
