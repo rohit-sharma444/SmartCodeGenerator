@@ -597,6 +597,32 @@ All deliberate, all visible in existing generated apps.
   chapter 18's appendix is generated from `CommandDictionary`, so both
   regenerate together or `ManualAppendixDocTests` goes red.
 - Generated models gain `partial`.
+- **Regenerating an app generated before this phase does not compile until the user edits each
+  `<Model>Validator.Custom.cs` by hand.** This phase changed the hand-written hook from an
+  instance `partial void ValidateCustom(T item, List<string> errors)` to
+  `private static partial void ValidateCustom(T item, List<ValidationError> errors)`, and that
+  file is write-once: `AppScaffolder` skips it when it exists, and `IncrementalFiles` skips it on
+  the add path for the same reason. So the regenerated `.Generated.cs` declares a hook the kept
+  `.Custom.cs` does not implement — CS0759 on one half, CS8795 on the other — and an UNTOUCHED
+  empty stub breaks it exactly as an edited one does. The tool DETECTS this and REPORTS it,
+  naming the file and the replacement line, on both paths and on all three surfaces
+  (`BuildAppCommand`, `AddReport`, the workflow page). It deliberately does NOT rewrite the file:
+  changing the declaration would leave a hand-written body calling `errors.Add("a sentence")`
+  failing CS1503 instead — a half-migrated file whose remaining error no longer names the
+  thing that moved. Documented in the manual's *Regenerating over an existing project* and in
+  `CommandDictionary`'s `approve (when the app already exists)` entry, which is what generates
+  `docs/commands.md` and chapter 18's appendix.
+- **Two return types on the generated API changed**, which breaks hand-written code held against
+  a previously generated app: `Repository<T>.Delete` went `bool` -> `SaveResult<T>`, and
+  `IStore<T>.SaveAll` went `bool` -> `StoreWrite`. Both because a write can now be refused and a
+  refusal carries a sentence a boolean cannot. Generated code moves with them because it is
+  regenerated; the user's own code does not, and reads `.Success` instead.
+- **In the four older desktop layouts a plain user loses delete on master rows.**
+  `EntityViewModel.Delete` — the grid shared by `tabs`, `sidebar`, `master-detail` and
+  `dashboard` — had no permission check of any kind; it now asks the same matrix the business
+  shell asks, and writes the refusal to the status line those layouts already have. The manual's
+  permission sentence had been updated for the business shell only; chapter 8's *Window layouts*
+  and chapter 14's *Roles* now both say it holds everywhere.
 
 ## Risks
 

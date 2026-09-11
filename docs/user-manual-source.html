@@ -600,7 +600,11 @@ It has 8 class(es); this model has 10, of which 2 are new.
    add, and a class that is already there with <em>different</em> fields is named and left
    alone &mdash; adding will not reconcile it and overwriting would, so the choice stays
    yours. <code>a</code> is offered only when the model really does contain something new: an
-   answer that would do nothing is not put on the menu.</p></div>
+   answer that would do nothing is not put on the menu.</p>
+   <p>In an application generated <em>before</em> this version, that same rule is what leaves it
+   unable to compile until you change a line in each stub &mdash; see <em>Regenerating over an
+   existing project</em> in chapter 8. An add reports it the same way a regenerate does, under
+   <em>Written before the validation pipeline, and kept</em>.</p></div>
 
 <div class="warn"><p>A hand edit inside a <em>generated</em> file that is not
    <code>.Custom.cs</code> is reverted by an add, just as it is by a regenerate. The list of
@@ -710,6 +714,12 @@ between classes. <code>business</code> is a different application, and chapter 1
 the storage are identical whichever you pick, so it is safe to regenerate an existing project with a different
 layout. <code>layout tabs</code> together with <code>nologin</code> is byte-for-byte what this generator
 produced before either the login or the business shell existed.</p></div>
+<div class="note"><p><strong>One behaviour changed in the four older shapes in this version.</strong>
+   Their <em>Delete</em> button had no permission check at all: anybody signed in could remove any
+   row. It now asks the same permission matrix the business shell asks, so a plain user pressing
+   <em>Delete</em> on a master class is refused, and the refusal appears on the status line rather
+   than the row disappearing. Chapter 14 has the matrix; nothing about a transaction class
+   changed, and an administrator sees no difference.</p></div>
 
 <h3>Web application pages</h3>
 <p>The <code>blazor</code> type is the browser version of the same application rather than a second Web API,
@@ -736,7 +746,8 @@ read the JSON store directly. The tool tells you rather than generating somethin
   Shop.csproj
   Models/        one file per class
   Data/          the store, one repository per class, sample data
-  Validation/    permissions always; one validator per class        (omitted by novalidation)
+  Validation/    one validator per class                            (omitted by novalidation)
+                 the permission matrix                              (always generated)
   Logging/       AppLog.cs                                          (only with logging)
   Assets/        your icon                                          (only with icon)
   Views/ ViewModels/   the front end, for the desktop types
@@ -745,6 +756,14 @@ Shop.Tests/      a companion test project, generated with the app</pre>
 <code>Update</code> and <code>Delete</code>. Each validator comes in two halves: a
 <code>.Generated.cs</code> file that is rewritten every time, and a <code>.Custom.cs</code> file that is written
 once and left alone afterwards — that is where your own rules go, and regenerating will not discard them.</p>
+<div class="note"><p><strong>Two signatures changed in this version.</strong>
+   <code>Repository&lt;T&gt;.Delete</code> returns a <code>SaveResult&lt;T&gt;</code> where it used to
+   return a <code>bool</code>, and <code>IStore&lt;T&gt;.SaveAll</code> returns a
+   <code>StoreWrite</code> where it used to return a <code>bool</code>. Both changed for the same
+   reason: a write can now be refused, and a refusal has a sentence to carry that a
+   <code>true</code> or <code>false</code> cannot. Generated code moves with them because it is
+   regenerated &mdash; but code <em>you</em> wrote against an earlier generated application does
+   not, and will not compile until it reads <code>.Success</code> instead of the old boolean.</p></div>
 
 <h3>After it generates</h3>
 <p>Writing the files is not the last step. The tool compiles what it has just written and tells you the result,
@@ -805,6 +824,27 @@ anything you added yourself are kept.
 <tr><td><code>r</code></td><td>Asks for another name and generates under that instead, leaving the existing project untouched. The name is tidied the same way a name taken from your description is, so <em>cash book</em> becomes <code>CashBook</code>. If the new name is also taken, you are asked again.</td></tr>
 <tr><td><code>c</code> or Enter</td><td>Writes nothing and returns you to the review loop. Your model is not lost — you can rename, adjust it and approve again.</td></tr>
 </table>
+<div class="warn"><p><strong>An application generated before this version needs one hand edit per
+   validator.</strong> The validation rules moved onto a pipeline, and with them the signature of
+   the hand-written hook inside each <code>&lt;Class&gt;Validator.Custom.cs</code>. That file is the
+   one file a regenerate is not allowed to touch, so the regenerated <code>.Generated.cs</code> half
+   declares a hook the kept <code>.Custom.cs</code> half does not implement, and the project does not
+   compile &mdash; <code>CS0759</code> on one half and <code>CS8795</code> on the other. The run tells
+   you before the compiler does, naming every such file and the line to put in it:</p>
+<pre>Validation/CustomerValidator.Custom.cs declares ValidateCustom in the shape
+emitted before the validation pipeline; change it to 'private static partial
+void ValidateCustom(Customer item, List&lt;ValidationError&gt; errors)' and have
+each of its rules add a ValidationError rather than a string.</pre>
+<p>Your rules themselves need the second half of that sentence: where one read
+   <code>errors.Add("Surname is required")</code> it becomes
+   <code>errors.Add(new ValidationError(nameof(Customer.Surname), "Surname is required"))</code>, or
+   <code>new ValidationError(null, "...")</code> for something about the record as a whole. Naming the
+   property is what lets a screen highlight the field rather than only listing the sentence.</p>
+<p>The tool reports this instead of rewriting it, deliberately. Changing the declaration for you
+   would leave your own rules inside it still adding strings &mdash; a file the tool had half
+   migrated, failing on an error that no longer names the thing that moved. Two lines you change
+   knowingly beat a file changed for you that still does not build. An add reports the same thing
+   the same way, under <em>Written before the validation pipeline, and kept</em>.</p></div>
 <div class="note"><p>Pressing Enter cancels rather than overwrites, deliberately: the effortless answer is the one
 that cannot lose work. The question is asked only when a project of that name is already there, so it never
 interrupts a first build, and — like the build and the run offer — it is skipped entirely when input is piped,
@@ -1052,6 +1092,12 @@ ever <em>suggests</em> — it never runs a command you did not confirm.</p>
       deactivated and given passwords.</li>
   <li>Only an Admin can delete a master record.</li>
 </ul>
+
+<p>Both of these are <em>enforced</em> from this version onwards, wherever the delete is asked for
+   &mdash; the business shell, all four of the older window layouts, the browser pages and, for the
+   types with no window at all, the repository. Earlier versions showed the rule on some screens and
+   checked it on none, so an application regenerated from an earlier one refuses deletes it used to
+   allow. That is the intended change, not a regression.</p>
 
 <p>Both roles can create, edit and save everything else. A new account is created with no password
    and cannot sign in until an administrator gives it one &mdash; a new account is not a way in
@@ -1468,7 +1514,7 @@ own shows the shorter overview, and <code>help &lt;topic&gt;</code> shows one se
 <table>
 <tr><th>Command</th><th>Description</th><th>Example</th></tr>
 <tr><td><code>add &lt;name&gt;</code></td><td>Review loop: adds a class to the candidate model. The name keeps the shape you type, so a compound survives; several words become one class name.</td><td><code>add cash register</code></td></tr>
-<tr><td><code>approve (when the app already exists)</code></td><td>Offers to add only what is new. When the project folder already holds a generated app, the guard reads the classes already there and compares them with the model you just reviewed: it has 8 class(es), this model has 10, of which 2 are new. Answering a writes those 2 classes and the files that list the entities so their screens appear - and nothing else, so every other generated file is left byte-identical. The run says how many files it did not touch. A class that exists with DIFFERENT fields is named and left alone: adding will not reconcile it, overwriting would. Your .Custom.cs validator rules are never overwritten. a is offered only when something really is new, Enter still cancels, and a piped run overwrites in silence as it always has.</td><td><code>approve wpf</code></td></tr>
+<tr><td><code>approve (when the app already exists)</code></td><td>Offers to add only what is new. When the project folder already holds a generated app, the guard reads the classes already there and compares them with the model you just reviewed: it has 8 class(es), this model has 10, of which 2 are new. Answering a writes those 2 classes and the files that list the entities so their screens appear - and nothing else, so every other generated file is left byte-identical. The run says how many files it did not touch. A class that exists with DIFFERENT fields is named and left alone: adding will not reconcile it, overwriting would. Your .Custom.cs validator rules are never overwritten - which is also why an app generated before the validation pipeline needs one hand edit: its kept stub still declares the old ValidateCustom hook, so the run names each such file and the line to put in it, and the project will not compile until you change them. a is offered only when something really is new, Enter still cancels, and a piped run overwrites in silence as it always has.</td><td><code>approve wpf</code></td></tr>
 <tr><td><code>approve [target] [sqlite]</code></td><td>Review loop: generates the app using the type chosen at the start. Name a target to override it: wpf (default), winforms, console, webapi, blazor, classlib, worker. Add &#x27;sqlite&#x27; for EF Core persistence (JSON is the default; the wpf and winforms targets are JSON-only). Alias: a.</td><td><code>approve webapi sqlite</code></td></tr>
 <tr><td><code>build app</code></td><td>Starts the same flow with nothing filled in. Interactively it opens a workflow page in the browser drawn as nine connected stages, ending in one that starts the application it just built. The stages are the navigation: each box shows the answer it holds, the box being answered carries the step forward and an arrow back one stage, the next box lights up when that step is ready, and clicking a finished box goes back to change it — there are no Back and Next buttons. Generate and Run stay disabled until the project has actually been written. Review classes is where the model is corrected: every class can be renamed or removed and every property renamed, retyped or deleted, on the card itself. Output, the stage after it, draws how the classes connect and states in one table the screen each class will get — master, transaction, or the transaction a line is edited inside — and lets you change it before anything is written. A long step reports its progress as it works, and changing the description or the data source asks first, because it discards the model that was discovered from the old one; Cancel asks the same way once there is an answer to lose. The panel that opens holds the keyboard and Enter takes the step it offers — never Generate or Run, which stay deliberate clicks. A named data file is summarised — how many rows and columns — before anything is built from it; a step that fails says why and stays clickable rather than ending the run; the application the last stage starts can be stopped from the page; and the console signs off with the `build app:` line that would do the same run again. Two tabs on the same workflow stay in step, and closing the last one ends the command. Piped runs keep the console wizard, as does CG_NO_WEB=1.</td><td><code>build app</code></td></tr>
 <tr><td><code>build app (with an unfinished build in the workspace)</code></td><td>Offers the build you left. Closing the browser tab no longer loses the work: the answers and the reviewed model - renames, added and removed fields, promoted suggestions, the master/transaction split - are saved to .codegen/build-in-progress.json after every change, and the next interactive run in that workspace offers to resume, start fresh or discard. Enter starts fresh and deletes nothing. Your DATA is not saved, only where it came from, so the source is re-read on resume; a file that has moved, or a SQL connection string (which is never saved), opens the data stage instead of failing. A finished or cancelled build clears the snapshot; one abandoned by closing the tab keeps it. Piped runs neither write one nor read one.</td><td><code>build app</code></td></tr>

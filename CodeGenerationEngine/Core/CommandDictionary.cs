@@ -746,7 +746,11 @@ public static class CommandDictionary
                         + "file is left byte-identical. The run says how many files it did "
                         + "not touch. A class that exists with DIFFERENT fields is named and "
                         + "left alone: adding will not reconcile it, overwriting would. Your "
-                        + ".Custom.cs validator rules are never overwritten. a is offered "
+                        + ".Custom.cs validator rules are never overwritten - which is also "
+                        + "why an app generated before the validation pipeline needs one hand "
+                        + "edit: its kept stub still declares the old ValidateCustom hook, so "
+                        + "the run names each such file and the line to put in it, and the "
+                        + "project will not compile until you change them. a is offered "
                         + "only when something really is new, Enter still cancels, and a "
                         + "piped run overwrites in silence as it always has.",
             Example = "approve wpf"
