@@ -206,6 +206,47 @@ public class LoggingTests
         }
     }
 
+    /// <summary>
+    /// The worker gets AppLog.cs but no package references either, for its own reason: the
+    /// Microsoft.Extensions.Hosting reference its project template already carries brings all
+    /// three in transitively, and a pinned literal beside that is a downgrade -- NU1605, fatal
+    /// under warnings-as-errors -- the moment Hosting resolves ahead of the literal. That is not
+    /// hypothetical: it is what reddened <c>ProjectWithLogging_Builds("worker")</c> when Hosting
+    /// 10.0.12 was published against a pin of 10.0.11. The real build in that test is what proves
+    /// AppLog.cs still compiles off the transitive reference.
+    /// </summary>
+    [TestMethod]
+    public void A_logging_worker_takes_its_logging_from_hosting()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "log-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(root);
+
+        try
+        {
+            var request = ScaffoldRequest.For(
+                    TestModels.OneEntity(), "Shop", root, new WorkerTarget())
+                with { Customization = Logging };
+
+            var result = new AppScaffolder().Scaffold(request);
+            var csproj = File.ReadAllText(Path.Combine(result.ProjectPath, "Shop.Worker.csproj"));
+
+            Assert.IsTrue(File.Exists(Path.Combine(
+                result.ProjectPath, LoggingTemplate.FolderName, LoggingTemplate.FileName)));
+            Assert.IsFalse(
+                csproj.Contains("Microsoft.Extensions.Logging", StringComparison.Ordinal),
+                "the worker should take Microsoft.Extensions.Logging transitively from Hosting");
+
+            // The half that makes the exclusion safe rather than merely quiet: drop this reference
+            // and the worker would have no logging assemblies at all.
+            StringAssert.Contains(csproj, "Microsoft.Extensions.Hosting");
+        }
+        finally
+        {
+            try { Directory.Delete(root, recursive: true); }
+            catch (IOException) { }
+        }
+    }
+
     [TestMethod]
     public void An_app_without_logging_has_no_logging_folder()
     {

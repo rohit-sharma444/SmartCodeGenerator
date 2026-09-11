@@ -22,8 +22,11 @@ public static class LoggingTemplate
     /// </summary>
     /// <remarks>
     /// Pinned literals rather than a floating range: a version that cannot be resolved fails
-    /// restore in every app this generator produces, and the generated project has no
-    /// Directory.Packages.props to correct it from.
+    /// restore in every app that references these packages explicitly, and the generated project
+    /// has no Directory.Packages.props to correct it from. The worker target does not reference
+    /// them explicitly at all — it gets all three transitively from Microsoft.Extensions.Hosting,
+    /// which pinning a literal alongside would downgrade the moment Hosting resolves ahead of it —
+    /// see the exclusion in <c>AppScaffolder</c>.
     /// <c>LoggingTests.Every_declared_package_has_a_real_version</c> rejects anything that is not a
     /// version, and <c>GeneratedProjectBuildTests.ProjectWithLogging_Builds</c> restores them for
     /// real.

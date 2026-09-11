@@ -724,8 +724,8 @@ shipped here, with the reason, so phase 3 starts from the ruling rather than red
 
 ## Follow-up tickets
 
-Opened on GitHub. None is a phase-2 merge blocker; the first two are pre-existing and red on
-`main` as well.
+Opened on GitHub. None was a phase-2 merge blocker; the first two are pre-existing and red on
+`main` as well. #127 was then fixed on this branch rather than left open — see its entry.
 
 - **#126 — `nologin` desktop apps do not compile: CS0234 from four unconditional `Auth`
   references.** `DesktopViewModelFiles.cs:77-79` emits `Auth/Session.cs` only under `if (login)`,
@@ -735,10 +735,16 @@ Opened on GitHub. None is a phase-2 merge blocker; the first two are pre-existin
   for its unconditional `using` only — its `Session` use at `:37` IS gated by `login`. This is the
   DEFAULT layout of both desktop targets, and fixing `ShellTemplate` alone will not fix it.
   Pre-existing at `94d0e85`.
-- **#127 — the `worker` target fails NU1605.** `LoggingTemplate.cs:33-35` pins the logging packages
-  to 10.0.11 against Hosting 10.0.12. `ProjectWithLogging_Builds("worker")` is the failing test,
-  red on `main` too, which is why phase 2's merge record states an expected count of one failure
-  and names it.
+- **#127 — the `worker` target failed NU1605. FIXED on this branch.** `LoggingTemplate.cs` pinned
+  the three logging packages to 10.0.11, and the worker project template already references
+  `Microsoft.Extensions.Hosting`, which resolved 10.0.12 — a downgrade, which is an error under
+  warnings-as-errors. Bumping the pin would only postpone it to the next Hosting release, so the
+  worker now emits no explicit logging `PackageReference` at all and takes all three transitively
+  from Hosting; every other target keeps its explicit references, because nothing else supplies
+  them. The exclusion sits beside the Web API's in `AppScaffolder`, with its own reason recorded.
+  `ProjectWithLogging_Builds("worker")` builds the app for real and is now green, and
+  `LoggingTests.A_logging_worker_takes_its_logging_from_hosting` pins both halves: no logging
+  package in the csproj, and the Hosting reference that makes that safe still present.
 - **#128 — desktop transaction footer totals go stale after every write.** `Refilter()`
   (`TransactionScreenTemplate.cs:155-158`) has exactly two callers, the `From` setter at `:82`
   and the `To` setter at `:92` — both date setters. Nothing recomputes the totals after a save or a

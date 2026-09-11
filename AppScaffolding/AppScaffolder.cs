@@ -338,7 +338,14 @@ public sealed class AppScaffolder
         // Not for the Web API: the ASP.NET Core framework reference already carries these
         // assemblies, and NuGet reports a reference to one of them as NU1510 — "likely
         // unnecessary" — on every build of the generated project.
-        if (request.Customization.Logging && target.ProjectType != DotNetProjectType.WebApi)
+        // Not for the worker either: Microsoft.Extensions.Hosting, which the worker project
+        // already references, brings all three in transitively at whatever version it
+        // resolves — and pinning LoggingTemplate's literal version alongside it is a
+        // downgrade the moment Hosting moves ahead of that literal, which fails restore
+        // with NU1605 under warnings-as-errors.
+        if (request.Customization.Logging
+            && target.ProjectType != DotNetProjectType.WebApi
+            && target.ProjectType != DotNetProjectType.WorkerService)
         {
             foreach (var (id, version) in LoggingTemplate.Packages)
                 InjectPackage(csprojPath, id, version);
