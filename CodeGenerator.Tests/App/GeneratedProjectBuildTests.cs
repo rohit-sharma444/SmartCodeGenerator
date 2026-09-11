@@ -480,10 +480,17 @@ public class GeneratedProjectBuildTests
     /// the console target proves Repository, the wpf target proves the view models, and the
     /// generated test project proves nothing left behind still names a validator.
     /// </summary>
+    /// <remarks>
+    /// The blazor row earns its place separately: <c>BlazorScreenTemplates</c> emits
+    /// <c>@using {root}.Validation</c> UNCONDITIONALLY in both grids, and Razor markup is
+    /// compiled by nothing short of a whole-app build — no unit test over the emitted string can
+    /// tell you whether that using resolves with the pipeline files absent.
+    /// </remarks>
     [TestMethod]
     [TestCategory("Integration")]
     [DataRow("console")]
     [DataRow("wpf")]
+    [DataRow("blazor")]
     public void ProjectWithoutValidation_BuildsAndItsTestsPass(string targetKey)
     {
         if (targetKey == "wpf" && !OperatingSystem.IsWindows())
@@ -523,8 +530,10 @@ public class GeneratedProjectBuildTests
             var (exit, output) = RunDotNet($"build \"{result.ProjectPath}\" -c Release");
             Assert.AreEqual(0, exit, $"dotnet build failed for {targetKey}:\n{output}");
 
-            // The wpf target gets no test project of its own (its tests would need the desktop
-            // pack), so the console row is the one that proves the generated suite.
+            // Neither the wpf nor the blazor row gets a test project of its own, so the console
+            // row is the one that proves the generated suite. What the other two prove is that
+            // the app itself compiles with the pipeline files absent — which for blazor means
+            // its Razor markup, and nothing short of this build compiles that.
             if (targetKey != "console")
                 return;
 

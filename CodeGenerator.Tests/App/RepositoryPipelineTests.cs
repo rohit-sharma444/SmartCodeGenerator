@@ -91,7 +91,11 @@ public class RepositoryPipelineTests
 
         StringAssert.Contains(source, "public SaveResult<T> Delete(int id)");
         Assert.DoesNotContain("ValidationContext", source);
-        Assert.DoesNotContain("ValidationPipeline", source);
+
+        // _validator, not "ValidationPipeline": the repository names the pipeline type under
+        // NEITHER flag, so asserting its absence was vacuous and would have passed over a
+        // repository that validated everything. The field IS emitted when validation is on.
+        Assert.DoesNotContain("_validator", source);
     }
 
     /// <summary>A rejected write is the one outcome that is neither a success nor an exception,

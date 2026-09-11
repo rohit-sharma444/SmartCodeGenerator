@@ -22,10 +22,12 @@ namespace CodeGenerator.Tests.App;
 public class PipelineEndToEndTests
 {
     [TestMethod]
-    public void AThreeEntityAppEmitsNoEmptyStages()
+    public void ATwoEntityAppEmitsNoEmptyStages()
     {
-        // The mitigation for "seven stages is more machinery than a three-entity CRUD app
-        // needs", measured on a real scaffold rather than on one template's output.
+        // The mitigation for the spec's "seven stages is more machinery than a three-entity CRUD
+        // app needs" risk, measured on a real scaffold rather than on one template's output. Two
+        // entities, not three: InAScaffold builds Customer and Order, and the name said three
+        // while the model said two.
         InAScaffold((_, project) =>
         {
             var validator = File.ReadAllText(
