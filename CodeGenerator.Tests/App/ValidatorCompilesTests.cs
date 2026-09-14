@@ -31,7 +31,7 @@ public sealed class StoreEntityLookup : IEntityLookup
             ValidatorTemplate.ValidatorInterface("Acme"),
             ValidatorTemplate.EntityLookupInterface("Acme"),
             ValidationPipelineTemplate.Source("Acme"),
-            PermissionsTemplate.Source("Acme", []),
+            PermissionsTemplate.Source("Acme", [], login: false),
             LookupStub,
             modelDeclarations,
             ValidatorTemplate.Generated("Acme", definition, foreignKeyTargets),

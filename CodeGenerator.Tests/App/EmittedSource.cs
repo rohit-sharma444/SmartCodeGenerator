@@ -75,7 +75,7 @@ internal static class EmittedSource
             Environment.NewLine,
             ValidationContextTemplate.Source("Acme"),
             ValidatorTemplate.EntityLookupInterface("Acme"),
-            PermissionsTemplate.Source("Acme", masterEntityNames));
+            PermissionsTemplate.Source("Acme", masterEntityNames, login: false));
 
     /// <summary>Asserts <paramref name="source"/> compiles with no errors.</summary>
     public static void AssertCompiles(string source)

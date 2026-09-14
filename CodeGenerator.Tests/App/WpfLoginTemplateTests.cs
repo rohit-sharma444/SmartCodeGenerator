@@ -182,7 +182,7 @@ public class WpfLoginTemplateTests
             // directly but still has to resolve for the file to compile.
             ("Validation/ValidationContext.cs", ValidationContextTemplate.Source("Shop")),
             ("Validation/IEntityLookup.cs", ValidatorTemplate.EntityLookupInterface("Shop")),
-            ("Validation/Permissions.cs", PermissionsTemplate.Source("Shop", Array.Empty<string>())),
+            ("Validation/Permissions.cs", PermissionsTemplate.Source("Shop", Array.Empty<string>(), login: true)),
         ];
 
     /// <summary>

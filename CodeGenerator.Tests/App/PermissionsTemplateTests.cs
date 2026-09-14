@@ -63,10 +63,30 @@ public static class Probe
     {
         // Security runs first precisely so an unauthorised user is not told which fields were
         // wrong. The sentence must not leak one.
-        var source = PermissionsTemplate.Source("Acme", ["Customer"]);
+        var source = PermissionsTemplate.Source("Acme", ["Customer"], login: false);
 
         StringAssert.Contains(source, "public static string Refusal(");
         StringAssert.Contains(source, "not permitted");
+    }
+
+    [TestMethod]
+    public void An_app_with_a_login_refuses_a_signed_out_caller()
+    {
+        var source = PermissionsTemplate.Source("Acme", ["Customer"], login: true);
+
+        StringAssert.Contains(source, "private const bool AppHasLogin = true;");
+        StringAssert.Contains(source, "if (role is null)");
+        StringAssert.Contains(source, "return !AppHasLogin;");
+    }
+
+    [TestMethod]
+    public void An_app_with_no_login_still_allows_everything()
+    {
+        var source = PermissionsTemplate.Source("Acme", ["Customer"], login: false);
+
+        // The four targets with no auth core have nobody to attribute a write to. Refusing a null
+        // role there would refuse every write in every console, Web API and worker app.
+        StringAssert.Contains(source, "private const bool AppHasLogin = false;");
     }
 
     [TestMethod]
@@ -76,7 +96,7 @@ public static class Probe
         {
             ("Validation/ValidationContext.cs", ValidationContextTemplate.Source("Acme")),
             ("Validation/IEntityLookup.cs", ValidatorTemplate.EntityLookupInterface("Acme")),
-            ("Validation/Permissions.cs", PermissionsTemplate.Source("Acme", [])),
+            ("Validation/Permissions.cs", PermissionsTemplate.Source("Acme", [], login: false)),
         });
 
         Assert.IsTrue(result.Success, string.Join("\n", result.Diagnostics
@@ -89,7 +109,7 @@ public static class Probe
         {
             ("Validation/ValidationContext.cs", ValidationContextTemplate.Source("Acme")),
             ("Validation/IEntityLookup.cs", ValidatorTemplate.EntityLookupInterface("Acme")),
-            ("Validation/Permissions.cs", PermissionsTemplate.Source("Acme", ["Customer"])),
+            ("Validation/Permissions.cs", PermissionsTemplate.Source("Acme", ["Customer"], login: false)),
             ("Probe/Probe.cs", Driver),
         });
 

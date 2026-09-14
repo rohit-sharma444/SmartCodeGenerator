@@ -475,7 +475,7 @@ public sealed class AppScaffolder
         // and the screens use, so a screen and its permission cannot disagree.
         var masterNames = roles.Names(EntityRole.Master);
         files.Add((validationFolder, "Permissions.cs",
-            PermissionsTemplate.Source(rootNamespace, masterNames)));
+            PermissionsTemplate.Source(rootNamespace, masterNames, auth)));
 
         // Persistence backend behind the seam.
         if (persistence == PersistenceKind.Sqlite)

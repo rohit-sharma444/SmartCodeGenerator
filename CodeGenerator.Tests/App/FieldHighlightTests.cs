@@ -151,7 +151,7 @@ public class FieldHighlightTests
             ("Validation/IValidator.cs", ValidatorTemplate.ValidatorInterface("Acme")),
             ("Validation/IEntityLookup.cs", ValidatorTemplate.EntityLookupInterface("Acme")),
             ("Validation/StoreEntityLookup.cs", ValidatorTemplate.StoreEntityLookup("Acme")),
-            ("Validation/Permissions.cs", PermissionsTemplate.Source("Acme", ["Book"])),
+            ("Validation/Permissions.cs", PermissionsTemplate.Source("Acme", ["Book"], login: false)),
             ("Validation/ValidatorFactory.cs", ValidatorTemplate.Factory("Acme", ["Book"])),
             ("Validation/BookValidator.Generated.cs",
                 ValidatorTemplate.Generated("Acme", definition, [])),

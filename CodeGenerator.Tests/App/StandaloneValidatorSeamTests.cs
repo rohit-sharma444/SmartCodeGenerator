@@ -72,7 +72,7 @@ public partial class Customer
             ("Validation/IValidator.cs", ValidatorTemplate.ValidatorInterface("Acme")),
             ("Validation/IEntityLookup.cs", ValidatorTemplate.EntityLookupInterface("Acme")),
             ("Validation/ValidationPipeline.cs", ValidationPipelineTemplate.Source("Acme")),
-            ("Validation/Permissions.cs", PermissionsTemplate.Source("Acme", ["Customer"])),
+            ("Validation/Permissions.cs", PermissionsTemplate.Source("Acme", ["Customer"], login: false)),
             ("Models/Customer.cs", models),
             ("Validation/CustomerValidator.Generated.cs",
                 ValidatorTemplate.Generated("Acme", definition, [])),

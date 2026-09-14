@@ -208,7 +208,7 @@ public class GridDeletePermissionTests
             ("Screens/EntityRole.cs", ScreenTemplates.RoleEnum("Acme")),
             ("Validation/ValidationContext.cs", ValidationContextTemplate.Source("Acme")),
             ("Validation/IEntityLookup.cs", ValidatorTemplate.EntityLookupInterface("Acme")),
-            ("Validation/Permissions.cs", PermissionsTemplate.Source("Acme", new[] { "Order" })),
+            ("Validation/Permissions.cs", PermissionsTemplate.Source("Acme", new[] { "Order" }, login: false)),
             ("Data/IStore.cs", StoreSeamTemplate.Source("Acme")),
             ("Data/SaveResult.cs", SaveResultTemplate.Source("Acme")),
             ("Data/StoreFactory.cs", StoreFactoryTemplate.Source("Acme", PersistenceKind.Json)),

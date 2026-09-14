@@ -140,7 +140,7 @@ public partial class Customer
             ("Validation/IValidator.cs", ValidatorTemplate.ValidatorInterface(Root)),
             ("Validation/IEntityLookup.cs", ValidatorTemplate.EntityLookupInterface(Root)),
             ("Validation/ValidationPipeline.cs", ValidationPipelineTemplate.Source(Root)),
-            ("Validation/Permissions.cs", PermissionsTemplate.Source(Root, ["Customer"])),
+            ("Validation/Permissions.cs", PermissionsTemplate.Source(Root, ["Customer"], login: false)),
             ("Models/Customer.cs", models),
             ("Validation/CustomerValidator.Generated.cs",
                 ValidatorTemplate.Generated(Root, definition, [])),
