@@ -1,4 +1,4 @@
-﻿namespace AppScaffolding.Screens;
+namespace AppScaffolding.Screens;
 
 /// <summary>
 /// The business screens on the web: one component per kind of screen, and the reflection they
