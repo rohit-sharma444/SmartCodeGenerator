@@ -21,9 +21,11 @@ public static class MasterScreenTemplate
     /// <summary>
     /// Source of <c>ViewModels/MasterScreenViewModel.cs</c>. With <paramref name="login"/> false
     /// there is no <c>Session</c> to read the acting user from — it is emitted beside these view
-    /// models, under the same flag — so the delete guard asks the matrix about nobody.
+    /// models, under the same flag — so the delete guard asks the matrix about nobody. With
+    /// <paramref name="validation"/> false the delete guard stays on the matrix alone — the
+    /// pipeline it would otherwise run is not generated either.
     /// </summary>
-    public static string Source(string rootNamespace, bool login = false)
+    public static string Source(string rootNamespace, bool validation, bool login = false)
     {
         // The same helper the two store templates and Repository<T> emit, for the same reason:
         // each names Session from a different folder and none of them may depend on another. Read
@@ -43,6 +45,34 @@ public static class MasterScreenTemplate
                 // delete to. Not a stub to fill in later: an app generated without a login has
                 // nobody to refuse, which is exactly what the matrix reads a null role as.
                 private static string? CurrentRole() => null;
+
+            """;
+
+        // The whole guard, not just the matrix: with validation on, Security is no longer the
+        // only stage that can refuse a delete, and the button's enabled state cannot afford a
+        // pipeline run per repaint -- so the affordance asks the matrix and the handler asks this.
+        var deleteGuard = validation
+            ? """
+                    var outcome = ValidatorFactory.Create<T>().Validate(
+                        new ValidationContext<T>(
+                            record, ValidationOperation.Delete, record, new StoreEntityLookup(),
+                            CurrentRole(), null));
+
+                    if (!outcome.IsValid)
+                    {
+                        Status = outcome.Messages[0];
+                        return;
+                    }
+
+
+            """
+            : """
+                    if (!Permissions.Allows(ValidationOperation.Delete, typeof(T).Name, CurrentRole()))
+                    {
+                        Status = Permissions.Refusal(ValidationOperation.Delete, typeof(T).Name);
+                        return;
+                    }
+
 
             """;
 
@@ -376,13 +406,7 @@ public class MasterScreenViewModel<T> : ObservableObject, IEntityViewModel, IDir
             return;
         }
 
-        if (!Permissions.Allows(ValidationOperation.Delete, typeof(T).Name, CurrentRole()))
-        {
-            Status = Permissions.Refusal(ValidationOperation.Delete, typeof(T).Name);
-            return;
-        }
-
-        var all = _store.GetAll();
+{{deleteGuard}}        var all = _store.GetAll();
         var index = all.FindIndex(r => IdOf(r) == IdOf(record));
 
         if (index >= 0)

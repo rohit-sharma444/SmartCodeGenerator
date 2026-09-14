@@ -1,4 +1,4 @@
-namespace AppScaffolding.Screens;
+﻿namespace AppScaffolding.Screens;
 
 /// <summary>
 /// The business screens on the web: one component per kind of screen, and the reflection they
@@ -228,7 +228,7 @@ public static class ScreenFields
     /// Generic over the record, so one component serves every master in the model — the web
     /// equivalent of the desktop's one template rather than a view per entity.
     /// </remarks>
-    public static string MasterScreen(string rootNamespace, bool login) => $$"""
+    public static string MasterScreen(string rootNamespace, bool validation, bool login) => $$"""
 @typeparam TRecord where TRecord : class, new()
 @using System.Reflection{{ClaimsUsing(login)}}
 @using {{rootNamespace}}.Data
@@ -327,7 +327,7 @@ else
         if (_selected is { } record)
             Navigation.NavigateTo($"/{Route}/{ScreenFields.IdOf(record)}");
     }
-{{DeleteHandler(login)}}}
+{{DeleteHandler(validation, login)}}}
 """;
 
     /// <summary>
@@ -341,7 +341,7 @@ else
     /// and hide where the markup comes from. The reasoning both screens share lives in
     /// <c>ScreenFields</c>, which is what keeps them from drifting.
     /// </remarks>
-    public static string TransactionScreen(string rootNamespace, bool login) => $$"""
+    public static string TransactionScreen(string rootNamespace, bool validation, bool login) => $$"""
 @typeparam TRecord where TRecord : class, new()
 @using System.Reflection{{ClaimsUsing(login)}}
 @using {{rootNamespace}}.Data
@@ -488,7 +488,7 @@ else
         if (_selected is { } record)
             Navigation.NavigateTo($"/{Route}/{ScreenFields.IdOf(record)}");
     }
-{{DeleteHandler(login)}}}
+{{DeleteHandler(validation, login)}}}
 """;
 
     /// <summary>
@@ -900,26 +900,87 @@ else
     /// which is how the button came to hide a delete the handler would have allowed.
     /// </para>
     /// </remarks>
-    private static string DeleteHandler(bool login)
-        => login
+    private static string DeleteHandler(bool validation, bool login)
+    {
+        // Two independent questions: login decides whether the check has a state to read a
+        // role from; validation decides whether it asks the pipeline or the matrix directly,
+        // because a novalidation app has no ValidatorFactory to call.
+        var pipelineGuard = login
             ? """
+                    // The button is not rendered for a user the matrix refuses; this is the
+                    // whole pipeline, run because it would refuse this delete even if the button
+                    // were shown -- and because Security is no longer the only stage that can
+                    // refuse one.
+                    var outcome = ValidatorFactory.Create<TRecord>().Validate(
+                        new ValidationContext<TRecord>(
+                            record, ValidationOperation.Delete, record, new StoreEntityLookup(),
+                            state?.User.FindFirst(ClaimTypes.Role)?.Value, null));
+
+                    if (!outcome.IsValid)
+                    {
+                        _status = outcome.Messages[0];
+                        return;
+                    }
+            """
+            : """
+                    // No login, so there is nobody to attribute the delete to; the pipeline reads
+                    // a null role the same way the matrix always did. Run in full rather than the
+                    // matrix alone, because Security is no longer the only stage that can refuse
+                    // a delete.
+                    var outcome = ValidatorFactory.Create<TRecord>().Validate(
+                        new ValidationContext<TRecord>(
+                            record, ValidationOperation.Delete, record, new StoreEntityLookup(),
+                            null, null));
+
+                    if (!outcome.IsValid)
+                    {
+                        _status = outcome.Messages[0];
+                        return;
+                    }
+            """;
+
+        var matrixGuard = login
+            ? """
+                    // The button is not rendered for a user the matrix refuses; this is the
+                    // check that would hold even if it were, and it is the SAME call -- so the
+                    // affordance and the refusal cannot disagree, and neither can this screen
+                    // and the store behind it.
+                    if (!MayDelete(state))
+                    {
+                        _status = Permissions.Refusal(ValidationOperation.Delete, typeof(TRecord).Name);
+                        return;
+                    }
+            """
+            : """
+                    // No login, so there is nobody to attribute the delete to and the matrix
+                    // reads a null role as "no notion of who is acting" -- it can refuse
+                    // nothing here today. Asked anyway, so the two variants of this handler
+                    // cannot drift apart, and so this is the line that starts refusing the day
+                    // the matrix tells an anonymous caller from a signed-in one.
+                    if (!Permissions.Allows(ValidationOperation.Delete, typeof(TRecord).Name, null))
+                    {
+                        _status = Permissions.Refusal(ValidationOperation.Delete, typeof(TRecord).Name);
+                        return;
+                    }
+            """;
+
+        // The whole pipeline, not the matrix alone: with validation on, Security is no longer
+        // the only stage that can refuse a delete, and a whole pipeline run is not something
+        // the button's own visibility check can afford on every repaint. MayDelete stays on
+        // the matrix regardless, because it is that affordance.
+        var deleteGuard = validation ? pipelineGuard : matrixGuard;
+
+        return login
+            ? $$"""
 
                   private async Task Delete()
                   {
                       if (_selected is not { } record)
                           return;
 
-                      // The button is not rendered for a user the matrix refuses; this is the
-                      // check that would hold even if it were, and it is the SAME call -- so the
-                      // affordance and the refusal cannot disagree, and neither can this screen
-                      // and the store behind it.
                       var state = AuthState is null ? null : await AuthState;
 
-                      if (!MayDelete(state))
-                      {
-                          _status = Permissions.Refusal(ValidationOperation.Delete, typeof(TRecord).Name);
-                          return;
-                      }
+              {{deleteGuard}}
 
                       Remove(record);
                   }
@@ -945,23 +1006,14 @@ else
                   }
 
               """
-            : """
+            : $$"""
 
                   private void Delete()
                   {
                       if (_selected is not { } record)
                           return;
 
-                      // No login, so there is nobody to attribute the delete to and the matrix
-                      // reads a null role as "no notion of who is acting" -- it can refuse
-                      // nothing here today. Asked anyway, so the two variants of this handler
-                      // cannot drift apart, and so this is the line that starts refusing the day
-                      // the matrix tells an anonymous caller from a signed-in one.
-                      if (!Permissions.Allows(ValidationOperation.Delete, typeof(TRecord).Name, null))
-                      {
-                          _status = Permissions.Refusal(ValidationOperation.Delete, typeof(TRecord).Name);
-                          return;
-                      }
+              {{deleteGuard}}
 
                       var all = _store.GetAll();
                       all.RemoveAll(stored => ScreenFields.IdOf(stored) == ScreenFields.IdOf(record));
@@ -974,6 +1026,7 @@ else
                   }
 
               """;
+    }
 
     private static string ValidationUsing(string rootNamespace, bool validation)
         => validation ? $"\r\n@using {rootNamespace}.Validation" : string.Empty;

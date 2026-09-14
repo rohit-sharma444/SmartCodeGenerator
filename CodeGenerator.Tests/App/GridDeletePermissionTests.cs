@@ -26,7 +26,7 @@ public class GridDeletePermissionTests
         // Same refusal as before for the default matrix, but routed through the one place that
         // decides it. The hardcoded check could not be changed by a matrix and could not agree
         // with the store's.
-        var source = MasterScreenTemplate.Source("Acme", login: true);
+        var source = MasterScreenTemplate.Source("Acme", validation: false, login: true);
 
         StringAssert.Contains(source, "Permissions.Allows");
         Assert.DoesNotContain("Session.IsAdmin", source);
@@ -37,10 +37,14 @@ public class GridDeletePermissionTests
     {
         // ViewModelTemplates.Delete() had NO check of any kind: it removed the row from an
         // ObservableCollection and said "Not saved yet". The later SaveAll cannot tell that a
-        // delete happened, so this is the only point where it can be refused.
+        // delete happened, so this is the only point where it can be refused. With validation on,
+        // the check is the whole pipeline rather than the matrix alone -- see
+        // DeleteGoesThroughThePipelineTests for the novalidation half, which keeps the direct
+        // Permissions.Allows call this test used to assert on here.
         var source = ViewModelTemplates.EntityViewModel("Acme", validation: true, login: true);
 
-        StringAssert.Contains(source, "Permissions.Allows(ValidationOperation.Delete");
+        StringAssert.Contains(source, "ValidatorFactory.Create<T>()");
+        StringAssert.Contains(source, "ValidationOperation.Delete");
     }
 
     [TestMethod]
@@ -79,7 +83,7 @@ public class GridDeletePermissionTests
             "private static string? CurrentRole() => Acme.Auth.Session.Current?.Role.ToString();");
 
         StringAssert.Contains(
-            MasterScreenTemplate.Source("Acme", login: true),
+            MasterScreenTemplate.Source("Acme", validation: true, login: true),
             "private static string? CurrentRole() => Session.Current?.Role.ToString();");
     }
 
@@ -91,7 +95,7 @@ public class GridDeletePermissionTests
             "private static string? CurrentRole() => null;");
 
         StringAssert.Contains(
-            MasterScreenTemplate.Source("Acme"),
+            MasterScreenTemplate.Source("Acme", validation: true),
             "private static string? CurrentRole() => null;");
     }
 
@@ -103,7 +107,9 @@ public class GridDeletePermissionTests
     [TestMethod]
     public void TheBlazorGridAsksTheMatrixFromTheRoleClaim()
     {
-        foreach (var component in BlazorGrids(login: true))
+        // Novalidation: the pipeline half (validation: true) moves this same guard onto
+        // ValidatorFactory, and is proved separately by DeleteGoesThroughThePipelineTests.
+        foreach (var component in BlazorGrids(validation: false, login: true))
         {
             StringAssert.Contains(component, "@using System.Security.Claims");
             StringAssert.Contains(component, "@using Acme.Validation");
@@ -136,7 +142,7 @@ public class GridDeletePermissionTests
     [TestMethod]
     public void TheBlazorGridWithoutALoginStillAsksTheMatrix()
     {
-        foreach (var component in BlazorGrids(login: false))
+        foreach (var component in BlazorGrids(validation: false, login: false))
         {
             StringAssert.Contains(component, "@using Acme.Validation");
             StringAssert.Contains(
@@ -177,10 +183,11 @@ public class GridDeletePermissionTests
 
         foreach (var login in new[] { true, false })
         {
-            sources.Add(MasterScreenTemplate.Source("Acme", login));
-
             foreach (var validation in new[] { true, false })
+            {
+                sources.Add(MasterScreenTemplate.Source("Acme", validation, login));
                 sources.Add(ViewModelTemplates.EntityViewModel("Acme", validation, login));
+            }
         }
 
         foreach (var source in sources)
@@ -194,10 +201,10 @@ public class GridDeletePermissionTests
         }
     }
 
-    private static string[] BlazorGrids(bool login) =>
+    private static string[] BlazorGrids(bool validation, bool login) =>
     [
-        BlazorScreenTemplates.MasterScreen("Acme", login),
-        BlazorScreenTemplates.TransactionScreen("Acme", login),
+        BlazorScreenTemplates.MasterScreen("Acme", validation, login),
+        BlazorScreenTemplates.TransactionScreen("Acme", validation, login),
     ];
 
     private static void AssertGridCompiles(bool validation, bool login)

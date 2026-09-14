@@ -206,8 +206,11 @@ public class FieldHighlightTests
 
         foreach (var login in new[] { true, false })
         {
-            sources.Add(BlazorScreenTemplates.MasterScreen("Acme", login));
-            sources.Add(BlazorScreenTemplates.TransactionScreen("Acme", login));
+            foreach (var blazorValidation in new[] { true, false })
+            {
+                sources.Add(BlazorScreenTemplates.MasterScreen("Acme", blazorValidation, login));
+                sources.Add(BlazorScreenTemplates.TransactionScreen("Acme", blazorValidation, login));
+            }
         }
 
         foreach (var source in sources)

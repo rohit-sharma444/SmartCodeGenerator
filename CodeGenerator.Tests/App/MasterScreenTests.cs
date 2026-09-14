@@ -66,7 +66,7 @@ public class Memo
             ViewModelTemplates.EntityViewModelInterface("Acme")
                 .Replace("namespace Acme.ViewModels;", string.Empty)
                 .Replace("using Acme.Screens;", string.Empty),
-            MasterScreenTemplate.Source("Acme", login: true)
+            MasterScreenTemplate.Source("Acme", validation, login: true)
                 .Replace("namespace Acme.ViewModels;", string.Empty)
                 .Replace("using Acme.Auth;", string.Empty)
                 .Replace("using Acme.Data;", string.Empty)

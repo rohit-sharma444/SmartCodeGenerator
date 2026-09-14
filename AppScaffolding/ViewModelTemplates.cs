@@ -199,6 +199,42 @@ public interface IEntityViewModel
             """
             : string.Empty;
 
+        // The whole pipeline, not the matrix alone: with validation on, Security is no longer
+        // the only stage that can refuse a delete, and this screen has nowhere later to ask.
+        var deleteGuard = validation
+            ? """
+                    // Checked HERE, not at Save: this screen defers every change to one SaveAll, and a
+                    // whole-list write cannot tell that a record was removed. There is nowhere later to ask
+                    // — which is also why this must be the whole pipeline and not the matrix alone. A
+                    // referential-integrity refusal that this screen skipped would remove the row from the
+                    // list and write the removal out, silently.
+                    var outcome = ValidatorFactory.Create<T>().Validate(
+                        new ValidationContext<T>(
+                            item, ValidationOperation.Delete, item, new StoreEntityLookup(),
+                            CurrentRole(), null));
+
+                    if (!outcome.IsValid)
+                    {
+                        Status = outcome.Messages[0];
+                        return;
+                    }
+
+                    Records.Remove(item);
+
+            """
+            : """
+                    // Checked HERE, not at Save: this screen defers every change to one SaveAll, and a
+                    // whole-list write cannot tell that a record was removed. There is nowhere later to ask.
+                    if (!Permissions.Allows(ValidationOperation.Delete, typeof(T).Name, CurrentRole()))
+                    {
+                        Status = Permissions.Refusal(ValidationOperation.Delete, typeof(T).Name);
+                        return;
+                    }
+
+                    Records.Remove(item);
+
+            """;
+
         // The same helper the two store templates and Repository<T> emit, for the same reason:
         // each names Session from a different folder and none of them may depend on another. This
         // file imports no Auth namespace, so it is named in full, exactly as they name it.
@@ -292,16 +328,7 @@ public sealed class EntityViewModel<T> : ObservableObject, IEntityViewModel wher
         if (_selected is not T item)
             return;
 
-        // Checked HERE, not at Save: this screen defers every change to one SaveAll, and a
-        // whole-list write cannot tell that a record was removed. There is nowhere later to ask.
-        if (!Permissions.Allows(ValidationOperation.Delete, typeof(T).Name, CurrentRole()))
-        {
-            Status = Permissions.Refusal(ValidationOperation.Delete, typeof(T).Name);
-            return;
-        }
-
-        Records.Remove(item);
-        Selected = null;
+{{deleteGuard}}        Selected = null;
         Status = $"Removed a {Title}. Not saved yet.";
     }
 

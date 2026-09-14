@@ -324,9 +324,16 @@ public class BlazorScreenTests
     [TestMethod]
     public void The_delete_button_and_its_handler_ask_one_matrix_call()
     {
+        // Novalidation: with the pipeline (the default), the handler's OWN check moves onto
+        // ValidatorFactory instead of calling MayDelete literally — see
+        // DeleteGoesThroughThePipelineTests, which proves the pipeline half. Here, with no
+        // pipeline generated at all, the handler still asks MayDelete directly, and this is
+        // the invariant that must keep holding: the button and the handler share ONE call.
+        var novalidation = AppCustomization.Default with { Validation = false };
+
         foreach (var screen in new[] { "MasterScreen.razor", "TransactionScreen.razor" })
         {
-            var list = Source(screen);
+            var list = Source(screen, novalidation);
 
             Assert.Contains("<AuthorizeView>", list, screen);
             Assert.Contains("@if (MayDelete(context))", list, screen);

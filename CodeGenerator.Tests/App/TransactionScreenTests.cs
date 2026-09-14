@@ -87,7 +87,7 @@ public class Note
                 .Replace("namespace Acme.ViewModels;", string.Empty)
                 .Replace("using Acme.Screens;", string.Empty),
             RecordEditorTests.Editor(validation: false),
-            MasterScreenTemplate.Source("Acme")
+            MasterScreenTemplate.Source("Acme", validation: false)
                 .Replace("namespace Acme.ViewModels;", string.Empty)
                 .Replace("using Acme.Auth;", string.Empty)
                 .Replace("using Acme.Data;", string.Empty)
