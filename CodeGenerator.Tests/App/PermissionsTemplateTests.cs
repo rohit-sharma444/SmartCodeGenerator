@@ -46,8 +46,9 @@ public static class Probe
         //
         // The null-role row is the one that matters most: four of the seven targets emit no auth
         // core, so every operation in a console or Web API app arrives with a null role. If this
-        // returned false, those apps would refuse every write.
-        var probe = Compile();
+        // returned false, those apps would refuse every write. This table is all login: false —
+        // ANullRole_IsAllowedOnlyWhenTheAppHasNoLogin below covers the login: true half.
+        var probe = Compile(login: false);
 
         // Positional, not named: Probe.Allows declares (op, entity, role) in that order, so the
         // invocation array has to match the DECLARED order rather than this test's own parameter
@@ -90,6 +91,24 @@ public static class Probe
     }
 
     [TestMethod]
+    [DataRow(false, true)]
+    [DataRow(true, false)]
+    public void ANullRole_IsAllowedOnlyWhenTheAppHasNoLogin(bool login, bool expected)
+    {
+        // The two text-assertion tests above pin the emitted const and the emitted lines, but
+        // neither one COMPILES and INVOKES Allows — so the behaviour this task exists to add, a
+        // signed-out caller of a login app being refused, was executed nowhere in the suite. This
+        // compiles the real Permissions.cs both ways and calls Allows(op, entity, null) through
+        // reflection, the same way TheDefaultMatrix_PreservesTodaysBehaviour does.
+        var probe = Compile(login);
+
+        var allows = (bool)probe.GetType("Acme.Probe.Probe")!
+            .GetMethod("Allows")!.Invoke(null, ["Delete", "Customer", null])!;
+
+        Assert.AreEqual(expected, allows);
+    }
+
+    [TestMethod]
     public void AnAppWithNoMasters_StillCompiles()
     {
         var result = Compiler.CompileSources(new (string Path, string Code)[]
@@ -103,13 +122,13 @@ public static class Probe
             .Where(d => d.Severity == DiagnosticSeverity.Error).Select(e => e.ToString())));
     }
 
-    private static System.Reflection.Assembly Compile()
+    private static System.Reflection.Assembly Compile(bool login)
     {
         var result = Compiler.CompileSources(new (string Path, string Code)[]
         {
             ("Validation/ValidationContext.cs", ValidationContextTemplate.Source("Acme")),
             ("Validation/IEntityLookup.cs", ValidatorTemplate.EntityLookupInterface("Acme")),
-            ("Validation/Permissions.cs", PermissionsTemplate.Source("Acme", ["Customer"], login: false)),
+            ("Validation/Permissions.cs", PermissionsTemplate.Source("Acme", ["Customer"], login)),
             ("Probe/Probe.cs", Driver),
         });
 
