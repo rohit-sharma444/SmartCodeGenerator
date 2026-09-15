@@ -5,31 +5,21 @@ public static class JsonStoreTemplate
 {
     /// <summary>Source of <c>Data/JsonStore.cs</c> in <paramref name="namespaceName"/>, which every
     /// caller passes as the FULL data namespace (<c>{root}.Data</c>), not the root.</summary>
+    /// <param name="auth">
+    /// Unused: kept so every existing caller of this overload compiles unchanged.
+    /// <see cref="ActingUserTemplate"/> now decides, from its own <c>sessionAuth</c>, whether
+    /// <c>ActingUser.Role()</c> reads a real session or returns null — this template no longer
+    /// needs to ask.
+    /// </param>
     public static string Source(string namespaceName, bool auth = false)
     {
         // namespaceName is "{root}.Data", not the root — trimming its trailing ".Data" reaches
-        // {root}.Validation, where Permissions and ValidationOperation live. Redefining this
-        // parameter to mean the root instead would silently emit "namespace Acme.Data.Data".
+        // {root}.Validation, where Permissions, ValidationOperation and ActingUser live.
+        // Redefining this parameter to mean the root instead would silently emit
+        // "namespace Acme.Data.Data".
         var rootNamespace = namespaceName.EndsWith(".Data", StringComparison.Ordinal)
             ? namespaceName[..^".Data".Length]
             : namespaceName;
-
-        // Task 8 adds the same pair, plus CurrentUserId(), to Repository<T>. Duplicated rather
-        // than shared because the store and the repository are emitted into different folders and
-        // neither may depend on the other.
-        var currentUser = auth
-            ? $$"""
-                private static string? CurrentRole() => {{rootNamespace}}.Auth.Session.Current?.Role.ToString();
-
-            """
-            : """
-                // No desktop session to read a user from, so there is nobody to attribute a
-                // write to. Not a stub to fill in later: a target without screens emits no auth
-                // core at all, and a Blazor app has one but reads its user from the
-                // authentication state rather than a static Session.
-                private static string? CurrentRole() => null;
-
-            """;
 
         return $$"""
 using System;
@@ -79,7 +69,7 @@ public sealed class JsonStore<T> : IStore<T> where T : new()
     /// </remarks>
     public StoreWrite SaveAll(List<T> all)
     {
-        if (!Permissions.Allows(ValidationOperation.Update, typeof(T).Name, CurrentRole()))
+        if (!Permissions.Allows(ValidationOperation.Update, typeof(T).Name, ActingUser.Role()))
             return new StoreWrite(false, Permissions.Refusal(ValidationOperation.Update, typeof(T).Name));
 
         try
@@ -114,8 +104,7 @@ public sealed class JsonStore<T> : IStore<T> where T : new()
             ?? throw new InvalidOperationException(typeof(T).Name + " has no Id property.");
 
     private static int GetId(T item) => (int)(IdProperty.GetValue(item) ?? 0);
-
-{{currentUser}}}
+}
 """;
     }
 }

@@ -477,6 +477,13 @@ public sealed class AppScaffolder
         files.Add((validationFolder, "Permissions.cs",
             PermissionsTemplate.Source(rootNamespace, masterNames, auth)));
 
+        // Emitted for the same reason and beside the same file: task 3's handlers call
+        // ActingUser regardless of the validation flag, so it is emitted regardless too. Passed
+        // sessionAuth, not auth: a Blazor app has a login and no desktop Session at all, and
+        // naming one here would emit code that does not compile — see ActingUserTemplate.
+        files.Add((validationFolder, "ActingUser.cs",
+            ActingUserTemplate.Source(rootNamespace, sessionAuth)));
+
         // Persistence backend behind the seam.
         if (persistence == PersistenceKind.Sqlite)
         {

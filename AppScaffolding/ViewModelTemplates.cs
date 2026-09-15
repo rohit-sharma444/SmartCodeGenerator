@@ -150,8 +150,10 @@ public interface IEntityViewModel
     /// this screen's Delete asks them.
     /// </summary>
     /// <param name="login">
-    /// Whether the app has a desktop <c>Session</c> to read the acting user from. Emitted beside
-    /// these view models under the same flag, so naming one without it would not compile.
+    /// Unused: kept so every existing caller of this overload compiles unchanged. The delete
+    /// guard now reads <c>ActingUser.Role()</c> unconditionally — <see cref="ActingUserTemplate"/>
+    /// itself already decides, from <c>AppScaffolder</c>'s <c>sessionAuth</c>, whether that reads
+    /// a real desktop <c>Session</c> or returns null, so this template no longer needs to ask.
     /// </param>
     public static string EntityViewModel(string rootNamespace, bool validation, bool login = false)
     {
@@ -177,7 +179,7 @@ public interface IEntityViewModel
         // can -- a newly-added row and an edited one look identical by the time they reach here --
         // which is the same reason the coarse store guard is built with Update. ValidationContext
         // .For supplies no Stored version and no acting user, same as before the pipeline existed:
-        // this path predates CurrentRole()/CurrentUserId() and stays that way here.
+        // this path predates ActingUser and stays that way here.
         var validateRecords = validation
             ? """
                     // This path writes through _store, not Repository, so it has to run the generated
@@ -211,7 +213,7 @@ public interface IEntityViewModel
                     var outcome = ValidatorFactory.Create<T>().Validate(
                         new ValidationContext<T>(
                             item, ValidationOperation.Delete, item, new StoreEntityLookup(),
-                            CurrentRole(), null));
+                            ActingUser.Role(), ActingUser.Id()));
 
                     if (!outcome.IsValid)
                     {
@@ -225,31 +227,13 @@ public interface IEntityViewModel
             : """
                     // Checked HERE, not at Save: this screen defers every change to one SaveAll, and a
                     // whole-list write cannot tell that a record was removed. There is nowhere later to ask.
-                    if (!Permissions.Allows(ValidationOperation.Delete, typeof(T).Name, CurrentRole()))
+                    if (!Permissions.Allows(ValidationOperation.Delete, typeof(T).Name, ActingUser.Role()))
                     {
                         Status = Permissions.Refusal(ValidationOperation.Delete, typeof(T).Name);
                         return;
                     }
 
                     Records.Remove(item);
-
-            """;
-
-        // The same helper the two store templates and Repository<T> emit, for the same reason:
-        // each names Session from a different folder and none of them may depend on another. This
-        // file imports no Auth namespace, so it is named in full, exactly as they name it.
-        var currentRole = login
-            ? $$"""
-
-                private static string? CurrentRole() => {{rootNamespace}}.Auth.Session.Current?.Role.ToString();
-
-            """
-            : """
-
-                // No desktop session to read a user from, so there is nobody to attribute the
-                // delete to. Not a stub to fill in later: an app generated without a login has
-                // nobody to refuse, which is exactly what the matrix reads a null role as.
-                private static string? CurrentRole() => null;
 
             """;
 
@@ -340,7 +324,7 @@ public sealed class EntityViewModel<T> : ObservableObject, IEntityViewModel wher
             ? $"Saved {Records.Count} {Title} record(s)."
             : write.Refusal ?? $"Could not write {typeof(T).Name}.json.";
     }
-{{currentRole}}}
+}
 """;
     }
 }
