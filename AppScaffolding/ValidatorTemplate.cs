@@ -42,6 +42,15 @@ public interface IEntityLookup
     /// <summary>How many records of this type carry this foreign key value.</summary>
     int CountReferencing<TEntity>(string foreignKeyProperty, int id)
         where TEntity : class, new();
+
+    /// <summary>Whether any record of this type OTHER than <paramref name="exceptId"/> holds
+    /// this value for this property.</summary>
+    /// <remarks>
+    /// The exception is what lets an Update save an unchanged record: without it every record
+    /// would be a duplicate of itself the second time it was saved.
+    /// </remarks>
+    bool AnyOtherWith<TEntity>(string propertyName, object? value, int exceptId)
+        where TEntity : class, new();
 }
 """;
 
@@ -86,6 +95,32 @@ public sealed class StoreEntityLookup : IEntityLookup
                 count++;
 
         return count;
+    }
+
+    /// <inheritdoc />
+    public bool AnyOtherWith<TEntity>(string propertyName, object? value, int exceptId)
+        where TEntity : class, new()
+    {
+        var property = typeof(TEntity).GetProperty(propertyName,
+            BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
+
+        // A name that is not there finds nothing rather than throwing, for the reason
+        // CountReferencing gives: the name came from the model at generation time, and a rename
+        // that leaves the two disagreeing must leave the delete and the save behaving as they
+        // did before this phase.
+        if (property is null)
+            return false;
+
+        foreach (var item in StoreFactory.Create<TEntity>().GetAll())
+        {
+            if (IdOf(item) == exceptId)
+                continue;
+
+            if (Equals(property.GetValue(item), value))
+                return true;
+        }
+
+        return false;
     }
 
     private static int IdOf<TEntity>(TEntity item)
@@ -186,6 +221,35 @@ internal sealed class NullValidator<T> : IValidator<T>
             string.Equals(pair.Type, propertyType, StringComparison.Ordinal)
             && string.Equals(pair.Rule, ruleName, StringComparison.OrdinalIgnoreCase));
 
+    /// <summary>Rule name recorded by DomainModelMapper for a uniqueness constraint.</summary>
+    private const string UniqueRule = "unique";
+
+    /// <summary>
+    /// Every (property type, rule name) pair the ENTITY stage knows how to emit.
+    /// </summary>
+    /// <remarks>
+    /// Separate from <see cref="EmittableRules"/>, which is the Field stage's register and is
+    /// derived from what <see cref="Checks"/> emits. Adding an entity-stage rule to that list
+    /// would claim <c>Checks</c> emits something for it, which it does not — and the guard test
+    /// that reads it would then pass over a rule with no emitter at all.
+    /// <para>
+    /// A bool is excluded deliberately: two records with the same true is not a collision, it is
+    /// a boolean.
+    /// </para>
+    /// </remarks>
+    public static IReadOnlyCollection<(string Type, string Rule)> EntityStageRules { get; } =
+    [
+        ("string", UniqueRule), ("int", UniqueRule),
+        ("decimal", UniqueRule), ("DateTime", UniqueRule)
+    ];
+
+    /// <summary>Whether the Entity stage emits anything for a <paramref name="ruleName"/> rule on
+    /// a property of type <paramref name="propertyType"/>.</summary>
+    public static bool CanEmitEntityRule(string propertyType, string ruleName)
+        => EntityStageRules.Any(pair =>
+            string.Equals(pair.Type, propertyType, StringComparison.Ordinal)
+            && string.Equals(pair.Rule, ruleName, StringComparison.OrdinalIgnoreCase));
+
     /// <summary>
     /// Whether <paramref name="property"/> carries the required rule DomainModelMapper recorded.
     /// </summary>
@@ -229,6 +293,32 @@ internal sealed class NullValidator<T> : IValidator<T>
         // stage: Block's try/catch is silent, so a single throwing lookup must not be able to
         // skip the checks for every OTHER foreign key on this entity.
         var entityBlocks = new List<string>();
+
+        // Uniqueness checks come BEFORE the foreign-key blocks below, and each gets its own
+        // Block() for the identical reason the foreign-key loop does: Block's try/catch is
+        // silent, so one throwing uniqueness check must not be able to skip the checks for every
+        // OTHER property -- or every foreign key -- on this same entity.
+        foreach (var property in definition.Properties)
+        {
+            if (!property.Rules.Any(r =>
+                    string.Equals(r.Name, UniqueRule, StringComparison.OrdinalIgnoreCase)))
+                continue;
+
+            if (!CanEmitEntityRule(property.Type, UniqueRule))
+                continue;
+
+            var guard = property.Type == "string"
+                ? $"if (!string.IsNullOrWhiteSpace(item.{property.Name}) && "
+                : "if (";
+
+            var uniqueChecks = new List<string>
+            {
+                $"{guard}context.Lookup.AnyOtherWith<{definition.Name}>(\"{property.Name}\", item.{property.Name}, item.Id))",
+                $"    errors.Add(new ValidationError(\"{property.Name}\", \"Another {definition.Name} already has this {property.Name}.\"));",
+            };
+
+            entityBlocks.Add(Block(uniqueChecks));
+        }
 
         foreach (var target in foreignKeyTargets)
         {

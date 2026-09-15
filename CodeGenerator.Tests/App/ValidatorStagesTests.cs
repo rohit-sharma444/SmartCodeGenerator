@@ -128,4 +128,40 @@ public class ValidatorStagesTests
         Assert.IsFalse(source.Contains("Entity,", StringComparison.Ordinal));
         Assert.IsFalse(source.Contains("private static void Entity(", StringComparison.Ordinal));
     }
+
+    [TestMethod]
+    public void A_unique_rule_asks_whether_another_record_holds_the_value()
+    {
+        var customer = ValidatorFixtures.PlainCustomer();
+        customer.Properties.Single(p => p.Name == "Code").Rules.Add(
+            new PropertyRule { Name = "unique" });
+
+        var source = ValidatorTemplate.Generated("Acme", customer, [], referencesRequired: false);
+
+        StringAssert.Contains(source, "private static void Entity(");
+        StringAssert.Contains(
+            source,
+            "context.Lookup.AnyOtherWith<Customer>(\"Code\", item.Code, item.Id)");
+    }
+
+    [TestMethod]
+    public void An_update_does_not_collide_with_itself()
+    {
+        // exceptId is item.Id, so saving a record over itself is not a duplicate of itself. Without
+        // it, every second save of an unchanged record would be refused.
+        var source = ValidatorTemplate.EntityLookupInterface("Acme");
+
+        StringAssert.Contains(source, "int exceptId");
+    }
+
+    [TestMethod]
+    public void Unique_is_declared_emittable_for_the_types_it_emits_on()
+    {
+        // The register that stops a rule kind being recorded with no emitter. EmittableRules is the
+        // Field-stage register and says nothing about this stage, so a second one is the honest
+        // shape rather than a lie in the first.
+        Assert.IsTrue(ValidatorTemplate.CanEmitEntityRule("string", "unique"));
+        Assert.IsTrue(ValidatorTemplate.CanEmitEntityRule("int", "unique"));
+        Assert.IsFalse(ValidatorTemplate.CanEmitEntityRule("bool", "unique"));
+    }
 }

@@ -267,6 +267,9 @@ public sealed class StoreEntityLookup : IEntityLookup
 
     public int CountReferencing<TEntity>(string foreignKeyProperty, int id)
         where TEntity : class, new() => 0;
+
+    public bool AnyOtherWith<TEntity>(string propertyName, object? value, int exceptId)
+        where TEntity : class, new() => false;
 }
 """;
 
