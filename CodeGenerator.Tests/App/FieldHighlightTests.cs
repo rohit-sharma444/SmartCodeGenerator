@@ -154,7 +154,7 @@ public class FieldHighlightTests
             ("Validation/Permissions.cs", PermissionsTemplate.Source("Acme", ["Book"], login: false)),
             ("Validation/ValidatorFactory.cs", ValidatorTemplate.Factory("Acme", ["Book"])),
             ("Validation/BookValidator.Generated.cs",
-                ValidatorTemplate.Generated("Acme", definition, [])),
+                ValidatorTemplate.Generated("Acme", definition, [], referencesRequired: false)),
             ("Validation/BookValidator.Custom.cs", ValidatorTemplate.CustomStub("Acme", "Book")),
         };
 

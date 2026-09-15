@@ -143,7 +143,7 @@ public partial class Customer
             ("Validation/Permissions.cs", PermissionsTemplate.Source(Root, ["Customer"], login: false)),
             ("Models/Customer.cs", models),
             ("Validation/CustomerValidator.Generated.cs",
-                ValidatorTemplate.Generated(Root, definition, [])),
+                ValidatorTemplate.Generated(Root, definition, [], referencesRequired: false)),
             ("Validation/CustomerValidator.Custom.cs",
                 Downgrade(ValidatorTemplate.CustomStub(Root, "Customer"), "Customer")),
         });

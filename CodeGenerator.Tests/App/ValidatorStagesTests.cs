@@ -1,5 +1,6 @@
 using AppScaffolding;
 using CodeGenerationEngine.Models;
+using CodeGenerator.Tests.Helper;
 
 namespace CodeGenerator.Tests.App;
 
@@ -76,5 +77,55 @@ public class ValidatorStagesTests
     }
 
     private static string GeneratedFor(ClassDefinition definition)
-        => ValidatorTemplate.Generated("Acme", definition, []);
+        => ValidatorTemplate.Generated("Acme", definition, [], referencesRequired: false);
+
+    [TestMethod]
+    public void A_foreign_key_check_runs_in_the_entity_stage()
+    {
+        var source = ValidatorTemplate.Generated(
+            "Acme", ValidatorFixtures.LineWithProductId(), ["Product"], referencesRequired: true);
+
+        // The stage list is the contract. A check emitted in Field would report a bad key beside a
+        // bad field; the spec stops between stages so that a lookup never runs over a record whose
+        // fields have not been judged yet.
+        StringAssert.Contains(EmittedLines.Normalized(source), "Security,\n        Field,\n        Entity,");
+        StringAssert.Contains(source, "private static void Entity(");
+        StringAssert.Contains(source, "context.Lookup.Exists<Product>(item.ProductId)");
+    }
+
+    [TestMethod]
+    public void A_transaction_line_must_have_its_foreign_key_set()
+    {
+        var source = ValidatorTemplate.Generated(
+            "Acme", ValidatorFixtures.LineWithProductId(), ["Product"], referencesRequired: true);
+
+        // A sale line with no product is not a valid sale line. The zero escape below is what made
+        // it one.
+        StringAssert.Contains(source, "if (item.ProductId == 0)");
+        Assert.IsFalse(source.Contains("item.ProductId != 0 &&", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void A_masters_optional_foreign_key_may_stay_unset()
+    {
+        var source = ValidatorTemplate.Generated(
+            "Acme", ValidatorFixtures.CustomerWithRegionId(), ["Region"], referencesRequired: false);
+
+        // Optional means optional: a Customer with no Region is a Customer, and only a key that IS
+        // set has to resolve.
+        StringAssert.Contains(source, "if (item.RegionId != 0 && !context.Lookup.Exists<Region>(item.RegionId))");
+        Assert.IsFalse(source.Contains("if (item.RegionId == 0)", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void A_model_with_no_foreign_keys_has_no_entity_stage()
+    {
+        var source = ValidatorTemplate.Generated(
+            "Acme", ValidatorFixtures.PlainCustomer(), [], referencesRequired: false);
+
+        // An empty stage emitting nothing is what keeps a three-entity CRUD app's output no heavier
+        // than before this phase.
+        Assert.IsFalse(source.Contains("Entity,", StringComparison.Ordinal));
+        Assert.IsFalse(source.Contains("private static void Entity(", StringComparison.Ordinal));
+    }
 }

@@ -224,7 +224,8 @@ public class Order
             ("Validation/Permissions.cs", PermissionsTemplate.Source("Acme", [], login: false)),
             ("Validation/StoreEntityLookup.cs", LookupStub),
             ("Models/Order.cs", models),
-            ("Validation/OrderValidator.Generated.cs", ValidatorTemplate.Generated("Acme", definition, [])),
+            ("Validation/OrderValidator.Generated.cs",
+                ValidatorTemplate.Generated("Acme", definition, [], referencesRequired: false)),
             ("Validation/OrderValidator.Custom.cs", ValidatorTemplate.CustomStub("Acme", definition.Name)),
         });
 
@@ -325,7 +326,8 @@ public class Product
             ("Validation/Permissions.cs", PermissionsTemplate.Source("Acme", [], login: false)),
             ("Validation/StoreEntityLookup.cs", LookupStub),
             ("Models/Product.cs", models),
-            ("Validation/ProductValidator.Generated.cs", ValidatorTemplate.Generated("Acme", definition, [])),
+            ("Validation/ProductValidator.Generated.cs",
+                ValidatorTemplate.Generated("Acme", definition, [], referencesRequired: false)),
             ("Validation/ProductValidator.Custom.cs", ValidatorTemplate.CustomStub("Acme", definition.Name)),
         });
 
@@ -344,6 +346,6 @@ public class Product
         property.Rules.Add(rule);
         definition.Properties.Add(property);
 
-        return ValidatorTemplate.Generated("Acme", definition, []);
+        return ValidatorTemplate.Generated("Acme", definition, [], referencesRequired: false);
     }
 }

@@ -75,7 +75,7 @@ public partial class Customer
             ("Validation/Permissions.cs", PermissionsTemplate.Source("Acme", ["Customer"], login: false)),
             ("Models/Customer.cs", models),
             ("Validation/CustomerValidator.Generated.cs",
-                ValidatorTemplate.Generated("Acme", definition, [])),
+                ValidatorTemplate.Generated("Acme", definition, [], referencesRequired: false)),
             ("Validation/CustomerValidator.Custom.cs",
                 ValidatorTemplate.CustomStub("Acme", definition.Name)),
         });

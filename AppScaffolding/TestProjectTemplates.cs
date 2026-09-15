@@ -124,8 +124,18 @@ public class {{entityName}}ValidatorTests
 
     /// <summary>Source of <c>TestSupport.cs</c>: entity population shared by the generated
     /// round-trip and validator tests.</summary>
+    /// <remarks>
+    /// A foreign-key-shaped int property now gets a REAL row's Id, not a placeholder: since the
+    /// Entity stage checks a Transaction's or a DocumentLine's foreign key against the real store
+    /// rather than skipping it at zero, a fixture that left it at 0 would fail its own generated
+    /// validator. <c>ForeignKeyValue</c> reuses the referenced type's own repository -- reading an
+    /// existing row when the store already has one, creating one (recursively filled the same way)
+    /// when it does not -- so this works whether or not the app seeds sample data.
+    /// </remarks>
     public static string TestSupport(string rootNamespace) => $$"""
 using System;
+using System.Collections;
+using System.Collections.Generic;
 using System.Reflection;
 
 namespace {{rootNamespace}}.Tests;
@@ -133,9 +143,22 @@ namespace {{rootNamespace}}.Tests;
 /// <summary>Builds entities that satisfy the generated validation rules.</summary>
 internal static class TestSupport
 {
+    /// <summary>Types currently being created for a caller further up the same call stack, so a
+    /// foreign key that forms a cycle stops recursing instead of overflowing the stack. Never
+    /// expected to hold more than one entry in a generated app, whose models describe no cycle.</summary>
+    [ThreadStatic]
+    private static HashSet<string>? _creating;
+
     /// <summary>Populates every writable property with a value the validators accept.</summary>
     public static void Fill<T>(T item)
     {
+        // The model's own assembly and namespace, not TestSupport's: T (e.g. Shop.Models.Order)
+        // lives in the APP assembly, and that is where {Target}Repository and {Target} itself are
+        // declared too -- TestSupport's own assembly is the separate Tests project and reflecting
+        // against it would never find either type.
+        var appAssembly = typeof(T).Assembly;
+        var root = typeof(T).Namespace![..^".Models".Length];
+
         foreach (var property in typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance))
         {
             if (!property.CanWrite)
@@ -145,6 +168,8 @@ internal static class TestSupport
                 property.SetValue(item, Placeholder(property.Name));
             else if (property.PropertyType == typeof(DateTime))
                 property.SetValue(item, DateTime.UtcNow);
+            else if (property.PropertyType == typeof(int) && IsForeignKey(property.Name))
+                property.SetValue(item, ForeignKeyValue(property.Name, appAssembly, root));
         }
     }
 
@@ -159,6 +184,66 @@ internal static class TestSupport
             return "+1 555 0100";
 
         return "Test";
+    }
+
+    /// <summary>Whether <paramref name="propertyName"/> is shaped like a foreign key -- the same
+    /// name test AppScaffolding.ForeignKeys applies when it decides what the generated validators
+    /// check.</summary>
+    private static bool IsForeignKey(string propertyName)
+        => propertyName.Length > 2
+           && propertyName.EndsWith("Id", StringComparison.Ordinal)
+           && !string.Equals(propertyName, "Id", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>The Id of a real row of the type <paramref name="propertyName"/> references --
+    /// an existing one if the store already has one, else one created through that type's own
+    /// repository (and, recursively, Filled the same way this item was). Neither type existing by
+    /// that name (an incidental "...Id" that names no entity) nor the creation failing is fatal:
+    /// both fall back to 0, exactly what this property held before this method existed.</summary>
+    private static int ForeignKeyValue(string propertyName, Assembly appAssembly, string root)
+    {
+        var targetName = propertyName[..^2];
+
+        var repositoryType = appAssembly.GetType(root + ".Data." + targetName + "Repository");
+        if (repositoryType is null)
+            return 0;
+
+        _creating ??= new HashSet<string>(StringComparer.Ordinal);
+        if (!_creating.Add(targetName))
+            return 0;
+
+        try
+        {
+            var repository = Activator.CreateInstance(repositoryType)!;
+
+            var existing = (IEnumerable)repositoryType.GetMethod("GetAll")!.Invoke(repository, null)!;
+            foreach (var row in existing)
+                return IdOf(row);
+
+            var modelType = appAssembly.GetType(root + ".Models." + targetName);
+            if (modelType is null)
+                return 0;
+
+            var target = Activator.CreateInstance(modelType)!;
+            typeof(TestSupport).GetMethod(nameof(Fill))!.MakeGenericMethod(modelType)
+                .Invoke(null, new[] { target });
+
+            var created = repositoryType.GetMethod("Create")!.Invoke(repository, new[] { target })!;
+            if (!(bool)created.GetType().GetProperty("Success")!.GetValue(created)!)
+                return 0;
+
+            var createdItem = created.GetType().GetProperty("Item")!.GetValue(created);
+            return createdItem is null ? 0 : IdOf(createdItem);
+        }
+        finally
+        {
+            _creating.Remove(targetName);
+        }
+    }
+
+    private static int IdOf(object item)
+    {
+        var id = item.GetType().GetProperty("Id", BindingFlags.Public | BindingFlags.Instance);
+        return (int)(id?.GetValue(item) ?? 0);
     }
 }
 """;

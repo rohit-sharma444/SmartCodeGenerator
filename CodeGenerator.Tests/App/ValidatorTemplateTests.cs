@@ -137,7 +137,7 @@ public sealed class CustomerValidator : IValidator<Customer>
         name.Rules.Add(new CodeGenerationEngine.Models.PropertyRule { Name = "required" });
 
         var source = ValidatorTemplate.Generated(
-            "Acme", ClassWith("Customer", name), System.Array.Empty<string>());
+            "Acme", ClassWith("Customer", name), System.Array.Empty<string>(), referencesRequired: false);
 
         Assert.Contains("string.IsNullOrWhiteSpace(item.Name)", source);
         Assert.Contains("\"Name is required.\"", source);
@@ -150,7 +150,7 @@ public sealed class CustomerValidator : IValidator<Customer>
         title.Rules.Add(new CodeGenerationEngine.Models.PropertyRule { Name = "maxlength", MaxLength = 120 });
 
         var source = ValidatorTemplate.Generated(
-            "Acme", ClassWith("Book", title), System.Array.Empty<string>());
+            "Acme", ClassWith("Book", title), System.Array.Empty<string>(), referencesRequired: false);
 
         Assert.Contains("Length: > 120", source);
         Assert.Contains("\"Title must be 120 characters or fewer.\"", source);
@@ -163,7 +163,7 @@ public sealed class CustomerValidator : IValidator<Customer>
         email.Attributes.Add("EmailAddress");
 
         var source = ValidatorTemplate.Generated(
-            "Acme", ClassWith("Contact", email), System.Array.Empty<string>());
+            "Acme", ClassWith("Contact", email), System.Array.Empty<string>(), referencesRequired: false);
 
         Assert.Contains("\"Email is not a valid email address.\"", source);
     }
@@ -175,7 +175,7 @@ public sealed class CustomerValidator : IValidator<Customer>
         phone.Attributes.Add("Phone");
 
         var source = ValidatorTemplate.Generated(
-            "Acme", ClassWith("Contact", phone), System.Array.Empty<string>());
+            "Acme", ClassWith("Contact", phone), System.Array.Empty<string>(), referencesRequired: false);
 
         Assert.Contains("\"Phone is not a valid phone number.\"", source);
     }
@@ -188,7 +188,7 @@ public sealed class CustomerValidator : IValidator<Customer>
         id.Attributes.Add("Key");
 
         var source = ValidatorTemplate.Generated(
-            "Acme", ClassWith("Customer", id), System.Array.Empty<string>());
+            "Acme", ClassWith("Customer", id), System.Array.Empty<string>(), referencesRequired: false);
 
         Assert.DoesNotContain("item.Id", source);
     }
@@ -197,7 +197,7 @@ public sealed class CustomerValidator : IValidator<Customer>
     public void A_foreign_key_target_emits_a_lookup_check()
     {
         var source = ValidatorTemplate.Generated(
-            "Acme", ClassWith("Order"), new[] { "Customer" });
+            "Acme", ClassWith("Order"), new[] { "Customer" }, referencesRequired: false);
 
         Assert.Contains("item.CustomerId != 0", source);
         Assert.Contains("context.Lookup.Exists<Customer>(item.CustomerId)", source);
@@ -208,7 +208,7 @@ public sealed class CustomerValidator : IValidator<Customer>
     public void Every_validator_calls_the_custom_hook()
     {
         var source = ValidatorTemplate.Generated(
-            "Acme", ClassWith("Customer"), System.Array.Empty<string>());
+            "Acme", ClassWith("Customer"), System.Array.Empty<string>(), referencesRequired: false);
 
         Assert.Contains("ValidateCustom(item, errors);", source);
         Assert.Contains("private static partial void ValidateCustom(Customer item, List<ValidationError> errors);", source);

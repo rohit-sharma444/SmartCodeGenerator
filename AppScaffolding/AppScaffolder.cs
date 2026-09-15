@@ -516,7 +516,9 @@ public sealed class AppScaffolder
             foreach (var definition in classes)
                 files.Add((validationFolder, $"{definition.Name}Validator.Generated.cs",
                     ValidatorTemplate.Generated(
-                        rootNamespace, definition, ForeignKeys.TargetsOf(definition, classNameSet))));
+                        rootNamespace, definition, ForeignKeys.TargetsOf(definition, classNameSet),
+                        referencesRequired: roles.RoleOf(definition.Name)
+                            is EntityRole.Transaction or EntityRole.DocumentLine)));
         }
 
         // Target-specific front-end / entry point.

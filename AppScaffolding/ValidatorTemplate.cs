@@ -210,7 +210,8 @@ internal sealed class NullValidator<T> : IValidator<T>
     /// ValidationEngine.EmitSection takes.
     /// </remarks>
     public static string Generated(
-        string rootNamespace, ClassDefinition definition, IReadOnlyList<string> foreignKeyTargets)
+        string rootNamespace, ClassDefinition definition, IReadOnlyList<string> foreignKeyTargets,
+        bool referencesRequired)
     {
         var blocks = new List<string>();
 
@@ -218,19 +219,58 @@ internal sealed class NullValidator<T> : IValidator<T>
             if (Checks(property) is { Count: > 0 } checks)
                 blocks.Add(Block(checks));
 
-        // Reads context.Lookup rather than a constructor-injected field: a static stage method
-        // has no instance to hold one, and the context is exactly what Repository<T> supplies it
-        // through at the call site.
-        foreach (var target in foreignKeyTargets)
-            blocks.Add(Block(new List<string>
-            {
-                $"if (item.{target}Id != 0 && !context.Lookup.Exists<{target}>(item.{target}Id))",
-                $"    errors.Add(new ValidationError(\"{target}Id\", \"{target}Id does not refer to a known {target}.\"));",
-            }));
-
         var body = blocks.Count == 0
             ? "        // This model declares no inferred rules."
             : string.Join("\n\n", blocks);
+
+        // Reads context.Lookup rather than a constructor-injected field: a static stage method
+        // has no instance to hold one, and the context is exactly what Repository<T> supplies it
+        // through at the call site. One Block() PER target, never one shared block for the whole
+        // stage: Block's try/catch is silent, so a single throwing lookup must not be able to
+        // skip the checks for every OTHER foreign key on this entity.
+        var entityBlocks = new List<string>();
+
+        foreach (var target in foreignKeyTargets)
+        {
+            var checks = new List<string>();
+
+            if (referencesRequired)
+            {
+                checks.Add($"if (item.{target}Id == 0)");
+                checks.Add($"    errors.Add(new ValidationError(\"{target}Id\", \"{target} is required.\"));");
+                checks.Add($"else if (!context.Lookup.Exists<{target}>(item.{target}Id))");
+                checks.Add($"    errors.Add(new ValidationError(\"{target}Id\", \"{target}Id does not refer to a known {target}.\"));");
+            }
+            else
+            {
+                checks.Add($"if (item.{target}Id != 0 && !context.Lookup.Exists<{target}>(item.{target}Id))");
+                checks.Add($"    errors.Add(new ValidationError(\"{target}Id\", \"{target}Id does not refer to a known {target}.\"));");
+            }
+
+            entityBlocks.Add(Block(checks));
+        }
+
+        var entityStage = entityBlocks.Count == 0
+            ? string.Empty
+            : $$"""
+
+
+    /// <summary>What cannot be judged from the record in hand: whether the records it names
+    /// exist. Runs only after Field has passed, so a lookup never runs over a record whose own
+    /// fields were wrong.</summary>
+    private static void Entity(ValidationContext<{{definition.Name}}> context, List<ValidationError> errors)
+    {
+        var item = context.Item;
+        if (item is null)
+            return;
+
+{{string.Join("\n\n", entityBlocks)}}
+    }
+""";
+
+        var stageList = entityBlocks.Count == 0
+            ? "        Security,\n        Field,"
+            : "        Security,\n        Field,\n        Entity,";
 
         return $$"""
 using System;
@@ -248,13 +288,14 @@ namespace {{rootNamespace}}.Validation;
 /// </remarks>
 public sealed partial class {{definition.Name}}Validator : IValidator<{{definition.Name}}>
 {
-    /// <summary>Security first, then the inferred field rules. Always both: Security exists
-    /// because of the operation rather than the data, and Field always owns the null guard and
-    /// the hand-written hook, whether or not this model has any inferred rule at all.</summary>
+    /// <summary>Security first, then the inferred field rules, then -- only when this model
+    /// declares a foreign key -- Entity. Security exists because of the operation rather than
+    /// the data, and Field always owns the null guard and the hand-written hook, whether or not
+    /// this model has any inferred rule at all; Entity is conditional on there being a lookup to
+    /// run.</summary>
     private static readonly ValidationPipeline.Stage<{{definition.Name}}>[] Stages =
     [
-        Security,
-        Field,
+{{stageList}}
     ];
 
     /// <inheritdoc />
@@ -269,8 +310,9 @@ public sealed partial class {{definition.Name}}Validator : IValidator<{{definiti
             errors.Add(new ValidationError(null, Permissions.Refusal(context.Op, "{{definition.Name}}")));
     }
 
-    /// <summary>The inferred per-property rules, every declared foreign key, and the
-    /// hand-written hook — in that order, after Security has already let the caller through.</summary>
+    /// <summary>The inferred per-property rules and the hand-written hook — in that order, after
+    /// Security has already let the caller through. A foreign key is no longer checked here; see
+    /// Entity.</summary>
     private static void Field(ValidationContext<{{definition.Name}}> context, List<ValidationError> errors)
     {
         var item = context.Item;
@@ -284,7 +326,7 @@ public sealed partial class {{definition.Name}}Validator : IValidator<{{definiti
 
         ValidateCustom(item, errors);
     }
-
+{{entityStage}}
     /// <summary>Hand-written rules, implemented in {{definition.Name}}Validator.Custom.cs.</summary>
     private static partial void ValidateCustom({{definition.Name}} item, List<ValidationError> errors);
 }
