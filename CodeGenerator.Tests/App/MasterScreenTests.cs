@@ -13,16 +13,19 @@ namespace CodeGenerator.Tests.App;
 [TestClass]
 public class MasterScreenTests
 {
-    /// <summary>A session stub: the delete guard reads the signed-in user's role off it, the same
-    /// way the store and the repository do.</summary>
+    /// <summary>A session stub: the delete guard reads the signed-in user's role off it via
+    /// <c>ActingUser.Role()</c>, the same way the store and the repository do.</summary>
     /// <remarks>
     /// The real <c>Session.Current</c> is a <c>User</c> whose <c>Role</c> is an <c>AppRole</c>,
-    /// and the guard calls <c>ToString()</c> on it — a string here spells the same names.
+    /// and <c>ActingUser.Role()</c> calls <c>ToString()</c> on it — a string here spells the same
+    /// names. <c>Id</c> travels too: <c>ActingUser.Id()</c> reads <c>Session.Current?.Id</c>
+    /// unconditionally now, whether or not a test cares about its value.
     /// </remarks>
     private const string SessionStub = """
 public sealed class SignedInUser
 {
     public string Role { get; set; } = "Admin";
+    public int Id { get; set; } = 1;
 }
 
 public static class Session
@@ -61,7 +64,10 @@ public class Memo
 
             // Book is the master here, which is what makes a plain user's delete refusable: the
             // default matrix refuses a delete on a master and allows one anywhere else.
-            EmittedSource.PermissionMatrix("Book"),
+            // sessionAuth: true -- this fixture's own SessionStub above genuinely shapes a
+            // Current user with Role and Id, and SetRole below depends on ActingUser.Role()
+            // actually reading it rather than the helper's usual null-returning default.
+            EmittedSource.PermissionMatrix(sessionAuth: true, masterEntityNames: "Book"),
             ScreenTemplates.RoleEnum("Acme").Replace("namespace Acme.Screens;", string.Empty),
             ViewModelTemplates.EntityViewModelInterface("Acme")
                 .Replace("namespace Acme.ViewModels;", string.Empty)

@@ -39,6 +39,7 @@ public class EntityLookupCountingTests
             ("Validation/IEntityLookup.cs", ValidatorTemplate.EntityLookupInterface("Acme")),
             ("Validation/StoreEntityLookup.cs", ValidatorTemplate.StoreEntityLookup("Acme")),
             ("Validation/Permissions.cs", PermissionsTemplate.Source("Acme", Array.Empty<string>(), login: false)),
+            ("Validation/ActingUser.cs", ActingUserTemplate.Source("Acme", sessionAuth: false)),
             ("Data/StoreFactory.cs", StoreFactoryTemplate.Source("Acme", PersistenceKind.Json)),
             ("Data/IStore.cs", StoreSeamTemplate.Source("Acme")),
             ("Data/JsonStore.cs", JsonStoreTemplate.Source("Acme.Data")),

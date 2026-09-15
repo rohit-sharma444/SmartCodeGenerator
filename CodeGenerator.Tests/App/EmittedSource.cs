@@ -64,18 +64,32 @@ internal static class EmittedSource
     /// <remarks>
     /// The real templates rather than a stub: a stub matrix could agree with a fixture while
     /// disagreeing with the app the generator emits, which is the whole failure the one matrix
-    /// exists to prevent.
+    /// exists to prevent. <c>ActingUser.cs</c> rides along for the same reason
+    /// <c>AppScaffolder</c> emits it beside <c>Permissions.cs</c> unconditionally: every screen
+    /// and store template now calls <c>ActingUser.Role()</c> regardless of login, so any fixture
+    /// built on this helper needs the type to exist.
     /// </remarks>
+    /// <param name="sessionAuth">
+    /// Defaults false (the null-returning half, naming no <c>Session</c> member) because most
+    /// callers' own ad hoc session stub has no <c>.Current</c> at all — only a bare
+    /// <c>Session.IsAdmin</c> flag for the admin-pane tests. Pass true only when the fixture's own
+    /// stub genuinely shapes a <c>Current</c> user with <c>Role</c> and <c>Id</c> for
+    /// <c>ActingUser</c> to read, the way <c>MasterScreenTests.SessionStub</c> does.
+    /// </param>
     /// <param name="masterEntityNames">
     /// The entities this build classified as masters. The default matrix refuses a plain user a
     /// delete on those alone, so a fixture naming none can never see a refusal.
     /// </param>
-    public static string PermissionMatrix(params string[] masterEntityNames)
+    public static string PermissionMatrix(bool sessionAuth = false, params string[] masterEntityNames)
         => string.Join(
             Environment.NewLine,
             ValidationContextTemplate.Source("Acme"),
             ValidatorTemplate.EntityLookupInterface("Acme"),
-            PermissionsTemplate.Source("Acme", masterEntityNames, login: false));
+            PermissionsTemplate.Source("Acme", masterEntityNames, login: false),
+            // Flatten strips Acme.Models/.Data/.Validation but not Acme.Auth -- the sessionAuth
+            // true half names it, and this joined string is handed to Flatten as ONE opaque
+            // source, so the using has to go here rather than rely on a caller-side .Replace.
+            ActingUserTemplate.Source("Acme", sessionAuth).Replace("using Acme.Auth;", string.Empty));
 
     /// <summary>Asserts <paramref name="source"/> compiles with no errors.</summary>
     public static void AssertCompiles(string source)

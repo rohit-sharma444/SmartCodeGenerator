@@ -99,6 +99,7 @@ public class LoggingTests
             SaveResultTemplate.Source("Acme"),
             StoreFactoryTemplate.Source("Acme", PersistenceKind.Json),
             JsonStoreTemplate.Source("Acme.Data"),
+            ActingUserTemplate.Source("Acme", sessionAuth: false),
             LoggerStub,
             repository);
 

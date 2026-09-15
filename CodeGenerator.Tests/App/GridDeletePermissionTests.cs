@@ -74,29 +74,45 @@ public class GridDeletePermissionTests
 
     /// <summary>The acting user comes from the desktop session, the same way the store and the
     /// repository read it — one shape, so a screen and a store cannot disagree about who is
-    /// acting.</summary>
+    /// acting. The grids no longer decide this themselves: both now call
+    /// <c>ActingUser.Role()</c> unconditionally, and <see cref="ActingUserTemplate"/> alone
+    /// decides, from <c>AppScaffolder</c>'s own <c>sessionAuth</c>, whether that reads a real
+    /// desktop <c>Session</c> — so this test chains the call site to that decision rather than
+    /// re-testing <see cref="ActingUserTemplate"/> in isolation (see
+    /// <see cref="ActingUserTests"/>).</summary>
     [TestMethod]
     public void WithADesktopSession_TheGridReadsTheRoleFromIt()
     {
         StringAssert.Contains(
             ViewModelTemplates.EntityViewModel("Acme", validation: true, login: true),
-            "private static string? CurrentRole() => Acme.Auth.Session.Current?.Role.ToString();");
+            "ActingUser.Role(), ActingUser.Id()");
 
         StringAssert.Contains(
             MasterScreenTemplate.Source("Acme", validation: true, login: true),
-            "private static string? CurrentRole() => Session.Current?.Role.ToString();");
+            "ActingUser.Role(), ActingUser.Id()");
+
+        StringAssert.Contains(
+            ActingUserTemplate.Source("Acme", sessionAuth: true),
+            "Session.Current?.Role.ToString()");
     }
 
+    /// <summary>Same call site as the login case above, on purpose: <c>login</c> no longer gates
+    /// it at all, so the "nobody is acting" half of the property now lives entirely in
+    /// <see cref="ActingUserTemplate"/>.</summary>
     [TestMethod]
     public void WithoutADesktopSession_ThereIsNobodyActing()
     {
         StringAssert.Contains(
             ViewModelTemplates.EntityViewModel("Acme", validation: true, login: false),
-            "private static string? CurrentRole() => null;");
+            "ActingUser.Role(), ActingUser.Id()");
 
         StringAssert.Contains(
             MasterScreenTemplate.Source("Acme", validation: true),
-            "private static string? CurrentRole() => null;");
+            "ActingUser.Role(), ActingUser.Id()");
+
+        StringAssert.Contains(
+            ActingUserTemplate.Source("Acme", sessionAuth: false),
+            "public static string? Role() => null;");
     }
 
     /// <summary>
@@ -216,6 +232,10 @@ public class GridDeletePermissionTests
             ("Validation/ValidationContext.cs", ValidationContextTemplate.Source("Acme")),
             ("Validation/IEntityLookup.cs", ValidatorTemplate.EntityLookupInterface("Acme")),
             ("Validation/Permissions.cs", PermissionsTemplate.Source("Acme", new[] { "Order" }, login: false)),
+            // Desktop-shaped fixture (Auth/Session.cs is added below when login), so sessionAuth
+            // is exactly login here -- both templates under test call ActingUser.Role()/.Id()
+            // unconditionally, in both the pipeline and matrix arms.
+            ("Validation/ActingUser.cs", ActingUserTemplate.Source("Acme", sessionAuth: login)),
             ("Data/IStore.cs", StoreSeamTemplate.Source("Acme")),
             ("Data/SaveResult.cs", SaveResultTemplate.Source("Acme")),
             ("Data/StoreFactory.cs", StoreFactoryTemplate.Source("Acme", PersistenceKind.Json)),

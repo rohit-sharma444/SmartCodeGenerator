@@ -43,6 +43,7 @@ public class NoValidationTests
             SaveResultTemplate.Source("Acme"),
             StoreFactoryTemplate.Source("Acme", PersistenceKind.Json),
             JsonStoreTemplate.Source("Acme.Data"),
+            ActingUserTemplate.Source("Acme", sessionAuth: false),
             RepositoryTemplate.Base("Acme", validation: false));
 
         EmittedSource.AssertCompiles(source);

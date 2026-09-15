@@ -152,6 +152,8 @@ public class DeleteGoesThroughThePipelineTests
             ("Data/StoreFactory.cs", StoreFactoryTemplate.Source("Acme", PersistenceKind.Json)),
             ("Data/JsonStore.cs", JsonStoreTemplate.Source("Acme.Data", auth: true)),
 
+            ("Validation/ActingUser.cs", ActingUserTemplate.Source("Acme", sessionAuth: true)),
+
             ("Models/User.cs", AuthModelTemplates.User("Acme")),
             ("Auth/AppRole.cs", AuthModelTemplates.Role("Acme")),
             ("Auth/Session.cs", SessionTemplate.Source("Acme")),
