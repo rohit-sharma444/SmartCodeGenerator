@@ -3,6 +3,7 @@ using AppScaffolding;
 using AppScaffolding.Screens;
 using AppScaffolding.Targets;
 using CodeGenerationEngine.Core;
+using CodeGenerator.Tests.Helper;
 
 namespace CodeGenerator.Tests.App;
 
@@ -345,25 +346,11 @@ public class BlazorScreenTests
             // let the button and the handler drift in the first place.
             Assert.AreEqual(
                 1,
-                Occurrences(list, "Permissions.Allows("),
+                EmittedLines.Occurrences(list, "Permissions.Allows("),
                 $"{screen} asks the matrix more than once");
 
             Assert.DoesNotContain("Roles=\"Admin\"", list, screen);
         }
-    }
-
-    private static int Occurrences(string text, string value)
-    {
-        var count = 0;
-
-        for (var at = text.IndexOf(value, StringComparison.Ordinal);
-             at >= 0;
-             at = text.IndexOf(value, at + value.Length, StringComparison.Ordinal))
-        {
-            count++;
-        }
-
-        return count;
     }
 
     /// <summary>
