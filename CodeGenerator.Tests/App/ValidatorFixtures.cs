@@ -45,4 +45,26 @@ internal static class ValidatorFixtures
         definition.Properties.Add(new PropertyDefinition { Name = "Region", Type = "Region" });
         return definition;
     }
+
+    /// <summary>A plain master with no foreign key of its own — task 8's <c>referencedBy</c> side,
+    /// the class other entities point AT rather than the class doing the pointing.</summary>
+    public static ClassDefinition CustomerClass()
+    {
+        var definition = new ClassDefinition { Name = "Customer" };
+        definition.Properties.Add(new PropertyDefinition { Name = "Id", Type = "int" });
+        return definition;
+    }
+
+    /// <summary>An Invoice carrying a foreign key to Customer, shaped so
+    /// <see cref="AppScaffolding.ForeignKeys.TargetsOf"/> (and so
+    /// <see cref="AppScaffolding.ForeignKeys.ReferencesTo"/>) recognise it: the <c>CustomerId</c>
+    /// int AND a sibling nav property typed <c>Customer</c>.</summary>
+    public static ClassDefinition InvoiceWithCustomerId()
+    {
+        var definition = new ClassDefinition { Name = "Invoice" };
+        definition.Properties.Add(new PropertyDefinition { Name = "Id", Type = "int" });
+        definition.Properties.Add(new PropertyDefinition { Name = "CustomerId", Type = "int" });
+        definition.Properties.Add(new PropertyDefinition { Name = "Customer", Type = "Customer" });
+        return definition;
+    }
 }

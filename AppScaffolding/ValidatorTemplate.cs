@@ -275,8 +275,11 @@ internal sealed class NullValidator<T> : IValidator<T>
     /// </remarks>
     public static string Generated(
         string rootNamespace, ClassDefinition definition, IReadOnlyList<string> foreignKeyTargets,
-        bool referencesRequired)
+        bool referencesRequired,
+        IReadOnlyList<(string Entity, string Property)>? referencedBy = null)
     {
+        referencedBy ??= Array.Empty<(string Entity, string Property)>();
+
         var blocks = new List<string>();
 
         foreach (var property in definition.Properties)
@@ -338,6 +341,33 @@ internal sealed class NullValidator<T> : IValidator<T>
             }
 
             entityBlocks.Add(Block(checks));
+        }
+
+        // The delete-refusal check comes LAST and is its own thing: one Op == Delete guard,
+        // hoisted once, with one Block() PER referencing entity nested inside it -- never one flat
+        // unprotected block covering every entity. A throw from CountReferencing<Invoice> must not
+        // silently cancel the refusal check for a later entity like OrderLine in the same delete.
+        if (referencedBy.Count > 0)
+        {
+            var deleteChecks = new List<string>
+            {
+                "if (context.Op == ValidationOperation.Delete)",
+                "{",
+            };
+
+            foreach (var (entity, property) in referencedBy)
+            {
+                var checks = new List<string>
+                {
+                    $"var referencing{entity} = context.Lookup.CountReferencing<{entity}>(\"{property}\", item.Id);",
+                    $"if (referencing{entity} > 0)",
+                    $"    errors.Add(new ValidationError(null, $\"This {definition.Name} cannot be deleted — {{referencing{entity}}} {entity} record(s) refer to it.\"));",
+                };
+                deleteChecks.Add(Block(checks));
+            }
+
+            deleteChecks.Add("}");
+            entityBlocks.Add(string.Join("\n", deleteChecks));
         }
 
         var entityStage = entityBlocks.Count == 0

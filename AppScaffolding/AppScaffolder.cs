@@ -518,7 +518,8 @@ public sealed class AppScaffolder
                     ValidatorTemplate.Generated(
                         rootNamespace, definition, ForeignKeys.TargetsOf(definition, classNameSet),
                         referencesRequired: roles.RoleOf(definition.Name)
-                            is EntityRole.Transaction or EntityRole.DocumentLine)));
+                            is EntityRole.Transaction or EntityRole.DocumentLine,
+                        referencedBy: ForeignKeys.ReferencesTo(definition.Name, classes))));
         }
 
         // Target-specific front-end / entry point.

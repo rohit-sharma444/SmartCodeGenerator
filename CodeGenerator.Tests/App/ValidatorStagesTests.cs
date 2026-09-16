@@ -164,4 +164,32 @@ public class ValidatorStagesTests
         Assert.IsTrue(ValidatorTemplate.CanEmitEntityRule("int", "unique"));
         Assert.IsFalse(ValidatorTemplate.CanEmitEntityRule("bool", "unique"));
     }
+
+    [TestMethod]
+    public void A_delete_is_refused_with_the_count_in_the_sentence()
+    {
+        var source = ValidatorTemplate.Generated(
+            "Acme", ValidatorFixtures.CustomerClass(), [], referencesRequired: false,
+            referencedBy: [("Invoice", "CustomerId")]);
+
+        StringAssert.Contains(source, "if (context.Op == ValidationOperation.Delete)");
+        StringAssert.Contains(
+            source, "context.Lookup.CountReferencing<Invoice>(\"CustomerId\", item.Id)");
+        // The count is the point: "cannot be deleted" alone leaves the user hunting.
+        StringAssert.Contains(source, "cannot be deleted");
+        // Corrected against the brief: the per-entity local is deliberately named
+        // "referencing{Entity}", not a shared "referencing" -- a class referenced by two entities
+        // needs two distinct locals, and a shared name would redeclare. See task-8-corrections.md.
+        StringAssert.Contains(source, "{referencingInvoice} Invoice record(s)");
+    }
+
+    [TestMethod]
+    public void A_class_nothing_points_at_emits_no_delete_check()
+    {
+        var source = ValidatorTemplate.Generated(
+            "Acme", ValidatorFixtures.CustomerClass(), [], referencesRequired: false,
+            referencedBy: []);
+
+        Assert.IsFalse(source.Contains("CountReferencing", StringComparison.Ordinal));
+    }
 }

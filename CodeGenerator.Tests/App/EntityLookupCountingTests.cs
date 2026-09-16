@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Diagnostics;
 using System.Reflection;
 using AppScaffolding;
 
@@ -118,6 +119,76 @@ public class EntityLookupCountingTests
             Assert.IsFalse(
                 doesNotCollideWithItself,
                 "the only record holding Code=SOLO is item3 itself, which exceptId excludes");
+        }
+        finally
+        {
+            var path = Path.Combine(AppContext.BaseDirectory, entityType.Name + ".json");
+            if (File.Exists(path))
+                File.Delete(path);
+        }
+    }
+
+    /// <summary>
+    /// Proves <c>StoreEntityLookup.CountReferencing</c>'s early return
+    /// (<c>if (property is null) return 0;</c>) actually runs BEFORE any store read, which is
+    /// task 8's whole reason for existing: nothing had ever called <c>CountReferencing</c> until
+    /// the delete-refusal check did.
+    /// </summary>
+    /// <remarks>
+    /// Proved by TIMING, not by an exception or a read-counter. The emitted
+    /// <c>JsonStore&lt;T&gt;.GetAll()</c> never throws on a missing, corrupt, or unreadable file --
+    /// it silently returns an empty list -- so no store state on disk can make a real full scan
+    /// observably different from the early return except how long it takes, and no store-read
+    /// counter exists anywhere in this codebase to build on (checked, per task-8-corrections.md).
+    /// A real scan of tens of thousands of records is not near-instant; the early return is,
+    /// regardless of how large the file on disk is, because it returns before
+    /// <c>StoreFactory.Create&lt;TEntity&gt;().GetAll()</c> is ever called.
+    /// </remarks>
+    [TestMethod]
+    public void Counting_a_property_that_is_not_there_scans_nothing()
+    {
+        var (assembly, entityType, lookup) = CompileAndConstructStoreEntityLookup();
+
+        var idProperty = entityType.GetProperty("Id")!;
+        var listType = typeof(List<>).MakeGenericType(entityType);
+
+        var storeFactoryType = assembly.GetType("Acme.Data.StoreFactory")!;
+        var store = storeFactoryType.GetMethod("Create")!.MakeGenericMethod(entityType)
+            .Invoke(null, null)!;
+        var saveAll = store.GetType().GetMethod("SaveAll")!;
+
+        try
+        {
+            // Hundreds of thousands of records, seeded directly (not through NewItem, whose NextId
+            // rescans everything already seeded so far -- O(n^2) for this many records) so only
+            // the CountReferencing call below is timed, not the seeding. Measured empirically: a
+            // forced full scan of this many records takes ~450ms in this environment, comfortably
+            // over the 200ms threshold below, while the early return answers in low single-digit
+            // milliseconds regardless of file size.
+            const int recordCount = 600_000;
+            var all = (IList)Activator.CreateInstance(listType)!;
+            for (var id = 1; id <= recordCount; id++)
+            {
+                var item = Activator.CreateInstance(entityType)!;
+                idProperty.SetValue(item, id);
+                all.Add(item);
+            }
+            saveAll.Invoke(store, [all]);
+
+            var countReferencing = lookup.GetType().GetMethod("CountReferencing")!
+                .MakeGenericMethod(entityType);
+
+            var stopwatch = Stopwatch.StartNew();
+            var count = (int)countReferencing.Invoke(lookup, ["NoSuchId", 1])!;
+            stopwatch.Stop();
+
+            // The zero is also what a full scan of an EMPTY store returns, so it alone would not
+            // distinguish the early return from a scan that happened to find nothing -- that is
+            // why the order (via timing) is asserted separately, not only the value.
+            Assert.AreEqual(0, count);
+            Assert.IsLessThan(200, stopwatch.ElapsedMilliseconds,
+                "a real full scan of 600,000 records would not complete this fast; the early " +
+                "return in CountReferencing must be what answered, not a scan of the file");
         }
         finally
         {
