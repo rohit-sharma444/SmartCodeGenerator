@@ -1057,6 +1057,7 @@ else
         // for validation-phase-3's task 15.
         var roleRead = login
             ? """
+
                       var state = AuthState is null ? null : await AuthState;
 
               """
@@ -1066,7 +1067,6 @@ else
 
         return $$"""
                       _invalid.Clear();
-
               {{roleRead}}
                       var context = new ValidationContext<TRecord>(
                           _draft, IsNew ? ValidationOperation.Insert : ValidationOperation.Update,
