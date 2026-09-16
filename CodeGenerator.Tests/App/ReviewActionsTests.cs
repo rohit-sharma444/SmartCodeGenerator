@@ -17,7 +17,10 @@ public class ReviewActionsTests
     public void All_CoversExactlyTheVerbsTheSwitchHandles()
     {
         string[] expected =
-            ["approve", "add", "remove", "rename", "field", "unfield", "why", "cancel"];
+            [
+                "approve", "add", "remove", "rename", "field", "unfield", "why", "rules",
+                "accept", "cancel"
+            ];
 
         CollectionAssert.AreEquivalent(
             expected, ReviewActions.All.Select(a => a.Verb).ToArray());
@@ -35,6 +38,8 @@ public class ReviewActionsTests
     [DataRow("add", 1)]
     [DataRow("remove", 1)]
     [DataRow("why", 1)]
+    [DataRow("rules", 0)]
+    [DataRow("accept", 1)]
     [DataRow("rename", 2)]
     [DataRow("field", 2)]
     [DataRow("unfield", 2)]

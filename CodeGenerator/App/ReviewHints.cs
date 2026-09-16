@@ -32,6 +32,8 @@ internal static class ReviewHints
         "  field <class> <name>[:<type>]   add a field (type inferred if omitted)",
         "  unfield <class> <name>      remove a field",
         "  why [name]                  explain what discovery decided",
+        "  rules                       the rules your data supports",
+        "  accept <n>|all              apply a proposed rule",
     ];
 
     /// <summary>Whether <paramref name="input"/> is asking for the full list.</summary>
