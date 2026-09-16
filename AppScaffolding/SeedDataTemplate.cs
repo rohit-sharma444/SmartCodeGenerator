@@ -128,9 +128,14 @@ public static class SeedDataTemplate
 
         // Imported rows win over sample rows. Written at generation time from the user's own data,
         // with Ids already assigned 1..N so the foreign keys in these files resolve.
+        //
+        // Unchecked: this runs before anyone could possibly be signed in, same as
+        // UserSeed.EnsureAdminSeeded. SaveAll's permission gate -- correctly, for every other
+        // caller -- refuses a signed-out caller of a login app, which would otherwise leave a
+        // freshly generated login app starting with no data at all.
         if (SeedFiles.Contains(typeof(T).Name) && TryLoadSeedFile<T>(out var imported))
         {
-            store.SaveAll(imported);
+            store.SaveAllUnchecked(imported);
             seededIds[typeof(T).Name] = imported.Select(GetId).ToList();
             return;
         }
@@ -240,7 +245,9 @@ public static class SeedData
             ids.Add(n);
         }
 
-        store.SaveAll(rows);
+        // Unchecked, same reason as the imported-rows branch above: this runs before anyone
+        // could possibly be signed in.
+        store.SaveAllUnchecked(rows);
         seededIds[typeof(T).Name] = ids;
     }
 

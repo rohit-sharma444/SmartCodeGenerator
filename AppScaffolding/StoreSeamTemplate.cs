@@ -31,9 +31,10 @@ public interface IStore<T> where T : new()
     StoreWrite SaveAll(List<T> all);
 
     /// <summary>
-    /// As <see cref="SaveAll"/>, but exempt from the permission check. The one legitimate caller
-    /// is UserSeed.EnsureAdminSeeded, which must write the app's first account before anyone
-    /// could possibly be signed in to authorise it.
+    /// As <see cref="SaveAll"/>, but exempt from the permission check. The legitimate callers are
+    /// UserSeed.EnsureAdminSeeded and SeedData.Seed, both of which write before anyone could
+    /// possibly be signed in to authorise it -- the app's own startup seeding, not a caller
+    /// acting on a signed-out user's behalf.
     /// </summary>
     StoreWrite SaveAllUnchecked(List<T> all);
 

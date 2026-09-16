@@ -66,13 +66,14 @@ public sealed class EfStore<T> : IStore<T> where T : class, new()
     /// Overwrites the store with <paramref name="all"/> without asking <see cref="Permissions"/>.
     /// </summary>
     /// <remarks>
-    /// The ONE legitimate exception to SaveAll's gate: UserSeed.EnsureAdminSeeded runs before any
-    /// account exists, so before anyone COULD be signed in. A signed-out caller of a login app is
-    /// correctly refused by SaveAll — that refusal, applied here too, would mean no freshly
-    /// generated login app could ever create its first account, because creating that account is
-    /// exactly the operation the empty account list has nobody authorised to perform. This method
-    /// exists so that one call site can be exempt, by name, rather than by a null check anyone
-    /// could quietly rely on.
+    /// The legitimate exception to SaveAll's gate: UserSeed.EnsureAdminSeeded and SeedData.Seed
+    /// both run before anyone COULD be signed in — the former before the first account exists,
+    /// the latter seeding business data on the same first run. A signed-out caller of a login app
+    /// is correctly refused by SaveAll — that refusal, applied here too, would mean no freshly
+    /// generated login app could ever create its first account or its starting data, because
+    /// both are exactly the operation an empty store has nobody authorised to perform. This
+    /// method exists so those call sites can be exempt, by name, rather than by a null check
+    /// anyone could quietly rely on.
     /// </remarks>
     public StoreWrite SaveAllUnchecked(List<T> all) => WriteToDatabase(all);
 
