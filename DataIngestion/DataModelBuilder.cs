@@ -46,6 +46,10 @@ public static class DataModelBuilder
         // set of entities this run actually produces rather than against a guess.
         var entityNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
+        // Entity name -> the table it came from, so proposals can be scanned from the complete
+        // rows after relationships are known.
+        var sources = new Dictionary<string, TabularTable>(StringComparer.OrdinalIgnoreCase);
+
         foreach (var table in tables)
         {
             var entityName = NameNormalizer.ToUserTypedEntityName(table.Name);
@@ -81,12 +85,15 @@ public static class DataModelBuilder
             model.Record(entityName, DecisionStage.SeedExtraction, DecisionOutcome.Kept,
                 DecisionReasons.ReadFromYourData,
                 $"{table.Columns.Count} column(s) in {table.Label}");
+
+            sources[entityName] = table;
         }
 
         // Declared first, so the convention pass below sees what is already there. These
         // are read from the constraint a database enforces; that one infers from a name.
         AddDeclaredRelationships(model, tables, entityNames);
         AddRelationships(model, entityNames);
+        AddProposals(model, sources);
         RecordNormalization(model, applied);
         return model;
     }
@@ -412,5 +419,63 @@ public static class DataModelBuilder
                 });
             }
         }
+    }
+
+    /// <summary>
+    /// The rules each entity's own rows support, attached to the fields they are about.
+    /// </summary>
+    /// <remarks>
+    /// After the relationship passes, because whether uniqueness may be proposed at all depends
+    /// on them: an entity that references another is a transaction or a child, where a repeating
+    /// value is the design rather than a defect. That is the first half of the same test
+    /// <c>EntityRoles.IsTransaction</c> applies later over class definitions — stricter than it,
+    /// deliberately, since the cost of not offering a rule is that the user types it themselves
+    /// and the cost of offering a wrong one is an app that refuses good data.
+    /// <para>
+    /// Runs over the COMPLETE tables. Everything downstream of <c>TabularImport</c> is capped at
+    /// <c>ImportedData.MaxSeedRows</c>, and a rule inferred from a sample is the one thing this
+    /// layer must never produce.
+    /// </para>
+    /// </remarks>
+    private static void AddProposals(
+        CandidateDomainModel model, IReadOnlyDictionary<string, TabularTable> sources)
+    {
+        foreach (var entity in model.Entities)
+        {
+            if (!sources.TryGetValue(entity.Name, out var table))
+                continue;
+
+            var mayBeUnique = entity.Relationships.Count == 0;
+
+            foreach (var field in entity.Fields)
+            {
+                var column = ColumnFor(table, field.Name);
+
+                if (column is null)
+                    continue;
+
+                var scan = ColumnScan.Of(table, column);
+
+                foreach (var proposal in RuleProposals.For(
+                             scan, field.Name, field.Type, mayBeUnique))
+                    field.Proposals.Add(proposal);
+            }
+        }
+    }
+
+    /// <summary>
+    /// The source column that became <paramref name="fieldName"/> on the entity built from
+    /// <paramref name="table"/>, or null when no column produced it (a default field, or one
+    /// added after the fact). The inverse of <see cref="FieldNames"/> — a field name may have
+    /// been renamed off its class name by <see cref="ResolveColumns"/>, and this looks up the
+    /// same recorded pair rather than guessing at one.
+    /// </summary>
+    private static string? ColumnFor(TabularTable table, string fieldName)
+    {
+        foreach (var (column, field) in FieldNames(table))
+            if (string.Equals(field, fieldName, StringComparison.OrdinalIgnoreCase))
+                return column;
+
+        return null;
     }
 }

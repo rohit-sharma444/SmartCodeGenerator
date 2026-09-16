@@ -49,6 +49,14 @@ public sealed class CandidateField
     /// the review loop cannot orphan it. Null for a field no data source produced.
     /// </summary>
     public CodeGenerationEngine.Models.TypeFacts? Facts { get; set; }
+
+    /// <summary>
+    /// Rules the scan found hold in every row, offered to the user unaccepted. On this field
+    /// rather than in a table keyed by name, for the reason <see cref="Facts"/> is: the review
+    /// loop lets a property be renamed, and a side table would then describe a field that is no
+    /// longer there.
+    /// </summary>
+    public List<CodeGenerationEngine.Models.RuleProposal> Proposals { get; } = new();
 }
 
 public sealed class CandidateRelationship
