@@ -1,5 +1,6 @@
 using AppScaffolding;
 using AppScaffolding.Targets;
+using CodeGenerationEngine.Models;
 using CodeGenerator.App.Resume;
 using CodeGenerator.Web.Workflow;
 using DataIngestion;
@@ -135,7 +136,7 @@ public class BuildSnapshotTests
 
     private static BuildSession SessionWithModel() => SessionWith(null);
 
-    private static BuildSession SessionWith(DataSourceSpec? source)
+    private static BuildSession SessionWith(DataSourceSpec? source, CandidateDomainModel? model = null)
     {
         var session = new BuildSession("a shop", Path.GetTempPath(), AppCustomization.Default);
 
@@ -150,7 +151,7 @@ public class BuildSnapshotTests
         session.Advance();
         session.SetCustomization(AppCustomization.Default);
         session.Advance();
-        session.SetModel(AModel());
+        session.SetModel(model ?? AModel());
 
         while (session.Current != BuildStage.Review)
             session.Advance();
@@ -172,5 +173,119 @@ public class BuildSnapshotTests
         model.Suggestions.Add(new CandidateEntity { Name = "Shelf", Provenance = Provenance.Wiki });
 
         return model;
+    }
+
+    /// <summary>A model with one entity and one field, carrying the given facts.</summary>
+    private static CandidateDomainModel ModelWithFacts(int maxLength, bool nullable)
+    {
+        var model = new CandidateDomainModel();
+
+        var book = new CandidateEntity { Name = "Book", Provenance = Provenance.Wiki };
+        book.Fields.Add(new CandidateField
+        {
+            Name = "Title",
+            Type = "string",
+            Provenance = Provenance.Data,
+            Facts = new TypeFacts { MaxLength = maxLength, IsNullable = nullable },
+        });
+
+        model.Entities.Add(book);
+        return model;
+    }
+
+    /// <summary>A model with one entity and one field, carrying two proposals: the first accepted
+    /// exactly when <paramref name="acceptFirst"/>, the second never.</summary>
+    private static CandidateDomainModel ModelWithProposals(bool acceptFirst)
+    {
+        var model = new CandidateDomainModel();
+
+        var book = new CandidateEntity { Name = "Book", Provenance = Provenance.Wiki };
+        var field = new CandidateField { Name = "Status", Type = "string", Provenance = Provenance.Data };
+
+        field.Proposals.Add(new RuleProposal
+        {
+            Kind = RuleProposalKind.Status,
+            Rule = new PropertyRule
+            {
+                PropertyName = "Status", Name = "allowedvalues", AllowedValues = ["Open", "Closed"]
+            },
+            Evidence = "Status holds only Open, Closed in every sampled value",
+            Accepted = acceptFirst,
+        });
+
+        field.Proposals.Add(new RuleProposal
+        {
+            Kind = RuleProposalKind.Unique,
+            Rule = new PropertyRule { PropertyName = "Status", Name = "unique", IsUnique = true },
+            Evidence = "no two sampled entries share a Status",
+            Accepted = false,
+        });
+
+        book.Fields.Add(field);
+        model.Entities.Add(book);
+        return model;
+    }
+
+    /// <summary>Builds a session carrying <paramref name="model"/>, snapshots it, and restores it —
+    /// what a resume actually does.</summary>
+    private static CandidateDomainModel RoundTrip(CandidateDomainModel model)
+        => BuildSnapshot.Of(SessionWith(null, model)).ToModel()!;
+
+    private static BuildSnapshot SnapshotOf(CandidateDomainModel model)
+        => BuildSnapshot.Of(SessionWith(null, model));
+
+    private static string Serialize(BuildSnapshot snapshot)
+        => System.Text.Json.JsonSerializer.Serialize(snapshot);
+
+    private static IEnumerable<string> RuleNames(
+        IReadOnlyList<CodeGenerationEngine.Models.ClassDefinition> classes)
+        => classes.SelectMany(c => c.Properties).SelectMany(p => p.Rules).Select(r => r.Name);
+
+    [TestMethod]
+    public void A_resumed_field_keeps_what_its_column_declared()
+    {
+        var model = ModelWithFacts(maxLength: 50, nullable: false);
+
+        var restored = RoundTrip(model);
+
+        var facts = restored.Entities.Single().Fields.Single().Facts;
+        Assert.IsNotNull(facts, "the facts every inferred field rule is derived from");
+        Assert.AreEqual(50, facts.MaxLength);
+        Assert.IsFalse(facts.IsNullable);
+    }
+
+    [TestMethod]
+    public void A_resumed_build_infers_the_same_rules_as_an_unresumed_one()
+    {
+        var model = ModelWithFacts(maxLength: 50, nullable: false);
+
+        var before = AppScaffolding.DomainModelMapper.ToClassDefinitions(model, out _);
+        var after = AppScaffolding.DomainModelMapper.ToClassDefinitions(RoundTrip(model), out _);
+
+        CollectionAssert.AreEquivalent(
+            RuleNames(before).ToArray(), RuleNames(after).ToArray());
+    }
+
+    [TestMethod]
+    public void A_resumed_build_keeps_the_proposals_that_were_accepted()
+    {
+        var model = ModelWithProposals(acceptFirst: true);
+
+        var restored = RoundTrip(model);
+
+        var proposals = restored.Entities.Single().Fields.Single().Proposals;
+        Assert.HasCount(2, proposals);
+        Assert.IsTrue(proposals[0].Accepted);
+        Assert.IsFalse(proposals[1].Accepted);
+    }
+
+    [TestMethod]
+    public void The_rows_are_still_not_written_to_disk()
+    {
+        // Unchanged, and asserted rather than intended: the file stays small whatever the data size,
+        // and the connection string is never written to .codegen at all.
+        var json = Serialize(SnapshotOf(ModelWithProposals(acceptFirst: true)));
+
+        Assert.IsFalse(json.Contains("Rows", StringComparison.OrdinalIgnoreCase));
     }
 }

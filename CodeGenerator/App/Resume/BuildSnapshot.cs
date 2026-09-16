@@ -1,5 +1,6 @@
 using AppScaffolding;
 using AppScaffolding.Layouts;
+using CodeGenerationEngine.Models;
 using CodeGenerator.Web.Workflow;
 using DataIngestion;
 using DomainDiscovery.Model;
@@ -27,7 +28,7 @@ namespace CodeGenerator.App.Resume;
 /// </remarks>
 internal sealed class BuildSnapshot
 {
-    public const int CurrentSchemaVersion = 1;
+    public const int CurrentSchemaVersion = 2;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
     public DateTimeOffset SavedAt { get; set; } = DateTimeOffset.UtcNow;
@@ -82,6 +83,47 @@ internal sealed class BuildSnapshot
         public string? Name { get; set; }
         public string? Type { get; set; }
         public string? Provenance { get; set; }
+
+        /// <summary>
+        /// What the source declared about this field's column.
+        /// </summary>
+        /// <remarks>
+        /// Absent before schema version 2, which meant a resumed build came back factless and
+        /// inferred none of the field rules the same build inferred without a resume. The rows
+        /// are re-read on resume; the FACTS are not, because nothing re-runs the reader's
+        /// schema pass once a model has been restored.
+        /// </remarks>
+        public Facts? Facts { get; set; }
+
+        /// <summary>
+        /// The proposed rules and, the point of keeping them, which were accepted.
+        /// </summary>
+        /// <remarks>
+        /// The scan re-runs from the re-read rows, so the proposals themselves could be
+        /// recomputed — the DECISION could not, and that is the user's work.
+        /// </remarks>
+        public List<Proposal>? Proposals { get; set; }
+    }
+
+    internal sealed class Facts
+    {
+        public bool? IsNullable { get; set; }
+        public int? MaxLength { get; set; }
+        public bool? IsUnbounded { get; set; }
+        public int? Precision { get; set; }
+        public int? Scale { get; set; }
+        public string? DeclaredType { get; set; }
+    }
+
+    internal sealed class Proposal
+    {
+        public string? Kind { get; set; }
+        public string? Evidence { get; set; }
+        public bool? Accepted { get; set; }
+        public string? RuleName { get; set; }
+        public List<string>? AllowedValues { get; set; }
+        public string? RegexPattern { get; set; }
+        public string? CustomRule { get; set; }
     }
 
     internal sealed class Relationship
@@ -224,7 +266,11 @@ internal sealed class BuildSnapshot
         SourceTitle = entity.SourceTitle,
         Fields = [.. entity.Fields.Select(f => new Field
         {
-            Name = f.Name, Type = f.Type, Provenance = f.Provenance.ToString()
+            Name = f.Name,
+            Type = f.Type,
+            Provenance = f.Provenance.ToString(),
+            Facts = f.Facts is { } facts ? ToDto(facts) : null,
+            Proposals = f.Proposals.Count > 0 ? [.. f.Proposals.Select(ToDto)] : null,
         })],
         Relationships = [.. entity.Relationships.Select(r => new Relationship
         {
@@ -259,14 +305,21 @@ internal sealed class BuildSnapshot
             if (field.Name is null || field.Type is null)
                 continue;
 
-            entity.Fields.Add(new CandidateField
+            var candidateField = new CandidateField
             {
                 Name = field.Name,
                 Type = field.Type,
                 Provenance = Enum.TryParse<Provenance>(field.Provenance, out var p)
                     ? p
                     : Provenance.Wiki,
-            });
+                Facts = field.Facts is { } facts ? FromDto(facts) : null,
+            };
+
+            foreach (var proposal in field.Proposals ?? [])
+                if (FromDto(proposal) is { } restored)
+                    candidateField.Proposals.Add(restored);
+
+            entity.Fields.Add(candidateField);
         }
 
         foreach (var relationship in dto.Relationships ?? [])
@@ -281,5 +334,65 @@ internal sealed class BuildSnapshot
         }
 
         return entity;
+    }
+
+    private static Facts ToDto(TypeFacts facts) => new()
+    {
+        IsNullable = facts.IsNullable,
+        MaxLength = facts.MaxLength,
+        IsUnbounded = facts.IsUnbounded,
+        Precision = facts.Precision,
+        Scale = facts.Scale,
+        DeclaredType = facts.DeclaredType,
+    };
+
+    /// <summary>
+    /// The real <see cref="TypeFacts.IsUnbounded"/> cannot be null, so a DTO with no value for it
+    /// (an older file, or a field this build never scanned) comes back <c>false</c> — "unknown"
+    /// and "known to be bounded" collapse to the same starting point a fresh discovery would give.
+    /// </summary>
+    private static TypeFacts FromDto(Facts dto) => new()
+    {
+        IsNullable = dto.IsNullable,
+        MaxLength = dto.MaxLength,
+        IsUnbounded = dto.IsUnbounded ?? false,
+        Precision = dto.Precision,
+        Scale = dto.Scale,
+        DeclaredType = dto.DeclaredType,
+    };
+
+    private static Proposal ToDto(RuleProposal proposal) => new()
+    {
+        Kind = proposal.Kind.ToString(),
+        Evidence = proposal.Evidence,
+        Accepted = proposal.Accepted,
+        RuleName = proposal.Rule.Name,
+        AllowedValues = proposal.Rule.AllowedValues.Count > 0 ? [.. proposal.Rule.AllowedValues] : null,
+        RegexPattern = proposal.Rule.RegexPattern,
+        CustomRule = proposal.Rule.CustomRule,
+    };
+
+    /// <summary>
+    /// One proposal back, or null when its <see cref="Proposal.Kind"/> does not parse. Deliberate:
+    /// restoring it with some default kind would tick a rule the user never actually saw.
+    /// </summary>
+    private static RuleProposal? FromDto(Proposal dto)
+    {
+        if (!Enum.TryParse<RuleProposalKind>(dto.Kind, out var kind))
+            return null;
+
+        return new RuleProposal
+        {
+            Kind = kind,
+            Rule = new PropertyRule
+            {
+                Name = dto.RuleName ?? string.Empty,
+                AllowedValues = dto.AllowedValues ?? [],
+                RegexPattern = dto.RegexPattern,
+                CustomRule = dto.CustomRule,
+            },
+            Evidence = dto.Evidence ?? string.Empty,
+            Accepted = dto.Accepted ?? false,
+        };
     }
 }
