@@ -105,10 +105,15 @@ public class BlazorTargetTests
     [TestMethod]
     public void DeletingARecordWritesThroughToTheStore()
     {
+        // AppCustomization.Default has Login: true, so the write is SaveAllUnchecked --
+        // the delete handler already asks Permissions itself, with the real signed-in role,
+        // before this line is ever reached. SaveAll's own gate reads ActingUser.Role(), which
+        // is hardcoded null for Blazor (no desktop Session to read it from), so it would refuse
+        // this write for every signed-in user if it ran here too.
         var list = Source("MasterScreen.razor");
 
         Assert.Contains("all.RemoveAll(", list);
-        Assert.Contains("_store.SaveAll(all)", list);
+        Assert.Contains("_store.SaveAllUnchecked(all)", list);
     }
 
     [TestMethod]

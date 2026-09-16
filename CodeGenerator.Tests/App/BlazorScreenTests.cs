@@ -147,13 +147,19 @@ public class BlazorScreenTests
         Assert.Contains("new ValidationContext<TRecord>(", editor);
         Assert.Contains("state?.User.FindFirst(ClaimTypes.Role)?.Value", editor);
 
-        // With validation off there is no Validation folder to resolve one from, so naming it would
-        // not compile.
+        // With validation off there is no pipeline to run -- ValidatorFactory names a class that
+        // does not exist under novalidation. But the app still has a login here
+        // (AppCustomization.Default.Login is true), and Save must still ask Permissions itself
+        // with the real signed-in role before writing -- the same explicit guard Delete already
+        // has, independent of validation -- or a novalidation Blazor app with a login would have
+        // NO permission check on save at all. That guard is what still needs Shop.Validation
+        // imported (Permissions/ValidationOperation live there), even with no pipeline to call.
         var bare = Source(
             "RecordEditor.razor", AppCustomization.Default with { Validation = false });
 
         Assert.DoesNotContain("ValidatorFactory", bare);
-        Assert.DoesNotContain("Shop.Validation", bare);
+        Assert.Contains("Shop.Validation", bare);
+        Assert.Contains("Permissions.Allows(ValidationOperation.Update", bare);
     }
 
     /// <summary>

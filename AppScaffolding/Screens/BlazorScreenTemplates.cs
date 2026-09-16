@@ -511,7 +511,7 @@ else
 @using Microsoft.AspNetCore.Components.Routing
 @using Microsoft.JSInterop
 @using {{rootNamespace}}.Data
-@using {{rootNamespace}}.Screens{{ValidationUsing(rootNamespace, validation)}}{{ClaimsUsing(login)}}{{AuthorizationUsing(login)}}
+@using {{rootNamespace}}.Screens{{ValidationUsing(rootNamespace, validation, login)}}{{ClaimsUsing(login)}}{{AuthorizationUsing(login)}}
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
 
@@ -770,7 +770,13 @@ else
             all[index] = _draft;
         }
 
-        var write = _store.SaveAll(all);
+        // Unchecked when login is on: ValidateCall's own explicit guard (below) already asked
+        // Permissions with the REAL signed-in role, read off the cascading auth state, regardless
+        // of whether validation is on. SaveAll's own gate reads ActingUser.Role(), hardcoded null
+        // for Blazor (no desktop Session), so it would refuse this write for every signed-in user
+        // otherwise. With no login there is nobody to authorise and SaveAll's own gate already
+        // allows a null role under AppHasLogin=false, so it stays the checked call there.
+        var write = {{(login ? "_store.SaveAllUnchecked(all)" : "_store.SaveAll(all)")}};
         if (!write.Success)
         {
             _status = write.Refusal ?? "Could not save.";
@@ -998,7 +1004,14 @@ else
                       var all = _store.GetAll();
                       all.RemoveAll(stored => ScreenFields.IdOf(stored) == ScreenFields.IdOf(record));
 
-                      var write = _store.SaveAll(all);
+                      // Unchecked: deleteGuard above already asked Permissions with the REAL
+                      // signed-in role, read off the cascading auth state. SaveAll's own gate reads
+                      // ActingUser.Role(), which ActingUserTemplate hardcodes to null for Blazor --
+                      // there is no desktop Session to read -- so it would refuse this write for
+                      // every signed-in user, regardless of what deleteGuard already decided
+                      // correctly. Found running a real generated Blazor app for validation-phase-3's
+                      // task 15.
+                      var write = _store.SaveAllUnchecked(all);
                       _status = write.Success ? "Deleted." : write.Refusal ?? "Could not delete.";
                       _selected = null;
 
@@ -1028,8 +1041,16 @@ else
               """;
     }
 
-    private static string ValidationUsing(string rootNamespace, bool validation)
-        => validation ? $"\r\n@using {rootNamespace}.Validation" : string.Empty;
+    /// <summary>
+    /// <paramref name="validation"/> needs it for the pipeline call; <paramref name="login"/>
+    /// needs it too now, for the explicit save-time permission guard <see cref="ValidateCall"/>
+    /// emits regardless of <paramref name="validation"/> -- <see cref="Permissions"/> and
+    /// <see cref="ValidationOperation"/> live here either way, and both are unconditionally
+    /// emitted (<c>Permissions.cs</c> names them), so the only question is whether THIS file
+    /// imports them.
+    /// </summary>
+    private static string ValidationUsing(string rootNamespace, bool validation, bool login)
+        => validation || login ? $"\r\n@using {rootNamespace}.Validation" : string.Empty;
 
     /// <summary>
     /// The pipeline, run by the editor because nothing else on this path would.
@@ -1045,29 +1066,40 @@ else
     /// </remarks>
     private static string ValidateCall(bool validation, bool login)
     {
-        if (!validation)
-            return string.Empty;
-
-        // The acting user IS threaded through: ValidationContext.For's own doc comment says it is
-        // "for tests and for a caller that genuinely has none of those" -- this editor has a real
-        // signed-in user when login is on, read off the cascading auth state the same way
-        // DeleteHandler already does. Omitting it was harmless before Permissions.Allows was
-        // taught to refuse a null role in a login app; after that fix a null role here means this
-        // editor can never save for ANYONE, in ANY login app -- found running a real generated app
-        // for validation-phase-3's task 15.
-        var roleRead = login
+        // Independent of `validation`: the store's own SaveAll gate reads ActingUser.Role(),
+        // hardcoded null for Blazor (no desktop Session to read), so it can never authorise a
+        // save correctly on its own. Save must ask Permissions itself, with the REAL role read
+        // off the cascading auth state, the same way MayDelete already does for Delete -- run
+        // whether or not validation is on, or a novalidation Blazor app with a login has NO
+        // permission check on save at all, which is the exact "turning validation off must not
+        // turn permissions off" invariant this project holds everywhere else. Found running a
+        // real generated app for validation-phase-3's task 15.
+        var guard = login
             ? """
-
                       var state = AuthState is null ? null : await AuthState;
+
+                      if (!Permissions.Allows(ValidationOperation.Update, typeof(TRecord).Name,
+                          state?.User.FindFirst(ClaimTypes.Role)?.Value))
+                      {
+                          _status = Permissions.Refusal(ValidationOperation.Update, typeof(TRecord).Name);
+                          return;
+                      }
 
               """
             : string.Empty;
 
+        if (!validation)
+            return guard;
+
+        // The acting user IS threaded through: ValidationContext.For's own doc comment says it is
+        // "for tests and for a caller that genuinely has none of those" -- this editor has a real
+        // signed-in user when login is on, read off the SAME `state` the guard above already
+        // read, not a second time.
         var role = login ? "state?.User.FindFirst(ClaimTypes.Role)?.Value" : "null";
 
-        return $$"""
+        var pipeline = $$"""
                       _invalid.Clear();
-              {{roleRead}}
+
                       var context = new ValidationContext<TRecord>(
                           _draft, IsNew ? ValidationOperation.Insert : ValidationOperation.Update,
                           default, new StoreEntityLookup(), {{role}}, null);
@@ -1090,5 +1122,7 @@ else
 
 
               """;
+
+        return guard + pipeline;
     }
 }
