@@ -39,6 +39,17 @@ public class CsprojEditingTests
         "  </PropertyGroup>\r\n" +
         "</Project>\r\n";
 
+    /// <summary>A Blazor-shaped project file: <c>Microsoft.NET.Sdk.Web</c> globs every non-code
+    /// file under the project as <c>Content</c> by default, which the plain
+    /// <see cref="Csproj"/> fixture's <c>Microsoft.NET.Sdk</c> does not.</summary>
+    private const string CsprojWeb = """
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+</Project>
+""";
+
     [TestMethod]
     public void InjectPackageReference_InsertsBeforeClosingTag()
     {
@@ -211,4 +222,49 @@ public class CsprojEditingTests
             cleared);
     }
 
+    /// <summary>The desktop SDK globs no arbitrary file as <c>Content</c> by default, so the
+    /// explicit <c>Include</c> is the only way the seed folder gets copied to the output
+    /// directory.</summary>
+    [TestMethod]
+    public void Seed_content_is_included_for_the_desktop_sdk()
+    {
+        var updated = CsprojEditing.InjectSeedContent(Csproj);
+
+        StringAssert.Contains(
+            updated, "<Content Include=\"Data\\Seed\\*.json\" CopyToOutputDirectory=\"PreserveNewest\" />");
+    }
+
+    /// <summary>
+    /// Found running a real generated Blazor app for validation-phase-3's task 15: a duplicate
+    /// <c>Content</c> item is NETSDK1022, a build error no flattened-source or string-assertion
+    /// test can see, because it only fires when the real SDK evaluates the project file.
+    /// </summary>
+    /// <remarks>
+    /// <c>Microsoft.NET.Sdk.Web</c> — Blazor, and any other web target — already globs every
+    /// non-code file under the project as <c>Content</c>, including <c>Data\Seed\*.json</c>. The
+    /// same explicit <c>&lt;Content Include=...&gt;</c> the desktop SDK needs therefore collides
+    /// with the SDK's own default item for the identical files under a Web SDK project.
+    /// <c>Update</c> sets the metadata on the item the default glob already created instead of
+    /// declaring a second one.
+    /// </remarks>
+    [TestMethod]
+    public void Seed_content_is_updated_not_duplicated_for_the_web_sdk()
+    {
+        var updated = CsprojEditing.InjectSeedContent(CsprojWeb);
+
+        StringAssert.Contains(
+            updated, "<Content Update=\"Data\\Seed\\*.json\" CopyToOutputDirectory=\"PreserveNewest\" />");
+        Assert.IsFalse(
+            updated.Contains("Content Include=\"Data\\Seed", StringComparison.Ordinal),
+            "an Include here duplicates the Web SDK's own default Content item (NETSDK1022)");
+    }
+
+    [TestMethod]
+    public void Seed_content_injection_is_idempotent_for_the_web_sdk()
+    {
+        var once = CsprojEditing.InjectSeedContent(CsprojWeb);
+        var twice = CsprojEditing.InjectSeedContent(once);
+
+        Assert.AreEqual(once, twice);
+    }
 }

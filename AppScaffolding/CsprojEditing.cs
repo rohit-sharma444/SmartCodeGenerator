@@ -26,8 +26,45 @@ public static class CsprojEditing
     /// can find <c>Data/Seed/&lt;Class&gt;.json</c> beside its binary at run time. Idempotent, and
     /// a no-op on a project file with no closing tag.
     /// </summary>
+    /// <remarks>
+    /// <c>Update</c>, not <c>Include</c>, when the project's own SDK is a Web one.
+    /// <c>Microsoft.NET.Sdk.Web</c> — Blazor, and any other web target — globs every non-code
+    /// file under the project as <c>Content</c> by default, so an explicit <c>Include</c> for the
+    /// same files is a duplicate item: NETSDK1022, a build error a flattened-source or
+    /// string-assertion test cannot see, because it only fires once the real SDK evaluates the
+    /// project file. The desktop SDK (WPF, WinForms) globs no such thing, so it still needs the
+    /// explicit <c>Include</c> — without the default glob there is no pre-existing item for
+    /// <c>Update</c> to find.
+    /// </remarks>
     public static string InjectSeedContent(string csproj)
-        => InjectContent(csproj, @"Data\Seed\*.json");
+    {
+        const string include = @"Data\Seed\*.json";
+        var attribute = IsWebSdk(csproj) ? "Update" : "Include";
+
+        return InjectItem(
+            csproj, include,
+            $"    <Content {attribute}=\"{include}\" CopyToOutputDirectory=\"PreserveNewest\" />\n",
+            attribute);
+    }
+
+    /// <summary>Whether <paramref name="csproj"/> declares a Web-flavoured SDK
+    /// (<c>Microsoft.NET.Sdk.Web</c>, <c>Microsoft.NET.Sdk.Razor</c>) — the ones that glob
+    /// arbitrary files as <c>Content</c> by default.</summary>
+    private static bool IsWebSdk(string csproj)
+    {
+        var open = csproj.IndexOf("<Project Sdk=\"", StringComparison.Ordinal);
+        if (open < 0)
+            return false;
+
+        var start = open + "<Project Sdk=\"".Length;
+        var end = csproj.IndexOf('"', start);
+        if (end < 0)
+            return false;
+
+        var sdk = csproj[start..end];
+        return sdk.Contains(".Web", StringComparison.OrdinalIgnoreCase)
+            || sdk.Contains(".Razor", StringComparison.OrdinalIgnoreCase);
+    }
 
     /// <summary>
     /// Registers <paramref name="include"/> as content copied next to the built binary.
@@ -72,9 +109,10 @@ public static class CsprojEditing
     /// <c>&lt;ApplicationIcon&gt;Assets\app.ico&lt;/ApplicationIcon&gt;</c> must not stop the
     /// <c>Resource</c> item for that same file being added.
     /// </remarks>
-    private static string InjectItem(string csproj, string include, string item)
+    private static string InjectItem(
+        string csproj, string include, string item, string attribute = "Include")
     {
-        if (csproj.Contains($"Include=\"{include}\"", StringComparison.Ordinal))
+        if (csproj.Contains($"{attribute}=\"{include}\"", StringComparison.Ordinal))
             return csproj;
 
         var itemGroup = "  <ItemGroup>\n" + item + "  </ItemGroup>\n";
