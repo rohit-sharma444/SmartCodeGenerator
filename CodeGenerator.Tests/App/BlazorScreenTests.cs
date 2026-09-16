@@ -141,7 +141,11 @@ public class BlazorScreenTests
         var editor = Source("RecordEditor.razor");
 
         Assert.Contains("ValidatorFactory.Create<TRecord>().Validate(context)", editor);
-        Assert.Contains("ValidationContext<TRecord>.For(", editor);
+        // Built with the full constructor, not ValidationContext<TRecord>.For -- that factory's
+        // own doc comment says it is for tests and callers with no real acting user, and this
+        // editor has one when the app has a login (AppCustomization.Default.Login is true here).
+        Assert.Contains("new ValidationContext<TRecord>(", editor);
+        Assert.Contains("state?.User.FindFirst(ClaimTypes.Role)?.Value", editor);
 
         // With validation off there is no Validation folder to resolve one from, so naming it would
         // not compile.

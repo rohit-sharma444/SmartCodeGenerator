@@ -93,7 +93,7 @@ public sealed class BlazorTarget : ITargetScaffolder
                 BlazorScreenTemplates.TransactionScreen(ns, customization.Validation, customization.Login)),
 
             new(BlazorScreenTemplates.Folder, "RecordEditor.razor",
-                BlazorScreenTemplates.RecordEditor(ns, customization.Validation)),
+                BlazorScreenTemplates.RecordEditor(ns, customization.Validation, customization.Login)),
 
             new("Screens", "ScreenFields.cs", BlazorScreenTemplates.Fields(ns)),
 

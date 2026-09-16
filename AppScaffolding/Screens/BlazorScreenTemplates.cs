@@ -505,13 +505,13 @@ else
     /// through <c>Repository&lt;T&gt;</c>, so it has to run them itself or the web would accept
     /// records the API rejects.
     /// </param>
-    public static string RecordEditor(string rootNamespace, bool validation) => $$"""
+    public static string RecordEditor(string rootNamespace, bool validation, bool login) => $$"""
 @typeparam TRecord where TRecord : class, new()
 @using System.Reflection
 @using Microsoft.AspNetCore.Components.Routing
 @using Microsoft.JSInterop
 @using {{rootNamespace}}.Data
-@using {{rootNamespace}}.Screens{{ValidationUsing(rootNamespace, validation)}}
+@using {{rootNamespace}}.Screens{{ValidationUsing(rootNamespace, validation)}}{{ClaimsUsing(login)}}{{AuthorizationUsing(login)}}
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
 
@@ -624,7 +624,7 @@ else
     /// <summary>The properties the last refused save named, so their inputs can be marked. Stays
     /// empty in an app generated with no validators: nothing names a field there.</summary>
     private readonly HashSet<string> _invalid = new(StringComparer.Ordinal);
-
+{{AuthStateParameter(login)}}
     /// <summary>Whichever record the URL named, or null for a new one.</summary>
     [Parameter] public int? Id { get; set; }
 
@@ -746,9 +746,9 @@ else
     private string CssFor(PropertyInfo field)
         => _invalid.Contains(field.Name) ? "is-invalid" : string.Empty;
 
-    private void Save()
+    {{(login ? "private async Task Save()" : "private void Save()")}}
     {
-{{ValidateCall(validation)}}        var all = _store.GetAll();
+{{ValidateCall(validation, login)}}        var all = _store.GetAll();
 
         if (IsNew)
         {
@@ -1043,15 +1043,34 @@ else
     /// input the outcome named, and the status line still says what was wrong first.
     /// </para>
     /// </remarks>
-    private static string ValidateCall(bool validation)
-        => validation
+    private static string ValidateCall(bool validation, bool login)
+    {
+        if (!validation)
+            return string.Empty;
+
+        // The acting user IS threaded through: ValidationContext.For's own doc comment says it is
+        // "for tests and for a caller that genuinely has none of those" -- this editor has a real
+        // signed-in user when login is on, read off the cascading auth state the same way
+        // DeleteHandler already does. Omitting it was harmless before Permissions.Allows was
+        // taught to refuse a null role in a login app; after that fix a null role here means this
+        // editor can never save for ANYONE, in ANY login app -- found running a real generated app
+        // for validation-phase-3's task 15.
+        var roleRead = login
             ? """
+                      var state = AuthState is null ? null : await AuthState;
+
+              """
+            : string.Empty;
+
+        var role = login ? "state?.User.FindFirst(ClaimTypes.Role)?.Value" : "null";
+
+        return $$"""
                       _invalid.Clear();
 
-                      var context = ValidationContext<TRecord>.For(
-                          _draft,
-                          IsNew ? ValidationOperation.Insert : ValidationOperation.Update,
-                          new StoreEntityLookup());
+              {{roleRead}}
+                      var context = new ValidationContext<TRecord>(
+                          _draft, IsNew ? ValidationOperation.Insert : ValidationOperation.Update,
+                          default, new StoreEntityLookup(), {{role}}, null);
 
                       var outcome = ValidatorFactory.Create<TRecord>().Validate(context);
 
@@ -1070,6 +1089,6 @@ else
                       }
 
 
-              """
-            : string.Empty;
+              """;
+    }
 }

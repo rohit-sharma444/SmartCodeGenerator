@@ -35,7 +35,7 @@ public class FieldHighlightTests
     {
         // The EDITOR, not MasterScreen: the master screen is a read-only list whose only input is
         // the search box. The inputs a validator can refuse are on RecordEditor.
-        var source = BlazorScreenTemplates.RecordEditor("Acme", validation: true);
+        var source = BlazorScreenTemplates.RecordEditor("Acme", validation: true, login: false);
 
         StringAssert.Contains(source, "is-invalid");
         StringAssert.Contains(source, "class=\"form-control @CssFor(field)\"");
@@ -70,7 +70,11 @@ public class FieldHighlightTests
         var source = RecordEditorTemplate.Source("Acme", validation: true);
 
         // On the pipeline: a context, an operation, and an outcome that carries attribution.
-        StringAssert.Contains(source, "ValidationContext<T>.For(");
+        // Built with the full constructor, not ValidationContext<T>.For -- that factory's own
+        // doc comment says it is for tests and callers with no real acting user, and this editor
+        // has one (validation-phase-3 task 15).
+        StringAssert.Contains(source, "new ValidationContext<T>(");
+        StringAssert.Contains(source, "ActingUser.Role(), ActingUser.Id()");
         StringAssert.Contains(source, "IsNew ? ValidationOperation.Insert : ValidationOperation.Update");
         StringAssert.Contains(source, "foreach (var error in outcome.Errors)");
         StringAssert.Contains(source, "_errors.TryAdd(error.Property ?? string.Empty, error.Message);");
@@ -152,6 +156,7 @@ public class FieldHighlightTests
             ("Validation/IEntityLookup.cs", ValidatorTemplate.EntityLookupInterface("Acme")),
             ("Validation/StoreEntityLookup.cs", ValidatorTemplate.StoreEntityLookup("Acme")),
             ("Validation/Permissions.cs", PermissionsTemplate.Source("Acme", ["Book"], login: false)),
+            ("Validation/ActingUser.cs", ActingUserTemplate.Source("Acme", sessionAuth: false)),
             ("Validation/ValidatorFactory.cs", ValidatorTemplate.Factory("Acme", ["Book"])),
             ("Validation/BookValidator.Generated.cs",
                 ValidatorTemplate.Generated("Acme", definition, [], referencesRequired: false)),
@@ -199,10 +204,7 @@ public class FieldHighlightTests
         var sources = new List<string>();
 
         foreach (var validation in new[] { true, false })
-        {
             sources.Add(RecordEditorTemplate.Source("Acme", validation));
-            sources.Add(BlazorScreenTemplates.RecordEditor("Acme", validation));
-        }
 
         foreach (var login in new[] { true, false })
         {
@@ -210,6 +212,7 @@ public class FieldHighlightTests
             {
                 sources.Add(BlazorScreenTemplates.MasterScreen("Acme", blazorValidation, login));
                 sources.Add(BlazorScreenTemplates.TransactionScreen("Acme", blazorValidation, login));
+                sources.Add(BlazorScreenTemplates.RecordEditor("Acme", blazorValidation, login));
             }
         }
 

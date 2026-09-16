@@ -47,6 +47,13 @@ public static class RecordEditorTemplate
         // default matrix treats the two identically, so nothing observable turns on the choice
         // today -- it is said accurately because a stage that reads the operation is the point of
         // carrying one.
+        //
+        // The acting user IS threaded through: ValidationContext.For's own doc comment says it is
+        // "for tests and for a caller that genuinely has none of those" -- this editor has a real
+        // signed-in user. Omitting it was harmless before Permissions.Allows was taught to refuse a
+        // null role in a login app; after that fix a null role here means this editor can never
+        // save for ANYONE, in ANY login app -- found running a real generated app for
+        // validation-phase-3's task 15.
         var validateCall = validation
             ? """
                     // This path writes through _store, not Repository, so it has to run the pipeline
@@ -54,9 +61,9 @@ public static class RecordEditorTemplate
                     // replaced rejected, from the same model in the same application.
                     _errors.Clear();
 
-                    var context = ValidationContext<T>.For(
+                    var context = new ValidationContext<T>(
                         Draft, IsNew ? ValidationOperation.Insert : ValidationOperation.Update,
-                        new StoreEntityLookup());
+                        default, new StoreEntityLookup(), ActingUser.Role(), ActingUser.Id());
 
                     var outcome = _validator.Validate(context);
 

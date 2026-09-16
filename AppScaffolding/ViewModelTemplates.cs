@@ -177,9 +177,13 @@ public interface IEntityViewModel
         //
         // Built with Update: this loop cannot tell an insert from an update any more than SaveAll
         // can -- a newly-added row and an edited one look identical by the time they reach here --
-        // which is the same reason the coarse store guard is built with Update. ValidationContext
-        // .For supplies no Stored version and no acting user, same as before the pipeline existed:
-        // this path predates ActingUser and stays that way here.
+        // which is the same reason the coarse store guard is built with Update. The acting user IS
+        // threaded through, unlike before: ValidationContext.For's own doc comment says it is "for
+        // tests and for a caller that genuinely has none of those" -- Save has a real signed-in
+        // user, the same one Delete two methods below already asks for. Passing null here was
+        // harmless before Permissions.Allows was taught to refuse a null role in a login app; after
+        // that fix a null role here means this path can never succeed for ANYONE, in ANY login app
+        // -- found running a real generated app for validation-phase-3's task 15.
         var validateRecords = validation
             ? """
                     // This path writes through _store, not Repository, so it has to run the generated
@@ -188,7 +192,9 @@ public interface IEntityViewModel
                     foreach (var record in Records)
                     {
                         var outcome = validator.Validate(
-                            ValidationContext<T>.For(record!, ValidationOperation.Update, new StoreEntityLookup()));
+                            new ValidationContext<T>(
+                                record!, ValidationOperation.Update, default, new StoreEntityLookup(),
+                                ActingUser.Role(), ActingUser.Id()));
 
                         if (!outcome.IsValid)
                         {
