@@ -184,6 +184,8 @@ internal sealed class NullValidator<T> : IValidator<T>
     private const string ScaleRule = "scale";
     private const string MinDateRule = "mindate";
     private const string DateOnlyRule = "dateonly";
+    private const string AllowedValuesRule = "allowedvalues";
+    private const string PatternRule = "pattern";
 
     /// <summary>
     /// Every (property type, rule name) pair <see cref="Checks"/> knows how to emit. Inference is
@@ -207,6 +209,7 @@ internal sealed class NullValidator<T> : IValidator<T>
     public static IReadOnlyCollection<(string Type, string Rule)> EmittableRules { get; } =
     [
         ("string", RequiredRule), ("string", MaxLengthRule),
+        ("string", AllowedValuesRule), ("string", PatternRule),
         ("int", MinValueRule), ("int", MaxValueRule),
         ("decimal", MinValueRule), ("decimal", MaxValueRule), ("decimal", ScaleRule),
         ("DateTime", MinDateRule), ("DateTime", DateOnlyRule)
@@ -642,6 +645,23 @@ public sealed partial class {{className}}Validator
                 checks.Add($"    errors.Add(new ValidationError(\"{name}\", \"{name} must be {max.Value} characters or fewer.\"));");
             }
 
+            if (Rule(property, AllowedValuesRule)?.AllowedValues is { Count: > 0 } allowed)
+            {
+                var literals = string.Join(", ", allowed.Select(Quoted));
+                var listed = string.Join(", ", allowed);
+
+                checks.Add($"if (!string.IsNullOrWhiteSpace(item.{name})");
+                checks.Add($"    && System.Array.IndexOf(new[] {{ {literals} }}, item.{name}) < 0)");
+                checks.Add($"    errors.Add(new ValidationError(\"{name}\", {Quoted($"{name} must be one of: {listed}.")}));");
+            }
+
+            if (Rule(property, PatternRule) is { RegexPattern.Length: > 0 } format)
+            {
+                checks.Add($"if (!string.IsNullOrWhiteSpace(item.{name})");
+                checks.Add($"    && !System.Text.RegularExpressions.Regex.IsMatch(item.{name}!, {Quoted(format.RegexPattern!)}))");
+                checks.Add($"    errors.Add(new ValidationError(\"{name}\", {Quoted($"{name} is not a valid {format.CustomRule ?? "value"}.")}));");
+            }
+
             // Deliberately loose: these exist to match what [EmailAddress]/[Phone] already give the
             // console and WPF front-ends, not to be authoritative format validators.
             if (property.Attributes.Contains("EmailAddress"))
@@ -739,4 +759,20 @@ public sealed partial class {{className}}Validator
         => type == "decimal"
             ? value.ToString(System.Globalization.CultureInfo.InvariantCulture) + "m"
             : ((long)value).ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// <paramref name="value"/> as a C# string literal.
+    /// </summary>
+    /// <remarks>
+    /// These values come from the user's own rows and can hold anything — a quote, a backslash, a
+    /// newline. An unescaped one is a generated app that does not compile, and the tool would
+    /// have reported success writing it.
+    /// </remarks>
+    private static string Quoted(string value)
+        => "\"" + value
+            .Replace("\\", "\\\\")
+            .Replace("\"", "\\\"")
+            .Replace("\r", "\\r")
+            .Replace("\n", "\\n")
+        + "\"";
 }
