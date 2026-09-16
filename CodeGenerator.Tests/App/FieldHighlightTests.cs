@@ -266,6 +266,8 @@ public sealed class MemoryStore<T> : IStore<T> where T : class, new()
         return StoreWrite.Ok;
     }
 
+    public StoreWrite SaveAllUnchecked(List<T> all) => SaveAll(all);
+
     public int NextId(IEnumerable<T> existing) => Rows.Count + 1;
 
     public T NewItem(IEnumerable<T> existing) => new();

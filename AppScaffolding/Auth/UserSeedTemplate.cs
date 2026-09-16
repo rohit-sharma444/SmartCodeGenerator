@@ -62,7 +62,11 @@ public static class UserSeed
             ModifiedOn = now,
         });
 
-        store.SaveAll(all);
+        // Unchecked: nobody could possibly be signed in yet to authorise creating the very
+        // account sign-in depends on. SaveAll's permission gate -- correctly, for every other
+        // caller -- refuses a signed-out caller of a login app, which would otherwise make this
+        // write refuse itself and leave a freshly generated login app impossible to sign into.
+        store.SaveAllUnchecked(all);
     }
 
     /// <summary>Whether the default account is still signing in with its default password, so a

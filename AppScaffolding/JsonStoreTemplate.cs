@@ -72,6 +72,25 @@ public sealed class JsonStore<T> : IStore<T> where T : new()
         if (!Permissions.Allows(ValidationOperation.Update, typeof(T).Name, ActingUser.Role()))
             return new StoreWrite(false, Permissions.Refusal(ValidationOperation.Update, typeof(T).Name));
 
+        return WriteToDisk(all);
+    }
+
+    /// <summary>
+    /// Overwrites the store with <paramref name="all"/> without asking <see cref="Permissions"/>.
+    /// </summary>
+    /// <remarks>
+    /// The ONE legitimate exception to SaveAll's gate: UserSeed.EnsureAdminSeeded runs before any
+    /// account exists, so before anyone COULD be signed in. A signed-out caller of a login app is
+    /// correctly refused by SaveAll — that refusal, applied here too, would mean no freshly
+    /// generated login app could ever create its first account, because creating that account is
+    /// exactly the operation the empty account list has nobody authorised to perform. This method
+    /// exists so that one call site can be exempt, by name, rather than by a null check anyone
+    /// could quietly rely on.
+    /// </remarks>
+    public StoreWrite SaveAllUnchecked(List<T> all) => WriteToDisk(all);
+
+    private StoreWrite WriteToDisk(List<T> all)
+    {
         try
         {
             File.WriteAllText(_path, JsonSerializer.Serialize(all, Options));

@@ -1,5 +1,7 @@
 using System.Collections;
+using System.IO;
 using System.Reflection;
+using AppScaffolding;
 using AppScaffolding.Auth;
 using CodeGenerationEngine.Core;
 
@@ -126,5 +128,68 @@ public class UserSeedTemplateTests
         StringAssert.Contains(UserSeedTemplate.FirstRunHint, "admin");
         StringAssert.Contains(UserSeedTemplate.Source("Acme"), "DefaultUserName = \"admin\"");
         StringAssert.Contains(UserSeedTemplate.Source("Acme"), UserSeedTemplate.FirstRunHint);
+    }
+
+    /// <summary>
+    /// Found running a real generated WPF login app for validation-phase-3's task 15: a freshly
+    /// generated app with a login could never be signed into. Every test above uses
+    /// <see cref="AuthServiceTemplateTests.StoreStub"/>, an in-memory fake with no permission
+    /// gate at all, so none of them could see this. This test compiles the REAL JsonStore, the
+    /// REAL Permissions with <c>login: true</c> — the same setting that correctly refuses every
+    /// OTHER caller with no session — and the REAL ActingUser, and proves the one legitimate
+    /// exception: seeding the very first account must still succeed before anyone could possibly
+    /// have signed in to authorise it.
+    /// </summary>
+    [TestMethod]
+    public void EnsureAdminSeeded_succeeds_in_a_real_login_app_before_anyone_has_signed_in()
+    {
+        var sources = new List<(string Path, string Code)>
+        {
+            ("Session.cs", SessionTemplate.Source("Acme")),
+            ("IStore.cs", StoreSeamTemplate.Source("Acme")),
+            ("JsonStore.cs", JsonStoreTemplate.Source("Acme.Data")),
+            ("StoreFactory.cs", StoreFactoryTemplate.Source("Acme", PersistenceKind.Json)),
+            ("Validation/ValidationContext.cs", ValidationContextTemplate.Source("Acme")),
+            ("Validation/IEntityLookup.cs", ValidatorTemplate.EntityLookupInterface("Acme")),
+            ("Validation/Permissions.cs", PermissionsTemplate.Source("Acme", [], login: true)),
+            ("Validation/ActingUser.cs", ActingUserTemplate.Source("Acme", sessionAuth: true)),
+        };
+        sources.AddRange(AuthCoreFiles.For("Acme").Select(f => (f.Name, f.Source)));
+
+        var result = Compiler.CompileSources(sources);
+        Assert.IsTrue(result.Success, string.Join("\n", result.Diagnostics));
+
+        var assembly = Assembly.Load(result.AssemblyBytes!);
+
+        // JsonStore's file path is keyed only by typeof(T).Name ("User"), shared by the whole
+        // test-assembly process. No other test constructs a real JsonStore<User>, so this is not
+        // racing anyone today, but the file is still deleted before and after in case that
+        // changes -- matching this branch's established JsonStore-collision discipline.
+        var userJson = Path.Combine(AppContext.BaseDirectory, "User.json");
+
+        try
+        {
+            if (File.Exists(userJson))
+                File.Delete(userJson);
+
+            // Nobody has signed in: Session.Current is null, so ActingUser.Role() is null, and
+            // under login: true, Permissions.Allows correctly refuses every OTHER write from a
+            // null role. Seeding the first account must be the one write that goes through
+            // anyway, or a freshly generated login app can never be signed into.
+            assembly.GetType("Acme.Auth.UserSeed")!.GetMethod("EnsureAdminSeeded")!
+                .Invoke(null, null);
+
+            var signIn = assembly.GetType("Acme.Auth.AuthService")!.GetMethod("SignIn")!
+                .Invoke(null, ["admin", "admin"])!;
+
+            Assert.AreEqual(
+                "Succeeded",
+                signIn.GetType().GetProperty("Outcome")!.GetValue(signIn)!.ToString());
+        }
+        finally
+        {
+            if (File.Exists(userJson))
+                File.Delete(userJson);
+        }
     }
 }
