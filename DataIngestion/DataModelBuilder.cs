@@ -94,6 +94,7 @@ public static class DataModelBuilder
         AddDeclaredRelationships(model, tables, entityNames);
         AddRelationships(model, entityNames);
         AddProposals(model, sources);
+        AddEntityProposals(model, sources);
         RecordNormalization(model, applied);
         return model;
     }
@@ -460,6 +461,22 @@ public static class DataModelBuilder
                              scan, field.Name, field.Type, mayBeUnique))
                     field.Proposals.Add(proposal);
             }
+        }
+    }
+
+    /// <summary>The Cross-Field and Calculation rules each entity's own rows support, attached
+    /// to the entity rather than one field. See <see cref="AddProposals"/> for why this runs
+    /// over the complete tables.</summary>
+    private static void AddEntityProposals(
+        CandidateDomainModel model, IReadOnlyDictionary<string, TabularTable> sources)
+    {
+        foreach (var entity in model.Entities)
+        {
+            if (!sources.TryGetValue(entity.Name, out var table))
+                continue;
+
+            foreach (var proposal in EntityRuleProposals.For(entity, table))
+                entity.Proposals.Add(proposal);
         }
     }
 
