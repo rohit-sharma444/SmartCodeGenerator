@@ -65,4 +65,19 @@ public class ForeignKeysTests
         Assert.HasCount(1, fields);
         Assert.AreEqual("CustomerId", fields[0]);
     }
+
+    [TestMethod]
+    public void Who_points_at_this_class_is_read_from_the_same_definition_of_a_foreign_key()
+    {
+        var classes = new List<ClassDefinition>
+        {
+            ValidatorFixtures.CustomerClass(), ValidatorFixtures.InvoiceWithCustomerId(),
+        };
+
+        var referencing = ForeignKeys.ReferencesTo("Customer", classes);
+
+        Assert.HasCount(1, referencing);
+        Assert.AreEqual("Invoice", referencing[0].Entity);
+        Assert.AreEqual("CustomerId", referencing[0].Property);
+    }
 }

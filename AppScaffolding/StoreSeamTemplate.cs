@@ -30,6 +30,14 @@ public interface IStore<T> where T : new()
     /// <summary>Overwrites the store with <paramref name="all"/>.</summary>
     StoreWrite SaveAll(List<T> all);
 
+    /// <summary>
+    /// As <see cref="SaveAll"/>, but exempt from the permission check. The legitimate callers are
+    /// UserSeed.EnsureAdminSeeded and SeedData.Seed, both of which write before anyone could
+    /// possibly be signed in to authorise it -- the app's own startup seeding, not a caller
+    /// acting on a signed-out user's behalf.
+    /// </summary>
+    StoreWrite SaveAllUnchecked(List<T> all);
+
     /// <summary>One past the highest Id in <paramref name="existing"/>, or 1 when there are none.</summary>
     int NextId(IEnumerable<T> existing);
 

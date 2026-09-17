@@ -1,4 +1,5 @@
 using CodeGenerationEngine.Core;
+using CodeGenerator.Tests.Helper;
 
 namespace CodeGenerator.Tests.Core;
 
@@ -113,7 +114,7 @@ public class ManualAppendixDocTests
         return (afterBegin + "-->".Length, end);
     }
 
-    private static string Normalize(string s) => s.Replace("\r\n", "\n").Trim('\n');
+    private static string Normalize(string s) => EmittedLines.Normalized(s).Trim('\n');
 
     private static string FindRepoRoot()
     {

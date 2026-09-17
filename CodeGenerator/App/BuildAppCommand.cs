@@ -436,6 +436,9 @@ internal sealed class BuildAppCommand
             foreach (var line in CustomizationSummary.Lines(customization))
                 Console.WriteLine(line);
 
+            if (ProposalReport.Summary(model) is { } proposals)
+                Console.WriteLine(proposals);
+
             string[] parts;
 
             // The line as typed, kept for the AI suggestion below. Only the typed path
@@ -608,6 +611,15 @@ internal sealed class BuildAppCommand
                 case "why":
                     foreach (var whyLine in WhyLines(model, parts))
                         Console.WriteLine(whyLine);
+                    break;
+
+                case "rules":
+                    foreach (var line in ProposalReport.Lines(model))
+                        Console.WriteLine(line);
+                    break;
+
+                case "accept" when parts.Length >= 2:
+                    Console.WriteLine(ProposalReport.Accept(model, parts[1]));
                     break;
 
                 default:

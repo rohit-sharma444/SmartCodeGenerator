@@ -194,7 +194,11 @@ public sealed class WpfBusinessLayout : IAppLayout
         <DataTemplate x:Key="TransactionTemplate">
             <DockPanel Margin="16">
                 <Grid DockPanel.Dock="Top" Margin="0,0,0,10">
-                    <TextBlock Text="{Binding Title}" FontSize="15" FontWeight="SemiBold" />
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="{Binding Title}" FontSize="15" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding Status}" Foreground="{{{muted}}}"
+                                   VerticalAlignment="Center" Margin="12,0,0,0" />
+                    </StackPanel>
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                         <TextBox Text="{Binding Search, UpdateSourceTrigger=PropertyChanged}"
                                  Width="150" Margin="0,0,8,0" />

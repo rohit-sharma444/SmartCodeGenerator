@@ -156,6 +156,9 @@ public class AuthCoreEmissionTests
             // else here.
             ("ValidationContext.cs", Read("Validation", "ValidationContext.cs")),
             ("IEntityLookup.cs", Read("Validation", "IEntityLookup.cs")),
-            ("Permissions.cs", Read("Validation", "Permissions.cs")));
+            ("Permissions.cs", Read("Validation", "Permissions.cs")),
+            // JsonStore also asks ActingUser.Role() unconditionally now, emitted beside
+            // Permissions.cs the same way -- read from the same real scaffold.
+            ("ActingUser.cs", Read("Validation", "ActingUser.cs")));
     }
 }

@@ -533,8 +533,8 @@ public class WinFormsBusinessLayoutTests
 
         // The name the switch is written against is the one the screen raises: Editor's setter
         // goes through SetField, whose CallerMemberName IS the property name.
-        StringAssert.Contains(MasterScreenTemplate.Source(Root), "public RecordEditorViewModel<T> Editor");
-        StringAssert.Contains(MasterScreenTemplate.Source(Root), "private set => SetField(ref _editor, value);");
+        StringAssert.Contains(MasterScreenTemplate.Source(Root, validation: true), "public RecordEditorViewModel<T> Editor");
+        StringAssert.Contains(MasterScreenTemplate.Source(Root, validation: true), "private set => SetField(ref _editor, value);");
     }
 
     /// <summary>
@@ -558,7 +558,7 @@ public class WinFormsBusinessLayoutTests
         CaseRuns(body, "case \"Items\":", "refreshList();");
 
         // The far end: Save re-reads the store through Reload, which announces exactly that name.
-        StringAssert.Contains(MasterScreenTemplate.Source(Root), "OnPropertyChanged(nameof(Items));");
+        StringAssert.Contains(MasterScreenTemplate.Source(Root, validation: true), "OnPropertyChanged(nameof(Items));");
     }
 
     /// <summary>
@@ -636,7 +636,7 @@ public class WinFormsBusinessLayoutTests
         RunsTwice(editor, "case \"Status\":", "ShowStatus(bar, editor);");
 
         // Both screens raise it through SetField, whose CallerMemberName is the property name.
-        StringAssert.Contains(MasterScreenTemplate.Source(Root), "protected set => SetField(ref _status, value);");
+        StringAssert.Contains(MasterScreenTemplate.Source(Root, validation: true), "protected set => SetField(ref _status, value);");
         StringAssert.Contains(
             RecordEditorTemplate.Source(Root, validation: false), "private set => SetField(ref _status, value);");
     }

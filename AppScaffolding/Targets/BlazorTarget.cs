@@ -87,13 +87,13 @@ public sealed class BlazorTarget : ITargetScaffolder
             // The three screens every page renders one of. Generic, so these are the whole of the
             // find-open-save surface however many entities the model has.
             new(BlazorScreenTemplates.Folder, "MasterScreen.razor",
-                BlazorScreenTemplates.MasterScreen(ns, customization.Login)),
+                BlazorScreenTemplates.MasterScreen(ns, customization.Validation, customization.Login)),
 
             new(BlazorScreenTemplates.Folder, "TransactionScreen.razor",
-                BlazorScreenTemplates.TransactionScreen(ns, customization.Login)),
+                BlazorScreenTemplates.TransactionScreen(ns, customization.Validation, customization.Login)),
 
             new(BlazorScreenTemplates.Folder, "RecordEditor.razor",
-                BlazorScreenTemplates.RecordEditor(ns, customization.Validation)),
+                BlazorScreenTemplates.RecordEditor(ns, customization.Validation, customization.Login)),
 
             new("Screens", "ScreenFields.cs", BlazorScreenTemplates.Fields(ns)),
 

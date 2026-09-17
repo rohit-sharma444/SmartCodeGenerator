@@ -23,5 +23,9 @@ public class PropertyDefinition
     /// </summary>
     public TypeFacts? Facts { get; set; }
 
+    /// <summary>Rules the data supports, carried from the candidate field so the accepted ones
+    /// can be applied where every other rule is recorded.</summary>
+    public List<RuleProposal> Proposals { get; set; } = new();
+
     public override string ToString() => $"{Type} {Name}";
 }

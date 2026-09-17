@@ -1,5 +1,6 @@
 using CodeGenerationEngine.Core;
 using CodeGenerationEngine.Core.Validation;
+using CodeGenerator.Tests.Helper;
 
 namespace CodeGenerator.Tests.Core.Validation;
 
@@ -200,7 +201,7 @@ public class ClassValidationWriterTests
 
         var updated = File.ReadAllText(file);
 
-        Assert.AreEqual(1, Occurrences(updated, "List<string> Validate()"),
+        Assert.AreEqual(1, EmittedLines.Occurrences(updated, "List<string> Validate()"),
             "a second method was added instead of the check joining the first");
         StringAssert.Contains(updated, "// Age must be at least 18");
         StringAssert.Contains(updated, "// Name is required");
@@ -280,18 +281,6 @@ public class ClassValidationWriterTests
 
         Assert.IsFalse(result.Ok);
         Assert.AreEqual(before, File.ReadAllText(file));
-    }
-
-    private static int Occurrences(string text, string needle)
-    {
-        var count = 0;
-        var at = text.IndexOf(needle, StringComparison.Ordinal);
-        while (at >= 0)
-        {
-            count++;
-            at = text.IndexOf(needle, at + needle.Length, StringComparison.Ordinal);
-        }
-        return count;
     }
 
     /// <summary>

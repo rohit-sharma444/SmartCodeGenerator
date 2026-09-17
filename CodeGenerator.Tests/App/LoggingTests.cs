@@ -94,11 +94,12 @@ public class LoggingTests
         var source = EmittedSource.Flatten(
             ValidationContextTemplate.Source("Acme"),
             ValidatorTemplate.EntityLookupInterface("Acme"),
-            PermissionsTemplate.Source("Acme", Array.Empty<string>()),
+            PermissionsTemplate.Source("Acme", Array.Empty<string>(), login: false),
             StoreSeamTemplate.Source("Acme"),
             SaveResultTemplate.Source("Acme"),
             StoreFactoryTemplate.Source("Acme", PersistenceKind.Json),
             JsonStoreTemplate.Source("Acme.Data"),
+            ActingUserTemplate.Source("Acme", sessionAuth: false),
             LoggerStub,
             repository);
 

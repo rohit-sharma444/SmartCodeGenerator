@@ -3,6 +3,7 @@ using AppScaffolding;
 using AppScaffolding.Screens;
 using AppScaffolding.Targets;
 using CodeGenerationEngine.Core;
+using CodeGenerator.Tests.Helper;
 
 namespace CodeGenerator.Tests.App;
 
@@ -140,15 +141,25 @@ public class BlazorScreenTests
         var editor = Source("RecordEditor.razor");
 
         Assert.Contains("ValidatorFactory.Create<TRecord>().Validate(context)", editor);
-        Assert.Contains("ValidationContext<TRecord>.For(", editor);
+        // Built with the full constructor, not ValidationContext<TRecord>.For -- that factory's
+        // own doc comment says it is for tests and callers with no real acting user, and this
+        // editor has one when the app has a login (AppCustomization.Default.Login is true here).
+        Assert.Contains("new ValidationContext<TRecord>(", editor);
+        Assert.Contains("state?.User.FindFirst(ClaimTypes.Role)?.Value", editor);
 
-        // With validation off there is no Validation folder to resolve one from, so naming it would
-        // not compile.
+        // With validation off there is no pipeline to run -- ValidatorFactory names a class that
+        // does not exist under novalidation. But the app still has a login here
+        // (AppCustomization.Default.Login is true), and Save must still ask Permissions itself
+        // with the real signed-in role before writing -- the same explicit guard Delete already
+        // has, independent of validation -- or a novalidation Blazor app with a login would have
+        // NO permission check on save at all. That guard is what still needs Shop.Validation
+        // imported (Permissions/ValidationOperation live there), even with no pipeline to call.
         var bare = Source(
             "RecordEditor.razor", AppCustomization.Default with { Validation = false });
 
         Assert.DoesNotContain("ValidatorFactory", bare);
-        Assert.DoesNotContain("Shop.Validation", bare);
+        Assert.Contains("Shop.Validation", bare);
+        Assert.Contains("Permissions.Allows(ValidationOperation.Update", bare);
     }
 
     /// <summary>
@@ -324,9 +335,16 @@ public class BlazorScreenTests
     [TestMethod]
     public void The_delete_button_and_its_handler_ask_one_matrix_call()
     {
+        // Novalidation: with the pipeline (the default), the handler's OWN check moves onto
+        // ValidatorFactory instead of calling MayDelete literally — see
+        // DeleteGoesThroughThePipelineTests, which proves the pipeline half. Here, with no
+        // pipeline generated at all, the handler still asks MayDelete directly, and this is
+        // the invariant that must keep holding: the button and the handler share ONE call.
+        var novalidation = AppCustomization.Default with { Validation = false };
+
         foreach (var screen in new[] { "MasterScreen.razor", "TransactionScreen.razor" })
         {
-            var list = Source(screen);
+            var list = Source(screen, novalidation);
 
             Assert.Contains("<AuthorizeView>", list, screen);
             Assert.Contains("@if (MayDelete(context))", list, screen);
@@ -338,25 +356,11 @@ public class BlazorScreenTests
             // let the button and the handler drift in the first place.
             Assert.AreEqual(
                 1,
-                Occurrences(list, "Permissions.Allows("),
+                EmittedLines.Occurrences(list, "Permissions.Allows("),
                 $"{screen} asks the matrix more than once");
 
             Assert.DoesNotContain("Roles=\"Admin\"", list, screen);
         }
-    }
-
-    private static int Occurrences(string text, string value)
-    {
-        var count = 0;
-
-        for (var at = text.IndexOf(value, StringComparison.Ordinal);
-             at >= 0;
-             at = text.IndexOf(value, at + value.Length, StringComparison.Ordinal))
-        {
-            count++;
-        }
-
-        return count;
     }
 
     /// <summary>

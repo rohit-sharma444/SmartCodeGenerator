@@ -182,7 +182,10 @@ public class WpfLoginTemplateTests
             // directly but still has to resolve for the file to compile.
             ("Validation/ValidationContext.cs", ValidationContextTemplate.Source("Shop")),
             ("Validation/IEntityLookup.cs", ValidatorTemplate.EntityLookupInterface("Shop")),
-            ("Validation/Permissions.cs", PermissionsTemplate.Source("Shop", Array.Empty<string>())),
+            ("Validation/Permissions.cs", PermissionsTemplate.Source("Shop", Array.Empty<string>(), login: true)),
+            // JsonStore also asks ActingUser.Role() unconditionally now. Real Session/auth-core
+            // files are already in this fixture, so sessionAuth: true is the faithful choice.
+            ("Validation/ActingUser.cs", ActingUserTemplate.Source("Shop", sessionAuth: true)),
         ];
 
     /// <summary>

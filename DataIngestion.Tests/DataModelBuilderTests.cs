@@ -1,3 +1,4 @@
+using AppScaffolding;
 using CodeGenerationEngine.Models;
 using DataIngestion.Schema;
 using DomainDiscovery.Model;
@@ -215,5 +216,24 @@ public class DataModelBuilderTests
         var product = Assert.Single(model.Entities);
         var renamed = Assert.Single(product.Fields, f => f.Name == "ProductName");
         Assert.Equal(100, renamed.Facts!.MaxLength);
+    }
+
+    [Fact]
+    public void Proposals_are_scanned_from_the_whole_table_not_the_seed_sample()
+    {
+        var table = new TabularTable { Name = "Orders" };
+        table.Columns.Add(new TabularColumn { Name = "Status" });
+
+        for (var i = 0; i < ImportedData.MaxSeedRows + 500; i++)
+            table.Rows.Add([i < ImportedData.MaxSeedRows ? "Draft" : "Reversed"]);
+
+        var model = DataModelBuilder.Build([table]);
+
+        var status = model.Entities.Single().Fields.Single(f => f.Name == "Status");
+        var proposal = status.Proposals.Single(p => p.Kind == RuleProposalKind.Status);
+
+        // Every value past MaxSeedRows is Reversed. A scan over ImportedData would have proposed
+        // a whitelist of one, and the generated app would then reject 500 rows of its own source.
+        Assert.Contains("Reversed", proposal.Rule.AllowedValues);
     }
 }

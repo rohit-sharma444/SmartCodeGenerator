@@ -40,6 +40,28 @@ public static class ForeignKeys
         return targets;
     }
 
+    /// <summary>
+    /// Every (class, property) that points at <paramref name="target"/> through a foreign key.
+    /// </summary>
+    /// <remarks>
+    /// The inverse of <see cref="TargetsOf"/>, and deliberately built ON it rather than beside it:
+    /// a delete refused for a reference the seeder does not consider a foreign key would refuse a
+    /// delete no other part of the app can explain.
+    /// </remarks>
+    public static IReadOnlyList<(string Entity, string Property)> ReferencesTo(
+        string target, IReadOnlyList<ClassDefinition> classes)
+    {
+        var names = ClassNameSet(classes);
+        var referencing = new List<(string Entity, string Property)>();
+
+        foreach (var c in classes)
+            foreach (var t in TargetsOf(c, names))
+                if (string.Equals(t, target, StringComparison.OrdinalIgnoreCase))
+                    referencing.Add((c.Name, t + "Id"));
+
+        return referencing;
+    }
+
     /// <summary>The field names that are genuine foreign keys across <paramref name="classes"/> —
     /// a <c>&lt;Target&gt;Id</c> whose owner also has a nav property typed as that target.</summary>
     public static IReadOnlyList<string> FieldNames(IReadOnlyList<ClassDefinition> classes)

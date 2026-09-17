@@ -19,30 +19,43 @@
 public static class MasterScreenTemplate
 {
     /// <summary>
-    /// Source of <c>ViewModels/MasterScreenViewModel.cs</c>. With <paramref name="login"/> false
-    /// there is no <c>Session</c> to read the acting user from — it is emitted beside these view
-    /// models, under the same flag — so the delete guard asks the matrix about nobody.
+    /// Source of <c>ViewModels/MasterScreenViewModel.cs</c>. With <paramref name="validation"/>
+    /// false the delete guard stays on the matrix alone — the pipeline it would otherwise run is
+    /// not generated either.
     /// </summary>
-    public static string Source(string rootNamespace, bool login = false)
+    /// <param name="login">
+    /// Unused: kept so every existing caller of this overload compiles unchanged. The delete
+    /// guard now reads <c>ActingUser.Role()</c> unconditionally — <see cref="ActingUserTemplate"/>
+    /// itself already decides, from <c>AppScaffolder</c>'s <c>sessionAuth</c>, whether that reads
+    /// a real desktop <c>Session</c> or returns null, so this template no longer needs to ask.
+    /// </param>
+    public static string Source(string rootNamespace, bool validation, bool login = false)
     {
-        // The same helper the two store templates and Repository<T> emit, for the same reason:
-        // each names Session from a different folder and none of them may depend on another. Read
-        // unqualified, unlike theirs, because this file already imports {root}.Auth.
-        //
-        // Raw string literals rather than "\n" concatenation: these are lines lifted out of the
-        // template below, and a raw literal carries the same line endings that template does.
-        var currentRole = login
+        // The whole guard, not just the matrix: with validation on, Security is no longer the
+        // only stage that can refuse a delete, and the button's enabled state cannot afford a
+        // pipeline run per repaint -- so the affordance asks the matrix and the handler asks this.
+        var deleteGuard = validation
             ? """
+                    var outcome = ValidatorFactory.Create<T>().Validate(
+                        new ValidationContext<T>(
+                            record, ValidationOperation.Delete, record, new StoreEntityLookup(),
+                            ActingUser.Role(), ActingUser.Id()));
 
-                private static string? CurrentRole() => Session.Current?.Role.ToString();
+                    if (!outcome.IsValid)
+                    {
+                        Status = outcome.Messages[0];
+                        return;
+                    }
+
 
             """
             : """
+                    if (!Permissions.Allows(ValidationOperation.Delete, typeof(T).Name, ActingUser.Role()))
+                    {
+                        Status = Permissions.Refusal(ValidationOperation.Delete, typeof(T).Name);
+                        return;
+                    }
 
-                // No desktop session to read a user from, so there is nobody to attribute the
-                // delete to. Not a stub to fill in later: an app generated without a login has
-                // nobody to refuse, which is exactly what the matrix reads a null role as.
-                private static string? CurrentRole() => null;
 
             """;
 
@@ -376,13 +389,7 @@ public class MasterScreenViewModel<T> : ObservableObject, IEntityViewModel, IDir
             return;
         }
 
-        if (!Permissions.Allows(ValidationOperation.Delete, typeof(T).Name, CurrentRole()))
-        {
-            Status = Permissions.Refusal(ValidationOperation.Delete, typeof(T).Name);
-            return;
-        }
-
-        var all = _store.GetAll();
+{{deleteGuard}}        var all = _store.GetAll();
         var index = all.FindIndex(r => IdOf(r) == IdOf(record));
 
         if (index >= 0)
@@ -397,7 +404,7 @@ public class MasterScreenViewModel<T> : ObservableObject, IEntityViewModel, IDir
 
     private static int IdOf(T record)
         => (int)(typeof(T).GetProperty("Id")?.GetValue(record) ?? 0);
-{{currentRole}}}
+}
 """;
     }
 }

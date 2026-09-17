@@ -728,10 +728,11 @@ public class GeneratedProjectBuildTests
 
             // Proves the feature's central design decision against real SQLite: AppDbContext maps
             // scalar columns only (navigation/collection properties are ignored), so Order.CustomerId
-            // is a plain column with no FK constraint. The generated companion test fills an Order
-            // via TestSupport and inserts it with CustomerId = 0 (the emitted lookup check skips a
-            // zero FK), and SeedData can assign FKs across seeded parents, without EF Core or
-            // SQLite rejecting either.
+            // is a plain column with no FK constraint. Order is a Transaction (it references Customer
+            // and its name is in TransactionWords), so its generated validator now requires the key
+            // rather than skipping it at zero -- TestSupport fills the companion test's Order by
+            // creating a real Customer row through CustomerRepository first and using its actual Id,
+            // and EF Core / SQLite accept the plain int column either way.
             var (exit, output) = RunDotNet($"test \"{result.TestProjectPath}\" -c Release");
             Assert.AreEqual(0, exit, $"dotnet test failed (sqlite, with relationship):\n{output}");
         }

@@ -42,14 +42,20 @@ public class PipelineEndToEndTests
     [TestMethod]
     public void AConsoleAppHasNoRole_AndStillGenerates()
     {
-        // The limit this phase cannot lift, pinned so nobody later "fixes" CurrentRole into
+        // The limit this phase cannot lift, pinned so nobody later "fixes" ActingUser into
         // something that names a Session the console target never emits.
         InAScaffold((_, project) =>
         {
             var repository = File.ReadAllText(Path.Combine(project, "Data", "Repository.cs"));
 
-            StringAssert.Contains(repository, "private static string? CurrentRole() => null;");
+            StringAssert.Contains(repository, "ActingUser.Role(), ActingUser.Id()");
             Assert.DoesNotContain("Session.Current", repository);
+
+            var actingUser = File.ReadAllText(
+                Path.Combine(project, "Validation", "ActingUser.cs"));
+
+            Assert.DoesNotContain("Session", actingUser);
+            StringAssert.Contains(actingUser, "public static string? Role() => null;");
         });
     }
 

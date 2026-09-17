@@ -42,6 +42,15 @@ public interface IEntityLookup
     /// <summary>How many records of this type carry this foreign key value.</summary>
     int CountReferencing<TEntity>(string foreignKeyProperty, int id)
         where TEntity : class, new();
+
+    /// <summary>Whether any record of this type OTHER than <paramref name="exceptId"/> holds
+    /// this value for this property.</summary>
+    /// <remarks>
+    /// The exception is what lets an Update save an unchanged record: without it every record
+    /// would be a duplicate of itself the second time it was saved.
+    /// </remarks>
+    bool AnyOtherWith<TEntity>(string propertyName, object? value, int exceptId)
+        where TEntity : class, new();
 }
 """;
 
@@ -86,6 +95,32 @@ public sealed class StoreEntityLookup : IEntityLookup
                 count++;
 
         return count;
+    }
+
+    /// <inheritdoc />
+    public bool AnyOtherWith<TEntity>(string propertyName, object? value, int exceptId)
+        where TEntity : class, new()
+    {
+        var property = typeof(TEntity).GetProperty(propertyName,
+            BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
+
+        // A name that is not there finds nothing rather than throwing, for the reason
+        // CountReferencing gives: the name came from the model at generation time, and a rename
+        // that leaves the two disagreeing must leave the delete and the save behaving as they
+        // did before this phase.
+        if (property is null)
+            return false;
+
+        foreach (var item in StoreFactory.Create<TEntity>().GetAll())
+        {
+            if (IdOf(item) == exceptId)
+                continue;
+
+            if (Equals(property.GetValue(item), value))
+                return true;
+        }
+
+        return false;
     }
 
     private static int IdOf<TEntity>(TEntity item)
@@ -149,6 +184,8 @@ internal sealed class NullValidator<T> : IValidator<T>
     private const string ScaleRule = "scale";
     private const string MinDateRule = "mindate";
     private const string DateOnlyRule = "dateonly";
+    private const string AllowedValuesRule = "allowedvalues";
+    private const string PatternRule = "pattern";
 
     /// <summary>
     /// Every (property type, rule name) pair <see cref="Checks"/> knows how to emit. Inference is
@@ -172,6 +209,7 @@ internal sealed class NullValidator<T> : IValidator<T>
     public static IReadOnlyCollection<(string Type, string Rule)> EmittableRules { get; } =
     [
         ("string", RequiredRule), ("string", MaxLengthRule),
+        ("string", AllowedValuesRule), ("string", PatternRule),
         ("int", MinValueRule), ("int", MaxValueRule),
         ("decimal", MinValueRule), ("decimal", MaxValueRule), ("decimal", ScaleRule),
         ("DateTime", MinDateRule), ("DateTime", DateOnlyRule)
@@ -183,6 +221,35 @@ internal sealed class NullValidator<T> : IValidator<T>
     /// </summary>
     public static bool CanEmit(string propertyType, string ruleName)
         => EmittableRules.Any(pair =>
+            string.Equals(pair.Type, propertyType, StringComparison.Ordinal)
+            && string.Equals(pair.Rule, ruleName, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>Rule name recorded by DomainModelMapper for a uniqueness constraint.</summary>
+    private const string UniqueRule = "unique";
+
+    /// <summary>
+    /// Every (property type, rule name) pair the ENTITY stage knows how to emit.
+    /// </summary>
+    /// <remarks>
+    /// Separate from <see cref="EmittableRules"/>, which is the Field stage's register and is
+    /// derived from what <see cref="Checks"/> emits. Adding an entity-stage rule to that list
+    /// would claim <c>Checks</c> emits something for it, which it does not — and the guard test
+    /// that reads it would then pass over a rule with no emitter at all.
+    /// <para>
+    /// A bool is excluded deliberately: two records with the same true is not a collision, it is
+    /// a boolean.
+    /// </para>
+    /// </remarks>
+    public static IReadOnlyCollection<(string Type, string Rule)> EntityStageRules { get; } =
+    [
+        ("string", UniqueRule), ("int", UniqueRule),
+        ("decimal", UniqueRule), ("DateTime", UniqueRule)
+    ];
+
+    /// <summary>Whether the Entity stage emits anything for a <paramref name="ruleName"/> rule on
+    /// a property of type <paramref name="propertyType"/>.</summary>
+    public static bool CanEmitEntityRule(string propertyType, string ruleName)
+        => EntityStageRules.Any(pair =>
             string.Equals(pair.Type, propertyType, StringComparison.Ordinal)
             && string.Equals(pair.Rule, ruleName, StringComparison.OrdinalIgnoreCase));
 
@@ -210,27 +277,123 @@ internal sealed class NullValidator<T> : IValidator<T>
     /// ValidationEngine.EmitSection takes.
     /// </remarks>
     public static string Generated(
-        string rootNamespace, ClassDefinition definition, IReadOnlyList<string> foreignKeyTargets)
+        string rootNamespace, ClassDefinition definition, IReadOnlyList<string> foreignKeyTargets,
+        bool referencesRequired,
+        IReadOnlyList<(string Entity, string Property)>? referencedBy = null)
     {
+        referencedBy ??= Array.Empty<(string Entity, string Property)>();
+
         var blocks = new List<string>();
 
         foreach (var property in definition.Properties)
             if (Checks(property) is { Count: > 0 } checks)
                 blocks.Add(Block(checks));
 
-        // Reads context.Lookup rather than a constructor-injected field: a static stage method
-        // has no instance to hold one, and the context is exactly what Repository<T> supplies it
-        // through at the call site.
-        foreach (var target in foreignKeyTargets)
-            blocks.Add(Block(new List<string>
-            {
-                $"if (item.{target}Id != 0 && !context.Lookup.Exists<{target}>(item.{target}Id))",
-                $"    errors.Add(new ValidationError(\"{target}Id\", \"{target}Id does not refer to a known {target}.\"));",
-            }));
-
         var body = blocks.Count == 0
             ? "        // This model declares no inferred rules."
             : string.Join("\n\n", blocks);
+
+        // Reads context.Lookup rather than a constructor-injected field: a static stage method
+        // has no instance to hold one, and the context is exactly what Repository<T> supplies it
+        // through at the call site. One Block() PER target, never one shared block for the whole
+        // stage: Block's try/catch is silent, so a single throwing lookup must not be able to
+        // skip the checks for every OTHER foreign key on this entity.
+        var entityBlocks = new List<string>();
+
+        // Uniqueness checks come BEFORE the foreign-key blocks below, and each gets its own
+        // Block() for the identical reason the foreign-key loop does: Block's try/catch is
+        // silent, so one throwing uniqueness check must not be able to skip the checks for every
+        // OTHER property -- or every foreign key -- on this same entity.
+        foreach (var property in definition.Properties)
+        {
+            if (!property.Rules.Any(r =>
+                    string.Equals(r.Name, UniqueRule, StringComparison.OrdinalIgnoreCase)))
+                continue;
+
+            if (!CanEmitEntityRule(property.Type, UniqueRule))
+                continue;
+
+            var guard = property.Type == "string"
+                ? $"if (!string.IsNullOrWhiteSpace(item.{property.Name}) && "
+                : "if (";
+
+            var uniqueChecks = new List<string>
+            {
+                $"{guard}context.Lookup.AnyOtherWith<{definition.Name}>(\"{property.Name}\", item.{property.Name}, item.Id))",
+                $"    errors.Add(new ValidationError(\"{property.Name}\", \"Another {definition.Name} already has this {property.Name}.\"));",
+            };
+
+            entityBlocks.Add(Block(uniqueChecks));
+        }
+
+        foreach (var target in foreignKeyTargets)
+        {
+            var checks = new List<string>();
+
+            if (referencesRequired)
+            {
+                checks.Add($"if (item.{target}Id == 0)");
+                checks.Add($"    errors.Add(new ValidationError(\"{target}Id\", \"{target} is required.\"));");
+                checks.Add($"else if (!context.Lookup.Exists<{target}>(item.{target}Id))");
+                checks.Add($"    errors.Add(new ValidationError(\"{target}Id\", \"{target}Id does not refer to a known {target}.\"));");
+            }
+            else
+            {
+                checks.Add($"if (item.{target}Id != 0 && !context.Lookup.Exists<{target}>(item.{target}Id))");
+                checks.Add($"    errors.Add(new ValidationError(\"{target}Id\", \"{target}Id does not refer to a known {target}.\"));");
+            }
+
+            entityBlocks.Add(Block(checks));
+        }
+
+        // The delete-refusal check comes LAST and is its own thing: one Op == Delete guard,
+        // hoisted once, with one Block() PER referencing entity nested inside it -- never one flat
+        // unprotected block covering every entity. A throw from CountReferencing<Invoice> must not
+        // silently cancel the refusal check for a later entity like OrderLine in the same delete.
+        if (referencedBy.Count > 0)
+        {
+            var deleteChecks = new List<string>
+            {
+                "if (context.Op == ValidationOperation.Delete)",
+                "{",
+            };
+
+            foreach (var (entity, property) in referencedBy)
+            {
+                var checks = new List<string>
+                {
+                    $"var referencing{entity} = context.Lookup.CountReferencing<{entity}>(\"{property}\", item.Id);",
+                    $"if (referencing{entity} > 0)",
+                    $"    errors.Add(new ValidationError(null, $\"This {definition.Name} cannot be deleted — {{referencing{entity}}} {entity} record(s) refer to it.\"));",
+                };
+                deleteChecks.Add(Block(checks));
+            }
+
+            deleteChecks.Add("}");
+            entityBlocks.Add(string.Join("\n", deleteChecks));
+        }
+
+        var entityStage = entityBlocks.Count == 0
+            ? string.Empty
+            : $$"""
+
+
+    /// <summary>What cannot be judged from the record in hand: whether the records it names
+    /// exist. Runs only after Field has passed, so a lookup never runs over a record whose own
+    /// fields were wrong.</summary>
+    private static void Entity(ValidationContext<{{definition.Name}}> context, List<ValidationError> errors)
+    {
+        var item = context.Item;
+        if (item is null)
+            return;
+
+{{string.Join("\n\n", entityBlocks)}}
+    }
+""";
+
+        var stageList = entityBlocks.Count == 0
+            ? "        Security,\n        Field,"
+            : "        Security,\n        Field,\n        Entity,";
 
         return $$"""
 using System;
@@ -248,13 +411,14 @@ namespace {{rootNamespace}}.Validation;
 /// </remarks>
 public sealed partial class {{definition.Name}}Validator : IValidator<{{definition.Name}}>
 {
-    /// <summary>Security first, then the inferred field rules. Always both: Security exists
-    /// because of the operation rather than the data, and Field always owns the null guard and
-    /// the hand-written hook, whether or not this model has any inferred rule at all.</summary>
+    /// <summary>Security first, then the inferred field rules, then -- only when this model
+    /// declares a foreign key -- Entity. Security exists because of the operation rather than
+    /// the data, and Field always owns the null guard and the hand-written hook, whether or not
+    /// this model has any inferred rule at all; Entity is conditional on there being a lookup to
+    /// run.</summary>
     private static readonly ValidationPipeline.Stage<{{definition.Name}}>[] Stages =
     [
-        Security,
-        Field,
+{{stageList}}
     ];
 
     /// <inheritdoc />
@@ -269,8 +433,9 @@ public sealed partial class {{definition.Name}}Validator : IValidator<{{definiti
             errors.Add(new ValidationError(null, Permissions.Refusal(context.Op, "{{definition.Name}}")));
     }
 
-    /// <summary>The inferred per-property rules, every declared foreign key, and the
-    /// hand-written hook — in that order, after Security has already let the caller through.</summary>
+    /// <summary>The inferred per-property rules and the hand-written hook — in that order, after
+    /// Security has already let the caller through. A foreign key is no longer checked here; see
+    /// Entity.</summary>
     private static void Field(ValidationContext<{{definition.Name}}> context, List<ValidationError> errors)
     {
         var item = context.Item;
@@ -284,7 +449,7 @@ public sealed partial class {{definition.Name}}Validator : IValidator<{{definiti
 
         ValidateCustom(item, errors);
     }
-
+{{entityStage}}
     /// <summary>Hand-written rules, implemented in {{definition.Name}}Validator.Custom.cs.</summary>
     private static partial void ValidateCustom({{definition.Name}} item, List<ValidationError> errors);
 }
@@ -480,6 +645,23 @@ public sealed partial class {{className}}Validator
                 checks.Add($"    errors.Add(new ValidationError(\"{name}\", \"{name} must be {max.Value} characters or fewer.\"));");
             }
 
+            if (Rule(property, AllowedValuesRule)?.AllowedValues is { Count: > 0 } allowed)
+            {
+                var literals = string.Join(", ", allowed.Select(Quoted));
+                var listed = string.Join(", ", allowed);
+
+                checks.Add($"if (!string.IsNullOrWhiteSpace(item.{name})");
+                checks.Add($"    && System.Array.IndexOf(new[] {{ {literals} }}, item.{name}) < 0)");
+                checks.Add($"    errors.Add(new ValidationError(\"{name}\", {Quoted($"{name} must be one of: {listed}.")}));");
+            }
+
+            if (Rule(property, PatternRule) is { RegexPattern.Length: > 0 } format)
+            {
+                checks.Add($"if (!string.IsNullOrWhiteSpace(item.{name})");
+                checks.Add($"    && !System.Text.RegularExpressions.Regex.IsMatch(item.{name}!, {Quoted(format.RegexPattern!)}))");
+                checks.Add($"    errors.Add(new ValidationError(\"{name}\", {Quoted($"{name} is not a valid {format.CustomRule ?? "value"}.")}));");
+            }
+
             // Deliberately loose: these exist to match what [EmailAddress]/[Phone] already give the
             // console and WPF front-ends, not to be authoritative format validators.
             if (property.Attributes.Contains("EmailAddress"))
@@ -577,4 +759,20 @@ public sealed partial class {{className}}Validator
         => type == "decimal"
             ? value.ToString(System.Globalization.CultureInfo.InvariantCulture) + "m"
             : ((long)value).ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// <paramref name="value"/> as a C# string literal.
+    /// </summary>
+    /// <remarks>
+    /// These values come from the user's own rows and can hold anything — a quote, a backslash, a
+    /// newline. An unescaped one is a generated app that does not compile, and the tool would
+    /// have reported success writing it.
+    /// </remarks>
+    private static string Quoted(string value)
+        => "\"" + value
+            .Replace("\\", "\\\\")
+            .Replace("\"", "\\\"")
+            .Replace("\r", "\\r")
+            .Replace("\n", "\\n")
+        + "\"";
 }

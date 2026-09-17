@@ -1,4 +1,5 @@
 using CodeGenerationEngine.Core;
+using CodeGenerator.Tests.Helper;
 
 namespace CodeGenerator.Tests.Core;
 
@@ -34,7 +35,7 @@ public class CommandReferenceDocTests
 
     // Compare on content, not line endings: the repo checks out CRLF on Windows
     // but the generator emits LF.
-    private static string Normalize(string s) => s.Replace("\r\n", "\n").TrimEnd('\n');
+    private static string Normalize(string s) => EmittedLines.Normalized(s).TrimEnd('\n');
 
     /// <summary>
     /// Walks up from the test binary to the repository root, identified by the

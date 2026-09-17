@@ -1,5 +1,6 @@
 using AppScaffolding;
 using CodeGenerationEngine.Models;
+using CodeGenerator.Tests.Helper;
 
 namespace CodeGenerator.Tests.App;
 
@@ -76,5 +77,119 @@ public class ValidatorStagesTests
     }
 
     private static string GeneratedFor(ClassDefinition definition)
-        => ValidatorTemplate.Generated("Acme", definition, []);
+        => ValidatorTemplate.Generated("Acme", definition, [], referencesRequired: false);
+
+    [TestMethod]
+    public void A_foreign_key_check_runs_in_the_entity_stage()
+    {
+        var source = ValidatorTemplate.Generated(
+            "Acme", ValidatorFixtures.LineWithProductId(), ["Product"], referencesRequired: true);
+
+        // The stage list is the contract. A check emitted in Field would report a bad key beside a
+        // bad field; the spec stops between stages so that a lookup never runs over a record whose
+        // fields have not been judged yet.
+        StringAssert.Contains(EmittedLines.Normalized(source), "Security,\n        Field,\n        Entity,");
+        StringAssert.Contains(source, "private static void Entity(");
+        StringAssert.Contains(source, "context.Lookup.Exists<Product>(item.ProductId)");
+    }
+
+    [TestMethod]
+    public void A_transaction_line_must_have_its_foreign_key_set()
+    {
+        var source = ValidatorTemplate.Generated(
+            "Acme", ValidatorFixtures.LineWithProductId(), ["Product"], referencesRequired: true);
+
+        // A sale line with no product is not a valid sale line. The zero escape below is what made
+        // it one.
+        StringAssert.Contains(source, "if (item.ProductId == 0)");
+        Assert.IsFalse(source.Contains("item.ProductId != 0 &&", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void A_masters_optional_foreign_key_may_stay_unset()
+    {
+        var source = ValidatorTemplate.Generated(
+            "Acme", ValidatorFixtures.CustomerWithRegionId(), ["Region"], referencesRequired: false);
+
+        // Optional means optional: a Customer with no Region is a Customer, and only a key that IS
+        // set has to resolve.
+        StringAssert.Contains(source, "if (item.RegionId != 0 && !context.Lookup.Exists<Region>(item.RegionId))");
+        Assert.IsFalse(source.Contains("if (item.RegionId == 0)", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void A_model_with_no_foreign_keys_has_no_entity_stage()
+    {
+        var source = ValidatorTemplate.Generated(
+            "Acme", ValidatorFixtures.PlainCustomer(), [], referencesRequired: false);
+
+        // An empty stage emitting nothing is what keeps a three-entity CRUD app's output no heavier
+        // than before this phase.
+        Assert.IsFalse(source.Contains("Entity,", StringComparison.Ordinal));
+        Assert.IsFalse(source.Contains("private static void Entity(", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void A_unique_rule_asks_whether_another_record_holds_the_value()
+    {
+        var customer = ValidatorFixtures.PlainCustomer();
+        customer.Properties.Single(p => p.Name == "Code").Rules.Add(
+            new PropertyRule { Name = "unique" });
+
+        var source = ValidatorTemplate.Generated("Acme", customer, [], referencesRequired: false);
+
+        StringAssert.Contains(source, "private static void Entity(");
+        StringAssert.Contains(
+            source,
+            "context.Lookup.AnyOtherWith<Customer>(\"Code\", item.Code, item.Id)");
+    }
+
+    [TestMethod]
+    public void An_update_does_not_collide_with_itself()
+    {
+        // exceptId is item.Id, so saving a record over itself is not a duplicate of itself. Without
+        // it, every second save of an unchanged record would be refused.
+        var source = ValidatorTemplate.EntityLookupInterface("Acme");
+
+        StringAssert.Contains(source, "int exceptId");
+    }
+
+    [TestMethod]
+    public void Unique_is_declared_emittable_for_the_types_it_emits_on()
+    {
+        // The register that stops a rule kind being recorded with no emitter. EmittableRules is the
+        // Field-stage register and says nothing about this stage, so a second one is the honest
+        // shape rather than a lie in the first.
+        Assert.IsTrue(ValidatorTemplate.CanEmitEntityRule("string", "unique"));
+        Assert.IsTrue(ValidatorTemplate.CanEmitEntityRule("int", "unique"));
+        Assert.IsFalse(ValidatorTemplate.CanEmitEntityRule("bool", "unique"));
+    }
+
+    [TestMethod]
+    public void A_delete_is_refused_with_the_count_in_the_sentence()
+    {
+        var source = ValidatorTemplate.Generated(
+            "Acme", ValidatorFixtures.CustomerClass(), [], referencesRequired: false,
+            referencedBy: [("Invoice", "CustomerId")]);
+
+        StringAssert.Contains(source, "if (context.Op == ValidationOperation.Delete)");
+        StringAssert.Contains(
+            source, "context.Lookup.CountReferencing<Invoice>(\"CustomerId\", item.Id)");
+        // The count is the point: "cannot be deleted" alone leaves the user hunting.
+        StringAssert.Contains(source, "cannot be deleted");
+        // Corrected against the brief: the per-entity local is deliberately named
+        // "referencing{Entity}", not a shared "referencing" -- a class referenced by two entities
+        // needs two distinct locals, and a shared name would redeclare. See task-8-corrections.md.
+        StringAssert.Contains(source, "{referencingInvoice} Invoice record(s)");
+    }
+
+    [TestMethod]
+    public void A_class_nothing_points_at_emits_no_delete_check()
+    {
+        var source = ValidatorTemplate.Generated(
+            "Acme", ValidatorFixtures.CustomerClass(), [], referencesRequired: false,
+            referencedBy: []);
+
+        Assert.IsFalse(source.Contains("CountReferencing", StringComparison.Ordinal));
+    }
 }

@@ -111,6 +111,8 @@ branch or company scoping.
 | How far does the tool go? | It enforces only what the data already shows. Nothing is invented. If an Invoice has no status column, the status and workflow categories stay silent for that app. |
 | What makes a column a status? | Its values. A column whose values repeat from a small fixed set is proposed as a status, whatever it is called, and confirmed per entity on the Review card. |
 | How is that counted? | Exactly, capped at 51 distinct values. Never sampled. |
+| Where is it counted? | In memory, one pass per column over the complete `TabularTable`s the reader already holds — not pushed into SQL, and never over `ImportedData`, which is capped at 1000 rows. |
+| Does a proposal arrive accepted? | No. Nothing inferred from data *contents* reaches a generated app unless the user picks it. A scripted build, and anyone who just types `approve`, gets none of it. |
 | What shape is the engine? | An ordered pipeline of stages, each stage receiving a wide context. |
 | Where does Security run? | First, before every other stage. |
 | Is Security behind `novalidation`? | No. `novalidation` drops the other six stages; permission and role checks are always emitted. |
@@ -135,18 +137,30 @@ So no rule is ever proposed from a sample. Every candidate rule is expressed as
 a query that counts the rows breaking it, and the rule is proposed only when
 that count is zero.
 
-| Candidate | Counter-example query |
+| Candidate | Counter-example |
 |---|---|
-| `Status` is one of a fixed set | `SELECT DISTINCT TOP 51 Status` — more than 50 means it is not a status |
-| `Code` is unique | `SELECT COUNT(*) FROM (SELECT Code FROM T GROUP BY Code HAVING COUNT(*) > 1)` |
-| `LineTotal = Quantity * Price` | `SELECT COUNT(*) WHERE LineTotal <> Quantity * Price` |
-| `StartDate <= EndDate` | `SELECT COUNT(*) WHERE StartDate > EndDate` |
-| `Reference` matches a pattern | `SELECT COUNT(*) WHERE Reference NOT LIKE ...`, or a streamed regex count |
+| `Status` is one of a fixed set | distinct values, stopping at a 51st — more than 50 means it is not a status |
+| `Code` is unique | the number of values that occur more than once |
+| `LineTotal = Quantity * Price` | the number of rows where the product differs |
+| `StartDate <= EndDate` | the number of rows where the start is later |
+| `Reference` matches a pattern | the number of rows the pattern does not match |
 
-For file sources the same counts come from a single streaming pass, which the
-readers already make. For SQL Server the counts are one scan each, and the
-distinct scan stops as soon as a 51st value appears — so it never reads a
-47-million-row column through unless that column really is a status.
+**Where the counts come from — corrected in phase 3.** This section was written
+expecting SQL counting queries, with the distinct scan "stopping at a 51st value
+so it never reads a 47-million-row column through". Neither half survives
+contact with the reader: `SqlClientSchemaSource` already issues
+`SELECT * FROM [schema].[table]` with no `TOP` and no cap, so every row of every
+picked table is in memory as `string?[]` before any rule is considered, and a
+counting query would re-read what the process is already holding. The counts are
+therefore taken in memory, in one pass per column over the complete
+`TabularTable`s — the same code for CSV, Excel, JSON and SQL, and testable on a
+CI machine with no SQL Server. The unbounded read is real and is its own ticket;
+it is not what the scan should be designed around.
+
+The counts must be taken over those complete tables and **never** over
+`ImportedData`, which `TabularImport` caps at `MaxSeedRows = 1000`. A rule
+inferred from the first thousand rows is a rule inferred from a sample, which is
+the one thing this whole section exists to forbid.
 
 The card shows the evidence with the proposal: *"holds in all 12,431 rows"*.
 That is what makes a wrong inference arguable rather than mysterious, and it is
@@ -250,7 +264,7 @@ Both paths converge on `IValidationRule`, not on text:
  schema facts + counter-example scans        user types "Price must be positive"
                 |                                          |
                 v                                          v
-     ValidationInference.For(...)              ValidationRuleCatalog.Parse
+  DomainModelMapper.InferValidation            ValidationRuleCatalog.Parse
                 |                                          |
                 +---------------> IValidationRule <--------+
                                         |
@@ -265,6 +279,12 @@ Both paths converge on `IValidationRule`, not on text:
               (all 18 rule kinds work         beside the lookup and the
                untouched: they write this.X)  pipeline's stage list
 ```
+
+There is no `ValidationInference` class and phase 3 does not add one: the left
+branch is `AppScaffolding/DomainModelMapper.InferValidation`, which already turns
+`TypeFacts` into `PropertyRule`s at model-mapping time. A confirmed proposal
+enters there, alongside the facts, and reaches the emitter by the road every
+existing rule already travels.
 
 Inference constructs rule objects directly rather than producing English
 sentences for the catalog to re-parse. Round-tripping through text was
@@ -303,7 +323,7 @@ limit rather than a promise.
 
 ### 2. Field
 
-Requirements 1, 2, 3, 4 and 5. Everything here comes from carrying through the
+Requirements 1, 2, 3, 4, 5 and 11. Everything here comes from carrying through the
 type facts the pipeline currently reads and discards.
 
 | Fact | Rule |
@@ -337,9 +357,20 @@ class of defect. No other name patterns.
 A pattern may also be proposed where every value in a column matches one, under
 the counter-example scan, and confirmed on the card.
 
+**Status** (requirement 11) lands here too. A string column whose exact distinct
+count is 50 or fewer and whose longest value is 30 characters or less is proposed
+as a status with the values found; the length bound is what separates a status
+from a low-cardinality description or a notes column that happens to repeat. On
+confirmation it yields an allowed-values rule, which is answerable from the
+record in hand and so belongs beside the other field checks rather than in the
+Entity stage, where the first draft filed it. Where the source is a database and
+a `CHECK` constraint or a foreign key to a status master already declares the
+set, that is used directly and no scan is needed.
+
 ### 3. Entity
 
-Requirements 6, 7 and 11.
+Requirements 6, 7 and 15. Everything here needs a record other than the one in
+hand, which is what the lookup is for.
 
 **Uniqueness.** From a real `UNIQUE` constraint or primary key where the source
 is a database. Otherwise proposed where a counter-example scan finds no
@@ -353,13 +384,14 @@ where a zero skips
 the check entirely, so a sale line with no product is considered valid. Masters
 keep foreign keys that are optional but must resolve when set.
 
-**Status.** A string column whose exact distinct count is 50 or fewer and whose
-longest value is 30 characters or less is proposed as a status with the values
-found. The length bound is what separates a status from a low-cardinality
-description or a notes column that happens to repeat. On
-confirmation it yields an allowed-values rule. Where the source is a database
-and a `CHECK` constraint or a foreign key to a status master already declares
-the set, that is used directly and no scan is needed.
+**Status** was assigned to this stage in the first draft and is **moved to the
+Field stage in phase 3**; see there. Recognising it is Entity-stage work in the
+sense that the scan proposes it, but the check it becomes — is this value one of
+these five — is answerable from the record in hand and needs neither the lookup
+nor the stored version. Since the pipeline stops *between* stages, leaving it
+here would report a bad status one stage after a bad field instead of beside it.
+The Workflow stage's transition check, which does need `Stored`, stays where it
+is.
 
 ### 4. Business
 
@@ -454,7 +486,7 @@ and the message is the same either way.
 | 8 | Business Rule | Existing `add business validation` command | User-stated |
 | 9 | Cross-Field | Business stage, comparison holding in all rows | Partial |
 | 10 | Transaction / Document | Pipeline ordering over header and lines | Full |
-| 11 | Status-Based | Entity stage, confirmed status column | Where a status exists |
+| 11 | Status-Based | Field stage, confirmed status column | Where a status exists |
 | 12 | Permission | Security stage, matrix moved to the store | Full |
 | 13 | Date / Period | Field stage always; period where an entity exists | Split |
 | 14 | Calculation | Business stage, verified arithmetic | Good |

@@ -35,6 +35,8 @@ internal static class ReviewActions
             ["Class", "Field to remove"]),
         new("why",     "why       — explain how the model was decided",
             ["Class (blank for the whole report)"]),
+        new("rules",   "rules     — the rules your data supports", []),
+        new("accept",  "accept    — apply a proposed rule", ["Number, or 'all'"]),
         new("cancel",  "cancel    — nothing is generated", []),
     ];
 

@@ -145,7 +145,7 @@ public sealed class FakeEditor : IRecordEditor
             // The master screen's delete asks the matrix. No masters here: this fixture is about
             // what the shell routes, not about who may delete from a screen it routed to.
             EmittedSource.PermissionMatrix(),
-            MasterScreenTemplate.Source("Acme")
+            MasterScreenTemplate.Source("Acme", validation: false)
                 .Replace("namespace Acme.ViewModels;", string.Empty)
                 .Replace("using Acme.Auth;", string.Empty)
                 .Replace("using Acme.Data;", string.Empty)

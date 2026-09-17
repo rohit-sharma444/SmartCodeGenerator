@@ -1,4 +1,5 @@
 using AppScaffolding;
+using CodeGenerator.Tests.Helper;
 
 namespace CodeGenerator.Tests.App;
 
@@ -37,6 +38,17 @@ public class CsprojEditingTests
         "    <RootNamespace>CodisLtd.Shop</RootNamespace>\r\n" +
         "  </PropertyGroup>\r\n" +
         "</Project>\r\n";
+
+    /// <summary>A Blazor-shaped project file: <c>Microsoft.NET.Sdk.Web</c> globs every non-code
+    /// file under the project as <c>Content</c> by default, which the plain
+    /// <see cref="Csproj"/> fixture's <c>Microsoft.NET.Sdk</c> does not.</summary>
+    private const string CsprojWeb = """
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+</Project>
+""";
 
     [TestMethod]
     public void InjectPackageReference_InsertsBeforeClosingTag()
@@ -149,26 +161,26 @@ public class CsprojEditingTests
     public void Removing_and_re_adding_a_root_namespace_does_not_accumulate_empty_property_groups()
     {
         // Count PropertyGroups in the original
-        var initialPgCount = CountOccurrences(Csproj, "<PropertyGroup>");
+        var initialPgCount = EmittedLines.Occurrences(Csproj, "<PropertyGroup>");
 
         // Set initial namespace
         var set = CsprojEditing.SetRootNamespace(Csproj, "CodisLtd.Shop");
         StringAssert.Contains(set, "<RootNamespace>CodisLtd.Shop</RootNamespace>");
-        var setPgCount = CountOccurrences(set, "<PropertyGroup>");
+        var setPgCount = EmittedLines.Occurrences(set, "<PropertyGroup>");
         Assert.IsGreaterThan(
             initialPgCount, setPgCount, "Setting namespace should add a PropertyGroup");
 
         // Drop the namespace
         var cleared = CsprojEditing.SetRootNamespace(set, null);
         Assert.IsFalse(cleared.Contains("RootNamespace", StringComparison.Ordinal));
-        var clearedPgCount = CountOccurrences(cleared, "<PropertyGroup>");
+        var clearedPgCount = EmittedLines.Occurrences(cleared, "<PropertyGroup>");
         Assert.AreEqual(initialPgCount, clearedPgCount,
             "Clearing namespace should remove the PropertyGroup that was added for it");
 
         // Re-add with a different namespace
         var reset = CsprojEditing.SetRootNamespace(cleared, "Acme.Shop");
         StringAssert.Contains(reset, "<RootNamespace>Acme.Shop</RootNamespace>");
-        var resetPgCount = CountOccurrences(reset, "<PropertyGroup>");
+        var resetPgCount = EmittedLines.Occurrences(reset, "<PropertyGroup>");
         Assert.AreEqual(setPgCount, resetPgCount,
             "Re-adding namespace after clearing should result in same PropertyGroup count as first add");
     }
@@ -210,16 +222,49 @@ public class CsprojEditingTests
             cleared);
     }
 
-    /// <summary>Helper to count occurrences of a substring.</summary>
-    private static int CountOccurrences(string text, string substring)
+    /// <summary>The desktop SDK globs no arbitrary file as <c>Content</c> by default, so the
+    /// explicit <c>Include</c> is the only way the seed folder gets copied to the output
+    /// directory.</summary>
+    [TestMethod]
+    public void Seed_content_is_included_for_the_desktop_sdk()
     {
-        var count = 0;
-        var index = 0;
-        while ((index = text.IndexOf(substring, index, StringComparison.Ordinal)) >= 0)
-        {
-            count++;
-            index += substring.Length;
-        }
-        return count;
+        var updated = CsprojEditing.InjectSeedContent(Csproj);
+
+        StringAssert.Contains(
+            updated, "<Content Include=\"Data\\Seed\\*.json\" CopyToOutputDirectory=\"PreserveNewest\" />");
+    }
+
+    /// <summary>
+    /// Found running a real generated Blazor app for validation-phase-3's task 15: a duplicate
+    /// <c>Content</c> item is NETSDK1022, a build error no flattened-source or string-assertion
+    /// test can see, because it only fires when the real SDK evaluates the project file.
+    /// </summary>
+    /// <remarks>
+    /// <c>Microsoft.NET.Sdk.Web</c> — Blazor, and any other web target — already globs every
+    /// non-code file under the project as <c>Content</c>, including <c>Data\Seed\*.json</c>. The
+    /// same explicit <c>&lt;Content Include=...&gt;</c> the desktop SDK needs therefore collides
+    /// with the SDK's own default item for the identical files under a Web SDK project.
+    /// <c>Update</c> sets the metadata on the item the default glob already created instead of
+    /// declaring a second one.
+    /// </remarks>
+    [TestMethod]
+    public void Seed_content_is_updated_not_duplicated_for_the_web_sdk()
+    {
+        var updated = CsprojEditing.InjectSeedContent(CsprojWeb);
+
+        StringAssert.Contains(
+            updated, "<Content Update=\"Data\\Seed\\*.json\" CopyToOutputDirectory=\"PreserveNewest\" />");
+        Assert.IsFalse(
+            updated.Contains("Content Include=\"Data\\Seed", StringComparison.Ordinal),
+            "an Include here duplicates the Web SDK's own default Content item (NETSDK1022)");
+    }
+
+    [TestMethod]
+    public void Seed_content_injection_is_idempotent_for_the_web_sdk()
+    {
+        var once = CsprojEditing.InjectSeedContent(CsprojWeb);
+        var twice = CsprojEditing.InjectSeedContent(once);
+
+        Assert.AreEqual(once, twice);
     }
 }

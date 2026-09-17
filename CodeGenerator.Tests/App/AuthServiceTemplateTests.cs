@@ -33,6 +33,7 @@ public interface IStore<T> where T : new()
 {
     List<T> GetAll();
     StoreWrite SaveAll(List<T> all);
+    StoreWrite SaveAllUnchecked(List<T> all);
     int NextId(IEnumerable<T> existing);
     T NewItem(IEnumerable<T> existing);
 }
@@ -42,6 +43,7 @@ public sealed class MemoryStore<T> : IStore<T> where T : class, new()
     public static readonly List<T> Rows = new();
     public List<T> GetAll() => Rows.ToList();
     public StoreWrite SaveAll(List<T> all) { Rows.Clear(); Rows.AddRange(all); return StoreWrite.Ok; }
+    public StoreWrite SaveAllUnchecked(List<T> all) => SaveAll(all);
     public int NextId(IEnumerable<T> existing) => Rows.Count + 1;
     public T NewItem(IEnumerable<T> existing) => new();
 }

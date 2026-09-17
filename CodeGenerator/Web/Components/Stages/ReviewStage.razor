@@ -1,4 +1,5 @@
 @using AppScaffolding.Screens
+@using CodeGenerationEngine.Models
 @using CodeGenerator.App
 @using CodeGenerator.Web.Workflow
 @using DomainDiscovery.Model
@@ -81,6 +82,21 @@
                                     @onclick="() => RemoveField(entity.Name, field.Name)">
                                 ×
                             </button>
+
+                            @foreach (var proposal in field.Proposals)
+                            {
+                                @* An offer, not a restatement of what the field already is —
+                                   which is why it can be shown here without contradicting the
+                                   note above about not second-guessing the editor. Unticked:
+                                   nothing inferred from the contents of rows reaches a generated
+                                   app unless someone picks it. *@
+                                <label class="proposal-row">
+                                    <input type="checkbox" class="proposal"
+                                           checked="@proposal.Accepted"
+                                           @onchange="e => Decide(proposal, e.Value)" />
+                                    <span class="proposal-evidence">@proposal.Evidence</span>
+                                </label>
+                            }
                         </li>
                     }
                 </ul>
@@ -314,4 +330,15 @@
     }
 
     private void Why(string name) => _why = [.. DecisionReport.ForName(Model, name)];
+
+    /// <summary>Takes or drops one proposed rule.</summary>
+    /// <remarks>
+    /// Saves through the session for the reason <see cref="Report"/> does: a decision is work,
+    /// and a closed tab loses work that was never saved.
+    /// </remarks>
+    private void Decide(RuleProposal proposal, object? value)
+    {
+        proposal.Accepted = value is true || (value is string text && bool.TryParse(text, out var on) && on);
+        Session.ModelEdited();
+    }
 }

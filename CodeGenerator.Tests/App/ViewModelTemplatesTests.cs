@@ -1,4 +1,5 @@
 using AppScaffolding;
+using CodeGenerator.Tests.Helper;
 
 namespace CodeGenerator.Tests.App;
 
@@ -130,5 +131,20 @@ public class ViewModelTemplatesTests
         // uses to signal a change itself.
         StringAssert.Contains(source, "public void RaiseCanExecuteChanged()");
         StringAssert.Contains(source, "CanExecuteChanged?.Invoke(this, EventArgs.Empty)");
+    }
+
+    [TestMethod]
+    public void The_plain_grid_refuses_a_delete_the_pipeline_refuses()
+    {
+        // Same call every other test in this file makes — the template's signature is not what
+        // this test is about, so the argument list is copied, not invented.
+        var source = ViewModelTemplates.EntityViewModel("Payroll");
+        var normalized = EmittedLines.Normalized(source);
+
+        // Compiled but never executed as a unit test before this. Its twin on the business-layout
+        // grid is MasterScreenTests.A_plain_user_cannot_delete_a_record.
+        StringAssert.Contains(normalized, "if (!outcome.IsValid)");
+        StringAssert.Contains(normalized, "Status = outcome.Messages[0];");
+        Assert.AreEqual(1, EmittedLines.Occurrences(normalized, "Records.Remove(item);"));
     }
 }

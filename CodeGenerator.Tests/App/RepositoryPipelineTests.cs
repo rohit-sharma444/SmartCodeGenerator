@@ -132,6 +132,9 @@ public class RepositoryPipelineTests
         Assert.IsLessThan(warning, earlyReturn, "the missing record must return before any warning");
     }
 
+    /// <summary>Same call site as the login case below, on purpose: the repository no longer
+    /// decides this itself -- <c>auth</c> now goes unused here, and the "nobody is acting" half
+    /// of the property lives entirely in <see cref="ActingUserTemplate"/>.</summary>
     [TestMethod]
     public void WithoutADesktopSession_ThereIsNobodyActing()
     {
@@ -139,19 +142,28 @@ public class RepositoryPipelineTests
         // null role is what the matrix reads as "no notion of who is acting".
         var source = RepositoryTemplate.Base("Acme", validation: true, logging: false, auth: false);
 
-        StringAssert.Contains(source, "private static string? CurrentRole() => null;");
-        StringAssert.Contains(source, "private static int? CurrentUserId() => null;");
+        StringAssert.Contains(source, "ActingUser.Role(), ActingUser.Id()");
+
+        StringAssert.Contains(
+            ActingUserTemplate.Source("Acme", sessionAuth: false),
+            "public static string? Role() => null;");
     }
 
+    /// <summary>The acting user comes from the desktop session, the same way the screens and the
+    /// stores read it -- one shape, so nothing can disagree about who is acting. The repository
+    /// no longer decides this itself: it always calls <c>ActingUser.Role()</c>, and
+    /// <see cref="ActingUserTemplate"/> alone decides, from <c>AppScaffolder</c>'s own
+    /// <c>sessionAuth</c>, whether that reads a real desktop <c>Session</c>.</summary>
     [TestMethod]
     public void WithADesktopSession_TheActingUserComesFromIt()
     {
         var source = RepositoryTemplate.Base("Acme", validation: true, logging: false, auth: true);
 
+        StringAssert.Contains(source, "ActingUser.Role(), ActingUser.Id()");
+
         StringAssert.Contains(
-            source, "private static string? CurrentRole() => Acme.Auth.Session.Current?.Role.ToString();");
-        StringAssert.Contains(
-            source, "private static int? CurrentUserId() => Acme.Auth.Session.Current?.Id;");
+            ActingUserTemplate.Source("Acme", sessionAuth: true),
+            "Session.Current?.Role.ToString()");
     }
 
     /// <summary>Session.cs is emitted from exactly one place, DesktopViewModelFiles, which only
@@ -169,21 +181,27 @@ public class RepositoryPipelineTests
     }
 
     /// <summary>The wiring, not the fragment: a Blazor app has screens AND a login, so anything
-    /// gated on the login alone names a type that app never receives.</summary>
+    /// gated on the login alone names a type that app never receives. Neither the repository nor
+    /// the store name <c>Session</c> themselves any more -- that decision moved entirely into the
+    /// scaffolded <c>Validation/ActingUser.cs</c>, so this is now what the Blazor/desktop split is
+    /// checked against.</summary>
     [TestMethod]
     public void TheScaffolderKeepsTheSessionOutOfABlazorApp()
     {
-        var (blazorRepository, blazorStore) = ScaffoldedDataFolder(new BlazorTarget());
+        var (blazorRepository, blazorStore, blazorActingUser) = ScaffoldedDataFolder(new BlazorTarget());
 
         Assert.IsFalse(blazorRepository.Contains("Auth.Session", StringComparison.Ordinal),
             "Blazor emits no Session, so the repository may not name one");
         Assert.IsFalse(blazorStore.Contains("Auth.Session", StringComparison.Ordinal),
             "Blazor emits no Session, so the store may not name one");
+        Assert.IsFalse(blazorActingUser.Contains("Session", StringComparison.Ordinal),
+            "Blazor emits no Session, so ActingUser may not name one either");
 
-        var (desktopRepository, desktopStore) = ScaffoldedDataFolder(new WpfTarget());
+        var (desktopRepository, desktopStore, desktopActingUser) = ScaffoldedDataFolder(new WpfTarget());
 
-        StringAssert.Contains(desktopRepository, "Auth.Session.Current?.Role.ToString()");
-        StringAssert.Contains(desktopStore, "Auth.Session.Current?.Role.ToString()");
+        StringAssert.Contains(desktopRepository, "ActingUser.Role(), ActingUser.Id()");
+        StringAssert.Contains(desktopStore, "ActingUser.Role()");
+        StringAssert.Contains(desktopActingUser, "Session.Current?.Role.ToString()");
     }
 
     /// <summary>The whole point of the raw-literal fragments: one rebuilt with "\n" would leave
@@ -232,8 +250,10 @@ public class RepositoryPipelineTests
     public void ARepositoryReadingTheDesktopSessionCompiles()
         => AssertRepositoryCompiles(validation: true, logging: false, auth: true);
 
-    /// <summary>Scaffolds a real app and returns its emitted Repository.cs and JsonStore.cs.</summary>
-    private static (string Repository, string Store) ScaffoldedDataFolder(ITargetScaffolder target)
+    /// <summary>Scaffolds a real app and returns its emitted Repository.cs, JsonStore.cs and
+    /// Validation/ActingUser.cs.</summary>
+    private static (string Repository, string Store, string ActingUser) ScaffoldedDataFolder(
+        ITargetScaffolder target)
     {
         var root = Path.Combine(Path.GetTempPath(), "repo-" + Guid.NewGuid().ToString("N")[..8]);
         Directory.CreateDirectory(root);
@@ -247,7 +267,8 @@ public class RepositoryPipelineTests
 
             return (
                 File.ReadAllText(Path.Combine(result.ProjectPath, "Data", "Repository.cs")),
-                File.ReadAllText(Path.Combine(result.ProjectPath, "Data", "JsonStore.cs")));
+                File.ReadAllText(Path.Combine(result.ProjectPath, "Data", "JsonStore.cs")),
+                File.ReadAllText(Path.Combine(result.ProjectPath, "Validation", "ActingUser.cs")));
         }
         finally
         {
@@ -268,7 +289,11 @@ public class RepositoryPipelineTests
             ("Models/Order.cs", ModelsStub),
             ("Validation/ValidationContext.cs", ValidationContextTemplate.Source("Acme")),
             ("Validation/IEntityLookup.cs", ValidatorTemplate.EntityLookupInterface("Acme")),
-            ("Validation/Permissions.cs", PermissionsTemplate.Source("Acme", Array.Empty<string>())),
+            ("Validation/Permissions.cs", PermissionsTemplate.Source("Acme", Array.Empty<string>(), login: false)),
+            // The repository under test calls ActingUser.Role()/.Id() unconditionally inside its
+            // validation arm; sessionAuth mirrors auth, exactly what Auth/Session.cs below is
+            // gated on too.
+            ("Validation/ActingUser.cs", ActingUserTemplate.Source("Acme", sessionAuth: auth)),
             ("Data/IStore.cs", StoreSeamTemplate.Source("Acme")),
             ("Data/SaveResult.cs", SaveResultTemplate.Source("Acme")),
             ("Data/StoreFactory.cs", StoreFactoryTemplate.Source("Acme", PersistenceKind.Json)),

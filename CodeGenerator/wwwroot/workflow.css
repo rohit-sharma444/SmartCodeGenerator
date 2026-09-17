@@ -920,6 +920,24 @@ body {
    was fixing. */
 .field-name { overflow-wrap: break-word; }
 
+/* A rule the scan found holding in every row, offered unticked. Spans all three tracks of the
+   field row it belongs to rather than falling into the first one — the grid places an extra
+   child into a new implicit row starting at column 1, and left alone that would clip the
+   evidence text to the width of the name column. */
+.proposal-row {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: baseline;
+    gap: 0.4rem;
+    padding: 0.1rem 0;
+    font-family: var(--mono);
+    font-size: 0.78em;
+    color: var(--muted);
+    cursor: pointer;
+}
+
+.proposal-evidence { color: var(--pending); }
+
 /* The same three tracks, so the row that adds a field lines up under the fields it adds to: a name,
    its type, and the control at the end. The third track is fixed rather than `auto` because `auto`
    sizes to its own content — the wider "add field" button shrank the name column and put this row

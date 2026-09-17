@@ -11,28 +11,22 @@ namespace AppScaffolding;
 /// rather than only shown.
 /// </para>
 /// <para>
-/// A null role is allowed, and that answer covers two different situations. One is an app with
-/// no login at all — the console, webapi, worker and classlib targets, which emit no auth core,
-/// have nobody to refuse and must not be refused. The other is a WinForms or WPF app BEFORE
-/// sign-in and AFTER sign-out, where <c>Session.Current</c> is null and the same permissive
-/// answer comes back. That second case is hardening rather than a live hole: the shell only runs
-/// post-login, the one deliberate pre-session caller is <c>UserSeed.EnsureAdminSeeded</c>, and
-/// both <c>AuthService.ChangePassword</c> callers are Admin-only.
-/// </para>
-/// <para>
-/// The mechanism for separating the two — emitting a <c>private const bool AppHasLogin</c> from
-/// the flag this template can already see, and refusing a null role when it is true — is
-/// deliberately NOT done here. It is recorded as a phase-3 entry condition in
-/// <c>docs/superpowers/specs/2026-09-06-validation-architecture-design.md</c>, because a matrix
-/// that refuses a null role is exactly the one-line security change that compiles, passes and is
-/// wrong in a way only a real run of every target finds.
+/// A null role arrives two different ways, and the app that was generated tells them apart. One
+/// is an app with no login at all — the console, webapi, worker and classlib targets, which emit
+/// no auth core, have nobody to refuse and must not be refused. The other is a WinForms or WPF
+/// app BEFORE sign-in and AFTER sign-out, where <c>Session.Current</c> is null and that caller is
+/// not authorised. A <c>private const bool AppHasLogin</c>, emitted from the flag this template
+/// can already see, is what separates them: <see cref="Allows"/> allows a null role only when the
+/// app has no login to have signed out of.
 /// </para>
 /// </remarks>
 public static class PermissionsTemplate
 {
     /// <summary>Source of <c>Validation/Permissions.cs</c>, with
-    /// <paramref name="masterEntityNames"/> from the build's own role classification.</summary>
-    public static string Source(string rootNamespace, IReadOnlyList<string> masterEntityNames)
+    /// <paramref name="masterEntityNames"/> from the build's own role classification and
+    /// <paramref name="login"/> from whether this build emits an auth core at all.</summary>
+    public static string Source(
+        string rootNamespace, IReadOnlyList<string> masterEntityNames, bool login)
     {
         var masters = masterEntityNames.Count == 0
             ? string.Empty
@@ -53,6 +47,11 @@ public static class Permissions
     /// <summary>The entity holding the app's own user accounts.</summary>
     private const string UserEntity = "User";
 
+    /// <summary>Whether this app was generated WITH a login. False for the four targets that have
+    /// no auth core at all, where a null role means "this app has no notion of who is acting"
+    /// rather than "nobody is signed in".</summary>
+    private const bool AppHasLogin = {{(login ? "true" : "false")}};
+
     /// <summary>The entities this build classified as masters, from the same classification the
     /// screens use — so a screen and its permission cannot disagree.</summary>
     private static readonly HashSet<string> Masters =
@@ -61,17 +60,14 @@ public static class Permissions
     /// <summary>Whether <paramref name="role"/> may perform <paramref name="op"/> on
     /// <paramref name="entity"/>.</summary>
     /// <remarks>
-    /// A null role is allowed. It means there is no notion of who is acting, which happens two
-    /// ways: an app generated with no login at all has nobody to refuse — the auth core is
-    /// emitted only for a target with screens, so returning false here would refuse every write
-    /// in every console, Web API and worker app — and a desktop app that DOES have a login
-    /// reports null before anyone has signed in and again after a sign-out. The window only runs
-    /// once somebody has signed in, so the second case is not reachable from a screen.
+    /// Two different situations arrive here as the same null. An app with no login has nobody
+    /// to refuse and must allow everything; an app that HAS a login reports null before the
+    /// first sign-in and again after a sign-out, and that caller is not authorised.
     /// </remarks>
     public static bool Allows(ValidationOperation op, string entity, string? role)
     {
         if (role is null)
-            return true;
+            return !AppHasLogin;
 
         if (string.Equals(role, AdministratorRole, StringComparison.Ordinal))
             return true;

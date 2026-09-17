@@ -19,22 +19,26 @@ public sealed class StoreEntityLookup : IEntityLookup
 
     public int CountReferencing<TEntity>(string foreignKeyProperty, int id)
         where TEntity : class, new() => 0;
+
+    public bool AnyOtherWith<TEntity>(string propertyName, object? value, int exceptId)
+        where TEntity : class, new() => false;
 }
 """;
 
     /// <summary>The emitted validator plus everything it binds against — the real seams, a stub
     /// lookup and the model declarations — flattened so one Compile call sees the lot.</summary>
     private static string Compose(
-        string modelDeclarations, ClassDefinition definition, IReadOnlyList<string> foreignKeyTargets) =>
+        string modelDeclarations, ClassDefinition definition, IReadOnlyList<string> foreignKeyTargets,
+        bool referencesRequired) =>
         EmittedSource.Flatten(
             ValidationContextTemplate.Source("Acme"),
             ValidatorTemplate.ValidatorInterface("Acme"),
             ValidatorTemplate.EntityLookupInterface("Acme"),
             ValidationPipelineTemplate.Source("Acme"),
-            PermissionsTemplate.Source("Acme", []),
+            PermissionsTemplate.Source("Acme", [], login: false),
             LookupStub,
             modelDeclarations,
-            ValidatorTemplate.Generated("Acme", definition, foreignKeyTargets),
+            ValidatorTemplate.Generated("Acme", definition, foreignKeyTargets, referencesRequired),
             ValidatorTemplate.CustomStub("Acme", definition.Name));
 
     private static PropertyDefinition Prop(string name, string type) => new() { Name = name, Type = type };
@@ -82,7 +86,8 @@ public class Customer
 }
 """;
 
-        EmittedSource.AssertCompiles(Compose(models, definition, new[] { "Region", "Tier" }));
+        EmittedSource.AssertCompiles(
+            Compose(models, definition, new[] { "Region", "Tier" }, referencesRequired: false));
     }
 
     [TestMethod]
@@ -94,7 +99,8 @@ public class Customer
         EmittedSource.AssertCompiles(Compose(
             "public class Tag { public int Id { get; set; } }",
             definition,
-            System.Array.Empty<string>()));
+            System.Array.Empty<string>(),
+            referencesRequired: false));
     }
 
     [TestMethod]
@@ -112,6 +118,7 @@ public class Customer
         EmittedSource.AssertCompiles(Compose(
             "public class Contact { public string? Email { get; set; } public string? BackupEmail { get; set; } }",
             definition,
-            System.Array.Empty<string>()));
+            System.Array.Empty<string>(),
+            referencesRequired: false));
     }
 }

@@ -6,8 +6,8 @@ namespace AppScaffolding;
 /// <remarks>
 /// The permission guard this emits into <c>SaveAll</c> cannot refuse anything as the tool stands,
 /// and a reader should not assume otherwise: sqlite is refused for the WinForms and WPF targets,
-/// so <paramref name="auth"/> — <c>AppScaffolder</c>'s <c>sessionAuth</c>, which needs
-/// <c>HasDesktopSession</c> — is false for every EF build. The emitted <c>CurrentRole()</c> is
+/// so <c>AppScaffolder</c>'s <c>sessionAuth</c>, which needs <c>HasDesktopSession</c>, is false
+/// for every EF build. <see cref="ActingUserTemplate"/>'s emitted <c>ActingUser.Role()</c> is
 /// therefore always the null-returning half, and a null role is allowed. The guard is emitted
 /// anyway so that a target which gains both a user and sqlite is already covered on this path.
 /// </remarks>
@@ -16,25 +16,14 @@ public static class EfStoreTemplate
     /// <summary>Source of <c>Data/EfStore.cs</c> in <paramref name="rootNamespace"/>.Data. Unlike
     /// <see cref="JsonStoreTemplate.Source"/>, this parameter already IS the root: EfStore lives
     /// directly in <c>{root}.Data</c>, never behind a caller-supplied full namespace.</summary>
+    /// <param name="auth">
+    /// Unused: kept so every existing caller of this overload compiles unchanged.
+    /// <see cref="ActingUserTemplate"/> now decides, from its own <c>sessionAuth</c>, whether
+    /// <c>ActingUser.Role()</c> reads a real session or returns null — this template no longer
+    /// needs to ask.
+    /// </param>
     public static string Source(string rootNamespace, bool auth = false)
     {
-        // Task 8 adds the same pair, plus CurrentUserId(), to Repository<T>. Duplicated rather
-        // than shared because the store and the repository are emitted into different folders and
-        // neither may depend on the other.
-        var currentUser = auth
-            ? $$"""
-                private static string? CurrentRole() => {{rootNamespace}}.Auth.Session.Current?.Role.ToString();
-
-            """
-            : """
-                // No desktop session to read a user from, so there is nobody to attribute a
-                // write to. Not a stub to fill in later: a target without screens emits no auth
-                // core at all, and a Blazor app has one but reads its user from the
-                // authentication state rather than a static Session.
-                private static string? CurrentRole() => null;
-
-            """;
-
         return $$"""
 using System;
 using System.Collections.Generic;
@@ -67,9 +56,29 @@ public sealed class EfStore<T> : IStore<T> where T : class, new()
     /// </remarks>
     public StoreWrite SaveAll(List<T> all)
     {
-        if (!Permissions.Allows(ValidationOperation.Update, typeof(T).Name, CurrentRole()))
+        if (!Permissions.Allows(ValidationOperation.Update, typeof(T).Name, ActingUser.Role()))
             return new StoreWrite(false, Permissions.Refusal(ValidationOperation.Update, typeof(T).Name));
 
+        return WriteToDatabase(all);
+    }
+
+    /// <summary>
+    /// Overwrites the store with <paramref name="all"/> without asking <see cref="Permissions"/>.
+    /// </summary>
+    /// <remarks>
+    /// The legitimate exception to SaveAll's gate: UserSeed.EnsureAdminSeeded and SeedData.Seed
+    /// both run before anyone COULD be signed in — the former before the first account exists,
+    /// the latter seeding business data on the same first run. A signed-out caller of a login app
+    /// is correctly refused by SaveAll — that refusal, applied here too, would mean no freshly
+    /// generated login app could ever create its first account or its starting data, because
+    /// both are exactly the operation an empty store has nobody authorised to perform. This
+    /// method exists so those call sites can be exempt, by name, rather than by a null check
+    /// anyone could quietly rely on.
+    /// </remarks>
+    public StoreWrite SaveAllUnchecked(List<T> all) => WriteToDatabase(all);
+
+    private static StoreWrite WriteToDatabase(List<T> all)
+    {
         try
         {
             using var context = new AppDbContext();
@@ -106,8 +115,7 @@ public sealed class EfStore<T> : IStore<T> where T : class, new()
             ?? throw new InvalidOperationException(typeof(T).Name + " has no Id property.");
 
     private static int GetId(T item) => (int)(IdProperty.GetValue(item) ?? 0);
-
-{{currentUser}}}
+}
 """;
     }
 }

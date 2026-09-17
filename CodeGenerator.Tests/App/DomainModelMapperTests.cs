@@ -482,3 +482,59 @@ public class DomainModelMapperValidationTests
         CollectionAssert.DoesNotContain(employee.Usings, "System.ComponentModel");
     }
 }
+
+[TestClass]
+public class DomainModelMapperProposalTests
+{
+    /// <summary>
+    /// A Customer entity shaped like <see cref="ValidatorFixtures.PlainCustomer"/> -- Id:int,
+    /// Code:string, Status:string -- with a Status-field proposal task 10 would have produced,
+    /// accepted or not per <paramref name="accepted"/>.
+    /// </summary>
+    private static CandidateDomainModel ModelWithProposal(bool accepted)
+    {
+        var model = new CandidateDomainModel();
+        var customer = new CandidateEntity { Name = "Customer" };
+        customer.Fields.Add(new CandidateField { Name = "Id", Type = "int" });
+        customer.Fields.Add(new CandidateField { Name = "Code", Type = "string" });
+
+        var status = new CandidateField { Name = "Status", Type = "string" };
+        status.Proposals.Add(new RuleProposal
+        {
+            Kind = RuleProposalKind.Status,
+            Rule = new PropertyRule { Name = "allowedvalues", AllowedValues = ["Draft", "Posted"] },
+            Evidence = "holds in every row",
+            Accepted = accepted
+        });
+        customer.Fields.Add(status);
+
+        model.Entities.Add(customer);
+        return model;
+    }
+
+    [TestMethod]
+    public void An_accepted_proposal_becomes_a_rule()
+    {
+        var model = ModelWithProposal(accepted: true);
+
+        var classes = DomainModelMapper.ToClassDefinitions(model, out _);
+
+        var status = classes.Single().Properties.Single(p => p.Name == "Status");
+        var rule = status.Rules.Single(r => r.Name == "allowedvalues");
+        CollectionAssert.AreEquivalent(new[] { "Draft", "Posted" }, rule.AllowedValues.ToArray());
+    }
+
+    [TestMethod]
+    public void An_unaccepted_proposal_becomes_nothing()
+    {
+        var model = ModelWithProposal(accepted: false);
+
+        var classes = DomainModelMapper.ToClassDefinitions(model, out _);
+
+        // The decision of this phase: nothing inferred from the CONTENTS of data reaches a generated
+        // app unless someone picked it. A scripted build gets none of it.
+        Assert.IsFalse(
+            classes.Single().Properties.Single(p => p.Name == "Status").Rules
+                .Any(r => r.Name == "allowedvalues"));
+    }
+}

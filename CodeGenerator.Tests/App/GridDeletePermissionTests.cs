@@ -26,7 +26,7 @@ public class GridDeletePermissionTests
         // Same refusal as before for the default matrix, but routed through the one place that
         // decides it. The hardcoded check could not be changed by a matrix and could not agree
         // with the store's.
-        var source = MasterScreenTemplate.Source("Acme", login: true);
+        var source = MasterScreenTemplate.Source("Acme", validation: false, login: true);
 
         StringAssert.Contains(source, "Permissions.Allows");
         Assert.DoesNotContain("Session.IsAdmin", source);
@@ -37,10 +37,14 @@ public class GridDeletePermissionTests
     {
         // ViewModelTemplates.Delete() had NO check of any kind: it removed the row from an
         // ObservableCollection and said "Not saved yet". The later SaveAll cannot tell that a
-        // delete happened, so this is the only point where it can be refused.
+        // delete happened, so this is the only point where it can be refused. With validation on,
+        // the check is the whole pipeline rather than the matrix alone -- see
+        // DeleteGoesThroughThePipelineTests for the novalidation half, which keeps the direct
+        // Permissions.Allows call this test used to assert on here.
         var source = ViewModelTemplates.EntityViewModel("Acme", validation: true, login: true);
 
-        StringAssert.Contains(source, "Permissions.Allows(ValidationOperation.Delete");
+        StringAssert.Contains(source, "ValidatorFactory.Create<T>()");
+        StringAssert.Contains(source, "ValidationOperation.Delete");
     }
 
     [TestMethod]
@@ -70,29 +74,45 @@ public class GridDeletePermissionTests
 
     /// <summary>The acting user comes from the desktop session, the same way the store and the
     /// repository read it — one shape, so a screen and a store cannot disagree about who is
-    /// acting.</summary>
+    /// acting. The grids no longer decide this themselves: both now call
+    /// <c>ActingUser.Role()</c> unconditionally, and <see cref="ActingUserTemplate"/> alone
+    /// decides, from <c>AppScaffolder</c>'s own <c>sessionAuth</c>, whether that reads a real
+    /// desktop <c>Session</c> — so this test chains the call site to that decision rather than
+    /// re-testing <see cref="ActingUserTemplate"/> in isolation (see
+    /// <see cref="ActingUserTests"/>).</summary>
     [TestMethod]
     public void WithADesktopSession_TheGridReadsTheRoleFromIt()
     {
         StringAssert.Contains(
             ViewModelTemplates.EntityViewModel("Acme", validation: true, login: true),
-            "private static string? CurrentRole() => Acme.Auth.Session.Current?.Role.ToString();");
+            "ActingUser.Role(), ActingUser.Id()");
 
         StringAssert.Contains(
-            MasterScreenTemplate.Source("Acme", login: true),
-            "private static string? CurrentRole() => Session.Current?.Role.ToString();");
+            MasterScreenTemplate.Source("Acme", validation: true, login: true),
+            "ActingUser.Role(), ActingUser.Id()");
+
+        StringAssert.Contains(
+            ActingUserTemplate.Source("Acme", sessionAuth: true),
+            "Session.Current?.Role.ToString()");
     }
 
+    /// <summary>Same call site as the login case above, on purpose: <c>login</c> no longer gates
+    /// it at all, so the "nobody is acting" half of the property now lives entirely in
+    /// <see cref="ActingUserTemplate"/>.</summary>
     [TestMethod]
     public void WithoutADesktopSession_ThereIsNobodyActing()
     {
         StringAssert.Contains(
             ViewModelTemplates.EntityViewModel("Acme", validation: true, login: false),
-            "private static string? CurrentRole() => null;");
+            "ActingUser.Role(), ActingUser.Id()");
 
         StringAssert.Contains(
-            MasterScreenTemplate.Source("Acme"),
-            "private static string? CurrentRole() => null;");
+            MasterScreenTemplate.Source("Acme", validation: true),
+            "ActingUser.Role(), ActingUser.Id()");
+
+        StringAssert.Contains(
+            ActingUserTemplate.Source("Acme", sessionAuth: false),
+            "public static string? Role() => null;");
     }
 
     /// <summary>
@@ -103,7 +123,9 @@ public class GridDeletePermissionTests
     [TestMethod]
     public void TheBlazorGridAsksTheMatrixFromTheRoleClaim()
     {
-        foreach (var component in BlazorGrids(login: true))
+        // Novalidation: the pipeline half (validation: true) moves this same guard onto
+        // ValidatorFactory, and is proved separately by DeleteGoesThroughThePipelineTests.
+        foreach (var component in BlazorGrids(validation: false, login: true))
         {
             StringAssert.Contains(component, "@using System.Security.Claims");
             StringAssert.Contains(component, "@using Acme.Validation");
@@ -136,7 +158,7 @@ public class GridDeletePermissionTests
     [TestMethod]
     public void TheBlazorGridWithoutALoginStillAsksTheMatrix()
     {
-        foreach (var component in BlazorGrids(login: false))
+        foreach (var component in BlazorGrids(validation: false, login: false))
         {
             StringAssert.Contains(component, "@using Acme.Validation");
             StringAssert.Contains(
@@ -177,10 +199,11 @@ public class GridDeletePermissionTests
 
         foreach (var login in new[] { true, false })
         {
-            sources.Add(MasterScreenTemplate.Source("Acme", login));
-
             foreach (var validation in new[] { true, false })
+            {
+                sources.Add(MasterScreenTemplate.Source("Acme", validation, login));
                 sources.Add(ViewModelTemplates.EntityViewModel("Acme", validation, login));
+            }
         }
 
         foreach (var source in sources)
@@ -194,10 +217,10 @@ public class GridDeletePermissionTests
         }
     }
 
-    private static string[] BlazorGrids(bool login) =>
+    private static string[] BlazorGrids(bool validation, bool login) =>
     [
-        BlazorScreenTemplates.MasterScreen("Acme", login),
-        BlazorScreenTemplates.TransactionScreen("Acme", login),
+        BlazorScreenTemplates.MasterScreen("Acme", validation, login),
+        BlazorScreenTemplates.TransactionScreen("Acme", validation, login),
     ];
 
     private static void AssertGridCompiles(bool validation, bool login)
@@ -208,7 +231,11 @@ public class GridDeletePermissionTests
             ("Screens/EntityRole.cs", ScreenTemplates.RoleEnum("Acme")),
             ("Validation/ValidationContext.cs", ValidationContextTemplate.Source("Acme")),
             ("Validation/IEntityLookup.cs", ValidatorTemplate.EntityLookupInterface("Acme")),
-            ("Validation/Permissions.cs", PermissionsTemplate.Source("Acme", new[] { "Order" })),
+            ("Validation/Permissions.cs", PermissionsTemplate.Source("Acme", new[] { "Order" }, login: false)),
+            // Desktop-shaped fixture (Auth/Session.cs is added below when login), so sessionAuth
+            // is exactly login here -- both templates under test call ActingUser.Role()/.Id()
+            // unconditionally, in both the pipeline and matrix arms.
+            ("Validation/ActingUser.cs", ActingUserTemplate.Source("Acme", sessionAuth: login)),
             ("Data/IStore.cs", StoreSeamTemplate.Source("Acme")),
             ("Data/SaveResult.cs", SaveResultTemplate.Source("Acme")),
             ("Data/StoreFactory.cs", StoreFactoryTemplate.Source("Acme", PersistenceKind.Json)),

@@ -228,7 +228,7 @@ public static class ScreenFields
     /// Generic over the record, so one component serves every master in the model — the web
     /// equivalent of the desktop's one template rather than a view per entity.
     /// </remarks>
-    public static string MasterScreen(string rootNamespace, bool login) => $$"""
+    public static string MasterScreen(string rootNamespace, bool validation, bool login) => $$"""
 @typeparam TRecord where TRecord : class, new()
 @using System.Reflection{{ClaimsUsing(login)}}
 @using {{rootNamespace}}.Data
@@ -327,7 +327,7 @@ else
         if (_selected is { } record)
             Navigation.NavigateTo($"/{Route}/{ScreenFields.IdOf(record)}");
     }
-{{DeleteHandler(login)}}}
+{{DeleteHandler(validation, login)}}}
 """;
 
     /// <summary>
@@ -341,7 +341,7 @@ else
     /// and hide where the markup comes from. The reasoning both screens share lives in
     /// <c>ScreenFields</c>, which is what keeps them from drifting.
     /// </remarks>
-    public static string TransactionScreen(string rootNamespace, bool login) => $$"""
+    public static string TransactionScreen(string rootNamespace, bool validation, bool login) => $$"""
 @typeparam TRecord where TRecord : class, new()
 @using System.Reflection{{ClaimsUsing(login)}}
 @using {{rootNamespace}}.Data
@@ -488,7 +488,7 @@ else
         if (_selected is { } record)
             Navigation.NavigateTo($"/{Route}/{ScreenFields.IdOf(record)}");
     }
-{{DeleteHandler(login)}}}
+{{DeleteHandler(validation, login)}}}
 """;
 
     /// <summary>
@@ -505,13 +505,13 @@ else
     /// through <c>Repository&lt;T&gt;</c>, so it has to run them itself or the web would accept
     /// records the API rejects.
     /// </param>
-    public static string RecordEditor(string rootNamespace, bool validation) => $$"""
+    public static string RecordEditor(string rootNamespace, bool validation, bool login) => $$"""
 @typeparam TRecord where TRecord : class, new()
 @using System.Reflection
 @using Microsoft.AspNetCore.Components.Routing
 @using Microsoft.JSInterop
 @using {{rootNamespace}}.Data
-@using {{rootNamespace}}.Screens{{ValidationUsing(rootNamespace, validation)}}
+@using {{rootNamespace}}.Screens{{ValidationUsing(rootNamespace, validation, login)}}{{ClaimsUsing(login)}}{{AuthorizationUsing(login)}}
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
 
@@ -624,7 +624,7 @@ else
     /// <summary>The properties the last refused save named, so their inputs can be marked. Stays
     /// empty in an app generated with no validators: nothing names a field there.</summary>
     private readonly HashSet<string> _invalid = new(StringComparer.Ordinal);
-
+{{AuthStateParameter(login)}}
     /// <summary>Whichever record the URL named, or null for a new one.</summary>
     [Parameter] public int? Id { get; set; }
 
@@ -746,9 +746,9 @@ else
     private string CssFor(PropertyInfo field)
         => _invalid.Contains(field.Name) ? "is-invalid" : string.Empty;
 
-    private void Save()
+    {{(login ? "private async Task Save()" : "private void Save()")}}
     {
-{{ValidateCall(validation)}}        var all = _store.GetAll();
+{{ValidateCall(validation, login)}}        var all = _store.GetAll();
 
         if (IsNew)
         {
@@ -770,7 +770,13 @@ else
             all[index] = _draft;
         }
 
-        var write = _store.SaveAll(all);
+        // Unchecked when login is on: ValidateCall's own explicit guard (below) already asked
+        // Permissions with the REAL signed-in role, read off the cascading auth state, regardless
+        // of whether validation is on. SaveAll's own gate reads ActingUser.Role(), hardcoded null
+        // for Blazor (no desktop Session), so it would refuse this write for every signed-in user
+        // otherwise. With no login there is nobody to authorise and SaveAll's own gate already
+        // allows a null role under AppHasLogin=false, so it stays the checked call there.
+        var write = {{(login ? "_store.SaveAllUnchecked(all)" : "_store.SaveAll(all)")}};
         if (!write.Success)
         {
             _status = write.Refusal ?? "Could not save.";
@@ -900,26 +906,87 @@ else
     /// which is how the button came to hide a delete the handler would have allowed.
     /// </para>
     /// </remarks>
-    private static string DeleteHandler(bool login)
-        => login
+    private static string DeleteHandler(bool validation, bool login)
+    {
+        // Two independent questions: login decides whether the check has a state to read a
+        // role from; validation decides whether it asks the pipeline or the matrix directly,
+        // because a novalidation app has no ValidatorFactory to call.
+        var pipelineGuard = login
             ? """
+                    // The button is not rendered for a user the matrix refuses; this is the
+                    // whole pipeline, run because it would refuse this delete even if the button
+                    // were shown -- and because Security is no longer the only stage that can
+                    // refuse one.
+                    var outcome = ValidatorFactory.Create<TRecord>().Validate(
+                        new ValidationContext<TRecord>(
+                            record, ValidationOperation.Delete, record, new StoreEntityLookup(),
+                            state?.User.FindFirst(ClaimTypes.Role)?.Value, null));
+
+                    if (!outcome.IsValid)
+                    {
+                        _status = outcome.Messages[0];
+                        return;
+                    }
+            """
+            : """
+                    // No login, so there is nobody to attribute the delete to; the pipeline reads
+                    // a null role the same way the matrix always did. Run in full rather than the
+                    // matrix alone, because Security is no longer the only stage that can refuse
+                    // a delete.
+                    var outcome = ValidatorFactory.Create<TRecord>().Validate(
+                        new ValidationContext<TRecord>(
+                            record, ValidationOperation.Delete, record, new StoreEntityLookup(),
+                            null, null));
+
+                    if (!outcome.IsValid)
+                    {
+                        _status = outcome.Messages[0];
+                        return;
+                    }
+            """;
+
+        var matrixGuard = login
+            ? """
+                    // The button is not rendered for a user the matrix refuses; this is the
+                    // check that would hold even if it were, and it is the SAME call -- so the
+                    // affordance and the refusal cannot disagree, and neither can this screen
+                    // and the store behind it.
+                    if (!MayDelete(state))
+                    {
+                        _status = Permissions.Refusal(ValidationOperation.Delete, typeof(TRecord).Name);
+                        return;
+                    }
+            """
+            : """
+                    // No login, so there is nobody to attribute the delete to and the matrix
+                    // reads a null role as "no notion of who is acting" -- it can refuse
+                    // nothing here today. Asked anyway, so the two variants of this handler
+                    // cannot drift apart, and so this is the line that starts refusing the day
+                    // the matrix tells an anonymous caller from a signed-in one.
+                    if (!Permissions.Allows(ValidationOperation.Delete, typeof(TRecord).Name, null))
+                    {
+                        _status = Permissions.Refusal(ValidationOperation.Delete, typeof(TRecord).Name);
+                        return;
+                    }
+            """;
+
+        // The whole pipeline, not the matrix alone: with validation on, Security is no longer
+        // the only stage that can refuse a delete, and a whole pipeline run is not something
+        // the button's own visibility check can afford on every repaint. MayDelete stays on
+        // the matrix regardless, because it is that affordance.
+        var deleteGuard = validation ? pipelineGuard : matrixGuard;
+
+        return login
+            ? $$"""
 
                   private async Task Delete()
                   {
                       if (_selected is not { } record)
                           return;
 
-                      // The button is not rendered for a user the matrix refuses; this is the
-                      // check that would hold even if it were, and it is the SAME call -- so the
-                      // affordance and the refusal cannot disagree, and neither can this screen
-                      // and the store behind it.
                       var state = AuthState is null ? null : await AuthState;
 
-                      if (!MayDelete(state))
-                      {
-                          _status = Permissions.Refusal(ValidationOperation.Delete, typeof(TRecord).Name);
-                          return;
-                      }
+              {{deleteGuard}}
 
                       Remove(record);
                   }
@@ -937,7 +1004,14 @@ else
                       var all = _store.GetAll();
                       all.RemoveAll(stored => ScreenFields.IdOf(stored) == ScreenFields.IdOf(record));
 
-                      var write = _store.SaveAll(all);
+                      // Unchecked: deleteGuard above already asked Permissions with the REAL
+                      // signed-in role, read off the cascading auth state. SaveAll's own gate reads
+                      // ActingUser.Role(), which ActingUserTemplate hardcodes to null for Blazor --
+                      // there is no desktop Session to read -- so it would refuse this write for
+                      // every signed-in user, regardless of what deleteGuard already decided
+                      // correctly. Found running a real generated Blazor app for validation-phase-3's
+                      // task 15.
+                      var write = _store.SaveAllUnchecked(all);
                       _status = write.Success ? "Deleted." : write.Refusal ?? "Could not delete.";
                       _selected = null;
 
@@ -945,23 +1019,14 @@ else
                   }
 
               """
-            : """
+            : $$"""
 
                   private void Delete()
                   {
                       if (_selected is not { } record)
                           return;
 
-                      // No login, so there is nobody to attribute the delete to and the matrix
-                      // reads a null role as "no notion of who is acting" -- it can refuse
-                      // nothing here today. Asked anyway, so the two variants of this handler
-                      // cannot drift apart, and so this is the line that starts refusing the day
-                      // the matrix tells an anonymous caller from a signed-in one.
-                      if (!Permissions.Allows(ValidationOperation.Delete, typeof(TRecord).Name, null))
-                      {
-                          _status = Permissions.Refusal(ValidationOperation.Delete, typeof(TRecord).Name);
-                          return;
-                      }
+              {{deleteGuard}}
 
                       var all = _store.GetAll();
                       all.RemoveAll(stored => ScreenFields.IdOf(stored) == ScreenFields.IdOf(record));
@@ -974,9 +1039,18 @@ else
                   }
 
               """;
+    }
 
-    private static string ValidationUsing(string rootNamespace, bool validation)
-        => validation ? $"\r\n@using {rootNamespace}.Validation" : string.Empty;
+    /// <summary>
+    /// <paramref name="validation"/> needs it for the pipeline call; <paramref name="login"/>
+    /// needs it too now, for the explicit save-time permission guard <see cref="ValidateCall"/>
+    /// emits regardless of <paramref name="validation"/> -- <see cref="Permissions"/> and
+    /// <see cref="ValidationOperation"/> live here either way, and both are unconditionally
+    /// emitted (<c>Permissions.cs</c> names them), so the only question is whether THIS file
+    /// imports them.
+    /// </summary>
+    private static string ValidationUsing(string rootNamespace, bool validation, bool login)
+        => validation || login ? $"\r\n@using {rootNamespace}.Validation" : string.Empty;
 
     /// <summary>
     /// The pipeline, run by the editor because nothing else on this path would.
@@ -990,15 +1064,45 @@ else
     /// input the outcome named, and the status line still says what was wrong first.
     /// </para>
     /// </remarks>
-    private static string ValidateCall(bool validation)
-        => validation
+    private static string ValidateCall(bool validation, bool login)
+    {
+        // Independent of `validation`: the store's own SaveAll gate reads ActingUser.Role(),
+        // hardcoded null for Blazor (no desktop Session to read), so it can never authorise a
+        // save correctly on its own. Save must ask Permissions itself, with the REAL role read
+        // off the cascading auth state, the same way MayDelete already does for Delete -- run
+        // whether or not validation is on, or a novalidation Blazor app with a login has NO
+        // permission check on save at all, which is the exact "turning validation off must not
+        // turn permissions off" invariant this project holds everywhere else. Found running a
+        // real generated app for validation-phase-3's task 15.
+        var guard = login
             ? """
+                      var state = AuthState is null ? null : await AuthState;
+
+                      if (!Permissions.Allows(ValidationOperation.Update, typeof(TRecord).Name,
+                          state?.User.FindFirst(ClaimTypes.Role)?.Value))
+                      {
+                          _status = Permissions.Refusal(ValidationOperation.Update, typeof(TRecord).Name);
+                          return;
+                      }
+
+              """
+            : string.Empty;
+
+        if (!validation)
+            return guard;
+
+        // The acting user IS threaded through: ValidationContext.For's own doc comment says it is
+        // "for tests and for a caller that genuinely has none of those" -- this editor has a real
+        // signed-in user when login is on, read off the SAME `state` the guard above already
+        // read, not a second time.
+        var role = login ? "state?.User.FindFirst(ClaimTypes.Role)?.Value" : "null";
+
+        var pipeline = $$"""
                       _invalid.Clear();
 
-                      var context = ValidationContext<TRecord>.For(
-                          _draft,
-                          IsNew ? ValidationOperation.Insert : ValidationOperation.Update,
-                          new StoreEntityLookup());
+                      var context = new ValidationContext<TRecord>(
+                          _draft, IsNew ? ValidationOperation.Insert : ValidationOperation.Update,
+                          default, new StoreEntityLookup(), {{role}}, null);
 
                       var outcome = ValidatorFactory.Create<TRecord>().Validate(context);
 
@@ -1017,6 +1121,8 @@ else
                       }
 
 
-              """
-            : string.Empty;
+              """;
+
+        return guard + pipeline;
+    }
 }

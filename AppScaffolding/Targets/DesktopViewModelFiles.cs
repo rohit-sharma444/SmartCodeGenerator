@@ -62,7 +62,7 @@ public static class DesktopViewModelFiles
             files.Add(new("ViewModels", "RecordEditorViewModel.cs",
                 RecordEditorTemplate.Source(rootNamespace, validation)));
             files.Add(new("ViewModels", "MasterScreenViewModel.cs",
-                MasterScreenTemplate.Source(rootNamespace, login)));
+                MasterScreenTemplate.Source(rootNamespace, validation, login)));
             files.Add(new("ViewModels", "TransactionScreenViewModel.cs",
                 TransactionScreenTemplate.Source(rootNamespace)));
             files.Add(new("ViewModels", "DashboardViewModel.cs",

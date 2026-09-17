@@ -43,15 +43,18 @@ public static class RepositoryTemplate
         => Base(appName, validation, logging, auth: false);
 
     /// <summary>
-    /// As <see cref="Base(string, bool, bool)"/>, reading the acting user from the desktop
-    /// <c>Session</c> when <paramref name="auth"/>.
+    /// As <see cref="Base(string, bool, bool)"/>.
     /// </summary>
-    /// <remarks>
-    /// Narrower than "this app has a login": <c>Session</c> is emitted from exactly one place,
-    /// <c>DesktopViewModelFiles</c>, which only the WinForms and WPF targets reach — see
-    /// <c>ITargetScaffolder.HasDesktopSession</c>. A Blazor app has a login, has no Session, and
-    /// would not compile if this named one; its own delete is guarded at the grid instead.
-    /// </remarks>
+    /// <param name="auth">
+    /// Unused: kept so every existing caller of this overload compiles unchanged.
+    /// <see cref="ActingUserTemplate"/> now decides, from its own <c>sessionAuth</c>, whether
+    /// <c>ActingUser.Role()</c> and <c>ActingUser.Id()</c> read a real desktop <c>Session</c> or
+    /// return null — this template no longer needs to ask. That flag is narrower than "this app
+    /// has a login": <c>Session</c> is emitted from exactly one place, <c>DesktopViewModelFiles</c>,
+    /// which only the WinForms and WPF targets reach — see <c>ITargetScaffolder.HasDesktopSession</c>.
+    /// A Blazor app has a login, has no Session, and would not compile if this named one; its own
+    /// delete is guarded at the grid instead.
+    /// </param>
     public static string Base(string appName, bool validation, bool logging, bool auth)
     {
         // Raw string literals, not "\n" concatenation: a raw literal carries the line endings of
@@ -101,7 +104,7 @@ public static class RepositoryTemplate
             ? $$"""
                     var outcome = _validator.Validate(new ValidationContext<T>(
                         item, ValidationOperation.Insert, null, new StoreEntityLookup(),
-                        CurrentRole(), CurrentUserId()));
+                        ActingUser.Role(), ActingUser.Id()));
 
             {{refuse}}
 
@@ -117,7 +120,7 @@ public static class RepositoryTemplate
 
                     var outcome = _validator.Validate(new ValidationContext<T>(
                         item, ValidationOperation.Update, stored, new StoreEntityLookup(),
-                        CurrentRole(), CurrentUserId()));
+                        ActingUser.Role(), ActingUser.Id()));
 
             {{refuse}}
 
@@ -137,7 +140,7 @@ public static class RepositoryTemplate
 
                     var outcome = _validator.Validate(new ValidationContext<T>(
                         doomed, ValidationOperation.Delete, doomed, new StoreEntityLookup(),
-                        CurrentRole(), CurrentUserId()));
+                        ActingUser.Role(), ActingUser.Id()));
 
             {{refuse}}
 
@@ -205,34 +208,6 @@ public static class RepositoryTemplate
         var deleteSummary = validation
             ? "Validates the record about to go, then removes it, or says why not."
             : "Removes the record with this Id, or says why not.";
-
-        // Only the fragments above call these, so a novalidation build emits neither: nothing in
-        // that repository has a context to fill. The leading blank line belongs to the fragment so
-        // that an empty one leaves the emitted class exactly as it was.
-        var currentUser = (validation, auth) switch
-        {
-            (false, _) => string.Empty,
-
-            (true, true) => $$"""
-
-                private static string? CurrentRole() => {{appName}}.Auth.Session.Current?.Role.ToString();
-
-                private static int? CurrentUserId() => {{appName}}.Auth.Session.Current?.Id;
-
-            """,
-
-            _ => """
-
-                // This app has no desktop session to read a user from, so there is nobody to
-                // attribute a write to and the Security stage has nothing to refuse. Not a stub
-                // to fill in later: a target without screens emits no auth core at all, and a
-                // Blazor app reads its user from the authentication state instead.
-                private static string? CurrentRole() => null;
-
-                private static int? CurrentUserId() => null;
-
-            """,
-        };
 
         return $$"""
 using System;
@@ -313,7 +288,7 @@ public abstract class Repository<T> where T : class, new()
     private static int GetId(T item) => (int)(IdProperty.GetValue(item) ?? 0);
 
     private static void SetId(T item, int id) => IdProperty.SetValue(item, id);
-{{currentUser}}}
+}
 """;
     }
 

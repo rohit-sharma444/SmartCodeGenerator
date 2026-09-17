@@ -86,5 +86,15 @@ internal static class ReviewCommandPhrases
         ("justify this class", "why"),
         ("why is this entity in the model", "why"),
         ("why did you include that class", "why"),
+
+        ("what rules were suggested from my data", "rules"),
+        ("show me the proposed validation rules", "rules"),
+        ("what constraints did the scan find", "rules"),
+        ("list the rules you inferred", "rules"),
+
+        ("apply that suggested rule", "accept"),
+        ("take the rule you proposed", "accept"),
+        ("use the validation rule you found", "accept"),
+        ("go with the suggested constraint", "accept"),
     ];
 }

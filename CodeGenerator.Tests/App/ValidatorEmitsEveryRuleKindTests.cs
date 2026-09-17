@@ -76,6 +76,85 @@ public class ValidatorEmitsEveryRuleKindTests
         StringAssert.Contains(source, "item.DueOn.TimeOfDay");
     }
 
+    [TestMethod]
+    public void Every_new_rule_kind_is_declared_emittable_for_its_type()
+    {
+        // The register that stops a rule being recorded with no emitter. Its absence is silent: the
+        // emitter guards every check on the property's TYPE, so a rule on the wrong type produces
+        // nothing at all and the validator reports success over a check that is not there.
+        Assert.IsTrue(ValidatorTemplate.CanEmit("string", "allowedvalues"));
+        Assert.IsTrue(ValidatorTemplate.CanEmit("string", "pattern"));
+    }
+
+    [TestMethod]
+    public void An_allowed_values_rule_emits_a_check_that_names_the_values()
+    {
+        var customer = ValidatorFixtures.PlainCustomer();
+        customer.Properties.Single(p => p.Name == "Status").Rules.Add(new PropertyRule
+        {
+            Name = "allowedvalues",
+            AllowedValues = ["Draft", "Posted"]
+        });
+
+        var source = ValidatorTemplate.Generated("Acme", customer, [], false, []);
+
+        StringAssert.Contains(source, "\"Draft\"");
+        StringAssert.Contains(source, "\"Posted\"");
+        StringAssert.Contains(source, "must be one of");
+    }
+
+    [TestMethod]
+    public void A_value_with_a_quote_in_it_does_not_break_the_emitted_source()
+    {
+        var customer = ValidatorFixtures.PlainCustomer();
+        customer.Properties.Single(p => p.Name == "Status").Rules.Add(new PropertyRule
+        {
+            Name = "allowedvalues",
+            AllowedValues = ["He said \"go\"", "back\\slash"]
+        });
+
+        var source = ValidatorTemplate.Generated("Acme", customer, [], false, []);
+
+        // A status value comes from the user's own data and can hold anything. An unescaped quote is
+        // a generated app that does not compile.
+        var compiled = Compiler.CompileSources([("Validator.cs", source), .. SupportingSources()]);
+        Assert.IsTrue(compiled.Success, string.Join("\n",
+            compiled.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error)));
+    }
+
+    /// <summary>
+    /// Every file <see cref="A_value_with_a_quote_in_it_does_not_break_the_emitted_source"/> needs
+    /// to compile a bare "Validator.cs" containing <c>Acme.Validation.CustomerValidator</c> standalone
+    /// -- the same seam <see cref="CompiledValidator"/> already exercises, built here around
+    /// <see cref="ValidatorFixtures.PlainCustomer"/>'s exact shape (Id:int, Code:string,
+    /// Status:string) instead of the Order/Product fixtures those tests hand-write locally.
+    /// </summary>
+    private static (string Path, string Code)[] SupportingSources()
+    {
+        const string models = """
+namespace Acme.Models;
+
+public class Customer
+{
+    public int Id { get; set; }
+    public string Code { get; set; } = "";
+    public string Status { get; set; } = "";
+}
+""";
+
+        return
+        [
+            ("Validation/ValidationContext.cs", ValidationContextTemplate.Source("Acme")),
+            ("Validation/IValidator.cs", ValidatorTemplate.ValidatorInterface("Acme")),
+            ("Validation/IEntityLookup.cs", ValidatorTemplate.EntityLookupInterface("Acme")),
+            ("Validation/ValidationPipeline.cs", ValidationPipelineTemplate.Source("Acme")),
+            ("Validation/Permissions.cs", PermissionsTemplate.Source("Acme", [], login: false)),
+            ("Validation/StoreEntityLookup.cs", LookupStub),
+            ("Models/Customer.cs", models),
+            ("Validation/CustomerValidator.Custom.cs", ValidatorTemplate.CustomStub("Acme", "Customer")),
+        ];
+    }
+
     /// <summary>The rule names inference can record, each with a value its emitter would read.</summary>
     private static readonly (string Name, PropertyRule Rule)[] EveryRuleKind =
     [
@@ -86,6 +165,8 @@ public class ValidatorEmitsEveryRuleKindTests
         ("scale", new PropertyRule { Name = "scale", Scale = 2 }),
         ("mindate", new PropertyRule { Name = "mindate", MinDate = "1753-01-01" }),
         ("dateonly", new PropertyRule { Name = "dateonly" }),
+        ("allowedvalues", new PropertyRule { Name = "allowedvalues", AllowedValues = ["Draft", "Posted"] }),
+        ("pattern", new PropertyRule { Name = "pattern", RegexPattern = "^[0-9]+$", CustomRule = "number" }),
     ];
 
     /// <summary>The five types DomainModelMapper maps a column to.</summary>
@@ -221,10 +302,11 @@ public class Order
             ("Validation/IValidator.cs", ValidatorTemplate.ValidatorInterface("Acme")),
             ("Validation/IEntityLookup.cs", ValidatorTemplate.EntityLookupInterface("Acme")),
             ("Validation/ValidationPipeline.cs", ValidationPipelineTemplate.Source("Acme")),
-            ("Validation/Permissions.cs", PermissionsTemplate.Source("Acme", [])),
+            ("Validation/Permissions.cs", PermissionsTemplate.Source("Acme", [], login: false)),
             ("Validation/StoreEntityLookup.cs", LookupStub),
             ("Models/Order.cs", models),
-            ("Validation/OrderValidator.Generated.cs", ValidatorTemplate.Generated("Acme", definition, [])),
+            ("Validation/OrderValidator.Generated.cs",
+                ValidatorTemplate.Generated("Acme", definition, [], referencesRequired: false)),
             ("Validation/OrderValidator.Custom.cs", ValidatorTemplate.CustomStub("Acme", definition.Name)),
         });
 
@@ -266,6 +348,9 @@ public sealed class StoreEntityLookup : IEntityLookup
 
     public int CountReferencing<TEntity>(string foreignKeyProperty, int id)
         where TEntity : class, new() => 0;
+
+    public bool AnyOtherWith<TEntity>(string propertyName, object? value, int exceptId)
+        where TEntity : class, new() => false;
 }
 """;
 
@@ -322,10 +407,11 @@ public class Product
             ("Validation/IValidator.cs", ValidatorTemplate.ValidatorInterface("Acme")),
             ("Validation/IEntityLookup.cs", ValidatorTemplate.EntityLookupInterface("Acme")),
             ("Validation/ValidationPipeline.cs", ValidationPipelineTemplate.Source("Acme")),
-            ("Validation/Permissions.cs", PermissionsTemplate.Source("Acme", [])),
+            ("Validation/Permissions.cs", PermissionsTemplate.Source("Acme", [], login: false)),
             ("Validation/StoreEntityLookup.cs", LookupStub),
             ("Models/Product.cs", models),
-            ("Validation/ProductValidator.Generated.cs", ValidatorTemplate.Generated("Acme", definition, [])),
+            ("Validation/ProductValidator.Generated.cs",
+                ValidatorTemplate.Generated("Acme", definition, [], referencesRequired: false)),
             ("Validation/ProductValidator.Custom.cs", ValidatorTemplate.CustomStub("Acme", definition.Name)),
         });
 
@@ -344,6 +430,6 @@ public class Product
         property.Rules.Add(rule);
         definition.Properties.Add(property);
 
-        return ValidatorTemplate.Generated("Acme", definition, []);
+        return ValidatorTemplate.Generated("Acme", definition, [], referencesRequired: false);
     }
 }

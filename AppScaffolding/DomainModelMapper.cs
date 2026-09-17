@@ -124,7 +124,8 @@ public static class DomainModelMapper
                 {
                     Name = field.Name,
                     Type = field.Type,
-                    Facts = field.Facts
+                    Facts = field.Facts,
+                    Proposals = [.. field.Proposals]
                 });
 
             classes.Add(definition);
@@ -276,6 +277,17 @@ public static class DomainModelMapper
         {
             property.Attributes.Add("Key");
             return true;
+        }
+
+        // Accepted proposals first, so a rule the user picked is recorded whatever the declared
+        // type then adds. They are separate registers: a maxlength from an nvarchar(50) and an
+        // allowed-values from a scan are both true of the same column.
+        foreach (var proposal in property.Proposals)
+        {
+            if (!proposal.Accepted)
+                continue;
+
+            property.Rules.Add(proposal.Rule);
         }
 
         var facts = property.Facts;
