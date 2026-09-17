@@ -406,13 +406,30 @@ internal sealed class NullValidator<T> : IValidator<T>
         // named `errors` of type List<string> — so this stage renames its OWN List<ValidationError>
         // parameter to `pipelineErrors`, giving `errors` back to the rules unchanged, and rewrites
         // `this.` to `item.` on the accumulated text: a static stage method has no `this`.
-        var businessSource = new StringBuilder();
-        var businessCtx = new ValidationEmitContext(businessSource, definition.Properties);
+        //
+        // Each rule gets its OWN StringBuilder/ValidationEmitContext and its OWN try/catch, exactly
+        // like every sibling stage's entityBlocks: ComparisonRule/EitherOrRule/SameAsRule/
+        // ArithmeticRule/RequiredWhenRule all declare locals (__l, __r, __a, __b, __t, __c, ...) at
+        // the top level of whatever scope Emit runs in, with no braces of their own. Two rules of
+        // the same kind sharing one flat scope would redeclare the same local twice -- CS0128 -- so
+        // collecting every rule into a single shared StringBuilder (as this used to) compiles only
+        // by accident, for exactly as long as no generated app carries more than one business rule.
+        var businessBlocks = new List<string>();
 
         foreach (var rule in businessRules)
-            rule.Emit(businessCtx);
+        {
+            var ruleSource = new StringBuilder();
+            var ruleCtx = new ValidationEmitContext(ruleSource, definition.Properties);
+            rule.Emit(ruleCtx);
 
-        var businessBody = businessSource.ToString().Replace("this.", "item.");
+            var ruleText = ruleSource.ToString();
+            if (ruleText.Length == 0)
+                continue;
+
+            businessBlocks.Add(WrapBusinessRule(ruleText));
+        }
+
+        var businessBody = string.Join("\n\n", businessBlocks).Replace("this.", "item.");
 
         var businessStage = businessBody.Length == 0
             ? string.Empty
@@ -662,6 +679,23 @@ public sealed partial class {{className}}Validator
     {
         var indented = string.Join("\n", checks.Select(line => "            " + line));
         return "        try\n        {\n" + indented + "\n        }\n        catch (Exception) { }";
+    }
+
+    /// <summary>Wraps one business rule's ALREADY-INDENTED <see cref="ValidationEmitContext.Line"/>
+    /// output in its own try/catch, exactly as <see cref="Block"/> does for one property or
+    /// relationship.</summary>
+    /// <remarks>
+    /// Deliberately not <see cref="Block"/> itself: <see cref="Block"/> re-indents each raw,
+    /// unindented check line by 12 spaces, which is right for <c>entityBlocks</c>'s callers but
+    /// would double-indent text <see cref="ValidationEmitContext.Line"/> has already indented by
+    /// 12 spaces itself.
+    /// </remarks>
+    private static string WrapBusinessRule(string emittedLines)
+    {
+        if (emittedLines.Length == 0)
+            return string.Empty;
+
+        return "        try\n        {\n" + emittedLines.TrimEnd('\n') + "\n        }\n        catch (Exception) { }";
     }
 
     /// <summary>The checks for one property, from the rules DomainModelMapper recorded. A
