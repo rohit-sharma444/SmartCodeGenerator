@@ -1,4 +1,6 @@
-﻿namespace CodeGenerationEngine.Models;
+﻿using CodeGenerationEngine.Core.Validation;
+
+namespace CodeGenerationEngine.Models;
 
 public class ClassDefinition
 {
@@ -13,4 +15,9 @@ public class ClassDefinition
     /// default, so an attribute like <c>[JsonIgnore]</c> would otherwise not resolve.
     /// </summary>
     public List<string> Usings { get; set; } = [];
+
+    /// <summary>Rules spanning more than one property — hand-stated via `add business
+    /// validation`, or accepted from a Cross-Field/Calculation proposal. Reaches the Business
+    /// stage in the emitted validator.</summary>
+    public List<IValidationRule> BusinessRules { get; set; } = [];
 }

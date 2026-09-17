@@ -519,7 +519,8 @@ public sealed class AppScaffolder
                         rootNamespace, definition, ForeignKeys.TargetsOf(definition, classNameSet),
                         referencesRequired: roles.RoleOf(definition.Name)
                             is EntityRole.Transaction or EntityRole.DocumentLine,
-                        referencedBy: ForeignKeys.ReferencesTo(definition.Name, classes))));
+                        referencedBy: ForeignKeys.ReferencesTo(definition.Name, classes),
+                        businessRules: definition.BusinessRules)));
         }
 
         // Target-specific front-end / entry point.
