@@ -89,6 +89,12 @@ public sealed class CandidateEntity
     /// <see cref="Enrichment.EntityShaper"/> never assigned a Role to.
     /// </summary>
     public EntityRole Role { get; set; }
+
+    /// <summary>
+    /// Cross-Field and Calculation rules the scan found hold in every row, offered to the user
+    /// unaccepted — the entity-level mirror of <see cref="CandidateField.Proposals"/>.
+    /// </summary>
+    public List<CodeGenerationEngine.Models.EntityRuleProposal> Proposals { get; } = new();
 }
 
 public sealed class CandidateDomainModel
