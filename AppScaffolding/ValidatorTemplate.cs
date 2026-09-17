@@ -1,4 +1,6 @@
-﻿using System.Text.RegularExpressions;
+﻿using System.Text;
+using System.Text.RegularExpressions;
+using CodeGenerationEngine.Core.Validation;
 using CodeGenerationEngine.Models;
 
 namespace AppScaffolding;
@@ -279,9 +281,11 @@ internal sealed class NullValidator<T> : IValidator<T>
     public static string Generated(
         string rootNamespace, ClassDefinition definition, IReadOnlyList<string> foreignKeyTargets,
         bool referencesRequired,
-        IReadOnlyList<(string Entity, string Property)>? referencedBy = null)
+        IReadOnlyList<(string Entity, string Property)>? referencedBy = null,
+        IReadOnlyList<IValidationRule>? businessRules = null)
     {
         referencedBy ??= Array.Empty<(string Entity, string Property)>();
+        businessRules ??= Array.Empty<IValidationRule>();
 
         var blocks = new List<string>();
 
@@ -395,6 +399,46 @@ internal sealed class NullValidator<T> : IValidator<T>
             ? "        Security,\n        Field,"
             : "        Security,\n        Field,\n        Entity,";
 
+        // Business runs last: a rule stated across more than one field, hand-typed via
+        // `add business validation` or accepted from a Cross-Field/Calculation proposal, should
+        // trust that Entity has already passed. Emit(ValidationEmitContext) is the OLDER
+        // generate-validator command's shape — a literal `this.Property` and a literal local
+        // named `errors` of type List<string> — so this stage renames its OWN List<ValidationError>
+        // parameter to `pipelineErrors`, giving `errors` back to the rules unchanged, and rewrites
+        // `this.` to `item.` on the accumulated text: a static stage method has no `this`.
+        var businessSource = new StringBuilder();
+        var businessCtx = new ValidationEmitContext(businessSource, definition.Properties);
+
+        foreach (var rule in businessRules)
+            rule.Emit(businessCtx);
+
+        var businessBody = businessSource.ToString().Replace("this.", "item.");
+
+        var businessStage = businessBody.Length == 0
+            ? string.Empty
+            : $$"""
+
+
+    /// <summary>What no single property or foreign key can judge: a rule spanning more than one
+    /// field, either typed by hand or accepted from a proposal the data supported. Runs last,
+    /// after Entity has already passed.</summary>
+    private static void Business(ValidationContext<{{definition.Name}}> context, List<ValidationError> pipelineErrors)
+    {
+        var item = context.Item;
+        if (item is null)
+            return;
+
+        var errors = new List<string>();
+
+{{businessBody}}
+        foreach (var m in errors)
+            pipelineErrors.Add(new ValidationError(null, m));
+    }
+""";
+
+        if (businessBody.Length > 0)
+            stageList += "\n        Business,";
+
         return $$"""
 using System;
 using System.Collections.Generic;
@@ -449,7 +493,7 @@ public sealed partial class {{definition.Name}}Validator : IValidator<{{definiti
 
         ValidateCustom(item, errors);
     }
-{{entityStage}}
+{{entityStage}}{{businessStage}}
     /// <summary>Hand-written rules, implemented in {{definition.Name}}Validator.Custom.cs.</summary>
     private static partial void ValidateCustom({{definition.Name}} item, List<ValidationError> errors);
 }
