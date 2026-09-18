@@ -614,6 +614,7 @@ else
     private readonly IStore<TRecord> _store = StoreFactory.Create<TRecord>();
 
     private TRecord _draft = new();
+{{StoredField(validation)}}
     private IReadOnlyList<ILineSet> _lines = [];
     private string _openedAs = string.Empty;
     private string _status = string.Empty;
@@ -716,7 +717,7 @@ else
         }
 
         _draft = stored is null ? new TRecord() : ScreenFields.Clone(stored);
-        _openedAs = ScreenFields.Snapshot(_draft);
+{{StoredAssign(validation)}}        _openedAs = ScreenFields.Snapshot(_draft);
 
         _lines = Lines?.Invoke() ?? [];
 
@@ -884,6 +885,42 @@ else
 
               """
             : string.Empty;
+
+    /// <summary>
+    /// The field ValidateCall's Update path reads as ValidationContext.Stored, or nothing.
+    /// </summary>
+    /// <remarks>
+    /// Bundled with the validation call rather than declared unconditionally: with validation
+    /// off there is no stage left to read it, and an unread field is a warning under
+    /// -warnaserror -- the same reason <c>_validator</c> itself is conditional everywhere else
+    /// in this file.
+    /// </remarks>
+    private static string StoredField(bool validation)
+        => validation
+            ? """
+
+                  /// <summary>What is on disk right now, for Save below to hand the validator
+                  /// as ValidationContext.Stored -- null for a new record, and otherwise the
+                  /// exact instance Load read from the store, before _draft cloned it. Re-read
+                  /// every time Load runs: this component is REUSED as the URL moves from one
+                  /// record to another. A stage that compares against what was there before an
+                  /// edit (a status transition, an immutable field) has nothing to compare
+                  /// against without this.</summary>
+                  private TRecord? _stored;
+
+              """
+            : string.Empty;
+
+    /// <summary>
+    /// Sets <c>_stored</c> from Load's own local, or nothing when there is no field to set.
+    /// </summary>
+    /// <remarks>
+    /// \r\n explicitly: this is a quoted string, not a raw literal lifted from CRLF source
+    /// text, so a plain \n here would be the one LF-only line in an otherwise all-CRLF emitted
+    /// file -- exactly what <c>ClaimsUsing</c> above already avoids the same way.
+    /// </remarks>
+    private static string StoredAssign(bool validation)
+        => validation ? "        _stored = stored;\r\n" : string.Empty;
 
     /// <summary>The claims namespace the login variant reads the acting role from.</summary>
     /// <remarks>
@@ -1063,6 +1100,15 @@ else
     /// The failing properties are kept, not just the first sentence: <c>CssFor</c> marks each
     /// input the outcome named, and the status line still says what was wrong first.
     /// </para>
+    /// <para>
+    /// <c>Stored</c> is threaded through too, the same way the acting user is: it used to be
+    /// <c>default</c> here, which left every Workflow-stage check silently unreachable on this
+    /// path -- <c>if (stored is not null)</c> never ran, so a Blazor Save let ANY status
+    /// transition through, including one the same validator refuses on the console and on
+    /// <c>Repository.Update</c>, which already reads it correctly (<c>GetById(GetId(item))</c>
+    /// before validating). Found running a real generated Blazor app for validation-phase-5's
+    /// task 8, alongside the identical desktop gap in <c>RecordEditorTemplate</c>.
+    /// </para>
     /// </remarks>
     private static string ValidateCall(bool validation, bool login)
     {
@@ -1102,7 +1148,7 @@ else
 
                       var context = new ValidationContext<TRecord>(
                           _draft, IsNew ? ValidationOperation.Insert : ValidationOperation.Update,
-                          default, new StoreEntityLookup(), {{role}}, null);
+                          _stored, new StoreEntityLookup(), {{role}}, null);
 
                       var outcome = ValidatorFactory.Create<TRecord>().Validate(context);
 

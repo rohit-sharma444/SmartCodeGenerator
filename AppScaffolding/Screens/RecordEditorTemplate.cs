@@ -32,12 +32,26 @@ public static class RecordEditorTemplate
             """
             : string.Empty;
 
+        // Bundled with the validator field, not declared unconditionally: with validation off
+        // there is no stage left to read it, and an unread field is a warning under -warnaserror.
         var validatorField = validation
             ? """
                 private readonly IValidator<T> _validator = ValidatorFactory.Create<T>();
 
+                /// <summary>What is on disk right now, for Save below to hand the validator as
+                /// ValidationContext.Stored -- null for a new record, and otherwise the exact
+                /// instance the store's own list holds, captured before Draft clones it. A stage
+                /// that compares against what was there before an edit (a status transition, an
+                /// immutable field) has nothing to compare against without this.</summary>
+                private readonly T? _stored;
+
             """
             : string.Empty;
+
+        // \r\n explicitly: this is a quoted string, not a raw literal lifted from CRLF source
+        // text, so a plain \n here would be the one LF-only line in an otherwise all-CRLF emitted
+        // file -- exactly the mixed-line-ending trap EmittedLineEndingTests exists to catch.
+        var storedAssign = validation ? "        _stored = record;\r\n" : string.Empty;
 
         // Two blank lines before the closing delimiter, so the fragment ends with the blank line
         // that separates the guard from the body.
@@ -54,6 +68,17 @@ public static class RecordEditorTemplate
         // null role in a login app; after that fix a null role here means this editor can never
         // save for ANYONE, in ANY login app -- found running a real generated app for
         // validation-phase-3's task 15.
+        //
+        // Stored is threaded through too, the same way: RepositoryTemplate's Update reads it from
+        // the store first ("that is the whole point of the Stored field... a status transition is
+        // inexpressible without it") and MasterScreenTemplate's Delete already passes the record it
+        // has. This editor has the identical thing available -- _stored, captured below before
+        // Draft is cloned from it -- and passing `default` here left every Workflow-stage check
+        // silently unreachable on this path: `if (stored is not null)` never ran, so a desktop Save
+        // let ANY status transition through, including one the same validator refuses on the
+        // console and on Blazor's Repository.Update. Found running a real generated WPF app for
+        // validation-phase-5's task 8: Draft -> Shipped, Approved -> Draft (backward) and a save off
+        // Cancelled all reported "Saved." with this bug in place.
         var validateCall = validation
             ? """
                     // This path writes through _store, not Repository, so it has to run the pipeline
@@ -63,7 +88,7 @@ public static class RecordEditorTemplate
 
                     var context = new ValidationContext<T>(
                         Draft, IsNew ? ValidationOperation.Insert : ValidationOperation.Update,
-                        default, new StoreEntityLookup(), ActingUser.Role(), ActingUser.Id());
+                        _stored, new StoreEntityLookup(), ActingUser.Role(), ActingUser.Id());
 
                     var outcome = _validator.Validate(context);
 
@@ -154,7 +179,7 @@ public sealed class RecordEditorViewModel<T> : ObservableObject, IRecordEditor w
     public RecordEditorViewModel(T? record, bool isNew, IReadOnlyList<ILineSet>? lines = null)
     {
         IsNew = isNew;
-        Draft = record is null ? new T() : Clone(record);
+{{storedAssign}}        Draft = record is null ? new T() : Clone(record);
         Lines = lines ?? [];
 
         _openedAs = Snapshot(Draft);
