@@ -34,6 +34,8 @@ internal static class ReviewHints
         "  why [name]                  explain what discovery decided",
         "  rules                       the rules your data supports",
         "  accept <n>|all              apply a proposed rule",
+        "  order status <v1,v2,...> in <Class>   state a status column's transition order",
+        "  final status <v1,v2,...> in <Class>   mark one or more values as final",
     ];
 
     /// <summary>Whether <paramref name="input"/> is asking for the full list.</summary>

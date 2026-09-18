@@ -415,6 +415,7 @@
             finals.Remove(value);
 
         proposal.FinalValues = finals;
+        proposal.Order ??= proposal.Rule.AllowedValues.ToList();
         Session.ModelEdited();
     }
 }

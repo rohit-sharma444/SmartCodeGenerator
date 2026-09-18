@@ -37,8 +37,8 @@ public sealed class WorkflowRule : IValidationRule
             return;
         }
 
-        var orderLiteral = string.Join(", ", _order.Select(v => $"\"{v}\""));
-        var finalLiteral = string.Join(", ", _finalValues.Select(v => $"\"{v}\""));
+        var orderLiteral = string.Join(", ", _order.Select(v => "@\"" + v.Replace("\"", "\"\"") + "\""));
+        var finalLiteral = string.Join(", ", _finalValues.Select(v => "@\"" + v.Replace("\"", "\"\"") + "\""));
 
         ctx.Line("if (stored is not null)");
         ctx.Line("{");

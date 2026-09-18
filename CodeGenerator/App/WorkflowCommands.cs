@@ -45,7 +45,14 @@ internal static class WorkflowCommands
             finals.Add(value);
         proposal.FinalValues = finals;
 
-        return $"{string.Join(", ", stated)} marked as final for {className}.Status.";
+        var message = $"{string.Join(", ", stated)} marked as final for {className}.Status.";
+        if (proposal.Order is null)
+        {
+            message += $" No order stated yet -- run 'order status <values> in {className}'"
+                + " or nothing will be enforced.";
+        }
+
+        return message;
     }
 
     private static (RuleProposal? Proposal, string? Error) FindTheOneAcceptedStatusProposal(

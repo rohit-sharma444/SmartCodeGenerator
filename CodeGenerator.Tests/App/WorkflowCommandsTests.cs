@@ -74,12 +74,39 @@ public class WorkflowCommandsTests
     public void Final_status_marks_one_or_more_values()
     {
         var model = ModelWithAnAcceptedStatusProposal();
+        WorkflowCommands.OrderStatus(model, "Order", "Draft,Approved,Shipped");
 
         var result = WorkflowCommands.FinalStatus(model, "Order", "Shipped");
 
         var proposal = model.Entities.Single().Fields.Single().Proposals.Single();
         Assert.Contains("Shipped", proposal.FinalValues);
         StringAssert.Contains(result, "marked as final");
+    }
+
+    [TestMethod]
+    public void Final_status_does_not_warn_when_an_order_was_already_stated()
+    {
+        var model = ModelWithAnAcceptedStatusProposal();
+        WorkflowCommands.OrderStatus(model, "Order", "Draft,Approved,Shipped");
+
+        var result = WorkflowCommands.FinalStatus(model, "Order", "Shipped");
+
+        Assert.DoesNotContain("No order stated", result);
+    }
+
+    [TestMethod]
+    public void Final_status_warns_when_no_order_has_been_stated_yet()
+    {
+        var model = ModelWithAnAcceptedStatusProposal();
+
+        var result = WorkflowCommands.FinalStatus(model, "Order", "Shipped");
+
+        var proposal = model.Entities.Single().Fields.Single().Proposals.Single();
+        Assert.Contains("Shipped", proposal.FinalValues);
+        Assert.IsNull(proposal.Order);
+        StringAssert.Contains(result, "marked as final");
+        StringAssert.Contains(result, "No order stated yet");
+        StringAssert.Contains(result, "order status");
     }
 
     [TestMethod]

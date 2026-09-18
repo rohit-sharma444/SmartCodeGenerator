@@ -544,6 +544,50 @@ public class ReviewStageTests
         Assert.Contains("Shipped", proposal.FinalValues);
     }
 
+    /// <summary>Ticking `final` before anyone has explicitly stated an order must arm the
+    /// displayed (discovered) order, so the checkbox's implicit promise -- "this order is in
+    /// effect" -- becomes true instead of enforcing nothing.</summary>
+    [TestMethod]
+    public void Checking_final_without_a_stated_order_arms_the_discovered_order()
+    {
+        using var context = new BunitContext();
+        var model = AModelWithAnAcceptedStatusProposal();
+        var session = SessionWith(model);
+        var rendered = context.Render<ReviewStage>(p => p
+            .Add(c => c.Session, session)
+            .Add(c => c.Navigation, new StageNavigation())
+            .Add(c => c.OnAdvance, () => { }));
+
+        var proposal = model.Entities.Single(e => e.Name == "Order").Fields.Single().Proposals.Single();
+        Assert.IsNull(proposal.Order);
+
+        rendered.Find("[data-entity=Order] .workflow-order li:last-child input.final").Change(true);
+
+        Assert.IsNotNull(proposal.Order);
+        CollectionAssert.AreEqual(new[] { "Draft", "Approved", "Shipped" }, proposal.Order?.ToArray());
+    }
+
+    /// <summary>When an order was already stated explicitly (via the up/down controls), ticking
+    /// `final` must not clobber it -- `proposal.Order ??= ...` is a no-op once Order is set.
+    /// </summary>
+    [TestMethod]
+    public void Checking_final_after_the_order_was_already_stated_does_not_override_it()
+    {
+        using var context = new BunitContext();
+        var model = AModelWithAnAcceptedStatusProposal();
+        var session = SessionWith(model);
+        var rendered = context.Render<ReviewStage>(p => p
+            .Add(c => c.Session, session)
+            .Add(c => c.Navigation, new StageNavigation())
+            .Add(c => c.OnAdvance, () => { }));
+
+        rendered.Find("[data-entity=Order] .workflow-order li:first-child button.move-down").Click();
+        rendered.Find("[data-entity=Order] .workflow-order li:last-child input.final").Change(true);
+
+        var proposal = model.Entities.Single(e => e.Name == "Order").Fields.Single().Proposals.Single();
+        CollectionAssert.AreEqual(new[] { "Approved", "Draft", "Shipped" }, proposal.Order?.ToArray());
+    }
+
     private static IRenderedComponent<ReviewStage> Render(
         BunitContext context, out BuildSession session, StageNavigation? navigation = null)
     {
