@@ -226,10 +226,24 @@ by re-running the full suite (4313/4313, no regression) and by re-running the li
   stage's `else if` (final-value refusal) to take priority over the backward-move check when both
   are true, so the more specific message surfaces even when the final status is also the last
   value in the stated order. Not fixed here — out of this task's "small, obvious" bar.
-- `ViewModelTemplates.cs`'s `EntityViewModel<T>.SaveCommand` (a different, non-Master screen type)
-  has the identical-looking `default` for `Stored` at its own `Update` call — but unlike the two
-  fixes above, that screen edits records **in place** in an `ObservableCollection` with no
-  separate clone, so there is no already-available "before" value to pass, and supplying one
-  correctly would need re-reading the original from the store before the in-place edit — a
-  different, larger change than a plain "use what's already there." Not touched; flagged for the
-  controller.
+- **`ViewModelTemplates.cs`'s `EntityViewModel<T>.SaveCommand` has the identical `default` for
+  `Stored` — and this is not a minor edge case: it is the desktop screen type EVERY layout except
+  `AppLayout.Business` uses for EVERY entity.** `MainViewModelTemplate.Screen` emits
+  `EntityViewModel<T>` whenever `roles is null` (falling back to `MasterScreenViewModel`/
+  `TransactionScreenViewModel` — which route through the now-fixed `RecordEditorViewModel` — only
+  when `roles` is supplied). Both `WpfTarget.cs` and `WinFormsTarget.cs` set
+  `screenRoles = customization.EffectiveLayout == AppLayout.Business ? roles ?? EntityRoleMap.Empty
+  : null` — so `roles` is `null`, and `EntityViewModel<T>` is what gets emitted, for all four of
+  `Tabs`, `Sidebar`, `MasterDetail` and `Dashboard`. **Concretely: today, a WPF or WinForms app
+  generated with any layout other than Business ignores every Workflow rule on Save, silently,
+  on every entity** — the exact defect this task found and fixed, still live on 4 of 5 desktop
+  layouts. (The app this task built and clicked through used `Business`, via `MasterScreenViewModel`,
+  which is why the fix and the live verification above are both real — they just do not reach this
+  other, larger surface.)
+
+  Unlike the two fixes above, `EntityViewModel<T>`'s screen edits records **in place** in an
+  `ObservableCollection` with no separate clone, so there is no already-available "before" value to
+  pass — supplying one correctly needs re-reading the original from the store before the in-place
+  edit, a different, larger change than "use what's already there." Not fixed here — the controller
+  has ruled it out of Task 8's scope, which needs a materially bigger change than this task's other,
+  small and obvious fixes. Flagged for a follow-up task.
