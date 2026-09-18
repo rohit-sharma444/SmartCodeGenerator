@@ -477,6 +477,73 @@ public class ReviewStageTests
         Assert.IsTrue(model.Entities.Single(e => e.Name == "Booking").Proposals[0].Accepted);
     }
 
+    private static CandidateDomainModel AModelWithAnAcceptedStatusProposal()
+    {
+        var model = AModel();
+        var order = new CandidateEntity { Name = "Order" };
+        var status = new CandidateField { Name = "Status", Type = "string" };
+        status.Proposals.Add(new RuleProposal
+        {
+            Kind = RuleProposalKind.Status,
+            Rule = new PropertyRule { PropertyName = "Status", Name = "allowedvalues", AllowedValues = ["Draft", "Approved", "Shipped"] },
+            Evidence = "Status holds only Draft, Approved, Shipped",
+            Accepted = true
+        });
+        order.Fields.Add(status);
+        model.Entities.Add(order);
+        return model;
+    }
+
+    [TestMethod]
+    public void Shows_the_transition_editor_once_a_status_is_accepted()
+    {
+        using var context = new BunitContext();
+        var session = SessionWith(AModelWithAnAcceptedStatusProposal());
+        var rendered = context.Render<ReviewStage>(p => p
+            .Add(c => c.Session, session)
+            .Add(c => c.Navigation, new StageNavigation())
+            .Add(c => c.OnAdvance, () => { }));
+
+        var items = rendered.FindAll("[data-entity=Order] .workflow-order li");
+        Assert.HasCount(3, items);
+        StringAssert.Contains(rendered.Markup, "Draft");
+    }
+
+    [TestMethod]
+    public void Moving_a_value_down_changes_its_stated_order()
+    {
+        using var context = new BunitContext();
+        var model = AModelWithAnAcceptedStatusProposal();
+        var session = SessionWith(model);
+        var rendered = context.Render<ReviewStage>(p => p
+            .Add(c => c.Session, session)
+            .Add(c => c.Navigation, new StageNavigation())
+            .Add(c => c.OnAdvance, () => { }));
+
+        rendered.Find("[data-entity=Order] .workflow-order li:first-child button.move-down").Click();
+
+        var proposal = model.Entities.Single(e => e.Name == "Order").Fields.Single().Proposals.Single();
+        Assert.AreEqual("Approved", proposal.Order?[0]);
+        Assert.AreEqual("Draft", proposal.Order?[1]);
+    }
+
+    [TestMethod]
+    public void Checking_final_marks_that_value()
+    {
+        using var context = new BunitContext();
+        var model = AModelWithAnAcceptedStatusProposal();
+        var session = SessionWith(model);
+        var rendered = context.Render<ReviewStage>(p => p
+            .Add(c => c.Session, session)
+            .Add(c => c.Navigation, new StageNavigation())
+            .Add(c => c.OnAdvance, () => { }));
+
+        rendered.Find("[data-entity=Order] .workflow-order li:last-child input.final").Change(true);
+
+        var proposal = model.Entities.Single(e => e.Name == "Order").Fields.Single().Proposals.Single();
+        Assert.IsTrue(proposal.FinalValues.Contains("Shipped"));
+    }
+
     private static IRenderedComponent<ReviewStage> Render(
         BunitContext context, out BuildSession session, StageNavigation? navigation = null)
     {
