@@ -63,6 +63,27 @@ public class ProposalReportTests
     private static IEnumerable<RuleProposal> EveryProposal(CandidateDomainModel model) =>
         model.Entities.SelectMany(e => e.Fields).SelectMany(f => f.Proposals);
 
+    /// <summary>An Order entity with one field proposal and one entity-scoped proposal.</summary>
+    private static CandidateDomainModel ModelWithAnEntityScopedProposal()
+    {
+        var model = new CandidateDomainModel();
+        var booking = new CandidateEntity { Name = "Booking" };
+        booking.Fields.Add(new CandidateField { Name = "StartDate", Type = "DateTime" });
+        booking.Fields.Add(new CandidateField { Name = "EndDate", Type = "DateTime" });
+
+        booking.Proposals.Add(new EntityRuleProposal
+        {
+            Kind = EntityRuleProposalKind.CrossField,
+            Properties = ["StartDate", "EndDate"],
+            Rule = new CodeGenerationEngine.Core.Validation.Rules.ComparisonRule(
+                "StartDate", "EndDate", "> 0", "StartDate must not be after EndDate"),
+            Evidence = "StartDate is always on or before EndDate, in all 40 rows"
+        });
+
+        model.Entities.Add(booking);
+        return model;
+    }
+
     [TestMethod]
     public void A_model_with_no_proposals_says_nothing()
     {
@@ -137,5 +158,27 @@ public class ProposalReportTests
         Assert.IsFalse(
             classes.SelectMany(c => c.Properties).SelectMany(p => p.Rules)
                 .Any(r => r.Name is "allowedvalues" or "unique" or "pattern"));
+    }
+
+    [TestMethod]
+    public void An_entity_scoped_proposal_is_numbered_alongside_field_proposals()
+    {
+        var model = ModelWithAnEntityScopedProposal();
+
+        var lines = ProposalReport.Lines(model);
+
+        Assert.IsTrue(lines.Any(l => l.Contains("1.") && l.Contains("Booking")
+            && l.Contains("StartDate is always on or before EndDate")));
+    }
+
+    [TestMethod]
+    public void Accepting_an_entity_scoped_proposal_by_number_takes_it()
+    {
+        var model = ModelWithAnEntityScopedProposal();
+
+        var result = ProposalReport.Accept(model, "1");
+
+        Assert.IsTrue(model.Entities.Single().Proposals[0].Accepted);
+        StringAssert.Contains(result, "Accepted");
     }
 }

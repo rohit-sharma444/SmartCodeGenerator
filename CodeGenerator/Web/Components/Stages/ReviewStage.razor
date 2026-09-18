@@ -101,6 +101,20 @@
                     }
                 </ul>
 
+                <ul class="entity-proposals">
+                    @foreach (var proposal in entity.Proposals.ToList())
+                    {
+                        <li>
+                            <label class="proposal-row">
+                                <input type="checkbox" class="proposal"
+                                       checked="@proposal.Accepted"
+                                       @onchange="e => Decide(proposal, e.Value)" />
+                                <span class="proposal-evidence">@proposal.Evidence</span>
+                            </label>
+                        </li>
+                    }
+                </ul>
+
                 <div class="add-field-row">
                     <input class="field-name" placeholder="new field"
                            @onchange="e => _newField = e.Value?.ToString() ?? string.Empty" />
@@ -337,6 +351,14 @@
     /// and a closed tab loses work that was never saved.
     /// </remarks>
     private void Decide(RuleProposal proposal, object? value)
+    {
+        proposal.Accepted = value is true || (value is string text && bool.TryParse(text, out var on) && on);
+        Session.ModelEdited();
+    }
+
+    /// <summary>Takes or drops one proposed entity-scoped rule. Mirrors <see cref="Decide(RuleProposal, object?)"/>
+    /// exactly — see its own remarks.</summary>
+    private void Decide(EntityRuleProposal proposal, object? value)
     {
         proposal.Accepted = value is true || (value is string text && bool.TryParse(text, out var on) && on);
         Session.ModelEdited();

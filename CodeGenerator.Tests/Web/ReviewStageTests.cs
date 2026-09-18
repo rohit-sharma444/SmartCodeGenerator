@@ -1,6 +1,7 @@
 using AppScaffolding;
 using AppScaffolding.Targets;
 using Bunit;
+using CodeGenerationEngine.Models;
 using CodeGenerator.Web.Components.Stages;
 using CodeGenerator.Web.Workflow;
 using DomainDiscovery.Model;
@@ -425,6 +426,55 @@ public class ReviewStageTests
         rendered.Find("[data-entity=Book] .fields input.field-name").Change("Title");
 
         Assert.IsEmpty(rendered.FindAll(".edit-report"));
+    }
+
+    private static CandidateDomainModel AModelWithAnEntityProposal()
+    {
+        var model = AModel();
+        var booking = new CandidateEntity { Name = "Booking" };
+        booking.Fields.Add(new CandidateField { Name = "StartDate", Type = "DateTime" });
+        booking.Fields.Add(new CandidateField { Name = "EndDate", Type = "DateTime" });
+        booking.Proposals.Add(new EntityRuleProposal
+        {
+            Kind = EntityRuleProposalKind.CrossField,
+            Properties = ["StartDate", "EndDate"],
+            Rule = new CodeGenerationEngine.Core.Validation.Rules.ComparisonRule(
+                "StartDate", "EndDate", "> 0", "StartDate must not be after EndDate"),
+            Evidence = "StartDate is always on or before EndDate, in all 40 rows"
+        });
+        model.Entities.Add(booking);
+        return model;
+    }
+
+    [TestMethod]
+    public void Shows_an_entity_scoped_proposal_as_an_unchecked_box()
+    {
+        using var context = new BunitContext();
+        var session = SessionWith(AModelWithAnEntityProposal());
+        var rendered = context.Render<ReviewStage>(p => p
+            .Add(c => c.Session, session)
+            .Add(c => c.Navigation, new StageNavigation())
+            .Add(c => c.OnAdvance, () => { }));
+
+        StringAssert.Contains(rendered.Markup, "StartDate is always on or before EndDate");
+        var checkbox = rendered.Find("[data-entity=Booking] .entity-proposals input.proposal");
+        Assert.IsFalse(checkbox.HasAttribute("checked"));
+    }
+
+    [TestMethod]
+    public void Checking_an_entity_scoped_proposal_accepts_it()
+    {
+        using var context = new BunitContext();
+        var model = AModelWithAnEntityProposal();
+        var session = SessionWith(model);
+        var rendered = context.Render<ReviewStage>(p => p
+            .Add(c => c.Session, session)
+            .Add(c => c.Navigation, new StageNavigation())
+            .Add(c => c.OnAdvance, () => { }));
+
+        rendered.Find("[data-entity=Booking] .entity-proposals input.proposal").Change(true);
+
+        Assert.IsTrue(model.Entities.Single(e => e.Name == "Booking").Proposals[0].Accepted);
     }
 
     private static IRenderedComponent<ReviewStage> Render(

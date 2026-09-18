@@ -94,6 +94,7 @@ public static class DataModelBuilder
         AddDeclaredRelationships(model, tables, entityNames);
         AddRelationships(model, entityNames);
         AddProposals(model, sources);
+        AddEntityProposals(model, sources);
         RecordNormalization(model, applied);
         return model;
     }
@@ -463,6 +464,22 @@ public static class DataModelBuilder
         }
     }
 
+    /// <summary>The Cross-Field and Calculation rules each entity's own rows support, attached
+    /// to the entity rather than one field. See <see cref="AddProposals"/> for why this runs
+    /// over the complete tables.</summary>
+    private static void AddEntityProposals(
+        CandidateDomainModel model, IReadOnlyDictionary<string, TabularTable> sources)
+    {
+        foreach (var entity in model.Entities)
+        {
+            if (!sources.TryGetValue(entity.Name, out var table))
+                continue;
+
+            foreach (var proposal in EntityRuleProposals.For(entity, table))
+                entity.Proposals.Add(proposal);
+        }
+    }
+
     /// <summary>
     /// The source column that became <paramref name="fieldName"/> on the entity built from
     /// <paramref name="table"/>, or null when no column produced it (a default field, or one
@@ -470,7 +487,7 @@ public static class DataModelBuilder
     /// been renamed off its class name by <see cref="ResolveColumns"/>, and this looks up the
     /// same recorded pair rather than guessing at one.
     /// </summary>
-    private static string? ColumnFor(TabularTable table, string fieldName)
+    internal static string? ColumnFor(TabularTable table, string fieldName)
     {
         foreach (var (column, field) in FieldNames(table))
             if (string.Equals(field, fieldName, StringComparison.OrdinalIgnoreCase))

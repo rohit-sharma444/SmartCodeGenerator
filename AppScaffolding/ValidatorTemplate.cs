@@ -1,4 +1,6 @@
-﻿using System.Text.RegularExpressions;
+﻿using System.Text;
+using System.Text.RegularExpressions;
+using CodeGenerationEngine.Core.Validation;
 using CodeGenerationEngine.Models;
 
 namespace AppScaffolding;
@@ -279,9 +281,11 @@ internal sealed class NullValidator<T> : IValidator<T>
     public static string Generated(
         string rootNamespace, ClassDefinition definition, IReadOnlyList<string> foreignKeyTargets,
         bool referencesRequired,
-        IReadOnlyList<(string Entity, string Property)>? referencedBy = null)
+        IReadOnlyList<(string Entity, string Property)>? referencedBy = null,
+        IReadOnlyList<IValidationRule>? businessRules = null)
     {
         referencedBy ??= Array.Empty<(string Entity, string Property)>();
+        businessRules ??= Array.Empty<IValidationRule>();
 
         var blocks = new List<string>();
 
@@ -395,6 +399,63 @@ internal sealed class NullValidator<T> : IValidator<T>
             ? "        Security,\n        Field,"
             : "        Security,\n        Field,\n        Entity,";
 
+        // Business runs last: a rule stated across more than one field, hand-typed via
+        // `add business validation` or accepted from a Cross-Field/Calculation proposal, should
+        // trust that Entity has already passed. Emit(ValidationEmitContext) is the OLDER
+        // generate-validator command's shape — a literal `this.Property` and a literal local
+        // named `errors` of type List<string> — so this stage renames its OWN List<ValidationError>
+        // parameter to `pipelineErrors`, giving `errors` back to the rules unchanged, and rewrites
+        // `this.` to `item.` on the accumulated text: a static stage method has no `this`.
+        //
+        // Each rule gets its OWN StringBuilder/ValidationEmitContext and its OWN try/catch, exactly
+        // like every sibling stage's entityBlocks: ComparisonRule/EitherOrRule/SameAsRule/
+        // ArithmeticRule/RequiredWhenRule all declare locals (__l, __r, __a, __b, __t, __c, ...) at
+        // the top level of whatever scope Emit runs in, with no braces of their own. Two rules of
+        // the same kind sharing one flat scope would redeclare the same local twice -- CS0128 -- so
+        // collecting every rule into a single shared StringBuilder (as this used to) compiles only
+        // by accident, for exactly as long as no generated app carries more than one business rule.
+        var businessBlocks = new List<string>();
+
+        foreach (var rule in businessRules)
+        {
+            var ruleSource = new StringBuilder();
+            var ruleCtx = new ValidationEmitContext(ruleSource, definition.Properties);
+            rule.Emit(ruleCtx);
+
+            var ruleText = ruleSource.ToString();
+            if (ruleText.Length == 0)
+                continue;
+
+            businessBlocks.Add(WrapBusinessRule(ruleText));
+        }
+
+        var businessBody = string.Join("\n\n", businessBlocks).Replace("this.", "item.");
+
+        var businessStage = businessBody.Length == 0
+            ? string.Empty
+            : $$"""
+
+
+    /// <summary>What no single property or foreign key can judge: a rule spanning more than one
+    /// field, either typed by hand or accepted from a proposal the data supported. Runs last,
+    /// after Entity has already passed.</summary>
+    private static void Business(ValidationContext<{{definition.Name}}> context, List<ValidationError> pipelineErrors)
+    {
+        var item = context.Item;
+        if (item is null)
+            return;
+
+        var errors = new List<string>();
+
+{{businessBody}}
+        foreach (var m in errors)
+            pipelineErrors.Add(new ValidationError(null, m));
+    }
+""";
+
+        if (businessBody.Length > 0)
+            stageList += "\n        Business,";
+
         return $$"""
 using System;
 using System.Collections.Generic;
@@ -449,7 +510,7 @@ public sealed partial class {{definition.Name}}Validator : IValidator<{{definiti
 
         ValidateCustom(item, errors);
     }
-{{entityStage}}
+{{entityStage}}{{businessStage}}
     /// <summary>Hand-written rules, implemented in {{definition.Name}}Validator.Custom.cs.</summary>
     private static partial void ValidateCustom({{definition.Name}} item, List<ValidationError> errors);
 }
@@ -618,6 +679,23 @@ public sealed partial class {{className}}Validator
     {
         var indented = string.Join("\n", checks.Select(line => "            " + line));
         return "        try\n        {\n" + indented + "\n        }\n        catch (Exception) { }";
+    }
+
+    /// <summary>Wraps one business rule's ALREADY-INDENTED <see cref="ValidationEmitContext.Line"/>
+    /// output in its own try/catch, exactly as <see cref="Block"/> does for one property or
+    /// relationship.</summary>
+    /// <remarks>
+    /// Deliberately not <see cref="Block"/> itself: <see cref="Block"/> re-indents each raw,
+    /// unindented check line by 12 spaces, which is right for <c>entityBlocks</c>'s callers but
+    /// would double-indent text <see cref="ValidationEmitContext.Line"/> has already indented by
+    /// 12 spaces itself.
+    /// </remarks>
+    private static string WrapBusinessRule(string emittedLines)
+    {
+        if (emittedLines.Length == 0)
+            return string.Empty;
+
+        return "        try\n        {\n" + emittedLines.TrimEnd('\n') + "\n        }\n        catch (Exception) { }";
     }
 
     /// <summary>The checks for one property, from the rules DomainModelMapper recorded. A

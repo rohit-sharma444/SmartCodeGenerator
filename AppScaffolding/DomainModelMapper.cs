@@ -1,4 +1,6 @@
-﻿using CodeGenerationEngine.Core.Relationships;
+﻿using CodeGenerationEngine.Core;
+using CodeGenerationEngine.Core.Relationships;
+using CodeGenerationEngine.Core.Validation;
 using CodeGenerationEngine.Models;
 using DomainDiscovery.Model;
 
@@ -134,6 +136,7 @@ public static class DomainModelMapper
         AddNavigationProperties(model, classes, names);
         AddAuditFields(classes);
         AddValidation(classes);
+        AddEntityValidation(classes, model, names);
 
         classNames = names;
         return classes;
@@ -255,6 +258,44 @@ public static class DomainModelMapper
 
             if (added && !definition.Usings.Contains(DataAnnotationsNamespace))
                 definition.Usings.Add(DataAnnotationsNamespace);
+        }
+    }
+
+    /// <summary>
+    /// Merges hand-stated business rules with accepted entity-scoped proposals onto the class
+    /// that matches each entity, so both reach the Business stage through the one list
+    /// ValidatorTemplate.Generated reads.
+    /// </summary>
+    /// <remarks>
+    /// The one shared seam both AppScaffolder and IncrementalScaffolder need: IncrementalScaffolder
+    /// never calls ValidatorTemplate.Generated directly, it delegates its whole build to a fresh
+    /// AppScaffolder run, which reaches this same method. ValidationRegistry is a process-wide
+    /// static, so both paths see identical rules with no extra plumbing.
+    /// </remarks>
+    private static void AddEntityValidation(
+        List<ClassDefinition> classes, CandidateDomainModel model, Dictionary<string, string> names)
+    {
+        foreach (var entity in model.Entities)
+        {
+            if (!names.TryGetValue(entity.Name, out var className))
+                continue;
+
+            var definition = classes.FirstOrDefault(c => c.Name == className);
+            if (definition is null)
+                continue;
+
+            var rules = new List<IValidationRule>(
+                ValidationRegistry.Get(className, ValidationCategory.Business));
+
+            foreach (var proposal in entity.Proposals)
+            {
+                if (!proposal.Accepted)
+                    continue;
+
+                rules.Add(proposal.Rule);
+            }
+
+            definition.BusinessRules = rules;
         }
     }
 
