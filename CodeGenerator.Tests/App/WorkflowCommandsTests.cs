@@ -78,7 +78,7 @@ public class WorkflowCommandsTests
         var result = WorkflowCommands.FinalStatus(model, "Order", "Shipped");
 
         var proposal = model.Entities.Single().Fields.Single().Proposals.Single();
-        Assert.IsTrue(proposal.FinalValues.Contains("Shipped"));
+        Assert.Contains("Shipped", proposal.FinalValues);
         StringAssert.Contains(result, "marked as final");
     }
 

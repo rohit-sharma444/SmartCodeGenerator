@@ -541,7 +541,7 @@ public class ReviewStageTests
         rendered.Find("[data-entity=Order] .workflow-order li:last-child input.final").Change(true);
 
         var proposal = model.Entities.Single(e => e.Name == "Order").Fields.Single().Proposals.Single();
-        Assert.IsTrue(proposal.FinalValues.Contains("Shipped"));
+        Assert.Contains("Shipped", proposal.FinalValues);
     }
 
     private static IRenderedComponent<ReviewStage> Render(

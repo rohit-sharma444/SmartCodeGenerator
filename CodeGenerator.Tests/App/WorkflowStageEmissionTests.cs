@@ -83,7 +83,7 @@ public sealed class StoreEntityLookup : IEntityLookup
 
         var source = ValidatorTemplate.Generated("Acme", definition, [], referencesRequired: false);
 
-        Assert.IsFalse(source.Contains("private static void Workflow("));
+        Assert.DoesNotContain("private static void Workflow(", source);
         Assert.DoesNotContain("        Workflow,", source);
     }
 

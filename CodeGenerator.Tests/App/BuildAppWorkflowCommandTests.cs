@@ -58,7 +58,7 @@ public class BuildAppWorkflowCommandTests
             model, Parts("final", "status", "Shipped in Order"));
 
         var proposal = model.Entities.Single().Fields.Single().Proposals.Single();
-        Assert.IsTrue(proposal.FinalValues.Contains("Shipped"));
+        Assert.Contains("Shipped", proposal.FinalValues);
         StringAssert.Contains(line, "marked as final");
     }
 

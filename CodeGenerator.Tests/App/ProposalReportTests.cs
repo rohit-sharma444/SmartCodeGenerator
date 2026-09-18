@@ -209,6 +209,6 @@ public class ProposalReportTests
         };
 
         CollectionAssert.AreEqual(new[] { "Draft", "Approved" }, proposal.Order?.ToArray());
-        Assert.IsTrue(proposal.FinalValues.Contains("Approved"));
+        Assert.Contains("Approved", proposal.FinalValues);
     }
 }
