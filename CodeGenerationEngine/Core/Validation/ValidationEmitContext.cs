@@ -17,8 +17,10 @@ public sealed class ValidationEmitContext
     }
 
     public IReadOnlyList<PropertyDefinition> Properties { get; }
+    public StringBuilder Source => _sb;
 
     public void Line(string code) => _sb.AppendLine("            " + code);
+    public void Line() => _sb.AppendLine();
 
     public bool HasProperty(string name) =>
         Properties.Any(p => string.Equals(p.Name, name, System.StringComparison.OrdinalIgnoreCase));
