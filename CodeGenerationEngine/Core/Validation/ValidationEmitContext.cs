@@ -17,7 +17,7 @@ public sealed class ValidationEmitContext
     }
 
     public IReadOnlyList<PropertyDefinition> Properties { get; }
-    public StringBuilder Source => _sb;
+    public string Source => _sb.ToString();
 
     public void Line(string code) => _sb.AppendLine("            " + code);
     public void Line() => _sb.AppendLine();
