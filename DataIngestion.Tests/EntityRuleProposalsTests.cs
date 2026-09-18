@@ -149,4 +149,82 @@ public class EntityRuleProposalsTests
 
         Assert.Empty(proposals);
     }
+
+    [Fact]
+    public void Proposes_a_sum_calculation_when_it_holds_in_every_row()
+    {
+        var entity = new CandidateEntity { Name = "OrderLine" };
+        entity.Fields.Add(new CandidateField { Name = "LineTotal", Type = "decimal" });
+        entity.Fields.Add(new CandidateField { Name = "Goods", Type = "decimal" });
+        entity.Fields.Add(new CandidateField { Name = "Tax", Type = "decimal" });
+
+        var table = TableOf("OrderLine", ["LineTotal", "Goods", "Tax"],
+        [
+            ["120.00", "100.00", "20.00"],
+            ["60.00", "50.00", "10.00"],
+        ]);
+
+        var proposals = EntityRuleProposals.For(entity, table);
+
+        Assert.Single(proposals, p => p.Kind == EntityRuleProposalKind.Calculation
+            && p.Properties.SequenceEqual(new[] { "LineTotal", "Goods", "Tax" })
+            && p.Evidence.Contains("plus"));
+    }
+
+    [Fact]
+    public void Proposes_a_percentage_calculation_when_it_holds_in_every_row()
+    {
+        var entity = new CandidateEntity { Name = "Invoice" };
+        entity.Fields.Add(new CandidateField { Name = "Total", Type = "decimal" });
+        entity.Fields.Add(new CandidateField { Name = "Net", Type = "decimal" });
+        entity.Fields.Add(new CandidateField { Name = "Rate", Type = "decimal" });
+
+        var table = TableOf("Invoice", ["Total", "Net", "Rate"],
+        [
+            ["120.00", "100.00", "0.20"],
+            ["57.50", "50.00", "0.15"],
+        ]);
+
+        var proposals = EntityRuleProposals.For(entity, table);
+
+        Assert.Single(proposals, p => p.Kind == EntityRuleProposalKind.Calculation
+            && p.Properties.SequenceEqual(new[] { "Total", "Net", "Rate" }));
+    }
+
+    [Fact]
+    public void A_calculation_is_not_proposed_when_one_row_breaks_it()
+    {
+        var entity = new CandidateEntity { Name = "OrderLine" };
+        entity.Fields.Add(new CandidateField { Name = "LineTotal", Type = "decimal" });
+        entity.Fields.Add(new CandidateField { Name = "Goods", Type = "decimal" });
+        entity.Fields.Add(new CandidateField { Name = "Tax", Type = "decimal" });
+
+        var table = TableOf("OrderLine", ["LineTotal", "Goods", "Tax"],
+        [
+            ["120.00", "100.00", "20.00"],
+            ["999.00", "50.00", "10.00"], // breaks every calculation form
+        ]);
+
+        var proposals = EntityRuleProposals.For(entity, table);
+
+        Assert.DoesNotContain(proposals, p => p.Kind == EntityRuleProposalKind.Calculation);
+    }
+
+    [Fact]
+    public void More_than_the_cap_of_numeric_columns_skips_the_calculation_scan()
+    {
+        var entity = new CandidateEntity { Name = "Wide" };
+        var columns = new List<string>();
+        for (var i = 0; i < 14; i++)
+        {
+            entity.Fields.Add(new CandidateField { Name = $"N{i}", Type = "decimal" });
+            columns.Add($"N{i}");
+        }
+
+        var table = TableOf("Wide", columns.ToArray(), [columns.Select(_ => "1.00").ToArray()]);
+
+        var proposals = EntityRuleProposals.For(entity, table);
+
+        Assert.DoesNotContain(proposals, p => p.Kind == EntityRuleProposalKind.Calculation);
+    }
 }

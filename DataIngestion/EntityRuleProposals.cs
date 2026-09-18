@@ -43,6 +43,9 @@ public static class EntityRuleProposals
         AddCrossFieldProposals(proposals, table, dateFields, columnByField, TryParseDate);
         AddCrossFieldProposals(proposals, table, numericFields, columnByField, TryParseDecimal);
 
+        if (numericFields.Count <= MaxNumericColumnsForCalculationScan)
+            AddCalculationProposals(proposals, table, numericFields, columnByField);
+
         return proposals;
     }
 
@@ -104,6 +107,105 @@ public static class EntityRuleProposals
         }
 
         return compared > 0;
+    }
+
+    private static void AddCalculationProposals(
+        List<EntityRuleProposal> proposals, TabularTable table, List<CandidateField> numericFields,
+        IReadOnlyDictionary<string, string> columnByField)
+    {
+        foreach (var target in numericFields)
+        {
+            var others = numericFields.Where(f => f.Name != target.Name).ToList();
+
+            for (var i = 0; i < others.Count; i++)
+            for (var j = i + 1; j < others.Count; j++)
+            {
+                TryProposeSumOrProduct(proposals, table, columnByField, target, others[i], others[j]);
+                TryProposePercentage(proposals, table, columnByField, target, others[i], others[j]);
+                TryProposePercentage(proposals, table, columnByField, target, others[j], others[i]);
+            }
+        }
+    }
+
+    private static void TryProposeSumOrProduct(
+        List<EntityRuleProposal> proposals, TabularTable table, IReadOnlyDictionary<string, string> columnByField,
+        CandidateField target, CandidateField left, CandidateField right)
+    {
+        if (ZeroCounterExamples(
+                table, columnByField[target.Name], columnByField[left.Name], columnByField[right.Name],
+                (l, r) => l + r, out var sumRows))
+            proposals.Add(new EntityRuleProposal
+            {
+                Kind = EntityRuleProposalKind.Calculation,
+                Properties = [target.Name, left.Name, right.Name],
+                Rule = new ArithmeticRule(target.Name, left.Name, "plus", right.Name),
+                Evidence = $"{target.Name} always equals {left.Name} plus {right.Name}, in all {sumRows:N0} rows"
+            });
+
+        if (ZeroCounterExamples(
+                table, columnByField[target.Name], columnByField[left.Name], columnByField[right.Name],
+                (l, r) => l * r, out var productRows))
+            proposals.Add(new EntityRuleProposal
+            {
+                Kind = EntityRuleProposalKind.Calculation,
+                Properties = [target.Name, left.Name, right.Name],
+                Rule = new ArithmeticRule(target.Name, left.Name, "times", right.Name),
+                Evidence = $"{target.Name} always equals {left.Name} times {right.Name}, in all {productRows:N0} rows"
+            });
+    }
+
+    private static void TryProposePercentage(
+        List<EntityRuleProposal> proposals, TabularTable table, IReadOnlyDictionary<string, string> columnByField,
+        CandidateField target, CandidateField net, CandidateField rate)
+    {
+        if (!ZeroCounterExamples(
+                table, columnByField[target.Name], columnByField[net.Name], columnByField[rate.Name],
+                (n, r) => n * (1 + r), out var rows))
+            return;
+
+        proposals.Add(new EntityRuleProposal
+        {
+            Kind = EntityRuleProposalKind.Calculation,
+            Properties = [target.Name, net.Name, rate.Name],
+            Rule = new PercentageRule(target.Name, net.Name, rate.Name),
+            Evidence = $"{target.Name} always equals {net.Name} times (1 plus {rate.Name}), in all {rows:N0} rows"
+        });
+    }
+
+    private static bool ZeroCounterExamples(
+        TabularTable table, string targetColumn, string leftColumn, string rightColumn,
+        System.Func<decimal, decimal, decimal> combine, out int rowsCompared)
+    {
+        rowsCompared = 0;
+
+        for (var row = 0; row < table.Rows.Count; row++)
+        {
+            if (!TryParseAmount(table.Value(row, targetColumn), out var t)
+                || !TryParseAmount(table.Value(row, leftColumn), out var l)
+                || !TryParseAmount(table.Value(row, rightColumn), out var r))
+                continue;
+
+            rowsCompared++;
+
+            if (System.Math.Abs(t - combine(l, r)) > 0.0001m)
+                return false;
+        }
+
+        return rowsCompared > 0;
+    }
+
+    /// <summary>The Calculation scan's own decimal parser — distinct from <see cref="TryParseDecimal"/>
+    /// (which hands back <see cref="System.IComparable"/> for the Cross-Field scan's ordering compare)
+    /// because that method's out-parameter type differs only in what it is declared as: a call written
+    /// as `TryParseDecimal(value, out var x)` cannot pick between them, so this scan gets its own,
+    /// differently-named parser instead of overloading the existing one.</summary>
+    private static bool TryParseAmount(string? value, out decimal result)
+    {
+        result = 0m;
+        return !string.IsNullOrWhiteSpace(value)
+            && decimal.TryParse(
+                value, System.Globalization.NumberStyles.Any,
+                System.Globalization.CultureInfo.InvariantCulture, out result);
     }
 
     private static bool TryParseDate(string? value, out System.IComparable comparable)
