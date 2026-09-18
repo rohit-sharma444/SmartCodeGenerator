@@ -487,7 +487,7 @@ public static class DataModelBuilder
     /// been renamed off its class name by <see cref="ResolveColumns"/>, and this looks up the
     /// same recorded pair rather than guessing at one.
     /// </summary>
-    private static string? ColumnFor(TabularTable table, string fieldName)
+    internal static string? ColumnFor(TabularTable table, string fieldName)
     {
         foreach (var (column, field) in FieldNames(table))
             if (string.Equals(field, fieldName, StringComparison.OrdinalIgnoreCase))

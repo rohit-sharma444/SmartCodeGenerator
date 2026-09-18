@@ -98,4 +98,55 @@ public class EntityRuleProposalsTests
 
         Assert.Single(proposals, p => p.Kind == EntityRuleProposalKind.CrossField);
     }
+
+    [Fact]
+    public void A_field_renamed_off_a_raw_snake_case_column_still_gets_the_rule()
+    {
+        // "start_date"/"end_date" are the RAW source headers. NameNormalizer.ToFieldName turns
+        // each into "StartDate"/"EndDate" — the same translation ResolveColumns/ColumnFor apply
+        // for every other proposal path. The table below never has a column literally named
+        // "StartDate", so a scan that looks cells up by the field name instead of the resolved
+        // column name finds nothing and silently proposes zero Cross-Field rules.
+        var entity = new CandidateEntity { Name = "Booking" };
+        entity.Fields.Add(new CandidateField { Name = "StartDate", Type = "DateTime" });
+        entity.Fields.Add(new CandidateField { Name = "EndDate", Type = "DateTime" });
+
+        var table = TableOf("Booking", ["start_date", "end_date"],
+        [
+            ["2026-01-01", "2026-01-10"],
+            ["2026-02-01", "2026-02-01"],
+            ["2026-03-01", "2026-03-15"],
+        ]);
+
+        var proposals = EntityRuleProposals.For(entity, table);
+
+        var crossField = Assert.Single(proposals, p => p.Kind == EntityRuleProposalKind.CrossField
+            && p.Properties[0] == "StartDate" && p.Properties[1] == "EndDate");
+        Assert.Contains("StartDate", crossField.Evidence);
+    }
+
+    [Fact]
+    public void A_mixed_format_date_pair_does_not_crash_the_scan()
+    {
+        // "20260101" parses cleanly as a decimal (it is just eight digits) but NOT as a DateTime
+        // under DateTimeStyles.None/InvariantCulture. A parser that tries decimal first, with no
+        // regard for the field's actual type, would read this column as decimal while the
+        // normally-formatted column below reads as DateTime — and comparing a decimal to a
+        // DateTime via IComparable.CompareTo throws ArgumentException. Both fields are declared
+        // DateTime here, so a type-safe scan must use the DateTime-only parser for both and never
+        // reach that mixed-type comparison, whether or not it ends up proposing anything.
+        var entity = new CandidateEntity { Name = "Snapshot" };
+        entity.Fields.Add(new CandidateField { Name = "SnapshotDate", Type = "DateTime" });
+        entity.Fields.Add(new CandidateField { Name = "AsOfDate", Type = "DateTime" });
+
+        var table = TableOf("Snapshot", ["SnapshotDate", "AsOfDate"],
+        [
+            ["20260101", "2026-01-10"],
+            ["20260201", "2026-02-15"],
+        ]);
+
+        var proposals = EntityRuleProposals.For(entity, table);
+
+        Assert.Empty(proposals);
+    }
 }
