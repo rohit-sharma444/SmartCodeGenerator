@@ -622,6 +622,16 @@ internal sealed class BuildAppCommand
                     Console.WriteLine(ProposalReport.Accept(model, parts[1]));
                     break;
 
+                case "order" when parts.Length >= 2
+                    && string.Equals(parts[1], "status", StringComparison.OrdinalIgnoreCase):
+                    Console.WriteLine(OrderStatusLine(model, parts));
+                    break;
+
+                case "final" when parts.Length >= 2
+                    && string.Equals(parts[1], "status", StringComparison.OrdinalIgnoreCase):
+                    Console.WriteLine(FinalStatusLine(model, parts));
+                    break;
+
                 default:
                     Console.WriteLine("Unrecognized command.");
 
@@ -1403,6 +1413,45 @@ internal sealed class BuildAppCommand
         return name.Length == 0
             ? DecisionReport.All(model)
             : DecisionReport.ForName(model, name);
+    }
+
+    /// <summary>
+    /// The line an <c>order status &lt;values&gt; in &lt;Class&gt;</c> line produces. Internal
+    /// and pure for the same reason <see cref="AddLine"/> is.
+    /// </summary>
+    /// <remarks>
+    /// The loop's <c>line.Split(' ', 3, ...)</c> hands this at most three parts, so
+    /// <c>order status Draft,Approved,Shipped in Order</c> arrives as
+    /// <c>["order", "status", "Draft,Approved,Shipped in Order"]</c> — the value list and the
+    /// class name share that third token and have to be split apart here, on the last " in ".
+    /// </remarks>
+    internal static string OrderStatusLine(CandidateDomainModel model, string[] parts)
+        => RunStatusCommand(model, parts, WorkflowCommands.OrderStatus);
+
+    /// <summary>The <c>final status &lt;values&gt; in &lt;Class&gt;</c> counterpart of
+    /// <see cref="OrderStatusLine"/>.</summary>
+    internal static string FinalStatusLine(CandidateDomainModel model, string[] parts)
+        => RunStatusCommand(model, parts, WorkflowCommands.FinalStatus);
+
+    private static string RunStatusCommand(
+        CandidateDomainModel model, string[] parts, Func<CandidateDomainModel, string, string, string> action)
+    {
+        var verb = parts.Length > 0 ? parts[0] : "order";
+        var usage = $"Usage: {verb} status <values> in <Class> "
+            + $"(e.g. '{verb} status Draft,Approved,Shipped in Order').";
+
+        if (parts.Length < 3)
+            return usage;
+
+        var tail = parts[2];
+        var splitAt = tail.LastIndexOf(" in ", StringComparison.OrdinalIgnoreCase);
+        if (splitAt < 0)
+            return usage;
+
+        var valuesText = tail[..splitAt];
+        var className = tail[(splitAt + 4)..].Trim();
+
+        return action(model, className, valuesText);
     }
 
     private static void Report(bool changed, string ok, string fail)
