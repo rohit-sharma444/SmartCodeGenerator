@@ -52,10 +52,10 @@ internal static class ProposalReport
 
         for (var i = 0; i < all.Count; i++)
         {
-            var (entity, field, proposal) = all[i];
+            var (entity, label, proposal) = all[i];
 
             lines.Add(
-                $"  {i + 1}. [{(proposal.Accepted ? "x" : " ")}] {entity}.{field} — "
+                $"  {i + 1}. [{(proposal.Accepted ? "x" : " ")}] {entity}.{label} — "
                 + $"{proposal.Evidence}");
         }
 
@@ -84,18 +84,44 @@ internal static class ProposalReport
         var picked = all[number - 1];
         picked.Proposal.Accepted = true;
 
-        return $"Accepted: {picked.Entity}.{picked.Field}.";
+        return $"Accepted: {picked.Entity}.{picked.Label}.";
     }
 
-    private static List<(string Entity, string Field, RuleProposal Proposal)> All(
+    /// <summary>Something every proposal shares, whatever it is scoped to.</summary>
+    private interface IAcceptable
+    {
+        string Evidence { get; }
+        bool Accepted { get; set; }
+    }
+
+    private sealed class FieldProposal(RuleProposal proposal) : IAcceptable
+    {
+        public RuleProposal Inner { get; } = proposal;
+        public string Evidence => Inner.Evidence;
+        public bool Accepted { get => Inner.Accepted; set => Inner.Accepted = value; }
+    }
+
+    private sealed class EntityProposal(EntityRuleProposal proposal) : IAcceptable
+    {
+        public EntityRuleProposal Inner { get; } = proposal;
+        public string Evidence => Inner.Evidence;
+        public bool Accepted { get => Inner.Accepted; set => Inner.Accepted = value; }
+    }
+
+    private static List<(string Entity, string Label, IAcceptable Proposal)> All(
         CandidateDomainModel model)
     {
-        var all = new List<(string, string, RuleProposal)>();
+        var all = new List<(string, string, IAcceptable)>();
 
         foreach (var entity in model.Entities)
+        {
             foreach (var field in entity.Fields)
                 foreach (var proposal in field.Proposals)
-                    all.Add((entity.Name, field.Name, proposal));
+                    all.Add((entity.Name, field.Name, new FieldProposal(proposal)));
+
+            foreach (var proposal in entity.Proposals)
+                all.Add((entity.Name, string.Join(", ", proposal.Properties), new EntityProposal(proposal)));
+        }
 
         return all;
     }
