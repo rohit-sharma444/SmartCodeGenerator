@@ -96,6 +96,31 @@
                                            @onchange="e => Decide(proposal, e.Value)" />
                                     <span class="proposal-evidence">@proposal.Evidence</span>
                                 </label>
+
+                                @if (proposal.Kind == RuleProposalKind.Status && proposal.Accepted)
+                                {
+                                    var order = (proposal.Order ?? proposal.Rule.AllowedValues).ToList();
+                                    <ul class="workflow-order">
+                                        @for (var i = 0; i < order.Count; i++)
+                                        {
+                                            var index = i;
+                                            var value = order[index];
+                                            <li>
+                                                <button type="button" class="move-up" disabled="@(index == 0)"
+                                                        @onclick="() => MoveStatusValue(proposal, order, index, -1)">↑</button>
+                                                <button type="button" class="move-down" disabled="@(index == order.Count - 1)"
+                                                        @onclick="() => MoveStatusValue(proposal, order, index, 1)">↓</button>
+                                                <span class="proposal-evidence">@value</span>
+                                                <label>
+                                                    <input type="checkbox" class="final"
+                                                           checked="@proposal.FinalValues.Contains(value)"
+                                                           @onchange="e => ToggleFinalStatus(proposal, value, e.Value)" />
+                                                    final
+                                                </label>
+                                            </li>
+                                        }
+                                    </ul>
+                                }
                             }
                         </li>
                     }
@@ -361,6 +386,36 @@
     private void Decide(EntityRuleProposal proposal, object? value)
     {
         proposal.Accepted = value is true || (value is string text && bool.TryParse(text, out var on) && on);
+        Session.ModelEdited();
+    }
+
+    /// <summary>Swaps a status value with its neighbour and re-states the order -- the up/down
+    /// alternative to a comma-separated `order status` command, same effect either way.</summary>
+    private void MoveStatusValue(RuleProposal proposal, List<string> currentOrder, int index, int direction)
+    {
+        var target = index + direction;
+        if (target < 0 || target >= currentOrder.Count)
+            return;
+
+        (currentOrder[index], currentOrder[target]) = (currentOrder[target], currentOrder[index]);
+        proposal.Order = currentOrder;
+        Session.ModelEdited();
+    }
+
+    /// <summary>Takes or drops one value from the final set -- the checkbox alternative to
+    /// `final status`.</summary>
+    private void ToggleFinalStatus(RuleProposal proposal, string value, object? isChecked)
+    {
+        var on = isChecked is true || (isChecked is string text && bool.TryParse(text, out var parsed) && parsed);
+        var finals = new HashSet<string>(proposal.FinalValues);
+
+        if (on)
+            finals.Add(value);
+        else
+            finals.Remove(value);
+
+        proposal.FinalValues = finals;
+        proposal.Order ??= proposal.Rule.AllowedValues.ToList();
         Session.ModelEdited();
     }
 }

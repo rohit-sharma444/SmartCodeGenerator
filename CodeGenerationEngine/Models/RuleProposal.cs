@@ -38,4 +38,12 @@ public sealed class RuleProposal
     /// <summary>False until a user picks it. Settable for the same reason
     /// <see cref="PropertyRule"/>'s members are: the review surfaces set it in place.</summary>
     public bool Accepted { get; set; }
+
+    /// <summary>The stated transition order for a Status-kind proposal -- most recent
+    /// `order status` call wins. Null until set; meaningless for Unique/Pattern kinds.</summary>
+    public IReadOnlyList<string>? Order { get; set; }
+
+    /// <summary>Values a record at this status may not leave, for a Status-kind proposal.
+    /// Empty until `final status` names one; meaningless for Unique/Pattern kinds.</summary>
+    public IReadOnlySet<string> FinalValues { get; set; } = new HashSet<string>();
 }

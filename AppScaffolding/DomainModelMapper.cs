@@ -1,6 +1,7 @@
 ﻿using CodeGenerationEngine.Core;
 using CodeGenerationEngine.Core.Relationships;
 using CodeGenerationEngine.Core.Validation;
+using CodeGenerationEngine.Core.Validation.Rules;
 using CodeGenerationEngine.Models;
 using DomainDiscovery.Model;
 
@@ -137,6 +138,7 @@ public static class DomainModelMapper
         AddAuditFields(classes);
         AddValidation(classes);
         AddEntityValidation(classes, model, names);
+        AddWorkflowValidation(classes, model, names);
 
         classNames = names;
         return classes;
@@ -296,6 +298,39 @@ public static class DomainModelMapper
             }
 
             definition.BusinessRules = rules;
+        }
+    }
+
+    /// <summary>
+    /// Builds one WorkflowRule per accepted, ordered Status proposal, so a status column's
+    /// transitions reach the Workflow stage through the one list ValidatorTemplate.Generated
+    /// reads. Mirrors AddEntityValidation's shape: reads the model's own proposals, writes onto
+    /// the matching class, no scan of its own.
+    /// </summary>
+    private static void AddWorkflowValidation(
+        List<ClassDefinition> classes, CandidateDomainModel model, Dictionary<string, string> names)
+    {
+        foreach (var entity in model.Entities)
+        {
+            if (!names.TryGetValue(entity.Name, out var className))
+                continue;
+
+            var definition = classes.FirstOrDefault(c => c.Name == className);
+            if (definition is null)
+                continue;
+
+            foreach (var field in entity.Fields)
+            {
+                foreach (var proposal in field.Proposals)
+                {
+                    if (proposal.Kind != RuleProposalKind.Status || !proposal.Accepted
+                        || proposal.Order is null)
+                        continue;
+
+                    definition.WorkflowRules.Add(
+                        new WorkflowRule(field.Name, proposal.Order, proposal.FinalValues));
+                }
+            }
         }
     }
 

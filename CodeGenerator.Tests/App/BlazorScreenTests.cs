@@ -147,6 +147,13 @@ public class BlazorScreenTests
         Assert.Contains("new ValidationContext<TRecord>(", editor);
         Assert.Contains("state?.User.FindFirst(ClaimTypes.Role)?.Value", editor);
 
+        // The Stored argument: what Load actually read off the store, not `default`. A stage
+        // that compares against the pre-edit value (a status transition, an immutable field) has
+        // nothing to compare against otherwise -- this is what validation-phase-5 task 8 found
+        // live, with no test anywhere pinning this specific argument.
+        Assert.Contains("_stored, new StoreEntityLookup()", editor);
+        Assert.DoesNotContain("default, new StoreEntityLookup()", editor);
+
         // With validation off there is no pipeline to run -- ValidatorFactory names a class that
         // does not exist under novalidation. But the app still has a login here
         // (AppCustomization.Default.Login is true), and Save must still ask Permissions itself

@@ -282,10 +282,12 @@ internal sealed class NullValidator<T> : IValidator<T>
         string rootNamespace, ClassDefinition definition, IReadOnlyList<string> foreignKeyTargets,
         bool referencesRequired,
         IReadOnlyList<(string Entity, string Property)>? referencedBy = null,
-        IReadOnlyList<IValidationRule>? businessRules = null)
+        IReadOnlyList<IValidationRule>? businessRules = null,
+        IReadOnlyList<IValidationRule>? workflowRules = null)
     {
         referencedBy ??= Array.Empty<(string Entity, string Property)>();
         businessRules ??= Array.Empty<IValidationRule>();
+        workflowRules ??= Array.Empty<IValidationRule>();
 
         var blocks = new List<string>();
 
@@ -456,6 +458,53 @@ internal sealed class NullValidator<T> : IValidator<T>
         if (businessBody.Length > 0)
             stageList += "\n        Business,";
 
+        // Workflow runs last: a status transition should trust every other stage, including
+        // hand-stated and inferred business rules, has already passed. Unlike Business, its rule
+        // needs the FULL context -- both Item and Stored -- since a transition check compares two
+        // records, not one. Each rule still gets its own StringBuilder/ValidationEmitContext and
+        // its own try/catch, same CS0128 lesson as Business.
+        var workflowBlocks = new List<string>();
+
+        foreach (var rule in workflowRules)
+        {
+            var ruleSource = new StringBuilder();
+            var ruleCtx = new ValidationEmitContext(ruleSource, definition.Properties);
+            rule.Emit(ruleCtx);
+
+            var ruleText = ruleSource.ToString();
+            if (ruleText.Length == 0)
+                continue;
+
+            workflowBlocks.Add(WrapBusinessRule(ruleText));
+        }
+
+        var workflowBody = string.Join("\n\n", workflowBlocks);
+
+        var workflowStage = workflowBody.Length == 0
+            ? string.Empty
+            : $$"""
+
+
+    /// <summary>A status column's transitions: forward-only through a stated order, and no
+    /// move away from a value marked final. Runs last, after Business has already passed.</summary>
+    private static void Workflow(ValidationContext<{{definition.Name}}> context, List<ValidationError> pipelineErrors)
+    {
+        var item = context.Item;
+        var stored = context.Stored;
+        if (item is null)
+            return;
+
+        var errors = new List<string>();
+
+{{workflowBody}}
+        foreach (var m in errors)
+            pipelineErrors.Add(new ValidationError(null, m));
+    }
+""";
+
+        if (workflowBody.Length > 0)
+            stageList += "\n        Workflow,";
+
         return $$"""
 using System;
 using System.Collections.Generic;
@@ -510,7 +559,7 @@ public sealed partial class {{definition.Name}}Validator : IValidator<{{definiti
 
         ValidateCustom(item, errors);
     }
-{{entityStage}}{{businessStage}}
+{{entityStage}}{{businessStage}}{{workflowStage}}
     /// <summary>Hand-written rules, implemented in {{definition.Name}}Validator.Custom.cs.</summary>
     private static partial void ValidateCustom({{definition.Name}} item, List<ValidationError> errors);
 }
