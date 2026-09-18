@@ -20,4 +20,9 @@ public class ClassDefinition
     /// validation`, or accepted from a Cross-Field/Calculation proposal. Reaches the Business
     /// stage in the emitted validator.</summary>
     public List<IValidationRule> BusinessRules { get; set; } = [];
+
+    /// <summary>Rules on a confirmed status column -- forward-only order, no move from a
+    /// final value -- built once the user has ordered an accepted Status proposal. Reaches
+    /// the Workflow stage in the emitted validator.</summary>
+    public List<IValidationRule> WorkflowRules { get; set; } = [];
 }
