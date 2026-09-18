@@ -181,4 +181,34 @@ public class ProposalReportTests
         Assert.IsTrue(model.Entities.Single().Proposals[0].Accepted);
         StringAssert.Contains(result, "Accepted");
     }
+
+    [TestMethod]
+    public void A_status_proposal_starts_with_no_order_and_no_finals()
+    {
+        var proposal = new RuleProposal
+        {
+            Kind = RuleProposalKind.Status,
+            Rule = new PropertyRule { PropertyName = "Status", Name = "allowedvalues", AllowedValues = ["Draft", "Approved"] },
+            Evidence = "Status holds only Draft, Approved"
+        };
+
+        Assert.IsNull(proposal.Order);
+        Assert.IsEmpty(proposal.FinalValues);
+    }
+
+    [TestMethod]
+    public void A_status_proposal_keeps_a_stated_order_and_finals()
+    {
+        var proposal = new RuleProposal
+        {
+            Kind = RuleProposalKind.Status,
+            Rule = new PropertyRule { PropertyName = "Status", Name = "allowedvalues", AllowedValues = ["Draft", "Approved"] },
+            Evidence = "Status holds only Draft, Approved",
+            Order = ["Draft", "Approved"],
+            FinalValues = new HashSet<string> { "Approved" }
+        };
+
+        CollectionAssert.AreEqual(new[] { "Draft", "Approved" }, proposal.Order?.ToArray());
+        Assert.IsTrue(proposal.FinalValues.Contains("Approved"));
+    }
 }
