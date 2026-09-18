@@ -3,6 +3,7 @@ using System.Reflection;
 using AppScaffolding;
 using AppScaffolding.Screens;
 using CodeGenerationEngine.Core;
+using CodeGenerationEngine.Core.Validation.Rules;
 using CodeGenerationEngine.Models;
 using Microsoft.CodeAnalysis;
 
@@ -78,6 +79,13 @@ public class FieldHighlightTests
         StringAssert.Contains(source, "IsNew ? ValidationOperation.Insert : ValidationOperation.Update");
         StringAssert.Contains(source, "foreach (var error in outcome.Errors)");
         StringAssert.Contains(source, "_errors.TryAdd(error.Property ?? string.Empty, error.Message);");
+
+        // The Stored argument: what is on disk right now, not `default`. A stage that compares
+        // against the pre-edit value (a status transition, an immutable field) has nothing to
+        // compare against otherwise -- this is what validation-phase-5's task 8 found live, with
+        // no test anywhere pinning this specific argument.
+        StringAssert.Contains(source, "_stored, new StoreEntityLookup(), ActingUser.Role(), ActingUser.Id());");
+        Assert.DoesNotContain("default, new StoreEntityLookup(), ActingUser.Role(), ActingUser.Id());", source);
 
         // ...and reachable by name, which is what lets a view put the complaint beside its field.
         StringAssert.Contains(source, "public string ErrorFor(string property)");
@@ -191,6 +199,94 @@ public class FieldHighlightTests
             (string)editorType.GetProperty("Status")!.GetValue(editor)!, "Title is required.");
     }
 
+    /// <summary>
+    /// The editor passes what is ACTUALLY on disk to the validator, over emitted code that is
+    /// compiled and RUN -- not the submitted draft standing in for it.
+    /// </summary>
+    /// <remarks>
+    /// A Workflow rule is the sharpest possible probe for this: it reads nothing BUT
+    /// <c>context.Stored</c> (<c>if (stored is not null)</c> guards the whole check), so if the
+    /// editor ever again builds that context with <c>default</c> instead of the pre-clone record --
+    /// exactly the validation-phase-5 task 8 defect, found only by running a real generated app --
+    /// this is the one assertion in the suite that would have failed for it: the backward move
+    /// would go through as `Saved.` and the store would show the illegal value, instead of being
+    /// refused with the store left untouched.
+    /// </remarks>
+    [TestMethod]
+    public void TheDesktopEditorRefusesAnIllegalStatusMove_UsingWhatIsActuallyOnDisk()
+    {
+        var definition = new ClassDefinition { Name = "Order" };
+        definition.Properties.Add(new PropertyDefinition { Name = "Id", Type = "int" });
+        definition.Properties.Add(new PropertyDefinition { Name = "Status", Type = "string" });
+
+        var workflowRule = new WorkflowRule("Status", ["Draft", "Approved", "Shipped"], new HashSet<string>());
+
+        var files = new (string Path, string Code)[]
+        {
+            ("Models/Order.cs", OrderModel),
+            ("Data/IStore.cs", StoreSeamTemplate.Source("Acme")),
+            ("Data/StoreFactory.cs", MemoryStoreFixture),
+            ("Screens/LineSet.cs", LineSetTemplate.Source("Acme")),
+            ("Screens/FieldGroups.cs", FieldGroupsTemplate.Source("Acme")),
+            ("ViewModels/ObservableObject.cs", ViewModelTemplates.ObservableObject("Acme")),
+            ("ViewModels/RelayCommand.cs", ViewModelTemplates.PortableRelayCommand("Acme")),
+            ("ViewModels/RecordEditorViewModel.cs",
+                RecordEditorTemplate.Source("Acme", validation: true)),
+            ("Validation/ValidationContext.cs", ValidationContextTemplate.Source("Acme")),
+            ("Validation/ValidationPipeline.cs", ValidationPipelineTemplate.Source("Acme")),
+            ("Validation/IValidator.cs", ValidatorTemplate.ValidatorInterface("Acme")),
+            ("Validation/IEntityLookup.cs", ValidatorTemplate.EntityLookupInterface("Acme")),
+            ("Validation/StoreEntityLookup.cs", ValidatorTemplate.StoreEntityLookup("Acme")),
+            ("Validation/Permissions.cs", PermissionsTemplate.Source("Acme", ["Order"], login: false)),
+            ("Validation/ActingUser.cs", ActingUserTemplate.Source("Acme", sessionAuth: false)),
+            ("Validation/ValidatorFactory.cs", ValidatorTemplate.Factory("Acme", ["Order"])),
+            ("Validation/OrderValidator.Generated.cs",
+                ValidatorTemplate.Generated(
+                    "Acme", definition, [], referencesRequired: false, workflowRules: [workflowRule])),
+            ("Validation/OrderValidator.Custom.cs", ValidatorTemplate.CustomStub("Acme", "Order")),
+        };
+
+        var result = Compiler.CompileSources(files);
+
+        var errors = result.Diagnostics
+            .Where(d => d.Severity == DiagnosticSeverity.Error)
+            .Select(d => d.ToString())
+            .ToList();
+
+        Assert.IsEmpty(errors, "Compilation errors:\n" + string.Join("\n", errors));
+        Assert.IsTrue(result.Success);
+
+        var assembly = Assembly.Load(result.AssemblyBytes!);
+        var orderType = assembly.GetType("Acme.Models.Order")!;
+        var editorType = assembly.GetType("Acme.ViewModels.RecordEditorViewModel`1")!
+            .MakeGenericType(orderType);
+        var storeType = assembly.GetType("Acme.Data.MemoryStore`1")!.MakeGenericType(orderType);
+
+        // The record on disk, Approved -- the pre-edit value the Workflow stage has to see.
+        var rows = (System.Collections.IList)storeType.GetField("Rows")!.GetValue(null)!;
+        var stored = Activator.CreateInstance(orderType)!;
+        orderType.GetProperty("Id")!.SetValue(stored, 1);
+        orderType.GetProperty("Status")!.SetValue(stored, "Approved");
+        rows.Clear();
+        rows.Add(stored);
+
+        var editor = Activator.CreateInstance(editorType, [stored, false, null])!;
+        var draft = editorType.GetProperty("Draft")!.GetValue(editor)!;
+        draft.GetType().GetProperty("Status")!.SetValue(draft, "Draft");
+
+        RecordEditorTests.Execute(editor, "SaveCommand");
+
+        StringAssert.Contains(
+            (string)editorType.GetProperty("Status")!.GetValue(editor)!,
+            "cannot move backward",
+            "the illegal move was not refused -- Stored reached the validator as something other than what is on disk");
+
+        Assert.AreEqual(
+            "Approved",
+            (string)orderType.GetProperty("Status")!.GetValue(rows[0])!,
+            "the refused save was written to the store anyway");
+    }
+
     /// <summary>What the editor kept against one property, read the way a view would.</summary>
     private static string ErrorFor(object editor, string property)
         => (string)editor.GetType().GetMethod("ErrorFor")!.Invoke(editor, [property])!;
@@ -237,6 +333,19 @@ public sealed class Book
     public int Id { get; set; }
 
     public string Title { get; set; } = string.Empty;
+}
+""";
+
+    /// <summary>One model with a status column, for the Workflow-rule compile-and-run test --
+    /// same namespace convention as <see cref="BookModel"/>.</summary>
+    private const string OrderModel = """
+namespace Acme.Models;
+
+public sealed class Order
+{
+    public int Id { get; set; }
+
+    public string Status { get; set; } = string.Empty;
 }
 """;
 
