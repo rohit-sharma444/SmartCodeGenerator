@@ -78,6 +78,7 @@ internal static class CustomizationWizard
 
         writer.WriteLine("  Theme: light/dark      Accent: #rrggbb      Icon: .ico or .png");
         writer.WriteLine($"  Enter keeps the value in brackets; \"{NoneLabel}\" clears an optional one.");
+        writer.WriteLine();
 
         var entryTemplate = start.EntryTemplate;
 
@@ -124,8 +125,6 @@ internal static class CustomizationWizard
                 entryTemplate = parsedTemplate;
             }
         }
-
-        writer.WriteLine();
 
         // Asked beside the layout, because both are about the SHAPE of the app rather than its
         // appearance. Blank means "decide automatically", which is what NoneLabel already
