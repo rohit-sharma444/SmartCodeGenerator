@@ -21,7 +21,7 @@ public class ScreenPlanTests
     [TestMethod]
     public void A_dated_child_of_a_master_is_a_transaction()
     {
-        var plan = ScreenPlan.For(ShopModel(), AppCustomization.Default, new WpfTarget());
+        var plan = ScreenPlan.For(ShopModel(), AppCustomization.Default, new WpfTarget(), "Acme");
 
         Assert.AreEqual(EntityRole.Master, plan.RoleOfEntity("Customer"));
         Assert.AreEqual(EntityRole.Transaction, plan.RoleOfEntity("Order"));
@@ -32,7 +32,7 @@ public class ScreenPlanTests
     {
         var customization = AppCustomization.Default with { Masters = "Order" };
 
-        var plan = ScreenPlan.For(ShopModel(), customization, new WpfTarget());
+        var plan = ScreenPlan.For(ShopModel(), customization, new WpfTarget(), "Acme");
 
         Assert.AreEqual(EntityRole.Master, plan.RoleOfEntity("Order"));
     }
@@ -47,7 +47,7 @@ public class ScreenPlanTests
     {
         var customization = AppCustomization.Default with { Login = true };
 
-        var plan = ScreenPlan.For(UserModel(), customization, new WpfTarget());
+        var plan = ScreenPlan.For(UserModel(), customization, new WpfTarget(), "Acme");
 
         Assert.AreNotEqual("User", plan.ClassNameOf("User"));
         Assert.AreEqual(EntityRole.Master, plan.RoleOfEntity("User"));
@@ -63,7 +63,7 @@ public class ScreenPlanTests
     {
         var customization = AppCustomization.Default with { Login = true };
 
-        var plan = ScreenPlan.For(UserModel(), customization, new ConsoleTarget());
+        var plan = ScreenPlan.For(UserModel(), customization, new ConsoleTarget(), "Acme");
 
         Assert.AreEqual("User", plan.ClassNameOf("User"));
     }
@@ -72,7 +72,7 @@ public class ScreenPlanTests
     [TestMethod]
     public void Lines_belong_to_the_transaction_they_are_edited_inside()
     {
-        var plan = ScreenPlan.For(ShopModel(), AppCustomization.Default, new WpfTarget());
+        var plan = ScreenPlan.For(ShopModel(), AppCustomization.Default, new WpfTarget(), "Acme");
 
         Assert.AreEqual(EntityRole.DocumentLine, plan.RoleOfEntity("OrderLine"));
         CollectionAssert.Contains(plan.Roles.LinesOf("Order").ToList(), "OrderLine");
@@ -85,10 +85,48 @@ public class ScreenPlanTests
     [TestMethod]
     public void Names_the_transaction_a_line_is_edited_inside()
     {
-        var plan = ScreenPlan.For(ShopModel(), AppCustomization.Default, new WpfTarget());
+        var plan = ScreenPlan.For(ShopModel(), AppCustomization.Default, new WpfTarget(), "Acme");
 
         Assert.AreEqual("Order", plan.TransactionHolding("OrderLine"));
         Assert.IsNull(plan.TransactionHolding("Customer"));
+    }
+
+    /// <summary>
+    /// An entity named for the app itself is renamed, the same way a discovered "User" is
+    /// renamed around the auth core.
+    /// </summary>
+    /// <remarks>
+    /// Issue #132: every generated file declares <c>namespace Shop.X;</c>, so a class ALSO named
+    /// "Shop" makes the simple name "Shop" ambiguous between the type and the enclosing
+    /// namespace at the global scope (CS0118) — reproduced building a real app from a CSV whose
+    /// sole inferred entity shared the app's own name. No login and no screens are needed to
+    /// trigger it, unlike the User collision above: the root namespace exists on every target.
+    /// </remarks>
+    [TestMethod]
+    public void An_entity_named_for_the_app_itself_is_renamed()
+    {
+        var model = new CandidateDomainModel();
+        model.Entities.Add(Entity("Shop", ("Name", "string")));
+
+        var plan = ScreenPlan.For(model, AppCustomization.Default, new ConsoleTarget(), "Shop");
+
+        Assert.AreNotEqual("Shop", plan.ClassNameOf("Shop"));
+    }
+
+    /// <summary>
+    /// A namespace prefix moves the collision to the PREFIX's own outermost segment, not the
+    /// app name — <c>RootNamespaceFor</c> puts the prefix first (<c>Prefix.AppName</c>), so an
+    /// entity sharing the app's own name is safe once a prefix is in front of it.
+    /// </summary>
+    [TestMethod]
+    public void Only_the_namespaces_outermost_segment_is_reserved()
+    {
+        var model = new CandidateDomainModel();
+        model.Entities.Add(Entity("Shop", ("Name", "string")));
+
+        var plan = ScreenPlan.For(model, AppCustomization.Default, new ConsoleTarget(), "Acme.Shop");
+
+        Assert.AreEqual("Shop", plan.ClassNameOf("Shop"));
     }
 
     /// <summary>Customer, Order (dated, references Customer) and OrderLine (references Order).</summary>

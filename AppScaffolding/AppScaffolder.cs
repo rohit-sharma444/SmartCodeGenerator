@@ -281,6 +281,14 @@ public sealed class AppScaffolder
         var persistence = request.Persistence;
         var importedData = request.ImportedData;
 
+        // Through GeneratedProjectPath, not composed here, so the CLI's overwrite guard and this
+        // writer cannot drift apart — see that type's remarks. Computed before the plan below,
+        // not after: ScreenPlan needs the real root namespace to reserve its own outermost
+        // segment against a same-named entity (issue #132), and a value re-derived later could
+        // silently drift from the one templates actually get.
+        var projectName = GeneratedProjectPath.ProjectName(appName, target);
+        var rootNamespace = GeneratedProjectPath.RootNamespace(appName, target, request.Customization);
+
         // Prepended to generated C# only. XAML and the Data/Seed/*.json files go through the
         // same WriteSource, and a `//` banner would corrupt both.
         var header = FileHeader.For(request.Customization.Company, request.Year);
@@ -292,7 +300,7 @@ public sealed class AppScaffolder
         // and the roles — classified here rather than at the point of use so the summary is
         // reported whether or not any screen reads them yet, making a misclassification visible
         // from the first build rather than from the first launch.
-        var plan = ScreenPlan.For(model, request.Customization, target);
+        var plan = ScreenPlan.For(model, request.Customization, target, rootNamespace);
 
         var auth = plan.Login;
 
@@ -306,9 +314,6 @@ public sealed class AppScaffolder
         var classNames = plan.ClassNames;
         var roles = plan.Roles;
 
-        // Through GeneratedProjectPath, not composed here, so the CLI's overwrite guard and this
-        // writer cannot drift apart — see that type's remarks.
-        var projectName = GeneratedProjectPath.ProjectName(appName, target);
         var outputFolder = GeneratedProjectPath.Folder(workspaceRoot, appName, target);
         var csprojPath = GeneratedProjectPath.CsprojPath(workspaceRoot, appName, target);
 
@@ -361,9 +366,9 @@ public sealed class AppScaffolder
             ? request.Customization
             : request.Customization with { IconPath = null };
 
-        // The namespace emitted code declares. projectName goes on naming the folder, the csproj,
-        // the assembly and the SQLite environment override — the prefix is a namespace only.
-        var rootNamespace = customization.RootNamespaceFor(projectName);
+        // rootNamespace: computed above, before the plan. projectName goes on naming the folder,
+        // the csproj, the assembly and the SQLite environment override — the prefix is a
+        // namespace only.
 
         // Written on every run, not only at creation: a project re-scaffolded under a different
         // prefix must not keep pointing at the old namespace, and one re-scaffolded without a

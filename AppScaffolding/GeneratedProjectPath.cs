@@ -15,6 +15,18 @@ public static class GeneratedProjectPath
     public static string ProjectName(string appName, ITargetScaffolder target)
         => appName + target.FolderSuffix;
 
+    /// <summary>The namespace generated code declares, prefixed if the customization names one.</summary>
+    /// <remarks>
+    /// The one other place <see cref="AppScaffolder"/>'s own root-namespace computation needs to
+    /// be reachable before a project exists on disk — <c>ScreenPlan.For</c> needs it to reserve
+    /// its outermost segment against a same-named entity (issue #132), and the build workflow's
+    /// review panel (<c>OutputStage.razor</c>) needs the identical value to preview that same
+    /// split before anything is written. A second computation of it there would be free to drift.
+    /// </remarks>
+    public static string RootNamespace(
+        string appName, ITargetScaffolder target, AppCustomization customization)
+        => customization.RootNamespaceFor(ProjectName(appName, target));
+
     /// <summary>The project folder, directly under the workspace root.</summary>
     public static string Folder(string workspaceRoot, string appName, ITargetScaffolder target)
         => Path.Combine(workspaceRoot, ProjectName(appName, target));
