@@ -225,7 +225,8 @@ public class BuildSessionTests
     {
         var session = Discovered();
         session.Advance();                                    // review -> output
-        session.Advance();                                    // output -> generate
+        session.Advance();                                    // output -> entry template
+        session.Advance();                                    // entry template -> generate
         session.Advance();                                    // generate -> run
 
         Assert.AreEqual(BuildStage.Run, session.Current);
@@ -243,7 +244,8 @@ public class BuildSessionTests
     {
         var session = Discovered();
         session.Advance();                                    // review -> output
-        session.Advance();                                    // output -> generate, nothing written
+        session.Advance();                                    // output -> entry template, nothing to answer
+        session.Advance();                                    // entry template -> generate, nothing written
 
         Assert.AreEqual(BuildStage.Generate, session.Current);
 

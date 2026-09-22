@@ -1,7 +1,7 @@
 namespace CodeGenerator.Web.Workflow;
 
 /// <summary>
-/// The nine nodes of the `build app` workflow, in the order the diagram draws them.
+/// The ten nodes of the `build app` workflow, in the order the diagram draws them.
 /// </summary>
 /// <remarks>
 /// The order matters twice: <see cref="StageGraph.Next"/> and

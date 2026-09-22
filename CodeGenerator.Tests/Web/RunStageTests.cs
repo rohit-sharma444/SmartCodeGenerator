@@ -284,10 +284,11 @@ public class RunStageTests
         session.Advance();
         session.SetModel(new CandidateDomainModel());
         session.Advance();   // review
-        session.Advance();   // generate
+        session.Advance();   // output
+        session.Advance();   // entry template
         session.SetGenerated(
             new GeneratedApp(scaffold ?? Written, "Build succeeded.", buildSucceeded));
-        session.Advance();   // run
+        session.Advance();   // generate
 
         return session;
     }

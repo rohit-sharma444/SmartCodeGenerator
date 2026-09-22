@@ -2,7 +2,7 @@ using CodeGenerator.Web.Workflow;
 
 namespace CodeGenerator.Tests.Web;
 
-/// <summary>The workflow's shape: nine nodes in order, and what changing one costs.</summary>
+/// <summary>The workflow's shape: ten nodes in order, and what changing one costs.</summary>
 [TestClass]
 public class StageGraphTests
 {

@@ -197,7 +197,8 @@ public class WorkflowPageTests
     {
         var session = OnReview();
         session.Advance();   // review -> output
-        session.Advance();   // output -> generate, which offers no step of its own
+        session.Advance();   // output -> entry template, nothing to answer
+        session.Advance();   // entry template -> generate, which offers no step of its own
 
         using var context = PageFor(session, out _);
 

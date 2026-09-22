@@ -132,6 +132,7 @@ public class WorkflowFinishedTests
         session.SetModel(new CandidateDomainModel());
         session.Advance();   // review
         session.Advance();   // output
+        session.Advance();   // entry template
         session.Advance();   // generate
         session.SetGenerated(new GeneratedApp(Written, "Build succeeded.", BuildSucceeded: true));
         session.Advance();   // run
