@@ -1235,12 +1235,30 @@ Append to `CodeGenerator.Tests/App/FieldGroupsTests.cs` (reusing the file's exis
 
 (Check `ModelStub`'s exact field content in the existing file before writing precise assertions on which names appear — reuse it exactly as the file already defines it; the assertions above are intentionally shape-based rather than naming `ModelStub`'s fields, so they hold regardless of its exact contents.)
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [ ] **Step 2: Fix the existing helper's reflection call — a required companion to Step 1, not optional**
+
+The file already has a `Columns(string modelStub, string typeName, out Assembly assembly)` helper (used by every pre-existing test in this file, e.g. `There_are_always_three_columns`) that invokes the emitted method reflectively with exactly one argument:
+
+```csharp
+var columns = (System.Collections.IEnumerable)assembly.GetType("FieldGroups")!
+    .GetMethod("Columns")!.Invoke(null, [assembly.GetType(typeName)!])!;
+```
+
+`MethodInfo.Invoke` does **not** apply a C# default parameter value when the argument array is shorter than the method's parameter list — it throws `TargetParameterCountException` instead. Once `Columns` takes two parameters (Step 3 below), this pre-existing helper — and every pre-existing test that goes through it — would throw at run time, not merely fail an assertion, unless it passes the count explicitly. Fix it now, in the same commit as Step 3, so no pre-existing test in this file ever sees the broken intermediate state:
+
+```csharp
+        var columns = (System.Collections.IEnumerable)assembly.GetType("FieldGroups")!
+            .GetMethod("Columns")!.Invoke(null, [assembly.GetType(typeName)!, 3])!;
+```
+
+(One line changed: `[assembly.GetType(typeName)!]` becomes `[assembly.GetType(typeName)!, 3]` — 3 is this helper's fixed column count, matching what every test that calls it through the two-argument `Columns(modelStub, typeName)`/`Columns(modelStub, typeName, out assembly)` overloads has always exercised.)
+
+- [ ] **Step 3: Run tests to verify they fail**
 
 Run: `dotnet test --filter FullyQualifiedName~FieldGroupsTests`
-Expected: FAIL — `Columns` takes one argument today, and `Flat` does not exist.
+Expected: FAIL — `Columns` takes one argument today (so the reflection call in Step 2's fixed helper throws `TargetParameterCountException` until Step 4 lands the real signature change), and `Flat` does not exist.
 
-- [ ] **Step 3: Refactor `For` to expose `Flat`, and parameterize `Columns`**
+- [ ] **Step 4: Refactor `For` to expose `Flat`, and parameterize `Columns`**
 
 In `AppScaffolding/Screens/FieldGroupsTemplate.cs`, replace the body of the emitted `For` method (lines 175-214) and add `Flat` immediately before it:
 
@@ -1335,12 +1353,12 @@ Replace `Columns` (lines 229-249):
     }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [ ] **Step 5: Run tests to verify they pass**
 
 Run: `dotnet test --filter FullyQualifiedName~FieldGroupsTests`
-Expected: PASS, including every pre-existing test in the file (`There_are_always_three_columns` etc. call `Columns(type)` with the default, unaffected).
+Expected: PASS, including every pre-existing test in the file (`There_are_always_three_columns` etc. now go through Step 2's fixed helper, which passes 3 explicitly).
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add AppScaffolding/Screens/FieldGroupsTemplate.cs CodeGenerator.Tests/App/FieldGroupsTests.cs
@@ -1703,7 +1721,10 @@ Then, for each of the three action bars, branch between the existing plain butto
                 </Border>
 ```
 
-Apply the same pattern to the Editor action bar (lines 249-256, Save/Cancel only) and, if desired, the Transaction list's New/Open/Delete bar (lines 202-208) — both follow the identical `isRibbon ? ribbonMarkup : plainMarkup` shape, swapped in as the `<StackPanel>` inside their own `<Border>`/`<Grid>`.
+Apply the identical `isRibbon ? ribbonMarkup : plainMarkup` pattern to two more bars, both mandatory — the Interfaces section above promises all three, and Task 13 (Split) later extracts the Transaction list bar's markup verbatim, so an inconsistently-applied ribbon here would silently vanish the moment Task 13 lands:
+
+- The Editor action bar (lines 249-256, Save/Cancel only).
+- The Transaction list's New/Open/Delete bar (lines 202-208).
 
 - [ ] **Step 4: Run tests to verify they pass**
 
@@ -2037,60 +2058,17 @@ Replace the `TransactionTemplate` block (lines 194-239) with a computed local bu
             </DockPanel>
         </DataTemplate>
 """
-            : $$$"""
-        <DataTemplate x:Key="TransactionTemplate">
-            <DockPanel Margin="16">
-                <Grid DockPanel.Dock="Top" Margin="0,0,0,10">
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="{Binding Title}" FontSize="15" FontWeight="SemiBold" />
-                        <TextBlock Text="{Binding Status}" Foreground="{{{muted}}}"
-                                   VerticalAlignment="Center" Margin="12,0,0,0" />
-                    </StackPanel>
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                        <TextBox Text="{Binding Search, UpdateSourceTrigger=PropertyChanged}"
-                                 Width="150" Margin="0,0,8,0" />
-                        <Button Content="New" Command="{Binding NewCommand}" Width="70" Margin="4,0" />
-                        <Button Content="Open" Command="{Binding OpenCommand}" Width="70" Margin="4,0" />
-                        <Button Content="Delete" Command="{Binding DeleteCommand}" Width="70" Margin="4,0" />
-                    </StackPanel>
-                </Grid>
-                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
-                    <TextBlock Text="From" VerticalAlignment="Center" Foreground="{{{muted}}}" />
-                    <DatePicker SelectedDate="{Binding From}" Width="120" Margin="6,0,12,0" />
-                    <TextBlock Text="To" VerticalAlignment="Center" Foreground="{{{muted}}}" />
-                    <DatePicker SelectedDate="{Binding To}" Width="120" Margin="6,0" />
-                </StackPanel>
-                <ItemsControl DockPanel.Dock="Bottom" ItemsSource="{Binding Totals}">
-                    <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" />
-                        </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                            <StackPanel Orientation="Horizontal" Margin="16,8,0,0">
-                                <TextBlock Text="{Binding Column}" Foreground="{{{muted}}}" Margin="0,0,6,0" />
-                                <TextBlock Text="{Binding Value}" FontWeight="Bold" Foreground="{{{text}}}" />
-                            </StackPanel>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-                <DataGrid ItemsSource="{Binding Items}"
-                          SelectedItem="{Binding Selected, Mode=TwoWay}"
-                          AutoGenerateColumns="True"
-                          IsReadOnly="True"
-                          CanUserAddRows="False"
-                          MouseDoubleClick="OnRowActivated"
-                          AutoGeneratingColumn="OnAutoGeneratingColumn" />
-            </DockPanel>
-        </DataTemplate>
-""";
+            : ExistingNonSplitTransactionTemplate;
 ```
 
+`ExistingNonSplitTransactionTemplate` above stands for the CURRENT `<DataTemplate x:Key="TransactionTemplate">...</DataTemplate>` markup, taken verbatim from the file exactly as Task 11 left it (its Ribbon-conditional action bar included) — **do not retype it by hand.** Cut the existing block out of the literal and paste it in as this branch's string, unmodified, rather than writing fresh markup for it: Task 11 already made that block's action bar conditional on `isRibbon`, and hand-typing a fresh copy here would silently drop that work for every non-split template. This is exactly the same move as `editorTemplate` below.
+
 Then, in the main literal:
-1. Replace the existing hardcoded `<DataTemplate x:Key="TransactionTemplate">...</DataTemplate>` block (lines 194-239) with `{{{transactionTemplate}}}`.
-2. Wrap the existing `<DataTemplate x:Key="EditorTemplate">...</DataTemplate>` block (lines 244-358) and the `Editor="{StaticResource EditorTemplate}"` line inside `ScreenTemplateSelector` (line 362) so both are omitted when `isSplit` — extract that whole block into an `editorTemplate` local (`isSplit ? string.Empty : $$$"""...the existing block..."""`) the same way `transactionTemplate` was just built, and an `editorAssignment` local (`isSplit ? string.Empty : "Editor=\"{StaticResource EditorTemplate}\""`), splicing `{{{editorTemplate}}}` and `{{{editorAssignment}}}` in their place.
+1. Replace the existing `<DataTemplate x:Key="TransactionTemplate">...</DataTemplate>` block with `{{{transactionTemplate}}}` — the block's own prior content becomes the `: ExistingNonSplitTransactionTemplate` branch above, moved, not copied.
+2. Wrap the existing `<DataTemplate x:Key="EditorTemplate">...</DataTemplate>` block and the `Editor="{StaticResource EditorTemplate}"` line inside `ScreenTemplateSelector` so both are omitted when `isSplit` — extract that whole block into an `editorTemplate` local (`isSplit ? string.Empty : $$$"""...the existing block, moved verbatim, Ribbon-conditional action bar included..."""`) the same way `transactionTemplate` was just built, and an `editorAssignment` local (`isSplit ? string.Empty : "Editor=\"{StaticResource EditorTemplate}\""`), splicing `{{{editorTemplate}}}` and `{{{editorAssignment}}}` in their place.
 3. `ScreenTemplateSelector`'s `Editor` property assignment line in the `<views:ScreenTemplateSelector ...>` element must become conditional too — when `isSplit`, omit the `Editor="..."` attribute entirely (its C# `DataTemplate? Editor { get; set; }` stays null, which is fine: the `ScreenTemplateSelector.cs` code, unchanged, only reaches the `Editor` template for an `IRecordEditor`, and nothing constructs one when `EditsInline` is true — Task 12 guarantees that).
+
+**Ruling carried from the plan's pre-flight scan:** Split's own combined action bar (the one inside the `isSplit` branch above, New/Edit/Delete/Save/Clear/Cancel) is deliberately plain — it does not also branch on `isRibbon`. `Split` and `Ribbon` are mutually exclusive values of one enum, so a generated app is never both at once; teaching the Split branch to also render a ribbon strip would be combinatorial scope neither the spec nor this plan asked for. Do not flag this as a missing requirement.
 
 - [ ] **Step 4: Run tests to verify they pass**
 
