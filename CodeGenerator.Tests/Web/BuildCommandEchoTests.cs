@@ -92,6 +92,7 @@ public class BuildCommandEchoTests
             Theme = AppTheme.Dark,
             Accent = "#ff8800",
             Layout = AppLayout.MasterDetail,
+            EntryTemplate = AppScaffolding.Screens.EntryTemplate.Tabbed,
             Validation = false,
             Logging = true,
             SampleSeedData = false,
@@ -109,6 +110,7 @@ public class BuildCommandEchoTests
         Assert.AreEqual(asked.Theme, parsed.Customization.Theme);
         Assert.AreEqual(asked.Accent, parsed.Customization.Accent);
         Assert.AreEqual(asked.Layout, parsed.Customization.Layout);
+        Assert.AreEqual(asked.EntryTemplate, parsed.Customization.EntryTemplate);
         Assert.AreEqual(asked.Validation, parsed.Customization.Validation);
         Assert.AreEqual(asked.Logging, parsed.Customization.Logging);
         Assert.AreEqual(asked.SampleSeedData, parsed.Customization.SampleSeedData);

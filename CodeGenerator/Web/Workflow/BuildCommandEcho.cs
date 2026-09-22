@@ -77,6 +77,9 @@ internal static class BuildCommandEcho
         if (customization.Layout is { } layout)
             options += $" layout {LayoutWord(layout)}";
 
+        if (customization.EntryTemplate is { } entryTemplate)
+            options += $" entry-template {AppScaffolding.Screens.EntryTemplateCatalog.KeyFor(entryTemplate)}";
+
         if (customization.Transactions.Length > 0)
             options += $" transactions {customization.Transactions}";
 
