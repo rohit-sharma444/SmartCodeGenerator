@@ -14,6 +14,9 @@ namespace AppScaffolding.Screens;
 /// caller could reuse:
 /// <list type="number">
 /// <item>the auth core occupies "User", but only in a build that HAS a login and screens;</item>
+/// <item>the app's own root namespace occupies its outermost segment — every generated file
+/// declares <c>namespace {rootNamespace}.X;</c>, so an entity sharing that word collides with
+/// it at the global scope the same way "Data"/"Models" already do one level in (issue #132);</item>
 /// <item>class names are not entity names — <c>ToUniqueClassName</c> renames collisions;</item>
 /// <item>the overrides are matched against the CLASS name, which is what the user's
 /// <c>transactions</c>/<c>masters</c> answers therefore have to hold.</item>
@@ -47,13 +50,24 @@ public sealed class ScreenPlan
     /// <summary>Whether this build emits the auth core — a login AND a target with screens.</summary>
     public bool Login { get; }
 
+    /// <param name="rootNamespace">
+    /// The namespace the generated app will declare its code under — the SAME value
+    /// <c>AppScaffolder</c> later passes to every template, not re-derived here. Only its
+    /// outermost dotted segment is reserved: that is the one word every generated file's
+    /// <c>namespace</c> declaration puts in scope at the assembly's global namespace, which is
+    /// what makes a same-named class ambiguous (CS0118) regardless of which file references it.
+    /// </param>
     public static ScreenPlan For(
-        CandidateDomainModel model, AppCustomization customization, ITargetScaffolder target)
+        CandidateDomainModel model, AppCustomization customization, ITargetScaffolder target,
+        string rootNamespace)
     {
         var login = customization.Login && target.HasScreens;
 
-        var classes = DomainModelMapper.ToClassDefinitions(
-            model, out var classNames, login ? AuthCoreFiles.ReservedNames : []);
+        var reserved = new List<string> { rootNamespace.Split('.', 2)[0] };
+        if (login)
+            reserved.AddRange(AuthCoreFiles.ReservedNames);
+
+        var classes = DomainModelMapper.ToClassDefinitions(model, out var classNames, reserved);
 
         var roles = EntityRoles.Classify(
             classes,

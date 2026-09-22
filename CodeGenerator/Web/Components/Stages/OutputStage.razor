@@ -1,3 +1,4 @@
+@using AppScaffolding
 @using AppScaffolding.Screens
 @using CodeGenerator.App
 @using CodeGenerator.Web.Workflow
@@ -13,10 +14,17 @@
 
 @* Once per render rather than per row: every row asks it, and it is worked out from the model as
    it stands right now — a screen choice made a moment ago has to be able to move a class. Null
-   for a target with no screens, which is the whole question not being put. *@
+   for a target with no screens, which is the whole question not being put.
+
+   The root namespace goes through GenerateStep.NameFor + GeneratedProjectPath.RootNamespace —
+   the SAME two calls GenerateStage makes to name the real project — so this preview reserves
+   the identical word the real build will (issue #132), rather than a second guess free to drift. *@
 @{
     var plan = Session.Target?.HasScreens == true
-        ? ScreenPlan.For(Model, Session.Customization, Session.Target)
+        ? ScreenPlan.For(
+            Model, Session.Customization, Session.Target,
+            GeneratedProjectPath.RootNamespace(
+                GenerateStep.NameFor(Session), Session.Target, Session.Customization))
         : null;
 }
 
@@ -152,10 +160,13 @@
     private void Choose(string entityName, EntityRole chosen)
     {
         var target = Session.Target!;
-        var className = ScreenPlan.For(Model, Session.Customization, target).ClassNameOf(entityName);
+        var rootNamespace = GeneratedProjectPath.RootNamespace(
+            GenerateStep.NameFor(Session), target, Session.Customization);
+        var className = ScreenPlan.For(Model, Session.Customization, target, rootNamespace)
+            .ClassNameOf(entityName);
 
         var cleared = ScreenChoice.Clear(Session.Customization, className);
-        var baseline = ScreenPlan.For(Model, cleared, target).RoleOfEntity(entityName);
+        var baseline = ScreenPlan.For(Model, cleared, target, rootNamespace).RoleOfEntity(entityName);
 
         Session.SetCustomization(
             ScreenChoice.Set(Session.Customization, className, chosen, baseline));
