@@ -1,4 +1,5 @@
 ﻿using AppScaffolding;
+using AppScaffolding.Screens;
 
 namespace CodeGenerator.App;
 
@@ -49,6 +50,9 @@ internal static class CustomizationSummary
         // deliberate choice, and the one place the user can check that the override took effect.
         if (customization.Layout is not null)
             lines.Add($"  Layout: {AppLayoutCatalog.KeyFor(customization.Layout.Value)}");
+
+        if (customization.EntryTemplate is not null)
+            lines.Add($"  Entry template: {EntryTemplateCatalog.KeyFor(customization.EntryTemplate.Value)}");
 
         // Named, not counted: the point of typing them is to check the generator agreed.
         if (customization.Transactions.Length > 0)
