@@ -195,7 +195,7 @@ internal static class CustomizationDefaults
     /// absent one, and both mean the default entry template downstream.
     /// </remarks>
     private static EntryTemplate? ParseEntryTemplate(string? value)
-        => value is not null && Enum.TryParse<EntryTemplate>(value, ignoreCase: true, out var template) ? template : null;
+        => value is not null && Enum.TryParse<EntryTemplate>(value, out var template) ? template : null;
 
     /// <summary>
     /// <paramref name="value"/> when it is empty or a valid namespace prefix, or

@@ -220,7 +220,7 @@ internal sealed class BuildSnapshot
             Masters: Masters ?? fallback.Masters,
             NamespacePrefix: NamespacePrefix ?? fallback.NamespacePrefix,
             Layout: Enum.TryParse<AppLayout>(Layout, out var layout) ? layout : fallback.Layout,
-            EntryTemplate: Enum.TryParse<EntryTemplate>(EntryTemplate, ignoreCase: true, out var template) ? template : fallback.EntryTemplate);
+            EntryTemplate: Enum.TryParse<EntryTemplate>(EntryTemplate, out var template) ? template : fallback.EntryTemplate);
     }
 
     /// <summary>The model this snapshot holds, or null when it was taken before discovery ran.</summary>
