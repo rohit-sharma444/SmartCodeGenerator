@@ -337,21 +337,58 @@ public class CustomizationWizardTests
     /// <summary>Every caret in one column, so the block reads as a form rather than as a ragged
     /// list — which is what it was while the accepted values sat inside the labels.</summary>
     [TestMethod]
+    public void The_entry_template_is_asked_only_when_business_is_effective()
+    {
+        // sidebar is not business: no entry-template prompt, same input works unchanged.
+        var (result, output) = RunFor(new WpfTarget(), "y\nsidebar\n\n\n" + new string('\n', 12));
+
+        Assert.IsNotNull(result);
+        Assert.DoesNotContain("Entry template", output);
+    }
+
+    [TestMethod]
+    public void The_entry_template_is_asked_when_business_is_kept_as_the_default()
+    {
+        var (result, output) = RunFor(new WpfTarget(), "y\n\n\n\n" + new string('\n', 12));
+
+        Assert.IsNotNull(result);
+        StringAssert.Contains(output, "Entry template: classic/grouped/tabbed/two-column/split/ribbon");
+        Assert.IsNull(result.EntryTemplate);
+    }
+
+    [TestMethod]
+    public void An_explicit_entry_template_answer_is_recorded()
+    {
+        var (result, _) = RunFor(new WpfTarget(), "y\n\ntabbed\n" + new string('\n', 12));
+
+        Assert.IsNotNull(result);
+        Assert.AreEqual(AppScaffolding.Screens.EntryTemplate.Tabbed, result.EntryTemplate);
+    }
+
+    [TestMethod]
+    public void An_unusable_entry_template_answer_keeps_what_was_offered()
+    {
+        var start = AppCustomization.Default with { EntryTemplate = AppScaffolding.Screens.EntryTemplate.Split };
+
+        var (result, _) = RunFor(new WpfTarget(), "y\n\nkanban\n" + new string('\n', 12), start);
+
+        Assert.IsNotNull(result);
+        Assert.AreEqual(AppScaffolding.Screens.EntryTemplate.Split, result.EntryTemplate);
+    }
+
+    [TestMethod]
     public void Every_prompt_puts_its_caret_in_the_same_column()
     {
-        var (_, output) = RunFor(new WpfTarget(), "y\n\n\n" + new string('\n', 13),
+        var (_, output) = RunFor(new WpfTarget(), "y\n\n\n" + new string('\n', 14),
             AppCustomization.Default with { Company = "Codis Ltd", Theme = AppTheme.Dark });
 
-        // Ask writes without a newline -- in a terminal the user's Enter supplies it -- so the
-        // prompts arrive as one run of text and the carets have to be measured by the distance
-        // BETWEEN them. Reading a single column index off each line would pass on any output at all.
         var block = output[(output.IndexOf("clears an optional one.", StringComparison.Ordinal) + 1)..];
 
         var carets = System.Text.RegularExpressions.Regex.Matches(block, "> ")
             .Select(match => match.Index)
             .ToList();
 
-        Assert.HasCount(13, carets, "a desktop run asks thirteen questions");
+        Assert.HasCount(14, carets, "a desktop run at the business default asks fourteen questions");
 
         var widths = carets.Zip(carets.Skip(1), (a, b) => b - a).Distinct().ToList();
 
