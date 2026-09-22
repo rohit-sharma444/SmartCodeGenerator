@@ -104,12 +104,15 @@ internal static class CustomizationWizard
         // about field arrangement when the window will not be the business shell has no effect and
         // would falsely imply one. Gated on the RESOLVED layout, not the offered one, so an
         // unusable layout answer (which keeps the previously offered layout) still asks or skips
-        // correctly. Write the options line here (before the blank line) only when it will be used.
+        // correctly.
         var asksEntryTemplate = asksLayout && target is not null && EntryTemplates.Supports(target.Key)
             && (layout ?? AppCustomization.Default.EffectiveLayout) == AppLayout.Business;
 
         if (asksEntryTemplate)
+        {
+            writer.WriteLine();  // Start options on a fresh line after layout answer
             writer.WriteLine($"  Entry template: {EntryTemplateCatalog.PromptOptions}");
+        }
 
         writer.WriteLine();
 

@@ -384,17 +384,31 @@ public class CustomizationWizardTests
 
         var block = output[(output.IndexOf("clears an optional one.", StringComparison.Ordinal) + 1)..];
 
-        var carets = System.Text.RegularExpressions.Regex.Matches(block, "> ")
-            .Select(match => match.Index)
-            .ToList();
+        // Find all "> " matches and their position relative to the start of their line.
+        // Since prompt lines don't end with newlines, multiple prompts may be on the same physical
+        // line in the output, but each one's column position (relative to its logical line start,
+        // i.e. the most recent newline or the start of the block) is what matters.
+        var caretMatches = System.Text.RegularExpressions.Regex.Matches(block, "> ");
+        var columnOffsets = new List<int>();
 
-        Assert.HasCount(14, carets, "a desktop run at the business default asks fourteen questions");
+        foreach (System.Text.RegularExpressions.Match match in caretMatches)
+        {
+            // Find the position of the most recent newline before this match
+            var lastNewlinePos = block.LastIndexOf('\n', match.Index);
 
-        var widths = carets.Zip(carets.Skip(1), (a, b) => b - a).Distinct().ToList();
+            // The column offset is the distance from the start of the line
+            // (either after the newline, or from the start of the block)
+            var columnOffset = lastNewlinePos >= 0 ? match.Index - lastNewlinePos - 1 : match.Index;
+            columnOffsets.Add(columnOffset);
+        }
 
-        Assert.HasCount(1, widths,
-            "every prompt should be the same width so the carets line up, found widths: "
-            + string.Join(", ", widths));
+        Assert.HasCount(14, columnOffsets, "a desktop run at the business default asks fourteen questions");
+
+        var distinctOffsets = columnOffsets.Distinct().ToList();
+
+        Assert.HasCount(1, distinctOffsets,
+            "every prompt's caret should be in the same column on its own line, found distinct column offsets: "
+            + string.Join(", ", distinctOffsets));
     }
 
     [TestMethod]
