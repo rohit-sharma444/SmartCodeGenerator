@@ -184,16 +184,30 @@ public interface IEntityViewModel
         // harmless before Permissions.Allows was taught to refuse a null role in a login app; after
         // that fix a null role here means this path can never succeed for ANYONE, in ANY login app
         // -- found running a real generated app for validation-phase-3's task 15.
+        //
+        // Stored is re-read from disk (GetAll, not Records) rather than captured once like
+        // RecordEditorTemplate's _stored: this screen binds Records directly to the grid, so by
+        // the time Save runs, data binding has already mutated the very instance record now points
+        // to in place -- there is no separate pre-edit snapshot to have captured earlier the way a
+        // Draft/clone editor has one. Passing `default` here was the identical bug
+        // RecordEditorTemplate/BlazorScreenTemplates had (validation-phase-5, 8a923cf) for the two
+        // per-record editors, filed as issue #135 for this per-list screen since fixing it needs a
+        // fresh on-disk read rather than a threaded-through snapshot. A record with no on-disk
+        // counterpart (added this session, via Add) correctly gets a null Stored -- FirstOrDefault
+        // finds nothing for an Id that was only ever assigned in memory.
         var validateRecords = validation
             ? """
                     // This path writes through _store, not Repository, so it has to run the generated
                     // validator itself -- repository-level enforcement never sees these records.
                     var validator = ValidatorFactory.Create<T>();
+                    var onDisk = _store.GetAll();
                     foreach (var record in Records)
                     {
+                        var stored = onDisk.FirstOrDefault(existing => GetId(existing) == GetId(record));
+
                         var outcome = validator.Validate(
                             new ValidationContext<T>(
-                                record!, ValidationOperation.Update, default, new StoreEntityLookup(),
+                                record!, ValidationOperation.Update, stored, new StoreEntityLookup(),
                                 ActingUser.Role(), ActingUser.Id()));
 
                         if (!outcome.IsValid)
@@ -205,6 +219,17 @@ public interface IEntityViewModel
 
 
             """
+            : string.Empty;
+
+        // Only needed to key the onDisk lookup above -- bundled with it, not declared
+        // unconditionally, so a novalidation app does not gain an unused private method.
+        var getIdMethod = validation
+            ? """
+
+                  private static int GetId(T item) =>
+                      (int)(typeof(T).GetProperty("Id")?.GetValue(item) ?? 0);
+
+              """
             : string.Empty;
 
         // The whole pipeline, not the matrix alone: with validation on, Security is no longer
@@ -330,7 +355,7 @@ public sealed class EntityViewModel<T> : ObservableObject, IEntityViewModel wher
             ? $"Saved {Records.Count} {Title} record(s)."
             : write.Refusal ?? $"Could not write {typeof(T).Name}.json.";
     }
-}
+{{getIdMethod}}}
 """;
     }
 }
