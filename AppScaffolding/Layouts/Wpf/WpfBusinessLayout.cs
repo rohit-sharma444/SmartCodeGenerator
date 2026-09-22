@@ -74,6 +74,24 @@ public sealed class WpfBusinessLayout : IAppLayout
         // constant.
         var additionalTitle = FieldGroupsTemplate.AdditionalTitle;
 
+        var isRibbon = context.Customization.EffectiveEntryTemplate == Screens.EntryTemplate.Ribbon;
+
+        // WPF's <Style> can style every Button in a scope without repeating six attributes six
+        // times, but a StaticResource style can't be reused across the two DIFFERENT button sets
+        // (Master's six commands, the Editor's two) without also being shared, so each bar carries
+        // its own inline styling instead -- consistent with how every other brush in this file is
+        // assigned, and avoiding a fifth Window.Resources entry for a chrome choice this narrow.
+        // Two dollar signs, not one: a raw string literal's literal braces must be a SHORTER run
+        // than its dollar count, not a doubled one as in a normal interpolated string, so the
+        // single literal brace WPF's binding syntax needs ({Binding ...}) forces the interpolation
+        // holes here to open with {{ and close with }}.
+        static string RibbonButton(string content, string command, string width = "76")
+            => $$"""
+                <StackPanel Orientation="Vertical" Margin="3,0" Width="{{width}}">
+                    <Button Content="{{content}}" Command="{Binding {{command}}}" Padding="4,6" />
+                </StackPanel>
+                """;
+
         return $$$"""
 <Window x:Class="{{{context.RootNamespace}}}.Views.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -145,6 +163,17 @@ public sealed class WpfBusinessLayout : IAppLayout
                 <Border DockPanel.Dock="Bottom" Background="{{{railFill}}}" Padding="10,6">
                     <DockPanel>
                         <TextBlock Text="{Binding Status}" Foreground="{{{muted}}}" VerticalAlignment="Center" />
+{{{(isRibbon
+    ? $"""
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Tag="ribbon">
+                            {RibbonButton("New", "NewCommand")}
+                            {RibbonButton("Edit", "EditCommand")}
+                            {RibbonButton("Delete", "DeleteCommand")}
+                            {RibbonButton("Save", "SaveCommand")}
+                            {RibbonButton("Clear", "ClearCommand")}
+                            {RibbonButton("Cancel", "CancelCommand")}
+                        </StackPanel>
+""" : """
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                             <Button Content="New" Command="{Binding NewCommand}" Width="80" Margin="4,0" />
                             <Button Content="Edit" Command="{Binding EditCommand}" Width="80" Margin="4,0" />
@@ -153,6 +182,7 @@ public sealed class WpfBusinessLayout : IAppLayout
                             <Button Content="Clear" Command="{Binding ClearCommand}" Width="80" Margin="4,0" />
                             <Button Content="Cancel" Command="{Binding CancelCommand}" Width="80" Margin="4,0" />
                         </StackPanel>
+""")}}}
                     </DockPanel>
                 </Border>
                 <views:EntryForm DockPanel.Dock="Top" Record="{Binding Editor.Draft}" Margin="10" />
@@ -199,6 +229,19 @@ public sealed class WpfBusinessLayout : IAppLayout
                         <TextBlock Text="{Binding Status}" Foreground="{{{muted}}}"
                                    VerticalAlignment="Center" Margin="12,0,0,0" />
                     </StackPanel>
+{{{(isRibbon
+    // Two dollar signs here too: the search box's own literal "{Binding Search, ...}" needs a
+    // single-brace run to survive as text, which only holds while the interpolation holes below
+    // open and close with a DOUBLED brace instead.
+    ? $$"""
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Tag="ribbon">
+                        <TextBox Text="{Binding Search, UpdateSourceTrigger=PropertyChanged}"
+                                 Width="150" Margin="0,0,8,0" />
+                        {{RibbonButton("New", "NewCommand", "60")}}
+                        {{RibbonButton("Open", "OpenCommand", "60")}}
+                        {{RibbonButton("Delete", "DeleteCommand", "60")}}
+                    </StackPanel>
+""" : """
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                         <TextBox Text="{Binding Search, UpdateSourceTrigger=PropertyChanged}"
                                  Width="150" Margin="0,0,8,0" />
@@ -206,6 +249,7 @@ public sealed class WpfBusinessLayout : IAppLayout
                         <Button Content="Open" Command="{Binding OpenCommand}" Width="70" Margin="4,0" />
                         <Button Content="Delete" Command="{Binding DeleteCommand}" Width="70" Margin="4,0" />
                     </StackPanel>
+""")}}}
                 </Grid>
                 <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
                     <TextBlock Text="From" VerticalAlignment="Center" Foreground="{{{muted}}}" />
@@ -249,10 +293,18 @@ public sealed class WpfBusinessLayout : IAppLayout
                 <Border DockPanel.Dock="Bottom" Background="{{{railFill}}}" Padding="10,6">
                     <DockPanel>
                         <TextBlock Text="{Binding Status}" Foreground="{{{muted}}}" VerticalAlignment="Center" />
+{{{(isRibbon
+    ? $"""
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Tag="ribbon">
+                            {RibbonButton("Save", "SaveCommand")}
+                            {RibbonButton("Cancel", "CancelCommand")}
+                        </StackPanel>
+""" : """
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                             <Button Content="Save" Command="{Binding SaveCommand}" Width="88" Margin="4,0" />
                             <Button Content="Cancel" Command="{Binding CancelCommand}" Width="88" Margin="4,0" />
                         </StackPanel>
+""")}}}
                     </DockPanel>
                 </Border>
                 <views:EntryForm DockPanel.Dock="Top" Record="{Binding Draft}" Margin="10" />

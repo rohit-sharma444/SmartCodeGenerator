@@ -412,7 +412,10 @@ public class WpfBusinessLayoutTests
     public void The_window_is_well_formed_xml()
     {
         foreach (var xaml in new[]
-                 { Xaml(), Xaml(AppCustomization.Default with { Theme = AppTheme.Dark }) })
+                 {
+                     Xaml(), Xaml(AppCustomization.Default with { Theme = AppTheme.Dark }),
+                     Xaml(AppCustomization.Default with { EntryTemplate = AppScaffolding.Screens.EntryTemplate.Ribbon }),
+                 })
         {
             Assert.IsNotNull(XDocument.Parse(xaml).Root);
         }
@@ -1185,5 +1188,125 @@ public class WpfBusinessLayoutTests
                 ($"Views/{WpfEntryControls.FormFileName}", WpfEntryControls.Form(context)),
                 ($"Views/{WpfEntryControls.NotesFileName}", WpfEntryControls.Notes(context)));
         }
+    }
+
+    // ---- ribbon action bar (Task 11) ----
+
+    private static string XamlFor(AppScaffolding.Screens.EntryTemplate template)
+        => Xaml(AppCustomization.Default with { EntryTemplate = template });
+
+    /// <summary>As the file's existing <c>TemplateSlice(key)</c>, but against a specific entry
+    /// template rather than always the default.</summary>
+    private static string TemplateSlice(string key, AppScaffolding.Screens.EntryTemplate template)
+    {
+        var xaml = XamlFor(template);
+        var from = xaml.IndexOf($"x:Key=\"{key}\"", StringComparison.Ordinal);
+
+        Assert.IsGreaterThan(-1, from, $"no template keyed '{key}'");
+
+        var depth = 1;
+        var at = from;
+
+        while (depth > 0)
+        {
+            var opened = xaml.IndexOf("<DataTemplate", at + 1, StringComparison.Ordinal);
+            var closed = xaml.IndexOf("</DataTemplate>", at + 1, StringComparison.Ordinal);
+
+            Assert.IsGreaterThan(-1, closed, $"'{key}' is never closed");
+
+            if (opened >= 0 && opened < closed)
+            {
+                depth++;
+                at = opened;
+                continue;
+            }
+
+            depth--;
+            at = closed;
+        }
+
+        return xaml.Substring(from, at - from);
+    }
+
+    [TestMethod]
+    public void Ribbon_renders_the_master_action_bar_as_an_icon_strip()
+    {
+        var master = TemplateSlice("MasterTemplate", AppScaffolding.Screens.EntryTemplate.Ribbon);
+
+        StringAssert.Contains(master, "Tag=\"ribbon\"");
+        StringAssert.Contains(master, "Command=\"{Binding SaveCommand}\"");
+        StringAssert.Contains(master, "Command=\"{Binding DeleteCommand}\"");
+    }
+
+    [TestMethod]
+    public void Non_ribbon_templates_keep_the_plain_button_bar()
+    {
+        var master = TemplateSlice("MasterTemplate", AppScaffolding.Screens.EntryTemplate.Grouped);
+
+        Assert.DoesNotContain("Tag=\"ribbon\"", master);
+        StringAssert.Contains(master, "<Button Content=\"Save\"");
+    }
+
+    [TestMethod]
+    public void Ribbon_still_offers_every_command_the_default_bar_offers()
+    {
+        var master = TemplateSlice("MasterTemplate", AppScaffolding.Screens.EntryTemplate.Ribbon);
+
+        foreach (var command in new[]
+                 { "NewCommand", "EditCommand", "DeleteCommand", "SaveCommand", "ClearCommand", "CancelCommand" })
+        {
+            StringAssert.Contains(master, command);
+        }
+    }
+
+    [TestMethod]
+    public void Ribbon_renders_the_editor_action_bar_as_an_icon_strip()
+    {
+        var editor = TemplateSlice("EditorTemplate", AppScaffolding.Screens.EntryTemplate.Ribbon);
+
+        StringAssert.Contains(editor, "Tag=\"ribbon\"");
+        StringAssert.Contains(editor, "Command=\"{Binding SaveCommand}\"");
+        StringAssert.Contains(editor, "Command=\"{Binding CancelCommand}\"");
+    }
+
+    [TestMethod]
+    public void Non_ribbon_templates_keep_the_plain_editor_button_bar()
+    {
+        var editor = TemplateSlice("EditorTemplate", AppScaffolding.Screens.EntryTemplate.Grouped);
+
+        Assert.DoesNotContain("Tag=\"ribbon\"", editor);
+        StringAssert.Contains(editor, "<Button Content=\"Save\"");
+        StringAssert.Contains(editor, "<Button Content=\"Cancel\"");
+    }
+
+    [TestMethod]
+    public void Ribbon_renders_the_transaction_action_bar_as_an_icon_strip_but_leaves_the_search_box_alone()
+    {
+        var transaction = TemplateSlice("TransactionTemplate", AppScaffolding.Screens.EntryTemplate.Ribbon);
+
+        StringAssert.Contains(transaction, "Tag=\"ribbon\"");
+        StringAssert.Contains(transaction, "Command=\"{Binding NewCommand}\"");
+        StringAssert.Contains(transaction, "Command=\"{Binding OpenCommand}\"");
+        StringAssert.Contains(transaction, "Command=\"{Binding DeleteCommand}\"");
+
+        // The search box is untouched: identical in both branches, and never wrapped in a
+        // RibbonButton, which only ever wraps a Button.
+        StringAssert.Contains(
+            transaction,
+            "<TextBox Text=\"{Binding Search, UpdateSourceTrigger=PropertyChanged}\"");
+    }
+
+    [TestMethod]
+    public void Non_ribbon_templates_keep_the_plain_transaction_button_bar()
+    {
+        var transaction = TemplateSlice("TransactionTemplate", AppScaffolding.Screens.EntryTemplate.Grouped);
+
+        Assert.DoesNotContain("Tag=\"ribbon\"", transaction);
+        StringAssert.Contains(transaction, "<Button Content=\"New\"");
+        StringAssert.Contains(transaction, "<Button Content=\"Open\"");
+        StringAssert.Contains(transaction, "<Button Content=\"Delete\"");
+        StringAssert.Contains(
+            transaction,
+            "<TextBox Text=\"{Binding Search, UpdateSourceTrigger=PropertyChanged}\"");
     }
 }
