@@ -110,14 +110,8 @@ internal static class CustomizationWizard
 
         if (asksEntryTemplate)
         {
-            writer.WriteLine();  // Start options on a fresh line after layout answer
             writer.WriteLine($"  Entry template: {EntryTemplateCatalog.PromptOptions}");
-        }
 
-        writer.WriteLine();
-
-        if (asksEntryTemplate)
-        {
             var offeredTemplate =
                 EntryTemplateCatalog.KeyFor(entryTemplate ?? AppCustomization.Default.EffectiveEntryTemplate);
 
@@ -130,6 +124,8 @@ internal static class CustomizationWizard
                 entryTemplate = parsedTemplate;
             }
         }
+
+        writer.WriteLine();
 
         // Asked beside the layout, because both are about the SHAPE of the app rather than its
         // appearance. Blank means "decide automatically", which is what NoneLabel already

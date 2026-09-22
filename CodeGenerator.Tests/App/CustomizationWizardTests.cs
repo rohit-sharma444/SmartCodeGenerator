@@ -384,30 +384,33 @@ public class CustomizationWizardTests
 
         var block = output[(output.IndexOf("clears an optional one.", StringComparison.Ordinal) + 1)..];
 
-        // Find all "> " matches and their position relative to the start of their line.
-        // Since prompt lines don't end with newlines, multiple prompts may be on the same physical
-        // line in the output, but each one's column position (relative to its logical line start,
-        // i.e. the most recent newline or the start of the block) is what matters.
-        var caretMatches = System.Text.RegularExpressions.Regex.Matches(block, "> ");
-        var columnOffsets = new List<int>();
+        // Ask() writes no newline of its own -- in a real terminal the user's Enter supplies the
+        // row break between prompts, which this captured text never sees. An explicit header line
+        // (the Entry Template options line) DOES write a real newline. So each prompt's own "row"
+        // starts at whichever is LATER: right after the previous prompt's "> ", or right after the
+        // most recent real newline -- and what must stay constant is each prompt's own distance
+        // from wherever its row actually starts.
+        var carets = System.Text.RegularExpressions.Regex.Matches(block, "> ")
+            .Select(m => m.Index)
+            .ToList();
 
-        foreach (System.Text.RegularExpressions.Match match in caretMatches)
+        Assert.HasCount(14, carets, "a desktop run at the business default asks fourteen questions");
+
+        var offsets = new List<int>();
+
+        for (var i = 1; i < carets.Count; i++)
         {
-            // Find the position of the most recent newline before this match
-            var lastNewlinePos = block.LastIndexOf('\n', match.Index);
+            var previousEnd = carets[i - 1] + 2; // length of "> "
+            var lastNewline = block.LastIndexOf('\n', carets[i]);
+            var rowStart = Math.Max(previousEnd, lastNewline + 1);
 
-            // The column offset is the distance from the start of the line
-            // (either after the newline, or from the start of the block)
-            var columnOffset = lastNewlinePos >= 0 ? match.Index - lastNewlinePos - 1 : match.Index;
-            columnOffsets.Add(columnOffset);
+            offsets.Add(carets[i] - rowStart);
         }
 
-        Assert.HasCount(14, columnOffsets, "a desktop run at the business default asks fourteen questions");
-
-        var distinctOffsets = columnOffsets.Distinct().ToList();
+        var distinctOffsets = offsets.Distinct().ToList();
 
         Assert.HasCount(1, distinctOffsets,
-            "every prompt's caret should be in the same column on its own line, found distinct column offsets: "
+            "every prompt's caret should be the same distance from wherever its row starts, found: "
             + string.Join(", ", distinctOffsets));
     }
 
