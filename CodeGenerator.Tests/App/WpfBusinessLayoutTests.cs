@@ -1130,4 +1130,60 @@ public class WpfBusinessLayoutTests
         => StringAssert.Contains(
             MasterTemplate(),
             "Text=\"{Binding Shown, StringFormat='Total Records: {0}'}\"");
+
+    // ---- entry-form templates (Task 10) ----
+
+    private static LayoutContext ContextFor(AppScaffolding.Screens.EntryTemplate template)
+        => Context(AppCustomization.Default with { EntryTemplate = template });
+
+    [TestMethod]
+    public void Classic_lays_out_one_flat_column_with_no_panels()
+    {
+        var source = WpfEntryControls.Form(ContextFor(AppScaffolding.Screens.EntryTemplate.Classic));
+
+        StringAssert.Contains(source, "FieldGroups.Flat(");
+        Assert.DoesNotContain("Panel(group)", source);
+    }
+
+    [TestMethod]
+    public void TwoColumn_packs_FieldGroups_into_two_columns()
+    {
+        var source = WpfEntryControls.Form(ContextFor(AppScaffolding.Screens.EntryTemplate.TwoColumn));
+
+        StringAssert.Contains(source, "FieldGroups.Columns(Record.GetType(), 2)");
+    }
+
+    [TestMethod]
+    public void Grouped_still_packs_into_the_default_three_columns()
+    {
+        var source = WpfEntryControls.Form(ContextFor(AppScaffolding.Screens.EntryTemplate.Grouped));
+
+        StringAssert.Contains(source, "FieldGroups.Columns(Record.GetType())");
+    }
+
+    [TestMethod]
+    public void Tabbed_lays_each_group_out_as_its_own_tab()
+    {
+        var source = WpfEntryControls.Form(ContextFor(AppScaffolding.Screens.EntryTemplate.Tabbed));
+
+        StringAssert.Contains(source, "new TabControl()");
+        StringAssert.Contains(source, "FieldGroups.For(");
+        StringAssert.Contains(source, "Header = group.Title");
+    }
+
+    [TestMethod]
+    public void Every_entry_template_still_compiles_with_FieldGroups_and_RequiredFields()
+    {
+        foreach (var template in Enum.GetValues<AppScaffolding.Screens.EntryTemplate>())
+        {
+            var context = ContextFor(template);
+
+            EmittedDesktopSource.AssertCompilesTogether(
+                ("Screens/FieldGroups.cs", FieldGroupsTemplate.Source("Payroll")),
+                ("Screens/RequiredFields.cs", RequiredFieldsTemplate.Source("Payroll", null)),
+                ($"Views/{WpfEntryControls.HeaderFileName}", WpfEntryControls.Header(context)),
+                ($"Views/{WpfEntryControls.FormFileName}", WpfEntryControls.Form(context)),
+                ($"Views/{WpfEntryControls.NotesFileName}", WpfEntryControls.Notes(context)));
+        }
+    }
 }
