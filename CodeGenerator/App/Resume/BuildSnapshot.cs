@@ -1,5 +1,6 @@
 using AppScaffolding;
 using AppScaffolding.Layouts;
+using AppScaffolding.Screens;
 using CodeGenerationEngine.Models;
 using CodeGenerator.Web.Workflow;
 using DataIngestion;
@@ -54,6 +55,7 @@ internal sealed class BuildSnapshot
     public string? Masters { get; set; }
     public string? NamespacePrefix { get; set; }
     public string? Layout { get; set; }
+    public string? EntryTemplate { get; set; }
 
     public string? SourceKind { get; set; }
 
@@ -164,6 +166,7 @@ internal sealed class BuildSnapshot
             Masters = customization.Masters,
             NamespacePrefix = customization.NamespacePrefix,
             Layout = customization.Layout?.ToString(),
+            EntryTemplate = customization.EntryTemplate?.ToString(),
         };
 
         if (session.Source is { } source)
@@ -216,7 +219,8 @@ internal sealed class BuildSnapshot
             Transactions: Transactions ?? fallback.Transactions,
             Masters: Masters ?? fallback.Masters,
             NamespacePrefix: NamespacePrefix ?? fallback.NamespacePrefix,
-            Layout: Enum.TryParse<AppLayout>(Layout, out var layout) ? layout : fallback.Layout);
+            Layout: Enum.TryParse<AppLayout>(Layout, out var layout) ? layout : fallback.Layout,
+            EntryTemplate: Enum.TryParse<EntryTemplate>(EntryTemplate, ignoreCase: true, out var template) ? template : fallback.EntryTemplate);
     }
 
     /// <summary>The model this snapshot holds, or null when it was taken before discovery ran.</summary>

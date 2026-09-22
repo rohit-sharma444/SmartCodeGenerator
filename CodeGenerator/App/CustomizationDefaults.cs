@@ -1,6 +1,7 @@
 ﻿using System.Text.Json;
 using System.Text.Json.Serialization;
 using AppScaffolding;
+using AppScaffolding.Screens;
 
 namespace CodeGenerator.App;
 
@@ -38,6 +39,7 @@ internal static class CustomizationDefaults
         public string? Masters { get; set; }
         public string? NamespacePrefix { get; set; }
         public string? Layout { get; set; }
+        public string? EntryTemplate { get; set; }
     }
 
     private static readonly JsonSerializerOptions Options = new()
@@ -79,7 +81,8 @@ internal static class CustomizationDefaults
                 Transactions: profile.Transactions ?? fallback.Transactions,
                 Masters: profile.Masters ?? fallback.Masters,
                 NamespacePrefix: ValidatedPrefix(profile.NamespacePrefix, fallback.NamespacePrefix),
-                Layout: ParseLayout(profile.Layout));
+                Layout: ParseLayout(profile.Layout),
+                EntryTemplate: ParseEntryTemplate(profile.EntryTemplate));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
         {
@@ -152,6 +155,12 @@ internal static class CustomizationDefaults
                 Layout = customization.Layout is null
                     ? null
                     : AppLayoutCatalog.KeyFor(customization.Layout.Value),
+
+                // Null stays absent from the file rather than being written: a profile
+                // that names no entry template is what lets a later `entry-template grouped` read as typed.
+                EntryTemplate = customization.EntryTemplate is null
+                    ? null
+                    : customization.EntryTemplate.ToString(),
             };
 
             File.WriteAllText(path, JsonSerializer.Serialize(profile, Options));
@@ -177,6 +186,16 @@ internal static class CustomizationDefaults
     /// </remarks>
     private static AppLayout? ParseLayout(string? value)
         => value is not null && AppLayoutCatalog.TryResolve(value, out var layout) ? layout : null;
+
+    /// <summary>The stored entry template, or null when absent or unrecognized.</summary>
+    /// <remarks>
+    /// Re-validated here for the same reason as <see cref="ParseLayout"/>: a hand-edited profile
+    /// bypasses the inline parser, and <c>Load</c> otherwise assigns straight from the JSON. Null
+    /// is the "named nothing" value — an unreadable entry template is indistinguishable from an
+    /// absent one, and both mean the default entry template downstream.
+    /// </remarks>
+    private static EntryTemplate? ParseEntryTemplate(string? value)
+        => value is not null && Enum.TryParse<EntryTemplate>(value, ignoreCase: true, out var template) ? template : null;
 
     /// <summary>
     /// <paramref name="value"/> when it is empty or a valid namespace prefix, or

@@ -45,7 +45,8 @@ public sealed record AppCustomization(
     string Transactions,
     string Masters,
     string NamespacePrefix,
-    AppLayout? Layout)
+    AppLayout? Layout,
+    Screens.EntryTemplate? EntryTemplate)
 {
     /// <summary>The only two placeholders a title pattern may use.</summary>
     public const string CompanyPlaceholder = "{company}";
@@ -68,7 +69,8 @@ public sealed record AppCustomization(
         Transactions: string.Empty,
         Masters: string.Empty,
         NamespacePrefix: string.Empty,
-        Layout: null);
+        Layout: null,
+        EntryTemplate: null);
 
     /// <summary>The project folder a supplied icon is copied into.</summary>
     public const string AssetsFolder = "Assets";
@@ -85,6 +87,19 @@ public sealed record AppCustomization(
     /// <see cref="Default"/>. The emit path never cares about that distinction, and uses this.
     /// </remarks>
     public AppLayout EffectiveLayout => Layout ?? AppLayout.Business;
+
+    /// <summary>
+    /// The entry-screen template to emit: whatever was named, or <see cref="Screens.EntryTemplate.Grouped"/>
+    /// when nothing was.
+    /// </summary>
+    /// <remarks>
+    /// Nullable for the identical reason <see cref="Layout"/> is: "not mentioned" and "grouped" are
+    /// different answers to <c>BuildAppCommand.Merge</c>, and the emit path never cares about that
+    /// distinction and uses this instead. Grouped, not Classic, because Grouped is what the Business
+    /// layout's entry screens already emit — a build naming no entry template must golden-match
+    /// today's output.
+    /// </remarks>
+    public Screens.EntryTemplate EffectiveEntryTemplate => EntryTemplate ?? Screens.EntryTemplate.Grouped;
 
     /// <summary>
     /// The name the supplied icon is copied to inside <see cref="AssetsFolder"/>, or null when
