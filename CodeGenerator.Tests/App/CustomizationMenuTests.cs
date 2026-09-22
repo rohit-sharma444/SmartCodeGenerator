@@ -1,5 +1,6 @@
 ﻿using AppScaffolding;
 using AppScaffolding.Layouts;
+using AppScaffolding.Screens;
 using AppScaffolding.Targets;
 using CodeGenerator.App;
 
@@ -77,11 +78,13 @@ public class CustomizationMenuTests
         return answers;
     }
 
-    /// <summary>As <see cref="KeepEverything"/>, for a target that is also asked its layout.</summary>
-    /// <summary>Yes to the gate, then every question taken as offered — including the layout, whose
-    /// pre-selected row is the default layout wherever the catalogue happens to list it.</summary>
+    /// <summary>As <see cref="KeepEverything"/>, for a target that is also asked its layout and,
+    /// when that layout resolves to business, its entry template. The extra row is harmless when
+    /// the resolved layout is NOT business (e.g. a remembered Dashboard): every answer here is
+    /// Keep, and Keep means "take whichever question's own default", not a specific row number, so
+    /// an unconsumed extra Keep never misaligns a later question.</summary>
     private static int?[] KeepEverythingWithLayout()
-        => [0, Keep, .. Enumerable.Repeat<int?>(Keep, Questions.Length)];
+        => [0, Keep, Keep, .. Enumerable.Repeat<int?>(Keep, Questions.Length)];
 
     private static (AppCustomization? Result, FakeChooser Chooser) Run(
         AppCustomization start, int?[] answers, ITargetScaffolder? target = null,
@@ -379,5 +382,60 @@ public class CustomizationMenuTests
 
         Assert.IsNotNull(result);
         Assert.IsEmpty(result.NamespacePrefix);
+    }
+
+    [TestMethod]
+    public void The_entry_template_question_is_asked_only_when_business_is_effective()
+    {
+        Assert.IsTrue(TargetScaffolders.TryResolve("wpf", out var wpf));
+
+        // Business is the default, so keeping the layout row keeps business, and the entry
+        // template question follows it.
+        var (_, withBusiness) = Run(AppCustomization.Default, KeepEverythingWithLayout(), wpf);
+
+        var (labels, _) = withBusiness.Question("Entry template");
+
+        Assert.HasCount(EntryTemplateCatalog.Keys.Count, labels);
+        StringAssert.Contains(labels[0], "classic");
+    }
+
+    [TestMethod]
+    public void The_entry_template_question_is_skipped_for_a_non_business_layout()
+    {
+        Assert.IsTrue(TargetScaffolders.TryResolve("wpf", out var wpf));
+
+        var saved = AppCustomization.Default with { Layout = AppLayout.Dashboard };
+
+        var (_, chooser) = Run(saved, KeepEverythingWithLayout(), wpf);
+
+        Assert.IsFalse(chooser.Asked.Any(a => a.Title == "Entry template"));
+    }
+
+    [TestMethod]
+    public void The_entry_template_menu_preselects_the_remembered_template()
+    {
+        Assert.IsTrue(TargetScaffolders.TryResolve("wpf", out var wpf));
+
+        var saved = AppCustomization.Default with { EntryTemplate = AppScaffolding.Screens.EntryTemplate.Tabbed };
+
+        var (result, chooser) = Run(saved, KeepEverythingWithLayout(), wpf);
+
+        Assert.AreEqual(
+            EntryTemplateCatalog.Keys.ToList().IndexOf("tabbed"),
+            chooser.Question("Entry template").Default);
+
+        Assert.IsNotNull(result);
+        Assert.AreEqual(AppScaffolding.Screens.EntryTemplate.Tabbed, result.EntryTemplate);
+    }
+
+    [TestMethod]
+    public void Taking_the_default_entry_template_row_names_no_template_at_all()
+    {
+        Assert.IsTrue(TargetScaffolders.TryResolve("wpf", out var wpf));
+
+        var (result, _) = Run(AppCustomization.Default, KeepEverythingWithLayout(), wpf);
+
+        Assert.IsNotNull(result);
+        Assert.IsNull(result.EntryTemplate);
     }
 }
