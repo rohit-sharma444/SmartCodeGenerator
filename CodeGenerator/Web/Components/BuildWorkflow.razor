@@ -138,6 +138,10 @@
                     <OutputStage @key="BuildStage.Output" Session="Session"
                                         Navigation="_navigation" OnAdvance="Refresh" />
                     break;
+                case BuildStage.EntryTemplate:
+                    <EntryTemplateStage @key="BuildStage.EntryTemplate" Session="Session"
+                                        Navigation="_navigation" OnAdvance="Refresh" />
+                    break;
                 case BuildStage.Generate:
                     <GenerateStage @key="BuildStage.Generate" Session="Session"
                                    Navigation="_navigation" OnAdvance="Refresh" />

@@ -7,25 +7,33 @@ namespace CodeGenerator.Tests.Web;
 public class StageGraphTests
 {
     [TestMethod]
-    public void Has_nine_nodes_in_workflow_order()
+    public void Has_ten_nodes_in_workflow_order()
     {
-        Assert.HasCount(9, StageGraph.Nodes);
+        Assert.HasCount(10, StageGraph.Nodes);
         Assert.AreEqual(BuildStage.Describe, StageGraph.Nodes[0].Stage);
-        Assert.AreEqual(BuildStage.Generate, StageGraph.Nodes[7].Stage);
+        Assert.AreEqual(BuildStage.EntryTemplate, StageGraph.Nodes[7].Stage);
+        Assert.AreEqual(BuildStage.Generate, StageGraph.Nodes[8].Stage);
 
         // Running it is its own stage, not a button on the generate panel: it is the step that
         // tells the user whether what was written actually works.
-        Assert.AreEqual(BuildStage.Run, StageGraph.Nodes[8].Stage);
+        Assert.AreEqual(BuildStage.Run, StageGraph.Nodes[9].Stage);
     }
 
     [TestMethod]
-    public void Output_follows_review_and_precedes_generate()
+    public void Output_follows_review_and_precedes_entry_template()
     {
-        // The split: Review settles what the classes ARE, Relationships settles how they connect
-        // and what gets written.
+        // The split: Review settles what the classes ARE, Output settles how they connect, which
+        // get a screen, and what gets written; Entry Template settles how those screens look.
         Assert.AreEqual(BuildStage.Output, StageGraph.Next(BuildStage.Review));
-        Assert.AreEqual(BuildStage.Generate, StageGraph.Next(BuildStage.Output));
+        Assert.AreEqual(BuildStage.EntryTemplate, StageGraph.Next(BuildStage.Output));
         Assert.AreEqual(BuildStage.Review, StageGraph.Previous(BuildStage.Output));
+    }
+
+    [TestMethod]
+    public void Entry_template_follows_output_and_precedes_generate()
+    {
+        Assert.AreEqual(BuildStage.Generate, StageGraph.Next(BuildStage.EntryTemplate));
+        Assert.AreEqual(BuildStage.Output, StageGraph.Previous(BuildStage.EntryTemplate));
     }
 
     [TestMethod]
@@ -129,6 +137,7 @@ public class StageGraphTests
         Assert.IsEmpty(StageGraph.Invalidates(BuildStage.AppType));
         Assert.IsEmpty(StageGraph.Invalidates(BuildStage.Look));
         Assert.IsEmpty(StageGraph.Invalidates(BuildStage.Review));
+        Assert.IsEmpty(StageGraph.Invalidates(BuildStage.EntryTemplate));
         Assert.IsEmpty(StageGraph.Invalidates(BuildStage.Generate));
         Assert.IsEmpty(StageGraph.Invalidates(BuildStage.Run));
     }
