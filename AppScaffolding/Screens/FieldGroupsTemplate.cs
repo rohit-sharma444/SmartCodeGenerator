@@ -171,15 +171,22 @@ public static class FieldGroups
         return label?.Name ?? "Id";
     }
 
-    /// <summary>The titled panels, in display order. Never contains an empty group.</summary>
-    public static IReadOnlyList<FieldGroup> For(Type type)
+    /// <summary>The fields an entry form shows, in declaration order, with the key fields and the
+    /// long-text fields excluded — for a template with no grouping.</summary>
+    public static IReadOnlyList<PropertyInfo> Flat(Type type)
     {
         var key = Key(type);
 
-        var pool = Displayable(type)
+        return Displayable(type)
             .Where(p => p != key.Code && p != key.Date && p != key.Status)
             .Where(p => !IsLongText(p))
             .ToList();
+    }
+
+    /// <summary>The titled panels, in display order. Never contains an empty group.</summary>
+    public static IReadOnlyList<FieldGroup> For(Type type)
+    {
+        var pool = Flat(type);
 
         var basic = new List<PropertyInfo>();
         var address = new List<PropertyInfo>();
@@ -218,18 +225,23 @@ public static class FieldGroups
         => Displayable(type).Where(IsLongText).ToList();
 
     /// <summary>
-    /// The panels packed into the three columns the mockups use.
+    /// The panels packed into <paramref name="columnCount"/> columns.
     /// </summary>
     /// <remarks>
-    /// Always three lists, so a view can lay out a fixed grid; any of them may be empty, and the
-    /// view collapses an empty one so a small model is not two-thirds whitespace. Each group goes
-    /// to whichever column holds the fewest fields, ties going left -- which reproduces the master
-    /// mockup for the four-group case: Basic alone, Address alone, Contact and Other stacked.
+    /// Always <paramref name="columnCount"/> lists, so a view can lay out a fixed grid; any of them
+    /// may be empty, and the view collapses an empty one so a small model is not mostly whitespace.
+    /// Each group goes to whichever column holds the fewest fields, ties going left. The default of
+    /// three reproduces the master mockup for the four-group case: Basic alone, Address alone,
+    /// Contact and Other stacked.
     /// </remarks>
-    public static IReadOnlyList<IReadOnlyList<FieldGroup>> Columns(Type type)
+    public static IReadOnlyList<IReadOnlyList<FieldGroup>> Columns(Type type, int columnCount = 3)
     {
-        var columns = new List<FieldGroup>[] { new(), new(), new() };
-        var weights = new int[3];
+        var columns = new List<FieldGroup>[columnCount];
+
+        for (var i = 0; i < columnCount; i++)
+            columns[i] = new List<FieldGroup>();
+
+        var weights = new int[columnCount];
 
         foreach (var group in For(type))
         {
