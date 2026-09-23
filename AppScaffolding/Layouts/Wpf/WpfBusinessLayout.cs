@@ -75,6 +75,7 @@ public sealed class WpfBusinessLayout : IAppLayout
         var additionalTitle = FieldGroupsTemplate.AdditionalTitle;
 
         var isRibbon = context.Customization.EffectiveEntryTemplate == Screens.EntryTemplate.Ribbon;
+        var isSplit = context.Customization.EffectiveEntryTemplate == Screens.EntryTemplate.Split;
 
         // WPF's <Style> can style every Button in a scope without repeating six attributes six
         // times, but a StaticResource style can't be reused across the two DIFFERENT button sets
@@ -91,6 +92,335 @@ public sealed class WpfBusinessLayout : IAppLayout
                     <Button Content="{{content}}" Command="{Binding {{command}}}" Padding="4,6" />
                 </StackPanel>
                 """;
+
+        var transactionTemplate = isSplit
+            ? $$$"""
+        <DataTemplate x:Key="TransactionTemplate">
+            <DockPanel>
+                <views:EntryHeader DockPanel.Dock="Top"
+                                   Heading="{Binding Title}"
+                                   Record="{Binding Editor.Draft}" />
+                <Border DockPanel.Dock="Bottom" Background="{{{railFill}}}" Padding="10,6">
+                    <DockPanel>
+                        <TextBlock Text="{Binding Status}" Foreground="{{{muted}}}" VerticalAlignment="Center" />
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                            <Button Content="New" Command="{Binding NewCommand}" Width="80" Margin="4,0" />
+                            <Button Content="Edit" Command="{Binding EditCommand}" Width="80" Margin="4,0" />
+                            <Button Content="Delete" Command="{Binding DeleteCommand}" Width="80" Margin="4,0" />
+                            <Button Content="Save" Command="{Binding SaveCommand}" Width="80" Margin="16,0,4,0" />
+                            <Button Content="Clear" Command="{Binding ClearCommand}" Width="80" Margin="4,0" />
+                            <Button Content="Cancel" Command="{Binding CancelCommand}" Width="80" Margin="4,0" />
+                        </StackPanel>
+                    </DockPanel>
+                </Border>
+                <views:EntryForm DockPanel.Dock="Top" Record="{Binding Editor.Draft}" Margin="10" />
+
+                <Border DockPanel.Dock="Top"
+                        BorderBrush="{{{rule}}}"
+                        BorderThickness="1"
+                        Margin="10,0,10,10"
+                        Padding="12,8"
+                        MaxHeight="180"
+                        Visibility="{Binding Editor.HasAdditional, Converter={StaticResource BoolToVisibility}}">
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Top"
+                                   Text="{{{additionalTitle}}}"
+                                   FontWeight="SemiBold"
+                                   Foreground="{{{accentBrush}}}"
+                                   Margin="0,0,0,6" />
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <views:EntryNotes Record="{Binding Editor.Draft}" />
+                        </ScrollViewer>
+                    </DockPanel>
+                </Border>
+
+                <Grid DockPanel.Dock="Top"
+                      Margin="10,0,10,10"
+                      Visibility="{Binding Editor.HasLines, Converter={StaticResource BoolToVisibility}}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TabControl Grid.Column="0" ItemsSource="{Binding Editor.Lines}" MaxHeight="220">
+                        <TabControl.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding Title}" />
+                            </DataTemplate>
+                        </TabControl.ItemTemplate>
+                        <TabControl.ContentTemplate>
+                            <DataTemplate>
+                                <DockPanel>
+                                    <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,6,0,0">
+                                        <Button Content="Add Row" Click="OnAddLine" Width="88" />
+                                        <Button Content="Delete Row" Click="OnRemoveLine" Width="96" Margin="6,0,0,0" />
+                                        <Button Content="Clear All" Click="OnClearLines" Width="88" Margin="6,0,0,0" />
+                                    </StackPanel>
+                                    <DataGrid ItemsSource="{Binding Items}"
+                                              SelectedItem="{Binding Selected}"
+                                              AutoGenerateColumns="True"
+                                              AutoGeneratingColumn="OnAutoGeneratingColumn"
+                                              CellEditEnding="OnLineCellEdited"
+                                              CanUserAddRows="False"
+                                              HeadersVisibility="Column"
+                                              GridLinesVisibility="Horizontal"
+                                              BorderBrush="{{{rule}}}" />
+                                </DockPanel>
+                            </DataTemplate>
+                        </TabControl.ContentTemplate>
+                    </TabControl>
+                    <Border Grid.Column="1"
+                            BorderBrush="{{{rule}}}"
+                            BorderThickness="1"
+                            Margin="12,0,0,0"
+                            Padding="12,8"
+                            MinWidth="240"
+                            VerticalAlignment="Top">
+                        <ItemsControl ItemsSource="{Binding Editor.Totals}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <DockPanel Margin="0,3">
+                                        <TextBlock Text="{Binding Column}" Foreground="{{{muted}}}" />
+                                        <TextBlock Text="{Binding Value, StringFormat=N2}"
+                                                   HorizontalAlignment="Right"
+                                                   TextAlignment="Right"
+                                                   Foreground="{{{text}}}" />
+                                    </DockPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </Border>
+                </Grid>
+
+                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="10,0,10,8">
+                    <TextBlock Text="From" VerticalAlignment="Center" Foreground="{{{muted}}}" />
+                    <DatePicker SelectedDate="{Binding From}" Width="120" Margin="6,0,12,0" />
+                    <TextBlock Text="To" VerticalAlignment="Center" Foreground="{{{muted}}}" />
+                    <DatePicker SelectedDate="{Binding To}" Width="120" Margin="6,0" />
+                    <TextBox Text="{Binding Search, UpdateSourceTrigger=PropertyChanged}"
+                             Width="150" Margin="12,0,0,0" />
+                </StackPanel>
+                <ItemsControl DockPanel.Dock="Top" Margin="10,0,10,8" ItemsSource="{Binding Totals}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Orientation="Horizontal" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,16,0">
+                                <TextBlock Text="{Binding Column}" Foreground="{{{muted}}}" Margin="0,0,6,0" />
+                                <TextBlock Text="{Binding Value}" FontWeight="Bold" Foreground="{{{text}}}" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <DataGrid Margin="10,0,10,10"
+                          ItemsSource="{Binding Items}"
+                          SelectedItem="{Binding Selected, Mode=TwoWay}"
+                          AutoGenerateColumns="True"
+                          IsReadOnly="True"
+                          CanUserAddRows="False"
+                          AutoGeneratingColumn="OnAutoGeneratingColumn" />
+            </DockPanel>
+        </DataTemplate>
+"""
+            : $$$"""
+        <DataTemplate x:Key="TransactionTemplate">
+            <DockPanel Margin="16">
+                <Grid DockPanel.Dock="Top" Margin="0,0,0,10">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="{Binding Title}" FontSize="15" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding Status}" Foreground="{{{muted}}}"
+                                   VerticalAlignment="Center" Margin="12,0,0,0" />
+                    </StackPanel>
+{{{(isRibbon
+    // Two dollar signs here too: the search box's own literal "{Binding Search, ...}" needs a
+    // single-brace run to survive as text, which only holds while the interpolation holes below
+    // open and close with a DOUBLED brace instead.
+    ? $$"""
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Tag="ribbon">
+                        <TextBox Text="{Binding Search, UpdateSourceTrigger=PropertyChanged}"
+                                 Width="150" Margin="0,0,8,0" />
+                        {{RibbonButton("New", "NewCommand", "60")}}
+                        {{RibbonButton("Open", "OpenCommand", "60")}}
+                        {{RibbonButton("Delete", "DeleteCommand", "60")}}
+                    </StackPanel>
+""" : """
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <TextBox Text="{Binding Search, UpdateSourceTrigger=PropertyChanged}"
+                                 Width="150" Margin="0,0,8,0" />
+                        <Button Content="New" Command="{Binding NewCommand}" Width="70" Margin="4,0" />
+                        <Button Content="Open" Command="{Binding OpenCommand}" Width="70" Margin="4,0" />
+                        <Button Content="Delete" Command="{Binding DeleteCommand}" Width="70" Margin="4,0" />
+                    </StackPanel>
+""")}}}
+                </Grid>
+                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
+                    <TextBlock Text="From" VerticalAlignment="Center" Foreground="{{{muted}}}" />
+                    <DatePicker SelectedDate="{Binding From}" Width="120" Margin="6,0,12,0" />
+                    <TextBlock Text="To" VerticalAlignment="Center" Foreground="{{{muted}}}" />
+                    <DatePicker SelectedDate="{Binding To}" Width="120" Margin="6,0" />
+                </StackPanel>
+                <ItemsControl DockPanel.Dock="Bottom" ItemsSource="{Binding Totals}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal" Margin="16,8,0,0">
+                                <TextBlock Text="{Binding Column}" Foreground="{{{muted}}}" Margin="0,0,6,0" />
+                                <TextBlock Text="{Binding Value}" FontWeight="Bold" Foreground="{{{text}}}" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <DataGrid ItemsSource="{Binding Items}"
+                          SelectedItem="{Binding Selected, Mode=TwoWay}"
+                          AutoGenerateColumns="True"
+                          IsReadOnly="True"
+                          CanUserAddRows="False"
+                          MouseDoubleClick="OnRowActivated"
+                          AutoGeneratingColumn="OnAutoGeneratingColumn" />
+            </DockPanel>
+        </DataTemplate>
+""";
+
+        var editorTemplate = isSplit
+            ? string.Empty
+            : $$$"""
+        <!-- The transaction mockup: the same header and form as a master, with the document's
+             lines and their totals under it. Docked children come first and the lines area last,
+             because a DockPanel gives the leftover space to whichever child it holds last. -->
+        <DataTemplate x:Key="EditorTemplate">
+            <DockPanel>
+                <views:EntryHeader DockPanel.Dock="Top"
+                                   Heading="{Binding Title}"
+                                   Record="{Binding Draft}" />
+                <Border DockPanel.Dock="Bottom" Background="{{{railFill}}}" Padding="10,6">
+                    <DockPanel>
+                        <TextBlock Text="{Binding Status}" Foreground="{{{muted}}}" VerticalAlignment="Center" />
+{{{(isRibbon
+    ? $"""
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Tag="ribbon">
+                            {RibbonButton("Save", "SaveCommand")}
+                            {RibbonButton("Cancel", "CancelCommand")}
+                        </StackPanel>
+""" : """
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                            <Button Content="Save" Command="{Binding SaveCommand}" Width="88" Margin="4,0" />
+                            <Button Content="Cancel" Command="{Binding CancelCommand}" Width="88" Margin="4,0" />
+                        </StackPanel>
+""")}}}
+                    </DockPanel>
+                </Border>
+                <views:EntryForm DockPanel.Dock="Top" Record="{Binding Draft}" Margin="10" />
+
+                <!-- A titled section under the lines rather than a tab beside them. The lines tab
+                     strip is driven by ItemsSource, and mixing a static TabItem into it needs a
+                     CompositeCollection, whose CollectionContainer is not in the visual tree: it
+                     has no DataContext inside a DataTemplate and binds nothing, which parses
+                     cleanly and renders an empty strip. The master screen keeps a real tab,
+                     because both of its tabs are static. -->
+                <!-- MaxHeight, and a DockPanel rather than a StackPanel inside it. A docked child
+                     takes its whole desired height before the fill child gets any, and EntryNotes
+                     asks for 90px per long-text field with no ceiling: three of them plus the band,
+                     the form and the action bar exceed this window's 640, and a DockPanel CLIPS
+                     what does not fit rather than scrolling it. Uncapped, the lines grid below
+                     would be arranged at zero height and the document's lines, which are the whole
+                     point of this screen, would silently not be there. The ScrollViewer is the last
+                     child of a DockPanel and not of a StackPanel for the same reason: a StackPanel
+                     hands a child its full desired height, so a ScrollViewer inside one is clipped
+                     instead of scrolling. -->
+                <Border DockPanel.Dock="Bottom"
+                        BorderBrush="{{{rule}}}"
+                        BorderThickness="1"
+                        Margin="10,0,10,10"
+                        Padding="12,8"
+                        MaxHeight="180"
+                        Visibility="{Binding HasAdditional, Converter={StaticResource BoolToVisibility}}">
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Top"
+                                   Text="{{{additionalTitle}}}"
+                                   FontWeight="SemiBold"
+                                   Foreground="{{{accentBrush}}}"
+                                   Margin="0,0,0,6" />
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <views:EntryNotes Record="{Binding Draft}" />
+                        </ScrollViewer>
+                    </DockPanel>
+                </Border>
+
+                <!-- The totals sit beside the lines, and both are hidden for a master: an editor
+                     with no line sets is a form and nothing else, which is what HasLines says. -->
+                <Grid Margin="10,0,10,10"
+                      Visibility="{Binding HasLines, Converter={StaticResource BoolToVisibility}}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TabControl Grid.Column="0" ItemsSource="{Binding Lines}">
+                        <TabControl.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding Title}" />
+                            </DataTemplate>
+                        </TabControl.ItemTemplate>
+                        <TabControl.ContentTemplate>
+                            <DataTemplate>
+                                <DockPanel>
+                                    <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,6,0,0">
+                                        <Button Content="Add Row" Click="OnAddLine" Width="88" />
+                                        <Button Content="Delete Row" Click="OnRemoveLine" Width="96" Margin="6,0,0,0" />
+                                        <Button Content="Clear All" Click="OnClearLines" Width="88" Margin="6,0,0,0" />
+                                    </StackPanel>
+                                    <!-- Typed into, unlike the record lists: this grid IS the
+                                         editor for a line, which has no screen of its own. Its
+                                         cell edits reach the line object without the set seeing
+                                         them, so the commit is reported to the set, which is what
+                                         keeps the totals beside it honest. -->
+                                    <DataGrid ItemsSource="{Binding Items}"
+                                              SelectedItem="{Binding Selected}"
+                                              AutoGenerateColumns="True"
+                                              AutoGeneratingColumn="OnAutoGeneratingColumn"
+                                              CellEditEnding="OnLineCellEdited"
+                                              CanUserAddRows="False"
+                                              HeadersVisibility="Column"
+                                              GridLinesVisibility="Horizontal"
+                                              BorderBrush="{{{rule}}}" />
+                                </DockPanel>
+                            </DataTemplate>
+                        </TabControl.ContentTemplate>
+                    </TabControl>
+                    <Border Grid.Column="1"
+                            BorderBrush="{{{rule}}}"
+                            BorderThickness="1"
+                            Margin="12,0,0,0"
+                            Padding="12,8"
+                            MinWidth="240"
+                            VerticalAlignment="Top">
+                        <ItemsControl ItemsSource="{Binding Totals}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <DockPanel Margin="0,3">
+                                        <TextBlock Text="{Binding Column}" Foreground="{{{muted}}}" />
+                                        <TextBlock Text="{Binding Value, StringFormat=N2}"
+                                                   HorizontalAlignment="Right"
+                                                   TextAlignment="Right"
+                                                   Foreground="{{{text}}}" />
+                                    </DockPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </Border>
+                </Grid>
+            </DockPanel>
+        </DataTemplate>
+""";
+
+        var editorAssignment = isSplit
+            ? string.Empty
+            : "\r\n                                      Editor=\"{StaticResource EditorTemplate}\"";
 
         return $$$"""
 <Window x:Class="{{{context.RootNamespace}}}.Views.MainWindow"
@@ -221,198 +551,13 @@ public sealed class WpfBusinessLayout : IAppLayout
             </DockPanel>
         </DataTemplate>
 
-        <DataTemplate x:Key="TransactionTemplate">
-            <DockPanel Margin="16">
-                <Grid DockPanel.Dock="Top" Margin="0,0,0,10">
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="{Binding Title}" FontSize="15" FontWeight="SemiBold" />
-                        <TextBlock Text="{Binding Status}" Foreground="{{{muted}}}"
-                                   VerticalAlignment="Center" Margin="12,0,0,0" />
-                    </StackPanel>
-{{{(isRibbon
-    // Two dollar signs here too: the search box's own literal "{Binding Search, ...}" needs a
-    // single-brace run to survive as text, which only holds while the interpolation holes below
-    // open and close with a DOUBLED brace instead.
-    ? $$"""
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Tag="ribbon">
-                        <TextBox Text="{Binding Search, UpdateSourceTrigger=PropertyChanged}"
-                                 Width="150" Margin="0,0,8,0" />
-                        {{RibbonButton("New", "NewCommand", "60")}}
-                        {{RibbonButton("Open", "OpenCommand", "60")}}
-                        {{RibbonButton("Delete", "DeleteCommand", "60")}}
-                    </StackPanel>
-""" : """
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                        <TextBox Text="{Binding Search, UpdateSourceTrigger=PropertyChanged}"
-                                 Width="150" Margin="0,0,8,0" />
-                        <Button Content="New" Command="{Binding NewCommand}" Width="70" Margin="4,0" />
-                        <Button Content="Open" Command="{Binding OpenCommand}" Width="70" Margin="4,0" />
-                        <Button Content="Delete" Command="{Binding DeleteCommand}" Width="70" Margin="4,0" />
-                    </StackPanel>
-""")}}}
-                </Grid>
-                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
-                    <TextBlock Text="From" VerticalAlignment="Center" Foreground="{{{muted}}}" />
-                    <DatePicker SelectedDate="{Binding From}" Width="120" Margin="6,0,12,0" />
-                    <TextBlock Text="To" VerticalAlignment="Center" Foreground="{{{muted}}}" />
-                    <DatePicker SelectedDate="{Binding To}" Width="120" Margin="6,0" />
-                </StackPanel>
-                <ItemsControl DockPanel.Dock="Bottom" ItemsSource="{Binding Totals}">
-                    <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" />
-                        </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                            <StackPanel Orientation="Horizontal" Margin="16,8,0,0">
-                                <TextBlock Text="{Binding Column}" Foreground="{{{muted}}}" Margin="0,0,6,0" />
-                                <TextBlock Text="{Binding Value}" FontWeight="Bold" Foreground="{{{text}}}" />
-                            </StackPanel>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-                <DataGrid ItemsSource="{Binding Items}"
-                          SelectedItem="{Binding Selected, Mode=TwoWay}"
-                          AutoGenerateColumns="True"
-                          IsReadOnly="True"
-                          CanUserAddRows="False"
-                          MouseDoubleClick="OnRowActivated"
-                          AutoGeneratingColumn="OnAutoGeneratingColumn" />
-            </DockPanel>
-        </DataTemplate>
+{{{transactionTemplate}}}
 
-        <!-- The transaction mockup: the same header and form as a master, with the document's
-             lines and their totals under it. Docked children come first and the lines area last,
-             because a DockPanel gives the leftover space to whichever child it holds last. -->
-        <DataTemplate x:Key="EditorTemplate">
-            <DockPanel>
-                <views:EntryHeader DockPanel.Dock="Top"
-                                   Heading="{Binding Title}"
-                                   Record="{Binding Draft}" />
-                <Border DockPanel.Dock="Bottom" Background="{{{railFill}}}" Padding="10,6">
-                    <DockPanel>
-                        <TextBlock Text="{Binding Status}" Foreground="{{{muted}}}" VerticalAlignment="Center" />
-{{{(isRibbon
-    ? $"""
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Tag="ribbon">
-                            {RibbonButton("Save", "SaveCommand")}
-                            {RibbonButton("Cancel", "CancelCommand")}
-                        </StackPanel>
-""" : """
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                            <Button Content="Save" Command="{Binding SaveCommand}" Width="88" Margin="4,0" />
-                            <Button Content="Cancel" Command="{Binding CancelCommand}" Width="88" Margin="4,0" />
-                        </StackPanel>
-""")}}}
-                    </DockPanel>
-                </Border>
-                <views:EntryForm DockPanel.Dock="Top" Record="{Binding Draft}" Margin="10" />
-
-                <!-- A titled section under the lines rather than a tab beside them. The lines tab
-                     strip is driven by ItemsSource, and mixing a static TabItem into it needs a
-                     CompositeCollection, whose CollectionContainer is not in the visual tree: it
-                     has no DataContext inside a DataTemplate and binds nothing, which parses
-                     cleanly and renders an empty strip. The master screen keeps a real tab,
-                     because both of its tabs are static. -->
-                <!-- MaxHeight, and a DockPanel rather than a StackPanel inside it. A docked child
-                     takes its whole desired height before the fill child gets any, and EntryNotes
-                     asks for 90px per long-text field with no ceiling: three of them plus the band,
-                     the form and the action bar exceed this window's 640, and a DockPanel CLIPS
-                     what does not fit rather than scrolling it. Uncapped, the lines grid below
-                     would be arranged at zero height and the document's lines, which are the whole
-                     point of this screen, would silently not be there. The ScrollViewer is the last
-                     child of a DockPanel and not of a StackPanel for the same reason: a StackPanel
-                     hands a child its full desired height, so a ScrollViewer inside one is clipped
-                     instead of scrolling. -->
-                <Border DockPanel.Dock="Bottom"
-                        BorderBrush="{{{rule}}}"
-                        BorderThickness="1"
-                        Margin="10,0,10,10"
-                        Padding="12,8"
-                        MaxHeight="180"
-                        Visibility="{Binding HasAdditional, Converter={StaticResource BoolToVisibility}}">
-                    <DockPanel>
-                        <TextBlock DockPanel.Dock="Top"
-                                   Text="{{{additionalTitle}}}"
-                                   FontWeight="SemiBold"
-                                   Foreground="{{{accentBrush}}}"
-                                   Margin="0,0,0,6" />
-                        <ScrollViewer VerticalScrollBarVisibility="Auto">
-                            <views:EntryNotes Record="{Binding Draft}" />
-                        </ScrollViewer>
-                    </DockPanel>
-                </Border>
-
-                <!-- The totals sit beside the lines, and both are hidden for a master: an editor
-                     with no line sets is a form and nothing else, which is what HasLines says. -->
-                <Grid Margin="10,0,10,10"
-                      Visibility="{Binding HasLines, Converter={StaticResource BoolToVisibility}}">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <TabControl Grid.Column="0" ItemsSource="{Binding Lines}">
-                        <TabControl.ItemTemplate>
-                            <DataTemplate>
-                                <TextBlock Text="{Binding Title}" />
-                            </DataTemplate>
-                        </TabControl.ItemTemplate>
-                        <TabControl.ContentTemplate>
-                            <DataTemplate>
-                                <DockPanel>
-                                    <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,6,0,0">
-                                        <Button Content="Add Row" Click="OnAddLine" Width="88" />
-                                        <Button Content="Delete Row" Click="OnRemoveLine" Width="96" Margin="6,0,0,0" />
-                                        <Button Content="Clear All" Click="OnClearLines" Width="88" Margin="6,0,0,0" />
-                                    </StackPanel>
-                                    <!-- Typed into, unlike the record lists: this grid IS the
-                                         editor for a line, which has no screen of its own. Its
-                                         cell edits reach the line object without the set seeing
-                                         them, so the commit is reported to the set, which is what
-                                         keeps the totals beside it honest. -->
-                                    <DataGrid ItemsSource="{Binding Items}"
-                                              SelectedItem="{Binding Selected}"
-                                              AutoGenerateColumns="True"
-                                              AutoGeneratingColumn="OnAutoGeneratingColumn"
-                                              CellEditEnding="OnLineCellEdited"
-                                              CanUserAddRows="False"
-                                              HeadersVisibility="Column"
-                                              GridLinesVisibility="Horizontal"
-                                              BorderBrush="{{{rule}}}" />
-                                </DockPanel>
-                            </DataTemplate>
-                        </TabControl.ContentTemplate>
-                    </TabControl>
-                    <Border Grid.Column="1"
-                            BorderBrush="{{{rule}}}"
-                            BorderThickness="1"
-                            Margin="12,0,0,0"
-                            Padding="12,8"
-                            MinWidth="240"
-                            VerticalAlignment="Top">
-                        <ItemsControl ItemsSource="{Binding Totals}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <DockPanel Margin="0,3">
-                                        <TextBlock Text="{Binding Column}" Foreground="{{{muted}}}" />
-                                        <TextBlock Text="{Binding Value, StringFormat=N2}"
-                                                   HorizontalAlignment="Right"
-                                                   TextAlignment="Right"
-                                                   Foreground="{{{text}}}" />
-                                    </DockPanel>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </Border>
-                </Grid>
-            </DockPanel>
-        </DataTemplate>
+{{{editorTemplate}}}
         <views:ScreenTemplateSelector x:Key="ScreenTemplate"
                                       Dashboard="{StaticResource DashboardTemplate}"
                                       Master="{StaticResource MasterTemplate}"
-                                      Transaction="{StaticResource TransactionTemplate}"
-                                      Editor="{StaticResource EditorTemplate}" />
+                                      Transaction="{StaticResource TransactionTemplate}"{{{editorAssignment}}} />
     </Window.Resources>
 
     <DockPanel>

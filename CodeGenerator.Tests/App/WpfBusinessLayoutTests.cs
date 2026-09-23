@@ -1309,4 +1309,47 @@ public class WpfBusinessLayoutTests
             transaction,
             "<TextBox Text=\"{Binding Search, UpdateSourceTrigger=PropertyChanged}\"");
     }
+
+    // ---- Split transaction template (Task 13) ----
+
+    [TestMethod]
+    public void Split_gives_the_transaction_screen_an_embedded_editor()
+    {
+        var xaml = XamlFor(AppScaffolding.Screens.EntryTemplate.Split);
+
+        var transaction = TemplateSlice("TransactionTemplate", AppScaffolding.Screens.EntryTemplate.Split);
+
+        StringAssert.Contains(transaction, "<views:EntryHeader");
+        StringAssert.Contains(transaction, "<views:EntryForm");
+        StringAssert.Contains(transaction, "Record=\"{Binding Editor.Draft}\"");
+        StringAssert.Contains(transaction, "ItemsSource=\"{Binding Editor.Lines}\"");
+        StringAssert.Contains(transaction, "ItemsSource=\"{Binding Editor.Totals}\"");
+        StringAssert.Contains(transaction, "<DataGrid");
+
+        // The list is still there, still read-only, still filtered by date -- Split changes
+        // composition, not what the list itself offers.
+        StringAssert.Contains(transaction, "SelectedDate=\"{Binding From}\"");
+    }
+
+    [TestMethod]
+    public void Split_removes_the_now_unreachable_standalone_editor()
+    {
+        var xaml = XamlFor(AppScaffolding.Screens.EntryTemplate.Split);
+
+        Assert.DoesNotContain("x:Key=\"EditorTemplate\"", xaml);
+        Assert.DoesNotContain("Editor=\"{StaticResource EditorTemplate}\"", xaml);
+    }
+
+    [TestMethod]
+    public void Non_split_templates_keep_the_separate_editor()
+    {
+        var xaml = XamlFor(AppScaffolding.Screens.EntryTemplate.Grouped);
+
+        StringAssert.Contains(xaml, "x:Key=\"EditorTemplate\"");
+        StringAssert.Contains(xaml, "Editor=\"{StaticResource EditorTemplate}\"");
+    }
+
+    [TestMethod]
+    public void Split_xaml_is_still_well_formed()
+        => Assert.IsNotNull(System.Xml.Linq.XDocument.Parse(XamlFor(AppScaffolding.Screens.EntryTemplate.Split)).Root);
 }
