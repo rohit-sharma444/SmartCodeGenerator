@@ -1352,4 +1352,47 @@ public class WpfBusinessLayoutTests
     [TestMethod]
     public void Split_xaml_is_still_well_formed()
         => Assert.IsNotNull(System.Xml.Linq.XDocument.Parse(XamlFor(AppScaffolding.Screens.EntryTemplate.Split)).Root);
+
+    // ---- full-suite regression proof (Task 14) ----
+
+    [TestMethod]
+    public void A_build_naming_no_entry_template_matches_todays_output_byte_for_byte()
+    {
+        // The regression proof for the whole feature: EffectiveEntryTemplate defaults to Grouped,
+        // so Context() (EntryTemplate: null) and Context() with an EXPLICIT Grouped must be
+        // byte-identical, and both must equal what this file's pre-existing tests already pin.
+        var unset = Xaml();
+        var explicitGrouped = XamlFor(AppScaffolding.Screens.EntryTemplate.Grouped);
+
+        Assert.AreEqual(unset, explicitGrouped);
+    }
+
+    [TestMethod]
+    public void Every_entry_templates_window_and_codebehind_compile_together()
+    {
+        foreach (var template in Enum.GetValues<AppScaffolding.Screens.EntryTemplate>())
+        {
+            var context = ContextFor(template);
+            var files = new WpfBusinessLayout().ViewFiles(context);
+
+            EmittedDesktopSource.AssertCompilesTogether(
+                [
+                    .. files.Where(f => f.Name.EndsWith(".cs", StringComparison.Ordinal))
+                            .Select(f => (f.Name, f.Source)),
+                    ("Views/MainWindow.g.cs", XamlPartialStub),
+                    ("Screens/EntityRole.cs", RoleStub),
+                    ("Screens/FieldGroups.cs", FieldGroupsTemplate.Source("Payroll")),
+                    ("Screens/RequiredFields.cs", RequiredFieldsTemplate.Source("Payroll", null)),
+                    ("ViewModels/Shell.cs", ShellStub),
+                    ("Auth/Session.cs", SessionStub),
+                ]);
+        }
+    }
+
+    [TestMethod]
+    public void Every_entry_templates_xaml_is_well_formed()
+    {
+        foreach (var template in Enum.GetValues<AppScaffolding.Screens.EntryTemplate>())
+            Assert.IsNotNull(System.Xml.Linq.XDocument.Parse(XamlFor(template)).Root);
+    }
 }
