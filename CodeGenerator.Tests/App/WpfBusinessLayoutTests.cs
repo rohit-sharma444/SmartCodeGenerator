@@ -1229,7 +1229,7 @@ public class WpfBusinessLayoutTests
     }
 
     [TestMethod]
-    public void Ribbon_renders_the_master_action_bar_as_an_icon_strip()
+    public void Ribbon_renders_the_master_action_bar_as_a_compact_strip()
     {
         var master = TemplateSlice("MasterTemplate", AppScaffolding.Screens.EntryTemplate.Ribbon);
 
@@ -1260,7 +1260,7 @@ public class WpfBusinessLayoutTests
     }
 
     [TestMethod]
-    public void Ribbon_renders_the_editor_action_bar_as_an_icon_strip()
+    public void Ribbon_renders_the_editor_action_bar_as_a_compact_strip()
     {
         var editor = TemplateSlice("EditorTemplate", AppScaffolding.Screens.EntryTemplate.Ribbon);
 
@@ -1280,7 +1280,7 @@ public class WpfBusinessLayoutTests
     }
 
     [TestMethod]
-    public void Ribbon_renders_the_transaction_action_bar_as_an_icon_strip_but_leaves_the_search_box_alone()
+    public void Ribbon_renders_the_transaction_action_bar_as_a_compact_strip_but_leaves_the_search_box_alone()
     {
         var transaction = TemplateSlice("TransactionTemplate", AppScaffolding.Screens.EntryTemplate.Ribbon);
 

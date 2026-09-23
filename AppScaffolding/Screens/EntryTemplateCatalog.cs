@@ -18,7 +18,7 @@ public static class EntryTemplateCatalog
         (EntryTemplate.TwoColumn, "two-column", "fields grouped into titled panels, packed two columns wide"),
         (EntryTemplate.Split, "split",
             "the record list and its editor shown together, as the master screen already does"),
-        (EntryTemplate.Ribbon, "ribbon", "the action bar as a compact button strip instead of plain buttons"),
+        (EntryTemplate.Ribbon, "ribbon", "the action bar as a row of slimmer, taller buttons"),
     ];
 
     /// <summary>Template keys in display order. Classic is first because it is the simplest shape,

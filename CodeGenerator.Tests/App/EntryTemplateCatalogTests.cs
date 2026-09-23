@@ -60,6 +60,18 @@ public class EntryTemplateCatalogTests
     }
 
     [TestMethod]
+    public void RibbonDescriptionDoesNotClaimToLookDifferentFromPlainButtons()
+    {
+        // The final whole-branch review found Task 15's fix incomplete: it replaced "icon" with
+        // "instead of plain buttons", but RibbonButton (WpfBusinessLayout.cs ~89-94) emits a plain
+        // <Button> wrapped in a single-child <StackPanel Orientation="Vertical"> — the only real
+        // difference from every other template's buttons is narrower width and taller padding.
+        // Users get plain buttons, just sized differently, so no comparative "instead of" claim
+        // belongs here either.
+        Assert.DoesNotContain("instead of", EntryTemplateCatalog.Descriptions[EntryTemplate.Ribbon]);
+    }
+
+    [TestMethod]
     public void OptionRenderings_ListTheKeysInOrder()
     {
         Assert.AreEqual("classic/grouped/tabbed/two-column/split/ribbon", EntryTemplateCatalog.PromptOptions);
