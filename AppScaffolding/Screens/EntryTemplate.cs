@@ -26,6 +26,6 @@ public enum EntryTemplate
     /// shows a master record — applied to transaction screens too.</summary>
     Split,
 
-    /// <summary>The action bar as an icon command strip instead of plain buttons.</summary>
+    /// <summary>The action bar as a compact button strip instead of plain buttons.</summary>
     Ribbon
 }

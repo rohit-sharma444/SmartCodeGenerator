@@ -48,6 +48,18 @@ public class EntryTemplateCatalogTests
     }
 
     [TestMethod]
+    public void RibbonDescriptionDoesNotPromiseAnIconNoTemplateEverDraws()
+    {
+        // Task 15's live UIA/screenshot verification found the Ribbon entry template's own
+        // RibbonButton (WpfBusinessLayout.cs) emits only a plain Button with a text Content — no
+        // glyph, no Path geometry, nothing an icon font would need. A user reads this exact string
+        // off the `entry-template` wizard menu (CustomizationMenus.cs) before generating anything,
+        // so promising "icon" here is output that misinforms rather than a merely-absent feature:
+        // the wizard sets an expectation the generated app never draws.
+        Assert.DoesNotContain("icon", EntryTemplateCatalog.Descriptions[EntryTemplate.Ribbon]);
+    }
+
+    [TestMethod]
     public void OptionRenderings_ListTheKeysInOrder()
     {
         Assert.AreEqual("classic/grouped/tabbed/two-column/split/ribbon", EntryTemplateCatalog.PromptOptions);
