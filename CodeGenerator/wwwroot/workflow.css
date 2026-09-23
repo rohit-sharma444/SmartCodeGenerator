@@ -414,6 +414,7 @@ body {
     border: 1px solid var(--line-soft);
     border-radius: var(--radius-sm);
     background: var(--machine);
+    cursor: zoom-in;
 }
 
 .entry-template-name {
@@ -423,6 +424,60 @@ body {
 }
 
 .entry-template-description { font-size: 0.8em; color: var(--muted); }
+
+/* Clicking a thumbnail asks to see it, not to answer the question — so this sits ON TOP of the
+   grid rather than replacing it, and closing it leaves the radios exactly as they were. */
+.entry-template-zoom {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-5);
+    background: rgba(22, 29, 38, 0.55);
+    z-index: 10;
+    cursor: pointer;
+}
+
+.entry-template-zoom-card {
+    position: relative;
+    max-width: min(900px, 100%);
+    max-height: 100%;
+    overflow: auto;
+    padding: var(--space-4);
+    border-radius: var(--radius);
+    background: var(--surface);
+    box-shadow: var(--lift-raised);
+    cursor: default;
+}
+
+.entry-template-zoom-card img {
+    display: block;
+    width: 100%;
+    border: 1px solid var(--line-soft);
+    border-radius: var(--radius-sm);
+}
+
+.entry-template-zoom-caption { margin: var(--space-3) 0 0; color: var(--muted); }
+.entry-template-zoom-caption .entry-template-name { color: var(--ink); }
+
+.entry-template-zoom-close {
+    position: absolute;
+    top: calc(-1 * var(--space-3));
+    right: calc(-1 * var(--space-3));
+    width: 2rem;
+    height: 2rem;
+    border: 1px solid var(--line);
+    border-radius: 50%;
+    background: var(--surface);
+    box-shadow: var(--lift-raised);
+    color: var(--muted);
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.entry-template-zoom-close:hover { border-color: var(--failed); color: var(--failed); }
 
 .actions { display: flex; gap: 0.5rem; margin-top: 1.25rem; }
 

@@ -90,6 +90,41 @@ public class EntryTemplateStageTests
         Assert.AreEqual(EntryTemplate.Tabbed, session.Customization.EntryTemplate);
     }
 
+    /// <summary>The zoom is an inspection aid, not a way to answer the question — clicking a
+    /// thumbnail must not also check that card's radio, or a user previewing a template they do
+    /// not intend to pick would silently change their answer.</summary>
+    [TestMethod]
+    public void Clicking_a_preview_opens_it_enlarged_without_changing_the_selection()
+    {
+        using var context = new BunitContext();
+        var rendered = RenderStage(context, new WpfTarget());
+
+        Assert.IsEmpty(rendered.FindAll(".entry-template-zoom"));
+
+        rendered.Find("img.entry-template-preview[data-key=split]").Click();
+
+        var zoom = rendered.Find(".entry-template-zoom");
+        Assert.AreEqual("entry-templates/split.png", zoom.QuerySelector("img")!.GetAttribute("src"));
+
+        // Grouped is the default and was never touched.
+        Assert.IsTrue(rendered.Find("input.entry-template[value=grouped]").HasAttribute("checked"));
+        Assert.IsFalse(rendered.Find("input.entry-template[value=split]").HasAttribute("checked"));
+    }
+
+    [TestMethod]
+    public void Closing_the_zoom_with_its_button_removes_the_overlay()
+    {
+        using var context = new BunitContext();
+        var rendered = RenderStage(context, new WpfTarget());
+
+        rendered.Find("img.entry-template-preview[data-key=ribbon]").Click();
+        Assert.IsNotEmpty(rendered.FindAll(".entry-template-zoom"));
+
+        rendered.Find(".entry-template-zoom-close").Click();
+
+        Assert.IsEmpty(rendered.FindAll(".entry-template-zoom"));
+    }
+
     private static IRenderedComponent<EntryTemplateStage> RenderStage(
         BunitContext context, ITargetScaffolder target, AppLayout? layout = null)
         => RenderStageWithSession(context, target, layout).Rendered;

@@ -21,13 +21,35 @@
                 <input type="radio" name="entry-template" class="entry-template"
                        value="@key" checked="@(_template == key)"
                        @onchange="() => _template = key" />
-                <img class="entry-template-preview" src="entry-templates/@(key).png"
-                     alt="@key entry template preview" />
+                <img class="entry-template-preview" data-key="@key" src="entry-templates/@(key).png"
+                     alt="@key entry template preview"
+                     @onclick="() => _zoomedKey = key"
+                     @onclick:preventDefault="true" @onclick:stopPropagation="true" />
                 <span class="entry-template-name">@key</span>
                 <span class="entry-template-description">@EntryTemplateCatalog.Descriptions[parsed]</span>
             </label>
         }
     </div>
+
+    @if (_zoomedKey is { } zoomedKey)
+    {
+        EntryTemplateCatalog.TryResolve(zoomedKey, out var zoomed);
+
+        @* A backdrop click closes it too — same "click outside to dismiss" idiom as
+           the discard-question overlay. The close button stays reachable by keyboard,
+           which a backdrop click alone would not be. *@
+        <div class="entry-template-zoom" @onclick="() => _zoomedKey = null">
+            <div class="entry-template-zoom-card" @onclick:stopPropagation="true">
+                <button type="button" class="entry-template-zoom-close"
+                        aria-label="Close" @onclick="() => _zoomedKey = null">✕</button>
+                <img src="entry-templates/@(zoomedKey).png" alt="@zoomedKey entry template preview" />
+                <p class="entry-template-zoom-caption">
+                    <strong class="entry-template-name">@zoomedKey</strong>
+                    — @EntryTemplateCatalog.Descriptions[zoomed]
+                </p>
+            </div>
+        </div>
+    }
 }
 else
 {
@@ -46,6 +68,11 @@ else
     [Parameter] public EventCallback OnAdvance { get; set; }
 
     private string _template = "grouped";
+
+    /// <summary>The key currently shown enlarged, or null when no zoom is open. Deliberately not
+    /// the same field as <see cref="_template"/> — the zoom previews a template, it does not
+    /// answer for one, so opening or closing it must never touch the selection.</summary>
+    private string? _zoomedKey;
 
     /// <summary>Whether this target and this run's layout can even use the choice — mirrors the
     /// same gate <see cref="EntryTemplates"/> enforces at generation time, so the wizard never
