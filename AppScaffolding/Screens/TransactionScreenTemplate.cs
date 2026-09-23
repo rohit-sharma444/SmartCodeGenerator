@@ -12,7 +12,7 @@ namespace AppScaffolding.Screens;
 public static class TransactionScreenTemplate
 {
     /// <summary>Source of <c>ViewModels/TransactionScreenViewModel.cs</c>.</summary>
-    public static string Source(string rootNamespace) => $$"""
+    public static string Source(string rootNamespace, bool editsInline = false) => $$"""
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -62,7 +62,8 @@ public sealed class TransactionScreenViewModel<T> : MasterScreenViewModel<T> whe
     public override EntityRole Role => EntityRole.Transaction;
 
     /// <inheritdoc />
-    protected override bool EditsInline => false;
+    protected override bool EditsInline => {{(editsInline ? "true" : "false")}};
+
 
     /// <inheritdoc />
     protected override IReadOnlyList<ILineSet> LineSets() => _lines?.Invoke() ?? [];

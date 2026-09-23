@@ -26,7 +26,8 @@ public static class DesktopViewModelFiles
     public static List<GeneratedFile> Build(
         string rootNamespace, IReadOnlyList<string> entityNames, string relayCommandSource,
         bool validation = true, bool seed = true, bool login = false,
-        EntityRoleMap? roles = null, IReadOnlyList<ClassDefinition>? classes = null)
+        EntityRoleMap? roles = null, IReadOnlyList<ClassDefinition>? classes = null,
+        bool transactionsEditInline = false)
     {
         var files = new List<GeneratedFile>
         {
@@ -64,7 +65,7 @@ public static class DesktopViewModelFiles
             files.Add(new("ViewModels", "MasterScreenViewModel.cs",
                 MasterScreenTemplate.Source(rootNamespace, validation, login)));
             files.Add(new("ViewModels", "TransactionScreenViewModel.cs",
-                TransactionScreenTemplate.Source(rootNamespace)));
+                TransactionScreenTemplate.Source(rootNamespace, transactionsEditInline)));
             files.Add(new("ViewModels", "DashboardViewModel.cs",
                 ShellTemplate.Dashboard(rootNamespace)));
             files.Add(new("ViewModels", "ShellViewModel.cs",
