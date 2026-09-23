@@ -29,7 +29,7 @@ public static class StageGraph
 
     /// <summary>What the browser tab should say.</summary>
     /// <remarks>
-    /// It said "Build an application" and nothing else — for all nine stages, and for both tabs
+    /// It said "Build an application" and nothing else — for all ten stages, and for both tabs
     /// at once, which is precisely when a title has work to do. The position goes first because
     /// that is the part still legible in a narrow tab.
     /// </remarks>
