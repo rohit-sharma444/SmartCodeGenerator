@@ -91,7 +91,7 @@
     <aside class="settled">
         <h3>Will generate</h3>
         <p>@(Session.Target is null ? "not chosen" : ApplicationTypeMenu.LabelFor(Session.Target))</p>
-        @foreach (var line in CustomizationSummary.Lines(Session.Customization))
+        @foreach (var line in CustomizationSummary.Lines(Session.Customization, Session.Target))
         {
             <p>@line</p>
         }

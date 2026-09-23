@@ -148,7 +148,8 @@ public class ScreenOverridesTests
     public void The_summary_reports_the_overrides()
     {
         var lines = CustomizationSummary.Lines(
-            AppCustomization.Default with { Transactions = "Order", Masters = "Region" });
+            AppCustomization.Default with { Transactions = "Order", Masters = "Region" },
+            target: null);
 
         Assert.IsTrue(lines.Any(l => l.Contains("Order", StringComparison.Ordinal)));
         Assert.IsTrue(lines.Any(l => l.Contains("Region", StringComparison.Ordinal)));
@@ -159,7 +160,7 @@ public class ScreenOverridesTests
     [TestMethod]
     public void The_summary_stays_silent_when_nothing_is_overridden()
         => Assert.IsFalse(
-            CustomizationSummary.Lines(AppCustomization.Default)
+            CustomizationSummary.Lines(AppCustomization.Default, target: null)
                 .Any(l => l.Contains("ransaction", StringComparison.Ordinal)));
 
     /// <summary>The record is compared by value across the existing suite; a collection member

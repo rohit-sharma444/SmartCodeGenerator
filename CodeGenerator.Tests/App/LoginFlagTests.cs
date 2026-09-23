@@ -58,7 +58,8 @@ public class LoginFlagTests
     [TestMethod]
     public void The_summary_reports_a_build_with_no_login()
     {
-        var lines = CustomizationSummary.Lines(AppCustomization.Default with { Login = false });
+        var lines = CustomizationSummary.Lines(
+            AppCustomization.Default with { Login = false }, target: null);
 
         Assert.IsTrue(
             lines.Any(l => l.Contains("no login", StringComparison.Ordinal)),
@@ -69,7 +70,7 @@ public class LoginFlagTests
     [TestMethod]
     public void The_summary_stays_silent_when_login_is_on()
     {
-        var lines = CustomizationSummary.Lines(AppCustomization.Default);
+        var lines = CustomizationSummary.Lines(AppCustomization.Default, target: null);
 
         Assert.IsFalse(lines.Any(l => l.Contains("login", StringComparison.OrdinalIgnoreCase)));
     }
