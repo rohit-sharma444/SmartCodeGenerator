@@ -3,6 +3,8 @@
 @using AppScaffolding.Layouts
 @using AppScaffolding.Screens
 @using CodeGenerator.Web.Workflow
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.JSInterop
 
 @* Node 8: how master and transaction screens arrange their fields, distinct from Output's
    choice of WHICH classes get one of those screens at all. Always present in the diagram —
@@ -39,7 +41,8 @@
            the discard-question overlay. The close button stays reachable by keyboard,
            which a backdrop click alone would not be. *@
         <div class="entry-template-zoom" @onclick="() => _zoomedKey = null">
-            <div class="entry-template-zoom-card" @onclick:stopPropagation="true">
+            <div class="entry-template-zoom-card" tabindex="-1" @ref="_zoomCard"
+                 @onclick:stopPropagation="true" @onkeydown="CloseZoomOnEscape">
                 <button type="button" class="entry-template-zoom-close"
                         aria-label="Close" @onclick="() => _zoomedKey = null">✕</button>
                 <img src="entry-templates/@(zoomedKey).png" alt="@zoomedKey entry template preview" />
@@ -74,6 +77,12 @@ else
     /// answer for one, so opening or closing it must never touch the selection.</summary>
     private string? _zoomedKey;
 
+    private ElementReference _zoomCard;
+
+    /// <summary>The key the zoom card was last given the keyboard for, so a re-render for an
+    /// unrelated reason does not steal focus back from wherever the user has since moved it.</summary>
+    private string? _zoomFocused;
+
     /// <summary>Whether this target and this run's layout can even use the choice — mirrors the
     /// same gate <see cref="EntryTemplates"/> enforces at generation time, so the wizard never
     /// offers an answer the generator would ignore.</summary>
@@ -87,6 +96,32 @@ else
         Navigation.Offer(Next, ready: () => true);
 
         _template = EntryTemplateCatalog.KeyFor(Session.Customization.EffectiveEntryTemplate);
+    }
+
+    /// <summary>Gives the zoom card the keyboard as soon as it opens, so Escape works without a
+    /// mouse click into it first — the same pattern <c>BuildWorkflow</c>'s panel already uses.</summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_zoomedKey is null || _zoomFocused == _zoomedKey)
+            return;
+
+        _zoomFocused = _zoomedKey;
+
+        try
+        {
+            await _zoomCard.FocusAsync();
+        }
+        catch (Exception ex) when (ex is JSDisconnectedException or ObjectDisposedException)
+        {
+            // The tab went away between the render and the focus. Nothing to focus, nothing to
+            // fail the stage over.
+        }
+    }
+
+    private void CloseZoomOnEscape(KeyboardEventArgs key)
+    {
+        if (key.Key == "Escape")
+            _zoomedKey = null;
     }
 
     private Task<bool> Next()

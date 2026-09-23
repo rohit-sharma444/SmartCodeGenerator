@@ -125,6 +125,20 @@ public class EntryTemplateStageTests
         Assert.IsEmpty(rendered.FindAll(".entry-template-zoom"));
     }
 
+    [TestMethod]
+    public void Pressing_escape_closes_the_zoom_too()
+    {
+        using var context = new BunitContext();
+        var rendered = RenderStage(context, new WpfTarget());
+
+        rendered.Find("img.entry-template-preview[data-key=tabbed]").Click();
+        Assert.IsNotEmpty(rendered.FindAll(".entry-template-zoom"));
+
+        rendered.Find(".entry-template-zoom-card").KeyDown(Key.Escape);
+
+        Assert.IsEmpty(rendered.FindAll(".entry-template-zoom"));
+    }
+
     private static IRenderedComponent<EntryTemplateStage> RenderStage(
         BunitContext context, ITargetScaffolder target, AppLayout? layout = null)
         => RenderStageWithSession(context, target, layout).Rendered;
