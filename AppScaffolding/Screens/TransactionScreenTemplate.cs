@@ -64,7 +64,6 @@ public sealed class TransactionScreenViewModel<T> : MasterScreenViewModel<T> whe
     /// <inheritdoc />
     protected override bool EditsInline => {{(editsInline ? "true" : "false")}};
 
-
     /// <inheritdoc />
     protected override IReadOnlyList<ILineSet> LineSets() => _lines?.Invoke() ?? [];
 
