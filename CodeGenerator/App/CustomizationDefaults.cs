@@ -160,7 +160,7 @@ internal static class CustomizationDefaults
                 // that names no entry template is what lets a later `entry-template grouped` read as typed.
                 EntryTemplate = customization.EntryTemplate is null
                     ? null
-                    : customization.EntryTemplate.ToString(),
+                    : EntryTemplateCatalog.KeyFor(customization.EntryTemplate.Value),
             };
 
             File.WriteAllText(path, JsonSerializer.Serialize(profile, Options));
@@ -195,7 +195,7 @@ internal static class CustomizationDefaults
     /// absent one, and both mean the default entry template downstream.
     /// </remarks>
     private static EntryTemplate? ParseEntryTemplate(string? value)
-        => value is not null && Enum.TryParse<EntryTemplate>(value, out var template) ? template : null;
+        => value is not null && EntryTemplateCatalog.TryResolve(value, out var template) ? template : null;
 
     /// <summary>
     /// <paramref name="value"/> when it is empty or a valid namespace prefix, or

@@ -1,5 +1,6 @@
 using AppScaffolding;
 using AppScaffolding.Layouts;
+using AppScaffolding.Screens;
 using CodeGenerator.App;
 
 namespace CodeGenerator.Tests.App;
@@ -218,4 +219,58 @@ public class CustomizationDefaultsTests
             _root,
             AppCustomization.Default with { Layout = AppLayout.Dashboard },
             AppLayout.Sidebar));
+
+    [TestMethod]
+    public void An_entry_template_round_trips_through_the_profile()
+    {
+        CustomizationDefaults.Save(
+            _root, AppCustomization.Default with { EntryTemplate = EntryTemplate.TwoColumn });
+
+        Assert.AreEqual(EntryTemplate.TwoColumn, CustomizationDefaults.Load(_root).EntryTemplate);
+    }
+
+    /// <summary>Every other surface for this feature — the inline CLI token, the wizard prompt,
+    /// the menu row, the help text — uses the hyphenated <see cref="EntryTemplateCatalog"/>
+    /// spelling ("two-column"), and this file's own doc-comments say the profile can be
+    /// hand-edited. A profile must persist and re-read that exact spelling, not the bare enum
+    /// name ("TwoColumn") a case-sensitive round trip would previously have hidden behind.</summary>
+    [TestMethod]
+    public void An_entry_template_is_persisted_using_the_hyphenated_catalog_key()
+    {
+        CustomizationDefaults.Save(
+            _root, AppCustomization.Default with { EntryTemplate = EntryTemplate.TwoColumn });
+
+        var written = File.ReadAllText(
+            Path.Combine(_root, ".codegen", CustomizationDefaults.FileName));
+
+        StringAssert.Contains(written, "two-column");
+        Assert.DoesNotContain("TwoColumn", written);
+    }
+
+    /// <summary>A user who hand-edits the profile has only ever been shown the hyphenated
+    /// spelling — this proves it is actually understood, not silently ignored back to the
+    /// default.</summary>
+    [TestMethod]
+    public void A_hand_typed_hyphenated_entry_template_loads_correctly()
+    {
+        Directory.CreateDirectory(Path.Combine(_root, ".codegen"));
+        File.WriteAllText(
+            Path.Combine(_root, ".codegen", CustomizationDefaults.FileName),
+            "{ \"entryTemplate\": \"two-column\" }");
+
+        Assert.AreEqual(EntryTemplate.TwoColumn, CustomizationDefaults.Load(_root).EntryTemplate);
+    }
+
+    /// <summary>A hand-edited profile bypasses the inline parser and the wizard, so Load
+    /// re-validates — the rule the layout already follows.</summary>
+    [TestMethod]
+    public void An_unrecognized_stored_entry_template_falls_back_to_none()
+    {
+        Directory.CreateDirectory(Path.Combine(_root, ".codegen"));
+        File.WriteAllText(
+            Path.Combine(_root, ".codegen", CustomizationDefaults.FileName),
+            "{ \"entryTemplate\": \"carousel\" }");
+
+        Assert.IsNull(CustomizationDefaults.Load(_root).EntryTemplate);
+    }
 }
