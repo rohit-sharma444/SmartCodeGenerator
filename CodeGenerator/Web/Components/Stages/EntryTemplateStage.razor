@@ -12,19 +12,21 @@
 
 @if (Applicable)
 {
-    <div class="fields">
-        <label>
-            Template
-            <select class="entry-template answer" value="@_template"
-                    @onchange="e => _template = e.Value?.ToString() ?? _template">
-                @foreach (var key in EntryTemplateCatalog.Keys)
-                {
-                    EntryTemplateCatalog.TryResolve(key, out var parsed);
+    <div class="entry-template-choices">
+        @foreach (var key in EntryTemplateCatalog.Keys)
+        {
+            EntryTemplateCatalog.TryResolve(key, out var parsed);
 
-                    <option value="@key">@key — @EntryTemplateCatalog.Descriptions[parsed]</option>
-                }
-            </select>
-        </label>
+            <label class="entry-template-option @(key == _template ? "selected" : null)">
+                <input type="radio" name="entry-template" class="entry-template"
+                       value="@key" checked="@(_template == key)"
+                       @onchange="() => _template = key" />
+                <img class="entry-template-preview" src="entry-templates/@(key).png"
+                     alt="@key entry template preview" />
+                <span class="entry-template-name">@key</span>
+                <span class="entry-template-description">@EntryTemplateCatalog.Descriptions[parsed]</span>
+            </label>
+        }
     </div>
 }
 else

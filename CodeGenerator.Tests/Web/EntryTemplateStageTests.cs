@@ -1,4 +1,5 @@
 using AppScaffolding;
+using AppScaffolding.Screens;
 using AppScaffolding.Targets;
 using Bunit;
 using CodeGenerator.Web.Components.Stages;
@@ -51,20 +52,64 @@ public class EntryTemplateStageTests
 
         var rendered = RenderStage(context, new WpfTarget());
 
-        Assert.IsNotEmpty(rendered.FindAll("select.entry-template"));
+        Assert.HasCount(EntryTemplateCatalog.Keys.Count, rendered.FindAll("input.entry-template"));
+    }
+
+    /// <summary>Each option is a card, not a bare radio: a screenshot of the template it names,
+    /// so the choice can be made by eye rather than by parsing a key. The image path is the
+    /// catalogue key itself, so a template added to the catalogue without its own screenshot fails
+    /// loudly (a broken image) rather than silently reusing another template's picture.</summary>
+    [TestMethod]
+    public void Every_option_shows_a_screenshot_named_after_its_catalogue_key()
+    {
+        using var context = new BunitContext();
+
+        var rendered = RenderStage(context, new WpfTarget());
+
+        var images = rendered.FindAll("img.entry-template-preview");
+
+        Assert.HasCount(EntryTemplateCatalog.Keys.Count, images);
+
+        for (var i = 0; i < EntryTemplateCatalog.Keys.Count; i++)
+        {
+            var key = EntryTemplateCatalog.Keys[i];
+
+            Assert.AreEqual($"entry-templates/{key}.png", images[i].GetAttribute("src"));
+        }
+    }
+
+    [TestMethod]
+    public void Choosing_a_template_and_advancing_records_it_on_the_customization()
+    {
+        using var context = new BunitContext();
+        var (rendered, session, navigation) = RenderStageWithSession(context, new WpfTarget());
+
+        rendered.Find("input.entry-template[value=tabbed]").Change(true);
+        navigation.ApplyAsync().GetAwaiter().GetResult();
+
+        Assert.AreEqual(EntryTemplate.Tabbed, session.Customization.EntryTemplate);
     }
 
     private static IRenderedComponent<EntryTemplateStage> RenderStage(
         BunitContext context, ITargetScaffolder target, AppLayout? layout = null)
+        => RenderStageWithSession(context, target, layout).Rendered;
+
+    private static (IRenderedComponent<EntryTemplateStage> Rendered, BuildSession Session,
+        StageNavigation Navigation) RenderStageWithSession(
+            BunitContext context, ITargetScaffolder target, AppLayout? layout = null)
     {
         var session = new BuildSession(
             "a shop", Path.GetTempPath(), AppCustomization.Default with { Layout = layout });
 
         session.SetTarget(target);
 
-        return context.Render<EntryTemplateStage>(p => p
+        var navigation = new StageNavigation();
+
+        var rendered = context.Render<EntryTemplateStage>(p => p
             .Add(c => c.Session, session)
-            .Add(c => c.Navigation, new StageNavigation())
+            .Add(c => c.Navigation, navigation)
             .Add(c => c.OnAdvance, () => { }));
+
+        return (rendered, session, navigation);
     }
 }
