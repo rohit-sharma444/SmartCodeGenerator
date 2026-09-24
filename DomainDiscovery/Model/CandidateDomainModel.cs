@@ -36,6 +36,17 @@ public sealed class CandidateField
     public required string Name { get; set; }
 
     /// <summary>
+    /// The name this field's column was imported under, when it was read from the user's data;
+    /// null for one discovery or the review added.
+    /// </summary>
+    /// <remarks>
+    /// Set once and never renamed with <see cref="Name"/>. The imported rows are keyed by it, so a
+    /// field renamed on Review is still found in them - before this, renaming Customer to
+    /// CustomerName left the generated CustomerName column empty.
+    /// </remarks>
+    public string? ImportedAs { get; set; }
+
+    /// <summary>
     /// Settable so the review loop can overrule a type the pipeline inferred. Where the name came
     /// from does not change when its declared type does, which is why
     /// <see cref="Provenance"/> below stays init-only.
@@ -68,6 +79,10 @@ public sealed class CandidateRelationship
 public sealed class CandidateEntity
 {
     public required string Name { get; set; }
+
+    /// <summary>The name this class's rows were imported under, when it was read from the user's
+    /// data - the entity-level mirror of <see cref="CandidateField.ImportedAs"/>.</summary>
+    public string? ImportedAs { get; set; }
     public List<CandidateField> Fields { get; } = new();
     public List<CandidateRelationship> Relationships { get; } = new();
     public Provenance Provenance { get; set; }

@@ -279,7 +279,13 @@ public sealed class AppScaffolder
         var workspaceRoot = request.WorkspaceRoot;
         var target = request.Target;
         var persistence = request.Persistence;
-        var importedData = request.ImportedData;
+
+        // Keyed by the names the model has now: a class or field renamed on Review since the rows
+        // were read would otherwise be generated with none of its data. Here rather than at each
+        // caller, so the web, the console and an incremental add all get it.
+        var importedData = request.ImportedData is { } rows
+            ? ImportedDataRenames.Follow(rows, model)
+            : null;
 
         // Through GeneratedProjectPath, not composed here, so the CLI's overwrite guard and this
         // writer cannot drift apart — see that type's remarks. Computed before the plan below,

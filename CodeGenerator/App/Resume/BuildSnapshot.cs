@@ -94,6 +94,10 @@ internal sealed class BuildSnapshot
     internal sealed class Entity
     {
         public string? Name { get; set; }
+
+        /// <summary>The name its rows were imported under. The rows are re-read under the file's
+        /// names on resume, so a renamed class needs this to find them again.</summary>
+        public string? ImportedAs { get; set; }
         public string? Provenance { get; set; }
         public double? Confidence { get; set; }
         public string? SourceTitle { get; set; }
@@ -139,6 +143,9 @@ internal sealed class BuildSnapshot
     internal sealed class Field
     {
         public string? Name { get; set; }
+
+        /// <summary>The column it was imported from, for the same reason as the class's.</summary>
+        public string? ImportedAs { get; set; }
         public string? Type { get; set; }
         public string? Provenance { get; set; }
 
@@ -353,10 +360,12 @@ internal sealed class BuildSnapshot
         Provenance = entity.Provenance.ToString(),
         Confidence = entity.Confidence,
         SourceTitle = entity.SourceTitle,
+        ImportedAs = entity.ImportedAs,
         Role = entity.Role == DomainDiscovery.Enrichment.EntityRole.None ? null : entity.Role.ToString(),
         Fields = [.. entity.Fields.Select(f => new Field
         {
             Name = f.Name,
+            ImportedAs = f.ImportedAs,
             Type = f.Type,
             Provenance = f.Provenance.ToString(),
             Facts = f.Facts is { } facts ? ToDto(facts) : null,
@@ -448,6 +457,7 @@ internal sealed class BuildSnapshot
                 : Provenance.Wiki,
             Confidence = dto.Confidence ?? 0,
             SourceTitle = dto.SourceTitle,
+            ImportedAs = dto.ImportedAs,
             Role = Enum.TryParse<DomainDiscovery.Enrichment.EntityRole>(dto.Role, out var role)
                 ? role
                 : DomainDiscovery.Enrichment.EntityRole.None,
@@ -461,6 +471,7 @@ internal sealed class BuildSnapshot
             var candidateField = new CandidateField
             {
                 Name = field.Name,
+                ImportedAs = field.ImportedAs,
                 Type = field.Type,
                 Provenance = Enum.TryParse<Provenance>(field.Provenance, out var p)
                     ? p
