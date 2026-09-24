@@ -16,8 +16,23 @@
 @* The tab, which said the same thing on every stage and in every tab. *@
 <PageTitle>@StageGraph.TabTitle(Session)</PageTitle>
 
-<main class="workflow">
+@* data-theme is what workflow.css keys each theme's colours on, through :root:has(...), so the
+   body and Blazor's lost-connection bar outside this element are repainted too - while the chat
+   page, which links the same stylesheet and has no .workflow, cannot be. *@
+<main class="workflow" data-theme="@_theme">
     <h1>Build an application</h1>
+
+    @* Outside the Running branch below, so the finished view keeps it as well. Named
+       theme-choice, not "theme": the Look stage's select.theme is the GENERATED app's theme. *@
+    <label class="theme-picker">
+        Theme
+        <select class="theme-choice" value="@_theme" @onchange="ChooseTheme">
+            @foreach (var theme in WorkflowThemes.All)
+            {
+                <option value="@theme.Key">@theme.Label</option>
+            }
+        </select>
+    </label>
 
     @* The end of the run, and the only thing on the page once it is over. The diagram and the
        panel go together rather than being left up and greyed: every box on the diagram is a click
@@ -192,8 +207,20 @@
     /// <summary>The boundary around the open panel, so a new stage can start clean.</summary>
     private PanelErrorBoundary? _boundary;
 
+    /// <summary>The theme the page is drawn in. Read once from the workspace, and written back on
+    /// every choice so the next run opens the same way.</summary>
+    private string _theme = WorkflowThemes.Default;
+
+    private void ChooseTheme(ChangeEventArgs e)
+    {
+        _theme = WorkflowThemes.Known(e.Value?.ToString());
+        WorkflowThemeStore.Save(Session.WorkspaceRoot, _theme);
+    }
+
     protected override void OnInitialized()
     {
+        _theme = WorkflowThemeStore.Load(Session.WorkspaceRoot);
+
         _navigation.Changed += Refresh;
 
         // The workflow can be moved by a tab that is not this one. The panel below is chosen from
