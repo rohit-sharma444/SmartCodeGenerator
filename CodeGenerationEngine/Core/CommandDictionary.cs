@@ -804,6 +804,23 @@ public static class CommandDictionary
         new()
         {
             Category = "Build App",
+            Command = "renamefield <class> <old> <new>",
+            Description = "Review loop: renames a field, keeping its type, where it came from "
+                        + "and the rules proposed for it - which removing it and adding it "
+                        + "again would lose.",
+            Example = "renamefield Book Name Title"
+        },
+        new()
+        {
+            Category = "Build App",
+            Command = "retype <class> <field> <type>",
+            Description = "Review loop: changes a field's type to string, int, decimal, bool "
+                        + "or DateTime.",
+            Example = "retype Book Pages int"
+        },
+        new()
+        {
+            Category = "Build App",
             Command = "why [name]",
             Description = "Review loop: explains what discovery decided. Bare, it reports every "
                         + "decision grouped by outcome; with a name, it shows that name's whole "

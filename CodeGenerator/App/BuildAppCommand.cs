@@ -635,6 +635,33 @@ internal sealed class BuildAppCommand
                         "Could not remove field (no such field, or Name, which every class keeps).");
                     break;
 
+                // The three edits the page has had and the console had not. `unfield` then `field`
+                // was the only way round the first two, and it threw away the field's proposed
+                // rules and its provenance with it.
+                // The loop splits into three parts at most, so the field and its new name or
+                // type arrive together in the third and are split apart here.
+                case "renamefield" when parts.Length >= 3
+                    && TwoWords(parts[2], out var oldField, out var newField):
+                    Report(
+                        ModelEditor.RenameField(model, parts[1], oldField, newField),
+                        $"Renamed {parts[1]}.{oldField} to {newField}.",
+                        "Could not rename the field. The class and field must exist, and the new "
+                        + "name must be a new, valid identifier - not 'Id' or the class's own name.");
+                    break;
+
+                case "retype" when parts.Length >= 3
+                    && TwoWords(parts[2], out var retyped, out var newType):
+                    Report(
+                        ModelEditor.ChangeFieldType(model, parts[1], retyped, newType),
+                        $"{parts[1]}.{retyped} is now {newType}.",
+                        "Could not change the type. The class and field must exist, and the type "
+                        + "must be string, int, decimal, bool or DateTime.");
+                    break;
+
+                case "unaccept" when parts.Length >= 2:
+                    Console.WriteLine(ProposalReport.Unaccept(model, parts[1]));
+                    break;
+
                 case "why":
                     foreach (var whyLine in WhyLines(model, parts))
                         Console.WriteLine(whyLine);
@@ -1463,6 +1490,18 @@ internal sealed class BuildAppCommand
     /// </remarks>
     internal static string OrderStatusLine(CandidateDomainModel model, string[] parts)
         => RunStatusCommand(model, parts, WorkflowCommands.OrderStatus);
+
+    /// <summary>
+    /// The two words <paramref name="text"/> holds, or false when it does not hold exactly two.
+    /// </summary>
+    internal static bool TwoWords(string text, out string first, out string second)
+    {
+        var words = text.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        (first, second) = words.Length == 2 ? (words[0], words[1]) : (string.Empty, string.Empty);
+
+        return words.Length == 2;
+    }
 
     /// <summary>The <c>final status &lt;values&gt; in &lt;Class&gt;</c> counterpart of
     /// <see cref="OrderStatusLine"/>.</summary>

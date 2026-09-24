@@ -59,7 +59,7 @@ internal static class ProposalReport
                 + $"{proposal.Evidence}");
         }
 
-        lines.Add("  accept <n>   accept all");
+        lines.Add("  accept <n>   accept all   unaccept <n>   unaccept all");
 
         return lines;
     }
@@ -67,24 +67,40 @@ internal static class ProposalReport
     /// <summary>Accepts one proposal by number, or every one, and reports what happened.
     /// </summary>
     public static string Accept(CandidateDomainModel model, string argument)
+        => Decide(model, argument, accepted: true);
+
+    /// <summary>
+    /// Takes an accepted proposal back, by number or all at once.
+    /// </summary>
+    /// <remarks>
+    /// The page has always had this - untick the box - and the console had no way back from an
+    /// `accept all` short of starting the review again.
+    /// </remarks>
+    public static string Unaccept(CandidateDomainModel model, string argument)
+        => Decide(model, argument, accepted: false);
+
+    private static string Decide(CandidateDomainModel model, string argument, bool accepted)
     {
         var all = All(model);
+        var verb = accepted ? "Accepted" : "No longer accepted";
 
         if (string.Equals(argument, "all", StringComparison.OrdinalIgnoreCase))
         {
             foreach (var entry in all)
-                entry.Proposal.Accepted = true;
+                entry.Proposal.Accepted = accepted;
 
-            return $"Accepted {all.Count} rule(s).";
+            return accepted
+                ? $"Accepted {all.Count} rule(s)."
+                : $"No longer accepted: {all.Count} rule(s).";
         }
 
         if (!int.TryParse(argument, out var number) || number < 1 || number > all.Count)
             return $"There is no proposal {argument}. Type `rules` to see them.";
 
         var picked = all[number - 1];
-        picked.Proposal.Accepted = true;
+        picked.Proposal.Accepted = accepted;
 
-        return $"Accepted: {picked.Entity}.{picked.Label}.";
+        return $"{verb}: {picked.Entity}.{picked.Label}.";
     }
 
     /// <summary>Something every proposal shares, whatever it is scoped to.</summary>

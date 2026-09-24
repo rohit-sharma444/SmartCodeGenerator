@@ -41,6 +41,8 @@
 | `field <class> <name>[:<type>]` | Review loop: adds a field to a class. Omit the type to have it inferred; explicit types are string, int, decimal, bool or DateTime. | `field Book Title:string` |
 | `remove <name>` | Review loop: removes a class from the candidate model. | `remove Reservation` |
 | `rename <old> <new>` | Review loop: renames a class in the candidate model. | `rename Member Borrower` |
+| `renamefield <class> <old> <new>` | Review loop: renames a field, keeping its type, where it came from and the rules proposed for it - which removing it and adding it again would lose. | `renamefield Book Name Title` |
+| `retype <class> <field> <type>` | Review loop: changes a field's type to string, int, decimal, bool or DateTime. | `retype Book Pages int` |
 | `unfield <class> <name>` | Review loop: removes a field from a class. | `unfield Book Title` |
 | `why [name]` | Review loop: explains what discovery decided. Bare, it reports every decision grouped by outcome; with a name, it shows that name's whole trail — the stage, the reason and the evidence behind each step. | `why Cash register` |
 
