@@ -1002,7 +1002,7 @@ internal sealed class BuildAppCommand
     /// whatever root it is given, and a workspace may hold several generated apps - reading
     /// all of them would diff this app against everybody's classes.
     /// </remarks>
-    private static IReadOnlyList<AppScaffolding.Incremental.ClassDelta> DeltaAgainst(
+    internal static IReadOnlyList<AppScaffolding.Incremental.ClassDelta> DeltaAgainst(
         CandidateDomainModel model, string projectFolder)
         => AppScaffolding.Incremental.ModelDelta.Between(
             CodeGenerationEngine.Core.Relationships.ClassSnapshots.Read(
