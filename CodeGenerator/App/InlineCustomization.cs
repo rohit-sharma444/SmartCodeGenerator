@@ -33,14 +33,14 @@ namespace CodeGenerator.App;
 internal static class InlineCustomization
 {
     /// <summary>Options taking one value.</summary>
-    private static readonly string[] ValueKeys =
+    internal static readonly string[] ValueKeys =
     [
         "company", "theme", "accent", "icon", "title", "namespace", "layout", "entry-template",
         "transactions", "masters",
     ];
 
     /// <summary>Options that are a bare word.</summary>
-    private static readonly string[] Flags =
+    internal static readonly string[] Flags =
         ["novalidation", "logging", "noseed", "nologin"];
 
     /// <summary>

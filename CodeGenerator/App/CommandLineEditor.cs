@@ -179,7 +179,10 @@ internal sealed class CommandLineEditor
 
         try
         {
-            CommandHistoryFile.AppendLine(_historyFile, command);
+            // Masked on disk only. The in-memory history keeps what was typed, so ↑ in this
+            // session can still re-run a SQL build; the file outlives the session and anyone can
+            // read it, and the `history` command prints it.
+            CommandHistoryFile.AppendLine(_historyFile, DataIngestion.ConnectionSecret.RedactLine(command));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {

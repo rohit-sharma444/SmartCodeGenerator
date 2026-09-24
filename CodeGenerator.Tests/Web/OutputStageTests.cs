@@ -205,6 +205,47 @@ public class OutputStageTests
         Assert.AreEqual(BuildStage.Generate, session.Current);
     }
 
+    /// <summary>The screen split is remembered for the next run, as the Look stage's answers are.
+    /// The only web save used to be on Look, which comes first, so a split chosen here was lost
+    /// with the session.</summary>
+    [TestMethod]
+    public async Task The_screen_split_is_remembered_for_the_next_run()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "output-save-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(root);
+
+        try
+        {
+            using var context = new BunitContext();
+            var navigation = new StageNavigation();
+
+            var session = new BuildSession(
+                "a library", root, AppCustomization.Default with { Masters = "Order" });
+            session.SetTarget(new WpfTarget());
+            session.Advance();
+            session.SetNoData();
+            session.Advance();
+            session.SetCustomization(session.Customization);
+            session.Advance();
+            session.SetModel(AShopModel());
+            session.Advance();
+            session.Advance();
+
+            context.Render<OutputStage>(p => p
+                .Add(c => c.Session, session)
+                .Add(c => c.Navigation, navigation)
+                .Add(c => c.OnAdvance, () => { }));
+
+            Assert.IsTrue(await navigation.ApplyAsync());
+
+            Assert.AreEqual("Order", CodeGenerator.App.CustomizationDefaults.Load(root).Masters);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     [TestMethod]
     public void The_step_forward_is_refused_on_an_empty_model()
     {

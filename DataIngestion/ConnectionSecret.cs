@@ -34,6 +34,32 @@ public static class ConnectionSecret
     private static readonly string[] Keys = ["password", "pwd", "pass word"];
 
     /// <summary>
+    /// A whole typed command line with any password in it masked — for anything that keeps what
+    /// was typed, such as the <c>.codegen_history</c> file.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="Redact"/> takes a connection string on its own and parses it, which a command
+    /// line is not: <c>build app: shop from sql "Server=.;Password=x" tables A</c>. So this finds
+    /// each key followed by <c>=</c> and masks up to the next <c>;</c> or <c>"</c> — the end of
+    /// the value inside a quoted connection string. Unquoted, the mask runs on to the end of the
+    /// line: masking too much of a history line costs a retype; masking too little leaks the
+    /// password. Before this the history file held the password in plain text, although the manual
+    /// promises it is masked wherever the run is echoed back.
+    /// </remarks>
+    public static string RedactLine(string line)
+    {
+        if (string.IsNullOrEmpty(line))
+            return line ?? string.Empty;
+
+        return System.Text.RegularExpressions.Regex.Replace(
+            line,
+            @"(?i)(?<![A-Za-z])(password|pwd|pass word)(\s*=\s*)('[^']*'|[^;""]*)",
+            m => m.Groups[3].Value.Length == 0
+                ? m.Value
+                : m.Groups[1].Value + m.Groups[2].Value + Mask);
+    }
+
+    /// <summary>
     /// <paramref name="connectionString"/> with any password masked, and everything else — keys,
     /// casing, spacing, order — exactly as it was. The input is returned unchanged when it holds
     /// no password, or is not a connection string at all.

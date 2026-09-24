@@ -103,4 +103,35 @@ public class ConnectionSecretTests
         Assert.Contains("Database=A", redacted);
         Assert.Contains("Server=xpwdy", redacted);
     }
+
+    // The history file used to keep the password in plain text: the whole typed line was written
+    // as it was, and `history` printed it back.
+    [Fact]
+    public void A_typed_command_line_keeps_everything_but_the_password()
+    {
+        var line = ConnectionSecret.RedactLine(
+            "build app: a shop from sql \"Server=.;Database=Shop;User Id=u;Password=secret123;Connect Timeout=2\" tables Customer");
+
+        Assert.DoesNotContain("secret123", line);
+        Assert.Equal(
+            "build app: a shop from sql \"Server=.;Database=Shop;User Id=u;Password=***;Connect Timeout=2\" tables Customer",
+            line);
+    }
+
+    [Fact]
+    public void A_password_last_in_the_quoted_string_stops_at_the_quote()
+    {
+        var line = ConnectionSecret.RedactLine(
+            "build app: trading from sql \"Server=.;Database=T;PWD=hunter2\" tables A,B");
+
+        Assert.DoesNotContain("hunter2", line);
+        Assert.EndsWith("PWD=***\" tables A,B", line);
+    }
+
+    [Theory]
+    [InlineData("create project Shop")]
+    [InlineData(@"build app: a library from csv C:\data\books.csv")]
+    [InlineData("build app: trading from sql \"Server=.;Database=T;Trusted_Connection=True\"")]
+    public void A_line_with_no_password_is_left_exactly_as_typed(string typed)
+        => Assert.Equal(typed, ConnectionSecret.RedactLine(typed));
 }

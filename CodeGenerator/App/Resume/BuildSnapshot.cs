@@ -97,6 +97,11 @@ internal sealed class BuildSnapshot
         public string? Provenance { get; set; }
         public double? Confidence { get; set; }
         public string? SourceTitle { get; set; }
+
+        /// <summary>The role discovery gave the class - the chip on its Review card. Absent before
+        /// schema version 3, which left every resumed card without one.</summary>
+        public string? Role { get; set; }
+
         public List<Field>? Fields { get; set; }
         public List<Relationship>? Relationships { get; set; }
 
@@ -348,6 +353,7 @@ internal sealed class BuildSnapshot
         Provenance = entity.Provenance.ToString(),
         Confidence = entity.Confidence,
         SourceTitle = entity.SourceTitle,
+        Role = entity.Role == DomainDiscovery.Enrichment.EntityRole.None ? null : entity.Role.ToString(),
         Fields = [.. entity.Fields.Select(f => new Field
         {
             Name = f.Name,
@@ -442,6 +448,9 @@ internal sealed class BuildSnapshot
                 : Provenance.Wiki,
             Confidence = dto.Confidence ?? 0,
             SourceTitle = dto.SourceTitle,
+            Role = Enum.TryParse<DomainDiscovery.Enrichment.EntityRole>(dto.Role, out var role)
+                ? role
+                : DomainDiscovery.Enrichment.EntityRole.None,
         };
 
         foreach (var field in dto.Fields ?? [])

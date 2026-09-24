@@ -43,6 +43,12 @@ public static class StageSummary
             BuildStage.Output => session.Model is null
                 ? null
                 : Links(session.Model.Entities.Sum(e => e.Relationships.Count)),
+
+            // Missing before, so this box only ever showed its blurb, even once a template had
+            // been chosen.
+            BuildStage.EntryTemplate => session.Customization.EntryTemplate is { } template
+                ? AppScaffolding.Screens.EntryTemplateCatalog.KeyFor(template)
+                : null,
             BuildStage.Generate => session.Generated is null
                 ? null
                 : Path.GetFileName(session.Generated.Scaffold.ProjectPath),

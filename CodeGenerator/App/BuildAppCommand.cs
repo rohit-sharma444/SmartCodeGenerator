@@ -102,7 +102,7 @@ internal sealed class BuildAppCommand
             // command is dispatched OUTSIDE CommandColour.Run - deliberately, since it
             // prints an address and then blocks - which is why OverwritePrompt is visible
             // too. A prompt inside a buffered command would not be.
-            var resumed = OfferToResume(workspaceRoot);
+            var resumed = OfferToResume(workspaceRoot, out var keptAside);
 
             // Before the page opens, so the layout the workflow will start pre-filled with is one
             // the user has been told about rather than one they have to notice. Skipped for a
@@ -111,14 +111,25 @@ internal sealed class BuildAppCommand
                 WriteRememberedLayoutNotice(workspaceRoot, saved, inline.Layout);
 
             var session = resumed ?? new Web.Workflow.BuildSession(
-                description, workspaceRoot, webStart, source);
+                description, workspaceRoot, webStart, source)
+            {
+                NormalizeAll = normalize,
+            };
 
             // Attached AFTER any restore, so replaying a snapshot does not write a dozen
             // partial ones over the good one.
-            session.Autosave = s => Resume.BuildSnapshotStore.Save(
-                workspaceRoot, Resume.BuildSnapshot.Of(s));
+            //
+            // Not attached at all when an unfinished build was kept aside with "start fresh":
+            // there is one slot, and this run saving into it would overwrite the build the offer
+            // had just promised to keep - its first answer did exactly that - and finishing it
+            // would delete it.
+            if (!keptAside)
+            {
+                session.Autosave = s => Resume.BuildSnapshotStore.Save(
+                    workspaceRoot, Resume.BuildSnapshot.Of(s));
 
-            session.OnFinished = _ => Resume.BuildSnapshotStore.Clear(workspaceRoot);
+                session.OnFinished = _ => Resume.BuildSnapshotStore.Clear(workspaceRoot);
+            }
 
             if (Web.BuildAppWebHost.TryStart(session, out var host))
             {
@@ -228,9 +239,18 @@ internal sealed class BuildAppCommand
                 Named(inline.SampleSeedData, defaults.SampleSeedData, saved.SampleSeedData),
             NamespacePrefix = Named(inline.NamespacePrefix, defaults.NamespacePrefix, saved.NamespacePrefix),
 
-            // Null-coalescing rather than Named: null IS "not named" for a layout, so no comparison
-            // against the default is involved — see the remark above.
+            // These four were missing, so the profile quietly won over what was typed:
+            // `build app: shop nologin` generated a login screen whenever the profile had one.
+            // CustomizationMergeTests.Every_typed_setting_overrides_the_profile now holds every
+            // setting to this.
+            Login = Named(inline.Login, defaults.Login, saved.Login),
+            Transactions = Named(inline.Transactions, defaults.Transactions, saved.Transactions),
+            Masters = Named(inline.Masters, defaults.Masters, saved.Masters),
+
+            // Null-coalescing rather than Named: null IS "not named" for a layout or an entry
+            // template, so no comparison against the default is involved — see the remark above.
             Layout = inline.Layout ?? saved.Layout,
+            EntryTemplate = inline.EntryTemplate ?? saved.EntryTemplate,
         };
 
         static T Named<T>(T inline, T fallback, T saved)
@@ -245,9 +265,16 @@ internal sealed class BuildAppCommand
     /// listing every option the parser accepts. A flag the help does not mention is a flag
     /// nobody finds.
     /// </remarks>
-    internal const string InlineOptionsHelp =
+    /// <para>
+    /// Static rather than const so the layout and entry-template words come from their catalogs.
+    /// It used to leave out namespace, layout and entry-template, although every one is accepted;
+    /// <c>InlineOptionsHelpTests</c> now holds it to the parser's own list.
+    /// </para>
+    internal static readonly string InlineOptionsHelp =
         "Options (last on the line): company \"<name>\"  theme light|dark  "
-        + "accent #rrggbb  icon <path>  title \"<pattern>\"  "
+        + "accent #rrggbb  icon <path>  title \"<pattern>\"  namespace <prefix>|none  "
+        + $"layout {AppLayoutCatalog.HelpOptions}  "
+        + $"entry-template {AppScaffolding.Screens.EntryTemplateCatalog.HelpOptions}  "
         + "transactions <A,B>  masters <A,B>  "
         + "novalidation  logging  noseed  nologin";
 
@@ -1259,8 +1286,15 @@ internal sealed class BuildAppCommand
     /// scripted build must not have its output changed by a file it never mentioned, which is
     /// the same determinism <c>CustomizationDefaults</c> and <c>normalize</c> already protect.
     /// </remarks>
-    private static Web.Workflow.BuildSession? OfferToResume(string workspaceRoot)
+    /// <param name="keptAside">
+    /// True when the user chose to start fresh, leaving the unfinished build on disk. The caller
+    /// must then not let this run save over it - see where it attaches the autosave.
+    /// </param>
+    private static Web.Workflow.BuildSession? OfferToResume(
+        string workspaceRoot, out bool keptAside)
     {
+        keptAside = false;
+
         if (Console.IsInputRedirected)
             return null;
 
@@ -1290,6 +1324,8 @@ internal sealed class BuildAppCommand
                 case Resume.ResumeChoice.Fresh:
                     // Left on disk deliberately: starting fresh is not a decision to throw
                     // the old work away, and the next run can still offer it.
+                    keptAside = true;
+                    Console.WriteLine(Resume.ResumeOffer.KeptAsideNotice);
                     return null;
 
                 case Resume.ResumeChoice.Discard:

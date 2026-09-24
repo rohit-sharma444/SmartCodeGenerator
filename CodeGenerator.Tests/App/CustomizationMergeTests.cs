@@ -168,4 +168,63 @@ public class CustomizationMergeTests
 
         Assert.Contains("  Layout: tabs", lines);
     }
+
+    /// <summary>
+    /// Every setting typed on the line beats the profile, not just the ones someone remembered to
+    /// list in Merge.
+    /// </summary>
+    /// <remarks>
+    /// Login, transactions, masters and entry-template used to be missing from it, so on the web
+    /// and interactive-console paths the profile quietly won: `build app: shop nologin` generated a
+    /// login screen whenever the profile had one. The guard below fails when a new setting is added
+    /// to AppCustomization without being given a typed value here, which is how those four were
+    /// missed in the first place.
+    /// </remarks>
+    [TestMethod]
+    public void Every_typed_setting_overrides_the_profile()
+    {
+        var saved = AppCustomization.Default with
+        {
+            Company = "Codis Ltd",
+            Theme = AppTheme.Light,
+            Accent = "#0B6E4F",
+            TitlePattern = AppCustomization.CompanyTitlePattern,
+            IconPath = @"C:\brand\logo.ico",
+            Validation = true,
+            Logging = false,
+            SampleSeedData = true,
+            Login = true,
+            Transactions = "Order",
+            Masters = "Customer",
+            NamespacePrefix = "CodisLtd",
+            Layout = AppLayout.Sidebar,
+            EntryTemplate = AppScaffolding.Screens.EntryTemplate.Grouped,
+        };
+
+        var typed = AppCustomization.Default with
+        {
+            Company = "Acme",
+            Theme = AppTheme.Dark,
+            Accent = "#123456",
+            TitlePattern = "{app} ({company})",
+            IconPath = @"D:\acme.ico",
+            Validation = false,
+            Logging = true,
+            SampleSeedData = false,
+            Login = false,
+            Transactions = "Invoice",
+            Masters = "Supplier",
+            NamespacePrefix = "Acme",
+            Layout = AppLayout.Dashboard,
+            EntryTemplate = AppScaffolding.Screens.EntryTemplate.Classic,
+        };
+
+        foreach (var property in typeof(AppCustomization).GetProperties()
+                     .Where(p => p.CanWrite && p.GetMethod!.IsPublic))
+            Assert.AreNotEqual(
+                property.GetValue(saved), property.GetValue(typed),
+                $"{property.Name} needs a different typed value here, or this test cannot see it");
+
+        Assert.AreEqual(typed, BuildAppCommand.Merge(saved, typed));
+    }
 }

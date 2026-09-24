@@ -2,6 +2,7 @@
 @using AppScaffolding
 @using AppScaffolding.Layouts
 @using AppScaffolding.Screens
+@using CodeGenerator.App
 @using CodeGenerator.Web.Workflow
 @using Microsoft.AspNetCore.Components.Web
 @using Microsoft.JSInterop
@@ -133,6 +134,11 @@ else
         {
             Session.SetCustomization(Session.Customization with { EntryTemplate = template });
         }
+
+        // Remembered for the next run, as the Look stage and the console wizard remember theirs.
+        // Before this the choice was lost with the session: the only web save was on Look, which
+        // comes first.
+        CustomizationDefaults.Save(Session.WorkspaceRoot, Session.Customization);
 
         return Task.FromResult(true);
     }

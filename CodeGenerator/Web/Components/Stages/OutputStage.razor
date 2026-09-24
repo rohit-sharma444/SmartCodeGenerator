@@ -173,6 +173,13 @@
     }
 
     /// <summary>Nothing to apply: the model has been edited in place all along, so this stage's
-    /// step is purely the move to the generate node.</summary>
-    private static Task<bool> Generate() => Task.FromResult(true);
+    /// step is the move to the generate node - and the moment the screen split is settled, so it
+    /// is remembered for the next run as the Look stage and the console wizard remember theirs.
+    /// </summary>
+    private Task<bool> Generate()
+    {
+        CustomizationDefaults.Save(Session.WorkspaceRoot, Session.Customization);
+
+        return Task.FromResult(true);
+    }
 }

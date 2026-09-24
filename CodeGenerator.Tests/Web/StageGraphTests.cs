@@ -60,8 +60,10 @@ public class StageGraphTests
     }
 
     [TestMethod]
-    public void Answering_the_output_node_invalidates_nothing()
-        => Assert.IsEmpty(StageGraph.Invalidates(BuildStage.Output));
+    public void Answering_the_output_node_invalidates_only_what_was_generated()
+        => CollectionAssert.AreEquivalent(
+            new[] { BuildStage.Generate, BuildStage.Run },
+            StageGraph.Invalidates(BuildStage.Output).ToArray());
 
     [TestMethod]
     public void Every_node_has_a_title_and_a_blurb()
@@ -131,13 +133,22 @@ public class StageGraphTests
     public void Discovery_invalidates_itself_so_a_second_completion_is_not_silently_applied()
         => Assert.Contains(BuildStage.Discover, StageGraph.Invalidates(BuildStage.Discover));
 
+    /// <summary>An answer read only at Generate never costs the model, but it does cost the app
+    /// Generate wrote from it. These used to invalidate nothing, which left the old app on the
+    /// Generate node with no way to write the new one.</summary>
     [TestMethod]
-    public void Changing_an_answer_read_only_at_generate_invalidates_nothing()
+    public void Changing_an_answer_read_only_at_generate_invalidates_only_what_was_generated()
     {
-        Assert.IsEmpty(StageGraph.Invalidates(BuildStage.AppType));
-        Assert.IsEmpty(StageGraph.Invalidates(BuildStage.Look));
-        Assert.IsEmpty(StageGraph.Invalidates(BuildStage.Review));
-        Assert.IsEmpty(StageGraph.Invalidates(BuildStage.EntryTemplate));
+        foreach (var stage in new[]
+                 {
+                     BuildStage.AppType, BuildStage.Look, BuildStage.Review,
+                     BuildStage.Output, BuildStage.EntryTemplate
+                 })
+            CollectionAssert.AreEquivalent(
+                new[] { BuildStage.Generate, BuildStage.Run },
+                StageGraph.Invalidates(stage).ToArray(),
+                $"{stage}");
+
         Assert.IsEmpty(StageGraph.Invalidates(BuildStage.Generate));
         Assert.IsEmpty(StageGraph.Invalidates(BuildStage.Run));
     }
