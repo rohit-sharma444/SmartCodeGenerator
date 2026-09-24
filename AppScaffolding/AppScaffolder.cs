@@ -485,9 +485,10 @@ public sealed class AppScaffolder
         // Emitted for the same reason and beside the same file: task 3's handlers call
         // ActingUser regardless of the validation flag, so it is emitted regardless too. Passed
         // sessionAuth, not auth: a Blazor app has a login and no desktop Session at all, and
-        // naming one here would emit code that does not compile — see ActingUserTemplate.
+        // naming one here would emit code that does not compile — see ActingUserTemplate. auth
+        // as well, because that Blazor app still has to be able to say who is acting.
         files.Add((validationFolder, "ActingUser.cs",
-            ActingUserTemplate.Source(rootNamespace, sessionAuth)));
+            ActingUserTemplate.Source(rootNamespace, sessionAuth, auth)));
 
         // Persistence backend behind the seam.
         if (persistence == PersistenceKind.Sqlite)
@@ -628,7 +629,7 @@ public sealed class AppScaffolder
         }
 
         var (testProjectPath, testProjectProblem) = ScaffoldTestProject(
-            workspaceRoot, projectName, rootNamespace, classes, validation, seed, sessionAuth);
+            workspaceRoot, projectName, rootNamespace, classes, validation, seed, auth, sessionAuth);
 
         var allWritten = written.Count == expected;
 
@@ -679,7 +680,8 @@ public sealed class AppScaffolder
     /// </remarks>
     private static (string? Path, string? Problem) ScaffoldTestProject(
         string workspaceRoot, string appProjectName, string appRootNamespace,
-        IReadOnlyList<ClassDefinition> classes, bool validation, bool seed, bool sessionAuth)
+        IReadOnlyList<ClassDefinition> classes, bool validation, bool seed, bool auth,
+        bool sessionAuth)
     {
         var entityNames = classes.Select(c => c.Name).ToList();
 
@@ -753,7 +755,7 @@ public sealed class AppScaffolder
         var parallelizationPath = WriteSource(testFolder, "TestParallelization.cs",
             TestProjectTemplates.DisableParallelization());
         var supportPath = WriteSource(testFolder, "TestSupport.cs",
-            TestProjectTemplates.TestSupport(appRootNamespace));
+            TestProjectTemplates.TestSupport(appRootNamespace, auth, sessionAuth));
 
         var incomplete =
             $"The test project at {testFolder} is incomplete: some of its files could not be written.";
@@ -761,23 +763,6 @@ public sealed class AppScaffolder
         if (roundTripPath is null || (seed && seedPath is null) || parallelizationPath is null
             || supportPath is null)
             return (null, incomplete);
-
-        // Only an app with a desktop Session has one to sign in to, and it refuses every save
-        // until someone is. Removed again when a regenerate drops the login: the file names the
-        // Auth namespace, which such an app no longer declares.
-        const string signInFile = "SignedInAsAdmin.cs";
-
-        if (sessionAuth)
-        {
-            if (WriteSource(testFolder, signInFile,
-                    TestProjectTemplates.SignedInAsAdmin(appRootNamespace)) is null)
-                return (null, incomplete);
-        }
-        else
-        {
-            try { File.Delete(Path.Combine(testFolder, signInFile)); }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
-        }
 
         // One validator test file per model, so the generated suite covers the generated rules —
         // and none at all when there are no validators to cover, since a test naming a validator
@@ -790,7 +775,7 @@ public sealed class AppScaffolder
 
             if (WriteSource(testFolder, $"{definition.Name}ValidatorTests.cs",
                     TestProjectTemplates.ValidatorTests(
-                        appRootNamespace, definition.Name, required?.Name, signedIn: sessionAuth)) is null)
+                        appRootNamespace, definition.Name, required?.Name)) is null)
                 return (null, incomplete);
         }
 

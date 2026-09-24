@@ -79,36 +79,19 @@ public class TestProjectTemplatesTests
     }
 
     /// <summary>
-    /// A WPF or WinForms app with a login refuses a null role before any field rule runs, so its
-    /// generated populated-record test failed "You are not permitted to insert a Customer
-    /// record", and its blank-record test could never reach "Name is required.". Both act as an
-    /// Admin there; the null-record test needs no role to be refused.
+    /// An app with a login refuses a null role before any field rule runs, so the populated and
+    /// the blank record are both validated as <c>TestSupport.ActingRole</c> - the administrator
+    /// there, nobody in an app with no login. What each shape emits for it, compiled and run, is
+    /// in <c>GeneratedTestsActAsAdministratorTests</c>.
     /// </summary>
     [TestMethod]
-    public void Validator_tests_for_an_app_with_a_login_act_as_an_admin()
+    public void Validator_tests_act_as_the_test_supports_role()
     {
-        var source = TestProjectTemplates.ValidatorTests("Shop", "Customer", "Name", signedIn: true);
+        var source = TestProjectTemplates.ValidatorTests("Shop", "Customer", "Name");
 
-        Assert.AreEqual(
-            2, source.Split("with { UserRole = \"Admin\" }").Length - 1,
-            "the populated and the blank record should both be validated as an Admin");
-    }
-
-    [TestMethod]
-    public void Validator_tests_for_an_app_with_no_login_name_no_role()
-        => Assert.DoesNotContain(
-            "UserRole", TestProjectTemplates.ValidatorTests("Shop", "Customer", "Name"));
-
-    /// <summary>A login app refuses every save until someone signs in, so the round-trip tests
-    /// need a signed-in Admin before the first of them runs.</summary>
-    [TestMethod]
-    public void The_sign_in_file_signs_an_admin_in_before_any_test()
-    {
-        var source = TestProjectTemplates.SignedInAsAdmin("Shop");
-
-        Assert.Contains("[ModuleInitializer]", source);
-        Assert.Contains("Session.SignIn(", source);
-        Assert.Contains("Role = AppRole.Admin", source);
-        Assert.Contains("using Shop.Auth;", source);
+        Assert.IsGreaterThanOrEqualTo(
+            2, source.Split("TestSupport.ActingRole").Length - 1,
+            "the populated and the blank record should both be validated as the acting role");
+        Assert.DoesNotContain("UserRole", source, "one way of saying who acts, not two");
     }
 }
