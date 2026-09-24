@@ -199,7 +199,8 @@ public class OutputStageTests
         Assert.AreEqual("Generate", navigation.Label);
 
         Assert.IsTrue(await navigation.ApplyAsync());
-        session.Advance();
+        session.Advance();                                    // output -> entry template
+        session.Advance();                                    // entry template -> generate, nothing to answer
 
         Assert.AreEqual(BuildStage.Generate, session.Current);
     }

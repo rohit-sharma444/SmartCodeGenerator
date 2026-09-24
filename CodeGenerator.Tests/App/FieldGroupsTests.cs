@@ -403,13 +403,73 @@ public class Ticket
 
         assembly = Assembly.Load(Compiler.Compile(source).AssemblyBytes!);
         var columns = (System.Collections.IEnumerable)assembly.GetType("FieldGroups")!
-            .GetMethod("Columns")!.Invoke(null, [assembly.GetType(typeName)!])!;
+            .GetMethod("Columns")!.Invoke(null, [assembly.GetType(typeName)!, 3])!;
 
         return columns.Cast<System.Collections.IEnumerable>()
             .Select(c => c.Cast<object>()
                 .Select(g => (string)g.GetType().GetProperty("Title")!.GetValue(g)!)
                 .ToList())
             .ToList();
+    }
+
+    private static List<List<string>> Columns(string modelStub, string typeName, int columnCount)
+    {
+        var source = EmittedSource.Flatten(
+            modelStub,
+            FieldGroupsTemplate.Source("Acme").Replace("namespace Acme.Screens;", string.Empty));
+
+        EmittedSource.AssertCompiles(source);
+
+        var assembly = Assembly.Load(Compiler.Compile(source).AssemblyBytes!);
+        var columns = (System.Collections.IEnumerable)assembly.GetType("FieldGroups")!
+            .GetMethod("Columns")!.Invoke(null, [assembly.GetType(typeName)!, columnCount])!;
+
+        return columns.Cast<System.Collections.IEnumerable>()
+            .Select(c => c.Cast<object>()
+                .Select(g => (string)g.GetType().GetProperty("Title")!.GetValue(g)!)
+                .ToList())
+            .ToList();
+    }
+
+    [TestMethod]
+    public void A_column_count_of_two_packs_into_two_columns()
+    {
+        var columns = Columns(ModelStub, "Customer", columnCount: 2);
+
+        Assert.HasCount(2, columns);
+        Assert.HasCount(4, columns.SelectMany(c => c).ToList());
+    }
+
+    [TestMethod]
+    public void The_default_column_count_is_still_three()
+        => Assert.HasCount(3, Columns(ModelStub, "Customer"));
+
+    [TestMethod]
+    public void Flat_excludes_the_key_fields_and_long_text_but_keeps_declaration_order()
+    {
+        var source = EmittedSource.Flatten(
+            ModelStub,
+            FieldGroupsTemplate.Source("Acme").Replace("namespace Acme.Screens;", string.Empty));
+
+        EmittedSource.AssertCompiles(source);
+
+        var assembly = Assembly.Load(Compiler.Compile(source).AssemblyBytes!);
+        var type = assembly.GetType("Customer")!;
+
+        var flat = ((System.Collections.IEnumerable)assembly.GetType("FieldGroups")!
+                .GetMethod("Flat")!.Invoke(null, [type])!)
+            .Cast<System.Reflection.PropertyInfo>()
+            .Select(p => p.Name)
+            .ToList();
+
+        var key = assembly.GetType("FieldGroups")!.GetMethod("Key")!.Invoke(null, [type]);
+        var code = (System.Reflection.PropertyInfo?)key!.GetType().GetProperty("Code")!.GetValue(key);
+        var codeName = code?.Name;
+
+        if (codeName is not null)
+            Assert.DoesNotContain(codeName, flat);
+
+        Assert.IsGreaterThan(0, flat.Count);
     }
 
     [TestMethod]

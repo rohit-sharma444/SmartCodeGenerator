@@ -412,7 +412,10 @@ public class WpfBusinessLayoutTests
     public void The_window_is_well_formed_xml()
     {
         foreach (var xaml in new[]
-                 { Xaml(), Xaml(AppCustomization.Default with { Theme = AppTheme.Dark }) })
+                 {
+                     Xaml(), Xaml(AppCustomization.Default with { Theme = AppTheme.Dark }),
+                     Xaml(AppCustomization.Default with { EntryTemplate = AppScaffolding.Screens.EntryTemplate.Ribbon }),
+                 })
         {
             Assert.IsNotNull(XDocument.Parse(xaml).Root);
         }
@@ -1130,4 +1133,266 @@ public class WpfBusinessLayoutTests
         => StringAssert.Contains(
             MasterTemplate(),
             "Text=\"{Binding Shown, StringFormat='Total Records: {0}'}\"");
+
+    // ---- entry-form templates (Task 10) ----
+
+    private static LayoutContext ContextFor(AppScaffolding.Screens.EntryTemplate template)
+        => Context(AppCustomization.Default with { EntryTemplate = template });
+
+    [TestMethod]
+    public void Classic_lays_out_one_flat_column_with_no_panels()
+    {
+        var source = WpfEntryControls.Form(ContextFor(AppScaffolding.Screens.EntryTemplate.Classic));
+
+        StringAssert.Contains(source, "FieldGroups.Flat(");
+        Assert.DoesNotContain("Panel(group)", source);
+    }
+
+    [TestMethod]
+    public void TwoColumn_packs_FieldGroups_into_two_columns()
+    {
+        var source = WpfEntryControls.Form(ContextFor(AppScaffolding.Screens.EntryTemplate.TwoColumn));
+
+        StringAssert.Contains(source, "FieldGroups.Columns(Record.GetType(), 2)");
+    }
+
+    [TestMethod]
+    public void Grouped_still_packs_into_the_default_three_columns()
+    {
+        var source = WpfEntryControls.Form(ContextFor(AppScaffolding.Screens.EntryTemplate.Grouped));
+
+        StringAssert.Contains(source, "FieldGroups.Columns(Record.GetType())");
+    }
+
+    [TestMethod]
+    public void Tabbed_lays_each_group_out_as_its_own_tab()
+    {
+        var source = WpfEntryControls.Form(ContextFor(AppScaffolding.Screens.EntryTemplate.Tabbed));
+
+        StringAssert.Contains(source, "new TabControl()");
+        StringAssert.Contains(source, "FieldGroups.For(");
+        StringAssert.Contains(source, "Header = group.Title");
+    }
+
+    [TestMethod]
+    public void Every_entry_template_still_compiles_with_FieldGroups_and_RequiredFields()
+    {
+        foreach (var template in Enum.GetValues<AppScaffolding.Screens.EntryTemplate>())
+        {
+            var context = ContextFor(template);
+
+            EmittedDesktopSource.AssertCompilesTogether(
+                ("Screens/FieldGroups.cs", FieldGroupsTemplate.Source("Payroll")),
+                ("Screens/RequiredFields.cs", RequiredFieldsTemplate.Source("Payroll", null)),
+                ($"Views/{WpfEntryControls.HeaderFileName}", WpfEntryControls.Header(context)),
+                ($"Views/{WpfEntryControls.FormFileName}", WpfEntryControls.Form(context)),
+                ($"Views/{WpfEntryControls.NotesFileName}", WpfEntryControls.Notes(context)));
+        }
+    }
+
+    // ---- ribbon action bar (Task 11) ----
+
+    private static string XamlFor(AppScaffolding.Screens.EntryTemplate template)
+        => Xaml(AppCustomization.Default with { EntryTemplate = template });
+
+    /// <summary>As the file's existing <c>TemplateSlice(key)</c>, but against a specific entry
+    /// template rather than always the default.</summary>
+    private static string TemplateSlice(string key, AppScaffolding.Screens.EntryTemplate template)
+    {
+        var xaml = XamlFor(template);
+        var from = xaml.IndexOf($"x:Key=\"{key}\"", StringComparison.Ordinal);
+
+        Assert.IsGreaterThan(-1, from, $"no template keyed '{key}'");
+
+        var depth = 1;
+        var at = from;
+
+        while (depth > 0)
+        {
+            var opened = xaml.IndexOf("<DataTemplate", at + 1, StringComparison.Ordinal);
+            var closed = xaml.IndexOf("</DataTemplate>", at + 1, StringComparison.Ordinal);
+
+            Assert.IsGreaterThan(-1, closed, $"'{key}' is never closed");
+
+            if (opened >= 0 && opened < closed)
+            {
+                depth++;
+                at = opened;
+                continue;
+            }
+
+            depth--;
+            at = closed;
+        }
+
+        return xaml.Substring(from, at - from);
+    }
+
+    [TestMethod]
+    public void Ribbon_renders_the_master_action_bar_as_a_compact_strip()
+    {
+        var master = TemplateSlice("MasterTemplate", AppScaffolding.Screens.EntryTemplate.Ribbon);
+
+        StringAssert.Contains(master, "Tag=\"ribbon\"");
+        StringAssert.Contains(master, "Command=\"{Binding SaveCommand}\"");
+        StringAssert.Contains(master, "Command=\"{Binding DeleteCommand}\"");
+    }
+
+    [TestMethod]
+    public void Non_ribbon_templates_keep_the_plain_button_bar()
+    {
+        var master = TemplateSlice("MasterTemplate", AppScaffolding.Screens.EntryTemplate.Grouped);
+
+        Assert.DoesNotContain("Tag=\"ribbon\"", master);
+        StringAssert.Contains(master, "<Button Content=\"Save\"");
+    }
+
+    [TestMethod]
+    public void Ribbon_still_offers_every_command_the_default_bar_offers()
+    {
+        var master = TemplateSlice("MasterTemplate", AppScaffolding.Screens.EntryTemplate.Ribbon);
+
+        foreach (var command in new[]
+                 { "NewCommand", "EditCommand", "DeleteCommand", "SaveCommand", "ClearCommand", "CancelCommand" })
+        {
+            StringAssert.Contains(master, command);
+        }
+    }
+
+    [TestMethod]
+    public void Ribbon_renders_the_editor_action_bar_as_a_compact_strip()
+    {
+        var editor = TemplateSlice("EditorTemplate", AppScaffolding.Screens.EntryTemplate.Ribbon);
+
+        StringAssert.Contains(editor, "Tag=\"ribbon\"");
+        StringAssert.Contains(editor, "Command=\"{Binding SaveCommand}\"");
+        StringAssert.Contains(editor, "Command=\"{Binding CancelCommand}\"");
+    }
+
+    [TestMethod]
+    public void Non_ribbon_templates_keep_the_plain_editor_button_bar()
+    {
+        var editor = TemplateSlice("EditorTemplate", AppScaffolding.Screens.EntryTemplate.Grouped);
+
+        Assert.DoesNotContain("Tag=\"ribbon\"", editor);
+        StringAssert.Contains(editor, "<Button Content=\"Save\"");
+        StringAssert.Contains(editor, "<Button Content=\"Cancel\"");
+    }
+
+    [TestMethod]
+    public void Ribbon_renders_the_transaction_action_bar_as_a_compact_strip_but_leaves_the_search_box_alone()
+    {
+        var transaction = TemplateSlice("TransactionTemplate", AppScaffolding.Screens.EntryTemplate.Ribbon);
+
+        StringAssert.Contains(transaction, "Tag=\"ribbon\"");
+        StringAssert.Contains(transaction, "Command=\"{Binding NewCommand}\"");
+        StringAssert.Contains(transaction, "Command=\"{Binding OpenCommand}\"");
+        StringAssert.Contains(transaction, "Command=\"{Binding DeleteCommand}\"");
+
+        // The search box is untouched: identical in both branches, and never wrapped in a
+        // RibbonButton, which only ever wraps a Button.
+        StringAssert.Contains(
+            transaction,
+            "<TextBox Text=\"{Binding Search, UpdateSourceTrigger=PropertyChanged}\"");
+    }
+
+    [TestMethod]
+    public void Non_ribbon_templates_keep_the_plain_transaction_button_bar()
+    {
+        var transaction = TemplateSlice("TransactionTemplate", AppScaffolding.Screens.EntryTemplate.Grouped);
+
+        Assert.DoesNotContain("Tag=\"ribbon\"", transaction);
+        StringAssert.Contains(transaction, "<Button Content=\"New\"");
+        StringAssert.Contains(transaction, "<Button Content=\"Open\"");
+        StringAssert.Contains(transaction, "<Button Content=\"Delete\"");
+        StringAssert.Contains(
+            transaction,
+            "<TextBox Text=\"{Binding Search, UpdateSourceTrigger=PropertyChanged}\"");
+    }
+
+    // ---- Split transaction template (Task 13) ----
+
+    [TestMethod]
+    public void Split_gives_the_transaction_screen_an_embedded_editor()
+    {
+        var xaml = XamlFor(AppScaffolding.Screens.EntryTemplate.Split);
+
+        var transaction = TemplateSlice("TransactionTemplate", AppScaffolding.Screens.EntryTemplate.Split);
+
+        StringAssert.Contains(transaction, "<views:EntryHeader");
+        StringAssert.Contains(transaction, "<views:EntryForm");
+        StringAssert.Contains(transaction, "Record=\"{Binding Editor.Draft}\"");
+        StringAssert.Contains(transaction, "ItemsSource=\"{Binding Editor.Lines}\"");
+        StringAssert.Contains(transaction, "ItemsSource=\"{Binding Editor.Totals}\"");
+        StringAssert.Contains(transaction, "<DataGrid");
+
+        // The list is still there, still read-only, still filtered by date -- Split changes
+        // composition, not what the list itself offers.
+        StringAssert.Contains(transaction, "SelectedDate=\"{Binding From}\"");
+    }
+
+    [TestMethod]
+    public void Split_removes_the_now_unreachable_standalone_editor()
+    {
+        var xaml = XamlFor(AppScaffolding.Screens.EntryTemplate.Split);
+
+        Assert.DoesNotContain("x:Key=\"EditorTemplate\"", xaml);
+        Assert.DoesNotContain("Editor=\"{StaticResource EditorTemplate}\"", xaml);
+    }
+
+    [TestMethod]
+    public void Non_split_templates_keep_the_separate_editor()
+    {
+        var xaml = XamlFor(AppScaffolding.Screens.EntryTemplate.Grouped);
+
+        StringAssert.Contains(xaml, "x:Key=\"EditorTemplate\"");
+        StringAssert.Contains(xaml, "Editor=\"{StaticResource EditorTemplate}\"");
+    }
+
+    [TestMethod]
+    public void Split_xaml_is_still_well_formed()
+        => Assert.IsNotNull(System.Xml.Linq.XDocument.Parse(XamlFor(AppScaffolding.Screens.EntryTemplate.Split)).Root);
+
+    // ---- full-suite regression proof (Task 14) ----
+
+    [TestMethod]
+    public void A_build_naming_no_entry_template_matches_todays_output_byte_for_byte()
+    {
+        // The regression proof for the whole feature: EffectiveEntryTemplate defaults to Grouped,
+        // so Context() (EntryTemplate: null) and Context() with an EXPLICIT Grouped must be
+        // byte-identical, and both must equal what this file's pre-existing tests already pin.
+        var unset = Xaml();
+        var explicitGrouped = XamlFor(AppScaffolding.Screens.EntryTemplate.Grouped);
+
+        Assert.AreEqual(unset, explicitGrouped);
+    }
+
+    [TestMethod]
+    public void Every_entry_templates_window_and_codebehind_compile_together()
+    {
+        foreach (var template in Enum.GetValues<AppScaffolding.Screens.EntryTemplate>())
+        {
+            var context = ContextFor(template);
+            var files = new WpfBusinessLayout().ViewFiles(context);
+
+            EmittedDesktopSource.AssertCompilesTogether(
+                [
+                    .. files.Where(f => f.Name.EndsWith(".cs", StringComparison.Ordinal))
+                            .Select(f => (f.Name, f.Source)),
+                    ("Views/MainWindow.g.cs", XamlPartialStub),
+                    ("Screens/EntityRole.cs", RoleStub),
+                    ("Screens/FieldGroups.cs", FieldGroupsTemplate.Source("Payroll")),
+                    ("Screens/RequiredFields.cs", RequiredFieldsTemplate.Source("Payroll", null)),
+                    ("ViewModels/Shell.cs", ShellStub),
+                    ("Auth/Session.cs", SessionStub),
+                ]);
+        }
+    }
+
+    [TestMethod]
+    public void Every_entry_templates_xaml_is_well_formed()
+    {
+        foreach (var template in Enum.GetValues<AppScaffolding.Screens.EntryTemplate>())
+            Assert.IsNotNull(System.Xml.Linq.XDocument.Parse(XamlFor(template)).Root);
+    }
 }

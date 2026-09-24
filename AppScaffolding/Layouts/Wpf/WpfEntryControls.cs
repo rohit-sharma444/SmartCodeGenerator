@@ -1,3 +1,5 @@
+using AppScaffolding.Screens;
+
 namespace AppScaffolding.Layouts.Wpf;
 
 /// <summary>
@@ -190,6 +192,116 @@ public sealed class EntryHeader : Grid
             ? "element.SetResourceReference(property, \"AppSurfaceBrush\")"
             : "element.SetValue(property, Brush(\"#FFFFFF\"))";
 
+        var buildMethod = context.Customization.EffectiveEntryTemplate switch
+        {
+            EntryTemplate.Classic => """
+                    private void Build()
+                    {
+                        Children.Clear();
+                        ColumnDefinitions.Clear();
+
+                        if (Record is null)
+                            return;
+
+                        ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+                        var stack = new StackPanel { Margin = new Thickness(6) };
+
+                        foreach (var field in FieldGroups.Flat(Record.GetType()))
+                            stack.Children.Add(Row(field));
+
+                        SetColumn(stack, 0);
+                        Children.Add(stack);
+                    }
+                """,
+
+            EntryTemplate.TwoColumn => """
+                    private void Build()
+                    {
+                        Children.Clear();
+                        ColumnDefinitions.Clear();
+
+                        if (Record is null)
+                            return;
+
+                        var columns = FieldGroups.Columns(Record.GetType(), 2);
+
+                        for (var i = 0; i < columns.Count; i++)
+                        {
+                            if (columns[i].Count == 0)
+                                continue;
+
+                            ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+                            var stack = new StackPanel { Margin = new Thickness(6) };
+
+                            foreach (var group in columns[i])
+                                stack.Children.Add(Panel(group));
+
+                            SetColumn(stack, ColumnDefinitions.Count - 1);
+                            Children.Add(stack);
+                        }
+                    }
+                """,
+
+            EntryTemplate.Tabbed => """
+                    private void Build()
+                    {
+                        Children.Clear();
+                        ColumnDefinitions.Clear();
+
+                        if (Record is null)
+                            return;
+
+                        var tabs = new TabControl();
+
+                        foreach (var group in FieldGroups.For(Record.GetType()))
+                        {
+                            var stack = new StackPanel { Margin = new Thickness(10) };
+
+                            foreach (var field in group.Fields)
+                                stack.Children.Add(Row(field));
+
+                            tabs.Items.Add(new TabItem { Header = group.Title, Content = new ScrollViewer { Content = stack } });
+                        }
+
+                        Children.Add(tabs);
+                    }
+                """,
+
+            // Grouped, Split and Ribbon all use the three-column grouped form: Split and Ribbon
+            // change composition and chrome respectively, not field arrangement.
+            _ => """
+                    private void Build()
+                    {
+                        Children.Clear();
+                        ColumnDefinitions.Clear();
+
+                        if (Record is null)
+                            return;
+
+                        var columns = FieldGroups.Columns(Record.GetType());
+
+                        for (var i = 0; i < columns.Count; i++)
+                        {
+                            // An empty column takes no width, so a small model is not two-thirds whitespace.
+                            if (columns[i].Count == 0)
+                                continue;
+
+                            ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+                            var stack = new StackPanel { Margin = new Thickness(6) };
+
+                            foreach (var group in columns[i])
+                                stack.Children.Add(Panel(group));
+
+                            SetColumn(stack, ColumnDefinitions.Count - 1);
+                            Children.Add(stack);
+                        }
+                    }
+                """,
+        };
+
         return $$"""
 using System;
 using System.Collections;
@@ -231,33 +343,7 @@ public sealed class EntryForm : Grid
     private static void OnRecordChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         => ((EntryForm)d).Build();
 
-    private void Build()
-    {
-        Children.Clear();
-        ColumnDefinitions.Clear();
-
-        if (Record is null)
-            return;
-
-        var columns = FieldGroups.Columns(Record.GetType());
-
-        for (var i = 0; i < columns.Count; i++)
-        {
-            // An empty column takes no width, so a small model is not two-thirds whitespace.
-            if (columns[i].Count == 0)
-                continue;
-
-            ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-
-            var stack = new StackPanel { Margin = new Thickness(6) };
-
-            foreach (var group in columns[i])
-                stack.Children.Add(Panel(group));
-
-            SetColumn(stack, ColumnDefinitions.Count - 1);
-            Children.Add(stack);
-        }
-    }
+{{buildMethod}}
 
     private UIElement Panel(FieldGroup group)
     {

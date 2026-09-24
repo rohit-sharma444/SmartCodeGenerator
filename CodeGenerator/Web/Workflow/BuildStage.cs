@@ -1,7 +1,7 @@
 namespace CodeGenerator.Web.Workflow;
 
 /// <summary>
-/// The nine nodes of the `build app` workflow, in the order the diagram draws them.
+/// The ten nodes of the `build app` workflow, in the order the diagram draws them.
 /// </summary>
 /// <remarks>
 /// The order matters twice: <see cref="StageGraph.Next"/> and
@@ -43,6 +43,21 @@ public enum BuildStage
     /// </para>
     /// </remarks>
     Output,
+
+    /// <summary>
+    /// How a business-shell master or transaction screen arranges its fields.
+    /// </summary>
+    /// <remarks>
+    /// Distinct from <see cref="Output"/>, which decides WHICH classes get a master or transaction
+    /// screen at all — this decides how the screens that exist look. Nothing downstream reads it
+    /// until Generate, so it invalidates nothing (see <see cref="StageGraph.Invalidates"/>), the
+    /// same as <see cref="Look"/> and <see cref="Output"/>.
+    /// <para>
+    /// Written to a snapshot by name, never by ordinal (see the remarks on <see cref="Output"/>) —
+    /// do not rename this once it has shipped.
+    /// </para>
+    /// </remarks>
+    EntryTemplate,
 
     Generate,
 

@@ -286,4 +286,43 @@ public class InlineCustomizationTests
         Assert.AreEqual(AppTheme.Dark, customization.Theme);
         Assert.AreEqual("Codis Ltd", customization.Company);
     }
+
+    [TestMethod]
+    public void An_entry_template_token_is_recognised()
+    {
+        var (remaining, customization) = Split("a shop entry-template tabbed");
+
+        Assert.AreEqual("a shop", remaining);
+        Assert.AreEqual(AppScaffolding.Screens.EntryTemplate.Tabbed, customization.EntryTemplate);
+    }
+
+    [TestMethod]
+    public void Entry_template_grouped_is_recorded_as_typed_rather_than_treated_as_absent()
+    {
+        var (_, customization) = Split("a shop entry-template grouped");
+
+        Assert.AreEqual(AppScaffolding.Screens.EntryTemplate.Grouped, customization.EntryTemplate);
+        Assert.IsNotNull(customization.EntryTemplate);
+    }
+
+    [TestMethod]
+    public void An_unusable_entry_template_is_left_in_the_description()
+    {
+        var (remaining, customization) = Split("a shop entry-template kanban");
+
+        Assert.AreEqual("a shop entry-template kanban", remaining);
+        Assert.IsNull(customization.EntryTemplate);
+    }
+
+    [TestMethod]
+    public void Entry_template_combines_with_other_options()
+    {
+        var (remaining, customization) =
+            Split("a shop company \"Codis Ltd\" entry-template split theme dark");
+
+        Assert.AreEqual("a shop", remaining);
+        Assert.AreEqual(AppScaffolding.Screens.EntryTemplate.Split, customization.EntryTemplate);
+        Assert.AreEqual(AppTheme.Dark, customization.Theme);
+        Assert.AreEqual("Codis Ltd", customization.Company);
+    }
 }

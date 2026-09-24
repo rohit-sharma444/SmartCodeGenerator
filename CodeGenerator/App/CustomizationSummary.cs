@@ -1,4 +1,5 @@
 ﻿using AppScaffolding;
+using AppScaffolding.Screens;
 
 namespace CodeGenerator.App;
 
@@ -18,7 +19,16 @@ internal static class CustomizationSummary
 {
     /// <summary>One line per setting the user changed. Empty for
     /// <see cref="AppCustomization.Default"/>.</summary>
-    public static IReadOnlyList<string> Lines(AppCustomization customization)
+    /// <param name="target">
+    /// The target the build will use, if chosen yet. Gates the "Entry template" line: an
+    /// EntryTemplate can be set via the inline CLI token on any target, bypassing the wizard's own
+    /// gate, but nothing downstream ever reads it unless the target supports the feature
+    /// (<see cref="EntryTemplates.Supports"/>) and the effective layout is
+    /// <see cref="AppLayout.Business"/> — the same gate the wizard and menu already use to decide
+    /// whether to ask. Echoing the line for a build the choice will not affect would tell the user
+    /// something untrue.
+    /// </param>
+    public static IReadOnlyList<string> Lines(AppCustomization customization, ITargetScaffolder? target)
     {
         var defaults = AppCustomization.Default;
         var lines = new List<string>();
@@ -49,6 +59,13 @@ internal static class CustomizationSummary
         // deliberate choice, and the one place the user can check that the override took effect.
         if (customization.Layout is not null)
             lines.Add($"  Layout: {AppLayoutCatalog.KeyFor(customization.Layout.Value)}");
+
+        if (customization.EntryTemplate is not null
+            && target is not null && EntryTemplates.Supports(target.Key)
+            && customization.EffectiveLayout == AppLayout.Business)
+        {
+            lines.Add($"  Entry template: {EntryTemplateCatalog.KeyFor(customization.EntryTemplate.Value)}");
+        }
 
         // Named, not counted: the point of typing them is to check the generator agreed.
         if (customization.Transactions.Length > 0)

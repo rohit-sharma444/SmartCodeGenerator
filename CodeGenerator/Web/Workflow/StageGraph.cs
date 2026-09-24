@@ -22,13 +22,14 @@ public static class StageGraph
         new(BuildStage.Discover, "Discover", "Work out the classes"),
         new(BuildStage.Review,        "Review classes", "Change the model before it is written"),
         new(BuildStage.Output,        "Output",         "What gets built, and how it connects"),
+        new(BuildStage.EntryTemplate, "Entry Template", "How master and transaction screens arrange their fields"),
         new(BuildStage.Generate, "Generate", "Write it and build it"),
         new(BuildStage.Run,      "Run",      "Start it and watch it come up"),
     ];
 
     /// <summary>What the browser tab should say.</summary>
     /// <remarks>
-    /// It said "Build an application" and nothing else — for all nine stages, and for both tabs
+    /// It said "Build an application" and nothing else — for all ten stages, and for both tabs
     /// at once, which is precisely when a title has work to do. The position goes first because
     /// that is the part still legible in a narrow tab.
     /// </remarks>
@@ -97,6 +98,10 @@ public static class StageGraph
             // Nothing downstream reads a screen choice until Generate, and Generate has no stored
             // answer to discard — so changing one here costs nothing, exactly as Look does.
             BuildStage.Output => [],
+
+            // Nothing downstream reads this until Generate, and Generate has no stored answer to
+            // discard — so changing it costs nothing, exactly as Output and Look do.
+            BuildStage.EntryTemplate => [],
             BuildStage.Generate      => [],
             BuildStage.Run           => [],
             _ => throw new InvalidOperationException($"No invalidation rule for {changed}."),

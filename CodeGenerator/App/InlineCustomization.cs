@@ -1,4 +1,5 @@
 ﻿using AppScaffolding;
+using AppScaffolding.Screens;
 
 namespace CodeGenerator.App;
 
@@ -34,7 +35,7 @@ internal static class InlineCustomization
     /// <summary>Options taking one value.</summary>
     private static readonly string[] ValueKeys =
     [
-        "company", "theme", "accent", "icon", "title", "namespace", "layout",
+        "company", "theme", "accent", "icon", "title", "namespace", "layout", "entry-template",
         "transactions", "masters",
     ];
 
@@ -176,6 +177,13 @@ internal static class InlineCustomization
                 // more likely part of the description than a layout name we should guess at.
                 return AppLayoutCatalog.TryResolve(value, out var layout)
                     ? customization with { Layout = layout }
+                    : null;
+
+            case "entry-template":
+                // Refused rather than ignored when unusable, like `layout kanban`: the words are
+                // more likely part of the description than a template name we should guess at.
+                return EntryTemplateCatalog.TryResolve(value, out var entryTemplate)
+                    ? customization with { EntryTemplate = entryTemplate }
                     : null;
 
             default:

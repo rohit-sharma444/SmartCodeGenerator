@@ -132,4 +132,19 @@ public class AppCustomizationTests
 
         Assert.AreEqual("Bob\\\\\\\"s", customization.TitleLiteralFor("Shop"));
     }
+
+    [TestMethod]
+    public void The_default_entry_template_is_grouped()
+        => Assert.AreEqual(AppScaffolding.Screens.EntryTemplate.Grouped, AppCustomization.Default.EffectiveEntryTemplate);
+
+    [TestMethod]
+    public void An_explicit_entry_template_is_effective()
+    {
+        var customization = AppCustomization.Default with
+        {
+            EntryTemplate = AppScaffolding.Screens.EntryTemplate.Tabbed,
+        };
+
+        Assert.AreEqual(AppScaffolding.Screens.EntryTemplate.Tabbed, customization.EffectiveEntryTemplate);
+    }
 }

@@ -1,5 +1,6 @@
 ﻿using AppScaffolding;
 using AppScaffolding.Layouts;
+using AppScaffolding.Screens;
 
 namespace CodeGenerator.App;
 
@@ -72,6 +73,20 @@ internal static class CustomizationMenus
             // the override it is.
             if (layout is not null || chosen != AppCustomization.Default.EffectiveLayout)
                 layout = chosen;
+        }
+
+        var entryTemplate = start.EntryTemplate;
+
+        if (target is not null && EntryTemplates.Supports(target.Key)
+            && (layout ?? AppCustomization.Default.EffectiveLayout) == AppLayout.Business)
+        {
+            var chosenTemplate = AskEntryTemplate(choose, entryTemplate);
+
+            if (chosenTemplate is null)
+                return null;
+
+            if (entryTemplate is not null || chosenTemplate != AppCustomization.Default.EffectiveEntryTemplate)
+                entryTemplate = chosenTemplate;
         }
 
         // Beside the layout question: both are about the SHAPE of the app rather than its
@@ -171,6 +186,7 @@ internal static class CustomizationMenus
         return start with
         {
             Layout = layout,
+            EntryTemplate = entryTemplate,
             Company = companyName,
             Theme = (AppTheme)theme.Value,
             Accent = accent.Value.Choice switch
@@ -240,6 +256,33 @@ internal static class CustomizationMenus
             return null;
 
         AppLayoutCatalog.TryResolve(keys[row.Value], out var chosen);
+
+        return chosen;
+    }
+
+    /// <summary>The entry template chosen, or null to cancel.</summary>
+    private static EntryTemplate? AskEntryTemplate(
+        Func<string, IReadOnlyList<string>, int, int?> choose, EntryTemplate? current)
+    {
+        var keys = EntryTemplateCatalog.Keys;
+
+        var labels = keys
+            .Select(key =>
+            {
+                EntryTemplateCatalog.TryResolve(key, out var template);
+
+                return $"{key} — {EntryTemplateCatalog.Descriptions[template]}";
+            })
+            .ToList();
+
+        var offered = EntryTemplateCatalog.KeyFor(current ?? AppCustomization.Default.EffectiveEntryTemplate);
+
+        var row = choose("Entry template", labels, IndexOf(keys, offered));
+
+        if (row is null)
+            return null;
+
+        EntryTemplateCatalog.TryResolve(keys[row.Value], out var chosen);
 
         return chosen;
     }

@@ -63,7 +63,7 @@ public class CustomizationMergeTests
 
     [TestMethod]
     public void The_default_customization_says_nothing_in_the_review_loop()
-        => Assert.IsEmpty(CustomizationSummary.Lines(AppCustomization.Default));
+        => Assert.IsEmpty(CustomizationSummary.Lines(AppCustomization.Default, target: null));
 
     [TestMethod]
     public void Every_changed_setting_is_named_in_the_review_loop()
@@ -72,7 +72,7 @@ public class CustomizationMergeTests
         {
             Validation = false,
             SampleSeedData = false,
-        });
+        }, target: null);
 
         var text = string.Join("\n", lines);
 
@@ -92,7 +92,7 @@ public class CustomizationMergeTests
     public void Only_the_changed_settings_are_named()
     {
         var lines = CustomizationSummary.Lines(
-            AppCustomization.Default with { Logging = true });
+            AppCustomization.Default with { Logging = true }, target: null);
 
         Assert.HasCount(1, lines);
         StringAssert.Contains(lines[0], "logging");
@@ -112,7 +112,7 @@ public class CustomizationMergeTests
     public void The_namespace_prefix_is_named_in_the_review_loop()
     {
         var lines = CustomizationSummary.Lines(
-            AppCustomization.Default with { NamespacePrefix = "CodisLtd" });
+            AppCustomization.Default with { NamespacePrefix = "CodisLtd" }, target: null);
 
         Assert.HasCount(1, lines);
         StringAssert.Contains(lines[0], "Namespace prefix: CodisLtd");
@@ -152,7 +152,7 @@ public class CustomizationMergeTests
     public void The_layout_is_named_in_the_review_loop()
     {
         var lines = CustomizationSummary.Lines(
-            AppCustomization.Default with { Layout = AppLayout.Dashboard });
+            AppCustomization.Default with { Layout = AppLayout.Dashboard }, target: null);
 
         Assert.Contains("  Layout: dashboard", lines);
     }
@@ -164,7 +164,7 @@ public class CustomizationMergeTests
     public void An_explicit_tabs_layout_is_still_named_in_the_review_loop()
     {
         var lines = CustomizationSummary.Lines(
-            AppCustomization.Default with { Layout = AppLayout.Tabs });
+            AppCustomization.Default with { Layout = AppLayout.Tabs }, target: null);
 
         Assert.Contains("  Layout: tabs", lines);
     }

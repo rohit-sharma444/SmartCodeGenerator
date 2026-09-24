@@ -584,7 +584,7 @@ public static class CommandDictionary
             Category = "Build App",
             Command = "build app",
             Description = "Starts the same flow with nothing filled in. Interactively it opens a "
-                        + "workflow page in the browser drawn as nine connected stages, ending "
+                        + "workflow page in the browser drawn as ten connected stages, ending "
                         + "in one that starts the application it just built. The stages are the "
                         + "navigation: each box shows the answer it holds, the box being answered "
                         + "carries the step forward and an arrow back one stage, the next box "
@@ -597,7 +597,9 @@ public static class CommandDictionary
                         + "states in one table the "
                         + "screen each class will get — master, transaction, or the transaction a "
                         + "line is edited inside — and lets you change it before anything is "
-                        + "written. A long step "
+                        + "written. Entry Template, the stage after that, chooses how a "
+                        + "business-shell entry form arranges its fields, when the target is wpf "
+                        + "and the layout is business. A long step "
                         + "reports its progress as it works, "
                         + "and changing the description or the data source asks first, because "
                         + "it discards the model that was discovered from the old one; Cancel asks "
@@ -680,7 +682,10 @@ public static class CommandDictionary
                         + "of the window (wpf and winforms only); business is the default and is "
                         + "the shell with a dashboard home, a rail grouped into masters and "
                         + "transactions, and an editor for every record; the web app is always "
-                        + "that shell, which is why naming a layout does not apply to it. A "
+                        + "that shell, which is why naming a layout does not apply to it. "
+                        + "entry-template classic|grouped|tabbed|two-column|split|ribbon chooses "
+                        + "how a business-shell entry form arranges its fields (wpf only, for now, "
+                        + "and only when the layout is business); grouped is the default. A "
                         + "layout you chose on an earlier interactive run is remembered in "
                         + ".codegen/app-profile.json and kept, default or not, so a run that "
                         + "is using a remembered one says so and names the file.",

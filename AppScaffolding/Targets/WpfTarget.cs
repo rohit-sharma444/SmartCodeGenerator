@@ -45,6 +45,12 @@ public sealed class WpfTarget : ITargetScaffolder
             ? roles ?? Screens.EntityRoleMap.Empty
             : null;
 
+        // Only meaningful with the business shell active, which is exactly when screenRoles is
+        // non-null -- a transaction has no embedded editor to route into otherwise, so this stays
+        // false whenever screenRoles does.
+        var transactionsEditInline =
+            screenRoles is not null && customization.EffectiveEntryTemplate == Screens.EntryTemplate.Split;
+
         // The namespace the emitted code declares; projectName still names the app in its title.
         var ns = customization.RootNamespaceFor(projectName);
 
@@ -53,7 +59,7 @@ public sealed class WpfTarget : ITargetScaffolder
         var files = DesktopViewModelFiles.Build(
             ns, entityNames, ViewModelTemplates.RelayCommand(ns),
             customization.Validation, customization.SampleSeedData, customization.Login,
-            screenRoles, classes);
+            screenRoles, classes, transactionsEditInline);
 
         var palette = ThemePalette.Resolve(customization.Theme, customization.Accent);
 

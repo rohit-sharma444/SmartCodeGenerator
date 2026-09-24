@@ -1,0 +1,139 @@
+@* CodeGenerator/Web/Components/Stages/EntryTemplateStage.razor *@
+@using AppScaffolding
+@using AppScaffolding.Layouts
+@using AppScaffolding.Screens
+@using CodeGenerator.Web.Workflow
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.JSInterop
+
+@* Node 8: how master and transaction screens arrange their fields, distinct from Output's
+   choice of WHICH classes get one of those screens at all. Always present in the diagram —
+   this workflow has no mechanism to skip a node — so when the choice does not apply, the panel
+   says so and offers nothing to choose, the same idiom LookStage's gate and OutputStage's
+   `plan is null` branch already use. *@
+
+@if (Applicable)
+{
+    <div class="entry-template-choices">
+        @foreach (var key in EntryTemplateCatalog.Keys)
+        {
+            EntryTemplateCatalog.TryResolve(key, out var parsed);
+
+            <label class="entry-template-option @(key == _template ? "selected" : null)">
+                <input type="radio" name="entry-template" class="entry-template"
+                       value="@key" checked="@(_template == key)"
+                       @onchange="() => _template = key" />
+                <img class="entry-template-preview" data-key="@key" src="entry-templates/@(key).png"
+                     alt="@key entry template preview"
+                     @onclick="() => _zoomedKey = key"
+                     @onclick:preventDefault="true" @onclick:stopPropagation="true" />
+                <span class="entry-template-name">@key</span>
+                <span class="entry-template-description">@EntryTemplateCatalog.Descriptions[parsed]</span>
+            </label>
+        }
+    </div>
+
+    @if (_zoomedKey is { } zoomedKey)
+    {
+        EntryTemplateCatalog.TryResolve(zoomedKey, out var zoomed);
+
+        @* A backdrop click closes it too — same "click outside to dismiss" idiom as
+           the discard-question overlay. The close button stays reachable by keyboard,
+           which a backdrop click alone would not be. *@
+        <div class="entry-template-zoom" @onclick="() => _zoomedKey = null">
+            <div class="entry-template-zoom-card" tabindex="-1" @ref="_zoomCard"
+                 @onclick:stopPropagation="true" @onkeydown="CloseZoomOnEscape">
+                <button type="button" class="entry-template-zoom-close"
+                        aria-label="Close" @onclick="() => _zoomedKey = null">✕</button>
+                <img src="entry-templates/@(zoomedKey).png" alt="@zoomedKey entry template preview" />
+                <p class="entry-template-zoom-caption">
+                    <strong class="entry-template-name">@zoomedKey</strong>
+                    — @EntryTemplateCatalog.Descriptions[zoomed]
+                </p>
+            </div>
+        </div>
+    }
+}
+else
+{
+    <p class="not-applicable">
+        Only available for a WPF application using the business layout.
+    </p>
+}
+
+<div class="actions">
+    <button type="button" class="cancel" @onclick="() => Session.RequestCancel()">Cancel</button>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public required BuildSession Session { get; set; }
+    [Parameter, EditorRequired] public required StageNavigation Navigation { get; set; }
+    [Parameter] public EventCallback OnAdvance { get; set; }
+
+    private string _template = "grouped";
+
+    /// <summary>The key currently shown enlarged, or null when no zoom is open. Deliberately not
+    /// the same field as <see cref="_template"/> — the zoom previews a template, it does not
+    /// answer for one, so opening or closing it must never touch the selection.</summary>
+    private string? _zoomedKey;
+
+    private ElementReference _zoomCard;
+
+    /// <summary>The key the zoom card was last given the keyboard for, so a re-render for an
+    /// unrelated reason does not steal focus back from wherever the user has since moved it.</summary>
+    private string? _zoomFocused;
+
+    /// <summary>Whether this target and this run's layout can even use the choice — mirrors the
+    /// same gate <see cref="EntryTemplates"/> enforces at generation time, so the wizard never
+    /// offers an answer the generator would ignore.</summary>
+    private bool Applicable
+        => Session.Target is not null
+           && EntryTemplates.Supports(Session.Target.Key)
+           && Session.Customization.EffectiveLayout == AppLayout.Business;
+
+    protected override void OnInitialized()
+    {
+        Navigation.Offer(Next, ready: () => true);
+
+        _template = EntryTemplateCatalog.KeyFor(Session.Customization.EffectiveEntryTemplate);
+    }
+
+    /// <summary>Gives the zoom card the keyboard as soon as it opens, so Escape works without a
+    /// mouse click into it first — the same pattern <c>BuildWorkflow</c>'s panel already uses.</summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_zoomedKey is null || _zoomFocused == _zoomedKey)
+            return;
+
+        _zoomFocused = _zoomedKey;
+
+        try
+        {
+            await _zoomCard.FocusAsync();
+        }
+        catch (Exception ex) when (ex is JSDisconnectedException or ObjectDisposedException)
+        {
+            // The tab went away between the render and the focus. Nothing to focus, nothing to
+            // fail the stage over.
+        }
+    }
+
+    private void CloseZoomOnEscape(KeyboardEventArgs key)
+    {
+        if (key.Key == "Escape")
+            _zoomedKey = null;
+    }
+
+    private Task<bool> Next()
+    {
+        // Nothing to apply when the choice does not apply: the customization is left exactly as
+        // it arrived, so a WinForms or non-business run's EntryTemplate stays whatever it already
+        // was (null, since nothing upstream of this stage can set it either).
+        if (Applicable && EntryTemplateCatalog.TryResolve(_template, out var template))
+        {
+            Session.SetCustomization(Session.Customization with { EntryTemplate = template });
+        }
+
+        return Task.FromResult(true);
+    }
+}

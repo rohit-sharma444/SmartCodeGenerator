@@ -1,5 +1,6 @@
 ﻿using AppScaffolding;
 using AppScaffolding.Layouts;
+using AppScaffolding.Screens;
 
 namespace CodeGenerator.App;
 
@@ -79,6 +80,8 @@ internal static class CustomizationWizard
         writer.WriteLine($"  Enter keeps the value in brackets; \"{NoneLabel}\" clears an optional one.");
         writer.WriteLine();
 
+        var entryTemplate = start.EntryTemplate;
+
         if (asksLayout)
         {
             var offered = AppLayoutCatalog.KeyFor(layout ?? AppCustomization.Default.EffectiveLayout);
@@ -95,6 +98,31 @@ internal static class CustomizationWizard
                 && (layout is not null || parsed != AppCustomization.Default.EffectiveLayout))
             {
                 layout = parsed;
+            }
+        }
+
+        // Beside the layout question, and gated on the layout this build will actually use: asking
+        // about field arrangement when the window will not be the business shell has no effect and
+        // would falsely imply one. Gated on the RESOLVED layout, not the offered one, so an
+        // unusable layout answer (which keeps the previously offered layout) still asks or skips
+        // correctly.
+        var asksEntryTemplate = asksLayout && target is not null && EntryTemplates.Supports(target.Key)
+            && (layout ?? AppCustomization.Default.EffectiveLayout) == AppLayout.Business;
+
+        if (asksEntryTemplate)
+        {
+            writer.WriteLine($"  Entry template: {EntryTemplateCatalog.PromptOptions}");
+
+            var offeredTemplate =
+                EntryTemplateCatalog.KeyFor(entryTemplate ?? AppCustomization.Default.EffectiveEntryTemplate);
+
+            var chosenTemplate = Ask(reader, writer, "Entry template", offeredTemplate);
+            if (chosenTemplate is null) return null;
+
+            if (EntryTemplateCatalog.TryResolve(chosenTemplate, out var parsedTemplate)
+                && (entryTemplate is not null || parsedTemplate != AppCustomization.Default.EffectiveEntryTemplate))
+            {
+                entryTemplate = parsedTemplate;
             }
         }
 
@@ -170,6 +198,7 @@ internal static class CustomizationWizard
         return start with
         {
             Layout = layout,
+            EntryTemplate = entryTemplate,
             Company = company,
             Theme = ParseTheme(theme, start.Theme),
             Accent = ParseAccent(accent, start.Accent),

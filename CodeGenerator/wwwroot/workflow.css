@@ -373,6 +373,112 @@ body {
 
 .choices { margin: 0.75rem 0 1.25rem; }
 
+/* The entry-template picker: the same "one radio per option" idiom .choice/.choices already use,
+   but each option shows a screenshot rather than only a label — the six templates differ in shape
+   far more than in name, so the choice is easier made by eye. A grid of cards borrowing the
+   .entity card's border/shadow/hover language rather than inventing a second one. */
+.entry-template-choices {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: var(--space-4);
+    margin: 0.75rem 0 1.25rem;
+}
+
+.entry-template-option {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    box-shadow: var(--lift-flat);
+    cursor: pointer;
+    transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.entry-template-option:hover { border-color: var(--accent); box-shadow: var(--lift-raised); }
+
+/* The ring, not the border alone, marks the chosen card — the same treatment the open step in
+   the diagram gets, so "selected" reads the same way everywhere on this page. */
+.entry-template-option.selected {
+    border-color: var(--active);
+    box-shadow: var(--lift-active);
+}
+
+.entry-template-option input.entry-template { align-self: flex-start; margin: 0; }
+
+.entry-template-preview {
+    width: 100%;
+    display: block;
+    border: 1px solid var(--line-soft);
+    border-radius: var(--radius-sm);
+    background: var(--machine);
+    cursor: zoom-in;
+}
+
+.entry-template-name {
+    font: 600 0.9em/1.2 var(--sans);
+    color: var(--ink);
+    text-transform: capitalize;
+}
+
+.entry-template-description { font-size: 0.8em; color: var(--muted); }
+
+/* Clicking a thumbnail asks to see it, not to answer the question — so this sits ON TOP of the
+   grid rather than replacing it, and closing it leaves the radios exactly as they were. */
+.entry-template-zoom {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-5);
+    background: rgba(22, 29, 38, 0.55);
+    z-index: 10;
+    cursor: pointer;
+}
+
+.entry-template-zoom-card {
+    position: relative;
+    max-width: min(900px, 100%);
+    max-height: 100%;
+    overflow: auto;
+    padding: var(--space-4);
+    border-radius: var(--radius);
+    background: var(--surface);
+    box-shadow: var(--lift-raised);
+    cursor: default;
+}
+
+.entry-template-zoom-card img {
+    display: block;
+    width: 100%;
+    border: 1px solid var(--line-soft);
+    border-radius: var(--radius-sm);
+}
+
+.entry-template-zoom-caption { margin: var(--space-3) 0 0; color: var(--muted); }
+.entry-template-zoom-caption .entry-template-name { color: var(--ink); }
+
+.entry-template-zoom-close {
+    position: absolute;
+    top: calc(-1 * var(--space-3));
+    right: calc(-1 * var(--space-3));
+    width: 2rem;
+    height: 2rem;
+    border: 1px solid var(--line);
+    border-radius: 50%;
+    background: var(--surface);
+    box-shadow: var(--lift-raised);
+    color: var(--muted);
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.entry-template-zoom-close:hover { border-color: var(--failed); color: var(--failed); }
+
 .actions { display: flex; gap: 0.5rem; margin-top: 1.25rem; }
 
 .hint { color: var(--pending); font-size: 0.9em; }
