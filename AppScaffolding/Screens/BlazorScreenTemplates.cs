@@ -786,7 +786,7 @@ else
 
         // The lines go after the parent, because a new parent has no id until it is written -- and
         // that id is what stamps them.
-        foreach (var lines in _lines)
+{{LinesActAs(login)}}        foreach (var lines in _lines)
         {
             if (lines.Save(ScreenFields.IdOf(_draft)))
                 continue;
@@ -1110,6 +1110,27 @@ else
     /// task 8, alongside the identical desktop gap in <c>RecordEditorTemplate</c>.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// With a login, opens a scope in which the signed-in user is the one acting, for the lines'
+    /// save that follows.
+    /// </summary>
+    /// <remarks>
+    /// The lines are written through the store's checked <c>SaveAll</c>, whose gate reads
+    /// <c>ActingUser.Role()</c> - and a Blazor app has no desktop Session to read it from, so
+    /// without this every save of a transaction said "could not save the lines", even one with none.
+    /// The role is the one the guard at the top of <c>Save</c> already asked Permissions with, so
+    /// the store's check is kept rather than bypassed. A using declaration, so the scope ends when
+    /// <c>Save</c> does, on every path out of it.
+    /// </remarks>
+    private static string LinesActAs(bool login)
+        => login
+            ? """
+                      using var acting = ActingUser.ActAs(
+                          state?.User.FindFirst(ClaimTypes.Role)?.Value ?? string.Empty, null);
+
+              """
+            : string.Empty;
+
     private static string ValidateCall(bool validation, bool login)
     {
         // Independent of `validation`: the store's own SaveAll gate reads ActingUser.Role(),
