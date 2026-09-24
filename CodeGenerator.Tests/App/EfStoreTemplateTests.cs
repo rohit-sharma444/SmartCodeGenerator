@@ -30,7 +30,9 @@ public class EfStoreTemplateTests
         var source = EfStoreTemplate.Source("Payroll");
 
         // Faithful to JsonStore.SaveAll's overwrite contract: clear then insert.
-        StringAssert.Contains(source, "set.RemoveRange(set.ToList());");
+        // What is there is read once, before it goes: StampAuditFields compares against it.
+        StringAssert.Contains(source, "var existing = set.ToList();");
+        StringAssert.Contains(source, "set.RemoveRange(existing);");
         StringAssert.Contains(source, "set.AddRange(all);");
         StringAssert.Contains(source, "context.SaveChanges();");
     }
