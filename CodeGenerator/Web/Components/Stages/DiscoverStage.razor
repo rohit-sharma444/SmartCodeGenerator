@@ -231,7 +231,7 @@ else
         var (model, imported) = DiscoveryStep.BuildFromData(_read!, _chosen);
 
         Session.SetModel(model);
-        Session.SetImportedData(imported);
+        Session.SetImportedData(imported, [.. _chosen]);
 
         return Task.FromResult(true);
     }

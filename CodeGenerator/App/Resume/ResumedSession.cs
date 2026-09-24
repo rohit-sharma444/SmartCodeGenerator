@@ -1,6 +1,7 @@
 using AppScaffolding.Targets;
 using CodeGenerator.Web.Workflow;
 using DataIngestion;
+using DataIngestion.Normalization;
 
 namespace CodeGenerator.App.Resume;
 
@@ -57,7 +58,12 @@ internal static class ResumedSession
         session.Advance();
 
         if (snapshot.ToModel() is { } model)
+        {
             session.SetModel(model, "Restored from a saved session");
+
+            if (source is not null)
+                notice = ReadRowsAgain(session, source, snapshot);
+        }
 
         WalkTo(session, StageToResumeAt(snapshot, notice, session));
 
@@ -104,6 +110,45 @@ internal static class ResumedSession
         }
 
         return new DataSourceSpec(kind, path);
+    }
+
+    /// <summary>
+    /// Reads the rows again — they are never saved — and hands them to the session, or says why
+    /// it could not.
+    /// </summary>
+    /// <remarks>
+    /// Without this a resumed build generated an app with no imported rows at all: the model came
+    /// back, the data it was read from did not, and nothing said so.
+    /// <para>
+    /// The ticked normalization findings are matched against what the re-read reports rather than
+    /// rebuilt from the file, so a finding that no longer appears — the file changed — is simply
+    /// not applied. The model is NOT rebuilt: it holds the user's review, which is the point.
+    /// </para>
+    /// </remarks>
+    private static string? ReadRowsAgain(
+        BuildSession session, DataSourceSpec source, BuildSnapshot snapshot)
+    {
+        if (!DiscoveryStep.TryRead(source, out var read, out var error))
+            return $"The file this build read could not be read again ({error}) - the data "
+                 + "stage is open on it.";
+
+        var saved = snapshot.Normalized ?? [];
+
+        var chosen = read.Report.Findings
+            .Where(finding => saved.Any(s =>
+                s.Kind == finding.Kind.ToString()
+                && s.TableName == finding.TableName
+                && s.ProposedEntity == finding.ProposedEntity
+                && (s.Columns ?? []).SequenceEqual(finding.Columns)))
+            .ToList();
+
+        var tables = chosen.Count > 0
+            ? NormalizationPlan.Apply(read.Tables, chosen)
+            : read.Tables;
+
+        session.SetImportedData(TabularImport.ToImportedData(tables), chosen);
+
+        return null;
     }
 
     /// <summary>

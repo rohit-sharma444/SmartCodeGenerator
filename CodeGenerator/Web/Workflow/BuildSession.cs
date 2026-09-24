@@ -1,6 +1,7 @@
 using AppScaffolding;
 using CodeGenerator.Web;
 using DataIngestion;
+using DataIngestion.Normalization;
 using DomainDiscovery;
 using DomainDiscovery.Model;
 
@@ -146,6 +147,14 @@ public sealed class BuildSession
     /// discovery path. Read by the generate step, and its notes — the row caps — are said out
     /// loud rather than swallowed.</summary>
     public ImportedData ImportedData { get; private set; } = ImportedData.None;
+
+    /// <summary>The normalization findings that were ticked when <see cref="ImportedData"/> was
+    /// read.</summary>
+    /// <remarks>
+    /// Kept so a resumed build can read its rows again the same way: the model was built from the
+    /// normalized tables, and raw rows would not match its classes.
+    /// </remarks>
+    public IReadOnlyList<NormalizationFinding> Normalized { get; private set; } = [];
 
     /// <summary>Whether the generated application was actually started. Distinct from a green
     /// build: compiling is not the same as having seen it run.</summary>
@@ -326,9 +335,11 @@ public sealed class BuildSession
         }
     }
 
-    public void SetImportedData(ImportedData imported)
+    public void SetImportedData(
+        ImportedData imported, IReadOnlyList<NormalizationFinding>? normalized = null)
     {
         ImportedData = imported;
+        Normalized = normalized ?? [];
 
         Changed?.Invoke();
     }
@@ -615,6 +626,7 @@ public sealed class BuildSession
             {
                 Model = null;
                 ImportedData = ImportedData.None;
+                Normalized = [];
             }
 
             if (invalidated == BuildStage.Generate)
@@ -643,6 +655,10 @@ public sealed class BuildSession
         _states[Current] = StageState.Active;
 
         Changed?.Invoke();
+
+        // Moving on is progress as well. Without this the snapshot recorded the stage of the
+        // last ANSWER, so a build left on Output after an unedited Review resumed on Discover.
+        Autosave?.Invoke(this);
     }
 
     /// <summary>Reopens an answered node. This is what a click on a green node does.</summary>
@@ -668,6 +684,9 @@ public sealed class BuildSession
         _states[stage] = StageState.Active;
 
         Changed?.Invoke();
+
+        // As Advance: the node someone went back to is where they left off.
+        Autosave?.Invoke(this);
     }
 
     /// <summary>Records that the open node could not do its work. Not terminal: the panel offers

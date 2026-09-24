@@ -1,6 +1,8 @@
 using AppScaffolding;
 using AppScaffolding.Layouts;
 using AppScaffolding.Screens;
+using CodeGenerationEngine.Core.Validation;
+using CodeGenerationEngine.Core.Validation.Rules;
 using CodeGenerationEngine.Models;
 using CodeGenerator.Web.Workflow;
 using DataIngestion;
@@ -29,7 +31,16 @@ namespace CodeGenerator.App.Resume;
 /// </remarks>
 internal sealed class BuildSnapshot
 {
-    public const int CurrentSchemaVersion = 2;
+    /// <summary>
+    /// 3 added the entity-level rules, a status proposal's order and final values, the whole of
+    /// each proposed rule, and the normalization choices the rows were read with.
+    /// </summary>
+    /// <remarks>
+    /// Bumped rather than left, because <see cref="BuildSnapshotStore.Load"/> refuses a LATER
+    /// version: an older tool reading a version-3 file would otherwise drop the accepted
+    /// cross-field rules without a word.
+    /// </remarks>
+    public const int CurrentSchemaVersion = 3;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
     public DateTimeOffset SavedAt { get; set; } = DateTimeOffset.UtcNow;
@@ -70,6 +81,16 @@ internal sealed class BuildSnapshot
     public List<string>? Rejected { get; set; }
     public List<Decision>? Decisions { get; set; }
 
+    /// <summary>
+    /// The normalization findings that were ticked when the rows were read.
+    /// </summary>
+    /// <remarks>
+    /// The rows are re-read on resume, and the model's classes were built from the NORMALIZED
+    /// tables — a split-out class has no rows of its own in the raw file. So the choices are kept
+    /// and matched against the findings the re-read reports.
+    /// </remarks>
+    public List<Normalization>? Normalized { get; set; }
+
     internal sealed class Entity
     {
         public string? Name { get; set; }
@@ -78,6 +99,36 @@ internal sealed class BuildSnapshot
         public string? SourceTitle { get; set; }
         public List<Field>? Fields { get; set; }
         public List<Relationship>? Relationships { get; set; }
+
+        /// <summary>The proposed cross-field and calculation rules, and which were accepted.
+        /// Absent before schema version 3.</summary>
+        public List<EntityProposal>? Proposals { get; set; }
+    }
+
+    internal sealed class EntityProposal
+    {
+        public string? Kind { get; set; }
+        public List<string>? Properties { get; set; }
+        public string? Evidence { get; set; }
+        public bool? Accepted { get; set; }
+
+        /// <summary>Which rule class: <c>Comparison</c>, <c>Arithmetic</c> or
+        /// <c>Percentage</c> — the three the data scan proposes.</summary>
+        public string? Rule { get; set; }
+
+        /// <summary>The comparison's violation operator, or the arithmetic operator word.</summary>
+        public string? Operator { get; set; }
+
+        /// <summary>A comparison's own message, which is its description.</summary>
+        public string? Text { get; set; }
+    }
+
+    internal sealed class Normalization
+    {
+        public string? Kind { get; set; }
+        public string? TableName { get; set; }
+        public List<string>? Columns { get; set; }
+        public string? ProposedEntity { get; set; }
     }
 
     internal sealed class Field
@@ -126,6 +177,26 @@ internal sealed class BuildSnapshot
         public List<string>? AllowedValues { get; set; }
         public string? RegexPattern { get; set; }
         public string? CustomRule { get; set; }
+
+        // The rest of the rule, from schema version 3. Before it only the four above were kept,
+        // so an accepted uniqueness proposal came back with IsUnique false and emitted nothing.
+        public string? PropertyName { get; set; }
+        public bool? Required { get; set; }
+        public bool? IsUnique { get; set; }
+        public string? ExpectedType { get; set; }
+        public bool? AllowNull { get; set; }
+        public int? MinLength { get; set; }
+        public int? MaxLength { get; set; }
+        public decimal? MinValue { get; set; }
+        public decimal? MaxValue { get; set; }
+        public int? Scale { get; set; }
+        public string? MinDate { get; set; }
+
+        /// <summary>A status column's stated transition order — what the workflow rule is built
+        /// from.</summary>
+        public List<string>? Order { get; set; }
+
+        public List<string>? FinalValues { get; set; }
     }
 
     internal sealed class Relationship
@@ -196,6 +267,15 @@ internal sealed class BuildSnapshot
                 Evidence = d.Evidence,
             })];
         }
+
+        if (session.Normalized.Count > 0)
+            snapshot.Normalized = [.. session.Normalized.Select(n => new Normalization
+            {
+                Kind = n.Kind.ToString(),
+                TableName = n.TableName,
+                Columns = [.. n.Columns],
+                ProposedEntity = n.ProposedEntity,
+            })];
 
         return snapshot;
     }
@@ -280,7 +360,67 @@ internal sealed class BuildSnapshot
         {
             Target = r.Target, Role = r.Role
         })],
+        Proposals = entity.Proposals.Count > 0 ? [.. entity.Proposals.Select(ToDto)] : null,
     };
+
+    private static EntityProposal ToDto(EntityRuleProposal proposal) => new()
+    {
+        Kind = proposal.Kind.ToString(),
+        Properties = [.. proposal.Properties],
+        Evidence = proposal.Evidence,
+        Accepted = proposal.Accepted,
+        Rule = proposal.Rule switch
+        {
+            ComparisonRule => "Comparison",
+            ArithmeticRule => "Arithmetic",
+            PercentageRule => "Percentage",
+            _ => null,
+        },
+        Operator = proposal.Rule switch
+        {
+            ComparisonRule comparison => comparison.ViolationOperator,
+            ArithmeticRule arithmetic => arithmetic.Operator,
+            _ => null,
+        },
+        Text = proposal.Rule is ComparisonRule ? proposal.Rule.Describe() : null,
+    };
+
+    /// <summary>
+    /// One entity-level proposal back, or null when it cannot be rebuilt.
+    /// </summary>
+    /// <remarks>
+    /// Dropped rather than guessed, for the reason <see cref="FromDto(Proposal)"/> gives: a rule
+    /// rebuilt from the wrong parts would be ticked on a card that says something else.
+    /// </remarks>
+    private static EntityRuleProposal? FromDto(EntityProposal dto)
+    {
+        if (!Enum.TryParse<EntityRuleProposalKind>(dto.Kind, out var kind)
+            || dto.Properties is not { } properties)
+            return null;
+
+        IValidationRule? rule = (dto.Rule, properties.Count) switch
+        {
+            ("Comparison", 2) when dto.Operator is { } op && dto.Text is { } text
+                => new ComparisonRule(properties[0], properties[1], op, text),
+            ("Arithmetic", 3) when dto.Operator is { } op
+                => new ArithmeticRule(properties[0], properties[1], op, properties[2]),
+            ("Percentage", 3)
+                => new PercentageRule(properties[0], properties[1], properties[2]),
+            _ => null,
+        };
+
+        if (rule is null)
+            return null;
+
+        return new EntityRuleProposal
+        {
+            Kind = kind,
+            Properties = properties,
+            Rule = rule,
+            Evidence = dto.Evidence ?? string.Empty,
+            Accepted = dto.Accepted ?? false,
+        };
+    }
 
     /// <summary>
     /// One entity back, or null when the file did not name it.
@@ -337,6 +477,10 @@ internal sealed class BuildSnapshot
             });
         }
 
+        foreach (var proposal in dto.Proposals ?? [])
+            if (FromDto(proposal) is { } restored)
+                entity.Proposals.Add(restored);
+
         return entity;
     }
 
@@ -374,6 +518,19 @@ internal sealed class BuildSnapshot
         AllowedValues = proposal.Rule.AllowedValues.Count > 0 ? [.. proposal.Rule.AllowedValues] : null,
         RegexPattern = proposal.Rule.RegexPattern,
         CustomRule = proposal.Rule.CustomRule,
+        PropertyName = proposal.Rule.PropertyName,
+        Required = proposal.Rule.Required,
+        IsUnique = proposal.Rule.IsUnique,
+        ExpectedType = proposal.Rule.ExpectedType,
+        AllowNull = proposal.Rule.AllowNull,
+        MinLength = proposal.Rule.MinLength,
+        MaxLength = proposal.Rule.MaxLength,
+        MinValue = proposal.Rule.MinValue,
+        MaxValue = proposal.Rule.MaxValue,
+        Scale = proposal.Rule.Scale,
+        MinDate = proposal.Rule.MinDate,
+        Order = proposal.Order is { } order ? [.. order] : null,
+        FinalValues = proposal.FinalValues.Count > 0 ? [.. proposal.FinalValues] : null,
     };
 
     /// <summary>
@@ -394,9 +551,22 @@ internal sealed class BuildSnapshot
                 AllowedValues = dto.AllowedValues ?? [],
                 RegexPattern = dto.RegexPattern,
                 CustomRule = dto.CustomRule,
+                PropertyName = dto.PropertyName ?? string.Empty,
+                Required = dto.Required ?? false,
+                IsUnique = dto.IsUnique ?? false,
+                ExpectedType = dto.ExpectedType,
+                AllowNull = dto.AllowNull ?? true,
+                MinLength = dto.MinLength,
+                MaxLength = dto.MaxLength,
+                MinValue = dto.MinValue,
+                MaxValue = dto.MaxValue,
+                Scale = dto.Scale,
+                MinDate = dto.MinDate,
             },
             Evidence = dto.Evidence ?? string.Empty,
             Accepted = dto.Accepted ?? false,
+            Order = dto.Order,
+            FinalValues = new HashSet<string>(dto.FinalValues ?? []),
         };
     }
 }

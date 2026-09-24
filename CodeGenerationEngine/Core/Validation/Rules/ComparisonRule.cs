@@ -16,6 +16,10 @@ public sealed class ComparisonRule : IValidationRule
 
     public ValidationCategory Category => ValidationCategory.Business;
     public IReadOnlyList<string> Properties => [_left, _right];
+
+    /// <summary>The comparison that means "violated", as passed in — what it takes to build this
+    /// rule again, with <see cref="Properties"/> and <see cref="Describe"/>.</summary>
+    public string ViolationOperator => _violationOp;
     // Echo the original fragment verbatim rather than reconstructing it: reconstructing
     // via "{left} must be {phrase} {right}" is ungrammatical for phrases like "not exceed"
     // (produces "must be not exceed"), and this text is user-visible via `show validation`
