@@ -612,7 +612,8 @@ public static class CommandDictionary
                         + "console signs off with the `build app:` line that would do the same run "
                         + "again. Two tabs on "
                         + "the same workflow stay in step, and closing the last one ends the "
-                        + "command. Piped runs keep the console wizard, as does CG_NO_WEB=1.",
+                        + "command. Piped runs skip both the page and the wizard and go straight "
+                        + "to the review loop; CG_NO_WEB=1 keeps the console wizard.",
             Example = "build app"
         },
         new()
