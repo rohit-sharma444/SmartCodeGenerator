@@ -7,9 +7,9 @@
    lost-connection bar unstyled, on a surface no test covers and that only appears when the
    server has already gone. What must NEVER be added here is a bare :root or prefers-color-scheme
    dark block: App.razor links this stylesheet on the chat page too, so it would repaint a page
-   this file knows nothing about. That defect has shipped once already. The dark theme below is
-   keyed on :root:has(.workflow[data-theme="dark"]) instead, which only the workflow page can
-   match - it is the page's own switch, and the chat page has no .workflow at all. */
+   this file knows nothing about. That defect has shipped once already. The themes below are
+   keyed on :root:has(.workflow[data-theme="..."]) instead, which only the workflow page can
+   match - it is the page's own drop-down, and the chat page has no .workflow at all. */
 :root {
     /* Neutrals with a slight blue bias rather than a flat grey, so the ground reads as chosen. */
     --paper:       #eceff4;
@@ -87,9 +87,10 @@
     --role-device-wash:      #eceff4; --role-device-ink:      #40506b;
 }
 
-/* The dark theme, switched on by the page's own Light/Dark button. See the note at the top for
-   why it is keyed this way and never on a bare :root. color-scheme makes the browser draw the
-   native parts - text boxes, drop-downs, check boxes, scroll bars - dark as well. */
+/* The themes the page's drop-down offers besides Light, one block each, and each key matching
+   WorkflowThemes.All - a test holds the two together. See the note at the top for why they are
+   keyed this way and never on a bare :root. color-scheme makes the browser draw the native
+   parts - text boxes, drop-downs, check boxes, scroll bars - to match. */
 :root:has(.workflow[data-theme="dark"]) {
     color-scheme: dark;
 
@@ -133,6 +134,95 @@
     --role-device-wash:      #232c38; --role-device-ink:      #aebbd0;
 }
 
+/* High contrast: black and white with a yellow accent, every line drawn at full strength and no
+   shadow doing any of the work - depth that is only a shade apart is exactly what this theme is
+   for people who cannot see. */
+:root:has(.workflow[data-theme="contrast"]) {
+    color-scheme: dark;
+
+    --paper:       #000000;
+    --surface:     #000000;
+    --ink:         #ffffff;
+    --muted:       #e6e6e6;
+    --faint:       #c8c8c8;
+    --line:        #ffffff;
+    --line-soft:   #a0a0a0;
+    --machine:     #0d0d0d;
+
+    --accent:      #ffd400;
+    --accent-ink:  #ffe766;
+    --accent-wash: #332a00;
+
+    --ok:          #4dff9a;
+    --ok-wash:     #003319;
+    --warn:        #ffb020;
+    --stop:        #ff6b6b;
+
+    --lift-flat: none;
+    --lift-raised: none;
+    --lift-active: 0 0 0 3px #ffd400;
+    --lift-sunk: none;
+
+    --on-accent:      #000000;
+    --notice-wash:    #001a33;
+    --failure-wash:   #330000;
+    --cancel-rule:    #ff6b6b;
+    --cancel-wash:    #330000;
+    --discard-rule:   #ffb020;
+    --discard-wash:   #332200;
+    --remove-wash:    #330000;
+    --scrim:          rgba(0, 0, 0, 0.85);
+    --bar-shadow:     none;
+    --role-transaction-wash: #000000; --role-transaction-ink: #ffcc66;
+    --role-document-wash:    #000000; --role-document-ink:    #d0c4ff;
+    --role-place-wash:       #000000; --role-place-ink:       #66ffb0;
+    --role-device-wash:      #000000; --role-device-ink:      #cfe0ff;
+}
+
+/* Warm: a light theme on cream rather than blue-grey, with a brown accent - softer on the eyes
+   for a long review session than the default white. */
+:root:has(.workflow[data-theme="warm"]) {
+    color-scheme: light;
+
+    --paper:       #f1ebdf;
+    --surface:     #fbf8f1;
+    --ink:         #2b241a;
+    --muted:       #6b5e4d;
+    --faint:       #978a77;
+    --line:        #dbd0bd;
+    --line-soft:   #e7dfd0;
+    --machine:     #f4eee2;
+
+    --accent:      #99561a;
+    --accent-ink:  #6c3b0f;
+    --accent-wash: #f3e5d3;
+
+    --ok:          #3d7638;
+    --ok-wash:     #e5eedb;
+    --warn:        #a15c08;
+    --stop:        #a8322b;
+
+    --lift-flat: 0 1px 2px rgba(60, 40, 15, 0.07), 0 1px 3px rgba(60, 40, 15, 0.06);
+    --lift-raised: 0 2px 4px rgba(60, 40, 15, 0.06), 0 8px 20px rgba(60, 40, 15, 0.08);
+    --lift-active: 0 0 0 3px rgb(153 86 26 / 16%), 0 8px 22px rgba(153, 86, 26, 0.16), 0 2px 6px rgba(60, 40, 15, 0.10);
+    --lift-sunk: inset 0 1px 3px rgba(60, 40, 15, 0.07);
+
+    --on-accent:      #ffffff;
+    --notice-wash:    #f5ecdd;
+    --failure-wash:   #f8e6e2;
+    --cancel-rule:    #b83a2f;
+    --cancel-wash:    #faece8;
+    --discard-rule:   #b0741c;
+    --discard-wash:   #f8eed9;
+    --remove-wash:    #f8e4df;
+    --scrim:          rgba(43, 36, 26, 0.55);
+    --bar-shadow:     0 -2px 8px rgba(60, 40, 15, 0.10);
+    --role-transaction-wash: #f0e2c9; --role-transaction-ink: #7a4508;
+    --role-document-wash:    #eae3ef; --role-document-ink:    #54407a;
+    --role-place-wash:       #e2ecd9; --role-place-ink:       #2f5e2a;
+    --role-device-wash:      #ece6da; --role-device-ink:      #54493a;
+}
+
 body {
     margin: 0;
     padding: var(--space-5) var(--space-6);
@@ -165,21 +255,28 @@ body {
 
 /* Top right, level with the heading, so it takes no row of its own and never moves while the
    stages below it do. */
-.theme-toggle {
+.theme-picker {
     position: absolute;
     top: 0;
     right: 0;
-    padding: 0.3rem 0.8rem;
-    border: 1px solid var(--line);
-    border-radius: 999px;
-    background: var(--surface);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
     color: var(--muted);
-    font: inherit;
     font-size: 0.85em;
+}
+
+.theme-choice {
+    padding: 0.3rem 0.6rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--ink);
+    font: inherit;
     cursor: pointer;
 }
 
-.theme-toggle:hover { border-color: var(--pending); color: var(--ink); }
+.theme-choice:hover { border-color: var(--pending); }
 
 /* Narrow: one column, and the diagram returns to the wrapped row it has always been. */
 @media (max-width: 900px) {
