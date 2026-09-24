@@ -52,6 +52,31 @@ public sealed class WinFormsBusinessLayout : IAppLayout
 """
             : string.Empty;
 
+        // As the four older layouts do: a nologin app emits no Auth folder, so naming it is
+        // CS0234, and there is nobody to sign out -- nor a SignOutCommand on the shell to call.
+        var authUsing = context.Customization.Login
+            ? $"using {context.RootNamespace}.Auth;\r\n"
+            : string.Empty;
+
+        var signOutButton = context.Customization.Login
+            ? """
+        var signOut = new Button { Text = "Sign out", Width = 88, Dock = DockStyle.Right };
+        signOut.Click += (_, _) =>
+        {
+            _shell.SignOutCommand.Execute(null);
+
+            if (Session.SignOutRequested)
+                Close();
+        };
+
+
+"""
+            : string.Empty;
+
+        var addSignOut = context.Customization.Login
+            ? "        header.Controls.Add(signOut);\r\n"
+            : string.Empty;
+
         return $$"""
 using System;
 using System.Collections;
@@ -61,8 +86,7 @@ using System.Drawing;
 using System.Linq;
 using System.Reflection;
 using System.Windows.Forms;
-using {{context.RootNamespace}}.Auth;
-using {{context.RootNamespace}}.Screens;
+{{authUsing}}using {{context.RootNamespace}}.Screens;
 using {{context.RootNamespace}}.ViewModels;
 
 namespace {{context.RootNamespace}}.Views;
@@ -141,16 +165,7 @@ public sealed class MainForm : Form
     {
         var header = new Panel { Dock = DockStyle.Fill, BackColor = {{railFill}} };
 
-        var signOut = new Button { Text = "Sign out", Width = 88, Dock = DockStyle.Right };
-        signOut.Click += (_, _) =>
-        {
-            _shell.SignOutCommand.Execute(null);
-
-            if (Session.SignOutRequested)
-                Close();
-        };
-
-        var back = new Button { Text = "Back", Width = 72, Dock = DockStyle.Right };
+{{signOutButton}}        var back = new Button { Text = "Back", Width = 72, Dock = DockStyle.Right };
         back.Click += (_, _) => _shell.Back();
 
         var who = new Label
@@ -174,8 +189,7 @@ public sealed class MainForm : Form
 
         header.Controls.Add(who);
         header.Controls.Add(back);
-        header.Controls.Add(signOut);
-        header.Controls.Add(title);
+{{addSignOut}}        header.Controls.Add(title);
 
         return header;
     }

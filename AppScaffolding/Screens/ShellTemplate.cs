@@ -50,14 +50,61 @@ public sealed class DashboardViewModel
 """;
 
     /// <summary>Source of <c>ViewModels/ShellViewModel.cs</c>.</summary>
-    public static string Shell(string rootNamespace) => $$"""
+    /// <param name="login">
+    /// False for a <c>nologin</c> app, which emits no <c>Auth</c> folder and so no
+    /// <c>Session</c>: the shell then names neither, has no sign-out command, and shows no signed-in
+    /// user. Defaults to true so the login output — and every caller that never asked — stays
+    /// exactly what it was.
+    /// </param>
+    public static string Shell(string rootNamespace, bool login = true)
+    {
+        var authUsing = login ? $"using {rootNamespace}.Auth;\r\n" : string.Empty;
+
+        // Dropped rather than kept behind a false: without a login nobody is an administrator, and
+        // the only admin pane there is -- Users -- is not generated either.
+        var adminGroup = login
+            ? """
+
+
+            // Only for an administrator, and filtered rather than greyed: a screen a role cannot
+            // reach is simply not listed. The screen itself refuses too, which is the check that
+            // matters.
+            .. Session.IsAdmin ? Group("Admin", adminEntities) : [],
+"""
+            : string.Empty;
+
+        var signOutAssignment = login
+            ? "        SignOutCommand = new RelayCommand(SignOut);\r\n"
+            : string.Empty;
+
+        var signOutProperty = login ? "    public ICommand SignOutCommand { get; }\r\n" : string.Empty;
+
+        var signOutMethod = login
+            ? """
+    private void SignOut()
+    {
+        if (_current is IDirtyScreen { IsDirty: true } && !ConfirmDiscard())
+            return;
+
+        Session.RequestSignOut();
+    }
+
+
+"""
+            : string.Empty;
+
+        // Kept, and empty, rather than removed: both desktop headers bind it, and a header with
+        // nobody signed in simply names nobody.
+        var signedInUser = login ? "Session.DisplayName" : "string.Empty";
+        var isAdmin = login ? "Session.IsAdmin" : "false";
+
+        return $$"""
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Windows.Input;
-using {{rootNamespace}}.Auth;
-using {{rootNamespace}}.Screens;
+{{authUsing}}using {{rootNamespace}}.Screens;
 
 namespace {{rootNamespace}}.ViewModels;
 
@@ -78,12 +125,7 @@ public sealed class ShellViewModel : ObservableObject
         Groups =
         [
             .. Group("Masters", entities.Where(e => e.Role == EntityRole.Master)),
-            .. Group("Transactions", entities.Where(e => e.Role == EntityRole.Transaction)),
-
-            // Only for an administrator, and filtered rather than greyed: a screen a role cannot
-            // reach is simply not listed. The screen itself refuses too, which is the check that
-            // matters.
-            .. Session.IsAdmin ? Group("Admin", adminEntities) : [],
+            .. Group("Transactions", entities.Where(e => e.Role == EntityRole.Transaction)),{{adminGroup}}
         ];
 
         _current = Dashboard;
@@ -95,8 +137,7 @@ public sealed class ShellViewModel : ObservableObject
         foreach (var entity in entities.Concat(adminEntities))
             Route(entity);
 
-        SignOutCommand = new RelayCommand(SignOut);
-        BackCommand = new RelayCommand(Back, () => _previous is not null);
+{{signOutAssignment}}        BackCommand = new RelayCommand(Back, () => _previous is not null);
         HomeCommand = new RelayCommand(() => TryShow(Dashboard));
     }
 
@@ -114,9 +155,9 @@ public sealed class ShellViewModel : ObservableObject
 
     public IReadOnlyList<NavGroup> Groups { get; }
 
-    public string SignedInUser => Session.DisplayName;
+    public string SignedInUser => {{signedInUser}};
 
-    public bool IsAdmin => Session.IsAdmin;
+    public bool IsAdmin => {{isAdmin}};
 
     /// <summary>Whatever is in the content area.</summary>
     public object? Current
@@ -131,8 +172,7 @@ public sealed class ShellViewModel : ObservableObject
 
     public bool CanGoBack => _previous is not null;
 
-    public ICommand SignOutCommand { get; }
-    public ICommand BackCommand { get; }
+{{signOutProperty}}    public ICommand BackCommand { get; }
     public ICommand HomeCommand { get; }
 
     /// <summary>
@@ -167,15 +207,7 @@ public sealed class ShellViewModel : ObservableObject
         Current = target;
     }
 
-    private void SignOut()
-    {
-        if (_current is IDirtyScreen { IsDirty: true } && !ConfirmDiscard())
-            return;
-
-        Session.RequestSignOut();
-    }
-
-    /// <summary>
+{{signOutMethod}}    /// <summary>
     /// Subscribes to one screen's editor request.
     /// </summary>
     /// <remarks>
@@ -227,4 +259,5 @@ public sealed class ShellViewModel : ObservableObject
     }
 }
 """;
+    }
 }

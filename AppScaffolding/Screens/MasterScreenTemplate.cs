@@ -24,10 +24,11 @@ public static class MasterScreenTemplate
     /// not generated either.
     /// </summary>
     /// <param name="login">
-    /// Unused: kept so every existing caller of this overload compiles unchanged. The delete
-    /// guard now reads <c>ActingUser.Role()</c> unconditionally — <see cref="ActingUserTemplate"/>
-    /// itself already decides, from <c>AppScaffolder</c>'s <c>sessionAuth</c>, whether that reads
-    /// a real desktop <c>Session</c> or returns null, so this template no longer needs to ask.
+    /// Decides only whether the <c>Auth</c> using is emitted. The delete guard reads
+    /// <c>ActingUser.Role()</c> unconditionally — <see cref="ActingUserTemplate"/> itself already
+    /// decides, from <c>AppScaffolder</c>'s <c>sessionAuth</c>, whether that reads a real desktop
+    /// <c>Session</c> or returns null. But a <c>nologin</c> app emits no <c>Auth</c> folder, so
+    /// naming that namespace there is CS0234 even though nothing in it is used.
     /// </param>
     public static string Source(string rootNamespace, bool validation, bool login = false)
     {
@@ -59,6 +60,8 @@ public static class MasterScreenTemplate
 
             """;
 
+        var authUsing = login ? $"using {rootNamespace}.Auth;\r\n" : string.Empty;
+
         return $$"""
 using System;
 using System.Collections;
@@ -67,8 +70,7 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using System.Reflection;
 using System.Windows.Input;
-using {{rootNamespace}}.Auth;
-using {{rootNamespace}}.Data;
+{{authUsing}}using {{rootNamespace}}.Data;
 using {{rootNamespace}}.Screens;
 using {{rootNamespace}}.Validation;
 

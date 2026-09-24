@@ -30,7 +30,7 @@ public sealed class WpfBusinessLayout : IAppLayout
     public IReadOnlyList<GeneratedFile> ViewFiles(LayoutContext context) =>
     [
         new("Views", "MainWindow.xaml", Xaml(context)),
-        new("Views", "MainWindow.xaml.cs", CodeBehind(context.RootNamespace)),
+        new("Views", "MainWindow.xaml.cs", CodeBehind(context.RootNamespace, context.Customization.Login)),
         new("Views", "ScreenTemplateSelector.cs",
             ScreenTemplates.TemplateSelector(context.RootNamespace)),
 
@@ -422,6 +422,12 @@ public sealed class WpfBusinessLayout : IAppLayout
             ? string.Empty
             : "\r\n                                      Editor=\"{StaticResource EditorTemplate}\"";
 
+        // No button at all under nologin, as the four older layouts do: there is nobody to sign
+        // out, and the shell has no SignOutCommand for it to call.
+        var signOutButton = context.Customization.Login
+            ? "\r\n                    <Button Content=\"Sign out\" Click=\"OnShellSignOut\" Width=\"80\" Margin=\"4,0\" />"
+            : string.Empty;
+
         return $$$"""
 <Window x:Class="{{{context.RootNamespace}}}.Views.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -572,8 +578,7 @@ public sealed class WpfBusinessLayout : IAppLayout
                                VerticalAlignment="Center"
                                Foreground="{{{muted}}}"
                                Margin="0,0,10,0" />
-                    <Button Content="Back" Command="{Binding BackCommand}" Width="70" Margin="4,0" />
-                    <Button Content="Sign out" Click="OnShellSignOut" Width="80" Margin="4,0" />
+                    <Button Content="Back" Command="{Binding BackCommand}" Width="70" Margin="4,0" />{{{signOutButton}}}
                 </StackPanel>
                 <TextBlock Text="{{{context.TitleAttribute}}}"
                            FontSize="14"
@@ -697,7 +702,7 @@ public sealed class WpfBusinessLayout : IAppLayout
 
 """;
 
-    private static string CodeBehind(string rootNamespace)
+    private static string CodeBehind(string rootNamespace, bool login)
     {
         // The column rules and the display convention are long, and the business grids need the
         // same ones, so the shared code-behind is reused rather than restated.
@@ -706,11 +711,17 @@ public sealed class WpfBusinessLayout : IAppLayout
         // closes the window without asking, which is right for the four older layouts and wrong
         // here -- this shell can be holding an editor with unsaved edits -- so it is replaced
         // rather than left in place as a second handler nothing calls.
-        var source = MainWindowTemplate.CodeBehind(rootNamespace, login: false)
-            .Replace(
+        //
+        // Put back only with a login: a nologin app emits no Auth folder, so naming it is CS0234.
+        var source = MainWindowTemplate.CodeBehind(rootNamespace, login: false);
+
+        if (login)
+        {
+            source = source.Replace(
                 $"using {rootNamespace}.ViewModels;",
                 $"using {rootNamespace}.Auth;\r\nusing {rootNamespace}.ViewModels;",
                 StringComparison.Ordinal);
+        }
 
         // The window binds the SHELL, not the pane list every other layout binds. Without this the
         // rail, the content area and the header all bind to properties MainViewModel does not
@@ -733,13 +744,10 @@ public sealed class WpfBusinessLayout : IAppLayout
         source = source.Replace(
             LineGridColumnAnchor, LineGridColumnRule + LineGridColumnAnchor, StringComparison.Ordinal);
 
-        // One blank line, not two: what precedes the splice already ends in a newline.
-        var handlers = """
-
-    /// <summary>The Users pane, which belongs under Admin rather than among the entities.</summary>
-    private static bool IsAdminPane(IEntityViewModel entity)
-        => string.Equals(entity.Title, "Users", StringComparison.Ordinal);
-
+        // Only with a login: the window has no Sign out button to wire it to without one, and the
+        // shell no SignOutCommand for it to call.
+        var signOutHandler = login
+            ? """
     // The command asks before discarding an edit, and closing is what hands control back to the
     // sign-in loop in App.xaml.cs -- it only regains control when this window closes.
     private void OnShellSignOut(object sender, RoutedEventArgs e)
@@ -753,7 +761,18 @@ public sealed class WpfBusinessLayout : IAppLayout
             Close();
     }
 
-    // The line buttons carry their own ILineSet as their DataContext, the same way the rail's
+
+"""
+            : string.Empty;
+
+        // One blank line, not two: what precedes the splice already ends in a newline.
+        var handlers = $$"""
+
+    /// <summary>The Users pane, which belongs under Admin rather than among the entities.</summary>
+    private static bool IsAdminPane(IEntityViewModel entity)
+        => string.Equals(entity.Title, "Users", StringComparison.Ordinal);
+
+{{signOutHandler}}    // The line buttons carry their own ILineSet as their DataContext, the same way the rail's
     // buttons carry a screen: whatever was clicked knows which lines it means.
     private void OnAddLine(object sender, RoutedEventArgs e)
     {

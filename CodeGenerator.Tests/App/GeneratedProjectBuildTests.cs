@@ -180,6 +180,60 @@ public class GeneratedProjectBuildTests
     }
 
     /// <summary>
+    /// The business shell builds with <c>nologin</c> too.
+    /// </summary>
+    /// <remarks>
+    /// The row above builds it only with the default login, and every business template named
+    /// <c>{root}.Auth</c> and its <c>Session</c> unconditionally -- so a nologin business app,
+    /// which emits no Auth folder at all, failed with CS0234 in the shell view model, the master
+    /// screen and the WPF code-behind. The other four layouts already asked the flag; this one
+    /// was never built without it.
+    /// </remarks>
+    [TestMethod]
+    [TestCategory("Integration")]
+    [DataRow("wpf")]
+    [DataRow("winforms")]
+    public void BusinessProject_WithNoLogin_Builds(string targetKey)
+    {
+        if (!OperatingSystem.IsWindows())
+            Assert.Inconclusive($"The {targetKey} target needs the Windows desktop targeting pack.");
+
+        Assert.IsTrue(TargetScaffolders.TryResolve(targetKey, out var target));
+
+        var workspace = Path.Combine(Path.GetTempPath(), "gen_" + Path.GetRandomFileName());
+        Directory.CreateDirectory(workspace);
+        try
+        {
+            var result = new AppScaffolder().Scaffold(
+                ScaffoldRequest.For(BusinessModel(), "Sample", workspace, target)
+                with
+                {
+                    Customization = AppCustomization.Default with
+                    {
+                        Layout = AppLayout.Business, Login = false,
+                    },
+                });
+
+            Assert.IsTrue(result.Success, "scaffold failed: " + result.Message);
+
+            // Or the row proves nothing: a business shell, and no Auth folder for it to lean on.
+            Assert.IsTrue(
+                File.Exists(Path.Combine(result.ProjectPath, "ViewModels", "ShellViewModel.cs")),
+                "ShellViewModel.cs was not emitted, so this build covers the wrong screens");
+            Assert.IsFalse(
+                Directory.Exists(Path.Combine(result.ProjectPath, "Auth")),
+                "an Auth folder was emitted, so this build is not a nologin one");
+
+            var (exit, output) = RunDotNet($"build \"{result.ProjectPath}\" -c Release");
+            Assert.AreEqual(0, exit, $"dotnet build failed for {targetKey}:\n{output}");
+        }
+        finally
+        {
+            TryDeleteDirectory(workspace);
+        }
+    }
+
+    /// <summary>
     /// The staleness trap end to end: a project generated under one prefix and regenerated under
     /// another has to build, which means App.xaml, RootNamespace and every emitted namespace agree
     /// after the second run.
