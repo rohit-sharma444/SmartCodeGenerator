@@ -150,6 +150,9 @@ else
         if (app.Scaffold.TestProjectPath is not null)
             _report.Add($"Generated test project at {app.Scaffold.TestProjectPath}");
 
+        if (app.Scaffold.TestProjectProblem is { } testProblem)
+            _report.Add(testProblem);
+
         // Repeated on a reload for the reason it was said at all: the kept stub is still on
         // disk and still unfixed, and the streamed build log that carried CS0759 went with
         // the circuit that watched it. A rebuilt panel that omits this is the one panel
@@ -269,6 +272,11 @@ else
 
         if (scaffold.TestProjectPath is not null)
             _report.Add($"Generated test project at {scaffold.TestProjectPath}");
+
+        // A test project that could not be made is said, not left as an absence: every WPF and
+        // WinForms app used to come out without one and without a word.
+        if (scaffold.TestProjectProblem is { } testProblem)
+            _report.Add(testProblem);
 
         // Before the compiler starts, because it is the reason the compiler is about to
         // fail: a .Custom.cs stub written before the validation pipeline is never

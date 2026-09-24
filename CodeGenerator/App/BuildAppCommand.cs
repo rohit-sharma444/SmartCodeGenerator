@@ -881,6 +881,11 @@ internal sealed class BuildAppCommand
             if (scaffold.TestProjectPath is not null)
                 Output.Success($"Generated test project at {scaffold.TestProjectPath}");
 
+            // Warning and not Error, for the reason the stub note below is: the app was written.
+            // What is missing is its tests, and that used to go unsaid for every desktop app.
+            if (scaffold.TestProjectProblem is { } testProblem)
+                Output.Warning("  " + testProblem);
+
             // How the model was split into screens, or which layout means there is no such split.
             // A misclassification is otherwise only discoverable by launching the app and noticing
             // a screen is missing.

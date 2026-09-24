@@ -133,6 +133,11 @@ internal static class GenerateStep
         if (scaffold.TestProjectPath is not null)
             lines.Add($"Generated test project at {scaffold.TestProjectPath}");
 
+        // Said, because it used to be an absence: no desktop app ever had a test project, and
+        // nothing on the sign-off told the user there should have been one.
+        if (scaffold.TestProjectProblem is { } testProblem)
+            lines.Add(testProblem);
+
         // Before the next steps, because it is the reason the next step will fail: a .Custom.cs
         // stub written before the validation pipeline is never overwritten, so it survives a
         // regenerate declaring a hook the regenerated half no longer has.

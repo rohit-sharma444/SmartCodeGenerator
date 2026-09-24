@@ -62,8 +62,16 @@ public class RepositoryRoundTripTests
     /// <summary>Source of <c><paramref name="entityName"/>ValidatorTests.cs</c>. When the model has
     /// a required property, also asserts a blank record is rejected — otherwise the only honest
     /// assertion is that a filled record passes.</summary>
-    public static string ValidatorTests(string rootNamespace, string entityName, string? requiredPropertyName)
+    /// <param name="signedIn">Whether the app has a login, whose Security stage refuses a null
+    /// role before any field rule runs: a WPF or WinForms app's populated record came back "You
+    /// are not permitted to insert", and its blank one would never reach "is required". Such an
+    /// app's contexts act as an Admin — the role the permission matrix refuses nothing. Off, the
+    /// source is unchanged from before the desktop targets had tests.</param>
+    public static string ValidatorTests(
+        string rootNamespace, string entityName, string? requiredPropertyName, bool signedIn = false)
     {
+        var asAdmin = signedIn ? " with { UserRole = \"Admin\" }" : string.Empty;
+
         var requiredFact = requiredPropertyName is null ? string.Empty : $$"""
 
 
@@ -71,7 +79,7 @@ public class RepositoryRoundTripTests
     public void A_blank_{{entityName}}_reports_its_required_field()
     {
         var context = ValidationContext<{{entityName}}>.For(
-            new {{entityName}}(), ValidationOperation.Insert, new AlwaysFound());
+            new {{entityName}}(), ValidationOperation.Insert, new AlwaysFound()){{asAdmin}};
         var errors = new {{entityName}}Validator().Validate(context).Messages;
 
         Assert.Contains("{{requiredPropertyName}} is required.", errors);
@@ -106,7 +114,7 @@ public class {{entityName}}ValidatorTests
         var item = new {{entityName}}();
         TestSupport.Fill(item);
 
-        var context = ValidationContext<{{entityName}}>.For(item, ValidationOperation.Insert, new AlwaysFound());
+        var context = ValidationContext<{{entityName}}>.For(item, ValidationOperation.Insert, new AlwaysFound()){{asAdmin}};
         var errors = new {{entityName}}Validator().Validate(context).Messages;
 
         Assert.Empty(errors);
@@ -277,6 +285,47 @@ public class SeedDataTests
 
     /// <summary>Disables xUnit parallelization: the JSON stores are shared files, so the tests
     /// run sequentially to stay deterministic.</summary>
+    /// <summary>The framework to hand `dotnet new xunit -f` for an app on
+    /// <paramref name="appFramework"/>: the same one with its platform dropped, so
+    /// net10.0-windows becomes net10.0.</summary>
+    /// <remarks>The template lists only the plain frameworks, and SDK 10.0.401 rejects
+    /// net10.0-windows as "not a valid value for -f" — which is why no WPF or WinForms app ever
+    /// had a test project. The platform goes back on afterwards, through
+    /// <see cref="CsprojEditing.SetTargetFramework"/>.</remarks>
+    public static string TemplateFramework(string appFramework)
+    {
+        var dash = appFramework.IndexOf('-');
+        return dash < 0 ? appFramework : appFramework[..dash];
+    }
+
+    /// <summary>
+    /// Source of <c>SignedInAsAdmin.cs</c>, emitted only for an app with a desktop
+    /// <c>Session</c>: signs an Admin in before the first test runs.
+    /// </summary>
+    /// <remarks>
+    /// A WPF or WinForms app with a login refuses every save while nobody is signed in — that is
+    /// <c>Permissions.Allows</c> for a null role — so without this every round-trip and
+    /// populated-record test fails "You are not permitted to insert a ... record". An Admin,
+    /// because it is the role the permission matrix refuses nothing. A module initializer, so it
+    /// runs before any test in the assembly whichever test framework version the template
+    /// brought, and no test signs out afterwards.
+    /// </remarks>
+    public static string SignedInAsAdmin(string rootNamespace) => $$"""
+using System.Runtime.CompilerServices;
+using {{rootNamespace}}.Auth;
+using {{rootNamespace}}.Models;
+
+namespace {{rootNamespace}}.Tests;
+
+/// <summary>Signs an Admin in for the whole run: the app refuses every save while nobody is.</summary>
+internal static class SignedInAsAdmin
+{
+    [ModuleInitializer]
+    internal static void SignIn()
+        => Session.SignIn(new User { UserName = "tests", DisplayName = "Tests", Role = AppRole.Admin });
+}
+""";
+
     public static string DisableParallelization() => """
 [assembly: Xunit.CollectionBehavior(DisableTestParallelization = true)]
 """;

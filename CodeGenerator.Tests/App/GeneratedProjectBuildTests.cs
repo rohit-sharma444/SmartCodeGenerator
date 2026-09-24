@@ -697,8 +697,16 @@ public class GeneratedProjectBuildTests
     [DataRow("webapi")]
     [DataRow("classlib")]
     [DataRow("worker")]
+    [DataRow("wpf")]
+    [DataRow("winforms")]
     public void GeneratedTestProject_BuildsAndPasses(string targetKey)
     {
+        // The desktop rows were missing because there was nothing to run: `dotnet new xunit`
+        // refused net10.0-windows, the scaffold swallowed it, and no WPF or WinForms app ever
+        // had a test project.
+        if ((targetKey == "wpf" || targetKey == "winforms") && !OperatingSystem.IsWindows())
+            Assert.Inconclusive($"The {targetKey} target needs the Windows desktop targeting pack.");
+
         Assert.IsTrue(TargetScaffolders.TryResolve(targetKey, out var target));
 
         var workspace = Path.Combine(Path.GetTempPath(), "gen_" + Path.GetRandomFileName());
@@ -711,6 +719,48 @@ public class GeneratedProjectBuildTests
 
             var (exit, output) = RunDotNet($"test \"{result.TestProjectPath}\" -c Release");
             Assert.AreEqual(0, exit, $"dotnet test failed for {targetKey}:\n{output}");
+        }
+        finally
+        {
+            TryDeleteDirectory(workspace);
+        }
+    }
+
+    /// <summary>
+    /// A test project `dotnet new xunit` refuses to make is said, and leaves nothing behind. It
+    /// used to be neither: every WPF and WinForms app got an empty <c>&lt;App&gt;.Tests</c>
+    /// folder, no test project, and no word about either. The refusal is forced here with a
+    /// framework no SDK has, written into the app's own project file, which is where the test
+    /// project's framework is read from.
+    /// </summary>
+    [TestMethod]
+    [TestCategory("Integration")]
+    public void A_test_project_that_cannot_be_created_is_reported_and_leaves_no_folder()
+    {
+        Assert.IsTrue(TargetScaffolders.TryResolve("console", out var target));
+
+        var workspace = Path.Combine(Path.GetTempPath(), "gen_" + Path.GetRandomFileName());
+        Directory.CreateDirectory(workspace);
+        try
+        {
+            var first = new AppScaffolder().Scaffold(SampleModel(), "Sample", workspace, target);
+            Assert.IsTrue(first.Success, "scaffold failed: " + first.Message);
+            Assert.IsNotNull(first.TestProjectPath, "no test project was emitted");
+
+            var testFolder = Path.GetDirectoryName(first.TestProjectPath)!;
+            Directory.Delete(testFolder, recursive: true);
+
+            var appCsproj = Directory.GetFiles(first.ProjectPath, "*.csproj").Single();
+            File.WriteAllText(appCsproj, File.ReadAllText(appCsproj).Replace(
+                "<TargetFramework>net10.0</TargetFramework>",
+                "<TargetFramework>net99.0</TargetFramework>", StringComparison.Ordinal));
+
+            var second = new AppScaffolder().Scaffold(SampleModel(), "Sample", workspace, target);
+
+            Assert.IsNull(second.TestProjectPath);
+            Assert.IsNotNull(second.TestProjectProblem, "the missing test project was not reported");
+            StringAssert.Contains(second.TestProjectProblem, "No test project was generated");
+            Assert.IsFalse(Directory.Exists(testFolder), "an empty test folder was left behind");
         }
         finally
         {
@@ -796,10 +846,19 @@ public class GeneratedProjectBuildTests
         }
     }
 
+    /// <remarks>The desktop rows are the only ones with a login, whose Security stage refuses a
+    /// null role before any field rule runs: their blank-record test is what proves the generated
+    /// validator tests act as a signed-in Admin rather than as nobody.</remarks>
     [TestMethod]
     [TestCategory("Integration")]
-    public void A_generated_console_app_with_validators_builds_and_its_tests_pass()
+    [DataRow("console")]
+    [DataRow("wpf")]
+    [DataRow("winforms")]
+    public void A_generated_app_with_validators_builds_and_its_tests_pass(string targetKey)
     {
+        if ((targetKey == "wpf" || targetKey == "winforms") && !OperatingSystem.IsWindows())
+            Assert.Inconclusive($"The {targetKey} target needs the Windows desktop targeting pack.");
+
         // The unit suite flattens the emitted Validation/ files into one compilation unit, which
         // strips their `using <App>.Models;` / `using <App>.Data;`. Only a real build of a real
         // generated app proves those namespaces resolve. Customer has the required Name field and
@@ -827,7 +886,7 @@ public class GeneratedProjectBuildTests
         order.Relationships.Add(new CandidateRelationship { Target = "Customer", Role = "references" });
         model.Entities.Add(order);
 
-        Assert.IsTrue(TargetScaffolders.TryResolve("console", out var target));
+        Assert.IsTrue(TargetScaffolders.TryResolve(targetKey, out var target));
 
         var workspace = Path.Combine(Path.GetTempPath(), "gen_" + Path.GetRandomFileName());
         Directory.CreateDirectory(workspace);
@@ -948,6 +1007,52 @@ public class GeneratedProjectBuildTests
                 Path.Combine(result.ProjectPath, "bin"), "Order.json", SearchOption.AllDirectories);
 
             Assert.IsNotEmpty(copied);
+        }
+        finally
+        {
+            TryDeleteDirectory(workspace);
+        }
+    }
+
+    /// <summary>
+    /// A Worker app built from a CSV never compiled: the imported rows go to
+    /// <c>Data\Seed\*.json</c>, the Worker SDK already globs every <c>.json</c> as
+    /// <c>Content</c>, and the scaffold's explicit <c>Include</c> of the same files was
+    /// NETSDK1022. The Worker rows elsewhere never saw it, because a model with no imported data
+    /// writes no seed files.
+    /// </summary>
+    [TestMethod]
+    [TestCategory("Integration")]
+    public void A_worker_app_generated_from_a_csv_builds()
+    {
+        var workspace = Path.Combine(Path.GetTempPath(), "gen_" + Path.GetRandomFileName());
+        Directory.CreateDirectory(workspace);
+
+        var csv = Path.Combine(workspace, "customers.csv");
+        File.WriteAllText(csv, string.Join("\n",
+            "Name,Email,City,CreditLimit,JoinedOn",
+            "Alice Smith,alice@example.com,London,1500.50,2024-01-15",
+            "Bob Jones,bob@example.com,Leeds,2500.00,2023-11-02",
+            ""));
+
+        try
+        {
+            var tables = new CsvReader().Read(new DataSourceSpec(DataSourceKind.Csv, csv));
+            var model = DataModelBuilder.Build(tables);
+            var imported = TabularImport.ToImportedData(tables);
+
+            Assert.IsTrue(TargetScaffolders.TryResolve("worker", out var target));
+
+            var result = new AppScaffolder().Scaffold(
+                model, "Tracker", workspace, target, PersistenceKind.Json, imported);
+
+            Assert.IsTrue(result.Success, "scaffold failed: " + result.Message);
+            Assert.IsNotEmpty(
+                Directory.GetFiles(Path.Combine(result.ProjectPath, "Data", SeedFileWriter.SeedFolderName)),
+                "no seed file was written, so this proves nothing about the Content item");
+
+            var (exit, output) = RunDotNet($"build \"{result.ProjectPath}\" -c Release");
+            Assert.AreEqual(0, exit, $"dotnet build failed:\n{output}");
         }
         finally
         {

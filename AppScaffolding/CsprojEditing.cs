@@ -183,6 +183,26 @@ public static class CsprojEditing
     /// in a namespace no generated file declares. Removing it on an empty value matters for the
     /// same reason, in reverse.
     /// </remarks>
+    /// <summary>Replaces the value of the first <c>&lt;TargetFramework&gt;</c> with
+    /// <paramref name="framework"/>. A no-op on a project file with no such element.</summary>
+    /// <remarks>How a desktop app's test project reaches net10.0-windows: `dotnet new xunit -f`
+    /// accepts only the plain frameworks, and a project referencing a WPF or WinForms one has to
+    /// target the Windows one itself.</remarks>
+    public static string SetTargetFramework(string csproj, string framework)
+    {
+        const string open = "<TargetFramework>";
+        const string close = "</TargetFramework>";
+
+        var start = csproj.IndexOf(open, StringComparison.Ordinal);
+        if (start < 0)
+            return csproj;
+
+        start += open.Length;
+        var end = csproj.IndexOf(close, start, StringComparison.Ordinal);
+
+        return end < 0 ? csproj : csproj[..start] + framework + csproj[end..];
+    }
+
     public static string SetRootNamespace(string csproj, string? rootNamespace)
     {
         var open = csproj.IndexOf(RootNamespaceOpen, StringComparison.Ordinal);
