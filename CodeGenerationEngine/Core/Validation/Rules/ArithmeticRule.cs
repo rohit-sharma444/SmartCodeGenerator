@@ -27,6 +27,10 @@ public sealed class ArithmeticRule : IValidationRule
 
     public IReadOnlyList<string> Properties => [_target, _left, _right];
 
+    /// <summary>The operator word, as typed — what it takes to build this rule again, with
+    /// <see cref="Properties"/>.</summary>
+    public string Operator => _op;
+
     public string Describe() => $"{_target} must equal {_left} {_op} {_right}";
 
     public void Emit(ValidationEmitContext ctx)
