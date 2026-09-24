@@ -13,18 +13,33 @@ public static class IntentRepository
 
     private static List<IntentRule>? _cache;
 
+    /// <remarks>
+    /// The file is shared by every copy of the CLI started from the same folder, and this rewrites
+    /// it on each start - so a second copy started while the first held it died on an unhandled
+    /// IOException before it printed a prompt. The rules are in memory either way; failing to read
+    /// or rewrite the file now costs only that write.
+    /// </remarks>
     public static void Initialize()
     {
         lock (LockObject)
         {
-            if (!File.Exists(FilePath))
+            try
             {
-                _cache = GetDefaultRules();
-                Save(_cache);
-                return;
+                if (!File.Exists(FilePath))
+                {
+                    _cache = GetDefaultRules();
+                    Save(_cache);
+                    return;
+                }
+
+                LoadCache();
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // Another copy has the file. The defaults below are what it would hold anyway.
+                _cache = null;
             }
 
-            LoadCache();
             _cache ??= [];
 
             foreach (var rule in GetDefaultRules())
@@ -32,7 +47,14 @@ public static class IntentRepository
                 AddOrUpdate(rule);
             }
 
-            Save(_cache);
+            try
+            {
+                Save(_cache);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // Rewritten by whichever copy holds it; nothing here depends on this write.
+            }
         }
     }
 
