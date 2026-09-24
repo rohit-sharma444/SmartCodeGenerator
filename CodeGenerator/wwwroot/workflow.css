@@ -5,9 +5,11 @@
    class. #components-reconnect-modal is Blazor's own element and lives at body level, outside
    .workflow entirely, and it reads --line and --ink; scoping these to .workflow leaves the
    lost-connection bar unstyled, on a surface no test covers and that only appears when the
-   server has already gone. What must NEVER be added here is a dark-mode block: App.razor links
-   this stylesheet on the chat page too, so a :root dark block would repaint a page this file
-   knows nothing about. That defect has shipped once already. */
+   server has already gone. What must NEVER be added here is a bare :root or prefers-color-scheme
+   dark block: App.razor links this stylesheet on the chat page too, so it would repaint a page
+   this file knows nothing about. That defect has shipped once already. The dark theme below is
+   keyed on :root:has(.workflow[data-theme="dark"]) instead, which only the workflow page can
+   match - it is the page's own switch, and the chat page has no .workflow at all. */
 :root {
     /* Neutrals with a slight blue bias rather than a flat grey, so the ground reads as chosen. */
     --paper:       #eceff4;
@@ -66,6 +68,69 @@
     /* A stage still to come is RECESSED rather than merely unlifted, which is what widens the
        range enough for the depth to be read at a glance: sunk, flat, raised, floating. */
     --lift-sunk: inset 0 1px 3px rgba(22, 29, 38, 0.06);
+
+    /* Colours that used to be written inline below, named so the dark theme can re-point them.
+       Every light value is the one that was there, so the light page is unchanged. */
+    --on-accent:      #fff;
+    --notice-wash:    #f2f6fd;
+    --failure-wash:   #fdf0ef;
+    --cancel-rule:    #c53030;
+    --cancel-wash:    #fff5f5;
+    --discard-rule:   #b7791f;
+    --discard-wash:   #fdf6e7;
+    --remove-wash:    #fdeeed;
+    --scrim:          rgba(22, 29, 38, 0.55);
+    --bar-shadow:     0 -2px 8px rgba(0, 0, 0, 0.08);
+    --role-transaction-wash: #f4ecdf; --role-transaction-ink: #7d4b0c;
+    --role-document-wash:    #ece9f6; --role-document-ink:    #4b3f8c;
+    --role-place-wash:       #e3f0e8; --role-place-ink:       #12603a;
+    --role-device-wash:      #eceff4; --role-device-ink:      #40506b;
+}
+
+/* The dark theme, switched on by the page's own Light/Dark button. See the note at the top for
+   why it is keyed this way and never on a bare :root. color-scheme makes the browser draw the
+   native parts - text boxes, drop-downs, check boxes, scroll bars - dark as well. */
+:root:has(.workflow[data-theme="dark"]) {
+    color-scheme: dark;
+
+    --paper:       #0f141a;
+    --surface:     #18202a;
+    --ink:         #e3e8ee;
+    --muted:       #9ba7b4;
+    --faint:       #6e7a87;
+    --line:        #2d3846;
+    --line-soft:   #232c38;
+    --machine:     #131a23;
+
+    --accent:      #5b9be6;
+    --accent-ink:  #a3c8f3;
+    --accent-wash: #1a2b40;
+
+    --ok:          #45b97f;
+    --ok-wash:     #15291f;
+    --warn:        #e2a54c;
+    --stop:        #f0736a;
+
+    --lift-flat: 0 1px 2px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.25);
+    --lift-raised: 0 2px 4px rgba(0, 0, 0, 0.30), 0 8px 20px rgba(0, 0, 0, 0.35);
+    --lift-active: 0 0 0 3px rgb(91 155 230 / 28%), 0 8px 22px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.35);
+    --lift-sunk: inset 0 1px 3px rgba(0, 0, 0, 0.45);
+
+    /* Dark text on the lighter dark-theme blue: white on it would not be legible. */
+    --on-accent:      #0c1522;
+    --notice-wash:    #172438;
+    --failure-wash:   #3a1d1d;
+    --cancel-rule:    #e5534b;
+    --cancel-wash:    #331a1b;
+    --discard-rule:   #d69a3a;
+    --discard-wash:   #32281a;
+    --remove-wash:    #3a1d1d;
+    --scrim:          rgba(0, 0, 0, 0.70);
+    --bar-shadow:     0 -2px 8px rgba(0, 0, 0, 0.45);
+    --role-transaction-wash: #3a2d1a; --role-transaction-ink: #f0c27a;
+    --role-document-wash:    #29253f; --role-document-ink:    #bbb0f2;
+    --role-place-wash:       #1a3325; --role-place-ink:       #80d4a6;
+    --role-device-wash:      #232c38; --role-device-ink:      #aebbd0;
 }
 
 body {
@@ -82,6 +147,7 @@ body {
    the page feel unaligned. align-items: start so the rail does not stretch to the height of a
    long panel. */
 .workflow {
+    position: relative;
     max-width: 1180px;
     margin: 0 auto;
     display: grid;
@@ -96,6 +162,24 @@ body {
     margin: 0 0 0.9rem;
     font-size: 1.5rem;
 }
+
+/* Top right, level with the heading, so it takes no row of its own and never moves while the
+   stages below it do. */
+.theme-toggle {
+    position: absolute;
+    top: 0;
+    right: 0;
+    padding: 0.3rem 0.8rem;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--surface);
+    color: var(--muted);
+    font: inherit;
+    font-size: 0.85em;
+    cursor: pointer;
+}
+
+.theme-toggle:hover { border-color: var(--pending); color: var(--ink); }
 
 /* Narrow: one column, and the diagram returns to the wrapped row it has always been. */
 @media (max-width: 900px) {
@@ -241,7 +325,7 @@ body {
 }
 
 .stage-node.done .stage-mark { background: var(--ok-wash); border-color: var(--done); }
-.stage-node.active .stage-mark { background: var(--accent); border-color: var(--accent); color: #fff; }
+.stage-node.active .stage-mark { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 
 .stage-node.failed .stage-mark { color: var(--failed); border-color: var(--failed); }
 
@@ -308,7 +392,7 @@ body {
     padding: 0.3rem 0.5rem;
     border: 1px solid var(--line);
     border-radius: 4px;
-    background: #fff;
+    background: var(--surface);
     color: var(--pending);
     font: inherit;
     font-size: 0.85em;
@@ -339,7 +423,7 @@ body {
     border: 0;
     border-radius: 4px;
     background: var(--active);
-    color: #fff;
+    color: var(--on-accent);
     font: inherit;
     font-size: 0.85em;
     font-weight: 600;
@@ -434,7 +518,7 @@ body {
     align-items: center;
     justify-content: center;
     padding: var(--space-5);
-    background: rgba(22, 29, 38, 0.55);
+    background: var(--scrim);
     z-index: 10;
     cursor: pointer;
 }
@@ -507,7 +591,7 @@ body {
     padding: 0.4rem 0.5rem;
     border: 1px solid var(--line);
     border-radius: 4px;
-    background: #fff;
+    background: var(--surface);
 
     /* Inherited, or a select renders in the browser's own UI font beside inputs that do not. */
     font: inherit;
@@ -539,7 +623,7 @@ body {
     overflow: auto;
     padding: 0.75rem;
     border: 1px solid var(--line);
-    background: #fff;
+    background: var(--surface);
     font-family: ui-monospace, Consolas, monospace;
     font-size: 0.82em;
 }
@@ -561,7 +645,7 @@ body {
     padding: 0.4rem 0.9rem;
     border: 1px solid var(--line);
     border-radius: 4px;
-    background: #fff;
+    background: var(--surface);
     font: inherit;
     cursor: pointer;
 }
@@ -574,7 +658,7 @@ body {
 .actions .start {
     border-color: var(--active);
     background: var(--active);
-    color: #fff;
+    color: var(--on-accent);
     font-weight: 600;
 }
 
@@ -591,7 +675,7 @@ body {
     padding: 1.25rem 1.5rem;
     border: 1px solid var(--line);
     border-radius: 6px;
-    background: #fff;
+    background: var(--surface);
 
     /* The 3D is on the PAGE, not only on the rail - the panel is the biggest thing on it. */
     box-shadow: var(--lift-raised);
@@ -629,13 +713,13 @@ body {
 .notice {
     padding: 0.6rem 0.9rem;
     border-left: 4px solid var(--active);
-    background: #f2f6fd;
+    background: var(--notice-wash);
 }
 
 .failure {
     padding: 0.6rem 0.9rem;
     border-left: 4px solid var(--failed);
-    background: #fdf0ef;
+    background: var(--failure-wash);
 }
 
 /* The question asked before a changed answer throws a model away. Warm rather than red: this is
@@ -645,8 +729,8 @@ body {
 .cancel-question {
     padding: 0.6rem 0.9rem;
     margin-bottom: 1rem;
-    border-left: 4px solid #c53030;
-    background: #fff5f5;
+    border-left: 4px solid var(--cancel-rule);
+    background: var(--cancel-wash);
 }
 
 .cancel-question p { margin: 0; }
@@ -662,8 +746,8 @@ body {
 .discard-question {
     padding: 0.6rem 0.9rem;
     margin-bottom: 1rem;
-    border-left: 4px solid #b7791f;
-    background: #fdf6e7;
+    border-left: 4px solid var(--discard-rule);
+    background: var(--discard-wash);
 }
 
 .discard-question p { margin: 0; }
@@ -825,7 +909,7 @@ body {
 
 /* Removing a class is the one destructive thing on this page, so it is the one that turns red
    under the pointer rather than accent-blue like its neighbours. */
-.entity .remove:hover { border-color: var(--failed); color: var(--failed); background: #fdeeed; }
+.entity .remove:hover { border-color: var(--failed); color: var(--failed); background: var(--remove-wash); }
 
 .entity .why:focus-visible,
 .entity .remove:focus-visible,
@@ -865,10 +949,10 @@ body {
     color: var(--accent-ink);
 }
 
-.role-transaction { background: #f4ecdf; color: #7d4b0c; }
-.role-document    { background: #ece9f6; color: #4b3f8c; }
-.role-place       { background: #e3f0e8; color: #12603a; }
-.role-device      { background: #eceff4; color: #40506b; }
+.role-transaction { background: var(--role-transaction-wash); color: var(--role-transaction-ink); }
+.role-document    { background: var(--role-document-wash); color: var(--role-document-ink); }
+.role-place       { background: var(--role-place-wash); color: var(--role-place-ink); }
+.role-device      { background: var(--role-device-wash); color: var(--role-device-ink); }
 
 /* The screen a class will get, on its own row under the name. Small and quiet: a control the size
    of the class name would read as the card's subject rather than as one fact about it, and in the
@@ -883,7 +967,7 @@ body {
     padding: 0.05rem 0.2rem;
     border: 1px solid var(--line);
     border-radius: 3px;
-    background: #fff;
+    background: var(--surface);
     color: var(--ink);
 }
 
@@ -1096,7 +1180,7 @@ body {
     border: 1px solid var(--line);
     border-left: 4px solid var(--done);
     border-radius: 6px;
-    background: #fff;
+    background: var(--surface);
 }
 
 .finished h2 { margin: 0 0 0.75rem; font-size: 1.15rem; }
@@ -1140,8 +1224,8 @@ body {
     z-index: 1000;
     padding: 0.6rem 1rem;
     border-top: 1px solid var(--line);
-    background: #fff;
-    box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.08);
+    background: var(--surface);
+    box-shadow: var(--bar-shadow);
     color: var(--ink);
     font: 14px/1.45 "Segoe UI", system-ui, sans-serif;
     text-align: center;

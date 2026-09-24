@@ -51,6 +51,8 @@ Thumbs.db
 # In-progress build state. The FOLDER is deliberately not ignored: .codegen/learned.json is
 # committed, so ignoring .codegen/ wholesale would untrack it.
 .codegen/build-in-progress.json
+# The workflow page's Light/Dark choice - a personal preference, not project state.
+.codegen/workflow-theme.json
 .dd-cache/
 
 # Wikipedia dump and the store built from it (tens of GB; never commit)
