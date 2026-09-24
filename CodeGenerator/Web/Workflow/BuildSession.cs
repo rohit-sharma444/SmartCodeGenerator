@@ -107,11 +107,30 @@ public sealed class BuildSession
     /// answers alone would save every stage transition and lose every edit, which is
     /// precisely the work worth keeping.
     /// <para>
-    /// It deliberately does not raise <see cref="Changed"/>: the panel that made the edit has
-    /// already re-rendered, and the other tab is repainted by the edit's own broadcast.
+    /// It does not raise <see cref="Changed"/> for the edit itself: the panel that made it has
+    /// already re-rendered, and the other tab is repainted by the edit's own broadcast. It does
+    /// when the edit discards a generated app, because the Generate and Run boxes change too.
     /// </para>
     /// </remarks>
-    public void ModelEdited() => Autosave?.Invoke(this);
+    public void ModelEdited()
+    {
+        // A review edit changes what Generate would write, as a changed answer on an earlier node
+        // does - but it never goes through Change, so it has to discard the written app itself.
+        // Without this the old app stayed on the Generate node with no way to write the new one.
+        if (Generated is not null || Started)
+        {
+            foreach (var stage in StageGraph.Invalidates(BuildStage.Review))
+                if (_states[stage] != StageState.Active)
+                    _states[stage] = StageState.Pending;
+
+            Generated = null;
+            Started = false;
+
+            Changed?.Invoke();
+        }
+
+        Autosave?.Invoke(this);
+    }
 
     /// <summary>
     /// Invoked when this build is over for good - generated, or cancelled.
@@ -237,12 +256,32 @@ public sealed class BuildSession
     /// </remarks>
     public string ModelSource { get; private set; } = string.Empty;
 
-    public bool SetModel(CandidateDomainModel model, string? sourceLabel = null)
+    /// <param name="imported">The rows the model was built from, on the data path. Applied with
+    /// the model, so a change held for the discard question holds the rows too.</param>
+    /// <param name="normalized">The normalization findings those rows were read with.</param>
+    public bool SetModel(
+        CandidateDomainModel model, string? sourceLabel = null,
+        ImportedData? imported = null, IReadOnlyList<NormalizationFinding>? normalized = null)
         => Change(BuildStage.Discover, changed: true, () =>
         {
             Model = model;
             ModelSource = sourceLabel ?? string.Empty;
+
+            if (imported is not null)
+            {
+                ImportedData = imported;
+                Normalized = normalized ?? [];
+            }
         });
+
+    /// <summary>
+    /// Whether <c>normalize</c> was typed on the line: every normalization finding starts ticked.
+    /// </summary>
+    /// <remarks>
+    /// Before this the page ignored it and opened every finding unticked, although the manual says
+    /// the option applies them all.
+    /// </remarks>
+    public bool NormalizeAll { get; init; }
 
     /// <summary>Guards <see cref="_discoveryInFlight"/> against two threads landing on it at the
     /// same instant — a real possibility, not a theoretical one: Razor's default prerendering
@@ -631,6 +670,12 @@ public sealed class BuildSession
 
             if (invalidated == BuildStage.Generate)
                 Generated = null;
+
+            // The run described the app that is gone. The process id is kept on purpose: that app
+            // may still be running, it holds its own bin folder so the next build of the project
+            // fails until it closes, and the Stop button is how the user closes it.
+            if (invalidated == BuildStage.Run)
+                Started = false;
         }
 
         // Here rather than in Change, which returns early while it is holding a pending

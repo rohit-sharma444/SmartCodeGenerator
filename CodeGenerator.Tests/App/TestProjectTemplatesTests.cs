@@ -77,4 +77,21 @@ public class TestProjectTemplatesTests
         Assert.Contains("TestSupport.Fill(item);", source);
         Assert.DoesNotContain("Placeholder(", source);
     }
+
+    /// <summary>
+    /// An app with a login refuses a null role before any field rule runs, so the populated and
+    /// the blank record are both validated as <c>TestSupport.ActingRole</c> - the administrator
+    /// there, nobody in an app with no login. What each shape emits for it, compiled and run, is
+    /// in <c>GeneratedTestsActAsAdministratorTests</c>.
+    /// </summary>
+    [TestMethod]
+    public void Validator_tests_act_as_the_test_supports_role()
+    {
+        var source = TestProjectTemplates.ValidatorTests("Shop", "Customer", "Name");
+
+        Assert.IsGreaterThanOrEqualTo(
+            2, source.Split("TestSupport.ActingRole").Length - 1,
+            "the populated and the blank record should both be validated as the acting role");
+        Assert.DoesNotContain("UserRole", source, "one way of saying who acts, not two");
+    }
 }

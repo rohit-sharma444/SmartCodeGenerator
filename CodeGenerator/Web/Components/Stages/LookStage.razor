@@ -30,7 +30,7 @@
 
         <label>Company
             <input class="company answer" value="@_company"
-                   @onchange="e => _company = e.Value?.ToString() ?? string.Empty" /></label>
+                   @onchange="e => CompanyTyped(e.Value?.ToString())" /></label>
 
         <label>Theme
             <select class="theme answer" value="@_theme"
@@ -74,6 +74,11 @@
 
         <label class="choice"><input type="checkbox" class="seed" checked="@_seed"
             @onchange="e => _seed = (bool?)e.Value ?? false" /> Sample seed data</label>
+
+        @* Phrased as the console wizard phrases it. Before this the web had no way to answer it
+           at all, so a web build always had a login screen unless the profile said otherwise. *@
+        <label class="choice"><input type="checkbox" class="login" checked="@_login"
+            @onchange="e => _login = (bool?)e.Value ?? false" /> Require a login</label>
     </div>
 }
 
@@ -98,6 +103,7 @@
     private bool _validation = true;
     private bool _logging;
     private bool _seed = true;
+    private bool _login = true;
 
     /// <summary>Only a target with a window has a layout. The console wizard skips the question
     /// for the same reason.</summary>
@@ -134,6 +140,24 @@
         _validation = start.Validation;
         _logging = start.Logging;
         _seed = start.SampleSeedData;
+        _login = start.Login;
+    }
+
+    /// <summary>
+    /// Takes the company, and suggests the company title while the title is still the plain one.
+    /// </summary>
+    /// <remarks>
+    /// What the console does: naming a company inline switches the title to
+    /// <see cref="AppCustomization.CompanyTitlePattern"/>, and the wizard offers it. The page kept
+    /// <c>{app}</c>, so the same answers gave a different window title. Suggested in the box rather
+    /// than applied behind it, so it can be seen and changed.
+    /// </remarks>
+    private void CompanyTyped(string? typed)
+    {
+        _company = typed ?? string.Empty;
+
+        if (_company.Trim().Length > 0 && _title == AppCustomization.AppPlaceholder)
+            _title = AppCustomization.CompanyTitlePattern;
     }
 
     private Task<bool> Next()
@@ -167,6 +191,7 @@
             Validation = _validation,
             Logging = _logging,
             SampleSeedData = _seed,
+            Login = _login,
         };
 
 }

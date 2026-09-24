@@ -97,6 +97,31 @@ public class GenerateStepTests
     }
 
     /// <summary>
+    /// Every WPF and WinForms app used to come out with no test project and no word about it:
+    /// `dotnet new xunit` refused the app's framework, and the scaffold swallowed the refusal. A
+    /// test project that could not be made is a sentence on the sign-off, not an absence the user
+    /// discovers by looking for a folder.
+    /// </summary>
+    [TestMethod]
+    public void The_outcome_says_why_there_is_no_test_project()
+    {
+        var scaffold = new ScaffoldResult(
+            Success: true,
+            ProjectPath: @"D:\ws\LibrarySystem",
+            FilesWritten: [],
+            Message: string.Empty)
+        {
+            TestProjectProblem = "No test project was generated: `dotnet new xunit` failed",
+        };
+
+        var outcome = GenerateStep.OutcomeFor(scaffold, new WpfTarget());
+
+        Assert.IsTrue(
+            outcome.Lines.Any(l => l.Contains("No test project was generated")),
+            "the reason there is no test project should be printed");
+    }
+
+    /// <summary>
     /// The console path catches this exactly (BuildAppCommand: "Could not start `dotnet` —
     /// skipping the build check") and the design's error table promises it on the web too, where
     /// nothing caught it: ProcessRunner.RunStreaming documents that it throws Win32Exception when

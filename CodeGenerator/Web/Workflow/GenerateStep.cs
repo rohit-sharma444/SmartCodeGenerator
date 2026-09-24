@@ -40,13 +40,36 @@ internal static class GenerateStep
 
     public static ScaffoldResult Scaffold(
         BuildSession session, string name, ITargetScaffolder target, PersistenceKind persistence)
-        => new AppScaffolder().Scaffold(new ScaffoldRequest(
+        => new AppScaffolder().Scaffold(Request(session, name, target, persistence));
+
+    /// <summary>What this model has that the app already in the folder does not - the console's
+    /// overwrite question asks from the same list.</summary>
+    public static IReadOnlyList<AppScaffolding.Incremental.ClassDelta> DeltaFor(
+        BuildSession session, string name, ITargetScaffolder target)
+        => BuildAppCommand.DeltaAgainst(session.Model!, FolderFor(session, name, target));
+
+    /// <summary>
+    /// Writes only the classes the existing app does not have, leaving everything else as it is.
+    /// </summary>
+    /// <remarks>
+    /// The console's [a]dd. The page used to offer only overwrite, rename or cancel, so adding a
+    /// class to an app someone had already edited meant regenerating over it.
+    /// </remarks>
+    public static AppScaffolding.Incremental.IncrementalResult AddNew(
+        BuildSession session, string name, ITargetScaffolder target, PersistenceKind persistence)
+        => AppScaffolding.Incremental.IncrementalScaffolder.Add(
+            Request(session, name, target, persistence),
+            AppScaffolding.Incremental.ModelDelta.NewNames(DeltaFor(session, name, target)));
+
+    private static ScaffoldRequest Request(
+        BuildSession session, string name, ITargetScaffolder target, PersistenceKind persistence)
+        => new(
             session.Model!, name, session.WorkspaceRoot, target, persistence,
             session.ImportedData, session.Customization,
 
             // Read here rather than inside a template: a template reading the clock would turn
             // every golden-output test red on 1 January.
-            DateTime.Now.Year));
+            DateTime.Now.Year);
 
     /// <summary>
     /// Compiles what was just written, handing each line over as it arrives.
@@ -109,6 +132,11 @@ internal static class GenerateStep
 
         if (scaffold.TestProjectPath is not null)
             lines.Add($"Generated test project at {scaffold.TestProjectPath}");
+
+        // Said, because it used to be an absence: no desktop app ever had a test project, and
+        // nothing on the sign-off told the user there should have been one.
+        if (scaffold.TestProjectProblem is { } testProblem)
+            lines.Add(testProblem);
 
         // Before the next steps, because it is the reason the next step will fail: a .Custom.cs
         // stub written before the validation pipeline is never overwritten, so it survives a

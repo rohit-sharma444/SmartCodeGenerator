@@ -135,6 +135,33 @@ public class ProposalReportTests
         Assert.IsTrue(EveryProposal(model).All(p => p.Accepted));
     }
 
+    /// <summary>The console had no way back from an accept, where the page has always let a box be
+    /// unticked.</summary>
+    [TestMethod]
+    public void Unaccepting_one_takes_back_only_that_one()
+    {
+        var model = ModelWithTwoProposals();
+        ProposalReport.Accept(model, "all");
+
+        var message = ProposalReport.Unaccept(model, "2");
+
+        var all = EveryProposal(model).ToList();
+        Assert.IsTrue(all[0].Accepted);
+        Assert.IsFalse(all[1].Accepted);
+        StringAssert.Contains(message, "No longer accepted");
+    }
+
+    [TestMethod]
+    public void Unaccepting_all_takes_them_all_back()
+    {
+        var model = ModelWithTwoProposals();
+        ProposalReport.Accept(model, "all");
+
+        ProposalReport.Unaccept(model, "all");
+
+        Assert.IsFalse(EveryProposal(model).Any(p => p.Accepted));
+    }
+
     [TestMethod]
     public void A_number_that_is_not_there_is_reported_not_thrown()
     {

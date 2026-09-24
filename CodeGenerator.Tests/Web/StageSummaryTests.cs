@@ -221,6 +221,21 @@ public class StageSummaryTests
         Assert.AreEqual("1 relationship", StageSummary.For(session, BuildStage.Output));
     }
 
+    /// <summary>The entry-template box had no summary at all, so it showed its blurb even once a
+    /// template was chosen.</summary>
+    [TestMethod]
+    public void The_chosen_entry_template_is_the_entry_template_answer()
+    {
+        Assert.IsNull(StageSummary.For(New(), BuildStage.EntryTemplate));
+
+        var session = AfterLook(AppCustomization.Default with
+        {
+            EntryTemplate = AppScaffolding.Screens.EntryTemplate.Tabbed
+        });
+
+        Assert.AreEqual("tabbed", StageSummary.For(session, BuildStage.EntryTemplate));
+    }
+
     private static BuildSession New(string description = "")
         => new(description, @"C:\ws", AppCustomization.Default);
 

@@ -33,8 +33,19 @@ internal static class BuildCommandEcho
         if (session.Source is { } source)
             // Redacted, because for SQL the location IS a connection string and this line is
             // both shown on the review page and printed to the console when the run ends.
+        {
             line += $" from {source.Kind.ToString().ToLowerInvariant()} "
                   + $"\"{ConnectionSecret.Redact(source.Location)}\"";
+
+            // The tables that were ticked. Left out, a pasted line read EVERY table - a different
+            // model. Straight after the location, because `tables` is a trailing keyword of it.
+            if (source.SqlTables is { Count: > 0 } tables)
+            {
+                var names = string.Join(",", tables);
+
+                line += names.Any(char.IsWhiteSpace) ? $" tables \"{names}\"" : $" tables {names}";
+            }
+        }
 
         line += Options(session.Customization);
 
@@ -73,6 +84,10 @@ internal static class BuildCommandEcho
 
         if (customization.IconPath is { Length: > 0 } icon)
             options += $" icon {icon}";
+
+        // Left out before, so a pasted line titled the window with the default pattern.
+        if (customization.TitlePattern != AppCustomization.AppPlaceholder)
+            options += $" title \"{customization.TitlePattern}\"";
 
         if (customization.Layout is { } layout)
             options += $" layout {LayoutWord(layout)}";

@@ -56,6 +56,17 @@ internal static class ResumeOffer
         };
     }
 
+    /// <summary>
+    /// Said after "start fresh", because it changes what this run does.
+    /// </summary>
+    /// <remarks>
+    /// A workspace keeps one unfinished build, and "start fresh" promises to keep the old one. So
+    /// the new run is not saved as it goes - which is worth knowing before closing its tab.
+    /// </remarks>
+    public const string KeptAsideNotice =
+        "  The unfinished build is kept for next time. This one is not saved as you go - "
+        + "answer d next time to replace it.";
+
     /// <summary>What is waiting, and what the answers do.</summary>
     public static IReadOnlyList<string> Lines(BuildSnapshot snapshot, DateTimeOffset now)
     {

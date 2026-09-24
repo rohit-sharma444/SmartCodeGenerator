@@ -60,7 +60,11 @@ public class ActingUserTests
             var actingUser = File.ReadAllText(Path.Combine(project, "Validation", "ActingUser.cs"));
 
             Assert.IsFalse(actingUser.Contains("Session", StringComparison.Ordinal));
-            StringAssert.Contains(actingUser, "public static string? Role() => null;");
+
+            // Not the no-login half: this app HAS a login, so it needs a way to be told who is
+            // acting, or everything that writes through Repository -- its own generated tests
+            // among them -- is refused as nobody.
+            StringAssert.Contains(actingUser, "public static IDisposable ActAs(string role, int? id)");
         });
     }
 

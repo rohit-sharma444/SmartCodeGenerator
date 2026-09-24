@@ -31,9 +31,12 @@ internal static class ReviewHints
         "  rename <old> <new>          rename a class",
         "  field <class> <name>[:<type>]   add a field (type inferred if omitted)",
         "  unfield <class> <name>      remove a field",
+        "  renamefield <class> <old> <new>   rename a field, keeping its rules",
+        "  retype <class> <field> <type>     change a field's type",
         "  why [name]                  explain what discovery decided",
         "  rules                       the rules your data supports",
         "  accept <n>|all              apply a proposed rule",
+        "  unaccept <n>|all            take an applied rule back",
         "  order status <v1,v2,...> in <Class>   state a status column's transition order",
         "  final status <v1,v2,...> in <Class>   mark one or more values as final",
     ];

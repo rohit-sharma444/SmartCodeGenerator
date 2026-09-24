@@ -27,9 +27,10 @@ public static class CsprojEditing
     /// a no-op on a project file with no closing tag.
     /// </summary>
     /// <remarks>
-    /// <c>Update</c>, not <c>Include</c>, when the project's own SDK is a Web one.
-    /// <c>Microsoft.NET.Sdk.Web</c> — Blazor, and any other web target — globs every non-code
-    /// file under the project as <c>Content</c> by default, so an explicit <c>Include</c> for the
+    /// <c>Update</c>, not <c>Include</c>, when the project's own SDK is a Web one or the Worker
+    /// one. <c>Microsoft.NET.Sdk.Web</c> — Blazor, and any other web target — and
+    /// <c>Microsoft.NET.Sdk.Worker</c> glob every <c>.json</c> file under the project as
+    /// <c>Content</c> by default, so an explicit <c>Include</c> for the
     /// same files is a duplicate item: NETSDK1022, a build error a flattened-source or
     /// string-assertion test cannot see, because it only fires once the real SDK evaluates the
     /// project file. The desktop SDK (WPF, WinForms) globs no such thing, so it still needs the
@@ -39,7 +40,7 @@ public static class CsprojEditing
     public static string InjectSeedContent(string csproj)
     {
         const string include = @"Data\Seed\*.json";
-        var attribute = IsWebSdk(csproj) ? "Update" : "Include";
+        var attribute = GlobsJsonAsContent(csproj) ? "Update" : "Include";
 
         return InjectItem(
             csproj, include,
@@ -47,10 +48,28 @@ public static class CsprojEditing
             attribute);
     }
 
-    /// <summary>Whether <paramref name="csproj"/> declares a Web-flavoured SDK
-    /// (<c>Microsoft.NET.Sdk.Web</c>, <c>Microsoft.NET.Sdk.Razor</c>) — the ones that glob
-    /// arbitrary files as <c>Content</c> by default.</summary>
-    private static bool IsWebSdk(string csproj)
+    /// <summary>
+    /// The SDKs that glob <c>**\*.json</c> as <c>Content</c> by default, checked one by one with
+    /// <c>dotnet msbuild -getItem:Content</c> against SDK 10.0.401: the Worker SDK in its own
+    /// props, the others through the static-web-assets props. <c>Microsoft.NET.Sdk</c> and
+    /// <c>Microsoft.NET.Sdk.WindowsDesktop</c> glob no <c>.json</c>, so they are absent.
+    /// </summary>
+    /// <remarks>An exact list rather than a substring test: the old <c>.Web</c> match missed
+    /// <c>Microsoft.NET.Sdk.Worker</c> — the Worker target never built — and
+    /// <c>Microsoft.NET.Sdk.BlazorWebAssembly</c>, whose <c>Web</c> has no dot before it.</remarks>
+    private static readonly string[] ContentGlobbingSdks =
+    [
+        "Microsoft.NET.Sdk.Web",
+        "Microsoft.NET.Sdk.Razor",
+        "Microsoft.NET.Sdk.Worker",
+        "Microsoft.NET.Sdk.BlazorWebAssembly",
+        "Microsoft.NET.Sdk.WebAssembly",
+    ];
+
+    /// <summary>Whether <paramref name="csproj"/> declares one of the
+    /// <see cref="ContentGlobbingSdks"/> — the ones that glob the seed files as <c>Content</c>
+    /// by default.</summary>
+    private static bool GlobsJsonAsContent(string csproj)
     {
         var open = csproj.IndexOf("<Project Sdk=\"", StringComparison.Ordinal);
         if (open < 0)
@@ -62,8 +81,8 @@ public static class CsprojEditing
             return false;
 
         var sdk = csproj[start..end];
-        return sdk.Contains(".Web", StringComparison.OrdinalIgnoreCase)
-            || sdk.Contains(".Razor", StringComparison.OrdinalIgnoreCase);
+        return ContentGlobbingSdks.Any(
+            known => string.Equals(sdk, known, StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>
@@ -164,6 +183,26 @@ public static class CsprojEditing
     /// in a namespace no generated file declares. Removing it on an empty value matters for the
     /// same reason, in reverse.
     /// </remarks>
+    /// <summary>Replaces the value of the first <c>&lt;TargetFramework&gt;</c> with
+    /// <paramref name="framework"/>. A no-op on a project file with no such element.</summary>
+    /// <remarks>How a desktop app's test project reaches net10.0-windows: `dotnet new xunit -f`
+    /// accepts only the plain frameworks, and a project referencing a WPF or WinForms one has to
+    /// target the Windows one itself.</remarks>
+    public static string SetTargetFramework(string csproj, string framework)
+    {
+        const string open = "<TargetFramework>";
+        const string close = "</TargetFramework>";
+
+        var start = csproj.IndexOf(open, StringComparison.Ordinal);
+        if (start < 0)
+            return csproj;
+
+        start += open.Length;
+        var end = csproj.IndexOf(close, start, StringComparison.Ordinal);
+
+        return end < 0 ? csproj : csproj[..start] + framework + csproj[end..];
+    }
+
     public static string SetRootNamespace(string csproj, string? rootNamespace)
     {
         var open = csproj.IndexOf(RootNamespaceOpen, StringComparison.Ordinal);

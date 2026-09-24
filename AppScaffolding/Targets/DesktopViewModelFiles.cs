@@ -69,7 +69,7 @@ public static class DesktopViewModelFiles
             files.Add(new("ViewModels", "DashboardViewModel.cs",
                 ShellTemplate.Dashboard(rootNamespace)));
             files.Add(new("ViewModels", "ShellViewModel.cs",
-                ShellTemplate.Shell(rootNamespace)));
+                ShellTemplate.Shell(rootNamespace, login)));
         }
 
         // Desktop-only, and emitted beside the view models rather than by AuthCoreFiles: a

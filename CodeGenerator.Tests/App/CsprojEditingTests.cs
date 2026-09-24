@@ -267,4 +267,74 @@ public class CsprojEditingTests
 
         Assert.AreEqual(once, twice);
     }
+
+    /// <summary>
+    /// Found running a real generated Worker app: <c>dotnet build</c> failed NETSDK1022 on
+    /// <c>Data\Seed\Customer.json</c>, whatever the data source. The detection knew only the Web
+    /// and Razor SDKs, but every SDK below globs <c>**\*.json</c> as <c>Content</c> by default
+    /// (checked with <c>dotnet msbuild -getItem:Content</c> against SDK 10.0.401) — the Worker SDK
+    /// in its own props, the rest through the static-web-assets props — so each needs
+    /// <c>Update</c>, not a second <c>Include</c>.
+    /// </summary>
+    [TestMethod]
+    [DataRow("Microsoft.NET.Sdk.Worker")]
+    [DataRow("Microsoft.NET.Sdk.BlazorWebAssembly")]
+    [DataRow("Microsoft.NET.Sdk.WebAssembly")]
+    [DataRow("Microsoft.NET.Sdk.Razor")]
+    [DataRow("Microsoft.NET.Sdk.Web")]
+    public void Seed_content_is_updated_for_every_sdk_that_globs_json_as_content(string sdk)
+    {
+        var updated = CsprojEditing.InjectSeedContent(Csproj.Replace(
+            "Sdk=\"Microsoft.NET.Sdk\"", $"Sdk=\"{sdk}\"", StringComparison.Ordinal));
+
+        StringAssert.Contains(
+            updated, "<Content Update=\"Data\\Seed\\*.json\" CopyToOutputDirectory=\"PreserveNewest\" />");
+        Assert.IsFalse(
+            updated.Contains("Content Include=\"Data\\Seed", StringComparison.Ordinal),
+            $"{sdk} already globs the seed files as Content, so an Include is NETSDK1022");
+    }
+
+    /// <summary>A desktop app's test project is created on the framework `dotnet new xunit`
+    /// accepts and then moved to the app's own, which a reference to a WPF or WinForms project
+    /// requires.</summary>
+    [TestMethod]
+    public void The_target_framework_is_replaced_in_place()
+    {
+        var updated = CsprojEditing.SetTargetFramework(Csproj, "net10.0-windows");
+
+        StringAssert.Contains(updated, "<TargetFramework>net10.0-windows</TargetFramework>");
+        Assert.IsFalse(
+            updated.Contains("<TargetFramework>net10.0</TargetFramework>", StringComparison.Ordinal),
+            "the old framework should be gone, not kept beside the new one");
+    }
+
+    [TestMethod]
+    public void A_project_file_with_no_target_framework_is_left_alone()
+        => Assert.AreEqual(
+            "<Project>\n</Project>",
+            CsprojEditing.SetTargetFramework("<Project>\n</Project>", "net10.0-windows"));
+
+    /// <summary>`dotnet new xunit -f` offers only the plain frameworks: SDK 10.0.401 rejects
+    /// net10.0-windows outright, and that refusal is why no desktop app ever had a test
+    /// project.</summary>
+    [TestMethod]
+    [DataRow("net10.0-windows", "net10.0")]
+    [DataRow("net10.0-windows10.0.19041.0", "net10.0")]
+    [DataRow("net10.0", "net10.0")]
+    public void The_template_framework_drops_the_platform(string appFramework, string expected)
+        => Assert.AreEqual(expected, TestProjectTemplates.TemplateFramework(appFramework));
+
+    /// <summary>The two SDKs that glob no <c>.json</c> as <c>Content</c> keep the explicit
+    /// <c>Include</c>: with no default item there is nothing for <c>Update</c> to find.</summary>
+    [TestMethod]
+    [DataRow("Microsoft.NET.Sdk")]
+    [DataRow("Microsoft.NET.Sdk.WindowsDesktop")]
+    public void Seed_content_is_included_for_an_sdk_that_globs_no_json(string sdk)
+    {
+        var updated = CsprojEditing.InjectSeedContent(Csproj.Replace(
+            "Sdk=\"Microsoft.NET.Sdk\"", $"Sdk=\"{sdk}\"", StringComparison.Ordinal));
+
+        StringAssert.Contains(
+            updated, "<Content Include=\"Data\\Seed\\*.json\" CopyToOutputDirectory=\"PreserveNewest\" />");
+    }
 }

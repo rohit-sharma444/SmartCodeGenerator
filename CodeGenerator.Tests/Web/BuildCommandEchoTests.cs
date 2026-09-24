@@ -152,6 +152,44 @@ public class BuildCommandEchoTests
     public void Nothing_is_approved_before_a_type_is_chosen()
         => Assert.HasCount(1, BuildCommandEcho.For(Session("a shop")));
 
+    /// <summary>Left out before, so a pasted line titled the window with the default pattern.</summary>
+    [TestMethod]
+    public void The_window_title_comes_back_as_itself()
+    {
+        var session = Session("a shop");
+        session.SetCustomization(AppCustomization.Default with
+        {
+            Company = "Codis Ltd",
+            // Not the company pattern: naming a company inline switches to that one by itself, so
+            // it would come back even from a line that carried no title at all.
+            TitlePattern = "{app} ({company})",
+        });
+
+        var parsed = Reparse(BuildCommandEcho.For(session)[0]);
+
+        Assert.AreEqual("{app} ({company})", parsed.Customization.TitlePattern);
+        Assert.AreEqual("a shop", parsed.Request.Description);
+    }
+
+    /// <summary>Left out before, so a pasted line read EVERY table of the database - a different
+    /// model from the one this run reviewed.</summary>
+    [TestMethod]
+    public void The_chosen_sql_tables_come_back_as_themselves()
+    {
+        var session = new BuildSession(
+            "trading", @"C:\ws", AppCustomization.Default,
+            new DataSourceSpec(
+                DataSourceKind.Sql, "Server=.;Database=TRADING;Trusted_Connection=True",
+                "TRADING", ["CorporateActions", "Order Details"]));
+
+        var parsed = Reparse(BuildCommandEcho.For(session)[0]);
+
+        CollectionAssert.AreEqual(
+            new[] { "CorporateActions", "Order Details" }, parsed.Request.Source!.SqlTables!.ToArray());
+        Assert.AreEqual(
+            "Server=.;Database=TRADING;Trusted_Connection=True", parsed.Request.Source.Location);
+    }
+
     /// <summary>Puts the line back through the two parsers a typed line goes through, in the order
     /// the CLI runs them.</summary>
     private static (InlineBuildRequest Request, AppCustomization Customization) Reparse(string line)

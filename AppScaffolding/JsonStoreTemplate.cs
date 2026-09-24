@@ -92,6 +92,8 @@ public sealed class JsonStore<T> : IStore<T> where T : new()
 
     private StoreWrite WriteToDisk(List<T> all)
     {
+        StampAuditFields(all, GetAll());
+
         try
         {
             File.WriteAllText(_path, JsonSerializer.Serialize(all, Options));
@@ -102,6 +104,8 @@ public sealed class JsonStore<T> : IStore<T> where T : new()
             return new StoreWrite(false, null);
         }
     }
+
+{{AuditStampTemplate.Members()}}
 
     /// <summary>One past the highest Id in <paramref name="existing"/>, or 1 when there are none.</summary>
     public int NextId(IEnumerable<T> existing)

@@ -28,4 +28,17 @@ public sealed record ScaffoldResult(
     /// construction site is untouched.
     /// </remarks>
     public IReadOnlyList<string> OutdatedValidatorStubs { get; init; } = [];
+
+    /// <summary>
+    /// Why no test project came out of a run that should have made one — one sentence, or null
+    /// when the test project was made or was never due (a model with no classes).
+    /// </summary>
+    /// <remarks>
+    /// Its own property for the reason <see cref="OutdatedValidatorStubs"/> is: the scaffold
+    /// SUCCEEDS without it, so <see cref="Message"/> would carry it only on the failure path. It
+    /// was silent before it existed, and every WPF and WinForms app came out with no test project
+    /// and an empty <c>&lt;App&gt;.Tests</c> folder, because `dotnet new xunit` refused
+    /// net10.0-windows.
+    /// </remarks>
+    public string? TestProjectProblem { get; init; }
 }

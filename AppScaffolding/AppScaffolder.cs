@@ -485,9 +485,10 @@ public sealed class AppScaffolder
         // Emitted for the same reason and beside the same file: task 3's handlers call
         // ActingUser regardless of the validation flag, so it is emitted regardless too. Passed
         // sessionAuth, not auth: a Blazor app has a login and no desktop Session at all, and
-        // naming one here would emit code that does not compile — see ActingUserTemplate.
+        // naming one here would emit code that does not compile — see ActingUserTemplate. auth
+        // as well, because that Blazor app still has to be able to say who is acting.
         files.Add((validationFolder, "ActingUser.cs",
-            ActingUserTemplate.Source(rootNamespace, sessionAuth)));
+            ActingUserTemplate.Source(rootNamespace, sessionAuth, auth)));
 
         // Persistence backend behind the seam.
         if (persistence == PersistenceKind.Sqlite)
@@ -627,8 +628,8 @@ public sealed class AppScaffolder
                 written.Add(writtenPath);
         }
 
-        var testProjectPath = ScaffoldTestProject(
-            workspaceRoot, projectName, rootNamespace, classes, validation, seed);
+        var (testProjectPath, testProjectProblem) = ScaffoldTestProject(
+            workspaceRoot, projectName, rootNamespace, classes, validation, seed, auth, sessionAuth);
 
         var allWritten = written.Count == expected;
 
@@ -660,23 +661,32 @@ public sealed class AppScaffolder
             ScreenSummary.Describe(roles))
         {
             OutdatedValidatorStubs = outdatedStubs,
+            TestProjectProblem = testProjectProblem,
         };
     }
 
     /// <summary>
     /// Creates a sibling <c>&lt;appProject&gt;.Tests</c> xUnit project referencing the app project,
-    /// with generated CRUD + seed tests. Best-effort: returns null (leaving the app itself intact)
-    /// if the test project could not be created. The test project's TFM mirrors the app's, so a
-    /// WPF app's tests target net10.0-windows and resolve the reference.
+    /// with generated CRUD + seed tests. Best-effort: leaves the app itself intact if the test
+    /// project could not be made, and returns a null path with one sentence saying why. The test
+    /// project's TFM mirrors the app's, so a WPF app's tests target net10.0-windows and resolve
+    /// the reference.
     /// </summary>
-    private static string? ScaffoldTestProject(
+    /// <remarks>
+    /// The problem is null only when there is a test project, or none was due (no classes). It
+    /// used to be no sentence at all: `dotnet new xunit` rejected net10.0-windows, this returned
+    /// null, and every WPF and WinForms app came out with no tests, an empty <c>.Tests</c>
+    /// folder, and nothing on the screen to say so.
+    /// </remarks>
+    private static (string? Path, string? Problem) ScaffoldTestProject(
         string workspaceRoot, string appProjectName, string appRootNamespace,
-        IReadOnlyList<ClassDefinition> classes, bool validation = true, bool seed = true)
+        IReadOnlyList<ClassDefinition> classes, bool validation, bool seed, bool auth,
+        bool sessionAuth)
     {
         var entityNames = classes.Select(c => c.Name).ToList();
 
         if (entityNames.Count == 0)
-            return null;
+            return (null, null);
 
         var testProjectName = appProjectName + ".Tests";
         var testFolder = Path.Combine(workspaceRoot, testProjectName);
@@ -687,16 +697,30 @@ public sealed class AppScaffolder
 
         if (!File.Exists(testCsproj))
         {
+            var folderExisted = Directory.Exists(testFolder);
+
+            // The template's -f lists only the plain frameworks, so net10.0-windows is asked for
+            // as net10.0 and put back into the project file below.
             var created = DotNetProjectFactory.CreateProject(new ProjectRequest
             {
                 ProjectName = testProjectName,
                 OutputFolder = testFolder,
                 ProjectType = DotNetProjectType.XUnitTest,
-                Framework = framework
+                Framework = TestProjectTemplates.TemplateFramework(framework)
             });
 
             if (!created.Success)
-                return null;
+            {
+                // The factory creates the folder before `dotnet new` runs, so a refusal leaves it
+                // empty. Removed only when this run made it: an existing folder is not ours.
+                if (!folderExisted)
+                {
+                    try { Directory.Delete(testFolder, recursive: true); }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+                }
+
+                return (null, NoTestProject($"`dotnet new xunit` failed: {OneLine(created.Message)}"));
+            }
 
             // dotnet new xunit emits a UnitTest1.cs placeholder; replace it with our tests.
             var placeholder = Path.Combine(testFolder, "UnitTest1.cs");
@@ -705,12 +729,14 @@ public sealed class AppScaffolder
 
             try
             {
-                File.WriteAllText(testCsproj,
-                    TestProjectTemplates.InjectProjectReference(File.ReadAllText(testCsproj), appCsproj));
+                var csproj = TestProjectTemplates.InjectProjectReference(
+                    File.ReadAllText(testCsproj), appCsproj);
+
+                File.WriteAllText(testCsproj, CsprojEditing.SetTargetFramework(csproj, framework));
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                return null;
+                return (null, NoTestProject($"its project file could not be edited: {ex.Message}"));
             }
         }
 
@@ -729,11 +755,14 @@ public sealed class AppScaffolder
         var parallelizationPath = WriteSource(testFolder, "TestParallelization.cs",
             TestProjectTemplates.DisableParallelization());
         var supportPath = WriteSource(testFolder, "TestSupport.cs",
-            TestProjectTemplates.TestSupport(appRootNamespace));
+            TestProjectTemplates.TestSupport(appRootNamespace, auth, sessionAuth));
+
+        var incomplete =
+            $"The test project at {testFolder} is incomplete: some of its files could not be written.";
 
         if (roundTripPath is null || (seed && seedPath is null) || parallelizationPath is null
             || supportPath is null)
-            return null;
+            return (null, incomplete);
 
         // One validator test file per model, so the generated suite covers the generated rules —
         // and none at all when there are no validators to cover, since a test naming a validator
@@ -745,11 +774,28 @@ public sealed class AppScaffolder
                 && p.Rules.Any(r => string.Equals(r.Name, "required", StringComparison.OrdinalIgnoreCase)));
 
             if (WriteSource(testFolder, $"{definition.Name}ValidatorTests.cs",
-                    TestProjectTemplates.ValidatorTests(appRootNamespace, definition.Name, required?.Name)) is null)
-                return null;
+                    TestProjectTemplates.ValidatorTests(
+                        appRootNamespace, definition.Name, required?.Name)) is null)
+                return (null, incomplete);
         }
 
-        return testCsproj;
+        return (testCsproj, null);
+    }
+
+    /// <summary>The sentence for a test project that was never made; the app is unaffected.</summary>
+    private static string NoTestProject(string reason)
+        => $"No test project was generated — {reason}. The app itself was written as normal.";
+
+    /// <summary><paramref name="text"/> — `dotnet new`'s stderr, several lines — as one line,
+    /// short enough to sit on the console beside everything else the run printed.</summary>
+    private static string OneLine(string text)
+    {
+        var joined = string.Join(" ", text
+            .Split('\n')
+            .Select(line => line.Trim())
+            .Where(line => line.Length > 0));
+
+        return joined.Length <= 300 ? joined : joined[..300] + "…";
     }
 
     /// <summary>The app project's &lt;TargetFramework&gt;, so the test project matches it

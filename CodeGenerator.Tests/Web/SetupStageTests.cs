@@ -292,6 +292,92 @@ public class SetupStageTests
         Assert.IsTrue(look.HasStep, "look offers no step");
     }
 
+    /// <summary>The web used to have no way to answer this, so a web build always had a login
+    /// screen unless the profile said otherwise.</summary>
+    [TestMethod]
+    public async Task The_look_panel_can_turn_the_login_off()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "look-login-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(root);
+
+        try
+        {
+            using var context = new BunitContext();
+            var session = new BuildSession("a shop", root, AppCustomization.Default);
+            var navigation = new StageNavigation();
+
+            var rendered = context.Render<LookStage>(p => p
+                .Add(c => c.Session, session)
+                .Add(c => c.Navigation, navigation)
+                .Add(c => c.OnAdvance, () => { }));
+
+            rendered.Find("input.customize").Change(true);
+            Assert.IsTrue(rendered.Find("input.login").HasAttribute("checked"), "on by default");
+
+            rendered.Find("input.login").Change(false);
+            Assert.IsTrue(await navigation.ApplyAsync());
+
+            Assert.IsFalse(session.Customization.Login);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    /// <summary>The console switches to the company title when a company is named; the page kept
+    /// the plain one, so the same answers gave a different window title.</summary>
+    [TestMethod]
+    public void Naming_a_company_suggests_the_company_title()
+    {
+        using var context = new BunitContext();
+
+        var rendered = context.Render<LookStage>(p => p
+            .Add(c => c.Session, New("a shop"))
+            .Add(c => c.Navigation, new StageNavigation())
+            .Add(c => c.OnAdvance, () => { }));
+
+        rendered.Find("input.customize").Change(true);
+        rendered.Find("input.company").Change("Codis Ltd");
+
+        Assert.AreEqual(
+            AppCustomization.CompanyTitlePattern, rendered.Find("input.title").GetAttribute("value"));
+    }
+
+    /// <summary>A title the user chose is theirs: naming a company afterwards does not replace it.</summary>
+    [TestMethod]
+    public void A_chosen_title_is_not_replaced_by_the_suggestion()
+    {
+        using var context = new BunitContext();
+
+        var rendered = context.Render<LookStage>(p => p
+            .Add(c => c.Session, New("a shop"))
+            .Add(c => c.Navigation, new StageNavigation())
+            .Add(c => c.OnAdvance, () => { }));
+
+        rendered.Find("input.customize").Change(true);
+        rendered.Find("input.title").Change("{app} by {company}");
+        rendered.Find("input.company").Change("Codis Ltd");
+
+        Assert.AreEqual("{app} by {company}", rendered.Find("input.title").GetAttribute("value"));
+    }
+
+    [TestMethod]
+    public void The_look_panel_opens_on_the_login_answer_it_was_given()
+    {
+        using var context = new BunitContext();
+
+        var rendered = context.Render<LookStage>(p => p
+            .Add(c => c.Session, new BuildSession(
+                "a shop", Path.GetTempPath(), AppCustomization.Default with { Login = false }))
+            .Add(c => c.Navigation, new StageNavigation())
+            .Add(c => c.OnAdvance, () => { }));
+
+        rendered.Find("input.customize").Change(true);
+
+        Assert.IsFalse(rendered.Find("input.login").HasAttribute("checked"));
+    }
+
     private static BuildSession New(string description = "")
         => new(description, Path.GetTempPath(), AppCustomization.Default);
 }

@@ -612,7 +612,8 @@ public static class CommandDictionary
                         + "console signs off with the `build app:` line that would do the same run "
                         + "again. Two tabs on "
                         + "the same workflow stay in step, and closing the last one ends the "
-                        + "command. Piped runs keep the console wizard, as does CG_NO_WEB=1.",
+                        + "command. Piped runs skip both the page and the wizard and go straight "
+                        + "to the review loop; CG_NO_WEB=1 keeps the console wizard.",
             Example = "build app"
         },
         new()
@@ -625,7 +626,9 @@ public static class CommandDictionary
                         + "master/transaction split - are saved to "
                         + ".codegen/build-in-progress.json after every change, and the next "
                         + "interactive run in that workspace offers to resume, start fresh "
-                        + "or discard. Enter starts fresh and deletes nothing. Your DATA is "
+                        + "or discard. Enter starts fresh and deletes nothing - that fresh "
+                        + "run is not saved as you go, so the build you left is still offered "
+                        + "next time. Your DATA is "
                         + "not saved, only where it came from, so the source is re-read on "
                         + "resume; a file that has moved, or a SQL connection string (which "
                         + "is never saved), opens the data stage instead of failing. A "
@@ -797,6 +800,23 @@ public static class CommandDictionary
             Command = "unfield <class> <name>",
             Description = "Review loop: removes a field from a class.",
             Example = "unfield Book Title"
+        },
+        new()
+        {
+            Category = "Build App",
+            Command = "renamefield <class> <old> <new>",
+            Description = "Review loop: renames a field, keeping its type, where it came from "
+                        + "and the rules proposed for it - which removing it and adding it "
+                        + "again would lose.",
+            Example = "renamefield Book Name Title"
+        },
+        new()
+        {
+            Category = "Build App",
+            Command = "retype <class> <field> <type>",
+            Description = "Review loop: changes a field's type to string, int, decimal, bool "
+                        + "or DateTime.",
+            Example = "retype Book Pages int"
         },
         new()
         {

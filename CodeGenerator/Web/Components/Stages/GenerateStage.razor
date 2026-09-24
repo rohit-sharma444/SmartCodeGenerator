@@ -40,7 +40,18 @@ else if (_phase == Phase.Overwrite)
 {
     @* A question about losing work, so it is a decision rather than a default. *@
     <div class="overwrite" role="alertdialog">
-        <p>@GenerateStep.FolderFor(Session, _name, Target) already exists.</p>
+        @foreach (var line in _collision)
+        {
+            <p>@line</p>
+        }
+
+        @* The console's [a]dd, offered only when there is something to add. *@
+        @if (_newClasses > 0)
+        {
+            <button type="button" class="overwrite-add" @onclick="AddNew">
+                Add the @_newClasses new @(_newClasses == 1 ? "class" : "classes")
+            </button>
+        }
         <button type="button" class="overwrite-yes" @onclick="Overwrite">Overwrite it</button>
         <button type="button" class="overwrite-rename" @onclick="() => _phase = Phase.Confirm">
             Use a different name
@@ -84,6 +95,12 @@ else
     [Parameter] public EventCallback OnAdvance { get; set; }
 
     private Phase _phase = Phase.Confirm;
+
+    /// <summary>What the overwrite question says about the app already there.</summary>
+    private IReadOnlyList<string> _collision = [];
+
+    /// <summary>How many of this model's classes the app already there does not have.</summary>
+    private int _newClasses;
     private string _name = string.Empty;
     private PersistenceKind _persistence = PersistenceKind.Json;
     private readonly List<string> _report = [];
@@ -133,6 +150,9 @@ else
         if (app.Scaffold.TestProjectPath is not null)
             _report.Add($"Generated test project at {app.Scaffold.TestProjectPath}");
 
+        if (app.Scaffold.TestProjectProblem is { } testProblem)
+            _report.Add(testProblem);
+
         // Repeated on a reload for the reason it was said at all: the kept stub is still on
         // disk and still unfixed, and the streamed build log that carried CS0759 went with
         // the circuit that watched it. A rebuilt panel that omits this is the one panel
@@ -174,6 +194,16 @@ else
         // A rename can collide too, so the question is asked about whatever name is current.
         if (GenerateStep.Collides(Session, _name, Target))
         {
+            var delta = GenerateStep.DeltaFor(Session, _name, Target);
+
+            _newClasses = AppScaffolding.Incremental.ModelDelta.NewNames(delta).Count;
+
+            // The console's own wording, less its key hints: the page has buttons instead.
+            _collision = OverwritePrompt
+                .Warning(GenerateStep.FolderFor(Session, _name, Target), delta)
+                .Where(line => line.Length > 0 && !line.TrimStart().StartsWith('['))
+                .ToList();
+
             _phase = Phase.Overwrite;
             return;
         }
@@ -183,7 +213,9 @@ else
 
     private async Task Overwrite() => await Go();
 
-    private async Task Go()
+    private async Task AddNew() => await Go(addOnly: true);
+
+    private async Task Go(bool addOnly = false)
     {
         _phase = Phase.Working;
         _report.Clear();
@@ -192,8 +224,30 @@ else
 
         Step($"Writing {_name} into {GenerateStep.FolderFor(Session, _name, Target)}");
 
-        var scaffold = await Task.Run(
-            () => GenerateStep.Scaffold(Session, _name, Target, _persistence));
+        ScaffoldResult scaffold;
+
+        if (addOnly)
+        {
+            var folder = GenerateStep.FolderFor(Session, _name, Target);
+            var added = await Task.Run(
+                () => GenerateStep.AddNew(Session, _name, Target, _persistence));
+
+            // As a scaffold, so what follows - the build, the run stage - treats it like any
+            // other write. The written files are only the added ones, which is what they are.
+            scaffold = new ScaffoldResult(added.Success, folder, added.Written, added.Message)
+            {
+                OutdatedValidatorStubs = added.OutdatedValidatorStubs,
+            };
+
+            // Only on success: a failure is reported below, the same way a failed write is.
+            if (added.Success)
+                _report.AddRange(AddReport.Lines(added, folder).Where(line => line.Length > 0));
+        }
+        else
+        {
+            scaffold = await Task.Run(
+                () => GenerateStep.Scaffold(Session, _name, Target, _persistence));
+        }
 
         _scaffold = scaffold;
 
@@ -213,10 +267,16 @@ else
         Step("Compiling it — a first build restores packages and can take a minute",
              finished: $"Wrote {scaffold.FilesWritten.Count} file(s)");
 
-        _report.Add($"Generated project at {scaffold.ProjectPath}");
+        if (!addOnly)
+            _report.Add($"Generated project at {scaffold.ProjectPath}");
 
         if (scaffold.TestProjectPath is not null)
             _report.Add($"Generated test project at {scaffold.TestProjectPath}");
+
+        // A test project that could not be made is said, not left as an absence: every WPF and
+        // WinForms app used to come out without one and without a word.
+        if (scaffold.TestProjectProblem is { } testProblem)
+            _report.Add(testProblem);
 
         // Before the compiler starts, because it is the reason the compiler is about to
         // fail: a .Custom.cs stub written before the validation pipeline is never
@@ -224,8 +284,10 @@ else
         // longer has. Said on the page and not only in the console sign-off, which arrives
         // after the whole workflow has finished — by then the user has already watched
         // CS0759 and CS8795 scroll past the build log with nothing naming the cause.
-        foreach (var stub in scaffold.OutdatedValidatorStubs)
-            _report.Add(stub + ".");
+        // The add report has already listed them, under its own heading.
+        if (!addOnly)
+            foreach (var stub in scaffold.OutdatedValidatorStubs)
+                _report.Add(stub + ".");
 
         StateHasChanged();
 

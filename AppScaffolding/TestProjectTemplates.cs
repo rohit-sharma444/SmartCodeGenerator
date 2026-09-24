@@ -29,6 +29,10 @@ public class RepositoryRoundTripTests
 
     private static void RoundTrip<T>(Repository<T> repository) where T : class, new()
     {
+        // An app with a login refuses a write from nobody. Before Fill, because Fill creates a
+        // real row for a foreign key through a repository too.
+        using var acting = TestSupport.ActAsAdministrator();
+
         // A blank record no longer round-trips: the generated validators reject it. TestSupport
         // fills it with values of the shape those rules accept.
         var item = new T();
@@ -62,16 +66,24 @@ public class RepositoryRoundTripTests
     /// <summary>Source of <c><paramref name="entityName"/>ValidatorTests.cs</c>. When the model has
     /// a required property, also asserts a blank record is rejected — otherwise the only honest
     /// assertion is that a filled record passes.</summary>
-    public static string ValidatorTests(string rootNamespace, string entityName, string? requiredPropertyName)
+    /// <remarks>
+    /// Its contexts act as <c>TestSupport.ActingRole</c>: the administrator in an app with a login,
+    /// whose Security stage refuses a null role before any field rule runs, and nobody in one
+    /// without.
+    /// </remarks>
+    public static string ValidatorTests(
+        string rootNamespace, string entityName, string? requiredPropertyName)
     {
+
         var requiredFact = requiredPropertyName is null ? string.Empty : $$"""
 
 
     [Fact]
     public void A_blank_{{entityName}}_reports_its_required_field()
     {
-        var context = ValidationContext<{{entityName}}>.For(
-            new {{entityName}}(), ValidationOperation.Insert, new AlwaysFound());
+        var context = new ValidationContext<{{entityName}}>(
+            new {{entityName}}(), ValidationOperation.Insert, null, new AlwaysFound(),
+            TestSupport.ActingRole, null);
         var errors = new {{entityName}}Validator().Validate(context).Messages;
 
         Assert.Contains("{{requiredPropertyName}} is required.", errors);
@@ -103,10 +115,16 @@ public class {{entityName}}ValidatorTests
     [Fact]
     public void A_populated_{{entityName}}_is_valid()
     {
+        // Fill saves a real row for each foreign key, and an app with a login refuses a save from
+        // nobody - so without this the referenced row was never written, and every desktop app
+        // with a relationship failed this test on its foreign key.
+        using var acting = TestSupport.ActAsAdministrator();
+
         var item = new {{entityName}}();
         TestSupport.Fill(item);
 
-        var context = ValidationContext<{{entityName}}>.For(item, ValidationOperation.Insert, new AlwaysFound());
+        var context = new ValidationContext<{{entityName}}>(
+            item, ValidationOperation.Insert, null, new AlwaysFound(), TestSupport.ActingRole, null);
         var errors = new {{entityName}}Validator().Validate(context).Messages;
 
         Assert.Empty(errors);
@@ -115,7 +133,8 @@ public class {{entityName}}ValidatorTests
     [Fact]
     public void A_null_{{entityName}}_is_reported_rather_than_throwing()
     {
-        var context = ValidationContext<{{entityName}}>.For(null!, ValidationOperation.Insert, new AlwaysFound());
+        var context = new ValidationContext<{{entityName}}>(
+            null!, ValidationOperation.Insert, null, new AlwaysFound(), TestSupport.ActingRole, null);
         var errors = new {{entityName}}Validator().Validate(context).Messages;
 
         Assert.NotEmpty(errors);
@@ -135,7 +154,69 @@ public class {{entityName}}ValidatorTests
     /// existing row when the store already has one, creating one (recursively filled the same way)
     /// when it does not -- so this works whether or not the app seeds sample data.
     /// </remarks>
-    public static string TestSupport(string rootNamespace) => $$"""
+    public static string TestSupport(string rootNamespace) => TestSupport(rootNamespace, login: false, sessionAuth: false);
+
+    /// <summary>
+    /// As <see cref="TestSupport(string)"/>, acting as the administrator when the app has a login.
+    /// </summary>
+    /// <remarks>
+    /// An app with a login refuses a write from nobody, and the generated tests used to BE nobody:
+    /// a Blazor app built with its default login failed its own round-trip and validator tests with
+    /// "You are not permitted to insert a Customer record." The tests now say who is acting — the
+    /// administrator, the one role the permission matrix lets do everything — in the way the app
+    /// itself reads it: a desktop app's <c>Session</c>, or <c>ActingUser.ActAs</c> in an app with a
+    /// login and no Session. The app's own checks are untouched.
+    /// </remarks>
+    /// <param name="login"><c>AppScaffolder</c>'s <c>auth</c>: whether the app has a login.</param>
+    /// <param name="sessionAuth"><c>AppScaffolder</c>'s own flag of that name: whether that login
+    /// lives in a desktop <c>Session</c>.</param>
+    public static string TestSupport(string rootNamespace, bool login, bool sessionAuth)
+    {
+        // Fully qualified, not imported: a using for the app's Models namespace would put every
+        // entity's name in scope in this file, and one of them could be named like a member here.
+        var acting = !login
+            ? """
+                  /// <summary>The role the generated tests act as. This app has no login, so there is
+                  /// nobody to act as and the permission matrix refuses nobody.</summary>
+                  public static string? ActingRole => null;
+
+                  /// <summary>Nothing to do: this app has no login.</summary>
+                  public static IDisposable ActAsAdministrator() => new EndScope(() => { });
+              """
+            : sessionAuth
+            ? $$"""
+                  /// <summary>The role the generated tests act as: the administrator, whom the
+                  /// permission matrix lets do anything. This app has a login, and refuses a write
+                  /// from nobody.</summary>
+                  public static string? ActingRole => global::{{rootNamespace}}.Auth.AppRole.Admin.ToString();
+
+                  /// <summary>Signs an administrator in to the desktop Session, and out again when the
+                  /// returned scope is disposed.</summary>
+                  public static IDisposable ActAsAdministrator()
+                  {
+                      global::{{rootNamespace}}.Auth.Session.SignIn(new global::{{rootNamespace}}.Models.User
+                      {
+                          UserName = "tests",
+                          DisplayName = "Generated tests",
+                          Role = global::{{rootNamespace}}.Auth.AppRole.Admin,
+                      });
+
+                      return new EndScope(global::{{rootNamespace}}.Auth.Session.Clear);
+                  }
+              """
+            : $$"""
+                  /// <summary>The role the generated tests act as: the administrator, whom the
+                  /// permission matrix lets do anything. This app has a login, and refuses a write
+                  /// from nobody.</summary>
+                  public static string? ActingRole => global::{{rootNamespace}}.Auth.AppRole.Admin.ToString();
+
+                  /// <summary>Acts as the administrator until the returned scope is disposed. This app
+                  /// has no desktop Session, so it is told who is acting through ActingUser.</summary>
+                  public static IDisposable ActAsAdministrator()
+                      => global::{{rootNamespace}}.Validation.ActingUser.ActAs(ActingRole!, null);
+              """;
+
+        return $$"""
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -248,8 +329,21 @@ internal static class TestSupport
         var id = item.GetType().GetProperty("Id", BindingFlags.Public | BindingFlags.Instance);
         return (int)(id?.GetValue(item) ?? 0);
     }
+
+{{acting}}
+
+    /// <summary>Runs <c>end</c> when disposed: the end of an ActAsAdministrator scope.</summary>
+    private sealed class EndScope : IDisposable
+    {
+        private readonly Action _end;
+
+        public EndScope(Action end) => _end = end;
+
+        public void Dispose() => _end();
+    }
 }
 """;
+    }
 
     /// <summary>Asserts EnsureSeeded populates the first entity's store and is idempotent.</summary>
     public static string SeedTests(string rootNamespace, string firstEntityName) => $$"""
@@ -277,6 +371,19 @@ public class SeedDataTests
 
     /// <summary>Disables xUnit parallelization: the JSON stores are shared files, so the tests
     /// run sequentially to stay deterministic.</summary>
+    /// <summary>The framework to hand `dotnet new xunit -f` for an app on
+    /// <paramref name="appFramework"/>: the same one with its platform dropped, so
+    /// net10.0-windows becomes net10.0.</summary>
+    /// <remarks>The template lists only the plain frameworks, and SDK 10.0.401 rejects
+    /// net10.0-windows as "not a valid value for -f" — which is why no WPF or WinForms app ever
+    /// had a test project. The platform goes back on afterwards, through
+    /// <see cref="CsprojEditing.SetTargetFramework"/>.</remarks>
+    public static string TemplateFramework(string appFramework)
+    {
+        var dash = appFramework.IndexOf('-');
+        return dash < 0 ? appFramework : appFramework[..dash];
+    }
+
     public static string DisableParallelization() => """
 [assembly: Xunit.CollectionBehavior(DisableTestParallelization = true)]
 """;

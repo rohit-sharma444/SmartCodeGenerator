@@ -13,6 +13,22 @@
     <ProgressList Done="Session.Discovered.Done" Pending="Session.Discovered.Pending"
                   Current="@(Session.Discovered.Step ?? _label)" Seconds="_seconds" />
 }
+else if (_kept)
+{
+    @* Coming back to a node that has already done its work. It used to redo it - re-read the
+       file with nothing ticked, or offer a Start that did nothing - and the step forward then
+       replaced the reviewed model, or asked to. Now it shows what it holds, and redoing it is a
+       choice with its own button. *@
+    <p class="kept-model">
+        @Classes(Session.Model!.Entities.Count)@(Session.ModelSource.Length > 0 ? $" - {Session.ModelSource}" : "")
+    </p>
+
+    <div class="actions">
+        <button type="button" class="again" @onclick="Again">
+            @(Session.HasData ? "Read the file again" : "Discover again")
+        </button>
+    </div>
+}
 else if (_read is not null)
 {
     @foreach (var line in _read.Lines)
@@ -70,27 +86,43 @@ else
     private ReadResult? _read;
     private readonly List<NormalizationFinding> _chosen = [];
 
+    /// <summary>Whether this entry found a model already there and is showing it rather than
+    /// making another.</summary>
+    private bool _kept;
+
     protected override async Task OnInitializedAsync() => await Start();
 
-    private async Task Start()
+    private Task Start() => Run(again: false);
+
+    /// <summary>Redoes the node's work on purpose. The step forward then asks before replacing
+    /// the model, as any second model does.</summary>
+    private Task Again()
+    {
+        _kept = false;
+
+        return Run(again: true);
+    }
+
+    private async Task Run(bool again)
     {
         // Nothing to move on to while this runs: the discovery path advances itself, and the data
         // path has findings to tick first.
         Navigation.Withdraw();
+
+        // Already done - a click back onto this node, a reload, a second tab, a resumed build.
+        // The step forward keeps what is there: it applies nothing, so it cannot cost the review.
+        if (!again && Session.Model is not null)
+        {
+            _kept = true;
+            Navigation.Offer(() => Task.FromResult(true));
+            return;
+        }
 
         if (Session.HasData)
         {
             ReadTheFile();
             return;
         }
-
-        // Discovery already produced a model — there is nothing left for this entry to do. Only
-        // reachable when a fresh navigation (a reload, a second tab, a browser restoring a
-        // backgrounded tab) lands here after the first call already finished and moved the
-        // workflow on; without this check it would launch a wasted, real second call to the local
-        // model purely to throw its answer away.
-        if (Session.Model is not null)
-            return;
 
         _busy = true;
         _label = "Discovering the domain — a local model can take a few minutes";
@@ -214,6 +246,13 @@ else
 
         _read = read;
 
+        // Ticked from the start: the findings applied last time, when this is a re-read, and
+        // every one of them when `normalize` was typed on the line - which the manual promises and
+        // the page used to ignore, opening every finding unticked.
+        _chosen.Clear();
+        _chosen.AddRange(read.Report.Findings.Where(finding =>
+            Session.NormalizeAll || Session.Normalized.Any(n => SameFinding(n, finding))));
+
         // Read and analysed: the findings are ticked here and the step forward applies them.
         Navigation.Offer(Continue);
     }
@@ -226,14 +265,26 @@ else
             _chosen.Remove(finding);
     }
 
+    /// <remarks>
+    /// The rows go in WITH the model, not after it. When a model is already there SetModel holds
+    /// the change for the discard question and returns false; this used to set the rows anyway and
+    /// report success, so "Keep the model" left the old model beside the new rows - a split-out
+    /// class with none - and the page moved on as though nothing had been asked.
+    /// </remarks>
     private Task<bool> Continue()
     {
         var (model, imported) = DiscoveryStep.BuildFromData(_read!, _chosen);
 
-        Session.SetModel(model);
-        Session.SetImportedData(imported, [.. _chosen]);
-
-        return Task.FromResult(true);
+        return Task.FromResult(Session.SetModel(model, imported: imported, normalized: [.. _chosen]));
     }
+
+    /// <summary>The same finding from a different read: the objects differ, the finding does not.</summary>
+    private static bool SameFinding(NormalizationFinding a, NormalizationFinding b)
+        => a.Kind == b.Kind
+           && a.TableName == b.TableName
+           && a.ProposedEntity == b.ProposedEntity
+           && a.Columns.SequenceEqual(b.Columns);
+
+    private static string Classes(int count) => $"{count} {(count == 1 ? "class" : "classes")}";
 
 }

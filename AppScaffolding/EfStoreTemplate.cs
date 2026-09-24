@@ -29,6 +29,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using {{rootNamespace}}.Validation;
 
@@ -83,7 +84,11 @@ public sealed class EfStore<T> : IStore<T> where T : class, new()
         {
             using var context = new AppDbContext();
             var set = context.Set<T>();
-            set.RemoveRange(set.ToList());
+            var existing = set.ToList();
+
+            StampAuditFields(all, existing);
+
+            set.RemoveRange(existing);
             set.AddRange(all);
             context.SaveChanges();
             return StoreWrite.Ok;
@@ -93,6 +98,8 @@ public sealed class EfStore<T> : IStore<T> where T : class, new()
             return new StoreWrite(false, null);
         }
     }
+
+{{AuditStampTemplate.Members()}}
 
     /// <summary>One past the highest Id in <paramref name="existing"/>, or 1 when there are none.</summary>
     public int NextId(IEnumerable<T> existing)

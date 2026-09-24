@@ -90,6 +90,38 @@ public class EntryTemplateStageTests
         Assert.AreEqual(EntryTemplate.Tabbed, session.Customization.EntryTemplate);
     }
 
+    /// <summary>The choice is remembered for the next run, as the Look stage's are. The only web
+    /// save used to be on Look, which comes first, so this one was lost with the session.</summary>
+    [TestMethod]
+    public async Task The_chosen_template_is_remembered_for_the_next_run()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "entry-save-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(root);
+
+        try
+        {
+            using var context = new BunitContext();
+            var session = new BuildSession("a shop", root, AppCustomization.Default);
+            session.SetTarget(new WpfTarget());
+            var navigation = new StageNavigation();
+
+            var rendered = context.Render<EntryTemplateStage>(p => p
+                .Add(c => c.Session, session)
+                .Add(c => c.Navigation, navigation)
+                .Add(c => c.OnAdvance, () => { }));
+
+            rendered.Find("input.entry-template[value=tabbed]").Change(true);
+            Assert.IsTrue(await navigation.ApplyAsync());
+
+            Assert.AreEqual(
+                EntryTemplate.Tabbed, CodeGenerator.App.CustomizationDefaults.Load(root).EntryTemplate);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     /// <summary>The zoom is an inspection aid, not a way to answer the question — clicking a
     /// thumbnail must not also check that card's radio, or a user previewing a template they do
     /// not intend to pick would silently change their answer.</summary>

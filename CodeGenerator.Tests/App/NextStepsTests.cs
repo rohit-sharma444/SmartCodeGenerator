@@ -77,6 +77,20 @@ public class NextStepsTests
         Assert.DoesNotContain("Seed", Steps("console"));
     }
 
+    /// <summary>Data\SeedData.cs is written by every app, and a bare text match on "Data\Seed"
+    /// found it - so the line pointed at a folder that did not exist.</summary>
+    [TestMethod]
+    public void SeedData_IsNotMentionedForTheSeedingCodeAlone()
+    {
+        string[] written =
+        [
+            Path.Combine(ProjectPath, "Data", "SeedData.cs"),
+            Path.Combine(ProjectPath, "Models", "Book.cs"),
+        ];
+
+        Assert.DoesNotContain("Seed data", Steps("blazor", filesWritten: written));
+    }
+
     [TestMethod]
     public void TestProject_IsMentionedOnlyWhenOneWasGenerated()
     {

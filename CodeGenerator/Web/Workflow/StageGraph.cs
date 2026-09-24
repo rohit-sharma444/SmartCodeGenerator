@@ -79,6 +79,10 @@ public static class StageGraph
     /// is Discover itself for as long as its own panel is the one calling <c>SetModel</c>.
     /// </para>
     /// </remarks>
+    /// <summary>The written app and the run of it: what an answer read only at Generate costs.</summary>
+    private static readonly IReadOnlyList<BuildStage> WhatWasGenerated =
+        [BuildStage.Generate, BuildStage.Run];
+
     public static IReadOnlyList<BuildStage> Invalidates(BuildStage changed)
         => changed switch
         {
@@ -91,17 +95,17 @@ public static class StageGraph
             BuildStage.Discover =>
                 [BuildStage.Discover, BuildStage.Review, BuildStage.Output,
                  BuildStage.Generate, BuildStage.Run],
-            BuildStage.AppType       => [],
-            BuildStage.Look          => [],
-            BuildStage.Review        => [],
 
-            // Nothing downstream reads a screen choice until Generate, and Generate has no stored
-            // answer to discard — so changing one here costs nothing, exactly as Look does.
-            BuildStage.Output => [],
-
-            // Nothing downstream reads this until Generate, and Generate has no stored answer to
-            // discard — so changing it costs nothing, exactly as Output and Look do.
-            BuildStage.EntryTemplate => [],
+            // Nothing before Generate reads these, so the model is never at stake - but the app
+            // Generate WROTE was built from them. These used to invalidate nothing, on the reading
+            // that Generate "has no stored answer to discard"; it has one, Generated, and keeping it
+            // left the old app on screen with no way to write the new one - and the Run node
+            // describing the old app under the new target.
+            BuildStage.AppType       => WhatWasGenerated,
+            BuildStage.Look          => WhatWasGenerated,
+            BuildStage.Review        => WhatWasGenerated,
+            BuildStage.Output        => WhatWasGenerated,
+            BuildStage.EntryTemplate => WhatWasGenerated,
             BuildStage.Generate      => [],
             BuildStage.Run           => [],
             _ => throw new InvalidOperationException($"No invalidation rule for {changed}."),
