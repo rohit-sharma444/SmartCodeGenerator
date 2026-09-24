@@ -1,0 +1,86 @@
+{
+  "voice": "en-US-JennyNeural",
+  "rate": "-4%",
+  "scenes": [
+    {
+      "id": "intro",
+      "text": "Hi! In the next few minutes, I'll show you how SmartCodeGenerator turns a spreadsheet into a complete, working application. Screens, validation rules, sample data and tests, all from one command: build app."
+    },
+    {
+      "id": "console",
+      "text": "It starts in the console. I type build app, describe what I want, an order management system, and point it at a CSV file of orders. SmartCodeGenerator opens a guided workflow in the browser."
+    },
+    {
+      "id": "diagram",
+      "text": "Here's the workflow. Down the left are ten steps, from describing the application to running it. The two I answered on the command line are already ticked, and I can click any finished step to go back and change it."
+    },
+    {
+      "id": "theme",
+      "text": "One small touch before we start: the page has a theme picker. Dark, high contrast, or warm, whatever is easiest on your eyes. I'll stay on light."
+    },
+    {
+      "id": "apptype",
+      "text": "First, the kind of application. It can build desktop apps in WPF or WinForms, a Web API, a console app, a class library, or a background worker. I'll choose a Blazor web application, so we can run the result right here in the browser."
+    },
+    {
+      "id": "data",
+      "text": "The data step shows the file I gave it. It also reads JSON, text files, Excel workbooks, and tables straight from SQL Server. Or I can skip data altogether, and let a local AI model work out the classes from the description."
+    },
+    {
+      "id": "look",
+      "text": "Next, the look and features. I'll give it a company name, a dark theme, and an accent color. Validation, sample data and a login screen are already switched on, and the window title follows the company name."
+    },
+    {
+      "id": "discover",
+      "text": "Now it reads all twenty four rows and checks the shape of the data. It noticed that Item one, two and three are a repeating group. Ticking the finding splits them into an Order Item class of their own, just as a database designer would."
+    },
+    {
+      "id": "review",
+      "text": "This is the model it built: orders and their items, with every field typed from the data. I can rename a class or a field, change a type, add or remove fields, or ask why something was decided. I'll rename Customer to Customer Name."
+    },
+    {
+      "id": "rules",
+      "text": "Better still, it proposes validation rules that hold in every row. Order numbers are unique. Status only ever holds four values. The order date never comes after the delivery date. And the total always equals the net amount, times one plus the tax rate. I'll accept the ones I want."
+    },
+    {
+      "id": "workflow",
+      "text": "For the status, I can set the order it moves in, draft, confirmed, shipped, delivered, and mark delivered as final. The generated app will refuse to move an order backwards, or change it once it's delivered."
+    },
+    {
+      "id": "output",
+      "text": "The output step shows the relationships, and how the classes become screens. It guessed that orders are master data, but an order is really a transaction, so I'll change it. On the right is the whole run as a single command, ready to repeat or drop into a script."
+    },
+    {
+      "id": "entry",
+      "text": "The entry template step picks how desktop entry forms lay out their fields. It doesn't apply to a Blazor app, and the page simply says so."
+    },
+    {
+      "id": "generate",
+      "text": "Now I generate. It writes the project, a test project, and the imported rows as seed data, then compiles it, streaming the build log as it goes. I'll speed up the wait."
+    },
+    {
+      "id": "run",
+      "text": "It compiled. One more click starts the application."
+    },
+    {
+      "id": "signin",
+      "text": "And here it is, a working web app, with a sign in page. I'll sign in as the administrator."
+    },
+    {
+      "id": "app",
+      "text": "Every order from the spreadsheet is already here, complete with created and modified dates. Let me try to save a new order that's delivered before it was placed."
+    },
+    {
+      "id": "refused",
+      "text": "And the rule I accepted refuses it, with a clear message saying exactly what's wrong."
+    },
+    {
+      "id": "saved",
+      "text": "So I'll correct the delivery date, and add an item to the order. This time it saves, together with its line, and the new order is at the bottom of the list."
+    },
+    {
+      "id": "wrap",
+      "text": "That's the whole journey, from a CSV file to a validated, tested, running application in a few minutes. And if you close the browser halfway through, nothing is lost: the next build app offers to resume exactly where you left off. Thanks for watching!"
+    }
+  ]
+}

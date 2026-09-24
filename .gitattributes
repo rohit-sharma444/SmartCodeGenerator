@@ -4,3 +4,7 @@
 # The MiniLM weights. The trailing -text is load-bearing: without it the `* text=auto`
 # rule above would try to normalize line endings inside a 22MB binary and corrupt it.
 *.onnx filter=lfs diff=lfs merge=lfs -text
+
+# The build app demo video (tools/demo-video). Binary, and large enough that every re-recording
+# would otherwise add its full size to the history.
+*.mp4 filter=lfs diff=lfs merge=lfs -text
