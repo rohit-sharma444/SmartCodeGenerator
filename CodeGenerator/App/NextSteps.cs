@@ -48,8 +48,11 @@ internal static class NextSteps
 
         // Only when rows were actually written: `noseed` with no imported data leaves no such
         // folder, and pointing at a path that does not exist is worse than saying nothing.
+        //
+        // The folder, separator and all: Data\SeedData.cs is written by every app, and a bare
+        // "Data\Seed" match found it, so this pointed at a folder that did not exist.
         if (filesWritten.Any(
-                f => f.Contains(SeedFolder, StringComparison.OrdinalIgnoreCase)))
+                f => f.Contains(SeedFolder + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)))
         {
             lines.Add(Row(
                 "Seed data",
