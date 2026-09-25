@@ -157,9 +157,20 @@ public sealed class StoreEntityLookup : IEntityLookup
 public sealed class BookValidator : IValidator<Book>
 {
     public ValidationOutcome Validate(ValidationContext<Book> context)
-        => string.IsNullOrWhiteSpace(context.Item.Title)
-            ? new ValidationOutcome(new[] { new ValidationError("Title", "Title is required.") })
-            : ValidationOutcome.Valid;
+        => context.Item.Title switch
+        {
+            _ when string.IsNullOrWhiteSpace(context.Item.Title)
+                => new ValidationOutcome(new[] { new ValidationError("Title", "Title is required.") }),
+
+            // Two refusals against ONE field, so a test can tell every message kept from the first.
+            "?" => new ValidationOutcome(new[]
+            {
+                new ValidationError("Title", "Title is too short."),
+                new ValidationError("Title", "Title must contain a letter."),
+            }),
+
+            _ => ValidationOutcome.Valid,
+        };
 }
 
 public static class ValidatorFactory

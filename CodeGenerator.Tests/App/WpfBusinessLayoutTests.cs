@@ -1395,4 +1395,30 @@ public class WpfBusinessLayoutTests
         foreach (var template in Enum.GetValues<AppScaffolding.Screens.EntryTemplate>())
             Assert.IsNotNull(System.Xml.Linq.XDocument.Parse(XamlFor(template)).Root);
     }
+
+    /// <summary>
+    /// Issue #129: every entry control on both screens is handed the editor's Errors, and each
+    /// control marks the fields they name.
+    /// </summary>
+    [TestMethod]
+    public void Every_entry_control_is_bound_to_the_editors_errors()
+    {
+        var xaml = Xaml();
+
+        Assert.AreEqual(
+            System.Text.RegularExpressions.Regex.Count(xaml, "Record=\"\\{Binding (Editor\\.)?Draft\\}\""),
+            System.Text.RegularExpressions.Regex.Count(xaml, "Errors=\"\\{Binding (Editor\\.)?Errors\\}\""),
+            "an entry control is given a record but not the errors against it");
+
+        var form = WpfEntryControls.Form(Context());
+        StringAssert.Contains(form, "nameof(Errors), typeof(IReadOnlyDictionary<string, string>)");
+        StringAssert.Contains(form, "Mark(mark.Editor, message);");
+        StringAssert.Contains(form, "mark.Message.Text = message;");
+
+        foreach (var source in new[] { WpfEntryControls.Header(Context()), WpfEntryControls.Notes(Context()) })
+        {
+            StringAssert.Contains(source, "nameof(Errors), typeof(IReadOnlyDictionary<string, string>)");
+            StringAssert.Contains(source, "EntryForm.Mark(");
+        }
+    }
 }

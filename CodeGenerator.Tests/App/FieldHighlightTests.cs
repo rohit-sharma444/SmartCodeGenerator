@@ -78,7 +78,7 @@ public class FieldHighlightTests
         StringAssert.Contains(source, "ActingUser.Role(), ActingUser.Id()");
         StringAssert.Contains(source, "IsNew ? ValidationOperation.Insert : ValidationOperation.Update");
         StringAssert.Contains(source, "foreach (var error in outcome.Errors)");
-        StringAssert.Contains(source, "_errors.TryAdd(error.Property ?? string.Empty, error.Message);");
+        StringAssert.Contains(source, "var property = error.Property ?? string.Empty;");
 
         // The Stored argument: what is on disk right now, not `default`. A stage that compares
         // against the pre-edit value (a status transition, an immutable field) has nothing to
@@ -286,6 +286,68 @@ public class FieldHighlightTests
             (string)orderType.GetProperty("Status")!.GetValue(rows[0])!,
             "the refused save was written to the store anyway");
     }
+
+    /// <summary>
+    /// Issue #129: a field with two problems shows both, not the first.
+    /// </summary>
+    [TestMethod]
+    public void ARefusedSaveKeepsEveryMessageAgainstItsField()
+    {
+        var editor = NewBookEditor(title: "?");
+
+        RecordEditorTests.Execute(editor, "SaveCommand");
+
+        var expected = "Title is too short." + Environment.NewLine + "Title must contain a letter.";
+
+        Assert.AreEqual(expected, Errors(editor)["Title"]);
+        Assert.AreEqual(expected, ErrorFor(editor, "Title"));
+    }
+
+    /// <summary>
+    /// Issue #129: a desktop view repaints its marks from the change notification, so a refusal
+    /// must announce Errors -- and so must the save that clears them.
+    /// </summary>
+    [TestMethod]
+    public void TheErrorsAreAnnouncedWhenARefusalSetsThemAndASaveClearsThem()
+    {
+        var editor = NewBookEditor(title: string.Empty);
+        var announced = new List<string>();
+
+        ((System.ComponentModel.INotifyPropertyChanged)editor).PropertyChanged
+            += (_, e) => announced.Add(e.PropertyName!);
+
+        RecordEditorTests.Execute(editor, "SaveCommand");
+
+        CollectionAssert.Contains(announced, "Errors");
+        Assert.HasCount(1, Errors(editor));
+
+        announced.Clear();
+        var draft = editor.GetType().GetProperty("Draft")!.GetValue(editor)!;
+        draft.GetType().GetProperty("Title")!.SetValue(draft, "Dune");
+
+        RecordEditorTests.Execute(editor, "SaveCommand");
+
+        CollectionAssert.Contains(announced, "Errors");
+        Assert.IsEmpty(Errors(editor));
+    }
+
+    private static object NewBookEditor(string title)
+    {
+        var assembly = RecordEditorTests.EmitValidating();
+        RecordEditorTests.Rows(assembly).Clear();
+
+        var bookType = assembly.GetType("Book")!;
+        var editorType = assembly.GetType("RecordEditorViewModel`1")!.MakeGenericType(bookType);
+        var editor = Activator.CreateInstance(editorType, [null, true, null])!;
+
+        var draft = editorType.GetProperty("Draft")!.GetValue(editor)!;
+        bookType.GetProperty("Title")!.SetValue(draft, title);
+
+        return editor;
+    }
+
+    private static IReadOnlyDictionary<string, string> Errors(object editor)
+        => (IReadOnlyDictionary<string, string>)editor.GetType().GetProperty("Errors")!.GetValue(editor)!;
 
     /// <summary>What the editor kept against one property, read the way a view would.</summary>
     private static string ErrorFor(object editor, string property)

@@ -96,6 +96,10 @@ public sealed class MainForm : Form
 {
     private readonly ShellViewModel _shell;
     private readonly Panel _content = new() { Dock = DockStyle.Fill };
+
+    /// <summary>The icon beside each field the last refused save named, its message on hover. One
+    /// for the whole window: a control that is disposed takes its error with it.</summary>
+    private readonly ErrorProvider _fieldErrors = new() { BlinkStyle = ErrorBlinkStyle.NeverBlink };
     private readonly TreeView _rail = new()
     {
         Dock = DockStyle.Fill,
@@ -363,12 +367,31 @@ public sealed class MainForm : Form
         Control? form = null;
         TabPage? additionalPage = null;
 
+        // The editor whose Errors the form is showing. A refused save keeps the same editor and
+        // announces its Errors; it is the SCREEN that announces a new editor, so the form has to
+        // listen to both, and let go of the old editor each time the screen replaces it.
+        INotifyPropertyChanged? watched = null;
+
+        void OnEditorChanged(object? sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == "Errors")
+                PaintErrors(sender, header, form, additionalPage);
+        }
+
         // Repaints everything bound to the CURRENT draft. Called once for the initial paint and
         // again every time the screen replaces its Editor -- see the remarks above.
         void RepaintRecord()
         {
             var editor = screen.GetType().GetProperty("Editor")?.GetValue(screen);
             var record = editor?.GetType().GetProperty("Draft")?.GetValue(editor);
+
+            if (watched is not null)
+                watched.PropertyChanged -= OnEditorChanged;
+
+            watched = editor as INotifyPropertyChanged;
+
+            if (watched is not null)
+                watched.PropertyChanged += OnEditorChanged;
 
             if (header is not null)
             {
@@ -399,9 +422,17 @@ public sealed class MainForm : Form
 
             if (record is not null && HasAdditional(screen))
                 additionalPage = AddAdditionalTab(tabs, record);
+
+            PaintErrors(editor, header, form, additionalPage);
         }
 
         RepaintRecord();
+
+        layout.Disposed += (_, _) =>
+        {
+            if (watched is not null)
+                watched.PropertyChanged -= OnEditorChanged;
+        };
 
         layout.Controls.Add(tabs, 0, 2);
 
@@ -679,6 +710,18 @@ public sealed class MainForm : Form
     /// </remarks>
     private Control BuildFieldEditor(object record, PropertyInfo field)
     {
+        var editor = CreateFieldEditor(record, field);
+
+        // The property it edits, which is how PaintErrors finds the control a refusal names; and
+        // room on the right for the error icon, which is drawn beside the control, not inside it.
+        editor.Tag = field;
+        editor.Margin = new Padding(editor.Margin.Left, editor.Margin.Top, 22, editor.Margin.Bottom);
+
+        return editor;
+    }
+
+    private Control CreateFieldEditor(object record, PropertyInfo field)
+    {
         var underlying = Nullable.GetUnderlyingType(field.PropertyType) ?? field.PropertyType;
 
         if (FieldGroups.NavigationFor(field) is { } nav)
@@ -864,7 +907,8 @@ public sealed class MainForm : Form
                 ScrollBars = ScrollBars.Vertical,
                 Width = 520,
                 Height = 90,
-                Margin = new Padding(0, 0, 0, 10),
+                Margin = new Padding(0, 0, 22, 10),
+                Tag = field,
             };
 
             box.DataBindings.Add(
@@ -884,6 +928,43 @@ public sealed class MainForm : Form
         tabs.TabPages.Add(page);
 
         return page;
+    }
+
+    /// <summary>
+    /// Marks every field control under <paramref name="roots"/> with what the editor's Errors say
+    /// against its property, and clears the mark from every field they no longer name.
+    /// </summary>
+    /// <remarks>
+    /// Found by the PropertyInfo each field control carries in its Tag, so the same walk serves a
+    /// master's form, its header's key strip, the Additional Information tab and a transaction's
+    /// editor. Errors is read by reflection for the reason HasAdditional is: neither interface a
+    /// screen is known by here declares it.
+    /// </remarks>
+    private void PaintErrors(object? editor, params Control?[] roots)
+    {
+        var errors = editor?.GetType().GetProperty("Errors")?.GetValue(editor)
+            as IReadOnlyDictionary<string, string>;
+
+        foreach (var root in roots)
+        {
+            if (root is not null)
+                Mark(root, errors);
+        }
+    }
+
+    private void Mark(Control parent, IReadOnlyDictionary<string, string>? errors)
+    {
+        foreach (Control control in parent.Controls)
+        {
+            if (control.Tag is PropertyInfo field)
+            {
+                _fieldErrors.SetError(
+                    control,
+                    errors is not null && errors.TryGetValue(field.Name, out var message) ? message : string.Empty);
+            }
+
+            Mark(control, errors);
+        }
     }
 
     /// <summary>The rows a lookup offers, from the pane that holds that entity. Empty when the
@@ -1050,6 +1131,10 @@ public sealed class MainForm : Form
 
                     case "Status":
                         ShowStatus(bar, editor);
+                        break;
+
+                    case "Errors":
+                        PaintErrors(editor, layout);
                         break;
                 }
             };

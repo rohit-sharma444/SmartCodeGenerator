@@ -1001,4 +1001,34 @@ public class WinFormsBusinessLayoutTests
         Assert.IsGreaterThan(-1, rebind, "BuildRecordList has no Rebind");
         Assert.IsGreaterThan(rebind, assigned, "the count is not set inside Rebind, so it never updates");
     }
+
+    /// <summary>
+    /// Issue #129: a refused save marks the fields it names, on the master's form and on a
+    /// transaction's editor alike.
+    /// </summary>
+    /// <remarks>
+    /// Each needle is scoped to the screen that must do it: the master has to follow the editor
+    /// the screen swaps in, the transaction editor has to listen for Errors on its own.
+    /// </remarks>
+    [TestMethod]
+    public void A_refused_save_marks_the_fields_it_names()
+    {
+        var source = Source();
+
+        StringAssert.Contains(source, "private readonly ErrorProvider _fieldErrors");
+        StringAssert.Contains(source, "_fieldErrors.SetError(");
+
+        // Every field control carries the property it edits, which is how a refusal finds it.
+        StringAssert.Contains(
+            Body(source, "private Control BuildFieldEditor(", "private Control CreateFieldEditor("),
+            "editor.Tag = field;");
+
+        var master = Body(source, "private Control BuildEntry(object screen)", "private (Control");
+        StringAssert.Contains(master, "watched.PropertyChanged += OnEditorChanged;");
+        StringAssert.Contains(master, "watched.PropertyChanged -= OnEditorChanged;");
+        StringAssert.Contains(master, "PaintErrors(editor, header, form, additionalPage);");
+
+        var transaction = Body(source, "private Control BuildEditor(IRecordEditor editor)", "private Control BuildTotals(");
+        CaseRuns(transaction, "case \"Errors\":", "PaintErrors(editor, layout);");
+    }
 }
