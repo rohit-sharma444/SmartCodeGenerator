@@ -1,3 +1,4 @@
+using DomainDiscovery.Enrichment;
 using DomainDiscovery.Model;
 using DomainDiscovery.Review;
 using Xunit;
@@ -331,6 +332,37 @@ public class ModelEditorTests
         Assert.True(ModelEditor.RenameEntity(model, "Member", "CashRegister"));
 
         Assert.Equal("CashRegister", Assert.Single(model.Entities).Name);
+    }
+
+    [Fact]
+    public void RenameEntity_CarriesTheRelationshipsThatPointAtIt()
+    {
+        // The mapper looks every Target up by the class's current name, and ForeignKeys finds a
+        // reference by its <Target>Id field. Left on the old name, both miss: Order came out with
+        // no Client property and no key, with nothing on screen to say why.
+        var model = ModelWith("Customer", "Order");
+        CandidateReference.Record(model.Entities[1], model.Entities[0], "places");
+
+        Assert.True(ModelEditor.RenameEntity(model, "Customer", "Client"));
+
+        var order = model.Entities[1];
+        var relationship = Assert.Single(order.Relationships);
+        Assert.Equal("Client", relationship.Target);
+        Assert.Equal("places", relationship.Role);
+        Assert.Contains(order.Fields, f => f.Name == "ClientId");
+        Assert.DoesNotContain(order.Fields, f => f.Name == "CustomerId");
+    }
+
+    [Fact]
+    public void RenameEntity_CarriesARelationshipAClassHasToItself()
+    {
+        var model = ModelWith("Employee");
+        CandidateReference.Record(model.Entities[0], model.Entities[0], "reports to");
+
+        Assert.True(ModelEditor.RenameEntity(model, "Employee", "Staff"));
+
+        Assert.Equal("Staff", Assert.Single(model.Entities[0].Relationships).Target);
+        Assert.Contains(model.Entities[0].Fields, f => f.Name == "StaffId");
     }
 
     [Fact]

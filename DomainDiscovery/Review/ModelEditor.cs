@@ -177,7 +177,15 @@ public static class ModelEditor
         if (owner is null || field is null)
             return false;
 
-        var normalized = NameNormalizer.ToFieldName(newName);
+        return TryRename(owner, field, NameNormalizer.ToFieldName(newName));
+    }
+
+    /// <summary>
+    /// The rename behind <see cref="RenameField"/>, for a name already normalized - which is also
+    /// how <see cref="RenameEntity"/> moves a foreign key onto its target's new name.
+    /// </summary>
+    private static bool TryRename(CandidateEntity owner, CandidateField field, string normalized)
+    {
         if (!NameNormalizer.IsValidIdentifier(normalized))
             return false;
 
@@ -249,6 +257,8 @@ public static class ModelEditor
         var former = target.Name;
         target.Name = normalizedNew;
 
+        FollowReferences(model, former, normalizedNew);
+
         // The trail is filed under the name each stage saw, so a rename strands it: `why` on the
         // new name would find nothing and report a discovered entity as hand-added. Recording
         // both directions lets the user follow the rename from whichever name they remember.
@@ -258,6 +268,39 @@ public static class ModelEditor
             DecisionReasons.YouRenamedIt, $"renamed to \"{normalizedNew}\"");
 
         return true;
+    }
+
+    /// <summary>
+    /// Points every relationship aimed at <paramref name="former"/> at <paramref name="renamed"/>,
+    /// and moves its <c>&lt;Target&gt;Id</c> key with it.
+    /// </summary>
+    /// <remarks>
+    /// Both halves, for the reason <see cref="CandidateReference"/> records both: the mapper looks
+    /// a Target up by the class's current name and skips one it cannot find, and
+    /// <c>ForeignKeys.TargetsOf</c> knows a reference only by its key field. Left behind, the
+    /// renamed class lost every reference to it without a word. A key that cannot take the new
+    /// name - the entity already has a field called that - keeps the old one rather than collide.
+    /// </remarks>
+    private static void FollowReferences(CandidateDomainModel model, string former, string renamed)
+    {
+        foreach (var entity in model.Entities)
+        {
+            for (var i = 0; i < entity.Relationships.Count; i++)
+            {
+                var relationship = entity.Relationships[i];
+                if (!string.Equals(relationship.Target, former, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                entity.Relationships[i] = new CandidateRelationship
+                {
+                    Target = renamed,
+                    Role = relationship.Role
+                };
+
+                if (FindField(entity, $"{former}Id") is { } key)
+                    TryRename(entity, key, $"{renamed}Id");
+            }
+        }
     }
 
     private static CandidateEntity? Find(CandidateDomainModel model, string name)
