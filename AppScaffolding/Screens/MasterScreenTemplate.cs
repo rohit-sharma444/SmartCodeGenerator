@@ -145,10 +145,7 @@ public class MasterScreenViewModel<T> : ObservableObject, IEntityViewModel, IDir
         set
         {
             if (SetField(ref _search, value))
-            {
-                OnPropertyChanged(nameof(Items));
-                OnPropertyChanged(nameof(Shown));
-            }
+                ShownChanged();
         }
     }
 
@@ -234,8 +231,16 @@ public class MasterScreenViewModel<T> : ObservableObject, IEntityViewModel, IDir
         foreach (var record in _store.GetAll())
             Records.Add(record);
 
-        OnPropertyChanged(nameof(Items));
         OnPropertyChanged(nameof(Count));
+        ShownChanged();
+    }
+
+    /// <summary>Announces everything computed from the rows on show. The one path for a reload,
+    /// a search and anything a derived screen filters on, so a figure derived from those rows
+    /// cannot be left out of one of them and go stale.</summary>
+    protected virtual void ShownChanged()
+    {
+        OnPropertyChanged(nameof(Items));
         OnPropertyChanged(nameof(Shown));
     }
 

@@ -79,7 +79,7 @@ public sealed class TransactionScreenViewModel<T> : MasterScreenViewModel<T> whe
         set
         {
             if (SetField(ref _from, value))
-                Refilter();
+                ShownChanged();
         }
     }
 
@@ -89,7 +89,7 @@ public sealed class TransactionScreenViewModel<T> : MasterScreenViewModel<T> whe
         set
         {
             if (SetField(ref _to, value))
-                Refilter();
+                ShownChanged();
         }
     }
 
@@ -152,9 +152,11 @@ public sealed class TransactionScreenViewModel<T> : MasterScreenViewModel<T> whe
         });
     }
 
-    private void Refilter()
+    /// <summary>The footer is summed over the rows on show, so it changes whenever they do —
+    /// after a write as well as after a filter.</summary>
+    protected override void ShownChanged()
     {
-        OnPropertyChanged(nameof(Items));
+        base.ShownChanged();
         OnPropertyChanged(nameof(Totals));
     }
 }
