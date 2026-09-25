@@ -135,6 +135,43 @@ public class SqlServerReaderTests
         Assert.Contains(reader.LossNotes, note => note.Contains("OrderID"));
     }
 
+    /// <summary>
+    /// Reported to the USER, not merely kept: <see cref="SqlServerReader.LossNotes"/> was read by
+    /// nothing but the test above, so a bigint key past int's range was lost without a word. The
+    /// import notes are what both the command line and the workflow page print, and a
+    /// normalization rewrite must not shed the note on its way there.
+    /// </summary>
+    [Fact]
+    public void A_lossy_column_type_reaches_the_import_notes_the_user_is_shown()
+    {
+        var source = Northwind();
+        source.ColumnsByTable["Orders"] =
+        [
+            new SqlColumnInfo("OrderID", "bigint", false),
+            new SqlColumnInfo("Total", "decimal", false),
+        ];
+        source.RowsByTable["Orders"] = [["10248", "1"]];
+
+        var tables = new SqlServerReader(source).Read(Spec("Orders"));
+
+        var dropTotal = new DataIngestion.Normalization.NormalizationFinding
+        {
+            Kind = DataIngestion.Normalization.NormalizationFindingKind.DerivedColumn,
+            TableName = "Orders",
+            SourceLabel = "dbo.Orders",
+            Columns = ["Total"],
+            Headline = "Derived column: Total",
+            Proposal = "drop it",
+            Evidence = [],
+        };
+
+        foreach (var set in new[] { tables, DataIngestion.Normalization.NormalizationPlan.Apply(tables, [dropTotal]) })
+        {
+            var notes = TabularImport.ToImportedData(set).Notes;
+            Assert.Contains(notes, n => n.Contains("OrderID") && n.Contains("bigint") && n.Contains("dbo.Orders"));
+        }
+    }
+
     /// <summary>Two schemas may both hold Orders, so the label carries both parts.</summary>
     [Fact]
     public void A_table_is_labelled_with_its_two_part_name()

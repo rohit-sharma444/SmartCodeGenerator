@@ -274,6 +274,7 @@ public static class NormalizationPlan
         };
 
         rewritten.ForeignKeys.AddRange(table.ForeignKeys.Where(k => !removed.Contains(k.Column)));
+        rewritten.Notes.AddRange(table.Notes);
 
         foreach (var column in kept)
             rewritten.Columns.Add(new TabularColumn

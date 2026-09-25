@@ -24,6 +24,9 @@ public static class TabularImport
 
         foreach (var table in tables)
         {
+            // What the reader had to give up is true whether or not the table becomes a class.
+            notes.AddRange(table.Notes);
+
             var entityName = NameNormalizer.ToUserTypedEntityName(table.Name);
 
             // The same three guards DataModelBuilder applies, for the same reasons. They must agree:

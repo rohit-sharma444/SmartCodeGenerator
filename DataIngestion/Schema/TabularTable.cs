@@ -25,6 +25,13 @@ public sealed class TabularTable
     /// <summary>The foreign keys the source declared, or empty when it declares none.</summary>
     public List<TabularForeignKey> ForeignKeys { get; } = new();
 
+    /// <summary>
+    /// What reading this table cost that the user must be told — a lossy column type, a column
+    /// or sheet that could not be kept. <c>TabularImport</c> passes every one on to the import
+    /// notes, which is what both the command line and the workflow page print.
+    /// </summary>
+    public List<string> Notes { get; } = new();
+
     /// <summary>What to call the source in a message to the user ("Orders.csv"). Falls back to
     /// <see cref="Name"/>.</summary>
     public string? SourceLabel { get; init; }
