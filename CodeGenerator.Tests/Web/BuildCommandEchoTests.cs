@@ -171,6 +171,67 @@ public class BuildCommandEchoTests
         Assert.AreEqual("a shop", parsed.Request.Description);
     }
 
+    /// <summary>
+    /// A company switches a typed line onto the company title, so a title put back to the app
+    /// alone has to be said - and said where the parser applies it after the company.
+    /// </summary>
+    [TestMethod]
+    public void A_title_put_back_to_the_app_alone_survives_a_company()
+    {
+        var session = Session("a shop");
+        session.SetCustomization(AppCustomization.Default with
+        {
+            Company = "Codis Ltd",
+            TitlePattern = AppCustomization.AppPlaceholder,
+        });
+
+        var parsed = Reparse(BuildCommandEcho.For(session)[0]);
+
+        Assert.AreEqual(AppCustomization.AppPlaceholder, parsed.Customization.TitlePattern);
+        Assert.AreEqual("Codis Ltd", parsed.Customization.Company);
+    }
+
+    /// <summary>
+    /// The whole customization, with the values that break a line: spaces in the icon path and
+    /// the transaction list, and a quote inside the company. Compared as one record, so an option
+    /// the echo forgets, or one it writes that parses differently, fails here.
+    /// </summary>
+    [TestMethod]
+    public void Awkward_values_parse_back_to_the_same_customization()
+    {
+        var session = Session("a shop");
+        session.SetTarget(new WpfTarget());
+        session.Advance();
+        session.SetNoData();
+        session.Advance();
+
+        var asked = AppCustomization.Default with
+        {
+            Company = "Codis \"Best\" Ltd",
+            NamespacePrefix = "CodisLtd",
+            Theme = AppTheme.Light,
+            Accent = "#123456",
+            IconPath = @"C:\My Icons\app logo.ico",
+            TitlePattern = "{app} for \"{company}\"",
+            Layout = AppLayout.Sidebar,
+            EntryTemplate = AppScaffolding.Screens.EntryTemplate.Split,
+            Transactions = "Order, Sales Invoice",
+            Masters = "Region, Price List",
+            Validation = false,
+            Logging = true,
+            SampleSeedData = false,
+            Login = false,
+        };
+
+        session.SetCustomization(asked);
+
+        var parsed = Reparse(BuildCommandEcho.For(session)[0]);
+
+        Assert.AreEqual(asked, parsed.Customization);
+        Assert.AreEqual("a shop", parsed.Request.Description);
+        Assert.IsNull(parsed.Request.Source);
+    }
+
     /// <summary>Left out before, so a pasted line read EVERY table of the database - a different
     /// model from the one this run reviewed.</summary>
     [TestMethod]

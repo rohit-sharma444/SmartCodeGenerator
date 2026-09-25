@@ -29,6 +29,18 @@ public class InlineCustomizationTests
         Assert.AreEqual("Codis Ltd", customization.Company);
     }
 
+    /// <summary>A doubled quote inside a quoted value is one literal quote - the only way a value
+    /// holding a quote gets onto the line, and what the workflow's replay line writes.</summary>
+    [TestMethod]
+    public void A_doubled_quote_inside_a_quoted_value_is_one_quote()
+    {
+        var (remaining, customization) = Split("a shop company \"Codis \"\"Best\"\" Ltd\" logging");
+
+        Assert.AreEqual("a shop", remaining);
+        Assert.AreEqual("Codis \"Best\" Ltd", customization.Company);
+        Assert.IsTrue(customization.Logging);
+    }
+
     /// <summary>Naming a company adopts the company title pattern: a user who says who they are
     /// means the app to say so, and asking again would be a question with one sensible answer.</summary>
     [TestMethod]

@@ -207,7 +207,7 @@ internal static class InlineCustomization
 
         if (trimmed.Length >= 2 && trimmed[^1] == '"')
         {
-            var open = trimmed.LastIndexOf('"', trimmed.Length - 2);
+            var open = OpeningQuote(trimmed);
 
             if (open >= 0)
                 return (trimmed[open..], trimmed[..open].TrimEnd());
@@ -221,7 +221,40 @@ internal static class InlineCustomization
     }
 
     /// <summary>
-    /// Strips the quotes from a fully-quoted token. An unmatched OPENING quote (a value like
+    /// Where the quoted phrase that ends <paramref name="text"/> opens, or -1.
+    /// </summary>
+    /// <remarks>
+    /// A doubled quote inside the phrase is one literal quote, so <c>"Codis ""Best"" Ltd"</c> is
+    /// one token. Without it a value holding a quote had no way onto the line at all, and the
+    /// workflow's replay line broke on any company that had one.
+    /// </remarks>
+    private static int OpeningQuote(string text)
+    {
+        var i = text.Length - 2;
+
+        while (i >= 0)
+        {
+            if (text[i] != '"')
+            {
+                i--;
+                continue;
+            }
+
+            if (i > 0 && text[i - 1] == '"')
+            {
+                i -= 2;
+                continue;
+            }
+
+            return i;
+        }
+
+        return -1;
+    }
+
+    /// <summary>
+    /// Strips the quotes from a fully-quoted token, and turns each doubled quote inside it back
+    /// into one. An unmatched OPENING quote (a value like
     /// `"Codis` with no closing partner) is also dropped rather than kept: the alternative of
     /// rejecting the whole value was considered and rejected, because a stray quote character
     /// flowing into a generated title or project file is worse than tolerating an unbalanced
@@ -230,7 +263,7 @@ internal static class InlineCustomization
     private static string Unquote(string text)
     {
         if (text.Length >= 2 && text[0] == '"' && text[^1] == '"')
-            return text[1..^1];
+            return text[1..^1].Replace("\"\"", "\"");
 
         return text.Length >= 1 && text[0] == '"' ? text[1..] : text;
     }
