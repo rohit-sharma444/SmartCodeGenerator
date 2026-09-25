@@ -236,7 +236,7 @@
     private string Picked()
         => _picked.Count == 0
             ? $"Nothing ticked — all {_tables.Count} tables will be read."
-            : $"{_picked.Count} of {_tables.Count} tables, every row of each.";
+            : $"{_picked.Count} of {_tables.Count} tables, up to {SqlServerReader.MaxRowsPerTable:N0} rows of each.";
 
     /// <summary>An unreadable count is an em dash, not a zero: "I do not know" and "there is
     /// nothing in it" are different answers.</summary>

@@ -196,7 +196,7 @@ public class GeneratedAppTypeFactsTests
 
         public IReadOnlyList<TabularForeignKey> ForeignKeys(string connectionString) => [];
 
-        public IReadOnlyList<string?[]> Rows(string connectionString, string schema, string table)
+        public IReadOnlyList<string?[]> Rows(string connectionString, string schema, string table, int limit)
             =>
             [
                 ["1", "AB-1", "a note", "5", "19.98", "2026-01-01"],

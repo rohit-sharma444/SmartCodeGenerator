@@ -31,6 +31,29 @@ public sealed class TabularTable
 
     public string Label => SourceLabel ?? Name;
 
+    /// <summary>Whether the reader stopped before the source's last row, so <see cref="Rows"/> is
+    /// only part of the table. Only the SQL reader stops early.</summary>
+    public bool IsPartial { get; set; }
+
+    /// <summary>How many rows the source holds, when <see cref="IsPartial"/> and the source could
+    /// say; null otherwise.</summary>
+    public long? SourceRowCount { get; set; }
+
+    /// <summary>
+    /// What to add to a claim about "all" the rows, or empty for a table read in full.
+    /// </summary>
+    /// <remarks>
+    /// A rule found in every row READ is still offered -- the user decides whether to accept it --
+    /// but it must not read as though it held in the whole table, which is the claim that turns a
+    /// sample into a rule the generated app then enforces against the rest of the user's data.
+    /// </remarks>
+    public string PartialNote
+        => !IsPartial
+            ? string.Empty
+            : SourceRowCount is { } total
+                ? $" (read {Rows.Count:N0} of the table's {total:N0} rows)"
+                : $" (read {Rows.Count:N0} rows, not the whole table)";
+
     public int IndexOf(string column)
         => Columns.FindIndex(c => string.Equals(c.Name, column, StringComparison.OrdinalIgnoreCase));
 

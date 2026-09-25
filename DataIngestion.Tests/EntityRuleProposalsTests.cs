@@ -227,4 +227,27 @@ public class EntityRuleProposalsTests
 
         Assert.DoesNotContain(proposals, p => p.Kind == EntityRuleProposalKind.Calculation);
     }
+
+    /// <summary>Issue #131: the entity-level rules say so too.</summary>
+    [Fact]
+    public void Evidence_from_a_partly_read_table_says_so()
+    {
+        var entity = new CandidateEntity { Name = "Booking" };
+        entity.Fields.Add(new CandidateField { Name = "StartDate", Type = "DateTime" });
+        entity.Fields.Add(new CandidateField { Name = "EndDate", Type = "DateTime" });
+
+        var table = TableOf("Booking", ["StartDate", "EndDate"],
+        [
+            ["2026-01-01", "2026-01-10"],
+            ["2026-02-01", "2026-02-01"],
+        ]);
+
+        var partial = new TabularTable { Name = table.Name, IsPartial = true, SourceRowCount = 9_000 };
+        partial.Columns.AddRange(table.Columns);
+        partial.Rows.AddRange(table.Rows);
+
+        var crossField = Assert.Single(
+            EntityRuleProposals.For(entity, partial), p => p.Kind == EntityRuleProposalKind.CrossField);
+        Assert.Contains("read 2 of the table's 9,000 rows", crossField.Evidence);
+    }
 }

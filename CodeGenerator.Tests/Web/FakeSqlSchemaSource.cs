@@ -21,7 +21,7 @@ internal sealed class FakeSqlSchemaSource : ISqlSchemaSource
 
     public IReadOnlyList<TabularForeignKey> ForeignKeys(string connectionString) => [];
 
-    public IReadOnlyList<string?[]> Rows(string c, string schema, string table)
+    public IReadOnlyList<string?[]> Rows(string c, string schema, string table, int limit)
     {
         RowsFetched.Add(table);
         return [];
@@ -38,5 +38,5 @@ internal sealed class ThrowingSqlSchemaSource(string message) : ISqlSchemaSource
 
     public IReadOnlyList<TabularForeignKey> ForeignKeys(string connectionString) => [];
 
-    public IReadOnlyList<string?[]> Rows(string c, string schema, string table) => [];
+    public IReadOnlyList<string?[]> Rows(string c, string schema, string table, int limit) => [];
 }

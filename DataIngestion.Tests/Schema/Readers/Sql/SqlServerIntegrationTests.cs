@@ -34,10 +34,10 @@ public class SqlServerIntegrationTests
         var tables = source.Tables(Connection);
         Assert.NotEmpty(tables);
 
-        // The SMALLEST table, not the first. Rows() reads a table in full, and pointed at a real
-        // database the first one alphabetically can be enormous - the one this was first run
-        // against had 47 million rows in it. An unreadable count sorts last rather than first,
-        // since it might be anything.
+        // The SMALLEST table for the schema calls, not the first: pointed at a real database the
+        // first one alphabetically can be enormous - the one this was first run against had 47
+        // million rows in it. An unreadable count sorts last rather than first, since it might be
+        // anything.
         var smallest = tables.OrderBy(t => t.Rows ?? long.MaxValue).First();
 
         Assert.NotEmpty(source.Columns(Connection, smallest.Schema, smallest.Name));
@@ -47,6 +47,12 @@ public class SqlServerIntegrationTests
         _ = source.ForeignKeys(Connection);
 
         // Proves the SELECT and the value rendering, whatever the table holds.
-        _ = source.Rows(Connection, smallest.Schema, smallest.Name);
+        _ = source.Rows(Connection, smallest.Schema, smallest.Name, 10);
+
+        // And the limit, on the LARGEST table: before TOP, this read every row of it. Issue #131.
+        var largest = tables.OrderByDescending(t => t.Rows ?? 0).First();
+
+        if (largest.Rows is > 10)
+            Assert.Equal(10, source.Rows(Connection, largest.Schema, largest.Name, 10).Count);
     }
 }
