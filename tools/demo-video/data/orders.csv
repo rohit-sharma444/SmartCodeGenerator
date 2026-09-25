@@ -1,0 +1,25 @@
+OrderNumber,OrderDate,DeliveryDate,Customer,CustomerCity,Status,Net,TaxRate,Total,Item1,Item2,Item3
+SO-1040,2026-08-05,2026-08-10,Maple and Co,Boston,Draft,746.00,0.05,783.30,Oat milk,,
+SO-1041,2026-08-19,2026-08-21,Maple and Co,Boston,Confirmed,599.00,0.05,628.95,Oat milk,,
+SO-1042,2026-08-14,2026-08-16,Sunset Grocers,San Diego,Shipped,326.00,0.05,342.30,Bagels,Coffee beans,Green tea
+SO-1043,2026-08-08,2026-08-15,Harbor Cafe,Seattle,Delivered,722.00,0.10,794.20,Bagels,,
+SO-1044,2026-08-08,2026-08-10,Harbor Cafe,Seattle,Draft,650.00,0.05,682.50,Bagels,Oat milk,
+SO-1045,2026-08-04,2026-08-10,Riverside Deli,Austin,Confirmed,395.00,0.10,434.50,Paper cups,Coffee beans,Green tea
+SO-1046,2026-08-07,2026-08-11,Riverside Deli,Austin,Shipped,179.00,0.10,196.90,Oat milk,Green tea,Coffee beans
+SO-1047,2026-08-07,2026-08-12,Riverside Deli,Austin,Delivered,776.00,0.10,853.60,Maple syrup,Croissants,
+SO-1048,2026-08-15,2026-08-19,Riverside Deli,Austin,Draft,386.00,0.05,405.30,Croissants,,
+SO-1049,2026-08-19,2026-08-23,Harbor Cafe,Seattle,Confirmed,617.00,0.08,666.36,Napkins,Paper cups,
+SO-1050,2026-08-03,2026-08-05,Riverside Deli,Austin,Shipped,604.00,0.08,652.32,Maple syrup,,
+SO-1051,2026-08-16,2026-08-21,Blue Pine Market,Denver,Delivered,120.00,0.10,132.00,Maple syrup,,
+SO-1052,2026-08-12,2026-08-18,Maple and Co,Boston,Draft,588.00,0.10,646.80,Oat milk,Bagels,
+SO-1053,2026-08-09,2026-08-14,Harbor Cafe,Seattle,Confirmed,793.00,0.10,872.30,Coffee beans,,
+SO-1054,2026-08-10,2026-08-17,Lakeview Bakery,Chicago,Shipped,671.00,0.10,738.10,Green tea,Maple syrup,
+SO-1055,2026-08-12,2026-08-14,Sunset Grocers,San Diego,Delivered,552.00,0.08,596.16,Oat milk,,
+SO-1056,2026-08-02,2026-08-05,Sunset Grocers,San Diego,Draft,866.00,0.08,935.28,Croissants,,
+SO-1057,2026-08-13,2026-08-21,Sunset Grocers,San Diego,Confirmed,588.00,0.05,617.40,Napkins,,
+SO-1058,2026-08-18,2026-08-22,Sunset Grocers,San Diego,Shipped,220.00,0.08,237.60,Green tea,Maple syrup,Croissants
+SO-1059,2026-08-13,2026-08-16,Maple and Co,Boston,Delivered,234.00,0.05,245.70,Paper cups,,
+SO-1060,2026-08-08,2026-08-10,Blue Pine Market,Denver,Draft,576.00,0.10,633.60,Green tea,,
+SO-1061,2026-08-01,2026-08-04,Maple and Co,Boston,Confirmed,509.00,0.10,559.90,Maple syrup,Oat milk,
+SO-1062,2026-08-17,2026-08-23,Lakeview Bakery,Chicago,Shipped,750.00,0.10,825.00,Coffee beans,Croissants,Maple syrup
+SO-1063,2026-08-13,2026-08-18,Riverside Deli,Austin,Delivered,488.00,0.08,527.04,Napkins,,

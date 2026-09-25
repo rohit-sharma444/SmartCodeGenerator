@@ -1,0 +1,4 @@
+# Installed by `npm install`, and everything the scripts produce on the way to the video.
+node_modules/
+out/
+__pycache__/

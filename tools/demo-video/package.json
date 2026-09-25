@@ -1,0 +1,12 @@
+{
+  "name": "build-app-demo-video",
+  "private": true,
+  "type": "module",
+  "description": "Records the build app demo video. See README.md.",
+  "scripts": {
+    "record": "node record.mjs"
+  },
+  "dependencies": {
+    "playwright": "1.61.1"
+  }
+}
