@@ -682,14 +682,17 @@ command line is not a remembered one and is never announced.</p>
 <tr><td><code>theme light|dark</code></td><td>Colours the desktop front ends. WPF gets a theme resource dictionary merged into the application; Windows Forms gets the colours applied directly.</td></tr>
 <tr><td><code>accent #rrggbb</code></td><td>An accent colour. Valid on its own — "the normal look, in our colour". A malformed colour is ignored rather than failing the build.</td></tr>
 <tr><td><code>icon &lt;path&gt;</code></td><td>Copies a <code>.ico</code> or <code>.png</code> into the project as the application icon. A <code>.ico</code> also becomes the icon the built <code>.exe</code> carries.</td></tr>
-<tr><td><code>namespace &lt;prefix&gt;</code></td><td>Puts the generated code under your own namespace root: <code>CodisLtd.Shop.Models</code> rather than <code>Shop.Models</code>. The project name, the folder, the assembly name, the database file and the connection-string environment variable are all deliberately left alone — only namespaces move. <code>namespace none</code> clears a remembered prefix. Unlike the other settings, a prefix that is not a legal C# namespace is refused rather than ignored, because it would not compile.</td></tr>
+<tr><td><code>namespace &lt;prefix&gt;</code></td><td>Puts the generated code under your own namespace root: <code>CodisLtd.Shop.Models</code> rather than <code>Shop.Models</code>. The project name, the folder, the assembly name, the database file and the connection-string environment variable are all deliberately left alone — only namespaces move. <code>namespace none</code> clears a remembered prefix. A prefix that is not a legal C# namespace is ignored, with a note saying so, because it would not compile.</td></tr>
 <tr><td><code>novalidation</code></td><td>Omits the per-class validators and the field, entity and business checks. The <code>Validation</code> folder is still written — the permission matrix is always generated, because turning validation off must not turn permissions off.</td></tr>
 <tr><td><code>logging</code></td><td>Adds a small logging layer (off by default). The repository logs each write, and each rejected write when validation is on.</td></tr>
 <tr><td><code>noseed</code></td><td>Omits the generated sample rows. Rows imported from your own data file are unaffected — those always come with the project.</td></tr>
 </table>
 <div class="warn"><p><strong>One quirk worth knowing.</strong> Options are read from the end of the line
 backwards, so a description whose final words happen to spell an option is read as that option. Put the
-description first, or quote it, and this never bites.</p></div>
+description first, or quote it, and this never bites.</p>
+<p>A value an option cannot use &mdash; <code>theme mauve</code>, <code>layout kanban</code>, a malformed
+accent or namespace &mdash; is ignored, the tool says so before it starts, and every other option on the line
+is still read.</p></div>
 
 <h2>8. What gets generated</h2>
 
