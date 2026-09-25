@@ -79,6 +79,37 @@ public sealed class StoreEntityLookup : IEntityLookup
         Assert.IsEmpty(errors, string.Join("\n", errors));
     }
 
+    [TestMethod]
+    public void A_date_pair_with_a_blank_end_accepts_its_own_rows()
+    {
+        // Every row that HAS both dates starts on or before it ends, so a cross-field rule is
+        // offered. The open booking's blank EndDate loads as 0001-01-01, which its StartDate is
+        // after -- so a scan that skipped the blank row offered a rule that row breaks.
+        var table = Table("Booking", ["Guest", "StartDate", "EndDate"],
+            ["Ann", "2026-01-01", "2026-01-10"],
+            ["Bob", "2026-02-01", "2026-02-20"],
+            ["Cy", "2026-03-01", ""]);
+
+        var errors = ErrorsFromTheSeedRows(table, "Booking");
+
+        Assert.IsEmpty(errors, string.Join("\n", errors));
+    }
+
+    [TestMethod]
+    public void A_calculation_with_a_blank_operand_accepts_its_own_rows()
+    {
+        // Total is Net plus Tax on every row with all three, so the calculation is offered. The
+        // row with no Tax loads it as 0, and 100 is not 100 plus 0 when its Total says 120.
+        var table = Table("Invoice", ["Reference", "Net", "Tax", "Total"],
+            ["A", "100", "20", "120"],
+            ["B", "50", "10", "60"],
+            ["C", "100", "", "120"]);
+
+        var errors = ErrorsFromTheSeedRows(table, "Invoice");
+
+        Assert.IsEmpty(errors, string.Join("\n", errors));
+    }
+
     /// <summary>A table whose column types are inferred from its rows, as the readers do.</summary>
     internal static TabularTable Table(string name, string[] columns, params string?[][] rows)
     {

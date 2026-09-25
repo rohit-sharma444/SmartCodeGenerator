@@ -81,7 +81,7 @@ public class EntityRuleProposalsTests
     }
 
     [Fact]
-    public void A_blank_cell_in_either_column_is_skipped_not_counted_as_a_break()
+    public void A_blank_start_is_judged_as_the_app_loads_it_and_holds()
     {
         var entity = new CandidateEntity { Name = "Booking" };
         entity.Fields.Add(new CandidateField { Name = "StartDate", Type = "DateTime" });
@@ -91,12 +91,32 @@ public class EntityRuleProposalsTests
         [
             ["2026-01-01", "2026-01-10"],
             [null, "2026-02-01"],
+        ]);
+
+        var proposals = EntityRuleProposals.For(entity, table);
+
+        // The blank StartDate loads as 0001-01-01, which is on or before any EndDate.
+        Assert.Single(proposals, p => p.Kind == EntityRuleProposalKind.CrossField);
+    }
+
+    [Fact]
+    public void A_blank_end_is_judged_as_the_app_loads_it_and_breaks_the_rule()
+    {
+        var entity = new CandidateEntity { Name = "Booking" };
+        entity.Fields.Add(new CandidateField { Name = "StartDate", Type = "DateTime" });
+        entity.Fields.Add(new CandidateField { Name = "EndDate", Type = "DateTime" });
+
+        var table = TableOf("Booking", ["StartDate", "EndDate"],
+        [
+            ["2026-01-01", "2026-01-10"],
             ["2026-03-01", null],
         ]);
 
         var proposals = EntityRuleProposals.For(entity, table);
 
-        Assert.Single(proposals, p => p.Kind == EntityRuleProposalKind.CrossField);
+        // The blank EndDate loads as 0001-01-01, which the row's StartDate is after: skipping the
+        // row offered "StartDate must not be after EndDate", and the app then refused the row.
+        Assert.DoesNotContain(proposals, p => p.Kind == EntityRuleProposalKind.CrossField);
     }
 
     [Fact]
