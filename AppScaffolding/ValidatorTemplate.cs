@@ -319,9 +319,13 @@ internal sealed class NullValidator<T> : IValidator<T>
             if (!CanEmitEntityRule(property.Type, UniqueRule))
                 continue;
 
+            // A blank is never a collision, and for a number or a date the generated model's
+            // blank IS its default: the seed file writes a blank cell as nothing, so every blank
+            // row loads as 0 or 0001-01-01. Counting that as a value refuses the second blank row
+            // against the first, in a column whose scan found no two values alike.
             var guard = property.Type == "string"
                 ? $"if (!string.IsNullOrWhiteSpace(item.{property.Name}) && "
-                : "if (";
+                : $"if (item.{property.Name} != default && ";
 
             var uniqueChecks = new List<string>
             {
