@@ -630,8 +630,8 @@ internal sealed class BuildAppCommand
 
                 case "unfield" when parts.Length >= 3:
                     Report(
-                        ModelEditor.RemoveField(model, parts[1], parts[2]),
-                        $"Removed '{parts[2]}' from {parts[1]}.",
+                        ModelEditor.RemoveField(model, parts[1], parts[2], out var dropped),
+                        $"Removed '{parts[2]}' from {parts[1]}.{DroppedRulesNote(dropped)}",
                         "Could not remove field (no such field, or Name, which every class keeps).");
                     break;
 
@@ -1463,6 +1463,16 @@ internal sealed class BuildAppCommand
             ? $"Added '{added}'."
             : "Could not add (duplicate or invalid).";
     }
+
+    /// <summary>
+    /// What to add to a field's removal report for the accepted rules that went with it, or
+    /// nothing when none did. Shared by the console and the Review page, so both say it.
+    /// </summary>
+    internal static string DroppedRulesNote(IReadOnlyList<string> dropped)
+        => dropped.Count == 0
+            ? string.Empty
+            : $" Also dropped {(dropped.Count == 1 ? "the rule" : "the rules")} that named it: "
+              + string.Join("; ", dropped.Select(rule => $"'{rule}'")) + ".";
 
     /// <summary>
     /// The lines a <c>why [name]</c> line produces: the whole report when no name is given,

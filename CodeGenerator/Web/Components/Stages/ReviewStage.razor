@@ -276,8 +276,8 @@
 
     private void RemoveField(string entityName, string fieldName)
         => Report(
-            ModelEditor.RemoveField(Model, entityName, fieldName),
-            $"Removed {fieldName}.",
+            ModelEditor.RemoveField(Model, entityName, fieldName, out var dropped),
+            $"Removed {fieldName}.{BuildAppCommand.DroppedRulesNote(dropped)}",
             "Could not remove that field — Name and a class's last field both stay.");
 
     /// <summary>

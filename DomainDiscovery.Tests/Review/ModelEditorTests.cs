@@ -1,3 +1,5 @@
+using CodeGenerationEngine.Core.Validation.Rules;
+using CodeGenerationEngine.Models;
 using DomainDiscovery.Enrichment;
 using DomainDiscovery.Model;
 using DomainDiscovery.Review;
@@ -480,6 +482,92 @@ public class ModelEditorTests
         Assert.True(ModelEditor.RenameField(model, "Widget", "Name", "Label"));
 
         Assert.Equal(new[] { "Label" }, model.Entities[0].Fields.Select(f => f.Name));
+    }
+
+    /// <summary>An order whose rows showed two rules, both accepted: the dates are in order, and
+    /// the total is the quantity times the price.</summary>
+    private static CandidateDomainModel AnOrderWithAcceptedRules()
+    {
+        var model = ModelWith("Order");
+        var order = model.Entities[0];
+
+        foreach (var (name, type) in new[]
+                 {
+                     ("OrderDate", "DateTime"), ("ShipDate", "DateTime"),
+                     ("Quantity", "int"), ("Price", "decimal"), ("Total", "decimal")
+                 })
+            order.Fields.Add(new CandidateField { Name = name, Type = type });
+
+        order.Proposals.Add(new EntityRuleProposal
+        {
+            Kind = EntityRuleProposalKind.CrossField,
+            Properties = ["OrderDate", "ShipDate"],
+            Rule = new ComparisonRule("OrderDate", "ShipDate", "> 0", "OrderDate must not be after ShipDate"),
+            Evidence = "OrderDate is always on or before ShipDate, in all 40 rows",
+            Accepted = true
+        });
+
+        order.Proposals.Add(new EntityRuleProposal
+        {
+            Kind = EntityRuleProposalKind.Calculation,
+            Properties = ["Total", "Quantity", "Price"],
+            Rule = new ArithmeticRule("Total", "Quantity", "times", "Price"),
+            Evidence = "Total always equals Quantity times Price, in all 40 rows",
+            Accepted = true
+        });
+
+        return model;
+    }
+
+    [Fact]
+    public void RenameField_CarriesTheRulesThatNameIt()
+    {
+        // An accepted rule names its properties, and the generated validator skips one naming a
+        // property the class no longer has - so a rename used to drop the rule without a word.
+        var model = AnOrderWithAcceptedRules();
+
+        Assert.True(ModelEditor.RenameField(model, "Order", "ShipDate", "DispatchDate"));
+        Assert.True(ModelEditor.RenameField(model, "Order", "Price", "UnitPrice"));
+
+        var proposals = model.Entities[0].Proposals;
+        Assert.Equal(2, proposals.Count);
+
+        var dates = proposals[0];
+        Assert.True(dates.Accepted);
+        Assert.Equal(new[] { "OrderDate", "DispatchDate" }, dates.Properties);
+        Assert.Equal(new[] { "OrderDate", "DispatchDate" }, dates.Rule.Properties);
+        Assert.Equal("OrderDate must not be after DispatchDate", dates.Rule.Describe());
+        Assert.Equal("OrderDate is always on or before DispatchDate, in all 40 rows", dates.Evidence);
+        Assert.Equal("> 0", Assert.IsType<ComparisonRule>(dates.Rule).ViolationOperator);
+
+        var total = proposals[1];
+        Assert.True(total.Accepted);
+        Assert.Equal(new[] { "Total", "Quantity", "UnitPrice" }, total.Rule.Properties);
+        Assert.Equal("Total must equal Quantity times UnitPrice", total.Rule.Describe());
+    }
+
+    [Fact]
+    public void RemoveField_DropsOnlyTheRulesThatNameIt_AndSaysWhich()
+    {
+        var model = AnOrderWithAcceptedRules();
+
+        Assert.True(ModelEditor.RemoveField(model, "Order", "ShipDate", out var dropped));
+
+        Assert.Equal(new[] { "OrderDate must not be after ShipDate" }, dropped);
+        var kept = Assert.Single(model.Entities[0].Proposals);
+        Assert.Equal("Total must equal Quantity times Price", kept.Rule.Describe());
+    }
+
+    [Fact]
+    public void RemoveField_ReportsNoDroppedRules_WhenNoneNamedIt()
+    {
+        var model = AnOrderWithAcceptedRules();
+        model.Entities[0].Fields.Add(new CandidateField { Name = "Notes", Type = "string" });
+
+        Assert.True(ModelEditor.RemoveField(model, "Order", "Notes", out var dropped));
+
+        Assert.Empty(dropped);
+        Assert.Equal(2, model.Entities[0].Proposals.Count);
     }
 
     [Fact]

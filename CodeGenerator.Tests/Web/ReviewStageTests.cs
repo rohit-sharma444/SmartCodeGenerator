@@ -477,6 +477,33 @@ public class ReviewStageTests
         Assert.IsTrue(model.Entities.Single(e => e.Name == "Booking").Proposals[0].Accepted);
     }
 
+    /// <summary>
+    /// A rule the user accepted cannot outlive a property it names, but it was their choice, so
+    /// the report says it went rather than let it disappear with the field.
+    /// </summary>
+    [TestMethod]
+    public void Removing_a_field_says_which_accepted_rules_went_with_it()
+    {
+        using var context = new BunitContext();
+        var model = AModelWithAnEntityProposal();
+        var booking = model.Entities.Single(e => e.Name == "Booking");
+        booking.Proposals[0].Accepted = true;
+        var session = SessionWith(model);
+        var rendered = context.Render<ReviewStage>(p => p
+            .Add(c => c.Session, session)
+            .Add(c => c.Navigation, new StageNavigation())
+            .Add(c => c.OnAdvance, () => { }));
+
+        rendered.FindAll("[data-entity=Booking] .fields li")
+            .Single(li => li.QuerySelector("input.field-name")?.GetAttribute("value") == "EndDate")
+            .QuerySelector("button.unfield")!
+            .Click();
+
+        Assert.IsEmpty(booking.Proposals);
+        StringAssert.Contains(
+            rendered.Find(".edit-report").TextContent, "StartDate must not be after EndDate");
+    }
+
     private static CandidateDomainModel AModelWithAnAcceptedStatusProposal()
     {
         var model = AModel();
