@@ -240,6 +240,26 @@ public static class DataModelBuilder
         return map;
     }
 
+    /// <summary>
+    /// The column <paramref name="table"/> carried its own key in — the one dropped because the
+    /// generated class numbers its rows itself — or null when it had none. <c>&lt;Entity&gt;Id</c>
+    /// wins over a bare <c>Id</c> when a table has both, since that is the name another table's
+    /// foreign key to this one is spelled with.
+    /// </summary>
+    internal static string? KeyColumn(TabularTable table)
+    {
+        var entityName = NameNormalizer.ToUserTypedEntityName(table.Name);
+
+        var keys = ResolveColumns(table, entityName)
+            .Where(o => o.Fate == ColumnFate.DroppedGeneratedKey)
+            .Select(o => o.Column)
+            .ToList();
+
+        return keys.FirstOrDefault(k => !string.Equals(
+                   NameNormalizer.ToFieldName(k), "Id", StringComparison.OrdinalIgnoreCase))
+               ?? keys.FirstOrDefault();
+    }
+
     private static void AddFields(
         CandidateDomainModel model, CandidateEntity entity, TabularTable table)
     {

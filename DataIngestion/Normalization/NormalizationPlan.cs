@@ -210,7 +210,7 @@ public static class NormalizationPlan
             SourceLabel = table.Label,
         };
 
-        child.Columns.Add(new TabularColumn { Name = foreignKey, Type = "int" });
+        child.Columns.Add(new TabularColumn { Name = foreignKey, Type = "int", HoldsRowNumbers = true });
         child.Columns.Add(new TabularColumn { Name = valueColumn });
 
         return child;
@@ -263,10 +263,13 @@ public static class NormalizationPlan
         var rewritten = new TabularTable { Name = table.Name, SourceLabel = table.SourceLabel };
 
         foreach (var column in kept)
-            rewritten.Columns.Add(new TabularColumn { Name = column.Name, Type = column.Type });
+            rewritten.Columns.Add(new TabularColumn
+            {
+                Name = column.Name, Type = column.Type, HoldsRowNumbers = column.HoldsRowNumbers
+            });
 
         foreach (var (column, _) in addedKeys)
-            rewritten.Columns.Add(new TabularColumn { Name = column, Type = "int" });
+            rewritten.Columns.Add(new TabularColumn { Name = column, Type = "int", HoldsRowNumbers = true });
 
         for (var row = 0; row < table.Rows.Count; row++)
         {

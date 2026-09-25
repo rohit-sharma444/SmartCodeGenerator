@@ -71,7 +71,8 @@ public static class SeedFileWriter
                 foreach (var property in definition.Properties)
                 {
                     // Ids are assigned here, 1..N in row order — which is exactly what the foreign
-                    // keys the readers and NormalizationPlan emitted already point at.
+                    // keys the readers and NormalizationPlan emitted already point at, and what
+                    // TabularImport rewrote every key read from the source to.
                     if (string.Equals(property.Name, "Id", StringComparison.OrdinalIgnoreCase))
                     {
                         writer.WriteNumber("Id", index + 1);
