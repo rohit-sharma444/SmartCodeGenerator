@@ -15,10 +15,6 @@ namespace DataIngestion.Schema;
 /// </remarks>
 public static class ColumnTypeInference
 {
-    /// <summary>How many non-empty values are examined. A column's type is a property of its
-    /// domain, not of its length, and scanning a million rows to learn "int" is waste.</summary>
-    public const int TypeSampleSize = 200;
-
     /// <summary>Words that mean true or false. A bare 0/1 is deliberately NOT here: a column
     /// wrongly typed bool cannot round-trip a 2, while one wrongly typed int loses nothing.</summary>
     private static readonly HashSet<string> BooleanWords = new(StringComparer.OrdinalIgnoreCase)
@@ -83,42 +79,66 @@ public static class ColumnTypeInference
         return digits.Length >= 2 && digits[0] == '0' && char.IsAsciiDigit(digits[1]);
     }
 
+    /// <remarks>
+    /// EVERY value is examined, in one pass. A type chosen from the first rows is a guess about the
+    /// rest, and a wrong guess is paid for by the seed writer, which drops a value its type cannot
+    /// hold — so a later "n/a" in an "int" column simply vanished. The pass is linear, keeps no
+    /// copy of the column, and stops as soon as nothing but string is left.
+    /// </remarks>
     public static string Infer(IEnumerable<string?> values, string columnName)
     {
-        var sample = values
-            .Where(v => !string.IsNullOrWhiteSpace(v))
-            .Select(v => v!.Trim())
-            .Take(TypeSampleSize)
-            .ToList();
+        var seen = false;
+        var isInt = true;
+        var isDecimal = true;
+        var isBool = true;
+        var isDate = true;
 
-        if (sample.Count == 0)
+        foreach (var raw in values)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+                continue;
+
+            var value = raw.Trim();
+            seen = true;
+
+            // A zero-padded value is a code, not a quantity, and its padding is meaning: "007"
+            // stored as the number 7 is a silent change to the user's own data. One such value
+            // disqualifies the whole column from being numeric at all.
+            if (IsZeroPadded(value))
+                return "string";
+
+            isInt = isInt && int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _);
+
+            // NumberStyles.Number MINUS AllowThousands. With thousands separators allowed, "1,2"
+            // reads as the number twelve — a silent corruption — where without them it stays text,
+            // which is merely imprecise and is exactly what the review loop's `field` verb exists
+            // to correct.
+            isDecimal = isDecimal
+                && decimal.TryParse(value, DecimalStyles, CultureInfo.InvariantCulture, out _);
+
+            isBool = isBool && BooleanWords.Contains(value);
+            isDate = isDate && IsDate(value);
+
+            if (!isInt && !isDecimal && !isBool && !isDate)
+                return "string";
+        }
+
+        if (!seen)
             return TypeInference.Infer(columnName);
-
-        // A zero-padded value is a code, not a quantity, and its padding is meaning: "007" stored
-        // as the number 7 is a silent change to the user's own data. One such value disqualifies
-        // the whole column from being numeric at all.
-        if (sample.Any(IsZeroPadded))
-            return "string";
 
         // Ordered narrowest-first. int before decimal so "3" is a count, not money; bool after
         // both so the word forms are all that can reach it; DateTime last of the non-strings,
         // because a yyyymmdd date parses as int and is caught above (visible in the review loop,
         // and fixable there with `field`).
-        if (sample.All(v => int.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out _)))
+        if (isInt)
             return "int";
 
-        // NumberStyles.Number MINUS AllowThousands. With thousands separators allowed, "1,2" reads
-        // as the number twelve — a silent corruption — where without them it stays text, which is
-        // merely imprecise and is exactly what the review loop's `field` verb exists to correct.
-        if (sample.All(v => decimal.TryParse(v, DecimalStyles, CultureInfo.InvariantCulture, out _)))
+        if (isDecimal)
             return "decimal";
 
-        if (sample.All(BooleanWords.Contains))
+        if (isBool)
             return "bool";
 
-        if (sample.All(IsDate))
-            return "DateTime";
-
-        return "string";
+        return isDate ? "DateTime" : "string";
     }
 }
