@@ -232,6 +232,53 @@ public class BuildCommandEchoTests
         Assert.IsNull(parsed.Request.Source);
     }
 
+    /// <summary>`normalize` typed on the first line was dropped from the replay, so the pasted
+    /// line built the model from the raw tables.</summary>
+    [TestMethod]
+    public void Normalize_comes_back_when_the_findings_were_applied()
+    {
+        var session = new BuildSession(
+            "orders", @"C:\ws", AppCustomization.Default,
+            new DataSourceSpec(DataSourceKind.Csv, @"D:\data\orders.csv"))
+        {
+            NormalizeAll = true,
+        };
+
+        var parsed = Reparse(BuildCommandEcho.For(session)[0]);
+
+        Assert.IsTrue(parsed.Request.Normalize);
+        Assert.AreEqual(@"D:\data\orders.csv", parsed.Request.Source?.Location);
+    }
+
+    [TestMethod]
+    public void Normalize_is_not_said_when_nothing_was_applied()
+    {
+        var session = new BuildSession(
+            "orders", @"C:\ws", AppCustomization.Default,
+            new DataSourceSpec(DataSourceKind.Csv, @"D:\data\orders.csv"));
+
+        Assert.IsFalse(Reparse(BuildCommandEcho.For(session)[0]).Request.Normalize);
+    }
+
+    /// <summary>The persistence chosen at Generate is an `approve` argument on the console, and
+    /// the replay approved without it - a SQLite app came back as JSON.</summary>
+    [TestMethod]
+    public void The_persistence_generated_with_is_on_the_approve_line()
+    {
+        var session = Session("a shop");
+        session.SetTarget(new ConsoleTarget());
+        session.SetGenerated(new GeneratedApp(
+            new ScaffoldResult(true, @"C:\ws\Shop", [], "ok"), string.Empty, true,
+            Persistence: PersistenceKind.Sqlite));
+
+        var approve = BuildCommandEcho.For(session)[1];
+
+        Assert.AreEqual($"approve {new ConsoleTarget().Key} sqlite", approve);
+        Assert.AreEqual(
+            PersistenceKind.Sqlite,
+            BuildAppCommand.ResolvePersistence(approve.Split(' ')));
+    }
+
     /// <summary>Left out before, so a pasted line read EVERY table of the database - a different
     /// model from the one this run reviewed.</summary>
     [TestMethod]

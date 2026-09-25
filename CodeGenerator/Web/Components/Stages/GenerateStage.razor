@@ -310,7 +310,8 @@ else
                 scaffold,
                 string.Join(Environment.NewLine, _log),
                 BuildSucceeded: false,
-                BuildRan: false));
+                BuildRan: false,
+                Persistence: _persistence));
 
             _written = true;
             _phase = Phase.Done;
@@ -332,7 +333,8 @@ else
         Session.SetGenerated(new GeneratedApp(
             scaffold,
             string.Join(Environment.NewLine, _log),
-            BuildReport.Succeeded(result)));
+            BuildReport.Succeeded(result),
+            Persistence: _persistence));
 
         _written = true;
         _phase = Phase.Done;

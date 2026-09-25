@@ -45,6 +45,12 @@ internal static class BuildCommandEcho
 
                 line += names.Any(char.IsWhiteSpace) ? $" tables \"{names}\"" : $" tables {names}";
             }
+
+            // Outermost of the location's trailing keywords, as InlineDataSource reads them. The
+            // console has no way to tick some findings and not others, so any finding applied is
+            // said as `normalize` - the nearer of the two lines that can be typed.
+            if (session.NormalizeAll || session.Normalized.Count > 0)
+                line += $" {InlineDataSource.NormalizeKeyword}";
         }
 
         line += Options(session.Customization);
@@ -53,8 +59,12 @@ internal static class BuildCommandEcho
 
         // `approve` is the review prompt's command, so it is only worth showing once a type has
         // actually been chosen — and it is how the console answers the Application Type stage.
+        // With the persistence it was generated with: `approve <type> sqlite` is how the console
+        // says it, and leaving it off replayed a SQLite app as JSON.
         if (session.Target is not null)
-            lines.Add($"approve {session.Target.Key}");
+            lines.Add(session.Generated?.Persistence == PersistenceKind.Sqlite
+                ? $"approve {session.Target.Key} sqlite"
+                : $"approve {session.Target.Key}");
 
         return lines;
     }
