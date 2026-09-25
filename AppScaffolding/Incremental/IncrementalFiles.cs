@@ -1,3 +1,5 @@
+using System.Text.RegularExpressions;
+
 namespace AppScaffolding.Incremental;
 
 /// <summary>
@@ -35,8 +37,17 @@ public static class IncrementalFiles
     /// <param name="relativePath">The file, relative to the project folder.</param>
     /// <param name="stagedContent">What a full generate produces for it now.</param>
     /// <param name="existingContent">What is on disk, or null when nothing is.</param>
+    /// <param name="newClassNames">
+    /// The classes being added. When given, a file already on disk is rewritten only if its
+    /// generated content names one of them -- the files that enumerate the entities (seed data, the
+    /// validator factory, the screens list) have to learn about a new class, and an existing
+    /// class's own files do not. Without this, every file that differed was copied: a hand edit to
+    /// Models/Customer.cs, or a field added to Customer on Review, was overwritten by adding a
+    /// Supplier, although the prompt says adding leaves existing classes as they are.
+    /// </param>
     public static bool ShouldCopy(
-        string relativePath, string? stagedContent, string? existingContent)
+        string relativePath, string? stagedContent, string? existingContent,
+        IReadOnlyCollection<string>? newClassNames = null)
     {
         // First, so nothing below can reach it. OverwritePrompt promises in as many words that
         // .Custom.cs rules are kept, and the staged copy is always an empty stub — so a plain
@@ -47,8 +58,21 @@ public static class IncrementalFiles
         if (existingContent is null)
             return true;
 
-        return !string.Equals(stagedContent, existingContent, StringComparison.Ordinal);
+        if (string.Equals(stagedContent, existingContent, StringComparison.Ordinal))
+            return false;
+
+        return newClassNames is null || NamesAny(stagedContent, newClassNames);
     }
+
+    /// <summary>
+    /// Whether <paramref name="content"/> names any of <paramref name="classNames"/> as the start
+    /// of an identifier -- so <c>Supplier</c>, <c>Suppliers</c>, <c>SupplierId</c> and
+    /// <c>SupplierValidator</c> all count, and <c>MainSupplierNote</c> does not.
+    /// </summary>
+    private static bool NamesAny(string? content, IReadOnlyCollection<string> classNames)
+        => content is not null
+           && classNames.Any(name => Regex.IsMatch(
+               content, $@"(?<![A-Za-z0-9_]){Regex.Escape(name)}", RegexOptions.CultureInvariant));
 
     /// <summary>Whether this file is the half the user owns. Internal rather than private so
     /// <see cref="IncrementalScaffolder"/> can ask the same question when it decides whether a
