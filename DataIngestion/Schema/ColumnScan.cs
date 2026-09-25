@@ -64,10 +64,16 @@ public static class ColumnScan
 
         foreach (var row in table.Rows)
         {
-            var value = index < row.Length ? row[index] : null;
+            var cell = index < row.Length ? row[index] : null;
 
-            if (string.IsNullOrWhiteSpace(value))
+            if (string.IsNullOrWhiteSpace(cell))
                 continue;
+
+            // Trimmed, because SeedFileWriter trims every value it writes: the generated app
+            // holds "Active", never SQL Server's nchar-padded "Active    ". Scanning the padded
+            // form proposes an allowed-values list the seed's own rows are not in, and counts
+            // "A1" and "A1 " as two values where the app sees one twice.
+            var value = cell.Trim();
 
             nonBlank++;
 
