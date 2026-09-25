@@ -328,14 +328,16 @@ public class WinFormsBusinessLayoutTests
         => StringAssert.Contains(Source(), "if (editor.Lines.Count > 0)");
 
     /// <summary>
-    /// The header, the grouped form, the tab strip -- and the three columns the groups are packed
-    /// into.
+    /// The header, the grouped form, the tab strip -- and the columns the groups are packed into,
+    /// side by side.
     /// </summary>
     /// <remarks>
-    /// The column count and the cell each stack is added at are asserted together, inside
-    /// BuildEntryForm's own body: a ColumnCount of 1 with every stack added at (0, 0) still calls
-    /// FieldGroups.Columns, so naming the call alone leaves the three-column packing -- which is
-    /// what Tasks 1-3 exist for -- free to collapse into one column with the suite green.
+    /// One stack per FieldGroups column, laid left to right in a wrapping flow. It is NOT a
+    /// TableLayoutPanel of percentage columns any more: an AutoSize table sizes each 33% column so
+    /// its content fits, which made the form report roughly three times its widest column as its
+    /// width, and the scrolling page opened scrolled sideways past the form at the default window
+    /// size. A flow is as wide as what it holds, and drops a column below only when the window is
+    /// too narrow for it.
     /// </remarks>
     [TestMethod]
     public void The_form_builds_a_header_a_grouped_form_and_a_tab_strip()
@@ -348,10 +350,33 @@ public class WinFormsBusinessLayoutTests
 
         var form = Body(source, "private Control BuildEntryForm(object record)", "private Control BuildPanel(");
 
-        StringAssert.Contains(form, "ColumnCount = 3,");
+        StringAssert.Contains(form, "var host = new FlowLayoutPanel");
+        StringAssert.Contains(form, "FlowDirection = FlowDirection.LeftToRight,");
+        StringAssert.Contains(form, "WrapContents = true,");
         StringAssert.Contains(form, "var columns = FieldGroups.Columns(record.GetType());");
-        StringAssert.Contains(form, "host.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f / columns.Count));");
-        StringAssert.Contains(form, "host.Controls.Add(stack, i, 0);");
+        StringAssert.Contains(form, "host.Controls.Add(stack);");
+        Assert.DoesNotContain("SizeType.Percent", form, "a percentage column is what inflated the form's width");
+    }
+
+    /// <summary>
+    /// The action bar's buttons stay on one row, in the order they are given.
+    /// </summary>
+    /// <remarks>
+    /// The bar's row is 40 pixels high. A wrapping, Dock-Fill flow in an AutoSize column was
+    /// given too little width, so a master's six buttons broke onto a second row the row then
+    /// cut off -- Save and Delete were unreachable even with the window maximised. Left to right,
+    /// so the bar reads New, Edit, Delete, Save, Clear, Cancel, as the WPF shell's does; the old
+    /// right-to-left flow reversed it.
+    /// </remarks>
+    [TestMethod]
+    public void The_action_bar_keeps_its_buttons_on_one_row_in_order()
+    {
+        var bar = Body(Source(), "private Control BuildEntryActionBar(", "private Control BuildEditor(");
+
+        StringAssert.Contains(bar, "WrapContents = false,");
+        StringAssert.Contains(bar, "AutoSize = true,");
+        StringAssert.Contains(bar, "FlowDirection = FlowDirection.LeftToRight,");
+        Assert.DoesNotContain("FlowDirection.RightToLeft", bar);
     }
 
     /// <summary>A GroupBox caption cannot take the accent colour, so the panel is a bordered Panel

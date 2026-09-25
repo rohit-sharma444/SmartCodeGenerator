@@ -588,13 +588,23 @@ public sealed class MainForm : Form
     private static bool HasAdditional(object owner)
         => owner.GetType().GetProperty("HasAdditional")?.GetValue(owner) is true;
 
-    /// <summary>The grouped panels, in the three columns FieldGroups packs them into.</summary>
+    /// <summary>
+    /// The grouped panels, in the columns FieldGroups packs them into, side by side.
+    /// </summary>
+    /// <remarks>
+    /// A wrapping flow rather than a TableLayoutPanel of percentage columns. An AutoSize table
+    /// sizes each 33% column so its content fits, so it reported about three times its widest
+    /// column as its width, and the scrolling page opened scrolled sideways, past the form, at
+    /// the default window size. A flow is exactly as wide as the columns it holds, and moves a
+    /// column underneath only when the window is too narrow for it. An empty column adds nothing.
+    /// </remarks>
     private Control BuildEntryForm(object record)
     {
-        var host = new TableLayoutPanel
+        var host = new FlowLayoutPanel
         {
             Dock = DockStyle.Top,
-            ColumnCount = 3,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = true,
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
         };
@@ -603,12 +613,12 @@ public sealed class MainForm : Form
 
         for (var i = 0; i < columns.Count; i++)
         {
-            host.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f / columns.Count));
+            if (columns[i].Count == 0)
+                continue;
 
             var stack = new FlowLayoutPanel
             {
                 FlowDirection = FlowDirection.TopDown,
-                Dock = DockStyle.Fill,
                 AutoSize = true,
                 WrapContents = false,
             };
@@ -616,7 +626,7 @@ public sealed class MainForm : Form
             foreach (var group in columns[i])
                 stack.Controls.Add(BuildPanel(record, group));
 
-            host.Controls.Add(stack, i, 0);
+            host.Controls.Add(stack);
         }
 
         return host;
@@ -1022,7 +1032,19 @@ public sealed class MainForm : Form
 
         var status = new Label { Dock = DockStyle.Fill, Name = "Status" };
 
-        var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft };
+        // One row, sized to its buttons. Dock-Fill with wrapping on, in this AutoSize column, was
+        // given too little width: a master's six buttons broke onto a second row that the bar's
+        // 40-pixel row cut off, and Save and Delete could not be reached even maximised. Left to
+        // right so it reads in the order given -- New, Edit, Delete, Save, Clear, Cancel -- as the
+        // WPF shell's bar does.
+        var buttons = new FlowLayoutPanel
+        {
+            Anchor = AnchorStyles.Top | AnchorStyles.Right,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+        };
 
         foreach (var (command, text) in commands)
             buttons.Controls.Add(CommandButton(owner, command, text));
