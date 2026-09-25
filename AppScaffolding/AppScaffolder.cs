@@ -392,9 +392,11 @@ public sealed class AppScaffolder
         var entityNames = classes.Select(c => c.Name).ToList();
 
         // Projected through `classes`, so any review-loop edit is already accounted for.
+        IReadOnlyList<string> unreadableSeedValues = [];
         var seedFiles = importedData is null
             ? Array.Empty<(string FileName, string Json)>()
-            : SeedFileWriter.Files(classes, classNames, importedData).ToArray();
+            : SeedFileWriter.Files(classes, classNames, importedData, out unreadableSeedValues)
+                .ToArray();
 
         var seededClassNames = seedFiles
             .Select(f => Path.GetFileNameWithoutExtension(f.FileName))
@@ -668,6 +670,7 @@ public sealed class AppScaffolder
         {
             OutdatedValidatorStubs = outdatedStubs,
             TestProjectProblem = testProjectProblem,
+            UnreadableSeedValues = unreadableSeedValues,
         };
     }
 

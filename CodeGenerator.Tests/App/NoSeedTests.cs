@@ -82,6 +82,44 @@ public class NoSeedTests
         }
     }
 
+    /// <summary>A value the field's type cannot read is left out of the seed file, and the
+    /// scaffold result names it: it succeeds either way, so the result is the only place to say.</summary>
+    [TestMethod]
+    public void An_imported_value_its_type_cannot_read_is_reported_by_the_scaffold()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "seed-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(root);
+
+        try
+        {
+            var model = TestModels.OneEntity();
+            model.Entities[0].Fields.Add(
+                new DomainDiscovery.Model.CandidateField { Name = "Qty", Type = "int" });
+
+            var data = new ImportedData(
+                new Dictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string?>>>
+                {
+                    ["Order"] = new List<IReadOnlyDictionary<string, string?>>
+                    {
+                        new Dictionary<string, string?> { ["Name"] = "Sample", ["Qty"] = "n/a" },
+                    },
+                },
+                []);
+
+            var request = ScaffoldRequest.For(model, "Shop", root, new ConsoleTarget())
+                with { ImportedData = data };
+
+            var result = new AppScaffolder().Scaffold(request);
+
+            StringAssert.Contains(result.UnreadableSeedValues.Single(), "Order.Qty");
+        }
+        finally
+        {
+            try { Directory.Delete(root, recursive: true); }
+            catch (IOException) { }
+        }
+    }
+
     [TestMethod]
     public void A_seedless_app_has_no_seed_file()
     {

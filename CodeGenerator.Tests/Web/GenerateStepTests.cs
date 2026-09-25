@@ -121,6 +121,25 @@ public class GenerateStepTests
             "the reason there is no test project should be printed");
     }
 
+    /// <summary>An imported value its field's type could not read is not in the app, and the
+    /// sign-off is where the user learns which.</summary>
+    [TestMethod]
+    public void The_outcome_names_the_imported_values_left_out()
+    {
+        var scaffold = new ScaffoldResult(
+            Success: true,
+            ProjectPath: @"D:\ws\LibrarySystem",
+            FilesWritten: [],
+            Message: string.Empty)
+        {
+            UnreadableSeedValues = ["Book.Pages: 1 value(s) could not be read as int"],
+        };
+
+        var outcome = GenerateStep.OutcomeFor(scaffold, new WpfTarget());
+
+        Assert.IsTrue(outcome.Lines.Any(l => l.Contains("Book.Pages")));
+    }
+
     /// <summary>
     /// The console path catches this exactly (BuildAppCommand: "Could not start `dotnet` —
     /// skipping the build check") and the design's error table promises it on the web too, where

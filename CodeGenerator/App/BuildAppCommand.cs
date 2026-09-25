@@ -901,6 +901,10 @@ internal sealed class BuildAppCommand
             foreach (var stub in scaffold.OutdatedValidatorStubs)
                 Output.Warning("  " + stub + ".");
 
+            // The user's own values, missing from the app: said, not left for them to notice.
+            foreach (var unreadable in scaffold.UnreadableSeedValues)
+                Output.Warning("  " + unreadable + ".");
+
             Console.WriteLine("");
             //foreach (var file in scaffold.FilesWritten)
             //    Console.WriteLine($"  {Path.GetRelativePath(scaffold.ProjectPath, file)}");
