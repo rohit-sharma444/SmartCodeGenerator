@@ -32,6 +32,34 @@ public class DataModelBuilderForeignKeyTests
     }
 
     /// <summary>
+    /// A SQL Server habit: <c>CustomerID</c>, not <c>CustomerId</c>. The relationship was found
+    /// case-blind, but every part of the generated app that treats a column as a foreign key —
+    /// the seeder, the validators, the lookup pickers — matches <c>&lt;Class&gt;Id</c> exactly,
+    /// so the class got a Customer navigation property and a key nothing ever read.
+    /// </summary>
+    [Fact]
+    public void An_upper_case_ID_foreign_key_is_one_the_generated_app_treats_as_a_foreign_key()
+    {
+        var customers = Table("Customer", "CustomerID");
+        customers.Columns.Add(new TabularColumn { Name = "Name" });
+        customers.Rows.Add(["1", "Ada"]);
+        var orders = Table("Order", "OrderID", "CustomerID");
+        orders.Rows.Add(["1", "1"]);
+
+        var classes = AppScaffolding.DomainModelMapper.ToClassDefinitions(
+            DataModelBuilder.Build([customers, orders]));
+
+        var order = classes.Single(c => c.Name == "Order");
+        Assert.Equal(["Customer"], AppScaffolding.ForeignKeys.TargetsOf(
+            order, AppScaffolding.ForeignKeys.ClassNameSet(classes)));
+
+        // ...and the seed row is keyed by the same spelling, or the key is written nowhere.
+        var row = TabularImport.ToImportedData([customers, orders]).For("Order")[0];
+        Assert.Equal("1", row["CustomerId"]);
+        Assert.Contains("CustomerId", row.Keys);
+    }
+
+    /// <summary>
     /// The name trap. Entity names go through NameNormalizer, so a foreign key naming the raw SQL
     /// table has to be normalised the same way or it matches nothing and the relationship is lost
     /// without a word.

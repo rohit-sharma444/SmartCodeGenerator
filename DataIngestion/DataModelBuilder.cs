@@ -174,7 +174,7 @@ public static class DataModelBuilder
         // class's name must not be handed a name a LATER column already owns: that column has
         // not been resolved yet, so the taken-names check alone cannot see the collision coming.
         var columnNames = table.Columns
-            .Select(c => NameNormalizer.ToFieldName(c.Name))
+            .Select(c => WithIdSpelledId(NameNormalizer.ToFieldName(c.Name)))
             .ToList();
 
         var taken = new List<string>();
@@ -301,6 +301,20 @@ public static class DataModelBuilder
             });
         }
     }
+
+    /// <summary>
+    /// <c>CustomerID</c> as <c>CustomerId</c>. The generated app recognises a foreign key only
+    /// by the exact <c>&lt;Class&gt;Id</c> spelling — its seeder, validators and lookup pickers
+    /// all match it case for case — so a key spelled the SQL Server way got a navigation
+    /// property and was otherwise never treated as one. An all-capitals name (<c>GUID</c>,
+    /// <c>SSID</c>) is an acronym, not a key suffix, and is left alone.
+    /// </summary>
+    private static string WithIdSpelledId(string fieldName)
+        => fieldName.Length > 2
+           && fieldName.EndsWith("ID", StringComparison.Ordinal)
+           && !char.IsUpper(fieldName[^3])
+            ? fieldName[..^2] + "Id"
+            : fieldName;
 
     /// <summary>Whether <paramref name="fieldName"/> is this entity's own primary key —
     /// <c>Id</c>, or <c>&lt;Entity&gt;Id</c>. A <c>&lt;Other&gt;Id</c> is a foreign key and is
