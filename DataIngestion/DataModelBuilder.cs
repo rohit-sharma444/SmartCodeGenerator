@@ -71,6 +71,9 @@ public static class DataModelBuilder
             var entity = new CandidateEntity
             {
                 Name = entityName,
+
+                // The key TabularImport files this table's rows under.
+                ImportedAs = entityName,
                 Provenance = Provenance.Data,
                 Confidence = 1.0,   // the user's own data; nothing was guessed
             };
@@ -269,6 +272,9 @@ public static class DataModelBuilder
             entity.Fields.Add(new CandidateField
             {
                 Name = outcome.Field!,
+
+                // The key TabularImport files this column's values under: the same resolution.
+                ImportedAs = outcome.Field!,
                 Type = outcome.Type,
                 Provenance = Provenance.Data,
                 Facts = outcome.Facts
