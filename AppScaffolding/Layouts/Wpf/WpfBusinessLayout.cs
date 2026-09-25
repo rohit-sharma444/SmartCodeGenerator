@@ -99,7 +99,7 @@ public sealed class WpfBusinessLayout : IAppLayout
             <DockPanel>
                 <views:EntryHeader DockPanel.Dock="Top"
                                    Heading="{Binding Title}"
-                                   Record="{Binding Editor.Draft}" />
+                                   Record="{Binding Editor.Draft}" Errors="{Binding Editor.Errors}" />
                 <Border DockPanel.Dock="Bottom" Background="{{{railFill}}}" Padding="10,6">
                     <DockPanel>
                         <TextBlock Text="{Binding Status}" Foreground="{{{muted}}}" VerticalAlignment="Center" />
@@ -113,7 +113,7 @@ public sealed class WpfBusinessLayout : IAppLayout
                         </StackPanel>
                     </DockPanel>
                 </Border>
-                <views:EntryForm DockPanel.Dock="Top" Record="{Binding Editor.Draft}" Margin="10" />
+                <views:EntryForm DockPanel.Dock="Top" Record="{Binding Editor.Draft}" Errors="{Binding Editor.Errors}" Margin="10" />
 
                 <Border DockPanel.Dock="Top"
                         BorderBrush="{{{rule}}}"
@@ -129,7 +129,7 @@ public sealed class WpfBusinessLayout : IAppLayout
                                    Foreground="{{{accentBrush}}}"
                                    Margin="0,0,0,6" />
                         <ScrollViewer VerticalScrollBarVisibility="Auto">
-                            <views:EntryNotes Record="{Binding Editor.Draft}" />
+                            <views:EntryNotes Record="{Binding Editor.Draft}" Errors="{Binding Editor.Errors}" />
                         </ScrollViewer>
                     </DockPanel>
                 </Border>
@@ -297,7 +297,7 @@ public sealed class WpfBusinessLayout : IAppLayout
             <DockPanel>
                 <views:EntryHeader DockPanel.Dock="Top"
                                    Heading="{Binding Title}"
-                                   Record="{Binding Draft}" />
+                                   Record="{Binding Draft}" Errors="{Binding Errors}" />
                 <Border DockPanel.Dock="Bottom" Background="{{{railFill}}}" Padding="10,6">
                     <DockPanel>
                         <TextBlock Text="{Binding Status}" Foreground="{{{muted}}}" VerticalAlignment="Center" />
@@ -315,7 +315,7 @@ public sealed class WpfBusinessLayout : IAppLayout
 """)}}}
                     </DockPanel>
                 </Border>
-                <views:EntryForm DockPanel.Dock="Top" Record="{Binding Draft}" Margin="10" />
+                <views:EntryForm DockPanel.Dock="Top" Record="{Binding Draft}" Errors="{Binding Errors}" Margin="10" />
 
                 <!-- A titled section under the lines rather than a tab beside them. The lines tab
                      strip is driven by ItemsSource, and mixing a static TabItem into it needs a
@@ -347,7 +347,7 @@ public sealed class WpfBusinessLayout : IAppLayout
                                    Foreground="{{{accentBrush}}}"
                                    Margin="0,0,0,6" />
                         <ScrollViewer VerticalScrollBarVisibility="Auto">
-                            <views:EntryNotes Record="{Binding Draft}" />
+                            <views:EntryNotes Record="{Binding Draft}" Errors="{Binding Errors}" />
                         </ScrollViewer>
                     </DockPanel>
                 </Border>
@@ -495,7 +495,7 @@ public sealed class WpfBusinessLayout : IAppLayout
             <DockPanel>
                 <views:EntryHeader DockPanel.Dock="Top"
                                    Heading="{Binding Title}"
-                                   Record="{Binding Editor.Draft}" />
+                                   Record="{Binding Editor.Draft}" Errors="{Binding Editor.Errors}" />
                 <Border DockPanel.Dock="Bottom" Background="{{{railFill}}}" Padding="10,6">
                     <DockPanel>
                         <TextBlock Text="{Binding Status}" Foreground="{{{muted}}}" VerticalAlignment="Center" />
@@ -521,7 +521,7 @@ public sealed class WpfBusinessLayout : IAppLayout
 """)}}}
                     </DockPanel>
                 </Border>
-                <views:EntryForm DockPanel.Dock="Top" Record="{Binding Editor.Draft}" Margin="10" />
+                <views:EntryForm DockPanel.Dock="Top" Record="{Binding Editor.Draft}" Errors="{Binding Editor.Errors}" Margin="10" />
                 <TabControl Margin="10,0,10,10">
                     <TabItem Header="{Binding Title}">
                         <DockPanel>
@@ -550,7 +550,7 @@ public sealed class WpfBusinessLayout : IAppLayout
                         <!-- Scrolled, because EntryNotes stacks a 90px box per long-text field and
                              a tab clips whatever does not fit. -->
                         <ScrollViewer VerticalScrollBarVisibility="Auto">
-                            <views:EntryNotes Record="{Binding Editor.Draft}" />
+                            <views:EntryNotes Record="{Binding Editor.Draft}" Errors="{Binding Editor.Errors}" />
                         </ScrollViewer>
                     </TabItem>
                 </TabControl>

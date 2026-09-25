@@ -122,12 +122,15 @@ public sealed class SqlClientSchemaSource : ISqlSchemaSource
         return keys;
     }
 
-    public IReadOnlyList<string?[]> Rows(string connectionString, string schema, string table)
+    public IReadOnlyList<string?[]> Rows(string connectionString, string schema, string table, int limit)
     {
         // The only place a name is interpolated rather than parameterised, because a table name
         // cannot be a parameter. Both parts are bracket-escaped for that reason: these names come
         // from sys.tables today, and this keeps it safe if a caller ever passes something else.
-        var sql = $"SELECT * FROM [{Escape(schema)}].[{Escape(table)}];";
+        //
+        // TOP, because a picked table can be enormous -- one on the machine this was built on
+        // holds 47 million rows, and every one was once read into memory to seed 1,000.
+        var sql = $"SELECT TOP (@limit) * FROM [{Escape(schema)}].[{Escape(table)}];";
 
         var rows = new List<string?[]>();
 
@@ -135,6 +138,7 @@ public sealed class SqlClientSchemaSource : ISqlSchemaSource
         connection.Open();
 
         using var command = new SqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@limit", limit);
         using var reader = command.ExecuteReader();
 
         while (reader.Read())

@@ -41,6 +41,7 @@ public interface ISqlSchemaSource
     /// <summary>Every declared single-column foreign key, in the shape the model builder wants.</summary>
     IReadOnlyList<TabularForeignKey> ForeignKeys(string connectionString);
 
-    /// <summary>Every row of one table, each value already rendered invariantly to a string.</summary>
-    IReadOnlyList<string?[]> Rows(string connectionString, string schema, string table);
+    /// <summary>At most <paramref name="limit"/> rows of one table, each value already rendered
+    /// invariantly to a string.</summary>
+    IReadOnlyList<string?[]> Rows(string connectionString, string schema, string table, int limit);
 }

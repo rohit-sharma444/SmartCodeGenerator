@@ -84,7 +84,7 @@ public static class RecordEditorTemplate
                     // This path writes through _store, not Repository, so it has to run the pipeline
                     // itself. Without this the business shell would accept records the layout it
                     // replaced rejected, from the same model in the same application.
-                    _errors.Clear();
+                    Errors = NoErrors;
 
                     var context = new ValidationContext<T>(
                         Draft, IsNew ? ValidationOperation.Insert : ValidationOperation.Update,
@@ -94,12 +94,23 @@ public static class RecordEditorTemplate
 
                     if (!outcome.IsValid)
                     {
-                        // The first message per property, so a view can put each complaint beside
-                        // the field it belongs to. A whole-record error carries no property and
-                        // lands under the empty key -- the shape SaveResult.AsDictionary already
-                        // gives the Web API.
+                        // Every message per property, one per line, so a view can put each
+                        // complaint beside the field it belongs to -- keeping only the first hid a
+                        // field's second problem until the first was fixed. A whole-record error
+                        // carries no property and lands under the empty key -- the shape
+                        // SaveResult.AsDictionary already gives the Web API.
+                        var errors = new Dictionary<string, string>(StringComparer.Ordinal);
+
                         foreach (var error in outcome.Errors)
-                            _errors.TryAdd(error.Property ?? string.Empty, error.Message);
+                        {
+                            var property = error.Property ?? string.Empty;
+
+                            errors[property] = errors.TryGetValue(property, out var earlier)
+                                ? earlier + Environment.NewLine + error.Message
+                                : error.Message;
+                        }
+
+                        Errors = errors;
 
                         Status = $"Cannot save: {outcome.Messages[0]}";
                         return;
@@ -167,10 +178,12 @@ public sealed class RecordEditorViewModel<T> : ObservableObject, IRecordEditor w
     private string _openedAs;
     private string _status = string.Empty;
 {{validatorField}}
-    /// <summary>The first message the last refused save found against each property, and the
-    /// whole-record ones under the empty key. Stays empty in an app generated with no validators:
-    /// nothing populates it there.</summary>
-    private readonly Dictionary<string, string> _errors = new(StringComparer.Ordinal);
+    /// <summary>What <see cref="Errors"/> holds when nothing is wrong: one shared instance, so
+    /// clearing errors that are already clear announces nothing.</summary>
+    private static readonly IReadOnlyDictionary<string, string> NoErrors
+        = new Dictionary<string, string>(StringComparer.Ordinal);
+
+    private IReadOnlyDictionary<string, string> _errors = NoErrors;
 
     /// <param name="lines">
     /// The line sets this record's editor shows, supplied by the screen that opened it. Null for a
@@ -312,6 +325,23 @@ public sealed class RecordEditorViewModel<T> : ObservableObject, IRecordEditor w
     /// </remarks>
     public string ErrorFor(string property)
         => _errors.TryGetValue(property, out var message) ? message : string.Empty;
+
+    /// <summary>
+    /// Why the last save was refused, by property: every message against a field, one per line,
+    /// and the whole-record ones under the empty key. Empty when nothing is wrong, and always
+    /// empty in an app generated with no validators -- nothing populates it there.
+    /// </summary>
+    /// <remarks>
+    /// A property, not only <see cref="ErrorFor"/>: a WPF binding cannot call a method with an
+    /// argument, and a view repaints its marks from the change notification. The whole set is
+    /// REPLACED on every save attempt rather than edited in place, which is what makes that one
+    /// notification enough.
+    /// </remarks>
+    public IReadOnlyDictionary<string, string> Errors
+    {
+        get => _errors;
+        private set => SetField(ref _errors, value);
+    }
 
     public ICommand SaveCommand { get; }
     public ICommand CancelCommand { get; }

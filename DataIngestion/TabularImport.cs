@@ -56,9 +56,19 @@ public static class TabularImport
 
             if (table.Rows.Count > ImportedData.MaxSeedRows)
             {
+                // The table's own count when only part of it was read: "the first 1000 of
+                // 100000" would understate a 47-million-row table by the same factor.
                 notes.Add(
-                    $"Imported the first {ImportedData.MaxSeedRows} of {table.Rows.Count} rows "
+                    $"Imported the first {ImportedData.MaxSeedRows} of {table.SourceRowCount ?? table.Rows.Count} rows "
                     + $"from {table.Label} as seed data.");
+            }
+
+            if (table.IsPartial)
+            {
+                notes.Add(
+                    $"Read {table.Rows.Count:N0} of "
+                    + (table.SourceRowCount is { } total ? $"the {total:N0} rows" : "the rows")
+                    + $" in {table.Label}, not all of them; any rule offered for it was found in those rows only.");
             }
 
             rows[entityName] = imported;

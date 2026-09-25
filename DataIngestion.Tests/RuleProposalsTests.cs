@@ -130,4 +130,22 @@ public class RuleProposalsTests
 
         Assert.True(model.Entities.SelectMany(e => e.Fields).All(f => f.Proposals.Count == 0));
     }
+
+    /// <summary>
+    /// Issue #131: a rule found in the rows that were read of a partly-read table must not say
+    /// "in all N rows" as though N were the table.
+    /// </summary>
+    [Fact]
+    public void Evidence_from_a_partly_read_table_says_so()
+    {
+        var table = new TabularTable { Name = "Orders", IsPartial = true, SourceRowCount = 47_000_000 };
+        table.Columns.Add(new TabularColumn { Name = "Status" });
+        table.Rows.Add(["Draft"]);
+        table.Rows.Add(["Posted"]);
+
+        var proposals = RuleProposals.For(ColumnScan.Of(table, "Status"), "Status", "string", mayBeUnique: true);
+
+        Assert.NotEmpty(proposals);
+        Assert.All(proposals, p => Assert.Contains("read 2 of the table's 47,000,000 rows", p.Evidence));
+    }
 }

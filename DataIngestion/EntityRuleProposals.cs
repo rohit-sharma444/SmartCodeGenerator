@@ -75,7 +75,7 @@ public static class EntityRuleProposals
                 Properties = [left.Name, right.Name],
                 Rule = new ComparisonRule(
                     left.Name, right.Name, "> 0", $"{left.Name} must not be after {right.Name}"),
-                Evidence = $"{left.Name} is always on or before {right.Name}, in all {rows} rows"
+                Evidence = $"{left.Name} is always on or before {right.Name}, in all {rows} rows{table.PartialNote}"
             });
         }
     }
@@ -139,7 +139,7 @@ public static class EntityRuleProposals
                 Kind = EntityRuleProposalKind.Calculation,
                 Properties = [target.Name, left.Name, right.Name],
                 Rule = new ArithmeticRule(target.Name, left.Name, "plus", right.Name),
-                Evidence = $"{target.Name} always equals {left.Name} plus {right.Name}, in all {sumRows:N0} rows"
+                Evidence = $"{target.Name} always equals {left.Name} plus {right.Name}, in all {sumRows:N0} rows{table.PartialNote}"
             });
 
         if (ZeroCounterExamples(
@@ -150,7 +150,7 @@ public static class EntityRuleProposals
                 Kind = EntityRuleProposalKind.Calculation,
                 Properties = [target.Name, left.Name, right.Name],
                 Rule = new ArithmeticRule(target.Name, left.Name, "times", right.Name),
-                Evidence = $"{target.Name} always equals {left.Name} times {right.Name}, in all {productRows:N0} rows"
+                Evidence = $"{target.Name} always equals {left.Name} times {right.Name}, in all {productRows:N0} rows{table.PartialNote}"
             });
     }
 
@@ -168,7 +168,7 @@ public static class EntityRuleProposals
             Kind = EntityRuleProposalKind.Calculation,
             Properties = [target.Name, net.Name, rate.Name],
             Rule = new PercentageRule(target.Name, net.Name, rate.Name),
-            Evidence = $"{target.Name} always equals {net.Name} times (1 plus {rate.Name}), in all {rows:N0} rows"
+            Evidence = $"{target.Name} always equals {net.Name} times (1 plus {rate.Name}), in all {rows:N0} rows{table.PartialNote}"
         });
     }
 

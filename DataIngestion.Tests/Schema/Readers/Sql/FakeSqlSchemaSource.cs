@@ -29,9 +29,13 @@ internal sealed class FakeSqlSchemaSource : ISqlSchemaSource
 
     public IReadOnlyList<TabularForeignKey> ForeignKeys(string connectionString) => Keys;
 
-    public IReadOnlyList<string?[]> Rows(string connectionString, string schema, string table)
+    /// <summary>The limit the last Rows call asked for.</summary>
+    public int? LastLimit { get; private set; }
+
+    public IReadOnlyList<string?[]> Rows(string connectionString, string schema, string table, int limit)
     {
         RowsFetched.Add(table);
-        return RowsByTable.TryGetValue(table, out var rows) ? rows : [];
+        LastLimit = limit;
+        return RowsByTable.TryGetValue(table, out var rows) ? [.. rows.Take(limit)] : [];
     }
 }

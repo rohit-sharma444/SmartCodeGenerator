@@ -231,6 +231,44 @@ public class Note
         Assert.AreEqual(20m, TotalFor(screen, "Amount"));
     }
 
+    private static List<string> Announced(object screen, Action act)
+    {
+        var announced = new List<string>();
+
+        ((System.ComponentModel.INotifyPropertyChanged)screen).PropertyChanged
+            += (_, e) => announced.Add(e.PropertyName!);
+
+        act();
+
+        return announced;
+    }
+
+    /// <summary>Issue #128: every write reloads the list, and a footer bound to Totals kept the
+    /// pre-write figures because Reload announced the rows and never the totals.</summary>
+    [TestMethod]
+    public void A_reload_announces_the_totals()
+    {
+        var screen = Screen(Emit(), "Order", (1, 10m));
+
+        var announced = Announced(
+            screen, () => screen.GetType().GetMethod("Reload")!.Invoke(screen, null));
+
+        CollectionAssert.Contains(announced, "Totals");
+    }
+
+    /// <summary>The totals are of the search-narrowed rows, so narrowing them must announce the
+    /// totals as well as the rows.</summary>
+    [TestMethod]
+    public void A_search_announces_the_totals()
+    {
+        var screen = Screen(Emit(), "Order", (1, 10m));
+
+        var announced = Announced(
+            screen, () => screen.GetType().GetProperty("Search")!.SetValue(screen, "x"));
+
+        CollectionAssert.Contains(announced, "Totals");
+    }
+
     /// <summary>Search and the range compose, rather than one replacing the other.</summary>
     [TestMethod]
     public void The_search_and_the_range_apply_together()

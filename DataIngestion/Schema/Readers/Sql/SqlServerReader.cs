@@ -10,8 +10,22 @@ namespace DataIngestion.Schema.Readers.Sql;
 /// strings and then asks what they were, which is where the leading-zero and thousands-separator
 /// corruptions come from; a database column has a declared type, so the question is never put.
 /// </remarks>
-public sealed class SqlServerReader(ISqlSchemaSource source) : IDataSourceReader
+/// <param name="maxRowsPerTable">How many rows of one table to read at most. See
+/// <see cref="MaxRowsPerTable"/>; a test passes a small one.</param>
+public sealed class SqlServerReader(ISqlSchemaSource source, int maxRowsPerTable = SqlServerReader.MaxRowsPerTable)
+    : IDataSourceReader
 {
+    /// <summary>
+    /// The most rows read from one table.
+    /// </summary>
+    /// <remarks>
+    /// Only <see cref="ImportedData.MaxSeedRows"/> of them become seed data; the rest are read
+    /// for the rule scan, which is why this is far above that and not equal to it. A table past
+    /// it is read up to it and marked <see cref="TabularTable.IsPartial"/>, so every rule offered
+    /// from it says it came from the rows read rather than claiming the whole table.
+    /// </remarks>
+    public const int MaxRowsPerTable = 100_000;
+
     private readonly List<string> _lossNotes = [];
 
     /// <summary>What the five-type target set cost this read, or empty. See
@@ -61,7 +75,21 @@ public sealed class SqlServerReader(ISqlSchemaSource source) : IDataSourceReader
                     _lossNotes.Add(note);
             }
 
-            table.Rows.AddRange(source.Rows(spec.Location, info.Schema, info.Name));
+            // One past the cap, so a full read PROVES there was more: the catalogue's count is an
+            // estimate, and may be stale or missing altogether.
+            var rows = source.Rows(spec.Location, info.Schema, info.Name, maxRowsPerTable + 1);
+            var partial = rows.Count > maxRowsPerTable;
+
+            table.Rows.AddRange(partial ? rows.Take(maxRowsPerTable) : rows);
+
+            if (partial)
+            {
+                table.IsPartial = true;
+
+                // Quoted only when it is believable: a count at or below what was just read is
+                // stale, and "read 100,000 of 90,000 rows" would be worse than no count.
+                table.SourceRowCount = info.Rows > maxRowsPerTable ? info.Rows : null;
+            }
 
             foreach (var key in Carried(keys, table, wanted))
                 table.ForeignKeys.Add(key);

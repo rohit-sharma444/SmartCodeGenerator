@@ -211,4 +211,24 @@ public class TabularImportTests
 
         Assert.Equal(entity, Assert.Single(TabularImport.ToImportedData(tables).Rows).Key);
     }
+
+    /// <summary>
+    /// Issue #131: a partly-read table says how much of it was read, and the seed note counts
+    /// the table's rows rather than only the ones read.
+    /// </summary>
+    [Fact]
+    public void A_partly_read_table_is_stated()
+    {
+        var table = new TabularTable { Name = "Orders", SourceLabel = "TRADING.Orders", IsPartial = true, SourceRowCount = 47_000_000 };
+        table.Columns.Add(new TabularColumn { Name = "Ref" });
+
+        for (var i = 0; i < ImportedData.MaxSeedRows + 1; i++)
+            table.Rows.Add([$"ORD-{i}"]);
+
+        var data = TabularImport.ToImportedData([table]);
+
+        Assert.Contains(data.Notes, n => n.Contains("47,000,000") && n.Contains("TRADING.Orders")
+                                         && n.Contains($"{ImportedData.MaxSeedRows + 1:N0}"));
+        Assert.Contains(data.Notes, n => n.Contains($"first {ImportedData.MaxSeedRows} of 47000000 rows"));
+    }
 }

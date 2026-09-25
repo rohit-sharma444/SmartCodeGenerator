@@ -15,7 +15,8 @@ public sealed record ColumnScanResult(
     int LongestValueLength,
     int DuplicateValueCount,
     int NonBlankRowCount,
-    int RowCount);
+    int RowCount,
+    string PartialNote = "");
 
 /// <summary>
 /// One pass per column over the COMPLETE table, producing every count the rule proposals need.
@@ -95,6 +96,6 @@ public static class ColumnScan
                 duplicates++;
 
         return new ColumnScanResult(
-            order, exceeded, longest, duplicates, nonBlank, table.Rows.Count);
+            order, exceeded, longest, duplicates, nonBlank, table.Rows.Count, table.PartialNote);
     }
 }

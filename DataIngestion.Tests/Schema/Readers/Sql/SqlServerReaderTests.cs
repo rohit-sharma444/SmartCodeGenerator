@@ -143,4 +143,57 @@ public class SqlServerReaderTests
 
         Assert.Equal("dbo.Customers", tables.Single().Label);
     }
+
+    /// <summary>A table the catalogue says holds 47 million rows, of which the fake has five.</summary>
+    private static FakeSqlSchemaSource Huge(long? catalogued)
+    {
+        var source = new FakeSqlSchemaSource();
+
+        source.TableList.Add(new SqlTableInfo("TRADING", "BhavCopy", 1, catalogued));
+        source.ColumnsByTable["BhavCopy"] = [new SqlColumnInfo("Symbol", "nvarchar", false)];
+        source.RowsByTable["BhavCopy"] = [["A"], ["B"], ["C"], ["D"], ["E"]];
+
+        return source;
+    }
+
+    /// <summary>
+    /// Issue #131: a 47-million-row table was read into memory whole. The reader stops at its cap
+    /// and the table says it is partial, so nothing downstream can claim to have seen every row.
+    /// </summary>
+    [Fact]
+    public void A_table_past_the_cap_is_read_up_to_it_and_marked_partial()
+    {
+        var source = Huge(catalogued: 47_000_000);
+
+        var table = new SqlServerReader(source, maxRowsPerTable: 3).Read(Spec("BhavCopy")).Single();
+
+        Assert.Equal(3, table.Rows.Count);
+        Assert.True(table.IsPartial);
+        Assert.Equal(47_000_000, table.SourceRowCount);
+
+        // One past the cap: how the reader KNOWS there was more, whatever the catalogue says.
+        Assert.Equal(4, source.LastLimit);
+    }
+
+    [Fact]
+    public void A_table_within_the_cap_is_whole()
+    {
+        var table = new SqlServerReader(Northwind(), maxRowsPerTable: 3).Read(Spec("Customers")).Single();
+
+        Assert.Equal(2, table.Rows.Count);
+        Assert.False(table.IsPartial);
+    }
+
+    /// <summary>
+    /// The catalogue's count is an estimate. One smaller than the rows actually found is stale,
+    /// and quoting it ("read 3 of 2 rows") would be nonsense -- so it is dropped, not quoted.
+    /// </summary>
+    [Fact]
+    public void A_stale_catalogue_count_is_not_quoted()
+    {
+        var table = new SqlServerReader(Huge(catalogued: 2), maxRowsPerTable: 3).Read(Spec("BhavCopy")).Single();
+
+        Assert.True(table.IsPartial);
+        Assert.Null(table.SourceRowCount);
+    }
 }

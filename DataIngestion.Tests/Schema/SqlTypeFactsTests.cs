@@ -18,7 +18,7 @@ internal sealed class FakeSchemaSource : ISqlSchemaSource
 
     public IReadOnlyList<TabularForeignKey> ForeignKeys(string connectionString) => [];
 
-    public IReadOnlyList<string?[]> Rows(string connectionString, string schema, string table) => [];
+    public IReadOnlyList<string?[]> Rows(string connectionString, string schema, string table, int limit) => [];
 }
 
 public class SqlTypeFactsTests

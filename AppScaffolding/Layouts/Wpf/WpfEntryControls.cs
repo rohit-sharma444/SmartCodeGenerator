@@ -43,6 +43,7 @@ public static class WpfEntryControls
             : "element.SetValue(property, (Brush)new BrushConverter().ConvertFromString(\"#2563EB\")!)";
 
         return $$"""
+using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -59,6 +60,14 @@ public sealed class EntryHeader : Grid
 
     public static readonly DependencyProperty HeadingProperty = DependencyProperty.Register(
         nameof(Heading), typeof(string), typeof(EntryHeader), new PropertyMetadata(string.Empty, OnChanged));
+
+    public static readonly DependencyProperty ErrorsProperty = DependencyProperty.Register(
+        nameof(Errors), typeof(IReadOnlyDictionary<string, string>), typeof(EntryHeader),
+        new PropertyMetadata(null, OnErrorsChanged));
+
+    /// <summary>The key-field controls by property name, so a refused save can mark them without
+    /// rebuilding the strip -- which would throw away whatever the user is typing.</summary>
+    private readonly Dictionary<string, Control> _marks = new(System.StringComparer.Ordinal);
 
     /// <summary>Chrome that never changes once, put here rather than in <see cref="Build"/> so a
     /// header whose Record is never set still draws its band -- the same precedent
@@ -84,8 +93,30 @@ public sealed class EntryHeader : Grid
         set => SetValue(HeadingProperty, value);
     }
 
+    /// <summary>Why the last save was refused, by property -- the editor's Errors.</summary>
+    public IReadOnlyDictionary<string, string>? Errors
+    {
+        get => (IReadOnlyDictionary<string, string>?)GetValue(ErrorsProperty);
+        set => SetValue(ErrorsProperty, value);
+    }
+
     private static void OnChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
-        => ((EntryHeader)d).Build();
+    {
+        var header = (EntryHeader)d;
+
+        header._marks.Clear();
+        header.Build();
+        header.Paint();
+    }
+
+    private static void OnErrorsChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        => ((EntryHeader)d).Paint();
+
+    private void Paint()
+    {
+        foreach (var (property, editor) in _marks)
+            EntryForm.Mark(editor, EntryForm.MessageFor(Errors, property));
+    }
 
     private static void SetAccent(FrameworkElement element, DependencyProperty property)
         => {{accentAssign}};
@@ -164,7 +195,12 @@ public sealed class EntryHeader : Grid
                 Margin = new Thickness(0, 0, 0, 3),
             });
 
-            cell.Children.Add(EntryForm.Editor(property, record));
+            var editor = EntryForm.Editor(property, record);
+
+            if (editor is Control control)
+                _marks[property.Name] = control;
+
+            cell.Children.Add(editor);
             strip.Children.Add(cell);
         }
 
@@ -305,6 +341,7 @@ public sealed class EntryHeader : Grid
         return $$"""
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
@@ -322,10 +359,60 @@ public sealed class EntryForm : Grid
     public static readonly DependencyProperty RecordProperty = DependencyProperty.Register(
         nameof(Record), typeof(object), typeof(EntryForm), new PropertyMetadata(null, OnRecordChanged));
 
+    public static readonly DependencyProperty ErrorsProperty = DependencyProperty.Register(
+        nameof(Errors), typeof(IReadOnlyDictionary<string, string>), typeof(EntryForm),
+        new PropertyMetadata(null, OnErrorsChanged));
+
+    /// <summary>Each field's control and the line under it that says what is wrong, by property
+    /// name, so a refused save can mark them without rebuilding the form -- which would throw away
+    /// whatever the user is typing.</summary>
+    private readonly Dictionary<string, (Control Editor, TextBlock Message)> _marks = new(StringComparer.Ordinal);
+
     public object? Record
     {
         get => GetValue(RecordProperty);
         set => SetValue(RecordProperty, value);
+    }
+
+    /// <summary>
+    /// Why the last save was refused, by property -- the editor's Errors.
+    /// </summary>
+    /// <remarks>
+    /// Bound, not read once: the editor replaces the whole set on every save attempt and announces
+    /// it, so a field that has been fixed loses its mark on the next Save, and one that is still
+    /// wrong keeps it.
+    /// </remarks>
+    public IReadOnlyDictionary<string, string>? Errors
+    {
+        get => (IReadOnlyDictionary<string, string>?)GetValue(ErrorsProperty);
+        set => SetValue(ErrorsProperty, value);
+    }
+
+    /// <summary>What <paramref name="errors"/> says against one property, or empty.</summary>
+    internal static string MessageFor(IReadOnlyDictionary<string, string>? errors, string property)
+        => errors is not null && errors.TryGetValue(property, out var message) ? message : string.Empty;
+
+    /// <summary>
+    /// Marks one field's control with why the last save refused it, or clears the mark.
+    /// </summary>
+    /// <remarks>
+    /// Cleared with ClearValue rather than by setting a colour back, so the control returns to
+    /// whatever its style -- themed or not -- gave it. Shared with EntryHeader and EntryNotes, so
+    /// a refused field looks the same wherever on the screen it sits.
+    /// </remarks>
+    internal static void Mark(Control editor, string message)
+    {
+        if (message.Length == 0)
+        {
+            editor.ClearValue(Control.BorderBrushProperty);
+            editor.ClearValue(Control.BorderThicknessProperty);
+            editor.ClearValue(ToolTipProperty);
+            return;
+        }
+
+        editor.BorderBrush = Brush("#DC2626");
+        editor.BorderThickness = new Thickness(2);
+        editor.ToolTip = message;
     }
 
     private static Brush Brush(string colour)
@@ -341,7 +428,29 @@ public sealed class EntryForm : Grid
         => {{surfaceAssign}};
 
     private static void OnRecordChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
-        => ((EntryForm)d).Build();
+    {
+        var form = (EntryForm)d;
+
+        form._marks.Clear();
+        form.Build();
+        form.Paint();
+    }
+
+    private static void OnErrorsChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        => ((EntryForm)d).Paint();
+
+    private void Paint()
+    {
+        foreach (var (property, mark) in _marks)
+        {
+            var message = MessageFor(Errors, property);
+
+            Mark(mark.Editor, message);
+
+            mark.Message.Text = message;
+            mark.Message.Visibility = message.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
+        }
+    }
 
 {{buildMethod}}
 
@@ -384,6 +493,11 @@ public sealed class EntryForm : Grid
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto, MinWidth = 108 });
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
+        // A second row for the message, so a refusal appears under the field it is about rather
+        // than only in the status line, which names the first problem on the whole form.
+        row.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        row.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
         var label = new TextBlock { VerticalAlignment = VerticalAlignment.Center };
 
         label.Inlines.Add(new System.Windows.Documents.Run(FieldGroups.LabelOf(field)));
@@ -404,6 +518,22 @@ public sealed class EntryForm : Grid
 
         SetColumn(editor, 1);
         row.Children.Add(editor);
+
+        var message = new TextBlock
+        {
+            Foreground = Brush("#DC2626"),
+            FontSize = 11,
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 2, 0, 0),
+            Visibility = Visibility.Collapsed,
+        };
+
+        SetRow(message, 1);
+        SetColumn(message, 1);
+        row.Children.Add(message);
+
+        if (editor is Control control)
+            _marks[field.Name] = (control, message);
 
         return row;
     }
@@ -531,6 +661,7 @@ public sealed class EntryForm : Grid
 
     /// <summary>Source of <c>Views/EntryNotes.cs</c>.</summary>
     public static string Notes(LayoutContext context) => $$"""
+using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
@@ -548,14 +679,44 @@ public sealed class EntryNotes : Grid
     public static readonly DependencyProperty RecordProperty = DependencyProperty.Register(
         nameof(Record), typeof(object), typeof(EntryNotes), new PropertyMetadata(null, OnRecordChanged));
 
+    public static readonly DependencyProperty ErrorsProperty = DependencyProperty.Register(
+        nameof(Errors), typeof(IReadOnlyDictionary<string, string>), typeof(EntryNotes),
+        new PropertyMetadata(null, OnErrorsChanged));
+
+    /// <summary>The boxes by property name, so a refused save can mark them without rebuilding
+    /// the tab.</summary>
+    private readonly Dictionary<string, Control> _marks = new(System.StringComparer.Ordinal);
+
     public object? Record
     {
         get => GetValue(RecordProperty);
         set => SetValue(RecordProperty, value);
     }
 
+    /// <summary>Why the last save was refused, by property -- the editor's Errors.</summary>
+    public IReadOnlyDictionary<string, string>? Errors
+    {
+        get => (IReadOnlyDictionary<string, string>?)GetValue(ErrorsProperty);
+        set => SetValue(ErrorsProperty, value);
+    }
+
     private static void OnRecordChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
-        => ((EntryNotes)d).Build();
+    {
+        var notes = (EntryNotes)d;
+
+        notes._marks.Clear();
+        notes.Build();
+        notes.Paint();
+    }
+
+    private static void OnErrorsChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        => ((EntryNotes)d).Paint();
+
+    private void Paint()
+    {
+        foreach (var (property, box) in _marks)
+            EntryForm.Mark(box, EntryForm.MessageFor(Errors, property));
+    }
 
     private void Build()
     {
@@ -607,6 +768,8 @@ public sealed class EntryNotes : Grid
             SetRow(box, row);
             SetColumn(box, 1);
             Children.Add(box);
+
+            _marks[field.Name] = box;
 
             row++;
         }

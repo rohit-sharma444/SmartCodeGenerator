@@ -78,7 +78,7 @@ public static class RuleProposals
                 },
                 Evidence =
                     $"{fieldName} holds only {string.Join(", ", scan.DistinctValues)} "
-                    + $"in all {rows} rows"
+                    + $"in all {rows} rows{scan.PartialNote}"
             });
         }
 
@@ -93,7 +93,7 @@ public static class RuleProposals
                     Name = "unique",
                     IsUnique = true
                 },
-                Evidence = $"no two of the {rows} rows share a {fieldName}"
+                Evidence = $"no two of the {rows} rows share a {fieldName}{scan.PartialNote}"
             });
         }
 
@@ -109,7 +109,7 @@ public static class RuleProposals
                     RegexPattern = format.Pattern,
                     CustomRule = format.Name
                 },
-                Evidence = $"every one of the {rows} values is a valid {format.Name}"
+                Evidence = $"every one of the {rows} values is a valid {format.Name}{scan.PartialNote}"
             });
         }
 
