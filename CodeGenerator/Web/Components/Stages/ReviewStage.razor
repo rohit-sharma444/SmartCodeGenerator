@@ -269,10 +269,39 @@
     }
 
     private void Remove(string entityName)
-        => Report(
-            ModelEditor.RemoveEntity(Model, entityName),
-            $"Removed {entityName}.",
-            "Could not remove.");
+    {
+        var className = ClassNameOf(entityName);
+        var changed = ModelEditor.RemoveEntity(Model, entityName);
+
+        if (changed)
+            FollowScreenChoice(ScreenChoice.Clear(Session.Customization, className));
+
+        Report(changed, $"Removed {entityName}.", "Could not remove.");
+    }
+
+    /// <summary>
+    /// The class <paramref name="entityName"/> is generated as - the name the Output stage records
+    /// a screen choice under, which is not always the entity's own.
+    /// </summary>
+    private string ClassNameOf(string entityName)
+        => Session.Target is { } target
+            ? ScreenPlan.For(
+                    Model, Session.Customization, target,
+                    AppScaffolding.GeneratedProjectPath.RootNamespace(
+                        GenerateStep.NameFor(Session), target, Session.Customization))
+                .ClassNameOf(entityName)
+            : entityName;
+
+    /// <summary>
+    /// Keeps the Output stage's screen choices on the classes they were made for, when a rename or
+    /// a removal here changes which names there are. They are recorded by name, so without this a
+    /// renamed class went back to the heuristic's screen without a word.
+    /// </summary>
+    private void FollowScreenChoice(AppScaffolding.AppCustomization updated)
+    {
+        if (updated != Session.Customization)
+            Session.SetCustomization(updated);
+    }
 
     private void RemoveField(string entityName, string fieldName)
         => Report(
@@ -334,8 +363,15 @@
         if (name.Length == 0 || name == entity.Name)
             return;
 
+        var className = ClassNameOf(entity.Name);
+        var changed = ModelEditor.RenameEntity(Model, entity.Name, name);
+
+        if (changed)
+            FollowScreenChoice(
+                ScreenChoice.Rename(Session.Customization, className, ClassNameOf(entity.Name)));
+
         Report(
-            ModelEditor.RenameEntity(Model, entity.Name, name),
+            changed,
             $"Renamed to {name}.",
             "Could not rename — the name may already be in use.");
     }

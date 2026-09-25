@@ -504,6 +504,38 @@ public class ReviewStageTests
             rendered.Find(".edit-report").TextContent, "StartDate must not be after EndDate");
     }
 
+    /// <summary>
+    /// A screen chosen on Output is recorded against the class's name, so a rename on Review
+    /// used to strand it: the renamed class quietly went back to the screen the heuristic picks.
+    /// </summary>
+    [TestMethod]
+    public void Renaming_a_class_carries_its_screen_choice()
+    {
+        using var context = new BunitContext();
+        var rendered = RenderShop(context, out var session);
+        session.SetCustomization(session.Customization with { Transactions = "Customer" });
+
+        rendered.Find("[data-entity=Customer] input.entity-name").Change("Client");
+
+        Assert.AreEqual("Client", session.Customization.Transactions);
+    }
+
+    /// <summary>
+    /// A removed class's choice is not left behind to land on a class added later under the same
+    /// name, nor echoed in the replay line for a class that is not there.
+    /// </summary>
+    [TestMethod]
+    public void Removing_a_class_forgets_its_screen_choice()
+    {
+        using var context = new BunitContext();
+        var rendered = RenderShop(context, out var session);
+        session.SetCustomization(session.Customization with { Masters = "Order,OrderLine" });
+
+        rendered.Find("[data-entity=OrderLine] button.remove").Click();
+
+        Assert.AreEqual("Order", session.Customization.Masters);
+    }
+
     private static CandidateDomainModel AModelWithAnAcceptedStatusProposal()
     {
         var model = AModel();
