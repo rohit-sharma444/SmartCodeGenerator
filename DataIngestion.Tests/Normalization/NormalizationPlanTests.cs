@@ -14,6 +14,51 @@ public class NormalizationPlanTests
             [table],
             NormalizationAnalyzer.Analyze(table).Findings.Where(f => f.Kind == kind).ToList());
 
+    /// <summary>
+    /// A rewritten table is still the table the source described. Rebuilt with only its name and
+    /// columns, a partly-read SQL table stopped saying so (its rules then read as holding in every
+    /// row), its declared foreign keys vanished, and every column lost what the database declared
+    /// about it -- the lengths and nullability the generated validators are built from.
+    /// </summary>
+    [Fact]
+    public void ARewrittenTableKeepsWhatTheSourceDeclaredAboutIt()
+    {
+        var facts = new CodeGenerationEngine.Models.TypeFacts { MaxLength = 20, IsNullable = false };
+
+        var table = new TabularTable
+        {
+            Name = "Orders", SourceLabel = "dbo.Orders", IsPartial = true, SourceRowCount = 47_000_000
+        };
+        table.Columns.Add(new TabularColumn { Name = "Ref", Facts = facts });
+        table.Columns.Add(new TabularColumn { Name = "CustomerId", Type = "int" });
+        table.Columns.Add(new TabularColumn { Name = "Total", Type = "decimal" });
+        table.Columns.Add(new TabularColumn { Name = "WarehouseId", Type = "int" });
+        table.Rows.Add(["ORD-1", "1", "9.99", "4"]);
+        table.ForeignKeys.Add(new TabularForeignKey("CustomerId", "Customers", "CustomerId"));
+        table.ForeignKeys.Add(new TabularForeignKey("WarehouseId", "Warehouses", "WarehouseId"));
+
+        var dropWarehouse = new NormalizationFinding
+        {
+            Kind = NormalizationFindingKind.DerivedColumn,
+            TableName = "Orders",
+            SourceLabel = "dbo.Orders",
+            Columns = ["WarehouseId"],
+            Headline = "Derived column: WarehouseId",
+            Proposal = "drop it",
+            Evidence = [],
+        };
+
+        var rewritten = NormalizationPlan.Apply([table], [dropWarehouse]).Single();
+
+        Assert.True(rewritten.IsPartial);
+        Assert.Equal(47_000_000, rewritten.SourceRowCount);
+        Assert.Same(facts, rewritten.Columns.Single(c => c.Name == "Ref").Facts);
+
+        // A declared key on a column that is gone goes with it; the rest stay.
+        Assert.Equal(
+            new[] { "CustomerId" }, rewritten.ForeignKeys.Select(k => k.Column));
+    }
+
     [Fact]
     public void ARepeatingGroupBecomesAChildTableAndLeavesTheParent()
     {

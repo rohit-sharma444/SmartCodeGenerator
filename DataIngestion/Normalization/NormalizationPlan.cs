@@ -165,11 +165,14 @@ public static class NormalizationPlan
 
         foreach (var column in finding.Columns)
         {
+            var source = table.Columns.First(
+                c => string.Equals(c.Name, column, StringComparison.OrdinalIgnoreCase));
+
             entity.Columns.Add(new TabularColumn
             {
                 Name = column,
-                Type = table.Columns.First(
-                    c => string.Equals(c.Name, column, StringComparison.OrdinalIgnoreCase)).Type,
+                Type = source.Type,
+                Facts = source.Facts,
             });
         }
 
@@ -260,12 +263,25 @@ public static class NormalizationPlan
     {
         var kept = table.Columns.Where(c => !removed.Contains(c.Name)).ToList();
 
-        var rewritten = new TabularTable { Name = table.Name, SourceLabel = table.SourceLabel };
+        // Still the table the source described: how much of it was read, the keys it declared on
+        // columns that survive, and what it declared about each column.
+        var rewritten = new TabularTable
+        {
+            Name = table.Name,
+            SourceLabel = table.SourceLabel,
+            IsPartial = table.IsPartial,
+            SourceRowCount = table.SourceRowCount,
+        };
+
+        rewritten.ForeignKeys.AddRange(table.ForeignKeys.Where(k => !removed.Contains(k.Column)));
 
         foreach (var column in kept)
             rewritten.Columns.Add(new TabularColumn
             {
-                Name = column.Name, Type = column.Type, HoldsRowNumbers = column.HoldsRowNumbers
+                Name = column.Name,
+                Type = column.Type,
+                Facts = column.Facts,
+                HoldsRowNumbers = column.HoldsRowNumbers
             });
 
         foreach (var (column, _) in addedKeys)
