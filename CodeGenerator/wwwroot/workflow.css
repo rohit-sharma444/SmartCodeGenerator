@@ -806,9 +806,45 @@ body {
 .step-done { color: var(--pending); }
 .step-done::before { content: "\2713\00a0"; color: var(--done); }
 
-.step-current { font-weight: 600; }
-.step-current::before { content: "\00b7\00a0"; }
-.step-current .elapsed { font-weight: 400; color: var(--pending); }
+/* A static bold line with a middle dot read as settled rather than working, on a wait that runs
+   to several minutes with nothing else moving on screen - Discover's local-model round trip
+   above all. A spinning ring says "still going" without depending on the seconds counter being
+   read, and the tinted row gives the one changing line on the page somewhere to be seen from a
+   glance rather than a read. Same construction as chat.css's .working-spinner, so the tool's two
+   long-running waits look like one idiom rather than two. */
+.step-current {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0.3rem 0;
+    padding: 0.4rem 0.7rem;
+    border-radius: var(--radius-sm);
+    background: var(--accent-wash);
+    font-weight: 600;
+    color: var(--accent-ink);
+}
+
+.step-current::before {
+    content: "";
+    flex: none;
+    width: 0.85em;
+    height: 0.85em;
+    border: 2px solid var(--line);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: step-current-spin 700ms linear infinite;
+}
+
+@keyframes step-current-spin {
+    to { transform: rotate(360deg); }
+}
+
+/* The spinner is decoration; the sentence beside it carries the meaning. */
+@media (prefers-reduced-motion: reduce) {
+    .step-current::before { animation: none; }
+}
+
+.step-current .elapsed { margin-left: auto; font-weight: 400; color: var(--pending); }
 
 /* Known about, not yet done. Dimmer than a finished step, and marked with an open circle rather
    than a tick: the two-phase discovery lists every class it means to write minutes before it has
