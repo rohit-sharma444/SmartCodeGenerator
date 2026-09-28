@@ -144,6 +144,10 @@ internal static class GenerateStep
         foreach (var stub in scaffold.OutdatedValidatorStubs)
             lines.Add(stub + ".");
 
+        // The user's own values, missing from the app: said, not left for them to notice.
+        foreach (var unreadable in scaffold.UnreadableSeedValues)
+            lines.Add(unreadable + ".");
+
         // Printed whether or not the build was green: a user whose app does not compile still
         // needs to know where the seed rows are and how to run it once it does.
         lines.AddRange(NextSteps.Lines(

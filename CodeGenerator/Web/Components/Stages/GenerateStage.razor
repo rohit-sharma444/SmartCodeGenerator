@@ -160,6 +160,9 @@ else
         foreach (var stub in app.Scaffold.OutdatedValidatorStubs)
             _report.Add(stub + ".");
 
+        foreach (var unreadable in app.Scaffold.UnreadableSeedValues)
+            _report.Add(unreadable + ".");
+
         // Written already, so the way on is the box's, exactly as it is after a fresh write.
         Navigation.Offer(Continue);
 
@@ -288,6 +291,10 @@ else
         if (!addOnly)
             foreach (var stub in scaffold.OutdatedValidatorStubs)
                 _report.Add(stub + ".");
+
+        // The user's own values, missing from the app: said, not left for them to notice.
+        foreach (var unreadable in scaffold.UnreadableSeedValues)
+            _report.Add(unreadable + ".");
 
         StateHasChanged();
 

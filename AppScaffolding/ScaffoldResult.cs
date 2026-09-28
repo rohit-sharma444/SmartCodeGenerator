@@ -41,4 +41,15 @@ public sealed record ScaffoldResult(
     /// net10.0-windows.
     /// </remarks>
     public string? TestProjectProblem { get; init; }
+
+    /// <summary>
+    /// One sentence per field whose imported values its type could not read, so they were left
+    /// out of the seed data — usually a field the user retyped in the review loop. Empty when
+    /// every value was written.
+    /// </summary>
+    /// <remarks>
+    /// Its own property for the reason <see cref="OutdatedValidatorStubs"/> is: the scaffold
+    /// succeeds without these values, so <see cref="Message"/> would never carry it.
+    /// </remarks>
+    public IReadOnlyList<string> UnreadableSeedValues { get; init; } = [];
 }
