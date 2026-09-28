@@ -100,15 +100,22 @@ public class ColumnTypeInferenceTests
     public void AmbiguousOrLooseDateLikeValues_StayStrings(string first, string second)
         => Assert.Equal("string", ColumnTypeInference.Infer(new[] { first, second }, "Placed"));
 
-    /// <summary>Only the first TypeSampleSize non-empty values are examined; the cap is a constant
-    /// so this test cannot drift from the implementation.</summary>
-    [Fact]
-    public void OnlyTheFirstSampleOfValuesIsExamined()
+    /// <summary>
+    /// EVERY value is evidence, however far down it sits. Typing a column from its first rows only
+    /// meant a later "n/a" in an int column was silently dropped from the seed data, a later
+    /// 3000000000 silently lost, and a later "007" silently stored as 7.
+    /// </summary>
+    [Theory]
+    [InlineData("1", "not a number", "string")]
+    [InlineData("1", "3000000000", "decimal")]
+    [InlineData("1", "2.5", "decimal")]
+    [InlineData("1", "007", "string")]
+    [InlineData("2026-01-15", "15/01/2026", "string")]
+    public void AValueFarPastTheFirstRows_StillDecidesTheType(
+        string common, string late, string expected)
     {
-        var values = Enumerable.Repeat("1", ColumnTypeInference.TypeSampleSize)
-            .Append("not a number")
-            .ToArray();
+        var values = Enumerable.Repeat(common, 10_000).Append(late).ToArray();
 
-        Assert.Equal("int", ColumnTypeInference.Infer(values, "Qty"));
+        Assert.Equal(expected, ColumnTypeInference.Infer(values, "Qty"));
     }
 }

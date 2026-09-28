@@ -69,7 +69,11 @@ public class NamespacePrefixTests
     [TestMethod]
     public void The_default_customization_has_no_prefix()
     {
-        Assert.AreEqual(string.Empty, AppCustomization.Default.NamespacePrefix);
+        // Null, not string.Empty: BuildAppCommand.Merge reads null as "not mentioned" so a
+        // remembered profile prefix survives; EffectiveNamespacePrefix is what everything else
+        // reads, and RootNamespaceFor already goes through it.
+        Assert.IsNull(AppCustomization.Default.NamespacePrefix);
+        Assert.AreEqual(string.Empty, AppCustomization.Default.EffectiveNamespacePrefix);
         Assert.AreEqual("Shop", AppCustomization.Default.RootNamespaceFor("Shop"));
     }
 

@@ -477,6 +477,65 @@ public class ReviewStageTests
         Assert.IsTrue(model.Entities.Single(e => e.Name == "Booking").Proposals[0].Accepted);
     }
 
+    /// <summary>
+    /// A rule the user accepted cannot outlive a property it names, but it was their choice, so
+    /// the report says it went rather than let it disappear with the field.
+    /// </summary>
+    [TestMethod]
+    public void Removing_a_field_says_which_accepted_rules_went_with_it()
+    {
+        using var context = new BunitContext();
+        var model = AModelWithAnEntityProposal();
+        var booking = model.Entities.Single(e => e.Name == "Booking");
+        booking.Proposals[0].Accepted = true;
+        var session = SessionWith(model);
+        var rendered = context.Render<ReviewStage>(p => p
+            .Add(c => c.Session, session)
+            .Add(c => c.Navigation, new StageNavigation())
+            .Add(c => c.OnAdvance, () => { }));
+
+        rendered.FindAll("[data-entity=Booking] .fields li")
+            .Single(li => li.QuerySelector("input.field-name")?.GetAttribute("value") == "EndDate")
+            .QuerySelector("button.unfield")!
+            .Click();
+
+        Assert.IsEmpty(booking.Proposals);
+        StringAssert.Contains(
+            rendered.Find(".edit-report").TextContent, "StartDate must not be after EndDate");
+    }
+
+    /// <summary>
+    /// A screen chosen on Output is recorded against the class's name, so a rename on Review
+    /// used to strand it: the renamed class quietly went back to the screen the heuristic picks.
+    /// </summary>
+    [TestMethod]
+    public void Renaming_a_class_carries_its_screen_choice()
+    {
+        using var context = new BunitContext();
+        var rendered = RenderShop(context, out var session);
+        session.SetCustomization(session.Customization with { Transactions = "Customer" });
+
+        rendered.Find("[data-entity=Customer] input.entity-name").Change("Client");
+
+        Assert.AreEqual("Client", session.Customization.Transactions);
+    }
+
+    /// <summary>
+    /// A removed class's choice is not left behind to land on a class added later under the same
+    /// name, nor echoed in the replay line for a class that is not there.
+    /// </summary>
+    [TestMethod]
+    public void Removing_a_class_forgets_its_screen_choice()
+    {
+        using var context = new BunitContext();
+        var rendered = RenderShop(context, out var session);
+        session.SetCustomization(session.Customization with { Masters = "Order,OrderLine" });
+
+        rendered.Find("[data-entity=OrderLine] button.remove").Click();
+
+        Assert.AreEqual("Order", session.Customization.Masters);
+    }
+
     private static CandidateDomainModel AModelWithAnAcceptedStatusProposal()
     {
         var model = AModel();

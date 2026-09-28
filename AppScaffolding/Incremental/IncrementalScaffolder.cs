@@ -74,7 +74,7 @@ public static class IncrementalScaffolder
             var source = GeneratedProjectPath.Folder(staging, request.AppName, request.Target);
 
             var outdatedStubs = new List<string>();
-            var written = Copy(source, destination, outdatedStubs);
+            var written = Copy(source, destination, outdatedStubs, newClassNames);
 
             return new IncrementalResult(
                 true,
@@ -111,7 +111,8 @@ public static class IncrementalScaffolder
     /// </para>
     /// </remarks>
     private static List<string> Copy(
-        string source, string destination, List<string> outdatedStubs)
+        string source, string destination, List<string> outdatedStubs,
+        IReadOnlyList<string> newClassNames)
     {
         var written = new List<string>();
 
@@ -125,7 +126,7 @@ public static class IncrementalScaffolder
             var target = Path.Combine(destination, relative);
             var existing = File.Exists(target) ? File.ReadAllText(target) : null;
 
-            if (!IncrementalFiles.ShouldCopy(relative, File.ReadAllText(file), existing))
+            if (!IncrementalFiles.ShouldCopy(relative, File.ReadAllText(file), existing, newClassNames))
             {
                 if (existing is not null
                     && IncrementalFiles.IsWriteOnce(relative)

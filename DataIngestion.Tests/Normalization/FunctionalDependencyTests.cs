@@ -32,6 +32,42 @@ public class FunctionalDependencyTests
     }
 
     /// <summary>
+    /// Carrying out a split must not respell the user's data. Compared case-blind, "ada" was the
+    /// same customer as "Ada", so the order that said "ada" / "LONDON" came back pointing at the
+    /// row saying "Ada" / "London" and its own spelling was gone. Two spellings are two values.
+    /// </summary>
+    [Fact]
+    public void ApplyingADependencyKeepsEveryRowsOwnSpelling()
+    {
+        var table = Table(
+            ["Ref", "CustomerName", "CustomerCity"],
+            ["ORD-1", "Ada", "London"],
+            ["ORD-2", "Grace", "York"],
+            ["ORD-3", "Ada", "London"],
+            ["ORD-4", "Grace", "York"],
+            ["ORD-5", "ada", "LONDON"],
+            ["ORD-6", "Ada", "London"],
+            ["ORD-7", "Grace", "York"],
+            ["ORD-8", "Grace", "York"]);
+
+        var finding = Assert.Single(
+            NormalizationAnalyzer.Analyze(table).Findings,
+            f => f.Kind == NormalizationFindingKind.FunctionalDependency);
+
+        var tables = NormalizationPlan.Apply([table], [finding]);
+        var orders = tables.Single(t => t.Name == "Orders");
+        var customers = tables.Single(t => t.Name == finding.ProposedEntity);
+
+        for (var row = 0; row < table.Rows.Count; row++)
+        {
+            var id = int.Parse(orders.Value(row, customers.Name + "Id")!);
+
+            Assert.Equal(table.Value(row, "CustomerName"), customers.Value(id - 1, "CustomerName"));
+            Assert.Equal(table.Value(row, "CustomerCity"), customers.Value(id - 1, "CustomerCity"));
+        }
+    }
+
+    /// <summary>
     /// A single dependent is only reported when the two columns share a name prefix. Otherwise any
     /// column that happens to determine one other column would be flagged, and the report becomes
     /// noise the user learns to skip.

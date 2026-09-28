@@ -169,11 +169,11 @@ internal static class CustomizationWizard
         // saved company and no prefix must not silently adopt one just by pressing Enter through
         // the wizard. Also only when nothing is set yet, and only when it reduces to something a
         // namespace may actually be called, so the run never refuses its own suggestion.
-        var suggestedPrefix = start.NamespacePrefix.Length == 0
+        var suggestedPrefix = string.IsNullOrEmpty(start.NamespacePrefix)
                                && company.Length > 0
                                && company != start.Company
             ? NamespacePrefix.FromCompany(company) ?? string.Empty
-            : start.NamespacePrefix;
+            : start.NamespacePrefix ?? string.Empty;
 
         var prefix = Ask(
             reader, writer, "Namespace prefix",

@@ -195,6 +195,49 @@ public class IncrementalScaffolderTests
             missing, $"files of the new class were not copied: {string.Join(", ", missing)}");
     }
 
+    /// <summary>
+    /// A hand edit to an existing class survives an add. Before, every file whose generated
+    /// content differed from disk was copied -- so any edit to Models/Customer.cs was reverted by
+    /// adding a Supplier, the one thing "add" promised not to do.
+    /// </summary>
+    [TestMethod]
+    public void An_add_keeps_a_hand_edit_to_an_existing_class()
+    {
+        var target = new WpfTarget();
+
+        new AppScaffolder().Scaffold(ScaffoldRequest.For(Model("Customer"), "Shop", _root, target));
+
+        var customerPath = Path.Combine(GeneratedProjectPath.Folder(_root, "Shop", target), "Models", "Customer.cs");
+        File.AppendAllText(customerPath, "// MY HAND EDIT\r\n");
+
+        IncrementalScaffolder.Add(
+            ScaffoldRequest.For(Model("Customer", "Supplier"), "Shop", _root, target), ["Supplier"]);
+
+        StringAssert.Contains(File.ReadAllText(customerPath), "// MY HAND EDIT", "an add reverted a hand edit");
+    }
+
+    /// <summary>
+    /// An existing class the model has changed is left as it is on disk: the prompt says "Adding
+    /// leaves them as they are", and overwrite is the choice that applies such a change.
+    /// </summary>
+    [TestMethod]
+    public void An_add_leaves_a_changed_existing_class_as_it_is()
+    {
+        var target = new WpfTarget();
+
+        new AppScaffolder().Scaffold(ScaffoldRequest.For(Model("Customer"), "Shop", _root, target));
+
+        var customerPath = Path.Combine(GeneratedProjectPath.Folder(_root, "Shop", target), "Models", "Customer.cs");
+        var before = File.ReadAllBytes(customerPath);
+
+        var changed = Model("Customer", "Supplier");
+        changed.Entities[0].Fields.Add(new CandidateField { Name = "Phone", Type = "string", Provenance = Provenance.Wiki });
+
+        IncrementalScaffolder.Add(ScaffoldRequest.For(changed, "Shop", _root, target), ["Supplier"]);
+
+        CollectionAssert.AreEqual(before, File.ReadAllBytes(customerPath), "an add rewrote a class it said it would leave");
+    }
+
     [TestMethod]
     public void Adding_nothing_writes_nothing()
     {

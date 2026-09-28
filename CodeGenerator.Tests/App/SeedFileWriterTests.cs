@@ -126,6 +126,151 @@ public class SeedFileWriterTests
         Assert.IsFalse(Rows(files.Single().Json)[0].TryGetProperty("Qty", out _));
     }
 
+    /// <summary>Omitted, but never silently: the user's own value is not in the app, and the only
+    /// way they learn that is by being told which field lost what.</summary>
+    [TestMethod]
+    public void AnOmittedValueIsReportedWithItsFieldAndType()
+    {
+        SeedFileWriter.Files(
+            [Order(("Qty", "int"))], Map(),
+            Data(
+                new Dictionary<string, string?> { ["Qty"] = "several" },
+                new Dictionary<string, string?> { ["Qty"] = "2" },
+                new Dictionary<string, string?> { ["Qty"] = "lots" }),
+            out var unreadable);
+
+        var note = unreadable.Single();
+        StringAssert.Contains(note, "Order.Qty");
+        StringAssert.Contains(note, "2 value(s)");
+        StringAssert.Contains(note, "int");
+        StringAssert.Contains(note, "\"several\"");
+    }
+
+    [TestMethod]
+    public void ValuesThatAllParseReportNothing()
+    {
+        SeedFileWriter.Files(
+            [Order(("Qty", "int"), ("Note", "string"))], Map(),
+            Data(new Dictionary<string, string?> { ["Qty"] = "2", ["Note"] = "several" }),
+            out var unreadable);
+
+        Assert.IsEmpty(unreadable);
+    }
+
+    /// <summary>
+    /// The seed parser used to be LOOSER than inference: it allowed thousands separators, so a
+    /// column the user retyped to decimal turned "1,2" into twelve. It now reads exactly what
+    /// inference would, and anything else is reported rather than reinterpreted.
+    /// </summary>
+    [TestMethod]
+    public void AThousandsSeparatedValueIsNotReadAsANumber()
+    {
+        var files = SeedFileWriter.Files(
+            [Order(("Total", "decimal"))], Map(),
+            Data(new Dictionary<string, string?> { ["Total"] = "1,2" }),
+            out var unreadable);
+
+        Assert.IsFalse(Rows(files.Single().Json)[0].TryGetProperty("Total", out _));
+        Assert.HasCount(1, unreadable);
+    }
+
+    /// <summary>DateTime.TryParse read a slash date month-first, so a UK 01/02/2026 retyped to
+    /// DateTime became 2 January. Only the unambiguous formats inference accepts are read.</summary>
+    [TestMethod]
+    public void ASlashDateIsNotReadMonthFirst()
+    {
+        var files = SeedFileWriter.Files(
+            [Order(("Placed", "DateTime"))], Map(),
+            Data(new Dictionary<string, string?> { ["Placed"] = "01/02/2026" }),
+            out var unreadable);
+
+        Assert.IsFalse(Rows(files.Single().Json)[0].TryGetProperty("Placed", out _));
+        Assert.HasCount(1, unreadable);
+    }
+
+    /// <summary>A SQL float renders with an exponent ("1E-05"), and the decimal parser refused
+    /// it, so every small or large float in a float column was dropped.</summary>
+    [TestMethod]
+    public void AnExponentFloatIsReadAsItsValue()
+    {
+        var row = Rows(SeedFileWriter.Files(
+            [Order(("Rate", "decimal"))], Map(),
+            Data(new Dictionary<string, string?> { ["Rate"] = "1E-05" })).Single().Json)[0];
+
+        Assert.AreEqual(0.00001m, row.GetProperty("Rate").GetDecimal());
+    }
+
+    /// <summary>A SQL bigint is typed int, and a value past int.MaxValue cannot be held by one.
+    /// That used to be one warning about the column and then silence about every value lost.</summary>
+    [TestMethod]
+    public void AnIntegerTooLargeForIntIsReported()
+    {
+        SeedFileWriter.Files(
+            [Order(("Reference", "int"))], Map(),
+            Data(new Dictionary<string, string?> { ["Reference"] = "3000000000" }),
+            out var unreadable);
+
+        StringAssert.Contains(unreadable.Single(), "3000000000");
+    }
+
+    /// <summary>The round-trip form SQL Server's rows are rendered in, with a fraction and an
+    /// offset, is a date and must be read as one.</summary>
+    [TestMethod]
+    public void ASqlRoundTripDateWithAnOffsetIsRead()
+    {
+        SeedFileWriter.Files(
+            [Order(("Placed", "DateTime"))], Map(),
+            Data(new Dictionary<string, string?> { ["Placed"] = "2026-01-02T10:00:00.1234567+05:00" }),
+            out var unreadable);
+
+        Assert.IsEmpty(unreadable);
+    }
+
+    /// <summary>
+    /// A date is written as the source wrote it. DateTimeStyles.None converted anything with a
+    /// zone into the GENERATING machine's local time, so the same CSV seeded different values on
+    /// different machines, and a UTC "Z" came out as another clock time with a local offset.
+    /// </summary>
+    [TestMethod]
+    [DataRow("2026-01-02T10:00:00Z", "2026-01-02T10:00:00Z")]
+    [DataRow("2026-01-02T10:00:00+05:00", "2026-01-02T10:00:00+05:00")]
+    [DataRow("2026-01-02T10:00:00.5-08:00", "2026-01-02T10:00:00.5-08:00")]
+    [DataRow("2026-01-02T10:00:00", "2026-01-02T10:00:00")]
+    [DataRow("2026-01-02", "2026-01-02T00:00:00")]
+    public void ADateIsWrittenUnshiftedByTheMachinesTimeZone(string raw, string expected)
+    {
+        var row = Rows(SeedFileWriter.Files(
+            [Order(("Placed", "DateTime"))], Map(),
+            Data(new Dictionary<string, string?> { ["Placed"] = raw })).Single().Json)[0];
+
+        Assert.AreEqual(expected, row.GetProperty("Placed").GetString());
+    }
+
+    /// <summary>
+    /// Inference and the seed writer share one parse definition, so whatever type inference picks
+    /// for a column, every value in it is written. Before, inference accepted forms the writer did
+    /// not ("1E5"), and the writer accepted forms inference did not ("1,2").
+    /// </summary>
+    [TestMethod]
+    [DataRow("1", "-2", "+3")]
+    [DataRow("1.5", "2", "-0.25", "1E5", "2.5e-3")]
+    [DataRow("true", "no", "Y")]
+    [DataRow("2026-01-15", "2026/02/01", "2026-01-15 09:30", "15 Jan 2026", "January 5, 2026",
+        "2026-01-15T09:30:00Z", "2026-01-15T09:30:00.123+05:00")]
+    public void EveryValueOfAnInferredColumnIsWritten(params string[] values)
+    {
+        var type = DataIngestion.Schema.ColumnTypeInference.Infer(values, "Whatever");
+        Assert.AreNotEqual("string", type);
+
+        var rows = Rows(SeedFileWriter.Files(
+            [Order(("Value", type))], Map(),
+            Data(values.Select(v => new Dictionary<string, string?> { ["Value"] = v }).ToArray()),
+            out var unreadable).Single().Json);
+
+        Assert.IsEmpty(unreadable);
+        Assert.IsTrue(rows.All(r => r.TryGetProperty("Value", out _)));
+    }
+
     [TestMethod]
     public void ANullValueIsOmitted()
     {

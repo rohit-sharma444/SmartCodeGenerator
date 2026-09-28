@@ -32,7 +32,26 @@ public static class SeedFileWriter
         IReadOnlyList<ClassDefinition> classes,
         IReadOnlyDictionary<string, string> classNames,
         ImportedData data)
+        => Files(classes, classNames, data, out _);
+
+    /// <summary>
+    /// As <see cref="Files(IReadOnlyList{ClassDefinition}, IReadOnlyDictionary{string, string}, ImportedData)"/>,
+    /// and says what was left out: one sentence per field holding a value its type cannot read.
+    /// </summary>
+    /// <remarks>
+    /// Left out rather than written, because a JSON string in an int property fails the whole file
+    /// at load. But never silently: the user's own value is not in the app, and this is the only
+    /// place that knows it.
+    /// </remarks>
+    public static IReadOnlyList<(string FileName, string Json)> Files(
+        IReadOnlyList<ClassDefinition> classes,
+        IReadOnlyDictionary<string, string> classNames,
+        ImportedData data,
+        out IReadOnlyList<string> unreadable)
     {
+        var skipped = new List<string>();
+        unreadable = skipped;
+
         // Class name -> entity name. Rows are keyed by entity; files are named for the class; and
         // DomainModelMapper.ToUniqueClassName can rename one ("Type" -> "TypeItem").
         var entityByClass = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -50,15 +69,20 @@ public static class SeedFileWriter
             if (rows.Count == 0)
                 continue;
 
-            files.Add((definition.Name + ".json", Render(definition, rows)));
+            files.Add((definition.Name + ".json", Render(definition, rows, skipped)));
         }
 
         return files;
     }
 
     private static string Render(
-        ClassDefinition definition, IReadOnlyList<IReadOnlyDictionary<string, string?>> rows)
+        ClassDefinition definition,
+        IReadOnlyList<IReadOnlyDictionary<string, string?>> rows,
+        List<string> skipped)
     {
+        // Per property, in declaration order: how many values it could not read, and the first.
+        var misses = new Dictionary<string, (int Count, string First)>(StringComparer.Ordinal);
+
         using var stream = new MemoryStream();
         using (var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true }))
         {
@@ -71,7 +95,8 @@ public static class SeedFileWriter
                 foreach (var property in definition.Properties)
                 {
                     // Ids are assigned here, 1..N in row order — which is exactly what the foreign
-                    // keys the readers and NormalizationPlan emitted already point at.
+                    // keys the readers and NormalizationPlan emitted already point at, and what
+                    // TabularImport rewrote every key read from the source to.
                     if (string.Equals(property.Name, "Id", StringComparison.OrdinalIgnoreCase))
                     {
                         writer.WriteNumber("Id", index + 1);
@@ -88,13 +113,29 @@ public static class SeedFileWriter
                         || string.IsNullOrWhiteSpace(raw))
                         continue;
 
-                    Write(writer, property, raw.Trim());
+                    var value = raw.Trim();
+
+                    if (!Write(writer, property, value))
+                    {
+                        misses[property.Name] = misses.TryGetValue(property.Name, out var miss)
+                            ? (miss.Count + 1, miss.First)
+                            : (1, value);
+                    }
                 }
 
                 writer.WriteEndObject();
             }
 
             writer.WriteEndArray();
+        }
+
+        foreach (var property in definition.Properties)
+        {
+            if (misses.TryGetValue(property.Name, out var miss))
+                skipped.Add(
+                    $"{definition.Name}.{property.Name}: {miss.Count} value(s) could not be read as "
+                    + $"{property.Type} and were left out of the seed data, the first being "
+                    + $"\"{miss.First}\"");
         }
 
         return System.Text.Encoding.UTF8.GetString(stream.ToArray());
@@ -105,56 +146,58 @@ public static class SeedFileWriter
         => type is "string" or "int" or "decimal" or "bool" or "DateTime";
 
     /// <summary>
-    /// Writes one value as its declared JSON type. A value that does not parse is OMITTED, leaving
-    /// the class's default: the user may have retyped the field in the review loop, and the row
-    /// should still load rather than the whole file failing.
+    /// Writes one value as its declared JSON type, or returns false and writes nothing. A value
+    /// that does not parse is OMITTED, leaving the class's default: the user may have retyped the
+    /// field in the review loop, and the row should still load rather than the whole file failing.
     /// </summary>
-    private static void Write(Utf8JsonWriter writer, PropertyDefinition property, string raw)
+    /// <remarks>
+    /// Parsed by <see cref="ImportedValues"/>, the same rules column inference typed the field by,
+    /// so an inferred type always reads its own column.
+    /// </remarks>
+    private static bool Write(Utf8JsonWriter writer, PropertyDefinition property, string raw)
     {
         switch (property.Type)
         {
             case "int":
-                if (int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var i))
-                    writer.WriteNumber(property.Name, i);
-                break;
+                if (!ImportedValues.TryInt(raw, out var i))
+                    return false;
+                writer.WriteNumber(property.Name, i);
+                return true;
 
             case "decimal":
-                if (decimal.TryParse(raw, NumberStyles.Number, CultureInfo.InvariantCulture, out var d))
-                    writer.WriteNumber(property.Name, d);
-                break;
+                if (!ImportedValues.TryDecimal(raw, out var d))
+                    return false;
+                writer.WriteNumber(property.Name, d);
+                return true;
 
             case "bool":
-                if (TryBoolean(raw, out var b))
-                    writer.WriteBoolean(property.Name, b);
-                break;
+                if (!ImportedValues.TryBoolean(raw, out var b))
+                    return false;
+                writer.WriteBoolean(property.Name, b);
+                return true;
 
             case "DateTime":
-                if (DateTime.TryParse(
-                        raw, CultureInfo.InvariantCulture, DateTimeStyles.None, out var moment))
-                    writer.WriteString(property.Name, moment);
-                break;
+                if (ImportedValues.TryDateTimeOffset(raw, out var withZone))
+                {
+                    // Written by hand, not the DateTimeOffset overload: that one renders a zero
+                    // offset as "+00:00", where "Z" is what the source itself wrote.
+                    var offset = withZone.Offset == TimeSpan.Zero
+                        ? "Z"
+                        : withZone.ToString("zzz", CultureInfo.InvariantCulture);
+                    writer.WriteString(
+                        property.Name,
+                        withZone.ToString("yyyy-MM-ddTHH:mm:ss.FFFFFFF", CultureInfo.InvariantCulture)
+                            + offset);
+                    return true;
+                }
+                if (!ImportedValues.TryDateTime(raw, out var moment))
+                    return false;
+                writer.WriteString(property.Name, moment);
+                return true;
 
             default:
                 writer.WriteString(property.Name, raw);
-                break;
-        }
-    }
-
-    /// <summary>The word forms <c>ColumnTypeInference</c> accepts as boolean. Kept in step with it:
-    /// a column typed bool from "yes"/"no" has to be writable as one.</summary>
-    private static bool TryBoolean(string raw, out bool value)
-    {
-        switch (raw.ToLowerInvariant())
-        {
-            case "true" or "yes" or "y" or "1":
-                value = true;
                 return true;
-            case "false" or "no" or "n" or "0":
-                value = false;
-                return true;
-            default:
-                value = false;
-                return false;
         }
     }
 }

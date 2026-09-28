@@ -32,10 +32,12 @@ public sealed class PercentageRule : IValidationRule
 
         var message = SymbolDisplay.FormatLiteral(Describe() + ".", quote: true);
         const string Parse = "System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture";
+        static string Text(string property) =>
+            $"(((object)this.{property}) as System.IFormattable)?.ToString(null, System.Globalization.CultureInfo.InvariantCulture)";
 
-        ctx.Line($"if (decimal.TryParse(((object)this.{_total})?.ToString(), {Parse}, out var __t)");
-        ctx.Line($"    && decimal.TryParse(((object)this.{_net})?.ToString(), {Parse}, out var __n)");
-        ctx.Line($"    && decimal.TryParse(((object)this.{_rate})?.ToString(), {Parse}, out var __r))");
+        ctx.Line($"if (decimal.TryParse({Text(_total)}, {Parse}, out var __t)");
+        ctx.Line($"    && decimal.TryParse({Text(_net)}, {Parse}, out var __n)");
+        ctx.Line($"    && decimal.TryParse({Text(_rate)}, {Parse}, out var __r))");
         ctx.Line("{");
         ctx.Line($"    if (System.Math.Abs(__t - (__n * (1 + __r))) > 0.0001m) errors.Add({message});");
         ctx.Line("}");

@@ -150,15 +150,15 @@ internal static class CustomizationMenus
         // every namespace in the app and rewrites both csprojs, App.xaml and the validator stubs on
         // the next regeneration. So it is offered only for a company typed FRESH in this run, never
         // one merely kept, and only when nothing is set yet.
-        var suggestedPrefix = start.NamespacePrefix.Length == 0
+        var suggestedPrefix = string.IsNullOrEmpty(start.NamespacePrefix)
                               && companyName.Length > 0
                               && companyName != start.Company
             ? NamespacePrefix.FromCompany(companyName) ?? string.Empty
-            : start.NamespacePrefix;
+            : start.NamespacePrefix ?? string.Empty;
 
         var prefix = AskValue(
             reader, writer, choose, "Namespace prefix", suggestedPrefix,
-            start.NamespacePrefix.Length == 0 ? "Use" : "Keep", "Type a prefix");
+            string.IsNullOrEmpty(start.NamespacePrefix) ? "Use" : "Keep", "Type a prefix");
 
         if (prefix is null)
             return null;

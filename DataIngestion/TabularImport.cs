@@ -1,3 +1,4 @@
+using System.Globalization;
 using AppScaffolding;
 using DataIngestion.Schema;
 using DomainDiscovery.SeedExtraction;
@@ -18,8 +19,14 @@ public static class TabularImport
 
         var notes = new List<string>();
 
+        // Entity name -> the table its rows came from, for the foreign-key passes below.
+        var sources = new Dictionary<string, TabularTable>(StringComparer.OrdinalIgnoreCase);
+
         foreach (var table in tables)
         {
+            // What the reader had to give up is true whether or not the table becomes a class.
+            notes.AddRange(table.Notes);
+
             var entityName = NameNormalizer.ToUserTypedEntityName(table.Name);
 
             // The same three guards DataModelBuilder applies, for the same reasons. They must agree:
@@ -72,11 +79,179 @@ public static class TabularImport
             }
 
             rows[entityName] = imported;
+            sources[entityName] = table;
         }
 
-        ClearDanglingForeignKeys(rows, notes);
+        var unlinked = new Unlinked();
+        RewriteSourceKeys(rows, sources, notes, unlinked);
+        ClearDanglingForeignKeys(rows, sources, unlinked);
+        unlinked.AddNotes(notes);
 
         return new ImportedData(rows, notes);
+    }
+
+    /// <summary>References that had to be left unset, by why — each reason is its own note, so
+    /// the user is never told a row cap lost a link that their data never had.</summary>
+    private sealed class Unlinked
+    {
+        public int PastTheCap;
+        public int NamedNoRow;
+        public int NamedTwoRows;
+
+        public void AddNotes(List<string> notes)
+        {
+            if (PastTheCap > 0)
+            {
+                notes.Add(
+                    $"{PastTheCap} reference(s) could not be linked because the rows they pointed at fell "
+                    + $"outside the first {ImportedData.MaxSeedRows} imported, and were left unset.");
+            }
+
+            if (NamedNoRow > 0)
+            {
+                notes.Add(
+                    $"{NamedNoRow} reference(s) could not be linked because no row in your data carries "
+                    + "the key they name, and were left unset.");
+            }
+
+            if (NamedTwoRows > 0)
+            {
+                notes.Add(
+                    $"{NamedTwoRows} reference(s) could not be linked because more than one row carries "
+                    + "the key they name, so which was meant is unknown; they were left unset.");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Rewrites every foreign key read from the source — the parent's own key value — to the Id
+    /// that parent row is seeded with.
+    /// </summary>
+    /// <remarks>
+    /// The parent's key column is dropped (<see cref="DataModelBuilder"/> records why) and
+    /// <c>SeedFileWriter</c> numbers the seeded rows 1..N instead. A child's key left as the
+    /// source spelled it would then name whichever row sits at that position: the wrong parent
+    /// when the keys happen to fall in 1..N, and no parent at all when they do not.
+    /// <para>
+    /// Remapped rather than kept: row numbers are what every foreign key this layer makes up
+    /// already holds (a JSON child's, a normalization split's), and what
+    /// <see cref="ClearDanglingForeignKeys"/> checks against, so bringing the source's own keys
+    /// into line leaves one numbering, not two. Those made-up keys carry
+    /// <see cref="TabularColumn.HoldsRowNumbers"/> and are skipped here.
+    /// </para>
+    /// <para>
+    /// Only int columns: a key held as text ("ALFKI") is not something the generated app treats
+    /// as a foreign key, and rewriting it would replace the user's value with a number.
+    /// </para>
+    /// </remarks>
+    private static void RewriteSourceKeys(
+        Dictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string?>>> rows,
+        Dictionary<string, TabularTable> sources,
+        List<string> notes,
+        Unlinked unlinked)
+    {
+        // Entity -> its source key -> the 1-based position of the row carrying it, over EVERY
+        // row read, so a key past the cap can be told apart from a key that names no row.
+        var positions = new Dictionary<string, Dictionary<string, int>>(StringComparer.OrdinalIgnoreCase);
+        var repeated = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var (entity, table) in sources)
+        {
+            if (DataModelBuilder.KeyColumn(table) is not { } keyColumn)
+                continue;
+
+            var byKey = new Dictionary<string, int>(StringComparer.Ordinal);
+            var twice = new HashSet<string>(StringComparer.Ordinal);
+
+            for (var row = 0; row < table.Rows.Count; row++)
+            {
+                if (KeyText(table.Value(row, keyColumn)) is not { } key)
+                    continue;
+
+                if (!byKey.TryAdd(key, row + 1))
+                    twice.Add(key);
+            }
+
+            positions[entity] = byKey;
+            repeated[entity] = twice;
+        }
+
+        var rewritten = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var (entity, table) in sources)
+        {
+            var fieldNames = DataModelBuilder.FieldNames(table);
+
+            foreach (var column in table.Columns)
+            {
+                if (column.HoldsRowNumbers
+                    || column.Type != "int"
+                    || !fieldNames.TryGetValue(column.Name, out var field)
+                    || !field.EndsWith("Id", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                var target = field[..^2];
+
+                if (string.Equals(target, entity, StringComparison.OrdinalIgnoreCase)
+                    || !positions.TryGetValue(target, out var byKey))
+                    continue;
+
+                var imported = rows[target].Count;
+
+                foreach (var row in rows[entity])
+                {
+                    // Mutable in practice: every row in here was built as a Dictionary above.
+                    if (row is not Dictionary<string, string?> cells
+                        || !cells.TryGetValue(field, out var raw)
+                        || KeyText(raw) is not { } key)
+                        continue;
+
+                    if (repeated[target].Contains(key))
+                    {
+                        cells[field] = null;
+                        unlinked.NamedTwoRows++;
+                    }
+                    else if (!byKey.TryGetValue(key, out var position))
+                    {
+                        cells[field] = null;
+                        unlinked.NamedNoRow++;
+                    }
+                    else if (position > imported)
+                    {
+                        cells[field] = null;
+                        unlinked.PastTheCap++;
+                    }
+                    else
+                    {
+                        cells[field] = position.ToString(CultureInfo.InvariantCulture);
+                    }
+                }
+
+                rewritten.Add(target);
+            }
+        }
+
+        foreach (var target in rewritten)
+        {
+            notes.Add(
+                $"Each {target} is numbered 1, 2, 3... in the app rather than by its "
+                + $"{DataModelBuilder.KeyColumn(sources[target])} in {sources[target].Label}; "
+                + $"the references to it were renumbered to match.");
+        }
+    }
+
+    /// <summary>A key as one comparable spelling: integers in their plain form, so "007" and
+    /// "7" name the same row; anything else trimmed. Null for a blank cell.</summary>
+    private static string? KeyText(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return null;
+
+        var trimmed = raw.Trim();
+
+        return long.TryParse(trimmed, NumberStyles.Integer, CultureInfo.InvariantCulture, out var n)
+            ? n.ToString(CultureInfo.InvariantCulture)
+            : trimmed;
     }
 
     /// <summary>
@@ -99,10 +274,9 @@ public static class TabularImport
     /// </remarks>
     private static void ClearDanglingForeignKeys(
         Dictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string?>>> rows,
-        List<string> notes)
+        Dictionary<string, TabularTable> sources,
+        Unlinked unlinked)
     {
-        var cleared = 0;
-
         foreach (var (_, entityRows) in rows)
         {
             foreach (var row in entityRows)
@@ -130,16 +304,14 @@ public static class TabularImport
                         continue;
 
                     cells[field] = null;
-                    cleared++;
+
+                    // The cap is to blame only for a row that was read and then not imported.
+                    if (key > targetRows.Count && key <= sources[target].Rows.Count)
+                        unlinked.PastTheCap++;
+                    else
+                        unlinked.NamedNoRow++;
                 }
             }
-        }
-
-        if (cleared > 0)
-        {
-            notes.Add(
-                $"{cleared} reference(s) could not be linked because the rows they pointed at fell "
-                + $"outside the first {ImportedData.MaxSeedRows} imported, and were left unset.");
         }
     }
 }

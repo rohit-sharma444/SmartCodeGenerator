@@ -77,7 +77,12 @@ internal sealed class BuildAppCommand
 
         // Options come off the line BEFORE the data source is parsed: a location is taken as the
         // rest of the line, so anything left after it would be swallowed by the path.
-        var (remaining, inline) = InlineCustomization.Split(Tail(input), AppCustomization.Default);
+        var options = InlineCustomization.Read(Tail(input), AppCustomization.Default);
+        var (remaining, inline) = (options.Remaining, options.Customization);
+
+        // Said before anything runs: an ignored value is a setting the user thinks they made.
+        foreach (var note in options.Notes)
+            Output.Warning("  " + note);
 
         var request = InlineDataSource.Parse(remaining);
 
@@ -237,7 +242,11 @@ internal sealed class BuildAppCommand
             Logging = Named(inline.Logging, defaults.Logging, saved.Logging),
             SampleSeedData =
                 Named(inline.SampleSeedData, defaults.SampleSeedData, saved.SampleSeedData),
-            NamespacePrefix = Named(inline.NamespacePrefix, defaults.NamespacePrefix, saved.NamespacePrefix),
+            // Null-coalescing rather than Named: "namespace none" sets this to string.Empty, which
+            // EQUALS the default, so a differs-from-default comparison would read "cleared" as
+            // "not mentioned" and hand back the remembered prefix instead. Null IS "not mentioned"
+            // here, the same reasoning as Layout below.
+            NamespacePrefix = inline.NamespacePrefix ?? saved.NamespacePrefix,
 
             // These four were missing, so the profile quietly won over what was typed:
             // `build app: shop nologin` generated a login screen whenever the profile had one.
@@ -287,7 +296,7 @@ internal sealed class BuildAppCommand
         if (description.Length == 0)
         {
             Console.WriteLine("Usage: build app: <description of the system you want>");
-            Console.WriteLine("   or: build app from csv <path>   (also txt, json, excel)");
+            Console.WriteLine("   or: build app from csv <path>   (also txt, json, excel, sql)");
             Console.WriteLine(InlineOptionsHelp);
             return;
         }
@@ -630,8 +639,8 @@ internal sealed class BuildAppCommand
 
                 case "unfield" when parts.Length >= 3:
                     Report(
-                        ModelEditor.RemoveField(model, parts[1], parts[2]),
-                        $"Removed '{parts[2]}' from {parts[1]}.",
+                        ModelEditor.RemoveField(model, parts[1], parts[2], out var dropped),
+                        $"Removed '{parts[2]}' from {parts[1]}.{DroppedRulesNote(dropped)}",
                         "Could not remove field (no such field, or Name, which every class keeps).");
                     break;
 
@@ -900,6 +909,10 @@ internal sealed class BuildAppCommand
             // say the files are not there. What failed is the pair, and only after the next build.
             foreach (var stub in scaffold.OutdatedValidatorStubs)
                 Output.Warning("  " + stub + ".");
+
+            // The user's own values, missing from the app: said, not left for them to notice.
+            foreach (var unreadable in scaffold.UnreadableSeedValues)
+                Output.Warning("  " + unreadable + ".");
 
             Console.WriteLine("");
             //foreach (var file in scaffold.FilesWritten)
@@ -1463,6 +1476,16 @@ internal sealed class BuildAppCommand
             ? $"Added '{added}'."
             : "Could not add (duplicate or invalid).";
     }
+
+    /// <summary>
+    /// What to add to a field's removal report for the accepted rules that went with it, or
+    /// nothing when none did. Shared by the console and the Review page, so both say it.
+    /// </summary>
+    internal static string DroppedRulesNote(IReadOnlyList<string> dropped)
+        => dropped.Count == 0
+            ? string.Empty
+            : $" Also dropped {(dropped.Count == 1 ? "the rule" : "the rules")} that named it: "
+              + string.Join("; ", dropped.Select(rule => $"'{rule}'")) + ".";
 
     /// <summary>
     /// The lines a <c>why [name]</c> line produces: the whole report when no name is given,

@@ -188,19 +188,41 @@ public class OutputStageTests
             markup, CodeGenerator.App.ApplicationTypeMenu.LabelFor(new WpfTarget()));
     }
 
+    /// <summary>
+    /// StageGraph puts Entry Template unconditionally between Output and Generate, for every
+    /// target and layout — this button must not claim "Generate" and then land somewhere else.
+    /// </summary>
     [TestMethod]
-    public async Task Generate_is_the_step_forward_and_advances_to_it()
+    public async Task The_step_forward_does_not_claim_to_be_Generate()
     {
         using var context = new BunitContext();
         var navigation = new StageNavigation();
 
         RenderShop(context, out var session, navigation: navigation);
 
-        Assert.AreEqual("Generate", navigation.Label);
+        Assert.AreEqual(StageNavigation.DefaultLabel, navigation.Label);
 
         Assert.IsTrue(await navigation.ApplyAsync());
         session.Advance();                                    // output -> entry template
-        session.Advance();                                    // entry template -> generate, nothing to answer
+
+        Assert.AreEqual(BuildStage.EntryTemplate, session.Current);
+    }
+
+    /// <summary>Same for a target Entry Template does not support: the stage is still visited (as
+    /// a one-click pass-through), so the button must not claim "Generate" here either.</summary>
+    [TestMethod]
+    public async Task The_step_forward_does_not_claim_to_be_Generate_for_an_unsupported_target()
+    {
+        using var context = new BunitContext();
+        var navigation = new StageNavigation();
+
+        RenderShop(context, out var session, target: new ConsoleTarget(), navigation: navigation);
+
+        Assert.AreEqual(StageNavigation.DefaultLabel, navigation.Label);
+
+        Assert.IsTrue(await navigation.ApplyAsync());
+        session.Advance();                                    // output -> entry template, a no-op pass-through
+        session.Advance();                                    // entry template -> generate
 
         Assert.AreEqual(BuildStage.Generate, session.Current);
     }

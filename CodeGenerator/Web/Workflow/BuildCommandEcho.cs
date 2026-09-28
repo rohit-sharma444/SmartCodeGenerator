@@ -45,6 +45,12 @@ internal static class BuildCommandEcho
 
                 line += names.Any(char.IsWhiteSpace) ? $" tables \"{names}\"" : $" tables {names}";
             }
+
+            // Outermost of the location's trailing keywords, as InlineDataSource reads them. The
+            // console has no way to tick some findings and not others, so any finding applied is
+            // said as `normalize` - the nearer of the two lines that can be typed.
+            if (session.NormalizeAll || session.Normalized.Count > 0)
+                line += $" {InlineDataSource.NormalizeKeyword}";
         }
 
         line += Options(session.Customization);
@@ -53,8 +59,12 @@ internal static class BuildCommandEcho
 
         // `approve` is the review prompt's command, so it is only worth showing once a type has
         // actually been chosen — and it is how the console answers the Application Type stage.
+        // With the persistence it was generated with: `approve <type> sqlite` is how the console
+        // says it, and leaving it off replayed a SQLite app as JSON.
         if (session.Target is not null)
-            lines.Add($"approve {session.Target.Key}");
+            lines.Add(session.Generated?.Persistence == PersistenceKind.Sqlite
+                ? $"approve {session.Target.Key} sqlite"
+                : $"approve {session.Target.Key}");
 
         return lines;
     }
@@ -70,10 +80,21 @@ internal static class BuildCommandEcho
     {
         var options = string.Empty;
 
-        if (customization.Company.Length > 0)
-            options += $" company \"{customization.Company}\"";
+        // First, which is LAST to be applied: the parser reads right to left, and a company
+        // switches the title onto the company pattern unless a title is already there - so a
+        // title put back to "{app}" came back as the company pattern. Written whenever it differs
+        // from what the line would otherwise give, which with a company is the company pattern.
+        var impliedTitle = customization.Company.Length > 0
+            ? AppCustomization.CompanyTitlePattern
+            : AppCustomization.AppPlaceholder;
 
-        if (customization.NamespacePrefix.Length > 0)
+        if (customization.TitlePattern != impliedTitle)
+            options += $" title {Quoted(customization.TitlePattern)}";
+
+        if (customization.Company.Length > 0)
+            options += $" company {Quoted(customization.Company)}";
+
+        if (!string.IsNullOrEmpty(customization.NamespacePrefix))
             options += $" namespace {customization.NamespacePrefix}";
 
         if (customization.Theme != AppTheme.Default)
@@ -82,12 +103,10 @@ internal static class BuildCommandEcho
         if (customization.Accent is { Length: > 0 } accent)
             options += $" accent {accent}";
 
+        // Quoted: a path with a space in it otherwise left all but its last word in the
+        // description.
         if (customization.IconPath is { Length: > 0 } icon)
-            options += $" icon {icon}";
-
-        // Left out before, so a pasted line titled the window with the default pattern.
-        if (customization.TitlePattern != AppCustomization.AppPlaceholder)
-            options += $" title \"{customization.TitlePattern}\"";
+            options += $" icon {Quoted(icon)}";
 
         if (customization.Layout is { } layout)
             options += $" layout {LayoutWord(layout)}";
@@ -95,11 +114,12 @@ internal static class BuildCommandEcho
         if (customization.EntryTemplate is { } entryTemplate)
             options += $" entry-template {AppScaffolding.Screens.EntryTemplateCatalog.KeyFor(entryTemplate)}";
 
+        // Quoted for the same reason: "Order, Invoice" is two words.
         if (customization.Transactions.Length > 0)
-            options += $" transactions {customization.Transactions}";
+            options += $" transactions {Quoted(customization.Transactions)}";
 
         if (customization.Masters.Length > 0)
-            options += $" masters {customization.Masters}";
+            options += $" masters {Quoted(customization.Masters)}";
 
         if (!customization.Validation)
             options += " novalidation";
@@ -115,6 +135,12 @@ internal static class BuildCommandEcho
 
         return options;
     }
+
+    /// <summary>
+    /// <paramref name="value"/> as one quoted token, a quote inside it doubled — the escape
+    /// <c>InlineCustomization</c> reads back. A company with a quote in it broke the line before.
+    /// </summary>
+    private static string Quoted(string value) => $"\"{value.Replace("\"", "\"\"")}\"";
 
     /// <summary>
     /// The word the parser accepts, which is not always the enum's own name —

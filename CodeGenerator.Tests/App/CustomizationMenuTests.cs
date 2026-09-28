@@ -381,7 +381,7 @@ public class CustomizationMenuTests
         Assert.AreEqual("None", labels[byDefault]);
 
         Assert.IsNotNull(result);
-        Assert.IsEmpty(result.NamespacePrefix);
+        Assert.IsEmpty(result.NamespacePrefix ?? "");
     }
 
     [TestMethod]

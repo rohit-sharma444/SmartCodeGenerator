@@ -1,3 +1,7 @@
+using System.Text.RegularExpressions;
+using CodeGenerationEngine.Core.Validation;
+using CodeGenerationEngine.Core.Validation.Rules;
+using CodeGenerationEngine.Models;
 using DomainDiscovery.Enrichment;
 using DomainDiscovery.Model;
 using DomainDiscovery.SeedExtraction;
@@ -137,7 +141,20 @@ public static class ModelEditor
     /// <see cref="DefaultFields.NameField"/>, and whichever field is the entity's last.
     /// </summary>
     public static bool RemoveField(CandidateDomainModel model, string entityName, string fieldName)
+        => RemoveField(model, entityName, fieldName, out _);
+
+    /// <inheritdoc cref="RemoveField(CandidateDomainModel, string, string)"/>
+    /// <param name="droppedRules">
+    /// The accepted rules that went with the field, as their descriptions. A rule naming a
+    /// property the class no longer has cannot be enforced, so it goes - but it was the user's
+    /// choice, and the caller says so rather than let it vanish.
+    /// </param>
+    public static bool RemoveField(
+        CandidateDomainModel model, string entityName, string fieldName,
+        out IReadOnlyList<string> droppedRules)
     {
+        droppedRules = [];
+
         var normalized = NameNormalizer.ToFieldName(fieldName);
         if (string.Equals(normalized, DefaultFields.NameField, StringComparison.OrdinalIgnoreCase))
             return false;
@@ -149,6 +166,13 @@ public static class ModelEditor
             return false;
 
         owner.Fields.Remove(field);
+
+        var naming = owner.Proposals.Where(p => Names(p, field.Name)).ToList();
+        droppedRules = [.. naming.Where(p => p.Accepted).Select(p => p.Rule.Describe())];
+
+        foreach (var proposal in naming)
+            owner.Proposals.Remove(proposal);
+
         return true;
     }
 
@@ -177,7 +201,15 @@ public static class ModelEditor
         if (owner is null || field is null)
             return false;
 
-        var normalized = NameNormalizer.ToFieldName(newName);
+        return TryRename(owner, field, NameNormalizer.ToFieldName(newName));
+    }
+
+    /// <summary>
+    /// The rename behind <see cref="RenameField"/>, for a name already normalized - which is also
+    /// how <see cref="RenameEntity"/> moves a foreign key onto its target's new name.
+    /// </summary>
+    private static bool TryRename(CandidateEntity owner, CandidateField field, string normalized)
+    {
         if (!NameNormalizer.IsValidIdentifier(normalized))
             return false;
 
@@ -195,8 +227,69 @@ public static class ModelEditor
         if (string.Equals(normalized, owner.Name, StringComparison.OrdinalIgnoreCase))
             return false;
 
+        var former = field.Name;
         field.Name = normalized;
+
+        for (var i = 0; i < owner.Proposals.Count; i++)
+        {
+            if (Names(owner.Proposals[i], former)
+                && Renamed(owner.Proposals[i], former, normalized) is { } carried)
+                owner.Proposals[i] = carried;
+        }
+
         return true;
+    }
+
+    private static bool Names(EntityRuleProposal proposal, string fieldName)
+        => proposal.Properties.Any(
+            p => string.Equals(p, fieldName, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// <paramref name="proposal"/> with <paramref name="from"/> renamed to <paramref name="to"/>
+    /// throughout - its properties, its rule and the text on its card - or null for a rule this
+    /// cannot rebuild.
+    /// </summary>
+    /// <remarks>
+    /// Rebuilt rather than left alone because a rule holds its property names, and the generated
+    /// validator skips one naming a property the class no longer has: a rename used to drop an
+    /// accepted rule without a word. The three kinds are the ones
+    /// <c>EntityRuleProposals</c> builds, and the texts are replaced whole-word and
+    /// case-sensitively because they are spelled from the field names themselves.
+    /// </remarks>
+    private static EntityRuleProposal? Renamed(EntityRuleProposal proposal, string from, string to)
+    {
+        string Name(string name)
+            => string.Equals(name, from, StringComparison.OrdinalIgnoreCase) ? to : name;
+
+        var spelled = proposal.Properties.First(
+            p => string.Equals(p, from, StringComparison.OrdinalIgnoreCase));
+
+        string Text(string text)
+            => Regex.Replace(text, $@"\b{Regex.Escape(spelled)}\b", to);
+
+        var names = proposal.Rule.Properties.Select(Name).ToList();
+
+        IValidationRule? rule = proposal.Rule switch
+        {
+            ComparisonRule comparison => new ComparisonRule(
+                names[0], names[1], comparison.ViolationOperator, Text(comparison.Describe())),
+            ArithmeticRule arithmetic => new ArithmeticRule(
+                names[0], names[1], arithmetic.Operator, names[2]),
+            PercentageRule => new PercentageRule(names[0], names[1], names[2]),
+            _ => null,
+        };
+
+        if (rule is null)
+            return null;
+
+        return new EntityRuleProposal
+        {
+            Kind = proposal.Kind,
+            Properties = [.. proposal.Properties.Select(Name)],
+            Rule = rule,
+            Evidence = Text(proposal.Evidence),
+            Accepted = proposal.Accepted
+        };
     }
 
     /// <summary>
@@ -234,6 +327,13 @@ public static class ModelEditor
             return false;
 
         model.Entities.Remove(target);
+
+        // Without this, `why <name>` on a class the user removed says "No decision recorded" --
+        // which reads as the tool never having considered it, when removing it was the decision.
+        model.Record(
+            target.Name, DecisionStage.ReviewLoop, DecisionOutcome.Skipped,
+            DecisionReasons.YouRemovedIt);
+
         return true;
     }
 
@@ -249,6 +349,8 @@ public static class ModelEditor
         var former = target.Name;
         target.Name = normalizedNew;
 
+        FollowReferences(model, former, normalizedNew);
+
         // The trail is filed under the name each stage saw, so a rename strands it: `why` on the
         // new name would find nothing and report a discovered entity as hand-added. Recording
         // both directions lets the user follow the rename from whichever name they remember.
@@ -258,6 +360,39 @@ public static class ModelEditor
             DecisionReasons.YouRenamedIt, $"renamed to \"{normalizedNew}\"");
 
         return true;
+    }
+
+    /// <summary>
+    /// Points every relationship aimed at <paramref name="former"/> at <paramref name="renamed"/>,
+    /// and moves its <c>&lt;Target&gt;Id</c> key with it.
+    /// </summary>
+    /// <remarks>
+    /// Both halves, for the reason <see cref="CandidateReference"/> records both: the mapper looks
+    /// a Target up by the class's current name and skips one it cannot find, and
+    /// <c>ForeignKeys.TargetsOf</c> knows a reference only by its key field. Left behind, the
+    /// renamed class lost every reference to it without a word. A key that cannot take the new
+    /// name - the entity already has a field called that - keeps the old one rather than collide.
+    /// </remarks>
+    private static void FollowReferences(CandidateDomainModel model, string former, string renamed)
+    {
+        foreach (var entity in model.Entities)
+        {
+            for (var i = 0; i < entity.Relationships.Count; i++)
+            {
+                var relationship = entity.Relationships[i];
+                if (!string.Equals(relationship.Target, former, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                entity.Relationships[i] = new CandidateRelationship
+                {
+                    Target = renamed,
+                    Role = relationship.Role
+                };
+
+                if (FindField(entity, $"{former}Id") is { } key)
+                    TryRename(entity, key, $"{renamed}Id");
+            }
+        }
     }
 
     private static CandidateEntity? Find(CandidateDomainModel model, string name)

@@ -29,6 +29,18 @@ public class InlineCustomizationTests
         Assert.AreEqual("Codis Ltd", customization.Company);
     }
 
+    /// <summary>A doubled quote inside a quoted value is one literal quote - the only way a value
+    /// holding a quote gets onto the line, and what the workflow's replay line writes.</summary>
+    [TestMethod]
+    public void A_doubled_quote_inside_a_quoted_value_is_one_quote()
+    {
+        var (remaining, customization) = Split("a shop company \"Codis \"\"Best\"\" Ltd\" logging");
+
+        Assert.AreEqual("a shop", remaining);
+        Assert.AreEqual("Codis \"Best\" Ltd", customization.Company);
+        Assert.IsTrue(customization.Logging);
+    }
+
     /// <summary>Naming a company adopts the company title pattern: a user who says who they are
     /// means the app to say so, and asking again would be a question with one sensible answer.</summary>
     [TestMethod]
@@ -111,14 +123,39 @@ public class InlineCustomizationTests
         Assert.AreEqual(AppTheme.Dark, customization.Theme);
     }
 
+    /// <summary>A value that cannot be used is ignored, with a note saying so - it used to stop the
+    /// scan, which dropped the option AND every option to its left into the description.</summary>
     [TestMethod]
-    public void An_unknown_theme_value_leaves_the_theme_alone_and_stops_the_scan()
+    public void An_unknown_theme_value_is_ignored_with_a_note()
     {
-        var (remaining, customization) = Split("a shop theme mauve");
+        var read = InlineCustomization.Read("a shop theme mauve", AppCustomization.Default);
 
-        Assert.AreEqual("a shop theme mauve", remaining);
-        Assert.AreEqual(AppTheme.Default, customization.Theme);
+        Assert.AreEqual("a shop", read.Remaining);
+        Assert.AreEqual(AppTheme.Default, read.Customization.Theme);
+        Assert.HasCount(1, read.Notes);
+        StringAssert.Contains(read.Notes[0], "mauve");
     }
+
+    [TestMethod]
+    public void The_options_left_of_an_unusable_value_are_still_read()
+    {
+        var read = InlineCustomization.Read(
+            "a shop company \"Codis Ltd\" layout kanban accent blue theme dark logging",
+            AppCustomization.Default);
+
+        Assert.AreEqual("a shop", read.Remaining);
+        Assert.AreEqual("Codis Ltd", read.Customization.Company);
+        Assert.AreEqual(AppTheme.Dark, read.Customization.Theme);
+        Assert.IsTrue(read.Customization.Logging);
+        Assert.IsNull(read.Customization.Layout);
+        Assert.IsNull(read.Customization.Accent);
+        Assert.HasCount(2, read.Notes);
+    }
+
+    [TestMethod]
+    public void A_line_with_only_good_options_has_no_notes()
+        => Assert.IsEmpty(
+            InlineCustomization.Read("a shop theme dark logging", AppCustomization.Default).Notes);
 
     [TestMethod]
     public void An_icon_path_is_read()
@@ -198,16 +235,19 @@ public class InlineCustomizationTests
         Assert.AreEqual("Codis.Internal", customization.NamespacePrefix);
     }
 
-    /// <summary>Unlike a malformed accent, which is ignored, a malformed namespace cannot be
-    /// accepted at all — it would not compile. The words stay part of the description, which is
-    /// what `theme mauve` already does.</summary>
+    /// <summary>A malformed namespace cannot be accepted — it would not compile — so it is
+    /// ignored with a note, as `theme mauve` is.</summary>
     [TestMethod]
-    public void A_malformed_namespace_prefix_is_left_on_the_line()
+    public void A_malformed_namespace_prefix_is_ignored_with_a_note()
     {
-        var (remaining, customization) = Split("a shop namespace 3M");
+        var read = InlineCustomization.Read("a shop namespace 3M", AppCustomization.Default);
 
-        Assert.AreEqual("a shop namespace 3M", remaining);
-        Assert.AreEqual(string.Empty, customization.NamespacePrefix);
+        Assert.AreEqual("a shop", read.Remaining);
+        // Null, not string.Empty: "ignored" must read as "not mentioned" at Merge, or a malformed
+        // value would force-clear a remembered profile prefix instead of leaving it alone.
+        Assert.IsNull(read.Customization.NamespacePrefix);
+        Assert.HasCount(1, read.Notes);
+        StringAssert.Contains(read.Notes[0], "3M");
     }
 
     /// <summary>Ruling: "none" is the vocabulary the wizard already teaches for clearing a value,
@@ -255,13 +295,14 @@ public class InlineCustomizationTests
     }
 
     [TestMethod]
-    public void An_unusable_layout_leaves_the_line_alone()
+    public void An_unusable_layout_is_ignored_with_a_note()
     {
-        var (remaining, customization) = Split("a shop layout kanban");
+        var read = InlineCustomization.Read("a shop layout kanban", AppCustomization.Default);
 
-        // The `theme mauve` rule: the user's words are likelier prose than a typo to guess at.
-        Assert.AreEqual("a shop layout kanban", remaining);
-        Assert.IsNull(customization.Layout);
+        // The `theme mauve` rule: ignored and said, never guessed at.
+        Assert.AreEqual("a shop", read.Remaining);
+        Assert.IsNull(read.Customization.Layout);
+        Assert.HasCount(1, read.Notes);
     }
 
     [TestMethod]
@@ -306,12 +347,13 @@ public class InlineCustomizationTests
     }
 
     [TestMethod]
-    public void An_unusable_entry_template_is_left_in_the_description()
+    public void An_unusable_entry_template_is_ignored_with_a_note()
     {
-        var (remaining, customization) = Split("a shop entry-template kanban");
+        var read = InlineCustomization.Read("a shop entry-template kanban", AppCustomization.Default);
 
-        Assert.AreEqual("a shop entry-template kanban", remaining);
-        Assert.IsNull(customization.EntryTemplate);
+        Assert.AreEqual("a shop", read.Remaining);
+        Assert.IsNull(read.Customization.EntryTemplate);
+        Assert.HasCount(1, read.Notes);
     }
 
     [TestMethod]

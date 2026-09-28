@@ -1,3 +1,4 @@
+using AppScaffolding;
 using CodeGenerationEngine.Models;
 using DataIngestion.Schema;
 using DomainDiscovery.Model;
@@ -13,8 +14,9 @@ namespace DataIngestion;
 /// <remarks>
 /// There is no shaping stage here and there should not be. Shaping exists to decide whether a
 /// noun harvested from prose is a domain class at all; a column in the user's own data needs no
-/// such adjudication. What this class does instead is guard the two name collisions that make
-/// the generated project fail to compile, and record every drop so `why` can explain it.
+/// such adjudication. What this class does instead is guard the name collisions that make the
+/// generated project fail to build -- either outright, or under -warnaserror -- and record every
+/// drop so `why` can explain it.
 /// </remarks>
 public static class DataModelBuilder
 {
@@ -147,10 +149,17 @@ public static class DataModelBuilder
     {
         Kept,
         RenamedOffItsClassName,
+        RenamedOffAnInheritedMember,
         DroppedUnusableName,
         DroppedGeneratedKey,
         DroppedDuplicate
     }
+
+    /// <summary>The <see cref="object"/> members every class already declares. A field with one
+    /// of these exact names hides it (CS0108) rather than failing to compile, so nothing else
+    /// catches it before the generated project's build does.</summary>
+    private static readonly HashSet<string> ReservedMemberNames =
+        new(StringComparer.Ordinal) { "Equals", "ToString", "GetHashCode", "GetType" };
 
     private sealed record ColumnOutcome(
         string Column, string? Field, string Type, ColumnFate Fate, TypeFacts? Facts);
@@ -174,7 +183,7 @@ public static class DataModelBuilder
         // class's name must not be handed a name a LATER column already owns: that column has
         // not been resolved yet, so the taken-names check alone cannot see the collision coming.
         var columnNames = table.Columns
-            .Select(c => NameNormalizer.ToFieldName(c.Name))
+            .Select(c => WithIdSpelledId(NameNormalizer.ToFieldName(c.Name)))
             .ToList();
 
         var taken = new List<string>();
@@ -183,11 +192,12 @@ public static class DataModelBuilder
         {
             var column = table.Columns[i];
             var fieldName = columnNames[i];
+            var facts = EffectiveFacts(column, fieldName, table);
 
             if (!NameNormalizer.IsValidIdentifier(fieldName))
             {
                 outcomes.Add(new ColumnOutcome(
-                    column.Name, null, column.Type, ColumnFate.DroppedUnusableName, column.Facts));
+                    column.Name, null, column.Type, ColumnFate.DroppedUnusableName, facts));
                 continue;
             }
 
@@ -196,7 +206,7 @@ public static class DataModelBuilder
             if (IsOwnKey(fieldName, entityName))
             {
                 outcomes.Add(new ColumnOutcome(
-                    column.Name, null, column.Type, ColumnFate.DroppedGeneratedKey, column.Facts));
+                    column.Name, null, column.Type, ColumnFate.DroppedGeneratedKey, facts));
                 continue;
             }
 
@@ -206,22 +216,67 @@ public static class DataModelBuilder
             if (resolved is null)
             {
                 outcomes.Add(new ColumnOutcome(
-                    column.Name, null, column.Type, ColumnFate.DroppedDuplicate, column.Facts));
+                    column.Name, null, column.Type, ColumnFate.DroppedDuplicate, facts));
                 continue;
             }
 
             taken.Add(resolved);
 
-            outcomes.Add(new ColumnOutcome(
-                column.Name, resolved, column.Type,
-                string.Equals(resolved, fieldName, StringComparison.Ordinal)
-                    ? ColumnFate.Kept
-                    : ColumnFate.RenamedOffItsClassName,
-                column.Facts));
+            var fate = string.Equals(resolved, fieldName, StringComparison.Ordinal)
+                ? ColumnFate.Kept
+                : ReservedMemberNames.Contains(fieldName)
+                    ? ColumnFate.RenamedOffAnInheritedMember
+                    : ColumnFate.RenamedOffItsClassName;
+
+            outcomes.Add(new ColumnOutcome(column.Name, resolved, column.Type, fate, facts));
         }
 
         return outcomes;
     }
+
+    /// <summary>
+    /// <paramref name="column"/>'s own facts, checked against what it actually holds before any
+    /// rule gets to assume them: a NOT NULL column's own blank value withdraws the "required" rule
+    /// that fact would otherwise add (NOT NULL forbids a missing value, not an empty one); a
+    /// string with NO facts at all has its longest actual value replace the generic 200-character
+    /// default when that value is already longer; and a column named for the email/phone format
+    /// the generator would otherwise apply by name alone is checked against every value it holds.
+    /// </summary>
+    private static TypeFacts? EffectiveFacts(TabularColumn column, string fieldName, TabularTable table)
+    {
+        if (column.Type != "string")
+            return column.Facts;
+
+        var values = table.ColumnValues(column.Name).ToList();
+
+        if (column.Facts is not null)
+        {
+            var requiredHolds = column.Facts.IsNullable != false
+                || values.All(v => !string.IsNullOrWhiteSpace(v));
+
+            return requiredHolds ? column.Facts : column.Facts with { IsNullable = null };
+        }
+
+        var longest = values.Count == 0 ? 0 : values.Max(v => v?.Length ?? 0);
+
+        bool? formatHolds = DomainModelMapper.NameContainsWord(fieldName, "email")
+            ? values.Where(v => !string.IsNullOrWhiteSpace(v)).All(v => EmailFormat.IsValid(v))
+            : DomainModelMapper.NameContainsWord(fieldName, "phone")
+                ? values.Where(v => !string.IsNullOrWhiteSpace(v)).All(v => PhoneFormat.IsValid(v))
+                : null;
+
+        if (longest <= DomainModelMapper.DefaultStringLength && formatHolds is not false)
+            return null;
+
+        return new TypeFacts
+        {
+            MaxLength = longest > DomainModelMapper.DefaultStringLength ? longest : null,
+            NameImpliedFormatHolds = formatHolds
+        };
+    }
+
+    private static readonly System.ComponentModel.DataAnnotations.EmailAddressAttribute EmailFormat = new();
+    private static readonly System.ComponentModel.DataAnnotations.PhoneAttribute PhoneFormat = new();
 
     /// <summary>
     /// Each of <paramref name="table"/>'s surviving columns mapped to the field name the generated
@@ -238,6 +293,26 @@ public static class DataModelBuilder
                 map[outcome.Column] = outcome.Field;
 
         return map;
+    }
+
+    /// <summary>
+    /// The column <paramref name="table"/> carried its own key in — the one dropped because the
+    /// generated class numbers its rows itself — or null when it had none. <c>&lt;Entity&gt;Id</c>
+    /// wins over a bare <c>Id</c> when a table has both, since that is the name another table's
+    /// foreign key to this one is spelled with.
+    /// </summary>
+    internal static string? KeyColumn(TabularTable table)
+    {
+        var entityName = NameNormalizer.ToUserTypedEntityName(table.Name);
+
+        var keys = ResolveColumns(table, entityName)
+            .Where(o => o.Fate == ColumnFate.DroppedGeneratedKey)
+            .Select(o => o.Column)
+            .ToList();
+
+        return keys.FirstOrDefault(k => !string.Equals(
+                   NameNormalizer.ToFieldName(k), "Id", StringComparison.OrdinalIgnoreCase))
+               ?? keys.FirstOrDefault();
     }
 
     private static void AddFields(
@@ -267,6 +342,12 @@ public static class DataModelBuilder
                         DecisionReasons.ColumnWouldCollideWithItsClassName,
                         $"'{outcome.Column}' in {table.Label} became {outcome.Field}");
                     break;
+
+                case ColumnFate.RenamedOffAnInheritedMember:
+                    model.Record(outcome.Column, DecisionStage.SeedExtraction, DecisionOutcome.Kept,
+                        DecisionReasons.ColumnWouldHideAnInheritedMember,
+                        $"'{outcome.Column}' in {table.Label} became {outcome.Field}");
+                    break;
             }
 
             entity.Fields.Add(new CandidateField
@@ -281,6 +362,20 @@ public static class DataModelBuilder
             });
         }
     }
+
+    /// <summary>
+    /// <c>CustomerID</c> as <c>CustomerId</c>. The generated app recognises a foreign key only
+    /// by the exact <c>&lt;Class&gt;Id</c> spelling — its seeder, validators and lookup pickers
+    /// all match it case for case — so a key spelled the SQL Server way got a navigation
+    /// property and was otherwise never treated as one. An all-capitals name (<c>GUID</c>,
+    /// <c>SSID</c>) is an acronym, not a key suffix, and is left alone.
+    /// </summary>
+    private static string WithIdSpelledId(string fieldName)
+        => fieldName.Length > 2
+           && fieldName.EndsWith("ID", StringComparison.Ordinal)
+           && !char.IsUpper(fieldName[^3])
+            ? fieldName[..^2] + "Id"
+            : fieldName;
 
     /// <summary>Whether <paramref name="fieldName"/> is this entity's own primary key —
     /// <c>Id</c>, or <c>&lt;Entity&gt;Id</c>. A <c>&lt;Other&gt;Id</c> is a foreign key and is
@@ -308,15 +403,15 @@ public static class DataModelBuilder
         bool Taken(string name) => takenNames.Any(
             n => string.Equals(n, name, StringComparison.OrdinalIgnoreCase));
 
-        var collidesWithClass = string.Equals(
-            fieldName, entityName, StringComparison.OrdinalIgnoreCase);
+        var needsRename = string.Equals(fieldName, entityName, StringComparison.OrdinalIgnoreCase)
+            || ReservedMemberNames.Contains(fieldName);
 
-        if (!collidesWithClass)
+        if (!needsRename)
             return Taken(fieldName) ? null : fieldName;
 
         var reserved = new HashSet<string>(otherColumns, StringComparer.OrdinalIgnoreCase);
 
-        foreach (var candidate in new[] { entityName + NameSuffix, entityName + ValueSuffix })
+        foreach (var candidate in new[] { fieldName + NameSuffix, fieldName + ValueSuffix })
         {
             if (!Taken(candidate) && !reserved.Contains(candidate))
                 return candidate;

@@ -3,6 +3,13 @@ using AppScaffolding.Screens;
 
 namespace CodeGenerator.App;
 
+/// <summary>What <see cref="InlineCustomization.Read"/> took off a line.</summary>
+/// <param name="Remaining">The rest, for <c>InlineDataSource.Parse</c>.</param>
+/// <param name="Customization">The options applied over the starting customization.</param>
+/// <param name="Notes">One sentence for each option whose value was ignored.</param>
+internal sealed record InlineOptions(
+    string Remaining, AppCustomization Customization, IReadOnlyList<string> Notes);
+
 /// <summary>
 /// Lifts the customization options off a `build app` line, leaving the rest for
 /// <c>InlineDataSource.Parse</c>.
@@ -29,6 +36,11 @@ namespace CodeGenerator.App;
 /// <c>InlineCustomizationTests.An_unquoted_location_ending_in_a_flag_word_is_truncated</c> pin
 /// both halves of that rule.
 /// </para>
+/// <para>
+/// A value an option cannot use (<c>theme mauve</c>) is ignored with a note, and the scan goes
+/// on. It used to stop there, which put that option and every option to its left into the
+/// description while the manual said the value was ignored.
+/// </para>
 /// </remarks>
 internal static class InlineCustomization
 {
@@ -45,30 +57,48 @@ internal static class InlineCustomization
 
     /// <summary>
     /// Splits <paramref name="tail"/> into what remains for the data-source parser and the
-    /// customization it asked for, applied over <paramref name="start"/>.
+    /// customization it asked for, applied over <paramref name="start"/> — with a note for every
+    /// value that was ignored.
+    /// </summary>
+    public static InlineOptions Read(string tail, AppCustomization start)
+    {
+        var text = (tail ?? string.Empty).Trim();
+        var customization = start;
+        var notes = new List<string>();
+
+        while (true)
+        {
+            var stripped = TryStripLast(text, ref customization, notes);
+
+            if (stripped is null)
+                break;
+
+            text = stripped;
+        }
+
+        // Read right to left, so the notes are reversed back into the order they were typed.
+        notes.Reverse();
+
+        return new InlineOptions(text, customization, notes);
+    }
+
+    /// <summary>
+    /// <see cref="Read"/> without its notes.
     /// </summary>
     public static (string Remaining, AppCustomization Customization) Split(
         string tail, AppCustomization start)
     {
-        var text = (tail ?? string.Empty).Trim();
-        var customization = start;
+        var read = Read(tail, start);
 
-        while (true)
-        {
-            var stripped = TryStripLast(text, ref customization);
-
-            if (stripped is null)
-                return (text, customization);
-
-            text = stripped;
-        }
+        return (read.Remaining, read.Customization);
     }
 
     /// <summary>
     /// Removes one trailing option from <paramref name="text"/>, applying it to
     /// <paramref name="customization"/>. Null when the line no longer ends in one.
     /// </summary>
-    private static string? TryStripLast(string text, ref AppCustomization customization)
+    private static string? TryStripLast(
+        string text, ref AppCustomization customization, List<string> notes)
     {
         if (text.Length == 0)
             return null;
@@ -89,14 +119,21 @@ internal static class InlineCustomization
         if (!ValueKeys.Contains(key, StringComparer.OrdinalIgnoreCase))
             return null;
 
-        var applied = ApplyValue(customization, key, Unquote(value));
+        var unquoted = Unquote(value);
 
-        // An unusable value (theme mauve) leaves the line alone rather than silently eating two
-        // tokens: the user's words are more likely prose than a typo we should guess at.
-        if (applied is null)
+        // An empty value (transactions "") is not an option at all, and stops the scan.
+        if (unquoted.Length == 0)
             return null;
 
-        customization = applied;
+        var (applied, problem) = ApplyValue(customization, key, unquoted);
+
+        // An unusable value (theme mauve) is ignored and said, and the scan goes on. Stopping here
+        // put this option and every one to its left into the description.
+        if (applied is null)
+            notes.Add($"Ignored {key.ToLowerInvariant()} '{unquoted}': {problem}");
+        else
+            customization = applied;
+
         return beforeKey;
     }
 
@@ -110,51 +147,48 @@ internal static class InlineCustomization
             _ => customization,
         };
 
-    /// <summary>The customization with <paramref name="key"/> set, or null when
+    /// <summary>The customization with <paramref name="key"/> set, or null and the reason when
     /// <paramref name="value"/> is not usable for it.</summary>
-    private static AppCustomization? ApplyValue(
+    private static (AppCustomization? Applied, string? Problem) ApplyValue(
         AppCustomization customization, string key, string value)
     {
-        if (value.Length == 0)
-            return null;
-
         switch (key.ToLowerInvariant())
         {
             case "company":
                 // Naming a company adopts the company title pattern unless a title was already
                 // given. Options are read right to left, so a `title` later on the line has
                 // already been applied by the time this runs — hence the check.
-                return customization with
+                return (customization with
                 {
                     Company = value,
                     TitlePattern = customization.TitlePattern == AppCustomization.AppPlaceholder
                         ? AppCustomization.CompanyTitlePattern
                         : customization.TitlePattern,
-                };
+                }, null);
 
             case "transactions":
-                return customization with { Transactions = value };
+                return (customization with { Transactions = value }, null);
 
             case "masters":
-                return customization with { Masters = value };
+                return (customization with { Masters = value }, null);
 
             case "theme":
                 if (string.Equals(value, "light", StringComparison.OrdinalIgnoreCase))
-                    return customization with { Theme = AppTheme.Light };
+                    return (customization with { Theme = AppTheme.Light }, null);
                 if (string.Equals(value, "dark", StringComparison.OrdinalIgnoreCase))
-                    return customization with { Theme = AppTheme.Dark };
-                return null;
+                    return (customization with { Theme = AppTheme.Dark }, null);
+                return (null, "the theme is light or dark.");
 
             case "accent":
                 return ThemePalette.IsValidHexColour(value)
-                    ? customization with { Accent = value }
-                    : null;
+                    ? (customization with { Accent = value }, null)
+                    : (null, "an accent is a colour written #rrggbb.");
 
             case "icon":
-                return customization with { IconPath = value };
+                return (customization with { IconPath = value }, null);
 
             case "title":
-                return customization with { TitlePattern = value };
+                return (customization with { TitlePattern = value }, null);
 
             case "namespace":
                 // "none" clears a remembered prefix, ahead of the validity check below: it is the
@@ -163,31 +197,25 @@ internal static class InlineCustomization
                 // is true, so without this ordering it would be accepted as a literal namespace
                 // segment instead.
                 if (string.Equals(value, "none", StringComparison.OrdinalIgnoreCase))
-                    return customization with { NamespacePrefix = string.Empty };
+                    return (customization with { NamespacePrefix = string.Empty }, null);
 
-                // Refused rather than ignored, unlike accent: an invalid namespace does not
-                // compile, and returning null leaves the words in the description where a user
-                // who was describing rather than configuring meant them to be.
+                // Never taken as given: an invalid namespace does not compile.
                 return NamespacePrefix.IsValid(value)
-                    ? customization with { NamespacePrefix = value }
-                    : null;
+                    ? (customization with { NamespacePrefix = value }, null)
+                    : (null, "that is not a C# namespace, so the code would not compile.");
 
             case "layout":
-                // Refused rather than ignored when unusable, like `theme mauve`: the words are
-                // more likely part of the description than a layout name we should guess at.
                 return AppLayoutCatalog.TryResolve(value, out var layout)
-                    ? customization with { Layout = layout }
-                    : null;
+                    ? (customization with { Layout = layout }, null)
+                    : (null, $"the layouts are {AppLayoutCatalog.HelpOptions}.");
 
             case "entry-template":
-                // Refused rather than ignored when unusable, like `layout kanban`: the words are
-                // more likely part of the description than a template name we should guess at.
                 return EntryTemplateCatalog.TryResolve(value, out var entryTemplate)
-                    ? customization with { EntryTemplate = entryTemplate }
-                    : null;
+                    ? (customization with { EntryTemplate = entryTemplate }, null)
+                    : (null, $"the entry templates are {EntryTemplateCatalog.HelpOptions}.");
 
             default:
-                return null;
+                return (null, "not an option.");
         }
     }
 
@@ -207,7 +235,7 @@ internal static class InlineCustomization
 
         if (trimmed.Length >= 2 && trimmed[^1] == '"')
         {
-            var open = trimmed.LastIndexOf('"', trimmed.Length - 2);
+            var open = OpeningQuote(trimmed);
 
             if (open >= 0)
                 return (trimmed[open..], trimmed[..open].TrimEnd());
@@ -221,7 +249,40 @@ internal static class InlineCustomization
     }
 
     /// <summary>
-    /// Strips the quotes from a fully-quoted token. An unmatched OPENING quote (a value like
+    /// Where the quoted phrase that ends <paramref name="text"/> opens, or -1.
+    /// </summary>
+    /// <remarks>
+    /// A doubled quote inside the phrase is one literal quote, so <c>"Codis ""Best"" Ltd"</c> is
+    /// one token. Without it a value holding a quote had no way onto the line at all, and the
+    /// workflow's replay line broke on any company that had one.
+    /// </remarks>
+    private static int OpeningQuote(string text)
+    {
+        var i = text.Length - 2;
+
+        while (i >= 0)
+        {
+            if (text[i] != '"')
+            {
+                i--;
+                continue;
+            }
+
+            if (i > 0 && text[i - 1] == '"')
+            {
+                i -= 2;
+                continue;
+            }
+
+            return i;
+        }
+
+        return -1;
+    }
+
+    /// <summary>
+    /// Strips the quotes from a fully-quoted token, and turns each doubled quote inside it back
+    /// into one. An unmatched OPENING quote (a value like
     /// `"Codis` with no closing partner) is also dropped rather than kept: the alternative of
     /// rejecting the whole value was considered and rejected, because a stray quote character
     /// flowing into a generated title or project file is worse than tolerating an unbalanced
@@ -230,7 +291,7 @@ internal static class InlineCustomization
     private static string Unquote(string text)
     {
         if (text.Length >= 2 && text[0] == '"' && text[^1] == '"')
-            return text[1..^1];
+            return text[1..^1].Replace("\"\"", "\"");
 
         return text.Length >= 1 && text[0] == '"' ? text[1..] : text;
     }

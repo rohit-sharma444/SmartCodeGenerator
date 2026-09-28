@@ -82,6 +82,23 @@ public class ColumnScanTests
     }
 
     [Fact]
+    public void Padding_is_trimmed_the_way_the_seed_file_trims_it()
+    {
+        // SQL Server hands an nchar(10) back padded to ten characters, and SeedFileWriter trims
+        // every value it writes. An allowed-values list holding "Active    " then refuses the
+        // seed's own "Active", and a uniqueness scan that sees "A1" and "A1 " as different
+        // proposes a rule the two seeded rows break.
+        var table = TableOf("Code", "Active    ", "A1", "A1 ", " Closed");
+
+        var scan = ColumnScan.Of(table, "Code");
+
+        Assert.Equal(
+            new[] { "Active", "A1", "Closed" }.Order(), scan.DistinctValues.ToArray().Order());
+        Assert.Equal(1, scan.DuplicateValueCount);
+        Assert.Equal(6, scan.LongestValueLength);      // "Active" and "Closed", not the padding
+    }
+
+    [Fact]
     public void A_column_that_is_not_there_scans_nothing()
     {
         var scan = ColumnScan.Of(TableOf("Status", "Draft"), "NoSuchColumn");

@@ -68,6 +68,26 @@ public class StageSummaryTests
         Assert.AreEqual("orders.csv", StageSummary.For(session, BuildStage.Data));
     }
 
+    /// <summary>
+    /// For SQL the location is a connection string, and "its file name" was everything after the
+    /// last backslash - the password included, drawn on the diagram of every tab.
+    /// </summary>
+    [TestMethod]
+    [DataRow("Server=.;Database=Northwind;User ID=sa;Password=hunter2")]
+    [DataRow(@"Server=.\SQLEXPRESS;Database=Northwind;User ID=sa;Password=hunter2")]
+    public void A_sql_source_is_named_by_its_database_and_never_shows_the_password(string connection)
+    {
+        var session = new BuildSession(
+            "a shop", @"C:\ws", AppCustomization.Default,
+            new DataSourceSpec(DataSourceKind.Sql, connection, SqlDatabase: "Northwind"));
+
+        var summary = StageSummary.For(session, BuildStage.Data);
+
+        Assert.IsNotNull(summary);
+        Assert.DoesNotContain("hunter2", summary);
+        StringAssert.Contains(summary, "Northwind");
+    }
+
     // "No data" is a decision, and the box says it was made — but only once it has been applied,
     // which is what the panel does when the user takes the step or clicks away.
     [TestMethod]

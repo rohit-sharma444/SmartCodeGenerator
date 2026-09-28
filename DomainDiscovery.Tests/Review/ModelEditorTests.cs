@@ -1,3 +1,6 @@
+using CodeGenerationEngine.Core.Validation.Rules;
+using CodeGenerationEngine.Models;
+using DomainDiscovery.Enrichment;
 using DomainDiscovery.Model;
 using DomainDiscovery.Review;
 using Xunit;
@@ -34,6 +37,21 @@ public class ModelEditorTests
         Assert.False(ModelEditor.RemoveEntity(model, "Missing"));
 
         Assert.Equal(new[] { "Loan" }, model.Entities.Select(e => e.Name));
+    }
+
+    /// <summary>Removing a class leaves a trail `why` can show, the same as renaming one already
+    /// does — otherwise `why <removed class>` says "No decision recorded", which reads as the tool
+    /// never having considered it, when the user is the one who took it out.</summary>
+    [Fact]
+    public void RemoveEntity_RecordsADecision()
+    {
+        var model = ModelWith("Book", "Loan");
+
+        Assert.True(ModelEditor.RemoveEntity(model, "book"));
+
+        var decision = Assert.Single(model.Decisions, d => d.Name == "Book");
+        Assert.Equal(DecisionOutcome.Skipped, decision.Outcome);
+        Assert.Equal(DecisionReasons.YouRemovedIt, decision.Reason);
     }
 
     [Fact]
@@ -334,6 +352,37 @@ public class ModelEditorTests
     }
 
     [Fact]
+    public void RenameEntity_CarriesTheRelationshipsThatPointAtIt()
+    {
+        // The mapper looks every Target up by the class's current name, and ForeignKeys finds a
+        // reference by its <Target>Id field. Left on the old name, both miss: Order came out with
+        // no Client property and no key, with nothing on screen to say why.
+        var model = ModelWith("Customer", "Order");
+        CandidateReference.Record(model.Entities[1], model.Entities[0], "places");
+
+        Assert.True(ModelEditor.RenameEntity(model, "Customer", "Client"));
+
+        var order = model.Entities[1];
+        var relationship = Assert.Single(order.Relationships);
+        Assert.Equal("Client", relationship.Target);
+        Assert.Equal("places", relationship.Role);
+        Assert.Contains(order.Fields, f => f.Name == "ClientId");
+        Assert.DoesNotContain(order.Fields, f => f.Name == "CustomerId");
+    }
+
+    [Fact]
+    public void RenameEntity_CarriesARelationshipAClassHasToItself()
+    {
+        var model = ModelWith("Employee");
+        CandidateReference.Record(model.Entities[0], model.Entities[0], "reports to");
+
+        Assert.True(ModelEditor.RenameEntity(model, "Employee", "Staff"));
+
+        Assert.Equal("Staff", Assert.Single(model.Entities[0].Relationships).Target);
+        Assert.Contains(model.Entities[0].Fields, f => f.Name == "StaffId");
+    }
+
+    [Fact]
     public void TheOtherVerbsStillResolveAnEntityWithInteriorCapitals()
     {
         // Lookups normalize with ToEntityName, which flattens "CashRegister" to "Cashregister".
@@ -448,6 +497,92 @@ public class ModelEditorTests
         Assert.True(ModelEditor.RenameField(model, "Widget", "Name", "Label"));
 
         Assert.Equal(new[] { "Label" }, model.Entities[0].Fields.Select(f => f.Name));
+    }
+
+    /// <summary>An order whose rows showed two rules, both accepted: the dates are in order, and
+    /// the total is the quantity times the price.</summary>
+    private static CandidateDomainModel AnOrderWithAcceptedRules()
+    {
+        var model = ModelWith("Order");
+        var order = model.Entities[0];
+
+        foreach (var (name, type) in new[]
+                 {
+                     ("OrderDate", "DateTime"), ("ShipDate", "DateTime"),
+                     ("Quantity", "int"), ("Price", "decimal"), ("Total", "decimal")
+                 })
+            order.Fields.Add(new CandidateField { Name = name, Type = type });
+
+        order.Proposals.Add(new EntityRuleProposal
+        {
+            Kind = EntityRuleProposalKind.CrossField,
+            Properties = ["OrderDate", "ShipDate"],
+            Rule = new ComparisonRule("OrderDate", "ShipDate", "> 0", "OrderDate must not be after ShipDate"),
+            Evidence = "OrderDate is always on or before ShipDate, in all 40 rows",
+            Accepted = true
+        });
+
+        order.Proposals.Add(new EntityRuleProposal
+        {
+            Kind = EntityRuleProposalKind.Calculation,
+            Properties = ["Total", "Quantity", "Price"],
+            Rule = new ArithmeticRule("Total", "Quantity", "times", "Price"),
+            Evidence = "Total always equals Quantity times Price, in all 40 rows",
+            Accepted = true
+        });
+
+        return model;
+    }
+
+    [Fact]
+    public void RenameField_CarriesTheRulesThatNameIt()
+    {
+        // An accepted rule names its properties, and the generated validator skips one naming a
+        // property the class no longer has - so a rename used to drop the rule without a word.
+        var model = AnOrderWithAcceptedRules();
+
+        Assert.True(ModelEditor.RenameField(model, "Order", "ShipDate", "DispatchDate"));
+        Assert.True(ModelEditor.RenameField(model, "Order", "Price", "UnitPrice"));
+
+        var proposals = model.Entities[0].Proposals;
+        Assert.Equal(2, proposals.Count);
+
+        var dates = proposals[0];
+        Assert.True(dates.Accepted);
+        Assert.Equal(new[] { "OrderDate", "DispatchDate" }, dates.Properties);
+        Assert.Equal(new[] { "OrderDate", "DispatchDate" }, dates.Rule.Properties);
+        Assert.Equal("OrderDate must not be after DispatchDate", dates.Rule.Describe());
+        Assert.Equal("OrderDate is always on or before DispatchDate, in all 40 rows", dates.Evidence);
+        Assert.Equal("> 0", Assert.IsType<ComparisonRule>(dates.Rule).ViolationOperator);
+
+        var total = proposals[1];
+        Assert.True(total.Accepted);
+        Assert.Equal(new[] { "Total", "Quantity", "UnitPrice" }, total.Rule.Properties);
+        Assert.Equal("Total must equal Quantity times UnitPrice", total.Rule.Describe());
+    }
+
+    [Fact]
+    public void RemoveField_DropsOnlyTheRulesThatNameIt_AndSaysWhich()
+    {
+        var model = AnOrderWithAcceptedRules();
+
+        Assert.True(ModelEditor.RemoveField(model, "Order", "ShipDate", out var dropped));
+
+        Assert.Equal(new[] { "OrderDate must not be after ShipDate" }, dropped);
+        var kept = Assert.Single(model.Entities[0].Proposals);
+        Assert.Equal("Total must equal Quantity times Price", kept.Rule.Describe());
+    }
+
+    [Fact]
+    public void RemoveField_ReportsNoDroppedRules_WhenNoneNamedIt()
+    {
+        var model = AnOrderWithAcceptedRules();
+        model.Entities[0].Fields.Add(new CandidateField { Name = "Notes", Type = "string" });
+
+        Assert.True(ModelEditor.RemoveField(model, "Order", "Notes", out var dropped));
+
+        Assert.Empty(dropped);
+        Assert.Equal(2, model.Entities[0].Proposals.Count);
     }
 
     [Fact]

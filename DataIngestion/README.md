@@ -78,8 +78,8 @@ non-empty values at all.
 
 Only the five types `ModelEditor.SupportedTypes` allows are producible, so a
 column of GUIDs lands as `string` and an integer past `int.MaxValue` as `decimal`.
-Up to `ColumnTypeInference.TypeSampleSize` (200) non-empty values are tried in
-order: all `int` → `int`; all `decimal` → `decimal`; all in
+Every non-empty value is tried, in one pass, because a type chosen from the
+first rows only drops the later values it cannot hold. In order: all `int` → `int`; all `decimal` → `decimal`; all in
 `{true false yes no y n}` → `bool`; all `DateTime` → `DateTime`; otherwise
 `string`.
 

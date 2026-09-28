@@ -19,8 +19,11 @@ namespace CodeGenerator.Web.Workflow;
 /// knows, and what the user does next is build it themselves. Defaulted, because every other path
 /// through this workflow did run a build.
 /// </param>
+/// <param name="Persistence">What it stores its rows in. Kept so the replay line can approve with
+/// it: chosen on the Generate panel, it was otherwise gone with the panel.</param>
 public sealed record GeneratedApp(
     ScaffoldResult Scaffold,
     string BuildLog,
     bool BuildSucceeded,
-    bool BuildRan = true);
+    bool BuildRan = true,
+    PersistenceKind Persistence = PersistenceKind.Json);

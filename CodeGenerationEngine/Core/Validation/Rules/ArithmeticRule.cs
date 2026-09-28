@@ -52,10 +52,12 @@ public sealed class ArithmeticRule : IValidationRule
 
         var message = SymbolDisplay.FormatLiteral(Describe() + ".", quote: true);
         const string Parse = "System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture";
+        static string Text(string property) =>
+            $"(((object)this.{property}) as System.IFormattable)?.ToString(null, System.Globalization.CultureInfo.InvariantCulture)";
 
-        ctx.Line($"if (decimal.TryParse(((object)this.{_target})?.ToString(), {Parse}, out var __t)");
-        ctx.Line($"    && decimal.TryParse(((object)this.{_left})?.ToString(), {Parse}, out var __l)");
-        ctx.Line($"    && decimal.TryParse(((object)this.{_right})?.ToString(), {Parse}, out var __r))");
+        ctx.Line($"if (decimal.TryParse({Text(_target)}, {Parse}, out var __t)");
+        ctx.Line($"    && decimal.TryParse({Text(_left)}, {Parse}, out var __l)");
+        ctx.Line($"    && decimal.TryParse({Text(_right)}, {Parse}, out var __r))");
         ctx.Line("{");
 
         if (symbol == "/")

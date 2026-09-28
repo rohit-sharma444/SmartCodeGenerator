@@ -67,6 +67,26 @@ public static class ScreenChoice
             Masters = Remove(current.Masters, className)
         };
 
+    /// <summary>
+    /// <paramref name="current"/> with any answer about <paramref name="className"/> moved to
+    /// <paramref name="renamed"/>.
+    /// </summary>
+    /// <remarks>
+    /// The answers are matched by name, so a class renamed after its screen was chosen would
+    /// otherwise lose the choice - and leave it waiting for any class later given the old name.
+    /// </remarks>
+    public static AppCustomization Rename(AppCustomization current, string className, string renamed)
+        => current with
+        {
+            Transactions = Rename(current.Transactions, className, renamed),
+            Masters = Rename(current.Masters, className, renamed)
+        };
+
+    private static string Rename(string value, string className, string renamed)
+        => string.Join(
+            ",",
+            Names(value).Select(n => string.Equals(n, className, StringComparison.OrdinalIgnoreCase) ? renamed : n));
+
     private static string Add(string value, string className)
         => string.Join(",", Names(value).Append(className));
 

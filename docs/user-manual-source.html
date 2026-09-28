@@ -224,7 +224,7 @@ reached.</p>
 <tr><td>Green, ticked</td><td>Answered. It shows the answer it holds — <code>Console</code>,
 <code>orders.csv</code>, <code>12 classes</code> — and clicking it goes back to change that answer.</td></tr>
 <tr><td>Blue, open</td><td>The one you are answering. It carries both moves: the step forward —
-<strong>Continue &#x2192;</strong>, or the name of the step where it has one, as <em>Generate</em>
+<strong>Continue &#x2192;</strong>, or the name of the step where it has one, as <em>Output</em>
 does — and a quiet <strong>&#x2190;</strong> back to the stage before it.</td></tr>
 <tr><td>Dashed outline</td><td>Where that step leads. Clicking it does the same thing as the button in the open
 box, so you can move by clicking either.</td></tr>
@@ -239,8 +239,10 @@ the <em>Generate</em> box only opens through the button in the review box, and o
 run does the <em>Run</em> box become something you can move to. Going back keeps what the open box had already answered, and costs nothing
 except where it must: changing the description or the data source throws away the model that was discovered
 from the old one, because it was worked out from something you have since changed, and that stage runs again.
-Changing the application type or anything under <em>Look</em> costs nothing at all, because neither is read
-until the project is written.</p>
+Changing the application type or anything under <em>Look</em> never discards the model — neither is read
+until the project is written — but once <em>Write it</em> has already run, changing either discards the
+written app instead: <em>Generate</em> and <em>Run</em> go back to not-yet-reached, and the project has to be
+written again before <em>Run</em> can start it.</p>
 
 <p>You need not reach for the mouse. The panel that opens takes the keyboard, and
 <strong>Enter</strong> takes the step the open box is offering. It only ever takes an ordinary step:
@@ -636,8 +638,9 @@ and which optional layers it contains.</p>
 build app: a shop that sells books layout sidebar theme dark
 build app: order tracking from csv D:\data\orders.csv company "Codis Ltd" noseed</pre>
 <h4>Through the wizard</h4>
-<p>Choose <em>Yes</em> at <em>Customize appearance and features?</em> and the tool asks nine short questions —
-ten for a WPF or Windows Forms application, where the window layout is asked first. Every one of them is a list
+<p>Choose <em>Yes</em> at <em>Customize appearance and features?</em> and the tool asks twelve short questions —
+thirteen for a WPF or Windows Forms application, where the window layout is asked first, and fourteen for a WPF
+build using the business layout, which also asks how entry screens arrange their fields. Every one of them is a list
 you move through with <strong>↑↓</strong> and answer with <strong>Enter</strong>, and every one arrives with the
 value you already have selected, so pressing Enter through the lot changes nothing:</p>
 <pre>Theme (↑↓ then Enter, Esc to cancel):
@@ -679,17 +682,24 @@ command line is not a remembered one and is never announced.</p>
 <tr><td><code>company "&lt;name&gt;"</code></td><td>Sets <code>&lt;Company&gt;</code>, <code>&lt;Authors&gt;</code> and <code>&lt;Copyright&gt;</code> in the project file, adds a <code>// Copyright (c) &lt;year&gt; &lt;name&gt;.</code> banner to every generated C# file, and — unless you override the title — puts the company in the window title.</td></tr>
 <tr><td><code>title "&lt;pattern&gt;"</code></td><td>The window or page title. <code>{company}</code> and <code>{app}</code> are substituted, so <code>"{company} - {app}"</code> gives <em>Codis Ltd - Shop</em>. With no company the placeholder and its separator disappear cleanly rather than leaving a dangling dash.</td></tr>
 <tr><td><code>layout business|tabs|sidebar|master-detail|dashboard</code></td><td>Chooses the shape of the window for the WPF and Windows Forms types — see <em>Window layouts</em> in chapter 8 and chapter 16. <code>business</code> is the default: a dashboard home, a rail grouped into masters and transactions, and an editor for every record. <code>tabs</code> is what every earlier version produced and still produces exactly that. Named for a type with no window, it is ignored and the tool says so at <code>approve</code>. A layout you chose interactively is remembered, default or not &mdash; see <em>From last time</em> above.</td></tr>
+<tr><td><code>entry-template classic|grouped|tabbed|two-column|split|ribbon</code></td><td>For a WPF business-shell build only, how a master or transaction screen's entry form arranges its fields &mdash; see chapter 16. <code>grouped</code> is the default. Named for a target or layout that does not use it, it is ignored and the tool says so.</td></tr>
 <tr><td><code>theme light|dark</code></td><td>Colours the desktop front ends. WPF gets a theme resource dictionary merged into the application; Windows Forms gets the colours applied directly.</td></tr>
 <tr><td><code>accent #rrggbb</code></td><td>An accent colour. Valid on its own — "the normal look, in our colour". A malformed colour is ignored rather than failing the build.</td></tr>
 <tr><td><code>icon &lt;path&gt;</code></td><td>Copies a <code>.ico</code> or <code>.png</code> into the project as the application icon. A <code>.ico</code> also becomes the icon the built <code>.exe</code> carries.</td></tr>
-<tr><td><code>namespace &lt;prefix&gt;</code></td><td>Puts the generated code under your own namespace root: <code>CodisLtd.Shop.Models</code> rather than <code>Shop.Models</code>. The project name, the folder, the assembly name, the database file and the connection-string environment variable are all deliberately left alone — only namespaces move. <code>namespace none</code> clears a remembered prefix. Unlike the other settings, a prefix that is not a legal C# namespace is refused rather than ignored, because it would not compile.</td></tr>
+<tr><td><code>namespace &lt;prefix&gt;</code></td><td>Puts the generated code under your own namespace root: <code>CodisLtd.Shop.Models</code> rather than <code>Shop.Models</code>. The project name, the folder, the assembly name, the database file and the connection-string environment variable are all deliberately left alone — only namespaces move. <code>namespace none</code> clears a remembered prefix. A prefix that is not a legal C# namespace is ignored, with a note saying so, because it would not compile.</td></tr>
+<tr><td><code>transactions &lt;Name,Name,...&gt;</code></td><td>Names classes to treat as transactions, overruling the master/transaction/line heuristic of chapter 15. Comma-joined, no spaces (or quote the whole list). A name given as both a transaction and a master is treated as a master.</td></tr>
+<tr><td><code>masters &lt;Name,Name,...&gt;</code></td><td>As <code>transactions</code>, in the other direction &mdash; see chapter 15.</td></tr>
 <tr><td><code>novalidation</code></td><td>Omits the per-class validators and the field, entity and business checks. The <code>Validation</code> folder is still written — the permission matrix is always generated, because turning validation off must not turn permissions off.</td></tr>
+<tr><td><code>nologin</code></td><td>Omits the login screen and the account/permission gate &mdash; see chapter 14. Every other application type is already generated this way; this is the one setting that is not neutral by default.</td></tr>
 <tr><td><code>logging</code></td><td>Adds a small logging layer (off by default). The repository logs each write, and each rejected write when validation is on.</td></tr>
 <tr><td><code>noseed</code></td><td>Omits the generated sample rows. Rows imported from your own data file are unaffected — those always come with the project.</td></tr>
 </table>
 <div class="warn"><p><strong>One quirk worth knowing.</strong> Options are read from the end of the line
 backwards, so a description whose final words happen to spell an option is read as that option. Put the
-description first, or quote it, and this never bites.</p></div>
+description first, or quote it, and this never bites.</p>
+<p>A value an option cannot use &mdash; <code>theme mauve</code>, <code>layout kanban</code>, a malformed
+accent or namespace &mdash; is ignored, the tool says so before it starts, and every other option on the line
+is still read.</p></div>
 
 <h2>8. What gets generated</h2>
 
@@ -1172,12 +1182,14 @@ ever <em>suggests</em> — it never runs a command you did not confirm.</p>
 
 <p>Typing names is the awkward way round, because both of those questions are asked before discovery
    has run &mdash; you are naming classes you have not seen yet. On the workflow page you do not have
-   to. The <strong>Output</strong> stage states the screen each class will get, in one table, on
-   card, under its name:</p>
+   to. The <strong>Output</strong> stage states the screen each class will get, in one table &mdash;
+   a row per class, not a card per class, so seeing what every OTHER class was set to costs no
+   clicking back and forth:</p>
 
-<pre>Customer                 OrderLine
-why   remove             why   remove
-SCREEN [ master v ]      lines of Order   [ own screen ]</pre>
+<pre>Class      Screen
+Customer   [ master v ]
+Order      [ transaction v ]
+OrderLine  lines of Order   [ own screen ]</pre>
 
 <p>Change the drop-down and the split is recalculated in front of you &mdash; the summary beside it,
    and the <em>same run as a command</em> line, both follow immediately. A line is not given the
@@ -1521,6 +1533,7 @@ own shows the shorter overview, and <code>help &lt;topic&gt;</code> shows one se
 <h3>Build App</h3>
 <table>
 <tr><th>Command</th><th>Description</th><th>Example</th></tr>
+<tr><td><code>accept &lt;n&gt;</code></td><td>Review loop: accepts a rule `rules` listed, by its number, or `accept all` for every one.</td><td><code>accept 2</code></td></tr>
 <tr><td><code>add &lt;name&gt;</code></td><td>Review loop: adds a class to the candidate model. The name keeps the shape you type, so a compound survives; several words become one class name.</td><td><code>add cash register</code></td></tr>
 <tr><td><code>approve (when the app already exists)</code></td><td>Offers to add only what is new. When the project folder already holds a generated app, the guard reads the classes already there and compares them with the model you just reviewed: it has 8 class(es), this model has 10, of which 2 are new. Answering a writes those 2 classes and the files that list the entities so their screens appear - and nothing else, so every other generated file is left byte-identical. The run says how many files it did not touch. A class that exists with DIFFERENT fields is named and left alone: adding will not reconcile it, overwriting would. Your .Custom.cs validator rules are never overwritten - which is also why an app generated before the validation pipeline needs one hand edit: its kept stub still declares the old ValidateCustom hook, so the run names each such file and the line to put in it, and the project will not compile until you change them. a is offered only when something really is new, Enter still cancels, and a piped run overwrites in silence as it always has.</td><td><code>approve wpf</code></td></tr>
 <tr><td><code>approve [target] [sqlite]</code></td><td>Review loop: generates the app using the type chosen at the start. Name a target to override it: wpf (default), winforms, console, webapi, blazor, classlib, worker. Add &#x27;sqlite&#x27; for EF Core persistence (JSON is the default; the wpf and winforms targets are JSON-only). Alias: a.</td><td><code>approve webapi sqlite</code></td></tr>
@@ -1534,10 +1547,14 @@ own shows the shorter overview, and <code>help &lt;topic&gt;</code> shows one se
 <tr><td><code>build app: &lt;description&gt; from sql &quot;&lt;connection&gt;&quot; [tables &lt;A,B&gt;]</code></td><td>Builds the model from a SQL Server database. Interactively the Data stage lists the tables with their column and row counts and you tick the ones you want; nothing is read until you take the step, and up to 100,000 rows of each table you ticked are then read - a bigger table is read that far and the build says so, and any rule offered from it says it came from the rows read. The rows SEEDED into the generated project are capped per class, and the build says that too. &#x27;tables A,B,C&#x27; names them for a piped run, and naming none reads them all. Column types come from the database instead of being inferred from the text, and declared foreign keys become relationships rather than being guessed from column names. A bigint column becomes int and a uniqueidentifier becomes string; both are reported. Composite foreign keys are skipped. Any password in the connection string is masked wherever the run is echoed back, so the replay line needs the password typed in again before it will run.</td><td><code>build app: a shop from sql &quot;Server=.;Database=Shop&quot; tables Customer</code></td></tr>
 <tr><td><code>cancel</code></td><td>Review loop: abandons the model without generating anything. Alias: c.</td><td><code>cancel</code></td></tr>
 <tr><td><code>field &lt;class&gt; &lt;name&gt;[:&lt;type&gt;]</code></td><td>Review loop: adds a field to a class. Omit the type to have it inferred; explicit types are string, int, decimal, bool or DateTime.</td><td><code>field Book Title:string</code></td></tr>
+<tr><td><code>final status &lt;values&gt; in &lt;class&gt;</code></td><td>Review loop: for a class with an accepted status proposal, marks which of its discovered values are FINAL — no further transition is expected from them.</td><td><code>final status Cancelled,Delivered in Order</code></td></tr>
+<tr><td><code>order status &lt;values&gt; in &lt;class&gt;</code></td><td>Review loop: for a class with an accepted status proposal, states its discovered values IN ORDER, comma-joined and naming every one exactly once, so a rule can tell an earlier stage of a workflow from a later one.</td><td><code>order status Draft,Approved,Shipped in Order</code></td></tr>
 <tr><td><code>remove &lt;name&gt;</code></td><td>Review loop: removes a class from the candidate model.</td><td><code>remove Reservation</code></td></tr>
 <tr><td><code>rename &lt;old&gt; &lt;new&gt;</code></td><td>Review loop: renames a class in the candidate model.</td><td><code>rename Member Borrower</code></td></tr>
 <tr><td><code>renamefield &lt;class&gt; &lt;old&gt; &lt;new&gt;</code></td><td>Review loop: renames a field, keeping its type, where it came from and the rules proposed for it - which removing it and adding it again would lose.</td><td><code>renamefield Book Name Title</code></td></tr>
 <tr><td><code>retype &lt;class&gt; &lt;field&gt; &lt;type&gt;</code></td><td>Review loop: changes a field&#x27;s type to string, int, decimal, bool or DateTime.</td><td><code>retype Book Pages int</code></td></tr>
+<tr><td><code>rules</code></td><td>Review loop: lists every validation rule your data supports, numbered, with the evidence for each and whether it is accepted. None is applied until you accept it.</td><td><code>rules</code></td></tr>
+<tr><td><code>unaccept &lt;n&gt;</code></td><td>Review loop: takes an accepted rule back, by number, or `unaccept all` for every one.</td><td><code>unaccept 2</code></td></tr>
 <tr><td><code>unfield &lt;class&gt; &lt;name&gt;</code></td><td>Review loop: removes a field from a class.</td><td><code>unfield Book Title</code></td></tr>
 <tr><td><code>why [name]</code></td><td>Review loop: explains what discovery decided. Bare, it reports every decision grouped by outcome; with a name, it shows that name&#x27;s whole trail — the stage, the reason and the evidence behind each step.</td><td><code>why Cash register</code></td></tr>
 </table>
