@@ -20,7 +20,7 @@
     },
     {
       "id": "apptype",
-      "text": "First, the kind of application. It can build desktop apps in WPF or WinForms, a Web API, a console app, a class library, or a background worker. I'll choose a Blazor web application, so we can run the result right here in the browser."
+      "text": "First, the kind of application. It can build desktop apps in WPF or WinForms, a Web API, a console app, a class library, or a background worker. I'll choose WPF, a native Windows desktop application."
     },
     {
       "id": "data",
@@ -52,7 +52,7 @@
     },
     {
       "id": "entry",
-      "text": "The entry template step picks how desktop entry forms lay out their fields. It doesn't apply to a Blazor app, and the page simply says so."
+      "text": "The entry template step picks how desktop entry forms lay out their fields, six to choose from. I'll pick Two-Column, which packs the form two fields wide."
     },
     {
       "id": "generate",
@@ -64,11 +64,11 @@
     },
     {
       "id": "signin",
-      "text": "And here it is, a working web app, with a sign in page. I'll sign in as the administrator."
+      "text": "And here it is, a real desktop application with its own window and a sign in screen. I'll sign in as the administrator."
     },
     {
       "id": "app",
-      "text": "Every order from the spreadsheet is already here, complete with created and modified dates. Let me try to save a new order that's delivered before it was placed."
+      "text": "Every order from the spreadsheet is already here, complete with created and modified dates. Let me create a new one, delivered before it was placed."
     },
     {
       "id": "refused",
@@ -76,7 +76,7 @@
     },
     {
       "id": "saved",
-      "text": "So I'll correct the delivery date, and add an item to the order. This time it saves, together with its line, and the new order is at the bottom of the list."
+      "text": "So I'll correct the delivery date. This time it saves, and the new order joins the list."
     },
     {
       "id": "wrap",

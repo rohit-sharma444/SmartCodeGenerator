@@ -18,6 +18,8 @@ import { chromium } from 'playwright';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { startDriver } from './wpf-driver-client.mjs';
+import { startCapture } from './window-capture.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const out = path.join(here, 'out');
@@ -38,8 +40,10 @@ const context = await browser.newContext({
 });
 
 // The caption bar and a pointer, on every page the video visits. A recorded page has no cursor
-// of its own, and a click nobody can see reads as the page changing by itself.
-await context.addInitScript(() => {
+// of its own, and a click nobody can see reads as the page changing by itself. A named function,
+// not an inline call, so the closing card's own short-lived browser/context (after the native
+// section) can install the same overlay rather than a second copy of it.
+function overlayInitScript() {
   const install = () => {
     if (document.getElementById('demo-caption')) return;
     const style = document.createElement('style');
@@ -98,7 +102,9 @@ await context.addInitScript(() => {
     p.classList.toggle('press', !!press);
     sessionStorage.setItem('demo-pointer', JSON.stringify([x, y]));
   };
-});
+}
+
+await context.addInitScript(overlayInitScript);
 
 const page = await context.newPage();
 const videoStart = Date.now();
@@ -267,7 +273,7 @@ await scene('theme', async () => {
 
 await scene('apptype', async () => {
   await sleep(6500);
-  await click(page.locator('label.choice', { hasText: 'Blazor' }).locator('input'));
+  await click(page.locator('label.choice', { hasText: 'WPF' }).locator('input'));
   await sleep(1500);
   await click(continueButton());
 });
@@ -335,11 +341,20 @@ await scene('output', async () => {
   if (box) await page.evaluate(([x, y]) => window.__point?.(x, y, false), [box.x + 40, box.y + box.height / 2]);
 });
 
-await scene('entry', async () => { await click(continueButton()); });
-
-await scene('generate', async () => {
+await scene('entry', async () => {
+  // Output's own continue is what actually lands here - this scene used to be the one line that
+  // did that and nothing else, back when Blazor had no template to pick and the panel just said
+  // so. Now it also picks one, so it does both halves: arrive, choose, leave.
+  await click(continueButton());
+  await sleep(2500);
+  await click(page.locator('label.entry-template-option', { hasText: 'Two-Column' }).locator('input'));
   await sleep(1500);
   await click(continueButton());
+});
+
+await scene('generate', async () => {
+  // Already on Generate: entry's own last click left EntryTemplate, so this scene starts here
+  // rather than arriving with a click of its own the way it did for Blazor.
   await sleep(1500);
   await click(page.locator('button.write'));
 });
@@ -356,108 +371,203 @@ await page.evaluate(() => window.__badge?.(null));
 await mark(Marker.fastEnd);
 await sleep(1000);
 
-let appUrl = null;
+let processId = null;
 await scene('run', async () => {
   await click(continueButton());
   await sleep(800);
   await click(page.locator('button.run'));
-  for (let i = 0; i < 120 && !appUrl; i++) {
+  for (let i = 0; i < 120 && !processId; i++) {
     await sleep(1000);
     const lines = await page.$$eval('.report-line', e => e.map(x => x.textContent.trim()));
-    const opened = lines.find(l => l.startsWith('Opened '));
-    if (opened) appUrl = opened.slice('Opened '.length);
+    // AppLauncher always reports "Started <exe> (process <id>)" - a WPF app has no URL to open,
+    // unlike Blazor, so the process id is the one thing here worth waiting for.
+    const started = lines.find(l => l.startsWith('Started '));
+    const match = started?.match(/\(process (\d+)\)/);
+    if (match) processId = Number(match[1]);
   }
 });
 
-if (!appUrl) throw new Error('The app did not report where it was listening.');
+if (!processId) throw new Error('The app did not report the process it started.');
 
-await page.goto(appUrl);
-await page.waitForSelector('#userName', { timeout: 60_000 });
-
-await scene('signin', async () => {
-  await type(page.locator('#userName'), 'admin');
-  await type(page.locator('#password'), 'admin');
-  await click(page.locator('button', { hasText: 'Sign in' }));
-  await page.waitForSelector('a.nav-link[href="order"], a.nav-link[href="/order"]', { timeout: 30_000 });
-});
-
-await scene('app', async () => {
-  await sleep(1500);
-  await click(page.locator('a.nav-link[href="order"], a.nav-link[href="/order"]').first());
-  await page.waitForSelector('table tbody tr');
-  await sleep(2500);
-  // Down the list and back, so the imported rows are seen - the table is not scrolled sideways,
-  // which cut off its first columns in an earlier take.
-  await page.evaluate(() => window.scrollBy({ top: 420, behavior: 'smooth' }));
-  await sleep(1800);
-  await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'smooth' }));
-  await sleep(1200);
-  await click(page.locator('button', { hasText: 'New' }));
-  await page.waitForSelector('#OrderNumber');
-});
-
-// The form is filled between the two lines, so the refusal is said once it is on screen. A date box
-// is SET rather than typed into: typed characters go into its day, month and year parts by the
-// browser's own rules, and the first recording saved a date nobody had asked for.
-const fill = async (id, value) => {
-  const box = page.locator(`#${id}`);
-  if ((await box.getAttribute('type')) === 'date') {
-    await click(box, { settle: 200 });
-    await box.fill(value);
-    await sleep(500);
-  } else {
-    await type(box, value);
-  }
-};
-await fill('OrderNumber', 'SO-2001');
-await fill('OrderDate', '2026-09-20');
-await fill('DeliveryDate', '2026-09-12');
-await fill('CustomerName', 'Harbor Cafe');
-await fill('CustomerCity', 'Seattle');
-await fill('Status', 'Draft');
-await fill('Net', '100');
-await fill('TaxRate', '0.05');
-await fill('Total', '105');
-await click(page.locator('button', { hasText: 'Save' }));
-await sleep(800);
-await scene('refused', async () => {
-  const message = page.getByText('must not be after', { exact: false }).first();
-  if (await message.count()) {
-    // Mid-screen: at the foot of the form it sat behind the caption bar.
-    await message.evaluate(e => e.scrollIntoView({ behavior: 'smooth', block: 'center' }));
-    await sleep(700);
-    const box = await message.boundingBox();
-    if (box) await page.evaluate(([x, y]) => window.__point?.(x, y, false), [box.x + 30, box.y + box.height / 2]);
-  }
-});
-
-await scene('saved', async () => {
-  await sleep(1200);
-  await fill('DeliveryDate', '2026-09-26');
-  await click(page.locator('button', { hasText: 'Add OrderItem' }));
-  await type(page.locator('tbody input[type="text"]').first(), 'Coffee beans');
-  await click(page.locator('button', { hasText: 'Save' }));
-  // A saved record goes back to the list, where the new order is the last row.
-  await page.waitForURL(url => /\/order\/?$/.test(new URL(url).pathname), { timeout: 30_000 });
-  const added = page.locator('tbody tr', { hasText: 'SO-2001' }).first();
-  await added.waitFor({ timeout: 30_000 });
-  await sleep(800);
-  await added.evaluate(e => e.scrollIntoView({ behavior: 'smooth', block: 'center' }));
-  await sleep(1200);
-  {
-    const box = await added.boundingBox();
-    if (box) await page.evaluate(([x, y]) => window.__point?.(x, y, false), [box.x + 120, box.y + box.height / 2]);
-  }
-  await sleep(2000);
-});
-
-await show(card('Smart<span>Code</span>Generator', '<code>build app</code>: describe it, point it at your data, and run it'));
-await scene('wrap');
-
-const video = page.video();
+// Video A ends here: everything from here on is a SEPARATE recording of the native window, which
+// Playwright cannot see into. Closed now rather than left running unused, so its file finalizes
+// with a valid moov atom before ffmpeg starts writing the next one.
+const browserVideo = page.video();
 await context.close();
 await browser.close();
+fs.writeFileSync(path.join(out, 'scenes-browser.json'), JSON.stringify(scenes, null, 2));
+fs.copyFileSync(await browserVideo.path(), path.join(out, 'raw-browser.webm'));
+console.log('recorded', path.join(out, 'raw-browser.webm'));
 
-fs.writeFileSync(path.join(out, 'scenes.json'), JSON.stringify(scenes, null, 2));
-fs.copyFileSync(await video.path(), path.join(out, 'raw.webm'));
-console.log('recorded', path.join(out, 'raw.webm'));
+// ------------------------------------------------------------ the native (WPF) section
+//
+// No DOM here, so no injected caption bar and no pixel sync marker - assemble.py cannot place
+// this segment's narration by looking for one, the way it does for the browser recording. It
+// does not need to: this segment has no page load, no build, nothing that makes the recording
+// fall behind its own clock, so the wall-clock time recorded at each scene's start IS where that
+// scene lands in the video, exactly.
+const driver = startDriver();
+const nativeSegments = []; // { file, scenes } - one per DISTINCT window captured, see below.
+let currentScenes = [];
+let nativeStart = Date.now();
+
+/** As close to scene() above as a page-less recording can get: same voice-duration wait, no
+ * captions (nothing to draw them on), and its own scene list rather than the browser's. */
+async function nativeScene(id, actions = async () => {}) {
+  const spoken = voice(id);
+  const start = Date.now();
+  currentScenes.push({ id, start: (start - nativeStart) / 1000 });
+
+  await actions();
+
+  const rest = start + spoken.duration * 1000 - Date.now();
+  if (rest > 0) await sleep(rest);
+  console.log(`${id.padEnd(9)} ${((Date.now() - start) / 1000).toFixed(1)}s`);
+}
+
+async function driveOrFail(command) {
+  const reply = await driver.send(command);
+  if (!reply.ok) throw new Error(`${command.cmd} failed: ${reply.error}`);
+  return reply;
+}
+
+/** Starts a fresh capture at `rect` and resets the scene clock/list for it - called once for the
+ * login window and once for the shell, since a fixed screen region recorded across BOTH would
+ * show one of them cropped or floating in the desktop behind it once the other opens at a
+ * different position and size. */
+async function startSegment(rect) {
+  const file = path.join(out, 'video', `raw-wpf-${nativeSegments.length}.mp4`);
+  const stop = startCapture(rect, file);
+  // gdigrab needs the window on screen before its first frame; ffmpeg's own startup plus this
+  // covers it, and a black or stale first frame is a worse failure than half a second of slack.
+  await sleep(800);
+  currentScenes = [];
+  nativeStart = Date.now();
+  return { file, stop };
+}
+
+function endSegment(segment) {
+  nativeSegments.push({ file: path.basename(segment.file), scenes: currentScenes });
+}
+
+let segment = await startSegment(await driveOrFail({ cmd: 'attach', pid: processId }));
+
+// Not nativeScene(): that waits out signin's FULL narration length before returning, and the
+// login window closes the instant "Sign in" is clicked - the rest of that wait would be spent
+// recording this segment's now-stale fixed region while the shell opens somewhere else on
+// screen, showing whatever of it happens to overlap where the login dialog used to be.
+const signinStart = Date.now();
+currentScenes.push({ id: 'signin', start: (signinStart - nativeStart) / 1000 });
+await driveOrFail({ cmd: 'type', automationId: 'UserNameBox', value: 'admin' });
+await driveOrFail({ cmd: 'type', automationId: 'PasswordBox', value: 'admin' });
+await driveOrFail({ cmd: 'click-button', name: 'Sign in' });
+
+await segment.stop();
+endSegment(segment);
+
+// The shell opens as its own window, a different size and often a different position than the
+// login dialog it replaced - a new capture, not a continuation of the old one.
+segment = await startSegment(await driveOrFail({ cmd: 'wait-for-window' }));
+
+// The rest of signin's narration plays here instead, over the shell settling in - showing it
+// arrive is a better use of this wait than holding the login capture open for a window that has
+// already closed. Its captions may run a little past this segment's own end if segment 0 was
+// short; ffmpeg simply stops drawing them there, which loses at most a trailing word or two.
+{
+  const spoken = voice('signin');
+  const rest = signinStart + spoken.duration * 1000 - Date.now();
+  if (rest > 0) await sleep(rest);
+  console.log(`signin    ${((Date.now() - signinStart) / 1000).toFixed(1)}s`);
+}
+
+await nativeScene('app', async () => {
+  await sleep(1000);
+  await driveOrFail({ cmd: 'click', name: 'Order' });
+  await sleep(1500);
+  await driveOrFail({ cmd: 'find-grid' });
+  await sleep(1500);
+  await driveOrFail({ cmd: 'click-button', name: 'New' });
+});
+
+// The form is filled between the two lines, so the refusal is said once it is on screen. Dates
+// are typed day/month/year: this machine's own locale, not the generator's choice, is what the
+// DatePicker's text part parses by - typing US-order month/day silently produced no date at all
+// the first time this ran.
+const fillField = (label, value) => driveOrFail({ cmd: 'type-field', label, value });
+
+await fillField('OrderNumber', 'SO-2001');
+await fillField('OrderDate', '20/9/2026');
+await fillField('DeliveryDate', '12/9/2026');
+await fillField('CustomerName', 'Harbor Cafe');
+await fillField('CustomerCity', 'Seattle');
+await fillField('Status', 'Draft');
+await fillField('Net', '100');
+await fillField('TaxRate', '0.05');
+await fillField('Total', '105');
+await driveOrFail({ cmd: 'click-button', name: 'Save' });
+
+await nativeScene('refused', async () => {
+  await driveOrFail({ cmd: 'read-status' });
+});
+
+await nativeScene('saved', async () => {
+  await sleep(1000);
+  await fillField('DeliveryDate', '26/9/2026');
+  await driveOrFail({ cmd: 'click-button', name: 'Save' });
+  await driveOrFail({ cmd: 'read-status' });
+  await sleep(1500);
+});
+
+await sleep(600);
+await segment.stop();
+endSegment(segment);
+
+await driver.stop();
+fs.writeFileSync(path.join(out, 'scenes-wpf.json'), JSON.stringify(nativeSegments, null, 2));
+console.log('recorded', nativeSegments.length, 'native segment(s)');
+
+// ------------------------------------------------------------ the closing card
+//
+// A THIRD, short recording rather than reopening the app's own page: the workflow tab and the
+// native window are both gone by now, and the closing card was always just its own screen. Its
+// own browser and page rather than reusing show()/scene()/mark() above, which all close over the
+// first page - only one scene lives here, so a small amount of its own plumbing is less surgery
+// than threading a page parameter through every helper above for one caller.
+const closingBrowser = await chromium.launch({ channel: 'chromium' });
+const closingContext = await closingBrowser.newContext({
+  viewport: size,
+  recordVideo: { dir: path.join(out, 'video-closing'), size },
+});
+await closingContext.addInitScript(overlayInitScript);
+
+const closingPage = await closingContext.newPage();
+const closingStart = Date.now();
+const closingScenes = [];
+
+await closingPage.setContent(card(
+  'Smart<span>Code</span>Generator',
+  '<code>build app</code>: describe it, point it at your data, and run it'));
+await closingPage.evaluate(() => window.__install?.());
+
+const spoken = voice('wrap');
+closingScenes.push({ id: 'wrap', start: (Date.now() - closingStart) / 1000 });
+await closingPage.evaluate(() => window.__sync?.('#ff00ff'));
+await sleep(450);
+await closingPage.evaluate(() => window.__sync?.(null));
+
+for (const line of spoken.captions) {
+  const wait = closingStart + line.start * 1000 - Date.now();
+  if (wait > 0) await sleep(wait);
+  await closingPage.evaluate(t => window.__caption?.(t), line.text);
+}
+
+const rest = closingStart + spoken.duration * 1000 + 600 - Date.now();
+if (rest > 0) await sleep(rest);
+
+const closingVideo = closingPage.video();
+await closingContext.close();
+await closingBrowser.close();
+fs.writeFileSync(path.join(out, 'scenes-closing.json'), JSON.stringify(closingScenes, null, 2));
+fs.copyFileSync(await closingVideo.path(), path.join(out, 'raw-closing.webm'));
+console.log('recorded', path.join(out, 'raw-closing.webm'));
+
