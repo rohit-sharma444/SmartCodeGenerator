@@ -243,7 +243,9 @@ public class InlineCustomizationTests
         var read = InlineCustomization.Read("a shop namespace 3M", AppCustomization.Default);
 
         Assert.AreEqual("a shop", read.Remaining);
-        Assert.AreEqual(string.Empty, read.Customization.NamespacePrefix);
+        // Null, not string.Empty: "ignored" must read as "not mentioned" at Merge, or a malformed
+        // value would force-clear a remembered profile prefix instead of leaving it alone.
+        Assert.IsNull(read.Customization.NamespacePrefix);
         Assert.HasCount(1, read.Notes);
         StringAssert.Contains(read.Notes[0], "3M");
     }

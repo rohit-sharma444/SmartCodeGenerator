@@ -44,7 +44,7 @@ public sealed record AppCustomization(
     bool Login,
     string Transactions,
     string Masters,
-    string NamespacePrefix,
+    string? NamespacePrefix,
     AppLayout? Layout,
     Screens.EntryTemplate? EntryTemplate)
 {
@@ -68,7 +68,7 @@ public sealed record AppCustomization(
         Login: true,
         Transactions: string.Empty,
         Masters: string.Empty,
-        NamespacePrefix: string.Empty,
+        NamespacePrefix: null,
         Layout: null,
         EntryTemplate: null);
 
@@ -222,5 +222,13 @@ public sealed record AppCustomization(
     /// assembly and the SQLite environment override.
     /// </remarks>
     public string RootNamespaceFor(string projectName)
-        => NamespacePrefix.Length == 0 ? projectName : $"{NamespacePrefix}.{projectName}";
+        => string.IsNullOrEmpty(NamespacePrefix) ? projectName : $"{NamespacePrefix}.{projectName}";
+
+    /// <summary>
+    /// <see cref="NamespacePrefix"/> is nullable for the identical reason <see cref="Layout"/> is:
+    /// "not mentioned" and "none" (cleared) are different answers to <c>BuildAppCommand.Merge</c> --
+    /// null falls back to the remembered profile, empty string overrides it to no prefix at all.
+    /// Everything else reads this instead.
+    /// </summary>
+    public string EffectiveNamespacePrefix => NamespacePrefix ?? string.Empty;
 }

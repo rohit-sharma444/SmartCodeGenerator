@@ -94,7 +94,7 @@ public static class StageSummary
         if (customization.Layout is not null)
             parts.Add(AppLayoutCatalog.KeyFor(customization.EffectiveLayout));
 
-        if (customization.NamespacePrefix.Length > 0)
+        if (!string.IsNullOrEmpty(customization.NamespacePrefix))
             parts.Add(customization.NamespacePrefix);
 
         // Something was changed that none of the above names — a flag, an icon, an accent. Better

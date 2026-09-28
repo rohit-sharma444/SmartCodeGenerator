@@ -52,7 +52,7 @@ internal static class CustomizationSummary
 
         // The bare prefix, not the resolved root: the root ends in the target's folder suffix
         // (Shop.Console, Shop.WinForms), and the target can still be changed at `approve`.
-        if (customization.NamespacePrefix.Length > 0)
+        if (!string.IsNullOrEmpty(customization.NamespacePrefix))
             lines.Add($"  Namespace prefix: {customization.NamespacePrefix}");
 
         // Named, not "differs from tabs": `layout tabs` typed against a remembered dashboard is a

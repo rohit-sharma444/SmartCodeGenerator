@@ -94,7 +94,7 @@ internal static class BuildCommandEcho
         if (customization.Company.Length > 0)
             options += $" company {Quoted(customization.Company)}";
 
-        if (customization.NamespacePrefix.Length > 0)
+        if (!string.IsNullOrEmpty(customization.NamespacePrefix))
             options += $" namespace {customization.NamespacePrefix}";
 
         if (customization.Theme != AppTheme.Default)

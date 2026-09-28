@@ -242,7 +242,11 @@ internal sealed class BuildAppCommand
             Logging = Named(inline.Logging, defaults.Logging, saved.Logging),
             SampleSeedData =
                 Named(inline.SampleSeedData, defaults.SampleSeedData, saved.SampleSeedData),
-            NamespacePrefix = Named(inline.NamespacePrefix, defaults.NamespacePrefix, saved.NamespacePrefix),
+            // Null-coalescing rather than Named: "namespace none" sets this to string.Empty, which
+            // EQUALS the default, so a differs-from-default comparison would read "cleared" as
+            // "not mentioned" and hand back the remembered prefix instead. Null IS "not mentioned"
+            // here, the same reasoning as Layout below.
+            NamespacePrefix = inline.NamespacePrefix ?? saved.NamespacePrefix,
 
             // These four were missing, so the profile quietly won over what was typed:
             // `build app: shop nologin` generated a login screen whenever the profile had one.

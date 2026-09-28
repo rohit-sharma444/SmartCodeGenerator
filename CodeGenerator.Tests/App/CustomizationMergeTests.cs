@@ -98,6 +98,22 @@ public class CustomizationMergeTests
         StringAssert.Contains(lines[0], "logging");
     }
 
+    /// <summary>
+    /// The defect this test exists to prevent: `namespace none` sets NamespacePrefix to
+    /// string.Empty, which EQUALS the default, so a differs-from-default comparison read it as
+    /// "not mentioned" and handed back the remembered prefix -- "none" could never actually clear
+    /// one.
+    /// </summary>
+    [TestMethod]
+    public void Namespace_none_clears_a_remembered_prefix()
+    {
+        var merged = BuildAppCommand.Merge(
+            Saved, AppCustomization.Default with { NamespacePrefix = string.Empty });
+
+        Assert.AreEqual(string.Empty, merged.NamespacePrefix);
+        Assert.AreEqual("Codis Ltd", merged.Company);
+    }
+
     [TestMethod]
     public void A_typed_namespace_prefix_overrides_the_profile()
     {

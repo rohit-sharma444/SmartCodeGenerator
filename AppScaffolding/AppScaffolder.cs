@@ -379,7 +379,8 @@ public sealed class AppScaffolder
         // Written on every run, not only at creation: a project re-scaffolded under a different
         // prefix must not keep pointing at the old namespace, and one re-scaffolded without a
         // prefix must lose the element entirely.
-        SetRootNamespace(csprojPath, customization.NamespacePrefix.Length == 0 ? null : rootNamespace);
+        SetRootNamespace(
+            csprojPath, customization.EffectiveNamespacePrefix.Length == 0 ? null : rootNamespace);
 
         var modelsFolder = Path.Combine(outputFolder, "Models");
         var dataFolder = Path.Combine(outputFolder, "Data");

@@ -215,7 +215,7 @@ internal static class CustomizationDefaults
     /// property this file also touches share the same name.
     /// </para>
     /// </remarks>
-    private static string ValidatedPrefix(string? value, string fallback)
+    private static string? ValidatedPrefix(string? value, string? fallback)
     {
         if (value is null)
             return fallback;
