@@ -138,6 +138,23 @@ public sealed class StoreEntityLookup : IEntityLookup
     }
 
     [TestMethod]
+    public void ANotNullColumnWithAnEmptyStringRowAcceptsItsOwnRows()
+    {
+        // SQL Server's NOT NULL forbids NULL, not an empty string -- the two are different values
+        // to the database. "required" is emitted from IsNullable == false alone and checks with
+        // string.IsNullOrWhiteSpace, which refuses the empty string NOT NULL never did.
+        var table = Table("Customer", ["Name", "Notes"],
+            ["Ann", "some notes"],
+            ["Bob", ""]);
+
+        table.Columns.Single(c => c.Name == "Notes").Facts = new TypeFacts { IsNullable = false };
+
+        var errors = ErrorsFromTheSeedRows(table, "Customer");
+
+        Assert.IsEmpty(errors, string.Join("\n", errors));
+    }
+
+    [TestMethod]
     public void A_phone_column_with_a_placeholder_value_accepts_its_own_rows()
     {
         // A column named for its format gets [Phone] purely by name, whatever the data actually

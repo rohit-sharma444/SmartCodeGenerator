@@ -235,18 +235,28 @@ public static class DataModelBuilder
     }
 
     /// <summary>
-    /// <paramref name="column"/>'s own facts, unless it is a string with NONE at all -- no SQL
-    /// schema behind it -- in which case its longest actual value replaces the generic 200-
-    /// character default when that value is already longer, so the generated class never refuses
-    /// a row its own source contains, and a column named for the email/phone format the generator
-    /// would otherwise apply by name alone is checked against every value it actually holds.
+    /// <paramref name="column"/>'s own facts, checked against what it actually holds before any
+    /// rule gets to assume them: a NOT NULL column's own blank value withdraws the "required" rule
+    /// that fact would otherwise add (NOT NULL forbids a missing value, not an empty one); a
+    /// string with NO facts at all has its longest actual value replace the generic 200-character
+    /// default when that value is already longer; and a column named for the email/phone format
+    /// the generator would otherwise apply by name alone is checked against every value it holds.
     /// </summary>
     private static TypeFacts? EffectiveFacts(TabularColumn column, string fieldName, TabularTable table)
     {
-        if (column.Facts is not null || column.Type != "string")
+        if (column.Type != "string")
             return column.Facts;
 
         var values = table.ColumnValues(column.Name).ToList();
+
+        if (column.Facts is not null)
+        {
+            var requiredHolds = column.Facts.IsNullable != false
+                || values.All(v => !string.IsNullOrWhiteSpace(v));
+
+            return requiredHolds ? column.Facts : column.Facts with { IsNullable = null };
+        }
+
         var longest = values.Count == 0 ? 0 : values.Max(v => v?.Length ?? 0);
 
         bool? formatHolds = DomainModelMapper.NameContainsWord(fieldName, "email")
@@ -256,12 +266,11 @@ public static class DataModelBuilder
                 : null;
 
         if (longest <= DomainModelMapper.DefaultStringLength && formatHolds is not false)
-            return column.Facts;
+            return null;
 
         return new TypeFacts
         {
-            MaxLength = longest > DomainModelMapper.DefaultStringLength ? longest : column.Facts?.MaxLength,
-            IsUnbounded = column.Facts?.IsUnbounded ?? false,
+            MaxLength = longest > DomainModelMapper.DefaultStringLength ? longest : null,
             NameImpliedFormatHolds = formatHolds
         };
     }
