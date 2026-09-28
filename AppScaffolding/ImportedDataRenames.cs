@@ -24,6 +24,16 @@ public static class ImportedDataRenames
         var rows = new Dictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string?>>>(
             data.Rows, StringComparer.OrdinalIgnoreCase);
 
+        // Every renamed class's old key goes BEFORE any is written, for the reason Moved reads
+        // from the original row: two classes that trade names would otherwise have the second
+        // rename remove the rows the first had just written under that name.
+        foreach (var entity in model.Entities)
+        {
+            if (entity.ImportedAs is { } source
+                && !string.Equals(source, entity.Name, StringComparison.OrdinalIgnoreCase))
+                rows.Remove(source);
+        }
+
         foreach (var entity in model.Entities)
         {
             var source = entity.ImportedAs ?? entity.Name;
@@ -36,9 +46,6 @@ public static class ImportedDataRenames
                             && !string.Equals(f.ImportedAs, f.Name, StringComparison.OrdinalIgnoreCase))
                 .Select(f => (From: f.ImportedAs!, To: f.Name))
                 .ToList();
-
-            if (!string.Equals(source, entity.Name, StringComparison.OrdinalIgnoreCase))
-                rows.Remove(source);
 
             rows[entity.Name] = moves.Count == 0 ? imported : [.. imported.Select(row => Moved(row, moves))];
         }
