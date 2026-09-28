@@ -128,8 +128,15 @@
 
     /// <summary>A model with no classes has nothing to generate, so the step is offered and
     /// disabled rather than hidden — the user can see what they are working towards.</summary>
+    /// <remarks>
+    /// No "Generate" label: <see cref="StageGraph"/> puts <see cref="BuildStage.EntryTemplate"/>
+    /// unconditionally between this stage and Generate, for every target and layout — it renders
+    /// as a near-empty, one-click pass-through when <c>EntryTemplateStage.Applicable</c> is false,
+    /// but it is still the stage this button actually lands on. The default label is honest about
+    /// that; the previous "Generate" was not.
+    /// </remarks>
     protected override void OnInitialized()
-        => Navigation.Offer(Generate, ready: () => Model.Entities.Count > 0, label: "Generate");
+        => Navigation.Offer(Generate, ready: () => Model.Entities.Count > 0);
 
     /// <summary>Pulls a line out to a screen of its own — the master override, which is what
     /// <c>EntityRoles</c> lets skip line detection.</summary>
