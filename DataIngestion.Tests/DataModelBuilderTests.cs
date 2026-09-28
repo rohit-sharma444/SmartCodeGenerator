@@ -112,6 +112,20 @@ public class DataModelBuilderTests
             product.Fields.Select(f => f.Name).OrderBy(n => n));
     }
 
+    /// <summary>`class Order { public string Equals { get; set; } }` hides
+    /// <c>object.Equals</c> and emits CS0108.</summary>
+    [Fact]
+    public void AColumnNamedAfterAnInheritedObjectMemberIsRenamed()
+    {
+        var model = DataModelBuilder.Build([Table("Orders", ("Equals", "string"), ("Ref", "string"))]);
+
+        var order = Assert.Single(model.Entities);
+        Assert.Contains("EqualsName", order.Fields.Select(f => f.Name));
+        Assert.DoesNotContain("Equals", order.Fields.Select(f => f.Name));
+        Assert.Contains(model.Decisions,
+            d => d.Reason == DecisionReasons.ColumnWouldHideAnInheritedMember);
+    }
+
     [Fact]
     public void ColumnNamesAreNormalizedToIdentifiers()
     {

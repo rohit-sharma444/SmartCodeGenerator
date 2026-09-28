@@ -37,6 +37,8 @@ public static class DecisionReasons
     public const string PrimaryKeyIsGenerated = "a key column is generated, not read";
     public const string ColumnWouldCollideWithItsClassName =
         "a column may not share its class's name";
+    public const string ColumnWouldHideAnInheritedMember =
+        "a column may not share a member every class already has";
     public const string ColumnNameIsNotAValidIdentifier = "its column name is not a usable name";
 
     // --- Normalization ---

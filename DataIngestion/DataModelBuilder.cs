@@ -13,8 +13,9 @@ namespace DataIngestion;
 /// <remarks>
 /// There is no shaping stage here and there should not be. Shaping exists to decide whether a
 /// noun harvested from prose is a domain class at all; a column in the user's own data needs no
-/// such adjudication. What this class does instead is guard the two name collisions that make
-/// the generated project fail to compile, and record every drop so `why` can explain it.
+/// such adjudication. What this class does instead is guard the name collisions that make the
+/// generated project fail to build -- either outright, or under -warnaserror -- and record every
+/// drop so `why` can explain it.
 /// </remarks>
 public static class DataModelBuilder
 {
@@ -147,10 +148,17 @@ public static class DataModelBuilder
     {
         Kept,
         RenamedOffItsClassName,
+        RenamedOffAnInheritedMember,
         DroppedUnusableName,
         DroppedGeneratedKey,
         DroppedDuplicate
     }
+
+    /// <summary>The <see cref="object"/> members every class already declares. A field with one
+    /// of these exact names hides it (CS0108) rather than failing to compile, so nothing else
+    /// catches it before the generated project's build does.</summary>
+    private static readonly HashSet<string> ReservedMemberNames =
+        new(StringComparer.Ordinal) { "Equals", "ToString", "GetHashCode", "GetType" };
 
     private sealed record ColumnOutcome(
         string Column, string? Field, string Type, ColumnFate Fate, TypeFacts? Facts);
@@ -212,12 +220,13 @@ public static class DataModelBuilder
 
             taken.Add(resolved);
 
-            outcomes.Add(new ColumnOutcome(
-                column.Name, resolved, column.Type,
-                string.Equals(resolved, fieldName, StringComparison.Ordinal)
-                    ? ColumnFate.Kept
-                    : ColumnFate.RenamedOffItsClassName,
-                column.Facts));
+            var fate = string.Equals(resolved, fieldName, StringComparison.Ordinal)
+                ? ColumnFate.Kept
+                : ReservedMemberNames.Contains(fieldName)
+                    ? ColumnFate.RenamedOffAnInheritedMember
+                    : ColumnFate.RenamedOffItsClassName;
+
+            outcomes.Add(new ColumnOutcome(column.Name, resolved, column.Type, fate, column.Facts));
         }
 
         return outcomes;
@@ -287,6 +296,12 @@ public static class DataModelBuilder
                         DecisionReasons.ColumnWouldCollideWithItsClassName,
                         $"'{outcome.Column}' in {table.Label} became {outcome.Field}");
                     break;
+
+                case ColumnFate.RenamedOffAnInheritedMember:
+                    model.Record(outcome.Column, DecisionStage.SeedExtraction, DecisionOutcome.Kept,
+                        DecisionReasons.ColumnWouldHideAnInheritedMember,
+                        $"'{outcome.Column}' in {table.Label} became {outcome.Field}");
+                    break;
             }
 
             entity.Fields.Add(new CandidateField
@@ -342,15 +357,15 @@ public static class DataModelBuilder
         bool Taken(string name) => takenNames.Any(
             n => string.Equals(n, name, StringComparison.OrdinalIgnoreCase));
 
-        var collidesWithClass = string.Equals(
-            fieldName, entityName, StringComparison.OrdinalIgnoreCase);
+        var needsRename = string.Equals(fieldName, entityName, StringComparison.OrdinalIgnoreCase)
+            || ReservedMemberNames.Contains(fieldName);
 
-        if (!collidesWithClass)
+        if (!needsRename)
             return Taken(fieldName) ? null : fieldName;
 
         var reserved = new HashSet<string>(otherColumns, StringComparer.OrdinalIgnoreCase);
 
-        foreach (var candidate in new[] { entityName + NameSuffix, entityName + ValueSuffix })
+        foreach (var candidate in new[] { fieldName + NameSuffix, fieldName + ValueSuffix })
         {
             if (!Taken(candidate) && !reserved.Contains(candidate))
                 return candidate;
