@@ -177,7 +177,9 @@ public static class NormalizationPlan
         }
 
         var determinant = finding.Columns[0];
-        var rowNumberByValue = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        // Ordinal, as the analyser compared them: "ada" and "Ada" are two rows, not one row with
+        // the second spelling thrown away.
+        var rowNumberByValue = new Dictionary<string, int>(StringComparer.Ordinal);
         var keys = new string?[table.Rows.Count];
 
         for (var row = 0; row < table.Rows.Count; row++)
