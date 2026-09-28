@@ -137,6 +137,37 @@ public sealed class StoreEntityLookup : IEntityLookup
         }
     }
 
+    [TestMethod]
+    public void A_phone_column_with_a_placeholder_value_accepts_its_own_rows()
+    {
+        // A column named for its format gets [Phone] purely by name, whatever the data actually
+        // holds. "N/A" is a placeholder every source like this has somewhere, and it is not a
+        // phone number by anyone's definition -- so an unconditional [Phone] rejects a row the
+        // source already contains and the user never touched.
+        var table = Table("Contact", ["Name", "Phone"],
+            ["Ann", "+44 20 7946 0958"],
+            ["Bob", "N/A"]);
+
+        var errors = ErrorsFromTheSeedRows(table, "Contact");
+
+        Assert.IsEmpty(errors, string.Join("\n", errors));
+    }
+
+    [TestMethod]
+    public void A_long_text_column_accepts_its_own_longest_row()
+    {
+        // No SQL schema means no MaxLength fact, so InferValidation falls back to a 200-character
+        // default -- a bound that has nothing to do with what the source column actually holds.
+        var longValue = new string('x', 350);
+        var table = Table("Article", ["Title", "Body"],
+            ["First", longValue],
+            ["Second", "short"]);
+
+        var errors = ErrorsFromTheSeedRows(table, "Article");
+
+        Assert.IsEmpty(errors, string.Join("\n", errors));
+    }
+
     /// <summary>A table whose column types are inferred from its rows, as the readers do.</summary>
     internal static TabularTable Table(string name, string[] columns, params string?[][] rows)
     {

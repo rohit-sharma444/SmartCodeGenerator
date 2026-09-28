@@ -1,3 +1,4 @@
+using AppScaffolding;
 using CodeGenerationEngine.Models;
 using DataIngestion.Schema;
 using DomainDiscovery.Model;
@@ -191,11 +192,12 @@ public static class DataModelBuilder
         {
             var column = table.Columns[i];
             var fieldName = columnNames[i];
+            var facts = EffectiveFacts(column, fieldName, table);
 
             if (!NameNormalizer.IsValidIdentifier(fieldName))
             {
                 outcomes.Add(new ColumnOutcome(
-                    column.Name, null, column.Type, ColumnFate.DroppedUnusableName, column.Facts));
+                    column.Name, null, column.Type, ColumnFate.DroppedUnusableName, facts));
                 continue;
             }
 
@@ -204,7 +206,7 @@ public static class DataModelBuilder
             if (IsOwnKey(fieldName, entityName))
             {
                 outcomes.Add(new ColumnOutcome(
-                    column.Name, null, column.Type, ColumnFate.DroppedGeneratedKey, column.Facts));
+                    column.Name, null, column.Type, ColumnFate.DroppedGeneratedKey, facts));
                 continue;
             }
 
@@ -214,7 +216,7 @@ public static class DataModelBuilder
             if (resolved is null)
             {
                 outcomes.Add(new ColumnOutcome(
-                    column.Name, null, column.Type, ColumnFate.DroppedDuplicate, column.Facts));
+                    column.Name, null, column.Type, ColumnFate.DroppedDuplicate, facts));
                 continue;
             }
 
@@ -226,11 +228,46 @@ public static class DataModelBuilder
                     ? ColumnFate.RenamedOffAnInheritedMember
                     : ColumnFate.RenamedOffItsClassName;
 
-            outcomes.Add(new ColumnOutcome(column.Name, resolved, column.Type, fate, column.Facts));
+            outcomes.Add(new ColumnOutcome(column.Name, resolved, column.Type, fate, facts));
         }
 
         return outcomes;
     }
+
+    /// <summary>
+    /// <paramref name="column"/>'s own facts, unless it is a string with NONE at all -- no SQL
+    /// schema behind it -- in which case its longest actual value replaces the generic 200-
+    /// character default when that value is already longer, so the generated class never refuses
+    /// a row its own source contains, and a column named for the email/phone format the generator
+    /// would otherwise apply by name alone is checked against every value it actually holds.
+    /// </summary>
+    private static TypeFacts? EffectiveFacts(TabularColumn column, string fieldName, TabularTable table)
+    {
+        if (column.Facts is not null || column.Type != "string")
+            return column.Facts;
+
+        var values = table.ColumnValues(column.Name).ToList();
+        var longest = values.Count == 0 ? 0 : values.Max(v => v?.Length ?? 0);
+
+        bool? formatHolds = DomainModelMapper.NameContainsWord(fieldName, "email")
+            ? values.Where(v => !string.IsNullOrWhiteSpace(v)).All(v => EmailFormat.IsValid(v))
+            : DomainModelMapper.NameContainsWord(fieldName, "phone")
+                ? values.Where(v => !string.IsNullOrWhiteSpace(v)).All(v => PhoneFormat.IsValid(v))
+                : null;
+
+        if (longest <= DomainModelMapper.DefaultStringLength && formatHolds is not false)
+            return column.Facts;
+
+        return new TypeFacts
+        {
+            MaxLength = longest > DomainModelMapper.DefaultStringLength ? longest : column.Facts?.MaxLength,
+            IsUnbounded = column.Facts?.IsUnbounded ?? false,
+            NameImpliedFormatHolds = formatHolds
+        };
+    }
+
+    private static readonly System.ComponentModel.DataAnnotations.EmailAddressAttribute EmailFormat = new();
+    private static readonly System.ComponentModel.DataAnnotations.PhoneAttribute PhoneFormat = new();
 
     /// <summary>
     /// Each of <paramref name="table"/>'s surviving columns mapped to the field name the generated

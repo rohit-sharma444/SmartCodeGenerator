@@ -37,4 +37,12 @@ public sealed record TypeFacts
     /// what integer-range and date-floor rules are derived from.
     /// </summary>
     public string? DeclaredType { get; init; }
+
+    /// <summary>
+    /// Whether every value already in the source satisfies the format its column name would make
+    /// the generator apply -- <c>[EmailAddress]</c> for a name containing "email", <c>[Phone]</c>
+    /// for one containing "phone". False withholds the attribute; null means no data was checked
+    /// (a discovered domain has none), and the name alone decides, as it always has.
+    /// </summary>
+    public bool? NameImpliedFormatHolds { get; init; }
 }

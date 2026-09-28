@@ -53,7 +53,10 @@ public static class DomainModelMapper
     private const string DataAnnotationsNamespace = "System.ComponentModel.DataAnnotations";
 
     /// <summary>Default upper bound for a generated string column: generous, but not unbounded.</summary>
-    private const int DefaultStringLength = 200;
+    /// <summary>The cap a string property gets when nothing -- SQL schema or the source data
+    /// itself -- says otherwise. Public so <see cref="DataIngestion.DataModelBuilder"/> can raise
+    /// it for a column whose own longest value already exceeds it.</summary>
+    public const int DefaultStringLength = 200;
 
     public static IReadOnlyList<ClassDefinition> ToClassDefinitions(CandidateDomainModel model)
         => ToClassDefinitions(model, out _);
@@ -431,6 +434,12 @@ public static class DomainModelMapper
     /// </remarks>
     private static bool AddFormatAttribute(PropertyDefinition property)
     {
+        // False, not null, is what withholds the attribute: null means no data was available to
+        // check (a discovered domain, or an entity with none yet), and the name is all there is
+        // to go on there, same as before this fact existed.
+        if (property.Facts?.NameImpliedFormatHolds == false)
+            return false;
+
         if (NameContainsWord(property.Name, "email"))
         {
             property.Attributes.Add("EmailAddress");
@@ -459,7 +468,10 @@ public static class DomainModelMapper
     /// of the evidence; HEADPHONES is indistinguishable from PHONENUMBER by any rule and matches,
     /// which is no worse than the substring matching this replaces and reaches shouted names only.
     /// </remarks>
-    private static bool NameContainsWord(string name, string word)
+    /// <summary>Public so <see cref="DataIngestion.DataModelBuilder"/> can ask the same question
+    /// of a column's data as this class asks of its name, before <see cref="AddFormatAttribute"/>
+    /// commits to a format the source's own values might not hold.</summary>
+    public static bool NameContainsWord(string name, string word)
         => Words(name).Any(candidate =>
             string.Equals(candidate, word, StringComparison.OrdinalIgnoreCase)
             || (IsShouted(candidate) && candidate.Contains(word, StringComparison.OrdinalIgnoreCase)));
