@@ -82,7 +82,10 @@ public static class RuleProposals
             });
         }
 
-        if (mayBeUnique && scan.DuplicateValueCount == 0 && scan.NonBlankRowCount > 1)
+        // A bool has exactly two values, so with more than two rows a "no repeats yet" streak is
+        // only luck: the very next row must equal one of the two already seen.
+        if (mayBeUnique && propertyType != "bool"
+            && scan.DuplicateValueCount == 0 && scan.NonBlankRowCount > 1)
         {
             proposals.Add(new RuleProposal
             {
