@@ -21,11 +21,6 @@ public static class EntityRuleProposals
     /// candidate triples; fifty would be well over a hundred thousand.</summary>
     private const int MaxNumericColumnsForCalculationScan = 12;
 
-    /// <summary>A single-type cell parser: a DateTime-only parser can never hand back a decimal,
-    /// and vice versa, so two same-typed fields can never be compared as different runtime
-    /// types.</summary>
-    private delegate bool TryParse(string? value, out System.IComparable comparable);
-
     public static IReadOnlyList<EntityRuleProposal> For(CandidateEntity entity, TabularTable table)
     {
         var proposals = new List<EntityRuleProposal>();
@@ -40,8 +35,8 @@ public static class EntityRuleProposals
             f => f.Name,
             f => DataModelBuilder.ColumnFor(table, f.Name) ?? f.Name);
 
-        AddCrossFieldProposals(proposals, table, dateFields, columnByField, TryParseDate);
-        AddCrossFieldProposals(proposals, table, numericFields, columnByField, TryParseDecimal);
+        AddCrossFieldProposals(proposals, table, dateFields, columnByField);
+        AddCrossFieldProposals(proposals, table, numericFields, columnByField);
 
         if (numericFields.Count <= MaxNumericColumnsForCalculationScan)
             AddCalculationProposals(proposals, table, numericFields, columnByField);
@@ -51,7 +46,7 @@ public static class EntityRuleProposals
 
     private static void AddCrossFieldProposals(
         List<EntityRuleProposal> proposals, TabularTable table, List<CandidateField> fields,
-        IReadOnlyDictionary<string, string> columnByField, TryParse tryParse)
+        IReadOnlyDictionary<string, string> columnByField)
     {
         foreach (var left in fields)
         foreach (var right in fields)
@@ -60,8 +55,8 @@ public static class EntityRuleProposals
                 continue;
 
             if (!HoldsForEveryRow(
-                    table, columnByField[left.Name], columnByField[right.Name], tryParse,
-                    out var sawStrictlyLess))
+                    table, (columnByField[left.Name], left.Type),
+                    (columnByField[right.Name], right.Type), out var sawStrictlyLess))
                 continue;
 
             if (!sawStrictlyLess)
@@ -80,11 +75,18 @@ public static class EntityRuleProposals
         }
     }
 
-    /// <summary>Whether left &lt;= right in every row where both are present and parseable.
+    /// <summary>Whether left &lt;= right in every row AS THE GENERATED APP LOADS IT, with at
+    /// least one row where both are actually present.
     /// <paramref name="sawStrictlyLess"/> guards against two columns that are always equal,
     /// which would otherwise pass in both directions and propose two redundant rules.</summary>
+    /// <remarks>
+    /// A row with a blank is judged too, never skipped: the seed file writes a blank cell as
+    /// nothing, the model's non-nullable property keeps its default, and the emitted rule then
+    /// compares that default. An open booking's blank EndDate is 0001-01-01 to the app, which
+    /// every StartDate is after -- so skipping that row offered a rule the row breaks.
+    /// </remarks>
     private static bool HoldsForEveryRow(
-        TabularTable table, string leftColumn, string rightColumn, TryParse tryParse,
+        TabularTable table, (string Column, string Type) leftField, (string Column, string Type) rightField,
         out bool sawStrictlyLess)
     {
         sawStrictlyLess = false;
@@ -92,15 +94,18 @@ public static class EntityRuleProposals
 
         for (var row = 0; row < table.Rows.Count; row++)
         {
-            if (!tryParse(table.Value(row, leftColumn), out var left)
-                || !tryParse(table.Value(row, rightColumn), out var right))
-                continue;
+            var left = AsLoaded(table.Value(row, leftField.Column), leftField.Type, out var leftPresent);
+            var right = AsLoaded(table.Value(row, rightField.Column), rightField.Type, out var rightPresent);
 
-            compared++;
             var order = left.CompareTo(right);
 
             if (order > 0)
                 return false;
+
+            if (!leftPresent || !rightPresent)
+                continue;
+
+            compared++;
 
             if (order < 0)
                 sawStrictlyLess = true;
@@ -132,8 +137,8 @@ public static class EntityRuleProposals
         CandidateField target, CandidateField left, CandidateField right)
     {
         if (ZeroCounterExamples(
-                table, columnByField[target.Name], columnByField[left.Name], columnByField[right.Name],
-                (l, r) => l + r, out var sumRows))
+                table, (columnByField[target.Name], target.Type), (columnByField[left.Name], left.Type),
+                (columnByField[right.Name], right.Type), (l, r) => l + r, out var sumRows))
             proposals.Add(new EntityRuleProposal
             {
                 Kind = EntityRuleProposalKind.Calculation,
@@ -143,8 +148,8 @@ public static class EntityRuleProposals
             });
 
         if (ZeroCounterExamples(
-                table, columnByField[target.Name], columnByField[left.Name], columnByField[right.Name],
-                (l, r) => l * r, out var productRows))
+                table, (columnByField[target.Name], target.Type), (columnByField[left.Name], left.Type),
+                (columnByField[right.Name], right.Type), (l, r) => l * r, out var productRows))
             proposals.Add(new EntityRuleProposal
             {
                 Kind = EntityRuleProposalKind.Calculation,
@@ -159,8 +164,8 @@ public static class EntityRuleProposals
         CandidateField target, CandidateField net, CandidateField rate)
     {
         if (!ZeroCounterExamples(
-                table, columnByField[target.Name], columnByField[net.Name], columnByField[rate.Name],
-                (n, r) => n * (1 + r), out var rows))
+                table, (columnByField[target.Name], target.Type), (columnByField[net.Name], net.Type),
+                (columnByField[rate.Name], rate.Type), (n, r) => n * (1 + r), out var rows))
             return;
 
         proposals.Add(new EntityRuleProposal
@@ -173,74 +178,61 @@ public static class EntityRuleProposals
     }
 
     private static bool ZeroCounterExamples(
-        TabularTable table, string targetColumn, string leftColumn, string rightColumn,
-        System.Func<decimal, decimal, decimal> combine, out int rowsCompared)
+        TabularTable table, (string Column, string Type) targetField, (string Column, string Type) leftField,
+        (string Column, string Type) rightField, System.Func<decimal, decimal, decimal> combine,
+        out int rowsCompared)
     {
         rowsCompared = 0;
 
+        // Every row, as loaded, for the reason HoldsForEveryRow gives: a blank operand is 0 to
+        // the generated app, and 120 is not 100 plus 0. Only the rows with all three present
+        // count as evidence.
         for (var row = 0; row < table.Rows.Count; row++)
         {
-            if (!TryParseAmount(table.Value(row, targetColumn), out var t)
-                || !TryParseAmount(table.Value(row, leftColumn), out var l)
-                || !TryParseAmount(table.Value(row, rightColumn), out var r))
-                continue;
-
-            rowsCompared++;
+            var t = (decimal)AsLoaded(table.Value(row, targetField.Column), targetField.Type, out var tPresent);
+            var l = (decimal)AsLoaded(table.Value(row, leftField.Column), leftField.Type, out var lPresent);
+            var r = (decimal)AsLoaded(table.Value(row, rightField.Column), rightField.Type, out var rPresent);
 
             if (System.Math.Abs(t - combine(l, r)) > 0.0001m)
                 return false;
+
+            if (tPresent && lPresent && rPresent)
+                rowsCompared++;
         }
 
         return rowsCompared > 0;
     }
 
-    /// <summary>The Calculation scan's own decimal parser — distinct from <see cref="TryParseDecimal"/>
-    /// (which hands back <see cref="System.IComparable"/> for the Cross-Field scan's ordering compare)
-    /// because that method's out-parameter type differs only in what it is declared as: a call written
-    /// as `TryParseDecimal(value, out var x)` cannot pick between them, so this scan gets its own,
-    /// differently-named parser instead of overloading the existing one.</summary>
-    private static bool TryParseAmount(string? value, out decimal result)
+    /// <summary>
+    /// The value the generated app holds for <paramref name="cell"/> in a property of
+    /// <paramref name="type"/>: a DateTime for a date, a decimal for an int or a decimal, and the
+    /// type's default when the cell is blank or does not parse.
+    /// </summary>
+    /// <remarks>
+    /// Parsed exactly as SeedFileWriter.Write parses it -- trimmed, the same number styles, the
+    /// invariant culture -- because a value the seed file cannot write is left at the model's
+    /// default, and that default is what every emitted rule then judges.
+    /// <paramref name="present"/> is false for exactly those cells.
+    /// </remarks>
+    private static System.IComparable AsLoaded(string? cell, string type, out bool present)
     {
-        result = 0m;
-        return !string.IsNullOrWhiteSpace(value)
-            && decimal.TryParse(
-                value, System.Globalization.NumberStyles.Any,
-                System.Globalization.CultureInfo.InvariantCulture, out result);
-    }
+        var raw = cell?.Trim() ?? string.Empty;
+        var invariant = System.Globalization.CultureInfo.InvariantCulture;
 
-    private static bool TryParseDate(string? value, out System.IComparable comparable)
-    {
-        comparable = System.DateTime.MinValue;
-
-        if (string.IsNullOrWhiteSpace(value))
-            return false;
-
-        if (System.DateTime.TryParse(
-                value, System.Globalization.CultureInfo.InvariantCulture,
-                System.Globalization.DateTimeStyles.None, out var date))
+        switch (type)
         {
-            comparable = date;
-            return true;
+            case "DateTime":
+                present = System.DateTime.TryParse(
+                    raw, invariant, System.Globalization.DateTimeStyles.None, out var date);
+                return present ? date : default(System.DateTime);
+
+            case "int":
+                present = int.TryParse(raw, System.Globalization.NumberStyles.Integer, invariant, out var whole);
+                return present ? (decimal)whole : 0m;
+
+            default:
+                present = decimal.TryParse(raw, System.Globalization.NumberStyles.Number, invariant, out var number);
+                return present ? number : 0m;
         }
-
-        return false;
-    }
-
-    private static bool TryParseDecimal(string? value, out System.IComparable comparable)
-    {
-        comparable = 0m;
-
-        if (string.IsNullOrWhiteSpace(value))
-            return false;
-
-        if (decimal.TryParse(
-                value, System.Globalization.NumberStyles.Any,
-                System.Globalization.CultureInfo.InvariantCulture, out var number))
-        {
-            comparable = number;
-            return true;
-        }
-
-        return false;
     }
 }

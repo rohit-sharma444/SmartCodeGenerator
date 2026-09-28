@@ -64,9 +64,14 @@ public static class StageSummary
     /// The data answer. "No data" is an answer and says so, and a source named inline is an answer
     /// before the node is opened at all.
     /// </summary>
+    /// <remarks>
+    /// Through <see cref="DataIngestion.DataSourceLabel"/>, which names a SQL source by its
+    /// database. The location is a connection string there, and taking its "file name" put
+    /// everything after the last backslash on the diagram - the password with it.
+    /// </remarks>
     private static string? DataAnswer(BuildSession session)
         => session.Source is not null
-            ? Path.GetFileName(session.Source.Location)
+            ? DataIngestion.DataSourceLabel.For(session.Source)
             : "discovered from the web";
 
     /// <summary>

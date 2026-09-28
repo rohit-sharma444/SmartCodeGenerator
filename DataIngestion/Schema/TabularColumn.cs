@@ -21,4 +21,13 @@ public sealed class TabularColumn
     /// <see cref="ColumnTypeInference"/> fills the facts in afterwards.
     /// </summary>
     public CodeGenerationEngine.Models.TypeFacts? Facts { get; set; }
+
+    /// <summary>
+    /// Whether this column's values are the 1-based ROW NUMBERS of the rows it points at — which
+    /// is exactly the Id each of those rows is seeded with — rather than values read from the
+    /// source. Set only on the foreign keys this layer makes up itself: a JSON child's parent key
+    /// and a normalization split's. <c>TabularImport</c> rewrites every OTHER foreign key from
+    /// the source key it holds to the seeded Id of the row carrying it, and must leave these alone.
+    /// </summary>
+    public bool HoldsRowNumbers { get; init; }
 }

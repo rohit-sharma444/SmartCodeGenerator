@@ -77,7 +77,12 @@ internal sealed class BuildAppCommand
 
         // Options come off the line BEFORE the data source is parsed: a location is taken as the
         // rest of the line, so anything left after it would be swallowed by the path.
-        var (remaining, inline) = InlineCustomization.Split(Tail(input), AppCustomization.Default);
+        var options = InlineCustomization.Read(Tail(input), AppCustomization.Default);
+        var (remaining, inline) = (options.Remaining, options.Customization);
+
+        // Said before anything runs: an ignored value is a setting the user thinks they made.
+        foreach (var note in options.Notes)
+            Output.Warning("  " + note);
 
         var request = InlineDataSource.Parse(remaining);
 

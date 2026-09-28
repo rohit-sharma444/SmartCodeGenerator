@@ -141,7 +141,7 @@ public sealed class JsonTableReader : IDataSourceReader
             childName, label, elements.Select(e => e.Element).ToList(), children);
 
         var child = new TabularTable { Name = inner.Name, SourceLabel = label };
-        child.Columns.Add(new TabularColumn { Name = foreignKey, Type = "int" });
+        child.Columns.Add(new TabularColumn { Name = foreignKey, Type = "int", HoldsRowNumbers = true });
         child.Columns.AddRange(inner.Columns);
 
         for (var i = 0; i < inner.Rows.Count; i++)
@@ -163,7 +163,7 @@ public sealed class JsonTableReader : IDataSourceReader
         List<(int ParentRow, JsonElement Element)> elements)
     {
         var child = new TabularTable { Name = childName, SourceLabel = label };
-        child.Columns.Add(new TabularColumn { Name = foreignKey, Type = "int" });
+        child.Columns.Add(new TabularColumn { Name = foreignKey, Type = "int", HoldsRowNumbers = true });
         child.Columns.Add(new TabularColumn { Name = ScalarValueColumn });
 
         foreach (var (parentRow, element) in elements)

@@ -72,7 +72,10 @@ public sealed class SqlServerReader(ISqlSchemaSource source, int maxRowsPerTable
                 var note = SqlTypeMap.LossNote(column.SqlType, column.Name);
 
                 if (note is not null)
+                {
                     _lossNotes.Add(note);
+                    table.Notes.Add($"In {table.Label}, {note}");
+                }
             }
 
             // One past the cap, so a full read PROVES there was more: the catalogue's count is an

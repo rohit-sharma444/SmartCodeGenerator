@@ -109,7 +109,9 @@ public static partial class NormalizationAnalyzer
         if (values.Count < table.Rows.Count)
             return false;   // any gap makes the mapping untestable for those rows
 
-        var distinct = values.Distinct(StringComparer.OrdinalIgnoreCase).Count();
+        // Values compared as spelled, here and below: NormalizationPlan splits on exactly these
+        // comparisons, and a case-blind one would fold "ada" into "Ada" and lose a spelling.
+        var distinct = values.Distinct(StringComparer.Ordinal).Count();
 
         return distinct >= 2 && distinct <= table.Rows.Count * MaxDeterminantShare;
     }
@@ -118,7 +120,7 @@ public static partial class NormalizationAnalyzer
     /// <paramref name="dependent"/>. A single counter-example is enough to say no.</summary>
     private static bool Determines(TabularTable table, string determinant, string dependent)
     {
-        var mapping = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        var mapping = new Dictionary<string, string?>(StringComparer.Ordinal);
 
         for (var row = 0; row < table.Rows.Count; row++)
         {
@@ -130,7 +132,7 @@ public static partial class NormalizationAnalyzer
 
             if (mapping.TryGetValue(key, out var seen))
             {
-                if (!string.Equals(seen, value, StringComparison.OrdinalIgnoreCase))
+                if (!string.Equals(seen, value, StringComparison.Ordinal))
                     return false;
             }
             else
@@ -141,7 +143,7 @@ public static partial class NormalizationAnalyzer
 
         // A dependent that never varies at all carries no information; calling it a dependency
         // would propose an entity with one row.
-        return mapping.Values.Distinct(StringComparer.OrdinalIgnoreCase).Count() >= 2;
+        return mapping.Values.Distinct(StringComparer.Ordinal).Count() >= 2;
     }
 
     /// <summary>
@@ -200,7 +202,7 @@ public static partial class NormalizationAnalyzer
             $"  {determinant} -> {string.Join(", ", dependents)}"
         };
 
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var seen = new HashSet<string>(StringComparer.Ordinal);
 
         for (var row = 0; row < table.Rows.Count && seen.Count < EvidenceRows; row++)
         {

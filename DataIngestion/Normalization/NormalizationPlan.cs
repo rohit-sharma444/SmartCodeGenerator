@@ -165,16 +165,21 @@ public static class NormalizationPlan
 
         foreach (var column in finding.Columns)
         {
+            var source = table.Columns.First(
+                c => string.Equals(c.Name, column, StringComparison.OrdinalIgnoreCase));
+
             entity.Columns.Add(new TabularColumn
             {
                 Name = column,
-                Type = table.Columns.First(
-                    c => string.Equals(c.Name, column, StringComparison.OrdinalIgnoreCase)).Type,
+                Type = source.Type,
+                Facts = source.Facts,
             });
         }
 
         var determinant = finding.Columns[0];
-        var rowNumberByValue = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        // Ordinal, as the analyser compared them: "ada" and "Ada" are two rows, not one row with
+        // the second spelling thrown away.
+        var rowNumberByValue = new Dictionary<string, int>(StringComparer.Ordinal);
         var keys = new string?[table.Rows.Count];
 
         for (var row = 0; row < table.Rows.Count; row++)
@@ -210,7 +215,7 @@ public static class NormalizationPlan
             SourceLabel = table.Label,
         };
 
-        child.Columns.Add(new TabularColumn { Name = foreignKey, Type = "int" });
+        child.Columns.Add(new TabularColumn { Name = foreignKey, Type = "int", HoldsRowNumbers = true });
         child.Columns.Add(new TabularColumn { Name = valueColumn });
 
         return child;
@@ -260,13 +265,30 @@ public static class NormalizationPlan
     {
         var kept = table.Columns.Where(c => !removed.Contains(c.Name)).ToList();
 
-        var rewritten = new TabularTable { Name = table.Name, SourceLabel = table.SourceLabel };
+        // Still the table the source described: how much of it was read, the keys it declared on
+        // columns that survive, and what it declared about each column.
+        var rewritten = new TabularTable
+        {
+            Name = table.Name,
+            SourceLabel = table.SourceLabel,
+            IsPartial = table.IsPartial,
+            SourceRowCount = table.SourceRowCount,
+        };
+
+        rewritten.ForeignKeys.AddRange(table.ForeignKeys.Where(k => !removed.Contains(k.Column)));
+        rewritten.Notes.AddRange(table.Notes);
 
         foreach (var column in kept)
-            rewritten.Columns.Add(new TabularColumn { Name = column.Name, Type = column.Type });
+            rewritten.Columns.Add(new TabularColumn
+            {
+                Name = column.Name,
+                Type = column.Type,
+                Facts = column.Facts,
+                HoldsRowNumbers = column.HoldsRowNumbers
+            });
 
         foreach (var (column, _) in addedKeys)
-            rewritten.Columns.Add(new TabularColumn { Name = column, Type = "int" });
+            rewritten.Columns.Add(new TabularColumn { Name = column, Type = "int", HoldsRowNumbers = true });
 
         for (var row = 0; row < table.Rows.Count; row++)
         {
