@@ -76,6 +76,34 @@ public class ResumedSessionTests
         Assert.HasCount(1, session.Model!.Entities);
     }
 
+    /// <summary>
+    /// Re-entering the connection string is asked about, not silently applied — the session's
+    /// existing "discard the model?" gate already covers this, the same one guards ANY change to
+    /// the Data stage's answer once a model exists (<c>BuildSession.WouldDiscardModel</c>).
+    /// </summary>
+    [TestMethod]
+    public void Re_entering_the_connection_asks_before_discarding_the_restored_model()
+    {
+        var snapshot = new BuildSnapshot
+        {
+            Description = "trading",
+            AppType = "wpf",
+            Stage = nameof(BuildStage.Generate),
+            SourceKind = nameof(DataSourceKind.Sql),
+            SourceDatabase = "TRADING",
+            Entities = [new BuildSnapshot.Entity { Name = "Trade" }],
+        };
+
+        var session = ResumedSession.From(snapshot, Path.GetTempPath(), out _);
+        session.Autosave = _ => { };
+
+        var applied = session.SetSource(new DataSourceSpec(DataSourceKind.Sql, "Server=.;Database=TRADING;"));
+
+        Assert.IsFalse(applied, "a model exists, so the change must be held, not applied outright");
+        Assert.IsNotNull(session.PendingDiscard);
+        Assert.HasCount(1, session.Model!.Entities, "the restored model must survive until confirmed");
+    }
+
     [TestMethod]
     public void A_file_that_has_gone_comes_back_on_the_data_stage()
     {

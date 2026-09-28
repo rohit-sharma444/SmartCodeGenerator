@@ -104,7 +104,9 @@ public class CustomizationDefaultsTests
 
         var loaded = CustomizationDefaults.Load(_root);
 
-        Assert.AreEqual(string.Empty, loaded.NamespacePrefix);
+        // Null, not string.Empty: the fallback IS AppCustomization.Default now that NamespacePrefix
+        // is nullable, and null there means "not mentioned" rather than "explicitly cleared".
+        Assert.IsNull(loaded.NamespacePrefix);
     }
 
     [TestMethod]
