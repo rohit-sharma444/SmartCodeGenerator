@@ -4,9 +4,12 @@
 #
 # 1. Narration: one audio file per scene, and caption timings (make_voice.py).
 # 2. A real `build app` workflow, served by the DemoVideoHost test, in a fresh workspace.
-# 3. The recording: record.mjs drives that page from the CSV to the running Blazor app.
+# 3. The recording: record.mjs drives that page with Playwright from the CSV through Generate,
+#    then hands off to WpfDriver (built here) and ffmpeg to sign into and drive the generated WPF
+#    app itself, which Playwright cannot see into.
 # 4. Tidying up: the generated app is stopped and the host told to finish.
-# 5. Assembly: picture and voice into an MP4, captions into a VTT (assemble.py).
+# 5. Assembly: the browser recording, the native recording(s) and the closing card into one MP4,
+#    with narration mixed in and captions burned onto the native section (assemble.py).
 
 param(
     # Short on purpose: a generated project under a long path hits MAX_PATH during its build.
@@ -22,6 +25,10 @@ $csv = Join-Path $here 'data\orders.csv'
 Push-Location $here
 try {
     if (-not (Test-Path node_modules)) { npm install --no-audit --no-fund | Out-Null }
+
+    Write-Host '== wpf driver'
+    dotnet build (Join-Path $here 'WpfDriver\WpfDriver.csproj') -c Release --nologo -v quiet
+    if ($LASTEXITCODE) { throw 'WpfDriver failed to build' }
 
     if (-not $SkipVoice) {
         Write-Host '== narration'

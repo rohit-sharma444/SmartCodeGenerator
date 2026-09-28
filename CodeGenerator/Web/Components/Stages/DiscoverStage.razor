@@ -31,9 +31,17 @@ else if (_kept)
 }
 else if (_read is not null)
 {
-    @foreach (var line in _read.Lines)
+    @* Only the file-read confirmation, not the rest of _read.Lines: NormalizationPrompt.Lines
+       renders its per-finding summary for a text terminal ("  1 ! Headline" / "        -> Proposal"),
+       and printing that here repeated - in console syntax - exactly what the checklist below
+       already shows with a real checkbox. *@
+    <p class="read-line">@_read.Lines[0]</p>
+
+    @* A check that could not run, straight from the report. Never duplicated below, unlike the
+       findings themselves. *@
+    @foreach (var note in _read.Report.Notes)
     {
-        <p class="read-line">@line</p>
+        <p class="notice">@note</p>
     }
 
     @if (_read.Report.Findings.Count > 0)
@@ -47,7 +55,8 @@ else if (_read is not null)
                     <label class="choice">
                         <input type="checkbox" checked="@_chosen.Contains(finding)"
                                @onchange="e => Toggle(finding, (bool?)e.Value ?? false)" />
-                        <strong>@finding.Headline</strong> — @finding.Proposal
+                        <strong>@finding.Headline</strong>
+                        <span class="proposal">@finding.Proposal</span>
                     </label>
 
                     @* Evidence is not decoration: a finding the user cannot inspect is a finding
@@ -63,7 +72,10 @@ else if (_read is not null)
             }
         </ul>
     }
-
+    else
+    {
+        <p class="read-line">No normalization problems found.</p>
+    }
 }
 else
 {
