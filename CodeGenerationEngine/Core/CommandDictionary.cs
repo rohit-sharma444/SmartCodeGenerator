@@ -832,6 +832,49 @@ public static class CommandDictionary
         new()
         {
             Category = "Build App",
+            Command = "rules",
+            Description = "Review loop: lists every validation rule your data supports, numbered, "
+                        + "with the evidence for each and whether it is accepted. None is applied "
+                        + "until you accept it.",
+            Example = "rules"
+        },
+        new()
+        {
+            Category = "Build App",
+            Command = "accept <n>",
+            Description = "Review loop: accepts a rule `rules` listed, by its number, or `accept "
+                        + "all` for every one.",
+            Example = "accept 2"
+        },
+        new()
+        {
+            Category = "Build App",
+            Command = "unaccept <n>",
+            Description = "Review loop: takes an accepted rule back, by number, or `unaccept all` "
+                        + "for every one.",
+            Example = "unaccept 2"
+        },
+        new()
+        {
+            Category = "Build App",
+            Command = "order status <values> in <class>",
+            Description = "Review loop: for a class with an accepted status proposal, states its "
+                        + "discovered values IN ORDER, comma-joined and naming every one exactly "
+                        + "once, so a rule can tell an earlier stage of a workflow from a later one.",
+            Example = "order status Draft,Approved,Shipped in Order"
+        },
+        new()
+        {
+            Category = "Build App",
+            Command = "final status <values> in <class>",
+            Description = "Review loop: for a class with an accepted status proposal, marks which "
+                        + "of its discovered values are FINAL — no further transition is expected "
+                        + "from them.",
+            Example = "final status Cancelled,Delivered in Order"
+        },
+        new()
+        {
+            Category = "Build App",
             Command = "cancel",
             Description = "Review loop: abandons the model without generating anything. Alias: c.",
             Example = "cancel"
