@@ -39,6 +39,21 @@ public class ModelEditorTests
         Assert.Equal(new[] { "Loan" }, model.Entities.Select(e => e.Name));
     }
 
+    /// <summary>Removing a class leaves a trail `why` can show, the same as renaming one already
+    /// does — otherwise `why <removed class>` says "No decision recorded", which reads as the tool
+    /// never having considered it, when the user is the one who took it out.</summary>
+    [Fact]
+    public void RemoveEntity_RecordsADecision()
+    {
+        var model = ModelWith("Book", "Loan");
+
+        Assert.True(ModelEditor.RemoveEntity(model, "book"));
+
+        var decision = Assert.Single(model.Decisions, d => d.Name == "Book");
+        Assert.Equal(DecisionOutcome.Skipped, decision.Outcome);
+        Assert.Equal(DecisionReasons.YouRemovedIt, decision.Reason);
+    }
+
     [Fact]
     public void RenameEntity_RenamesExisting_RejectsCollision()
     {

@@ -53,4 +53,5 @@ public static class DecisionReasons
 
     // --- Review loop ---
     public const string YouRenamedIt = "you renamed it";
+    public const string YouRemovedIt = "you removed it";
 }

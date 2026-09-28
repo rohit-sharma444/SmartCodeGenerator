@@ -327,6 +327,13 @@ public static class ModelEditor
             return false;
 
         model.Entities.Remove(target);
+
+        // Without this, `why <name>` on a class the user removed says "No decision recorded" --
+        // which reads as the tool never having considered it, when removing it was the decision.
+        model.Record(
+            target.Name, DecisionStage.ReviewLoop, DecisionOutcome.Skipped,
+            DecisionReasons.YouRemovedIt);
+
         return true;
     }
 
