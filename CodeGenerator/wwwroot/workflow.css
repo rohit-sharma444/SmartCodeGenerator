@@ -671,6 +671,15 @@ body {
     font-size: 0.9em;
 }
 
+/* Discover's file-read confirmation and its "nothing to fix" close - the same quiet, already-
+   settled treatment .peek gives a recognized file, since both are a report that something
+   went fine rather than a question still open. */
+.read-line {
+    margin: 0.3rem 0;
+    color: var(--done);
+    font-size: 0.9em;
+}
+
 .fields label,
 .file label { display: block; margin: 0.4rem 0; }
 
@@ -1319,6 +1328,57 @@ body {
 .settled { font-size: 0.88em; display: grid; gap: var(--space-2); align-content: start; }
 .settled p { margin: 0; }
 .edit-report { margin-top: 1rem; font-style: italic; }
+/* The normalization findings, replacing the plain browser bullet list they used to sit in. One
+   row per finding, in the same "row lights up together" idiom as a class's own field rows -
+   checkbox, bold fact, muted elaboration - rather than the disclosure-triangle-and-bullet
+   defaults every one of these elements draws with on its own. */
+.findings {
+    list-style: none;
+    margin: 0.75rem 0 1.25rem;
+    padding: 0;
+}
+
+.findings li {
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--line-soft);
+}
+
+.findings li:last-child { border-bottom: 0; }
+
+.findings .choice {
+    display: flex;
+    align-items: baseline;
+    gap: 0.4rem;
+    margin: 0;
+}
+
+.findings .choice input[type="checkbox"] { flex: none; }
+
+/* The proposal reads as an elaboration on the headline rather than a second fact of equal
+   weight - quieter, and marked off from it with a dash rather than run straight into the bold
+   text. */
+.findings .proposal { color: var(--muted); }
+.findings .proposal::before { content: "\2014\00a0"; color: var(--faint); }
+
+.findings details { margin: 0.3rem 0 0 1.6rem; }
+
+.findings summary {
+    color: var(--pending);
+    font-size: 0.82em;
+    cursor: pointer;
+}
+
+.findings summary:hover { color: var(--active); }
+
+/* Evidence is data the tool read out of the file, so it sits on the same tinted ground every
+   other machine-owned fact on this page uses. */
+.findings .evidence {
+    margin: 0.4rem 0 0;
+    padding: 0.4rem 0.6rem;
+    background: var(--machine);
+    border-radius: var(--radius-sm);
+}
+
 .evidence { font-family: ui-monospace, Consolas, monospace; font-size: 0.82em; }
 
 /* The end of a run, in place of the diagram and the panel. A card like the panel it replaces —
