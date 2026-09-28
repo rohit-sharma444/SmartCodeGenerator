@@ -227,6 +227,26 @@ public class SeedFileWriterTests
     }
 
     /// <summary>
+    /// A date is written as the source wrote it. DateTimeStyles.None converted anything with a
+    /// zone into the GENERATING machine's local time, so the same CSV seeded different values on
+    /// different machines, and a UTC "Z" came out as another clock time with a local offset.
+    /// </summary>
+    [TestMethod]
+    [DataRow("2026-01-02T10:00:00Z", "2026-01-02T10:00:00Z")]
+    [DataRow("2026-01-02T10:00:00+05:00", "2026-01-02T10:00:00+05:00")]
+    [DataRow("2026-01-02T10:00:00.5-08:00", "2026-01-02T10:00:00.5-08:00")]
+    [DataRow("2026-01-02T10:00:00", "2026-01-02T10:00:00")]
+    [DataRow("2026-01-02", "2026-01-02T00:00:00")]
+    public void ADateIsWrittenUnshiftedByTheMachinesTimeZone(string raw, string expected)
+    {
+        var row = Rows(SeedFileWriter.Files(
+            [Order(("Placed", "DateTime"))], Map(),
+            Data(new Dictionary<string, string?> { ["Placed"] = raw })).Single().Json)[0];
+
+        Assert.AreEqual(expected, row.GetProperty("Placed").GetString());
+    }
+
+    /// <summary>
     /// Inference and the seed writer share one parse definition, so whatever type inference picks
     /// for a column, every value in it is written. Before, inference accepted forms the writer did
     /// not ("1E5"), and the writer accepted forms inference did not ("1,2").

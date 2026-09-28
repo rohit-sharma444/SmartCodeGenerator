@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.RegularExpressions;
 
 namespace AppScaffolding;
 
@@ -52,7 +53,12 @@ public static class ImportedValues
         "MMMM d, yyyy",
     ];
 
-    private const DateTimeStyles DateStyles = DateTimeStyles.AllowWhiteSpaces;
+    private const DateTimeStyles DateStyles =
+        DateTimeStyles.AllowWhiteSpaces | DateTimeStyles.RoundtripKind;
+
+    /// <summary>A trailing "Z" or a numeric UTC offset — the only two <see cref="DateFormats"/>
+    /// entries a zone can appear in.</summary>
+    private static readonly Regex ZoneSuffix = new(@"[Zz]$|[+-]\d{2}:\d{2}$", RegexOptions.None);
 
     public static bool TryInt(string value, out int result)
         => int.TryParse(value, IntegerStyles, CultureInfo.InvariantCulture, out result);
@@ -83,4 +89,24 @@ public static class ImportedValues
     public static bool TryDateTime(string value, out DateTime result)
         => DateTime.TryParseExact(
             value, DateFormats, CultureInfo.InvariantCulture, DateStyles, out result);
+
+    /// <summary>
+    /// Only for a value that NAMES a zone. <see cref="DateTimeOffset.TryParseExact"/> otherwise
+    /// invents the generating machine's own offset for a string that named none, and a
+    /// <see cref="DateTime"/> of <see cref="DateTimeKind.Local"/> cannot hold an arbitrary source
+    /// offset at all — formatting it always reports the CURRENT machine's, silently reweighting the
+    /// value by the difference. Written out through this instead, the source's own offset survives.
+    /// </summary>
+    public static bool TryDateTimeOffset(string value, out DateTimeOffset result)
+    {
+        if (!ZoneSuffix.IsMatch(value.Trim()))
+        {
+            result = default;
+            return false;
+        }
+
+        return DateTimeOffset.TryParseExact(
+            value, DateFormats, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces,
+            out result);
+    }
 }

@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using CodeGenerationEngine.Models;
 
@@ -176,6 +177,19 @@ public static class SeedFileWriter
                 return true;
 
             case "DateTime":
+                if (ImportedValues.TryDateTimeOffset(raw, out var withZone))
+                {
+                    // Written by hand, not the DateTimeOffset overload: that one renders a zero
+                    // offset as "+00:00", where "Z" is what the source itself wrote.
+                    var offset = withZone.Offset == TimeSpan.Zero
+                        ? "Z"
+                        : withZone.ToString("zzz", CultureInfo.InvariantCulture);
+                    writer.WriteString(
+                        property.Name,
+                        withZone.ToString("yyyy-MM-ddTHH:mm:ss.FFFFFFF", CultureInfo.InvariantCulture)
+                            + offset);
+                    return true;
+                }
                 if (!ImportedValues.TryDateTime(raw, out var moment))
                     return false;
                 writer.WriteString(property.Name, moment);
