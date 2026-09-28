@@ -768,7 +768,12 @@ body {
     color: var(--failed);
 }
 
+/* Capped by default: a stage that asks one question - a handful of radios, one field, one
+   button - filled the whole column anyway, leaving a card that was mostly empty white space
+   beside a small cluster of controls. 640px keeps it close to .panel .answer's own 34rem, so
+   the card reads as sized to what it holds rather than to the grid track it happens to sit in. */
 .panel {
+    max-width: 640px;
     padding: 1.25rem 1.5rem;
     border: 1px solid var(--line);
     border-radius: 6px;
@@ -776,6 +781,16 @@ body {
 
     /* The 3D is on the PAGE, not only on the rail - the panel is the biggest thing on it. */
     box-shadow: var(--lift-raised);
+}
+
+/* Un-capped where the content is genuinely wide: the class-card grid, the two-column output
+   layout, and the entry-template screenshot grid all want the full column. Matched by the
+   wrapper each already renders rather than a class added to .panel itself, on the same :has()
+   pattern the theme drop-down above uses to reach outside its own scope. */
+.panel:has(.review),
+.panel:has(.output),
+.panel:has(.entry-template-choices) {
+    max-width: none;
 }
 
 /* Progress. A finished step is ticked and quiet; the running one is the loud line, because it is
