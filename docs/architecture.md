@@ -18,7 +18,7 @@ The last two converge: both produce the same `CandidateDomainModel`, so the revi
 loop and the scaffolder are shared and know nothing about which path built it.
 
 Both of them wear one of two front ends. An interactive `build app` opens a
-workflow page in the browser — eight stages ending in one that starts the
+workflow page in the browser — ten stages ending in one that starts the
 generated application, and the stages are also the navigation: a panel offers
 its forward step through a `StageNavigation` the diagram draws inside the box
 being answered, which is why no panel has a Next button. A step with a name of

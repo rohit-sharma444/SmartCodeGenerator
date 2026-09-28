@@ -296,7 +296,7 @@ internal sealed class BuildAppCommand
         if (description.Length == 0)
         {
             Console.WriteLine("Usage: build app: <description of the system you want>");
-            Console.WriteLine("   or: build app from csv <path>   (also txt, json, excel)");
+            Console.WriteLine("   or: build app from csv <path>   (also txt, json, excel, sql)");
             Console.WriteLine(InlineOptionsHelp);
             return;
         }
