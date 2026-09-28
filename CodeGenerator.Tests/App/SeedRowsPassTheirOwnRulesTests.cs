@@ -110,6 +110,33 @@ public sealed class StoreEntityLookup : IEntityLookup
         Assert.IsEmpty(errors, string.Join("\n", errors));
     }
 
+    [TestMethod]
+    public void A_percentage_rule_accepts_its_own_rows_under_a_comma_decimal_culture()
+    {
+        // Total always equals Net times (1 plus Rate). The emitted check reads each operand back
+        // with this.Property.ToString() -- under a culture that writes decimals with a comma,
+        // "80.00" becomes "80,00", which System.Globalization.CultureInfo.InvariantCulture then
+        // parses as the THOUSANDS-GROUPED integer 8000, not the number the row actually holds. A
+        // sum rule would still balance after every operand is scaled the same way; a product does
+        // not, which is why this needs a percentage rule to show up.
+        var table = Table("Order", ["Reference", "Net", "Rate", "Total"],
+            ["A", "80.00", "0.25", "100.00"],
+            ["B", "200.00", "0.10", "220.00"]);
+
+        var original = System.Globalization.CultureInfo.CurrentCulture;
+        System.Globalization.CultureInfo.CurrentCulture =
+            System.Globalization.CultureInfo.GetCultureInfo("de-DE");
+        try
+        {
+            var errors = ErrorsFromTheSeedRows(table, "Order");
+            Assert.IsEmpty(errors, string.Join("\n", errors));
+        }
+        finally
+        {
+            System.Globalization.CultureInfo.CurrentCulture = original;
+        }
+    }
+
     /// <summary>A table whose column types are inferred from its rows, as the readers do.</summary>
     internal static TabularTable Table(string name, string[] columns, params string?[][] rows)
     {
