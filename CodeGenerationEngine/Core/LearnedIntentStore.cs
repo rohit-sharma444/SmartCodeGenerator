@@ -29,6 +29,7 @@ public static class LearnedIntentStore
         var folder = Path.Combine(workspaceRoot, ".codegen");
         Directory.CreateDirectory(folder);
         _filePath = Path.Combine(folder, "learned.json");
+        PhraseCandidates.Initialize(folder);
 
         var memory = new LearnedIntentMemory();
         memory.Load(_filePath);
@@ -64,5 +65,6 @@ public static class LearnedIntentStore
     {
         _current = new LearnedIntentMemory();
         _filePath = null;
+        PhraseCandidates.Initialize(null);
     }
 }

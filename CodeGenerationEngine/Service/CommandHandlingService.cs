@@ -523,20 +523,45 @@ public static class CommandHandlingService
         if (entries.Count == 0)
         {
             Console.WriteLine("No learned commands yet.");
-            return true;
+        }
+        else
+        {
+            Console.WriteLine();
+            Console.WriteLine("Learned commands");
+            Console.WriteLine("--------------------------------");
+            foreach (var entry in entries)
+            {
+                Console.WriteLine(
+                    $"{entry.Intent,-22} conf={entry.Confidence:0.00} " +
+                    $"(+{entry.SuccessCount}/-{entry.FailureCount})  [{entry.Signature}]");
+            }
+            Console.WriteLine();
         }
 
-        Console.WriteLine();
-        Console.WriteLine("Learned commands");
-        Console.WriteLine("--------------------------------");
-        foreach (var entry in entries)
-        {
-            Console.WriteLine(
-                $"{entry.Intent,-22} conf={entry.Confidence:0.00} " +
-                $"(+{entry.SuccessCount}/-{entry.FailureCount})  [{entry.Signature}]");
-        }
-        Console.WriteLine();
+        ShowPhraseCandidates();
         return true;
+    }
+
+    /// <summary>
+    /// The phrasings typed that were not understood, each with what the next, working command
+    /// showed it meant - and the review file a person copies the right ones out of.
+    /// </summary>
+    private static void ShowPhraseCandidates()
+    {
+        var review = PhraseCandidates.Review();
+        if (review.Count == 0)
+            return;
+
+        Console.WriteLine($"Phrasings to review ({review.Count})");
+        Console.WriteLine("--------------------------------");
+        foreach (var line in review)
+            Console.WriteLine($"{line.Intent,-22} x{line.Count,-3} \"{line.Phrase}\"   e.g. {line.Example}");
+
+        var file = PhraseCandidates.WriteReviewFile();
+        if (file is not null)
+            Console.WriteLine($"Written to {file}");
+
+        Console.WriteLine();
     }
 
     private static bool HandleResetLearning()

@@ -17,6 +17,14 @@ public static class LearningCoordinator
     private static IntentType _lastIntent;
     private static DateTime _lastUtc = DateTime.MinValue;
 
+    /// <summary>The last command the CLI did not understand, still waiting for the retry that
+    /// would say what it meant.</summary>
+    private static (string Sentence, DateTime Utc)? _pendingMiss;
+
+    /// <summary>The time, settable so the rephrase window can be tested. Restored by
+    /// <see cref="ResetHistory"/>.</summary>
+    public static Func<DateTime> Clock { get; set; } = () => DateTime.UtcNow;
+
     public static void RecordOutcome(
         string sentence,
         IntentType intent,
@@ -32,7 +40,9 @@ public static class LearningCoordinator
         if (intent == IntentType.ShowLearning || intent == IntentType.ResetLearning)
             return;
 
-        var nowUtc = DateTime.UtcNow;
+        var nowUtc = Clock();
+
+        PairWithPendingMiss(sentence, intent, success, command, nowUtc);
 
         // Quick-rephrase: a near-identical follow-up soon after the last command
         // means the last interpretation probably missed - weaken it.
@@ -66,6 +76,39 @@ public static class LearningCoordinator
         _lastSentence = null;
         _lastIntent = IntentType.Unknown;
         _lastUtc = DateTime.MinValue;
+        _pendingMiss = null;
+        Clock = () => DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// A miss followed within the window by a working retry becomes a candidate phrasing for
+    /// the retry's intent; a new miss replaces the one waiting, and any other command ends the wait.
+    /// </summary>
+    /// <remarks>
+    /// The quick-rephrase branch above cannot see this: it skips a previous command whose intent
+    /// was Unknown - there is no interpretation to weaken - and that is exactly the case where the
+    /// user has just shown what they meant.
+    /// </remarks>
+    private static void PairWithPendingMiss(
+        string sentence, IntentType intent, bool success, ParsedCommand? command, DateTime nowUtc)
+    {
+        if (intent == IntentType.Unknown)
+        {
+            _pendingMiss = (sentence, nowUtc);
+            return;
+        }
+
+        var miss = _pendingMiss;
+        _pendingMiss = null;
+
+        if (miss is null || !success || command is null
+            || (nowUtc - miss.Value.Utc).TotalSeconds > RephraseWindowSeconds
+            || !PhraseCandidates.IsRetry(miss.Value.Sentence, sentence))
+            return;
+
+        var phrase = PhraseCandidates.Generalize(miss.Value.Sentence, command);
+        if (phrase is not null)
+            PhraseCandidates.Record(new PhraseCandidates.Candidate(phrase, intent, miss.Value.Sentence, sentence, nowUtc));
     }
 
     private static bool IsRephrase(string a, string b)
