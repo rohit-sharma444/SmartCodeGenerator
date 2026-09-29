@@ -1,0 +1,56 @@
+{
+  "_comment": [
+    "The prompts app-check runs. Each 'data' prompt is built once per target in 'targets'; each",
+    "'description' prompt once, as its own 'target', because class discovery does not depend on the",
+    "target. {repo} is replaced with the repository root.",
+    "'expect' lists the classes a description prompt should find: each entry is one class, given as",
+    "the names that would count for it, so ['Teacher', 'Instructor'] is satisfied by either."
+  ],
+  "targets": ["wpf", "winforms", "blazor", "webapi", "worker", "console", "classlib"],
+  "data": [
+    {
+      "id": "orders-csv",
+      "command": "build app: orders from csv {repo}\\tools\\demo-video\\data\\orders.csv"
+    },
+    {
+      "id": "invoices-json",
+      "command": "build app: invoices from json {repo}\\tools\\app-check\\data\\invoices.json"
+    },
+    {
+      "id": "shop-sql",
+      "command": "build app: shop from sql Server=.;Database=ValidationPhase3Test;Trusted_Connection=True;TrustServerCertificate=True"
+    }
+  ],
+  "description": [
+    {
+      "id": "clinic",
+      "target": "wpf",
+      "command": "build app: a clinic that books patients with doctors",
+      "expect": [["Patient"], ["Doctor", "Physician"], ["Appointment", "Booking"]]
+    },
+    {
+      "id": "library",
+      "target": "wpf",
+      "command": "build app: a library that lends books to members",
+      "expect": [["Book"], ["Member", "Borrower", "Patron"], ["Loan", "Lending", "Borrowing"]]
+    },
+    {
+      "id": "car-rental",
+      "target": "wpf",
+      "command": "build app: a car rental company that rents vehicles to customers",
+      "expect": [["Vehicle", "Car"], ["Customer", "Renter"], ["Rental", "RentalAgreement", "RentalContract", "Booking", "Reservation"]]
+    },
+    {
+      "id": "school",
+      "target": "wpf",
+      "command": "build app: a school that enrols students in courses taught by teachers",
+      "expect": [["Student"], ["Course"], ["Teacher", "Instructor"], ["Enrollment", "Enrolment", "Registration"]]
+    },
+    {
+      "id": "gym",
+      "target": "wpf",
+      "command": "build app: a gym that sells memberships to members and runs fitness classes",
+      "expect": [["Member", "Customer"], ["Membership"], ["FitnessClass", "Class", "Session"]]
+    }
+  ]
+}

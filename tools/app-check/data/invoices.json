@@ -1,0 +1,51 @@
+[
+  {
+    "InvoiceNumber": "INV-1001",
+    "InvoiceDate": "2026-08-03",
+    "CustomerName": "Harbor Cafe",
+    "Status": "Paid",
+    "Lines": [
+      { "Product": "Espresso beans 1kg", "Quantity": 4, "UnitPrice": 18.50 },
+      { "Product": "Paper cups (box)", "Quantity": 2, "UnitPrice": 22.00 }
+    ]
+  },
+  {
+    "InvoiceNumber": "INV-1002",
+    "InvoiceDate": "2026-08-05",
+    "CustomerName": "Maple and Co",
+    "Status": "Sent",
+    "Lines": [
+      { "Product": "Oat milk (case)", "Quantity": 6, "UnitPrice": 14.75 }
+    ]
+  },
+  {
+    "InvoiceNumber": "INV-1003",
+    "InvoiceDate": "2026-08-09",
+    "CustomerName": "North Street Deli",
+    "Status": "Draft",
+    "Lines": [
+      { "Product": "Espresso beans 1kg", "Quantity": 2, "UnitPrice": 18.50 },
+      { "Product": "Napkins (pack)", "Quantity": 10, "UnitPrice": 3.20 },
+      { "Product": "Paper cups (box)", "Quantity": 1, "UnitPrice": 22.00 }
+    ]
+  },
+  {
+    "InvoiceNumber": "INV-1004",
+    "InvoiceDate": "2026-08-12",
+    "CustomerName": "Harbor Cafe",
+    "Status": "Sent",
+    "Lines": [
+      { "Product": "Oat milk (case)", "Quantity": 3, "UnitPrice": 14.75 }
+    ]
+  },
+  {
+    "InvoiceNumber": "INV-1005",
+    "InvoiceDate": "2026-08-15",
+    "CustomerName": "Riverside Bakery",
+    "Status": "Paid",
+    "Lines": [
+      { "Product": "Napkins (pack)", "Quantity": 20, "UnitPrice": 3.20 },
+      { "Product": "Paper cups (box)", "Quantity": 3, "UnitPrice": 22.00 }
+    ]
+  }
+]
