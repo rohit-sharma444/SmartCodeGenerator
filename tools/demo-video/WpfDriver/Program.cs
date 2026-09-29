@@ -9,6 +9,7 @@
 //   {"cmd":"click-button","name":"Sign in"}                        -> {"ok":true}
 //   {"cmd":"type","automationId":"UserNameBox","value":"admin"}    -> {"ok":true}
 //   {"cmd":"type","name":"User name","value":"admin"}              -> {"ok":true}  (WinForms: no ids)
+//   add "direct":true to set it through UI Automation rather than the keyboard
 //   {"cmd":"dump"}                                                 -> {"ok":true,"elements":[...]}
 //   {"cmd":"find-grid"}                                            -> {"ok":true,"columns":[...],"rowCount":N}
 //   {"cmd":"type-field","label":"OrderNumber","value":"SO-2001"}   -> {"ok":true}
@@ -75,7 +76,7 @@ JsonObject Handle(JsonObject request)
         "click-button" => ClickButton(request["name"]!.GetValue<string>()),
         "click" => ClickByName(request["name"]!.GetValue<string>()),
         "type" => Type(request["automationId"]?.GetValue<string>(), request["name"]?.GetValue<string>(),
-            request["value"]!.GetValue<string>()),
+            request["value"]!.GetValue<string>(), request["direct"]?.GetValue<bool>() == true),
         "find-grid" => FindGrid(),
         "type-field" => TypeField(request["label"]!.GetValue<string>(), request["value"]!.GetValue<string>()),
         "read-status" => ReadStatus(),
@@ -161,6 +162,9 @@ void Foreground(Window w)
         && windowPattern.WindowVisualState.Value == WindowVisualState.Minimized)
         windowPattern.SetWindowVisualState(WindowVisualState.Normal);
 
+    // SetForeground, not Focus alone: Focus gives the window UI Automation focus but leaves
+    // another window on top of it, where a real mouse click into a WinForms box then lands.
+    w.SetForeground();
     w.Focus();
 }
 
@@ -246,7 +250,7 @@ JsonObject ClickByName(string name)
 /// a generated WinForms control has no Name set, so it carries no AutomationId at all, and UI
 /// Automation names its text boxes after the label beside them instead.
 /// </remarks>
-JsonObject Type(string? automationId, string? name, string value)
+JsonObject Type(string? automationId, string? name, string value, bool direct)
 {
     if (window is null)
         return NotAttached();
@@ -255,8 +259,31 @@ JsonObject Type(string? automationId, string? name, string value)
         ? window.FindFirstDescendant(cf => cf.ByAutomationId(automationId))
         : window.FindFirstDescendant(cf => cf.ByControlType(ControlType.Edit).And(cf.ByName(name ?? "")));
 
+    // "direct": set the value through UI Automation, needing no keyboard at all. Windows will not
+    // let this process take the foreground, so when another window holds the keyboard - Notepad
+    // opened over a WinForms login, in testing - simulated keys land in THAT window instead.
+    // app-check asks for this; the demo video types, because it is meant to look typed. Falls
+    // back to typing for a box whose Value pattern refuses the write.
+    if (direct && element?.Patterns.Value.PatternOrDefault is { } valuePattern)
+    {
+        try
+        {
+            valuePattern.SetValue(value);
+            return new JsonObject { ["ok"] = true, ["direct"] = true };
+        }
+        catch (Exception)
+        {
+            // A password box that will not be written this way: type into it as below.
+        }
+    }
+
     if (element is null)
         return new JsonObject { ["ok"] = false, ["error"] = $"no edit box '{automationId ?? name}'" };
+
+    // Frontmost first: simulated keystrokes go to whichever window has the keyboard, and a
+    // terminal someone was typing in when the app opened took an app-check sign-in's "admin"
+    // once - the login then refused a password it never received.
+    Foreground(window);
 
     // A WinForms TextBox ignores UI Automation's Focus() for keyboard purposes - the keystrokes
     // that follow go nowhere - so the by-name path clicks into the box, as a person would.
@@ -264,6 +291,12 @@ JsonObject Type(string? automationId, string? name, string value)
         element.Click();
     else
         element.Focus();
+
+    // Replace, not append: End then Shift+Home selects whatever the box holds, so typing into it
+    // a second time - a retried sign-in - does not leave "adminadmin" behind. Not Ctrl+A, which a
+    // single-line WinForms TextBox has not always honoured.
+    Keyboard.Press(VirtualKeyShort.END);
+    Keyboard.TypeSimultaneously(VirtualKeyShort.SHIFT, VirtualKeyShort.HOME);
     Keyboard.Type(value);
 
     return new JsonObject { ["ok"] = true };

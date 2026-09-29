@@ -95,13 +95,28 @@ async function desktop(target, app, caseDir, check) {
       const user = wpfLogin ? { automationId: 'UserNameBox' } : { name: 'User name' };
       const password = wpfLogin ? { automationId: 'PasswordBox' } : { name: 'Password' };
 
-      await send({ cmd: 'type', ...user, value: 'admin' });
-      await send({ cmd: 'type', ...password, value: 'admin' });
-      await send({ cmd: 'click-button', name: 'Sign in' });
+      const signIn = async () => {
+        await send({ cmd: 'type', ...user, value: 'admin', direct: true });
+        await send({ cmd: 'type', ...password, value: 'admin', direct: true });
+        await send({ cmd: 'click-button', name: 'Sign in' });
+        return send({ cmd: 'wait-for-window' });
+      };
 
-      const shell = await send({ cmd: 'wait-for-window' });
+      // Set directly, not typed: Windows will not give this process the foreground, and when
+      // another window held the keyboard - a terminal, once, in a real run - the typed "admin"
+      // went there and the login refused a password it never saw. Once more if refused anyway:
+      // a login that is really broken refuses both times, and a needed retry is reported.
+      let shell = await signIn();
+      let retried = false;
+
+      if (!shell.ok) {
+        retried = true;
+        shell = await signIn();
+      }
+
       const refusal = shell.ok ? '' : [...(await visibleNames(send))].find(n => /not recognised|invalid|incorrect/i.test(n));
-      if (!check('signs in as admin / admin', shell.ok, shell.ok ? '' : refusal ?? shell.error)) return null;
+      if (!check('signs in as admin / admin', shell.ok,
+        shell.ok ? (retried ? 'signed in on the second try' : '') : `refused twice: ${refusal ?? shell.error}`)) return null;
 
       await sleep(1000);
       names = await visibleNames(send);
