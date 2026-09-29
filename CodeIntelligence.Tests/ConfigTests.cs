@@ -17,12 +17,15 @@ public sealed class ConfigTests : IDisposable
 
     private string Path_ => Path.Combine(_dir, "ai.json");
 
+    /// <summary>On unless someone turned it off. Off by default meant a customer's copy never
+    /// used it - nor anything learned into its corpus - and it cannot act on a guess without
+    /// asking first (AiConfirmPrompt), so on costs a wrong guess one "No".</summary>
     [Fact]
-    public void Defaults_are_disabled_retrieval_mode()
+    public void Defaults_are_enabled_retrieval_mode()
     {
         var config = AiConfig.Load(Path_);
 
-        Assert.False(config.Enabled);
+        Assert.True(config.Enabled);
         Assert.Equal("Retrieval", config.ResolverMode);
         Assert.Equal(0.55, config.ConfidenceFloor, 3);
 
@@ -61,8 +64,10 @@ public sealed class ConfigTests : IDisposable
         Assert.Equal(0.41, reloaded.MinTopScore, 3);
     }
 
+    /// <summary>Off, not the default: a config someone wrote and that cannot be read may have
+    /// said "disabled", and a broken file must leave the CLI working as it does with AI off.</summary>
     [Fact]
-    public void A_corrupt_config_falls_back_to_defaults_instead_of_throwing()
+    public void A_corrupt_config_turns_the_layer_off_instead_of_throwing()
     {
         File.WriteAllText(Path_, "{ this is not json");
 
@@ -70,5 +75,13 @@ public sealed class ConfigTests : IDisposable
 
         Assert.False(config.Enabled);
         Assert.Equal(0.55, config.ConfidenceFloor, 3);
+    }
+
+    [Fact]
+    public void A_config_that_says_disabled_stays_disabled()
+    {
+        File.WriteAllText(Path_, """{ "Enabled": false }""");
+
+        Assert.False(AiConfig.Load(Path_).Enabled);
     }
 }

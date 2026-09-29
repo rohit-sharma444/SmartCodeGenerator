@@ -78,17 +78,54 @@ public sealed class AiLayerTests : IDisposable
         Assert.Null(layer.Unavailable);
     }
 
+    /// <summary>
+    /// An enabled layer builds its own index, rather than declining every phrase with
+    /// "index is empty - run 'ai reindex'" until somebody knows to.
+    /// </summary>
+    /// <remarks>
+    /// That was every fresh install: nothing ever ran the reindex, so the layer shipped on and
+    /// answered nothing. And a corpus that GREW - a learned phrase in a new release - reached no
+    /// existing install either, whose index still held the old phrasings.
+    /// </remarks>
     [Fact]
-    public void Status_reports_reindex_required_before_a_reindex_and_not_after()
+    public void An_enabled_layer_indexes_its_corpus_without_being_asked()
     {
         var layer = Layer(enabled: true);
 
-        Assert.Contains("REINDEX REQUIRED", layer.StatusText());
-
-        layer.Reindex();
-
         Assert.DoesNotContain("REINDEX REQUIRED", layer.StatusText());
+        Assert.NotNull(layer.Resolver!.Resolve("create a class", CancellationToken.None));
     }
+
+    [Fact]
+    public void An_index_that_matches_the_corpus_is_not_rebuilt()
+    {
+        Layer(enabled: true);
+        var built = new Storage.SqliteVectorStore(IndexPath).GetStatus(ModelId).BuiltUtc;
+        Assert.NotNull(built); // or "unchanged" would hold of an index that was never built
+
+        AiLayer.Create(ConfigPath, IndexPath);
+
+        Assert.Equal(built, new Storage.SqliteVectorStore(IndexPath).GetStatus(ModelId).BuiltUtc);
+    }
+
+    [Fact]
+    public void An_index_built_from_a_different_corpus_is_rebuilt()
+    {
+        Layer(enabled: true);
+
+        // What an install still holds from an older release: fewer phrasings than it ships now.
+        var store = new Storage.SqliteVectorStore(IndexPath);
+        var stale = store.LoadAll(ModelId).Take(3).ToList();
+        store.ReplaceAll(ModelId, stale[0].Vector.Length,
+            [.. stale.Select(v => (new Abstractions.CorpusDocument(
+                v.Text, v.Intent, Abstractions.CorpusSourceKind.IntentRule, "old", "old-" + v.DocumentId), v.Vector))]);
+
+        AiLayer.Create(ConfigPath, IndexPath);
+
+        Assert.True(new Storage.SqliteVectorStore(IndexPath).GetStatus(ModelId).DocumentCount > 3);
+    }
+
+    private static string ModelId => Onnx.ModelRegistry.DefaultEmbeddingModel.ModelId;
 
     [Fact]
     public void Status_surfaces_both_gates_so_they_can_be_calibrated_separately()

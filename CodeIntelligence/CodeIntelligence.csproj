@@ -8,6 +8,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Embedded, not copied beside the binary: every build carries exactly the reviewed list.
+         LogicalName fixed so LearnedPhrases.ResourceName cannot drift from a folder rename. -->
+    <EmbeddedResource Include="Corpus\learned-phrases.tsv" LogicalName="CodeIntelligence.Corpus.learned-phrases.tsv" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.9" />
     <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.3" />
   </ItemGroup>

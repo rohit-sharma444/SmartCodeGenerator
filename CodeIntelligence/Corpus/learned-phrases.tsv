@@ -1,0 +1,4 @@
+# Phrasings users typed that the CLI did not understand, each followed by a command it did.
+# One per line: <phrase><TAB><IntentType>. Candidates come from `show learning`, which writes
+# them to .codegen\phrase-candidates.tsv in the workspace; review them, copy the good ones here.
+# GoldenSetTests then fail the build if these lower the score or copy a golden-set phrasing.

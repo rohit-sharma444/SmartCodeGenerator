@@ -178,6 +178,66 @@ public sealed class GoldenSetTests : IDisposable
         }
     }
 
+    /// <summary>
+    /// The learned phrasings make the shipped score no worse than it is without them.
+    /// </summary>
+    /// <remarks>
+    /// The gate every learned phrase is committed through. A phrasing learned from one user's
+    /// retry is evidence for THAT phrasing; this is the check that it does not pull a nearby
+    /// golden paraphrase over to the wrong intent, or split a vote that used to succeed.
+    /// The_golden_set_is_not_drawn_from_the_corpus separately refuses a learned line that
+    /// simply copies a golden phrasing, which would raise this score by memorising the test.
+    /// </remarks>
+    [Fact]
+    public void The_learned_phrases_do_not_lower_the_score()
+    {
+        IntentRepository.Initialize();
+
+        var everything = CorpusHarvester.Harvest();
+        var withoutLearned = everything.Where(d => d.SourceKind != CorpusSourceKind.Learned).ToList();
+
+        var with = MeasureOver(everything, "with");
+        var without = MeasureOver(withoutLearned, "without");
+
+        _output.WriteLine($"learned phrasings: {everything.Count - withoutLearned.Count}");
+        _output.WriteLine($"without: correct {without.Correct}, wrong {without.WrongConfident}");
+        _output.WriteLine($"with:    correct {with.Correct}, wrong {with.WrongConfident}");
+
+        Assert.True(with.Correct >= without.Correct,
+            $"the learned phrasings cost {without.Correct - with.Correct} correct answer(s)");
+        Assert.True(with.WrongConfident <= without.WrongConfident,
+            $"the learned phrasings added {with.WrongConfident - without.WrongConfident} wrong answer(s)");
+    }
+
+    /// <summary>The shipped-threshold score of a resolver over exactly <paramref name="documents"/>,
+    /// in an index of its own so the shared one the sweep uses is left alone.</summary>
+    private (int Correct, int WrongConfident) MeasureOver(IReadOnlyList<CorpusDocument> documents, string name)
+    {
+        var model = ModelRegistry.DefaultEmbeddingModel;
+        _embedder ??= new OnnxEmbeddingProvider(model.ModelPath, model.VocabPath, model.ModelId);
+
+        var store = new SqliteVectorStore(Path.Combine(_dir, $"golden-{name}.db"));
+        store.ReplaceAll(_embedder.ModelId, _embedder.Dimension,
+            [.. documents.Select(d => (d, _embedder.Embed(d.Text)))]);
+
+        var resolver = new RetrievalIntentResolver(store, _embedder, topK: AiConfig.DefaultTopK,
+            floor: AiConfig.DefaultConfidenceFloor, minTopScore: AiConfig.DefaultMinTopScore,
+            budget: TimeSpan.FromSeconds(30));
+
+        int correct = 0, wrong = 0;
+
+        foreach (var (text, expected) in GoldenSet())
+        {
+            var result = resolver.Resolve(text, CancellationToken.None);
+
+            if (result is null) continue;
+            if (result.Intent == expected) correct++;
+            else wrong++;
+        }
+
+        return (correct, wrong);
+    }
+
     [Fact]
     public void Accuracy_does_not_regress_below_the_calibrated_thresholds()
     {

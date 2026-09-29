@@ -21,6 +21,7 @@ public static class CorpusHarvester
         collected.AddRange(FromIntentRules());
         collected.AddRange(FromLiteralTable());
         collected.AddRange(FromCommandCatalog());
+        collected.AddRange(LearnedPhrases.Shipped().Documents);
 
         return collected
             .Where(d => d.Intent != IntentType.Unknown && d.Text.Length > 0)
@@ -124,7 +125,7 @@ public static class CorpusHarvester
             builder.ToString().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
     }
 
-    private static CorpusDocument Document(
+    internal static CorpusDocument Document(
         string text, IntentType intent, CorpusSourceKind kind, string sourceRef)
     {
         var normalized = string.Join(' ',
