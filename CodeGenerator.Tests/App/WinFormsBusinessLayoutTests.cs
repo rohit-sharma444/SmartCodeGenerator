@@ -675,7 +675,8 @@ public class WinFormsBusinessLayoutTests
     /// the tab strip holding the record list, or the lines and their totals, simply disappears --
     /// and the action bar under it clips. The_form_does_not_grow_with_the_model varies entity
     /// COUNT, not field count, so it says nothing about this. BuildDashboard already scrolls for
-    /// exactly this reason.
+    /// exactly this reason. Scrolling is only half the fix, though: on its own it still leaves the
+    /// Percent row at zero - see The_tab_strip_keeps_a_floor_height_under_a_tall_form.
     /// </remarks>
     [TestMethod]
     public void A_tall_form_scrolls_rather_than_squeezing_out_the_rest_of_the_screen()
@@ -686,6 +687,79 @@ public class WinFormsBusinessLayoutTests
 
         StringAssert.Contains(EntryBody(), root);
         StringAssert.Contains(EditorBody(), root);
+    }
+
+    /// <summary>
+    /// The tab strip under the form keeps a usable height however tall the form is.
+    /// </summary>
+    /// <remarks>
+    /// AutoScroll alone does NOT do this, although the test above was written believing it did:
+    /// a Percent row is given whatever height is left of the panel's CLIENT area, not of its
+    /// scrolled extent, so a form taller than the window still leaves it zero. A generated Orders
+    /// app opened at its own default size showed no record list at all - its tab strip was a
+    /// sliver under the form - and every test here passed. Measured against real controls at that
+    /// size: the row got 1px at a 500px window and 85px at 700px; switched to an Absolute floor
+    /// when the spare height is below it, the strip got its full floor, the action bar stayed
+    /// under it, and the panel scrolled. The switch runs again on every resize and whenever the
+    /// master's form is rebuilt, and it goes back to Percent once the window has room.
+    /// </remarks>
+    [TestMethod]
+    public void The_header_titles_give_way_to_the_key_fields()
+    {
+        var header = Body(Source(), "private Control BuildEntryHeader(object owner, object? record)", "private Control BuildKeyStrip(");
+
+        // Dock-Left and AutoSize, the titles kept their full width while the Dock-Right key strip
+        // took its own, so at the app's default width the two overlapped and the titles, first in
+        // z-order, covered the first key field's label: an Orders app showed an unlabelled box
+        // where OrderNumber should be. Measured with real controls at a 784px band: titles 0-207,
+        // key strip from 136. As Dock-Fill, brought to the front so it is laid out after the
+        // strip, the titles take only what the strip leaves and are clipped instead.
+        StringAssert.Contains(header, "Dock = DockStyle.Fill,");
+        Assert.DoesNotContain("Dock = DockStyle.Left,", header, "Dock-Left titles keep their width and cover the key fields");
+        StringAssert.Contains(header, "titles.BringToFront();");
+
+        // Given only what the strip leaves, a FlowLayoutPanel wrapped its AutoSize heading letter
+        // by letter - the running app showed "Ord" over "er" and no subtitle. Fixed-height labels
+        // that shorten with an ellipsis keep each line one line, whatever width is left.
+        Assert.DoesNotContain("FlowLayoutPanel", header, "a flow panel wraps a squeezed heading onto several lines");
+        Assert.AreEqual(2, header.Split("AutoEllipsis = true,").Length - 1, "the heading and the subtitle both shorten rather than wrap");
+    }
+
+    /// <summary>
+    /// The key strip's editors are narrower than the form's, so the heading beside them has room.
+    /// </summary>
+    /// <remarks>
+    /// Built by the same BuildFieldEditor as the panels below, each key field was 190 pixels wide,
+    /// and three of them took about 700 of an Orders app's 790-pixel band at its default size -
+    /// leaving its heading "Or..." once it no longer overlapped them.
+    /// </remarks>
+    [TestMethod]
+    public void The_key_strip_editors_are_narrower_than_the_forms()
+    {
+        var source = Source();
+        var strip = Body(source, "private Control BuildKeyStrip(object record)", "private TabPage? AddAdditionalTab(");
+
+        StringAssert.Contains(source, "private const int KeyFieldWidth = 140;");
+        StringAssert.Contains(strip, "editor.Width = KeyFieldWidth;");
+    }
+
+    [TestMethod]
+    public void The_tab_strip_keeps_a_floor_height_under_a_tall_form()
+    {
+        var source = Source();
+
+        StringAssert.Contains(source, "private static void KeepTabStripOnScreen(TableLayoutPanel layout)");
+
+        var helper = Body(
+            source, "private static void KeepTabStripOnScreen(TableLayoutPanel layout)", "private static void ShowStatus(");
+        StringAssert.Contains(helper, "layout.GetControlFromPosition(0, 1)");
+        StringAssert.Contains(helper, "new RowStyle(SizeType.Absolute, TabStripFloor)");
+        StringAssert.Contains(helper, "new RowStyle(SizeType.Percent, 100f)");
+        StringAssert.Contains(helper, "layout.Resize += (_, _) => Fit();");
+        StringAssert.Contains(helper, "layout.ControlAdded += (_, _) => Fit();");
+
+        StringAssert.Contains(EntryBody(), "KeepTabStripOnScreen(layout);");
+        StringAssert.Contains(EditorBody(), "KeepTabStripOnScreen(layout);");
     }
 
     /// <summary>

@@ -353,6 +353,7 @@ public sealed class MainForm : Form
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40f));
+        KeepTabStripOnScreen(layout);
 
         var tabs = new TabControl { Dock = DockStyle.Fill };
 
@@ -807,33 +808,45 @@ public sealed class MainForm : Form
 
         var band = new Panel { Dock = DockStyle.Top, Height = 74, BackColor = {{accent}} };
 
-        var titles = new FlowLayoutPanel
+        // Fill, not an AutoSize Left: the key strip takes its width first and the titles get what
+        // is left. Sized to themselves, they overlapped the strip at the default window width and
+        // hid the first key field's label. Fixed-height lines that shorten with an ellipsis, not a
+        // flow of AutoSize labels: squeezed, a flow wrapped the heading letter by letter.
+        var titles = new Panel { Dock = DockStyle.Fill, Padding = new Padding(18, 14, 0, 0) };
+
+        var subtitle = heading.Length == 0
+            ? string.Empty
+            : $"Create and manage {heading.ToLowerInvariant()} records";
+
+        // The bottom line is added first: docking starts from the back of the z-order, so the
+        // Dock-Top control added LAST is the one placed highest.
+        titles.Controls.Add(new Label
         {
-            FlowDirection = FlowDirection.TopDown,
-            Dock = DockStyle.Left,
-            AutoSize = true,
-            WrapContents = false,
-            Padding = new Padding(18, 16, 0, 0),
-        };
+            Text = subtitle,
+            ForeColor = Color.White,
+            Dock = DockStyle.Top,
+            Height = 20,
+            AutoEllipsis = true,
+        });
 
         titles.Controls.Add(new Label
         {
             Text = heading,
             ForeColor = Color.White,
             Font = new Font(Font.FontFamily, 14f, FontStyle.Bold),
-            AutoSize = true,
+            Dock = DockStyle.Top,
+            Height = 30,
+            AutoEllipsis = true,
         });
-
-        var subtitle = heading.Length == 0
-            ? string.Empty
-            : $"Create and manage {heading.ToLowerInvariant()} records";
-
-        titles.Controls.Add(new Label { Text = subtitle, ForeColor = Color.White, AutoSize = true });
 
         band.Controls.Add(titles);
 
         if (record is not null)
             band.Controls.Add(BuildKeyStrip(record));
+
+        // Docking lays out from the back of the z-order forward, and a Fill control has to go
+        // last to be given only the space the others leave.
+        titles.BringToFront();
 
         return band;
     }
@@ -874,13 +887,21 @@ public sealed class MainForm : Form
                 AutoSize = true,
             });
 
-            cell.Controls.Add(BuildFieldEditor(record, field));
+            var editor = BuildFieldEditor(record, field);
+            editor.Width = KeyFieldWidth;
+            cell.Controls.Add(editor);
 
             strip.Controls.Add(cell);
         }
 
         return strip;
     }
+
+    /// <summary>
+    /// A key field's editor width: narrower than the form's, whose 190 left three of them taking
+    /// about 700 pixels of the band and the heading beside them shortened to "Or...".
+    /// </summary>
+    private const int KeyFieldWidth = 140;
 
     /// <summary>
     /// The Additional Information tab: the long-text fields, as multi-line boxes.
@@ -1082,6 +1103,7 @@ public sealed class MainForm : Form
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40f));
+        KeepTabStripOnScreen(layout);
 
         layout.Controls.Add(BuildEntryHeader(editor, draft), 0, 0);
 
@@ -1358,6 +1380,45 @@ public sealed class MainForm : Form
     {
         if (host.Controls.Find("Grid", true).FirstOrDefault() is DataGridView grid)
             Bind(screen, grid);
+    }
+
+    /// <summary>The least height the tab strip under an entry form is ever given.</summary>
+    private const float TabStripFloor = 260f;
+
+    /// <summary>
+    /// Keeps an entry screen's tab strip -- the record list, or the lines and their totals --
+    /// at a usable height however tall the form above it is.
+    /// </summary>
+    /// <remarks>
+    /// The strip's row is Percent, and a Percent row gets what is left of the panel's CLIENT
+    /// height, not of its scrolled extent: AutoScroll alone still hands it zero once the form is
+    /// taller than the window, and the list simply is not there. So while the spare height is
+    /// below the floor the row is a fixed floor instead, which makes the panel taller than the
+    /// window and lets it scroll; once the window has room it goes back to filling it. Checked on
+    /// every resize, and whenever a control is added -- a master rebuilds its form on every
+    /// record it opens.
+    /// </remarks>
+    private static void KeepTabStripOnScreen(TableLayoutPanel layout)
+    {
+        void Fit()
+        {
+            var form = layout.GetControlFromPosition(0, 1);
+            var formHeight = form is null
+                ? 0
+                : form.GetPreferredSize(new Size(layout.ClientSize.Width, 0)).Height + form.Margin.Vertical;
+
+            var spare = layout.ClientSize.Height - layout.RowStyles[0].Height - formHeight - layout.RowStyles[3].Height;
+            var wanted = spare >= TabStripFloor
+                ? new RowStyle(SizeType.Percent, 100f)
+                : new RowStyle(SizeType.Absolute, TabStripFloor);
+
+            if (layout.RowStyles[2].SizeType != wanted.SizeType)
+                layout.RowStyles[2] = wanted;
+        }
+
+        layout.Resize += (_, _) => Fit();
+        layout.ControlAdded += (_, _) => Fit();
+        Fit();
     }
 
     /// <summary>
