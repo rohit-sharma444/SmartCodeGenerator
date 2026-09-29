@@ -765,7 +765,7 @@ public sealed class AppScaffolder
         var parallelizationPath = WriteSource(testFolder, "TestParallelization.cs",
             TestProjectTemplates.DisableParallelization());
         var supportPath = WriteSource(testFolder, "TestSupport.cs",
-            TestProjectTemplates.TestSupport(appRootNamespace, auth, sessionAuth));
+            TestProjectTemplates.TestSupport(appRootNamespace, auth, sessionAuth, seed));
 
         var incomplete =
             $"The test project at {testFolder} is incomplete: some of its files could not be written.";
