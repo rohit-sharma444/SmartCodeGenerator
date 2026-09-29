@@ -1,0 +1,9 @@
+{
+  "name": "app-check",
+  "private": true,
+  "type": "module",
+  "description": "Generates, builds, tests, launches and uses an app per prompt, and reports what broke.",
+  "dependencies": {
+    "playwright": "1.61.1"
+  }
+}

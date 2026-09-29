@@ -8,6 +8,8 @@
 //   {"cmd":"wait-for-window"}               -> same shape as attach's reply
 //   {"cmd":"click-button","name":"Sign in"}                        -> {"ok":true}
 //   {"cmd":"type","automationId":"UserNameBox","value":"admin"}    -> {"ok":true}
+//   {"cmd":"type","name":"User name","value":"admin"}              -> {"ok":true}  (WinForms: no ids)
+//   {"cmd":"dump"}                                                 -> {"ok":true,"elements":[...]}
 //   {"cmd":"find-grid"}                                            -> {"ok":true,"columns":[...],"rowCount":N}
 //   {"cmd":"type-field","label":"OrderNumber","value":"SO-2001"}   -> {"ok":true}
 //   {"cmd":"read-status"}                                          -> {"ok":true,"text":"..."}
@@ -72,7 +74,8 @@ JsonObject Handle(JsonObject request)
         "wait-for-window" => WaitForWindow(),
         "click-button" => ClickButton(request["name"]!.GetValue<string>()),
         "click" => ClickByName(request["name"]!.GetValue<string>()),
-        "type" => Type(request["automationId"]!.GetValue<string>(), request["value"]!.GetValue<string>()),
+        "type" => Type(request["automationId"]?.GetValue<string>(), request["name"]?.GetValue<string>(),
+            request["value"]!.GetValue<string>()),
         "find-grid" => FindGrid(),
         "type-field" => TypeField(request["label"]!.GetValue<string>(), request["value"]!.GetValue<string>()),
         "read-status" => ReadStatus(),
@@ -238,17 +241,29 @@ JsonObject ClickByName(string name)
 /// expose its text for reading, and typing is the one path that works for both it and an
 /// ordinary TextBox alike.
 /// </summary>
-JsonObject Type(string automationId, string value)
+/// <remarks>
+/// By AutomationId when one is given (WPF's x:Name), otherwise by the edit box's accessible name:
+/// a generated WinForms control has no Name set, so it carries no AutomationId at all, and UI
+/// Automation names its text boxes after the label beside them instead.
+/// </remarks>
+JsonObject Type(string? automationId, string? name, string value)
 {
     if (window is null)
         return NotAttached();
 
-    var element = window.FindFirstDescendant(cf => cf.ByAutomationId(automationId));
+    var element = automationId is not null
+        ? window.FindFirstDescendant(cf => cf.ByAutomationId(automationId))
+        : window.FindFirstDescendant(cf => cf.ByControlType(ControlType.Edit).And(cf.ByName(name ?? "")));
 
     if (element is null)
-        return new JsonObject { ["ok"] = false, ["error"] = $"no control with AutomationId '{automationId}'" };
+        return new JsonObject { ["ok"] = false, ["error"] = $"no edit box '{automationId ?? name}'" };
 
-    element.Focus();
+    // A WinForms TextBox ignores UI Automation's Focus() for keyboard purposes - the keystrokes
+    // that follow go nowhere - so the by-name path clicks into the box, as a person would.
+    if (automationId is null)
+        element.Click();
+    else
+        element.Focus();
     Keyboard.Type(value);
 
     return new JsonObject { ["ok"] = true };
@@ -265,11 +280,23 @@ JsonObject FindGrid()
     foreach (var header in grid.Header?.Columns ?? [])
         columns.Add(header.Text);
 
+    // FlaUI's Rows reads the WPF DataGrid's row items. A WinForms DataGridView answers none there,
+    // with five rows plainly on screen, so its count comes from the grid pattern, and failing
+    // that from its own accessible rows, which it names "Row 0", "Row 1", ...
+    var rowCount = grid.Rows.Length;
+
+    if (rowCount == 0)
+        rowCount = grid.Patterns.Grid.PatternOrDefault?.RowCount.ValueOrDefault ?? 0;
+
+    if (rowCount == 0)
+        rowCount = grid.FindAllChildren()
+            .Count(c => (c.Properties.Name.ValueOrDefault ?? "").StartsWith("Row ", StringComparison.Ordinal));
+
     return new JsonObject
     {
         ["ok"] = true,
         ["columns"] = columns,
-        ["rowCount"] = grid.Rows.Length,
+        ["rowCount"] = rowCount,
     };
 }
 
@@ -354,9 +381,10 @@ JsonObject ReadStatus()
 }
 
 /// <summary>
-/// A debugging aid, not something record.mjs calls: every Text/Edit/ComboBox/DatePicker/CheckBox
-/// element's control type and name, so the driver's field-finding logic can be built against what
-/// is actually in the tree rather than guessed from the generator's source.
+/// Every named-control-bearing element's control type, name, AutomationId and current value.
+/// record.mjs does not call it; tools/app-check does, to ask "is X on screen" of an app whose
+/// entity names it only learns at run time, and it is the first thing to look at when a find-by-
+/// name command here says an element does not exist.
 /// </summary>
 JsonObject Dump()
 {
@@ -367,21 +395,20 @@ JsonObject Dump()
     {
         ControlType.Text, ControlType.Edit, ControlType.ComboBox, ControlType.Calendar,
         ControlType.Button, ControlType.CheckBox, ControlType.DataGrid, ControlType.Custom,
+        ControlType.Table, ControlType.Tab, ControlType.TabItem,
+        ControlType.TreeItem, ControlType.ListItem, ControlType.Hyperlink, ControlType.MenuItem,
     };
 
     var elements = new JsonArray();
 
-    foreach (var element in window.FindAllDescendants(cf => cf.ByControlType(kinds[0]).Or(
-                 cf.ByControlType(kinds[1])).Or(cf.ByControlType(kinds[2])).Or(
-                 cf.ByControlType(kinds[3])).Or(cf.ByControlType(kinds[4])).Or(
-                 cf.ByControlType(kinds[5])).Or(cf.ByControlType(kinds[6])).Or(
-                 cf.ByControlType(kinds[7]))))
+    foreach (var element in window.FindAllDescendants().Where(e => kinds.Contains(e.ControlType)))
     {
         elements.Add(new JsonObject
         {
             ["type"] = element.ControlType.ToString(),
             ["name"] = element.Name,
             ["automationId"] = element.Properties.AutomationId.ValueOrDefault,
+            ["value"] = element.Patterns.Value.PatternOrDefault?.Value.ValueOrDefault,
         });
     }
 
@@ -399,8 +426,10 @@ JsonObject Screenshot(string path)
     return new JsonObject { ["ok"] = true };
 }
 
+// DataGrid for WPF; Table for WinForms, whose DataGridView UI Automation reports as a table.
 Grid? FindDataGrid()
-    => window?.FindFirstDescendant(cf => cf.ByControlType(ControlType.DataGrid))?.AsGrid();
+    => window?.FindFirstDescendant(cf =>
+        cf.ByControlType(ControlType.DataGrid).Or(cf.ByControlType(ControlType.Table)))?.AsGrid();
 
 JsonObject NotAttached() => new() { ["ok"] = false, ["error"] = "not attached" };
 

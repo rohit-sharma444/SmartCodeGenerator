@@ -170,8 +170,26 @@ public class {{entityName}}ValidatorTests
     /// <param name="login"><c>AppScaffolder</c>'s <c>auth</c>: whether the app has a login.</param>
     /// <param name="sessionAuth"><c>AppScaffolder</c>'s own flag of that name: whether that login
     /// lives in a desktop <c>Session</c>.</param>
-    public static string TestSupport(string rootNamespace, bool login, bool sessionAuth)
+    /// <param name="seed">Whether the app has a <c>SeedData</c> to call. When it does, the stores
+    /// are seeded before any test touches one -- a real app seeds at startup, first, and a test
+    /// that wrote to a store before seeding ran left it half-seeded: <c>Fill</c>'s foreign-key row
+    /// made the parent store non-empty, so its seed was skipped while the child's, pointing at
+    /// parents that were never written, went in.</param>
+    public static string TestSupport(string rootNamespace, bool login, bool sessionAuth, bool seed = false)
     {
+        // The static constructor runs before the first use of TestSupport, which every round-trip
+        // and validator test makes (ActAsAdministrator, Fill) before it goes near a store. Not a
+        // [ModuleInitializer]: CA2255 warns about one in every generated test build.
+        var seeding = seed
+            ? $$"""
+                  /// <summary>Seeds every store before the first test uses one, as the app itself does
+                  /// at startup.</summary>
+                  static TestSupport() => global::{{rootNamespace}}.Data.SeedData.EnsureSeeded();
+
+
+              """
+            : string.Empty;
+
         // Fully qualified, not imported: a using for the app's Models namespace would put every
         // entity's name in scope in this file, and one of them could be named like a member here.
         var acting = !login
@@ -227,7 +245,7 @@ namespace {{rootNamespace}}.Tests;
 /// <summary>Builds entities that satisfy the generated validation rules.</summary>
 internal static class TestSupport
 {
-    /// <summary>Types currently being created for a caller further up the same call stack, so a
+{{seeding}}    /// <summary>Types currently being created for a caller further up the same call stack, so a
     /// foreign key that forms a cycle stops recursing instead of overflowing the stack. Never
     /// expected to hold more than one entry in a generated app, whose models describe no cycle.</summary>
     [ThreadStatic]
@@ -250,8 +268,10 @@ internal static class TestSupport
 
             if (property.PropertyType == typeof(string))
                 property.SetValue(item, Placeholder(property.Name));
+            // Midnight: a SQL date column's rule refuses a time of day, and today at midnight
+            // satisfies that and every other date rule the generator emits.
             else if (property.PropertyType == typeof(DateTime))
-                property.SetValue(item, DateTime.UtcNow);
+                property.SetValue(item, DateTime.UtcNow.Date);
             else if (property.PropertyType == typeof(int) && IsForeignKey(property.Name))
                 property.SetValue(item, ForeignKeyValue(property.Name, appAssembly, root));
         }
