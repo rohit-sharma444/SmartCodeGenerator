@@ -78,6 +78,8 @@ public sealed class AiLayer
                 return;
             }
 
+            EnsureIndexMatchesCorpus();
+
             Resolver = new RetrievalIntentResolver(
                 _store, _embedder, Config.TopK, Config.ConfidenceFloor, Config.MinTopScore,
                 TimeSpan.FromMilliseconds(Config.RetrievalTimeoutMs));
@@ -129,18 +131,59 @@ public sealed class AiLayer
             if (_embedder is null || _store is null)
                 return $"AI unavailable: {Unavailable ?? "not initialized"}";
 
-            var documents = CorpusHarvester.Harvest();
-            var rows = documents.Select(d => (d, _embedder.Embed(d.Text))).ToList();
+            int count;
+            lock (BuildLock)
+                count = Build(CurrentCorpus());
 
-            _store.ReplaceAll(_embedder.ModelId, _embedder.Dimension, rows);
             Initialize();
 
-            return $"Indexed {rows.Count} phrasings with '{_embedder.ModelId}'.";
+            return $"Indexed {count} phrasings with '{_embedder.ModelId}'.";
         }
         catch (Exception ex)
         {
             return $"Reindex failed [{ex.GetType().Name}]: {ex.Message}. Previous index left intact.";
         }
+    }
+
+    /// <summary>Two layers in one process - the chat host and the CLI, or parallel tests
+    /// sharing a bin folder - never embed the corpus into the same file at once.</summary>
+    private static readonly object BuildLock = new();
+
+    /// <summary>
+    /// Builds the index when it was not built from exactly the corpus this build ships.
+    /// </summary>
+    /// <remarks>
+    /// Nothing else ever builds it: a fresh install declined every phrase with "index is empty
+    /// - run 'ai reindex'", and a phrase added to the corpus in a new release - a learned
+    /// phrasing - never reached an existing install. Compared by content hash (Text + Intent),
+    /// so an unchanged corpus costs one harvest and one query, not a re-embedding.
+    /// </remarks>
+    private void EnsureIndexMatchesCorpus()
+    {
+        lock (BuildLock)
+        {
+            var corpus = CurrentCorpus();
+            var indexed = _store!.ContentHashes(_embedder!.ModelId);
+
+            if (!indexed.SetEquals(corpus.Select(d => d.ContentHash)))
+                Build(corpus);
+        }
+    }
+
+    /// <summary>The corpus as the CLI will hold it once started. IntentRepository first: this
+    /// layer is created before the CLI initializes it, and an uninitialized repository reads its
+    /// file without merging the built-in rules - on a fresh install, a different corpus.</summary>
+    private static IReadOnlyList<CorpusDocument> CurrentCorpus()
+    {
+        CodeGenerationEngine.Core.IntentRepository.Initialize();
+        return CorpusHarvester.Harvest();
+    }
+
+    private int Build(IReadOnlyList<CorpusDocument> documents)
+    {
+        var rows = documents.Select(d => (d, _embedder!.Embed(d.Text))).ToList();
+        _store!.ReplaceAll(_embedder!.ModelId, _embedder.Dimension, rows);
+        return rows.Count;
     }
 
     public string StatusText()

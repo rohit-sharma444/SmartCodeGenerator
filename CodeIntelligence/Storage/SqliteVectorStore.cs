@@ -47,6 +47,27 @@ public sealed class SqliteVectorStore : IVectorStore
         return new IndexStatus(documents, indexedModel, dimension, reindex, built);
     }
 
+    /// <summary>The content hash of every document indexed under <paramref name="modelId"/>:
+    /// what the index was built FROM, so it can be compared with the corpus shipped now.</summary>
+    public IReadOnlySet<string> ContentHashes(string modelId)
+    {
+        using var connection = Open();
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            SELECT d.content_hash
+            FROM   embedding e JOIN corpus_document d ON d.id = e.document_id
+            WHERE  e.model_id = $m
+            """;
+        cmd.Parameters.AddWithValue("$m", modelId);
+
+        var hashes = new HashSet<string>(StringComparer.Ordinal);
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+            hashes.Add(reader.GetString(0));
+
+        return hashes;
+    }
+
     public IReadOnlyList<StoredVector> LoadAll(string modelId)
     {
         using var connection = Open();

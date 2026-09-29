@@ -3,8 +3,10 @@ using System.Text.Json;
 namespace CodeIntelligence;
 
 /// <summary>ai.json, kept beside intents.json in the binary folder — the same place
-/// and pattern IntentRepository already uses. Defaults are OFF: phase A ships dark and
-/// is switched on per machine once its decision log shows real accuracy.</summary>
+/// and pattern IntentRepository already uses. Defaults are ON: phase A shipped dark, which
+/// left every customer's copy never using it, nor any phrase learned into its corpus. It
+/// cannot act on a reading without asking (AiConfirmPrompt), and a piped run never uses it.
+/// A file that says Enabled false, or cannot be read, keeps it off.</summary>
 public sealed class AiConfig
 {
     /// <summary>The shipped thresholds, as constants so `GoldenSetTests` can measure
@@ -37,7 +39,7 @@ public sealed class AiConfig
     /// keeps both gates alive.</summary>
     public const int DefaultTopK = 2;
 
-    public bool Enabled { get; set; }
+    public bool Enabled { get; set; } = true;
     public string ResolverMode { get; set; } = "Retrieval";
     public double ConfidenceFloor { get; set; } = DefaultConfidenceFloor;
 
@@ -53,8 +55,9 @@ public sealed class AiConfig
     public static string DefaultPath =>
         Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ai.json");
 
-    /// <summary>Never throws. A missing or unreadable file yields defaults, because a
-    /// broken config must leave the CLI working exactly as it does with AI off.</summary>
+    /// <summary>Never throws. A missing file yields the defaults; an unreadable one yields
+    /// them with the layer OFF, because a broken config must leave the CLI working exactly as
+    /// it does with AI off - and it may well have been the file that said so.</summary>
     public static AiConfig Load(string? path = null)
     {
         path ??= DefaultPath;
@@ -64,12 +67,14 @@ public sealed class AiConfig
             if (!File.Exists(path))
                 return new AiConfig();
 
-            return JsonSerializer.Deserialize<AiConfig>(File.ReadAllText(path)) ?? new AiConfig();
+            return JsonSerializer.Deserialize<AiConfig>(File.ReadAllText(path)) ?? Off();
         }
         catch (Exception)
         {
-            return new AiConfig();
+            return Off();
         }
+
+        static AiConfig Off() => new() { Enabled = false };
     }
 
     public void Save(string? path = null)
