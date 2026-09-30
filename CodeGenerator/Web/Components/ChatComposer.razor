@@ -29,6 +29,31 @@
                   @oninput="OnInput"
                   @onkeydown="OnKeyDown"></textarea>
 
+        @* Undo and redo send the words, so the transcript shows what they did like any command.
+           Disabled rather than hidden, for the same reason Send is; the tooltip names the step. *@
+        <button type="button" class="composer-undo"
+                title="@(CanUndo ? "Undo: " + UndoLabel : "Nothing to undo")"
+                disabled="@(Disabled || !CanUndo)"
+                @onclick='() => OnSend.InvokeAsync("undo")'>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M9 14 4 9l5-5" />
+                <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
+            </svg>
+            Undo
+        </button>
+        <button type="button" class="composer-redo"
+                title="@(CanRedo ? "Redo: " + RedoLabel : "Nothing to redo")"
+                disabled="@(Disabled || !CanRedo)"
+                @onclick='() => OnSend.InvokeAsync("redo")'>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="m15 14 5-5-5-5" />
+                <path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13" />
+            </svg>
+            Redo
+        </button>
+
         @* The twin of the Enter rule below, and the discoverable one. Disabled rather than hidden
            on an empty box: a button that comes and goes is a button people stop looking for. *@
         <button type="button" class="composer-send"
@@ -69,6 +94,19 @@
 
     [Parameter]
     public EventCallback<string> OnSend { get; set; }
+
+    [Parameter]
+    public bool CanUndo { get; set; }
+
+    [Parameter]
+    public bool CanRedo { get; set; }
+
+    /// <summary>The command the next undo would reverse, for the tooltip.</summary>
+    [Parameter]
+    public string? UndoLabel { get; set; }
+
+    [Parameter]
+    public string? RedoLabel { get; set; }
 
 
 
