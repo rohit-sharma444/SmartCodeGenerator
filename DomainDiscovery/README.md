@@ -69,7 +69,7 @@ Three things about that order are deliberate:
 
 `CreateDefault` picks the source by looking for the local store:
 
-| Store at `DefaultDumpDatabasePath` | Client | Refresher |
+| Store at `WikipediaStoreLocation.Resolve()` | Client | Refresher |
 | --- | --- | --- |
 | present | `DumpWikipediaClient` — local, deterministic, no rate limit | `ArticleRefresher` — updates the ~30 articles a run reads |
 | absent | `HttpWikipediaClient` — the live MediaWiki API, cached under `cacheDirectory` | none (it is already reading a live Wikipedia) |

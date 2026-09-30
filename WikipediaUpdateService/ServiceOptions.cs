@@ -23,7 +23,7 @@ public sealed class ServiceOptions
     public void ApplyDefaults()
     {
         StorePath = string.IsNullOrWhiteSpace(StorePath)
-            ? DomainDiscoveryPipeline.DefaultDumpDatabasePath
+            ? WikipediaStoreLocation.Resolve()
             : StorePath;
 
         var storeDirectory = Path.GetDirectoryName(StorePath) ?? ".";

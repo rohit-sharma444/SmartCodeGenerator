@@ -472,7 +472,7 @@ internal class CodeGeneratorStarter
     /// </remarks>
     internal static (IReadOnlyList<string> Lines, bool Healthy) StoreReport()
     {
-        var databasePath = DomainDiscoveryPipeline.DefaultDumpDatabasePath;
+        var databasePath = WikipediaStoreLocation.Resolve();
 
         if (!File.Exists(databasePath))
         {

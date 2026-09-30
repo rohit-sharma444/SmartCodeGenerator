@@ -78,6 +78,12 @@ public sealed class DiscoveryConfig
     public int StallSeconds { get; set; } = DefaultStallSeconds;
     public int Phases { get; set; } = DefaultPhases;
 
+    /// <summary>
+    /// Where the Wikipedia store is. Blank means <see cref="WikipediaStoreLocation.DefaultPath"/>.
+    /// Environment variables (%LOCALAPPDATA%) are expanded.
+    /// </summary>
+    public string? StorePath { get; set; }
+
     public static string DefaultPath =>
         Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "discovery.json");
 

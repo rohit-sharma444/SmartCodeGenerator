@@ -32,13 +32,14 @@ if (setDateOnly)
 
 var positional = args.Where(a => !a.StartsWith("--", StringComparison.Ordinal)).ToArray();
 
-var dumpPath = positional.Length > 0
-    ? positional[0]
-    : @"D:\SmartCodeGenerator-Repository\Dump\enwiki-latest-pages-articles.xml.bz2";
-
 var databasePath = positional.Length > 1
     ? positional[1]
-    : DomainDiscoveryPipeline.DefaultDumpDatabasePath;
+    : WikipediaStoreLocation.Resolve();
+
+// The dump is looked for beside the store it becomes, so one folder holds both.
+var dumpPath = positional.Length > 0
+    ? positional[0]
+    : Path.Combine(Path.GetDirectoryName(databasePath)!, "enwiki-latest-pages-articles.xml.bz2");
 
 if (dumpDate is not null)
 {
