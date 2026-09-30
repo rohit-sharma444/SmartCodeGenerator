@@ -18,8 +18,10 @@ namespace DomainDiscovery.Llm;
 /// </remarks>
 public static class LlmModelNormalizer
 {
-    public static CandidateDomainModel Normalize(LlmDomainModel raw)
+    public static CandidateDomainModel Normalize(LlmDomainModel raw, ModelOrigin? origin = null)
     {
+        origin ??= ModelOrigin.LanguageModel;
+
         var model = new CandidateDomainModel();
 
         // Pass 1: names and roles. Relationships need every class's role before any of them can
@@ -40,7 +42,7 @@ public static class LlmModelNormalizer
                 model.Rejected.Add(llmClass.Name);
                 model.Record(
                     llmClass.Name,
-                    DecisionStage.ModelProposal,
+                    origin.Stage,
                     DecisionOutcome.Rejected,
                     DecisionReasons.TheModelGaveNoUsableName);
                 continue;
@@ -54,7 +56,7 @@ public static class LlmModelNormalizer
                 model.Rejected.Add(llmClass.Name);
                 model.Record(
                     llmClass.Name,
-                    DecisionStage.ModelProposal,
+                    origin.Stage,
                     DecisionOutcome.Rejected,
                     DecisionReasons.AlreadyNamed);
                 continue;
@@ -63,16 +65,16 @@ public static class LlmModelNormalizer
             var entity = new CandidateEntity
             {
                 Name = name,
-                Provenance = Provenance.Model,
+                Provenance = origin.Provenance,
                 Confidence = 1d,
                 Role = ParseRole(llmClass.Role)
             };
 
             model.Record(
                 name,
-                DecisionStage.ModelProposal,
+                origin.Stage,
                 DecisionOutcome.Kept,
-                DecisionReasons.ProposedByTheModel,
+                origin.KeptReason,
                 string.IsNullOrWhiteSpace(llmClass.Purpose) ? null : llmClass.Purpose.Trim());
 
             accepted.Add((llmClass, entity));
@@ -84,7 +86,7 @@ public static class LlmModelNormalizer
         foreach (var (llmClass, entity) in accepted)
         {
             foreach (var property in llmClass.Properties)
-                AddProperty(entity, property, byName);
+                AddProperty(entity, property, byName, origin);
 
             foreach (var relationship in llmClass.Relationships)
             {
@@ -99,7 +101,7 @@ public static class LlmModelNormalizer
                     : relationship.Role.Trim());
             }
 
-            EnsureKey(entity);
+            EnsureKey(entity, origin);
 
             // Every other path into CandidateDomainModel guarantees an editable grid:
             // EntityShaper does it for a discovered class, DataModelBuilder for an imported one,
@@ -109,7 +111,7 @@ public static class LlmModelNormalizer
             // the model actually left the class empty; a class with real fields keeps them alone,
             // because an Order legitimately has no Name.
             if (!entity.Fields.Any(f => !IsKeyOf(f.Name, entity.Name)))
-                DefaultFields.ApplyTo(entity, Provenance.Model);
+                DefaultFields.ApplyTo(entity, origin.Provenance);
 
             model.Entities.Add(entity);
         }
@@ -124,7 +126,8 @@ public static class LlmModelNormalizer
     private static void AddProperty(
         CandidateEntity entity,
         LlmProperty property,
-        IReadOnlyDictionary<string, CandidateEntity> byName)
+        IReadOnlyDictionary<string, CandidateEntity> byName,
+        ModelOrigin origin)
     {
         var name = NameNormalizer.ToFieldName(property.Name);
 
@@ -147,7 +150,7 @@ public static class LlmModelNormalizer
         {
             Name = name,
             Type = ToCsharpType(property.Type),
-            Provenance = Provenance.Model
+            Provenance = origin.Provenance
         });
     }
 
@@ -227,7 +230,7 @@ public static class LlmModelNormalizer
         return true;
     }
 
-    private static void EnsureKey(CandidateEntity entity)
+    private static void EnsureKey(CandidateEntity entity, ModelOrigin origin)
     {
         // IsKeyOf, not f.Name == "Id": qwen2.5:3b names Sale's key "SaleID", and an exact match
         // would add a second key beside the one the model already gave us.
@@ -246,7 +249,7 @@ public static class LlmModelNormalizer
         {
             Name = "Id",
             Type = "int",
-            Provenance = Provenance.Model
+            Provenance = origin.Provenance
         });
     }
 

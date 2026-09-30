@@ -190,6 +190,7 @@ internal static class DecisionReport
         DecisionStage.Shaping => "shaping",
         DecisionStage.ReviewLoop => "review loop",
         DecisionStage.ModelProposal => "model proposal",
+        DecisionStage.BuiltInDomain => "built-in domain",
         _ => stage.ToString().ToLowerInvariant()
     };
 }

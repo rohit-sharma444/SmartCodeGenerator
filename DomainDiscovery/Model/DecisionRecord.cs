@@ -30,7 +30,10 @@ public enum DecisionStage
     /// still change what a later `why` has to explain — a rename moves an entity away from the
     /// name its whole trail is filed under.
     /// </summary>
-    ReviewLoop
+    ReviewLoop,
+
+    /// <summary>A class that shipped with the tool, from the built-in domain the description matched.</summary>
+    BuiltInDomain
 }
 
 /// <summary>What became of a candidate.</summary>
