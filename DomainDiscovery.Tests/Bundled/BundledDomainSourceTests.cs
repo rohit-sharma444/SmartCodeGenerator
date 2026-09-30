@@ -76,6 +76,51 @@ public class BundledDomainSourceTests
         Assert.Equal(new[] { DecisionStage.SeedExtraction, DecisionStage.BuiltInDomain }, book);
     }
 
+    private static readonly BundledDomainCatalog Restaurant = new([BundledDomain.Parse("""
+        { "name": "Restaurant", "terms": { "restaurant": 3, "librarian": 3 },
+          "classes": [
+            { "name": "MenuItem", "role": "Item", "properties": [ { "name": "Name", "type": "string" } ] },
+            { "name": "DiningTable", "role": "Place", "properties": [ { "name": "Seats", "type": "int" } ] } ] }
+        """)]);
+
+    [Fact]
+    public void ASeedThatIsAWordOfADomainClassIsCoveredByItNotAddedBesideIt()   // review I5
+    {
+        var outcome = new BundledDomainSource(Restaurant, _ => Seeds("Table", "Menu", "Tables"))
+            .Discover("a restaurant with tables and a menu");
+
+        Assert.Equal(new[] { "MenuItem", "DiningTable" }, outcome.Model.Entities.Select(e => e.Name).ToArray());
+        var table = outcome.Model.Decisions.Last(d => d.Name == "Table");
+        Assert.Equal(DecisionOutcome.Rejected, table.Outcome);
+        Assert.Equal("covered by DiningTable in the built-in Restaurant domain", table.Reason);
+    }
+
+    [Fact]
+    public void AWeightThreeTermThatIsNotTheSystemsNameIsKeptAsAClass()   // review I6
+    {
+        // "librarian" is weight 3 here but not in Self (which defaults to the name).
+        var outcome = new BundledDomainSource(Restaurant, _ => Seeds("Librarian"))
+            .Discover("a restaurant");
+
+        Assert.Contains(outcome.Model.Entities, e => e.Name == "Librarian");
+    }
+
+    [Fact]
+    public void ARecordASeedMadeFromAVerbIsLeftToTheDomain()
+    {
+        // "a clinic that books patients" seeded Booking beside the domain's Appointment: an empty
+        // master nobody asked for, seen in a generated app. The domain defines the records.
+        var seeds = Seeds("Fine");
+        seeds.Entities.Add(new CandidateEntity { Name = "Booking", Provenance = Provenance.Seed });
+        seeds.Record("Booking", DecisionStage.SeedExtraction, DecisionOutcome.Kept, DecisionReasons.YouSaidItAsAVerb);
+
+        var outcome = new BundledDomainSource(Catalog, _ => seeds).Discover("a library that books fines");
+
+        Assert.DoesNotContain(outcome.Model.Entities, e => e.Name == "Booking");
+        Assert.Contains(outcome.Model.Entities, e => e.Name == "Fine");
+        Assert.Equal(DecisionOutcome.Rejected, outcome.Model.Decisions.Last(d => d.Name == "Booking").Outcome);
+    }
+
     [Fact]
     public void NoMatchReturnsTheSeedsUnsuccessfullySoTheChainMovesOn()
     {

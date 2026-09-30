@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using DomainDiscovery.Llm;
 using DomainDiscovery.Model;
 using DomainDiscovery.SeedExtraction;
@@ -57,8 +58,14 @@ public sealed class BundledDomainSource : IDomainModelSource
             $"Matched: {string.Join(", ", match.MatchedWords)}.");
     }
 
-    // The domain's version of a class wins, because it has fields. A seed that is one of the
-    // domain's own name words ("library" in "a library that…") names the system, not a class in it.
+    // The domain's version of a class wins, because it has fields. A seed is left out, with the
+    // reason in its trail, when it
+    //  - names the system itself ("library" in "a library that…") — the domain's Self words only,
+    //    so "landlords" and "librarians" are kept;
+    //  - is a word of a domain class's name ("tables" → DiningTable, "tasks" → ProjectTask), which
+    //    would otherwise sit beside it as a near-duplicate;
+    //  - was made from a verb ("books patients" → Booking): the domain defines its own records, and
+    //    beside the Clinic's Appointment that seed was an empty master nobody asked for.
     private static void MergeSeeds(CandidateDomainModel model, CandidateDomainModel seeds, BundledDomain domain)
     {
         // The seeds' own trail goes FIRST, in the order things happened (the user named it, then the
@@ -67,20 +74,38 @@ public sealed class BundledDomainSource : IDomainModelSource
         // extractor's "kept" for "Library" overrode its rejection and the summary listed it as kept.
         model.Decisions.InsertRange(0, seeds.Decisions);
 
+        var domainClasses = model.Entities.ToList();
+        var madeFromVerbs = seeds.Decisions
+            .Where(d => d.Reason == DecisionReasons.YouSaidItAsAVerb)
+            .Select(d => d.Name)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
         foreach (var seed in seeds.Entities)
         {
-            if (model.Entities.Any(e => e.Name.Equals(seed.Name, StringComparison.OrdinalIgnoreCase)))
+            if (domainClasses.Any(e => e.Name.Equals(seed.Name, StringComparison.OrdinalIgnoreCase)))
                 continue;
 
-            if (domain.Terms.TryGetValue(WordStem.Of(seed.Name), out var weight) && weight >= NameWeight)
+            var stem = WordStem.Of(seed.Name);
+            var covering = domainClasses.FirstOrDefault(e => NameWords(e.Name).Any(w => WordStem.Of(w) == stem));
+
+            string? reason =
+                domain.Self.Contains(stem) ? DecisionReasons.NamesTheWholeSystem
+                : covering is not null ? DecisionReasons.CoveredBy(covering.Name, domain.Name)
+                : madeFromVerbs.Contains(seed.Name) ? DecisionReasons.LeftToTheBuiltInDomain(domain.Name)
+                : null;
+
+            if (reason is null)
             {
-                model.Rejected.Add(seed.Name);
-                model.Record(seed.Name, DecisionStage.BuiltInDomain, DecisionOutcome.Rejected,
-                    DecisionReasons.NamesTheWholeSystem);
+                model.Entities.Add(seed);
                 continue;
             }
 
-            model.Entities.Add(seed);
+            model.Rejected.Add(seed.Name);
+            model.Record(seed.Name, DecisionStage.BuiltInDomain, DecisionOutcome.Rejected, reason);
         }
     }
+
+    // DiningTable -> Dining, Table.
+    private static IEnumerable<string> NameWords(string name) =>
+        Regex.Matches(name, "[A-Z][a-z]*|[a-z]+").Select(m => m.Value);
 }
