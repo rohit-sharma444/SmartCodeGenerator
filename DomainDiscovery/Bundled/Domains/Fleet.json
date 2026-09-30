@@ -1,0 +1,134 @@
+{
+  "name": "Fleet",
+  "terms": {
+    "fleet": 3,
+    "vehicle": 1,
+    "driver": 1,
+    "trip": 1,
+    "fuel": 1,
+    "van": 1,
+    "truck": 1
+  },
+  "classes": [
+    {
+      "name": "Vehicle",
+      "role": "Device",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "Registration",
+          "type": "string"
+        },
+        {
+          "name": "Make",
+          "type": "string"
+        },
+        {
+          "name": "Model",
+          "type": "string"
+        },
+        {
+          "name": "Year",
+          "type": "int"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "Driver",
+      "role": "Party",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "Name",
+          "type": "string"
+        },
+        {
+          "name": "LicenceNumber",
+          "type": "string"
+        },
+        {
+          "name": "Phone",
+          "type": "string"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "Trip",
+      "role": "Event",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "VehicleId",
+          "type": "int"
+        },
+        {
+          "name": "DriverId",
+          "type": "int"
+        },
+        {
+          "name": "StartedAt",
+          "type": "DateTime"
+        },
+        {
+          "name": "EndedAt",
+          "type": "DateTime"
+        },
+        {
+          "name": "DistanceKm",
+          "type": "decimal"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "FuelPurchase",
+      "role": "Transaction",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "VehicleId",
+          "type": "int"
+        },
+        {
+          "name": "Litres",
+          "type": "decimal"
+        },
+        {
+          "name": "Cost",
+          "type": "decimal"
+        },
+        {
+          "name": "PurchasedOn",
+          "type": "DateTime"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "ServiceRecord",
+      "role": "Document",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "VehicleId",
+          "type": "int"
+        },
+        {
+          "name": "ServicedOn",
+          "type": "DateTime"
+        },
+        {
+          "name": "Description",
+          "type": "string"
+        },
+        {
+          "name": "Cost",
+          "type": "decimal"
+        }
+      ],
+      "relationships": []
+    }
+  ]
+}

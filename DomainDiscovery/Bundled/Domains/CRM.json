@@ -1,0 +1,110 @@
+{
+  "name": "CRM",
+  "terms": {
+    "crm": 3,
+    "lead": 1,
+    "contact": 1,
+    "opportunity": 1,
+    "deal": 1,
+    "pipeline": 1,
+    "prospect": 1
+  },
+  "classes": [
+    {
+      "name": "Company",
+      "role": "Party",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "Name",
+          "type": "string"
+        },
+        {
+          "name": "Industry",
+          "type": "string"
+        },
+        {
+          "name": "Website",
+          "type": "string"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "Contact",
+      "role": "Party",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "Name",
+          "type": "string"
+        },
+        {
+          "name": "Email",
+          "type": "string"
+        },
+        {
+          "name": "Phone",
+          "type": "string"
+        },
+        {
+          "name": "JobTitle",
+          "type": "string"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "Opportunity",
+      "role": "Document",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "CompanyId",
+          "type": "int"
+        },
+        {
+          "name": "Title",
+          "type": "string"
+        },
+        {
+          "name": "Value",
+          "type": "decimal"
+        },
+        {
+          "name": "Stage",
+          "type": "string"
+        },
+        {
+          "name": "ExpectedClose",
+          "type": "DateTime"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "Activity",
+      "role": "Event",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "OpportunityId",
+          "type": "int"
+        },
+        {
+          "name": "Kind",
+          "type": "string"
+        },
+        {
+          "name": "OccurredAt",
+          "type": "DateTime"
+        },
+        {
+          "name": "Notes",
+          "type": "string"
+        }
+      ],
+      "relationships": []
+    }
+  ]
+}

@@ -1,0 +1,118 @@
+{
+  "name": "Invoicing",
+  "terms": {
+    "invoice": 3,
+    "invoicing": 3,
+    "billing": 3,
+    "bill": 1,
+    "client": 1,
+    "payment": 1,
+    "quote": 1
+  },
+  "classes": [
+    {
+      "name": "Client",
+      "role": "Party",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "Name",
+          "type": "string"
+        },
+        {
+          "name": "Email",
+          "type": "string"
+        },
+        {
+          "name": "Address",
+          "type": "string"
+        },
+        {
+          "name": "VatNumber",
+          "type": "string"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "Invoice",
+      "role": "Document",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "ClientId",
+          "type": "int"
+        },
+        {
+          "name": "Number",
+          "type": "string"
+        },
+        {
+          "name": "IssuedOn",
+          "type": "DateTime"
+        },
+        {
+          "name": "DueOn",
+          "type": "DateTime"
+        },
+        {
+          "name": "Status",
+          "type": "string"
+        },
+        {
+          "name": "Total",
+          "type": "decimal"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "InvoiceLine",
+      "role": "Document",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "InvoiceId",
+          "type": "int"
+        },
+        {
+          "name": "Description",
+          "type": "string"
+        },
+        {
+          "name": "Quantity",
+          "type": "decimal"
+        },
+        {
+          "name": "UnitPrice",
+          "type": "decimal"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "Payment",
+      "role": "Transaction",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "InvoiceId",
+          "type": "int"
+        },
+        {
+          "name": "Amount",
+          "type": "decimal"
+        },
+        {
+          "name": "PaidOn",
+          "type": "DateTime"
+        },
+        {
+          "name": "Method",
+          "type": "string"
+        }
+      ],
+      "relationships": []
+    }
+  ]
+}

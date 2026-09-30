@@ -1,0 +1,141 @@
+{
+  "name": "Online shop",
+  "terms": {
+    "shop": 3,
+    "ecommerce": 3,
+    "webshop": 3,
+    "online": 1,
+    "product": 1,
+    "cart": 1,
+    "basket": 1,
+    "order": 1,
+    "customer": 1,
+    "checkout": 1
+  },
+  "classes": [
+    {
+      "name": "Customer",
+      "role": "Party",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "Name",
+          "type": "string"
+        },
+        {
+          "name": "Email",
+          "type": "string"
+        },
+        {
+          "name": "Phone",
+          "type": "string"
+        },
+        {
+          "name": "Address",
+          "type": "string"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "Product",
+      "role": "Item",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "Name",
+          "type": "string"
+        },
+        {
+          "name": "Sku",
+          "type": "string"
+        },
+        {
+          "name": "Price",
+          "type": "decimal"
+        },
+        {
+          "name": "StockQuantity",
+          "type": "int"
+        },
+        {
+          "name": "Description",
+          "type": "string"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "Order",
+      "role": "Transaction",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "CustomerId",
+          "type": "int"
+        },
+        {
+          "name": "OrderDate",
+          "type": "DateTime"
+        },
+        {
+          "name": "Status",
+          "type": "string"
+        },
+        {
+          "name": "Total",
+          "type": "decimal"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "OrderLine",
+      "role": "Transaction",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "OrderId",
+          "type": "int"
+        },
+        {
+          "name": "ProductId",
+          "type": "int"
+        },
+        {
+          "name": "Quantity",
+          "type": "int"
+        },
+        {
+          "name": "UnitPrice",
+          "type": "decimal"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "Payment",
+      "role": "Transaction",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "OrderId",
+          "type": "int"
+        },
+        {
+          "name": "Amount",
+          "type": "decimal"
+        },
+        {
+          "name": "PaidOn",
+          "type": "DateTime"
+        },
+        {
+          "name": "Method",
+          "type": "string"
+        }
+      ],
+      "relationships": []
+    }
+  ]
+}

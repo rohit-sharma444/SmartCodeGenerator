@@ -1,0 +1,113 @@
+{
+  "name": "Veterinary",
+  "terms": {
+    "vet": 3,
+    "veterinary": 3,
+    "pet": 1,
+    "animal": 1,
+    "owner": 1,
+    "vaccination": 1
+  },
+  "classes": [
+    {
+      "name": "Owner",
+      "role": "Party",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "Name",
+          "type": "string"
+        },
+        {
+          "name": "Phone",
+          "type": "string"
+        },
+        {
+          "name": "Email",
+          "type": "string"
+        },
+        {
+          "name": "Address",
+          "type": "string"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "Pet",
+      "role": "Item",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "Name",
+          "type": "string"
+        },
+        {
+          "name": "Species",
+          "type": "string"
+        },
+        {
+          "name": "Breed",
+          "type": "string"
+        },
+        {
+          "name": "DateOfBirth",
+          "type": "DateTime"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "Visit",
+      "role": "Event",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "PetId",
+          "type": "int"
+        },
+        {
+          "name": "OwnerId",
+          "type": "int"
+        },
+        {
+          "name": "VisitedOn",
+          "type": "DateTime"
+        },
+        {
+          "name": "Reason",
+          "type": "string"
+        },
+        {
+          "name": "Notes",
+          "type": "string"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "Vaccination",
+      "role": "Document",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "PetId",
+          "type": "int"
+        },
+        {
+          "name": "Vaccine",
+          "type": "string"
+        },
+        {
+          "name": "GivenOn",
+          "type": "DateTime"
+        },
+        {
+          "name": "DueAgainOn",
+          "type": "DateTime"
+        }
+      ],
+      "relationships": []
+    }
+  ]
+}

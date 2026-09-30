@@ -1,0 +1,130 @@
+{
+  "name": "Property rental",
+  "terms": {
+    "landlord": 3,
+    "tenant": 3,
+    "letting": 3,
+    "lease": 1,
+    "rent": 1,
+    "flat": 1,
+    "apartment": 1
+  },
+  "classes": [
+    {
+      "name": "RentalProperty",
+      "role": "Place",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "Address",
+          "type": "string"
+        },
+        {
+          "name": "Bedrooms",
+          "type": "int"
+        },
+        {
+          "name": "MonthlyRent",
+          "type": "decimal"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "Tenant",
+      "role": "Party",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "Name",
+          "type": "string"
+        },
+        {
+          "name": "Email",
+          "type": "string"
+        },
+        {
+          "name": "Phone",
+          "type": "string"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "Lease",
+      "role": "Document",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "RentalPropertyId",
+          "type": "int"
+        },
+        {
+          "name": "TenantId",
+          "type": "int"
+        },
+        {
+          "name": "StartsOn",
+          "type": "DateTime"
+        },
+        {
+          "name": "EndsOn",
+          "type": "DateTime"
+        },
+        {
+          "name": "MonthlyRent",
+          "type": "decimal"
+        },
+        {
+          "name": "Deposit",
+          "type": "decimal"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "RentPayment",
+      "role": "Transaction",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "LeaseId",
+          "type": "int"
+        },
+        {
+          "name": "Amount",
+          "type": "decimal"
+        },
+        {
+          "name": "PaidOn",
+          "type": "DateTime"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "MaintenanceRequest",
+      "role": "Document",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "RentalPropertyId",
+          "type": "int"
+        },
+        {
+          "name": "Description",
+          "type": "string"
+        },
+        {
+          "name": "ReportedOn",
+          "type": "DateTime"
+        },
+        {
+          "name": "Status",
+          "type": "string"
+        }
+      ],
+      "relationships": []
+    }
+  ]
+}

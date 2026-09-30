@@ -1,0 +1,105 @@
+{
+  "name": "Inventory",
+  "terms": {
+    "inventory": 3,
+    "warehouse": 3,
+    "stock": 1,
+    "item": 1,
+    "location": 1,
+    "reorder": 1
+  },
+  "classes": [
+    {
+      "name": "Product",
+      "role": "Item",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "Name",
+          "type": "string"
+        },
+        {
+          "name": "Sku",
+          "type": "string"
+        },
+        {
+          "name": "ReorderLevel",
+          "type": "int"
+        },
+        {
+          "name": "UnitCost",
+          "type": "decimal"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "Warehouse",
+      "role": "Place",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "Name",
+          "type": "string"
+        },
+        {
+          "name": "Address",
+          "type": "string"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "StockLevel",
+      "role": "Document",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "ProductId",
+          "type": "int"
+        },
+        {
+          "name": "WarehouseId",
+          "type": "int"
+        },
+        {
+          "name": "Quantity",
+          "type": "int"
+        },
+        {
+          "name": "CountedOn",
+          "type": "DateTime"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "StockMovement",
+      "role": "Transaction",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "ProductId",
+          "type": "int"
+        },
+        {
+          "name": "WarehouseId",
+          "type": "int"
+        },
+        {
+          "name": "Quantity",
+          "type": "int"
+        },
+        {
+          "name": "MovedOn",
+          "type": "DateTime"
+        },
+        {
+          "name": "Reason",
+          "type": "string"
+        }
+      ],
+      "relationships": []
+    }
+  ]
+}

@@ -1,0 +1,125 @@
+{
+  "name": "Gym",
+  "terms": {
+    "gym": 3,
+    "fitness": 3,
+    "membership": 1,
+    "member": 1,
+    "trainer": 1,
+    "workout": 1
+  },
+  "classes": [
+    {
+      "name": "Member",
+      "role": "Party",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "Name",
+          "type": "string"
+        },
+        {
+          "name": "Email",
+          "type": "string"
+        },
+        {
+          "name": "Phone",
+          "type": "string"
+        },
+        {
+          "name": "JoinedOn",
+          "type": "DateTime"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "Trainer",
+      "role": "Party",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "Name",
+          "type": "string"
+        },
+        {
+          "name": "Specialty",
+          "type": "string"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "Membership",
+      "role": "Document",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "MemberId",
+          "type": "int"
+        },
+        {
+          "name": "Plan",
+          "type": "string"
+        },
+        {
+          "name": "StartsOn",
+          "type": "DateTime"
+        },
+        {
+          "name": "EndsOn",
+          "type": "DateTime"
+        },
+        {
+          "name": "MonthlyFee",
+          "type": "decimal"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "FitnessClass",
+      "role": "Event",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "TrainerId",
+          "type": "int"
+        },
+        {
+          "name": "Title",
+          "type": "string"
+        },
+        {
+          "name": "StartsAt",
+          "type": "DateTime"
+        },
+        {
+          "name": "Capacity",
+          "type": "int"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "ClassBooking",
+      "role": "Transaction",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "FitnessClassId",
+          "type": "int"
+        },
+        {
+          "name": "MemberId",
+          "type": "int"
+        },
+        {
+          "name": "BookedOn",
+          "type": "DateTime"
+        }
+      ],
+      "relationships": []
+    }
+  ]
+}

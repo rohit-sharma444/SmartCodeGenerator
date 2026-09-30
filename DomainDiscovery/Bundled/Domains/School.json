@@ -1,0 +1,124 @@
+{
+  "name": "School",
+  "terms": {
+    "school": 3,
+    "college": 3,
+    "student": 1,
+    "course": 1,
+    "teacher": 1,
+    "enrol": 1,
+    "enrolment": 1,
+    "grade": 1,
+    "pupil": 1
+  },
+  "classes": [
+    {
+      "name": "Student",
+      "role": "Party",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "Name",
+          "type": "string"
+        },
+        {
+          "name": "DateOfBirth",
+          "type": "DateTime"
+        },
+        {
+          "name": "Email",
+          "type": "string"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "Teacher",
+      "role": "Party",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "Name",
+          "type": "string"
+        },
+        {
+          "name": "Email",
+          "type": "string"
+        },
+        {
+          "name": "Subject",
+          "type": "string"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "Course",
+      "role": "Item",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "Title",
+          "type": "string"
+        },
+        {
+          "name": "Code",
+          "type": "string"
+        },
+        {
+          "name": "Credits",
+          "type": "int"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "Enrolment",
+      "role": "Transaction",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "StudentId",
+          "type": "int"
+        },
+        {
+          "name": "CourseId",
+          "type": "int"
+        },
+        {
+          "name": "EnrolledOn",
+          "type": "DateTime"
+        },
+        {
+          "name": "Grade",
+          "type": "string"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "Lesson",
+      "role": "Event",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "CourseId",
+          "type": "int"
+        },
+        {
+          "name": "TeacherId",
+          "type": "int"
+        },
+        {
+          "name": "StartsAt",
+          "type": "DateTime"
+        },
+        {
+          "name": "Room",
+          "type": "string"
+        }
+      ],
+      "relationships": []
+    }
+  ]
+}

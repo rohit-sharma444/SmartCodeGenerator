@@ -1,0 +1,106 @@
+{
+  "name": "HR",
+  "terms": {
+    "hr": 3,
+    "personnel": 3,
+    "employee": 1,
+    "department": 1,
+    "leave": 1,
+    "holiday": 1,
+    "staff": 1
+  },
+  "classes": [
+    {
+      "name": "Employee",
+      "role": "Party",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "Name",
+          "type": "string"
+        },
+        {
+          "name": "Email",
+          "type": "string"
+        },
+        {
+          "name": "JobTitle",
+          "type": "string"
+        },
+        {
+          "name": "StartDate",
+          "type": "DateTime"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "Department",
+      "role": "Party",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "Name",
+          "type": "string"
+        },
+        {
+          "name": "CostCentre",
+          "type": "string"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "LeaveRequest",
+      "role": "Document",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "EmployeeId",
+          "type": "int"
+        },
+        {
+          "name": "StartsOn",
+          "type": "DateTime"
+        },
+        {
+          "name": "EndsOn",
+          "type": "DateTime"
+        },
+        {
+          "name": "LeaveType",
+          "type": "string"
+        },
+        {
+          "name": "Status",
+          "type": "string"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "PerformanceReview",
+      "role": "Document",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "EmployeeId",
+          "type": "int"
+        },
+        {
+          "name": "ReviewedOn",
+          "type": "DateTime"
+        },
+        {
+          "name": "Rating",
+          "type": "int"
+        },
+        {
+          "name": "Notes",
+          "type": "string"
+        }
+      ],
+      "relationships": []
+    }
+  ]
+}

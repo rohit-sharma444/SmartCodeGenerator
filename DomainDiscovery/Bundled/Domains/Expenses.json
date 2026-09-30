@@ -1,0 +1,108 @@
+{
+  "name": "Expenses",
+  "terms": {
+    "expense": 3,
+    "reimbursement": 3,
+    "receipt": 1,
+    "claim": 1,
+    "mileage": 1
+  },
+  "classes": [
+    {
+      "name": "Employee",
+      "role": "Party",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "Name",
+          "type": "string"
+        },
+        {
+          "name": "Email",
+          "type": "string"
+        },
+        {
+          "name": "Department",
+          "type": "string"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "ExpenseClaim",
+      "role": "Document",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "EmployeeId",
+          "type": "int"
+        },
+        {
+          "name": "SubmittedOn",
+          "type": "DateTime"
+        },
+        {
+          "name": "Status",
+          "type": "string"
+        },
+        {
+          "name": "Total",
+          "type": "decimal"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "ExpenseItem",
+      "role": "Document",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "ExpenseClaimId",
+          "type": "int"
+        },
+        {
+          "name": "Category",
+          "type": "string"
+        },
+        {
+          "name": "Amount",
+          "type": "decimal"
+        },
+        {
+          "name": "SpentOn",
+          "type": "DateTime"
+        },
+        {
+          "name": "Description",
+          "type": "string"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "Approval",
+      "role": "Event",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "ExpenseClaimId",
+          "type": "int"
+        },
+        {
+          "name": "ApprovedBy",
+          "type": "string"
+        },
+        {
+          "name": "DecidedOn",
+          "type": "DateTime"
+        },
+        {
+          "name": "Decision",
+          "type": "string"
+        }
+      ],
+      "relationships": []
+    }
+  ]
+}

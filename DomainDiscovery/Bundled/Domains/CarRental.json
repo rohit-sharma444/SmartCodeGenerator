@@ -1,0 +1,113 @@
+{
+  "name": "Car rental",
+  "terms": {
+    "car": 2,
+    "hire": 1,
+    "rent": 1,
+    "rental": 1,
+    "vehicle": 1,
+    "mileage": 1
+  },
+  "classes": [
+    {
+      "name": "Customer",
+      "role": "Party",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "Name",
+          "type": "string"
+        },
+        {
+          "name": "Email",
+          "type": "string"
+        },
+        {
+          "name": "DrivingLicence",
+          "type": "string"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "Car",
+      "role": "Item",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "Registration",
+          "type": "string"
+        },
+        {
+          "name": "Make",
+          "type": "string"
+        },
+        {
+          "name": "Model",
+          "type": "string"
+        },
+        {
+          "name": "DailyRate",
+          "type": "decimal"
+        },
+        {
+          "name": "Mileage",
+          "type": "int"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "Rental",
+      "role": "Transaction",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "CarId",
+          "type": "int"
+        },
+        {
+          "name": "CustomerId",
+          "type": "int"
+        },
+        {
+          "name": "PicksUpOn",
+          "type": "DateTime"
+        },
+        {
+          "name": "ReturnsOn",
+          "type": "DateTime"
+        },
+        {
+          "name": "TotalCost",
+          "type": "decimal"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "DamageReport",
+      "role": "Document",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "RentalId",
+          "type": "int"
+        },
+        {
+          "name": "Description",
+          "type": "string"
+        },
+        {
+          "name": "ReportedOn",
+          "type": "DateTime"
+        },
+        {
+          "name": "RepairCost",
+          "type": "decimal"
+        }
+      ],
+      "relationships": []
+    }
+  ]
+}

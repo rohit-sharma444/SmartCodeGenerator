@@ -1,0 +1,123 @@
+{
+  "name": "Restaurant",
+  "terms": {
+    "restaurant": 3,
+    "cafe": 3,
+    "bistro": 3,
+    "menu": 1,
+    "table": 1,
+    "dish": 1,
+    "waiter": 1,
+    "kitchen": 1
+  },
+  "classes": [
+    {
+      "name": "MenuItem",
+      "role": "Item",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "Name",
+          "type": "string"
+        },
+        {
+          "name": "Category",
+          "type": "string"
+        },
+        {
+          "name": "Price",
+          "type": "decimal"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "DiningTable",
+      "role": "Place",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "Number",
+          "type": "int"
+        },
+        {
+          "name": "Seats",
+          "type": "int"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "Order",
+      "role": "Transaction",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "DiningTableId",
+          "type": "int"
+        },
+        {
+          "name": "PlacedAt",
+          "type": "DateTime"
+        },
+        {
+          "name": "Status",
+          "type": "string"
+        },
+        {
+          "name": "Total",
+          "type": "decimal"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "OrderLine",
+      "role": "Transaction",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "OrderId",
+          "type": "int"
+        },
+        {
+          "name": "MenuItemId",
+          "type": "int"
+        },
+        {
+          "name": "Quantity",
+          "type": "int"
+        },
+        {
+          "name": "Notes",
+          "type": "string"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "TableReservation",
+      "role": "Event",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "DiningTableId",
+          "type": "int"
+        },
+        {
+          "name": "CustomerName",
+          "type": "string"
+        },
+        {
+          "name": "PartySize",
+          "type": "int"
+        },
+        {
+          "name": "StartsAt",
+          "type": "DateTime"
+        }
+      ],
+      "relationships": []
+    }
+  ]
+}
