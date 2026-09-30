@@ -42,7 +42,7 @@ public class BundledDomainsCompileTests
                 failures.Add(domain.Name + ":\n  " + string.Join("\n  ", errors));
         }
 
-        Assert.AreEqual(25, BundledDomainCatalog.Default.Domains.Count);
+        Assert.HasCount(25, BundledDomainCatalog.Default.Domains);
         Assert.IsEmpty(failures, string.Join("\n", failures));
     }
 }
