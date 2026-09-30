@@ -125,10 +125,16 @@ async function desktop(target, app, caseDir, check) {
     const entity = app.classes.find(c => names.has(c));
     if (!check('menu lists an entity', entity, entity ?? `none of ${app.classes.join(', ')} is on screen`)) return null;
 
-    const opened = await send({ cmd: 'click', name: entity });
-    if (!check(`opens ${entity}`, opened.ok, opened.error)) return null;
+    // Opened through UI Automation, not the mouse: a real mouse click lands on whatever window is
+    // on top, and a browser someone was watching took this click once - the app never opened the
+    // screen, and the list below was reported missing. The driver says which way it went; a mouse
+    // click there is refused when another window covers the app, rather than clicking into it.
+    const opened = await send({ cmd: 'click', name: entity, direct: true });
+    if (!check(`opens ${entity}`, opened.ok, opened.ok ? (opened.via === 'mouse' ? 'by mouse click' : '') : opened.error)) return null;
 
     await sleep(1500);
+
+    // Drawn by the window itself, so a covered app still shows what it showed, not what covered it.
     await send({ cmd: 'screenshot', path: shot });
 
     const grid = await send({ cmd: 'find-grid' });
