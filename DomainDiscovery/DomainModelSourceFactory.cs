@@ -76,6 +76,7 @@ public static class DomainModelSourceFactory
 
     private const string WikipediaName = "Wikipedia";
     private const string BundledName = "the built-in domains";
+    private const string FallbackTag = " (fallback)";
 
     /// <summary>
     /// Composes the outcome of a source that ran only because another one could not — so the
@@ -90,7 +91,11 @@ public static class DomainModelSourceFactory
     /// </remarks>
     private static DiscoveryOutcome Annotate(DiscoveryOutcome outcome, string reason) => outcome with
     {
-        SourceLabel = $"{outcome.SourceLabel} (fallback)",
+        // Once, however many fallbacks deep: Ollama -> built-in domains -> Wikipedia is two
+        // annotations, and the label said "Wikipedia (fallback) (fallback)".
+        SourceLabel = outcome.SourceLabel.EndsWith(FallbackTag, StringComparison.Ordinal)
+            ? outcome.SourceLabel
+            : outcome.SourceLabel + FallbackTag,
         Message = outcome.Message is null ? reason : $"{reason} {outcome.Message}"
     };
 

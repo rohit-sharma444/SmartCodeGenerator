@@ -277,6 +277,8 @@ public class DomainModelSourceFactoryTests
 
         Assert.Equal(new[] { "Bundled", "Wikipedia" }, log);
         Assert.Contains("Bundled found nothing. Falling back to Wikipedia.", outcome.Message);
+        // Two fallbacks deep is still one "(fallback)" — seen as "Wikipedia (fallback) (fallback)" live.
+        Assert.Equal("Wikipedia (fallback)", outcome.SourceLabel);
     }
 
     [Fact]
