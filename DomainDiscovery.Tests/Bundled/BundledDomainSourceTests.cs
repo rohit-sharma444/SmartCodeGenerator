@@ -63,6 +63,20 @@ public class BundledDomainSourceTests
     }
 
     [Fact]
+    public void TheRejectionIsTheLastWordOnTheSystemsName()
+    {
+        // `why` reports each name's LAST decision. The seed extractor kept "Library"; if its record
+        // came after the rejection, the summary would list Library as kept — found by running it.
+        var outcome = new BundledDomainSource(Catalog, _ => Seeds("Library", "Book"))
+            .Discover("a library that lends books");
+
+        Assert.Equal(DecisionOutcome.Rejected, outcome.Model.Decisions.Last(d => d.Name == "Library").Outcome);
+        // And the trail reads in the order things happened: the user named Book, then the domain had it.
+        var book = outcome.Model.Decisions.Where(d => d.Name == "Book").Select(d => d.Stage).ToList();
+        Assert.Equal(new[] { DecisionStage.SeedExtraction, DecisionStage.BuiltInDomain }, book);
+    }
+
+    [Fact]
     public void NoMatchReturnsTheSeedsUnsuccessfullySoTheChainMovesOn()
     {
         var outcome = new BundledDomainSource(Catalog, _ => Seeds("Pattern"))

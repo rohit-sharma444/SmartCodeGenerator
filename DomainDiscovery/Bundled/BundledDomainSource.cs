@@ -61,6 +61,12 @@ public sealed class BundledDomainSource : IDomainModelSource
     // domain's own name words ("library" in "a library that…") names the system, not a class in it.
     private static void MergeSeeds(CandidateDomainModel model, CandidateDomainModel seeds, BundledDomain domain)
     {
+        // The seeds' own trail goes FIRST, in the order things happened (the user named it, then the
+        // domain had it), so `why Fine` still says "you named it" — and so a rejection below is the
+        // last word on a name. `why` reports each name's last decision: appended after, the seed
+        // extractor's "kept" for "Library" overrode its rejection and the summary listed it as kept.
+        model.Decisions.InsertRange(0, seeds.Decisions);
+
         foreach (var seed in seeds.Entities)
         {
             if (model.Entities.Any(e => e.Name.Equals(seed.Name, StringComparison.OrdinalIgnoreCase)))
@@ -76,8 +82,5 @@ public sealed class BundledDomainSource : IDomainModelSource
 
             model.Entities.Add(seed);
         }
-
-        // The seeds' own trail, so `why Fine` still says "you named it".
-        model.Decisions.AddRange(seeds.Decisions);
     }
 }
