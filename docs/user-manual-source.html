@@ -165,6 +165,32 @@ exit</pre>
 offers back to you next time (<code>.codegen/app-profile.json</code>, chapter 7). They are safe to delete;
 you will simply be asked again.</p>
 
+<h3>Undo and redo</h3>
+<p><code>undo</code> reverses the last command that changed something, and <code>redo</code> puts it back.
+Everything the command did is reversed together: the files it wrote, added or deleted, the validation rules it
+added, and the current project and class. A <code>batch</code>, a <code>demo</code> or a <code>build app</code> is one
+step, so one <code>undo</code> removes a whole generated application, folders and all.</p>
+<pre>&gt; add property Pages int to Book
+Property 'Pages' of type 'int' added to 'Book'.
+&gt; undo
+Undid: add property Pages int to Book — restored Shop\Book.cs
+&gt; redo
+Redid: add property Pages int to Book — restored Shop\Book.cs</pre>
+<ul>
+<li>The history lasts for the session, up to 50 steps, and is gone when the tool closes. The chat page keeps
+its own, with <strong>Undo</strong> and <strong>Redo</strong> buttons beside Send; hovering one says which
+command it would reverse.</li>
+<li>A command that changed nothing — <code>show</code>, <code>list</code>, <code>help</code>, an edit that was
+refused — is not a step. Neither are <code>undo</code> and <code>redo</code> themselves.</li>
+<li>Typing a new command after an <code>undo</code> clears what <code>redo</code> could put back. With nothing left, they say <code>Nothing to undo.</code> and <code>Nothing to redo.</code></li>
+<li>Your own edits are safe. A file you change outside the tool, in Visual Studio say, is never undone as part of
+a command; and if you have edited a file an undo would restore, it refuses and names the file:
+<code>Can't undo: Shop\Book.cs has changed since add property Pages int to Book.</code></li>
+<li>What the tool has learned is not undone: the <code>.codegen</code> folder, the Wikipedia cache, and anything
+under <code>bin</code> or <code>obj</code>.</li>
+<li>Over 5,000 files or 200 MB in the workspace, undo is off for the session, and the tool says so once.</li>
+</ul>
+
 <h2>4. Building an application: the workflow page</h2>
 
 <p>The <code>build app</code> command is the centre of the tool. It works out a candidate set of classes,
