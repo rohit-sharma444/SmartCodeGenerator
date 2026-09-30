@@ -54,4 +54,30 @@ public class WikipediaStoreLocationTests
         }
         finally { File.Delete(json); }
     }
+
+    // Review I7: the importer and the updater service each read discovery.json from their OWN
+    // folder, so a StorePath set for the CLI never reached them. The shared file does.
+    [Fact]
+    public void ABlankStorePathFallsBackToTheSharedDiscoveryJson()
+    {
+        var shared = Path.GetTempFileName();
+        try
+        {
+            File.WriteAllText(shared, """{ "StorePath": "C:\\shared\\s.db" }""");
+
+            Assert.Equal(@"C:\shared\s.db", WikipediaStoreLocation.Resolve(new DiscoveryConfig(), shared));
+            Assert.Equal(@"C:\own\s.db",
+                WikipediaStoreLocation.Resolve(new DiscoveryConfig { StorePath = @"C:\own\s.db" }, shared));
+            Assert.Equal(WikipediaStoreLocation.DefaultPath,
+                WikipediaStoreLocation.Resolve(new DiscoveryConfig(), shared + ".missing"));
+        }
+        finally { File.Delete(shared); }
+    }
+
+    [Fact]
+    public void TheSharedDiscoveryJsonSitsBesideTheDefaultStoreFolder()
+        => Assert.Equal(
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+                "SmartCodeGenerator", "discovery.json"),
+            WikipediaStoreLocation.SharedConfigPath);
 }

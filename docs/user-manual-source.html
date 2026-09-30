@@ -443,7 +443,7 @@ early. <code>1</code> asks for everything at once, which reaches a finished mode
 complete until it is nearly done. See <em>Two passes, and why</em> below.</td></tr>
 <tr><td><code>StorePath</code></td><td>(blank)</td><td>Where the optional Wikipedia store is. Blank means
 <code>%ProgramData%\SmartCodeGenerator\Wikipedia\enwiki-full.db</code>, the same place the importer writes
-it and the updater service keeps it current. Environment variables are expanded.</td></tr>
+it and the updater service keeps it current. Environment variables are expanded. Set here, it moves the store for this program only; to move it for the importer and the updater service too, set it in <code>%ProgramData%\SmartCodeGenerator\discovery.json</code>, which every program reads for a <code>StorePath</code> its own file leaves blank.</td></tr>
 </table>
 <pre>{
   "Source": "Ollama",

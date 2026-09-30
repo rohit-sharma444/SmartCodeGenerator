@@ -19,10 +19,33 @@ public static class WikipediaStoreLocation
         Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
         "SmartCodeGenerator", "Wikipedia", "enwiki-full.db");
 
-    /// <summary><c>discovery.json</c>'s <c>StorePath</c>, or <see cref="DefaultPath"/> when it is blank.</summary>
-    public static string Resolve(DiscoveryConfig? config = null)
+    /// <summary>
+    /// The machine-wide <c>discovery.json</c>, read by every program for a <c>StorePath</c> its own
+    /// file does not set.
+    /// </summary>
+    /// <remarks>
+    /// Each program reads <c>discovery.json</c> from its own folder, and the CLI, the importer and
+    /// the updater service live in three. A StorePath set only in the CLI's left the importer
+    /// writing the default and the CLI looking elsewhere; set here, it moves the store for all three.
+    /// </remarks>
+    public static string SharedConfigPath { get; } = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+        "SmartCodeGenerator", "discovery.json");
+
+    /// <summary>
+    /// <c>StorePath</c> from this program's <c>discovery.json</c>, else from the shared one at
+    /// <paramref name="sharedConfigPath"/> (default <see cref="SharedConfigPath"/>), else
+    /// <see cref="DefaultPath"/>.
+    /// </summary>
+    public static string Resolve(DiscoveryConfig? config = null, string? sharedConfigPath = null)
     {
         var configured = (config ?? DiscoveryConfig.Load()).StorePath;
+
+        if (string.IsNullOrWhiteSpace(configured))
+        {
+            var shared = sharedConfigPath ?? SharedConfigPath;
+            configured = File.Exists(shared) ? DiscoveryConfig.Load(shared).StorePath : null;
+        }
 
         return string.IsNullOrWhiteSpace(configured)
             ? DefaultPath
