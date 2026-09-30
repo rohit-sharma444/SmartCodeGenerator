@@ -224,4 +224,36 @@ public sealed class UndoJournalTests
 
         Assert.IsEmpty(Directory.GetFileSystemEntries(_shadowParent));
     }
+
+    [TestMethod]
+    public void A_state_only_command_is_undone_and_named_without_files()
+    {
+        var registry = Path.Combine(_shadowParent, "ProjectManager.dat");
+        File.WriteAllText(registry, "one");
+        var state = new FakeState();
+        using var journal = new UndoJournal(_root, registryPath: registry, captureState: state.Capture,
+            shadowParent: _shadowParent);
+
+        using (journal.Begin("use project Shop")) { state.Value = "Shop"; File.WriteAllText(registry, "two"); }
+
+        var result = journal.Undo();
+        Assert.AreEqual("Undid: use project Shop", result.Message);
+        Assert.IsNull(state.Value);
+        Assert.AreEqual("one", File.ReadAllText(registry));
+
+        journal.Redo();
+        Assert.AreEqual("Shop", state.Value);
+        Assert.AreEqual("two", File.ReadAllText(registry));
+    }
+
+    private sealed class FakeState
+    {
+        public string? Value;
+        public ISessionState Capture() => new Snap(this, Value);
+        private sealed record Snap(FakeState Owner, string? Value) : ISessionState
+        {
+            public bool SameAs(ISessionState other) => other is Snap s && s.Value == Value;
+            public void Restore() => Owner.Value = Value;
+        }
+    }
 }

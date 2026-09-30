@@ -70,6 +70,13 @@ public sealed class UndoJournal : IDisposable
         _maxBytes = maxBytes;
     }
 
+    /// <summary>
+    /// The journal a CLI or chat session uses: the real project registry, and the real in-memory
+    /// state. The constructor's defaults track neither, so tests see only what they set up.
+    /// </summary>
+    public static UndoJournal ForSession(string workspaceRoot, Action<string>? notify = null) =>
+        new(workspaceRoot, notify, ProjectManager.RegistryPath, SessionState.Capture);
+
     public string WorkspaceRoot { get; }
 
     /// <summary>False once the size guard has switched undo off for the session.</summary>

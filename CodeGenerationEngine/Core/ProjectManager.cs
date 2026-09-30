@@ -18,6 +18,9 @@ public static class ProjectManager
     private static readonly string RegistryFile =
     Path.Combine(AppContext.BaseDirectory, "ProjectManager.dat");
 
+    /// <summary>Where the registry is kept, beside the exe — for undo, which restores it.</summary>
+    public static string RegistryPath => RegistryFile;
+
     public static void Register(ProjectMetaData project)
     {
         if (project == null || !project.Success)
