@@ -7,6 +7,8 @@
 //   {"cmd":"attach","pid":1234}            -> {"ok":true,"title":"...","x":0,"y":0,"width":0,"height":0}
 //   {"cmd":"wait-for-window"}               -> same shape as attach's reply
 //   {"cmd":"click-button","name":"Sign in"}                        -> {"ok":true}
+//   {"cmd":"click","name":"Customer"}                              -> {"ok":true,"via":"mouse"}
+//   add "direct":true to open it through UI Automation ("via":"invoke" or "select") rather than the mouse
 //   {"cmd":"type","automationId":"UserNameBox","value":"admin"}    -> {"ok":true}
 //   {"cmd":"type","name":"User name","value":"admin"}              -> {"ok":true}  (WinForms: no ids)
 //   add "direct":true to set it through UI Automation rather than the keyboard
@@ -74,7 +76,7 @@ JsonObject Handle(JsonObject request)
         "attach" => Attach(request["pid"]!.GetValue<int>()),
         "wait-for-window" => WaitForWindow(),
         "click-button" => ClickButton(request["name"]!.GetValue<string>()),
-        "click" => ClickByName(request["name"]!.GetValue<string>()),
+        "click" => ClickByName(request["name"]!.GetValue<string>(), request["direct"]?.GetValue<bool>() == true),
         "type" => Type(request["automationId"]?.GetValue<string>(), request["name"]?.GetValue<string>(),
             request["value"]!.GetValue<string>(), request["direct"]?.GetValue<bool>() == true),
         "find-grid" => FindGrid(),
@@ -225,7 +227,17 @@ JsonObject ClickButton(string name)
 /// links and the dashboard's own tiles are plain clickable text, not always a real Button, so
 /// InvokePattern is not something every one of them supports.
 /// </summary>
-JsonObject ClickByName(string name)
+/// <remarks>
+/// "direct" opens it through UI Automation instead, needing no mouse: Invoke where the element
+/// has it (a WPF sidebar entry is a Button), else Select (a WinForms sidebar entry is a TreeView
+/// node, and the generated shell opens its screen on AfterSelect). A raw click lands on whatever
+/// window is on top at that point, and Windows will not let this process bring the app forward -
+/// a browser someone was watching took app-check's clicks in a real run, and the list it then
+/// looked for was never opened. app-check asks for this; the demo video clicks, because it is
+/// meant to look clicked. When neither pattern is there it still clicks, but never into a window
+/// that is not the app's.
+/// </remarks>
+JsonObject ClickByName(string name, bool direct)
 {
     if (window is null)
         return NotAttached();
@@ -235,9 +247,49 @@ JsonObject ClickByName(string name)
     if (element is null)
         return new JsonObject { ["ok"] = false, ["error"] = $"no element named '{name}'" };
 
+    if (direct)
+    {
+        if (element.Patterns.Invoke.PatternOrDefault is { } invoke)
+        {
+            invoke.Invoke();
+            return new JsonObject { ["ok"] = true, ["via"] = "invoke" };
+        }
+
+        if (element.Patterns.SelectionItem.PatternOrDefault is { } selectionItem)
+        {
+            selectionItem.Select();
+            return new JsonObject { ["ok"] = true, ["via"] = "select" };
+        }
+
+        if (CoveredBy(element) is { } other)
+            return new JsonObject { ["ok"] = false, ["error"] = $"'{name}' is covered by another window: '{other}'" };
+    }
+
     element.Click();
 
-    return new JsonObject { ["ok"] = true };
+    return new JsonObject { ["ok"] = true, ["via"] = "mouse" };
+}
+
+/// <summary>
+/// The title of the window on top at <paramref name="element"/>'s clickable point when it is not
+/// the app's own window, or null when the app's window is the one a click there would reach.
+/// </summary>
+string? CoveredBy(AutomationElement element)
+{
+    var bounds = element.BoundingRectangle;
+    var point = element.TryGetClickablePoint(out var clickable)
+        ? clickable
+        : new System.Drawing.Point(bounds.X + bounds.Width / 2, bounds.Y + bounds.Height / 2);
+
+    var top = GetAncestor(WindowFromPoint(new NativePoint { X = point.X, Y = point.Y }), GaRootOwner);
+    var own = window!.Properties.NativeWindowHandle.Value;
+
+    if (top == own)
+        return null;
+
+    var title = new System.Text.StringBuilder(256);
+    GetWindowText(top, title, title.Capacity);
+    return title.Length > 0 ? title.ToString() : $"window 0x{top:X}";
 }
 
 /// <summary>
@@ -448,15 +500,44 @@ JsonObject Dump()
     return new JsonObject { ["ok"] = true, ["elements"] = elements };
 }
 
+/// <summary>
+/// The window's own contents, drawn by the window into a bitmap of its own - not the screen
+/// under its rectangle, which is whatever is on top there: a real run's screenshots of two apps
+/// showed a browser video, and nothing of the app that had failed.
+/// </summary>
+/// <remarks>
+/// PW_RENDERFULLCONTENT is what gets a WPF window's DirectX-drawn surface; without it PrintWindow
+/// returns the frame and a black client area. Falls back to the screen when PrintWindow refuses.
+/// </remarks>
 JsonObject Screenshot(string path)
 {
     if (window is null)
         return NotAttached();
 
-    var image = FlaUI.Core.Capturing.Capture.Element(window);
-    image.ToFile(path);
+    var rect = window.BoundingRectangle;
+    var handle = window.Properties.NativeWindowHandle.Value;
 
-    return new JsonObject { ["ok"] = true };
+    using (var bitmap = new System.Drawing.Bitmap(rect.Width, rect.Height))
+    {
+        bool drawn;
+
+        using (var graphics = System.Drawing.Graphics.FromImage(bitmap))
+        {
+            var dc = graphics.GetHdc();
+            try { drawn = PrintWindow(handle, dc, PwRenderFullContent); }
+            finally { graphics.ReleaseHdc(dc); }
+        }
+
+        if (drawn)
+        {
+            bitmap.Save(path, System.Drawing.Imaging.ImageFormat.Png);
+            return new JsonObject { ["ok"] = true, ["via"] = "window" };
+        }
+    }
+
+    FlaUI.Core.Capturing.Capture.Element(window).ToFile(path);
+
+    return new JsonObject { ["ok"] = true, ["via"] = "screen" };
 }
 
 // DataGrid for WPF; Table for WinForms, whose DataGridView UI Automation reports as a table.
@@ -468,3 +549,28 @@ JsonObject NotAttached() => new() { ["ok"] = false, ["error"] = "not attached" }
 
 [DllImport("user32.dll")]
 static extern bool SetProcessDpiAwarenessContext(IntPtr value);
+
+[DllImport("user32.dll")]
+static extern bool PrintWindow(IntPtr hwnd, IntPtr hdc, uint flags);
+
+[DllImport("user32.dll")]
+static extern IntPtr WindowFromPoint(NativePoint point);
+
+[DllImport("user32.dll")]
+static extern IntPtr GetAncestor(IntPtr hwnd, uint flags);
+
+[DllImport("user32.dll", CharSet = CharSet.Unicode)]
+static extern int GetWindowText(IntPtr hwnd, System.Text.StringBuilder text, int count);
+
+partial class Program
+{
+    const uint PwRenderFullContent = 2;
+    const uint GaRootOwner = 3;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+struct NativePoint
+{
+    public int X;
+    public int Y;
+}
