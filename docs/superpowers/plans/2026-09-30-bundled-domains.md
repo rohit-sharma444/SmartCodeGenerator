@@ -16,7 +16,7 @@
 - Match threshold: a domain needs a score of **at least 3**. Weight 3 means a term names the domain on its own; weight 1 or 2 means a supporting word.
 - Ties: the domain with a weight-3 hit wins, then catalog order (file name, alphabetical).
 - Message on a match: `Matched: <words as typed, comma-separated>.` with SourceLabel `the built-in <Name> domain`.
-- Default store path: `%LOCALAPPDATA%\SmartCodeGenerator\Wikipedia\enwiki-full.db`. Override: `StorePath` in `discovery.json`. `DomainDiscoveryPipeline.DefaultDumpDatabasePath` is deleted.
+- Default store path: `%ProgramData%\SmartCodeGenerator\Wikipedia\enwiki-full.db`. Override: `StorePath` in `discovery.json`. `DomainDiscoveryPipeline.DefaultDumpDatabasePath` is deleted.
 - Links in domain files are written as `<Target>Id` fields and only on classes whose role is Document, Transaction or Event (`EntityRoleRank.CanReference`). A `relationships` entry goes through a rank check that can drop it silently.
 - Types in domain files: only `string int long decimal double bool DateTime Guid`. Anything else silently becomes `string` in `ToCsharpType`.
 - New enum members are appended at the end (`DecisionStage` is saved by name in resume snapshots, but append anyway).
@@ -142,7 +142,7 @@ Expected: build error, because `WikipediaStoreLocation` and `StorePath` do not e
 ```csharp
     /// <summary>
     /// Where the Wikipedia store is. Blank means <see cref="WikipediaStoreLocation.DefaultPath"/>.
-    /// Environment variables (%LOCALAPPDATA%) are expanded.
+    /// Environment variables (%ProgramData%) are expanded.
     /// </summary>
     public string? StorePath { get; set; }
 ```
@@ -185,7 +185,7 @@ Callers:
 - `CodeGeneratorStarter.cs:475`: `var databasePath = WikipediaStoreLocation.Resolve();`
 - `ServiceOptions.cs:26`: `? WikipediaStoreLocation.Resolve()`
 - `WikipediaDumpImporter/Program.cs`: work out `databasePath` first (`positional.Length > 1 ? positional[1] : WikipediaStoreLocation.Resolve()`), then `dumpPath = positional.Length > 0 ? positional[0] : Path.Combine(Path.GetDirectoryName(databasePath)!, "enwiki-latest-pages-articles.xml.bz2");`. Move the `dumpPath` declaration below `databasePath`.
-- Both `appsettings.json` `"//"` comments: replace `DomainDiscoveryPipeline.DefaultDumpDatabasePath` with `WikipediaStoreLocation.Resolve() (%LOCALAPPDATA%\\SmartCodeGenerator\\Wikipedia\\enwiki-full.db unless discovery.json sets StorePath)`.
+- Both `appsettings.json` `"//"` comments: replace `DomainDiscoveryPipeline.DefaultDumpDatabasePath` with `WikipediaStoreLocation.Resolve() (%ProgramData%\\SmartCodeGenerator\\Wikipedia\\enwiki-full.db unless discovery.json sets StorePath)`.
 - The two READMEs: the same wording in place of the old constant and path.
 
 Then check nothing still names the constant:

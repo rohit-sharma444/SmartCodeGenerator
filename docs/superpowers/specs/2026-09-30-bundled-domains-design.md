@@ -84,7 +84,7 @@ class is dropped. The domain's version wins, because it has fields.
 ## Store location
 
 - New `StorePath` in `discovery.json`. When it is unset, the store is looked for at
-  `%LOCALAPPDATA%\SmartCodeGenerator\Wikipedia\enwiki-full.db`.
+  `%ProgramData%\SmartCodeGenerator\Wikipedia\enwiki-full.db`.
 - One resolver, `WikipediaStoreLocation.Resolve()`, is used by the CLI, the web page,
   `WikipediaDumpImporter` (its default output) and `WikipediaUpdateService`. The importer's
   default input dump moves to the same folder. `DefaultDumpDatabasePath` is removed.
