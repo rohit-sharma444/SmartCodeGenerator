@@ -12,6 +12,7 @@ public static class DecisionReasons
     public const string NameNormalizedToNothing = "its name normalized to nothing";
     public const string AlreadyNamed = "already named by another candidate";
     public const string YouNamedIt = "you named it";
+    public const string YouSaidItAsAVerb = "you said it as a verb";
 
     // --- Enrichment ---
     public const string NotAUsableClassName = "not a usable class name";

@@ -16,7 +16,7 @@ public class SeedEntityExtractorTests
         var result = new SemanticResult();
         result.Entities.Add(Ent("book", EntityType.Object));
         result.Entities.Add(Ent("member", EntityType.Person));
-        result.Entities.Add(Ent("borrow", EntityType.Action));   // dropped: verb
+        result.Entities.Add(Ent("read", EntityType.Action));     // dropped: verb, and no record (see TransactionVerbs)
         result.Entities.Add(Ent("late", EntityType.Attribute));  // dropped: attribute
 
         var model = new SeedEntityExtractor().Extract(result);
