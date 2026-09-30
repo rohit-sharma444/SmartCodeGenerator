@@ -1,4 +1,5 @@
 using CodeGenerationEngine.Core;
+using CodeGenerationEngine.Core.Undo;
 using CodeGenerationEngine.Helper;
 using CodeGenerationEngine.Models;
 using CodeGenerator.App.Relationships;
@@ -205,6 +206,9 @@ internal class CodeGeneratorStarter
 
         ProjectMetaData? currentProject = null;
 
+        // This session's undo history. Deleted, shadow copy and all, when the loop ends.
+        var journal = UndoJournal.ForSession(_workspace.Root, Output.Warning);
+
         while (true)
         {
             // Cleared as the prompt takes over, so a command cancelled with Ctrl-C does not leave
@@ -265,6 +269,31 @@ internal class CodeGeneratorStarter
                 PrintStatus();
                 continue;
             }
+
+            // A chat page opened from here shares this Workspace and can load another folder into
+            // it; a history for the old folder must not write into the new one.
+            if (!string.Equals(journal.WorkspaceRoot, Path.GetFullPath(_workspace.Root), StringComparison.OrdinalIgnoreCase))
+            {
+                journal.Dispose();
+                journal = UndoJournal.ForSession(_workspace.Root, Output.Warning);
+            }
+
+            if (kind is CommandKind.Undo or CommandKind.Redo)
+            {
+                var result = UndoCommand.Handle(journal, kind);
+                if (result.Done)
+                    Console.WriteLine(result.Message);
+                else
+                    Output.Warning(result.Message);
+
+                // The loop keeps its own current project; the journal restored ProjectManager's.
+                currentProject = ProjectManager.CurrentProject;
+                continue;
+            }
+
+            // One entry for everything this pass does, however it ends: a `continue` inside the
+            // try below still disposes it. Null for the kinds that change nothing.
+            using var entry = UndoCommand.Journaled(kind) ? journal.Begin(input) : null;
 
             if (kind == CommandKind.Demo)
             {
@@ -383,6 +412,9 @@ internal class CodeGeneratorStarter
                 ReportUnexpected(ex);
             }
         }
+
+        // Only `exit` ends the loop: every command's exceptions are caught inside it.
+        journal.Dispose();
     }
 
     /// <summary>

@@ -37,6 +37,12 @@ internal static class CommandRoute
         if (StatusCommand.IsStatus(text))
             return CommandKind.Status;
 
+        if (UndoCommand.IsUndo(text))
+            return CommandKind.Undo;
+
+        if (UndoCommand.IsRedo(text))
+            return CommandKind.Redo;
+
         if (DemoCommand.IsDemo(text))
             return CommandKind.Demo;
 

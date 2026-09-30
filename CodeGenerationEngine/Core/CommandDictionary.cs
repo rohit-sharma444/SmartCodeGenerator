@@ -411,6 +411,22 @@ public static class CommandDictionary
         },
         new()
         {
+            Category = "Utility",
+            Command = "undo",
+            Description = "Reverses the last command that changed something: its files, the validation rules and the current project. "
+                        + "A whole batch or build app is one step. This session only, up to 50 steps; refuses, naming the file, "
+                        + "if you have edited one it would restore.",
+            Example = "undo"
+        },
+        new()
+        {
+            Category = "Utility",
+            Command = "redo",
+            Description = "Puts back what undo reversed. The next command that changes something clears it.",
+            Example = "redo"
+        },
+        new()
+        {
             Category = "Class",
             Command = "show relationships",
             Description =

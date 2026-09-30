@@ -1685,7 +1685,9 @@ own shows the shorter overview, and <code>help &lt;topic&gt;</code> shows one se
 <tr><td><code>help &lt;topic&gt;</code></td><td>Shows one category&#x27;s commands. A topic is any category name &#x27;help&#x27; lists, spelled however you like; a command name works too, so &#x27;help approve&#x27; explains that command.</td><td><code>help build app</code></td></tr>
 <tr><td><code>help all</code></td><td>Every command in one list — the complete catalog, which is what plain &#x27;help&#x27; used to print.</td><td><code>help all</code></td></tr>
 <tr><td><code>history</code></td><td>Lists the last 20 commands (not itself recorded).</td><td><code>history</code></td></tr>
+<tr><td><code>redo</code></td><td>Puts back what undo reversed. The next command that changes something clears it.</td><td><code>redo</code></td></tr>
 <tr><td><code>status</code></td><td>Reports the workspace, the projects found and which is selected, any loaded rules, the AI state, and the Wikipedia store and its updater service. Startup prints only what is wrong; this prints everything.</td><td><code>status</code></td></tr>
+<tr><td><code>undo</code></td><td>Reverses the last command that changed something: its files, the validation rules and the current project. A whole batch or build app is one step. This session only, up to 50 steps; refuses, naming the file, if you have edited one it would restore.</td><td><code>undo</code></td></tr>
 </table>
 <h3>Validation</h3>
 <table>
