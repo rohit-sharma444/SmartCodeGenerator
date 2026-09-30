@@ -73,7 +73,7 @@ so scripts and saved transcripts are unaffected.</p>
 <table>
 <tr><th>Colour</th><th>What it means</th><th>Examples</th></tr>
 <tr><td>Green</td><td>Something was produced.</td><td>A class written, a validator generated, a validation rule registered, an application generated.</td></tr>
-<tr><td>Yellow</td><td>Something you can fix. Nothing failed.</td><td>No project selected; a class that does not exist; a command the tool does not recognize; a missing Wikipedia store.</td></tr>
+<tr><td>Yellow</td><td>Something you can fix. Nothing failed.</td><td>No project selected; a class that does not exist; a command the tool does not recognize; a missing Wikipedia store when discovery is pinned to it.</td></tr>
 <tr><td>Red</td><td>Something failed.</td><td>A generated application that will not compile; an unexpected error.</td></tr>
 <tr><td>Grey</td><td>Secondary detail you are not required to read.</td><td>Paths and labels beside the thing they describe.</td></tr>
 </table>
@@ -101,7 +101,7 @@ how it is being sent:</p>
 colour text in that terminal and the cause is the terminal or its settings.</p></div>
 
 <div class="note"><p><strong>A quiet start is a healthy one.</strong> The tool reports its own state only when
-something is wrong with it — a missing Wikipedia store, nothing updating it, an AI model it was told to load and
+something is wrong with it — a Wikipedia store it was pinned to and cannot find, nothing updating an installed one, an AI model it was told to load and
 could not. So if all you see is those three lines, everything it depends on is in order. Type
 <code>status</code> at any time for the full picture. Earlier versions printed that picture at every launch,
 which meant the warnings in it were easy to skim past.</p></div>
@@ -376,16 +376,35 @@ slow one; later builds of the same project are quick.</p>
 <p>From a description, the tool asks a local model — Ollama, running on your own machine — which classes
 the domain needs. Answering can take a minute or two, longer the first time in a while if the model has to
 be loaded first; the page says so while it waits. If no model is configured, or it does not answer, the tool
-falls back to a local Wikipedia knowledge store instead — reading it, and fetching from Wikipedia the first
-time it meets a topic, which is its own wait the first time. Either way you are told which one actually
-produced the classes, on the console and on the review screen: <code>Classes from qwen2.5:3b (Ollama).</code>
-normally, or, on a fallback, <code>Classes from Wikipedia (fallback). qwen2.5:3b (Ollama) was configured but
-did not answer. Falling back to Wikipedia.</code> — the reason is always given, never just the fact that it
-happened. What it settles on goes straight into the review stage, where you can add to it, take from it, and
+tries the next source, in this order:</p>
+<ol>
+<li>the local Wikipedia store, if one is installed (see <em>Where the Wikipedia store lives</em> below);</li>
+<li>a <strong>built-in domain</strong>, if your description is about one of the 25 business systems the tool
+ships with (see <em>Built-in domains</em> below) — instant, offline, and the same answer every time;</li>
+<li>the online Wikipedia API, if the machine is connected — fetched the first time it meets a topic, which is
+its own wait;</li>
+<li>the classes named in your description itself.</li>
+</ol>
+<p>Whichever produced the classes, you are told, on the console and on the review screen:
+<code>Classes from qwen2.5:3b (Ollama).</code> normally, or, on a fallback, <code>Classes from the built-in
+Library domain (fallback). qwen2.5:3b (Ollama) was configured but did not answer. Falling back to the built-in
+domains. Matched: library, lends, books, members.</code> — the reason is always given, never just the fact that
+it happened. What it settles on goes straight into the review stage, where you can add to it, take from it, and
 ask about it before anything is written.</p>
 <p>To see what it decided, use <code>why</code> there. On its own it groups every decision by outcome — the
 classes it kept, the ones it suggested and passed over, the ones it rejected — and <code>why &lt;name&gt;</code>
 shows one name's whole trail: the stage, the reason, and the evidence (chapter 6).</p>
+<h4>Built-in domains</h4>
+<p>The tool ships with 25 hand-built domains, each a small set of classes with typed fields and the links
+between them: Library, Clinic, School, Online shop, Point of sale, Invoicing, Inventory, Hotel, Restaurant, HR,
+Payroll, CRM, Helpdesk, Projects and tasks, Events, Gym, Car rental, Property rental, Fleet, Banking, Expenses,
+Recruitment, Purchasing, Blog and Veterinary. They need nothing installed and no connection.</p>
+<p>A description is matched on its words: one that names the domain (<em>library</em>, <em>clinic</em>,
+<em>hotel</em>) is enough on its own; otherwise three words that belong to it (<em>lends</em>, <em>books</em>,
+<em>members</em>) are. So <code>a hotel booking system</code> picks Hotel, and <code>a book club</code> picks
+nothing and moves on. Any class you name that the domain lacks is added — <code>a library that lends books and
+tracks fines</code> gives the Library classes plus <code>Fine</code> — and <code>why &lt;name&gt;</code> says
+<em>from the built-in Library domain</em> for the ones that came with it.</p>
 <div class="note"><p><strong>On the Wikipedia path, if no topic is recognized</strong> the tool says so and
 shows only the classes it took from your words. A very short description — two or three words — often finds
 nothing. Add a few more words about what the system does, or add the classes by hand in the review loop.</p></div>
@@ -399,7 +418,9 @@ to configure.</p>
 <tr><th>Field</th><th>Default</th><th>Meaning</th></tr>
 <tr><td><code>Source</code></td><td><code>Ollama</code></td><td>Which source to use. <code>Ollama</code> asks
 the local model first and falls back to Wikipedia when it is unreachable, when the configured model is not
-pulled (see below), or when the model runs but produces nothing usable. <code>Wikipedia</code> skips Ollama entirely and always reads the local Wikipedia store —
+pulled (see below), or when the model runs but produces nothing usable — to the next source in the order
+above. <code>Wikipedia</code> skips Ollama entirely and always reads the local Wikipedia store (the built-in
+domains still catch a topic it does not recognize) —
 choose this when a run needs to be exactly repeatable, since a local model is sampled and can answer a
 little differently between runs even at the low temperature this tool asks for. Anything else falls back to
 Wikipedia too, with a note that the value was not recognized.</td></tr>
@@ -420,6 +441,9 @@ slower machine.</td></tr>
 asks which classes exist and then, in a second call, what is in them — so the complete class list appears
 early. <code>1</code> asks for everything at once, which reaches a finished model sooner but shows nothing
 complete until it is nearly done. See <em>Two passes, and why</em> below.</td></tr>
+<tr><td><code>StorePath</code></td><td>(blank)</td><td>Where the optional Wikipedia store is. Blank means
+<code>%ProgramData%\SmartCodeGenerator\Wikipedia\enwiki-full.db</code>, the same place the importer writes
+it and the updater service keeps it current. Environment variables are expanded.</td></tr>
 </table>
 <pre>{
   "Source": "Ollama",
@@ -463,6 +487,12 @@ short one and almost always finishes: you keep <em>every</em> class, with proper
 second pass got, and the review step says so — for example <em>"4 of 12 class(es) have no properties yet —
 the pass that fills them in did not finish"</em>. A class with no properties still gets an identifier, and
 you can add fields to it in the review step or simply run discovery again.</p>
+<h4>Where the Wikipedia store lives</h4>
+<p>The store is optional: a fresh install works without it, and startup says nothing about its absence
+(<code>status</code> shows one line). To build it — a one-time import of the Wikipedia dump, some 20 GB — run
+<code>dotnet run --project WikipediaDumpImporter -c Release</code>. It writes to <code>StorePath</code>, or to
+<code>%ProgramData%\SmartCodeGenerator\Wikipedia\</code> when that is blank, and looks for the downloaded
+dump in the same folder.</p>
 <h4>Pinning to Wikipedia</h4>
 <p>Set <code>"Source": "Wikipedia"</code> to skip Ollama and always use the local Wikipedia store. This is the
 option for a run that must be repeatable — a CI job, a demonstration you will run more than once and expect
