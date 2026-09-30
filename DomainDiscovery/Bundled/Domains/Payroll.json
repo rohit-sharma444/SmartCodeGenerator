@@ -1,0 +1,108 @@
+{
+  "name": "Payroll",
+  "self": [
+    "payroll"
+  ],
+  "terms": {
+    "payroll": 3,
+    "payslip": 3,
+    "salary": 1,
+    "wage": 1,
+    "tax": 1,
+    "pay": 1
+  },
+  "classes": [
+    {
+      "name": "Employee",
+      "role": "Party",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "Name",
+          "type": "string"
+        },
+        {
+          "name": "TaxCode",
+          "type": "string"
+        },
+        {
+          "name": "BankAccount",
+          "type": "string"
+        },
+        {
+          "name": "AnnualSalary",
+          "type": "decimal"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "PayPeriod",
+      "role": "Event",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "StartsOn",
+          "type": "DateTime"
+        },
+        {
+          "name": "EndsOn",
+          "type": "DateTime"
+        },
+        {
+          "name": "PayDate",
+          "type": "DateTime"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "Payslip",
+      "role": "Document",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "EmployeeId",
+          "type": "int"
+        },
+        {
+          "name": "PayPeriodId",
+          "type": "int"
+        },
+        {
+          "name": "GrossPay",
+          "type": "decimal"
+        },
+        {
+          "name": "Tax",
+          "type": "decimal"
+        },
+        {
+          "name": "NetPay",
+          "type": "decimal"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "Deduction",
+      "role": "Document",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "PayslipId",
+          "type": "int"
+        },
+        {
+          "name": "Description",
+          "type": "string"
+        },
+        {
+          "name": "Amount",
+          "type": "decimal"
+        }
+      ],
+      "relationships": []
+    }
+  ]
+}

@@ -1,0 +1,128 @@
+{
+  "name": "Purchasing",
+  "self": [
+    "procurement"
+  ],
+  "terms": {
+    "procurement": 3,
+    "purchase order": 3,
+    "purchasing": 2,
+    "supplier": 1,
+    "vendor": 1,
+    "order": 1
+  },
+  "classes": [
+    {
+      "name": "Supplier",
+      "role": "Party",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "Name",
+          "type": "string"
+        },
+        {
+          "name": "Email",
+          "type": "string"
+        },
+        {
+          "name": "Phone",
+          "type": "string"
+        },
+        {
+          "name": "PaymentTerms",
+          "type": "string"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "Product",
+      "role": "Item",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "Name",
+          "type": "string"
+        },
+        {
+          "name": "Sku",
+          "type": "string"
+        },
+        {
+          "name": "UnitCost",
+          "type": "decimal"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "PurchaseOrder",
+      "role": "Document",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "SupplierId",
+          "type": "int"
+        },
+        {
+          "name": "OrderedOn",
+          "type": "DateTime"
+        },
+        {
+          "name": "Status",
+          "type": "string"
+        },
+        {
+          "name": "Total",
+          "type": "decimal"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "PurchaseOrderLine",
+      "role": "Document",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "PurchaseOrderId",
+          "type": "int"
+        },
+        {
+          "name": "ProductId",
+          "type": "int"
+        },
+        {
+          "name": "Quantity",
+          "type": "int"
+        },
+        {
+          "name": "UnitCost",
+          "type": "decimal"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "GoodsReceipt",
+      "role": "Document",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "PurchaseOrderId",
+          "type": "int"
+        },
+        {
+          "name": "ReceivedOn",
+          "type": "DateTime"
+        },
+        {
+          "name": "Notes",
+          "type": "string"
+        }
+      ],
+      "relationships": []
+    }
+  ]
+}

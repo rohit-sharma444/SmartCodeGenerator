@@ -1,0 +1,126 @@
+{
+  "name": "Library",
+  "self": [
+    "library"
+  ],
+  "terms": {
+    "library": 3,
+    "librarian": 3,
+    "book": 1,
+    "lend": 1,
+    "loan": 1,
+    "borrow": 1,
+    "member": 1,
+    "catalogue": 1
+  },
+  "classes": [
+    {
+      "name": "Book",
+      "role": "Item",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "Title",
+          "type": "string"
+        },
+        {
+          "name": "Isbn",
+          "type": "string"
+        },
+        {
+          "name": "Author",
+          "type": "string"
+        },
+        {
+          "name": "Publisher",
+          "type": "string"
+        },
+        {
+          "name": "PublishedYear",
+          "type": "int"
+        },
+        {
+          "name": "CopiesOwned",
+          "type": "int"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "Member",
+      "role": "Party",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "Name",
+          "type": "string"
+        },
+        {
+          "name": "Email",
+          "type": "string"
+        },
+        {
+          "name": "Phone",
+          "type": "string"
+        },
+        {
+          "name": "JoinedOn",
+          "type": "DateTime"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "Loan",
+      "role": "Transaction",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "BookId",
+          "type": "int"
+        },
+        {
+          "name": "MemberId",
+          "type": "int"
+        },
+        {
+          "name": "LoanDate",
+          "type": "DateTime"
+        },
+        {
+          "name": "DueDate",
+          "type": "DateTime"
+        },
+        {
+          "name": "Returned",
+          "type": "bool"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "Reservation",
+      "role": "Transaction",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "BookId",
+          "type": "int"
+        },
+        {
+          "name": "MemberId",
+          "type": "int"
+        },
+        {
+          "name": "ReservedOn",
+          "type": "DateTime"
+        },
+        {
+          "name": "Status",
+          "type": "string"
+        }
+      ],
+      "relationships": []
+    }
+  ]
+}

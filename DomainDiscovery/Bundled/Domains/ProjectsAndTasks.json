@@ -1,0 +1,112 @@
+{
+  "name": "Projects and tasks",
+  "self": [],
+  "terms": {
+    "kanban": 3,
+    "project management": 3,
+    "task management": 3,
+    "project": 2,
+    "task": 2,
+    "milestone": 1,
+    "sprint": 1,
+    "timesheet": 1
+  },
+  "classes": [
+    {
+      "name": "Project",
+      "role": "Item",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "Name",
+          "type": "string"
+        },
+        {
+          "name": "Description",
+          "type": "string"
+        },
+        {
+          "name": "StartsOn",
+          "type": "DateTime"
+        },
+        {
+          "name": "DueOn",
+          "type": "DateTime"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "TeamMember",
+      "role": "Party",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "Name",
+          "type": "string"
+        },
+        {
+          "name": "Email",
+          "type": "string"
+        },
+        {
+          "name": "Role",
+          "type": "string"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "ProjectTask",
+      "role": "Document",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "ProjectId",
+          "type": "int"
+        },
+        {
+          "name": "TeamMemberId",
+          "type": "int"
+        },
+        {
+          "name": "Title",
+          "type": "string"
+        },
+        {
+          "name": "Status",
+          "type": "string"
+        },
+        {
+          "name": "DueOn",
+          "type": "DateTime"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "TimeEntry",
+      "role": "Document",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "ProjectTaskId",
+          "type": "int"
+        },
+        {
+          "name": "TeamMemberId",
+          "type": "int"
+        },
+        {
+          "name": "Hours",
+          "type": "decimal"
+        },
+        {
+          "name": "WorkedOn",
+          "type": "DateTime"
+        }
+      ],
+      "relationships": []
+    }
+  ]
+}

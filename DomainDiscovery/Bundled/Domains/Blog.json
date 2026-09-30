@@ -1,0 +1,100 @@
+{
+  "name": "Blog",
+  "self": [
+    "blog"
+  ],
+  "terms": {
+    "blog": 3,
+    "post": 1,
+    "article": 1,
+    "comment": 1,
+    "author": 1,
+    "tag": 1
+  },
+  "classes": [
+    {
+      "name": "Author",
+      "role": "Party",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "Name",
+          "type": "string"
+        },
+        {
+          "name": "Email",
+          "type": "string"
+        },
+        {
+          "name": "Bio",
+          "type": "string"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "Post",
+      "role": "Document",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "AuthorId",
+          "type": "int"
+        },
+        {
+          "name": "Title",
+          "type": "string"
+        },
+        {
+          "name": "Body",
+          "type": "string"
+        },
+        {
+          "name": "Slug",
+          "type": "string"
+        },
+        {
+          "name": "PublishedOn",
+          "type": "DateTime"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "Comment",
+      "role": "Document",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "PostId",
+          "type": "int"
+        },
+        {
+          "name": "AuthorName",
+          "type": "string"
+        },
+        {
+          "name": "Body",
+          "type": "string"
+        },
+        {
+          "name": "PostedAt",
+          "type": "DateTime"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "Tag",
+      "role": "Item",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "Name",
+          "type": "string"
+        }
+      ],
+      "relationships": []
+    }
+  ]
+}

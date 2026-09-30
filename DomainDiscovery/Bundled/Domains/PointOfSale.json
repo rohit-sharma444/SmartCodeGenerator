@@ -1,0 +1,106 @@
+{
+  "name": "Point of sale",
+  "self": [
+    "pos"
+  ],
+  "terms": {
+    "point of sale": 3,
+    "pos": 3,
+    "cashier": 3,
+    "till": 1,
+    "checkout": 1,
+    "receipt": 1,
+    "sale": 1,
+    "barcode": 1
+  },
+  "classes": [
+    {
+      "name": "Product",
+      "role": "Item",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "Name",
+          "type": "string"
+        },
+        {
+          "name": "Barcode",
+          "type": "string"
+        },
+        {
+          "name": "Price",
+          "type": "decimal"
+        },
+        {
+          "name": "StockQuantity",
+          "type": "int"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "Cashier",
+      "role": "Party",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "Name",
+          "type": "string"
+        },
+        {
+          "name": "EmployeeNumber",
+          "type": "string"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "Sale",
+      "role": "Transaction",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "CashierId",
+          "type": "int"
+        },
+        {
+          "name": "SoldAt",
+          "type": "DateTime"
+        },
+        {
+          "name": "Total",
+          "type": "decimal"
+        },
+        {
+          "name": "PaymentMethod",
+          "type": "string"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "SaleLine",
+      "role": "Transaction",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "SaleId",
+          "type": "int"
+        },
+        {
+          "name": "ProductId",
+          "type": "int"
+        },
+        {
+          "name": "Quantity",
+          "type": "int"
+        },
+        {
+          "name": "UnitPrice",
+          "type": "decimal"
+        }
+      ],
+      "relationships": []
+    }
+  ]
+}

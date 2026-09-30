@@ -12,6 +12,15 @@ public static class DecisionReasons
     public const string NameNormalizedToNothing = "its name normalized to nothing";
     public const string AlreadyNamed = "already named by another candidate";
     public const string YouNamedIt = "you named it";
+    public const string NamesTheWholeSystem = "it names the whole system, not a class in it";
+
+    public static string FromTheBuiltInDomain(string domain) => $"from the built-in {domain} domain";
+
+    public static string CoveredBy(string className, string domain) =>
+        $"covered by {className} in the built-in {domain} domain";
+
+    public static string LeftToTheBuiltInDomain(string domain) =>
+        $"the built-in {domain} domain defines its own records";
     public const string YouSaidItAsAVerb = "you said it as a verb";
 
     // --- Enrichment ---

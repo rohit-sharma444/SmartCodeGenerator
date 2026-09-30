@@ -1,0 +1,119 @@
+{
+  "name": "Clinic",
+  "self": [
+    "clinic",
+    "hospital",
+    "surgery"
+  ],
+  "terms": {
+    "clinic": 3,
+    "hospital": 3,
+    "patient": 1,
+    "doctor": 1,
+    "appointment": 1,
+    "prescription": 1,
+    "nurse": 1
+  },
+  "classes": [
+    {
+      "name": "Patient",
+      "role": "Party",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "Name",
+          "type": "string"
+        },
+        {
+          "name": "DateOfBirth",
+          "type": "DateTime"
+        },
+        {
+          "name": "Phone",
+          "type": "string"
+        },
+        {
+          "name": "Email",
+          "type": "string"
+        },
+        {
+          "name": "InsuranceNumber",
+          "type": "string"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "Doctor",
+      "role": "Party",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "Name",
+          "type": "string"
+        },
+        {
+          "name": "Specialty",
+          "type": "string"
+        },
+        {
+          "name": "Phone",
+          "type": "string"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "Appointment",
+      "role": "Event",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "PatientId",
+          "type": "int"
+        },
+        {
+          "name": "DoctorId",
+          "type": "int"
+        },
+        {
+          "name": "StartsAt",
+          "type": "DateTime"
+        },
+        {
+          "name": "Reason",
+          "type": "string"
+        },
+        {
+          "name": "Status",
+          "type": "string"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "Prescription",
+      "role": "Document",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "AppointmentId",
+          "type": "int"
+        },
+        {
+          "name": "Medicine",
+          "type": "string"
+        },
+        {
+          "name": "Dosage",
+          "type": "string"
+        },
+        {
+          "name": "IssuedOn",
+          "type": "DateTime"
+        }
+      ],
+      "relationships": []
+    }
+  ]
+}

@@ -29,8 +29,8 @@ system expects:
 
 | Positional | Default |
 | --- | --- |
-| `dump` | `D:\SmartCodeGenerator-Repository\Dump\enwiki-latest-pages-articles.xml.bz2` |
-| `store` | `DomainDiscoveryPipeline.DefaultDumpDatabasePath` (`D:\SmartCodeGenerator-Repository\Dump\enwiki-full.db`) |
+| `dump` | `enwiki-latest-pages-articles.xml.bz2` in the store's folder |
+| `store` | `WikipediaStoreLocation.Resolve()`: `StorePath` in `discovery.json`, else `%ProgramData%\SmartCodeGenerator\Wikipedia\enwiki-full.db` |
 
 ## Modes
 

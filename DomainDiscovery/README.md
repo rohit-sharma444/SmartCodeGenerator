@@ -69,10 +69,22 @@ Three things about that order are deliberate:
 
 `CreateDefault` picks the source by looking for the local store:
 
-| Store at `DefaultDumpDatabasePath` | Client | Refresher |
+| Store at `WikipediaStoreLocation.Resolve()` | Client | Refresher |
 | --- | --- | --- |
 | present | `DumpWikipediaClient` — local, deterministic, no rate limit | `ArticleRefresher` — updates the ~30 articles a run reads |
 | absent | `HttpWikipediaClient` — the live MediaWiki API, cached under `cacheDirectory` | none (it is already reading a live Wikipedia) |
+
+## Built-in domains
+
+`Bundled/Domains/*.json` are 25 hand-built domains, embedded in the assembly: each is the JSON shape Ollama
+returns (`LlmDomainModel`) plus weighted match `terms`. `BundledDomainSource` scores a description against
+them (a weight-3 term names the domain on its own; 3 points needed), runs the winner through
+`LlmModelNormalizer` as `ModelOrigin.BuiltIn`, and adds the seed classes the domain lacks.
+`DomainModelSourceFactory` puts it after Ollama and an installed store, before online Wikipedia.
+
+To add a domain, add a file; `CatalogContentTests` holds every file to the rules: types the normaliser
+knows, links written as `<Target>Id` on Document/Transaction/Event classes only (the only roles that may
+hold one), no shared weight-3 term, and an ordinary description that finds it.
 
 The dump is the intended source; the HTTP client survives as the answer to *"the
 store hasn't been imported yet"*, because failing outright would leave a fresh

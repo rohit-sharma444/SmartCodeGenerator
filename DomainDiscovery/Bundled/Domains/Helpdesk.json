@@ -1,0 +1,111 @@
+{
+  "name": "Helpdesk",
+  "self": [
+    "helpdesk",
+    "servicedesk"
+  ],
+  "terms": {
+    "helpdesk": 3,
+    "servicedesk": 3,
+    "help desk": 3,
+    "service desk": 3,
+    "ticket": 1,
+    "support": 1,
+    "issue": 1,
+    "agent": 1
+  },
+  "classes": [
+    {
+      "name": "Customer",
+      "role": "Party",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "Name",
+          "type": "string"
+        },
+        {
+          "name": "Email",
+          "type": "string"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "Agent",
+      "role": "Party",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "Name",
+          "type": "string"
+        },
+        {
+          "name": "Email",
+          "type": "string"
+        },
+        {
+          "name": "Team",
+          "type": "string"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "Ticket",
+      "role": "Document",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "CustomerId",
+          "type": "int"
+        },
+        {
+          "name": "AgentId",
+          "type": "int"
+        },
+        {
+          "name": "Subject",
+          "type": "string"
+        },
+        {
+          "name": "Priority",
+          "type": "string"
+        },
+        {
+          "name": "Status",
+          "type": "string"
+        },
+        {
+          "name": "OpenedAt",
+          "type": "DateTime"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "TicketComment",
+      "role": "Document",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "TicketId",
+          "type": "int"
+        },
+        {
+          "name": "Author",
+          "type": "string"
+        },
+        {
+          "name": "Body",
+          "type": "string"
+        },
+        {
+          "name": "PostedAt",
+          "type": "DateTime"
+        }
+      ],
+      "relationships": []
+    }
+  ]
+}

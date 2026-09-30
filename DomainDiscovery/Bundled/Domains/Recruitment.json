@@ -1,0 +1,113 @@
+{
+  "name": "Recruitment",
+  "self": [
+    "recruitment"
+  ],
+  "terms": {
+    "recruitment": 3,
+    "recruiting": 3,
+    "candidate": 1,
+    "vacancy": 1,
+    "job": 1,
+    "applicant": 1,
+    "interview": 1
+  },
+  "classes": [
+    {
+      "name": "JobOpening",
+      "role": "Document",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "Title",
+          "type": "string"
+        },
+        {
+          "name": "Department",
+          "type": "string"
+        },
+        {
+          "name": "ClosesOn",
+          "type": "DateTime"
+        },
+        {
+          "name": "Salary",
+          "type": "decimal"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "Candidate",
+      "role": "Party",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "Name",
+          "type": "string"
+        },
+        {
+          "name": "Email",
+          "type": "string"
+        },
+        {
+          "name": "Phone",
+          "type": "string"
+        },
+        {
+          "name": "ResumeUrl",
+          "type": "string"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "JobApplication",
+      "role": "Document",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "JobOpeningId",
+          "type": "int"
+        },
+        {
+          "name": "CandidateId",
+          "type": "int"
+        },
+        {
+          "name": "AppliedOn",
+          "type": "DateTime"
+        },
+        {
+          "name": "Status",
+          "type": "string"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "Interview",
+      "role": "Event",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "JobApplicationId",
+          "type": "int"
+        },
+        {
+          "name": "Interviewer",
+          "type": "string"
+        },
+        {
+          "name": "StartsAt",
+          "type": "DateTime"
+        },
+        {
+          "name": "Outcome",
+          "type": "string"
+        }
+      ],
+      "relationships": []
+    }
+  ]
+}

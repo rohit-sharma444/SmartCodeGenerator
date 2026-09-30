@@ -1,0 +1,116 @@
+{
+  "name": "Hotel",
+  "self": [
+    "hotel",
+    "guesthouse",
+    "motel"
+  ],
+  "terms": {
+    "hotel": 3,
+    "guesthouse": 3,
+    "motel": 3,
+    "room": 1,
+    "guest": 1,
+    "booking": 1,
+    "reservation": 1,
+    "stay": 1
+  },
+  "classes": [
+    {
+      "name": "Guest",
+      "role": "Party",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "Name",
+          "type": "string"
+        },
+        {
+          "name": "Email",
+          "type": "string"
+        },
+        {
+          "name": "Phone",
+          "type": "string"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "Room",
+      "role": "Place",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "Number",
+          "type": "string"
+        },
+        {
+          "name": "RoomType",
+          "type": "string"
+        },
+        {
+          "name": "NightlyRate",
+          "type": "decimal"
+        },
+        {
+          "name": "Floor",
+          "type": "int"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "Booking",
+      "role": "Transaction",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "GuestId",
+          "type": "int"
+        },
+        {
+          "name": "RoomId",
+          "type": "int"
+        },
+        {
+          "name": "CheckIn",
+          "type": "DateTime"
+        },
+        {
+          "name": "CheckOut",
+          "type": "DateTime"
+        },
+        {
+          "name": "Status",
+          "type": "string"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "RoomCharge",
+      "role": "Transaction",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "BookingId",
+          "type": "int"
+        },
+        {
+          "name": "Description",
+          "type": "string"
+        },
+        {
+          "name": "Amount",
+          "type": "decimal"
+        },
+        {
+          "name": "ChargedOn",
+          "type": "DateTime"
+        }
+      ],
+      "relationships": []
+    }
+  ]
+}

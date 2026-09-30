@@ -115,14 +115,6 @@ public sealed class DomainDiscoveryPipeline
     }
 
     /// <summary>
-    /// The dump store the pipeline uses when the caller names none. It is built once by
-    /// WikipediaDumpImporter and is the normal source: local, deterministic, and free of the
-    /// API's rate limit.
-    /// </summary>
-    public const string DefaultDumpDatabasePath =
-        @"D:\SmartCodeGenerator-Repository\Dump\enwiki-full.db";
-
-    /// <summary>
     /// Builds a pipeline over the local Wikipedia dump when its store exists, and over the
     /// MediaWiki API when it does not.
     /// </summary>
@@ -133,7 +125,7 @@ public sealed class DomainDiscoveryPipeline
     /// </remarks>
     /// <param name="cacheDirectory">Disk cache for the HTTP fallback. Unused by the dump client.</param>
     /// <param name="dumpDatabasePath">
-    /// The SQLite store to read. Defaults to <see cref="DefaultDumpDatabasePath"/>.
+    /// The SQLite store to read. Defaults to <see cref="WikipediaStoreLocation.Resolve"/>.
     /// </param>
     /// <exception cref="InvalidOperationException">
     /// The store exists but carries no search index. See <see cref="RequireUsableStore"/>.
@@ -142,7 +134,7 @@ public sealed class DomainDiscoveryPipeline
         string cacheDirectory, string? dumpDatabasePath = null)
     {
         var analyzer = EngineBuilder.BuildDefault().Analyzer;
-        var databasePath = dumpDatabasePath ?? DefaultDumpDatabasePath;
+        var databasePath = dumpDatabasePath ?? WikipediaStoreLocation.Resolve();
 
         IWikipediaClient client;
         IArticleRefresher refresher;

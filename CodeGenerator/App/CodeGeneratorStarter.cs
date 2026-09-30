@@ -456,7 +456,8 @@ internal class CodeGeneratorStarter
             return;
 
         // Warning, not error: none of these stop the tool working — a missing store falls back to
-        // the online API — but every one of them is something the user needs to know.
+        // the built-in domains and the online API — but every one of them is something the user
+        // needs to know.
         foreach (var line in lines)
             Output.Warning(line);
 
@@ -472,48 +473,36 @@ internal class CodeGeneratorStarter
     /// </remarks>
     internal static (IReadOnlyList<string> Lines, bool Healthy) StoreReport()
     {
-        var databasePath = DomainDiscoveryPipeline.DefaultDumpDatabasePath;
+        var config = DiscoveryConfig.Load();
+        return StoreReport(WikipediaStoreLocation.Resolve(config), config.Source);
+    }
 
+    /// <summary>As <see cref="StoreReport()"/>, for a given store path and discovery source.</summary>
+    internal static (IReadOnlyList<string> Lines, bool Healthy) StoreReport(string databasePath, string source)
+    {
         if (!File.Exists(databasePath))
         {
-            // The store lives in a git-ignored directory, so an external clean, a disk-cleanup tool or
-            // a manual delete removes it, and the app would otherwise slip to a worse discovery path
-            // without a word. Say so, loudly — but do not stop.
-            //
-            // What the missing store actually costs depends on discovery.json's Source: with Ollama
-            // configured (the default) discovery does not touch this store at all unless Ollama itself
-            // is unreachable or the model is not pulled — at which point there is now NO fallback, and
-            // 'build app:' lands the user in Review with zero classes rather than the online API. Only
-            // when Source is pinned to Wikipedia does the old story hold: this store is the direct path,
-            // and its absence means every run pays for the online API instead.
-            var usesWikipediaDirectly = string.Equals(
-                DiscoveryConfig.Load().Source, DiscoveryConfig.WikipediaSource, StringComparison.OrdinalIgnoreCase);
-
-            if (usesWikipediaDirectly)
+            // What a missing store costs depends on discovery.json's Source. Pinned to Wikipedia,
+            // this store is the direct path, so its absence is worth a warning at every launch.
+            if (string.Equals(source, DiscoveryConfig.WikipediaSource, StringComparison.OrdinalIgnoreCase))
             {
                 return
                 ([
-                    $"Wikipedia store: NOT FOUND at {databasePath}.",
-                    "  discovery.json pins discovery to Wikipedia, so 'build app:' will fall back to the",
-                    "  online Wikipedia API — slower, rate-limited, and it needs a connection. If you had",
-                    "  already imported the store, it has been moved or deleted. To (re)build it locally",
-                    "  (a one-time import), run:",
+                    $"Wikipedia store: not installed ({databasePath}).",
+                    "  discovery.json pins discovery to Wikipedia, so 'build app:' uses online Wikipedia",
+                    "  (slower, rate-limited, needs a connection), then the built-in domains.",
+                    "  To import the store (a one-time job), run:",
                     string.Empty,
                     "      dotnet run --project WikipediaDumpImporter -c Release",
                 ], false);
             }
 
-            return
-            ([
-                $"Wikipedia store: NOT FOUND at {databasePath}.",
-                "  This does not slow ordinary runs down: discovery asks the local Ollama model first.",
-                "  But it means Ollama has no fallback here — if it is unreachable, or the configured",
-                "  model is not pulled, 'build app:' will land you in Review with zero classes instead",
-                "  of falling back to Wikipedia. Pull the model ('ollama pull <model>'), or build this",
-                "  store as a safety net (a one-time import):",
-                string.Empty,
-                "      dotnet run --project WikipediaDumpImporter -c Release",
-            ], false);
+            // The normal state for anyone who installed the tool: silence at startup, one line in
+            // `status`. Before the built-in domains this warned at every launch and claimed 'build
+            // app:' would give zero classes, which the code never did (it went online instead).
+            return ([
+                $"Wikipedia store: not installed ({databasePath}) - 'build app:' uses Ollama, then the built-in domains, then online Wikipedia."
+            ], true);
         }
 
         int? storeDate;

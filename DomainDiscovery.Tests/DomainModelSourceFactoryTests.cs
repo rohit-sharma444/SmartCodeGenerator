@@ -229,4 +229,90 @@ public class DomainModelSourceFactoryTests
         Assert.NotNull(outcome.Message);
         Assert.Contains("olama", outcome.Message);
     }
+
+    // ----- the built-in domains in the chain ------------------------------
+
+    private sealed class Recording : IDomainModelSource
+    {
+        private readonly string _label;
+        private readonly bool _succeeds;
+        private readonly List<string> _log;
+
+        public Recording(string label, bool succeeds, List<string> log)
+        {
+            _label = label;
+            _succeeds = succeeds;
+            _log = log;
+        }
+
+        public DiscoveryOutcome Discover(string description, Action<DiscoveryProgress>? onProgress = null)
+        {
+            _log.Add(_label);
+            return new(new CandidateDomainModel(), _label, _succeeds, _succeeds ? null : $"{_label} found nothing.");
+        }
+    }
+
+    private static FakeOllamaClient Down() => new() { Available = false };
+
+    [Fact]
+    public void WithNoStoreABundledMatchIsUsedBeforeOnlineWikipedia()
+    {
+        var log = new List<string>();
+        var outcome = DomainModelSourceFactory.Create(new DiscoveryConfig(),
+            () => new Recording("Wikipedia", true, log), Down(),
+            bundled: () => new Recording("Bundled", true, log), wikipediaIsLocal: false).Discover("x");
+
+        Assert.Equal(new[] { "Bundled" }, log);
+        Assert.StartsWith("Bundled", outcome.SourceLabel);
+        Assert.Contains("did not answer. Falling back to the built-in domains.", outcome.Message);
+    }
+
+    [Fact]
+    public void WithNoStoreAndNoBundledMatchOnlineWikipediaRunsNext()
+    {
+        var log = new List<string>();
+        var outcome = DomainModelSourceFactory.Create(new DiscoveryConfig(),
+            () => new Recording("Wikipedia", true, log), Down(),
+            bundled: () => new Recording("Bundled", false, log), wikipediaIsLocal: false).Discover("x");
+
+        Assert.Equal(new[] { "Bundled", "Wikipedia" }, log);
+        Assert.Contains("Bundled found nothing. Falling back to Wikipedia.", outcome.Message);
+        // Two fallbacks deep is still one "(fallback)" — seen as "Wikipedia (fallback) (fallback)" live.
+        Assert.Equal("Wikipedia (fallback)", outcome.SourceLabel);
+    }
+
+    [Fact]
+    public void AnInstalledStoreIsTriedBeforeTheBundledDomains()
+    {
+        var log = new List<string>();
+        var outcome = DomainModelSourceFactory.Create(new DiscoveryConfig(),
+            () => new Recording("Wikipedia", false, log), Down(),
+            bundled: () => new Recording("Bundled", true, log), wikipediaIsLocal: true).Discover("x");
+
+        Assert.Equal(new[] { "Wikipedia", "Bundled" }, log);
+        Assert.Contains("Wikipedia found nothing. Falling back to the built-in domains.", outcome.Message);
+    }
+
+    [Fact]
+    public void OllamaThatAnswersIsNeverFollowedByTheOthers()
+    {
+        var log = new List<string>();
+        DomainModelSourceFactory.Create(new DiscoveryConfig(),
+            () => new Recording("Wikipedia", true, log),
+            new FakeOllamaClient { Available = true, Roster = OneClass(), Detail = OneClass() },
+            bundled: () => new Recording("Bundled", true, log)).Discover("a shop");
+
+        Assert.Empty(log);
+    }
+
+    [Fact]
+    public void PinnedToWikipediaTheBundledDomainsStillCatchAFailure()
+    {
+        var log = new List<string>();
+        DomainModelSourceFactory.Create(new DiscoveryConfig { Source = DiscoveryConfig.WikipediaSource },
+            () => new Recording("Wikipedia", false, log), Down(),
+            bundled: () => new Recording("Bundled", true, log)).Discover("x");
+
+        Assert.Equal(new[] { "Wikipedia", "Bundled" }, log);
+    }
 }

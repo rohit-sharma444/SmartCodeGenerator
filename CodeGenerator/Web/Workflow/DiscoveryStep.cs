@@ -5,6 +5,7 @@ using DataIngestion.Normalization;
 using DataIngestion.Schema;
 using DataIngestion.Schema.Readers;
 using DomainDiscovery;
+using DomainDiscovery.Bundled;
 using DomainDiscovery.Model;
 
 namespace CodeGenerator.Web.Workflow;
@@ -121,9 +122,14 @@ internal static class DiscoveryStep
     {
         var cacheDir = Path.Combine(workspaceRoot, ".dd-cache");
 
+        // The store, if one is installed, is tried before the built-in domains; the online API after.
+        var config = DiscoveryConfig.Load();
+        var storePath = WikipediaStoreLocation.Resolve(config);
         var source = DomainModelSourceFactory.Create(
-            DiscoveryConfig.Load(),
-            () => new WikipediaDomainModelSource(DomainDiscoveryPipeline.CreateDefault(cacheDir)));
+            config,
+            () => new WikipediaDomainModelSource(DomainDiscoveryPipeline.CreateDefault(cacheDir, storePath)),
+            bundled: BundledDomainSource.CreateDefault,
+            wikipediaIsLocal: File.Exists(storePath));
 
         return source.Discover(description, onProgress);
     }

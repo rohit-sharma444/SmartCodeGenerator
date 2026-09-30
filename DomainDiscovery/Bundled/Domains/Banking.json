@@ -1,0 +1,94 @@
+{
+  "name": "Banking",
+  "self": [
+    "bank"
+  ],
+  "terms": {
+    "online banking": 3,
+    "mobile banking": 3,
+    "internet banking": 3,
+    "bank": 2,
+    "account": 1,
+    "deposit": 1,
+    "withdrawal": 1,
+    "transfer": 1
+  },
+  "classes": [
+    {
+      "name": "Customer",
+      "role": "Party",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "Name",
+          "type": "string"
+        },
+        {
+          "name": "Email",
+          "type": "string"
+        },
+        {
+          "name": "DateOfBirth",
+          "type": "DateTime"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "BankAccount",
+      "role": "Document",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "CustomerId",
+          "type": "int"
+        },
+        {
+          "name": "AccountNumber",
+          "type": "string"
+        },
+        {
+          "name": "AccountType",
+          "type": "string"
+        },
+        {
+          "name": "OpenedOn",
+          "type": "DateTime"
+        },
+        {
+          "name": "Balance",
+          "type": "decimal"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "AccountTransaction",
+      "role": "Transaction",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "BankAccountId",
+          "type": "int"
+        },
+        {
+          "name": "Amount",
+          "type": "decimal"
+        },
+        {
+          "name": "Kind",
+          "type": "string"
+        },
+        {
+          "name": "PostedAt",
+          "type": "DateTime"
+        },
+        {
+          "name": "Reference",
+          "type": "string"
+        }
+      ],
+      "relationships": []
+    }
+  ]
+}

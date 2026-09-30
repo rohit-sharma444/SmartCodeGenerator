@@ -1,0 +1,108 @@
+{
+  "name": "Events",
+  "self": [
+    "conference",
+    "festival",
+    "concert"
+  ],
+  "terms": {
+    "conference": 3,
+    "festival": 3,
+    "concert": 3,
+    "event": 1,
+    "attendee": 1,
+    "ticket": 1,
+    "venue": 1,
+    "speaker": 1
+  },
+  "classes": [
+    {
+      "name": "Venue",
+      "role": "Place",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "Name",
+          "type": "string"
+        },
+        {
+          "name": "Address",
+          "type": "string"
+        },
+        {
+          "name": "Capacity",
+          "type": "int"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "ScheduledEvent",
+      "role": "Event",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "VenueId",
+          "type": "int"
+        },
+        {
+          "name": "Title",
+          "type": "string"
+        },
+        {
+          "name": "StartsAt",
+          "type": "DateTime"
+        },
+        {
+          "name": "EndsAt",
+          "type": "DateTime"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "Attendee",
+      "role": "Party",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "Name",
+          "type": "string"
+        },
+        {
+          "name": "Email",
+          "type": "string"
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "name": "Ticket",
+      "role": "Transaction",
+      "purpose": "",
+      "properties": [
+        {
+          "name": "ScheduledEventId",
+          "type": "int"
+        },
+        {
+          "name": "AttendeeId",
+          "type": "int"
+        },
+        {
+          "name": "Price",
+          "type": "decimal"
+        },
+        {
+          "name": "PurchasedOn",
+          "type": "DateTime"
+        },
+        {
+          "name": "SeatNumber",
+          "type": "string"
+        }
+      ],
+      "relationships": []
+    }
+  ]
+}

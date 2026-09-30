@@ -10,21 +10,56 @@ public static class DomainModelSourceFactory
     /// Ollama path must not pay that cost merely to have a fallback available.
     /// </param>
     /// <param name="client">Injected by tests. Built from <paramref name="config"/> otherwise.</param>
+    /// <param name="bundled">
+    /// The built-in domains. Null leaves the chain exactly as it was before they existed.
+    /// </param>
+    /// <param name="wikipediaIsLocal">
+    /// Whether <paramref name="wikipedia"/> reads an installed store rather than the online API. An
+    /// installed store is tried before the built-in domains; the online API after them.
+    /// </param>
     public static IDomainModelSource Create(
         DiscoveryConfig config,
         Func<IDomainModelSource> wikipedia,
-        IOllamaClient? client = null)
+        IOllamaClient? client = null,
+        Func<IDomainModelSource>? bundled = null,
+        bool wikipediaIsLocal = false)
     {
-        // Chosen deliberately: nothing to report.
+        // Chosen deliberately: nothing to report. The built-in domains still catch a Wikipedia
+        // that recognised nothing, since being pinned to Wikipedia is a preference, not a wish
+        // for an empty model.
         if (string.Equals(config.Source, DiscoveryConfig.WikipediaSource, StringComparison.OrdinalIgnoreCase))
-            return wikipedia();
+            return bundled is null
+                ? wikipedia()
+                : new FallbackWhenUnsuccessfulSource(wikipedia(), bundled, BundledName);
+
+        // Everything after Ollama, in the agreed order: an installed store, then the built-in
+        // domains, then online Wikipedia. The one wikipedia factory still decides store-or-online
+        // for itself; this decides only where the built-in domains go around it.
+        Func<IDomainModelSource> offline;
+        string offlineName;
+
+        if (bundled is null)
+        {
+            offline = wikipedia;
+            offlineName = WikipediaName;
+        }
+        else if (wikipediaIsLocal)
+        {
+            offline = () => new FallbackWhenUnsuccessfulSource(wikipedia(), bundled, BundledName);
+            offlineName = WikipediaName;
+        }
+        else
+        {
+            offline = () => new FallbackWhenUnsuccessfulSource(bundled(), wikipedia, WikipediaName);
+            offlineName = BundledName;
+        }
 
         if (!string.Equals(config.Source, DiscoveryConfig.OllamaSource, StringComparison.OrdinalIgnoreCase))
             return new AnnotatedFallbackSource(
-                wikipedia,
+                offline,
                 $"Discovery source \"{config.Source}\" was not recognised (expected "
                 + $"\"{DiscoveryConfig.OllamaSource}\" or \"{DiscoveryConfig.WikipediaSource}\"). "
-                + "Falling back to Wikipedia.");
+                + $"Falling back to {offlineName}.");
 
         client ??= new OllamaClient(config);
 
@@ -32,12 +67,16 @@ public static class DomainModelSourceFactory
         // unreachable Ollama costs one probe rather than a long timeout.
         if (client.IsAvailable())
             return new FallbackWhenUnsuccessfulSource(
-                new OllamaDomainModelSource(client, config.Model, config.Phases), wikipedia);
+                new OllamaDomainModelSource(client, config.Model, config.Phases), offline, offlineName);
 
         return new AnnotatedFallbackSource(
-            wikipedia,
-            $"{config.Model} (Ollama) was configured but did not answer. Falling back to Wikipedia.");
+            offline,
+            $"{config.Model} (Ollama) was configured but did not answer. Falling back to {offlineName}.");
     }
+
+    private const string WikipediaName = "Wikipedia";
+    private const string BundledName = "the built-in domains";
+    private const string FallbackTag = " (fallback)";
 
     /// <summary>
     /// Composes the outcome of a source that ran only because another one could not — so the
@@ -52,7 +91,11 @@ public static class DomainModelSourceFactory
     /// </remarks>
     private static DiscoveryOutcome Annotate(DiscoveryOutcome outcome, string reason) => outcome with
     {
-        SourceLabel = $"{outcome.SourceLabel} (fallback)",
+        // Once, however many fallbacks deep: Ollama -> built-in domains -> Wikipedia is two
+        // annotations, and the label said "Wikipedia (fallback) (fallback)".
+        SourceLabel = outcome.SourceLabel.EndsWith(FallbackTag, StringComparison.Ordinal)
+            ? outcome.SourceLabel
+            : outcome.SourceLabel + FallbackTag,
         Message = outcome.Message is null ? reason : $"{reason} {outcome.Message}"
     };
 
@@ -92,12 +135,14 @@ public static class DomainModelSourceFactory
     {
         private readonly IDomainModelSource _preferred;
         private readonly Func<IDomainModelSource> _fallback;
+        private readonly string _fallbackName;
 
         public FallbackWhenUnsuccessfulSource(
-            IDomainModelSource preferred, Func<IDomainModelSource> fallback)
+            IDomainModelSource preferred, Func<IDomainModelSource> fallback, string fallbackName)
         {
             _preferred = preferred;
             _fallback = fallback;
+            _fallbackName = fallbackName;
         }
 
         public DiscoveryOutcome Discover(string description, Action<DiscoveryProgress>? onProgress = null)
@@ -112,7 +157,7 @@ public static class DomainModelSourceFactory
             // source.
             return Annotate(
                 _fallback().Discover(description, onProgress),
-                $"{outcome.Message} Falling back to Wikipedia.");
+                $"{outcome.Message} Falling back to {_fallbackName}.");
         }
     }
 }
