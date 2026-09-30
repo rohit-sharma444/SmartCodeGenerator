@@ -185,6 +185,9 @@ public sealed class GoldenSetTests : IDisposable
     /// The gate every learned phrase is committed through. A phrasing learned from one user's
     /// retry is evidence for THAT phrasing; this is the check that it does not pull a nearby
     /// golden paraphrase over to the wrong intent, or split a vote that used to succeed.
+    /// Checked line by line as well as in total: a batch that wins one golden answer and loses
+    /// another scores level, and a vote split into a decline adds no wrong answer either -
+    /// "what project am I on" did exactly that to "what projects do i have".
     /// The_golden_set_is_not_drawn_from_the_corpus separately refuses a learned line that
     /// simply copies a golden phrasing, which would raise this score by memorising the test.
     /// </remarks>
@@ -203,6 +206,9 @@ public sealed class GoldenSetTests : IDisposable
         _output.WriteLine($"without: correct {without.Correct}, wrong {without.WrongConfident}");
         _output.WriteLine($"with:    correct {with.Correct}, wrong {with.WrongConfident}");
 
+        var lost = without.CorrectTexts.Except(with.CorrectTexts).ToList();
+        Assert.True(lost.Count == 0,
+            $"the learned phrasings cost golden answer(s) that were right without them: {string.Join("; ", lost)}");
         Assert.True(with.Correct >= without.Correct,
             $"the learned phrasings cost {without.Correct - with.Correct} correct answer(s)");
         Assert.True(with.WrongConfident <= without.WrongConfident,
@@ -211,7 +217,7 @@ public sealed class GoldenSetTests : IDisposable
 
     /// <summary>The shipped-threshold score of a resolver over exactly <paramref name="documents"/>,
     /// in an index of its own so the shared one the sweep uses is left alone.</summary>
-    private (int Correct, int WrongConfident) MeasureOver(IReadOnlyList<CorpusDocument> documents, string name)
+    private (int Correct, int WrongConfident, IReadOnlyList<string> CorrectTexts) MeasureOver(IReadOnlyList<CorpusDocument> documents, string name)
     {
         var model = ModelRegistry.DefaultEmbeddingModel;
         _embedder ??= new OnnxEmbeddingProvider(model.ModelPath, model.VocabPath, model.ModelId);
@@ -224,18 +230,19 @@ public sealed class GoldenSetTests : IDisposable
             floor: AiConfig.DefaultConfidenceFloor, minTopScore: AiConfig.DefaultMinTopScore,
             budget: TimeSpan.FromSeconds(30));
 
-        int correct = 0, wrong = 0;
+        var correct = new List<string>();
+        var wrong = 0;
 
         foreach (var (text, expected) in GoldenSet())
         {
             var result = resolver.Resolve(text, CancellationToken.None);
 
             if (result is null) continue;
-            if (result.Intent == expected) correct++;
+            if (result.Intent == expected) correct.Add(text);
             else wrong++;
         }
 
-        return (correct, wrong);
+        return (correct.Count, wrong, correct);
     }
 
     [Fact]

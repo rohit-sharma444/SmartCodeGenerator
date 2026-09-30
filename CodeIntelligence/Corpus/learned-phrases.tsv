@@ -2,3 +2,8 @@
 # One per line: <phrase><TAB><IntentType>. Candidates come from `show learning`, which writes
 # them to .codegen\phrase-candidates.tsv in the workspace; review them, copy the good ones here.
 # GoldenSetTests then fail the build if these lower the score or copy a golden-set phrasing.
+whip up a class	CreateClass
+bring back class	RestoreClass
+put a field on	CreateProperty
+give me a list of my classes	ListClasses
+spin up a project	CreateProject

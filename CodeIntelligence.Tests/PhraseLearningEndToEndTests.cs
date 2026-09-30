@@ -38,7 +38,10 @@ public sealed class PhraseLearningEndToEndTests : IDisposable
     public void A_phrasing_learned_from_one_retry_is_understood_the_next_time()
     {
         IntentRepository.Initialize();
-        var shipped = CorpusHarvester.Harvest();
+        // Without learned-phrases.tsv, whose first batch taught "whip up a class" for real.
+        var shipped = CorpusHarvester.Harvest()
+            .Where(d => d.SourceKind != CorpusSourceKind.Learned)
+            .ToList();
 
         // Before: not understood - declined, or taken to mean something else.
         const string nextTime = "whip up a class Customer";
