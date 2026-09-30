@@ -263,6 +263,15 @@ public static class CommandDictionary
             Description = "Renames a property on a class. Aliases: field for property; on/of for in.",
             Example = "rename property Name to FullName in Employee"
         },
+        new()
+        {
+            Category = "Properties",
+            Command = "change type of <property> to <type> in <class name>",
+            Description = "Changes a property's type to any C# type (int, decimal?, List<string>). "
+                        + "An initial value written for the old type is removed. "
+                        + "Also: retype property <property> to <type> in <class name>.",
+            Example = "change type of Pages to int in Book"
+        },
 #endregion
 
 #region"Methods"        
@@ -279,6 +288,21 @@ public static class CommandDictionary
             Command = "show methods <class name>",
             Description = "Lists all methods in a class.",
             Example = "show methods of Employee"
+        },
+        new()
+        {
+            Category = "Methods",
+            Command = "remove method <method name> from <class name>",
+            Description = "Removes a method from a class. When the name is overloaded it lists "
+                        + "them and removes none.",
+            Example = "remove method Save from Employee"
+        },
+        new()
+        {
+            Category = "Methods",
+            Command = "rename method <old> to <new> in <class name>",
+            Description = "Renames a method, every overload of it. References elsewhere are not updated.",
+            Example = "rename method Save to Store in Employee"
         },
         #endregion
 
@@ -337,6 +361,22 @@ public static class CommandDictionary
             Command = "show business validation <class name>",
             Description = "Show business rules for a class.",
             Example = "show business validation Booking"
+        },
+        new()
+        {
+            Category = "Validation",
+            Command = "remove validation from <class name>.<property>",
+            Description = "Removes every data rule on a field. Also: remove validation on <property> "
+                        + "in <class name>; or remove validation <number> from <class name>, "
+                        + "with the number show validation prints.",
+            Example = "remove validation from Employee.Name"
+        },
+        new()
+        {
+            Category = "Validation",
+            Command = "remove business validation <number> from <class name>",
+            Description = "Removes one business rule, by the number show business validation prints.",
+            Example = "remove business validation 1 from Booking"
         },
         #endregion
 

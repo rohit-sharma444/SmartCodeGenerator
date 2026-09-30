@@ -67,6 +67,38 @@ public static class CommandFront
         new(@"^rename\s+(?:property|field)\s+(?<old>\w+)\s+to\s+(?<new>\w+)(?:\s+(?:in|on|of)\s+(?<class>\w+))?$",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    // `remove method <name> from <Class>` / `delete method <name> in <Class>`. Ahead of the
+    // mapper, whose (delete|remove) + property rule would otherwise not see a method at all.
+    private static readonly Regex DeleteMethodRe =
+        new(@"^(?:remove|delete)\s+method\s+(?<method>\w+)(?:\s+(?:from|in|on|of)\s+(?<class>\w+))?$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    // `rename method <old> to <new> in <Class>`, shaped like RenamePropertyRe.
+    private static readonly Regex RenameMethodRe =
+        new(@"^rename\s+method\s+(?<old>\w+)\s+to\s+(?<new>\w+)(?:\s+(?:in|on|of)\s+(?<class>\w+))?$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    // `change (the) type of (property|field) <name> to <type> in <Class>` and
+    // `retype (property|field) <name> to <type> in <Class>`. The type is any run of
+    // non-spaces so `List<string>` and `decimal?` arrive whole and a malformed one reaches
+    // the handler to be refused by name, rather than falling through to the mapper.
+    // `retype <class> <field> <type>` without "property" is the build-app review loop's own.
+    private static readonly Regex ChangePropertyTypeRe =
+        new(@"^(?:change\s+(?:the\s+)?type\s+of|retype)\s+(?:(?:property|field)\s+)?(?<property>\w+)\s+to\s+(?<type>\S+)(?:\s+(?:in|on|of)\s+(?<class>\w+))?$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    // `remove (business) validation` naming a field — `from Employee.Name` or, as add
+    // validation says it, `on Name in Employee` — or a number `show validation` printed:
+    // `2 from Employee`. A bare `from Employee` is matched too, so the handler can say
+    // which of those to type instead of the mapper guessing at it.
+    private static readonly Regex RemoveValidationRe =
+        new(@"^(?:remove|delete)\s+(?<business>business\s+)?validation(?:\s+rules?)?\s+"
+            + @"(?:(?<number>\d+)\s+(?:from|in|on|of)\s+(?<class>\w+)"
+            + @"|from\s+(?<class>\w+)\.(?<property>\w+)"
+            + @"|(?:on|from)\s+(?<property>\w+)\s+(?:in|on|of)\s+(?<class>\w+)"
+            + @"|(?:from|in|on|of)\s+(?<class>\w+))$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     /// <summary>The intents the regex guards in <see cref="Parse"/> can produce.
     /// Hand-maintained: the guards are individual patterns, not a table.
     /// ADD TO THIS LIST WHEN YOU ADD A GUARD — the reachable-intent gate test
@@ -81,7 +113,12 @@ public static class CommandFront
         IntentType.ShowValidation,
         IntentType.GenerateValidator,
         IntentType.ClassInherit,
-        IntentType.RenameProperty
+        IntentType.RenameProperty,
+        IntentType.DeleteMethod,
+        IntentType.RenameMethod,
+        IntentType.ChangePropertyType,
+        IntentType.RemoveValidation,
+        IntentType.RemoveBusinessValidation
     ];
 
     public static ParsedCommand Parse(string input, string workspace)
@@ -145,6 +182,58 @@ public static class CommandFront
             return renameCmd;
         }
 
+        var deleteMethodMatch = DeleteMethodRe.Match(text);
+        if (deleteMethodMatch.Success)
+            return new ParsedCommand
+            {
+                Intent = IntentType.DeleteMethod,
+                MethodName = deleteMethodMatch.Groups["method"].Value.Trim(),
+                ClassName = ClassOrCurrent(deleteMethodMatch),
+                OriginalSentence = input ?? string.Empty,
+                Confidence = 1.0
+            };
+
+        var renameMethodMatch = RenameMethodRe.Match(text);
+        if (renameMethodMatch.Success)
+            return new ParsedCommand
+            {
+                Intent = IntentType.RenameMethod,
+                MethodName = renameMethodMatch.Groups["old"].Value.Trim(),
+                NewMethodName = renameMethodMatch.Groups["new"].Value.Trim(),
+                ClassName = ClassOrCurrent(renameMethodMatch),
+                OriginalSentence = input ?? string.Empty,
+                Confidence = 1.0
+            };
+
+        var changeTypeMatch = ChangePropertyTypeRe.Match(text);
+        if (changeTypeMatch.Success)
+            return new ParsedCommand
+            {
+                Intent = IntentType.ChangePropertyType,
+                PropertyName = changeTypeMatch.Groups["property"].Value.Trim(),
+                PropertyType = changeTypeMatch.Groups["type"].Value.Trim(),
+                ClassName = ClassOrCurrent(changeTypeMatch),
+                OriginalSentence = input ?? string.Empty,
+                Confidence = 1.0
+            };
+
+        var removeValidationMatch = RemoveValidationRe.Match(text);
+        if (removeValidationMatch.Success)
+            return new ParsedCommand
+            {
+                Intent = removeValidationMatch.Groups["business"].Success
+                    ? IntentType.RemoveBusinessValidation
+                    : IntentType.RemoveValidation,
+                ClassName = removeValidationMatch.Groups["class"].Value.Trim(),
+                PropertyName = removeValidationMatch.Groups["property"].Value.Trim(),
+                RuleNumber = removeValidationMatch.Groups["number"].Success
+                    && int.TryParse(removeValidationMatch.Groups["number"].Value, out var number)
+                        ? number
+                        : null,
+                OriginalSentence = input ?? string.Empty,
+                Confidence = 1.0
+            };
+
         if (AddBusinessValidationRe.IsMatch(text))
         {
             var cmd = CommandEntityExtractor.Extract(text, IntentType.AddBusinessValidation, workspace);
@@ -190,6 +279,12 @@ public static class CommandFront
         command.Confidence = analysis?.Confidence ?? 0d;
         return command;
     }
+
+    // A guard's optional `class` group, or the class the session is on.
+    private static string ClassOrCurrent(Match match) =>
+        match.Groups["class"].Success
+            ? match.Groups["class"].Value.Trim()
+            : SessionContext.CurrentClass ?? string.Empty;
 
     /// <summary>Outcome of running one command: whether the action succeeded
     /// (<paramref name="Handled"/>) and, distinctly, whether the input was a
