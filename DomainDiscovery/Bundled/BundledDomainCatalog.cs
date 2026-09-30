@@ -20,12 +20,25 @@ public sealed class BundledDomainCatalog
 
     public IReadOnlyList<BundledDomain> Domains { get; }
 
+    /// <summary>The longest phrase term, in words.</summary>
+    private const int LongestPhrase = 3;
+
     public DomainMatch? Match(string? description)
     {
-        // Distinct stems: "books books books" is one piece of evidence, not three.
-        var words = WordStem.Words(description ?? string.Empty)
+        // Every run of one to three adjacent words, keyed like a term: "point of sale" is a phrase
+        // term and only counts when its words stand side by side. Distinct keys: "books books
+        // books" is one piece of evidence, not three.
+        var all = WordStem.Words(description ?? string.Empty);
+        var words = Enumerable.Range(1, LongestPhrase)
+            .SelectMany(n => Enumerable.Range(0, Math.Max(0, all.Count - n + 1))
+                .Select(i => (
+                    Word: string.Join(' ', all.Skip(i).Take(n).Select(w => w.Word)),
+                    Stem: string.Join(' ', all.Skip(i).Take(n).Select(w => w.Stem)),
+                    Start: i)))
             .GroupBy(w => w.Stem)
             .Select(g => g.First())
+            .OrderBy(w => w.Start)
+            .Select(w => (w.Word, w.Stem))
             .ToList();
 
         DomainMatch? best = null;

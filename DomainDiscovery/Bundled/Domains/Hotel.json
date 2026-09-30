@@ -1,5 +1,10 @@
 {
   "name": "Hotel",
+  "self": [
+    "hotel",
+    "guesthouse",
+    "motel"
+  ],
   "terms": {
     "hotel": 3,
     "guesthouse": 3,

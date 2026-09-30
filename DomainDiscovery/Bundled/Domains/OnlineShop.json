@@ -1,9 +1,16 @@
 {
   "name": "Online shop",
+  "self": [
+    "shop",
+    "store",
+    "webshop"
+  ],
   "terms": {
-    "shop": 3,
     "ecommerce": 3,
+    "e-commerce": 3,
     "webshop": 3,
+    "online shop": 3,
+    "shop": 2,
     "online": 1,
     "product": 1,
     "cart": 1,

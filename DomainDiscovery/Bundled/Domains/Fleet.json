@@ -1,5 +1,8 @@
 {
   "name": "Fleet",
+  "self": [
+    "fleet"
+  ],
   "terms": {
     "fleet": 3,
     "vehicle": 1,

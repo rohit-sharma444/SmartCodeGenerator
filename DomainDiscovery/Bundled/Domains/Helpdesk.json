@@ -1,8 +1,14 @@
 {
   "name": "Helpdesk",
+  "self": [
+    "helpdesk",
+    "servicedesk"
+  ],
   "terms": {
     "helpdesk": 3,
     "servicedesk": 3,
+    "help desk": 3,
+    "service desk": 3,
     "ticket": 1,
     "support": 1,
     "issue": 1,

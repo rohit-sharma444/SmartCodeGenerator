@@ -1,5 +1,10 @@
 {
   "name": "Events",
+  "self": [
+    "conference",
+    "festival",
+    "concert"
+  ],
   "terms": {
     "conference": 3,
     "festival": 3,

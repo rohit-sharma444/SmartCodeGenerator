@@ -1,7 +1,11 @@
 {
   "name": "CRM",
+  "self": [
+    "crm"
+  ],
   "terms": {
     "crm": 3,
+    "customer relationship": 3,
     "lead": 1,
     "contact": 1,
     "opportunity": 1,

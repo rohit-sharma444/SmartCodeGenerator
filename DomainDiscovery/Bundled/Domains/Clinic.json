@@ -1,5 +1,10 @@
 {
   "name": "Clinic",
+  "self": [
+    "clinic",
+    "hospital",
+    "surgery"
+  ],
   "terms": {
     "clinic": 3,
     "hospital": 3,

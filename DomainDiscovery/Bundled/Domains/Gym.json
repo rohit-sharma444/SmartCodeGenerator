@@ -1,5 +1,8 @@
 {
   "name": "Gym",
+  "self": [
+    "gym"
+  ],
   "terms": {
     "gym": 3,
     "fitness": 3,

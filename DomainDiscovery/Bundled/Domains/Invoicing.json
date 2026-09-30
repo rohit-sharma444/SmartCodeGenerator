@@ -1,10 +1,10 @@
 {
   "name": "Invoicing",
+  "self": [],
   "terms": {
     "invoice": 3,
     "invoicing": 3,
-    "billing": 3,
-    "bill": 1,
+    "billing": 2,
     "client": 1,
     "payment": 1,
     "quote": 1

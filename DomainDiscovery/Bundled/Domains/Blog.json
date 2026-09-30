@@ -1,5 +1,8 @@
 {
   "name": "Blog",
+  "self": [
+    "blog"
+  ],
   "terms": {
     "blog": 3,
     "post": 1,

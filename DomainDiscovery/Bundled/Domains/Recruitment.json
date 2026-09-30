@@ -1,5 +1,8 @@
 {
   "name": "Recruitment",
+  "self": [
+    "recruitment"
+  ],
   "terms": {
     "recruitment": 3,
     "recruiting": 3,

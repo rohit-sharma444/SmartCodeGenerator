@@ -1,11 +1,14 @@
 {
   "name": "Purchasing",
+  "self": [
+    "procurement"
+  ],
   "terms": {
-    "purchasing": 3,
     "procurement": 3,
+    "purchase order": 3,
+    "purchasing": 2,
     "supplier": 1,
     "vendor": 1,
-    "purchase": 1,
     "order": 1
   },
   "classes": [

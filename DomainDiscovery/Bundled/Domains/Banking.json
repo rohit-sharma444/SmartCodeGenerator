@@ -1,8 +1,13 @@
 {
   "name": "Banking",
+  "self": [
+    "bank"
+  ],
   "terms": {
-    "bank": 3,
-    "banking": 3,
+    "online banking": 3,
+    "mobile banking": 3,
+    "internet banking": 3,
+    "bank": 2,
     "account": 1,
     "deposit": 1,
     "withdrawal": 1,

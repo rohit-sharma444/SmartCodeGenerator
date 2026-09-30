@@ -1,5 +1,9 @@
 {
   "name": "School",
+  "self": [
+    "school",
+    "college"
+  ],
   "terms": {
     "school": 3,
     "college": 3,
@@ -7,7 +11,9 @@
     "course": 1,
     "teacher": 1,
     "enrol": 1,
+    "enroll": 1,
     "enrolment": 1,
+    "enrollment": 1,
     "grade": 1,
     "pupil": 1
   },

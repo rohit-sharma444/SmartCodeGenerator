@@ -1,5 +1,10 @@
 {
   "name": "Restaurant",
+  "self": [
+    "restaurant",
+    "cafe",
+    "bistro"
+  ],
   "terms": {
     "restaurant": 3,
     "cafe": 3,

@@ -58,18 +58,42 @@ public class BundledDomainCatalogTests
     }
 
     [Fact]
-    public void ParseRejectsATermWithASpaceOrAWeightOutOfRange()
+    public void ParseRejectsATermThatIsNotWordsOrAWeightOutOfRange()
     {
-        Assert.Throws<FormatException>(() => Domain("X", "\"point of sale\": 3"));
+        Assert.Throws<FormatException>(() => Domain("X", "\"24x7\": 3"));
         Assert.Throws<FormatException>(() => Domain("X", "\"till\": 4"));
         Assert.Throws<FormatException>(() => Domain("X", "\"till\": 0"));
     }
 
     [Fact]
-    public void WordsSharingAStemKeepTheStrongerWeight()
+    public void TermsSharingAStemAtDifferentWeightsAreRefused()
     {
-        var domain = Domain("Purchasing", "\"purchasing\": 3, \"purchase\": 1");
-        Assert.Equal(3, domain.Terms[WordStem.Of("purchase")]);
+        // Merged, the stronger weight promoted the weaker word: "customers purchase products"
+        // took purchasing's 3 and picked Purchasing. The file has to say one weight.
+        Assert.Throws<FormatException>(() => Domain("Purchasing", "\"purchasing\": 3, \"purchase\": 1"));
+        Assert.Equal(3, Domain("Invoicing", "\"invoice\": 3, \"invoicing\": 3").Terms[WordStem.Of("invoice")]);
+    }
+
+    [Fact]
+    public void APhraseTermMatchesItsWordsSideBySideAndIsReportedAsTyped()
+    {
+        var catalog = new BundledDomainCatalog([Domain("Point of sale", "\"point of sale\": 3, \"till\": 1")]);
+
+        var match = catalog.Match("a Point-of-Sale system");
+        Assert.Equal("Point of sale", match!.Domain.Name);
+        Assert.Equal(new[] { "Point of Sale" }, match.MatchedWords);
+        Assert.Null(catalog.Match("the point is the sale"));   // the words, but not side by side
+    }
+
+    [Fact]
+    public void SelfDefaultsToTheNameAndAFileCanSayOtherwise()
+    {
+        Assert.Equal(new[] { "library" }, Domain("Library", "\"library\": 3").Self);
+
+        var rental = BundledDomain.Parse("""
+            { "name": "Property rental", "self": [], "terms": { "landlord": 3 }, "classes": [] }
+            """);
+        Assert.Empty(rental.Self);
     }
 
     [Fact]

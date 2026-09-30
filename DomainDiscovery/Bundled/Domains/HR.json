@@ -1,8 +1,12 @@
 {
   "name": "HR",
+  "self": [
+    "hr"
+  ],
   "terms": {
     "hr": 3,
     "personnel": 3,
+    "human resources": 3,
     "employee": 1,
     "department": 1,
     "leave": 1,

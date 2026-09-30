@@ -124,5 +124,35 @@ public class CatalogContentTests
     [Theory]
     [InlineData("a book club")]
     [InlineData("a knitting pattern tracker")]
+    [InlineData("an app that lets staff track tasks")]           // "lets" is not "letting"
+    [InlineData("a tool that lets us manage our work")]
+    [InlineData("split the bill between friends")]               // "bill" is not "billing"
+    [InlineData("a coffee shop")]                                // one word is not a domain
+    [InlineData("a food bank")]
+    [InlineData("count the days till the deadline")]
     public void NearMissesDoNotMatch(string description) => Assert.Null(BundledDomainCatalog.Default.Match(description));
+
+    // Found by the final review: each of these picked a wrong domain, or none.
+    [Theory]
+    [InlineData("a veterinary clinic", "Veterinary")]
+    [InlineData("a vet clinic", "Veterinary")]
+    [InlineData("an animal hospital", "Veterinary")]
+    [InlineData("a shop that rents cars", "Car rental")]
+    [InlineData("a car rental shop", "Car rental")]
+    [InlineData("a point of sale system", "Point of sale")]
+    [InlineData("a help desk for support tickets", "Helpdesk")]
+    [InlineData("an e-commerce site", "Online shop")]
+    [InlineData("a human resources system", "HR")]
+    [InlineData("a customer relationship management tool", "CRM")]
+    [InlineData("a project management app", "Projects and tasks")]
+    [InlineData("students enroll in courses", "School")]
+    [InlineData("online banking", "Banking")]
+    public void CommonPhrasingsFindTheRightDomain(string description, string domain)
+        => Assert.Equal(domain, BundledDomainCatalog.Default.Match(description)?.Domain.Name);
+
+    [Theory]
+    [InlineData("an online store where customers purchase products", "Purchasing")]
+    [InlineData("a bike rental shop", "Online shop")]
+    public void CommonPhrasingsDoNotFindTheWrongDomain(string description, string wrong)
+        => Assert.NotEqual(wrong, BundledDomainCatalog.Default.Match(description)?.Domain.Name);
 }

@@ -1,9 +1,9 @@
 {
   "name": "Property rental",
+  "self": [],
   "terms": {
     "landlord": 3,
     "tenant": 3,
-    "letting": 3,
     "lease": 1,
     "rent": 1,
     "flat": 1,

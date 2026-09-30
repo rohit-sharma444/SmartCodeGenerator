@@ -1,7 +1,10 @@
 {
   "name": "Projects and tasks",
+  "self": [],
   "terms": {
     "kanban": 3,
+    "project management": 3,
+    "task management": 3,
     "project": 2,
     "task": 2,
     "milestone": 1,

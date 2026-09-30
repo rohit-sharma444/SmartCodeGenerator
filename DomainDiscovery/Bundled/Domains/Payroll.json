@@ -1,5 +1,8 @@
 {
   "name": "Payroll",
+  "self": [
+    "payroll"
+  ],
   "terms": {
     "payroll": 3,
     "payslip": 3,

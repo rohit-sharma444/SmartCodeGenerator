@@ -1,5 +1,8 @@
 {
   "name": "Inventory",
+  "self": [
+    "inventory"
+  ],
   "terms": {
     "inventory": 3,
     "warehouse": 3,

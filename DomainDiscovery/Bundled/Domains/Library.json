@@ -1,5 +1,8 @@
 {
   "name": "Library",
+  "self": [
+    "library"
+  ],
   "terms": {
     "library": 3,
     "librarian": 3,
