@@ -12,8 +12,6 @@ namespace CodeGenerator.App;
 internal sealed class BatchCommand
 {
     private const string Keyword = "batch";
-    private const int MaxSnapshotFiles = 5_000;
-    private const long MaxSnapshotBytes = 200L * 1024 * 1024;
 
     /// <summary>Whether <paramref name="input"/> opens a batch.</summary>
     internal static bool IsBatch(string input)
@@ -167,7 +165,7 @@ internal sealed class BatchCommand
     {
         var sizing = WorkspaceSnapshot.Measure(workspaceRoot);
 
-        if (sizing.FileCount <= MaxSnapshotFiles && sizing.Bytes <= MaxSnapshotBytes)
+        if (sizing.FileCount <= WorkspaceSnapshot.MaxFiles && sizing.Bytes <= WorkspaceSnapshot.MaxBytes)
             return true;
 
         var megabytes = sizing.Bytes / (1024.0 * 1024.0);
