@@ -906,11 +906,18 @@ where the old overwrite-without-asking behaviour is kept so that scripts are unc
 <tr><td><code>add property &lt;name&gt; &lt;type&gt; to &lt;class&gt;</code></td><td>Adds a property.</td></tr>
 <tr><td><code>list properties &lt;class&gt;</code> / <code>show properties &lt;class&gt;</code></td><td>Lists them.</td></tr>
 <tr><td><code>rename property &lt;old&gt; to &lt;new&gt; in &lt;class&gt;</code></td><td>Renames one. <code>field</code> works for <code>property</code>, and <code>on</code>/<code>of</code> for <code>in</code>.</td></tr>
-<tr><td><code>remove property &lt;name&gt; from &lt;class&gt;</code></td><td>Removes one.</td></tr>
+<tr><td><code>change type of &lt;name&gt; to &lt;type&gt; in &lt;class&gt;</code></td><td>Changes a property's type to any C# type: <code>int</code>, <code>decimal?</code>, <code>List&lt;string&gt;</code>. An initial value written for the old type (<code>= "";</code>) is removed, and the message says so. Also <code>retype property &lt;name&gt; to &lt;type&gt; in &lt;class&gt;</code>.</td></tr>
+<tr><td><code>remove property &lt;name&gt; from &lt;class&gt;</code></td><td>Removes one, and any validation rules on it.</td></tr>
 <tr><td><code>add method &lt;name&gt; to &lt;class&gt;</code></td><td>Adds a method.</td></tr>
 <tr><td><code>show methods &lt;class&gt;</code></td><td>Lists a class's methods.</td></tr>
+<tr><td><code>rename method &lt;old&gt; to &lt;new&gt; in &lt;class&gt;</code></td><td>Renames a method, every overload of it.</td></tr>
+<tr><td><code>remove method &lt;name&gt; from &lt;class&gt;</code></td><td>Removes one. When the name is overloaded it lists them and removes none.</td></tr>
 <tr><td><code>create interface &lt;name&gt;</code></td><td>Creates an interface.</td></tr>
 </table>
+
+<div class="note"><p>Renames change the declaration only. Code elsewhere that uses the old name is not
+updated, and the message says so. Renaming a property that has validation rules also warns that those
+rules still name the old field: remove them and add them again for the new name.</p></div>
 
 <h3>Relationships between classes</h3>
 
@@ -976,6 +983,9 @@ in the console.</p>
 <tr><td><code>add business validation &lt;rule&gt; in &lt;class&gt;</code></td><td>A rule about the record as a whole: <code>EndDate must be after StartDate</code>.</td></tr>
 <tr><td><code>show validation &lt;class&gt;</code></td><td>The field rules on a class.</td></tr>
 <tr><td><code>show business validation &lt;class&gt;</code></td><td>The record-level rules.</td></tr>
+<tr><td><code>remove validation from &lt;class&gt;.&lt;property&gt;</code></td><td>Removes every field rule on that property. Also <code>remove validation on &lt;property&gt; in &lt;class&gt;</code>.</td></tr>
+<tr><td><code>remove validation &lt;number&gt; from &lt;class&gt;</code></td><td>Removes one field rule, by the number <code>show validation</code> prints beside it.</td></tr>
+<tr><td><code>remove business validation &lt;number&gt; from &lt;class&gt;</code></td><td>Removes one record-level rule, numbered as <code>show business validation</code> prints them.</td></tr>
 <tr><td><code>generate validator for &lt;class&gt;</code></td><td>Writes the validator.</td></tr>
 </table>
 <h3>Rules you can write</h3>
@@ -1595,6 +1605,8 @@ own shows the shorter overview, and <code>help &lt;topic&gt;</code> shows one se
 <table>
 <tr><th>Command</th><th>Description</th><th>Example</th></tr>
 <tr><td><code>add method &lt;method name&gt; to &lt;class name&gt;</code></td><td>Adds a method to a class.</td><td><code>add method Save to Employee</code></td></tr>
+<tr><td><code>remove method &lt;method name&gt; from &lt;class name&gt;</code></td><td>Removes a method from a class. When the name is overloaded it lists them and removes none.</td><td><code>remove method Save from Employee</code></td></tr>
+<tr><td><code>rename method &lt;old&gt; to &lt;new&gt; in &lt;class name&gt;</code></td><td>Renames a method, every overload of it. References elsewhere are not updated.</td><td><code>rename method Save to Store in Employee</code></td></tr>
 <tr><td><code>show methods &lt;class name&gt;</code></td><td>Lists all methods in a class.</td><td><code>show methods of Employee</code></td></tr>
 </table>
 <h3>Projects</h3>
@@ -1616,6 +1628,7 @@ own shows the shorter overview, and <code>help &lt;topic&gt;</code> shows one se
 <table>
 <tr><th>Command</th><th>Description</th><th>Example</th></tr>
 <tr><td><code>add property</code></td><td>Adds a property to a class.</td><td><code>add property Name string to Employee</code></td></tr>
+<tr><td><code>change type of &lt;property&gt; to &lt;type&gt; in &lt;class name&gt;</code></td><td>Changes a property&#x27;s type to any C# type (int, decimal?, List&lt;string&gt;). An initial value written for the old type is removed. Also: retype property &lt;property&gt; to &lt;type&gt; in &lt;class name&gt;.</td><td><code>change type of Pages to int in Book</code></td></tr>
 <tr><td><code>list properties &lt;class name&gt;</code></td><td>Lists all properties in a class.</td><td><code>list properties of Employee</code></td></tr>
 <tr><td><code>remove property</code></td><td>Removes a property from a class.</td><td><code>remove property Name from Employee</code></td></tr>
 <tr><td><code>rename property &lt;old&gt; to &lt;new&gt; in &lt;class name&gt;</code></td><td>Renames a property on a class. Aliases: field for property; on/of for in.</td><td><code>rename property Name to FullName in Employee</code></td></tr>
@@ -1650,6 +1663,8 @@ own shows the shorter overview, and <code>help &lt;topic&gt;</code> shows one se
 <tr><td><code>add business validation &lt;rule&gt; in &lt;class name&gt;</code></td><td>Adds an entity-level business rule, spanning more than one property: comparisons (after, before, must not exceed), required-when, either/or, arithmetic (equals A times B, plus, minus, divided by) and sameness (same as, different from).</td><td><code>add business validation EndDate must be after StartDate in Booking</code></td></tr>
 <tr><td><code>add validation &lt;rule&gt; on &lt;property&gt; in &lt;class name&gt;</code></td><td>Adds a field-level data rule to a class in plain English. Understands required (or &#x27;should not be blank&#x27;), numeric bounds (between, at least, at most, greater/less than, positive, not negative, not zero, whole number), text bounds (length between, at most &lt;n&gt; characters, starts or ends with, contains, uppercase, digits only), named formats (email, URL, phone number, postcode, GUID, IP address, date), relative dates (in the past, in the future, at least &lt;n&gt; years ago, within the last &lt;n&gt; days), must match &lt;regex&gt;, and a list of allowed values.</td><td><code>add validation must be between 18 and 65 on Age in Employee</code></td></tr>
 <tr><td><code>generate validator</code></td><td>Generates a validator for a class.</td><td><code>generate validator for Employee</code></td></tr>
+<tr><td><code>remove business validation &lt;number&gt; from &lt;class name&gt;</code></td><td>Removes one business rule, by the number show business validation prints.</td><td><code>remove business validation 1 from Booking</code></td></tr>
+<tr><td><code>remove validation from &lt;class name&gt;.&lt;property&gt;</code></td><td>Removes every data rule on a field. Also: remove validation on &lt;property&gt; in &lt;class name&gt;; or remove validation &lt;number&gt; from &lt;class name&gt;, with the number show validation prints.</td><td><code>remove validation from Employee.Name</code></td></tr>
 <tr><td><code>show business validation &lt;class name&gt;</code></td><td>Show business rules for a class.</td><td><code>show business validation Booking</code></td></tr>
 <tr><td><code>show validation &lt;class name&gt;</code></td><td>Show data validation rules for a class.</td><td><code>show validation Employee</code></td></tr>
 </table>
