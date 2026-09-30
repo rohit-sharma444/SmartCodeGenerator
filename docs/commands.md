@@ -93,6 +93,8 @@
 | Command | Description | Example |
 | --- | --- | --- |
 | `add method <method name> to <class name>` | Adds a method to a class. | `add method Save to Employee` |
+| `remove method <method name> from <class name>` | Removes a method from a class. When the name is overloaded it lists them and removes none. | `remove method Save from Employee` |
+| `rename method <old> to <new> in <class name>` | Renames a method, every overload of it. References elsewhere are not updated. | `rename method Save to Store in Employee` |
 | `show methods <class name>` | Lists all methods in a class. | `show methods of Employee` |
 
 ## Projects
@@ -116,6 +118,7 @@
 | Command | Description | Example |
 | --- | --- | --- |
 | `add property` | Adds a property to a class. | `add property Name string to Employee` |
+| `change type of <property> to <type> in <class name>` | Changes a property's type to any C# type (int, decimal?, List<string>). An initial value written for the old type is removed. Also: retype property <property> to <type> in <class name>. | `change type of Pages to int in Book` |
 | `list properties <class name>` | Lists all properties in a class. | `list properties of Employee` |
 | `remove property` | Removes a property from a class. | `remove property Name from Employee` |
 | `rename property <old> to <new> in <class name>` | Renames a property on a class. Aliases: field for property; on/of for in. | `rename property Name to FullName in Employee` |
@@ -153,6 +156,8 @@
 | `add business validation <rule> in <class name>` | Adds an entity-level business rule, spanning more than one property: comparisons (after, before, must not exceed), required-when, either/or, arithmetic (equals A times B, plus, minus, divided by) and sameness (same as, different from). | `add business validation EndDate must be after StartDate in Booking` |
 | `add validation <rule> on <property> in <class name>` | Adds a field-level data rule to a class in plain English. Understands required (or 'should not be blank'), numeric bounds (between, at least, at most, greater/less than, positive, not negative, not zero, whole number), text bounds (length between, at most <n> characters, starts or ends with, contains, uppercase, digits only), named formats (email, URL, phone number, postcode, GUID, IP address, date), relative dates (in the past, in the future, at least <n> years ago, within the last <n> days), must match <regex>, and a list of allowed values. | `add validation must be between 18 and 65 on Age in Employee` |
 | `generate validator` | Generates a validator for a class. | `generate validator for Employee` |
+| `remove business validation <number> from <class name>` | Removes one business rule, by the number show business validation prints. | `remove business validation 1 from Booking` |
+| `remove validation from <class name>.<property>` | Removes every data rule on a field. Also: remove validation on <property> in <class name>; or remove validation <number> from <class name>, with the number show validation prints. | `remove validation from Employee.Name` |
 | `show business validation <class name>` | Show business rules for a class. | `show business validation Booking` |
 | `show validation <class name>` | Show data validation rules for a class. | `show validation Employee` |
 

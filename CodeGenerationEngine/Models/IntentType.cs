@@ -85,5 +85,12 @@ public enum IntentType
     // Business validation (entity-level). Appended last to keep persisted
     // integer values stable.
     AddBusinessValidation,
-    ShowBusinessValidation
+    ShowBusinessValidation,
+
+    // `change type of <property> to <type> in <class>`. Appended last to keep persisted
+    // integer values stable.
+    ChangePropertyType,
+
+    // `remove business validation <n> from <class>`; the data-rule form is RemoveValidation.
+    RemoveBusinessValidation
 }

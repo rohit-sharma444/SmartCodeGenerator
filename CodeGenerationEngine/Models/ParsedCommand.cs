@@ -19,6 +19,9 @@ public sealed class ParsedCommand
     public string MethodName { get; set; } = string.Empty;
     public string ReturnType { get; set; } = "void";
 
+    // Target name for `rename method <old> to <new>`.
+    public string NewMethodName { get; set; } = string.Empty;
+
     public List<ParameterDefinition> Parameters { get; set; } = [];
 
     public List<PropertyDefinition> Properties { get; set; } = [];
@@ -42,6 +45,9 @@ public sealed class ParsedCommand
 
     // Target name for `rename property <old> to <new>`.
     public string NewPropertyName { get; set; } = string.Empty;
+
+    // 1-based rule number for `remove validation <n> from <Class>`, as `show validation` prints it.
+    public int? RuleNumber { get; set; }
 
     public List<MethodDefinition> Methods { get; set; } = [];
 
@@ -112,6 +118,8 @@ public sealed class ParsedCommand
         ReturnType = "void";
 
         NewPropertyName = string.Empty;
+        NewMethodName = string.Empty;
+        RuleNumber = null;
 
         ValidationText = string.Empty;
 

@@ -92,8 +92,12 @@ public static class CommandHandlingService
             [IntentType.ListDeletedClasses] = HandleListDeletedClasses,
             [IntentType.CreateMethod] = HandleCreateMethod,
             [IntentType.ListMethods] = HandleListMethods,
+            [IntentType.DeleteMethod] = HandleDeleteMethod,
+            [IntentType.RenameMethod] = HandleRenameMethod,
             [IntentType.AddValidation] = HandleAddValidation,
             [IntentType.ShowValidation] = HandleShowValidation,
+            [IntentType.RemoveValidation] = ctx => RemoveRules(ctx, ValidationCategory.Data, "validation"),
+            [IntentType.RemoveBusinessValidation] = ctx => RemoveRules(ctx, ValidationCategory.Business, "business validation"),
             [IntentType.AddBusinessValidation] = HandleAddBusinessValidation,
             [IntentType.ShowBusinessValidation] = HandleShowBusinessValidation,
             [IntentType.GenerateValidator] = HandleGenerateValidator,
@@ -102,6 +106,7 @@ public static class CommandHandlingService
             [IntentType.CreateProperty] = HandleCreateProperty,
             [IntentType.DeleteProperty] = HandleDeleteProperty,
             [IntentType.RenameProperty] = HandleRenameProperty,
+            [IntentType.ChangePropertyType] = HandleChangePropertyType,
             [IntentType.ValidateProject] = HandleValidateProject,
             [IntentType.CompileProject] = HandleValidateProject
         };
@@ -334,6 +339,35 @@ public static class CommandHandlingService
         return ClassMethodLister.ListMethods(ctx.WorkspaceRoot, ctx.Command.ClassName);
     }
 
+    private static bool HandleDeleteMethod(CommandExecutionContext ctx)
+    {
+        if (string.IsNullOrWhiteSpace(ctx.Command.ClassName))
+        {
+            Console.WriteLine("No class specified for the method delete.");
+            return false;
+        }
+
+        var ok = ClassMethodEditService.DeleteMethod(
+            ctx.WorkspaceRoot, ctx.Command.ClassName, ctx.Command.MethodName, out var message);
+        Console.WriteLine(message);
+        return ok;
+    }
+
+    private static bool HandleRenameMethod(CommandExecutionContext ctx)
+    {
+        if (string.IsNullOrWhiteSpace(ctx.Command.ClassName))
+        {
+            Console.WriteLine("No class specified for the method rename.");
+            return false;
+        }
+
+        var ok = ClassMethodEditService.RenameMethod(
+            ctx.WorkspaceRoot, ctx.Command.ClassName,
+            ctx.Command.MethodName, ctx.Command.NewMethodName, out var message);
+        Console.WriteLine(message);
+        return ok;
+    }
+
     private static bool HandleAddValidation(CommandExecutionContext ctx)
     {
         return AddRules(ctx, ValidationCategory.Data,
@@ -451,6 +485,19 @@ public static class CommandHandlingService
             ctx.WorkspaceRoot, ctx.Command.ClassName,
             ctx.Command.PropertyName, out var message);
         Console.WriteLine(message);
+
+        // A rule on a field that is gone is skipped by generate validator with only a comment
+        // to show for it, so the rules go with the field.
+        if (ok)
+        {
+            var removed = ValidationRegistry.RemoveOn(ctx.Command.ClassName, ValidationCategory.Data, ctx.Command.PropertyName)
+                .Concat(ValidationRegistry.RemoveOn(ctx.Command.ClassName, ValidationCategory.Business, ctx.Command.PropertyName))
+                .ToList();
+            if (removed.Count > 0)
+                Console.WriteLine($"Also removed {removed.Count} validation rule(s) on it: "
+                    + string.Join("; ", removed.Select(r => r.Describe())));
+        }
+
         return ok;
     }
 
@@ -474,6 +521,34 @@ public static class CommandHandlingService
             ctx.Command.PropertyName, ctx.Command.NewPropertyName, out var message);
 
         Console.WriteLine(message);
+
+        // Rules are parsed objects, not text, so they are not rewritten — but left unsaid,
+        // generate validator would skip them quietly.
+        if (ok)
+        {
+            var stale = ValidationRegistry.Get(ctx.Command.ClassName)
+                .Count(r => r.Properties.Any(p => p.Equals(ctx.Command.PropertyName, StringComparison.OrdinalIgnoreCase)));
+            if (stale > 0)
+                Output.Warning($"{stale} validation rule(s) still name {ctx.Command.PropertyName}. "
+                    + $"Remove them (remove validation from {ctx.Command.ClassName}.{ctx.Command.PropertyName}) "
+                    + $"and add them again for {ctx.Command.NewPropertyName}.");
+        }
+
+        return ok;
+    }
+
+    private static bool HandleChangePropertyType(CommandExecutionContext ctx)
+    {
+        if (string.IsNullOrWhiteSpace(ctx.Command.ClassName))
+        {
+            Console.WriteLine("No class specified for the type change.");
+            return false;
+        }
+
+        var ok = ClassPropertyTypeService.ChangeType(
+            ctx.WorkspaceRoot, ctx.Command.ClassName,
+            ctx.Command.PropertyName, ctx.Command.PropertyType, out var message);
+        Console.WriteLine(message);
         return ok;
     }
 
@@ -490,9 +565,58 @@ public static class CommandHandlingService
         }
 
         Console.WriteLine($"{heading} for {className}:");
-        foreach (var rule in rules)
-            Console.WriteLine($"  {rule.Describe()}");
+        for (var i = 0; i < rules.Count; i++)
+            Console.WriteLine($"  {i + 1}. {rules[i].Describe()}");
         return true;
+    }
+
+    // Shared by `remove validation` and `remove business validation`: by field, or by the
+    // number the matching show command printed. `words` is how the command is spelled.
+    private static bool RemoveRules(CommandExecutionContext ctx, ValidationCategory category, string words)
+    {
+        var className = ctx.Command.ClassName;
+
+        if (string.IsNullOrWhiteSpace(className))
+        {
+            Output.Warning($"No class specified for remove {words}.");
+            return false;
+        }
+
+        if (ctx.Command.RuleNumber is int number)
+        {
+            var rule = ValidationRegistry.RemoveNumber(className, category, number);
+            if (rule == null)
+            {
+                var count = ValidationRegistry.Get(className, category).Count;
+                Output.Warning(count == 0
+                    ? $"'{className}' has no {words} rules."
+                    : $"'{className}' has {count} {words} rule(s), so there is no rule {number}. "
+                        + $"See show {words} {className}.");
+                return false;
+            }
+
+            Console.WriteLine($"Removed rule {number} from {className}: {rule.Describe()}");
+            return true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(ctx.Command.PropertyName))
+        {
+            var property = ctx.Command.PropertyName;
+            var removed = ValidationRegistry.RemoveOn(className, category, property);
+            if (removed.Count == 0)
+            {
+                Output.Warning($"No {words} rules on {className}.{property}.");
+                return false;
+            }
+
+            Console.WriteLine($"Removed {removed.Count} rule(s) from {className}.{property}: "
+                + string.Join("; ", removed.Select(r => r.Describe())));
+            return true;
+        }
+
+        Output.Warning($"Say which rule: remove {words} from {className}.<field>, or "
+            + $"remove {words} <number> from {className} with a number from show {words} {className}.");
+        return false;
     }
 
     /// <summary>

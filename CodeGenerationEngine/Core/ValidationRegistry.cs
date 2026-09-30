@@ -32,5 +32,36 @@ public static class ValidationRegistry
     public static IReadOnlyList<IValidationRule> Get(string className, ValidationCategory category) =>
         Get(className).Where(r => r.Category == category).ToList();
 
+    /// <summary>Removes every rule of <paramref name="category"/> that names
+    /// <paramref name="property"/>, and returns them.</summary>
+    public static IReadOnlyList<IValidationRule> RemoveOn(
+        string className, ValidationCategory category, string property)
+    {
+        if (!_rules.TryGetValue(className ?? string.Empty, out var list))
+            return System.Array.Empty<IValidationRule>();
+
+        var removed = list
+            .Where(r => r.Category == category
+                && r.Properties.Any(p => p.Equals(property, System.StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+
+        list.RemoveAll(removed.Contains);
+        return removed;
+    }
+
+    /// <summary>Removes the <paramref name="number"/>th rule of <paramref name="category"/>,
+    /// counting from 1 in the order <see cref="Get(string, ValidationCategory)"/> returns
+    /// them — the numbers the show commands print. Null when there is no such rule.</summary>
+    public static IValidationRule? RemoveNumber(string className, ValidationCategory category, int number)
+    {
+        var rules = Get(className, category);
+        if (number < 1 || number > rules.Count)
+            return null;
+
+        var rule = rules[number - 1];
+        _rules[className].Remove(rule);
+        return rule;
+    }
+
     public static void Clear() => _rules.Clear();
 }
