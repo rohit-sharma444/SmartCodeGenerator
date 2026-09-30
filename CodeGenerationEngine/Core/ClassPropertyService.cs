@@ -1,4 +1,6 @@
 using System.Text.RegularExpressions;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using CodeGenerationEngine.Models;
 
 namespace CodeGenerationEngine.Core;
@@ -57,46 +59,29 @@ public static class ClassPropertyService
     public static bool RemoveProperty(string workspaceRoot, string className,
         string propertyName, out string message)
     {
-        message = string.Empty;
+        // Through the syntax tree, not the regex this once was: that regex matched the name in
+        // any class in the file, left an initial value (`= "";`) behind as code that does not
+        // compile, and its trailing \s* ate the next member's indentation.
+        if (!ClassMethodEditService.TryLoad(workspaceRoot, className, out var file, out var root, out var classNode, out message))
+            return false;
 
-        try
+        var properties = classNode.Members.OfType<PropertyDeclarationSyntax>().ToList();
+
+        // Exact name first; the regex was case-insensitive, so a differently cased name still works.
+        var property = properties.FirstOrDefault(p => p.Identifier.Text.Equals(propertyName, StringComparison.Ordinal))
+            ?? properties.FirstOrDefault(p => p.Identifier.Text.Equals(propertyName, StringComparison.OrdinalIgnoreCase));
+
+        if (property == null)
         {
-            var file = Directory.GetFiles(workspaceRoot, "*.cs",
-                    SearchOption.AllDirectories).FirstOrDefault(f =>
-                    Path.GetFileNameWithoutExtension(f)
-                        .Equals(className, StringComparison.OrdinalIgnoreCase));
-
-            if (file == null)
-            {
-                message = $"Class '{className}' not found.";
-                return false;
-            }
-
-            var code = File.ReadAllText(file);
-
-            // Match a whole auto-property line for the given name, e.g.
-            //   public string Sku { get; set; }
-            var pattern =
-                $@"[^\S\r\n]*public\s+[\w<>\[\],\.\?]+\s+{Regex.Escape(propertyName)}\s*\{{\s*get\s*;\s*set\s*;\s*\}}\s*\r?\n?";
-
-            var updated = Regex.Replace(code, pattern, string.Empty,
-                RegexOptions.IgnoreCase);
-
-            if (updated == code)
-            {
-                message = $"Property '{propertyName}' not found in '{className}'.";
-                return false;
-            }
-
-            File.WriteAllText(file, updated);
-
-            message = $"Property '{propertyName}' removed from '{className}'.";
-            return true;
-        }
-        catch (Exception ex)
-        {
-            message = ex.Message;
+            message = $"Property '{propertyName}' not found in '{className}'.";
             return false;
         }
+
+        // KeepNoTrivia takes the property's own indent and line break with it (and a doc
+        // comment above it); the line breaks and indent around it belong to its neighbours.
+        root = root.RemoveNode(property, SyntaxRemoveOptions.KeepNoTrivia)!;
+
+        return ClassMethodEditService.TryWrite(file, root,
+            $"Property '{property.Identifier.Text}' removed from '{className}'.", out message);
     }
 }
