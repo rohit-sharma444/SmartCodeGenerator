@@ -135,6 +135,20 @@ public sealed class RemovePropertyCommandTests
     }
 
     [TestMethod]
+    public void Names_the_members_that_still_use_it()
+    {
+        WriteBook("namespace Shop { public class Book { public int Pages { get; set; } public int Twice() => Pages * 2; } }");
+
+        var original = Console.Out;
+        using var writer = new StringWriter();
+        Console.SetOut(writer);
+        try { Run("remove property Pages from Book"); }
+        finally { Console.SetOut(original); }
+
+        StringAssert.Contains(writer.ToString(), "Book.Twice()", writer.ToString());
+    }
+
+    [TestMethod]
     public void Reports_failure_when_the_property_is_missing()
     {
         WriteBook("namespace Shop { public class Book { public int Id { get; set; } } }");

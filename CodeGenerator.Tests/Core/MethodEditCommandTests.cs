@@ -157,6 +157,40 @@ public sealed class MethodEditCommandTests
         AssertCompiles(code);
     }
 
+    private string RunAndCapture(string input)
+    {
+        var original = Console.Out;
+        using var writer = new StringWriter();
+        Console.SetOut(writer);
+        try { Run(input); }
+        finally { Console.SetOut(original); }
+        return writer.ToString();
+    }
+
+    [TestMethod]
+    public void Delete_names_the_methods_that_still_call_it()
+    {
+        // It succeeded silently, leaving Use() calling a method that no longer exists.
+        WriteBook("namespace Shop { public class Book { public void Save() { } public void Use() { Save(); } } }");
+        File.WriteAllText(Path.Combine(_workspace, "Shelf.cs"),
+            "namespace Shop { public class Shelf { public void Put(Book b) { b.Save(); } } }");
+
+        var output = RunAndCapture("remove method Save from Book");
+
+        StringAssert.Contains(output, "Book.Use()", output);
+        StringAssert.Contains(output, "Shelf.Put()", output);
+    }
+
+    [TestMethod]
+    public void Delete_warns_of_nothing_when_nothing_calls_it()
+    {
+        WriteBook("namespace Shop { public class Book { public void Save() { } public void Use() { } } }");
+
+        var output = RunAndCapture("remove method Save from Book");
+
+        Assert.DoesNotContain("may still use", output, output);
+    }
+
     [TestMethod]
     public void Delete_reports_failure_when_the_method_is_missing()
     {

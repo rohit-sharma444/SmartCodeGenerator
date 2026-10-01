@@ -352,6 +352,8 @@ public static class CommandHandlingService
         var ok = ClassMethodEditService.DeleteMethod(
             ctx.WorkspaceRoot, ctx.Command.ClassName, ctx.Command.MethodName, out var message);
         Console.WriteLine(message);
+        if (ok)
+            WarnOfUsers(ctx, ctx.Command.MethodName, "Method", "removed");
         return ok;
     }
 
@@ -367,7 +369,17 @@ public static class CommandHandlingService
             ctx.WorkspaceRoot, ctx.Command.ClassName,
             ctx.Command.MethodName, ctx.Command.NewMethodName, out var message);
         Console.WriteLine(message);
+        if (ok)
+            WarnOfUsers(ctx, ctx.Command.MethodName, "Method", "renamed");
         return ok;
+    }
+
+    // After a member is removed or renamed: name the code that still uses its old name, which
+    // the edit left alone and which no longer compiles.
+    private static void WarnOfUsers(CommandExecutionContext ctx, string oldName, string what, string done)
+    {
+        if (MemberReferences.Warning(ctx.WorkspaceRoot, ctx.Command.ClassName, oldName, what, done) is { } warning)
+            Output.Warning(warning);
     }
 
     private static bool HandleAddValidation(CommandExecutionContext ctx)
@@ -498,6 +510,8 @@ public static class CommandHandlingService
             if (removed.Count > 0)
                 Console.WriteLine($"Also removed {removed.Count} validation rule(s) on it: "
                     + string.Join("; ", removed.Select(r => r.Describe())));
+
+            WarnOfUsers(ctx, ctx.Command.PropertyName, "Property", "removed");
         }
 
         return ok;
@@ -534,6 +548,8 @@ public static class CommandHandlingService
                 Output.Warning($"{stale} validation rule(s) still name {ctx.Command.PropertyName}. "
                     + $"Remove them (remove validation from {ctx.Command.ClassName}.{ctx.Command.PropertyName}) "
                     + $"and add them again for {ctx.Command.NewPropertyName}.");
+
+            WarnOfUsers(ctx, ctx.Command.PropertyName, "Property", "renamed");
         }
 
         return ok;
