@@ -161,7 +161,7 @@ internal sealed class BatchCommand
         return approved;
     }
 
-    private static bool ConfirmSnapshotSize(string workspaceRoot)
+    internal static bool ConfirmSnapshotSize(string workspaceRoot)
     {
         var sizing = WorkspaceSnapshot.Measure(workspaceRoot);
 
