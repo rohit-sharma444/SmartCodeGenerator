@@ -27,8 +27,9 @@ Needs:
   through UI Automation rather than the mouse and keyboard, and screenshots are drawn by the
   app's own window. A step that could only be done by mouse, with another window covering the
   app, fails and names that window instead of clicking into it.
-- **Ollama running** for the description prompts. Without it, discovery falls back to Wikipedia,
-  and the report's "Classes" line says which source answered.
+- **Ollama running** for the description prompts. Without it, discovery falls back to the local
+  Wikipedia store if one is installed, then the 25 built-in domains, and online Wikipedia only
+  when no store is installed. The report's "Classes" line says which source answered.
 - **SQL Server** (`.`, Windows authentication) with the `ValidationPhase3Test` database, for
   `shop-sql`.
 
