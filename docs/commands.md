@@ -56,13 +56,13 @@
 | Command | Description | Example |
 | --- | --- | --- |
 | `<class name> inherits <base class name>` | Adds a base class to a class, keeping any existing interfaces. Aliases: extends, derives from. | `Order inherits AuditableBase` |
-| `create class` | Creates a new class. | `create employee class` |
-| `create class <class name> with properties` | Creates a new class with the specified properties. | `create employee class emdcode:int, Name:string` |
+| `create class` | Creates a new class. | `create class Employee` |
+| `create class <class name> with properties` | Creates a new class with the specified properties. | `create class Employee with properties EmpCode int, Name string` |
 | `delete class` | Moves a class to DeletedClasses. | `delete class Employee` |
 | `list classes` | Lists all classes in the current project. | `list classes` |
-| `list classes in <project name>` | Lists all classes in a project. | `list classes in <EmployeeManagement>` |
+| `list classes in <project name>` | Lists all classes in a project. | `list classes in EmployeeManagement` |
 | `list deleted classes` | Lists all deleted classes. | `list deleted classes` |
-| `rename class` | Rename a class. | `rename class Employee to <newclass>` |
+| `rename class` | Rename a class. | `rename class Employee to Staff` |
 | `restore class` | Restores a deleted class. | `restore class Employee` |
 | `show class` | Displays the class source code. | `show class Employee` |
 | `show relationships` | Draws the classes in the workspace and what each one is related to, as boxes and arrows on a page in the browser. A relationship is a pair - an int <Target>Id and a property typed as that class - so a class carrying only one half of it is drawn apart, which is what the tool offers to finish. Classes related to nothing are shown too rather than hidden. Aliases: show relationship, list relationships, relationships. A piped run gets the same answer as lines. | `show relationships` |
@@ -128,8 +128,8 @@
 
 | Command | Description | Example |
 | --- | --- | --- |
-| `delete class <class name>` | Moves a class to DeletedClasses. | `delete class <Employee>` |
-| `restore class <class name>` | Restores a deleted class. | `restore class <Employee>` |
+| `delete class <class name>` | Moves a class to DeletedClasses. | `delete class Employee` |
+| `restore class <class name>` | Restores a deleted class. | `restore class Employee` |
 | `restore last class` | Restores a deleted class. | `restore last class` |
 | `show deleted classes` | Displays all deleted classes. | `show deleted classes` |
 

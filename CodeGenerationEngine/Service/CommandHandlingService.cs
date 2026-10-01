@@ -273,8 +273,10 @@ public static class CommandHandlingService
 
     private static bool HandleRenameClass(CommandExecutionContext ctx)
     {
-        return ClassRenameService.RenameClass(
-            ctx.WorkspaceRoot, ctx.Command.ClassName, ctx.Command.NewClassName, out _);
+        var ok = ClassRenameService.RenameClass(
+            ctx.WorkspaceRoot, ctx.Command.ClassName, ctx.Command.NewClassName, out var message);
+        Output.Result(ok, message);
+        return ok;
     }
 
     private static bool HandleClassInherit(CommandExecutionContext ctx)
@@ -329,9 +331,11 @@ public static class CommandHandlingService
 
     private static bool HandleCreateMethod(CommandExecutionContext ctx)
     {
-        return ClassMethodService.AddMethod(
+        var ok = ClassMethodService.AddMethod(
             ctx.WorkspaceRoot, ctx.Command.ClassName,
-            ctx.Command.MethodName, ctx.Command.ReturnType, out _);
+            ctx.Command.MethodName, ctx.Command.ReturnType, out var message);
+        Output.Result(ok, message);
+        return ok;
     }
 
     private static bool HandleListMethods(CommandExecutionContext ctx)

@@ -159,10 +159,12 @@ public static partial class CommandParser
     {
         foreach (var pair in Synonyms)
         {
+            // A capitalised word past the first is a name - a class called Manager, Model or
+            // Field - and rewriting it wrote Service.cs, or found no class name at all.
             input = Regex.Replace(
                 input,
                 $@"\b{Regex.Escape(pair.Key)}\b",
-                pair.Value,
+                m => m.Index > 0 && char.IsUpper(m.Value[0]) ? m.Value : pair.Value,
                 RegexOptions.IgnoreCase);
         }
 

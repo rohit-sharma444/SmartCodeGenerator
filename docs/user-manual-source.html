@@ -1687,13 +1687,13 @@ own shows the shorter overview, and <code>help &lt;topic&gt;</code> shows one se
 <table>
 <tr><th>Command</th><th>Description</th><th>Example</th></tr>
 <tr><td><code>&lt;class name&gt; inherits &lt;base class name&gt;</code></td><td>Adds a base class to a class, keeping any existing interfaces. Aliases: extends, derives from.</td><td><code>Order inherits AuditableBase</code></td></tr>
-<tr><td><code>create class</code></td><td>Creates a new class.</td><td><code>create employee class</code></td></tr>
-<tr><td><code>create class &lt;class name&gt; with properties</code></td><td>Creates a new class with the specified properties.</td><td><code>create employee class emdcode:int, Name:string</code></td></tr>
+<tr><td><code>create class</code></td><td>Creates a new class.</td><td><code>create class Employee</code></td></tr>
+<tr><td><code>create class &lt;class name&gt; with properties</code></td><td>Creates a new class with the specified properties.</td><td><code>create class Employee with properties EmpCode int, Name string</code></td></tr>
 <tr><td><code>delete class</code></td><td>Moves a class to DeletedClasses.</td><td><code>delete class Employee</code></td></tr>
 <tr><td><code>list classes</code></td><td>Lists all classes in the current project.</td><td><code>list classes</code></td></tr>
-<tr><td><code>list classes in &lt;project name&gt;</code></td><td>Lists all classes in a project.</td><td><code>list classes in &lt;EmployeeManagement&gt;</code></td></tr>
+<tr><td><code>list classes in &lt;project name&gt;</code></td><td>Lists all classes in a project.</td><td><code>list classes in EmployeeManagement</code></td></tr>
 <tr><td><code>list deleted classes</code></td><td>Lists all deleted classes.</td><td><code>list deleted classes</code></td></tr>
-<tr><td><code>rename class</code></td><td>Rename a class.</td><td><code>rename class Employee to &lt;newclass&gt;</code></td></tr>
+<tr><td><code>rename class</code></td><td>Rename a class.</td><td><code>rename class Employee to Staff</code></td></tr>
 <tr><td><code>restore class</code></td><td>Restores a deleted class.</td><td><code>restore class Employee</code></td></tr>
 <tr><td><code>show class</code></td><td>Displays the class source code.</td><td><code>show class Employee</code></td></tr>
 <tr><td><code>show relationships</code></td><td>Draws the classes in the workspace and what each one is related to, as boxes and arrows on a page in the browser. A relationship is a pair - an int &lt;Target&gt;Id and a property typed as that class - so a class carrying only one half of it is drawn apart, which is what the tool offers to finish. Classes related to nothing are shown too rather than hidden. Aliases: show relationship, list relationships, relationships. A piped run gets the same answer as lines.</td><td><code>show relationships</code></td></tr>
@@ -1752,8 +1752,8 @@ own shows the shorter overview, and <code>help &lt;topic&gt;</code> shows one se
 <h3>RecycleBin</h3>
 <table>
 <tr><th>Command</th><th>Description</th><th>Example</th></tr>
-<tr><td><code>delete class &lt;class name&gt;</code></td><td>Moves a class to DeletedClasses.</td><td><code>delete class &lt;Employee&gt;</code></td></tr>
-<tr><td><code>restore class &lt;class name&gt;</code></td><td>Restores a deleted class.</td><td><code>restore class &lt;Employee&gt;</code></td></tr>
+<tr><td><code>delete class &lt;class name&gt;</code></td><td>Moves a class to DeletedClasses.</td><td><code>delete class Employee</code></td></tr>
+<tr><td><code>restore class &lt;class name&gt;</code></td><td>Restores a deleted class.</td><td><code>restore class Employee</code></td></tr>
 <tr><td><code>restore last class</code></td><td>Restores a deleted class.</td><td><code>restore last class</code></td></tr>
 <tr><td><code>show deleted classes</code></td><td>Displays all deleted classes.</td><td><code>show deleted classes</code></td></tr>
 </table>

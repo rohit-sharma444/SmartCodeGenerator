@@ -129,14 +129,14 @@ public static class CommandDictionary
             Category = "Class",
             Command = "create class",
             Description = "Creates a new class.",
-            Example = "create employee class"
+            Example = "create class Employee"
         },
         new()
         {
             Category = "Class",
             Command = "create class <class name> with properties",
             Description = "Creates a new class with the specified properties.",
-            Example = "create employee class emdcode:int, Name:string"
+            Example = "create class Employee with properties EmpCode int, Name string"
         },
         new()
         {
@@ -157,7 +157,7 @@ public static class CommandDictionary
             Category = "Class",
             Command = "list classes in <project name>",
             Description = "Lists all classes in a project.",
-            Example = "list classes in <EmployeeManagement>"
+            Example = "list classes in EmployeeManagement"
         },
         new()
         {
@@ -178,7 +178,7 @@ public static class CommandDictionary
             Category = "Class",
             Command = "rename class",
             Description = "Rename a class.",
-            Example = "rename class Employee to <newclass>"
+            Example = "rename class Employee to Staff"
         },
         new()
         {
@@ -202,14 +202,14 @@ public static class CommandDictionary
             Category = "RecycleBin",
             Command = "delete class <class name>",
             Description = "Moves a class to DeletedClasses.",
-            Example = "delete class <Employee>"
+            Example = "delete class Employee"
         },
         new()
         {
             Category = "RecycleBin",
             Command = "restore class <class name>",
             Description = "Restores a deleted class.",
-            Example = "restore class <Employee>"
+            Example = "restore class Employee"
         },
         new()
         {
