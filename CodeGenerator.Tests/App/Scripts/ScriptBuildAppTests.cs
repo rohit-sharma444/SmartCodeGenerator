@@ -73,6 +73,37 @@ public sealed class ScriptBuildAppTests
         Assert.IsFalse(ok);
     }
 
+    // M2: a review answer the build refuses means the app is not the one the script describes.
+    [TestMethod]
+    public void A_refused_review_answer_fails_the_block()
+    {
+        var output = new List<string>();
+
+        var ok = ScriptBuildApp.Run(
+            ["build app from csv " + Path.Combine(_root, "books.csv"), "rename Ghost to Spirit", "approve console"],
+            _root, output.Add);
+
+        Assert.IsFalse(ok, string.Join(Environment.NewLine, output));
+        Assert.IsTrue(output.Any(l => l.Contains(ScriptBuildApp.RefusedMarker, StringComparison.Ordinal)));
+    }
+
+    // M3: a script never replaces an app that is already there — it may have been edited by hand.
+    [TestMethod]
+    public void An_app_that_already_exists_is_not_replaced()
+    {
+        string[] block = ["build app from csv " + Path.Combine(_root, "books.csv"), "approve console"];
+        Assert.IsTrue(ScriptBuildApp.Run(block, _root, _ => { }));
+        var program = Directory.GetFiles(Path.Combine(_root, "Books.Console"), "*.cs").First();
+        File.AppendAllText(program, "// edited by hand");
+
+        var output = new List<string>();
+        var ok = ScriptBuildApp.Run(block, _root, output.Add);
+
+        Assert.IsFalse(ok);
+        StringAssert.Contains(string.Join(Environment.NewLine, output), "already exists, and a script never replaces an app");
+        StringAssert.EndsWith(File.ReadAllText(program), "// edited by hand");
+    }
+
     [TestMethod]
     public void A_tool_that_cannot_start_fails_and_says_why()
     {

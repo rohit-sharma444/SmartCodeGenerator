@@ -376,7 +376,7 @@ public sealed class ChatSession
     private IReadOnlyList<ChatTurn> TurnsFor(string input, CommandKind kind, UndoScope? entry, CancellationToken ct)
     {
         if (kind == CommandKind.Run)
-            return RunScript(input, entry);
+            return RunScript(input, entry, ct);
 
         var turn = Run(input, kind, ct);
 
@@ -386,7 +386,7 @@ public sealed class ChatSession
         return [turn];
     }
 
-    private IReadOnlyList<ChatTurn> RunScript(string input, UndoScope? entry)
+    private IReadOnlyList<ChatTurn> RunScript(string input, UndoScope? entry, CancellationToken ct)
     {
         var load = RunCommand.Load(input, _workspace.Root);
         if (load.Steps is null)
@@ -415,14 +415,16 @@ public sealed class ChatSession
                 tooLarge = $"The workspace is {sizing.FileCount:N0} files ({sizing.Bytes / (1024.0 * 1024.0):N0} MB), "
                          + "too large to put back if a line fails. Run it from the console, which asks first. ";
                 return false;
-            });
+            },
+            stopRequested: () => ct.IsCancellationRequested);
 
         _currentProject = ProjectManager.CurrentProject;
 
         if (outcome.Succeeded)
             entry?.Keep(outcome.Ran);
 
-        turns.Add(Said(input, outcome.Succeeded ? ChatVerdict.Succeeded : ChatVerdict.Failed, tooLarge + outcome.Message));
+        // What was typed first, holding the outcome, then the lines it ran under it.
+        turns.Insert(0, Said(input, outcome.Succeeded ? ChatVerdict.Succeeded : ChatVerdict.Failed, tooLarge + outcome.Message));
         return turns;
     }
 
@@ -472,7 +474,8 @@ public sealed class ChatSession
             captured = capture.Text;
         }
 
-        return new ChatTurn(text, kind, verdict, OutputBlocks.Parse(text, captured), DateTimeOffset.Now);
+        return new ChatTurn(text, kind, verdict, OutputBlocks.Parse(text, captured), DateTimeOffset.Now,
+            Label: $"Line {step.Line}");
     }
 
     private static ChatTurn Said(string input, ChatVerdict verdict, string text) =>

@@ -64,7 +64,7 @@ public sealed class SessionScriptEndToEndTests
         File.WriteAllText(Book, "namespace S { public class Book { } }");
         var second = Session("run library");
 
-        StringAssert.Contains(second, "[1/2] add property Pages int to Book");
+        StringAssert.Contains(second, "[1/2] line 2: add property Pages int to Book");   // line 1 is the header
         StringAssert.Contains(second, "Ran 2 commands from library.cgs.");
         Assert.AreEqual(built, File.ReadAllText(Book));
     }

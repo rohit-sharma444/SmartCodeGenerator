@@ -92,6 +92,14 @@ public sealed class UndoJournal : IDisposable
         new(workspaceRoot, notify, ProjectManager.RegistryPath, SessionState.Capture,
             reloadRegistry: () => ProjectManager.ReloadWithin(workspaceRoot));
 
+    /// <summary>
+    /// A journal that never copies the workspace and offers no undo, for the copy of the tool a
+    /// script runs a build in: nobody can type undo there, and its parent already holds a snapshot.
+    /// What commands keep is still raised, through <see cref="KeptWithoutEntry"/>.
+    /// </summary>
+    public static UndoJournal Disabled(string workspaceRoot, string? shadowParent = null) =>
+        new(workspaceRoot, shadowParent: shadowParent) { Enabled = false };
+
     public string WorkspaceRoot { get; }
 
     /// <summary>False once the size guard has switched undo off for the session.</summary>

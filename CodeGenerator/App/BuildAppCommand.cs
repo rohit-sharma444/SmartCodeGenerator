@@ -702,7 +702,7 @@ internal sealed class BuildAppCommand
                     break;
 
                 default:
-                    Console.WriteLine("Unrecognized command.");
+                    Console.WriteLine(Refused("Unrecognized command."));
 
                     // Suggest, never run. Retrieval recovers the ACTION but not its
                     // operands ("get rid of Reservation" -> remove, with no entity), so
@@ -1011,7 +1011,19 @@ internal sealed class BuildAppCommand
             // A piped run overwrites in silence, as it always has - and so can never reach
             // the add branch, for the same reason it never reads a profile.
             if (Console.IsInputRedirected)
+            {
+                // A script never replaces an app: it may have been edited by hand since, and the
+                // replay would throw that away without a word.
+                if (Scripts.ScriptBuildApp.IsStep)
+                {
+                    Console.WriteLine(Scripts.ScriptBuildApp.RefusedMarker
+                        + $"{GeneratedProjectPath.Folder(workspaceRoot, name, target)} already exists, and a script never "
+                        + "replaces an app. Delete it, or build it under another name.");
+                    return new OverwriteOutcome(null);
+                }
+
                 return new OverwriteOutcome(name);
+            }
 
             var folder = GeneratedProjectPath.Folder(workspaceRoot, name, target);
             var delta = DeltaAgainst(model, folder);
@@ -1563,8 +1575,13 @@ internal sealed class BuildAppCommand
         return action(model, className, valuesText);
     }
 
+    // In a script's build step a refused answer is marked, so the script fails rather than build an
+    // app other than the one its lines describe.
     private static void Report(bool changed, string ok, string fail)
-        => Console.WriteLine(changed ? ok : fail);
+        => Console.WriteLine(changed ? ok : Refused(fail));
+
+    private static string Refused(string text) =>
+        Scripts.ScriptBuildApp.IsStep ? Scripts.ScriptBuildApp.RefusedMarker + text : text;
 
     private static void PrintModel(CandidateDomainModel model)
     {

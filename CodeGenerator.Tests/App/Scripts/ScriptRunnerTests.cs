@@ -50,7 +50,7 @@ public sealed class ScriptRunnerTests
         Assert.IsTrue(outcome.Succeeded);
         Assert.AreEqual("Ran 2 commands from t.cgs.", outcome.Message);
         CollectionAssert.AreEqual(
-            new[] { "[1/2] add property Pages int to Book", "[2/2] add property Title string to Book" }, said.ToArray());
+            new[] { "[1/2] line 1: add property Pages int to Book", "[2/2] line 2: add property Title string to Book" }, said.ToArray());
         CollectionAssert.AreEqual(
             new[] { "add property Pages int to Book", "add property Title string to Book" }, outcome.Ran.ToArray());
         var book = File.ReadAllText(Path.Combine(_root, "Book.cs"));
@@ -88,6 +88,51 @@ public sealed class ScriptRunnerTests
             outcome.Message);
     }
 
+    // M4: Ctrl-C between lines stops the run and puts back what it did, rather than leaving it half done.
+    [TestMethod]
+    public void A_stop_asked_for_between_lines_puts_back_what_ran()
+    {
+        var stop = false;
+
+        var outcome = ScriptRunner.Run("t.cgs",
+            ScriptFile.Parse("add property Pages int to Book\nadd property Title string to Book").Steps, _root,
+            step => { var ok = Execute(step); stop = true; return ok; }, _ => { }, () => true,
+            stopRequested: () => stop);
+
+        Assert.IsFalse(outcome.Succeeded);
+        Assert.AreEqual("Stopped before line 2. Everything the script did was put back.", outcome.Message);
+        Assert.AreEqual("namespace S { public class Book { } }", File.ReadAllText(Path.Combine(_root, "Book.cs")));
+    }
+
+    // M5: when putting the files back fails, the in-memory rules still go back, and it says so.
+    [TestMethod]
+    public void A_rollback_that_cannot_write_a_file_still_puts_the_rules_back()
+    {
+        FileStream? held = null;
+        try
+        {
+            var outcome = ScriptRunner.Run("t.cgs",
+                ScriptFile.Parse("add validation Title is required in Book\nadd property Pages int to Book\nlist classes").Steps,
+                _root,
+                step =>
+                {
+                    if (((CommandStep)step).Text == "list classes")
+                    {
+                        // Book.cs changed on line 2; holding it open stops the restore writing it.
+                        held = new FileStream(Path.Combine(_root, "Book.cs"), FileMode.Open, FileAccess.Read, FileShare.None);
+                        return false;
+                    }
+                    return Execute(step);
+                },
+                _ => { }, () => true);
+
+            StringAssert.Contains(outcome.Message, "Putting it back failed too");
+            StringAssert.Contains(outcome.Message, "The validation rules and the current project were put back.");
+            Assert.IsEmpty(ValidationRegistry.Get("Book"));
+        }
+        finally { held?.Dispose(); }
+    }
+
     [TestMethod]
     public void A_snapshot_refused_runs_nothing()
     {
@@ -104,7 +149,7 @@ public sealed class ScriptRunnerTests
     [TestMethod]
     public void Load_reports_a_missing_file_an_empty_one_and_a_refusal()
     {
-        Assert.AreEqual("No script at nope.cgs. Nothing was run.", RunCommand.Load("run nope", _root).Problem);
+        Assert.AreEqual("No script at nope.cgs. `run` replays a .cgs script made with save session or by hand; see help run. Nothing was run.", RunCommand.Load("run nope", _root).Problem);   // M1
 
         File.WriteAllText(Path.Combine(_root, "empty.cgs"), "# nothing\n");
         Assert.AreEqual("empty.cgs has no commands. Nothing was run.", RunCommand.Load("run empty", _root).Problem);

@@ -65,6 +65,14 @@ internal static partial class SaveSessionCommand
         var notes = lines.Count(l => l.TrimStart().StartsWith('#'));
         var commands = lines.Count - notes;
 
+        // Written all the same — a note says what was done — but run refuses a file with no
+        // commands, so say so now rather than then.
+        if (commands == 0)
+        {
+            return new SaveResult(true,
+                $"Saved {Count(notes, "note")} to {shown}. It has no commands yet, so run will refuse it until you add some.");
+        }
+
         return new SaveResult(true, $"Saved {Count(commands, "command")}"
             + (notes > 0 ? $" and {Count(notes, "note")}" : string.Empty) + $" to {shown}.");
     }

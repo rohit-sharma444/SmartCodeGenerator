@@ -130,6 +130,8 @@ public sealed class SaveSessionCommandTests
     {
         Command("build app: a library");
 
-        Assert.AreEqual("Saved 0 commands and 1 note to shop.cgs.", Save("save session shop").Message);
+        // M6: run refuses a file with no commands, so the message says so rather than counting zero.
+        Assert.AreEqual("Saved 1 note to shop.cgs. It has no commands yet, so run will refuse it until you add some.",
+            Save("save session shop").Message);
     }
 }

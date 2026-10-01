@@ -145,6 +145,24 @@ public sealed class SessionRecorderTests
         CollectionAssert.AreEqual(new[] { "create class Book", "create class Member" }, _recorder.Lines.ToArray());
     }
 
+    // M10: the copy a script runs a build in never offers undo, so it must not copy the workspace.
+    [TestMethod]
+    public void A_disabled_journal_copies_nothing_and_still_keeps_what_commands_keep()
+    {
+        using var journal = UndoJournal.Disabled(_root, shadowParent: _shadowParent);
+        var recorder = new SessionRecorder(journal);
+
+        using (var scope = journal.Begin("create class Book"))
+        {
+            File.WriteAllText(Path.Combine(_root, "Book.cs"), "b");
+            scope.Keep(["create class Book"]);
+        }
+
+        Assert.IsFalse(journal.Enabled);
+        Assert.IsEmpty(Directory.GetFileSystemEntries(_shadowParent));
+        CollectionAssert.AreEqual(new[] { "create class Book" }, recorder.Lines.ToArray());
+    }
+
     [TestMethod]
     public void With_undo_off_every_kept_command_is_kept_and_it_says_so()
     {

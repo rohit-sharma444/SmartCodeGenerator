@@ -37,7 +37,10 @@ internal static partial class RunCommand
         }
         catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
         {
-            return new ScriptLoad(null, name, $"No script at {name}. Nothing was run.");
+            // Says what `run` is for: a sentence like "run the app" lands here too, since the word
+            // now belongs to scripts.
+            return new ScriptLoad(null, name,
+                $"No script at {name}. `run` replays a .cgs script made with save session or by hand; see help run. Nothing was run.");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {

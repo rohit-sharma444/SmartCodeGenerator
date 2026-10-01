@@ -214,8 +214,12 @@ internal class CodeGeneratorStarter
 
         ProjectMetaData? currentProject = null;
 
-        // This session's undo history. Deleted, shadow copy and all, when the loop ends.
-        var journal = UndoJournal.ForSession(_workspace.Root, Output.Warning);
+        // This session's undo history. Deleted, shadow copy and all, when the loop ends. None in a
+        // copy running a script's build: nobody can undo there, and copying the workspace would
+        // only cost time — the parent already holds a snapshot.
+        var journal = ScriptBuildApp.IsStep
+            ? UndoJournal.Disabled(_workspace.Root)
+            : UndoJournal.ForSession(_workspace.Root, Output.Warning);
         var recorder = new SessionRecorder(journal);
 
         while (true)
@@ -498,7 +502,10 @@ internal class CodeGeneratorStarter
                 return result.Handled;
             },
             Console.WriteLine,
-            () => BatchCommand.ConfirmSnapshotSize(_workspace.Root));
+            () => BatchCommand.ConfirmSnapshotSize(_workspace.Root),
+
+            // The first Ctrl-C stops between lines and puts everything back; a second still quits.
+            stopRequested: () => Interrupt.Requested);
 
         currentProject = outcome.Succeeded ? project : ProjectManager.CurrentProject;
 

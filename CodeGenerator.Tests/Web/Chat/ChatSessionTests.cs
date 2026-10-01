@@ -236,21 +236,25 @@ public class ChatSessionTests
         StringAssert.Contains(TextOf(session.Turns[^1]), "Nothing to undo.");
     }
 
+    // M8: what was typed comes first, and the lines it ran say they are the script's, not yours.
     [TestMethod]
-    public async Task Run_shows_one_turn_per_line_then_a_summary()
+    public async Task Run_shows_what_was_typed_then_one_turn_per_script_line()
     {
         var session = NewSession(out var workspace);
         File.WriteAllText(Path.Combine(workspace.Root, "Book.cs"), "namespace S { public class Book { } }");
         File.WriteAllText(Path.Combine(workspace.Root, "two.cgs"),
-            "add property Pages int to Book\nadd property Title string to Book\n");
+            "# two\nadd property Pages int to Book\nadd property Title string to Book\n");
 
         await session.Send("run two");
 
         Assert.HasCount(3, session.Turns);
-        Assert.AreEqual("add property Pages int to Book", session.Turns[0].Input);
-        Assert.AreEqual(ChatVerdict.Succeeded, session.Turns[1].Verdict);
-        Assert.AreEqual("run two", session.Turns[2].Input);
-        StringAssert.Contains(TextOf(session.Turns[2]), "Ran 2 commands from two.cgs.");
+        Assert.AreEqual("run two", session.Turns[0].Input);
+        Assert.IsNull(session.Turns[0].Label);
+        StringAssert.Contains(TextOf(session.Turns[0]), "Ran 2 commands from two.cgs.");
+        Assert.AreEqual("add property Pages int to Book", session.Turns[1].Input);
+        Assert.AreEqual("Line 2", session.Turns[1].Label);
+        Assert.AreEqual("Line 3", session.Turns[2].Label);
+        Assert.AreEqual(ChatVerdict.Succeeded, session.Turns[2].Verdict);
         Assert.AreEqual("run two", session.NextUndoLabel);
     }
 
@@ -265,8 +269,8 @@ public class ChatSessionTests
 
         await session.Send("run bad");
 
-        Assert.AreEqual(ChatVerdict.Failed, session.Turns[^1].Verdict);
-        StringAssert.Contains(TextOf(session.Turns[^1]), "Line 2 failed. Everything the script did was put back.");
+        Assert.AreEqual(ChatVerdict.Failed, session.Turns[0].Verdict);
+        StringAssert.Contains(TextOf(session.Turns[0]), "Line 2 failed. Everything the script did was put back.");
         Assert.AreEqual("namespace S { public class Book { } }", File.ReadAllText(book));
     }
 
@@ -293,7 +297,7 @@ public class ChatSessionTests
 
         Assert.HasCount(1, session.Turns);
         Assert.AreEqual(ChatVerdict.Failed, session.Turns[0].Verdict);
-        StringAssert.Contains(TextOf(session.Turns[0]), "No script at nope.cgs. Nothing was run.");
+        StringAssert.Contains(TextOf(session.Turns[0]), "No script at nope.cgs.");
     }
 
     private static ChatSession NewSession(out Workspace workspace)

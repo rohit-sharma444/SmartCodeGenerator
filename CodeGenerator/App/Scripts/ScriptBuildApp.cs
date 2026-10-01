@@ -22,6 +22,16 @@ internal static class ScriptBuildApp
     // same answer lines as commands of their own, so "cancel" as the last line proves nothing.
     public const string CancelledMarker = "Cancelled. Nothing was generated.";
 
+    /// <summary>What the copy puts before an answer it refused, or an app it will not replace.
+    /// Printed only in a script step — see <see cref="IsStep"/>.</summary>
+    public const string RefusedMarker = "Refused: ";
+
+    /// <summary>Set in the copy's environment, so it knows it is running a script's step.</summary>
+    public const string StepVariable = "CODEGEN_SCRIPT_STEP";
+
+    /// <summary>Whether this process is a copy running a script's build step.</summary>
+    public static bool IsStep => Environment.GetEnvironmentVariable(StepVariable) == "1";
+
     private static readonly TimeSpan Timeout = TimeSpan.FromMinutes(10);
 
     private static string DefaultExecutable =>
@@ -34,6 +44,7 @@ internal static class ScriptBuildApp
         var gate = new object();
         var generated = false;
         var cancelled = false;
+        var refused = false;
         var input = string.Join("\n", lines.Append("exit")) + "\n";
 
         ProcessResult result;
@@ -50,13 +61,14 @@ internal static class ScriptBuildApp
                     {
                         generated |= line.Contains(SuccessMarker, StringComparison.Ordinal);
                         cancelled |= line.Contains(CancelledMarker, StringComparison.Ordinal);
+                        refused |= line.Contains(RefusedMarker, StringComparison.Ordinal);
                         onLine(line);
                     }
                 },
                 workingDirectory: workspaceRoot,
                 timeout: Timeout,
                 standardInput: input,
-                environment: new Dictionary<string, string> { ["PROJECTPATH"] = workspaceRoot },
+                environment: new Dictionary<string, string> { ["PROJECTPATH"] = workspaceRoot, [StepVariable] = "1" },
                 outputEncoding: new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
         }
         catch (Win32Exception ex)
@@ -77,6 +89,6 @@ internal static class ScriptBuildApp
         }
 
         lock (gate)
-            return generated || cancelled;
+            return !refused && (generated || cancelled);
     }
 }

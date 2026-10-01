@@ -209,19 +209,27 @@ Saved 2 commands to library.cgs.</pre>
 <p>The typo is left out, and so is <code>help</code>, <code>list</code>, <code>show</code> or anything else that
 changed nothing. A command you undid is left out too, and comes back if you redo it. A <code>run</code> is saved
 as the lines it ran, so the file stands on its own.</p>
+<p>Some steps are saved as <code>#</code> notes rather than commands, because a script could not replay them as
+typed: a line only the AI could understand (a script never asks the AI), a relationship you set when the tool
+offered one after a command (the note names what was added), a <code>build app</code> done on the build page, and
+<code>demo</code>. A file of notes only is saved, but <code>run</code> refuses it until you add commands.</p>
 <p>A script is plain text you can edit in Notepad: one command per line; blank lines and lines starting with
-<code>#</code> are ignored. With no extension, <code>.cgs</code> is added; names are relative to the folder you are
+<code>#</code> are ignored. <code>.cgs</code> is added unless the name already ends in <code>.cgs</code> or
+<code>.txt</code>, so <code>acme.v2</code> means <code>acme.v2.cgs</code>; names are relative to the folder you are
 working on, and a name with spaces goes in double quotes.</p>
 <pre>&gt; run library
-[1/2] add property Pages int to Book
+[1/2] line 2: add property Pages int to Book
 Property 'Pages' of type 'int' added to 'Book'.
-[2/2] add property Title string to Book
+[2/2] line 3: add property Title string to Book
 Property 'Title' of type 'string' added to 'Book'.
 Ran 2 commands from library.cgs.</pre>
+<p>Each step shows how far through the run it is and its line in the file — line 1 here is the comment
+<code>save session</code> writes at the top.</p>
 <ul>
 <li><strong>All or nothing.</strong> If a line fails, everything the script did is put back, files and validation
-rules alike: <code>Line 3 failed. Everything the script did was put back.</code> The number is the line in the
-file. One <code>undo</code> reverses a whole run that worked.</li>
+rules alike: <code>Line 3 failed. Everything the script did was put back.</code> Pressing Ctrl-C stops before the
+next line and puts everything back the same way; a second Ctrl-C still quits. One <code>undo</code> reverses a
+whole run that worked.</li>
 <li><strong>Checked first.</strong> A script that contains <code>undo</code>, <code>redo</code>, <code>exit</code>,
 <code>batch</code>, <code>demo</code>, <code>chat</code>, <code>show relationships</code>, <code>run</code>,
 <code>save session</code>, <code>help</code>, <code>status</code>, <code>history</code>, <code>clear</code> or
@@ -230,12 +238,14 @@ file. One <code>undo</code> reverses a whole run that worked.</li>
 <code>approve …</code> or <code>cancel</code>, the same as when input is piped in:
 <pre>build app from csv books.csv
 approve console</pre>
-A <code>build app</code> you did on the build page is saved as a <code>#</code> note, because its choices were
-made on the page; add its answer lines below the note if you want it replayed.</li>
+An answer the review refuses — renaming a class that is not there, say — fails the script, since the app would
+not be the one its lines describe. A script never replaces an app that already exists: it may have been edited by
+hand since, so the line fails and says so; delete the app first, or build it under another name.</li>
 <li><strong>Nothing is overwritten by accident.</strong> Saving over an existing file is refused; add
 <code>replace</code> to overwrite: <code>save session library replace</code>.</li>
 <li>Script lines never stop to ask a question and never use the AI reading.</li>
-<li>Both work on the chat page too, where each line of a run shows as its own result.</li>
+<li>Both work on the chat page too. What you typed comes first with the outcome, and each line the script ran
+shows below it as its own result, labelled with its line number rather than <em>You</em>.</li>
 </ul>
 
 <h2>4. Building an application: the workflow page</h2>

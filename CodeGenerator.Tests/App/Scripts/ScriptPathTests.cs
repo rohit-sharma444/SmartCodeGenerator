@@ -14,6 +14,8 @@ public sealed class ScriptPathTests
     [DataRow("\"my lib\"", @"C:\Work\Library\my lib.cgs")]          // Review Focus 4
     [DataRow(@"scripts\setup", @"C:\Work\Library\scripts\setup.cgs")]
     [DataRow(@"D:\Recipes\audit.cgs", @"D:\Recipes\audit.cgs")]
+    [DataRow("acme.v2", @"C:\Work\Library\acme.v2.cgs")]          // M7: a dot is not an extension
+    [DataRow("LIBRARY.CGS", @"C:\Work\Library\LIBRARY.CGS")]
     public void Names_resolve_against_the_workspace(string argument, string expected) =>
         Assert.AreEqual(expected, ScriptPath.Resolve(argument, Root));
 

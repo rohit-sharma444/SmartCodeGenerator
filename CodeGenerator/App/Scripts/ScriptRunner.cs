@@ -7,7 +7,8 @@ namespace CodeGenerator.App.Scripts;
 internal sealed record ScriptOutcome(bool Succeeded, IReadOnlyList<string> Ran, string Message);
 
 /// <summary>
-/// Runs a script's steps under one snapshot: all of them, or — at the first failure — none.
+/// Runs a script's steps under one snapshot: all of them, or — at the first failure, or a stop
+/// asked for between lines — none.
 /// </summary>
 /// <remarks>
 /// The snapshot is <c>batch</c>'s: files and the project registry. Validation rules live only in
@@ -17,13 +18,16 @@ internal sealed record ScriptOutcome(bool Succeeded, IReadOnlyList<string> Ran, 
 /// </remarks>
 internal static class ScriptRunner
 {
+    /// <param name="stopRequested">Asked before every line after the first; true stops the run and
+    /// puts back what it did. Ctrl-C on the console.</param>
     public static ScriptOutcome Run(
         string name,
         IReadOnlyList<ScriptStep> steps,
         string workspaceRoot,
         Func<ScriptStep, bool> execute,
         Action<string> say,
-        Func<bool> confirmSnapshot)
+        Func<bool> confirmSnapshot,
+        Func<bool>? stopRequested = null)
     {
         if (!confirmSnapshot())
             return new ScriptOutcome(false, [], "Nothing was run.");
@@ -44,7 +48,13 @@ internal static class ScriptRunner
         for (var i = 0; i < steps.Count; i++)
         {
             var step = steps[i];
-            say($"[{i + 1}/{steps.Count}] {Text(step)}");
+
+            if (i > 0 && stopRequested?.Invoke() == true)
+                return PutBack(snapshot, state, $"Stopped before line {step.Line}");
+
+            // Both numbers: the step count says how far through, and the line is the one an error
+            // would name — they differ by any comments above it.
+            say($"[{i + 1}/{steps.Count}] line {step.Line}: {Text(step)}");
 
             var reason = string.Empty;
             bool ok;
@@ -64,21 +74,7 @@ internal static class ScriptRunner
                 continue;
             }
 
-            try
-            {
-                snapshot.Restore();
-            }
-            catch (Exception ex)
-            {
-                return new ScriptOutcome(false, [],
-                    $"Line {step.Line} failed{reason}. Putting it back failed too: {ex.Message}. "
-                    + $"The workspace is in an unknown state; the copy taken before the run is at {snapshot.SnapshotPath}.");
-            }
-
-            state.Restore(SessionState.Capture());
-            snapshot.Dispose();
-
-            return new ScriptOutcome(false, [], $"Line {step.Line} failed{reason}. Everything the script did was put back.");
+            return PutBack(snapshot, state, $"Line {step.Line} failed{reason}");
         }
 
         snapshot.Dispose();
@@ -94,4 +90,27 @@ internal static class ScriptRunner
         BuildAppStep build => build.Lines[0],
         _ => throw new ArgumentOutOfRangeException(nameof(step))
     };
+
+    // The rules and the current project go back whether or not the files can: they are in memory,
+    // and leaving them changed would add a second unknown to the one a failed restore already is.
+    private static ScriptOutcome PutBack(WorkspaceSnapshot snapshot, ISessionState state, string what)
+    {
+        try
+        {
+            snapshot.Restore();
+        }
+        catch (Exception ex)
+        {
+            state.Restore(SessionState.Capture());
+            return new ScriptOutcome(false, [],
+                $"{what}. Putting it back failed too: {ex.Message}. "
+                + $"The workspace is in an unknown state; the copy taken before the run is at {snapshot.SnapshotPath}. "
+                + "The validation rules and the current project were put back.");
+        }
+
+        state.Restore(SessionState.Capture());
+        snapshot.Dispose();
+
+        return new ScriptOutcome(false, [], $"{what}. Everything the script did was put back.");
+    }
 }

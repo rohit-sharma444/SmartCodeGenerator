@@ -6,7 +6,7 @@
     {
         <article class="turn turn-@Class(turn.Verdict)">
             <div class="turn-head">
-                <span class="turn-who">You</span>
+                <span class="turn-who">@(turn.Label ?? "You")</span>
                 <div class="turn-said">@turn.Input</div>
                 @if (Time(turn) is { } time)
                 {
