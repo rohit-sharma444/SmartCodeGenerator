@@ -22,16 +22,27 @@ public sealed class SeedEntityExtractor
         EntityType.Location
     };
 
-    public CandidateDomainModel Extract(SemanticResult result)
+    public CandidateDomainModel Extract(SemanticResult result) => Extract(result, description: null);
+
+    /// <summary>
+    /// As <see cref="Extract(SemanticResult)"/>, with the description the result was analysed from,
+    /// so a transaction verb the engine typed as a thing can be told from a noun by where it stands.
+    /// </summary>
+    public CandidateDomainModel Extract(SemanticResult result, string? description)
     {
         var model = new CandidateDomainModel();
 
         // Every entity is walked, not just the ones whose type qualifies: a word the engine
         // typed as something other than a thing is exactly the case a user most wants
         // explained, and filtering it out here would leave nothing to explain it with.
-        foreach (var entity in result.Entities)
+        var words = WordsOf(description);
+
+        for (var i = 0; i < result.Entities.Count; i++)
         {
-            if (RecordMadeBy(entity) is { } record)
+            var entity = result.Entities[i];
+            var previous = i > 0 ? result.Entities[i - 1] : null;
+
+            if ((RecordMadeBy(entity) ?? BareVerbRecord(entity, previous, words)) is { } record)
             {
                 AddRecord(model, record, entity);
                 continue;
@@ -100,6 +111,46 @@ public sealed class SeedEntityExtractor
 
         return TransactionVerbs.RecordFor(words[1]);
     }
+
+    /// <summary>
+    /// The record a transaction verb makes when the engine typed it as a thing and no relative
+    /// pronoun marks it: "a school ENROLS students", "a hotel BOOKS rooms".
+    /// </summary>
+    /// <remarks>
+    /// The entities alone cannot tell "a hotel books rooms" from "a library of books and dvds" -
+    /// both are a noun phrase, "books", another noun - so the description decides. The word must
+    /// stand straight after the noun before it, be an inflected form (books, enrolled; never the
+    /// bare "book", which is as often a noun), and be followed by its object rather than by "and"
+    /// or nothing. "of books" and "with orders" fail the first test, which is what keeps Book in
+    /// a library.
+    /// </remarks>
+    private static string? BareVerbRecord(Entity entity, Entity? previous, IReadOnlyList<string> words)
+    {
+        if (previous is null || words.Count == 0
+            || !EntityTypes.Contains(entity.Type) || !EntityTypes.Contains(previous.Type))
+            return null;
+
+        var verb = entity.Text.Trim().ToLowerInvariant();
+        if (verb.Contains(' ') || TransactionVerbs.InflectedRecordFor(verb) is not { } record)
+            return null;
+
+        var before = previous.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries).LastOrDefault()?.ToLowerInvariant();
+
+        for (var j = 0; j + 2 < words.Count; j++)
+        {
+            if (words[j] == before && words[j + 1] == verb && !Conjunctions.Contains(words[j + 2]))
+                return record;
+        }
+
+        return null;
+    }
+
+    private static readonly string[] Conjunctions = ["and", "or", "nor"];
+
+    private static IReadOnlyList<string> WordsOf(string? description) =>
+        System.Text.RegularExpressions.Regex.Matches(description ?? string.Empty, "[A-Za-z']+")
+            .Select(m => m.Value.ToLowerInvariant())
+            .ToList();
 
     private static void AddRecord(CandidateDomainModel model, string record, Entity verb)
     {

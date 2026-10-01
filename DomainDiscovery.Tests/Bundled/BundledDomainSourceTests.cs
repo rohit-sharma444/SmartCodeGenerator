@@ -142,6 +142,16 @@ public class BundledDomainSourceTests
         }
     }
 
+    [Theory]
+    [InlineData("a school enrols students in courses", "Enrol")]
+    [InlineData("a hotel books rooms for guests", "Book")]
+    public void ABareTransactionVerbIsNotAClass(string description, string verb)
+    {
+        var names = BundledDomainSource.CreateDefault().Discover(description).Model.Entities.Select(e => e.Name).ToList();
+
+        Assert.DoesNotContain(verb, names);
+    }
+
     [Fact]
     public void TheSoftwareWordIsDroppedEvenWhenNoDomainMatches()
     {

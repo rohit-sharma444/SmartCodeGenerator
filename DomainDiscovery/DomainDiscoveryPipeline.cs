@@ -69,7 +69,7 @@ public sealed class DomainDiscoveryPipeline
     public DiscoveryResult Discover(string freeText)
     {
         var analysis = _analyzer.Analyze(freeText ?? string.Empty);
-        var seed = _seedExtractor.Extract(analysis);
+        var seed = _seedExtractor.Extract(analysis, freeText);
 
         // Recognition searches on the seed names, so shaping — which decides what is a domain
         // class at all — has to wait until the article has been chosen. It gets the user's own

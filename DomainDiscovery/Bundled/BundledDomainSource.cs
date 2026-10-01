@@ -38,7 +38,7 @@ public sealed class BundledDomainSource : IDomainModelSource
     {
         var analyzer = EngineBuilder.BuildDefault().Analyzer;
         var extractor = new SeedEntityExtractor();
-        return new BundledDomainSource(BundledDomainCatalog.Default, d => extractor.Extract(analyzer.Analyze(d)));
+        return new BundledDomainSource(BundledDomainCatalog.Default, d => extractor.Extract(analyzer.Analyze(d), d));
     }
 
     public DiscoveryOutcome Discover(string description, Action<DiscoveryProgress>? onProgress = null)

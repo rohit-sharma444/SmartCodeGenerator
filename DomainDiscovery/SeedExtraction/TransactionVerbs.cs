@@ -32,6 +32,9 @@ public static class TransactionVerbs
 
     private static readonly Dictionary<string, string> ByForm = BuildForms();
 
+    private static readonly HashSet<string> BaseForms =
+        Table.SelectMany(t => t.Verbs).ToHashSet(StringComparer.Ordinal);
+
     /// <summary>
     /// The record <paramref name="word"/> makes, or null when it is not a form of a verb here.
     /// Matches the base form and its -s, -es, -d, -ed and doubled-consonant -ed forms ("enrolled",
@@ -40,6 +43,16 @@ public static class TransactionVerbs
     /// </summary>
     public static string? RecordFor(string word)
         => ByForm.GetValueOrDefault((word ?? string.Empty).Trim().ToLowerInvariant());
+
+    /// <summary>
+    /// As <see cref="RecordFor"/>, but null for the base form itself: "books" and "enrolled" can
+    /// only be verbs where a noun stands before them, while "book" and "order" are nouns as often.
+    /// </summary>
+    public static string? InflectedRecordFor(string word)
+    {
+        var form = (word ?? string.Empty).Trim().ToLowerInvariant();
+        return BaseForms.Contains(form) ? null : RecordFor(form);
+    }
 
     private static Dictionary<string, string> BuildForms()
     {
