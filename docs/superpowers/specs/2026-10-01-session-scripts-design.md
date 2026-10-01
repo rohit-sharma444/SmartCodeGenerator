@@ -66,7 +66,8 @@ add validation Pages must be positive in Book
 1. Reads the file. A missing or unreadable file is reported and nothing runs.
 2. Checks every line **before running any**. The whole script is refused, naming the line, if a
    line is one of: `undo`, `redo`, `exit`, `batch`, `demo`, `chat`, `show relationships`, `run`,
-   `save session`; or a `build app` with no `approve …` or `cancel` line after it.
+   `save session`, or one that changes nothing (`help`, `status`, `history`, `clear`, `ai …`); or a
+   `build app` with no `approve …` or `cancel` line after it.
    `Line 4: 'undo' can't be used in a script. Nothing was run.`
 3. Takes the same whole-workspace snapshot `batch` takes (with the same size confirmation on the
    console when the workspace is over the snapshot limits).
@@ -80,10 +81,9 @@ add validation Pages must be positive in Book
 A `build app` line and its answer lines (up to and including the first line starting with
 `approve` or `cancel`) run together in a separate copy of the tool, started with the workspace as
 its project path and those lines plus `exit` on its input — exactly the existing piped form. Its
-output is shown as it arrives. It counts as failed when the copy reports a failure; the run then
-rolls back like any other failure. Whether a piped run's exit code reports a failed or cancelled
-build today is not yet checked — the plan establishes it first, and if it does not, the step fails
-when the copy's output does not report a generated app. After the copy exits, the project list is
+output is shown as it arrives. A piped run's exit code is 0 whatever happens (checked 2026-10-01),
+so the step succeeds when the copy prints `Generated project at …`, or when its block ends in
+`cancel`; otherwise it fails and the run rolls back like any other failure. After the copy exits, the project list is
 reloaded from its file, since the copy may have registered a project.
 
 ### Chat page
