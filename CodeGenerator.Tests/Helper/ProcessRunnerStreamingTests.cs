@@ -40,4 +40,26 @@ public class ProcessRunnerStreamingTests
 
         Assert.AreEqual(3, result.ExitCode);
     }
+
+    [TestMethod]
+    public void Writes_standard_input_and_closes_it()
+    {
+        var lines = new List<string>();
+
+        var result = ProcessRunner.RunStreaming("findstr.exe", "\"^\"", lines.Add, standardInput: "alpha\r\nbeta\r\n");
+
+        Assert.AreEqual(0, result.ExitCode);
+        CollectionAssert.AreEqual(new[] { "alpha", "beta" }, lines.Select(l => l.Trim()).ToArray());
+    }
+
+    [TestMethod]
+    public void Sets_the_childs_environment()
+    {
+        var lines = new List<string>();
+
+        ProcessRunner.RunStreaming("cmd.exe", "/c echo %SCG_SCRIPT_TEST%", lines.Add,
+            environment: new Dictionary<string, string> { ["SCG_SCRIPT_TEST"] = "from the parent" });
+
+        Assert.AreEqual("from the parent", lines.Single().Trim());
+    }
 }
