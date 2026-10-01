@@ -76,5 +76,9 @@ public static class ValidationRegistry
             _rules[className] = rules.ToList();
     }
 
+    /// <summary>Replaces one class's rules, leaving every other class's alone.</summary>
+    public static void Set(string className, IReadOnlyList<IValidationRule> rules) =>
+        _rules[className] = rules.ToList();
+
     public static void Clear() => _rules.Clear();
 }

@@ -246,6 +246,110 @@ public sealed class UndoJournalTests
         Assert.AreEqual("two", File.ReadAllText(registry));
     }
 
+    [TestMethod]
+    public void A_shadow_copy_that_failed_part_way_is_taken_again_and_never_costs_a_file()
+    {
+        // Sorts first, so the very first copy fails and nothing else is mirrored.
+        Write("Shop/Aaa.cs", "class Aaa { }");
+        using (new FileStream(P("Shop/Aaa.cs"), FileMode.Open, FileAccess.Read, FileShare.None))
+            Command("while locked", () => { });
+
+        Command("edit Book", () => Write("Shop/Book.cs", "class Book { int Pages; }"));
+
+        Assert.IsTrue(_journal.Undo().Done);
+        Assert.AreEqual("class Book { }", Read("Shop/Book.cs"));
+    }
+
+    [TestMethod]
+    public void An_undo_that_fails_part_way_puts_back_what_it_did_and_can_be_tried_again()
+    {
+        Command("edit two", () =>
+        {
+            Write("Shop/Book.cs", "class Book { int Pages; }");
+            Write("Shop/New.cs", "class New { }");
+        });
+
+        // Book.cs is restored first; New.cs then cannot be deleted while it is open.
+        using (new FileStream(P("Shop/New.cs"), FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            var refused = _journal.Undo();
+            Assert.IsFalse(refused.Done);
+            StringAssert.StartsWith(refused.Message, "Can't undo edit two:");
+            Assert.AreEqual("class Book { int Pages; }", Read("Shop/Book.cs"));
+        }
+
+        Assert.IsTrue(_journal.Undo().Done);
+        Assert.AreEqual("class Book { }", Read("Shop/Book.cs"));
+        Assert.IsFalse(File.Exists(P("Shop/New.cs")));
+    }
+
+    [TestMethod]
+    public void Undo_refuses_to_delete_a_created_folder_that_now_holds_a_git_repository()
+    {
+        Command("build app", () => Write("MyApp/Program.cs", "class P { }"));
+        Write("MyApp/.git/HEAD", "ref: refs/heads/main");
+
+        var refused = _journal.Undo();
+
+        Assert.IsFalse(refused.Done);
+        StringAssert.Contains(refused.Message, ".git");
+        Assert.IsTrue(File.Exists(P("MyApp/.git/HEAD")));
+    }
+
+    [TestMethod]
+    public void A_command_still_running_when_the_journal_is_disposed_leaves_no_shadow_behind()
+    {
+        var scope = _journal.Begin("slow");
+        Write("Shop/Book.cs", "class Book { int Pages; }");
+        _journal.Dispose();
+        scope.Dispose();
+
+        Assert.IsEmpty(Directory.GetFileSystemEntries(_shadowParent));
+    }
+
+    [TestMethod]
+    public void Undo_and_redo_reload_the_project_list_after_writing_its_file()
+    {
+        var registry = Path.Combine(_shadowParent, "ProjectManager.dat");
+        File.WriteAllText(registry, "one");
+        var reloads = new List<string>();
+        using var journal = new UndoJournal(_root, registryPath: registry, shadowParent: _shadowParent,
+            reloadRegistry: () => reloads.Add(File.ReadAllText(registry)));
+
+        using (journal.Begin("create project Foo")) File.WriteAllText(registry, "two");
+
+        journal.Undo();
+        journal.Redo();
+        CollectionAssert.AreEqual(new[] { "one", "two" }, reloads);
+    }
+
+    [TestMethod]
+    public void Undo_refuses_when_the_project_list_changed_since()
+    {
+        var registry = Path.Combine(_shadowParent, "ProjectManager.dat");
+        File.WriteAllText(registry, "one");
+        using var journal = new UndoJournal(_root, registryPath: registry, shadowParent: _shadowParent);
+
+        using (journal.Begin("create project Foo")) File.WriteAllText(registry, "two");
+        File.WriteAllText(registry, "three");   // another session's command
+
+        Assert.AreEqual("Can't undo: the project list has changed since create project Foo.", journal.Undo().Message);
+        Assert.AreEqual("three", File.ReadAllText(registry));
+    }
+
+    [TestMethod]
+    public void Undo_refuses_when_the_state_it_would_put_back_changed_since()
+    {
+        var state = new FakeState();
+        using var journal = new UndoJournal(_root, captureState: state.Capture, shadowParent: _shadowParent);
+
+        using (journal.Begin("use project Shop")) state.Value = "Shop";
+        state.Value = "Other";   // another session's command
+
+        Assert.AreEqual("Can't undo: the state has changed since use project Shop.", journal.Undo().Message);
+        Assert.AreEqual("Other", state.Value);
+    }
+
     private sealed class FakeState
     {
         public string? Value;
@@ -253,7 +357,9 @@ public sealed class UndoJournalTests
         private sealed record Snap(FakeState Owner, string? Value) : ISessionState
         {
             public bool SameAs(ISessionState other) => other is Snap s && s.Value == Value;
-            public void Restore() => Owner.Value = Value;
+            public string? Conflict(ISessionState replacing) =>
+                replacing is Snap s && s.Value != Value && Owner.Value != s.Value ? "the state" : null;
+            public void Restore(ISessionState replacing) => Owner.Value = Value;
         }
     }
 }

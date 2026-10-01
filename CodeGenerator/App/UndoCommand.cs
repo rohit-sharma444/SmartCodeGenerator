@@ -20,8 +20,19 @@ internal static class UndoCommand
         CommandKind.Pipeline or CommandKind.BuildApp or CommandKind.Batch
         or CommandKind.Demo or CommandKind.ShowRelationships;
 
-    public static UndoResult Handle(UndoJournal journal, CommandKind kind) =>
-        kind == CommandKind.Redo ? journal.Redo() : journal.Undo();
+    // Runs outside both surfaces' command try/catch; a file it cannot even read (another
+    // program holds it without sharing) is a refusal, not a crash.
+    public static UndoResult Handle(UndoJournal journal, CommandKind kind)
+    {
+        try
+        {
+            return kind == CommandKind.Redo ? journal.Redo() : journal.Undo();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return new UndoResult(false, $"Can't {(kind == CommandKind.Redo ? "redo" : "undo")}: {ex.Message}");
+        }
+    }
 
     private static bool Is(string? input, string word) =>
         (input ?? string.Empty).Trim().Equals(word, StringComparison.OrdinalIgnoreCase);

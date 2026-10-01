@@ -36,7 +36,7 @@ public sealed class SessionStateTests
         SessionContext.CurrentClass = "Member";
         Assert.IsFalse(before.SameAs(SessionState.Capture()));
 
-        before.Restore();
+        before.Restore(SessionState.Capture());
 
         Assert.IsEmpty(ValidationRegistry.Get("Book"));
         Assert.AreEqual("Book", SessionContext.CurrentClass);
@@ -50,8 +50,34 @@ public sealed class SessionStateTests
         ProjectManager.CurrentProject = new ProjectMetaData { ProjectName = "Shop" };
 
         Assert.IsFalse(before.SameAs(SessionState.Capture()));
-        before.Restore();
+        before.Restore(SessionState.Capture());
         Assert.IsNull(ProjectManager.CurrentProject);
+    }
+
+    [TestMethod]
+    public void Restoring_over_a_later_state_puts_back_only_the_classes_that_differ()
+    {
+        var before = SessionState.Capture();
+        ValidationRegistry.Add("Customer", new RequiredStub());
+        var after = SessionState.Capture();
+        ValidationRegistry.Add("Order", new RequiredStub());   // another session's command
+
+        Assert.IsNull(before.Conflict(after));
+        before.Restore(after);
+
+        Assert.IsEmpty(ValidationRegistry.Get("Customer"));
+        Assert.HasCount(1, ValidationRegistry.Get("Order"));
+    }
+
+    [TestMethod]
+    public void A_class_whose_rules_changed_since_is_a_conflict()
+    {
+        var before = SessionState.Capture();
+        ValidationRegistry.Add("Customer", new RequiredStub());
+        var after = SessionState.Capture();
+        ValidationRegistry.Add("Customer", new RequiredStub());
+
+        Assert.AreEqual("the validation rules on Customer", before.Conflict(after));
     }
 
     [TestMethod]

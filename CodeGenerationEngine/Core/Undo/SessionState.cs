@@ -31,12 +31,51 @@ public sealed class SessionState : ISessionState
         && ReferenceEquals(s._project, _project)
         && SameRules(s._rules, _rules);
 
-    public void Restore()
+    private void Restore()
     {
         _parsing.Restore();
         ProjectManager.CurrentProject = _project;
         ValidationRegistry.Restore(_rules);
     }
+
+    // The rules are per class, so only the classes the undone command touched are checked and put
+    // back: a chat page and the console share the registry, and each undoes only its own.
+    public string? Conflict(ISessionState replacing)
+    {
+        if (replacing is not SessionState other)
+            return null;
+
+        var now = ValidationRegistry.Snapshot();
+        return ClassesThatDiffer(_rules, other._rules)
+            .FirstOrDefault(name => !SameRules(Only(now, name), Only(other._rules, name))) is { } changed
+            ? "the validation rules on " + changed
+            : null;
+    }
+
+    public void Restore(ISessionState replacing)
+    {
+        if (replacing is not SessionState other)
+        {
+            Restore();
+            return;
+        }
+
+        _parsing.Restore();
+        ProjectManager.CurrentProject = _project;
+        foreach (var name in ClassesThatDiffer(_rules, other._rules))
+            ValidationRegistry.Set(name, _rules.TryGetValue(name, out var rules) ? rules : []);
+    }
+
+    private static List<string> ClassesThatDiffer(
+        IReadOnlyDictionary<string, IReadOnlyList<IValidationRule>> a,
+        IReadOnlyDictionary<string, IReadOnlyList<IValidationRule>> b) =>
+        a.Keys.Union(b.Keys, StringComparer.OrdinalIgnoreCase)
+            .Where(name => !SameRules(Only(a, name), Only(b, name)))
+            .ToList();
+
+    private static Dictionary<string, IReadOnlyList<IValidationRule>> Only(
+        IReadOnlyDictionary<string, IReadOnlyList<IValidationRule>> rules, string name) =>
+        new(StringComparer.OrdinalIgnoreCase) { [name] = rules.TryGetValue(name, out var r) ? r : [] };
 
     // The same fields ParsingStateSnapshot keeps, which it holds privately.
     private static (string?, string?, string?, string?, string?, string?, string?, string?) ParsingValues()

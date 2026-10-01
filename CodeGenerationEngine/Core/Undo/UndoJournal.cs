@@ -7,7 +7,18 @@ public sealed record UndoResult(bool Done, string Message);
 public interface ISessionState
 {
     bool SameAs(ISessionState other);
-    void Restore();
+
+    /// <summary>
+    /// What has changed, since <paramref name="replacing"/> was captured, in the parts this state
+    /// would put back — or null when restoring over it loses nothing.
+    /// </summary>
+    string? Conflict(ISessionState replacing);
+
+    /// <summary>
+    /// Puts back the parts in which this state differs from <paramref name="replacing"/>, leaving
+    /// the rest as it is now, so another session's changes survive.
+    /// </summary>
+    void Restore(ISessionState replacing);
 }
 
 /// <summary>
@@ -37,6 +48,7 @@ public sealed class UndoJournal : IDisposable
     private readonly Action<string>? _notify;
     private readonly string? _registryPath;
     private readonly Func<ISessionState>? _captureState;
+    private readonly Action? _reloadRegistry;
     private readonly string _shadowParent;
     private readonly int _maxFiles;
     private readonly long _maxBytes;
@@ -59,12 +71,14 @@ public sealed class UndoJournal : IDisposable
         Func<ISessionState>? captureState = null,
         string? shadowParent = null,
         int maxFiles = WorkspaceSnapshot.MaxFiles,
-        long maxBytes = WorkspaceSnapshot.MaxBytes)
+        long maxBytes = WorkspaceSnapshot.MaxBytes,
+        Action? reloadRegistry = null)
     {
         WorkspaceRoot = Path.GetFullPath(workspaceRoot);
         _notify = notify;
         _registryPath = registryPath;
         _captureState = captureState;
+        _reloadRegistry = reloadRegistry;
         _shadowParent = shadowParent ?? Path.GetTempPath();
         _maxFiles = maxFiles;
         _maxBytes = maxBytes;
@@ -75,7 +89,8 @@ public sealed class UndoJournal : IDisposable
     /// state. The constructor's defaults track neither, so tests see only what they set up.
     /// </summary>
     public static UndoJournal ForSession(string workspaceRoot, Action<string>? notify = null) =>
-        new(workspaceRoot, notify, ProjectManager.RegistryPath, SessionState.Capture);
+        new(workspaceRoot, notify, ProjectManager.RegistryPath, SessionState.Capture,
+            reloadRegistry: () => ProjectManager.ReloadWithin(workspaceRoot));
 
     public string WorkspaceRoot { get; }
 
@@ -132,16 +147,20 @@ public sealed class UndoJournal : IDisposable
 
         var entry = _undo[^1];
 
-        var conflict = FirstDifference(entry, entry.After) ?? NewFileInside(entry);
+        var conflict = FirstDifference(entry, entry.After) ?? NewFileInside(entry)
+            ?? RegistryConflict(entry, entry.RegistryAfter) ?? StateConflict(entry.StateBefore, entry.StateAfter);
         if (conflict is not null)
             return new UndoResult(false, $"Can't undo: {conflict} has changed since {entry.Label}.");
 
-        Apply(entry, entry.Before);
+        if (TryApply(entry, entry.Before, entry.After) is { } failure)
+            return new UndoResult(false, $"Can't undo {entry.Label}: {failure} Nothing was changed.");
+
         foreach (var root in entry.CreatedRoots)
             TryDeleteTree(Path.Combine(WorkspaceRoot, root));
-        entry.StateBefore?.Restore();
         if (entry.RegistryChanged)
             WriteRegistry(entry.RegistryBefore);
+        if (entry.StateBefore is not null && entry.StateAfter is not null)
+            entry.StateBefore.Restore(entry.StateAfter);
 
         _undo.RemoveAt(_undo.Count - 1);
         _redo.Push(entry);
@@ -158,14 +177,18 @@ public sealed class UndoJournal : IDisposable
 
         var entry = _redo.Peek();
 
-        var conflict = FirstDifference(entry, entry.Before);
+        var conflict = FirstDifference(entry, entry.Before)
+            ?? RegistryConflict(entry, entry.RegistryBefore) ?? StateConflict(entry.StateAfter, entry.StateBefore);
         if (conflict is not null)
             return new UndoResult(false, $"Can't redo: {conflict} has changed since you undid {entry.Label}.");
 
-        Apply(entry, entry.After);
-        entry.StateAfter?.Restore();
+        if (TryApply(entry, entry.After, entry.Before) is { } failure)
+            return new UndoResult(false, $"Can't redo {entry.Label}: {failure} Nothing was changed.");
+
         if (entry.RegistryChanged)
             WriteRegistry(entry.RegistryAfter);
+        if (entry.StateBefore is not null && entry.StateAfter is not null)
+            entry.StateAfter.Restore(entry.StateBefore);
 
         _redo.Pop();
         _undo.Add(entry);
@@ -189,6 +212,14 @@ public sealed class UndoJournal : IDisposable
     {
         if (--_depth > 0 || _open is null)
             return;
+
+        // Disposed while the command ran (the chat page closed): the shadow is gone, and copying
+        // into it now would only recreate it where nothing cleans it up.
+        if (_disposed)
+        {
+            _open = null;
+            return;
+        }
 
         var open = _open;
         _open = null;
@@ -216,6 +247,12 @@ public sealed class UndoJournal : IDisposable
             var folder = Path.Combine(_shadow!, "entries", (++_entryCount).ToString());
             var before = Path.Combine(folder, "before");
             var after = Path.Combine(folder, "after");
+
+            // A file that existed before but has no shadow copy would be deleted, not restored,
+            // by an undo. Better no entry; the next Sync re-mirrors whatever changed.
+            if (changed.FirstOrDefault(p => _known.ContainsKey(p) && !File.Exists(Path.Combine(_shadow!, "files", p)))
+                is { } unmirrored)
+                throw new IOException("No shadow copy of " + unmirrored);
 
             foreach (var path in changed)
             {
@@ -247,27 +284,40 @@ public sealed class UndoJournal : IDisposable
 
     // ----- the shadow ---------------------------------------------------------------------------
 
+    // Started only once the whole shadow is taken. A copy that fails part way (a file another
+    // program holds open) is thrown away and taken again next time: a shadow missing a file would
+    // let an undo delete that file instead of restoring it.
     private bool Start()
     {
-        _started = true;
-
         var files = WorkspaceSnapshot.IncludedFiles(WorkspaceRoot, AlsoExcluded).ToList();
         var bytes = files.Sum(f => new FileInfo(f).Length);
 
         if (files.Count > _maxFiles || bytes > _maxBytes)
         {
+            _started = true;
             Enabled = false;
             _notify?.Invoke(OffMessage);
             return false;
         }
 
         _shadow = Path.Combine(_shadowParent, "codegen_undo_" + Path.GetRandomFileName());
-        Directory.CreateDirectory(Path.Combine(_shadow, "files"));
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(_shadow, "files"));
 
-        _known = Scan();
-        foreach (var path in _known.Keys)
-            Mirror(path);
+            _known = Scan();
+            foreach (var path in _known.Keys)
+                Mirror(path);
+        }
+        catch
+        {
+            TryDeleteTree(_shadow);
+            _shadow = null;
+            _known = new(StringComparer.OrdinalIgnoreCase);
+            throw;
+        }
 
+        _started = true;
         return true;
     }
 
@@ -365,6 +415,11 @@ public sealed class UndoJournal : IDisposable
             if (!Directory.Exists(full))
                 continue;
 
+            // Never scanned, so never in Paths; but a repository started in it since is the
+            // user's, and deleting the folder would take its history.
+            if (Directory.EnumerateDirectories(full, ".git", SearchOption.AllDirectories).FirstOrDefault() is { } git)
+                return Path.GetRelativePath(WorkspaceRoot, git);
+
             var stranger = WorkspaceSnapshot.IncludedFiles(full, AlsoExcluded)
                 .Select(f => Path.GetRelativePath(WorkspaceRoot, f))
                 .FirstOrDefault(f => !mine.Contains(f));
@@ -375,27 +430,55 @@ public sealed class UndoJournal : IDisposable
         return null;
     }
 
-    // Puts every changed path back to the given side's version, in the workspace and the shadow.
-    private void Apply(Entry entry, string side)
+    private string? RegistryConflict(Entry entry, byte[]? expected) =>
+        entry.RegistryChanged && !Same(ReadRegistry(), expected) ? "the project list" : null;
+
+    private static string? StateConflict(ISessionState? restoring, ISessionState? replacing) =>
+        restoring is not null && replacing is not null ? restoring.Conflict(replacing) : null;
+
+    // Puts every changed path to the given side; if one cannot be written (a file another program
+    // holds open), puts the ones already done back to the other side and returns why.
+    private string? TryApply(Entry entry, string side, string otherSide)
     {
-        foreach (var path in entry.Paths)
+        var done = 0;
+        try
         {
-            var target = Path.Combine(WorkspaceRoot, path);
-            var version = Path.Combine(side, path);
+            foreach (var path in entry.Paths)
+            {
+                done++;
+                Apply(path, side);
+            }
 
-            if (File.Exists(version))
-                CopyIfExists(version, target);
-            else if (File.Exists(target))
-                File.Delete(target);
-
-            Mirror(path);
-
-            var info = new FileInfo(target);
-            if (info.Exists)
-                _known[path] = new Stamp(info.Length, info.LastWriteTimeUtc);
-            else
-                _known.Remove(path);
+            return null;
         }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            foreach (var path in entry.Paths.Take(done))
+                try { Apply(path, otherSide); }
+                catch (Exception again) when (again is IOException or UnauthorizedAccessException) { }
+
+            return ex.Message;
+        }
+    }
+
+    // Puts one path to the given side's version, in the workspace and the shadow.
+    private void Apply(string path, string side)
+    {
+        var target = Path.Combine(WorkspaceRoot, path);
+        var version = Path.Combine(side, path);
+
+        if (File.Exists(version))
+            CopyIfExists(version, target);
+        else if (File.Exists(target))
+            File.Delete(target);
+
+        Mirror(path);
+
+        var info = new FileInfo(target);
+        if (info.Exists)
+            _known[path] = new Stamp(info.Length, info.LastWriteTimeUtc);
+        else
+            _known.Remove(path);
     }
 
     private static string Describe(Entry entry, string side)
@@ -437,6 +520,10 @@ public sealed class UndoJournal : IDisposable
         {
             File.WriteAllBytes(_registryPath, contents);
         }
+
+        // The file is only half of it: the project list in memory would otherwise still offer
+        // a project the undo removed, and write it back on the next save.
+        _reloadRegistry?.Invoke();
     }
 
     private static bool Same(byte[]? a, byte[]? b) =>
