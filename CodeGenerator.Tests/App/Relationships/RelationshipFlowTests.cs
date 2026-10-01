@@ -43,6 +43,31 @@ public class RelationshipFlowTests
         Assert.IsTrue(said.Any(s => s.Contains("Orders")), "it must say what it wrote");
     }
 
+    // save session cannot replay the offer, so it needs a note of what the offer wrote.
+    [TestMethod]
+    public void What_was_written_is_handed_over_once_as_a_note()
+    {
+        var root = TwoClasses();
+        var flow = new RelationshipFlow(() => root, new ScriptedAsker(0, 0), _ => { });
+
+        flow.Run();
+
+        var note = flow.TakeApplied().Single();
+        StringAssert.StartsWith(note, "# relationship from the offer, not replayed: Order -> Customer, one to many; added ");
+        Assert.IsEmpty(flow.TakeApplied());
+    }
+
+    [TestMethod]
+    public void A_skipped_proposal_hands_over_nothing()
+    {
+        var root = TwoClasses();
+        var flow = new RelationshipFlow(() => root, new ScriptedAsker(0, 3), _ => { });
+
+        flow.Run();
+
+        Assert.IsEmpty(flow.TakeApplied());
+    }
+
     [TestMethod]
     public void Declining_the_offer_writes_nothing()
     {

@@ -102,9 +102,12 @@ public sealed class UndoJournal : IDisposable
     public string? NextUndoLabel => CanUndo ? _undo[^1].Label : null;
     public string? NextRedoLabel => CanRedo ? _redo.Peek().Label : null;
 
-    /// <summary>An entry was recorded, with the lines its command asked to keep (maybe none). With
-    /// undo off, raised for each command that kept lines, with no entry behind it.</summary>
+    /// <summary>An entry was recorded, with the lines its command asked to keep (maybe none).</summary>
     public event Action<IReadOnlyList<string>>? Recorded;
+
+    /// <summary>A command kept lines but no entry could be made for it — undo is off, or the journal
+    /// could not copy a file — so no undo will ever take them back.</summary>
+    public event Action<IReadOnlyList<string>>? KeptWithoutEntry;
 
     /// <summary>The latest entry was undone.</summary>
     public event Action? Undone;
@@ -143,8 +146,12 @@ public sealed class UndoJournal : IDisposable
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            // An unreadable workspace must not stop the command; it only goes unjournalled.
+            // An unreadable workspace must not stop the command; it only goes unjournalled — and
+            // what it keeps is still saved, since a saved session silently missing it would replay
+            // differently.
             _open = null;
+            _depth = 0;
+            return new UndoScope(this, UndoScope.Mode.Unrecorded);
         }
 
         return new UndoScope(this, UndoScope.Mode.Journaled);
@@ -296,15 +303,17 @@ public sealed class UndoJournal : IDisposable
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            // Better no entry than a half-written one that would restore the wrong thing.
+            // Better no entry than a half-written one that would restore the wrong thing. The
+            // command still happened, so what it kept is still saved.
+            KeepWithoutEntry(open.Kept);
         }
     }
 
-    // Undo is off, so there is no entry and never will be an undo; the lines are kept as they are.
-    internal void RecordWhileOff(IReadOnlyList<string> kept)
+    // No entry, so no undo will ever take these back; they are kept as they are.
+    internal void KeepWithoutEntry(IReadOnlyList<string> kept)
     {
         if (kept.Count > 0)
-            Recorded?.Invoke([.. kept]);
+            KeptWithoutEntry?.Invoke([.. kept]);
     }
 
     // ----- the shadow ---------------------------------------------------------------------------

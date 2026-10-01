@@ -59,6 +59,20 @@ public sealed class ScriptBuildAppTests
         Assert.IsFalse(Directory.Exists(Path.Combine(_root, "Books.Console")));
     }
 
+    // The build never reached its review, so the answer lines ran as commands of their own in the
+    // copy — and a "cancel" success would keep whatever they did. Only a real cancel succeeds.
+    [TestMethod]
+    public void A_cancel_that_never_reached_the_review_fails()
+    {
+        File.WriteAllText(Path.Combine(_root, "Keep.cs"), "namespace S { public class Keep { } }");
+
+        var ok = ScriptBuildApp.Run(
+            ["build app from csv " + Path.Combine(_root, "missing.csv"), "add property Pages int to Keep", "cancel"],
+            _root, _ => { });
+
+        Assert.IsFalse(ok);
+    }
+
     [TestMethod]
     public void A_tool_that_cannot_start_fails_and_says_why()
     {

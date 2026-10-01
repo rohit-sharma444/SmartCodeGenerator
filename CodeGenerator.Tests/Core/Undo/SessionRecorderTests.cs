@@ -124,6 +124,28 @@ public sealed class SessionRecorderTests
     }
 
     [TestMethod]
+    public void A_command_the_journal_could_not_record_is_still_kept_and_undo_never_drops_it()
+    {
+        // Sorts first, so the very first shadow copy fails and the command goes unjournalled.
+        File.WriteAllText(Path.Combine(_root, "Aaa.cs"), "x");
+        using (new FileStream(Path.Combine(_root, "Aaa.cs"), FileMode.Open, FileAccess.Read, FileShare.None))
+        using (var scope = _journal.Begin("create class Book"))
+        {
+            File.WriteAllText(Path.Combine(_root, "Book.cs"), "b");
+            scope.Keep(["create class Book"]);
+        }
+
+        Command("create class Member");
+        CollectionAssert.AreEqual(new[] { "create class Book", "create class Member" }, _recorder.Lines.ToArray());
+
+        Assert.IsTrue(_journal.Undo().Done);   // undoes Member, the only entry
+        CollectionAssert.AreEqual(new[] { "create class Book" }, _recorder.Lines.ToArray());
+
+        _journal.Redo();
+        CollectionAssert.AreEqual(new[] { "create class Book", "create class Member" }, _recorder.Lines.ToArray());
+    }
+
+    [TestMethod]
     public void With_undo_off_every_kept_command_is_kept_and_it_says_so()
     {
         using var journal = new UndoJournal(_root, shadowParent: _shadowParent, maxFiles: 0);

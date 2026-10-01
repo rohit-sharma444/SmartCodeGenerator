@@ -9,7 +9,7 @@ namespace NaturalLanguageBridge;
 /// Handled — whether the input was recognized as a command at all. A recognized
 /// command can still fail (Handled=false, Recognized=true); only genuinely
 /// unrecognized input is Recognized=false.</summary>
-public sealed record PipelineOutcome(bool Handled, SemanticResult? Analysis, bool Recognized);
+public sealed record PipelineOutcome(bool Handled, SemanticResult? Analysis, bool Recognized, bool NeededAi = false);
 
 /// <summary>
 /// NLE-led entry point for a single command: analyze with NLE once, surface the
@@ -35,6 +35,6 @@ public sealed class NaturalLanguagePipeline
             a => { captured = a; onAnalyzed?.Invoke(a); },
             aiResolver, confirmAi, ct);
 
-        return new PipelineOutcome(result.Handled, captured, result.Recognized);
+        return new PipelineOutcome(result.Handled, captured, result.Recognized, result.NeededAi);
     }
 }

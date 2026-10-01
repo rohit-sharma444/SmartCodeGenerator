@@ -387,6 +387,7 @@ internal class CodeGeneratorStarter
                 // intercepted above and stream live: they prompt mid-flight, and buffering would
                 // hide the question the user is meant to answer.
                 var handled = false;
+                var neededAi = false;
 
                 CommandColour.Run(() =>
                 {
@@ -411,12 +412,14 @@ internal class CodeGeneratorStarter
                     // already reported its own reason, and calling it unrecognized would be wrong.
                     // Inside the buffered region so it is part of the coloured block.
                     handled = outcome.Handled;
+                    neededAi = outcome.NeededAi;
                     return CommandColour.Verdict(outcome.Recognized, outcome.Handled);
                 });
 
-                // What save session writes: the line as typed, when it worked.
+                // What save session writes: the line as typed when it worked — or a note, when only
+                // the AI could read it, since a script never asks the AI.
                 if (handled)
-                    entry?.Keep([input]);
+                    entry?.Keep([ScriptNotes.SavedForm(input, neededAi)]);
 
                 // After the buffered block, never inside it: CommandColour redirects Console.Out
                 // for the whole command, so a menu drawn in there is drawn into a buffer nobody
@@ -427,6 +430,9 @@ internal class CodeGeneratorStarter
                 // the path scripts use.
                 if (!RelationshipGate.IsClassCreation(input))
                     _relationships?.Run();
+
+                // In the same entry as the command, as the files it wrote are.
+                entry?.Keep(_relationships?.TakeApplied() ?? []);
             }
             catch (ArgumentException ex)
             {

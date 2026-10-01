@@ -11,7 +11,7 @@ namespace CodeGenerationEngine.Core.Undo;
 /// </remarks>
 public sealed class UndoScope : IDisposable
 {
-    internal enum Mode { Journaled, Off, Ignored }
+    internal enum Mode { Journaled, Off, Unrecorded, Ignored }
 
     private readonly UndoJournal _journal;
     private readonly Mode _mode;
@@ -39,7 +39,8 @@ public sealed class UndoScope : IDisposable
                 _journal.End(_kept);
                 break;
             case Mode.Off:
-                _journal.RecordWhileOff(_kept);
+            case Mode.Unrecorded:
+                _journal.KeepWithoutEntry(_kept);
                 break;
         }
     }

@@ -61,6 +61,9 @@ public sealed class ChatSession
     private UndoJournal _journal;
     private SessionRecorder _recorder;
 
+    // Whether the last pipeline command was read by the AI; set by Pipeline, read by TurnsFor.
+    private bool _neededAi;
+
     public ChatSession(Workspace workspace, AiLayer ai, List<string> history)
     {
         _workspace = workspace;
@@ -246,6 +249,9 @@ public sealed class ChatSession
             // the question is up. A second message starting here would put a second question on
             // the page and orphan the thread waiting on the first one.
             await Offer(input);
+
+            // In the same entry as the command, as the files it wrote are.
+            entry?.Keep(_relationships?.TakeApplied() ?? []);
         }
         finally
         {
@@ -375,7 +381,7 @@ public sealed class ChatSession
         var turn = Run(input, kind, ct);
 
         if (kind == CommandKind.Pipeline && turn.Verdict == ChatVerdict.Succeeded)
-            entry?.Keep([input]);
+            entry?.Keep([ScriptNotes.SavedForm(input, _neededAi)]);
 
         return [turn];
     }
@@ -611,6 +617,7 @@ public sealed class ChatSession
             ct: ct);
 
         _currentProject = project;
+        _neededAi = outcome.NeededAi;
 
         if (!outcome.Recognized && !string.IsNullOrWhiteSpace(input))
         {

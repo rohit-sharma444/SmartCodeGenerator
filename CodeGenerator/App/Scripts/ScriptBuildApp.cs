@@ -18,6 +18,10 @@ internal static class ScriptBuildApp
 {
     public const string SuccessMarker = "Generated project at ";
 
+    // What the review prints when it is cancelled. A build that failed before its review reads the
+    // same answer lines as commands of their own, so "cancel" as the last line proves nothing.
+    public const string CancelledMarker = "Cancelled. Nothing was generated.";
+
     private static readonly TimeSpan Timeout = TimeSpan.FromMinutes(10);
 
     private static string DefaultExecutable =>
@@ -29,6 +33,7 @@ internal static class ScriptBuildApp
     {
         var gate = new object();
         var generated = false;
+        var cancelled = false;
         var input = string.Join("\n", lines.Append("exit")) + "\n";
 
         ProcessResult result;
@@ -44,6 +49,7 @@ internal static class ScriptBuildApp
                     lock (gate)
                     {
                         generated |= line.Contains(SuccessMarker, StringComparison.Ordinal);
+                        cancelled |= line.Contains(CancelledMarker, StringComparison.Ordinal);
                         onLine(line);
                     }
                 },
@@ -71,6 +77,6 @@ internal static class ScriptBuildApp
         }
 
         lock (gate)
-            return generated || lines[^1].Equals("cancel", StringComparison.OrdinalIgnoreCase);
+            return generated || cancelled;
     }
 }
