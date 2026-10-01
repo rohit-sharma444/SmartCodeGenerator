@@ -196,4 +196,15 @@ public class BundledDomainSourceTests
         Assert.Contains(outcome.Model.Entities, e => e.Name == "Book");
         Assert.DoesNotContain(outcome.Model.Entities, e => e.Name == "Library");
     }
+
+    [Fact]
+    public void ASeedSpelledTheOtherWayIsTheDomainsOwnClass()
+    {
+        var names = BundledDomainSource.CreateDefault()
+            .Discover("a university that enrolls students and tracks enrollments")
+            .Model.Entities.Select(e => e.Name).ToList();
+
+        Assert.Contains("Enrolment", names);
+        Assert.DoesNotContain("Enrollment", names);
+    }
 }

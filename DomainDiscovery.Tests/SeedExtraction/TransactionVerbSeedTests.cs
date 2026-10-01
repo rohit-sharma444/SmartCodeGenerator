@@ -179,4 +179,13 @@ public class TransactionVerbSeedTests
         Assert.Contains("Staff", seeds);
         Assert.Contains("Salary", seeds);
     }
+
+    // "enrolls" makes the UK-spelled record, the noun "enrollments" the US one; both were kept.
+    [Fact]
+    public void A_record_and_its_other_spelling_are_one_class()
+    {
+        var seeds = Seeds("a university that enrolls students and tracks enrollments");
+
+        Assert.Single(seeds, s => s is "Enrolment" or "Enrollment");
+    }
 }

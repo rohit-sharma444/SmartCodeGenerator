@@ -109,7 +109,8 @@ public sealed class BundledDomainSource : IDomainModelSource
 
         foreach (var seed in seeds.Entities)
         {
-            if (domainClasses.Any(e => e.Name.Equals(seed.Name, StringComparison.OrdinalIgnoreCase)))
+            // By spelling key, so a seed "Enrollment" is the School domain's own Enrolment.
+            if (domainClasses.Any(e => NameNormalizer.SpellingKey(e.Name) == NameNormalizer.SpellingKey(seed.Name)))
                 continue;
 
             var stem = WordStem.Of(seed.Name);

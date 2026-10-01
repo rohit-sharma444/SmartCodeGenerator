@@ -75,11 +75,13 @@ public sealed class SeedEntityExtractor
                 continue;
             }
 
-            if (model.Entities.Any(e => string.Equals(e.Name, name, StringComparison.OrdinalIgnoreCase)))
+            // Compared by spelling key: "enrolls" made Enrolment, and "enrollments" is the same
+            // class spelled the American way.
+            if (model.Entities.FirstOrDefault(e => SameName(e.Name, name)) is { } taken)
             {
                 model.Record(entity.Text, DecisionStage.SeedExtraction, DecisionOutcome.Skipped,
                     DecisionReasons.AlreadyNamed,
-                    $"already taken by {name}");
+                    $"already taken by {taken.Name}");
                 continue;
             }
 
@@ -178,10 +180,13 @@ public sealed class SeedEntityExtractor
             .Select(m => m.Value.ToLowerInvariant())
             .ToList();
 
+    private static bool SameName(string a, string b)
+        => NameNormalizer.SpellingKey(a) == NameNormalizer.SpellingKey(b);
+
     private static void AddRecord(CandidateDomainModel model, string record, Entity verb)
     {
         // "a car rental company that rents vehicles" names the Rental twice, once each way.
-        if (model.Entities.Any(e => string.Equals(e.Name, record, StringComparison.OrdinalIgnoreCase)))
+        if (model.Entities.Any(e => SameName(e.Name, record)))
         {
             model.Record(verb.Text, DecisionStage.SeedExtraction, DecisionOutcome.Skipped,
                 DecisionReasons.AlreadyNamed, $"already taken by {record}");

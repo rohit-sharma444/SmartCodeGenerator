@@ -26,6 +26,14 @@ public static class NameNormalizer
     }
 
     /// <summary>
+    /// A comparison key under which a UK and a US spelling of one name are equal: Enrolment and
+    /// Enrollment, Instalment and Installment, Fulfilment and Fulfillment. Only the -lment/-llment
+    /// pair, the one discovery has actually produced both ways at once; a key, never a rename.
+    /// </summary>
+    public static string SpellingKey(string name)
+        => (name ?? string.Empty).ToLowerInvariant().Replace("llment", "lment", StringComparison.Ordinal);
+
+    /// <summary>
     /// Whether <paramref name="name"/> is something C# can declare as a type or member name.
     /// The normalizers strip punctuation but cannot stop a name starting with a digit
     /// ("2nd course" -> "2ndCourse"), which emits CS1519 in the generated class.
