@@ -94,13 +94,22 @@ public static class ProcessRunner
     /// Called on a background thread, once per line, for both stdout and stderr. A caller
     /// updating a UI must marshal to its own thread.
     /// </param>
+    /// <param name="standardInput">Written to the child's input whole, then closed; null leaves
+    /// the input unredirected.</param>
+    /// <param name="environment">Variables set in the child's environment, on top of this
+    /// process's.</param>
+    /// <param name="outputEncoding">How to read the child's output; null keeps the console code
+    /// page, which is what the tools the existing callers run write.</param>
     /// <exception cref="Win32Exception">The executable could not be started.</exception>
     public static ProcessResult RunStreaming(
         string fileName,
         string arguments,
         Action<string> onLine,
         string? workingDirectory = null,
-        TimeSpan? timeout = null)
+        TimeSpan? timeout = null,
+        string? standardInput = null,
+        IReadOnlyDictionary<string, string>? environment = null,
+        Encoding? outputEncoding = null)
     {
         using var process = new Process
         {
@@ -109,12 +118,26 @@ public static class ProcessRunner
                 FileName = fileName,
                 Arguments = arguments,
                 WorkingDirectory = workingDirectory ?? string.Empty,
+                RedirectStandardInput = standardInput is not null,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
                 CreateNoWindow = true
             }
         };
+
+        if (standardInput is not null)
+            process.StartInfo.StandardInputEncoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+
+        if (outputEncoding is not null)
+        {
+            process.StartInfo.StandardOutputEncoding = outputEncoding;
+            process.StartInfo.StandardErrorEncoding = outputEncoding;
+        }
+
+        if (environment is not null)
+            foreach (var (name, value) in environment)
+                process.StartInfo.Environment[name] = value;
 
         var stdout = new StringBuilder();
         var stderr = new StringBuilder();
@@ -127,6 +150,13 @@ public static class ProcessRunner
         process.Start();
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
+
+        // Written whole and closed, so a child reading to end-of-input sees it end.
+        if (standardInput is not null)
+        {
+            process.StandardInput.Write(standardInput);
+            process.StandardInput.Close();
+        }
 
         var limit = timeout ?? DefaultTimeout;
         var limitMs = (int)Math.Clamp(limit.TotalMilliseconds, 0, int.MaxValue);

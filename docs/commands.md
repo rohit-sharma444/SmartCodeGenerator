@@ -148,6 +148,8 @@
 | `help all` | Every command in one list — the complete catalog, which is what plain 'help' used to print. | `help all` |
 | `history` | Lists the last 20 commands (not itself recorded). | `history` |
 | `redo` | Puts back what undo reversed. The next command that changes something clears it. | `redo` |
+| `run <file>` | Runs a script of commands (.cgs) saved with save session or written by hand: every line, or none if one fails. One undo reverses the whole run. | `run library.cgs` |
+| `save session <file> [replace]` | Saves this session's commands that worked and changed something, as a script for run. Won't overwrite a file unless you add replace. | `save session library.cgs` |
 | `status` | Reports the workspace, the projects found and which is selected, any loaded rules, the AI state, and the Wikipedia store and its updater service. Startup prints only what is wrong; this prints everything. | `status` |
 | `undo` | Reverses the last command that changed something: its files, the validation rules and the current project. A whole batch or build app is one step. This session only, up to 50 steps; refuses, naming the file, if you have edited one it would restore. | `undo` |
 

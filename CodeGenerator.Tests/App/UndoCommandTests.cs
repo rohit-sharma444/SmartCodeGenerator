@@ -22,4 +22,11 @@ public class UndoCommandTests
     [DataRow(CommandKind.Ai, false)]
     public void Only_commands_that_can_change_something_are_journalled(CommandKind kind, bool journaled)
         => Assert.AreEqual(journaled, UndoCommand.Journaled(kind));
+
+    [TestMethod]
+    public void A_run_is_one_undo_step_and_save_session_is_none()
+    {
+        Assert.IsTrue(UndoCommand.Journaled(CommandKind.Run));
+        Assert.IsFalse(UndoCommand.Journaled(CommandKind.SaveSession));
+    }
 }

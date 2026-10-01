@@ -1,4 +1,5 @@
 using CodeGenerationEngine.Core.Relationships;
+using CodeGenerator.App.Scripts;
 
 namespace CodeGenerator.App.Relationships;
 
@@ -31,6 +32,18 @@ public sealed class RelationshipFlow(
     private static readonly IReadOnlyList<string> YesNo = ["Yes", "No"];
 
     private readonly HashSet<string> _refused = new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<string> _applied = [];
+
+    /// <summary>
+    /// What the offer wrote since the last call, as notes for <c>save session</c>: there is no typed
+    /// command that sets a relationship, so a saved session can only say what was added.
+    /// </summary>
+    public IReadOnlyList<string> TakeApplied()
+    {
+        var applied = _applied.ToList();
+        _applied.Clear();
+        return applied;
+    }
 
     /// <summary>
     /// The four cardinality answers, worded from the owner's side so the direction is in the
@@ -112,6 +125,17 @@ public sealed class RelationshipFlow(
 
         var written = RelationshipWriter.Apply(
             workspaceRoot(), proposal with { Kind = kind.Value });
+
+        if (written.Ok)
+        {
+            var described = kind.Value switch
+            {
+                RelationshipKind.OneToMany => "one to many",
+                RelationshipKind.ManyToMany => "many to many",
+                _ => "one to one"
+            };
+            _applied.Add(ScriptNotes.Relationship(proposal.Owner, proposal.Target, described, written.Added));
+        }
 
         report(written.Ok
             ? written.Message + " Added: " + string.Join(", ", written.Added)

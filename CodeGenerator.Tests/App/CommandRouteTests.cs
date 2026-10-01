@@ -79,4 +79,16 @@ public class CommandRouteTests
     [DataRow("undo delete class Book", CommandKind.Pipeline)]
     public void Undo_and_redo_are_the_bare_words(string input, CommandKind kind)
         => Assert.AreEqual(kind, CommandRoute.Classify(input));
+
+    [TestMethod]
+    [DataRow("run library.cgs", CommandKind.Run)]
+    [DataRow("RUN \"my lib\"", CommandKind.Run)]
+    [DataRow("run", CommandKind.Run)]
+    [DataRow("save session library.cgs", CommandKind.SaveSession)]
+    [DataRow("save session library.cgs replace", CommandKind.SaveSession)]
+    [DataRow("save session", CommandKind.SaveSession)]
+    [DataRow("running total in Order", CommandKind.Pipeline)]
+    [DataRow("save Book", CommandKind.Pipeline)]
+    public void Scripts_are_routed(string input, CommandKind expected) =>
+        Assert.AreEqual(expected, CommandRoute.Classify(input));
 }

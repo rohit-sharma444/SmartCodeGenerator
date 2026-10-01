@@ -213,6 +213,24 @@ public class ChatChromeTests
         Assert.AreEqual("14:02", rendered.Find(".turn-time").TextContent.Trim());
     }
 
+    // A line a script ran was not typed by you, and its card must not say it was.
+    [TestMethod]
+    public void A_turn_with_a_label_shows_it_where_you_would_be()
+    {
+        using var context = new BunitContext();
+
+        var rendered = context.Render<ChatTranscript>(p => p.Add(
+            c => c.Turns,
+            new List<ChatTurn>
+            {
+                new("run two", CommandKind.Run, ChatVerdict.Succeeded, []),
+                new("add property Pages int to Book", CommandKind.Pipeline, ChatVerdict.Succeeded, [], Label: "Line 2")
+            }));
+
+        CollectionAssert.AreEqual(new[] { "You", "Line 2" },
+            rendered.FindAll(".turn-who").Select(e => e.TextContent.Trim()).ToArray());
+    }
+
     /// <summary>An unstamped turn draws no time at all, rather than the first of January in year
     /// one dressed up as a clock.</summary>
     [TestMethod]

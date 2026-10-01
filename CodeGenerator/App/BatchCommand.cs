@@ -18,7 +18,8 @@ internal sealed class BatchCommand
         => input.Trim().Equals(Keyword, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
-    /// Runs one batch from start to finish.
+    /// Runs one batch from start to finish. Returns the sentences it applied, or none when it
+    /// applied nothing — what <c>save session</c> keeps for it.
     /// </summary>
     /// <param name="currentProject">
     /// Threaded by reference so that <c>use project Foo</c> on one line is
@@ -29,7 +30,7 @@ internal sealed class BatchCommand
     /// <param name="workspaceRoot">The workspace directory the batch reads from and writes to.</param>
     /// <param name="setLastCreatedProject">Callback the pipeline uses to record a newly created project.</param>
     /// <param name="pipeline">Re-parses each approved sentence at execution time; never the stored preview.</param>
-    internal void Handle(
+    internal IReadOnlyList<string> Handle(
         ref ProjectMetaData? currentProject,
         List<PropertyRule> configuredRules,
         string workspaceRoot,
@@ -42,7 +43,7 @@ internal sealed class BatchCommand
         if (detected.Count == 0)
         {
             Console.WriteLine("Nothing to do.");
-            return;
+            return [];
         }
 
         PrintDetected(detected);
@@ -51,26 +52,26 @@ internal sealed class BatchCommand
         if (actionable.Count == 0)
         {
             Console.WriteLine("No actionable commands — nothing was executed.");
-            return;
+            return [];
         }
 
         var approved = CollectApprovals(actionable);
         if (approved is null)
         {
             Console.WriteLine("Cancelled — nothing was executed.");
-            return;
+            return [];
         }
 
         if (approved.Count == 0)
         {
             Console.WriteLine("Nothing approved — no snapshot taken, nothing was executed.");
-            return;
+            return [];
         }
 
         if (!ConfirmSnapshotSize(workspaceRoot))
         {
             Console.WriteLine("Aborted — nothing was executed.");
-            return;
+            return [];
         }
 
         WorkspaceSnapshot snapshot;
@@ -82,10 +83,10 @@ internal sealed class BatchCommand
         {
             Console.WriteLine($"Could not snapshot the workspace: {ex.Message}");
             Console.WriteLine("Aborted — nothing was executed.");
-            return;
+            return [];
         }
 
-        Execute(snapshot, detected, actionable.Count, approved,
+        return Execute(snapshot, detected, actionable.Count, approved,
             ref currentProject, configuredRules, workspaceRoot, setLastCreatedProject, pipeline);
     }
 
@@ -161,7 +162,7 @@ internal sealed class BatchCommand
         return approved;
     }
 
-    private static bool ConfirmSnapshotSize(string workspaceRoot)
+    internal static bool ConfirmSnapshotSize(string workspaceRoot)
     {
         var sizing = WorkspaceSnapshot.Measure(workspaceRoot);
 
@@ -182,7 +183,7 @@ internal sealed class BatchCommand
             && reply.Trim().Equals("p", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static void Execute(
+    private static IReadOnlyList<string> Execute(
         WorkspaceSnapshot snapshot,
         IReadOnlyList<DetectedAction> detected,
         int actionableCount,
@@ -234,7 +235,7 @@ internal sealed class BatchCommand
             Console.WriteLine();
             Console.WriteLine($"Done. {succeeded} applied, 0 failed, 0 rolled back, " +
                               $"0 not attempted, {rejected} rejected, {unactionable} unactionable.");
-            return;
+            return [.. approved.Select(a => a.Sentence)];
         }
 
         Console.WriteLine($"  FAILED: {failureReason}");
@@ -250,7 +251,7 @@ internal sealed class BatchCommand
             Console.WriteLine($"  ROLLBACK FAILED: {ex.Message}");
             Console.WriteLine("  The workspace is in an unknown state.");
             Console.WriteLine($"  Your pre-batch snapshot is preserved at: {snapshot.SnapshotPath}");
-            return;
+            return [];
         }
 
         // Restore reset ProjectManager.CurrentProject; keep the caller's copy in step.
@@ -264,5 +265,6 @@ internal sealed class BatchCommand
         Console.WriteLine();
         Console.WriteLine($"Aborted. 0 applied, 1 failed, {succeeded} rolled back, " +
                           $"{notAttempted} not attempted, {rejected} rejected, {unactionable} unactionable.");
+        return [];
     }
 }

@@ -4,6 +4,7 @@ using CodeGenerationEngine.Helper;
 using CodeGenerationEngine.Models;
 using CodeGenerator.App;
 using CodeGenerator.App.Relationships;
+using CodeGenerator.App.Scripts;
 using CodeIntelligence;
 using NaturalLanguageBridge;
 
@@ -58,6 +59,10 @@ public sealed class ChatSession
     /// <summary>This page's undo history — its own, not the console's. Replaced when another folder
     /// is loaded, so an undo can never write into the folder the page has left.</summary>
     private UndoJournal _journal;
+    private SessionRecorder _recorder;
+
+    // Whether the last pipeline command was read by the AI; set by Pipeline, read by TurnsFor.
+    private bool _neededAi;
 
     public ChatSession(Workspace workspace, AiLayer ai, List<string> history)
     {
@@ -65,6 +70,7 @@ public sealed class ChatSession
         _ai = ai;
         _history = history;
         _journal = UndoJournal.ForSession(workspace.Root, Narrate);
+        _recorder = new SessionRecorder(_journal);
     }
 
     public bool CanUndo => _journal.CanUndo;
@@ -234,15 +240,18 @@ public sealed class ChatSession
 
             _cancellation = new CancellationTokenSource();
 
-            var turn = await Task.Run(() => Run(input, kind, _cancellation.Token));
+            var turns = await Task.Run(() => TurnsFor(input, kind, entry, _cancellation.Token));
 
-            _turns.Add(turn);
+            _turns.AddRange(turns);
 
             // After the turn is in the transcript, so the command's own output is on screen behind
             // the question, and before Running is cleared, so the composer stays disabled while
             // the question is up. A second message starting here would put a second question on
             // the page and orphan the thread waiting on the first one.
             await Offer(input);
+
+            // In the same entry as the command, as the files it wrote are.
+            entry?.Keep(_relationships?.TakeApplied() ?? []);
         }
         finally
         {
@@ -337,6 +346,7 @@ public sealed class ChatSession
         {
             _journal.Dispose();
             _journal = UndoJournal.ForSession(_workspace.Root, Narrate);
+            _recorder = new SessionRecorder(_journal);
         }
 
         var text = load.Ok
@@ -359,6 +369,117 @@ public sealed class ChatSession
 
         return load;
     }
+
+    // A run makes a turn per line and one for the outcome; everything else makes one. Collected
+    // and added together once the worker is done, never from it: the page reads _turns while
+    // rendering.
+    private IReadOnlyList<ChatTurn> TurnsFor(string input, CommandKind kind, UndoScope? entry, CancellationToken ct)
+    {
+        if (kind == CommandKind.Run)
+            return RunScript(input, entry, ct);
+
+        var turn = Run(input, kind, ct);
+
+        if (kind == CommandKind.Pipeline && turn.Verdict == ChatVerdict.Succeeded)
+            entry?.Keep([ScriptNotes.SavedForm(input, _neededAi)]);
+
+        return [turn];
+    }
+
+    private IReadOnlyList<ChatTurn> RunScript(string input, UndoScope? entry, CancellationToken ct)
+    {
+        var load = RunCommand.Load(input, _workspace.Root);
+        if (load.Steps is null)
+            return [Said(input, ChatVerdict.Failed, load.Problem!)];
+
+        var turns = new List<ChatTurn>();
+        var tooLarge = string.Empty;
+
+        var outcome = ScriptRunner.Run(
+            load.Name,
+            load.Steps,
+            _workspace.Root,
+            step =>
+            {
+                var turn = StepTurn(step);
+                turns.Add(turn);
+                return turn.Verdict == ChatVerdict.Succeeded;
+            },
+            say: _ => { },
+            confirmSnapshot: () =>
+            {
+                // No prompt here: a page cannot ask the console's [p]roceed question mid-run.
+                var sizing = WorkspaceSnapshot.Measure(_workspace.Root);
+                if (sizing.FileCount <= WorkspaceSnapshot.MaxFiles && sizing.Bytes <= WorkspaceSnapshot.MaxBytes)
+                    return true;
+                tooLarge = $"The workspace is {sizing.FileCount:N0} files ({sizing.Bytes / (1024.0 * 1024.0):N0} MB), "
+                         + "too large to put back if a line fails. Run it from the console, which asks first. ";
+                return false;
+            },
+            stopRequested: () => ct.IsCancellationRequested);
+
+        _currentProject = ProjectManager.CurrentProject;
+
+        if (outcome.Succeeded)
+            entry?.Keep(outcome.Ran);
+
+        // What was typed first, holding the outcome, then the lines it ran under it.
+        turns.Insert(0, Said(input, outcome.Succeeded ? ChatVerdict.Succeeded : ChatVerdict.Failed, tooLarge + outcome.Message));
+        return turns;
+    }
+
+    // One script line as a turn. No AI and no questions, as on the console: a script must not stop.
+    private ChatTurn StepTurn(ScriptStep step)
+    {
+        var text = ScriptRunner.Text(step);
+        var kind = CommandRoute.Classify(text);
+        var verdict = ChatVerdict.Failed;
+        string captured;
+
+        using var capture = OutputCapture.Start();
+        try
+        {
+            if (step is BuildAppStep build)
+            {
+                verdict = ScriptBuildApp.Run(build.Lines, _workspace.Root, Console.WriteLine)
+                    ? ChatVerdict.Succeeded
+                    : ChatVerdict.Failed;
+            }
+            else
+            {
+                var project = _currentProject;
+                var outcome = _pipeline.Handle(text, ref project, _workspace.Rules, _workspace.Root,
+                    r => ProjectManager.CurrentProject = r);
+                _currentProject = project;
+
+                if (!outcome.Recognized)
+                    Console.WriteLine(UnrecognizedCommand.Describe(text, CommandSuggester.Closest(text)));
+
+                verdict = CommandColour.Verdict(outcome.Recognized, outcome.Handled) switch
+                {
+                    CommandVerdict.Succeeded => ChatVerdict.Succeeded,
+                    CommandVerdict.Failed => ChatVerdict.Failed,
+                    _ => ChatVerdict.Unrecognized
+                };
+            }
+        }
+        catch (Exception ex)
+        {
+            foreach (var line in ErrorText.Lines(ex, ErrorText.Verbose))
+                Console.WriteLine(line);
+            verdict = ChatVerdict.Failed;
+        }
+        finally
+        {
+            captured = capture.Text;
+        }
+
+        return new ChatTurn(text, kind, verdict, OutputBlocks.Parse(text, captured), DateTimeOffset.Now,
+            Label: $"Line {step.Line}");
+    }
+
+    private static ChatTurn Said(string input, ChatVerdict verdict, string text) =>
+        new(input, CommandRoute.Classify(input), verdict, [new TextBlock(text)], DateTimeOffset.Now);
 
     /// <summary>
     /// Runs one classified input and turns what it printed into a turn.
@@ -463,6 +584,11 @@ public sealed class ChatSession
                 Console.WriteLine(AiCommand.Handle(input, _ai));
                 return ChatVerdict.Succeeded;
 
+            case CommandKind.SaveSession:
+                var saved = SaveSessionCommand.Handle(input, _workspace.Root, _recorder, DateTime.Now);
+                Console.WriteLine(saved.Message);
+                return saved.Saved ? ChatVerdict.Succeeded : ChatVerdict.Failed;
+
             case CommandKind.Undo:
             case CommandKind.Redo:
                 var result = UndoCommand.Handle(_journal, kind);
@@ -494,6 +620,7 @@ public sealed class ChatSession
             ct: ct);
 
         _currentProject = project;
+        _neededAi = outcome.NeededAi;
 
         if (!outcome.Recognized && !string.IsNullOrWhiteSpace(input))
         {

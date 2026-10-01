@@ -31,13 +31,18 @@ public enum ChatVerdict
 /// <paramref name="At"/> is last and optional so that the turns built in tests, which care about
 /// none of it, keep compiling. Unset it stays <c>default</c>, and the transcript draws no time at
 /// all rather than drawing the first of January in year one.
+/// <para>
+/// <paramref name="Label"/> is who the card says spoke: null is "You", and a line a script ran says
+/// which line of it, since you never typed that.
+/// </para>
 /// </remarks>
 public sealed record ChatTurn(
     string Input,
     CommandKind Kind,
     ChatVerdict Verdict,
     IReadOnlyList<OutputBlock> Blocks,
-    DateTimeOffset At = default);
+    DateTimeOffset At = default,
+    string? Label = null);
 
 /// <summary>A question the session is waiting on an answer to.</summary>
 /// <remarks>

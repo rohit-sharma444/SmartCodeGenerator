@@ -292,7 +292,9 @@ public static class CommandFront
     /// command whose handler fails for a real reason ("No project selected") is
     /// Handled=false but Recognized=true, so the CLI must not offer it the
     /// "did you mean" help meant for genuinely unintelligible input.</summary>
-    public readonly record struct RunResult(bool Handled, bool Recognized);
+    /// <param name="NeededAi">True when the rules could not read the input and the AI's reading was
+    /// accepted: a script, which never asks the AI, could not replay it as typed.</param>
+    public readonly record struct RunResult(bool Handled, bool Recognized, bool NeededAi = false);
 
     /// <summary>Parse then execute one command. The demo shortcut and the NLE
     /// analysis callback (for display) live here so callers need only one entry.</summary>
@@ -334,6 +336,8 @@ public static class CommandFront
 
         var command = Parse(input ?? string.Empty, workspace);
 
+        var neededAi = false;
+
         if (command.Intent == IntentType.Unknown && aiResolver is not null && confirmAi is not null)
         {
             var resolution = aiResolver.Resolve(input ?? string.Empty, ct);
@@ -350,11 +354,12 @@ public static class CommandFront
                 command = CommandEntityExtractor.Extract(
                     input ?? string.Empty, resolution.Intent, workspace);
                 command.Confidence = resolution.Confidence;
+                neededAi = true;
             }
         }
 
         var recognized = command.Intent != IntentType.Unknown;
         var handled = CommandHandlingService.Execute(command, ref project, configuredRules, workspace, setLastCreatedProject);
-        return new RunResult(handled, recognized);
+        return new RunResult(handled, recognized, neededAi);
     }
 }
