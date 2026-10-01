@@ -69,6 +69,27 @@ public sealed class UndoJournalTests
         Assert.IsFalse(File.Exists(P("Shop/Old.cs")));
     }
 
+    // U1: File.Copy keeps the copied version's old write time, so dotnet build saw the restored
+    // source as older than its DLL, skipped CoreCompile and kept the undone code.
+    [TestMethod]
+    public void A_restored_file_is_stamped_now_so_a_build_sees_it_changed()
+    {
+        File.SetLastWriteTimeUtc(P("Shop/Book.cs"), DateTime.UtcNow.AddDays(-1));
+        Command("edit Book", () => Write("Shop/Book.cs", "class Book { int Pages; }"));
+        var beforeUndo = DateTime.UtcNow.AddSeconds(-1);
+
+        Assert.IsTrue(_journal.Undo().Done);
+        Assert.IsGreaterThan(beforeUndo, File.GetLastWriteTimeUtc(P("Shop/Book.cs")));
+
+        Tick();
+        var beforeRedo = File.GetLastWriteTimeUtc(P("Shop/Book.cs"));
+        Assert.IsTrue(_journal.Redo().Done);
+        Assert.IsGreaterThanOrEqualTo(beforeRedo, File.GetLastWriteTimeUtc(P("Shop/Book.cs")));
+
+        // The stamp it set is the one it knows: a second undo is not refused as an outside edit.
+        Assert.IsTrue(_journal.Undo().Done, "undo after redo");
+    }
+
     [TestMethod]
     public void One_changed_file_is_named()
     {

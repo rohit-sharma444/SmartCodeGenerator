@@ -514,7 +514,13 @@ public sealed class UndoJournal : IDisposable
         var version = Path.Combine(side, path);
 
         if (File.Exists(version))
+        {
             CopyIfExists(version, target);
+
+            // A copy keeps the version's own write time, older than whatever was built from the
+            // file it replaces — and an incremental build would skip compiling it.
+            File.SetLastWriteTimeUtc(target, DateTime.UtcNow);
+        }
         else if (File.Exists(target))
             File.Delete(target);
 
