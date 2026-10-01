@@ -1,3 +1,5 @@
+using CodeGenerator.App.Scripts;
+
 namespace CodeGenerator.App;
 
 /// <summary>
@@ -59,6 +61,12 @@ internal static class CommandRoute
 
         if (BuildAppCommand.IsBuildApp(text))
             return CommandKind.BuildApp;
+
+        if (RunCommand.IsRun(text))
+            return CommandKind.Run;
+
+        if (SaveSessionCommand.IsSaveSession(text))
+            return CommandKind.SaveSession;
 
         if (BatchCommand.IsBatch(text))
             return CommandKind.Batch;

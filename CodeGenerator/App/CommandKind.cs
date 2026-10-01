@@ -39,6 +39,12 @@ public enum CommandKind
     Undo,
     Redo,
 
+    /// <summary>Replay a <c>.cgs</c> script, all or nothing.</summary>
+    Run,
+
+    /// <summary>Write this session's commands as a script.</summary>
+    SaveSession,
+
     /// <summary>Everything else: the natural-language pipeline decides.</summary>
     Pipeline
 }
