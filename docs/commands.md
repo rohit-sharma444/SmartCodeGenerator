@@ -8,9 +8,9 @@
 | Command | Description | Example |
 | --- | --- | --- |
 | `ai disable` | Turns AI recognition off. Command recognition returns to the rule-based path exactly as it behaves with AI absent. | `ai disable` |
-| `ai enable` | Turns AI recognition on in ai.json. Off by default. Restart the CLI afterwards to load the model, then run 'ai reindex'. | `ai enable` |
+| `ai enable` | Turns AI recognition back on in ai.json. On by default. Restart the CLI afterwards to load the model; it rebuilds its own index. | `ai enable` |
 | `ai mode <retrieval\|generative\|hybrid>` | Sets how AI reads unrecognized input. Only retrieval works today; generative and hybrid are declined until a later phase. | `ai mode retrieval` |
-| `ai reindex` | Rebuilds the phrase index from the current commands. Run it after enabling AI, or whenever 'ai status' reports REINDEX REQUIRED. | `ai reindex` |
+| `ai reindex` | Rebuilds the phrase index from the current commands. The CLI does this itself at startup; run it only when 'ai status' reports REINDEX REQUIRED. | `ai reindex` |
 | `ai status` | Reports whether AI command recognition is on, the model and index in use, both confidence gates, and how many decisions have been logged. Plain 'ai' does the same. | `ai status` |
 | `ai why` | Explains the last AI reading: what you typed, how it was read, the supporting examples, and whether you accepted it. | `ai why` |
 
@@ -85,8 +85,8 @@
 
 | Command | Description | Example |
 | --- | --- | --- |
-| `reset learning` | Clears the learned command memory. Aliases: clear learning, forget learning. | `reset learning` |
-| `show learning` | Lists learned command signatures and their confidence. Aliases: list learning, view learning. | `show learning` |
+| `reset learning` | Clears the learned command memory and the phrasings kept for review. Aliases: clear learning, forget learning. | `reset learning` |
+| `show learning` | Lists learned command signatures and their confidence, then the phrasings to review: each line that was not understood, paired with the next command that worked. Writes that list to .codegen/phrase-candidates.tsv. Aliases: list learning, view learning. | `show learning` |
 
 ## Methods
 

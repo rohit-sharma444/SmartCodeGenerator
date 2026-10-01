@@ -1165,24 +1165,26 @@ so what it reports is what a build would report.</p></div>
 <h2>12. AI-assisted recognition</h2>
 
 <p>The tool recognizes commands by rule first. Optionally it can also use a local AI model to work out what an
-unrecognized line probably meant. It is <strong>off by default</strong>, runs entirely on your machine, and only
+unrecognized line probably meant. It is <strong>on by default</strong>, runs entirely on your machine, and only
 ever <em>suggests</em> — it never runs a command you did not confirm.</p>
 <table>
 <tr><th>Command</th><th>What it does</th></tr>
-<tr><td><code>ai enable</code> / <code>ai disable</code></td><td>Turns it on or off. After enabling, restart the tool to load the model, then run <code>ai reindex</code>.</td></tr>
+<tr><td><code>ai enable</code> / <code>ai disable</code></td><td>Turns it on or off. After enabling, restart the tool to load the model; it rebuilds its own phrase index at startup.</td></tr>
 <tr><td><code>ai status</code> (or just <code>ai</code>)</td><td>Whether it is on, the model and index in use, both confidence gates, and how many decisions have been logged.</td></tr>
-<tr><td><code>ai reindex</code></td><td>Rebuilds the phrase index from the current commands. Run it after enabling, or whenever <code>ai status</code> reports REINDEX REQUIRED.</td></tr>
+<tr><td><code>ai reindex</code></td><td>Rebuilds the phrase index from the current commands. The tool does this itself at startup; run it only when <code>ai status</code> reports REINDEX REQUIRED.</td></tr>
 <tr><td><code>ai why</code></td><td>Explains the last AI reading: what you typed, how it was read, the supporting examples, and whether you accepted it.</td></tr>
 <tr><td><code>ai mode retrieval</code></td><td>How unrecognized input is read. Only <code>retrieval</code> works today; <code>generative</code> and <code>hybrid</code> are declined.</td></tr>
 </table>
 
 <h3>Learned commands</h3>
-<p>The tool also remembers corrections you make, so a phrasing you use often is recognized next time.</p>
+<p>The tool also keeps a record of the commands you run and how often each worked. It is a record only: it does not change what the tool recognizes.</p>
 <table>
 <tr><th>Command</th><th>What it does</th></tr>
-<tr><td><code>show learning</code></td><td>Lists learned command signatures and their confidence. Also <code>list learning</code>, <code>view learning</code>.</td></tr>
-<tr><td><code>reset learning</code></td><td>Clears the learned memory. Also <code>clear learning</code>, <code>forget learning</code>.</td></tr>
+<tr><td><code>show learning</code></td><td>Lists learned command signatures and their confidence, then the <em>phrasings to review</em>: each line that was not understood, paired with the next command that worked. Also <code>list learning</code>, <code>view learning</code>.</td></tr>
+<tr><td><code>reset learning</code></td><td>Clears the learned memory and the phrasings kept for review. Also <code>clear learning</code>, <code>forget learning</code>.</td></tr>
 </table>
+
+<p>When a line is not understood and the next command you type does work, the pair is kept in the workspace's <code>.codegen\phrase-candidates.jsonl</code>; <code>show learning</code> also writes the grouped list to <code>.codegen\phrase-candidates.tsv</code>. Nothing there changes what the tool understands: a phrasing is recognized only once someone has reviewed it into the <code>learned-phrases.tsv</code> that ships with the tool.</p>
 
 <h2>13. Two worked examples</h2>
 
@@ -1640,9 +1642,9 @@ own shows the shorter overview, and <code>help &lt;topic&gt;</code> shows one se
 <table>
 <tr><th>Command</th><th>Description</th><th>Example</th></tr>
 <tr><td><code>ai disable</code></td><td>Turns AI recognition off. Command recognition returns to the rule-based path exactly as it behaves with AI absent.</td><td><code>ai disable</code></td></tr>
-<tr><td><code>ai enable</code></td><td>Turns AI recognition on in ai.json. Off by default. Restart the CLI afterwards to load the model, then run &#x27;ai reindex&#x27;.</td><td><code>ai enable</code></td></tr>
+<tr><td><code>ai enable</code></td><td>Turns AI recognition back on in ai.json. On by default. Restart the CLI afterwards to load the model; it rebuilds its own index.</td><td><code>ai enable</code></td></tr>
 <tr><td><code>ai mode &lt;retrieval|generative|hybrid&gt;</code></td><td>Sets how AI reads unrecognized input. Only retrieval works today; generative and hybrid are declined until a later phase.</td><td><code>ai mode retrieval</code></td></tr>
-<tr><td><code>ai reindex</code></td><td>Rebuilds the phrase index from the current commands. Run it after enabling AI, or whenever &#x27;ai status&#x27; reports REINDEX REQUIRED.</td><td><code>ai reindex</code></td></tr>
+<tr><td><code>ai reindex</code></td><td>Rebuilds the phrase index from the current commands. The CLI does this itself at startup; run it only when &#x27;ai status&#x27; reports REINDEX REQUIRED.</td><td><code>ai reindex</code></td></tr>
 <tr><td><code>ai status</code></td><td>Reports whether AI command recognition is on, the model and index in use, both confidence gates, and how many decisions have been logged. Plain &#x27;ai&#x27; does the same.</td><td><code>ai status</code></td></tr>
 <tr><td><code>ai why</code></td><td>Explains the last AI reading: what you typed, how it was read, the supporting examples, and whether you accepted it.</td><td><code>ai why</code></td></tr>
 </table>
@@ -1711,8 +1713,8 @@ own shows the shorter overview, and <code>help &lt;topic&gt;</code> shows one se
 <h3>Learning</h3>
 <table>
 <tr><th>Command</th><th>Description</th><th>Example</th></tr>
-<tr><td><code>reset learning</code></td><td>Clears the learned command memory. Aliases: clear learning, forget learning.</td><td><code>reset learning</code></td></tr>
-<tr><td><code>show learning</code></td><td>Lists learned command signatures and their confidence. Aliases: list learning, view learning.</td><td><code>show learning</code></td></tr>
+<tr><td><code>reset learning</code></td><td>Clears the learned command memory and the phrasings kept for review. Aliases: clear learning, forget learning.</td><td><code>reset learning</code></td></tr>
+<tr><td><code>show learning</code></td><td>Lists learned command signatures and their confidence, then the phrasings to review: each line that was not understood, paired with the next command that worked. Writes that list to .codegen/phrase-candidates.tsv. Aliases: list learning, view learning.</td><td><code>show learning</code></td></tr>
 </table>
 <h3>Methods</h3>
 <table>

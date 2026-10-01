@@ -569,14 +569,17 @@ public static class CommandDictionary
         {
             Category = "Learning",
             Command = "show learning",
-            Description = "Lists learned command signatures and their confidence. Aliases: list learning, view learning.",
+            Description = "Lists learned command signatures and their confidence, then the phrasings to review: "
+                        + "each line that was not understood, paired with the next command that worked. "
+                        + "Writes that list to .codegen/phrase-candidates.tsv. Aliases: list learning, view learning.",
             Example = "show learning"
         },
         new()
         {
             Category = "Learning",
             Command = "reset learning",
-            Description = "Clears the learned command memory. Aliases: clear learning, forget learning.",
+            Description = "Clears the learned command memory and the phrasings kept for review. "
+                        + "Aliases: clear learning, forget learning.",
             Example = "reset learning"
         },
 #endregion
@@ -598,8 +601,8 @@ public static class CommandDictionary
         {
             Category = "AI",
             Command = "ai enable",
-            Description = "Turns AI recognition on in ai.json. Off by default. Restart the CLI "
-                        + "afterwards to load the model, then run 'ai reindex'.",
+            Description = "Turns AI recognition back on in ai.json. On by default. Restart the CLI "
+                        + "afterwards to load the model; it rebuilds its own index.",
             Example = "ai enable"
         },
         new()
@@ -614,8 +617,8 @@ public static class CommandDictionary
         {
             Category = "AI",
             Command = "ai reindex",
-            Description = "Rebuilds the phrase index from the current commands. Run it after "
-                        + "enabling AI, or whenever 'ai status' reports REINDEX REQUIRED.",
+            Description = "Rebuilds the phrase index from the current commands. The CLI does this "
+                        + "itself at startup; run it only when 'ai status' reports REINDEX REQUIRED.",
             Example = "ai reindex"
         },
         new()
