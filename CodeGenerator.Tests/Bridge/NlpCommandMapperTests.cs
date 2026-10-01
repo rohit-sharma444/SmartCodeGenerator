@@ -54,10 +54,13 @@ public class NlpCommandMapperTests
     [DataRow("create class Lend with properties Name string", IntentType.CreateClass)]
     [DataRow("create class Schedule with properties Name string", IntentType.CreateClass)]
     [DataRow("create a Book class with Title string", IntentType.CreateClass)]
-    public void A_class_named_like_a_verb_is_a_name_not_a_second_verb(string sentence, IntentType expected)
+    [DataRow("add property Total decimal to Invoice", IntentType.CreateProperty)]
+    [DataRow("add property Net int to Invoice", IntentType.CreateProperty)]
+    public void A_capitalised_name_after_the_verb_is_not_part_of_the_target(string sentence, IntentType expected)
     {
         // NLE tags Book/Lend/Schedule as Action wherever they appear, so the name used to join
         // the target span ("class book properties") and the command came back Unknown.
+        // "Total decimal" is merged into one Object the same way ("property total decimal").
         var analysis = NlpActionProvider.Analyze(sentence);
         Assert.AreEqual(expected, NlpCommandMapper.ResolveIntent(analysis));
     }
