@@ -162,21 +162,36 @@ internal sealed class BatchCommand
         return approved;
     }
 
-    internal static bool ConfirmSnapshotSize(string workspaceRoot)
-    {
-        var sizing = WorkspaceSnapshot.Measure(workspaceRoot);
+    internal static bool ConfirmSnapshotSize(string workspaceRoot) =>
+        ConfirmSnapshotSize(WorkspaceSnapshot.Measure(workspaceRoot), Console.IsInputRedirected, Console.In);
 
+    /// <remarks>
+    /// With input piped nothing is asked, and the answer is the prompt's own default, abort — as the
+    /// chat page, which cannot ask either, refuses. Whether the question comes up depends on how
+    /// many files the workspace holds that day, so no script can know to answer it: reading one
+    /// would swallow its next command as the answer.
+    /// </remarks>
+    internal static bool ConfirmSnapshotSize(SnapshotSizing sizing, bool inputRedirected, TextReader input)
+    {
         if (sizing.FileCount <= WorkspaceSnapshot.MaxFiles && sizing.Bytes <= WorkspaceSnapshot.MaxBytes)
             return true;
 
         var megabytes = sizing.Bytes / (1024.0 * 1024.0);
 
         Console.WriteLine($"Workspace is {sizing.FileCount:N0} files ({megabytes:N0} MB) after exclusions.");
+
+        if (inputRedirected)
+        {
+            Console.WriteLine("Too large to snapshot without asking, and input is piped, so there is no one to ask.");
+            Console.WriteLine("Run it from an interactive console, which asks first.");
+            return false;
+        }
+
         Console.WriteLine("Snapshotting may take a while.");
         Console.WriteLine("  [p]roceed with snapshot   [a]bort   (Enter = abort)");
         Console.Write("> ");
 
-        var reply = Console.ReadLine();
+        var reply = input.ReadLine();
 
         // Anything but an explicit "p" aborts, including Enter and EOF.
         return reply is not null
