@@ -77,9 +77,9 @@ public static class ClassPropertyService
             return false;
         }
 
-        // KeepNoTrivia takes the property's own indent and line break with it (and a doc
-        // comment above it); the line breaks and indent around it belong to its neighbours.
-        root = root.RemoveNode(property, SyntaxRemoveOptions.KeepNoTrivia)!;
+        // Its own indent, line break and doc comment go with it; a directive or section
+        // comment above it stays (see MemberRemoval).
+        root = MemberRemoval.Remove(root, property);
 
         return ClassMethodEditService.TryWrite(file, root,
             $"Property '{property.Identifier.Text}' removed from '{className}'.", out message);

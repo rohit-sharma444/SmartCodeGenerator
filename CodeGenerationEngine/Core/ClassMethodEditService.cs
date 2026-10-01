@@ -35,7 +35,7 @@ public static class ClassMethodEditService
             return false;
         }
 
-        root = root.RemoveNode(matches[0], SyntaxRemoveOptions.KeepNoTrivia)!;
+        root = MemberRemoval.Remove(root, matches[0]);
 
         return TryWrite(file, root, $"Method '{methodName}' removed from '{className}'.", out message);
     }

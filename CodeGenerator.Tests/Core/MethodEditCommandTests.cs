@@ -112,6 +112,52 @@ public sealed class MethodEditCommandTests
     }
 
     [TestMethod]
+    public void Delete_keeps_an_endregion_above_the_method()
+    {
+        // The directive sits in the method's leading trivia; removing that trivia with it
+        // left the #region unclosed (CS1038).
+        var file = WriteBook(
+            "namespace Shop\r\n{\r\n    public class Book\r\n    {\r\n"
+            + "        #region Data\r\n"
+            + "        public int Alpha { get; set; }\r\n"
+            + "        #endregion\r\n"
+            + "        public void Run() { }\r\n"
+            + "    }\r\n}\r\n");
+
+        Assert.IsTrue(Run("remove method Run from Book"));
+
+        var code = File.ReadAllText(file);
+        Assert.AreEqual(0, Count(code, "Run"), code);
+        StringAssert.Contains(code, "        public int Alpha { get; set; }\r\n        #endregion\r\n    }\r\n", code);
+        AssertCompiles(code);
+    }
+
+    [TestMethod]
+    public void Delete_keeps_a_section_comment_but_takes_the_methods_own_doc_comment()
+    {
+        var file = WriteBook(
+            "namespace Shop\r\n{\r\n    public class Book\r\n    {\r\n"
+            + "        public int Alpha { get; set; }\r\n"
+            + "\r\n"
+            + "        // ---- persistence ----\r\n"
+            + "\r\n"
+            + "        /// <summary>Writes the book.</summary>\r\n"
+            + "        public void Save() { }\r\n"
+            + "\r\n"
+            + "        public void Load() { }\r\n"
+            + "    }\r\n}\r\n");
+
+        Assert.IsTrue(Run("remove method Save from Book"));
+
+        var code = File.ReadAllText(file);
+        Assert.DoesNotContain("Writes the book", code, code);
+        StringAssert.Contains(code,
+            "        public int Alpha { get; set; }\r\n\r\n        // ---- persistence ----\r\n\r\n        public void Load() { }\r\n",
+            code);
+        AssertCompiles(code);
+    }
+
+    [TestMethod]
     public void Delete_reports_failure_when_the_method_is_missing()
     {
         WriteBook("namespace Shop { public class Book { public void Load() { } } }");
