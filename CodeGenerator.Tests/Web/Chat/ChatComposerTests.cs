@@ -1,5 +1,6 @@
 using Bunit;
 using CodeGenerator.Web.Components;
+using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 
 namespace CodeGenerator.Tests.Web.Chat;
@@ -340,6 +341,36 @@ public class ChatComposerTests
         Assert.IsTrue(composer.Find(".composer-send").HasAttribute("disabled"));
     }
 
+    // The page is prerendered: until the circuit connects, nothing hears the box, and text typed
+    // into it then stays on screen with the server's copy empty, so Enter and Send do nothing.
+    [TestMethod]
+    public void Before_the_page_connects_the_box_and_buttons_are_shut_and_say_so()
+    {
+        using var context = NewContext();
+        context.SetRendererInfo(new RendererInfo("Static", isInteractive: false));
+
+        var composer = context.Render<ChatComposer>(p => p
+            .Add(c => c.CanUndo, true)
+            .Add(c => c.CanRedo, true));
+
+        Assert.IsTrue(composer.Find("textarea").HasAttribute("disabled"));
+        Assert.AreEqual("Connecting…", composer.Find("textarea").GetAttribute("placeholder"));
+        Assert.IsTrue(composer.Find(".composer-undo").HasAttribute("disabled"));
+        Assert.IsTrue(composer.Find(".composer-redo").HasAttribute("disabled"));
+        Assert.IsTrue(composer.Find(".composer-send").HasAttribute("disabled"));
+    }
+
+    [TestMethod]
+    public void Once_connected_the_box_is_open_for_typing()
+    {
+        using var context = NewContext();
+
+        var composer = context.Render<ChatComposer>();
+
+        Assert.IsFalse(composer.Find("textarea").HasAttribute("disabled"));
+        Assert.AreEqual("Type a command…", composer.Find("textarea").GetAttribute("placeholder"));
+    }
+
     /// <summary>Loose interop: the box takes the caret back after the component writes into it,
     /// and focusing is a call the strict default refuses.</summary>
     private static BunitContext NewContext()
@@ -347,6 +378,9 @@ public class ChatComposerTests
         var context = new BunitContext();
 
         context.JSInterop.Mode = JSRuntimeMode.Loose;
+
+        // What a connected page reports; the composer stays shut until it does.
+        context.SetRendererInfo(new RendererInfo("Server", isInteractive: true));
 
         return context;
     }

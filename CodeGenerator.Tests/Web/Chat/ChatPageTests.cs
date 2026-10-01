@@ -269,7 +269,7 @@ public class ChatPageTests
             page.Find(".tree-solution .tree-name").TextContent, "Solution 'Acme'");
     }
 
-    private static BunitContext NewContext()
+    private static BunitContext NewContext(ChatSession? session = null)
     {
         var context = new BunitContext();
 
@@ -277,6 +277,12 @@ public class ChatPageTests
         // WorkflowPageTests loosens it.
         context.JSInterop.Mode = JSRuntimeMode.Loose;
         context.Services.AddLogging();
+        if (session is not null)
+            context.Services.AddSingleton(session);
+
+        // What a connected page reports; the composer stays shut until it does. Last: it reads
+        // a service, after which bUnit refuses any more.
+        context.SetRendererInfo(new Microsoft.AspNetCore.Components.RendererInfo("Server", isInteractive: true));
 
         return context;
     }
@@ -290,12 +296,5 @@ public class ChatPageTests
             new Workspace(root, projectPathSet: false), AiLayer.Create(), []);
 
         return NewContext(session);
-    }
-
-    private static BunitContext NewContext(ChatSession session)
-    {
-        var context = NewContext();
-        context.Services.AddSingleton(session);
-        return context;
     }
 }

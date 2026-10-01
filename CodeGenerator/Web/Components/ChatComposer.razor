@@ -23,9 +23,9 @@
         <textarea @key="_generation"
                   @ref="_box"
                   value="@_pushed"
-                  disabled="@Disabled"
+                  disabled="@Shut"
                   rows="2"
-                  placeholder="Type a command…"
+                  placeholder="@(Connected ? "Type a command…" : "Connecting…")"
                   @oninput="OnInput"
                   @onkeydown="OnKeyDown"></textarea>
 
@@ -33,7 +33,7 @@
            Disabled rather than hidden, for the same reason Send is; the tooltip names the step. *@
         <button type="button" class="composer-undo"
                 title="@(CanUndo ? "Undo: " + UndoLabel : "Nothing to undo")"
-                disabled="@(Disabled || !CanUndo)"
+                disabled="@(Shut || !CanUndo)"
                 @onclick='() => OnSend.InvokeAsync("undo")'>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -44,7 +44,7 @@
         </button>
         <button type="button" class="composer-redo"
                 title="@(CanRedo ? "Redo: " + RedoLabel : "Nothing to redo")"
-                disabled="@(Disabled || !CanRedo)"
+                disabled="@(Shut || !CanRedo)"
                 @onclick='() => OnSend.InvokeAsync("redo")'>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -57,7 +57,7 @@
         @* The twin of the Enter rule below, and the discoverable one. Disabled rather than hidden
            on an empty box: a button that comes and goes is a button people stop looking for. *@
         <button type="button" class="composer-send"
-                disabled="@(Disabled || string.IsNullOrWhiteSpace(_text))"
+                disabled="@(Shut || string.IsNullOrWhiteSpace(_text))"
                 @onclick="Send">
             Send
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -108,7 +108,12 @@
     [Parameter]
     public string? RedoLabel { get; set; }
 
+    // The page is prerendered, and until its circuit connects nothing hears the box: text typed
+    // then stayed on screen while the server's copy was empty, so Enter and Send did nothing.
+    // Shut until connected, and saying why, so there is never text the tool has not seen.
+    private bool Connected => RendererInfo.IsInteractive;
 
+    private bool Shut => Disabled || !Connected;
 
     /// <summary>
     /// Puts text in the box without sending it.
