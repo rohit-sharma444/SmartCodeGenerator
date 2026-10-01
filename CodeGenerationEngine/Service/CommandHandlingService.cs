@@ -692,6 +692,7 @@ public static class CommandHandlingService
     {
         LearnedIntentStore.Current.Reset();
         LearnedIntentStore.Save();
+        PhraseCandidates.Clear();
         Console.WriteLine("Learned command memory cleared.");
         return true;
     }

@@ -61,6 +61,29 @@ public static class PhraseCandidates
         }
     }
 
+    /// <summary>Forgets every candidate and deletes the log and the review file: they hold lines the
+    /// user typed, so "reset learning" must not leave them behind.</summary>
+    public static void Clear()
+    {
+        lock (Gate)
+        {
+            _all = [];
+
+            if (_filePath is null)
+                return;
+
+            try
+            {
+                File.Delete(_filePath);
+                File.Delete(Path.Combine(Path.GetDirectoryName(_filePath)!, ReviewFileName));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // The in-memory list is already empty; a file left behind is retried next reset.
+            }
+        }
+    }
+
     /// <summary>One line to review: a phrasing, what it was taken to mean, how many retries said
     /// so, and one of them in full so the reviewer can see what was actually typed.</summary>
     public sealed record ReviewLine(string Phrase, IntentType Intent, int Count, string Example);

@@ -161,4 +161,36 @@ public sealed class PhraseCandidateTests
             Directory.Delete(workspace, recursive: true);
         }
     }
+
+    /// <summary>The candidate log keeps lines the user typed; "forget learning" must forget them too.</summary>
+    [TestMethod]
+    public void Reset_learning_forgets_the_candidates_and_their_files()
+    {
+        var workspace = Path.Combine(Path.GetTempPath(), "cand_" + Path.GetRandomFileName());
+        Directory.CreateDirectory(workspace);
+
+        try
+        {
+            LearnedIntentStore.Initialize(workspace);
+            LearningCoordinator.ResetHistory();
+            LearningCoordinator.Clock = () => _now;
+
+            Miss("make me a new class Invoice");
+            Fix("create class Invoice", IntentType.CreateClass, className: "Invoice");
+            Assert.IsNotNull(PhraseCandidates.WriteReviewFile());
+
+            ProjectMetaData? project = null;
+            NaturalLanguageBridge.CommandFront.Run("reset learning", ref project, [], workspace, _ => { });
+
+            var folder = Path.Combine(workspace, ".codegen");
+            Assert.IsEmpty(PhraseCandidates.All);
+            Assert.IsFalse(File.Exists(Path.Combine(folder, PhraseCandidates.FileName)));
+            Assert.IsFalse(File.Exists(Path.Combine(folder, PhraseCandidates.ReviewFileName)));
+        }
+        finally
+        {
+            LearnedIntentStore.UseInMemory();
+            Directory.Delete(workspace, recursive: true);
+        }
+    }
 }
