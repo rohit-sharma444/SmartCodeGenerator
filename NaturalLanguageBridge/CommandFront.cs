@@ -81,10 +81,12 @@ public static class CommandFront
     // `change (the) type of (property|field) <name> to <type> in <Class>` and
     // `retype (property|field) <name> to <type> in <Class>`. The type is any run of
     // non-spaces so `List<string>` and `decimal?` arrive whole and a malformed one reaches
-    // the handler to be refused by name, rather than falling through to the mapper.
+    // the handler to be refused by name, rather than falling through to the mapper; inside
+    // angle brackets (one level of nesting) spaces are allowed too, because that is how
+    // `Dictionary<string, int>` is written.
     // `retype <class> <field> <type>` without "property" is the build-app review loop's own.
     private static readonly Regex ChangePropertyTypeRe =
-        new(@"^(?:change\s+(?:the\s+)?type\s+of|retype)\s+(?:(?:property|field)\s+)?(?<property>\w+)\s+to\s+(?<type>\S+)(?:\s+(?:in|on|of)\s+(?<class>\w+))?$",
+        new(@"^(?:change\s+(?:the\s+)?type\s+of|retype)\s+(?:(?:property|field)\s+)?(?<property>\w+)\s+to\s+(?<type>(?:[^\s<]|<[^<>]*(?:<[^<>]*>[^<>]*)*>|<)+)(?:\s+(?:in|on|of)\s+(?<class>\w+))?$",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     // `remove (business) validation` naming a field — `from Employee.Name` or, as add

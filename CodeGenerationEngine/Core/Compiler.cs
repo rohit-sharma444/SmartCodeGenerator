@@ -12,6 +12,9 @@ public static class Compiler
     private static readonly Lazy<IReadOnlyList<MetadataReference>> _frameworkReferences =
         new(LoadFrameworkReferences);
 
+    /// <summary>The runtime's own assemblies, loaded once: what every compilation here references.</summary>
+    internal static IReadOnlyList<MetadataReference> FrameworkReferences => _frameworkReferences.Value;
+
     /// <summary>
     /// Compiles source code into an in-memory assembly.
     /// </summary>

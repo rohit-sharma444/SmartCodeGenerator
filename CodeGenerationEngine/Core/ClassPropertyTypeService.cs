@@ -43,6 +43,9 @@ public static class ClassPropertyTypeService
             return true;
         }
 
+        if (!TypeResolution.Resolves(workspaceRoot, file, classNode, type, out message))
+            return false;
+
         var retyped = property.WithType(type.WithTriviaFrom(property.Type));
 
         // An initial value was written for the old type ("" for a string), and the new type
