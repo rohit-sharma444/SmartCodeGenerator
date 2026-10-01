@@ -121,6 +121,50 @@ public class BundledDomainSourceTests
         Assert.Equal(DecisionOutcome.Rejected, outcome.Model.Decisions.Last(d => d.Name == "Booking").Outcome);
     }
 
+    // Measured live with Ollama unreachable: every one of these words became a class beside the
+    // built-in domain's, and "System" made the generated app fail to compile (CS0118).
+    [Theory]
+    [InlineData("a library management system", "Management,System")]
+    [InlineData("a point of sale application", "Application")]
+    [InlineData("an ecommerce website", "Website")]
+    [InlineData("a team project management platform", "Management,Platform")]
+    [InlineData("a kanban board app", "App")]
+    [InlineData("equipment rental where customers rent tools", "Where")]
+    public void AWordForTheSoftwareItselfIsNotAClass(string description, string junk)
+    {
+        var outcome = BundledDomainSource.CreateDefault().Discover(description);
+
+        foreach (var word in junk.Split(','))
+        {
+            Assert.DoesNotContain(outcome.Model.Entities, e => e.Name == word);
+            Assert.Contains(word, outcome.Model.Rejected);
+            Assert.Equal(DecisionOutcome.Rejected, outcome.Model.Decisions.Last(d => d.Name == word).Outcome);
+        }
+    }
+
+    [Fact]
+    public void TheSoftwareWordIsDroppedEvenWhenNoDomainMatches()
+    {
+        // The seeds ARE the outcome when nothing matches, and the review opens on them if nothing
+        // after this succeeds either.
+        var outcome = new BundledDomainSource(Catalog, _ => Seeds("Knitting", "Portal", "System"))
+            .Discover("a knitting portal system");
+
+        Assert.False(outcome.Succeeded);
+        Assert.Equal(new[] { "Knitting" }, outcome.Model.Entities.Select(e => e.Name).ToArray());
+        Assert.Equal(DecisionReasons.NamesTheSoftware, outcome.Model.Decisions.Last(d => d.Name == "Portal").Reason);
+    }
+
+    [Fact]
+    public void AGenuineClassBesideASoftwareWordIsKept()
+    {
+        var outcome = new BundledDomainSource(Catalog, _ => Seeds("Fine", "Application"))
+            .Discover("a library application that tracks fines");
+
+        Assert.Contains(outcome.Model.Entities, e => e.Name == "Fine");
+        Assert.DoesNotContain(outcome.Model.Entities, e => e.Name == "Application");
+    }
+
     [Fact]
     public void NoMatchReturnsTheSeedsUnsuccessfullySoTheChainMovesOn()
     {

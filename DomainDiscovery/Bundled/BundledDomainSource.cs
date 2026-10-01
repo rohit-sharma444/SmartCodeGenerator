@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using DomainDiscovery.Enrichment;
 using DomainDiscovery.Llm;
 using DomainDiscovery.Model;
 using DomainDiscovery.SeedExtraction;
@@ -43,6 +44,7 @@ public sealed class BundledDomainSource : IDomainModelSource
     public DiscoveryOutcome Discover(string description, Action<DiscoveryProgress>? onProgress = null)
     {
         var seeds = _seeds(description ?? string.Empty);
+        RejectWordsThatAreNotClasses(seeds);
         var match = _catalog.Match(description);
 
         if (match is null)
@@ -56,6 +58,30 @@ public sealed class BundledDomainSource : IDomainModelSource
             $"the built-in {match.Domain.Name} domain",
             true,
             $"Matched: {string.Join(", ", match.MatchedWords)}.");
+    }
+
+    // The Wikipedia path refuses these by shaping each seed against its own article (EntityShaper);
+    // here there is no article, so a seed meets the verdict that shaper falls back to without one
+    // — the name alone (ArchetypeLexicon.IsAbstractName) — plus the function words the harvester
+    // refuses ("where"). Without this, "a library management system" kept Management and System,
+    // and a class called System does not compile. Done for the no-match outcome as well, because
+    // those seeds are what the review opens on if nothing later in the chain succeeds.
+    private static void RejectWordsThatAreNotClasses(CandidateDomainModel seeds)
+    {
+        foreach (var seed in seeds.Entities.ToList())
+        {
+            var reason =
+                StopWords.Contains(seed.Name) ? DecisionReasons.NotAUsableClassName
+                : ArchetypeLexicon.IsAbstractName(seed.Name) ? DecisionReasons.NamesTheSoftware
+                : null;
+
+            if (reason is null)
+                continue;
+
+            seeds.Entities.Remove(seed);
+            seeds.Rejected.Add(seed.Name);
+            seeds.Record(seed.Name, DecisionStage.SeedExtraction, DecisionOutcome.Rejected, reason);
+        }
     }
 
     // The domain's version of a class wins, because it has fields. A seed is left out, with the
@@ -73,6 +99,7 @@ public sealed class BundledDomainSource : IDomainModelSource
         // last word on a name. `why` reports each name's last decision: appended after, the seed
         // extractor's "kept" for "Library" overrode its rejection and the summary listed it as kept.
         model.Decisions.InsertRange(0, seeds.Decisions);
+        model.Rejected.AddRange(seeds.Rejected);
 
         var domainClasses = model.Entities.ToList();
         var madeFromVerbs = seeds.Decisions
