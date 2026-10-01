@@ -80,8 +80,14 @@ public static class NlpCommandMapper
             // entity (Object/Action) follows it; otherwise it's genuine
             // trailing args on an empty target and is left alone (span below
             // stays empty => Unknown, as before).
+            // A capitalised Action after the verb is a class named like a verb (Book, Lend,
+            // Schedule) - NLE tags those as Action wherever they sit - so it reads as a name.
+            static bool IsName(Entity e) =>
+                e.Type == EntityType.Person
+                || (e.Type == EntityType.Action && e.Text.Length > 0 && char.IsUpper(e.Text[0]));
+
             int leadingPersons = 0;
-            while (leadingPersons < afterVerb.Count && afterVerb[leadingPersons].Type == EntityType.Person)
+            while (leadingPersons < afterVerb.Count && IsName(afterVerb[leadingPersons]))
                 leadingPersons++;
 
             var remaining = leadingPersons > 0 && leadingPersons < afterVerb.Count
@@ -93,7 +99,7 @@ public static class NlpCommandMapper
             // (trailing arguments) and trimming a trailing Action entity (a
             // second clause's verb, e.g. "called").
             var span = remaining
-                .TakeWhile(e => e.Type != EntityType.Person)
+                .TakeWhile(e => !IsName(e))
                 .ToList();
 
             while (span.Count > 0 && span[^1].Type == EntityType.Action)

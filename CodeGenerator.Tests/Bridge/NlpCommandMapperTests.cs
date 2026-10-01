@@ -49,6 +49,19 @@ public class NlpCommandMapperTests
         Assert.AreEqual(IntentType.CreateClass, NlpCommandMapper.ResolveIntent(analysis));
     }
 
+    [DataTestMethod]
+    [DataRow("create class Book with properties Title string", IntentType.CreateClass)]
+    [DataRow("create class Lend with properties Name string", IntentType.CreateClass)]
+    [DataRow("create class Schedule with properties Name string", IntentType.CreateClass)]
+    [DataRow("create a Book class with Title string", IntentType.CreateClass)]
+    public void A_class_named_like_a_verb_is_a_name_not_a_second_verb(string sentence, IntentType expected)
+    {
+        // NLE tags Book/Lend/Schedule as Action wherever they appear, so the name used to join
+        // the target span ("class book properties") and the command came back Unknown.
+        var analysis = NlpActionProvider.Analyze(sentence);
+        Assert.AreEqual(expected, NlpCommandMapper.ResolveIntent(analysis));
+    }
+
     [TestMethod]
     public void Leading_person_skip_does_not_reach_a_dead_intent()
     {
