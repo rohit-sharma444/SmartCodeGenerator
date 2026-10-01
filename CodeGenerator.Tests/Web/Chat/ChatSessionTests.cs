@@ -236,6 +236,66 @@ public class ChatSessionTests
         StringAssert.Contains(TextOf(session.Turns[^1]), "Nothing to undo.");
     }
 
+    [TestMethod]
+    public async Task Run_shows_one_turn_per_line_then_a_summary()
+    {
+        var session = NewSession(out var workspace);
+        File.WriteAllText(Path.Combine(workspace.Root, "Book.cs"), "namespace S { public class Book { } }");
+        File.WriteAllText(Path.Combine(workspace.Root, "two.cgs"),
+            "add property Pages int to Book\nadd property Title string to Book\n");
+
+        await session.Send("run two");
+
+        Assert.HasCount(3, session.Turns);
+        Assert.AreEqual("add property Pages int to Book", session.Turns[0].Input);
+        Assert.AreEqual(ChatVerdict.Succeeded, session.Turns[1].Verdict);
+        Assert.AreEqual("run two", session.Turns[2].Input);
+        StringAssert.Contains(TextOf(session.Turns[2]), "Ran 2 commands from two.cgs.");
+        Assert.AreEqual("run two", session.NextUndoLabel);
+    }
+
+    [TestMethod]
+    public async Task A_failing_run_in_the_chat_puts_everything_back()
+    {
+        var session = NewSession(out var workspace);
+        var book = Path.Combine(workspace.Root, "Book.cs");
+        File.WriteAllText(book, "namespace S { public class Book { } }");
+        File.WriteAllText(Path.Combine(workspace.Root, "bad.cgs"),
+            "add property Pages int to Book\nadd property Pages int to Ghost\n");
+
+        await session.Send("run bad");
+
+        Assert.AreEqual(ChatVerdict.Failed, session.Turns[^1].Verdict);
+        StringAssert.Contains(TextOf(session.Turns[^1]), "Line 2 failed. Everything the script did was put back.");
+        Assert.AreEqual("namespace S { public class Book { } }", File.ReadAllText(book));
+    }
+
+    [TestMethod]
+    public async Task Save_session_in_the_chat_writes_what_the_chat_did()
+    {
+        var session = NewSession(out var workspace);
+        File.WriteAllText(Path.Combine(workspace.Root, "Book.cs"), "namespace S { public class Book { } }");
+
+        await session.Send("add property Pages int to Book");
+        await session.Send("save session chat");
+
+        StringAssert.Contains(TextOf(session.Turns[^1]), "Saved 1 command to chat.cgs.");
+        CollectionAssert.AreEqual(new[] { "add property Pages int to Book" },
+            File.ReadAllLines(Path.Combine(workspace.Root, "chat.cgs")).Skip(1).ToArray());
+    }
+
+    [TestMethod]
+    public async Task A_missing_script_is_one_failed_turn()
+    {
+        var session = NewSession(out _);
+
+        await session.Send("run nope");
+
+        Assert.HasCount(1, session.Turns);
+        Assert.AreEqual(ChatVerdict.Failed, session.Turns[0].Verdict);
+        StringAssert.Contains(TextOf(session.Turns[0]), "No script at nope.cgs. Nothing was run.");
+    }
+
     private static ChatSession NewSession(out Workspace workspace)
     {
         var root = Path.Combine(Path.GetTempPath(), "cs-" + Guid.NewGuid().ToString("N")[..8]);
