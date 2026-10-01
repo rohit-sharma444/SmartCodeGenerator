@@ -14,7 +14,7 @@ internal sealed class CommandLineEditor
     private int _historyIndex;
     private int _inputTop;
 
-    private const string Prompt = "CodeGenerator >> ";
+    internal const string Prompt = "CodeGenerator >> ";
 
     /// <param name="historyFile">Where typed commands are appended; null keeps them in memory only,
     /// as a script's build step does — its piped lines are not what the user typed.</param>

@@ -88,6 +88,22 @@ public sealed class ScriptBuildAppTests
         Assert.IsFalse(ok);
     }
 
+    // S2: the review ended on "a", so the copy ran the next lines as commands of its own — one
+    // failed — and the block used to pass because "Generated project at" appeared somewhere.
+    [TestMethod]
+    public void Lines_the_copy_ran_after_its_build_had_ended_fail_the_block()
+    {
+        var output = new List<string>();
+
+        var ok = ScriptBuildApp.Run(
+            ["build app from csv " + Path.Combine(_root, "books.csv"), "a console", "add property X int to Nope", "cancel"],
+            _root, output.Add);
+
+        Assert.IsFalse(ok, string.Join(Environment.NewLine, output));
+        StringAssert.Contains(string.Join(Environment.NewLine, output),
+            "'add property X int to Nope' ran after the build had ended");
+    }
+
     // M2: a review answer the build refuses means the app is not the one the script describes.
     [TestMethod]
     public void A_refused_review_answer_fails_the_block()

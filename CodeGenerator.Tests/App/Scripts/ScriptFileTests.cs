@@ -71,6 +71,19 @@ public sealed class ScriptFileTests
             ((BuildAppStep)parse.Steps.Single()).Lines.ToArray());
     }
 
+    // S2: the review generated on "a", so the lines after it are the script's own commands, not
+    // answers piped to a review that has already ended.
+    [TestMethod]
+    public void The_approve_shortcut_ends_a_build_app_and_what_follows_is_a_command()
+    {
+        var parse = ScriptFile.Parse("build app from csv books.csv\na\nadd property X int to Nope\ncancel");
+
+        Assert.HasCount(3, parse.Steps);
+        CollectionAssert.AreEqual(new[] { "build app from csv books.csv", "a" },
+            ((BuildAppStep)parse.Steps[0]).Lines.ToArray());
+        Assert.AreEqual(new CommandStep(3, "add property X int to Nope"), parse.Steps[1]);
+    }
+
     [TestMethod]
     public void A_build_app_with_no_approve_or_cancel_is_refused()
     {
@@ -95,6 +108,13 @@ public sealed class ScriptFileTests
     [DataRow("APPROVE wpf sqlite", true)]
     [DataRow("cancel", true)]
     [DataRow("approved", false)]
-    [DataRow("cancel it", false)]
+    // The review reads only the first word, so whatever it ends on, the block ends on too —
+    // including the shortcuts its prompt advertises ("[a]pprove ... [c]ancel").
+    [DataRow("cancel it", true)]
+    [DataRow("a", true)]
+    [DataRow("A console", true)]
+    [DataRow("c", true)]
+    [DataRow("add Author", false)]
+    [DataRow("accept all", false)]
     public void What_ends_a_build(string line, bool ends) => Assert.AreEqual(ends, ScriptFile.EndsBuild(line));
 }
