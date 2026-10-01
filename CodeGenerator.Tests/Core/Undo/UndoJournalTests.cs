@@ -202,6 +202,29 @@ public sealed class UndoJournalTests
     }
 
     [TestMethod]
+    public void The_command_history_file_is_never_journalled_and_never_blocks_an_undo()
+    {
+        Write(".codegen_history", "run b2\n");
+
+        // A script's build step appends its piped lines while the command runs...
+        Command("run b2", () =>
+        {
+            Write("Shop/Book.cs", "class Book { int Pages; }");
+            File.AppendAllText(P(".codegen_history"), "build app from csv books.csv\nexit\n");
+        });
+
+        // ...and typing undo appends again before the undo runs.
+        Tick();
+        File.AppendAllText(P(".codegen_history"), "undo\n");
+
+        var undone = _journal.Undo();
+
+        Assert.IsTrue(undone.Done, undone.Message);
+        Assert.AreEqual(@"Undid: run b2 — restored Shop\Book.cs", undone.Message);
+        Assert.AreEqual("run b2\nbuild app from csv books.csv\nexit\nundo\n", Read(".codegen_history"));
+    }
+
+    [TestMethod]
     public void Over_the_size_limit_it_switches_off_and_says_so_once()
     {
         var notices = new List<string>();

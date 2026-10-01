@@ -230,8 +230,10 @@ internal class CodeGeneratorStarter
 
             Console.Write("CodeGenerator >> ");
 
+            // A script's build step writes no history: its piped lines and its closing exit are
+            // not what the user typed, and appending them changed a file the parent's undo watches.
             var editor = new CommandLineEditor(
-                _commandHistory, _workspace.HistoryPath);
+                _commandHistory, ScriptBuildApp.IsStep ? null : _workspace.HistoryPath);
 
 
             var input = editor.ReadCommand();

@@ -38,6 +38,21 @@ public sealed class ScriptBuildAppTests
         Assert.IsTrue(output.Any(l => l.Contains(ScriptBuildApp.SuccessMarker, StringComparison.Ordinal)));
     }
 
+    // S1: the copy's piped lines (and its "exit") are not what the user typed; writing them to the
+    // workspace's history polluted the up-arrow and made the run that started it impossible to undo.
+    [TestMethod]
+    public void The_copy_writes_nothing_to_the_command_history()
+    {
+        var history = Path.Combine(_root, ".codegen_history");
+        File.WriteAllText(history, "run b2\n");
+
+        var ok = ScriptBuildApp.Run(
+            ["build app from csv " + Path.Combine(_root, "books.csv"), "approve console"], _root, _ => { });
+
+        Assert.IsTrue(ok);
+        Assert.AreEqual("run b2\n", File.ReadAllText(history));
+    }
+
     [TestMethod]
     public void A_build_that_generates_nothing_fails()
     {

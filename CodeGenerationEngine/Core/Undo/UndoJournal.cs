@@ -45,6 +45,10 @@ public sealed class UndoJournal : IDisposable
     // Never rolled back: undoing a class edit must not erase what the tool has learned.
     private static readonly string[] AlsoExcluded = [".codegen", ".dd-cache"];
 
+    // Nor is what was typed: every command appends to it, a script's build step included, and so
+    // does typing undo itself — so journalling it would make every such undo refuse.
+    private static readonly string[] ExcludedFiles = [".codegen_history"];
+
     private readonly Action<string>? _notify;
     private readonly string? _registryPath;
     private readonly Func<ISessionState>? _captureState;
@@ -331,7 +335,7 @@ public sealed class UndoJournal : IDisposable
     // let an undo delete that file instead of restoring it.
     private bool Start()
     {
-        var files = WorkspaceSnapshot.IncludedFiles(WorkspaceRoot, AlsoExcluded).ToList();
+        var files = Files(WorkspaceRoot).ToList();
         var bytes = files.Sum(f => new FileInfo(f).Length);
 
         if (files.Count > _maxFiles || bytes > _maxBytes)
@@ -391,7 +395,7 @@ public sealed class UndoJournal : IDisposable
     }
 
     private Dictionary<string, Stamp> Scan() =>
-        WorkspaceSnapshot.IncludedFiles(WorkspaceRoot, AlsoExcluded)
+        Files(WorkspaceRoot)
             .Select(f => new FileInfo(f))
             .ToDictionary(
                 f => Path.GetRelativePath(WorkspaceRoot, f.FullName),
@@ -462,7 +466,7 @@ public sealed class UndoJournal : IDisposable
             if (Directory.EnumerateDirectories(full, ".git", SearchOption.AllDirectories).FirstOrDefault() is { } git)
                 return Path.GetRelativePath(WorkspaceRoot, git);
 
-            var stranger = WorkspaceSnapshot.IncludedFiles(full, AlsoExcluded)
+            var stranger = Files(full)
                 .Select(f => Path.GetRelativePath(WorkspaceRoot, f))
                 .FirstOrDefault(f => !mine.Contains(f));
             if (stranger is not null)
@@ -572,6 +576,10 @@ public sealed class UndoJournal : IDisposable
         a is null ? b is null : b is not null && a.AsSpan().SequenceEqual(b);
 
     // ----- small helpers ------------------------------------------------------------------------
+
+    private static IEnumerable<string> Files(string directory) =>
+        WorkspaceSnapshot.IncludedFiles(directory, AlsoExcluded)
+            .Where(f => !ExcludedFiles.Contains(Path.GetFileName(f), StringComparer.OrdinalIgnoreCase));
 
     private static void CopyIfExists(string source, string destination)
     {

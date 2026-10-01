@@ -7,7 +7,7 @@ namespace CodeGenerator.App;
 internal sealed class CommandLineEditor
 {
     private readonly List<string> _commandHistory;
-    private readonly string _historyFile;
+    private readonly string? _historyFile;
     private int _lastSuggestionCount;
     private List<CommandInfo> _suggestions = [];
     private int _suggestionIndex = -1;
@@ -16,8 +16,10 @@ internal sealed class CommandLineEditor
 
     private const string Prompt = "CodeGenerator >> ";
 
+    /// <param name="historyFile">Where typed commands are appended; null keeps them in memory only,
+    /// as a script's build step does — its piped lines are not what the user typed.</param>
     public CommandLineEditor(List<string> commandHistory,
-        string historyFile)
+        string? historyFile)
     {
         _commandHistory = commandHistory;
         _historyFile = historyFile;
@@ -176,6 +178,9 @@ internal sealed class CommandLineEditor
             return;
 
         _commandHistory.Add(command);
+
+        if (_historyFile is null)
+            return;
 
         try
         {
