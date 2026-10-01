@@ -57,9 +57,21 @@ public static class ClassPropertyRenameService
                 return false;
             }
 
+            if (MemberNames.NotAnIdentifier(newName, "property") is { } bad)
+            {
+                message = bad;
+                return false;
+            }
+
             if (properties.Any(p => p.Identifier.Text.Equals(newName, StringComparison.Ordinal)))
             {
                 message = $"Property '{newName}' already exists in '{className}'.";
+                return false;
+            }
+
+            if (MemberNames.Taken(classNode, newName, [property]) is { } taken)
+            {
+                message = taken;
                 return false;
             }
 

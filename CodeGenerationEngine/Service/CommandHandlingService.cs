@@ -273,8 +273,10 @@ public static class CommandHandlingService
 
     private static bool HandleRenameClass(CommandExecutionContext ctx)
     {
-        return ClassRenameService.RenameClass(
-            ctx.WorkspaceRoot, ctx.Command.ClassName, ctx.Command.NewClassName, out _);
+        var ok = ClassRenameService.RenameClass(
+            ctx.WorkspaceRoot, ctx.Command.ClassName, ctx.Command.NewClassName, out var message);
+        Output.Result(ok, message);
+        return ok;
     }
 
     private static bool HandleClassInherit(CommandExecutionContext ctx)

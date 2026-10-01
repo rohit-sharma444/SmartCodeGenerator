@@ -209,6 +209,35 @@ public sealed class MethodEditCommandTests
     }
 
     [TestMethod]
+    [DataRow("Pages")]
+    [DataRow("Book")]
+    public void Rename_refuses_a_name_taken_by_another_member_or_the_class(string newName)
+    {
+        // Only methods were checked: renaming to a property's name wrote CS0102, and to the
+        // class's own name CS0542.
+        var file = WriteBook(
+            "namespace Shop { public class Book { public int Pages { get; set; } public int Count() { return 1; } } }");
+        var before = File.ReadAllText(file);
+
+        Assert.IsFalse(Run($"rename method Count to {newName} in Book"));
+
+        Assert.AreEqual(before, File.ReadAllText(file));
+    }
+
+    [TestMethod]
+    [DataRow("9x")]
+    [DataRow("class")]
+    public void Rename_refuses_a_name_that_is_not_an_identifier(string newName)
+    {
+        var file = WriteBook("namespace Shop { public class Book { public void Other() { } } }");
+        var before = File.ReadAllText(file);
+
+        Assert.IsFalse(Run($"rename method Other to {newName} in Book"));
+
+        Assert.AreEqual(before, File.ReadAllText(file));
+    }
+
+    [TestMethod]
     public void Rename_reports_failure_when_the_method_is_missing()
     {
         WriteBook("namespace Shop { public class Book { public void Load() { } } }");

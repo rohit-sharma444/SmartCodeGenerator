@@ -57,9 +57,21 @@ public static class ClassMethodEditService
             return false;
         }
 
+        if (MemberNames.NotAnIdentifier(newName, "method") is { } bad)
+        {
+            message = bad;
+            return false;
+        }
+
         if (MethodsNamed(classNode, newName).Count > 0)
         {
             message = $"Method '{newName}' already exists in '{className}'.";
+            return false;
+        }
+
+        if (MemberNames.Taken(classNode, newName, matches) is { } taken)
+        {
+            message = taken;
             return false;
         }
 
