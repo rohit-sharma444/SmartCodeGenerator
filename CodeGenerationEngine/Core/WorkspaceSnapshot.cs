@@ -151,7 +151,8 @@ public sealed class WorkspaceSnapshot : IDisposable
             else if (File.Exists(registry))
                 File.Delete(registry);
 
-            ProjectManager.LoadProject();
+            // As startup lists them: this workspace's only, and the ones on disk too.
+            ProjectManager.ReloadWithin(_workspaceRoot);
 
             // 6 & 7. In-memory state a handler may have set.
             ProjectManager.CurrentProject = _currentProject;

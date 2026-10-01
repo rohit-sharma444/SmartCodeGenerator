@@ -189,6 +189,100 @@ public class WorkspaceSnapshotTests
         Assert.IsEmpty(LearnedIntentStore.Current.Entries);
     }
 
+    // The registry beside the test exe is shared by every test; these put it back as they found it.
+    private static void WithRegistry(string? contents, Action test)
+    {
+        var path = ProjectManager.RegistryPath;
+        var saved = File.Exists(path) ? File.ReadAllBytes(path) : null;
+        var current = ProjectManager.CurrentProject;
+        try
+        {
+            if (contents is null)
+                File.Delete(path);
+            else
+                File.WriteAllText(path, contents);
+            test();
+        }
+        finally
+        {
+            if (saved is null)
+                File.Delete(path);
+            else
+                File.WriteAllBytes(path, saved);
+            ProjectManager.LoadProject();
+            ProjectManager.CurrentProject = current;
+        }
+    }
+
+    private static string Registered(params string[] csprojs) =>
+        System.Text.Json.JsonSerializer.Serialize(csprojs.Select(c => new ProjectMetaData
+        {
+            Success = true,
+            ProjectName = Path.GetFileNameWithoutExtension(c),
+            ProjectPath = Path.GetDirectoryName(c)!,
+            CsProjPath = c,
+        }).ToList());
+
+    private static string NewProject(string root, string name)
+    {
+        var csproj = Path.Combine(root, name, name + ".csproj");
+        Directory.CreateDirectory(Path.GetDirectoryName(csproj)!);
+        File.WriteAllText(csproj, "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        return csproj;
+    }
+
+    // S4: the rollback reloaded the whole registry, so `list projects` then offered projects from
+    // every other workspace the tool had ever been used in.
+    [TestMethod]
+    public void Restore_ShowsOnlyThisWorkspacesProjects()
+    {
+        var root = NewWorkspace();
+        var other = NewWorkspace();
+        var shop = NewProject(root, "Shop");
+        var elsewhere = NewProject(other, "Elsewhere");
+
+        WithRegistry(Registered(shop, elsewhere), () =>
+        {
+            using var snapshot = WorkspaceSnapshot.Capture(root);
+            snapshot.Restore();
+
+            CollectionAssert.AreEquivalent(new[] { "Shop" }, ProjectManager.Projects.Select(p => p.ProjectName).ToArray());
+        });
+    }
+
+    // S4 / U2: with no registry file, startup registers the projects it finds on disk without
+    // saving them; reading only the file afterwards (or keeping a stale list) loses them.
+    [TestMethod]
+    public void Restore_WithNoRegistryFile_ShowsTheProjectsStartupWouldFind()
+    {
+        var root = NewWorkspace();
+        NewProject(root, "Shop");
+
+        WithRegistry(null, () =>
+        {
+            using var snapshot = WorkspaceSnapshot.Capture(root);
+            File.WriteAllText(ProjectManager.RegistryPath, Registered(NewProject(root, "Tool")));
+            ProjectManager.LoadProject();
+            snapshot.Restore();
+
+            CollectionAssert.AreEquivalent(new[] { "Shop" }, ProjectManager.Projects.Select(p => p.ProjectName).ToArray());
+        });
+    }
+
+    [TestMethod]
+    public void ReloadWithin_WithNoRegistryFile_KeepsTheProjectsOnDisk()   // U2
+    {
+        var root = NewWorkspace();
+        NewProject(root, "Shop");
+
+        WithRegistry(null, () =>
+        {
+            ProjectManager.ReloadWithin(root);
+
+            CollectionAssert.AreEquivalent(new[] { "Shop" }, ProjectManager.Projects.Select(p => p.ProjectName).ToArray());
+        });
+    }
+
     [TestMethod]
     public void Dispose_AfterSuccessfulRestore_DeletesSnapshot()
     {
