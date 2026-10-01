@@ -18,7 +18,7 @@ internal static class UndoCommand
     /// </summary>
     public static bool Journaled(CommandKind kind) => kind is
         CommandKind.Pipeline or CommandKind.BuildApp or CommandKind.Batch
-        or CommandKind.Demo or CommandKind.ShowRelationships;
+        or CommandKind.Demo or CommandKind.ShowRelationships or CommandKind.Run;
 
     // Runs outside both surfaces' command try/catch; a file it cannot even read (another
     // program holds it without sharing) is a refusal, not a crash.

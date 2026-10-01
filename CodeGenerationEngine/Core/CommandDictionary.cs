@@ -464,6 +464,22 @@ public static class CommandDictionary
         new()
         {
             Category = "Utility",
+            Command = "run <file>",
+            Description = "Runs a script of commands (.cgs) saved with save session or written by hand: every line, or none if one fails. "
+                        + "One undo reverses the whole run.",
+            Example = "run library.cgs"
+        },
+        new()
+        {
+            Category = "Utility",
+            Command = "save session <file> [replace]",
+            Description = "Saves this session's commands that worked and changed something, as a script for run. "
+                        + "Won't overwrite a file unless you add replace.",
+            Example = "save session library.cgs"
+        },
+        new()
+        {
+            Category = "Utility",
             Command = "demo",
             Description = "Runs a short guided walkthrough: creates a small project, adds a class with two validation rules, generates the validator and shows the result. Asks before writing anything, and names the folder it creates so you can delete it afterwards.",
             Example = "demo"

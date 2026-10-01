@@ -3,6 +3,7 @@ using CodeGenerationEngine.Core.Undo;
 using CodeGenerationEngine.Helper;
 using CodeGenerationEngine.Models;
 using CodeGenerator.App.Relationships;
+using CodeGenerator.App.Scripts;
 using CodeIntelligence;
 using DomainDiscovery;
 using DomainDiscovery.Wikipedia.Dump;
@@ -155,6 +156,13 @@ internal class CodeGeneratorStarter
                 return true;
             }
 
+            // One command and out: no session to save, and replaying one is a session's job.
+            if (kind is CommandKind.Run or CommandKind.SaveSession)
+            {
+                Output.Warning("`run` and `save session` need a session. Start the tool and type them.");
+                return false;
+            }
+
             // No resolver and no confirm delegate: scripted single-shot invocations
             // stay rule-based only. _lastInput is set anyway so that if RunOnce is ever
             // given a confirm callback, the decision log records the right text rather
@@ -208,6 +216,7 @@ internal class CodeGeneratorStarter
 
         // This session's undo history. Deleted, shadow copy and all, when the loop ends.
         var journal = UndoJournal.ForSession(_workspace.Root, Output.Warning);
+        var recorder = new SessionRecorder(journal);
 
         while (true)
         {
@@ -276,6 +285,18 @@ internal class CodeGeneratorStarter
             {
                 journal.Dispose();
                 journal = UndoJournal.ForSession(_workspace.Root, Output.Warning);
+                recorder = new SessionRecorder(journal);
+            }
+
+            // Not journaled: the file is what was asked for, and undoing a save would delete it.
+            if (kind == CommandKind.SaveSession)
+            {
+                var saved = SaveSessionCommand.Handle(input, _workspace.Root, recorder, DateTime.Now);
+                if (saved.Saved)
+                    Output.Success(saved.Message);
+                else
+                    Output.Warning(saved.Message);
+                continue;
             }
 
             if (kind is CommandKind.Undo or CommandKind.Redo)
@@ -298,6 +319,7 @@ internal class CodeGeneratorStarter
             if (kind == CommandKind.Demo)
             {
                 RunDemo(ref currentProject);
+                entry?.Keep([ScriptNotes.Demo]);
                 continue;
             }
 
@@ -322,6 +344,7 @@ internal class CodeGeneratorStarter
                 if (kind == CommandKind.BuildApp)
                 {
                     _buildApp.Handle(input, _workspace.Root, _ai);
+                    entry?.Keep([ScriptNotes.InteractiveBuildApp(input)]);
                     continue;
                 }
 
@@ -335,8 +358,15 @@ internal class CodeGeneratorStarter
 
                 if (kind == CommandKind.Batch)
                 {
-                    _batch.Handle(ref currentProject, _workspace.Rules, _workspace.Root,
+                    var applied = _batch.Handle(ref currentProject, _workspace.Rules, _workspace.Root,
                         r => ProjectManager.CurrentProject = r, _pipeline);
+                    entry?.Keep(applied);
+                    continue;
+                }
+
+                if (kind == CommandKind.Run)
+                {
+                    RunScript(input, entry, ref currentProject);
                     continue;
                 }
 
@@ -356,6 +386,8 @@ internal class CodeGeneratorStarter
                 // Only the pipeline commands go through here. `build app`, `batch` and `demo` are
                 // intercepted above and stream live: they prompt mid-flight, and buffering would
                 // hide the question the user is meant to answer.
+                var handled = false;
+
                 CommandColour.Run(() =>
                 {
                     var outcome = _pipeline.Handle(input, ref currentProject,
@@ -378,8 +410,13 @@ internal class CodeGeneratorStarter
                     // Gated on recognition, not success: a recognized command that failed has
                     // already reported its own reason, and calling it unrecognized would be wrong.
                     // Inside the buffered region so it is part of the coloured block.
+                    handled = outcome.Handled;
                     return CommandColour.Verdict(outcome.Recognized, outcome.Handled);
                 });
+
+                // What save session writes: the line as typed, when it worked.
+                if (handled)
+                    entry?.Keep([input]);
 
                 // After the buffered block, never inside it: CommandColour redirects Console.Out
                 // for the whole command, so a menu drawn in there is drawn into a buffer nobody
@@ -415,6 +452,59 @@ internal class CodeGeneratorStarter
 
         // Only `exit` ends the loop: every command's exceptions are caught inside it.
         journal.Dispose();
+    }
+
+    /// <summary>
+    /// <c>run &lt;file&gt;</c>: every line, or — at the first failure — none of them.
+    /// </summary>
+    /// <remarks>
+    /// Lines stream live like <c>batch</c>'s, not through <c>CommandColour</c>: a build block runs
+    /// for seconds, and its output belongs on screen as it comes. Lines run without the AI resolver
+    /// or a confirm prompt, as <c>batch</c> and <c>RunOnce</c> do — a script must not stop to ask.
+    /// </remarks>
+    private void RunScript(string input, UndoScope? entry, ref ProjectMetaData? currentProject)
+    {
+        var load = RunCommand.Load(input, _workspace.Root);
+        if (load.Steps is null)
+        {
+            Output.Warning(load.Problem!);
+            return;
+        }
+
+        var project = currentProject;
+
+        var outcome = ScriptRunner.Run(
+            load.Name,
+            load.Steps,
+            _workspace.Root,
+            step =>
+            {
+                if (step is BuildAppStep build)
+                    return ScriptBuildApp.Run(build.Lines, _workspace.Root, Console.WriteLine);
+
+                var text = ((CommandStep)step).Text;
+                var result = _pipeline.Handle(text, ref project, _workspace.Rules, _workspace.Root,
+                    r => ProjectManager.CurrentProject = r);
+
+                if (!result.Recognized)
+                    Output.Warning(UnrecognizedCommand.Describe(text, CommandSuggester.Closest(text)));
+
+                return result.Handled;
+            },
+            Console.WriteLine,
+            () => BatchCommand.ConfirmSnapshotSize(_workspace.Root));
+
+        currentProject = outcome.Succeeded ? project : ProjectManager.CurrentProject;
+
+        if (outcome.Succeeded)
+        {
+            entry?.Keep(outcome.Ran);
+            Output.Success(outcome.Message);
+        }
+        else
+        {
+            Output.Error(outcome.Message);
+        }
     }
 
     /// <summary>
