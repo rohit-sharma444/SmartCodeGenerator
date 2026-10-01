@@ -44,6 +44,17 @@ public sealed class SeedEntityExtractor
 
             if ((RecordMadeBy(entity) ?? BareVerbRecord(entity, previous, words)) is { } record)
             {
+                var next = i + 1 < result.Entities.Count ? result.Entities[i + 1] : null;
+                var verbWord = entity.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries)[^1];
+
+                if (TransactionVerbs.MakesNoRecordForAPerson(verbWord) && IsAPerson(next))
+                {
+                    model.Record(entity.Text, DecisionStage.SeedExtraction, DecisionOutcome.Skipped,
+                        DecisionReasons.NotRecognizedAsAThing,
+                        $"to {verbWord.ToLowerInvariant()} {next!.Text} is to employ them, not a rental");
+                    continue;
+                }
+
                 AddRecord(model, record, entity);
                 continue;
             }
@@ -136,9 +147,12 @@ public sealed class SeedEntityExtractor
 
         var before = previous.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries).LastOrDefault()?.ToLowerInvariant();
 
+        // "hires staff AND pays salaries": a second verb joined to the first verb's object.
         for (var j = 0; j + 2 < words.Count; j++)
         {
-            if (words[j] == before && words[j + 1] == verb && !Conjunctions.Contains(words[j + 2]))
+            var at = words[j + 1] == "and" && j + 3 < words.Count ? j + 2 : j + 1;
+            if (words[j] == before && words[at] == verb && at + 1 < words.Count
+                && !Conjunctions.Contains(words[at + 1]))
                 return record;
         }
 
@@ -146,6 +160,18 @@ public sealed class SeedEntityExtractor
     }
 
     private static readonly string[] Conjunctions = ["and", "or", "nor"];
+
+    // The archetype table already knows which nouns are people (staff, nurse, driver...).
+    private static bool IsAPerson(Entity? entity)
+    {
+        if (entity is null)
+            return false;
+        if (entity.Type == EntityType.Person)
+            return true;
+
+        var last = entity.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries).LastOrDefault() ?? string.Empty;
+        return Enrichment.ArchetypeLexicon.Resolve(last).Role == Enrichment.EntityRole.Party;
+    }
 
     private static IReadOnlyList<string> WordsOf(string? description) =>
         System.Text.RegularExpressions.Regex.Matches(description ?? string.Empty, "[A-Za-z']+")

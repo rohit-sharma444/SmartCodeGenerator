@@ -146,4 +146,37 @@ public class TransactionVerbSeedTests
     {
         Assert.Equal(expected.Split(','), Seeds(description).Order());
     }
+
+    // "hire" is a rental only when what is hired is a thing: a van hire company that hires vans
+    // keeps Rentals, a company that hires staff keeps no such record.
+    [Theory]
+    [InlineData("a company that hires staff and pays salaries")]
+    [InlineData("an agency hires staff")]
+    [InlineData("a hospital that hires nurses")]
+    public void Hiring_people_is_not_a_rental(string description)
+    {
+        var seeds = Seeds(description);
+
+        Assert.DoesNotContain("Rental", seeds);
+        Assert.DoesNotContain("Hire", seeds);
+    }
+
+    [Theory]
+    [InlineData("a company that hires vans to customers")]
+    [InlineData("a shop hires bikes to tourists")]
+    public void Hiring_out_a_thing_is_still_a_rental(string description)
+    {
+        Assert.Contains("Rental", Seeds(description));
+    }
+
+    [Fact]
+    public void A_second_verb_joined_by_and_makes_its_record_too()
+    {
+        var seeds = Seeds("a company that hires staff and pays salaries");
+
+        Assert.Contains("Payment", seeds);
+        Assert.DoesNotContain("Pay", seeds);
+        Assert.Contains("Staff", seeds);
+        Assert.Contains("Salary", seeds);
+    }
 }

@@ -30,7 +30,15 @@ public static class TransactionVerbs
         ("Subscription", ["subscribe"], []),
     ];
 
-    private static readonly Dictionary<string, string> ByForm = BuildForms();
+    /// <summary>
+    /// Verbs whose record exists only when what they act on is a thing. A van hire firm that
+    /// hires vans keeps Rentals; a company that hires staff is employing people, and gave a Rental
+    /// class nobody wanted. Kept rather than dropped from the table because without it "that hires
+    /// vans" has no record at all and the verb phrase itself becomes a class.
+    /// </summary>
+    private static readonly string[] ThingsOnly = ["hire"];
+
+    private static readonly Dictionary<string, (string Record, string Verb)> ByForm = BuildForms();
 
     private static readonly HashSet<string> BaseForms =
         Table.SelectMany(t => t.Verbs).ToHashSet(StringComparer.Ordinal);
@@ -42,7 +50,15 @@ public static class TransactionVerbs
     /// record's own name, and a noun.
     /// </summary>
     public static string? RecordFor(string word)
-        => ByForm.GetValueOrDefault((word ?? string.Empty).Trim().ToLowerInvariant());
+        => ByForm.TryGetValue((word ?? string.Empty).Trim().ToLowerInvariant(), out var found) ? found.Record : null;
+
+    /// <summary>
+    /// Whether <paramref name="word"/> is a verb whose record exists only when its object is a
+    /// thing, not a person ("hires vans", not "hires staff").
+    /// </summary>
+    public static bool MakesNoRecordForAPerson(string word)
+        => ByForm.TryGetValue((word ?? string.Empty).Trim().ToLowerInvariant(), out var found)
+           && ThingsOnly.Contains(found.Verb);
 
     /// <summary>
     /// As <see cref="RecordFor"/>, but null for the base form itself: "books" and "enrolled" can
@@ -54,24 +70,24 @@ public static class TransactionVerbs
         return BaseForms.Contains(form) ? null : RecordFor(form);
     }
 
-    private static Dictionary<string, string> BuildForms()
+    private static Dictionary<string, (string Record, string Verb)> BuildForms()
     {
-        var forms = new Dictionary<string, string>(StringComparer.Ordinal);
+        var forms = new Dictionary<string, (string Record, string Verb)>(StringComparer.Ordinal);
 
         foreach (var (record, verbs, irregular) in Table)
         {
             foreach (var verb in verbs)
             {
-                forms[verb] = record;
-                forms[verb + "s"] = record;
-                forms[verb + "es"] = record;
-                forms[verb + "d"] = record;
-                forms[verb + "ed"] = record;
-                forms[verb + verb[^1] + "ed"] = record;
+                forms[verb] = (record, verb);
+                forms[verb + "s"] = (record, verb);
+                forms[verb + "es"] = (record, verb);
+                forms[verb + "d"] = (record, verb);
+                forms[verb + "ed"] = (record, verb);
+                forms[verb + verb[^1] + "ed"] = (record, verb);
             }
 
             foreach (var form in irregular)
-                forms[form] = record;
+                forms[form] = (record, verbs[0]);
         }
 
         return forms;
