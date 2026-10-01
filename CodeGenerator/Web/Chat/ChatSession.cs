@@ -1,4 +1,5 @@
 using CodeGenerationEngine.Core;
+using CodeGenerationEngine.Core.Undo;
 using CodeGenerationEngine.Helper;
 using CodeGenerationEngine.Models;
 using CodeGenerator.App;
@@ -54,12 +55,22 @@ public sealed class ChatSession
     /// </remarks>
     private RelationshipFlow? _relationships;
 
+    /// <summary>This page's undo history — its own, not the console's. Replaced when another folder
+    /// is loaded, so an undo can never write into the folder the page has left.</summary>
+    private UndoJournal _journal;
+
     public ChatSession(Workspace workspace, AiLayer ai, List<string> history)
     {
         _workspace = workspace;
         _ai = ai;
         _history = history;
+        _journal = UndoJournal.ForSession(workspace.Root, Narrate);
     }
+
+    public bool CanUndo => _journal.CanUndo;
+    public bool CanRedo => _journal.CanRedo;
+    public string? NextUndoLabel => _journal.NextUndoLabel;
+    public string? NextRedoLabel => _journal.NextRedoLabel;
 
     public IReadOnlyList<ChatTurn> Turns => _turns;
 
@@ -218,6 +229,9 @@ public sealed class ChatSession
 
             Record(input);
 
+            // One entry for the command and for anything the relationship offer after it writes.
+            using var entry = UndoCommand.Journaled(kind) ? _journal.Begin(input) : null;
+
             _cancellation = new CancellationTokenSource();
 
             var turn = await Task.Run(() => Run(input, kind, _cancellation.Token));
@@ -258,6 +272,7 @@ public sealed class ChatSession
     public void End()
     {
         Ended = true;
+        _journal.Dispose();
 
         // Before the repaint, and with a cancellation: a question nobody is left to answer must
         // not hold the command, and the console behind it, open. Not index 1 and not "No" - an
@@ -317,6 +332,12 @@ public sealed class ChatSession
     public WorkspaceLoad Load(string path)
     {
         var load = _workspace.LoadFrom(path);
+
+        if (load.Ok)
+        {
+            _journal.Dispose();
+            _journal = UndoJournal.ForSession(_workspace.Root, Narrate);
+        }
 
         var text = load.Ok
             ? load.SolutionPath is null
@@ -441,6 +462,15 @@ public sealed class ChatSession
             case CommandKind.Ai:
                 Console.WriteLine(AiCommand.Handle(input, _ai));
                 return ChatVerdict.Succeeded;
+
+            case CommandKind.Undo:
+            case CommandKind.Redo:
+                var result = UndoCommand.Handle(_journal, kind);
+                Console.WriteLine(result.Message);
+
+                // Carried between commands like the console's; the journal restored ProjectManager's.
+                _currentProject = ProjectManager.CurrentProject;
+                return result.Done ? ChatVerdict.Succeeded : ChatVerdict.Failed;
 
             default:
                 return Pipeline(input, ct);

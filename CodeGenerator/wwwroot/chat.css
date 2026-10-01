@@ -1380,6 +1380,37 @@
     cursor: default;
 }
 
+/* Undo and redo: secondary to Send, so outlined rather than filled. */
+.composer-undo,
+.composer-redo {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-sm);
+    background: var(--panel);
+    color: var(--ink);
+    padding: 0.42rem 0.7rem;
+    font: inherit;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: border-color 120ms ease;
+}
+
+.composer-undo svg,
+.composer-redo svg { width: 14px; height: 14px; }
+
+.composer-undo:hover:not(:disabled),
+.composer-redo:hover:not(:disabled) { border-color: var(--accent); }
+
+.composer-undo:disabled,
+.composer-redo:disabled {
+    background: transparent;
+    color: var(--ink-faint);
+    cursor: default;
+}
+
 .composer-hint {
     display: flex;
     flex-wrap: wrap;

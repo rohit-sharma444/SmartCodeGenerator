@@ -63,5 +63,22 @@ public static class ValidationRegistry
         return rule;
     }
 
+    /// <summary>A copy of every class's rules, for undo. Rules are immutable, so copying the lists
+    /// is enough.</summary>
+    public static IReadOnlyDictionary<string, IReadOnlyList<IValidationRule>> Snapshot() =>
+        _rules.ToDictionary(kv => kv.Key, kv => (IReadOnlyList<IValidationRule>)kv.Value.ToList(),
+            System.StringComparer.OrdinalIgnoreCase);
+
+    public static void Restore(IReadOnlyDictionary<string, IReadOnlyList<IValidationRule>> snapshot)
+    {
+        _rules.Clear();
+        foreach (var (className, rules) in snapshot)
+            _rules[className] = rules.ToList();
+    }
+
+    /// <summary>Replaces one class's rules, leaving every other class's alone.</summary>
+    public static void Set(string className, IReadOnlyList<IValidationRule> rules) =>
+        _rules[className] = rules.ToList();
+
     public static void Clear() => _rules.Clear();
 }

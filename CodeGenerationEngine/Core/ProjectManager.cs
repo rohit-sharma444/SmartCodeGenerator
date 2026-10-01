@@ -18,6 +18,9 @@ public static class ProjectManager
     private static readonly string RegistryFile =
     Path.Combine(AppContext.BaseDirectory, "ProjectManager.dat");
 
+    /// <summary>Where the registry is kept, beside the exe — for undo, which restores it.</summary>
+    public static string RegistryPath => RegistryFile;
+
     public static void Register(ProjectMetaData project)
     {
         if (project == null || !project.Success)
@@ -125,6 +128,20 @@ public static class ProjectManager
     /// projects' / 'use project' and can redirect file operations to a stale
     /// path.
     /// </summary>
+    /// <summary>
+    /// Reads the registry file back after an undo rewrote it, keeping only this workspace's
+    /// projects as at startup. A missing file means no projects, where LoadProject keeps the list.
+    /// </summary>
+    public static void ReloadWithin(string workspaceRoot)
+    {
+        if (File.Exists(RegistryFile))
+            LoadProject();
+        else
+            _projects.Clear();
+
+        RetainOnlyWithin(workspaceRoot);
+    }
+
     public static void RetainOnlyWithin(string workspaceRoot)
     {
         _projects.RemoveAll(p =>

@@ -22,6 +22,11 @@ public sealed class WorkspaceSnapshot : IDisposable
     private static readonly string[] ExcludedDirectories =
         ["bin", "obj", ".git", "TestResults", "node_modules"];
 
+    /// <summary>The most files, and bytes, worth copying for a rollback: batch asks first above
+    /// these, and undo switches itself off.</summary>
+    public const int MaxFiles = 5_000;
+    public const long MaxBytes = 200L * 1024 * 1024;
+
     private const string WorkspaceFolder = "workspace";
     private const string RegistryFileName = "ProjectManager.dat";
     private const string RegistryBackupName = "ProjectManager.dat.bak";
@@ -180,20 +185,34 @@ public sealed class WorkspaceSnapshot : IDisposable
         TryDelete(SnapshotPath);
     }
 
-    private static IEnumerable<string> EnumerateIncludedFiles(string directory)
+    private static IEnumerable<string> EnumerateIncludedFiles(string directory) => IncludedFiles(directory);
+
+    /// <summary>
+    /// Every file under <paramref name="directory"/> outside the excluded folders — and outside
+    /// <paramref name="alsoExclude"/>, folder names skipped at any depth.
+    /// </summary>
+    /// <remarks>Shared with the undo journal, so the two agree on what "the workspace" is.</remarks>
+    internal static IEnumerable<string> IncludedFiles(string directory, IEnumerable<string>? alsoExclude = null)
     {
-        foreach (var file in Directory.EnumerateFiles(directory))
-            yield return file;
+        var excluded = new HashSet<string>(ExcludedDirectories, StringComparer.OrdinalIgnoreCase);
+        if (alsoExclude is not null)
+            excluded.UnionWith(alsoExclude);
 
-        foreach (var subdirectory in Directory.EnumerateDirectories(directory))
+        return Walk(directory);
+
+        IEnumerable<string> Walk(string current)
         {
-            var name = Path.GetFileName(subdirectory);
-
-            if (ExcludedDirectories.Contains(name, StringComparer.OrdinalIgnoreCase))
-                continue;
-
-            foreach (var file in EnumerateIncludedFiles(subdirectory))
+            foreach (var file in Directory.EnumerateFiles(current))
                 yield return file;
+
+            foreach (var subdirectory in Directory.EnumerateDirectories(current))
+            {
+                if (excluded.Contains(Path.GetFileName(subdirectory)))
+                    continue;
+
+                foreach (var file in Walk(subdirectory))
+                    yield return file;
+            }
         }
     }
 

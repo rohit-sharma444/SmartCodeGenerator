@@ -71,4 +71,12 @@ public class CommandRouteTests
         Assert.AreEqual(CommandKind.Pipeline, CommandRoute.Classify(""));
         Assert.AreEqual(CommandKind.Pipeline, CommandRoute.Classify(null));
     }
+
+    [TestMethod]
+    [DataRow("undo", CommandKind.Undo)]
+    [DataRow("  Undo ", CommandKind.Undo)]
+    [DataRow("redo", CommandKind.Redo)]
+    [DataRow("undo delete class Book", CommandKind.Pipeline)]
+    public void Undo_and_redo_are_the_bare_words(string input, CommandKind kind)
+        => Assert.AreEqual(kind, CommandRoute.Classify(input));
 }

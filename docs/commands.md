@@ -147,7 +147,9 @@
 | `help <topic>` | Shows one category's commands. A topic is any category name 'help' lists, spelled however you like; a command name works too, so 'help approve' explains that command. | `help build app` |
 | `help all` | Every command in one list — the complete catalog, which is what plain 'help' used to print. | `help all` |
 | `history` | Lists the last 20 commands (not itself recorded). | `history` |
+| `redo` | Puts back what undo reversed. The next command that changes something clears it. | `redo` |
 | `status` | Reports the workspace, the projects found and which is selected, any loaded rules, the AI state, and the Wikipedia store and its updater service. Startup prints only what is wrong; this prints everything. | `status` |
+| `undo` | Reverses the last command that changed something: its files, the validation rules and the current project. A whole batch or build app is one step. This session only, up to 50 steps; refuses, naming the file, if you have edited one it would restore. | `undo` |
 
 ## Validation
 

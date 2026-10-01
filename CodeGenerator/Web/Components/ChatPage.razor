@@ -71,6 +71,10 @@
             <ChatComposer @ref="_composer"
                           Disabled="Session.Running || Session.Ended"
                           History="Session.History"
+                          CanUndo="Session.CanUndo"
+                          CanRedo="Session.CanRedo"
+                          UndoLabel="@Session.NextUndoLabel"
+                          RedoLabel="@Session.NextRedoLabel"
                           OnSend="Send" />
         </div>
     </div>

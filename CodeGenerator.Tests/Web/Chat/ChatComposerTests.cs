@@ -31,6 +31,57 @@ public class ChatComposerTests
     }
 
     [TestMethod]
+    public void Undo_and_redo_are_disabled_with_nothing_to_undo()
+    {
+        using var context = NewContext();
+        var composer = context.Render<ChatComposer>();
+
+        Assert.IsTrue(composer.Find(".composer-undo").HasAttribute("disabled"));
+        Assert.IsTrue(composer.Find(".composer-redo").HasAttribute("disabled"));
+        Assert.AreEqual("Nothing to undo", composer.Find(".composer-undo").GetAttribute("title"));
+    }
+
+    [TestMethod]
+    public void Undo_sends_undo_and_names_what_it_would_undo()
+    {
+        using var context = NewContext();
+        string? sent = null;
+        var composer = context.Render<ChatComposer>(p => p
+            .Add(c => c.CanUndo, true)
+            .Add(c => c.UndoLabel, "add property Pages to Book")
+            .Add(c => c.OnSend, (string s) => sent = s));
+
+        Assert.AreEqual("Undo: add property Pages to Book", composer.Find(".composer-undo").GetAttribute("title"));
+        composer.Find(".composer-undo").Click();
+        Assert.AreEqual("undo", sent);
+    }
+
+    [TestMethod]
+    public void Redo_sends_redo()
+    {
+        using var context = NewContext();
+        string? sent = null;
+        var composer = context.Render<ChatComposer>(p => p
+            .Add(c => c.CanRedo, true)
+            .Add(c => c.RedoLabel, "add property Pages to Book")
+            .Add(c => c.OnSend, (string s) => sent = s));
+
+        composer.Find(".composer-redo").Click();
+        Assert.AreEqual("redo", sent);
+    }
+
+    [TestMethod]
+    public void Undo_is_disabled_while_a_command_runs()
+    {
+        using var context = NewContext();
+        var composer = context.Render<ChatComposer>(p => p
+            .Add(c => c.CanUndo, true)
+            .Add(c => c.Disabled, true));
+
+        Assert.IsTrue(composer.Find(".composer-undo").HasAttribute("disabled"));
+    }
+
+    [TestMethod]
     public void Shift_enter_does_not_send()
     {
         using var context = NewContext();

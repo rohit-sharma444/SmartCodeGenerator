@@ -195,6 +195,47 @@ public class ChatSessionTests
         Assert.Contains("help", CommandHistoryFile.ReadLines(workspace.HistoryPath));
     }
 
+    private static string TextOf(ChatTurn turn) =>
+        string.Join(Environment.NewLine, turn.Blocks.OfType<TextBlock>().Select(b => b.Text));
+
+    [TestMethod]
+    public async Task Undo_in_the_chat_reverses_a_command_and_says_so()
+    {
+        var session = NewSession(out var workspace);
+        var book = Path.Combine(workspace.Root, "Book.cs");
+        File.WriteAllText(book, "namespace S { public class Book { } }");
+
+        await session.Send("add property Pages int to Book");
+        StringAssert.Contains(File.ReadAllText(book), "Pages");
+        Assert.IsTrue(session.CanUndo);
+        Assert.AreEqual("add property Pages int to Book", session.NextUndoLabel);
+
+        await session.Send("undo");
+
+        Assert.AreEqual("namespace S { public class Book { } }", File.ReadAllText(book));
+        StringAssert.Contains(TextOf(session.Turns[^1]), "Undid: add property Pages int to Book");
+        Assert.IsTrue(session.CanRedo);
+        Assert.IsFalse(session.CanUndo);
+    }
+
+    [TestMethod]
+    public async Task Loading_another_workspace_starts_a_new_history()   // Review Focus 5
+    {
+        var session = NewSession(out var workspace);
+        var book = Path.Combine(workspace.Root, "Book.cs");
+        File.WriteAllText(book, "namespace S { public class Book { } }");
+        await session.Send("add property Pages int to Book");
+
+        var other = Path.Combine(Path.GetTempPath(), "cs-other-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(other);
+        session.Load(other);
+
+        Assert.IsFalse(session.CanUndo);
+        await session.Send("undo");
+        StringAssert.Contains(File.ReadAllText(book), "Pages", "the old folder is not touched");
+        StringAssert.Contains(TextOf(session.Turns[^1]), "Nothing to undo.");
+    }
+
     private static ChatSession NewSession(out Workspace workspace)
     {
         var root = Path.Combine(Path.GetTempPath(), "cs-" + Guid.NewGuid().ToString("N")[..8]);

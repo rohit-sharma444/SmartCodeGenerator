@@ -36,4 +36,27 @@ public class ValidationRegistryTests
         Assert.HasCount(1, ValidationRegistry.Get("order"));
         Assert.IsEmpty(ValidationRegistry.Get("Missing"));
     }
+
+    [TestMethod]
+    public void A_snapshot_restores_the_rules_as_they_were()
+    {
+        ValidationRegistry.Add("Order", new FakeRule { Category = ValidationCategory.Data });
+        var snapshot = ValidationRegistry.Snapshot();
+
+        ValidationRegistry.Add("Order", new FakeRule { Category = ValidationCategory.Business });
+        ValidationRegistry.Add("Invoice", new FakeRule { Category = ValidationCategory.Data });
+        ValidationRegistry.Restore(snapshot);
+
+        Assert.HasCount(1, ValidationRegistry.Get("Order"));
+        Assert.IsEmpty(ValidationRegistry.Get("Invoice"));
+    }
+
+    [TestMethod]
+    public void A_snapshot_is_not_changed_by_later_adds()
+    {
+        var snapshot = ValidationRegistry.Snapshot();
+        ValidationRegistry.Add("Order", new FakeRule { Category = ValidationCategory.Data });
+
+        Assert.IsEmpty(snapshot);
+    }
 }

@@ -36,6 +36,8 @@ public enum CommandKind
     BuildApp,
 
     Batch,
+    Undo,
+    Redo,
 
     /// <summary>Everything else: the natural-language pipeline decides.</summary>
     Pipeline

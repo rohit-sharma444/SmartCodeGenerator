@@ -165,6 +165,35 @@ exit</pre>
 offers back to you next time (<code>.codegen/app-profile.json</code>, chapter 7). They are safe to delete;
 you will simply be asked again.</p>
 
+<h3>Undo and redo</h3>
+<p><code>undo</code> reverses the last command that changed something, and <code>redo</code> puts it back.
+Everything the command did is reversed together: the files it wrote, added or deleted, the validation rules it
+added, and the current project and class. A <code>batch</code>, a <code>demo</code> or a <code>build app</code> is one
+step, so one <code>undo</code> removes a whole generated application, folders and all.</p>
+<pre>&gt; add property Pages int to Book
+Property 'Pages' of type 'int' added to 'Book'.
+&gt; undo
+Undid: add property Pages int to Book — restored Shop\Book.cs
+&gt; redo
+Redid: add property Pages int to Book — restored Shop\Book.cs</pre>
+<ul>
+<li>The history lasts for the session, up to 50 steps, and is gone when the tool closes. The chat page keeps
+its own, with <strong>Undo</strong> and <strong>Redo</strong> buttons beside Send; hovering one says which
+command it would reverse.</li>
+<li>A command that changed nothing — <code>show</code>, <code>list</code>, <code>help</code>, an edit that was
+refused — is not a step. Neither are <code>undo</code> and <code>redo</code> themselves.</li>
+<li>Typing a new command after an <code>undo</code> clears what <code>redo</code> could put back. With nothing left, they say <code>Nothing to undo.</code> and <code>Nothing to redo.</code></li>
+<li>Your own edits are safe. A file you change outside the tool, in Visual Studio say, is never undone as part of
+a command; and if you have edited a file an undo would restore, it refuses and names the file:
+<code>Can't undo: Shop\Book.cs has changed since add property Pages int to Book.</code>
+It refuses the same way if you have started a Git repository inside a folder it would delete, and when the
+console and the chat page have both changed the same validation rules or the project list since. If a file
+it must write is open in another program, it changes nothing and says so; close it and undo again.</li>
+<li>What the tool has learned is not undone: the <code>.codegen</code> folder, the Wikipedia cache, and anything
+under <code>bin</code> or <code>obj</code>.</li>
+<li>Over 5,000 files or 200 MB in the workspace, undo is off for the session, and the tool says so once.</li>
+</ul>
+
 <h2>4. Building an application: the workflow page</h2>
 
 <p>The <code>build app</code> command is the centre of the tool. It works out a candidate set of classes,
@@ -1685,7 +1714,9 @@ own shows the shorter overview, and <code>help &lt;topic&gt;</code> shows one se
 <tr><td><code>help &lt;topic&gt;</code></td><td>Shows one category&#x27;s commands. A topic is any category name &#x27;help&#x27; lists, spelled however you like; a command name works too, so &#x27;help approve&#x27; explains that command.</td><td><code>help build app</code></td></tr>
 <tr><td><code>help all</code></td><td>Every command in one list — the complete catalog, which is what plain &#x27;help&#x27; used to print.</td><td><code>help all</code></td></tr>
 <tr><td><code>history</code></td><td>Lists the last 20 commands (not itself recorded).</td><td><code>history</code></td></tr>
+<tr><td><code>redo</code></td><td>Puts back what undo reversed. The next command that changes something clears it.</td><td><code>redo</code></td></tr>
 <tr><td><code>status</code></td><td>Reports the workspace, the projects found and which is selected, any loaded rules, the AI state, and the Wikipedia store and its updater service. Startup prints only what is wrong; this prints everything.</td><td><code>status</code></td></tr>
+<tr><td><code>undo</code></td><td>Reverses the last command that changed something: its files, the validation rules and the current project. A whole batch or build app is one step. This session only, up to 50 steps; refuses, naming the file, if you have edited one it would restore.</td><td><code>undo</code></td></tr>
 </table>
 <h3>Validation</h3>
 <table>
