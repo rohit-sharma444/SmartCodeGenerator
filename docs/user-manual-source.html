@@ -185,7 +185,10 @@ refused — is not a step. Neither are <code>undo</code> and <code>redo</code> t
 <li>Typing a new command after an <code>undo</code> clears what <code>redo</code> could put back. With nothing left, they say <code>Nothing to undo.</code> and <code>Nothing to redo.</code></li>
 <li>Your own edits are safe. A file you change outside the tool, in Visual Studio say, is never undone as part of
 a command; and if you have edited a file an undo would restore, it refuses and names the file:
-<code>Can't undo: Shop\Book.cs has changed since add property Pages int to Book.</code></li>
+<code>Can't undo: Shop\Book.cs has changed since add property Pages int to Book.</code>
+It refuses the same way if you have started a Git repository inside a folder it would delete, and when the
+console and the chat page have both changed the same validation rules or the project list since. If a file
+it must write is open in another program, it changes nothing and says so; close it and undo again.</li>
 <li>What the tool has learned is not undone: the <code>.codegen</code> folder, the Wikipedia cache, and anything
 under <code>bin</code> or <code>obj</code>.</li>
 <li>Over 5,000 files or 200 MB in the workspace, undo is off for the session, and the tool says so once.</li>
