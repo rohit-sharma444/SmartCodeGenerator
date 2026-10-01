@@ -102,6 +102,16 @@ public sealed class UndoJournal : IDisposable
     public string? NextUndoLabel => CanUndo ? _undo[^1].Label : null;
     public string? NextRedoLabel => CanRedo ? _redo.Peek().Label : null;
 
+    /// <summary>An entry was recorded, with the lines its command asked to keep (maybe none). With
+    /// undo off, raised for each command that kept lines, with no entry behind it.</summary>
+    public event Action<IReadOnlyList<string>>? Recorded;
+
+    /// <summary>The latest entry was undone.</summary>
+    public event Action? Undone;
+
+    /// <summary>The latest undone entry was redone.</summary>
+    public event Action? Redone;
+
     private const string OffMessage =
         "Undo is off for this session: the workspace has more than 5,000 files or 200 MB.";
 
@@ -109,25 +119,27 @@ public sealed class UndoJournal : IDisposable
     /// Starts an entry for one command; disposing the result ends it. A Begin inside an open one
     /// — a batch running its commands — belongs to the outer entry.
     /// </summary>
-    public IDisposable Begin(string label)
+    public UndoScope Begin(string label)
     {
-        if (_disposed || !Enabled)
-            return NoScope.Instance;
+        if (_disposed)
+            return new UndoScope(this, UndoScope.Mode.Ignored);
+        if (!Enabled)
+            return new UndoScope(this, UndoScope.Mode.Off);
 
         if (_depth++ > 0)
-            return new Scope(this);
+            return new UndoScope(this, UndoScope.Mode.Journaled);
 
         try
         {
             if (!_started && !Start())
             {
                 _depth = 0;
-                return NoScope.Instance;
+                return new UndoScope(this, UndoScope.Mode.Off);
             }
 
             Sync();
 
-            _open = new Open(label, _captureState?.Invoke(), ReadRegistry(), Directories());
+            _open = new Open(label, _captureState?.Invoke(), ReadRegistry(), Directories(), []);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -135,7 +147,7 @@ public sealed class UndoJournal : IDisposable
             _open = null;
         }
 
-        return new Scope(this);
+        return new UndoScope(this, UndoScope.Mode.Journaled);
     }
 
     public UndoResult Undo()
@@ -165,6 +177,7 @@ public sealed class UndoJournal : IDisposable
         _undo.RemoveAt(_undo.Count - 1);
         _redo.Push(entry);
 
+        Undone?.Invoke();
         return new UndoResult(true, "Undid: " + entry.Label + Describe(entry, entry.Before));
     }
 
@@ -193,6 +206,7 @@ public sealed class UndoJournal : IDisposable
         _redo.Pop();
         _undo.Add(entry);
 
+        Redone?.Invoke();
         return new UndoResult(true, "Redid: " + entry.Label + Describe(entry, entry.After));
     }
 
@@ -208,8 +222,10 @@ public sealed class UndoJournal : IDisposable
 
     // ----- one command --------------------------------------------------------------------------
 
-    private void End()
+    internal void End(IReadOnlyList<string> kept)
     {
+        _open?.Kept.AddRange(kept);
+
         if (--_depth > 0 || _open is null)
             return;
 
@@ -264,11 +280,13 @@ public sealed class UndoJournal : IDisposable
             _known = now;
 
             _undo.Add(new Entry(open.Label, folder, before, after, changed, createdRoots,
-                open.State, stateAfter, open.Registry, registryAfter, registryChanged));
+                open.State, stateAfter, open.Registry, registryAfter, registryChanged, [.. open.Kept]));
 
             foreach (var undone in _redo)
                 TryDeleteTree(undone.Folder);
             _redo.Clear();
+
+            Recorded?.Invoke(_undo[^1].Kept);
 
             while (_undo.Count > Capacity)
             {
@@ -280,6 +298,13 @@ public sealed class UndoJournal : IDisposable
         {
             // Better no entry than a half-written one that would restore the wrong thing.
         }
+    }
+
+    // Undo is off, so there is no entry and never will be an undo; the lines are kept as they are.
+    internal void RecordWhileOff(IReadOnlyList<string> kept)
+    {
+        if (kept.Count > 0)
+            Recorded?.Invoke([.. kept]);
     }
 
     // ----- the shadow ---------------------------------------------------------------------------
@@ -553,7 +578,8 @@ public sealed class UndoJournal : IDisposable
 
     private readonly record struct Stamp(long Length, DateTime WriteUtc);
 
-    private sealed record Open(string Label, ISessionState? State, byte[]? Registry, HashSet<string> Directories);
+    private sealed record Open(
+        string Label, ISessionState? State, byte[]? Registry, HashSet<string> Directories, List<string> Kept);
 
     private sealed record Entry(
         string Label,
@@ -566,24 +592,6 @@ public sealed class UndoJournal : IDisposable
         ISessionState? StateAfter,
         byte[]? RegistryBefore,
         byte[]? RegistryAfter,
-        bool RegistryChanged);
-
-    private sealed class Scope(UndoJournal journal) : IDisposable
-    {
-        private bool _ended;
-
-        public void Dispose()
-        {
-            if (_ended)
-                return;
-            _ended = true;
-            journal.End();
-        }
-    }
-
-    private sealed class NoScope : IDisposable
-    {
-        public static readonly NoScope Instance = new();
-        public void Dispose() { }
-    }
+        bool RegistryChanged,
+        IReadOnlyList<string> Kept);
 }
