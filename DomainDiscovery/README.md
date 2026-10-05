@@ -78,7 +78,9 @@ Three things about that order are deliberate:
 
 `Bundled/Domains/*.json` are 25 hand-built domains, embedded in the assembly: each is the JSON shape Ollama
 returns (`LlmDomainModel`) plus weighted match `terms`. `BundledDomainSource` scores a description against
-them (a weight-3 term names the domain on its own; 3 points needed), runs the winner through
+them (a weight-3 term names the domain on its own; 3 points needed; terms match by stem, and an optional
+`words` map scores whole words by their own spelling, so "banking" can outweigh the "bank" it stems to),
+runs the winner through
 `LlmModelNormalizer` as `ModelOrigin.BuiltIn`, and adds the seed classes the domain lacks.
 `DomainModelSourceFactory` puts it after Ollama and an installed store, before online Wikipedia.
 

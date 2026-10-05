@@ -155,4 +155,26 @@ public class CatalogContentTests
     [InlineData("a bike rental shop", "Online shop")]
     public void CommonPhrasingsDoNotFindTheWrongDomain(string description, string wrong)
         => Assert.NotEqual(wrong, BundledDomainCatalog.Default.Match(description)?.Domain.Name);
+
+    // Found by the gaps audit, each reproduced live with Ollama unreachable.
+    [Theory]
+    [InlineData("a pet clinic", "Veterinary")]              // clinic alone beat clinic + pet
+    [InlineData("a banking system", "Banking")]             // banking and bank share one stem
+    [InlineData("an online store", "Online shop")]          // "store" was only a self word
+    [InlineData("a doctors surgery", "Clinic")]             // "surgery" was only a self word
+    [InlineData("a vet surgery", "Veterinary")]
+    [InlineData("a car hire business", "Car rental")]
+    [InlineData("a shop that rents cars", "Car rental")]
+    public void AuditedPhrasingsFindTheRightDomain(string description, string domain)
+        => Assert.Equal(domain, BundledDomainCatalog.Default.Match(description)?.Domain.Name);
+
+    // "rent", "rental" and "hire" are not about cars: two of them used to pass the threshold.
+    [Theory]
+    [InlineData("equipment rental where customers rent tools")]
+    [InlineData("a bike hire and rental shop")]
+    public void RentingSomethingElseIsNotCarRental(string description)
+        => Assert.NotEqual("Car rental", BundledDomainCatalog.Default.Match(description)?.Domain.Name);
+
+    [Fact]
+    public void ABankIsStillNotEnoughOnItsOwn() => Assert.Null(BundledDomainCatalog.Default.Match("a food bank"));
 }

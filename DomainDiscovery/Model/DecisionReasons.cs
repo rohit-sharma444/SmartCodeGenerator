@@ -13,6 +13,7 @@ public static class DecisionReasons
     public const string AlreadyNamed = "already named by another candidate";
     public const string YouNamedIt = "you named it";
     public const string NamesTheWholeSystem = "it names the whole system, not a class in it";
+    public const string NamesTheSoftware = "it names the software being built, not something it keeps";
 
     public static string FromTheBuiltInDomain(string domain) => $"from the built-in {domain} domain";
 

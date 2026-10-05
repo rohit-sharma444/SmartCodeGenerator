@@ -5,9 +5,9 @@
     "car hire": 3,
     "car rental": 3,
     "car": 2,
-    "hire": 2,
-    "rent": 2,
-    "rental": 2,
+    "hire": 1,
+    "rent": 1,
+    "rental": 1,
     "vehicle": 1,
     "mileage": 1
   },

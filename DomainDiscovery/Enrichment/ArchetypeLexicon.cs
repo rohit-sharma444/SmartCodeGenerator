@@ -179,6 +179,36 @@ public static class ArchetypeLexicon
         };
 
     /// <summary>
+    /// Words people use for the software they are asking for — "a library management SYSTEM", "a
+    /// kanban board APP" — rather than for anything it keeps rows about.
+    /// </summary>
+    /// <remarks>
+    /// Consulted for a candidate's NAME only, never for a definition's head: "an integrated library
+    /// system is an enterprise resource planning system" defines a perfectly good topic, and
+    /// treating the head "system" as an abstraction would refuse it. On the Wikipedia path these
+    /// names are already refused by their own articles (System is "a group", Management "the
+    /// administration"); the built-in domains have no articles, so the name is all there is.
+    /// </remarks>
+    private static readonly HashSet<string> SoftwareNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "system", "app", "application", "platform", "software", "website", "portal",
+        "management", "solution",
+    };
+
+    /// <summary>
+    /// Whether a candidate is an abstraction by its name alone: the verdict
+    /// <see cref="EntityShaper"/> falls back to when a candidate has no definition to read
+    /// (<see cref="Resolve"/> on the name), or a word for the software itself.
+    /// </summary>
+    public static bool IsAbstractName(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return false;
+
+        return SoftwareNames.Contains(Singularize(name)) || Resolve(name).Verdict == ShapeVerdict.Abstract;
+    }
+
+    /// <summary>
     /// Resolves a head noun to its verdict and shape, without throwing or guessing. A head the table
     /// has not seen returns <see cref="ShapeVerdict.Unknown"/>, not <see cref="ShapeVerdict.Abstract"/>—the
     /// distinction matters because <see cref="ShapeVerdict.Abstract"/> deletes the candidate while

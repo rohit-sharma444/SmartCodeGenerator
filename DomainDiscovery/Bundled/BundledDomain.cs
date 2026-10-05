@@ -22,11 +22,18 @@ public sealed record BundledDomain(
     IReadOnlyList<string> Self,
     LlmDomainModel Model)
 {
+    /// <summary>
+    /// Whole words, lowercased, that score on their own spelling rather than their stem: "banking"
+    /// names the domain where "bank" ("a food bank") does not, yet the stemmer makes them one.
+    /// </summary>
+    public IReadOnlyDictionary<string, int> Words { get; init; } = new Dictionary<string, int>(StringComparer.Ordinal);
+
     private sealed class DomainFile
     {
         [JsonPropertyName("name")] public string Name { get; set; } = string.Empty;
         [JsonPropertyName("self")] public List<string>? Self { get; set; }
         [JsonPropertyName("terms")] public Dictionary<string, int> Terms { get; set; } = new();
+        [JsonPropertyName("words")] public Dictionary<string, int>? Words { get; set; }
         [JsonPropertyName("classes")] public List<LlmClass> Classes { get; set; } = new();
     }
 
@@ -71,6 +78,19 @@ public sealed record BundledDomain(
         // them is dropped. Only these — a weight-3 term such as "landlord" names a real class.
         var self = (file.Self ?? [file.Name]).SelectMany(s => WordStem.Words(s)).Select(w => w.Stem).Distinct().ToList();
 
-        return new BundledDomain(file.Name.Trim(), terms, self, new LlmDomainModel { Classes = file.Classes });
+        var words = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var (word, weight) in file.Words ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(word) || word.Any(c => !char.IsLetter(c)))
+                throw new FormatException($"{file.Name}: word \"{word}\" must be one word of letters");
+            if (weight is < 1 or > 3)
+                throw new FormatException($"{file.Name}: word \"{word}\" has weight {weight}; use 1, 2 or 3");
+            words[word.ToLowerInvariant()] = weight;
+        }
+
+        return new BundledDomain(file.Name.Trim(), terms, self, new LlmDomainModel { Classes = file.Classes })
+        {
+            Words = words,
+        };
     }
 }

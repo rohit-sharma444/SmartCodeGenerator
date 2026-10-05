@@ -1,7 +1,8 @@
 {
   "name": "Point of sale",
   "self": [
-    "pos"
+    "pos",
+    "point"
   ],
   "terms": {
     "point of sale": 3,
