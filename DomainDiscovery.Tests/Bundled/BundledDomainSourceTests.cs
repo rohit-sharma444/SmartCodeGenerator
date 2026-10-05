@@ -215,6 +215,8 @@ public class BundledDomainSourceTests
     [InlineData("a kanban board app", "Kanban,Board")]
     [InlineData("a point of sale application", "Point")]
     [InlineData("an ecommerce website", "Ecommerce")]
+    [InlineData("a university that enrolls students and tracks enrollments", "University")]
+    [InlineData("an academy that enrols students in courses", "Academy")]
     public void AWordNamingTheBuiltInSystemIsNotAClass(string description, string words)
     {
         var names = BundledDomainSource.CreateDefault().Discover(description).Model.Entities.Select(e => e.Name).ToList();
