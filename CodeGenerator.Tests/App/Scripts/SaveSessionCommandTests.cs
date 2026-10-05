@@ -56,6 +56,35 @@ public sealed class SaveSessionCommandTests
             File.ReadAllLines(Path.Combine(_root, "library.cgs")));
     }
 
+    // S7: "sub\" became "sub\.cgs", a file named only ".cgs".
+    [TestMethod]
+    [DataRow(@"sub\")]
+    [DataRow("sub/")]
+    [DataRow("\"sub\\\"")]
+    public void A_name_that_is_only_a_folder_is_refused(string name)
+    {
+        Command("create class Book");
+
+        var result = Save("save session " + name);
+
+        Assert.IsFalse(result.Saved);
+        StringAssert.Contains(result.Message, "folder");
+        StringAssert.Contains(result.Message, "save session sub\\library.cgs");
+        Assert.IsFalse(Directory.Exists(Path.Combine(_root, "sub")));
+    }
+
+    [TestMethod]
+    public void A_name_that_is_an_existing_folder_is_refused()
+    {
+        Command("create class Book");
+        Directory.CreateDirectory(Path.Combine(_root, "notes.cgs"));
+
+        var result = Save("save session notes.cgs replace");
+
+        Assert.IsFalse(result.Saved);
+        StringAssert.Contains(result.Message, "folder");
+    }
+
     [TestMethod]
     public void The_file_is_utf8_without_a_byte_order_mark()
     {

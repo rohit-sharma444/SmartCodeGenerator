@@ -38,8 +38,19 @@ internal static partial class SaveSessionCommand
         if (lines.Count == 0)
             return new SaveResult(false, "Nothing to save — no command in this session changed anything.");
 
+        // "sub\" would get .cgs added and become a file named only ".cgs".
+        var folder = rest.Trim('"');
+        if (folder.EndsWith('\\') || folder.EndsWith('/'))
+        {
+            return new SaveResult(false,
+                $"{folder} is a folder. Name the file in it, for example: save session {folder.TrimEnd('\\', '/')}\\library.cgs");
+        }
+
         var path = ScriptPath.Resolve(rest, workspaceRoot);
         var shown = ScriptPath.Shown(path, workspaceRoot);
+
+        if (Directory.Exists(path))
+            return new SaveResult(false, $"{shown} is a folder. Name a file to save to, for example: save session library.cgs");
 
         if (File.Exists(path) && !replace)
         {
