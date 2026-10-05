@@ -225,6 +225,17 @@ public sealed class StaleValidatorAfterMemberEditTests
     }
 
     [TestMethod]
+    public void A_built_apps_validator_warning_spells_names_as_the_app_does()
+    {
+        // The live run said "still checks bookitem.isbn" for a command typed in lower case.
+        BuiltAppBook();
+
+        var output = Run("change type of isbn to long in book");
+
+        StringAssert.Contains(output, "checks Book.Isbn as it was", output);
+    }
+
+    [TestMethod]
     public void A_built_apps_validator_is_named_once_not_twice()
     {
         // The live run named it in its own warning and again as BookItemValidator.Field() in the

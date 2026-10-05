@@ -104,6 +104,22 @@ public static class StaleValidators
         if (files.Count == 0)
             return null;
 
+        // As the app spells them, not as typed: the file is named for the class, and the
+        // validator reads the property by its declared name.
+        className = Path.GetFileName(files[0])[..^"Validator.Generated.cs".Length];
+        try
+        {
+            var text = File.ReadAllText(Path.Combine(workspaceRoot, files[0]));
+            property = CSharpSyntaxTree.ParseText(text).GetRoot()
+                .DescendantNodes().OfType<MemberAccessExpressionSyntax>()
+                .Select(a => a.Name.Identifier.Text)
+                .FirstOrDefault(n => n.Equals(property, StringComparison.OrdinalIgnoreCase)) ?? property;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Read a moment ago; the typed spelling will do.
+        }
+
         return $"{string.Join(", ", files)} still checks {className}.{property} as it was, but {property} {change}. "
             + "build app generated it and does not regenerate it here (a rebuild would undo this edit), "
             + $"so update or delete the checks on {property} in it, or the app may not compile.";
