@@ -1064,7 +1064,7 @@ public static class CommandEntityExtractor
     private static bool IsKnownType(string value)
         => !string.IsNullOrWhiteSpace(value) && KnownTypes.Contains(value.Trim().TrimEnd('?'));
 
-    private static string ToPascalCase(string value)
+    internal static string ToPascalCase(string value)
     {
         if (string.IsNullOrWhiteSpace(value))
             return value;

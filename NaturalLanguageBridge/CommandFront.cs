@@ -60,6 +60,19 @@ public static class CommandFront
         new(@"^(?:class\s+)?(?<class>\w+)(?:\s+class)?\s+(?:inherits?|extends|derives\s+from)\s+(?<base>\w+)$",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    // `create class <name>` and `create class <name> with ...`, ahead of the mapper. NLE tags a
+    // lower-case name as part of the target, so the mapper looked up "class employee" and
+    // "create class employee" was not recognised at all, with or without properties. The name
+    // comes from this group, PascalCased: Normalize rewrites manager -> service and
+    // model/entity -> class, which would rename a class the user typed in lower case.
+    // "class library" is a project, and a connective is not a name ("create class called X"
+    // and "create class with ..." are left to the mapper as before).
+    private static readonly Regex CreateClassRe =
+        new(@"^(?:create|add|generate)\s+(?:(?:a|an|new)\s+)?class\s+"
+            + @"(?!(?:library|with|called|named|that|which|for|to|in|of|from)\b)(?<class>[A-Za-z_]\w*)"
+            + @"(?:\s+with\s+.+)?$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     // `rename property <old> to <new> in <Class>`. The mapper's Table is keyed on
     // (verb, whole remainder), so it cannot match an argument-bearing form; and
     // Normalize maps field -> property, so the fields come from these groups.
@@ -121,6 +134,7 @@ public static class CommandFront
         IntentType.ShowValidation,
         IntentType.GenerateValidator,
         IntentType.ClassInherit,
+        IntentType.CreateClass,
         IntentType.RenameProperty,
         IntentType.DeleteMethod,
         IntentType.RenameMethod,
@@ -170,6 +184,17 @@ public static class CommandFront
                 OriginalSentence = input ?? string.Empty,
                 Confidence = 1.0
             };
+
+        var createClassMatch = CreateClassRe.Match(text);
+        if (createClassMatch.Success)
+        {
+            var createCmd = CommandEntityExtractor.Extract(text, IntentType.CreateClass, workspace);
+            createCmd.ClassName = CommandEntityExtractor.ToPascalCase(createClassMatch.Groups["class"].Value);
+            createCmd.OriginalSentence = input ?? string.Empty;
+            createCmd.Confidence = 1.0;
+            SessionContext.CurrentClass = createCmd.ClassName;
+            return createCmd;
+        }
 
         var renamePropertyMatch = RenamePropertyRe.Match(text);
         if (renamePropertyMatch.Success)
