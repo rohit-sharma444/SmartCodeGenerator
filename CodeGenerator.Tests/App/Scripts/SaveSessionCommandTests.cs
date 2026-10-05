@@ -150,8 +150,24 @@ public sealed class SaveSessionCommandTests
 
         var text = File.ReadAllText(Path.Combine(_root, "shop.cgs"));
         StringAssert.Contains(text, "# build app from sql");
-        StringAssert.Contains(text, "(built interactively; add its answers below to replay it)");
         Assert.DoesNotContain("hunter2", text);
+    }
+
+    // S6: the note said "add its answers below", but left the line commented out and the remark
+    // on it, so a user who added answers still had a script whose build never ran. A piped build
+    // is saved the same way: which piped lines were its answers cannot be told apart reliably.
+    [TestMethod]
+    public void The_build_note_says_how_to_make_it_replay()
+    {
+        Command("build app from csv books.csv");
+
+        Save("save session shop");
+
+        var line = File.ReadAllLines(Path.Combine(_root, "shop.cgs"))[1];
+        Assert.AreEqual(
+            "# build app from csv books.csv (not replayed: to replay it, delete the '#' and this remark, "
+            + "then put its answers on the lines below, ending with approve or cancel)",
+            line);
     }
 
     [TestMethod]
