@@ -207,4 +207,19 @@ public class BundledDomainSourceTests
         Assert.Contains("Enrolment", names);
         Assert.DoesNotContain("Enrollment", names);
     }
+
+    // The word that names the system is not a class beside the domain's own.
+    [Theory]
+    [InlineData("a veterinary practice", "Veterinary")]
+    [InlineData("a veterinary clinic", "Clinic")]
+    [InlineData("a kanban board app", "Kanban,Board")]
+    [InlineData("a point of sale application", "Point")]
+    [InlineData("an ecommerce website", "Ecommerce")]
+    public void AWordNamingTheBuiltInSystemIsNotAClass(string description, string words)
+    {
+        var names = BundledDomainSource.CreateDefault().Discover(description).Model.Entities.Select(e => e.Name).ToList();
+
+        foreach (var word in words.Split(','))
+            Assert.DoesNotContain(word, names);
+    }
 }

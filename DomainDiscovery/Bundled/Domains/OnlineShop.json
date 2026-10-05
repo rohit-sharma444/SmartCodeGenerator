@@ -3,7 +3,9 @@
   "self": [
     "shop",
     "store",
-    "webshop"
+    "webshop",
+    "ecommerce",
+    "commerce"
   ],
   "terms": {
     "ecommerce": 3,
@@ -11,6 +13,7 @@
     "webshop": 3,
     "online shop": 3,
     "shop": 2,
+    "store": 2,
     "online": 1,
     "product": 1,
     "cart": 1,

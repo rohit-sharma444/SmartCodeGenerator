@@ -8,6 +8,7 @@
   "terms": {
     "clinic": 3,
     "hospital": 3,
+    "surgery": 2,
     "patient": 1,
     "doctor": 1,
     "appointment": 1,

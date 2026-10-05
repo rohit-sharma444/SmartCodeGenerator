@@ -1,6 +1,9 @@
 {
   "name": "Projects and tasks",
-  "self": [],
+  "self": [
+    "kanban",
+    "board"
+  ],
   "terms": {
     "kanban": 3,
     "project management": 3,
