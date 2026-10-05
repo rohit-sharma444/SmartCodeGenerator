@@ -20,6 +20,9 @@ public static class DecisionReasons
     public static string CoveredBy(string className, string domain) =>
         $"covered by {className} in the built-in {domain} domain";
 
+    public static string AnotherWordFor(string className, string domain) =>
+        $"another word for {className} in the built-in {domain} domain";
+
     public static string LeftToTheBuiltInDomain(string domain) =>
         $"the built-in {domain} domain defines its own records";
     public const string YouSaidItAsAVerb = "you said it as a verb";

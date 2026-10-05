@@ -115,10 +115,12 @@ public sealed class BundledDomainSource : IDomainModelSource
 
             var stem = WordStem.Of(seed.Name);
             var covering = domainClasses.FirstOrDefault(e => NameWords(e.Name).Any(w => WordStem.Of(w) == stem));
+            var same = covering is null ? SameClassAs(stem, domainClasses, domain) : null;
 
             string? reason =
                 domain.Self.Contains(stem) ? DecisionReasons.NamesTheWholeSystem
                 : covering is not null ? DecisionReasons.CoveredBy(covering.Name, domain.Name)
+                : same is not null ? DecisionReasons.AnotherWordFor(same.Name, domain.Name)
                 : madeFromVerbs.Contains(seed.Name) ? DecisionReasons.LeftToTheBuiltInDomain(domain.Name)
                 : null;
 
@@ -132,6 +134,50 @@ public sealed class BundledDomainSource : IDomainModelSource
             model.Record(seed.Name, DecisionStage.BuiltInDomain, DecisionOutcome.Rejected, reason);
         }
     }
+
+    /// <summary>
+    /// The domain class <paramref name="stem"/> is another word for, or null: the domain's own
+    /// synonyms first ("customer" is a vet's Owner), then words that mean the same role in any
+    /// domain ("staff" is HR's Employee, "vehicle" Car rental's Car).
+    /// </summary>
+    /// <remarks>
+    /// Without this, a seed with a different word for a domain class became a second, empty class
+    /// beside it - Customer beside the Owner, with only an Id, its own screens, dashboard tiles and
+    /// three seeded rows of nothing - and nothing linked to it. A group matches a domain class by
+    /// the last word of its name, so "vehicles" finds Fleet's Vehicle but "staff" does not find a
+    /// TeamMember.
+    /// </remarks>
+    private static CandidateEntity? SameClassAs(string stem, IReadOnlyList<CandidateEntity> domainClasses, BundledDomain domain)
+    {
+        if (domain.Synonyms.TryGetValue(stem, out var named)
+            && domainClasses.FirstOrDefault(e => e.Name == named) is { } own)
+            return own;
+
+        var group = SynonymGroups.FirstOrDefault(g => g.Contains(stem));
+        if (group is null)
+            return null;
+
+        return domainClasses.FirstOrDefault(e =>
+            NameWords(e.Name).LastOrDefault() is { } last && group.Contains(WordStem.Of(last)));
+    }
+
+    // Words that name the same role whichever domain they are said in. Stems, as WordStem makes them.
+    private static readonly HashSet<string>[] SynonymGroups =
+    [
+        Group("customer", "client", "patron"),
+        Group("employee", "staff", "worker", "personnel"),
+        Group("teacher", "tutor", "instructor", "lecturer"),
+        Group("student", "pupil", "learner"),
+        Group("car", "vehicle"),
+        Group("supplier", "vendor"),
+        Group("product", "goods"),
+        Group("doctor", "physician", "clinician"),
+        Group("attendee", "participant", "delegate"),
+        Group("tenant", "renter", "lessee"),
+    ];
+
+    private static HashSet<string> Group(params string[] words) =>
+        words.Select(WordStem.Of).ToHashSet(StringComparer.Ordinal);
 
     // DiningTable -> Dining, Table.
     private static IEnumerable<string> NameWords(string name) =>

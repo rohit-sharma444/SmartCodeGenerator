@@ -18,6 +18,13 @@
     "owner": 1,
     "vaccination": 1
   },
+  "synonyms": {
+    "customer": "Owner",
+    "client": "Owner",
+    "animal": "Pet",
+    "patient": "Pet",
+    "appointment": "Visit"
+  },
   "classes": [
     {
       "name": "Owner",
