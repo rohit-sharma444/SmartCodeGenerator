@@ -1383,7 +1383,10 @@ body {
 
 /* The end of a run, in place of the diagram and the panel. A card like the panel it replaces —
    the page has not become a different page, it has stopped asking questions. */
+/* Both columns: once the run is over there is no rail, and as a grid child of .workflow the card
+   otherwise lands in the 190px rail column, squeezed into a strip beside empty space. */
 .finished {
+    grid-column: 1 / -1;
     padding: 1.25rem 1.5rem;
     border: 1px solid var(--line);
     border-left: 4px solid var(--done);
