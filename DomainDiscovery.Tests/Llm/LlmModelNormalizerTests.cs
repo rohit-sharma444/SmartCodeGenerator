@@ -248,9 +248,9 @@ public class LlmModelNormalizerTests
 
         var sale = LlmModelNormalizer.Normalize(raw).Entities.Single(e => e.Name == "Sale");
 
-        // Its own key was kept, and no second one was invented beside it.
-        Assert.Contains(sale.Fields, f => f.Name == "SaleID");
-        Assert.DoesNotContain(sale.Fields, f => f.Name == "Id");
+        // Its own key is the one canonical Id, not SaleID beside an Id (see LlmKeyFieldTests).
+        Assert.DoesNotContain(sale.Fields, f => f.Name == "SaleID");
+        Assert.Single(sale.Fields, f => f.Name == "Id");
 
         // The reference to Customer became a relationship despite the all-caps spelling.
         Assert.Contains(sale.Relationships, r => r.Target == "Customer");

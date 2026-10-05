@@ -134,6 +134,12 @@ public static class LlmModelNormalizer
         if (!NameNormalizer.IsValidIdentifier(name) || name == entity.Name)
             return;
 
+        // The class's own key, in whatever spelling - Id, id, CourseID, CourseId. EnsureKey gives
+        // every class the one canonical Id; a CourseID kept beside it was a second, user-typed int
+        // defaulting to 0 that nothing checked was unique, on every class the default model made.
+        if (IsKeyOf(name, entity.Name))
+            return;
+
         if (entity.Fields.Any(f => f.Name == name))
             return;
 
@@ -170,7 +176,11 @@ public static class LlmModelNormalizer
         if (!fieldName.EndsWith("id", StringComparison.OrdinalIgnoreCase) || fieldName.Length <= 2)
             return false;
 
-        return byName.TryGetValue(fieldName[..^2], out target!);
+        // Case-insensitive on the class name too: "vehicletypeid" names VehicleType.
+        var stem = fieldName[..^2];
+        var found = byName.Values.FirstOrDefault(e => e.Name.Equals(stem, StringComparison.OrdinalIgnoreCase));
+        target = found!;
+        return found is not null;
     }
 
     /// <summary>
@@ -220,7 +230,7 @@ public static class LlmModelNormalizer
     /// <returns>True when the relationship was added.</returns>
     private static bool Declared(CandidateEntity from, CandidateEntity to, string role)
     {
-        if (!EntityRoleRank.CanReference(from.Role))
+        if (!MayCarryAKeyTo(from, to))
             return false;
 
         if (from.Relationships.Any(r => r.Target == to.Name))
@@ -228,6 +238,27 @@ public static class LlmModelNormalizer
 
         CandidateReference.Record(from, to, role);
         return true;
+    }
+
+    /// <summary>
+    /// Whether a key the model or a domain file DECLARED on <paramref name="from"/> may point at
+    /// <paramref name="to"/>.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="EntityRoleRank.CanReference"/> alone was too strict for a declared column. It
+    /// was written for keys INFERRED from two classes sharing a sentence, where only a document,
+    /// transaction or event may carry one; applied to what the model wrote outright it left
+    /// Teacher.SchoolID, Course.SchoolID, Employee.GymId, FitnessEquipment.GymId and
+    /// Vehicle.VehicleTypeID as plain ints beside the very classes they name - every one a real
+    /// "belongs to". What the measured defect was about stays refused: a place or a machine
+    /// holding ONE person (Restaurant.CustomerId, CashRegister.CustomerId), which no schema has.
+    /// </remarks>
+    private static bool MayCarryAKeyTo(CandidateEntity from, CandidateEntity to)
+    {
+        if (EntityRoleRank.CanReference(from.Role))
+            return true;
+
+        return !(from.Role is EntityRole.Place or EntityRole.Device && to.Role == EntityRole.Party);
     }
 
     private static void EnsureKey(CandidateEntity entity, ModelOrigin origin)
