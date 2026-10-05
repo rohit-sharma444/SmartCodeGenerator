@@ -235,7 +235,7 @@ public static class CommandHandlingService
             return false;
         }
 
-        if (ExistingClassFile(ctx) is { } existing)
+        if (ExistingTypeFile(ctx) is { } existing)
         {
             // It used to say "Saved generated class" and write over the file, losing every property
             // and method in it. "create class" makes a new class; changing one has its own commands.
@@ -464,6 +464,19 @@ public static class CommandHandlingService
 
     private static bool HandleCreateInterface(CommandExecutionContext ctx)
     {
+        if (ExistingTypeFile(ctx) is { } existing)
+        {
+            // It used to write over the file unchecked, losing every member in it — and "create
+            // interface ishape" names the file Ishape.cs, which on Windows is IShape.cs.
+            var name = EntityExtractor.DeclaredName(existing, ctx.Command.ClassName);
+            Output.Error($"'{name}' already exists: {existing}");
+            Console.WriteLine(
+                "  It was left as it is: creating it again would replace everything in it."
+                + Environment.NewLine
+                + $"  To start it again, delete class {name} first.");
+            return false;
+        }
+
         return GenerateAndSave(ctx);
     }
 
@@ -775,12 +788,13 @@ public static class CommandHandlingService
     // ----- Shared helpers -------------------------------------------------
 
     /// <summary>
-    /// The file already holding the class <c>create class</c> would write, or null. Looked for where
-    /// the class would be saved — the file itself, matched without case because writing
-    /// <c>employee.cs</c> on Windows replaces <c>Employee.cs</c>, and anywhere else in that folder
-    /// (a built app keeps its classes in <c>Models</c>), skipping build output and DeletedClasses.
+    /// The file already holding the type <c>create class</c> or <c>create interface</c> would write
+    /// (both save to <c>&lt;ClassName&gt;.cs</c>), or null. Looked for where the type would be saved —
+    /// the file itself, matched without case because writing <c>employee.cs</c> on Windows replaces
+    /// <c>Employee.cs</c>, and anywhere else in that folder (a built app keeps its classes in
+    /// <c>Models</c>), skipping build output and DeletedClasses.
     /// </summary>
-    private static string? ExistingClassFile(CommandExecutionContext ctx)
+    private static string? ExistingTypeFile(CommandExecutionContext ctx)
     {
         var className = ctx.Command.ClassName;
         if (string.IsNullOrWhiteSpace(className))
