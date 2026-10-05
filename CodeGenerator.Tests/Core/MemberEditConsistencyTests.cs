@@ -79,6 +79,24 @@ public sealed class MemberEditConsistencyTests
     }
 
     [TestMethod]
+    [DataRow("remove property qty from order")]
+    [DataRow("remove property code from Order")]
+    [DataRow("delete property Qty in order")]
+    public void Remove_property_is_recognised_with_a_lower_case_name(string input)
+    {
+        // The live run: "remove property price from item" was "Command not recognized" while
+        // "remove property Price from Item" worked; the language mapper only saw a capitalised name.
+        var file = Write("Order.cs",
+            "namespace Shop { public class Order { public int Qty { get; set; } public string Code { get; set; } } }");
+        var property = input.Contains("code") ? "Code" : "Qty";
+
+        Assert.IsTrue(Run(input), LastOutput);
+
+        Assert.DoesNotContain(" " + property + " ", File.ReadAllText(file));
+        AssertWorkspaceCompiles();
+    }
+
+    [TestMethod]
     public void Rename_property_finds_a_property_typed_in_another_case()
     {
         var file = Write("Order.cs", "namespace Shop { public class Order { public int Qty { get; set; } } }");

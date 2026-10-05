@@ -73,6 +73,12 @@ public static class CommandFront
         new(@"^(?:remove|delete)\s+method\s+(?<method>\w+)(?:\s+(?:from|in|on|of)\s+(?<class>\w+))?$",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    // `remove property <name> from <Class>`. Ahead of the mapper, which recognised it only with a
+    // capitalised name: "remove property price from item" was not recognised at all.
+    private static readonly Regex DeletePropertyRe =
+        new(@"^(?:remove|delete|drop)\s+property\s+(?<property>\w+)\s+(?:from|in|on|of)\s+(?<class>\w+)$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     // `rename method <old> to <new> in <Class>`, shaped like RenamePropertyRe.
     private static readonly Regex RenameMethodRe =
         new(@"^rename\s+method\s+(?<old>\w+)\s+to\s+(?<new>\w+)(?:\s+(?:in|on|of)\s+(?<class>\w+))?$",
@@ -191,6 +197,17 @@ public static class CommandFront
                 Intent = IntentType.DeleteMethod,
                 MethodName = deleteMethodMatch.Groups["method"].Value.Trim(),
                 ClassName = ClassOrCurrent(deleteMethodMatch),
+                OriginalSentence = input ?? string.Empty,
+                Confidence = 1.0
+            };
+
+        var deletePropertyMatch = DeletePropertyRe.Match(text);
+        if (deletePropertyMatch.Success)
+            return new ParsedCommand
+            {
+                Intent = IntentType.DeleteProperty,
+                PropertyName = deletePropertyMatch.Groups["property"].Value.Trim(),
+                ClassName = deletePropertyMatch.Groups["class"].Value.Trim(),
                 OriginalSentence = input ?? string.Empty,
                 Confidence = 1.0
             };
