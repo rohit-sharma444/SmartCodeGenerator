@@ -187,7 +187,8 @@
     {
         _peek = null;
 
-        var path = Unquoted(_path);
+        // Relative to the workspace, as `build app from csv <file>` is.
+        var path = DataSourcePath.Resolve(Unquoted(_path), Session.WorkspaceRoot);
 
         if (path.Length == 0 || !File.Exists(path))
             return;
@@ -324,7 +325,8 @@
         if (IsSql)
             return Task.FromResult(TakeConnection());
 
-        var path = Unquoted(_path);
+        // Relative to the workspace, as `build app from csv <file>` is.
+        var path = DataSourcePath.Resolve(Unquoted(_path), Session.WorkspaceRoot);
 
         if (!File.Exists(path))
         {

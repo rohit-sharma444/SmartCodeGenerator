@@ -40,6 +40,11 @@ public static class ProjectManager
 
             if (CurrentProject?.ProjectPath == existing.ProjectPath)
                 CurrentProject = existing;
+
+            // The same rule as a new project below: the first one registered with nothing
+            // selected becomes the selection. Without it a project the registry file already
+            // knew was never selected, so every start after the first selected nothing.
+            CurrentProject ??= existing;
             return;
         }
         _projects.Add(project);
