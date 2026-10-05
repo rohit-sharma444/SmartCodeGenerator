@@ -128,6 +128,38 @@ public class WorkspaceTests
         Assert.IsNull(ProjectManager.CurrentProject);
     }
 
+    /// <summary>
+    /// Startup selects a project in the workspace even when the registry file already knew it.
+    /// </summary>
+    /// <remarks>
+    /// The registry is read back with no selection, and registering a project it already holds
+    /// only refreshed the entry, so the second start of any workspace selected nothing and said
+    /// "Found 1 project(s),  selected." with the name missing. The first start, where the project
+    /// was new to the registry, selected it.
+    /// </remarks>
+    [TestMethod]
+    public void A_project_already_in_the_registry_is_selected_when_nothing_is()
+    {
+        var root = NewTree("Shop");
+        var csproj = Path.Combine(root, "Shop", "Shop.csproj");
+
+        // What ProjectManager.LoadProject leaves: the project registered, nothing selected.
+        ProjectManager.Register(new CodeGenerationEngine.Models.ProjectMetaData
+        {
+            Success = true,
+            ProjectPath = Path.GetDirectoryName(csproj)!,
+            CsProjPath = csproj,
+            ProjectName = "Shop",
+            Message = "Loaded"
+        });
+        ProjectManager.CurrentProject = null;
+
+        var workspace = new Workspace(root, projectPathSet: false);
+        workspace.LoadFrom(root);
+
+        Assert.AreEqual("Shop", ProjectManager.CurrentProject?.ProjectName);
+    }
+
     [TestMethod]
     public void The_history_file_follows_the_root()
     {

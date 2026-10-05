@@ -801,9 +801,13 @@ internal class CodeGeneratorStarter
         // emit — a stray blank line above the banner on every first run.
         if (load.ProjectCount > 0)
         {
-            Console.WriteLine(
-                $"Found {load.ProjectCount} project(s), "
-                + $"{ProjectManager.CurrentProject?.ProjectName} selected.");
+            // Names the selection, or claims none: a blank name here once printed
+            // "Found 1 project(s),  selected." when nothing had been selected at all.
+            var current = ProjectManager.CurrentProject?.ProjectName;
+
+            Console.WriteLine(string.IsNullOrWhiteSpace(current)
+                ? $"Found {load.ProjectCount} project(s), none selected."
+                : $"Found {load.ProjectCount} project(s), {current} selected.");
         }
     }
 
