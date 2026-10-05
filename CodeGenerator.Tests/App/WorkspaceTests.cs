@@ -207,6 +207,91 @@ public class WorkspaceTests
         Assert.AreEqual(root, workspace.Root);
     }
 
+    /// <summary>
+    /// A relative path is the workspace's: "Api" typed into the chat page's box is the Api folder
+    /// of the workspace being worked on.
+    /// </summary>
+    /// <remarks>
+    /// It was resolved against the process's current directory, which is wherever the console was
+    /// started — the bin folder under Visual Studio, anywhere at all when PROJECTPATH chose the
+    /// root — so "Api" said "There is nothing at" a path the user never meant.
+    /// </remarks>
+    [TestMethod]
+    public void A_relative_folder_is_found_in_the_workspace()
+    {
+        var root = NewTree("Api", "Core");
+        var workspace = new Workspace(root, projectPathSet: false);
+
+        var load = workspace.LoadFrom("Api");
+
+        Assert.IsTrue(load.Ok, load.Problem);
+        Assert.AreEqual(Path.Combine(root, "Api"), workspace.Root);
+        Assert.AreEqual(1, load.ProjectCount);
+    }
+
+    [TestMethod]
+    public void A_relative_solution_and_a_sibling_folder_are_found_from_the_workspace()
+    {
+        var root = NewTree("Api", "Core");
+        File.WriteAllText(Path.Combine(root, "App.slnx"), """
+            <Solution>
+              <Project Path="Api/Api.csproj" />
+            </Solution>
+            """);
+        var workspace = new Workspace(Path.Combine(root, "Core"), projectPathSet: false);
+
+        var solution = workspace.LoadFrom(Path.Combine("..", "App.slnx"));
+
+        Assert.IsTrue(solution.Ok, solution.Problem);
+        Assert.AreEqual(Path.Combine(root, "App.slnx"), workspace.SolutionPath);
+
+        // The solution roots the workspace at its projects' folder, Api; Core is beside it.
+        var sibling = workspace.LoadFrom(Path.Combine("..", "Core"));
+
+        Assert.IsTrue(sibling.Ok, sibling.Problem);
+        Assert.AreEqual(Path.Combine(root, "Core"), workspace.Root);
+    }
+
+    /// <summary>
+    /// The current directory is still looked in when the workspace has nothing of that name, so a
+    /// relative path that loaded before still loads.
+    /// </summary>
+    [TestMethod]
+    public void A_relative_path_only_the_current_directory_has_still_loads()
+    {
+        var root = NewTree("Api");
+        var name = "ws-cwd-" + Guid.NewGuid().ToString("N")[..8];
+        var inCurrent = Path.GetFullPath(name);
+        Directory.CreateDirectory(inCurrent);
+
+        try
+        {
+            var workspace = new Workspace(root, projectPathSet: false);
+
+            var load = workspace.LoadFrom(name);
+
+            Assert.IsTrue(load.Ok, load.Problem);
+            Assert.AreEqual(inCurrent, workspace.Root);
+        }
+        finally
+        {
+            Directory.Delete(inCurrent, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public void A_relative_path_found_nowhere_is_named_in_the_workspace()
+    {
+        var root = NewTree("Api");
+        var workspace = new Workspace(root, projectPathSet: false);
+
+        var load = workspace.LoadFrom("nowhere-" + Guid.NewGuid().ToString("N")[..8]);
+
+        Assert.IsFalse(load.Ok);
+        StringAssert.Contains(load.Problem, root, load.Problem);
+        Assert.AreEqual(root, workspace.Root);
+    }
+
     /// <summary>A temp directory with one folder and one .csproj per name.</summary>
     private static string NewTree(params string[] projects)
     {

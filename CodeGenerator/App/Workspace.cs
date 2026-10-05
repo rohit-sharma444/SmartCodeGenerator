@@ -74,7 +74,7 @@ public sealed class Workspace
 
         try
         {
-            var full = Path.GetFullPath(path);
+            var full = FullPathOf(path);
 
             if (SolutionFile.IsSolution(full))
             {
@@ -185,6 +185,33 @@ public sealed class Workspace
             Console.WriteLine($"Failed to load rules: {ex.Message}");
             Rules = [];
         }
+    }
+
+    /// <summary>
+    /// Where a path given to <see cref="LoadFrom"/> is: unchanged when rooted, else the one under
+    /// the current root, else the one under the current directory, else the one under the root.
+    /// </summary>
+    /// <remarks>
+    /// A relative path was resolved against the process's current directory, which is wherever
+    /// the console was started — the bin folder under Visual Studio, anywhere at all when
+    /// PROJECTPATH chose the root — so "Api" typed on the chat page missed the workspace's Api
+    /// folder. The workspace is what the user is looking at, so it comes first, as it does for
+    /// data files (<c>DataSourcePath</c>) and scripts. The current directory is kept as a fallback
+    /// so a relative path that loaded before still loads; a path found in neither is named under
+    /// the root, which is the one the user meant. <c>DataSourcePath</c> itself is not used: it
+    /// looks for a file, and this may be a folder.
+    /// </remarks>
+    private string FullPathOf(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path) || Path.IsPathRooted(path) || string.IsNullOrWhiteSpace(Root))
+            return Path.GetFullPath(path);
+
+        var inRoot = Path.GetFullPath(Path.Combine(Root, path));
+        if (File.Exists(inRoot) || Directory.Exists(inRoot))
+            return inRoot;
+
+        var inCurrent = Path.GetFullPath(path);
+        return File.Exists(inCurrent) || Directory.Exists(inCurrent) ? inCurrent : inRoot;
     }
 
     private WorkspaceLoad Failed(string problem)
