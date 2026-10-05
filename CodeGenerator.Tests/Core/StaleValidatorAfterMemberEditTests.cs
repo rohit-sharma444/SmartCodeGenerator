@@ -225,6 +225,18 @@ public sealed class StaleValidatorAfterMemberEditTests
     }
 
     [TestMethod]
+    public void A_built_apps_validator_is_named_once_not_twice()
+    {
+        // The live run named it in its own warning and again as BookItemValidator.Field() in the
+        // users-of warning below it.
+        BuiltAppBook();
+
+        var output = Run("remove property Title from Book");
+
+        Assert.DoesNotContain("BookValidator.DataStage()", output, output);
+    }
+
+    [TestMethod]
     public void A_built_apps_validator_that_does_not_check_it_is_not_named()
     {
         BuiltAppBook();
