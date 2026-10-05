@@ -27,7 +27,7 @@
 <h2>1. About this manual</h2>
 
 <p>SmartCodeGenerator is an interactive command-line tool. You type instructions in ordinary English —
-<code>create employee class</code>, <code>build app: a library that lends books to members</code> — and it
+<code>create class Employee</code>, <code>build app: a library that lends books to members</code> — and it
 creates or edits real .NET code on disk.</p>
 
 <p>This manual covers the tool as an end user meets it: how to start it, what each command does, and how to
@@ -131,6 +131,9 @@ you would have answered interactively must instead be typed on the command line 
 <pre>build app: a shop that sells books company "Codis Ltd" theme dark
 approve console
 exit</pre>
+<p>You need not write such a script by hand: <code>save session &lt;file&gt;</code> writes one from the commands
+of this session that worked and changed something, and <code>run &lt;file&gt;</code> replays it from the prompt — see
+<em>Scripts: save session and run</em> in chapter 3.</p>
 
 <h3>Getting help</h3>
 <table>
@@ -138,7 +141,7 @@ exit</pre>
 <tr><td><code>status</code></td><td>The full picture: which folder it is writing to, how many projects it found and which is selected, any rules it loaded, whether AI recognition is on, and the state of the Wikipedia store and its updater service.</td></tr>
 <tr><td><code>help</code></td><td>A one-screen overview: a few commands worth starting with, then every category and how many commands it holds.</td></tr>
 <tr><td><code>help &lt;topic&gt;</code></td><td>The commands in one category — <code>help build app</code>, <code>help validation</code>. Capitals and spaces do not matter, so <code>buildapp</code> works too. A command name is also a topic, so <code>help approve</code> explains that one command.</td></tr>
-<tr><td><code>help all</code></td><td>Every command with an example, in one list. This is what plain <code>help</code> printed in earlier versions — around 250 lines, which is why it moved behind its own word.</td></tr>
+<tr><td><code>help all</code></td><td>Every command with an example, in one list. This is what plain <code>help</code> printed in earlier versions — over 600 lines now, which is why it moved behind its own word.</td></tr>
 <tr><td><code>history</code></td><td>The last 20 commands. It does not record itself.</td></tr>
 <tr><td><code>clear</code> / <code>cls</code></td><td>Clears the screen. History is kept.</td></tr>
 <tr><td><code>batch</code></td><td>Type several commands, review what the tool understood, then run only the ones you approve.</td></tr>
@@ -161,9 +164,17 @@ exit</pre>
 </table>
 
 <h3>The <code>.codegen</code> folder</h3>
-<p>The tool keeps small files of remembered state beside your work, including the customization answers it
-offers back to you next time (<code>.codegen/app-profile.json</code>, chapter 7). They are safe to delete;
-you will simply be asked again.</p>
+<p>The tool keeps small files of remembered state in a <code>.codegen</code> folder in the workspace root:</p>
+<table>
+<tr><th>File</th><th>What it holds</th></tr>
+<tr><td><code>app-profile.json</code></td><td>The customization answers an interactive <code>build app</code> offers back to you next time (chapter 7).</td></tr>
+<tr><td><code>build-in-progress.json</code></td><td>A build you left unfinished on the workflow page, so the next <code>build app</code> can offer to resume it (chapter 4).</td></tr>
+<tr><td><code>workflow-theme.json</code></td><td>The theme you chose on the workflow page.</td></tr>
+<tr><td><code>learned.json</code></td><td>The command signatures the tool has learned and how often each worked; <code>show learning</code> lists them and <code>reset learning</code> clears them.</td></tr>
+<tr><td><code>phrase-candidates.jsonl</code>, <code>phrase-candidates.tsv</code></td><td>Lines that were not understood, each paired with the next command that worked, kept for review (chapter 12).</td></tr>
+</table>
+<p>They are safe to delete. You will be asked again, an unfinished build is no longer offered, and what was
+learned starts over.</p>
 
 <h3>Undo and redo</h3>
 <p><code>undo</code> reverses the last command that changed something, and <code>redo</code> puts it back.
@@ -680,9 +691,20 @@ one got there.</p>
 <tr><td><code>rename &lt;old&gt; &lt;new&gt;</code></td><td>Renames a class.</td></tr>
 <tr><td><code>field &lt;class&gt; &lt;name&gt;[:&lt;type&gt;]</code></td><td>Adds a field. Omit the type to have it inferred; explicit types are <code>string</code>, <code>int</code>, <code>decimal</code>, <code>bool</code>, <code>DateTime</code>.</td></tr>
 <tr><td><code>unfield &lt;class&gt; &lt;name&gt;</code></td><td>Removes a field.</td></tr>
+<tr><td><code>renamefield &lt;class&gt; &lt;old&gt; &lt;new&gt;</code></td><td>Renames a field, keeping its type, where it came from and the rules proposed for it — which <code>unfield</code> then <code>field</code> would lose. <code>renamefield Order Customer Buyer</code>.</td></tr>
+<tr><td><code>retype &lt;class&gt; &lt;field&gt; &lt;type&gt;</code></td><td>Changes a field's type to <code>string</code>, <code>int</code>, <code>decimal</code>, <code>bool</code> or <code>DateTime</code>. <code>retype Order Pages decimal</code>.</td></tr>
 <tr><td><code>why [name]</code></td><td>Explains the tool's decisions. Bare, it groups every decision by outcome; with a name, it shows that name's whole trail — the stage, the reason, and the evidence.</td></tr>
+<tr><td><code>rules</code></td><td>Lists the validation rules your data supports, numbered, with the evidence for each and whether it is accepted. Only a build from data proposes any; none is applied until you accept it.</td></tr>
+<tr><td><code>accept &lt;n&gt;</code> / <code>accept all</code></td><td>Accepts one proposed rule by its number in <code>rules</code>, or every one.</td></tr>
+<tr><td><code>unaccept &lt;n&gt;</code> / <code>unaccept all</code></td><td>Takes an accepted rule back.</td></tr>
+<tr><td><code>order status &lt;values&gt; in &lt;class&gt;</code></td><td>For a class whose status rule you accepted, states its values in order, comma-joined and naming every one exactly once: <code>order status Draft,Approved,Shipped in Order</code>. A rule can then tell an earlier stage of the workflow from a later one.</td></tr>
+<tr><td><code>final status &lt;values&gt; in &lt;class&gt;</code></td><td>Marks which of those values are final — no further change is expected from them: <code>final status Shipped in Order</code>.</td></tr>
 <tr><td><code>cancel</code> (<code>c</code>)</td><td>Abandons the model. Nothing is written.</td></tr>
 </table>
+<p>When you pick from a list, it offers <code>approve</code>, <code>add</code>, <code>remove</code>,
+<code>rename</code>, <code>field</code>, <code>unfield</code>, <code>why</code>, <code>rules</code>,
+<code>accept</code> and <code>cancel</code>. The others are typed, so they are there when input is piped
+— or on the workflow page, which has the same edits on its own cards.</p>
 
 <h3>Approving</h3>
 <pre>approve                  generates using the type you chose at the start
@@ -1001,8 +1023,8 @@ where the old overwrite-without-asking behaviour is kept so that scripts are unc
 <h3>Classes</h3>
 <table>
 <tr><th>Command</th><th>What it does</th></tr>
-<tr><td><code>create class</code></td><td>Creates a class — <code>create employee class</code>.</td></tr>
-<tr><td><code>create class &lt;name&gt; with properties</code></td><td>Creates a class and its properties in one line: <code>create employee class emdcode:int, Name:string</code>.</td></tr>
+<tr><td><code>create class</code></td><td>Creates a class — <code>create class Employee</code>.</td></tr>
+<tr><td><code>create class &lt;name&gt; with properties</code></td><td>Creates a class and its properties in one line: <code>create class Employee with properties EmpCode int, Name string</code>.</td></tr>
 <tr><td><code>list classes</code></td><td>Lists the classes in the current project.</td></tr>
 <tr><td><code>list classes in &lt;project&gt;</code></td><td>Lists another project's classes.</td></tr>
 <tr><td><code>show class &lt;name&gt;</code></td><td>Prints the source.</td></tr>
@@ -1570,9 +1592,14 @@ deliberate: output half-recognized and half-rearranged would be worse than outpu
 <tr><td><kbd>Enter</kbd></td><td>Sends the command — unless the completion list is open, in which case it inserts the highlighted one and the list closes. Press it again to send.</td></tr>
 <tr><td><kbd>Shift</kbd>+<kbd>Enter</kbd></td><td>Starts a new line without sending.</td></tr>
 <tr><td><strong>Send</strong></td><td>The button beside the box does what <kbd>Enter</kbd> does. It is greyed out while the box is empty and while a command is running.</td></tr>
+<tr><td><strong>Undo</strong> / <strong>Redo</strong></td><td>The two buttons beside Send type <code>undo</code> or <code>redo</code> for you, so the transcript shows what they did like any other command. Hovering one names the command it would reverse or put back; each is greyed out when there is nothing to undo or redo (chapter 3).</td></tr>
 <tr><td><kbd>↑</kbd> <kbd>↓</kbd></td><td>Move through the completion list while it is open; walk your command history when it is closed.</td></tr>
 <tr><td><kbd>Esc</kbd></td><td>Closes the completion list.</td></tr>
 </table>
+
+<p>For a moment after the page opens, the box is greyed out and says <em>Connecting…</em>, and the buttons are
+greyed out with it. Until the page has connected to the tool nothing would hear what you type, so you cannot
+type yet; once it connects the box says <em>Type a command…</em> and is ready.</p>
 
 <p>The completion list is the command catalog itself — the same one <code>help</code> prints — so it cannot
 offer a command that does not exist or miss one that does. History is shared with the console: a command
