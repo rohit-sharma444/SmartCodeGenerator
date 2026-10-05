@@ -89,6 +89,42 @@ public class ChatRelationshipTests
         Assert.IsNull(session.Question, "creating a class must not be interrupted by the offer");
     }
 
+    // U4: the console never offers after undo or redo; the page did, putting back the question
+    // the undone command may just have answered.
+    [TestMethod]
+    [DataRow("undo")]
+    [DataRow("redo")]
+    public async Task Undo_and_redo_are_not_moments_the_offer_appears(string command)
+    {
+        var session = NewSession(out var root);
+        try
+        {
+            File.WriteAllText(Path.Combine(root, "Order.cs"),
+                "namespace Shop;\n\npublic class Order\n{\n    public int Id { get; set; }\n    public int CustomerId { get; set; }\n}\n");
+            File.WriteAllText(Path.Combine(root, "Customer.cs"),
+                "namespace Shop;\n\npublic class Customer\n{\n    public int Id { get; set; }\n}\n");
+
+            var sending = session.Send(command);
+            await Task.WhenAny(sending, Task.Run(() => WaitUntilOrTimeout(() => session.Question is not null, 10)));
+
+            Assert.IsNull(session.Question, command + " must not put the relationship offer up");
+            await sending.WaitAsync(TimeSpan.FromSeconds(30));
+        }
+        finally
+        {
+            if (session.Question is not null)
+                session.Answer(1);
+            session.End();
+        }
+    }
+
+    private static void WaitUntilOrTimeout(Func<bool> condition, int seconds)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(seconds);
+        while (!condition() && DateTime.UtcNow < deadline)
+            Thread.Sleep(10);
+    }
+
     [TestMethod]
     public void All_four_cardinality_answers_are_drawn_as_buttons()
     {
