@@ -59,6 +59,17 @@ public static class ValidationEngine
         sb.AppendLine("            " + header);
         foreach (var rule in list)
         {
+            // A rule on a field the class no longer has (removed or renamed since the rule was
+            // added) would read a member that does not exist, and the file would not compile.
+            // The two-field business rules already check this themselves; the data rules did not.
+            var missing = rule.Properties.Where(p => !ctx.HasProperty(p)).ToList();
+            if (missing.Count > 0)
+            {
+                sb.AppendLine($"            // Skipped: {rule.Describe().Replace("\r", " ").Replace("\n", " ")}"
+                    + $" ({string.Join(", ", missing)} is not a property of this class)");
+                continue;
+            }
+
             sb.AppendLine("            try");
             sb.AppendLine("            {");
             rule.Emit(ctx);            // each rule's locals are scoped to this block

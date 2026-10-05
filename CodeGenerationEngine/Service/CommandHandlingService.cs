@@ -512,6 +512,7 @@ public static class CommandHandlingService
                     + string.Join("; ", removed.Select(r => r.Describe())));
 
             WarnOfUsers(ctx, ctx.Command.PropertyName, "Property", "removed");
+            RefreshValidators(ctx, "was removed");
         }
 
         return ok;
@@ -550,6 +551,7 @@ public static class CommandHandlingService
                     + $"and add them again for {ctx.Command.NewPropertyName}.");
 
             WarnOfUsers(ctx, ctx.Command.PropertyName, "Property", "renamed");
+            RefreshValidators(ctx, $"was renamed to {ctx.Command.NewPropertyName}");
         }
 
         return ok;
@@ -567,7 +569,22 @@ public static class CommandHandlingService
             ctx.WorkspaceRoot, ctx.Command.ClassName,
             ctx.Command.PropertyName, ctx.Command.PropertyType, out var message);
         Console.WriteLine(message);
+        if (ok)
+            RefreshValidators(ctx, $"is now {ctx.Command.PropertyType}");
         return ok;
+    }
+
+    // After a property is removed, renamed or retyped: a validator generated earlier still reads it
+    // as it was. generate validator's file is rebuilt from the current rules and properties; a
+    // built app's .Generated.cs cannot be (see StaleValidators), so it is named.
+    private static void RefreshValidators(CommandExecutionContext ctx, string change)
+    {
+        if (StaleValidators.Regenerate(ctx.WorkspaceRoot, ctx.Command.ClassName) is { } regenerated)
+            Console.WriteLine($"Validator regenerated: {regenerated}");
+
+        if (StaleValidators.AppValidatorWarning(
+                ctx.WorkspaceRoot, ctx.Command.ClassName, ctx.Command.PropertyName, change) is { } warning)
+            Output.Warning(warning);
     }
 
     private static bool HandleShowValidation(CommandExecutionContext ctx) =>
