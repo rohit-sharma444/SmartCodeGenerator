@@ -235,6 +235,21 @@ public static class CommandHandlingService
             return false;
         }
 
+        if (ExistingClassFile(ctx) is { } existing)
+        {
+            // It used to say "Saved generated class" and write over the file, losing every property
+            // and method in it. "create class" makes a new class; changing one has its own commands.
+            var name = EntityExtractor.DeclaredName(existing, classDef.Name);
+            Output.Error($"Class '{name}' already exists: {existing}");
+            Console.WriteLine(
+                "  It was left as it is: creating it again would replace its properties and methods."
+                + Environment.NewLine
+                + $"  To change it, use add property <name> <type> to {name} or add method <name> to {name};"
+                + Environment.NewLine
+                + $"  to start it again, delete class {name} first.");
+            return false;
+        }
+
         var saved = GenerateAndSave(ctx);
 
         // After the class is on disk, and only if it got there: a note about what was left out of
@@ -758,6 +773,27 @@ public static class CommandHandlingService
     }
 
     // ----- Shared helpers -------------------------------------------------
+
+    /// <summary>
+    /// The file already holding the class <c>create class</c> would write, or null. Looked for where
+    /// the class would be saved — the file itself, matched without case because writing
+    /// <c>employee.cs</c> on Windows replaces <c>Employee.cs</c>, and anywhere else in that folder
+    /// (a built app keeps its classes in <c>Models</c>), skipping build output and DeletedClasses.
+    /// </summary>
+    private static string? ExistingClassFile(CommandExecutionContext ctx)
+    {
+        var className = ctx.Command.ClassName;
+        if (string.IsNullOrWhiteSpace(className))
+            return null;
+
+        var directory = ProjectLocator.Resolve(ctx.Command, ctx.CurrentProject, ctx.WorkspaceRoot).Directory;
+
+        var sameFolder = Directory.EnumerateFiles(directory, "*.cs", SearchOption.TopDirectoryOnly)
+            .FirstOrDefault(f => Path.GetFileNameWithoutExtension(f)
+                .Equals(className, StringComparison.OrdinalIgnoreCase));
+
+        return sameFolder ?? ClassFiles.FileOf(directory, className);
+    }
 
     /// <summary>
     /// Generates code for the current command, runs semantic/compile checks,
