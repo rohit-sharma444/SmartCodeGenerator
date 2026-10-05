@@ -928,6 +928,11 @@ internal sealed class BuildAppCommand
             foreach (var unreadable in scaffold.UnreadableSeedValues)
                 Output.Warning("  " + unreadable + ".");
 
+            // What an overwrite removed (or kept) of the files an earlier generate wrote for
+            // classes the model no longer has.
+            foreach (var stale in scaffold.StaleFiles)
+                Console.WriteLine("  " + stale + ".");
+
             Console.WriteLine("");
             //foreach (var file in scaffold.FilesWritten)
             //    Console.WriteLine($"  {Path.GetRelativePath(scaffold.ProjectPath, file)}");

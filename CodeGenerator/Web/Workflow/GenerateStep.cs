@@ -148,6 +148,9 @@ internal static class GenerateStep
         foreach (var unreadable in scaffold.UnreadableSeedValues)
             lines.Add(unreadable + ".");
 
+        foreach (var stale in scaffold.StaleFiles)
+            lines.Add(stale + ".");
+
         // Printed whether or not the build was green: a user whose app does not compile still
         // needs to know where the seed rows are and how to run it once it does.
         lines.AddRange(NextSteps.Lines(
