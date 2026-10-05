@@ -60,13 +60,53 @@ public sealed class UndoJournalTests
         Assert.AreEqual("class Book { }", Read("Shop/Book.cs"));
         Assert.IsFalse(File.Exists(P("Shop/New.cs")));
         Assert.AreEqual("class Old { }", Read("Shop/Old.cs"));
-        Assert.AreEqual("Undid: edit things — restored 2 files, removed 1", undone.Message);
+        Assert.AreEqual("Undid: edit things — restored 2 files, removed 1 file", undone.Message);
 
         var redone = _journal.Redo();
         Assert.IsTrue(redone.Done);
         Assert.AreEqual("class Book { int Pages; }", Read("Shop/Book.cs"));
         Assert.AreEqual("class New { }", Read("Shop/New.cs"));
         Assert.IsFalse(File.Exists(P("Shop/Old.cs")));
+    }
+
+    // U5: "— removed 28" did not say what it removed.
+    [TestMethod]
+    public void Undo_says_how_many_files_it_removed()
+    {
+        Command("add two", () =>
+        {
+            Write("Shop/A.cs", "class A { }");
+            Write("Shop/B.cs", "class B { }");
+        });
+
+        Assert.AreEqual("Undid: add two — removed 2 files", _journal.Undo().Message);
+    }
+
+    // U5: a csproj rewritten with the same bytes has a new stamp, and was counted as changed.
+    [TestMethod]
+    public void A_file_rewritten_with_the_same_bytes_is_not_part_of_the_entry()
+    {
+        Command("edit Book", () =>
+        {
+            Write("Shop/Book.cs", "class Book { int Pages; }");
+            Write("Shop/Old.cs", "class Old { }");
+        });
+
+        Assert.AreEqual("Undid: edit Book — restored Shop/Book.cs".Replace('/', Path.DirectorySeparatorChar),
+            _journal.Undo().Message);
+    }
+
+    [TestMethod]
+    public void A_command_that_only_rewrote_files_unchanged_leaves_no_entry()
+    {
+        Command("touch", () => Write("Shop/Old.cs", "class Old { }"));
+
+        Assert.IsFalse(_journal.CanUndo);
+
+        // And the new stamp is known, so the next command is not credited with it either.
+        Command("edit Book", () => Write("Shop/Book.cs", "class Book { int Pages; }"));
+        Assert.AreEqual("Undid: edit Book — restored Shop/Book.cs".Replace('/', Path.DirectorySeparatorChar),
+            _journal.Undo().Message);
     }
 
     // U1: File.Copy keeps the copied version's old write time, so dotnet build saw the restored

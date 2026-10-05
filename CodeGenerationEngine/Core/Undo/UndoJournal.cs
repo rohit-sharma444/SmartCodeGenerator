@@ -268,6 +268,10 @@ public sealed class UndoJournal : IDisposable
                 .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
+            // A file written again with the same bytes (a csproj saved unchanged) has a new stamp
+            // but nothing to undo; counting it would only inflate the entry and its message.
+            changed.RemoveAll(p => SameBytes(Path.Combine(_shadow!, "files", p), Path.Combine(WorkspaceRoot, p)));
+
             var createdRoots = Roots(Directories().Except(open.Directories, StringComparer.OrdinalIgnoreCase));
 
             var stateAfter = _captureState?.Invoke();
@@ -277,7 +281,12 @@ public sealed class UndoJournal : IDisposable
             var registryChanged = !Same(open.Registry, registryAfter);
 
             if (changed.Count == 0 && createdRoots.Count == 0 && !stateChanged && !registryChanged)
+            {
+                // What differs is only stamps over the same bytes; knowing them keeps the next
+                // command from being credited with them.
+                _known = now;
                 return;
+            }
 
             var folder = Path.Combine(_shadow!, "entries", (++_entryCount).ToString());
             var before = Path.Combine(folder, "before");
@@ -548,7 +557,7 @@ public sealed class UndoJournal : IDisposable
         if (restored > 0)
             parts.Add($"restored {restored} file{(restored == 1 ? "" : "s")}");
         if (removed > 0)
-            parts.Add($"removed {removed}");
+            parts.Add($"removed {removed} file{(removed == 1 ? "" : "s")}");
 
         return " — " + string.Join(", ", parts);
     }
@@ -576,6 +585,14 @@ public sealed class UndoJournal : IDisposable
         // The file is only half of it: the project list in memory would otherwise still offer
         // a project the undo removed, and write it back on the next save.
         _reloadRegistry?.Invoke();
+    }
+
+    private static bool SameBytes(string a, string b)
+    {
+        var first = new FileInfo(a);
+        var second = new FileInfo(b);
+        return first.Exists && second.Exists && first.Length == second.Length
+            && File.ReadAllBytes(a).AsSpan().SequenceEqual(File.ReadAllBytes(b));
     }
 
     private static bool Same(byte[]? a, byte[]? b) =>
