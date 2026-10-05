@@ -371,15 +371,20 @@
        near-black text on it, and the lines had `stroke: none` so they were not drawn at all.
        Each token below falls back through workflow.css's palette to a literal, so the diagram
        paints correctly on the build page, on the chat page, and on its own page -- and still
-       follows those pages, because these re-resolve when the tokens behind them change. */
-    --rel-panel: var(--panel, #ffffff);
+       follows those pages, because these re-resolve when the tokens behind them change.
+
+       The middle step of each chain is workflow.css's own name for the same role (--surface,
+       --accent-wash, --muted, --faint). Without it the build page's Dark and High contrast
+       themes, which define those names and not the chat page's, still fell through to the light
+       literals: white boxes and a pale blue header under light text. */
+    --rel-panel: var(--panel, var(--surface, #ffffff));
     --rel-ink: var(--ink, #1c1c1c);
     --rel-line: var(--line-strong, var(--line, #d3d3cf));
     --rel-line-soft: var(--line, #e3e5ea);
-    --rel-soft: var(--ink-soft, #5b616e);
-    --rel-faint: var(--ink-faint, #8a8a85);
+    --rel-soft: var(--ink-soft, var(--muted, #5b616e));
+    --rel-faint: var(--ink-faint, var(--faint, #8a8a85));
     --rel-accent: var(--accent, var(--active, #1f6feb));
-    --rel-head: var(--accent-soft, #eef3ff);
+    --rel-head: var(--accent-soft, var(--accent-wash, #eef3ff));
 
     margin: 0 0 1.25rem;
 }
