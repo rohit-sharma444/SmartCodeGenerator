@@ -124,6 +124,49 @@ internal static class TypeResolution
         return false;
     }
 
+    /// <summary>
+    /// The errors the compiler reports inside <paramref name="span"/> of <paramref name="classRoot"/>,
+    /// compiled as <paramref name="classFile"/> beside the rest of its project (as
+    /// <see cref="Resolves"/> compiles it). For checking that an edited member still compiles.
+    /// </summary>
+    public static IReadOnlyList<Diagnostic> ErrorsWithin(
+        string workspaceRoot, string classFile, SyntaxNode classRoot, Microsoft.CodeAnalysis.Text.TextSpan span)
+    {
+        var parse = new CSharpParseOptions(LanguageVersion.Latest);
+
+        // Parsed again from its own text, so the spans are the same and the options match the rest.
+        var edited = CSharpSyntaxTree.ParseText(classRoot.ToFullString(), parse, path: classFile);
+
+        var trees = new List<SyntaxTree> { edited };
+        var csprojFolder = ProjectFolderOf(workspaceRoot, classFile);
+        var projectFolder = csprojFolder ?? workspaceRoot;
+        if (ImplicitUsingsOn(csprojFolder))
+            trees.Add(CSharpSyntaxTree.ParseText(
+                string.Concat(ImplicitUsings.Select(u => $"global using {u};{Environment.NewLine}")), parse));
+        foreach (var file in ClassFiles.Under(projectFolder))
+        {
+            if (string.Equals(Path.GetFullPath(file), Path.GetFullPath(classFile), StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            try
+            {
+                trees.Add(CSharpSyntaxTree.ParseText(File.ReadAllText(file), parse, path: file));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // An unreadable neighbour costs only the types it declares.
+            }
+        }
+
+        var compilation = CSharpCompilation.Create(
+            "EditProbe", trees, Compiler.FrameworkReferences,
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary,
+                nullableContextOptions: NullableContextOptions.Enable));
+
+        return [.. compilation.GetSemanticModel(edited).GetDiagnostics(span)
+            .Where(d => d.Severity == DiagnosticSeverity.Error)];
+    }
+
     /// <summary>The folder of the nearest .csproj at or above the file and within the workspace, or null.</summary>
     private static string? ProjectFolderOf(string workspaceRoot, string file)
     {

@@ -54,6 +54,13 @@ internal static class MemberNames
         return null;
     }
 
+    /// <summary>As above, across every partial declaration of the class.</summary>
+    public static string? Taken(IEnumerable<ClassPart> parts, string name, IEnumerable<MemberDeclarationSyntax> except)
+    {
+        var skip = except.ToList();
+        return parts.Select(p => Taken(p.Node, name, skip)).FirstOrDefault(r => r != null);
+    }
+
     private static IEnumerable<string> NamesOf(MemberDeclarationSyntax member) => member switch
     {
         MethodDeclarationSyntax m => [m.Identifier.Text],
