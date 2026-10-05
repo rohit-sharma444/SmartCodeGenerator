@@ -220,6 +220,11 @@ internal class CodeGeneratorStarter
         var journal = ScriptBuildApp.IsStep
             ? UndoJournal.Disabled(_workspace.Root)
             : UndoJournal.ForSession(_workspace.Root, Output.Warning);
+
+        // The copies of sessions that were killed before they could delete their own. On a
+        // worker: a stale copy can be up to 200 MB, and the prompt need not wait for it.
+        if (!ScriptBuildApp.IsStep)
+            _ = Task.Run(() => UndoJournal.RemoveStale());
         var recorder = new SessionRecorder(journal);
 
         while (true)

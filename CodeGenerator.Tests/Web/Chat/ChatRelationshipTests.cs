@@ -13,6 +13,17 @@ namespace CodeGenerator.Tests.Web.Chat;
 [DoNotParallelize]
 public class ChatRelationshipTests
 {
+    // Each session's undo journal copies the workspace to %TEMP% on its first command, and only
+    // End deletes the copy; a test that never ends its session left one behind on every run.
+    private readonly List<ChatSession> _sessions = [];
+
+    [TestCleanup]
+    public void EndSessions()
+    {
+        foreach (var session in _sessions)
+            session.End();
+    }
+
     [TestMethod]
     public void The_asker_puts_the_question_on_the_page_and_returns_the_answer()
     {
@@ -161,14 +172,16 @@ public class ChatRelationshipTests
         Assert.IsTrue(condition(), "the condition never became true");
     }
 
-    private static ChatSession NewSession() => NewSession(out _);
+    private ChatSession NewSession() => NewSession(out _);
 
-    private static ChatSession NewSession(out string root)
+    private ChatSession NewSession(out string root)
     {
         root = Path.Combine(Path.GetTempPath(), "cr-" + Guid.NewGuid().ToString("N")[..8]);
         Directory.CreateDirectory(root);
 
-        return new ChatSession(
+        var session = new ChatSession(
             new Workspace(root, projectPathSet: false), AiLayer.Create(), []);
+        _sessions.Add(session);
+        return session;
     }
 }

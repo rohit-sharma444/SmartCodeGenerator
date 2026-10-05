@@ -17,6 +17,17 @@ namespace CodeGenerator.Tests.Web.Chat;
 [DoNotParallelize]
 public class ChatSessionTests
 {
+    // Each session's undo journal copies the workspace to %TEMP% on its first command, and only
+    // End deletes the copy; a test that never ends its session left one behind on every run.
+    private readonly List<ChatSession> _sessions = [];
+
+    [TestCleanup]
+    public void EndSessions()
+    {
+        foreach (var session in _sessions)
+            session.End();
+    }
+
     [TestMethod]
     public async Task A_command_that_worked_reads_as_succeeded()
     {
@@ -300,13 +311,15 @@ public class ChatSessionTests
         StringAssert.Contains(TextOf(session.Turns[0]), "No script at nope.cgs.");
     }
 
-    private static ChatSession NewSession(out Workspace workspace)
+    private ChatSession NewSession(out Workspace workspace)
     {
         var root = Path.Combine(Path.GetTempPath(), "cs-" + Guid.NewGuid().ToString("N")[..8]);
         Directory.CreateDirectory(root);
 
         workspace = new Workspace(root, projectPathSet: false);
 
-        return new ChatSession(workspace, AiLayer.Create(), []);
+        var session = new ChatSession(workspace, AiLayer.Create(), []);
+        _sessions.Add(session);
+        return session;
     }
 }

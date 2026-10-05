@@ -229,6 +229,62 @@ public sealed class UndoJournal : IDisposable
         return new UndoResult(true, "Redid: " + entry.Label + Describe(entry, entry.After));
     }
 
+    private const string ShadowPrefix = "codegen_undo_";
+
+    /// <summary>
+    /// Deletes the shadow copies whose session was killed before it could delete its own: those
+    /// named after a process that is no longer running. A copy named after a running process —
+    /// or with no process in its name, from an older version — is never touched.
+    /// </summary>
+    /// <returns>How many copies were deleted.</returns>
+    public static int RemoveStale(string? parent = null, Func<int, bool>? isRunning = null)
+    {
+        isRunning ??= IsRunning;
+        var removed = 0;
+
+        try
+        {
+            foreach (var folder in Directory.EnumerateDirectories(parent ?? Path.GetTempPath(), ShadowPrefix + "*"))
+            {
+                var rest = Path.GetFileName(folder)[ShadowPrefix.Length..];
+                var underscore = rest.IndexOf('_');
+                if (underscore <= 0 || !int.TryParse(rest[..underscore], out var pid))
+                    continue;
+                if (pid == Environment.ProcessId || isRunning(pid))
+                    continue;
+
+                TryDeleteTree(folder);
+                if (!Directory.Exists(folder))
+                    removed++;
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Housekeeping: a folder that cannot be listed is left for next time.
+        }
+
+        return removed;
+    }
+
+    // A process this one may not inspect (another user's) counts as running: never guess a copy
+    // is unowned.
+    private static bool IsRunning(int pid)
+    {
+        try
+        {
+            using var process = System.Diagnostics.Process.GetProcessById(pid);
+            return !process.HasExited;
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+        catch (Exception)
+        {
+            return true;
+        }
+    }
+
     public void Dispose()
     {
         if (_disposed)
@@ -355,7 +411,9 @@ public sealed class UndoJournal : IDisposable
             return false;
         }
 
-        _shadow = Path.Combine(_shadowParent, "codegen_undo_" + Path.GetRandomFileName());
+        // Named after this process, so a later session can tell a copy whose owner was killed
+        // from one a running session still needs. See RemoveStale.
+        _shadow = Path.Combine(_shadowParent, $"{ShadowPrefix}{Environment.ProcessId}_{Path.GetRandomFileName()}");
         try
         {
             Directory.CreateDirectory(Path.Combine(_shadow, "files"));

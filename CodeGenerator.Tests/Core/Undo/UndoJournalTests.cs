@@ -434,6 +434,74 @@ public sealed class UndoJournalTests
         Assert.AreEqual("Other", state.Value);
     }
 
+    // U7: a killed session left %TEMP%\codegen_undo_* behind for good; nothing said whose it was.
+    [TestMethod]
+    public void The_shadow_folder_is_named_after_the_process_that_owns_it()
+    {
+        Command("edit Book", () => Write("Shop/Book.cs", "class Book { int Pages; }"));
+
+        var shadow = Assert.ContainsSingle(Directory.GetDirectories(_shadowParent));
+        StringAssert.StartsWith(Path.GetFileName(shadow), $"codegen_undo_{Environment.ProcessId}_");
+    }
+
+    [TestMethod]
+    public void Removing_stale_copies_takes_only_those_whose_process_is_gone()
+    {
+        string Folder(string name)
+        {
+            var path = Path.Combine(_shadowParent, name);
+            Directory.CreateDirectory(Path.Combine(path, "files"));
+            File.WriteAllText(Path.Combine(path, "files", "Book.cs"), "class Book { }");
+            return path;
+        }
+
+        var dead = Folder("codegen_undo_111_abcd.efg");
+        var live = Folder("codegen_undo_222_abcd.efg");
+        var mine = Folder($"codegen_undo_{Environment.ProcessId}_abcd.efg");
+        var unnamed = Folder("codegen_undo_abcd.efg");      // an older copy: whose it is is unknown
+        var other = Folder("codegen_snapshot_111_abcd.efg");
+
+        var removed = UndoJournal.RemoveStale(_shadowParent, pid => pid == 222);
+
+        Assert.AreEqual(1, removed);
+        Assert.IsFalse(Directory.Exists(dead));
+        Assert.IsTrue(Directory.Exists(live));
+        Assert.IsTrue(Directory.Exists(mine));
+        Assert.IsTrue(Directory.Exists(unnamed));
+        Assert.IsTrue(Directory.Exists(other));
+    }
+
+    [TestMethod]
+    public void The_default_check_tells_a_running_process_from_one_that_has_ended()
+    {
+        static System.Diagnostics.Process Start(string arguments) =>
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe", arguments)
+            {
+                CreateNoWindow = true,
+                UseShellExecute = false,
+            })!;
+
+        using var ended = Start("/c exit 0");
+        ended.WaitForExit();
+        using var running = Start("/c ping -n 30 127.0.0.1 >nul");
+        try
+        {
+            var gone = Path.Combine(_shadowParent, $"codegen_undo_{ended.Id}_x");
+            var alive = Path.Combine(_shadowParent, $"codegen_undo_{running.Id}_x");
+            Directory.CreateDirectory(gone);
+            Directory.CreateDirectory(alive);
+
+            UndoJournal.RemoveStale(_shadowParent);
+
+            Assert.IsFalse(Directory.Exists(gone));
+            Assert.IsTrue(Directory.Exists(alive));
+        }
+        finally
+        {
+            running.Kill(entireProcessTree: true);
+        }
+    }
+
     private sealed class FakeState
     {
         public string? Value;
