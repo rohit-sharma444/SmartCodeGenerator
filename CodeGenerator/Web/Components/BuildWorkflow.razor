@@ -126,43 +126,43 @@
             @switch (Session.Current)
             {
                 case BuildStage.Describe:
-                    <DescribeStage @key="BuildStage.Describe" Session="Session"
+                    <DescribeStage @key="(BuildStage.Describe, _kept)" Session="Session"
                                    Navigation="_navigation" OnAdvance="Refresh" />
                     break;
                 case BuildStage.AppType:
-                    <AppTypeStage @key="BuildStage.AppType" Session="Session"
+                    <AppTypeStage @key="(BuildStage.AppType, _kept)" Session="Session"
                                   Navigation="_navigation" OnAdvance="Refresh" />
                     break;
                 case BuildStage.Data:
-                    <DataStage @key="BuildStage.Data" Session="Session"
+                    <DataStage @key="(BuildStage.Data, _kept)" Session="Session"
                                Navigation="_navigation" OnAdvance="Refresh" />
                     break;
                 case BuildStage.Look:
-                    <LookStage @key="BuildStage.Look" Session="Session"
+                    <LookStage @key="(BuildStage.Look, _kept)" Session="Session"
                                Navigation="_navigation" OnAdvance="Refresh" />
                     break;
                 case BuildStage.Discover:
-                    <DiscoverStage @key="BuildStage.Discover" Session="Session"
+                    <DiscoverStage @key="(BuildStage.Discover, _kept)" Session="Session"
                                    Navigation="_navigation" OnAdvance="Refresh" />
                     break;
                 case BuildStage.Review:
-                    <ReviewStage @key="BuildStage.Review" Session="Session"
+                    <ReviewStage @key="(BuildStage.Review, _kept)" Session="Session"
                                  Navigation="_navigation" OnAdvance="Refresh" />
                     break;
                 case BuildStage.Output:
-                    <OutputStage @key="BuildStage.Output" Session="Session"
+                    <OutputStage @key="(BuildStage.Output, _kept)" Session="Session"
                                         Navigation="_navigation" OnAdvance="Refresh" />
                     break;
                 case BuildStage.EntryTemplate:
-                    <EntryTemplateStage @key="BuildStage.EntryTemplate" Session="Session"
+                    <EntryTemplateStage @key="(BuildStage.EntryTemplate, _kept)" Session="Session"
                                         Navigation="_navigation" OnAdvance="Refresh" />
                     break;
                 case BuildStage.Generate:
-                    <GenerateStage @key="BuildStage.Generate" Session="Session"
+                    <GenerateStage @key="(BuildStage.Generate, _kept)" Session="Session"
                                    Navigation="_navigation" OnAdvance="Refresh" />
                     break;
                 case BuildStage.Run:
-                    <RunStage @key="BuildStage.Run" Session="Session"
+                    <RunStage @key="(BuildStage.Run, _kept)" Session="Session"
                               Navigation="_navigation" OnAdvance="Refresh" />
                     break;
             }
@@ -398,10 +398,21 @@
         Refresh();
     }
 
+    /// <summary>
+    /// Bumped each time the user keeps the model, and part of every panel's key.
+    /// </summary>
+    /// <remarks>
+    /// Keeping the model declines the answer the panel holds, but the panel kept showing it: the
+    /// description box went on reading the description the session had just refused. A new key
+    /// rebuilds the panel from the session, so the box shows the answer that still stands.
+    /// </remarks>
+    private int _kept;
+
     private void KeepTheModel()
     {
         Session.CancelPending();
         _afterConfirming = null;
+        _kept++;
 
         Refresh();
     }

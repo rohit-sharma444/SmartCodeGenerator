@@ -71,6 +71,24 @@ public class WorkflowPageTests
         Assert.IsEmpty(page.FindAll(".discard-question"));
     }
 
+    // Keeping the model is declining the change, but the textarea went on showing the declined
+    // description - a box stating an answer the session does not hold.
+    [TestMethod]
+    public void Keeping_the_model_puts_the_kept_description_back_in_the_box()
+    {
+        using var context = PageFor(Discovered(), out _);
+
+        var page = context.Render<BuildWorkflow>();
+
+        page.Find("textarea").Change("a hotel");
+        page.Find(".stage-continue").Click();
+        Assert.AreEqual("a hotel", page.Find("textarea").GetAttribute("value"));
+
+        page.Find(".discard-keep").Click();
+
+        Assert.AreEqual("a shop", page.Find("textarea").GetAttribute("value"));
+    }
+
     /// <summary>
     /// The other way into the question: leaving a node by clicking a box commits what the panel
     /// holds, and that commit can cost the model too. The click must not be honoured until the
