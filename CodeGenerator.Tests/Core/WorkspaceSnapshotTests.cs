@@ -110,6 +110,32 @@ public class WorkspaceSnapshotTests
         Assert.IsFalse(Directory.Exists(projectDir));
     }
 
+    // S5: a build inside the rolled-back run left Foo/obj behind, so Foo survived the rollback and
+    // undo then offered a phantom "Undid: run f" that only removed the leftovers.
+    [TestMethod]
+    public void Restore_RemovesBuildOutputOfADirectoryCreatedAfterCapture()
+    {
+        var root = NewWorkspace();
+        Directory.CreateDirectory(Path.Combine(root, "Shop", "obj"));
+        File.WriteAllText(Path.Combine(root, "Shop", "Shop.csproj"), "<Project/>");
+        File.WriteAllText(Path.Combine(root, "Shop", "obj", "keep.cache"), "existing build output");
+
+        using var snapshot = WorkspaceSnapshot.Capture(root);
+        var foo = Path.Combine(root, "Foo");
+        Directory.CreateDirectory(Path.Combine(foo, "obj", "Debug"));
+        Directory.CreateDirectory(Path.Combine(foo, "Tests", "bin"));
+        File.WriteAllText(Path.Combine(foo, "Foo.csproj"), "<Project/>");
+        File.WriteAllText(Path.Combine(foo, "obj", "Debug", "project.assets.json"), "{}");
+        File.WriteAllText(Path.Combine(foo, "Tests", "bin", "t.dll"), "x");
+        File.WriteAllText(Path.Combine(root, "Shop", "obj", "new.cache"), "built during the run");
+        snapshot.Restore();
+
+        Assert.IsFalse(Directory.Exists(foo));
+        // Build output in a folder that was already there is not the run's to remove.
+        Assert.IsTrue(File.Exists(Path.Combine(root, "Shop", "obj", "keep.cache")));
+        Assert.IsTrue(File.Exists(Path.Combine(root, "Shop", "obj", "new.cache")));
+    }
+
     [TestMethod]
     public void Capture_ExcludesBuildOutputAndGit()
     {
