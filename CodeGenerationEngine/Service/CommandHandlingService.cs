@@ -350,6 +350,8 @@ public static class CommandHandlingService
             ctx.WorkspaceRoot, ctx.Command.ClassName,
             ctx.Command.MethodName, ctx.Command.ReturnType, out var message);
         Output.Result(ok, message);
+        if (ok)
+            WarnOfImplementersLacking(ctx, ctx.Command.MethodName);
         return ok;
     }
 
@@ -370,7 +372,10 @@ public static class CommandHandlingService
             ctx.WorkspaceRoot, ctx.Command.ClassName, ctx.Command.MethodName, out var message);
         Console.WriteLine(message);
         if (ok)
+        {
             WarnOfUsers(ctx, ctx.Command.MethodName, "Method", "removed");
+            WarnOfImplementers(ctx, $"their {ctx.Command.MethodName} stays, no longer part of the interface.");
+        }
         return ok;
     }
 
@@ -387,8 +392,27 @@ public static class CommandHandlingService
             ctx.Command.MethodName, ctx.Command.NewMethodName, out var message);
         Console.WriteLine(message);
         if (ok)
+        {
             WarnOfUsers(ctx, ctx.Command.MethodName, "Method", "renamed");
+            WarnOfImplementers(ctx, $"rename {ctx.Command.MethodName} to {ctx.Command.NewMethodName} there as well, or that code will not compile.");
+        }
         return ok;
+    }
+
+    // After a member is added to an interface: the classes implementing it that do not have it yet.
+    // They are named, not edited - what their member should do is theirs to say.
+    private static void WarnOfImplementersLacking(CommandExecutionContext ctx, string member)
+    {
+        if (InterfaceImplementers.AddedWarning(ctx.WorkspaceRoot, ctx.Command.ClassName, member) is { } warning)
+            Output.Warning(warning);
+    }
+
+    // After a member of an interface is removed, renamed or retyped: the classes implementing it,
+    // which the edit left as they were.
+    private static void WarnOfImplementers(CommandExecutionContext ctx, string consequence)
+    {
+        if (InterfaceImplementers.ChangedWarning(ctx.WorkspaceRoot, ctx.Command.ClassName, consequence) is { } warning)
+            Output.Warning(warning);
     }
 
     // After a member is removed or renamed: name the code that still uses its old name, which
@@ -521,6 +545,8 @@ public static class CommandHandlingService
             ctx.WorkspaceRoot, ctx.Command.ClassName,
             ctx.Command.PropertyName, ctx.Command.PropertyType, out var message);
         Console.WriteLine(message);
+        if (ok)
+            WarnOfImplementersLacking(ctx, ctx.Command.PropertyName);
         return ok;
     }
 
@@ -545,6 +571,7 @@ public static class CommandHandlingService
             // Regenerated first, so the users-of scan does not report the stale validator.
             var named = RefreshValidators(ctx, "was removed");
             WarnOfUsers(ctx, ctx.Command.PropertyName, "Property", "removed", named);
+            WarnOfImplementers(ctx, $"their {ctx.Command.PropertyName} stays, no longer part of the interface.");
         }
 
         return ok;
@@ -584,6 +611,7 @@ public static class CommandHandlingService
 
             var named = RefreshValidators(ctx, $"was renamed to {ctx.Command.NewPropertyName}");
             WarnOfUsers(ctx, ctx.Command.PropertyName, "Property", "renamed", named);
+            WarnOfImplementers(ctx, $"rename {ctx.Command.PropertyName} to {ctx.Command.NewPropertyName} there as well, or that code will not compile.");
         }
 
         return ok;
@@ -609,6 +637,7 @@ public static class CommandHandlingService
             // (`int Total => Qty * 2` after Qty became long is CS0266). The validators just
             // regenerated or named are not repeated.
             WarnOfUsers(ctx, ctx.Command.PropertyName, "Property", $"changed to {ctx.Command.PropertyType}", named);
+            WarnOfImplementers(ctx, $"change {ctx.Command.PropertyName} to {ctx.Command.PropertyType} there as well, or that code will not compile.");
         }
 
         return ok;
