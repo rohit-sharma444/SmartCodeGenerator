@@ -22,8 +22,17 @@ public static class CommandEntityExtractor
         // before ComposeRuleFragment or ExtractBusinessValidationInfo ever see it, so
         // those two intents keep their stop words while every other intent still gets
         // the friendlier, stopword-stripped prose.
-        var keepStopWords = intent is IntentType.AddValidation or IntentType.AddBusinessValidation;
-        var sentence = CommandParser.Normalize(rawSentence, removeStopWords: !keepStopWords);
+        //
+        // Nor may anything else in the normaliser touch them: it turns , ; : . ? ! into spaces and
+        // rewrites new -> create, manager -> service, and so on. A regex ^(a|b)?$ was stored as
+        // ^(a|b) $ with "Validation added", 0.5 became "0 5", and "Draft, Sent, Paid" lost the
+        // commas that make it a list. The command words of these two are fixed ("add validation",
+        // "on", "in") and are matched as typed, so the sentence is only trimmed and its runs of
+        // whitespace collapsed.
+        var verbatim = intent is IntentType.AddValidation or IntentType.AddBusinessValidation;
+        var sentence = verbatim
+            ? Verbatim(rawSentence)
+            : CommandParser.Normalize(rawSentence ?? string.Empty);
 
         var command = new ParsedCommand
         {
@@ -123,6 +132,10 @@ public static class CommandEntityExtractor
             command.ClassName = SessionContext.CurrentClass ?? string.Empty;
         return command;
     }
+
+    /// <summary>The sentence as typed, trimmed and with each run of whitespace made one space.</summary>
+    internal static string Verbatim(string? rawSentence) =>
+        Regex.Replace((rawSentence ?? string.Empty).Trim(), @"\s+", " ");
 
     public static void ExtractInheritanceInfo(
         string sentence,
@@ -319,7 +332,7 @@ public static class CommandEntityExtractor
         // form so the documented shape wins; the non-greedy rule keeps the class as
         // the final token even when the rule itself contains "in".
         var inClass = Regex.Match(sentence,
-            @"add\s+validation\s+(.+?)\s+in\s+([A-Za-z_]\w*)\s*$",
+            @"add\s+validation\s+(.+?)\s+in\s+([A-Za-z_]\w*)\s*[.!]?\s*$",
             RegexOptions.IgnoreCase);
 
         if (inClass.Success)
@@ -333,7 +346,7 @@ public static class CommandEntityExtractor
 
         // "add validation <rule> to <class>" (legacy form).
         var to = Regex.Match(sentence,
-            @"add\s+validation\s+(.+?)\s+to\s+([A-Za-z_]\w*)\s*$",
+            @"add\s+validation\s+(.+?)\s+to\s+([A-Za-z_]\w*)\s*[.!]?\s*$",
             RegexOptions.IgnoreCase);
 
         if (to.Success)
@@ -347,7 +360,7 @@ public static class CommandEntityExtractor
     {
         // "add business validation <rule> in|for|on <class>"
         var withClass = Regex.Match(sentence,
-            @"add\s+business\s+validation\s+(?<rule>.+?)\s+(?:in|for|on)\s+(?<class>[A-Za-z_]\w*)\s*$",
+            @"add\s+business\s+validation\s+(?<rule>.+?)\s+(?:in|for|on)\s+(?<class>[A-Za-z_]\w*)\s*[.!]?\s*$",
             RegexOptions.IgnoreCase);
         if (withClass.Success)
         {
@@ -359,8 +372,10 @@ public static class CommandEntityExtractor
         // "add business validation <rule>" (class comes from session context)
         var noClass = Regex.Match(sentence,
             @"add\s+business\s+validation\s+(?<rule>.+)$", RegexOptions.IgnoreCase);
+        // A business rule names properties, never a literal, so a full stop typed at the end of
+        // the sentence is not part of it.
         if (noClass.Success)
-            command.ValidationText = noClass.Groups["rule"].Value.Trim();
+            command.ValidationText = noClass.Groups["rule"].Value.Trim().TrimEnd('.', '!').TrimEnd();
     }
 
     public static void ExtractBusinessShowTarget(string sentence, ParsedCommand command)
