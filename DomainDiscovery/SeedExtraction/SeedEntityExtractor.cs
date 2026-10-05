@@ -50,6 +50,15 @@ public sealed class SeedEntityExtractor
             var afterAVerb = previousWasAVerb;
             previousWasAVerb = false;
 
+            // "hires OUT vans", "signs UP members": the particle belongs to the verb.
+            if (afterAVerb && Particles.Contains(entity.Text.Trim(), StringComparer.OrdinalIgnoreCase))
+            {
+                previousWasAVerb = true;
+                model.Record(entity.Text, DecisionStage.SeedExtraction, DecisionOutcome.Skipped,
+                    DecisionReasons.ItIsAVerbHere, $"\"{entity.Text}\" belongs to the verb before it");
+                continue;
+            }
+
             var record = RecordMadeBy(entity) ?? (afterAVerb ? null : BareVerbRecord(entity, previous, words));
 
             if (record is null && (VerbPhrase(entity) || (!afterAVerb && BareVerb(entity, previous, next, words))))
@@ -66,11 +75,14 @@ public sealed class SeedEntityExtractor
                 previousWasAVerb = true;
                 var verbWord = entity.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries)[^1];
 
-                if (TransactionVerbs.MakesNoRecordForAPerson(verbWord) && IsAPerson(next))
+                if (TransactionVerbs.MakesNoRecordForAPerson(verbWord)
+                    && ObjectOf(result.Entities, i) is var hired && !IsAHireableThing(hired))
                 {
                     model.Record(entity.Text, DecisionStage.SeedExtraction, DecisionOutcome.Skipped,
                         DecisionReasons.NotRecognizedAsAThing,
-                        $"to {verbWord.ToLowerInvariant()} {next!.Text} is to employ them, not a rental");
+                        hired is null
+                            ? $"to {verbWord.ToLowerInvariant()} with nothing hired out is not a rental"
+                            : $"to {verbWord.ToLowerInvariant()} {hired.Text} is to employ them, not a rental");
                     continue;
                 }
 
@@ -262,17 +274,49 @@ public sealed class SeedEntityExtractor
         return name.Length == 0 ? entity.Text : name;
     }
 
-    // The archetype table already knows which nouns are people (staff, nurse, driver...).
-    private static bool IsAPerson(Entity? entity)
-    {
-        if (entity is null)
-            return false;
-        if (entity.Type == EntityType.Person)
-            return true;
+    private static readonly string[] Particles = ["out", "up", "off", "back"];
 
-        var last = entity.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries).LastOrDefault() ?? string.Empty;
-        return Enrichment.ArchetypeLexicon.Resolve(last).Role == Enrichment.EntityRole.Party;
+    // The entity a verb at index i acts on, past a particle: "hires out VANS".
+    private static Entity? ObjectOf(IList<Entity> entities, int i)
+    {
+        var at = i + 1;
+        if (at < entities.Count && Particles.Contains(entities[at].Text.Trim(), StringComparer.OrdinalIgnoreCase))
+            at++;
+        return at < entities.Count ? entities[at] : null;
     }
+
+    /// <summary>
+    /// Whether "hire" acting on <paramref name="entity"/> rents it out. The rule runs this way
+    /// round - a Rental only for a known thing - because the other way cannot be made to work:
+    /// the people hired are an open list (cleaners, guards, builders, labourers each gave a Rental
+    /// while only the archetype table's people were caught), and an agent-noun test (-er, -or)
+    /// cannot tell them apart from the things a hire shop hires (generators, trailers, scooters,
+    /// projectors, containers). Missing a Rental costs one class the user can add back; inventing
+    /// one gave an employer a rental screen nobody wanted.
+    /// </summary>
+    private static bool IsAHireableThing(Entity? entity)
+    {
+        if (entity is null || entity.Type == EntityType.Person)
+            return false;
+
+        var head = NameNormalizer.ToEntityName(entity.Text).ToLowerInvariant();
+        if (head.Length == 0)
+            return false;
+
+        return HireableThings.Contains(head)
+               || Enrichment.ArchetypeLexicon.Resolve(head).Role
+                   is Enrichment.EntityRole.Item or Enrichment.EntityRole.Device or Enrichment.EntityRole.Place;
+    }
+
+    // What hire firms hire out, beyond the archetype table's vehicles, tools, equipment and rooms.
+    private static readonly HashSet<string> HireableThings = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "van", "bike", "bicycle", "boat", "scooter", "trailer", "generator", "marquee", "tent",
+        "costume", "suit", "dress", "skip", "plant", "machinery", "crane", "caravan", "campervan",
+        "motorhome", "minibus", "coach", "limousine", "limo", "kayak", "canoe", "ski", "camera",
+        "projector", "speaker", "furniture", "scaffolding", "digger", "forklift", "hall", "heater",
+        "yacht", "jet", "lorry", "motorbike", "motorcycle", "cottage", "villa", "apartment", "flat",
+    };
 
     private static IReadOnlyList<string> WordsOf(string? description) =>
         System.Text.RegularExpressions.Regex.Matches(description ?? string.Empty, "[A-Za-z']+")
