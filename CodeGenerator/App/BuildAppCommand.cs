@@ -637,7 +637,8 @@ internal sealed class BuildAppCommand
                     break;
 
                 case "rename" when parts.Length >= 3:
-                    Report(ModelEditor.RenameEntity(model, parts[1], parts[2]), $"Renamed to '{parts[2]}'.", "Could not rename (missing or name in use).");
+                    var renamed = ModelEditor.RenameEntity(model, parts[1], parts[2], out var renamedTo);
+                    Report(renamed, $"Renamed to '{renamedTo}'.", "Could not rename (missing, name in use, or not a valid class name).");
                     break;
 
                 case "field" when parts.Length >= 3:
