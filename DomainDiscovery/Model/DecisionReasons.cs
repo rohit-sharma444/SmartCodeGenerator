@@ -14,6 +14,7 @@ public static class DecisionReasons
     public const string YouNamedIt = "you named it";
     public const string NamesTheWholeSystem = "it names the whole system, not a class in it";
     public const string NamesTheSoftware = "it names the software being built, not something it keeps";
+    public const string NamesAnActivity = "it names an activity or an idea, not something the app keeps a row for";
 
     public static string FromTheBuiltInDomain(string domain) => $"from the built-in {domain} domain";
 

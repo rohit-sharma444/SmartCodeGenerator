@@ -257,6 +257,30 @@ public class BundledDomainSourceTests
         Assert.Contains(model.Entities, e => e.Name == domainClass);
     }
 
+    // Measured live: these real records were refused as "the software being built".
+    [Theory]
+    [InlineData("a recruitment agency that tracks job applications", "Application", "covered by JobApplication in the built-in Recruitment domain")]
+    [InlineData("a warehouse that tracks stock movement", "Movement", "covered by StockMovement in the built-in Inventory domain")]
+    [InlineData("a fleet company that tracks maintenance of vans", "Maintenance", "another word for ServiceRecord in the built-in Fleet domain")]
+    public void AWordTheDomainKeepsUnderItsOwnNameSaysSo(string description, string seed, string reason)
+    {
+        var model = BundledDomainSource.CreateDefault().Discover(description).Model;
+
+        var decision = model.Decisions.Last(d => d.Name == seed);
+        Assert.Equal(DecisionOutcome.Rejected, decision.Outcome);
+        Assert.Equal(reason, decision.Reason);
+    }
+
+    [Fact]
+    public void AnActivityWordIsNotCalledTheSoftware()
+    {
+        var outcome = new BundledDomainSource(Catalog, _ => Seeds("Knitting", "Maintenance", "Portal"))
+            .Discover("a knitting maintenance portal");
+
+        Assert.Equal(DecisionReasons.NamesAnActivity, outcome.Model.Decisions.Last(d => d.Name == "Maintenance").Reason);
+        Assert.Equal(DecisionReasons.NamesTheSoftware, outcome.Model.Decisions.Last(d => d.Name == "Portal").Reason);
+    }
+
     [Fact]
     public void ASynonymForAClassTheDomainLacksIsRefusedWhenTheFileLoads()
     {

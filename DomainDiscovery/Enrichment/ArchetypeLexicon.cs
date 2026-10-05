@@ -205,8 +205,16 @@ public static class ArchetypeLexicon
         if (string.IsNullOrWhiteSpace(name))
             return false;
 
-        return SoftwareNames.Contains(Singularize(name)) || Resolve(name).Verdict == ShapeVerdict.Abstract;
+        return IsSoftwareName(name) || Resolve(name).Verdict == ShapeVerdict.Abstract;
     }
+
+    /// <summary>
+    /// Whether <paramref name="name"/> is a word for the software being asked for ("system",
+    /// "app", "management") - the part of <see cref="IsAbstractName"/> that is about the software
+    /// rather than about an activity or an idea.
+    /// </summary>
+    public static bool IsSoftwareName(string name)
+        => !string.IsNullOrWhiteSpace(name) && SoftwareNames.Contains(Singularize(name));
 
     /// <summary>
     /// Resolves a head noun to its verdict and shape, without throwing or guessing. A head the table

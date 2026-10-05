@@ -12,6 +12,11 @@
     "van": 1,
     "truck": 1
   },
+  "synonyms": {
+    "maintenance": "ServiceRecord",
+    "repair": "ServiceRecord",
+    "journey": "Trip"
+  },
   "classes": [
     {
       "name": "Vehicle",
