@@ -49,7 +49,7 @@ public class NlpCommandMapperTests
         Assert.AreEqual(IntentType.CreateClass, NlpCommandMapper.ResolveIntent(analysis));
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("create class Book with properties Title string", IntentType.CreateClass)]
     [DataRow("create class Lend with properties Name string", IntentType.CreateClass)]
     [DataRow("create class Schedule with properties Name string", IntentType.CreateClass)]
