@@ -87,6 +87,12 @@ internal sealed class BuildAppCommand
 
         var request = InlineDataSource.Parse(remaining);
 
+        // A relative data file is the workspace's, not the current directory's: piped with
+        // PROJECTPATH from any other folder, `from csv books.csv` said "No file at books.csv".
+        // Resolved once here, so the web workflow, the console wizard and the piped run all get it.
+        if (request.Source is { } typed)
+            request = request with { Source = DataSourcePath.Resolve(typed, workspaceRoot) };
+
         var description = request.Description;
         var source = request.Source;
         var normalize = request.Normalize;
@@ -183,7 +189,8 @@ internal sealed class BuildAppCommand
             WriteRememberedLayoutNotice(workspaceRoot, saved, inline.Layout);
 
             var outcome = BuildAppWizard.Run(
-                request, Console.In, Console.Out, ApplicationTypeMenu.Choose, start, Menu.Choose);
+                request, Console.In, Console.Out, ApplicationTypeMenu.Choose, start, Menu.Choose,
+                workspaceRoot);
 
             if (outcome.Decision == WizardDecision.Cancelled)
             {

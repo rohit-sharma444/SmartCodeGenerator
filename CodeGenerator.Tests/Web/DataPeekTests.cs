@@ -74,6 +74,41 @@ public class DataPeekTests
     }
 
     /// <summary>
+    /// A relative name is the workspace's file, as it is on the command line — not one beside
+    /// wherever the console happened to be started.
+    /// </summary>
+    [TestMethod]
+    public void A_relative_file_is_read_from_the_workspace()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"cg-rel-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        File.WriteAllLines(Path.Combine(root, "books.csv"), ["Title,Pages", "Dune,412", "Emma,320"]);
+
+        try
+        {
+            using var context = new BunitContext();
+
+            var session = new BuildSession("a shop", root, AppCustomization.Default);
+            session.SetTarget(new WpfTarget());
+            session.Advance();
+
+            var rendered = context.Render<DataStage>(p => p
+                .Add(c => c.Session, session)
+                .Add(c => c.Navigation, new StageNavigation())
+                .Add(c => c.OnAdvance, () => { }));
+
+            rendered.Find("input[type=radio][value=file]").Change(true);
+            rendered.Find("input.path").Change("books.csv");
+
+            StringAssert.Contains(rendered.Find(".peek").TextContent, "2 rows");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    /// <summary>
     /// A half-typed path is not a mistake yet. Reporting it as one, on every change, would make the
     /// panel shout at someone who is still typing — the click is where refusals belong.
     /// </summary>

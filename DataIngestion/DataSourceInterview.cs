@@ -51,14 +51,19 @@ public static class DataSourceInterview
     /// library cannot reference it. Null falls back to the typed prompts, which is what a console
     /// that cannot paint a list gets.
     /// </param>
+    /// <param name="workspaceRoot">
+    /// What a relative file path is read against. Null keeps the process's current directory.
+    /// </param>
     public static InterviewOutcome Resolve(
         TextReader reader, TextWriter writer,
-        Func<string, IReadOnlyList<string>, int, int?>? choose = null)
+        Func<string, IReadOnlyList<string>, int, int?>? choose = null,
+        string? workspaceRoot = null)
         => choose is null
-            ? ResolveTyped(reader, writer)
-            : ResolveChosen(reader, writer, choose);
+            ? ResolveTyped(reader, writer, workspaceRoot)
+            : ResolveChosen(reader, writer, choose, workspaceRoot);
 
-    private static InterviewOutcome ResolveTyped(TextReader reader, TextWriter writer)
+    private static InterviewOutcome ResolveTyped(
+        TextReader reader, TextWriter writer, string? workspaceRoot)
     {
         writer.Write($"{GateTitle} [y/N]: ");
         var answer = reader.ReadLine();
@@ -74,7 +79,7 @@ public static class DataSourceInterview
             || trimmed.StartsWith("n", StringComparison.OrdinalIgnoreCase))
             return new InterviewOutcome(InterviewDecision.NoData, null);
 
-        return ResolveFormat(reader, writer);
+        return ResolveFormat(reader, writer, workspaceRoot);
     }
 
     /// <summary>The same two questions as a pair of menus.</summary>
@@ -84,7 +89,8 @@ public static class DataSourceInterview
     /// </remarks>
     private static InterviewOutcome ResolveChosen(
         TextReader reader, TextWriter writer,
-        Func<string, IReadOnlyList<string>, int, int?> choose)
+        Func<string, IReadOnlyList<string>, int, int?> choose,
+        string? workspaceRoot)
     {
         // No is the pre-selected row, which is the answer the typed prompt's blank line gave.
         var gate = choose(GateTitle, ["Yes", "No"], 1);
@@ -118,7 +124,7 @@ public static class DataSourceInterview
                 continue;
             }
 
-            return ResolveLocation(kind, reader, writer);
+            return ResolveLocation(kind, reader, writer, workspaceRoot);
         }
     }
 
@@ -132,7 +138,8 @@ public static class DataSourceInterview
             ? $"{key} — not in this build yet"
             : key;
 
-    private static InterviewOutcome ResolveFormat(TextReader reader, TextWriter writer)
+    private static InterviewOutcome ResolveFormat(
+        TextReader reader, TextWriter writer, string? workspaceRoot)
     {
         while (true)
         {
@@ -161,7 +168,7 @@ public static class DataSourceInterview
                 continue;
             }
 
-            return ResolveLocation(kind, reader, writer);
+            return ResolveLocation(kind, reader, writer, workspaceRoot);
         }
     }
 
@@ -176,10 +183,10 @@ public static class DataSourceInterview
     /// is the same, since a connection string cannot be checked without opening it.
     /// </remarks>
     private static InterviewOutcome ResolveLocation(
-        DataSourceKind kind, TextReader reader, TextWriter writer)
+        DataSourceKind kind, TextReader reader, TextWriter writer, string? workspaceRoot)
         => kind == DataSourceKind.Sql
             ? ResolveConnection(reader, writer)
-            : ResolveFile(kind, reader, writer);
+            : ResolveFile(kind, reader, writer, workspaceRoot);
 
     /// <summary>
     /// The connection string, taken as typed.
@@ -225,7 +232,7 @@ public static class DataSourceInterview
     }
 
     private static InterviewOutcome ResolveFile(
-        DataSourceKind kind, TextReader reader, TextWriter writer)
+        DataSourceKind kind, TextReader reader, TextWriter writer, string? workspaceRoot)
     {
         while (true)
         {
@@ -243,7 +250,9 @@ public static class DataSourceInterview
             if (text.Length == 0)
                 continue;
 
-            var path = Unquote(text);
+            // Relative to the workspace, as `build app from csv <file>` is, not to wherever the
+            // console happened to be started.
+            var path = DataSourcePath.Resolve(Unquote(text), workspaceRoot);
 
             // A mistyped path is the likeliest thing to go wrong here, so re-ask rather than
             // abort - the same way ResolveTarget re-asks on an unknown target key.
