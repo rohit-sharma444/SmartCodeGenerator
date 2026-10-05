@@ -36,10 +36,11 @@ internal static class MemberNames
     /// Any member kind: a method and a property of one name is CS0102, and a member named like its
     /// class is CS0542. Overloads of the member being renamed are passed in <paramref name="except"/>.
     /// </remarks>
-    public static string? Taken(ClassDeclarationSyntax classNode, string name, IEnumerable<MemberDeclarationSyntax> except)
+    public static string? Taken(TypeDeclarationSyntax classNode, string name, IEnumerable<MemberDeclarationSyntax> except)
     {
         if (classNode.Identifier.Text.Equals(name, StringComparison.Ordinal))
-            return $"'{name}' is the class's own name; a member cannot share it.";
+            return $"'{name}' is the {(classNode is InterfaceDeclarationSyntax ? "interface" : "class")}'s own name; "
+                + "a member cannot share it.";
 
         var skip = except.ToHashSet();
         foreach (var member in classNode.Members)

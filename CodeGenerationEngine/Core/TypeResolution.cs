@@ -53,7 +53,7 @@ internal static class TypeResolution
     /// <paramref name="reason"/> says why, with a suggestion when the name is a known misspelling.
     /// </summary>
     public static bool Resolves(
-        string workspaceRoot, string classFile, ClassDeclarationSyntax classNode, TypeSyntax type,
+        string workspaceRoot, string classFile, TypeDeclarationSyntax classNode, TypeSyntax type,
         out string reason)
     {
         reason = string.Empty;

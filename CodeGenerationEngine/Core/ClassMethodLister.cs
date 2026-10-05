@@ -32,8 +32,24 @@ public static class ClassMethodLister
         return
         [
             .. Regex.Matches(code, @"public\s+([\w<>]+)\s+(\w+)\s*\(")
-                .Select(m => new MethodSignature(m.Groups[2].Value, m.Groups[1].Value))
+                .Select(m => new MethodSignature(m.Groups[2].Value, m.Groups[1].Value)),
+            .. InterfaceMethodsWithoutModifier(code)
         ];
+    }
+
+    // An interface member is public without saying so, and add method writes it that way
+    // (double Area();), which the regex above cannot see. Only those: one written public is
+    // already matched.
+    private static IEnumerable<MethodSignature> InterfaceMethodsWithoutModifier(string code)
+    {
+        if (!code.Contains("interface", StringComparison.Ordinal))
+            return [];
+
+        return Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(code).GetRoot().DescendantNodes()
+            .OfType<Microsoft.CodeAnalysis.CSharp.Syntax.InterfaceDeclarationSyntax>()
+            .SelectMany(i => i.Members.OfType<Microsoft.CodeAnalysis.CSharp.Syntax.MethodDeclarationSyntax>())
+            .Where(m => m.Modifiers.Count == 0)
+            .Select(m => new MethodSignature(m.Identifier.Text, m.ReturnType.ToString()));
     }
 
     /// <summary>

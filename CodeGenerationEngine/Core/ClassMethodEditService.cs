@@ -176,8 +176,9 @@ public static class ClassMethodEditService
                 continue;
 
             var otherRoot = CSharpSyntaxTree.ParseText(text).GetRoot();
-            var part = otherRoot.DescendantNodes().OfType<ClassDeclarationSyntax>()
-                .FirstOrDefault(c => c.Identifier.Text.Equals(name, StringComparison.Ordinal)
+            var part = otherRoot.DescendantNodes().OfType<TypeDeclarationSyntax>()
+                .FirstOrDefault(c => c.Kind() == classNode.Kind()
+                    && c.Identifier.Text.Equals(name, StringComparison.Ordinal)
                     && c.Modifiers.Any(SyntaxKind.PartialKeyword)
                     && NamespaceOf(c) == ns);
 
@@ -189,14 +190,15 @@ public static class ClassMethodEditService
     }
 
     // The namespace and any enclosing types: a nested partial Order is not the top-level one.
-    private static string NamespaceOf(ClassDeclarationSyntax node) =>
+    private static string NamespaceOf(TypeDeclarationSyntax node) =>
         string.Join(".", node.Ancestors().OfType<BaseNamespaceDeclarationSyntax>().Reverse().Select(n => n.Name.ToString()))
         + "/" + string.Join(".", node.Ancestors().OfType<TypeDeclarationSyntax>().Reverse().Select(t => t.Identifier.Text));
 
-    // Shared with ClassPropertyTypeService: find the class's file by name, then the class in it.
+    // Find the class's file by name, then the class in it - or the interface: create interface
+    // writes one, and its members are edited by the same commands.
     internal static bool TryLoad(
         string workspaceRoot, string className,
-        out string file, out SyntaxNode root, out ClassDeclarationSyntax classNode, out string message)
+        out string file, out SyntaxNode root, out TypeDeclarationSyntax classNode, out string message)
     {
         file = string.Empty;
         root = null!;
@@ -220,8 +222,9 @@ public static class ClassMethodEditService
             root = CSharpSyntaxTree.ParseText(File.ReadAllText(file)).GetRoot();
 
             var node = root.DescendantNodes()
-                .OfType<ClassDeclarationSyntax>()
-                .FirstOrDefault(c => c.Identifier.Text.Equals(className, StringComparison.OrdinalIgnoreCase));
+                .OfType<TypeDeclarationSyntax>()
+                .FirstOrDefault(c => c is ClassDeclarationSyntax or InterfaceDeclarationSyntax
+                    && c.Identifier.Text.Equals(className, StringComparison.OrdinalIgnoreCase));
 
             if (node == null)
             {
@@ -255,5 +258,7 @@ public static class ClassMethodEditService
     }
 }
 
-/// <summary>One declaration of a class: the file, its parsed root, and the class node in it.</summary>
-internal sealed record ClassPart(string File, SyntaxNode Root, ClassDeclarationSyntax Node);
+/// <summary>
+/// One declaration of a class or an interface: the file, its parsed root, and the type node in it.
+/// </summary>
+internal sealed record ClassPart(string File, SyntaxNode Root, TypeDeclarationSyntax Node);
