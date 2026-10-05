@@ -374,7 +374,7 @@ public static class CommandHandlingService
         if (ok)
         {
             WarnOfUsers(ctx, ctx.Command.MethodName, "Method", "removed");
-            WarnOfImplementers(ctx, $"their {ctx.Command.MethodName} stays, no longer part of the interface.");
+            WarnOfImplementers(ctx, $"any {ctx.Command.MethodName} declared there stays, no longer part of the interface.");
         }
         return ok;
     }
@@ -579,7 +579,7 @@ public static class CommandHandlingService
             // Regenerated first, so the users-of scan does not report the stale validator.
             var named = RefreshValidators(ctx, "was removed");
             WarnOfUsers(ctx, ctx.Command.PropertyName, "Property", "removed", named);
-            WarnOfImplementers(ctx, $"their {ctx.Command.PropertyName} stays, no longer part of the interface.");
+            WarnOfImplementers(ctx, $"any {ctx.Command.PropertyName} declared there stays, no longer part of the interface.");
         }
 
         return ok;
