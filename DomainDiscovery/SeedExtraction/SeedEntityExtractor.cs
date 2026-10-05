@@ -37,14 +37,33 @@ public sealed class SeedEntityExtractor
         // explained, and filtering it out here would leave nothing to explain it with.
         var words = WordsOf(description);
 
+        // Whether the entity before this one was read as a verb. Its next noun is then the verb's
+        // object - a thing the user named - and never a verb itself: in "that records orders"
+        // and "that ships orders", "orders" is what is recorded or shipped.
+        var previousWasAVerb = false;
+
         for (var i = 0; i < result.Entities.Count; i++)
         {
             var entity = result.Entities[i];
             var previous = i > 0 ? result.Entities[i - 1] : null;
+            var next = i + 1 < result.Entities.Count ? result.Entities[i + 1] : null;
+            var afterAVerb = previousWasAVerb;
+            previousWasAVerb = false;
 
-            if ((RecordMadeBy(entity) ?? BareVerbRecord(entity, previous, words)) is { } record)
+            var record = RecordMadeBy(entity) ?? (afterAVerb ? null : BareVerbRecord(entity, previous, words));
+
+            if (record is null && (VerbPhrase(entity) || (!afterAVerb && BareVerb(entity, previous, next, words))))
             {
-                var next = i + 1 < result.Entities.Count ? result.Entities[i + 1] : null;
+                previousWasAVerb = true;
+                model.Record(NameOrText(entity), DecisionStage.SeedExtraction, DecisionOutcome.Skipped,
+                    DecisionReasons.ItIsAVerbHere,
+                    $"\"{entity.Text}\" says what is done, not a thing that is kept");
+                continue;
+            }
+
+            if (record is not null)
+            {
+                previousWasAVerb = true;
                 var verbWord = entity.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries)[^1];
 
                 if (TransactionVerbs.MakesNoRecordForAPerson(verbWord) && IsAPerson(next))
@@ -162,6 +181,86 @@ public sealed class SeedEntityExtractor
     }
 
     private static readonly string[] Conjunctions = ["and", "or", "nor"];
+
+    /// <summary>
+    /// Whether <paramref name="entity"/> is a relative pronoun and a verb the engine typed as a
+    /// thing: "that records", "that treats", "that signs".
+    /// </summary>
+    /// <remarks>
+    /// "that" before a word can be a determiner ("that data"), but a determiner "that" takes a
+    /// singular noun - "those records", never "that records" - so a word ending in -s after it is
+    /// a verb. The words that end in -s and are still singular (status, process, analysis, news)
+    /// are left alone.
+    /// </remarks>
+    private static bool VerbPhrase(Entity entity)
+    {
+        var parts = entity.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return EntityTypes.Contains(entity.Type) && parts.Length == 2
+               && RelativePronouns.Contains(parts[0], StringComparer.OrdinalIgnoreCase)
+               && LooksLikeAVerbForm(parts[1]);
+    }
+
+    /// <summary>
+    /// Whether <paramref name="entity"/> is a bare verb standing between its subject and its
+    /// object: "a warehouse RECORDS orders", "a library of books KEEPS loans".
+    /// </summary>
+    /// <remarks>
+    /// Its words must stand straight after the noun before it and straight before the noun after
+    /// it - "a store with orders and payments" and "orders and payments" fail - and the noun after
+    /// it must not be the software ("a school records system", where "records" is a noun).
+    /// </remarks>
+    private static bool BareVerb(Entity entity, Entity? previous, Entity? next, IReadOnlyList<string> words)
+    {
+        if (previous is null || next is null || words.Count == 0
+            || !EntityTypes.Contains(entity.Type) || !EntityTypes.Contains(previous.Type)
+            || !EntityTypes.Contains(next.Type))
+            return false;
+
+        var verb = entity.Text.Trim().ToLowerInvariant();
+        if (verb.Contains(' ') || !LooksLikeAVerbForm(verb))
+            return false;
+
+        var before = previous.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries)[^1].ToLowerInvariant();
+        var after = next.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries)[0].ToLowerInvariant();
+        var head = next.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries)[^1].ToLowerInvariant();
+
+        if (SoftwareWords.Contains(head))
+            return false;
+
+        // "... for classes AND employs staff": a second verb joined to the first verb's object.
+        for (var j = 0; j + 2 < words.Count; j++)
+        {
+            var at = words[j + 1] == "and" ? j + 2 : j + 1;
+            if (words[j] == before && at + 1 < words.Count && words[at] == verb && words[at + 1] == after)
+                return true;
+        }
+
+        return false;
+    }
+
+    private static readonly string[] SoftwareWords =
+        ["system", "systems", "app", "application", "software", "database", "platform", "tool", "portal"];
+
+    private static readonly string[] SingularWordsEndingInS =
+        ["news", "series", "species", "means", "data", "lens", "gas", "bus", "chaos"];
+
+    // A third-person verb: records, logs, treats, schedules. Not a word whose singular ends in -s.
+    private static bool LooksLikeAVerbForm(string word)
+    {
+        var w = word.ToLowerInvariant();
+        return w.Length > 3 && w.EndsWith('s') && w.All(char.IsLetter)
+               && !w.EndsWith("ss", StringComparison.Ordinal)
+               && !w.EndsWith("us", StringComparison.Ordinal)
+               && !w.EndsWith("is", StringComparison.Ordinal)
+               && !SingularWordsEndingInS.Contains(w);
+    }
+
+    // The name `why` is asked with: "that records" is asked about as Record.
+    private static string NameOrText(Entity entity)
+    {
+        var name = NameNormalizer.ToEntityName(entity.Text);
+        return name.Length == 0 ? entity.Text : name;
+    }
 
     // The archetype table already knows which nouns are people (staff, nurse, driver...).
     private static bool IsAPerson(Entity? entity)

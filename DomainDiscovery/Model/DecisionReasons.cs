@@ -23,6 +23,7 @@ public static class DecisionReasons
     public static string LeftToTheBuiltInDomain(string domain) =>
         $"the built-in {domain} domain defines its own records";
     public const string YouSaidItAsAVerb = "you said it as a verb";
+    public const string ItIsAVerbHere = "it is a verb here, not a thing";
 
     // --- Enrichment ---
     public const string NotAUsableClassName = "not a usable class name";
