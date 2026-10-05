@@ -122,6 +122,25 @@
 
     private bool Valid => AccentError is null && PrefixError is null;
 
+    /// <summary>The readiness the diagram last drew, so it is told only when that changes.</summary>
+    private bool _drawnReady = true;
+
+    /// <summary>
+    /// Tells the diagram when a field edit flips whether the step is usable.
+    /// </summary>
+    /// <remarks>
+    /// A field edit re-renders this panel alone; the box that draws Continue belongs to the page.
+    /// Correcting a bad accent cleared its error here but left Continue disabled up there.
+    /// </remarks>
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (Valid == _drawnReady)
+            return;
+
+        _drawnReady = Valid;
+        Navigation.ReadinessChanged();
+    }
+
     protected override void OnInitialized()
     {
         // The step is offered but only usable while the fields are: an unusable accent disables

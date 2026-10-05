@@ -197,6 +197,34 @@ public class SetupStageTests
         Assert.IsFalse(navigation.CanContinue);
     }
 
+    // The box drawing Continue is the page's, and the page redraws only when told. A field edit
+    // re-renders the panel alone, so correcting a bad accent left Continue disabled until
+    // something else happened to redraw the page.
+    [TestMethod]
+    public void The_look_panel_tells_the_diagram_when_a_corrected_field_makes_the_step_usable()
+    {
+        using var context = new BunitContext();
+        var navigation = new StageNavigation();
+
+        var rendered = context.Render<LookStage>(p => p
+            .Add(c => c.Session, New("a shop"))
+            .Add(c => c.Navigation, navigation)
+            .Add(c => c.OnAdvance, () => { }));
+
+        var drawn = navigation.CanContinue;
+        navigation.Changed += () => drawn = navigation.CanContinue;
+
+        rendered.Find("input.customize").Change(true);
+        rendered.Find("input.accent").Change("notacolour");
+        rendered.Find("input.prefix").Change("1bad prefix");
+        Assert.IsFalse(drawn, "the diagram should have been told the step became unusable");
+
+        rendered.Find("input.accent").Change("#1f6feb");
+        rendered.Find("input.prefix").Change("Acme");
+
+        Assert.IsTrue(drawn, "the diagram should have been told the step became usable again");
+    }
+
     [TestMethod]
     public void The_look_panel_refuses_the_step_on_an_unusable_namespace_prefix()
     {
