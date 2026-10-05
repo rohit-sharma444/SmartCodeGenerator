@@ -50,9 +50,13 @@ public sealed class StaleValidatorAfterMemberEditTests
         return writer.ToString();
     }
 
+    // In a project folder, as create console project puts it: at the workspace root a class typed
+    // in another case is resolved to its own name before the command runs, and the live defect hid.
+    private string ItemFolder => Directory.CreateDirectory(Path.Combine(_workspace, "P")).FullName;
+
     private string ItemWithValidator(params string[] rules)
     {
-        var file = Path.Combine(_workspace, "Item.cs");
+        var file = Path.Combine(ItemFolder, "Item.cs");
         File.WriteAllText(file,
             "namespace Shop\r\n{\r\n    public class Item\r\n    {\r\n"
             + "        public string Name { get; set; }\r\n"
@@ -68,7 +72,7 @@ public sealed class StaleValidatorAfterMemberEditTests
 
         Assert.IsGreaterThan(0, ValidationRegistry.Get("Item").Count);
         Run("generate validator for Item");
-        var validator = Path.Combine(_workspace, "Item.Validation.cs");
+        var validator = Path.Combine(ItemFolder, "Item.Validation.cs");
         Assert.IsTrue(File.Exists(validator), "generate validator wrote nothing");
         AssertBothCompile();
         return validator;
@@ -76,8 +80,8 @@ public sealed class StaleValidatorAfterMemberEditTests
 
     private void AssertBothCompile()
     {
-        var classFile = Path.Combine(_workspace, "Item.cs");
-        var validator = Path.Combine(_workspace, "Item.Validation.cs");
+        var classFile = Path.Combine(ItemFolder, "Item.cs");
+        var validator = Path.Combine(ItemFolder, "Item.Validation.cs");
         var result = Compiler.CompileSources(
         [
             (classFile, File.ReadAllText(classFile)),
@@ -129,11 +133,34 @@ public sealed class StaleValidatorAfterMemberEditTests
     }
 
     [TestMethod]
+    public void A_class_typed_in_another_case_is_regenerated_under_its_own_name()
+    {
+        // The live run wrote `public partial class item` beside `class Item`.
+        ItemWithValidator("Price must be positive");
+
+        Run("change type of name to int in item");
+
+        StringAssert.Contains(File.ReadAllText(Path.Combine(ItemFolder, "Item.Validation.cs")), "partial class Item");
+        AssertBothCompile();
+    }
+
+    [TestMethod]
+    public void Remove_property_does_not_blame_the_validator_it_regenerates()
+    {
+        // The users-of warning scanned the stale validator before it was rewritten.
+        ItemWithValidator("Price must be positive");
+
+        var output = Run("remove property Price from Item");
+
+        Assert.DoesNotContain("Item.Validate()", output, output);
+    }
+
+    [TestMethod]
     public void A_hand_written_validation_file_is_left_alone()
     {
-        var file = Path.Combine(_workspace, "Item.cs");
+        var file = Path.Combine(ItemFolder, "Item.cs");
         File.WriteAllText(file, "namespace Shop { public partial class Item { public decimal Price { get; set; } } }");
-        var mine = Path.Combine(_workspace, "Item.Validation.cs");
+        var mine = Path.Combine(ItemFolder, "Item.Validation.cs");
         const string handWritten = "namespace Shop { public partial class Item { public bool Check() => true; } }";
         File.WriteAllText(mine, handWritten);
 

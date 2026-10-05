@@ -35,6 +35,7 @@ public static class StaleValidators
         if (classFile == null)
             return null;
 
+        className = EntityExtractor.DeclaredName(classFile, className);
         var validatorFile = EntityExtractor.ValidatorPathFor(classFile, className);
         if (!File.Exists(validatorFile))
             return null;

@@ -511,8 +511,9 @@ public static class CommandHandlingService
                 Console.WriteLine($"Also removed {removed.Count} validation rule(s) on it: "
                     + string.Join("; ", removed.Select(r => r.Describe())));
 
-            WarnOfUsers(ctx, ctx.Command.PropertyName, "Property", "removed");
+            // Regenerated first, so the users-of scan does not report the stale validator.
             RefreshValidators(ctx, "was removed");
+            WarnOfUsers(ctx, ctx.Command.PropertyName, "Property", "removed");
         }
 
         return ok;
@@ -550,8 +551,8 @@ public static class CommandHandlingService
                     + $"Remove them (remove validation from {ctx.Command.ClassName}.{ctx.Command.PropertyName}) "
                     + $"and add them again for {ctx.Command.NewPropertyName}.");
 
-            WarnOfUsers(ctx, ctx.Command.PropertyName, "Property", "renamed");
             RefreshValidators(ctx, $"was renamed to {ctx.Command.NewPropertyName}");
+            WarnOfUsers(ctx, ctx.Command.PropertyName, "Property", "renamed");
         }
 
         return ok;

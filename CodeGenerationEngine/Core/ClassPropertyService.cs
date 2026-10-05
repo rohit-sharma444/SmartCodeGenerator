@@ -73,6 +73,9 @@ public static class ClassPropertyService
             return false;
         }
 
+        // As declared, for the messages: "item" found Item.
+        className = part.Node.Identifier.Text;
+
         // Its own indent, line break and doc comment go with it; a directive or section
         // comment above it stays (see MemberRemoval).
         var root = MemberRemoval.Remove(part.Root, property);

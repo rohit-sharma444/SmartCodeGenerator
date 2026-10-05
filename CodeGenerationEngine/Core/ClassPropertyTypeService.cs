@@ -36,6 +36,9 @@ public static class ClassPropertyTypeService
             return false;
         }
 
+        // As declared, for the messages: "item" found Item.
+        className = part.Node.Identifier.Text;
+
         var name = property.Identifier.Text;
 
         if (property.Type.ToString() == type.ToString())

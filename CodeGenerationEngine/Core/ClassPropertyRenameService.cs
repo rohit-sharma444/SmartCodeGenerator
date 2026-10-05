@@ -34,6 +34,9 @@ public static class ClassPropertyRenameService
                 return false;
             }
 
+            // As declared, for the messages: "item" found Item.
+            className = part.Node.Identifier.Text;
+
             var name = property.Identifier.Text;
 
             if (MemberNames.NotAnIdentifier(newName, "property") is { } bad)
