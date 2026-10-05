@@ -77,7 +77,8 @@ public sealed class SessionStateTests
         var after = SessionState.Capture();
         ValidationRegistry.Add("Customer", new RequiredStub());
 
-        Assert.AreEqual("the validation rules on Customer", before.Conflict(after));
+        // U6: "the validation rules on Customer has changed" -- the journal puts "has changed" after it.
+        Assert.AreEqual("a validation rule on Customer", before.Conflict(after));
     }
 
     [TestMethod]

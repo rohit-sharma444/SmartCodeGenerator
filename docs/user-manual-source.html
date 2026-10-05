@@ -193,7 +193,7 @@ its own, with <strong>Undo</strong> and <strong>Redo</strong> buttons beside Sen
 command it would reverse.</li>
 <li>A command that changed nothing — <code>show</code>, <code>list</code>, <code>help</code>, an edit that was
 refused — is not a step. Neither are <code>undo</code> and <code>redo</code> themselves.</li>
-<li>Typing a new command after an <code>undo</code> clears what <code>redo</code> could put back. With nothing left, they say <code>Nothing to undo.</code> and <code>Nothing to redo.</code></li>
+<li>After an <code>undo</code>, the next command that changes something clears what <code>redo</code> could put back; one that only looks, such as <code>list classes</code> or <code>help</code>, does not. With nothing left, they say <code>Nothing to undo.</code> and <code>Nothing to redo.</code></li>
 <li>Your own edits are safe. A file you change outside the tool, in Visual Studio say, is never undone as part of
 a command; and if you have edited a file an undo would restore, it refuses and names the file:
 <code>Can't undo: Shop\Book.cs has changed since add property Pages int to Book.</code>

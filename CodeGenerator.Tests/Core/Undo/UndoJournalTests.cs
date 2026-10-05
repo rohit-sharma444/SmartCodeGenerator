@@ -60,13 +60,74 @@ public sealed class UndoJournalTests
         Assert.AreEqual("class Book { }", Read("Shop/Book.cs"));
         Assert.IsFalse(File.Exists(P("Shop/New.cs")));
         Assert.AreEqual("class Old { }", Read("Shop/Old.cs"));
-        Assert.AreEqual("Undid: edit things — restored 2 files, removed 1", undone.Message);
+        Assert.AreEqual("Undid: edit things — restored 2 files, removed 1 file", undone.Message);
 
         var redone = _journal.Redo();
         Assert.IsTrue(redone.Done);
         Assert.AreEqual("class Book { int Pages; }", Read("Shop/Book.cs"));
         Assert.AreEqual("class New { }", Read("Shop/New.cs"));
         Assert.IsFalse(File.Exists(P("Shop/Old.cs")));
+    }
+
+    // U5: "— removed 28" did not say what it removed.
+    [TestMethod]
+    public void Undo_says_how_many_files_it_removed()
+    {
+        Command("add two", () =>
+        {
+            Write("Shop/A.cs", "class A { }");
+            Write("Shop/B.cs", "class B { }");
+        });
+
+        Assert.AreEqual("Undid: add two — removed 2 files", _journal.Undo().Message);
+    }
+
+    // U5: a csproj rewritten with the same bytes has a new stamp, and was counted as changed.
+    [TestMethod]
+    public void A_file_rewritten_with_the_same_bytes_is_not_part_of_the_entry()
+    {
+        Command("edit Book", () =>
+        {
+            Write("Shop/Book.cs", "class Book { int Pages; }");
+            Write("Shop/Old.cs", "class Old { }");
+        });
+
+        Assert.AreEqual("Undid: edit Book — restored Shop/Book.cs".Replace('/', Path.DirectorySeparatorChar),
+            _journal.Undo().Message);
+    }
+
+    [TestMethod]
+    public void A_command_that_only_rewrote_files_unchanged_leaves_no_entry()
+    {
+        Command("touch", () => Write("Shop/Old.cs", "class Old { }"));
+
+        Assert.IsFalse(_journal.CanUndo);
+
+        // And the new stamp is known, so the next command is not credited with it either.
+        Command("edit Book", () => Write("Shop/Book.cs", "class Book { int Pages; }"));
+        Assert.AreEqual("Undid: edit Book — restored Shop/Book.cs".Replace('/', Path.DirectorySeparatorChar),
+            _journal.Undo().Message);
+    }
+
+    // U1: File.Copy keeps the copied version's old write time, so dotnet build saw the restored
+    // source as older than its DLL, skipped CoreCompile and kept the undone code.
+    [TestMethod]
+    public void A_restored_file_is_stamped_now_so_a_build_sees_it_changed()
+    {
+        File.SetLastWriteTimeUtc(P("Shop/Book.cs"), DateTime.UtcNow.AddDays(-1));
+        Command("edit Book", () => Write("Shop/Book.cs", "class Book { int Pages; }"));
+        var beforeUndo = DateTime.UtcNow.AddSeconds(-1);
+
+        Assert.IsTrue(_journal.Undo().Done);
+        Assert.IsGreaterThan(beforeUndo, File.GetLastWriteTimeUtc(P("Shop/Book.cs")));
+
+        Tick();
+        var beforeRedo = File.GetLastWriteTimeUtc(P("Shop/Book.cs"));
+        Assert.IsTrue(_journal.Redo().Done);
+        Assert.IsGreaterThanOrEqualTo(beforeRedo, File.GetLastWriteTimeUtc(P("Shop/Book.cs")));
+
+        // The stamp it set is the one it knows: a second undo is not refused as an outside edit.
+        Assert.IsTrue(_journal.Undo().Done, "undo after redo");
     }
 
     [TestMethod]
@@ -199,6 +260,29 @@ public sealed class UndoJournalTests
         });
 
         Assert.IsFalse(_journal.CanUndo);
+    }
+
+    [TestMethod]
+    public void The_command_history_file_is_never_journalled_and_never_blocks_an_undo()
+    {
+        Write(".codegen_history", "run b2\n");
+
+        // A script's build step appends its piped lines while the command runs...
+        Command("run b2", () =>
+        {
+            Write("Shop/Book.cs", "class Book { int Pages; }");
+            File.AppendAllText(P(".codegen_history"), "build app from csv books.csv\nexit\n");
+        });
+
+        // ...and typing undo appends again before the undo runs.
+        Tick();
+        File.AppendAllText(P(".codegen_history"), "undo\n");
+
+        var undone = _journal.Undo();
+
+        Assert.IsTrue(undone.Done, undone.Message);
+        Assert.AreEqual(@"Undid: run b2 — restored Shop\Book.cs", undone.Message);
+        Assert.AreEqual("run b2\nbuild app from csv books.csv\nexit\nundo\n", Read(".codegen_history"));
     }
 
     [TestMethod]
@@ -348,6 +432,74 @@ public sealed class UndoJournalTests
 
         Assert.AreEqual("Can't undo: the state has changed since use project Shop.", journal.Undo().Message);
         Assert.AreEqual("Other", state.Value);
+    }
+
+    // U7: a killed session left %TEMP%\codegen_undo_* behind for good; nothing said whose it was.
+    [TestMethod]
+    public void The_shadow_folder_is_named_after_the_process_that_owns_it()
+    {
+        Command("edit Book", () => Write("Shop/Book.cs", "class Book { int Pages; }"));
+
+        var shadow = Assert.ContainsSingle(Directory.GetDirectories(_shadowParent));
+        StringAssert.StartsWith(Path.GetFileName(shadow), $"codegen_undo_{Environment.ProcessId}_");
+    }
+
+    [TestMethod]
+    public void Removing_stale_copies_takes_only_those_whose_process_is_gone()
+    {
+        string Folder(string name)
+        {
+            var path = Path.Combine(_shadowParent, name);
+            Directory.CreateDirectory(Path.Combine(path, "files"));
+            File.WriteAllText(Path.Combine(path, "files", "Book.cs"), "class Book { }");
+            return path;
+        }
+
+        var dead = Folder("codegen_undo_111_abcd.efg");
+        var live = Folder("codegen_undo_222_abcd.efg");
+        var mine = Folder($"codegen_undo_{Environment.ProcessId}_abcd.efg");
+        var unnamed = Folder("codegen_undo_abcd.efg");      // an older copy: whose it is is unknown
+        var other = Folder("codegen_snapshot_111_abcd.efg");
+
+        var removed = UndoJournal.RemoveStale(_shadowParent, pid => pid == 222);
+
+        Assert.AreEqual(1, removed);
+        Assert.IsFalse(Directory.Exists(dead));
+        Assert.IsTrue(Directory.Exists(live));
+        Assert.IsTrue(Directory.Exists(mine));
+        Assert.IsTrue(Directory.Exists(unnamed));
+        Assert.IsTrue(Directory.Exists(other));
+    }
+
+    [TestMethod]
+    public void The_default_check_tells_a_running_process_from_one_that_has_ended()
+    {
+        static System.Diagnostics.Process Start(string arguments) =>
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe", arguments)
+            {
+                CreateNoWindow = true,
+                UseShellExecute = false,
+            })!;
+
+        using var ended = Start("/c exit 0");
+        ended.WaitForExit();
+        using var running = Start("/c ping -n 30 127.0.0.1 >nul");
+        try
+        {
+            var gone = Path.Combine(_shadowParent, $"codegen_undo_{ended.Id}_x");
+            var alive = Path.Combine(_shadowParent, $"codegen_undo_{running.Id}_x");
+            Directory.CreateDirectory(gone);
+            Directory.CreateDirectory(alive);
+
+            UndoJournal.RemoveStale(_shadowParent);
+
+            Assert.IsFalse(Directory.Exists(gone));
+            Assert.IsTrue(Directory.Exists(alive));
+        }
+        finally
+        {
+            running.Kill(entireProcessTree: true);
+        }
     }
 
     private sealed class FakeState

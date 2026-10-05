@@ -82,12 +82,14 @@ internal static class ScriptFile
         return new ScriptParse(steps, null);
     }
 
-    /// <summary>Whether a review-loop answer ends the build: <c>approve</c> with or without a
-    /// target, or <c>cancel</c>.</summary>
+    /// <summary>Whether a review-loop answer ends the build: <c>approve</c> or <c>cancel</c>, or the
+    /// <c>a</c> and <c>c</c> its prompt advertises, with or without arguments.</summary>
+    /// <remarks>The review decides by the first word alone, so this does too: a block that ran on
+    /// past the line the review ended on would pipe the script's next commands into the copy, where
+    /// they run unchecked as commands of their own.</remarks>
     public static bool EndsBuild(string line) =>
-        line.Equals("cancel", StringComparison.OrdinalIgnoreCase)
-        || line.Equals("approve", StringComparison.OrdinalIgnoreCase)
-        || line.StartsWith("approve ", StringComparison.OrdinalIgnoreCase);
+        line.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.ToLowerInvariant()
+            is "a" or "approve" or "c" or "cancel";
 
     private static bool IsSkipped(string line) => line.Length == 0 || line.StartsWith('#');
 

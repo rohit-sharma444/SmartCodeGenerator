@@ -13,6 +13,17 @@ namespace CodeGenerator.Tests.Web.Chat;
 [DoNotParallelize]
 public class ChatRelationshipTests
 {
+    // Each session's undo journal copies the workspace to %TEMP% on its first command, and only
+    // End deletes the copy; a test that never ends its session left one behind on every run.
+    private readonly List<ChatSession> _sessions = [];
+
+    [TestCleanup]
+    public void EndSessions()
+    {
+        foreach (var session in _sessions)
+            session.End();
+    }
+
     [TestMethod]
     public void The_asker_puts_the_question_on_the_page_and_returns_the_answer()
     {
@@ -89,6 +100,42 @@ public class ChatRelationshipTests
         Assert.IsNull(session.Question, "creating a class must not be interrupted by the offer");
     }
 
+    // U4: the console never offers after undo or redo; the page did, putting back the question
+    // the undone command may just have answered.
+    [TestMethod]
+    [DataRow("undo")]
+    [DataRow("redo")]
+    public async Task Undo_and_redo_are_not_moments_the_offer_appears(string command)
+    {
+        var session = NewSession(out var root);
+        try
+        {
+            File.WriteAllText(Path.Combine(root, "Order.cs"),
+                "namespace Shop;\n\npublic class Order\n{\n    public int Id { get; set; }\n    public int CustomerId { get; set; }\n}\n");
+            File.WriteAllText(Path.Combine(root, "Customer.cs"),
+                "namespace Shop;\n\npublic class Customer\n{\n    public int Id { get; set; }\n}\n");
+
+            var sending = session.Send(command);
+            await Task.WhenAny(sending, Task.Run(() => WaitUntilOrTimeout(() => session.Question is not null, 10)));
+
+            Assert.IsNull(session.Question, command + " must not put the relationship offer up");
+            await sending.WaitAsync(TimeSpan.FromSeconds(30));
+        }
+        finally
+        {
+            if (session.Question is not null)
+                session.Answer(1);
+            session.End();
+        }
+    }
+
+    private static void WaitUntilOrTimeout(Func<bool> condition, int seconds)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(seconds);
+        while (!condition() && DateTime.UtcNow < deadline)
+            Thread.Sleep(10);
+    }
+
     [TestMethod]
     public void All_four_cardinality_answers_are_drawn_as_buttons()
     {
@@ -125,14 +172,16 @@ public class ChatRelationshipTests
         Assert.IsTrue(condition(), "the condition never became true");
     }
 
-    private static ChatSession NewSession() => NewSession(out _);
+    private ChatSession NewSession() => NewSession(out _);
 
-    private static ChatSession NewSession(out string root)
+    private ChatSession NewSession(out string root)
     {
         root = Path.Combine(Path.GetTempPath(), "cr-" + Guid.NewGuid().ToString("N")[..8]);
         Directory.CreateDirectory(root);
 
-        return new ChatSession(
+        var session = new ChatSession(
             new Workspace(root, projectPathSet: false), AiLayer.Create(), []);
+        _sessions.Add(session);
+        return session;
     }
 }

@@ -129,9 +129,14 @@ public static class ProjectManager
     /// path.
     /// </summary>
     /// <summary>
-    /// Reads the registry file back after an undo rewrote it, keeping only this workspace's
-    /// projects as at startup. A missing file means no projects, where LoadProject keeps the list.
+    /// Reads the registry file back after an undo or a rollback rewrote it, leaving the list
+    /// startup would show for this workspace: its registered projects, and the projects on disk.
     /// </summary>
+    /// <remarks>
+    /// Startup registers every <c>.csproj</c> under the workspace without saving the file, so
+    /// reading the file alone loses them — with no file at all, every one. The selection is left
+    /// alone: whoever reloads puts back the one it means to keep.
+    /// </remarks>
     public static void ReloadWithin(string workspaceRoot)
     {
         if (File.Exists(RegistryFile))
@@ -140,6 +145,29 @@ public static class ProjectManager
             _projects.Clear();
 
         RetainOnlyWithin(workspaceRoot);
+
+        var current = CurrentProject;
+        try
+        {
+            if (Directory.Exists(workspaceRoot))
+                foreach (var csproj in Directory.GetFiles(workspaceRoot, "*.csproj", SearchOption.AllDirectories))
+                    Register(new ProjectMetaData
+                    {
+                        Success = true,
+                        ProjectPath = Path.GetDirectoryName(csproj) ?? workspaceRoot,
+                        CsProjPath = csproj,
+                        ProjectName = Path.GetFileNameWithoutExtension(csproj),
+                        Message = "Loaded"
+                    });
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // The registered ones are still there; a folder that cannot be read only hides its own.
+        }
+        finally
+        {
+            CurrentProject = current;
+        }
     }
 
     public static void RetainOnlyWithin(string workspaceRoot)
