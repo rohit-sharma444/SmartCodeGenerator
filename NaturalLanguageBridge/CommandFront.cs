@@ -73,6 +73,14 @@ public static class CommandFront
             + @"(?:\s+with\s+.+)?$",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    // `create interface <name>`, ahead of the mapper, for the create class reason: a lower-case
+    // name is tagged as part of the target, so "create interface shape" was not recognised.
+    private static readonly Regex CreateInterfaceRe =
+        new(@"^(?:create|generate|build)\s+(?:(?:a|an|new)\s+)?interface\s+"
+            + @"(?!(?:with|called|named|that|which|for|to|in|of|from)\b)(?<name>[A-Za-z_]\w*)"
+            + @"(?:\s+with\s+.+)?$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     // `rename property <old> to <new> in <Class>`. The mapper's Table is keyed on
     // (verb, whole remainder), so it cannot match an argument-bearing form; and
     // Normalize maps field -> property, so the fields come from these groups.
@@ -135,6 +143,7 @@ public static class CommandFront
         IntentType.GenerateValidator,
         IntentType.ClassInherit,
         IntentType.CreateClass,
+        IntentType.CreateInterface,
         IntentType.RenameProperty,
         IntentType.DeleteMethod,
         IntentType.RenameMethod,
@@ -194,6 +203,24 @@ public static class CommandFront
             createCmd.Confidence = 1.0;
             SessionContext.CurrentClass = createCmd.ClassName;
             return createCmd;
+        }
+
+        var createInterfaceMatch = CreateInterfaceRe.Match(text);
+        if (createInterfaceMatch.Success)
+        {
+            var interfaceCmd = CommandEntityExtractor.Extract(text, IntentType.CreateInterface, workspace);
+
+            // The capitalised path's rule (ExtractInterfaceName): PascalCased, I added when missing.
+            var name = CommandEntityExtractor.ToPascalCase(createInterfaceMatch.Groups["name"].Value);
+            if (!name.StartsWith('I'))
+                name = "I" + name;
+
+            interfaceCmd.InterfaceName = name;
+            interfaceCmd.ClassName = name;
+            interfaceCmd.OriginalSentence = input ?? string.Empty;
+            interfaceCmd.Confidence = 1.0;
+            SessionContext.CurrentClass = name;
+            return interfaceCmd;
         }
 
         var renamePropertyMatch = RenamePropertyRe.Match(text);

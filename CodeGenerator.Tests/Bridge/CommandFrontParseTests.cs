@@ -143,4 +143,33 @@ public class CommandFrontParseTests
         Assert.AreNotEqual(
             IntentType.CreateClass, cmd.Intent, $"{sentence} made class {cmd.ClassName}");
     }
+
+    [TestMethod]
+    // "create interface ishape" was "Command not recognized" while "create interface IShape"
+    // worked - the create class defect again: NLE tags the lower-case name as part of the target.
+    // The name follows the capitalised path's rule: PascalCased, I added when it is missing.
+    [DataRow("create interface ishape", "Ishape")]
+    [DataRow("create interface shape", "IShape")]
+    [DataRow("generate interface repository", "IRepository")]
+    [DataRow("create an interface shape", "IShape")]
+    [DataRow("create interface IShape", "IShape")]
+    [DataRow("create interface Shape", "IShape")]
+    public void Create_interface_with_a_lower_case_name_is_recognised(string sentence, string expected)
+    {
+        var cmd = CommandFront.Parse(sentence, "");
+        Assert.AreEqual(IntentType.CreateInterface, cmd.Intent, sentence);
+        Assert.AreEqual(expected, cmd.InterfaceName, sentence);
+        Assert.AreEqual(expected, cmd.ClassName, sentence);
+    }
+
+    [TestMethod]
+    [DataRow("create interface with no name")]
+    [DataRow("create interfaces for my shop")]
+    [DataRow("I want to create interface diagrams today")]
+    public void A_sentence_that_is_not_create_interface_name_is_not_an_interface(string sentence)
+    {
+        var cmd = CommandFront.Parse(sentence, "");
+        Assert.AreNotEqual(
+            IntentType.CreateInterface, cmd.Intent, $"{sentence} made interface {cmd.InterfaceName}");
+    }
 }

@@ -72,6 +72,8 @@ public sealed class CreateInterfaceCommandTests
 
     [TestMethod]
     [DataRow("create interface IShape", "IShape")]
+    [DataRow("create interface ishape", "Ishape")]
+    [DataRow("create interface shape", "IShape")]
     public void A_new_interface_is_written(string input, string expected)
     {
         var (handled, output) = Run(input);
@@ -84,9 +86,12 @@ public sealed class CreateInterfaceCommandTests
 
     [TestMethod]
     // "create interface IShape" over an existing IShape.cs wrote over it unchecked, losing every
-    // member a user had added. "create interface Shape" names IShape too.
+    // member a user had added. "Shape" names IShape too, and "ishape" names
+    // Ishape.cs, which on Windows is IShape.cs.
     [DataRow("create interface IShape")]
     [DataRow("create interface Shape")]
+    [DataRow("create interface ishape")]
+    [DataRow("create interface shape")]
     public void An_existing_interface_is_not_replaced(string again)
     {
         Directory.CreateDirectory(GeneratedDir);
