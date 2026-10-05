@@ -20,6 +20,9 @@ public static class ClassMethodEditService
         if (!TryLoadParts(workspaceRoot, className, out var parts, out message))
             return false;
 
+        // As declared, for the messages: "order" found Order.
+        className = parts[0].Node.Identifier.Text;
+
         var matches = MethodsNamed(parts, methodName);
 
         if (matches.Count == 0)
@@ -52,6 +55,9 @@ public static class ClassMethodEditService
     {
         if (!TryLoadParts(workspaceRoot, className, out var parts, out message))
             return false;
+
+        // As declared, for the messages: "order" found Order.
+        className = parts[0].Node.Identifier.Text;
 
         var matches = MethodsNamed(parts, oldName);
 

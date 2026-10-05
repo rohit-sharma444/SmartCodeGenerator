@@ -17,7 +17,8 @@ public static class MemberReferences
     private const int MaxShown = 5;
 
     /// <summary>"Order.Use()"-style names of the members that still use <paramref name="name"/>.</summary>
-    public static IReadOnlyList<string> UsersOf(string workspaceRoot, string className, string name)
+    public static IReadOnlyList<string> UsersOf(
+        string workspaceRoot, string className, string name, IReadOnlyCollection<string>? skipFiles = null)
     {
         var users = new List<string>();
         if (string.IsNullOrWhiteSpace(name))
@@ -25,6 +26,9 @@ public static class MemberReferences
 
         foreach (var file in ClassFiles.Under(workspaceRoot))
         {
+            if (skipFiles?.Any(s => string.Equals(Path.GetFullPath(s), Path.GetFullPath(file), StringComparison.OrdinalIgnoreCase)) == true)
+                continue;
+
             string text;
             try
             {
@@ -65,9 +69,11 @@ public static class MemberReferences
     }
 
     /// <summary>The warning to print, or null when nothing uses it.</summary>
-    public static string? Warning(string workspaceRoot, string className, string name, string what, string done)
+    public static string? Warning(
+        string workspaceRoot, string className, string name, string what, string done,
+        IReadOnlyCollection<string>? skipFiles = null)
     {
-        var users = UsersOf(workspaceRoot, className, name);
+        var users = UsersOf(workspaceRoot, className, name, skipFiles);
         if (users.Count == 0)
             return null;
 

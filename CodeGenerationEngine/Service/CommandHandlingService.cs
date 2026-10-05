@@ -376,9 +376,10 @@ public static class CommandHandlingService
 
     // After a member is removed or renamed: name the code that still uses its old name, which
     // the edit left alone and which no longer compiles.
-    private static void WarnOfUsers(CommandExecutionContext ctx, string oldName, string what, string done)
+    private static void WarnOfUsers(
+        CommandExecutionContext ctx, string oldName, string what, string done, IReadOnlyCollection<string>? skipFiles = null)
     {
-        if (MemberReferences.Warning(ctx.WorkspaceRoot, ctx.Command.ClassName, oldName, what, done) is { } warning)
+        if (MemberReferences.Warning(ctx.WorkspaceRoot, ctx.Command.ClassName, oldName, what, done, skipFiles) is { } warning)
             Output.Warning(warning);
     }
 
@@ -571,21 +572,33 @@ public static class CommandHandlingService
             ctx.Command.PropertyName, ctx.Command.PropertyType, out var message);
         Console.WriteLine(message);
         if (ok)
-            RefreshValidators(ctx, $"is now {ctx.Command.PropertyType}");
+        {
+            var regenerated = RefreshValidators(ctx, $"is now {ctx.Command.PropertyType}");
+
+            // A member computed from it, or code elsewhere reading it, was written for the old type
+            // (`int Total => Qty * 2` after Qty became long is CS0266). The validator just written
+            // from the new type is not among them.
+            WarnOfUsers(ctx, ctx.Command.PropertyName, "Property", $"changed to {ctx.Command.PropertyType}",
+                regenerated is null ? null : [regenerated]);
+        }
+
         return ok;
     }
 
     // After a property is removed, renamed or retyped: a validator generated earlier still reads it
     // as it was. generate validator's file is rebuilt from the current rules and properties; a
     // built app's .Generated.cs cannot be (see StaleValidators), so it is named.
-    private static void RefreshValidators(CommandExecutionContext ctx, string change)
+    private static string? RefreshValidators(CommandExecutionContext ctx, string change)
     {
-        if (StaleValidators.Regenerate(ctx.WorkspaceRoot, ctx.Command.ClassName) is { } regenerated)
+        var regenerated = StaleValidators.Regenerate(ctx.WorkspaceRoot, ctx.Command.ClassName);
+        if (regenerated != null)
             Console.WriteLine($"Validator regenerated: {regenerated}");
 
         if (StaleValidators.AppValidatorWarning(
                 ctx.WorkspaceRoot, ctx.Command.ClassName, ctx.Command.PropertyName, change) is { } warning)
             Output.Warning(warning);
+
+        return regenerated;
     }
 
     private static bool HandleShowValidation(CommandExecutionContext ctx) =>

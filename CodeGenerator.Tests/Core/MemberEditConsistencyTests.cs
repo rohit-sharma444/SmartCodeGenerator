@@ -244,6 +244,28 @@ public sealed class MemberEditConsistencyTests
     }
 
     [TestMethod]
+    public void Retype_names_the_members_that_use_the_property()
+    {
+        // The live run: int to long on Qty left `public int Total => Qty * 2;` as CS0266, unsaid.
+        Write("Order.cs",
+            "namespace Shop { public class Order { public int Qty { get; set; } public int Total => Qty * 2; } }");
+
+        Assert.IsTrue(Run("change type of Qty to long in Order"), LastOutput);
+
+        StringAssert.Contains(LastOutput, "Order.Total", LastOutput);
+    }
+
+    [TestMethod]
+    public void Method_edits_name_the_class_as_declared()
+    {
+        Write("Order.cs", "namespace Shop { public class Order { public void Save() { } } }");
+
+        Assert.IsTrue(Run("rename method save to Store in order"), LastOutput);
+
+        StringAssert.Contains(LastOutput, "in 'Order'", LastOutput);
+    }
+
+    [TestMethod]
     public void Retype_widens_a_computed_property_when_its_value_still_fits()
     {
         var file = Write("Order.cs",

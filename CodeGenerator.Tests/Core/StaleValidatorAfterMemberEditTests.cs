@@ -156,6 +156,17 @@ public sealed class StaleValidatorAfterMemberEditTests
     }
 
     [TestMethod]
+    public void Change_type_does_not_blame_the_validator_it_regenerates()
+    {
+        ItemWithValidator("Price must be positive");
+
+        var output = Run("change type of Price to double in Item");
+
+        Assert.DoesNotContain("Item.Validate()", output, output);
+        AssertBothCompile();
+    }
+
+    [TestMethod]
     public void A_hand_written_validation_file_is_left_alone()
     {
         var file = Path.Combine(ItemFolder, "Item.cs");
