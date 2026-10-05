@@ -20,6 +20,14 @@ public static class EntityExtractor
             return false;
         }
 
+        // It wrote IShape.Validation.cs declaring a partial class IShape beside the partial
+        // interface IShape - a pair that does not compile.
+        if (InterfaceImplementers.ValidationRefusalFor(workspaceRoot, command.ClassName) is { } refusal)
+        {
+            Output.Error(refusal);
+            return false;
+        }
+
         var rules = ValidationRegistry.Get(command.ClassName);
 
         if (rules.Count == 0)
@@ -175,7 +183,12 @@ public static class EntityExtractor
 
             foreach (var property in type.Members.OfType<PropertyDeclarationSyntax>())
             {
-                if (!property.Modifiers.Any(m => m.ValueText == "public"))
+                // An interface's member is public unless it says otherwise, and add property writes
+                // it with no modifier at all.
+                var isPublic = property.Modifiers.Any(m => m.ValueText == "public")
+                    || (type is InterfaceDeclarationSyntax
+                        && !property.Modifiers.Any(m => m.ValueText is "private" or "protected" or "internal"));
+                if (!isPublic)
                     continue;
 
                 // A static member belongs to the type, not to an instance of it. `AppCustomization`

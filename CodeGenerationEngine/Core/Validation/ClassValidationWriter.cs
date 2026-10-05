@@ -71,6 +71,11 @@ public static class ClassValidationWriter
             return ValidationWriteResult.Refused(
                 $"No class called '{className}' in {Path.GetFileName(classFile)}.");
 
+        // A Validate() written into an interface compiles - as a default implementation that no
+        // class's data ever goes through.
+        if (type is InterfaceDeclarationSyntax)
+            return ValidationWriteResult.Refused(InterfaceImplementers.ValidationRefusal(type.Identifier.ValueText));
+
         if (type.OpenBraceToken.IsKind(SyntaxKind.None))
             return ValidationWriteResult.Refused(
                 $"'{className}' is declared without a body, so there is nowhere to put a check. "
