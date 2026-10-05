@@ -46,9 +46,9 @@ public sealed class BundledDomainCatalog
 
         foreach (var domain in Domains)   // catalog order, so the first of equals stays
         {
-            var hits = words.Where(w => domain.Terms.ContainsKey(w.Stem)).ToList();
-            var score = hits.Sum(w => domain.Terms[w.Stem]);
-            var hasName = hits.Any(w => domain.Terms[w.Stem] >= NameWeight);
+            var hits = words.Where(w => WeightOf(domain, w) > 0).ToList();
+            var score = hits.Sum(w => WeightOf(domain, w));
+            var hasName = hits.Any(w => WeightOf(domain, w) >= NameWeight);
 
             if (best is null || score > best.Score || (score == best.Score && hasName && !bestHasName))
             {
@@ -59,6 +59,12 @@ public sealed class BundledDomainCatalog
 
         return best is not null && best.Score >= MatchThreshold ? best : null;
     }
+
+    // A domain's own spelling of a word ("banking") outranks the stem it shares with a weaker one.
+    private static int WeightOf(BundledDomain domain, (string Word, string Stem) w) =>
+        domain.Words.TryGetValue(w.Word.ToLowerInvariant(), out var exact) ? exact
+        : domain.Terms.TryGetValue(w.Stem, out var weight) ? weight
+        : 0;
 
     private static BundledDomainCatalog LoadEmbedded()
     {

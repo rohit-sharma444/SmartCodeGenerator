@@ -37,6 +37,10 @@ public static class NlpCommandMapper
     // lean on, so it stays purely positional.
     private static readonly Dictionary<(string Verb, string Target), IntentType> Table = Build();
 
+    // Every word a target is made of, so a capitalised "Class" or "Deleted" is still read as one.
+    private static readonly HashSet<string> TargetWords =
+        [.. Table.Keys.SelectMany(k => k.Target.Split(' ')).Concat(Determiners)];
+
     /// <summary>The intents this table can produce. See LiteralCommandTable.Intents.</summary>
     public static IReadOnlyCollection<IntentType> MappedIntents => [.. Table.Values.Distinct()];
 
@@ -80,8 +84,18 @@ public static class NlpCommandMapper
             // entity (Object/Action) follows it; otherwise it's genuine
             // trailing args on an empty target and is left alone (span below
             // stays empty => Unknown, as before).
+            // A capitalised word after the verb that no target is made of is a name: a class
+            // named like a verb (Book, Lend - NLE tags those Action wherever they sit), or a
+            // property NLE merged with its type ("Total decimal" comes back one Object).
+            static bool IsName(Entity e) =>
+                e.Type == EntityType.Person
+                || (e.Type is EntityType.Action or EntityType.Object
+                    && e.Text.Length > 0
+                    && char.IsUpper(e.Text[0])
+                    && !TargetWords.Contains(e.Text.Split(' ')[0].ToLowerInvariant()));
+
             int leadingPersons = 0;
-            while (leadingPersons < afterVerb.Count && afterVerb[leadingPersons].Type == EntityType.Person)
+            while (leadingPersons < afterVerb.Count && IsName(afterVerb[leadingPersons]))
                 leadingPersons++;
 
             var remaining = leadingPersons > 0 && leadingPersons < afterVerb.Count
@@ -93,7 +107,7 @@ public static class NlpCommandMapper
             // (trailing arguments) and trimming a trailing Action entity (a
             // second clause's verb, e.g. "called").
             var span = remaining
-                .TakeWhile(e => e.Type != EntityType.Person)
+                .TakeWhile(e => !IsName(e))
                 .ToList();
 
             while (span.Count > 0 && span[^1].Type == EntityType.Action)

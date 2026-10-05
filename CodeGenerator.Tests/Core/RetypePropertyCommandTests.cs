@@ -105,6 +105,69 @@ public sealed class RetypePropertyCommandTests
     }
 
     [TestMethod]
+    public void Parses_a_generic_type_with_a_space_after_the_comma()
+    {
+        var command = CommandFront.Parse("change type of Pages to Dictionary<string, List<int>> in Book", _workspace);
+
+        Assert.AreEqual(IntentType.ChangePropertyType, command.Intent);
+        Assert.AreEqual("Dictionary<string, List<int>>", command.PropertyType);
+        Assert.AreEqual("Book", command.ClassName);
+    }
+
+    [TestMethod]
+    [DataRow("integer")]
+    [DataRow("Strng")]
+    [DataRow("List<Nothing>")]
+    [DataRow("Dictionary<string>")]
+    public void Refuses_a_type_that_does_not_exist(string type)
+    {
+        // It parses as a type name, so it was written: `public integer Qty` does not compile.
+        var file = WriteBook("namespace Shop { public class Book { public long Pages { get; set; } } }");
+        var before = File.ReadAllText(file);
+
+        Assert.IsFalse(Run($"change type of Pages to {type} in Book"));
+
+        Assert.AreEqual(before, File.ReadAllText(file));
+    }
+
+    [TestMethod]
+    public void Says_which_type_was_meant_for_a_common_misspelling()
+    {
+        WriteBook("namespace Shop { public class Book { public long Pages { get; set; } } }");
+
+        Assert.IsFalse(CodeGenerationEngine.Core.ClassPropertyTypeService.ChangeType(
+            _workspace, "Book", "Pages", "integer", out var message));
+
+        StringAssert.Contains(message, "int", message);
+    }
+
+    [TestMethod]
+    [DataRow("int?")]
+    [DataRow("string[]")]
+    [DataRow("DateTime")]
+    [DataRow("Guid")]
+    [DataRow("List<string>")]
+    [DataRow("Dictionary<string, int>")]
+    [DataRow("System.Text.StringBuilder")]
+    [DataRow("Author")]
+    [DataRow("List<Author>")]
+    public void Accepts_a_type_that_resolves_and_still_compiles(string type)
+    {
+        var file = WriteBook(
+            "using System;\nusing System.Collections.Generic;\n"
+            + "namespace Shop { public class Book { public long Pages { get; set; } } }");
+        var author = Path.Combine(_workspace, "Author.cs");
+        File.WriteAllText(author, "namespace Shop { public class Author { } }");
+
+        Assert.IsTrue(Run($"change type of Pages to {type} in Book"));
+
+        var code = File.ReadAllText(file);
+        StringAssert.Contains(code, $"public {type} Pages", code);
+        var result = Compiler.CompileSources([(file, code), (author, File.ReadAllText(author))]);
+        Assert.IsTrue(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
+    }
+
+    [TestMethod]
     public void Reports_failure_when_the_property_is_missing()
     {
         WriteBook("namespace Shop { public class Book { public string Title { get; set; } } }");

@@ -248,7 +248,10 @@ public sealed class ChatSession
             // the question, and before Running is cleared, so the composer stays disabled while
             // the question is up. A second message starting here would put a second question on
             // the page and orphan the thread waiting on the first one.
-            await Offer(input);
+            // Not after undo or redo, as on the console: the undone command may have been the
+            // answer to it, and putting the question straight back would undo the undo.
+            if (kind is not (CommandKind.Undo or CommandKind.Redo))
+                await Offer(input);
 
             // In the same entry as the command, as the files it wrote are.
             entry?.Keep(_relationships?.TakeApplied() ?? []);

@@ -1,8 +1,19 @@
 # Architecture
 
 Smart Code Generator turns plain-English commands into .NET code. The
-[`CodeGenerator`](../CodeGenerator/README.md) CLI is the only executable; every
-other project is a class library it composes.
+[`CodeGenerator`](../CodeGenerator/README.md) CLI is the executable you run; the
+other projects are class libraries it composes, apart from two executables that
+look after the local Wikipedia store —
+[`WikipediaDumpImporter`](../WikipediaDumpImporter/README.md), which builds it,
+and `WikipediaUpdateService`, a Windows service that keeps it up to date.
+
+Beneath the command path sits an **AI layer** (`CodeIntelligence`, on by
+default): a line the rules do not recognize is embedded by a local ONNX model
+(`CodeIntelligence.Onnx`), its nearest known phrasings are found in a SQLite
+index, and the command they point to is offered as a suggestion that runs only
+once confirmed (a piped run never asks, so never uses it). `NaturalLanguageBridge` sees it only through the contracts in
+`CodeIntelligence.Abstractions`, so a model that cannot load means no
+suggestion, not a failure.
 
 There are **three paths** through the system:
 
@@ -38,8 +49,9 @@ to the end and therefore cannot report anything until it is over. The page calls
 second pipeline behind it.
 
 > **Note:** the SVGs below are pre-rendered from the Mermaid source in each
-> `<details>` block. The data path was added to the Mermaid sources but the images
-> have not been re-rendered, so where the two disagree the Mermaid is current.
+> `<details>` block. The data path, the discovery sources and the AI layer were
+> added to the Mermaid sources but the images have not been re-rendered, so where
+> the two disagree the Mermaid is current.
 
 ## End-to-end flow
 
@@ -81,13 +93,14 @@ flowchart TD
     %% Discovery path
     desc{"description<br/>empty?"}
     desc -- yes --> usage["Print usage"] --> read
-    desc -- no --> discover["DomainDiscoveryPipeline.Discover"]
-    discover --> nle1["NLE analyze<br/>→ seed entities"]
-    nle1 --> recog{"topic<br/>recognized?"}
-    recog -- no --> seedonly["Show seed entities only"]
-    recog -- yes --> enrich["Enrich from<br/>Wikipedia article"]
-    seedonly --> review["Review loop:<br/>print model"]
-    enrich --> review
+    desc -- no --> discover["DomainModelSourceFactory:<br/>first source that finds classes"]
+    discover --> ollama{"Ollama answers<br/>with classes?"}
+    ollama -- yes --> review
+    ollama -- no --> store{"Wikipedia store<br/>installed?"}
+    store -- yes --> local["Local store,<br/>then built-in domains"]
+    store -- no --> bundled["Built-in domains,<br/>then online Wikipedia"]
+    local --> review["Review loop:<br/>print model"]
+    bundled --> review
     review --> action{"user action"}
     action -- "add / remove / rename" --> edit["ModelEditor<br/>updates model"] --> review
     action -- approve --> approved([Model approved]) --> read
@@ -143,6 +156,14 @@ flowchart TD
         handling["CommandHandlingService<br/>(parse → dispatch)"]
         gen["Roslyn generators<br/>(classes, projects, validators)"]
         learn["Learning + validation<br/>(LearnedIntentStore, ValidationRegistry)"]
+        undo["UndoJournal<br/>(undo / redo)"]
+    end
+
+    subgraph ci["CodeIntelligence (AI layer)"]
+        ailayer["AiLayer"]
+        resolver["RetrievalIntentResolver"]
+        onnx["OnnxEmbeddingProvider<br/>(CodeIntelligence.Onnx)"]
+        vectors["SqliteVectorStore<br/>(ai-index.db)"]
     end
 
     subgraph nle["NaturalLanguageEngine"]
@@ -150,11 +171,15 @@ flowchart TD
     end
 
     subgraph dd["DomainDiscovery"]
+        factory["DomainModelSourceFactory<br/>(chooses, falls back)"]
+        ollamasrc["OllamaDomainModelSource"]
+        bundledsrc["BundledDomainSource<br/>(25 built-in domains)"]
         ddp["DomainDiscoveryPipeline"]
         seed["SeedEntityExtractor"]
         topic["WikipediaTopicRecognizer"]
         enrich["DomainEnricher / EntityHarvester"]
         editor2["ModelEditor<br/>(review edits)"]
+        dump["DumpWikipediaClient<br/>+ WikipediaStore"]
         wiki["HttpWikipediaClient<br/>+ WikipediaCache"]
     end
 
@@ -171,8 +196,10 @@ flowchart TD
         seedwriter["SeedFileWriter<br/>+ ImportedData"]
     end
 
-    fs[("Workspace files<br/>generated code, .dd-cache,<br/>learned memory, history")]
+    fs[("Workspace files<br/>generated code, .dd-cache,<br/>.codegen, history")]
     wikipedia([Wikipedia API])
+    ollama([Ollama, local])
+    storedb[("Wikipedia store<br/>%ProgramData%")]
 
     user --> starter
     starter --> editor
@@ -185,14 +212,27 @@ flowchart TD
     handling --> gen
     handling --> learn
     handling -.->|"nlpAction verb"| provider
+    pipeline -.->|"unrecognized line"| resolver
+    starter --> ailayer
+    ailayer --> resolver
+    resolver --> onnx
+    resolver --> vectors
+    starter --> undo
 
-    buildapp -->|"no data"| ddp
+    buildapp -->|"no data"| factory
+    factory --> ollamasrc
+    factory --> ddp
+    factory --> bundledsrc
+    ollamasrc --> ollama
     ddp --> seed
     ddp --> topic
     ddp --> enrich
     ddp --> engine
     topic --> wiki
     enrich --> wiki
+    topic -.->|"store installed"| dump
+    enrich -.-> dump
+    dump --> storedb
     buildapp --> editor2
     wiki --> wikipedia
 
@@ -213,11 +253,12 @@ flowchart TD
     wiki --> fs
 
     classDef ext fill:#6e40c9,stroke:#3f228f,color:#fff
-    class wikipedia,fs ext
+    class wikipedia,fs,ollama,storedb ext
 
     style cli fill:#1f6feb,stroke:#0b3d91,color:#fff
     style bridge fill:#238636,stroke:#0f5323,color:#fff
     style cge fill:#238636,stroke:#0f5323,color:#fff
+    style ci fill:#238636,stroke:#0f5323,color:#fff
     style nle fill:#238636,stroke:#0f5323,color:#fff
     style dd fill:#238636,stroke:#0f5323,color:#fff
     style di fill:#8957e5,stroke:#4c2889,color:#fff
@@ -240,9 +281,20 @@ flowchart LR
     CodeGenerator --> DomainDiscovery
     CodeGenerator --> AppScaffolding
     CodeGenerator --> DataIngestion
+    CodeGenerator --> CodeIntelligence
     NaturalLanguageBridge --> CodeGenerationEngine
     NaturalLanguageBridge --> NaturalLanguageEngine
+    NaturalLanguageBridge --> CodeIntelligence.Abstractions
+    CodeIntelligence --> CodeIntelligence.Abstractions
+    CodeIntelligence --> CodeIntelligence.Onnx
+    CodeIntelligence --> CodeGenerationEngine
+    CodeIntelligence --> NaturalLanguageBridge
+    CodeIntelligence.Onnx --> CodeIntelligence.Abstractions
+    CodeIntelligence.Abstractions --> CodeGenerationEngine
     DomainDiscovery --> NaturalLanguageEngine
+    DomainDiscovery --> CodeGenerationEngine
+    WikipediaDumpImporter --> DomainDiscovery
+    WikipediaUpdateService --> DomainDiscovery
     AppScaffolding --> DomainDiscovery
     AppScaffolding --> CodeGenerationEngine
     DataIngestion --> DomainDiscovery
@@ -304,15 +356,25 @@ sequenceDiagram
     autonumber
     actor User
     participant CLI as BuildAppCommand
+    participant Src as DomainModelSourceFactory
+    participant Oll as Ollama (local LLM)
     participant DDP as DomainDiscoveryPipeline
     participant NLE as NaturalLanguageEngine
     participant Seed as SeedEntityExtractor
     participant Topic as WikipediaTopicRecognizer
     participant Enrich as DomainEnricher
-    participant Wiki as Wikipedia (cached)
+    participant Wiki as Wikipedia (store, or online API)
+    participant Bun as Built-in domains
 
     User->>CLI: "build app: a library that lends books to members"
-    CLI->>DDP: Discover(description)
+    CLI->>Src: Create(config, store installed?)
+    CLI->>Src: Discover(description)
+    Src->>Oll: probe /api/tags, then /api/chat
+    alt Ollama answered with classes
+        Oll-->>Src: candidate model
+    else Ollama down, or it found nothing
+    Note over Src,Bun: Store installed: the store, then the built-in domains.<br/>No store: the built-in domains, then online Wikipedia.
+    Src->>DDP: Discover(description)
     DDP->>NLE: Analyze(description)
     NLE-->>DDP: SemanticResult
     DDP->>Seed: Extract seed entities (nouns)
@@ -323,10 +385,13 @@ sequenceDiagram
         DDP->>Enrich: harvest more entities/fields
         Enrich->>Wiki: fetch article content
     end
-    DDP-->>CLI: DiscoveryResult (topic + candidate model)
+    DDP-->>Src: DiscoveryResult (topic + candidate model)
+    Src->>Bun: Discover(description), when the source before it found nothing
+    end
+    Src-->>CLI: DiscoveryOutcome (source label, model, why it fell back)
     loop review
         CLI-->>User: print model
-        User->>CLI: approve / add / remove / rename / cancel
+        User->>CLI: approve / add / remove / rename / field / why / cancel
     end
 ```
 
@@ -414,11 +479,23 @@ flowchart LR
 | Location | Written by | Contents |
 | --- | --- | --- |
 | `<workspace>/<Project>/…` | CodeGenerationEngine | Generated `.csproj`, classes, validators. |
+| `<workspace>/<Project>/DeletedClasses/` | CodeGenerationEngine | Classes moved there by `delete class`, timestamped, for `restore class`. |
+| `<workspace>/deleted-classes.json` | CodeGenerationEngine | Which deleted class came from where (`DeletedClassRegistry`). |
 | `<workspace>/<AppName><suffix>/…` | AppScaffolding | A runnable generated app: model classes, store, repositories, validators, and the target's front end. |
 | `<workspace>/<AppName><suffix>/Data/Seed/` | AppScaffolding | `<Class>.json` per entity when the app was built from the user's own data — registered as copied-to-output content and loaded by the generated seeder on first run. |
-| `<workspace>/.dd-cache/` | DomainDiscovery | Cached Wikipedia article content. |
-| `<workspace>/` (learned memory) | CodeGenerationEngine | Per-workspace learned intent store. |
-| `<workspace>/.codegen_history` | CodeGenerator | Encrypted command history. |
+| `<workspace>/.dd-cache/` | DomainDiscovery | Cached Wikipedia article content, when discovery reads the online API. |
+| `<workspace>/.codegen/learned.json` | CodeGenerationEngine | Learned command signatures and how often each worked (`LearnedIntentStore`; `show learning`, `reset learning`). |
+| `<workspace>/.codegen/phrase-candidates.jsonl` | CodeGenerationEngine | Each line that was not understood, paired with the next command that worked (`PhraseCandidates`). |
+| `<workspace>/.codegen/phrase-candidates.tsv` | CodeGenerationEngine | The same pairs grouped for review, written by `show learning`. |
+| `<workspace>/.codegen/app-profile.json` | CodeGenerator | The customization answers an interactive `build app` offers back next time (`CustomizationDefaults`). |
+| `<workspace>/.codegen/build-in-progress.json` | CodeGenerator | The unfinished workflow-page build, saved after every change so the next `build app` can resume it (`BuildSnapshotStore`). |
+| `<workspace>/.codegen/workflow-theme.json` | CodeGenerator | The theme chosen on the workflow page (`WorkflowThemeStore`). |
+| `<workspace>/<name>.cgs` | CodeGenerator | A script written by `save session` and read by `run`; the name is resolved against the workspace (`ScriptPath`). |
+| `<workspace>/.codegen_history` | CodeGenerator | Command history, one command per line. |
+| `%TEMP%\codegen_undo_*` | CodeGenerationEngine | The shadow copy `UndoJournal` keeps of what a command changed, for `undo` and `redo`, for the session. |
+| `%TEMP%\codegen_snapshot_*` | CodeGenerationEngine | The pre-`batch` snapshot `WorkspaceSnapshot` restores when a batch fails. |
+| `%ProgramData%\SmartCodeGenerator\Wikipedia\enwiki-full.db` | WikipediaDumpImporter, WikipediaUpdateService | The local Wikipedia store, with `update-status.json` beside it. A `StorePath` in `discovery.json` — the program's own, or the shared `%ProgramData%\SmartCodeGenerator\discovery.json` — moves it. |
+| Beside the executable | CodeGenerator, CodeIntelligence | `ProjectManager.dat` (the project registry), `intents.json`, `ai.json` (AI settings) and `ai-index.db` (the AI phrase index and its decision log). |
 
 The workspace root defaults to the current directory and can be overridden with
 the `PROJECTPATH` environment variable — see the [root README](../README.md).

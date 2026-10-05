@@ -50,6 +50,22 @@ public class NlpCommandMapperTests
     }
 
     [TestMethod]
+    [DataRow("create class Book with properties Title string", IntentType.CreateClass)]
+    [DataRow("create class Lend with properties Name string", IntentType.CreateClass)]
+    [DataRow("create class Schedule with properties Name string", IntentType.CreateClass)]
+    [DataRow("create a Book class with Title string", IntentType.CreateClass)]
+    [DataRow("add property Total decimal to Invoice", IntentType.CreateProperty)]
+    [DataRow("add property Net int to Invoice", IntentType.CreateProperty)]
+    public void A_capitalised_name_after_the_verb_is_not_part_of_the_target(string sentence, IntentType expected)
+    {
+        // NLE tags Book/Lend/Schedule as Action wherever they appear, so the name used to join
+        // the target span ("class book properties") and the command came back Unknown.
+        // "Total decimal" is merged into one Object the same way ("property total decimal").
+        var analysis = NlpActionProvider.Analyze(sentence);
+        Assert.AreEqual(expected, NlpCommandMapper.ResolveIntent(analysis));
+    }
+
+    [TestMethod]
     public void Leading_person_skip_does_not_reach_a_dead_intent()
     {
         // "create a repository for Customer" has no target entity after the

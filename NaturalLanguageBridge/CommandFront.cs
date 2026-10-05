@@ -60,6 +60,19 @@ public static class CommandFront
         new(@"^(?:class\s+)?(?<class>\w+)(?:\s+class)?\s+(?:inherits?|extends|derives\s+from)\s+(?<base>\w+)$",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    // `create class <name>` and `create class <name> with ...`, ahead of the mapper. NLE tags a
+    // lower-case name as part of the target, so the mapper looked up "class employee" and
+    // "create class employee" was not recognised at all, with or without properties. The name
+    // comes from this group, PascalCased: Normalize rewrites manager -> service and
+    // model/entity -> class, which would rename a class the user typed in lower case.
+    // "class library" is a project, and a connective is not a name ("create class called X"
+    // and "create class with ..." are left to the mapper as before).
+    private static readonly Regex CreateClassRe =
+        new(@"^(?:create|add|generate)\s+(?:(?:a|an|new)\s+)?class\s+"
+            + @"(?!(?:library|with|called|named|that|which|for|to|in|of|from)\b)(?<class>[A-Za-z_]\w*)"
+            + @"(?:\s+with\s+.+)?$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     // `rename property <old> to <new> in <Class>`. The mapper's Table is keyed on
     // (verb, whole remainder), so it cannot match an argument-bearing form; and
     // Normalize maps field -> property, so the fields come from these groups.
@@ -73,6 +86,12 @@ public static class CommandFront
         new(@"^(?:remove|delete)\s+method\s+(?<method>\w+)(?:\s+(?:from|in|on|of)\s+(?<class>\w+))?$",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    // `remove property <name> from <Class>`. Ahead of the mapper, which recognised it only with a
+    // capitalised name: "remove property price from item" was not recognised at all.
+    private static readonly Regex DeletePropertyRe =
+        new(@"^(?:remove|delete|drop)\s+property\s+(?<property>\w+)\s+(?:from|in|on|of)\s+(?<class>\w+)$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     // `rename method <old> to <new> in <Class>`, shaped like RenamePropertyRe.
     private static readonly Regex RenameMethodRe =
         new(@"^rename\s+method\s+(?<old>\w+)\s+to\s+(?<new>\w+)(?:\s+(?:in|on|of)\s+(?<class>\w+))?$",
@@ -81,10 +100,12 @@ public static class CommandFront
     // `change (the) type of (property|field) <name> to <type> in <Class>` and
     // `retype (property|field) <name> to <type> in <Class>`. The type is any run of
     // non-spaces so `List<string>` and `decimal?` arrive whole and a malformed one reaches
-    // the handler to be refused by name, rather than falling through to the mapper.
+    // the handler to be refused by name, rather than falling through to the mapper; inside
+    // angle brackets (one level of nesting) spaces are allowed too, because that is how
+    // `Dictionary<string, int>` is written.
     // `retype <class> <field> <type>` without "property" is the build-app review loop's own.
     private static readonly Regex ChangePropertyTypeRe =
-        new(@"^(?:change\s+(?:the\s+)?type\s+of|retype)\s+(?:(?:property|field)\s+)?(?<property>\w+)\s+to\s+(?<type>\S+)(?:\s+(?:in|on|of)\s+(?<class>\w+))?$",
+        new(@"^(?:change\s+(?:the\s+)?type\s+of|retype)\s+(?:(?:property|field)\s+)?(?<property>\w+)\s+to\s+(?<type>(?:[^\s<]|<[^<>]*(?:<[^<>]*>[^<>]*)*>|<)+)(?:\s+(?:in|on|of)\s+(?<class>\w+))?$",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     // `remove (business) validation` naming a field — `from Employee.Name` or, as add
@@ -113,6 +134,7 @@ public static class CommandFront
         IntentType.ShowValidation,
         IntentType.GenerateValidator,
         IntentType.ClassInherit,
+        IntentType.CreateClass,
         IntentType.RenameProperty,
         IntentType.DeleteMethod,
         IntentType.RenameMethod,
@@ -163,6 +185,17 @@ public static class CommandFront
                 Confidence = 1.0
             };
 
+        var createClassMatch = CreateClassRe.Match(text);
+        if (createClassMatch.Success)
+        {
+            var createCmd = CommandEntityExtractor.Extract(text, IntentType.CreateClass, workspace);
+            createCmd.ClassName = CommandEntityExtractor.ToPascalCase(createClassMatch.Groups["class"].Value);
+            createCmd.OriginalSentence = input ?? string.Empty;
+            createCmd.Confidence = 1.0;
+            SessionContext.CurrentClass = createCmd.ClassName;
+            return createCmd;
+        }
+
         var renamePropertyMatch = RenamePropertyRe.Match(text);
         if (renamePropertyMatch.Success)
         {
@@ -189,6 +222,17 @@ public static class CommandFront
                 Intent = IntentType.DeleteMethod,
                 MethodName = deleteMethodMatch.Groups["method"].Value.Trim(),
                 ClassName = ClassOrCurrent(deleteMethodMatch),
+                OriginalSentence = input ?? string.Empty,
+                Confidence = 1.0
+            };
+
+        var deletePropertyMatch = DeletePropertyRe.Match(text);
+        if (deletePropertyMatch.Success)
+            return new ParsedCommand
+            {
+                Intent = IntentType.DeleteProperty,
+                PropertyName = deletePropertyMatch.Groups["property"].Value.Trim(),
+                ClassName = deletePropertyMatch.Groups["class"].Value.Trim(),
                 OriginalSentence = input ?? string.Empty,
                 Confidence = 1.0
             };

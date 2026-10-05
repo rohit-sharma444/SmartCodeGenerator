@@ -28,6 +28,12 @@ public static class DomainModelMapper
         // that class, so this is a name the real pipeline really does produce, not a hypothetical.
         "Data", "Models", "ViewModels", "Views", "Validation",
 
+        // The GLOBAL namespaces every generated app references. `Repository<System>` inside
+        // <App>.Data finds namespace System at the global level before any using directive is
+        // consulted, so a class with either name breaks the build the same way (CS0118). "a
+        // library management system" on the built-in-domain path produced exactly that class.
+        "System", "Microsoft",
+
         // Types the generated app declares or references by simple name.
         "App", "Application", "MainWindow", "Window", "MainViewModel", "EntityViewModel",
         "IEntityViewModel", "ObservableObject", "RelayCommand", "ICommand", "JsonStore",

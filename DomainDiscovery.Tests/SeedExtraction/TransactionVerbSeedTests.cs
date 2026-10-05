@@ -17,7 +17,7 @@ public class TransactionVerbSeedTests
     private static readonly ISemanticAnalyzer Analyzer = EngineBuilder.BuildDefault().Analyzer;
 
     private static IReadOnlyList<string> Seeds(string description)
-        => [.. new SeedEntityExtractor().Extract(Analyzer.Analyze(description)).Entities.Select(e => e.Name)];
+        => [.. new SeedEntityExtractor().Extract(Analyzer.Analyze(description), description).Entities.Select(e => e.Name)];
 
     [Theory]
     [InlineData("a clinic that books patients with doctors", "Booking")]
@@ -109,5 +109,83 @@ public class TransactionVerbSeedTests
     public void Words_that_are_not_transaction_verbs_have_no_record(string word)
     {
         Assert.Null(TransactionVerbs.RecordFor(word));
+    }
+
+    // Without "that", the engine types the verb as a thing ("a school ENROLS students" gives the
+    // entities "a school", "enrols", "students"), and it became a class named after the verb.
+    // Measured live on the built-in-domain path: Enrol, Book, Ship and Pay all reached the review.
+    [Theory]
+    [InlineData("a school enrols students in courses", "Enrolment", "Enrol")]
+    [InlineData("a hotel books rooms for guests", "Booking", "Book")]
+    [InlineData("a shop ships parcels to customers", "Shipment", "Ship")]
+    [InlineData("a shop pays suppliers", "Payment", "Pay")]
+    public void A_bare_transaction_verb_after_the_subject_makes_its_record(string description, string record, string verb)
+    {
+        var seeds = Seeds(description);
+
+        Assert.Contains(record, seeds);
+        Assert.DoesNotContain(verb, seeds);
+    }
+
+    [Fact]
+    public void The_object_of_a_bare_verb_is_still_a_class()
+    {
+        var seeds = Seeds("a hotel books rooms for guests");
+
+        Assert.Contains("Room", seeds);
+        Assert.Contains("Guest", seeds);
+    }
+
+    // Only a word standing straight after the subject noun is read as its verb: "of books" and
+    // "with orders" are what the library and the store HAVE.
+    [Theory]
+    [InlineData("a library of books", "Book,Library")]
+    [InlineData("a library of books and dvds", "Book,Dvd,Library")]
+    [InlineData("a store with orders and payments", "Order,Payment,Store")]
+    public void A_noun_that_merely_looks_like_a_verb_stays_a_noun(string description, string expected)
+    {
+        Assert.Equal(expected.Split(','), Seeds(description).Order());
+    }
+
+    // "hire" is a rental only when what is hired is a thing: a van hire company that hires vans
+    // keeps Rentals, a company that hires staff keeps no such record.
+    [Theory]
+    [InlineData("a company that hires staff and pays salaries")]
+    [InlineData("an agency hires staff")]
+    [InlineData("a hospital that hires nurses")]
+    public void Hiring_people_is_not_a_rental(string description)
+    {
+        var seeds = Seeds(description);
+
+        Assert.DoesNotContain("Rental", seeds);
+        Assert.DoesNotContain("Hire", seeds);
+    }
+
+    [Theory]
+    [InlineData("a company that hires vans to customers")]
+    [InlineData("a shop hires bikes to tourists")]
+    public void Hiring_out_a_thing_is_still_a_rental(string description)
+    {
+        Assert.Contains("Rental", Seeds(description));
+    }
+
+    [Fact]
+    public void A_second_verb_joined_by_and_makes_its_record_too()
+    {
+        var seeds = Seeds("a company that hires staff and pays salaries");
+
+        Assert.Contains("Payment", seeds);
+        Assert.DoesNotContain("Pay", seeds);
+        Assert.Contains("Staff", seeds);
+        Assert.Contains("Salary", seeds);
+    }
+
+    // "enrolls" makes the UK-spelled record, the noun "enrollments" the US one; both were kept.
+    [Fact]
+    public void A_record_and_its_other_spelling_are_one_class()
+    {
+        var seeds = Seeds("a university that enrolls students and tracks enrollments");
+
+        Assert.Single(seeds, s => s is "Enrolment" or "Enrollment");
     }
 }

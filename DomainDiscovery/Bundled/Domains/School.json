@@ -2,11 +2,15 @@
   "name": "School",
   "self": [
     "school",
-    "college"
+    "college",
+    "university",
+    "academy"
   ],
   "terms": {
     "school": 3,
     "college": 3,
+    "university": 3,
+    "academy": 3,
     "student": 1,
     "course": 1,
     "teacher": 1,

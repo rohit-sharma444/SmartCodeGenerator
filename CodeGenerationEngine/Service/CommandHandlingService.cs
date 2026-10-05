@@ -235,6 +235,21 @@ public static class CommandHandlingService
             return false;
         }
 
+        if (ExistingClassFile(ctx) is { } existing)
+        {
+            // It used to say "Saved generated class" and write over the file, losing every property
+            // and method in it. "create class" makes a new class; changing one has its own commands.
+            var name = EntityExtractor.DeclaredName(existing, classDef.Name);
+            Output.Error($"Class '{name}' already exists: {existing}");
+            Console.WriteLine(
+                "  It was left as it is: creating it again would replace its properties and methods."
+                + Environment.NewLine
+                + $"  To change it, use add property <name> <type> to {name} or add method <name> to {name};"
+                + Environment.NewLine
+                + $"  to start it again, delete class {name} first.");
+            return false;
+        }
+
         var saved = GenerateAndSave(ctx);
 
         // After the class is on disk, and only if it got there: a note about what was left out of
@@ -273,8 +288,10 @@ public static class CommandHandlingService
 
     private static bool HandleRenameClass(CommandExecutionContext ctx)
     {
-        return ClassRenameService.RenameClass(
-            ctx.WorkspaceRoot, ctx.Command.ClassName, ctx.Command.NewClassName, out _);
+        var ok = ClassRenameService.RenameClass(
+            ctx.WorkspaceRoot, ctx.Command.ClassName, ctx.Command.NewClassName, out var message);
+        Output.Result(ok, message);
+        return ok;
     }
 
     private static bool HandleClassInherit(CommandExecutionContext ctx)
@@ -329,9 +346,11 @@ public static class CommandHandlingService
 
     private static bool HandleCreateMethod(CommandExecutionContext ctx)
     {
-        return ClassMethodService.AddMethod(
+        var ok = ClassMethodService.AddMethod(
             ctx.WorkspaceRoot, ctx.Command.ClassName,
-            ctx.Command.MethodName, ctx.Command.ReturnType, out _);
+            ctx.Command.MethodName, ctx.Command.ReturnType, out var message);
+        Output.Result(ok, message);
+        return ok;
     }
 
     private static bool HandleListMethods(CommandExecutionContext ctx)
@@ -350,6 +369,8 @@ public static class CommandHandlingService
         var ok = ClassMethodEditService.DeleteMethod(
             ctx.WorkspaceRoot, ctx.Command.ClassName, ctx.Command.MethodName, out var message);
         Console.WriteLine(message);
+        if (ok)
+            WarnOfUsers(ctx, ctx.Command.MethodName, "Method", "removed");
         return ok;
     }
 
@@ -365,7 +386,18 @@ public static class CommandHandlingService
             ctx.WorkspaceRoot, ctx.Command.ClassName,
             ctx.Command.MethodName, ctx.Command.NewMethodName, out var message);
         Console.WriteLine(message);
+        if (ok)
+            WarnOfUsers(ctx, ctx.Command.MethodName, "Method", "renamed");
         return ok;
+    }
+
+    // After a member is removed or renamed: name the code that still uses its old name, which
+    // the edit left alone and which no longer compiles.
+    private static void WarnOfUsers(
+        CommandExecutionContext ctx, string oldName, string what, string done, IReadOnlyCollection<string>? skipFiles = null)
+    {
+        if (MemberReferences.Warning(ctx.WorkspaceRoot, ctx.Command.ClassName, oldName, what, done, skipFiles) is { } warning)
+            Output.Warning(warning);
     }
 
     private static bool HandleAddValidation(CommandExecutionContext ctx)
@@ -496,6 +528,10 @@ public static class CommandHandlingService
             if (removed.Count > 0)
                 Console.WriteLine($"Also removed {removed.Count} validation rule(s) on it: "
                     + string.Join("; ", removed.Select(r => r.Describe())));
+
+            // Regenerated first, so the users-of scan does not report the stale validator.
+            var named = RefreshValidators(ctx, "was removed");
+            WarnOfUsers(ctx, ctx.Command.PropertyName, "Property", "removed", named);
         }
 
         return ok;
@@ -532,6 +568,9 @@ public static class CommandHandlingService
                 Output.Warning($"{stale} validation rule(s) still name {ctx.Command.PropertyName}. "
                     + $"Remove them (remove validation from {ctx.Command.ClassName}.{ctx.Command.PropertyName}) "
                     + $"and add them again for {ctx.Command.NewPropertyName}.");
+
+            var named = RefreshValidators(ctx, $"was renamed to {ctx.Command.NewPropertyName}");
+            WarnOfUsers(ctx, ctx.Command.PropertyName, "Property", "renamed", named);
         }
 
         return ok;
@@ -549,7 +588,43 @@ public static class CommandHandlingService
             ctx.WorkspaceRoot, ctx.Command.ClassName,
             ctx.Command.PropertyName, ctx.Command.PropertyType, out var message);
         Console.WriteLine(message);
+        if (ok)
+        {
+            var named = RefreshValidators(ctx, $"is now {ctx.Command.PropertyType}");
+
+            // A member computed from it, or code elsewhere reading it, was written for the old type
+            // (`int Total => Qty * 2` after Qty became long is CS0266). The validators just
+            // regenerated or named are not repeated.
+            WarnOfUsers(ctx, ctx.Command.PropertyName, "Property", $"changed to {ctx.Command.PropertyType}", named);
+        }
+
         return ok;
+    }
+
+    // After a property is removed, renamed or retyped: a validator generated earlier still reads it
+    // as it was. generate validator's file is rebuilt from the current rules and properties; a
+    // built app's .Generated.cs cannot be (see StaleValidators), so it is named.
+    // Returns the validator files it dealt with, so the users-of warning does not name them again.
+    private static List<string> RefreshValidators(CommandExecutionContext ctx, string change)
+    {
+        var handled = new List<string>();
+
+        var regenerated = StaleValidators.Regenerate(ctx.WorkspaceRoot, ctx.Command.ClassName);
+        if (regenerated != null)
+        {
+            Console.WriteLine($"Validator regenerated: {regenerated}");
+            handled.Add(regenerated);
+        }
+
+        if (StaleValidators.AppValidatorWarning(
+                ctx.WorkspaceRoot, ctx.Command.ClassName, ctx.Command.PropertyName, change) is { } warning)
+        {
+            Output.Warning(warning);
+            handled.AddRange(StaleValidators.AppValidatorsReading(ctx.WorkspaceRoot, ctx.Command.ClassName, ctx.Command.PropertyName)
+                .Select(f => Path.Combine(ctx.WorkspaceRoot, f)));
+        }
+
+        return handled;
     }
 
     private static bool HandleShowValidation(CommandExecutionContext ctx) =>
@@ -692,11 +767,33 @@ public static class CommandHandlingService
     {
         LearnedIntentStore.Current.Reset();
         LearnedIntentStore.Save();
+        PhraseCandidates.Clear();
         Console.WriteLine("Learned command memory cleared.");
         return true;
     }
 
     // ----- Shared helpers -------------------------------------------------
+
+    /// <summary>
+    /// The file already holding the class <c>create class</c> would write, or null. Looked for where
+    /// the class would be saved — the file itself, matched without case because writing
+    /// <c>employee.cs</c> on Windows replaces <c>Employee.cs</c>, and anywhere else in that folder
+    /// (a built app keeps its classes in <c>Models</c>), skipping build output and DeletedClasses.
+    /// </summary>
+    private static string? ExistingClassFile(CommandExecutionContext ctx)
+    {
+        var className = ctx.Command.ClassName;
+        if (string.IsNullOrWhiteSpace(className))
+            return null;
+
+        var directory = ProjectLocator.Resolve(ctx.Command, ctx.CurrentProject, ctx.WorkspaceRoot).Directory;
+
+        var sameFolder = Directory.EnumerateFiles(directory, "*.cs", SearchOption.TopDirectoryOnly)
+            .FirstOrDefault(f => Path.GetFileNameWithoutExtension(f)
+                .Equals(className, StringComparison.OrdinalIgnoreCase));
+
+        return sameFolder ?? ClassFiles.FileOf(directory, className);
+    }
 
     /// <summary>
     /// Generates code for the current command, runs semantic/compile checks,

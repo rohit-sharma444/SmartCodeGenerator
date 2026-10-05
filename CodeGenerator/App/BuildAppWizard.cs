@@ -56,13 +56,18 @@ internal static class BuildAppWizard
     /// <paramref name="chooseApplicationType"/> is a delegate: a list needs raw key input, which a
     /// test cannot supply. Null leaves both steps on their typed prompts.
     /// </param>
+    /// <param name="workspaceRoot">
+    /// What a relative data file typed at the interview is read against. Null keeps the current
+    /// directory.
+    /// </param>
     public static WizardOutcome Run(
         InlineBuildRequest request,
         TextReader reader,
         TextWriter writer,
         Func<int?> chooseApplicationType,
         AppCustomization? start = null,
-        Func<string, IReadOnlyList<string>, int, int?>? choose = null)
+        Func<string, IReadOnlyList<string>, int, int?>? choose = null,
+        string? workspaceRoot = null)
     {
         var description = request.Description;
 
@@ -91,7 +96,7 @@ internal static class BuildAppWizard
 
         if (source is null)
         {
-            var outcome = DataSourceInterview.Resolve(reader, writer, choose);
+            var outcome = DataSourceInterview.Resolve(reader, writer, choose, workspaceRoot);
 
             if (outcome.Decision == InterviewDecision.Cancelled)
                 return Cancelled;

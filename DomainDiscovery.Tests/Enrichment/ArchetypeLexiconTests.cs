@@ -207,4 +207,31 @@ public class ArchetypeLexiconTests
         // no opinion attached to it, and the candidate is offered to the user, not kept.
         Assert.Equal(ShapeVerdict.Unknown, ArchetypeLexicon.Resolve("quibblewhomp").Verdict);
     }
+
+    [Theory]
+    [InlineData("System")]
+    [InlineData("Apps")]
+    [InlineData("Management")]
+    [InlineData("Administration")]   // the verdict Resolve already gives, by name
+    public void IsAbstractName_AWordForTheSoftwareOrAnAbstraction_IsTrue(string name)
+    {
+        Assert.True(ArchetypeLexicon.IsAbstractName(name));
+    }
+
+    [Theory]
+    [InlineData("Book")]
+    [InlineData("Tool")]
+    [InlineData("Equipment")]
+    public void IsAbstractName_AThingAnAppKeeps_IsFalse(string name)
+    {
+        Assert.False(ArchetypeLexicon.IsAbstractName(name));
+    }
+
+    [Fact]
+    public void Resolve_ASoftwareWordAsADefinitionsHead_StaysUnknown()
+    {
+        // "an integrated library system is an enterprise resource planning system" is a topic,
+        // and the topic recognizer refuses an Abstract head: the software words are for names.
+        Assert.Equal(ShapeVerdict.Unknown, ArchetypeLexicon.Resolve("system").Verdict);
+    }
 }

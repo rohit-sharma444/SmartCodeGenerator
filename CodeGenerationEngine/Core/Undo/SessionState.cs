@@ -48,7 +48,7 @@ public sealed class SessionState : ISessionState
         var now = ValidationRegistry.Snapshot();
         return ClassesThatDiffer(_rules, other._rules)
             .FirstOrDefault(name => !SameRules(Only(now, name), Only(other._rules, name))) is { } changed
-            ? "the validation rules on " + changed
+            ? "a validation rule on " + changed   // the journal follows it with "has changed"
             : null;
     }
 

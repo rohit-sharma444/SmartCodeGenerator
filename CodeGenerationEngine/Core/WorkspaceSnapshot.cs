@@ -34,7 +34,12 @@ public sealed class WorkspaceSnapshot : IDisposable
     private readonly string _workspaceRoot;
     private readonly ProjectMetaData? _currentProject;
     private readonly ParsingStateSnapshot _parsingState;
+    private HashSet<string> _directories = new(StringComparer.OrdinalIgnoreCase);
     private bool _restoreFailed;
+
+    // Build output a command can leave in a folder it created. Never .git or node_modules: those
+    // are someone's work, not something a build regenerates.
+    private static readonly string[] BuildOutput = ["bin", "obj", "TestResults"];
 
     /// <summary>The temp directory holding the captured copy.</summary>
     public string SnapshotPath { get; }
@@ -100,7 +105,10 @@ public sealed class WorkspaceSnapshot : IDisposable
                 workspaceRoot,
                 snapshotPath,
                 ProjectManager.CurrentProject,
-                ParsingStateSnapshot.Capture());
+                ParsingStateSnapshot.Capture())
+            {
+                _directories = IncludedDirectories(workspaceRoot),
+            };
         }
         catch
         {
@@ -139,7 +147,17 @@ public sealed class WorkspaceSnapshot : IDisposable
                 File.Copy(source, destination, overwrite: true);
             }
 
-            // 4. Directories the batch created are now empty.
+            // 4. Directories the batch created are now empty — but for the build output a build
+            // inside one left there, which would otherwise keep the folder, and the undo history
+            // would then offer an entry that only removes it.
+            foreach (var created in IncludedDirectories(_workspaceRoot).Except(_directories, StringComparer.OrdinalIgnoreCase))
+                foreach (var name in BuildOutput)
+                {
+                    var output = Path.Combine(_workspaceRoot, created, name);
+                    if (Directory.Exists(output))
+                        Directory.Delete(output, recursive: true);
+                }
+
             RemoveEmptyDirectories(_workspaceRoot, isRoot: true);
 
             // 5. Registry file, then reload it into memory.
@@ -151,7 +169,8 @@ public sealed class WorkspaceSnapshot : IDisposable
             else if (File.Exists(registry))
                 File.Delete(registry);
 
-            ProjectManager.LoadProject();
+            // As startup lists them: this workspace's only, and the ones on disk too.
+            ProjectManager.ReloadWithin(_workspaceRoot);
 
             // 6 & 7. In-memory state a handler may have set.
             ProjectManager.CurrentProject = _currentProject;
@@ -214,6 +233,24 @@ public sealed class WorkspaceSnapshot : IDisposable
                     yield return file;
             }
         }
+    }
+
+    // Every directory under the root, relative, outside the excluded folders.
+    private static HashSet<string> IncludedDirectories(string root)
+    {
+        var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var pending = new Stack<string>([root]);
+
+        while (pending.Count > 0)
+            foreach (var directory in Directory.EnumerateDirectories(pending.Pop()))
+            {
+                if (ExcludedDirectories.Contains(Path.GetFileName(directory), StringComparer.OrdinalIgnoreCase))
+                    continue;
+                result.Add(Path.GetRelativePath(root, directory));
+                pending.Push(directory);
+            }
+
+        return result;
     }
 
     private static void RemoveEmptyDirectories(string directory, bool isRoot)

@@ -220,6 +220,11 @@ internal class CodeGeneratorStarter
         var journal = ScriptBuildApp.IsStep
             ? UndoJournal.Disabled(_workspace.Root)
             : UndoJournal.ForSession(_workspace.Root, Output.Warning);
+
+        // The copies of sessions that were killed before they could delete their own. On a
+        // worker: a stale copy can be up to 200 MB, and the prompt need not wait for it.
+        if (!ScriptBuildApp.IsStep)
+            _ = Task.Run(() => UndoJournal.RemoveStale());
         var recorder = new SessionRecorder(journal);
 
         while (true)
@@ -230,8 +235,10 @@ internal class CodeGeneratorStarter
 
             Console.Write("CodeGenerator >> ");
 
+            // A script's build step writes no history: its piped lines and its closing exit are
+            // not what the user typed, and appending them changed a file the parent's undo watches.
             var editor = new CommandLineEditor(
-                _commandHistory, _workspace.HistoryPath);
+                _commandHistory, ScriptBuildApp.IsStep ? null : _workspace.HistoryPath);
 
 
             var input = editor.ReadCommand();
@@ -794,9 +801,13 @@ internal class CodeGeneratorStarter
         // emit — a stray blank line above the banner on every first run.
         if (load.ProjectCount > 0)
         {
-            Console.WriteLine(
-                $"Found {load.ProjectCount} project(s), "
-                + $"{ProjectManager.CurrentProject?.ProjectName} selected.");
+            // Names the selection, or claims none: a blank name here once printed
+            // "Found 1 project(s),  selected." when nothing had been selected at all.
+            var current = ProjectManager.CurrentProject?.ProjectName;
+
+            Console.WriteLine(string.IsNullOrWhiteSpace(current)
+                ? $"Found {load.ProjectCount} project(s), none selected."
+                : $"Found {load.ProjectCount} project(s), {current} selected.");
         }
     }
 

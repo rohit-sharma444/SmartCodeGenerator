@@ -112,6 +112,86 @@ public sealed class MethodEditCommandTests
     }
 
     [TestMethod]
+    public void Delete_keeps_an_endregion_above_the_method()
+    {
+        // The directive sits in the method's leading trivia; removing that trivia with it
+        // left the #region unclosed (CS1038).
+        var file = WriteBook(
+            "namespace Shop\r\n{\r\n    public class Book\r\n    {\r\n"
+            + "        #region Data\r\n"
+            + "        public int Alpha { get; set; }\r\n"
+            + "        #endregion\r\n"
+            + "        public void Run() { }\r\n"
+            + "    }\r\n}\r\n");
+
+        Assert.IsTrue(Run("remove method Run from Book"));
+
+        var code = File.ReadAllText(file);
+        Assert.AreEqual(0, Count(code, "Run"), code);
+        StringAssert.Contains(code, "        public int Alpha { get; set; }\r\n        #endregion\r\n    }\r\n", code);
+        AssertCompiles(code);
+    }
+
+    [TestMethod]
+    public void Delete_keeps_a_section_comment_but_takes_the_methods_own_doc_comment()
+    {
+        var file = WriteBook(
+            "namespace Shop\r\n{\r\n    public class Book\r\n    {\r\n"
+            + "        public int Alpha { get; set; }\r\n"
+            + "\r\n"
+            + "        // ---- persistence ----\r\n"
+            + "\r\n"
+            + "        /// <summary>Writes the book.</summary>\r\n"
+            + "        public void Save() { }\r\n"
+            + "\r\n"
+            + "        public void Load() { }\r\n"
+            + "    }\r\n}\r\n");
+
+        Assert.IsTrue(Run("remove method Save from Book"));
+
+        var code = File.ReadAllText(file);
+        Assert.DoesNotContain("Writes the book", code, code);
+        StringAssert.Contains(code,
+            "        public int Alpha { get; set; }\r\n\r\n        // ---- persistence ----\r\n\r\n        public void Load() { }\r\n",
+            code);
+        AssertCompiles(code);
+    }
+
+    private string RunAndCapture(string input)
+    {
+        var original = Console.Out;
+        using var writer = new StringWriter();
+        Console.SetOut(writer);
+        try { Run(input); }
+        finally { Console.SetOut(original); }
+        return writer.ToString();
+    }
+
+    [TestMethod]
+    public void Delete_names_the_methods_that_still_call_it()
+    {
+        // It succeeded silently, leaving Use() calling a method that no longer exists.
+        WriteBook("namespace Shop { public class Book { public void Save() { } public void Use() { Save(); } } }");
+        File.WriteAllText(Path.Combine(_workspace, "Shelf.cs"),
+            "namespace Shop { public class Shelf { public void Put(Book b) { b.Save(); } } }");
+
+        var output = RunAndCapture("remove method Save from Book");
+
+        StringAssert.Contains(output, "Book.Use()", output);
+        StringAssert.Contains(output, "Shelf.Put()", output);
+    }
+
+    [TestMethod]
+    public void Delete_warns_of_nothing_when_nothing_calls_it()
+    {
+        WriteBook("namespace Shop { public class Book { public void Save() { } public void Use() { } } }");
+
+        var output = RunAndCapture("remove method Save from Book");
+
+        Assert.DoesNotContain("may still use", output, output);
+    }
+
+    [TestMethod]
     public void Delete_reports_failure_when_the_method_is_missing()
     {
         WriteBook("namespace Shop { public class Book { public void Load() { } } }");
@@ -158,6 +238,35 @@ public sealed class MethodEditCommandTests
         var before = File.ReadAllText(file);
 
         Assert.IsFalse(Run("rename method Save to Store in Book"));
+
+        Assert.AreEqual(before, File.ReadAllText(file));
+    }
+
+    [TestMethod]
+    [DataRow("Pages")]
+    [DataRow("Book")]
+    public void Rename_refuses_a_name_taken_by_another_member_or_the_class(string newName)
+    {
+        // Only methods were checked: renaming to a property's name wrote CS0102, and to the
+        // class's own name CS0542.
+        var file = WriteBook(
+            "namespace Shop { public class Book { public int Pages { get; set; } public int Count() { return 1; } } }");
+        var before = File.ReadAllText(file);
+
+        Assert.IsFalse(Run($"rename method Count to {newName} in Book"));
+
+        Assert.AreEqual(before, File.ReadAllText(file));
+    }
+
+    [TestMethod]
+    [DataRow("9x")]
+    [DataRow("class")]
+    public void Rename_refuses_a_name_that_is_not_an_identifier(string newName)
+    {
+        var file = WriteBook("namespace Shop { public class Book { public void Other() { } } }");
+        var before = File.ReadAllText(file);
+
+        Assert.IsFalse(Run($"rename method Other to {newName} in Book"));
 
         Assert.AreEqual(before, File.ReadAllText(file));
     }

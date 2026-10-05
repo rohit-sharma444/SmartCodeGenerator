@@ -61,6 +61,38 @@ public class DomainModelMapperTests
     }
 
     [TestMethod]
+    public void An_entity_named_after_a_global_namespace_still_compiles()
+    {
+        // "a library management system" on the built-in-domain path kept a class called System,
+        // and the generated app failed: SystemRepository declares `Repository<System>` inside
+        // <App>.Data, where the simple name System finds the global NAMESPACE before any using
+        // directive is consulted -- CS0118. Compiled, not substring-checked: the defect is a
+        // name-lookup rule, and only the compiler applies it.
+        var classes = DomainModelMapper.ToClassDefinitions(ModelOf("System", "Microsoft", "Book"));
+
+        var sources = new List<(string Path, string Code)>
+        {
+            ("GlobalUsings.cs", "global using System;\nglobal using System.Collections.Generic;"),
+            ("Data/Repository.cs", "namespace Acme.Data;\npublic class Repository<T> { }"),
+        };
+        foreach (var definition in classes)
+        {
+            sources.Add(("Models/" + definition.Name + ".cs",
+                CodeGenerationEngine.Core.RoslynClassGenerator.Generate(definition, "Acme.Models")));
+            sources.Add(("Data/" + definition.Name + "Repository.cs",
+                RepositoryTemplate.Typed("Acme", definition.Name)));
+        }
+
+        var errors = CodeGenerationEngine.Core.Compiler.CompileSources(sources).Diagnostics
+            .Where(d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error)
+            .Select(d => d.ToString())
+            .ToList();
+
+        Assert.IsEmpty(errors, string.Join("\n", errors));
+        CollectionAssert.Contains(classes.Select(c => c.Name).ToList(), "Book");
+    }
+
+    [TestMethod]
     public void ToClassDefinitions_RenamesAnyEntityWhoseNameEndsInValidator()
     {
         // The generated validators live in <App>.Validation and are named <Model>Validator, so an

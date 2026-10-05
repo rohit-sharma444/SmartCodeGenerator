@@ -66,6 +66,44 @@ public sealed class PhraseCandidateTests
         Assert.IsEmpty(PhraseCandidates.All);
     }
 
+    /// <summary>"the" is not a word in common: giving up on HAL and listing the classes says nothing
+    /// about what "open the pod bay doors" means.</summary>
+    [TestMethod]
+    public void Sharing_only_a_little_word_is_not_a_retry()
+    {
+        Miss("open the pod bay doors please HAL");
+        Fix("list the classes", IntentType.ListClasses);
+
+        Assert.IsEmpty(PhraseCandidates.All);
+    }
+
+    /// <summary>Sharing only the arguments is not a retry either: "make Age on Invoice at least 18"
+    /// asked for a validation rule, and adding the property it names is a different command.</summary>
+    [TestMethod]
+    public void Sharing_only_the_arguments_is_not_a_retry()
+    {
+        Miss("make Age on Invoice at least 18");
+        LearningCoordinator.RecordOutcome("add property Age int to Invoice", IntentType.CreateProperty, success: true,
+            new ParsedCommand { Intent = IntentType.CreateProperty, OriginalSentence = "add property Age int to Invoice",
+                ClassName = "Invoice", PropertyName = "Age" });
+
+        Assert.IsEmpty(PhraseCandidates.All);
+    }
+
+    /// <summary>A line typed over several lines (Shift+Enter on the chat page) must stay one comment
+    /// in the review file, or its second line would read as a phrase to learn.</summary>
+    [TestMethod]
+    public void A_multi_line_miss_stays_inside_its_comment_in_the_review_file()
+    {
+        Miss("make me a new class\nInvoice\tplease");
+        Fix("create class Invoice", IntentType.CreateClass, className: "Invoice");
+
+        var parsed = CodeIntelligence.Corpus.LearnedPhrases.Parse(PhraseCandidates.ReviewTsv());
+
+        Assert.IsEmpty(parsed.Problems, string.Join("\n", parsed.Problems));
+        Assert.HasCount(1, parsed.Documents);
+    }
+
     [TestMethod]
     public void A_command_after_the_window_is_not_a_retry()
     {
@@ -154,6 +192,38 @@ public sealed class PhraseCandidateTests
 
             Assert.IsTrue(File.Exists(Path.Combine(workspace, ".codegen", PhraseCandidates.FileName)));
             Assert.AreEqual("make me a new class", PhraseCandidates.All.Single().Phrase);
+        }
+        finally
+        {
+            LearnedIntentStore.UseInMemory();
+            Directory.Delete(workspace, recursive: true);
+        }
+    }
+
+    /// <summary>The candidate log keeps lines the user typed; "forget learning" must forget them too.</summary>
+    [TestMethod]
+    public void Reset_learning_forgets_the_candidates_and_their_files()
+    {
+        var workspace = Path.Combine(Path.GetTempPath(), "cand_" + Path.GetRandomFileName());
+        Directory.CreateDirectory(workspace);
+
+        try
+        {
+            LearnedIntentStore.Initialize(workspace);
+            LearningCoordinator.ResetHistory();
+            LearningCoordinator.Clock = () => _now;
+
+            Miss("make me a new class Invoice");
+            Fix("create class Invoice", IntentType.CreateClass, className: "Invoice");
+            Assert.IsNotNull(PhraseCandidates.WriteReviewFile());
+
+            ProjectMetaData? project = null;
+            NaturalLanguageBridge.CommandFront.Run("reset learning", ref project, [], workspace, _ => { });
+
+            var folder = Path.Combine(workspace, ".codegen");
+            Assert.IsEmpty(PhraseCandidates.All);
+            Assert.IsFalse(File.Exists(Path.Combine(folder, PhraseCandidates.FileName)));
+            Assert.IsFalse(File.Exists(Path.Combine(folder, PhraseCandidates.ReviewFileName)));
         }
         finally
         {

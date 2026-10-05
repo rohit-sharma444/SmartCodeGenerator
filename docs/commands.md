@@ -8,9 +8,9 @@
 | Command | Description | Example |
 | --- | --- | --- |
 | `ai disable` | Turns AI recognition off. Command recognition returns to the rule-based path exactly as it behaves with AI absent. | `ai disable` |
-| `ai enable` | Turns AI recognition on in ai.json. Off by default. Restart the CLI afterwards to load the model, then run 'ai reindex'. | `ai enable` |
+| `ai enable` | Turns AI recognition back on in ai.json. On by default. Restart the CLI afterwards to load the model; it rebuilds its own index. | `ai enable` |
 | `ai mode <retrieval\|generative\|hybrid>` | Sets how AI reads unrecognized input. Only retrieval works today; generative and hybrid are declined until a later phase. | `ai mode retrieval` |
-| `ai reindex` | Rebuilds the phrase index from the current commands. Run it after enabling AI, or whenever 'ai status' reports REINDEX REQUIRED. | `ai reindex` |
+| `ai reindex` | Rebuilds the phrase index from the current commands. The CLI does this itself at startup; run it only when 'ai status' reports REINDEX REQUIRED. | `ai reindex` |
 | `ai status` | Reports whether AI command recognition is on, the model and index in use, both confidence gates, and how many decisions have been logged. Plain 'ai' does the same. | `ai status` |
 | `ai why` | Explains the last AI reading: what you typed, how it was read, the supporting examples, and whether you accepted it. | `ai why` |
 
@@ -56,13 +56,13 @@
 | Command | Description | Example |
 | --- | --- | --- |
 | `<class name> inherits <base class name>` | Adds a base class to a class, keeping any existing interfaces. Aliases: extends, derives from. | `Order inherits AuditableBase` |
-| `create class` | Creates a new class. | `create employee class` |
-| `create class <class name> with properties` | Creates a new class with the specified properties. | `create employee class emdcode:int, Name:string` |
+| `create class` | Creates a new class. | `create class Employee` |
+| `create class <class name> with properties` | Creates a new class with the specified properties. | `create class Employee with properties EmpCode int, Name string` |
 | `delete class` | Moves a class to DeletedClasses. | `delete class Employee` |
 | `list classes` | Lists all classes in the current project. | `list classes` |
-| `list classes in <project name>` | Lists all classes in a project. | `list classes in <EmployeeManagement>` |
+| `list classes in <project name>` | Lists all classes in a project. | `list classes in EmployeeManagement` |
 | `list deleted classes` | Lists all deleted classes. | `list deleted classes` |
-| `rename class` | Rename a class. | `rename class Employee to <newclass>` |
+| `rename class` | Rename a class. | `rename class Employee to Staff` |
 | `restore class` | Restores a deleted class. | `restore class Employee` |
 | `show class` | Displays the class source code. | `show class Employee` |
 | `show relationships` | Draws the classes in the workspace and what each one is related to, as boxes and arrows on a page in the browser. A relationship is a pair - an int <Target>Id and a property typed as that class - so a class carrying only one half of it is drawn apart, which is what the tool offers to finish. Classes related to nothing are shown too rather than hidden. Aliases: show relationship, list relationships, relationships. A piped run gets the same answer as lines. | `show relationships` |
@@ -85,8 +85,8 @@
 
 | Command | Description | Example |
 | --- | --- | --- |
-| `reset learning` | Clears the learned command memory. Aliases: clear learning, forget learning. | `reset learning` |
-| `show learning` | Lists learned command signatures and their confidence. Aliases: list learning, view learning. | `show learning` |
+| `reset learning` | Clears the learned command memory and the phrasings kept for review. Aliases: clear learning, forget learning. | `reset learning` |
+| `show learning` | Lists learned command signatures and their confidence, then the phrasings to review: each line that was not understood, paired with the next command that worked. Writes that list to .codegen/phrase-candidates.tsv. Aliases: list learning, view learning. | `show learning` |
 
 ## Methods
 
@@ -128,8 +128,8 @@
 
 | Command | Description | Example |
 | --- | --- | --- |
-| `delete class <class name>` | Moves a class to DeletedClasses. | `delete class <Employee>` |
-| `restore class <class name>` | Restores a deleted class. | `restore class <Employee>` |
+| `delete class <class name>` | Moves a class to DeletedClasses. | `delete class Employee` |
+| `restore class <class name>` | Restores a deleted class. | `restore class Employee` |
 | `restore last class` | Restores a deleted class. | `restore last class` |
 | `show deleted classes` | Displays all deleted classes. | `show deleted classes` |
 

@@ -29,6 +29,19 @@ public class ClassNameExtractionTests
         Assert.AreEqual(expected, ClassNameOf(sentence));
 
     [TestMethod]
+    // The keyword synonyms (manager -> service, model/entity -> class, field -> property)
+    // used to rewrite a NAME too: "create class Manager" wrote Service.cs, and Model, Entity
+    // and Field could not be created at all.
+    [DataRow("create class Manager", "Manager")]
+    [DataRow("create class Manager with properties Name string", "Manager")]
+    [DataRow("create class Model with properties Name string", "Model")]
+    [DataRow("create class Entity with properties Name string", "Entity")]
+    [DataRow("create class Field with properties Name string", "Field")]
+    [DataRow("create class Attribute", "Attribute")]
+    public void A_name_that_is_also_a_keyword_synonym_is_kept(string sentence, string expected) =>
+        Assert.AreEqual(expected, ClassNameOf(sentence));
+
+    [TestMethod]
     // A genuine article is still dropped.
     //
     // Only "create", "generate" and "i need" appear here: ExtractClassName also

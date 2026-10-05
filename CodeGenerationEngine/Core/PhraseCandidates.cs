@@ -61,6 +61,29 @@ public static class PhraseCandidates
         }
     }
 
+    /// <summary>Forgets every candidate and deletes the log and the review file: they hold lines the
+    /// user typed, so "reset learning" must not leave them behind.</summary>
+    public static void Clear()
+    {
+        lock (Gate)
+        {
+            _all = [];
+
+            if (_filePath is null)
+                return;
+
+            try
+            {
+                File.Delete(_filePath);
+                File.Delete(Path.Combine(Path.GetDirectoryName(_filePath)!, ReviewFileName));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // The in-memory list is already empty; a file left behind is retried next reset.
+            }
+        }
+    }
+
     /// <summary>One line to review: a phrasing, what it was taken to mean, how many retries said
     /// so, and one of them in full so the reviewer can see what was actually typed.</summary>
     public sealed record ReviewLine(string Phrase, IntentType Intent, int Count, string Example);
@@ -72,7 +95,7 @@ public static class PhraseCandidates
         => All
             .GroupBy(c => (Phrase: c.Phrase.ToLowerInvariant(), c.Intent))
             .Select(g => new ReviewLine(g.First().Phrase, g.Key.Intent, g.Count(),
-                $"{g.Last().Miss}  ->  {g.Last().FixedBy}"))
+                $"{OneLine(g.Last().Miss)}  ->  {OneLine(g.Last().FixedBy)}"))
             .OrderByDescending(r => r.Count)
             .ThenBy(r => r.Phrase, StringComparer.Ordinal)
             .ToList();
@@ -137,15 +160,28 @@ public static class PhraseCandidates
     }
 
     /// <summary>Whether <paramref name="fix"/> reads as another go at <paramref name="miss"/>: the
-    /// two share at least one word. Looser than LearningCoordinator's 60%-overlap rephrase test on
-    /// purpose - "make me a new class Invoice" and "create class Invoice" share only a third of
-    /// their words, and are exactly the pair this exists to catch. A person reviews every one.</summary>
-    public static bool IsRetry(string miss, string fix)
+    /// two share at least one word that is neither a little word nor one of
+    /// <paramref name="command"/>'s arguments. Looser than LearningCoordinator's 60%-overlap
+    /// rephrase test on purpose - "make me a new class Invoice" and "create class Invoice" share
+    /// only "class", and are exactly the pair this exists to catch. A person reviews every one.</summary>
+    public static bool IsRetry(string miss, string fix, ParsedCommand? command = null)
     {
+        var arguments = command is null ? [] : ArgumentWords(command);
         var missWords = Words(miss).ToHashSet(StringComparer.OrdinalIgnoreCase);
         return !string.Equals(miss.Trim(), fix.Trim(), StringComparison.OrdinalIgnoreCase)
-               && Words(fix).Any(missWords.Contains);
+               && Words(fix).Any(w => missWords.Contains(w) && !LittleWords.Contains(w) && !arguments.Contains(w));
     }
+
+    // Shared by almost any two sentences, so sharing one says nothing.
+    private static readonly HashSet<string> LittleWords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "a", "an", "the", "to", "in", "on", "of", "for", "with", "from", "at", "by", "and", "or",
+        "is", "it", "me", "my", "i", "please", "this", "that", "all"
+    };
+
+    // A line typed over several lines, or with tabs, kept to one line of the review file.
+    private static string OneLine(string text)
+        => string.Join(' ', (text ?? string.Empty).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
 
     private static IEnumerable<string> Words(string text)
         => (text ?? string.Empty)

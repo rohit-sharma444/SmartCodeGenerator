@@ -7,9 +7,15 @@ internal static class ScriptNotes
 {
     /// <summary>A build chosen on the build page: its typed line says too little to replay it.
     /// Masked the way the history file masks it — a saved script is shared more than history.</summary>
+    /// <remarks>
+    /// A build driven by piped answers is saved the same way: which of the piped lines were its
+    /// answers cannot be told apart reliably. So the note says exactly what turns it into a block
+    /// a script runs — the '#' and the remark both have to go.
+    /// </remarks>
     public static string InteractiveBuildApp(string input) =>
         "# " + ConnectionSecret.RedactLine(input.Trim())
-        + " (built interactively; add its answers below to replay it)";
+        + " (not replayed: to replay it, delete the '#' and this remark, "
+        + "then put its answers on the lines below, ending with approve or cancel)";
 
     public const string Demo = "# demo (a guided walkthrough; type demo to run it again)";
 

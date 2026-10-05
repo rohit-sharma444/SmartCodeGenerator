@@ -45,6 +45,10 @@ public sealed class UndoJournal : IDisposable
     // Never rolled back: undoing a class edit must not erase what the tool has learned.
     private static readonly string[] AlsoExcluded = [".codegen", ".dd-cache"];
 
+    // Nor is what was typed: every command appends to it, a script's build step included, and so
+    // does typing undo itself — so journalling it would make every such undo refuse.
+    private static readonly string[] ExcludedFiles = [".codegen_history"];
+
     private readonly Action<string>? _notify;
     private readonly string? _registryPath;
     private readonly Func<ISessionState>? _captureState;
@@ -225,6 +229,62 @@ public sealed class UndoJournal : IDisposable
         return new UndoResult(true, "Redid: " + entry.Label + Describe(entry, entry.After));
     }
 
+    private const string ShadowPrefix = "codegen_undo_";
+
+    /// <summary>
+    /// Deletes the shadow copies whose session was killed before it could delete its own: those
+    /// named after a process that is no longer running. A copy named after a running process —
+    /// or with no process in its name, from an older version — is never touched.
+    /// </summary>
+    /// <returns>How many copies were deleted.</returns>
+    public static int RemoveStale(string? parent = null, Func<int, bool>? isRunning = null)
+    {
+        isRunning ??= IsRunning;
+        var removed = 0;
+
+        try
+        {
+            foreach (var folder in Directory.EnumerateDirectories(parent ?? Path.GetTempPath(), ShadowPrefix + "*"))
+            {
+                var rest = Path.GetFileName(folder)[ShadowPrefix.Length..];
+                var underscore = rest.IndexOf('_');
+                if (underscore <= 0 || !int.TryParse(rest[..underscore], out var pid))
+                    continue;
+                if (pid == Environment.ProcessId || isRunning(pid))
+                    continue;
+
+                TryDeleteTree(folder);
+                if (!Directory.Exists(folder))
+                    removed++;
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Housekeeping: a folder that cannot be listed is left for next time.
+        }
+
+        return removed;
+    }
+
+    // A process this one may not inspect (another user's) counts as running: never guess a copy
+    // is unowned.
+    private static bool IsRunning(int pid)
+    {
+        try
+        {
+            using var process = System.Diagnostics.Process.GetProcessById(pid);
+            return !process.HasExited;
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+        catch (Exception)
+        {
+            return true;
+        }
+    }
+
     public void Dispose()
     {
         if (_disposed)
@@ -264,6 +324,10 @@ public sealed class UndoJournal : IDisposable
                 .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
+            // A file written again with the same bytes (a csproj saved unchanged) has a new stamp
+            // but nothing to undo; counting it would only inflate the entry and its message.
+            changed.RemoveAll(p => SameBytes(Path.Combine(_shadow!, "files", p), Path.Combine(WorkspaceRoot, p)));
+
             var createdRoots = Roots(Directories().Except(open.Directories, StringComparer.OrdinalIgnoreCase));
 
             var stateAfter = _captureState?.Invoke();
@@ -273,7 +337,12 @@ public sealed class UndoJournal : IDisposable
             var registryChanged = !Same(open.Registry, registryAfter);
 
             if (changed.Count == 0 && createdRoots.Count == 0 && !stateChanged && !registryChanged)
+            {
+                // What differs is only stamps over the same bytes; knowing them keeps the next
+                // command from being credited with them.
+                _known = now;
                 return;
+            }
 
             var folder = Path.Combine(_shadow!, "entries", (++_entryCount).ToString());
             var before = Path.Combine(folder, "before");
@@ -331,7 +400,7 @@ public sealed class UndoJournal : IDisposable
     // let an undo delete that file instead of restoring it.
     private bool Start()
     {
-        var files = WorkspaceSnapshot.IncludedFiles(WorkspaceRoot, AlsoExcluded).ToList();
+        var files = Files(WorkspaceRoot).ToList();
         var bytes = files.Sum(f => new FileInfo(f).Length);
 
         if (files.Count > _maxFiles || bytes > _maxBytes)
@@ -342,7 +411,9 @@ public sealed class UndoJournal : IDisposable
             return false;
         }
 
-        _shadow = Path.Combine(_shadowParent, "codegen_undo_" + Path.GetRandomFileName());
+        // Named after this process, so a later session can tell a copy whose owner was killed
+        // from one a running session still needs. See RemoveStale.
+        _shadow = Path.Combine(_shadowParent, $"{ShadowPrefix}{Environment.ProcessId}_{Path.GetRandomFileName()}");
         try
         {
             Directory.CreateDirectory(Path.Combine(_shadow, "files"));
@@ -391,7 +462,7 @@ public sealed class UndoJournal : IDisposable
     }
 
     private Dictionary<string, Stamp> Scan() =>
-        WorkspaceSnapshot.IncludedFiles(WorkspaceRoot, AlsoExcluded)
+        Files(WorkspaceRoot)
             .Select(f => new FileInfo(f))
             .ToDictionary(
                 f => Path.GetRelativePath(WorkspaceRoot, f.FullName),
@@ -462,7 +533,7 @@ public sealed class UndoJournal : IDisposable
             if (Directory.EnumerateDirectories(full, ".git", SearchOption.AllDirectories).FirstOrDefault() is { } git)
                 return Path.GetRelativePath(WorkspaceRoot, git);
 
-            var stranger = WorkspaceSnapshot.IncludedFiles(full, AlsoExcluded)
+            var stranger = Files(full)
                 .Select(f => Path.GetRelativePath(WorkspaceRoot, f))
                 .FirstOrDefault(f => !mine.Contains(f));
             if (stranger is not null)
@@ -510,7 +581,13 @@ public sealed class UndoJournal : IDisposable
         var version = Path.Combine(side, path);
 
         if (File.Exists(version))
+        {
             CopyIfExists(version, target);
+
+            // A copy keeps the version's own write time, older than whatever was built from the
+            // file it replaces — and an incremental build would skip compiling it.
+            File.SetLastWriteTimeUtc(target, DateTime.UtcNow);
+        }
         else if (File.Exists(target))
             File.Delete(target);
 
@@ -538,7 +615,7 @@ public sealed class UndoJournal : IDisposable
         if (restored > 0)
             parts.Add($"restored {restored} file{(restored == 1 ? "" : "s")}");
         if (removed > 0)
-            parts.Add($"removed {removed}");
+            parts.Add($"removed {removed} file{(removed == 1 ? "" : "s")}");
 
         return " — " + string.Join(", ", parts);
     }
@@ -568,10 +645,22 @@ public sealed class UndoJournal : IDisposable
         _reloadRegistry?.Invoke();
     }
 
+    private static bool SameBytes(string a, string b)
+    {
+        var first = new FileInfo(a);
+        var second = new FileInfo(b);
+        return first.Exists && second.Exists && first.Length == second.Length
+            && File.ReadAllBytes(a).AsSpan().SequenceEqual(File.ReadAllBytes(b));
+    }
+
     private static bool Same(byte[]? a, byte[]? b) =>
         a is null ? b is null : b is not null && a.AsSpan().SequenceEqual(b);
 
     // ----- small helpers ------------------------------------------------------------------------
+
+    private static IEnumerable<string> Files(string directory) =>
+        WorkspaceSnapshot.IncludedFiles(directory, AlsoExcluded)
+            .Where(f => !ExcludedFiles.Contains(Path.GetFileName(f), StringComparer.OrdinalIgnoreCase));
 
     private static void CopyIfExists(string source, string destination)
     {

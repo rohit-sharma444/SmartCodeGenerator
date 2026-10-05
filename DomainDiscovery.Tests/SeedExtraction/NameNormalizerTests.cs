@@ -130,4 +130,19 @@ public class NameNormalizerTests
         // digit by silently dropping it.
         => Assert.False(
             NameNormalizer.IsValidIdentifier(NameNormalizer.ToUserTypedEntityName("2ndthing")));
+
+    [Theory]
+    [InlineData("Enrolment", "Enrollment")]
+    [InlineData("Installment", "Instalment")]
+    [InlineData("Fulfilment", "Fulfillment")]
+    public void SpellingKey_FoldsUkAndUsSpellingsTogether(string uk, string us)
+    {
+        Assert.Equal(NameNormalizer.SpellingKey(uk), NameNormalizer.SpellingKey(us));
+    }
+
+    [Fact]
+    public void SpellingKey_KeepsDifferentWordsApart()
+    {
+        Assert.NotEqual(NameNormalizer.SpellingKey("Bill"), NameNormalizer.SpellingKey("Bil"));
+    }
 }

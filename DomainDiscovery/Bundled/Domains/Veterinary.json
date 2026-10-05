@@ -2,7 +2,11 @@
   "name": "Veterinary",
   "self": [
     "vet",
-    "practice"
+    "veterinary",
+    "practice",
+    "clinic",
+    "hospital",
+    "surgery"
   ],
   "terms": {
     "vet": 3,
@@ -10,7 +14,7 @@
     "clinic": 2,
     "hospital": 2,
     "animal": 2,
-    "pet": 1,
+    "pet": 2,
     "owner": 1,
     "vaccination": 1
   },

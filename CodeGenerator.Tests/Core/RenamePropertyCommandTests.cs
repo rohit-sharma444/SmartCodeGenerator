@@ -109,6 +109,48 @@ public sealed class RenamePropertyCommandTests
     }
 
     [TestMethod]
+    [DataRow("Code")]
+    [DataRow("Product")]
+    public void Reports_failure_when_the_new_name_is_a_method_or_the_class(string newName)
+    {
+        var file = WriteProduct(
+            "namespace Shop { public class Product { public string Sku { get; set; } = \"\"; "
+            + "public string Code() { return \"\"; } } }");
+        var before = File.ReadAllText(file);
+
+        Assert.IsFalse(Run($"rename property Sku to {newName} in Product"));
+
+        Assert.AreEqual(before, File.ReadAllText(file));
+    }
+
+    [TestMethod]
+    [DataRow("9x")]
+    [DataRow("class")]
+    public void Refuses_a_new_name_that_is_not_an_identifier(string newName)
+    {
+        var file = WriteProduct("namespace Shop { public class Product { public string Sku { get; set; } = \"\"; } }");
+        var before = File.ReadAllText(file);
+
+        Assert.IsFalse(Run($"rename property Sku to {newName} in Product"));
+
+        Assert.AreEqual(before, File.ReadAllText(file));
+    }
+
+    [TestMethod]
+    [DataRow("9x")]
+    [DataRow("class")]
+    public void Rename_class_refuses_a_new_name_that_is_not_an_identifier(string newName)
+    {
+        var file = WriteProduct("namespace Shop { public class Product { } }");
+        var before = File.ReadAllText(file);
+
+        Assert.IsFalse(Run($"rename class Product to {newName}"));
+
+        Assert.IsTrue(File.Exists(file), "the class file was moved");
+        Assert.AreEqual(before, File.ReadAllText(file));
+    }
+
+    [TestMethod]
     public void Reports_failure_when_the_class_is_missing()
     {
         Assert.IsFalse(Run("rename property Sku to Code in Ghost"));

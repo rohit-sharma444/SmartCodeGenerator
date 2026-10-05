@@ -22,17 +22,39 @@ public sealed class SeedEntityExtractor
         EntityType.Location
     };
 
-    public CandidateDomainModel Extract(SemanticResult result)
+    public CandidateDomainModel Extract(SemanticResult result) => Extract(result, description: null);
+
+    /// <summary>
+    /// As <see cref="Extract(SemanticResult)"/>, with the description the result was analysed from,
+    /// so a transaction verb the engine typed as a thing can be told from a noun by where it stands.
+    /// </summary>
+    public CandidateDomainModel Extract(SemanticResult result, string? description)
     {
         var model = new CandidateDomainModel();
 
         // Every entity is walked, not just the ones whose type qualifies: a word the engine
         // typed as something other than a thing is exactly the case a user most wants
         // explained, and filtering it out here would leave nothing to explain it with.
-        foreach (var entity in result.Entities)
+        var words = WordsOf(description);
+
+        for (var i = 0; i < result.Entities.Count; i++)
         {
-            if (RecordMadeBy(entity) is { } record)
+            var entity = result.Entities[i];
+            var previous = i > 0 ? result.Entities[i - 1] : null;
+
+            if ((RecordMadeBy(entity) ?? BareVerbRecord(entity, previous, words)) is { } record)
             {
+                var next = i + 1 < result.Entities.Count ? result.Entities[i + 1] : null;
+                var verbWord = entity.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries)[^1];
+
+                if (TransactionVerbs.MakesNoRecordForAPerson(verbWord) && IsAPerson(next))
+                {
+                    model.Record(entity.Text, DecisionStage.SeedExtraction, DecisionOutcome.Skipped,
+                        DecisionReasons.NotRecognizedAsAThing,
+                        $"to {verbWord.ToLowerInvariant()} {next!.Text} is to employ them, not a rental");
+                    continue;
+                }
+
                 AddRecord(model, record, entity);
                 continue;
             }
@@ -53,11 +75,13 @@ public sealed class SeedEntityExtractor
                 continue;
             }
 
-            if (model.Entities.Any(e => string.Equals(e.Name, name, StringComparison.OrdinalIgnoreCase)))
+            // Compared by spelling key: "enrolls" made Enrolment, and "enrollments" is the same
+            // class spelled the American way.
+            if (model.Entities.FirstOrDefault(e => SameName(e.Name, name)) is { } taken)
             {
                 model.Record(entity.Text, DecisionStage.SeedExtraction, DecisionOutcome.Skipped,
                     DecisionReasons.AlreadyNamed,
-                    $"already taken by {name}");
+                    $"already taken by {taken.Name}");
                 continue;
             }
 
@@ -101,10 +125,68 @@ public sealed class SeedEntityExtractor
         return TransactionVerbs.RecordFor(words[1]);
     }
 
+    /// <summary>
+    /// The record a transaction verb makes when the engine typed it as a thing and no relative
+    /// pronoun marks it: "a school ENROLS students", "a hotel BOOKS rooms".
+    /// </summary>
+    /// <remarks>
+    /// The entities alone cannot tell "a hotel books rooms" from "a library of books and dvds" -
+    /// both are a noun phrase, "books", another noun - so the description decides. The word must
+    /// stand straight after the noun before it, be an inflected form (books, enrolled; never the
+    /// bare "book", which is as often a noun), and be followed by its object rather than by "and"
+    /// or nothing. "of books" and "with orders" fail the first test, which is what keeps Book in
+    /// a library.
+    /// </remarks>
+    private static string? BareVerbRecord(Entity entity, Entity? previous, IReadOnlyList<string> words)
+    {
+        if (previous is null || words.Count == 0
+            || !EntityTypes.Contains(entity.Type) || !EntityTypes.Contains(previous.Type))
+            return null;
+
+        var verb = entity.Text.Trim().ToLowerInvariant();
+        if (verb.Contains(' ') || TransactionVerbs.InflectedRecordFor(verb) is not { } record)
+            return null;
+
+        var before = previous.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries).LastOrDefault()?.ToLowerInvariant();
+
+        // "hires staff AND pays salaries": a second verb joined to the first verb's object.
+        for (var j = 0; j + 2 < words.Count; j++)
+        {
+            var at = words[j + 1] == "and" && j + 3 < words.Count ? j + 2 : j + 1;
+            if (words[j] == before && words[at] == verb && at + 1 < words.Count
+                && !Conjunctions.Contains(words[at + 1]))
+                return record;
+        }
+
+        return null;
+    }
+
+    private static readonly string[] Conjunctions = ["and", "or", "nor"];
+
+    // The archetype table already knows which nouns are people (staff, nurse, driver...).
+    private static bool IsAPerson(Entity? entity)
+    {
+        if (entity is null)
+            return false;
+        if (entity.Type == EntityType.Person)
+            return true;
+
+        var last = entity.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries).LastOrDefault() ?? string.Empty;
+        return Enrichment.ArchetypeLexicon.Resolve(last).Role == Enrichment.EntityRole.Party;
+    }
+
+    private static IReadOnlyList<string> WordsOf(string? description) =>
+        System.Text.RegularExpressions.Regex.Matches(description ?? string.Empty, "[A-Za-z']+")
+            .Select(m => m.Value.ToLowerInvariant())
+            .ToList();
+
+    private static bool SameName(string a, string b)
+        => NameNormalizer.SpellingKey(a) == NameNormalizer.SpellingKey(b);
+
     private static void AddRecord(CandidateDomainModel model, string record, Entity verb)
     {
         // "a car rental company that rents vehicles" names the Rental twice, once each way.
-        if (model.Entities.Any(e => string.Equals(e.Name, record, StringComparison.OrdinalIgnoreCase)))
+        if (model.Entities.Any(e => SameName(e.Name, record)))
         {
             model.Record(verb.Text, DecisionStage.SeedExtraction, DecisionOutcome.Skipped,
                 DecisionReasons.AlreadyNamed, $"already taken by {record}");

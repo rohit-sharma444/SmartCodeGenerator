@@ -103,7 +103,7 @@ public static class LearningCoordinator
 
         if (miss is null || !success || command is null
             || (nowUtc - miss.Value.Utc).TotalSeconds > RephraseWindowSeconds
-            || !PhraseCandidates.IsRetry(miss.Value.Sentence, sentence))
+            || !PhraseCandidates.IsRetry(miss.Value.Sentence, sentence, command))
             return;
 
         var phrase = PhraseCandidates.Generalize(miss.Value.Sentence, command);

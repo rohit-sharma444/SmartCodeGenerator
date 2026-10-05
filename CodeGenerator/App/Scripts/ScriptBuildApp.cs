@@ -45,6 +45,8 @@ internal static class ScriptBuildApp
         var generated = false;
         var cancelled = false;
         var refused = false;
+        var prompts = 0;
+        string? ranAfter = null;
         var input = string.Join("\n", lines.Append("exit")) + "\n";
 
         ProcessResult result;
@@ -62,6 +64,15 @@ internal static class ScriptBuildApp
                         generated |= line.Contains(SuccessMarker, StringComparison.Ordinal);
                         cancelled |= line.Contains(CancelledMarker, StringComparison.Ordinal);
                         refused |= line.Contains(RefusedMarker, StringComparison.Ordinal);
+
+                        // The copy's own prompt, echoing the line it read. The first is the build
+                        // line and the last the closing exit; any other line read there was read
+                        // after the build had ended, and ran as a command of its own.
+                        if (line.StartsWith(CommandLineEditor.Prompt, StringComparison.Ordinal)
+                            && ++prompts > 1
+                            && line[CommandLineEditor.Prompt.Length..].Trim() is { Length: > 0 } read
+                            && !read.Equals("exit", StringComparison.OrdinalIgnoreCase))
+                            ranAfter ??= read;
                         onLine(line);
                     }
                 },
@@ -89,6 +100,14 @@ internal static class ScriptBuildApp
         }
 
         lock (gate)
+        {
+            if (ranAfter is not null)
+            {
+                onLine($"'{ranAfter}' ran after the build had ended, as a command of its own, so the build is not the one the script describes.");
+                return false;
+            }
+
             return !refused && (generated || cancelled);
+        }
     }
 }

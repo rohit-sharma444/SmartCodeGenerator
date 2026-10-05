@@ -69,6 +69,42 @@ public sealed class ScriptRunnerTests
         Assert.AreEqual("namespace S { public class Book { } }", File.ReadAllText(Path.Combine(_root, "Book.cs")));
     }
 
+    // S5: a build in the run left App/obj behind the rollback, so the folder survived it and undo
+    // offered "Undid: run t.cgs", which only removed the leftovers.
+    [TestMethod]
+    public void A_run_that_failed_and_was_put_back_leaves_nothing_to_undo()
+    {
+        var shadowParent = Path.Combine(_root, "..", "cg_run_sh_" + Guid.NewGuid().ToString("N"));
+        using var journal = new CodeGenerationEngine.Core.Undo.UndoJournal(_root, shadowParent: shadowParent);
+        try
+        {
+            ScriptOutcome outcome;
+            using (journal.Begin("run t.cgs"))
+            {
+                outcome = ScriptRunner.Run("t.cgs", ScriptFile.Parse("create class A\ncreate class B").Steps, _root,
+                    step =>
+                    {
+                        if (step.Line == 2)
+                            return false;
+                        Directory.CreateDirectory(Path.Combine(_root, "App", "obj"));
+                        File.WriteAllText(Path.Combine(_root, "App", "App.csproj"), "<Project/>");
+                        File.WriteAllText(Path.Combine(_root, "App", "obj", "project.assets.json"), "{}");
+                        return true;
+                    },
+                    _ => { }, confirmSnapshot: () => true);
+            }
+
+            Assert.IsFalse(outcome.Succeeded);
+            Assert.IsFalse(Directory.Exists(Path.Combine(_root, "App")));
+            Assert.IsFalse(journal.CanUndo, journal.NextUndoLabel);
+        }
+        finally
+        {
+            journal.Dispose();
+            try { Directory.Delete(shadowParent, recursive: true); } catch (IOException) { }
+        }
+    }
+
     [TestMethod]
     public void A_rule_added_before_the_failure_is_gone_too()   // Review Focus 5
     {

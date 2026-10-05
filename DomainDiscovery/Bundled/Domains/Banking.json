@@ -3,6 +3,9 @@
   "self": [
     "bank"
   ],
+  "words": {
+    "banking": 3
+  },
   "terms": {
     "online banking": 3,
     "mobile banking": 3,
