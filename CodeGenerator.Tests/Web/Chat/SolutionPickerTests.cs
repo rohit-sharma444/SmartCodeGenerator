@@ -41,6 +41,26 @@ public class SolutionPickerTests
     }
 
     [TestMethod]
+    // A relative path typed into the box is the workspace's folder, not one under whatever
+    // directory the console happened to be started from.
+    public void A_relative_path_is_loaded_from_the_workspace()
+    {
+        using var context = new BunitContext();
+        var session = NewSession(out var root);
+        Directory.CreateDirectory(Path.Combine(root, "Api"));
+        File.WriteAllText(Path.Combine(root, "Api", "Api.csproj"),
+            """<Project Sdk="Microsoft.NET.Sdk"></Project>""");
+
+        var picker = context.Render<SolutionPicker>(p => p.Add(c => c.Session, session));
+
+        picker.Find(".picker-path").Change("Api");
+        picker.Find(".picker-load").Click();
+
+        Assert.IsEmpty(picker.FindAll(".picker-problem"), picker.Markup);
+        Assert.AreEqual(Path.Combine(root, "Api"), session.Root);
+    }
+
+    [TestMethod]
     public void A_path_that_is_not_there_is_reported_and_the_root_is_kept()
     {
         using var context = new BunitContext();
