@@ -70,6 +70,10 @@
         {
           "name": "DateOfBirth",
           "type": "DateTime"
+        },
+        {
+          "name": "OwnerId",
+          "type": "int"
         }
       ],
       "relationships": []

@@ -281,6 +281,16 @@ public class BundledDomainSourceTests
         Assert.Equal(DecisionReasons.NamesTheSoftware, outcome.Model.Decisions.Last(d => d.Name == "Portal").Reason);
     }
 
+    // Measured live: the Veterinary domain's Pet had no link to its Owner.
+    [Fact]
+    public void APetBelongsToItsOwner()
+    {
+        var pet = BundledDomainSource.CreateDefault().Discover("a veterinary clinic").Model
+            .Entities.Single(e => e.Name == "Pet");
+
+        Assert.Contains(pet.Relationships, r => r.Target == "Owner");
+    }
+
     [Fact]
     public void ASynonymForAClassTheDomainLacksIsRefusedWhenTheFileLoads()
     {
