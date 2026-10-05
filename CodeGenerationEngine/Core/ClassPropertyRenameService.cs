@@ -23,56 +23,51 @@ public static class ClassPropertyRenameService
 
         try
         {
-            var file = Directory
-                .GetFiles(workspaceRoot, "*.cs", SearchOption.AllDirectories)
-                .FirstOrDefault(f => Path.GetFileNameWithoutExtension(f)
-                    .Equals(className, StringComparison.OrdinalIgnoreCase));
-
-            if (file == null)
-            {
-                message = $"Class '{className}' not found.";
+            if (!ClassMethodEditService.TryLoadParts(workspaceRoot, className, out var parts, out message))
                 return false;
-            }
 
-            var root = CSharpSyntaxTree.ParseText(File.ReadAllText(file)).GetRoot();
-
-            var classNode = root
-                .DescendantNodes()
-                .OfType<ClassDeclarationSyntax>()
-                .FirstOrDefault(c => c.Identifier.Text.Equals(className, StringComparison.OrdinalIgnoreCase));
-
-            if (classNode == null)
-            {
-                message = $"Class '{className}' not found in {Path.GetFileName(file)}.";
-                return false;
-            }
-
-            var properties = classNode.Members.OfType<PropertyDeclarationSyntax>().ToList();
-
-            var property = properties.FirstOrDefault(p => p.Identifier.Text.Equals(oldName, StringComparison.Ordinal));
-
-            if (property == null)
+            // Exact name first, then another case of it, in any of the class's partial files, as
+            // remove property finds it.
+            if (ClassMethodEditService.PropertyNamed(parts, oldName) is not (var part, var property))
             {
                 message = $"Property '{oldName}' not found in '{className}'.";
                 return false;
             }
 
-            if (properties.Any(p => p.Identifier.Text.Equals(newName, StringComparison.Ordinal)))
+            // As declared, for the messages: "item" found Item.
+            className = part.Node.Identifier.Text;
+
+            var name = property.Identifier.Text;
+
+            if (MemberNames.NotAnIdentifier(newName, "property") is { } bad)
+            {
+                message = bad;
+                return false;
+            }
+
+            if (parts.Any(p => p.Node.Members.OfType<PropertyDeclarationSyntax>()
+                    .Any(x => x.Identifier.Text.Equals(newName, StringComparison.Ordinal))))
             {
                 message = $"Property '{newName}' already exists in '{className}'.";
+                return false;
+            }
+
+            if (MemberNames.Taken(parts, newName, [property]) is { } taken)
+            {
+                message = taken;
                 return false;
             }
 
             var renamed = property.WithIdentifier(
                 SyntaxFactory.Identifier(newName).WithTriviaFrom(property.Identifier));
 
-            root = root.ReplaceNode(property, renamed);
+            var root = part.Root.ReplaceNode(property, renamed);
 
             // ToFullString, not NormalizeWhitespace: renaming one identifier must not
             // reformat the user's whole file.
-            File.WriteAllText(file, root.ToFullString());
+            File.WriteAllText(part.File, root.ToFullString());
 
-            message = $"Property '{oldName}' renamed to '{newName}' in '{className}'. "
+            message = $"Property '{name}' renamed to '{newName}' in '{className}'. "
                 + "References elsewhere were not updated.";
             return true;
         }

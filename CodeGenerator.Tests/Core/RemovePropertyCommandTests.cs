@@ -95,6 +95,60 @@ public sealed class RemovePropertyCommandTests
     }
 
     [TestMethod]
+    public void Keeps_an_endregion_above_the_property()
+    {
+        var file = WriteBook(
+            "namespace Shop\r\n{\r\n    public class Book\r\n    {\r\n"
+            + "        #region Data\r\n"
+            + "        public int Alpha { get; set; }\r\n"
+            + "        #endregion\r\n"
+            + "        public string Pages { get; set; } = \"\";\r\n"
+            + "    }\r\n}\r\n");
+
+        Assert.IsTrue(Run("remove property Pages from Book"));
+
+        var code = File.ReadAllText(file);
+        Assert.DoesNotContain("Pages", code, code);
+        StringAssert.Contains(code, "        public int Alpha { get; set; }\r\n        #endregion\r\n    }\r\n", code);
+        AssertCompiles(code);
+    }
+
+    [TestMethod]
+    public void Takes_the_properties_own_doc_comment_with_it()
+    {
+        var file = WriteBook(
+            "namespace Shop\r\n{\r\n    public class Book\r\n    {\r\n"
+            + "        public int Alpha { get; set; }\r\n"
+            + "\r\n"
+            + "        /// <summary>Page count.</summary>\r\n"
+            + "        public int Pages { get; set; }\r\n"
+            + "\r\n"
+            + "        public int Beta { get; set; }\r\n"
+            + "    }\r\n}\r\n");
+
+        Assert.IsTrue(Run("remove property Pages from Book"));
+
+        var code = File.ReadAllText(file);
+        Assert.DoesNotContain("Page count", code, code);
+        StringAssert.Contains(code, "        public int Alpha { get; set; }\r\n\r\n        public int Beta { get; set; }\r\n", code);
+        AssertCompiles(code);
+    }
+
+    [TestMethod]
+    public void Names_the_members_that_still_use_it()
+    {
+        WriteBook("namespace Shop { public class Book { public int Pages { get; set; } public int Twice() => Pages * 2; } }");
+
+        var original = Console.Out;
+        using var writer = new StringWriter();
+        Console.SetOut(writer);
+        try { Run("remove property Pages from Book"); }
+        finally { Console.SetOut(original); }
+
+        StringAssert.Contains(writer.ToString(), "Book.Twice()", writer.ToString());
+    }
+
+    [TestMethod]
     public void Reports_failure_when_the_property_is_missing()
     {
         WriteBook("namespace Shop { public class Book { public int Id { get; set; } } }");

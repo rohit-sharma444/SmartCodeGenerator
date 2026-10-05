@@ -11,6 +11,12 @@ public static class ClassRenameService
     {
         message = string.Empty;
 
+        if (MemberNames.NotAnIdentifier(newClassName, "class") is { } bad)
+        {
+            message = bad;
+            return false;
+        }
+
         try
         {
             var file = Directory

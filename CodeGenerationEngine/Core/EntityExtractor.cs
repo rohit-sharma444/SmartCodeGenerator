@@ -33,20 +33,7 @@ public static class EntityExtractor
         // the workspace root. This keeps `generate validator` working on a fresh
         // checkout, or when the current project was cleared for sitting outside the
         // open folder.
-        var searchRoot = ProjectManager.CurrentProject?.ProjectPath;
-        if (string.IsNullOrWhiteSpace(searchRoot))
-            searchRoot = workspaceRoot;
-
-        if (string.IsNullOrWhiteSpace(searchRoot) || !Directory.Exists(searchRoot))
-        {
-            Output.Warning($"Class '{command.ClassName}' not found.");
-            return false;
-        }
-
-        var classFile = Directory
-            .EnumerateFiles(searchRoot,
-                $"{command.ClassName}.cs",
-                SearchOption.AllDirectories).FirstOrDefault();
+        var classFile = FindClassFile(workspaceRoot, command.ClassName);
 
         if (classFile == null)
         {
@@ -54,25 +41,69 @@ public static class EntityExtractor
             return false;
         }
 
+        var validatorFile = WriteValidator(classFile, command.ClassName, rules);
+
+        Output.Success($"Validator generated: {validatorFile}");
+        return true;
+    }
+
+    /// <summary>
+    /// The class file <c>generate validator</c> writes beside: under the selected project when there
+    /// is one, otherwise under <paramref name="workspaceRoot"/>.
+    /// </summary>
+    internal static string? FindClassFile(string workspaceRoot, string className)
+    {
+        var searchRoot = ProjectManager.CurrentProject?.ProjectPath;
+        if (string.IsNullOrWhiteSpace(searchRoot))
+            searchRoot = workspaceRoot;
+
+        if (string.IsNullOrWhiteSpace(searchRoot) || !Directory.Exists(searchRoot))
+            return null;
+
+        return Directory
+            .EnumerateFiles(searchRoot, $"{className}.cs", SearchOption.AllDirectories)
+            .FirstOrDefault();
+    }
+
+    internal static string ValidatorPathFor(string classFile, string className) =>
+        Path.Combine(Path.GetDirectoryName(classFile)!, $"{className}.Validation.cs");
+
+    /// <summary>Emits <c>&lt;Class&gt;.Validation.cs</c> beside the class from its current
+    /// properties and <paramref name="rules"/>; returns the path written.</summary>
+    internal static string WriteValidator(string classFile, string className, IReadOnlyList<IValidationRule> rules)
+    {
+        // The name as declared, not as typed: "item" found Item.cs (the search is case-insensitive)
+        // and wrote `partial class item` beside `class Item`, a second class that does not compile.
+        className = DeclaredName(classFile, className);
+
         // The generated file declares `public partial class <Class>`. A class this tool created is
         // not partial, and that pair does not compile - so the declaring half is marked here rather
         // than emitting a file that cannot build beside it.
-        Validation.ClassValidationWriter.EnsurePartial(classFile, command.ClassName);
+        Validation.ClassValidationWriter.EnsurePartial(classFile, className);
 
         var properties = ExtractProperties(classFile);
 
         var namespaceName = ExtractNamespace(classFile);
 
         var validationCode = ValidationEngine.EmitValidationPartial(
-                namespaceName, command.ClassName, properties, rules);
+                namespaceName, className, properties, rules);
 
-        var validatorFile = Path.Combine(Path.GetDirectoryName(classFile)!,
-                $"{command.ClassName}.Validation.cs");
+        var validatorFile = ValidatorPathFor(classFile, className);
 
         File.WriteAllText(validatorFile, validationCode);
+        return validatorFile;
+    }
 
-        Output.Success($"Validator generated: {validatorFile}");
-        return true;
+    internal static string DeclaredName(string classFile, string className)
+    {
+        var root = CSharpSyntaxTree.ParseText(File.ReadAllText(classFile)).GetRoot();
+        var declared = root.DescendantNodes().OfType<TypeDeclarationSyntax>()
+            .Select(t => t.Identifier.Text)
+            .ToList();
+
+        return declared.FirstOrDefault(n => n.Equals(className, StringComparison.Ordinal))
+            ?? declared.FirstOrDefault(n => n.Equals(className, StringComparison.OrdinalIgnoreCase))
+            ?? className;
     }
 
     private static string ExtractNamespace(string classFile)

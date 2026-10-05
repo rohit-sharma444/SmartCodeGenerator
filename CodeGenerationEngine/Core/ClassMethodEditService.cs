@@ -17,10 +17,13 @@ public static class ClassMethodEditService
     /// </summary>
     public static bool DeleteMethod(string workspaceRoot, string className, string methodName, out string message)
     {
-        if (!TryLoad(workspaceRoot, className, out var file, out var root, out var classNode, out message))
+        if (!TryLoadParts(workspaceRoot, className, out var parts, out message))
             return false;
 
-        var matches = MethodsNamed(classNode, methodName);
+        // As declared, for the messages: "order" found Order.
+        className = parts[0].Node.Identifier.Text;
+
+        var matches = MethodsNamed(parts, methodName);
 
         if (matches.Count == 0)
         {
@@ -28,28 +31,35 @@ public static class ClassMethodEditService
             return false;
         }
 
+        var name = matches[0].Member.Identifier.Text;
+
         if (matches.Count > 1)
         {
-            message = $"'{className}' has {matches.Count} methods named '{methodName}', so none was removed:"
-                + string.Concat(matches.Select(m => Environment.NewLine + "  " + Signature(m)));
+            message = $"'{className}' has {matches.Count} methods named '{name}', so none was removed:"
+                + string.Concat(matches.Select(m => Environment.NewLine + "  " + Signature(m.Member)));
             return false;
         }
 
-        root = root.RemoveNode(matches[0], SyntaxRemoveOptions.KeepNoTrivia)!;
+        var (part, method) = matches[0];
+        var root = MemberRemoval.Remove(part.Root, method);
 
-        return TryWrite(file, root, $"Method '{methodName}' removed from '{className}'.", out message);
+        return TryWrite(part.File, root, $"Method '{name}' removed from '{className}'.", out message);
     }
 
     /// <summary>
-    /// Renames the method — every overload of it, since they share the one name.
+    /// Renames the method — every overload of it, since they share the one name, in whichever of
+    /// the class's partial files each one is.
     /// </summary>
     public static bool RenameMethod(
         string workspaceRoot, string className, string oldName, string newName, out string message)
     {
-        if (!TryLoad(workspaceRoot, className, out var file, out var root, out var classNode, out message))
+        if (!TryLoadParts(workspaceRoot, className, out var parts, out message))
             return false;
 
-        var matches = MethodsNamed(classNode, oldName);
+        // As declared, for the messages: "order" found Order.
+        className = parts[0].Node.Identifier.Text;
+
+        var matches = MethodsNamed(parts, oldName);
 
         if (matches.Count == 0)
         {
@@ -57,30 +67,131 @@ public static class ClassMethodEditService
             return false;
         }
 
-        if (MethodsNamed(classNode, newName).Count > 0)
+        var name = matches[0].Member.Identifier.Text;
+
+        if (MemberNames.NotAnIdentifier(newName, "method") is { } bad)
+        {
+            message = bad;
+            return false;
+        }
+
+        if (parts.Any(p => p.Node.Members.OfType<MethodDeclarationSyntax>()
+                .Any(m => m.Identifier.Text.Equals(newName, StringComparison.Ordinal))))
         {
             message = $"Method '{newName}' already exists in '{className}'.";
             return false;
         }
 
-        root = root.ReplaceNodes(matches, (original, _) =>
-            original.WithIdentifier(SyntaxFactory.Identifier(newName).WithTriviaFrom(original.Identifier)));
+        if (MemberNames.Taken(parts, newName, matches.Select(m => m.Member)) is { } taken)
+        {
+            message = taken;
+            return false;
+        }
+
+        foreach (var group in matches.GroupBy(m => m.Part))
+        {
+            var root = group.Key.Root.ReplaceNodes(group.Select(m => m.Member), (original, _) =>
+                original.WithIdentifier(SyntaxFactory.Identifier(newName).WithTriviaFrom(original.Identifier)));
+
+            if (!TryWrite(group.Key.File, root, string.Empty, out message))
+                return false;
+        }
 
         var overloads = matches.Count > 1 ? $" ({matches.Count} overloads)" : string.Empty;
 
-        return TryWrite(file, root,
-            $"Method '{oldName}' renamed to '{newName}' in '{className}'{overloads}. "
-            + "References elsewhere were not updated.",
-            out message);
+        message = $"Method '{name}' renamed to '{newName}' in '{className}'{overloads}. "
+            + "References elsewhere were not updated.";
+        return true;
     }
 
-    private static List<MethodDeclarationSyntax> MethodsNamed(ClassDeclarationSyntax classNode, string name) =>
-        classNode.Members.OfType<MethodDeclarationSyntax>()
-            .Where(m => m.Identifier.Text.Equals(name, StringComparison.Ordinal))
-            .ToList();
+    private static List<(ClassPart Part, MethodDeclarationSyntax Member)> MethodsNamed(
+        IReadOnlyList<ClassPart> parts, string name) =>
+        [.. Named(parts.SelectMany(p => p.Node.Members.OfType<MethodDeclarationSyntax>().Select(m => (Part: p, Member: m))),
+            x => x.Member.Identifier.Text, name)];
+
+    /// <summary>
+    /// The items called <paramref name="wanted"/>: the exact spelling first, else a different case of
+    /// it, as remove property has always matched. A different case that fits two different names
+    /// (Save and SAVE) matches neither, since which was meant cannot be told.
+    /// </summary>
+    internal static List<T> Named<T>(IEnumerable<T> items, Func<T, string> nameOf, string wanted)
+    {
+        var all = items.ToList();
+        var exact = all.Where(i => nameOf(i).Equals(wanted, StringComparison.Ordinal)).ToList();
+        if (exact.Count > 0)
+            return exact;
+
+        var loose = all.Where(i => nameOf(i).Equals(wanted, StringComparison.OrdinalIgnoreCase)).ToList();
+        return loose.Select(nameOf).Distinct(StringComparer.Ordinal).Count() == 1 ? loose : [];
+    }
+
+    /// <summary>The first property called <paramref name="name"/> in any part, with its part.</summary>
+    internal static (ClassPart Part, PropertyDeclarationSyntax Property)? PropertyNamed(
+        IReadOnlyList<ClassPart> parts, string name)
+    {
+        var found = Named(
+            parts.SelectMany(p => p.Node.Members.OfType<PropertyDeclarationSyntax>().Select(m => (Part: p, Member: m))),
+            x => x.Member.Identifier.Text, name);
+        return found.Count > 0 ? (found[0].Part, found[0].Member) : null;
+    }
 
     private static string Signature(MethodDeclarationSyntax method) =>
         $"{method.ReturnType} {method.Identifier.Text}{method.ParameterList}";
+
+    /// <summary>
+    /// The class's declaration in <c>&lt;Class&gt;.cs</c> first, then, when it is partial, its other
+    /// partial declarations in the workspace: a member added by hand to Order.Logic.cs is as much the
+    /// class's as one in Order.cs. One per file, in the same namespace.
+    /// </summary>
+    internal static bool TryLoadParts(
+        string workspaceRoot, string className, out List<ClassPart> parts, out string message)
+    {
+        parts = [];
+        if (!TryLoad(workspaceRoot, className, out var file, out var root, out var classNode, out message))
+            return false;
+
+        parts.Add(new ClassPart(file, root, classNode));
+        if (!classNode.Modifiers.Any(SyntaxKind.PartialKeyword))
+            return true;
+
+        var name = classNode.Identifier.Text;
+        var ns = NamespaceOf(classNode);
+
+        foreach (var other in ClassFiles.Under(workspaceRoot))
+        {
+            if (string.Equals(Path.GetFullPath(other), Path.GetFullPath(file), StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            string text;
+            try
+            {
+                text = File.ReadAllText(other);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                continue;
+            }
+
+            if (!text.Contains("partial", StringComparison.Ordinal) || !text.Contains(name, StringComparison.Ordinal))
+                continue;
+
+            var otherRoot = CSharpSyntaxTree.ParseText(text).GetRoot();
+            var part = otherRoot.DescendantNodes().OfType<ClassDeclarationSyntax>()
+                .FirstOrDefault(c => c.Identifier.Text.Equals(name, StringComparison.Ordinal)
+                    && c.Modifiers.Any(SyntaxKind.PartialKeyword)
+                    && NamespaceOf(c) == ns);
+
+            if (part != null)
+                parts.Add(new ClassPart(other, otherRoot, part));
+        }
+
+        return true;
+    }
+
+    // The namespace and any enclosing types: a nested partial Order is not the top-level one.
+    private static string NamespaceOf(ClassDeclarationSyntax node) =>
+        string.Join(".", node.Ancestors().OfType<BaseNamespaceDeclarationSyntax>().Reverse().Select(n => n.Name.ToString()))
+        + "/" + string.Join(".", node.Ancestors().OfType<TypeDeclarationSyntax>().Reverse().Select(t => t.Identifier.Text));
 
     // Shared with ClassPropertyTypeService: find the class's file by name, then the class in it.
     internal static bool TryLoad(
@@ -143,3 +254,6 @@ public static class ClassMethodEditService
         }
     }
 }
+
+/// <summary>One declaration of a class: the file, its parsed root, and the class node in it.</summary>
+internal sealed record ClassPart(string File, SyntaxNode Root, ClassDeclarationSyntax Node);

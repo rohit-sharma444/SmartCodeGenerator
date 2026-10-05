@@ -73,6 +73,12 @@ public static class CommandFront
         new(@"^(?:remove|delete)\s+method\s+(?<method>\w+)(?:\s+(?:from|in|on|of)\s+(?<class>\w+))?$",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    // `remove property <name> from <Class>`. Ahead of the mapper, which recognised it only with a
+    // capitalised name: "remove property price from item" was not recognised at all.
+    private static readonly Regex DeletePropertyRe =
+        new(@"^(?:remove|delete|drop)\s+property\s+(?<property>\w+)\s+(?:from|in|on|of)\s+(?<class>\w+)$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     // `rename method <old> to <new> in <Class>`, shaped like RenamePropertyRe.
     private static readonly Regex RenameMethodRe =
         new(@"^rename\s+method\s+(?<old>\w+)\s+to\s+(?<new>\w+)(?:\s+(?:in|on|of)\s+(?<class>\w+))?$",
@@ -81,10 +87,12 @@ public static class CommandFront
     // `change (the) type of (property|field) <name> to <type> in <Class>` and
     // `retype (property|field) <name> to <type> in <Class>`. The type is any run of
     // non-spaces so `List<string>` and `decimal?` arrive whole and a malformed one reaches
-    // the handler to be refused by name, rather than falling through to the mapper.
+    // the handler to be refused by name, rather than falling through to the mapper; inside
+    // angle brackets (one level of nesting) spaces are allowed too, because that is how
+    // `Dictionary<string, int>` is written.
     // `retype <class> <field> <type>` without "property" is the build-app review loop's own.
     private static readonly Regex ChangePropertyTypeRe =
-        new(@"^(?:change\s+(?:the\s+)?type\s+of|retype)\s+(?:(?:property|field)\s+)?(?<property>\w+)\s+to\s+(?<type>\S+)(?:\s+(?:in|on|of)\s+(?<class>\w+))?$",
+        new(@"^(?:change\s+(?:the\s+)?type\s+of|retype)\s+(?:(?:property|field)\s+)?(?<property>\w+)\s+to\s+(?<type>(?:[^\s<]|<[^<>]*(?:<[^<>]*>[^<>]*)*>|<)+)(?:\s+(?:in|on|of)\s+(?<class>\w+))?$",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     // `remove (business) validation` naming a field — `from Employee.Name` or, as add
@@ -189,6 +197,17 @@ public static class CommandFront
                 Intent = IntentType.DeleteMethod,
                 MethodName = deleteMethodMatch.Groups["method"].Value.Trim(),
                 ClassName = ClassOrCurrent(deleteMethodMatch),
+                OriginalSentence = input ?? string.Empty,
+                Confidence = 1.0
+            };
+
+        var deletePropertyMatch = DeletePropertyRe.Match(text);
+        if (deletePropertyMatch.Success)
+            return new ParsedCommand
+            {
+                Intent = IntentType.DeleteProperty,
+                PropertyName = deletePropertyMatch.Groups["property"].Value.Trim(),
+                ClassName = deletePropertyMatch.Groups["class"].Value.Trim(),
                 OriginalSentence = input ?? string.Empty,
                 Confidence = 1.0
             };

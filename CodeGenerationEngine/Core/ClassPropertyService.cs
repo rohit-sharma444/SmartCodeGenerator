@@ -62,26 +62,25 @@ public static class ClassPropertyService
         // Through the syntax tree, not the regex this once was: that regex matched the name in
         // any class in the file, left an initial value (`= "";`) behind as code that does not
         // compile, and its trailing \s* ate the next member's indentation.
-        if (!ClassMethodEditService.TryLoad(workspaceRoot, className, out var file, out var root, out var classNode, out message))
+        if (!ClassMethodEditService.TryLoadParts(workspaceRoot, className, out var parts, out message))
             return false;
 
-        var properties = classNode.Members.OfType<PropertyDeclarationSyntax>().ToList();
-
         // Exact name first; the regex was case-insensitive, so a differently cased name still works.
-        var property = properties.FirstOrDefault(p => p.Identifier.Text.Equals(propertyName, StringComparison.Ordinal))
-            ?? properties.FirstOrDefault(p => p.Identifier.Text.Equals(propertyName, StringComparison.OrdinalIgnoreCase));
-
-        if (property == null)
+        // In any of the class's partial files.
+        if (ClassMethodEditService.PropertyNamed(parts, propertyName) is not (var part, var property))
         {
             message = $"Property '{propertyName}' not found in '{className}'.";
             return false;
         }
 
-        // KeepNoTrivia takes the property's own indent and line break with it (and a doc
-        // comment above it); the line breaks and indent around it belong to its neighbours.
-        root = root.RemoveNode(property, SyntaxRemoveOptions.KeepNoTrivia)!;
+        // As declared, for the messages: "item" found Item.
+        className = part.Node.Identifier.Text;
 
-        return ClassMethodEditService.TryWrite(file, root,
+        // Its own indent, line break and doc comment go with it; a directive or section
+        // comment above it stays (see MemberRemoval).
+        var root = MemberRemoval.Remove(part.Root, property);
+
+        return ClassMethodEditService.TryWrite(part.File, root,
             $"Property '{property.Identifier.Text}' removed from '{className}'.", out message);
     }
 }
