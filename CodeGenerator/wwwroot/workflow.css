@@ -705,6 +705,27 @@ body {
 
 .panel textarea.answer { resize: vertical; }
 
+/* A field the panel refuses, said under the box in the failure colour, with the box itself drawn
+   in that colour too. Unstyled, the sentence read as help text in the label's own ink, and nothing
+   on the page tied it to the step that had just gone disabled. Every theme re-points --failed and
+   --failure-wash, so this follows them. */
+.field-error {
+    display: block;
+    max-width: 34rem;
+    margin: 0.3rem 0 0;
+    padding: 0.25rem 0.55rem;
+    border-left: 3px solid var(--failed);
+    background: var(--failure-wash);
+    color: var(--failed);
+    font-size: 0.88em;
+    font-weight: 600;
+}
+
+.panel .answer:has(+ .field-error) {
+    border-color: var(--failed);
+    box-shadow: 0 0 0 1px var(--failed);
+}
+
 /* The run as a line to copy. Monospace and wrapping: a path with spaces in it must be readable
    whole, and a horizontal scrollbar in a sidebar hides the end of the command. */
 .command-echo {
