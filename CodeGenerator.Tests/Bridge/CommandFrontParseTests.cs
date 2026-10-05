@@ -96,4 +96,51 @@ public class CommandFrontParseTests
         var cmd = CommandFront.Parse("create a class called Customer", "");
         Assert.IsGreaterThan(0d, cmd.Confidence, $"expected NLE confidence, got {cmd.Confidence}");
     }
+
+    [TestMethod]
+    // "create class employee" was "Command not recognized" while "create class Employee"
+    // worked: NLE tags a lower-case word as part of the target, so the mapper looked up
+    // "class employee". The name is PascalCased, as the with-properties form already did,
+    // and a lower-case manager/model/entity/field after "class" is a name, not a synonym.
+    [DataRow("create class employee", "Employee")]
+    [DataRow("create class manager", "Manager")]
+    [DataRow("create class model", "Model")]
+    [DataRow("create class entity", "Entity")]
+    [DataRow("create class field", "Field")]
+    [DataRow("create class order_line", "OrderLine")]
+    [DataRow("Create Class employee", "Employee")]
+    [DataRow("generate class invoice", "Invoice")]
+    [DataRow("add class customer", "Customer")]
+    [DataRow("create class Employee", "Employee")]
+    [DataRow("create class Manager", "Manager")]
+    public void Create_class_with_a_lower_case_name_is_recognised(string sentence, string expected)
+    {
+        var cmd = CommandFront.Parse(sentence, "");
+        Assert.AreEqual(IntentType.CreateClass, cmd.Intent, sentence);
+        Assert.AreEqual(expected, cmd.ClassName, sentence);
+    }
+
+    [TestMethod]
+    public void Create_class_with_a_lower_case_name_and_properties_keeps_the_properties()
+    {
+        var cmd = CommandFront.Parse("create class employee with properties Name string, Age int", "");
+        Assert.AreEqual(IntentType.CreateClass, cmd.Intent);
+        Assert.AreEqual("Employee", cmd.ClassName);
+        CollectionAssert.AreEqual(
+            new[] { "Name", "Age" },
+            cmd.Properties.Select(p => p.Name).ToArray());
+    }
+
+    [TestMethod]
+    // The lower-case form must not turn other commands or ordinary sentences into a class.
+    [DataRow("create class library mylib")]
+    [DataRow("create class with no name")]
+    [DataRow("create classes for my shop")]
+    [DataRow("I want to create class diagrams today")]
+    public void A_sentence_that_is_not_create_class_name_is_not_a_class(string sentence)
+    {
+        var cmd = CommandFront.Parse(sentence, "");
+        Assert.AreNotEqual(
+            IntentType.CreateClass, cmd.Intent, $"{sentence} made class {cmd.ClassName}");
+    }
 }
