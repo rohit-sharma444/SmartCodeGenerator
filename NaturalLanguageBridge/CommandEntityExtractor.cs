@@ -29,7 +29,12 @@ public static class CommandEntityExtractor
         // commas that make it a list. The command words of these two are fixed ("add validation",
         // "on", "in") and are matched as typed, so the sentence is only trimmed and its runs of
         // whitespace collapsed.
-        var verbatim = intent is IntentType.AddValidation or IntentType.AddBusinessValidation;
+        //
+        // A project name is the same: "A" is a stop word, Data.Core lost its dot and a quoted
+        // name lost everything, so the project was made as NewProject or under another name; and
+        // net8.0 and C:\path lost their punctuation too.
+        var verbatim = intent is IntentType.AddValidation or IntentType.AddBusinessValidation
+            or IntentType.CreateProject;
         var sentence = verbatim
             ? Verbatim(rawSentence)
             : CommandParser.Normalize(rawSentence ?? string.Empty);
@@ -1107,23 +1112,31 @@ public static class CommandEntityExtractor
         return "string";
     }
 
-    // Project extraction (unchanged)
+    // The name after "project", or after the type noun of a type phrased without the word
+    // ("create worker service MyWorker", "create class library MyLib"). Quoted, or a dotted .NET
+    // name; never one of the words that start the folder or framework clause.
+    private static readonly Regex ProjectNameRe = new(
+        @"\b(?:project|service|library|classlib|lib|app|application)(?:\s+(?:named|called))?\s+"
+        + @"(?!(?:in|at|for|with|targeting|using|as|type|on|to)\b)(?!net\d)"
+        + @"(?<name>""[^""]+""|'[^']+'|[A-Za-z0-9_][A-Za-z0-9_\-\.]*)",
+        RegexOptions.IgnoreCase);
+
+    /// <summary>
+    /// A project name as typed, unquoted, with a sentence's full stop dropped and its first letter
+    /// capitalised - "shop" becomes Shop, as "create class shop" makes Shop - and nothing else
+    /// changed: Data.Core and my_lib keep their dots and underscores, which are part of the name.
+    /// </summary>
+    internal static string ProjectNameAsTyped(string raw)
+    {
+        var name = raw.Trim().Trim('"', '\'').Trim().TrimEnd('.');
+        return name.Length == 0 ? name : char.ToUpperInvariant(name[0]) + name[1..];
+    }
+
     public static void ExtractProjectInfo(string sentence, ParsedCommand command)
     {
-        var nameMatch = Regex.Match(sentence, @"project(?:\s+named|\s+called)?\s+([A-Za-z0-9_\-\.]+)", RegexOptions.IgnoreCase);
+        var nameMatch = ProjectNameRe.Match(sentence);
         if (nameMatch.Success)
-            command.ProjectName = nameMatch.Groups[1].Value.Trim();
-        else
-        {
-            // Project types phrased without the word "project" (e.g. "create
-            // worker service MyWorker", "create class library MyLib") — take the
-            // identifier that follows the type noun so the name isn't lost.
-            var altName = Regex.Match(sentence,
-                @"\b(?:service|library|lib|app|application)\s+(?:named\s+|called\s+)?([A-Za-z_][A-Za-z0-9_\.\-]*)",
-                RegexOptions.IgnoreCase);
-            if (altName.Success)
-                command.ProjectName = altName.Groups[1].Value.Trim();
-        }
+            command.ProjectName = ProjectNameAsTyped(nameMatch.Groups["name"].Value);
 
         var folderMatch = Regex.Match(sentence, @"\bin\s+(""[^""]+""|'[^']+'|[A-Za-z]:\\[^\s]+)", RegexOptions.IgnoreCase);
         if (folderMatch.Success)

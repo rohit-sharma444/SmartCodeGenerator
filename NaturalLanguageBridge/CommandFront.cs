@@ -73,6 +73,16 @@ public static class CommandFront
             + @"(?:\s+with\s+.+)?$",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    // `create [<type>] project [<name>]`, `create class library [<name>]`, `create worker service
+    // [<name>]`, ahead of the mapper, which did not recognise a lower-case name ("create console
+    // project shop" was "Command not recognized"). The name, type, folder and framework are read by
+    // ExtractProjectInfo from the sentence as typed.
+    private static readonly Regex CreateProjectRe =
+        new(@"^(?:create|new|make|generate)\s+(?:(?:a|an|new)\s+)?"
+            + @"(?:(?:console|webapi|web\s+api|api|blazor|blazorserver|blazorwasm|wasm|wpf|winforms|mvc|worker)\s+)?"
+            + @"(?:project|class\s+library|classlib|worker\s+service)(?:\s+.*)?$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     // `create interface <name>`, ahead of the mapper, for the create class reason: a lower-case
     // name is tagged as part of the target, so "create interface shape" was not recognised.
     private static readonly Regex CreateInterfaceRe =
@@ -142,6 +152,7 @@ public static class CommandFront
         IntentType.ShowValidation,
         IntentType.GenerateValidator,
         IntentType.ClassInherit,
+        IntentType.CreateProject,
         IntentType.CreateClass,
         IntentType.CreateInterface,
         IntentType.RenameProperty,
@@ -193,6 +204,14 @@ public static class CommandFront
                 OriginalSentence = input ?? string.Empty,
                 Confidence = 1.0
             };
+
+        if (CreateProjectRe.IsMatch(text))
+        {
+            var projectCmd = CommandEntityExtractor.Extract(text, IntentType.CreateProject, workspace);
+            projectCmd.OriginalSentence = input ?? string.Empty;
+            projectCmd.Confidence = 1.0;
+            return projectCmd;
+        }
 
         var createClassMatch = CreateClassRe.Match(text);
         if (createClassMatch.Success)
