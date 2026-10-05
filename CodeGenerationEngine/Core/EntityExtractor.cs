@@ -20,6 +20,14 @@ public static class EntityExtractor
             return false;
         }
 
+        // It wrote IShape.Validation.cs declaring a partial class IShape beside the partial
+        // interface IShape - a pair that does not compile.
+        if (InterfaceImplementers.ValidationRefusalFor(workspaceRoot, command.ClassName) is { } refusal)
+        {
+            Output.Error(refusal);
+            return false;
+        }
+
         var rules = ValidationRegistry.Get(command.ClassName);
 
         if (rules.Count == 0)

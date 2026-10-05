@@ -442,6 +442,14 @@ public static class CommandHandlingService
             return false;
         }
 
+        // A rule on an interface was stored and then had nothing to check: generate validator
+        // skipped it, or wrote a partial class beside the interface.
+        if (InterfaceImplementers.ValidationRefusalFor(ctx.WorkspaceRoot, ctx.Command.ClassName) is { } refusal)
+        {
+            Output.Error(refusal);
+            return false;
+        }
+
         var parseCtx = new ValidationParseContext
         {
             Fragment = ctx.Command.ValidationText,

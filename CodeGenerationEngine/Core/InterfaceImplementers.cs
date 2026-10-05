@@ -102,6 +102,28 @@ public static class InterfaceImplementers
         return $"{Names(implementers)} {(one ? "implements" : "implement")} {iface} and {(one ? "was" : "were")} not changed: {consequence}";
     }
 
+    /// <summary>
+    /// Why a validation rule cannot go on <paramref name="iface"/>: a validator checks the data an
+    /// object holds, and an interface holds none.
+    /// </summary>
+    public static string ValidationRefusal(string iface, IReadOnlyList<string>? implementers = null)
+    {
+        var example = implementers is { Count: > 0 }
+            ? $", such as {string.Join(" or ", implementers.Distinct(StringComparer.Ordinal).Take(3))}"
+            : string.Empty;
+        return $"'{iface}' is an interface, so it holds no data to validate. "
+            + $"Add the rule to a class that implements it{example}.";
+    }
+
+    /// <summary>
+    /// <see cref="ValidationRefusal"/> for <paramref name="typeName"/> in the workspace, or null when
+    /// it is not an interface.
+    /// </summary>
+    public static string? ValidationRefusalFor(string workspaceRoot, string typeName) =>
+        InterfaceNamed(workspaceRoot, typeName) is { } iface
+            ? ValidationRefusal(iface, [.. Of(workspaceRoot, iface).Select(t => t.Identifier.Text)])
+            : null;
+
     private static string Names(IReadOnlyList<TypeDeclarationSyntax> types)
     {
         var names = types.Select(t => t.Identifier.Text).Distinct(StringComparer.Ordinal).ToList();
