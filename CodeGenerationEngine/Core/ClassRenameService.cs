@@ -279,7 +279,7 @@ public static class ClassRenameService
             && type.OriginalDefinition.GetDocumentationCommentId() == id;
     }
 
-    private static CSharpCompilation Compile(
+    internal static CSharpCompilation Compile(
         string name, string folder, string? csprojFolder, IEnumerable<MetadataReference> extra, out List<SyntaxTree> trees)
     {
         var parse = new CSharpParseOptions(LanguageVersion.Latest);

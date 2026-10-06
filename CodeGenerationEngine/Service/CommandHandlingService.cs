@@ -312,7 +312,7 @@ public static class CommandHandlingService
         var ok = ClassInheritanceService.AddInheritance(
             ctx.WorkspaceRoot, ctx.Command.ClassName, ctx.Command.BaseClass, out var message);
 
-        Console.WriteLine(message);
+        Output.Result(ok, message);
         return ok;
     }
 
