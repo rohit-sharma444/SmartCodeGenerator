@@ -81,6 +81,43 @@ public class ChatSessionTests
     }
 
     [TestMethod]
+    public async Task Show_relationships_draws_the_workspace_relationships_in_the_turn()
+    {
+        // It fell through to the pipeline, which does not know it: "Not understood", and a
+        // "Did you mean" offering the very words typed.
+        var session = NewSession(out var workspace);
+        File.WriteAllText(Path.Combine(workspace.Root, "Author.cs"),
+            "namespace S { public class Author { public int Id { get; set; } } }");
+        File.WriteAllText(Path.Combine(workspace.Root, "Book.cs"),
+            "namespace S { public class Book { public int Id { get; set; } "
+            + "public int AuthorId { get; set; } public Author Author { get; set; } } }");
+
+        await session.Send("show relationships");
+
+        var turn = session.Turns[^1];
+        Assert.AreEqual(ChatVerdict.Succeeded, turn.Verdict);
+        Assert.AreEqual(CommandKind.ShowRelationships, turn.Kind);
+
+        var drawn = turn.Blocks.OfType<RelationshipsBlock>().Single();
+        var book = drawn.Sources.Single(s => s.Name == "Book");
+        CollectionAssert.AreEqual(new[] { "Author" }, book.Targets.ToArray());
+    }
+
+    [TestMethod]
+    public async Task Show_relationships_in_an_empty_workspace_says_there_is_nothing_to_relate()
+    {
+        var session = NewSession(out _);
+
+        await session.Send("show relationships");
+
+        var turn = session.Turns[^1];
+        Assert.AreNotEqual(ChatVerdict.Unrecognized, turn.Verdict);
+        Assert.IsEmpty(turn.Blocks.OfType<RelationshipsBlock>());
+        StringAssert.Contains(
+            string.Join("\n", turn.Blocks.OfType<TextBlock>().Select(b => b.Text)), "No classes");
+    }
+
+    [TestMethod]
     public async Task Chat_inside_the_chat_is_declined()
     {
         var session = NewSession(out _);

@@ -61,6 +61,40 @@ public class SolutionPickerTests
     }
 
     [TestMethod]
+    public void Enter_in_the_path_box_loads_it()
+    {
+        // Enter did nothing: the box sat in no form, so only a click on Load would do.
+        using var context = new BunitContext();
+        var session = NewSession(out _);
+        var other = NewTree();
+
+        var picker = context.Render<SolutionPicker>(p => p.Add(c => c.Session, session));
+
+        picker.Find(".picker-path").Change(other);
+        picker.Find("form.picker-row").Submit();
+
+        Assert.AreEqual(other, session.Root);
+    }
+
+    [TestMethod]
+    public void An_empty_path_asks_for_one_in_words_and_adds_no_turn()
+    {
+        // It showed .NET's own "The path is empty. (Parameter 'path')" in a card with no input.
+        using var context = new BunitContext();
+        var session = NewSession(out var root);
+
+        var picker = context.Render<SolutionPicker>(p => p.Add(c => c.Session, session));
+
+        picker.Find(".picker-path").Change("   ");
+        picker.Find(".picker-load").Click();
+
+        Assert.AreEqual(root, session.Root);
+        StringAssert.Contains(picker.Find(".picker-problem").TextContent, "Type a folder or solution path");
+        Assert.DoesNotContain("Parameter", picker.Markup);
+        Assert.IsEmpty(session.Turns);
+    }
+
+    [TestMethod]
     public void A_path_that_is_not_there_is_reported_and_the_root_is_kept()
     {
         using var context = new BunitContext();

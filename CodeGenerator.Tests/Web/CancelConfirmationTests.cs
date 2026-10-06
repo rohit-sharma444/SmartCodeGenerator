@@ -86,6 +86,29 @@ public class CancelConfirmationTests
     }
 
     [TestMethod]
+    public void A_project_an_earlier_run_wrote_is_said_to_stay_on_disk()
+    {
+        // A resumed build has no Generated of its own, but the session it resumes wrote the
+        // project. "Nothing will be generated" / "Nothing was generated" read as if it never was.
+        var root = Path.Combine(Path.GetTempPath(), "cc-" + Guid.NewGuid().ToString("N")[..8]);
+        var session = Discovered(root: root);
+        var csproj = GeneratedProjectPath.CsprojPath(root, GenerateStep.NameFor(session), new WpfTarget());
+        Directory.CreateDirectory(Path.GetDirectoryName(csproj)!);
+        File.WriteAllText(csproj, "<Project />");
+
+        session.RequestCancel();
+
+        StringAssert.Contains(session.PendingCancel!, Path.GetDirectoryName(csproj)!);
+        StringAssert.Contains(session.PendingCancel!, "stays on disk");
+        Assert.DoesNotContain("nothing will be generated", session.PendingCancel!);
+
+        session.ConfirmCancel();
+        var lines = string.Join(" ", CodeGenerator.Web.BuildAppWebHost.OutcomeFor(session).Lines);
+        Assert.DoesNotContain("Nothing was generated", lines);
+        StringAssert.Contains(lines, Path.GetDirectoryName(csproj)!);
+    }
+
+    [TestMethod]
     public void Keeping_the_build_leaves_the_workflow_exactly_where_it_was()
     {
         var session = Discovered();
@@ -135,9 +158,9 @@ public class CancelConfirmationTests
     }
 
     /// <summary>A session parked on the review node with a model in hand.</summary>
-    private static BuildSession Discovered(int classes = 3)
+    private static BuildSession Discovered(int classes = 3, string root = @"C:\ws")
     {
-        var session = new BuildSession("a shop", @"C:\ws", AppCustomization.Default);
+        var session = new BuildSession("a shop", root, AppCustomization.Default);
 
         session.SetTarget(new WpfTarget());
         session.Advance();

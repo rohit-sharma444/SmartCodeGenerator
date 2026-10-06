@@ -338,12 +338,28 @@ public static class ModelEditor
     }
 
     public static bool RenameEntity(CandidateDomainModel model, string oldName, string newName)
+        => RenameEntity(model, oldName, newName, out _);
+
+    /// <inheritdoc cref="RenameEntity(CandidateDomainModel, string, string)"/>
+    /// <param name="renamedTo">
+    /// The class name actually applied, or null when nothing was renamed. The typed name is
+    /// normalized ("class" becomes "Class"), so a caller reporting the rename must say this, not
+    /// echo the typing.
+    /// </param>
+    public static bool RenameEntity(
+        CandidateDomainModel model, string oldName, string newName, out string? renamedTo)
     {
+        renamedTo = null;
+
         // The old name is a lookup, so it keeps the head-noun normalizer; the new one is a class
         // name the user typed, so it keeps its shape.
         var target = Find(model, NameNormalizer.ToEntityName(oldName));
         var normalizedNew = NameNormalizer.ToUserTypedEntityName(newName);
-        if (target is null || normalizedNew.Length == 0 || Find(model, normalizedNew) is not null)
+
+        // Validated as AddEntity and a field rename are: "1 Bad!" normalizes to "1Bad", which is
+        // not a C# identifier, and accepting it made every generated file uncompilable.
+        if (target is null || !NameNormalizer.IsValidIdentifier(normalizedNew)
+            || Find(model, normalizedNew) is not null)
             return false;
 
         var former = target.Name;
@@ -359,6 +375,7 @@ public static class ModelEditor
         model.Record(former, DecisionStage.ReviewLoop, DecisionOutcome.Skipped,
             DecisionReasons.YouRenamedIt, $"renamed to \"{normalizedNew}\"");
 
+        renamedTo = normalizedNew;
         return true;
     }
 

@@ -35,8 +35,8 @@ public static class EntityRuleProposals
             f => f.Name,
             f => DataModelBuilder.ColumnFor(table, f.Name) ?? f.Name);
 
-        AddCrossFieldProposals(proposals, table, dateFields, columnByField);
-        AddCrossFieldProposals(proposals, table, numericFields, columnByField);
+        AddCrossFieldProposals(proposals, table, dateFields, columnByField, dates: true);
+        AddCrossFieldProposals(proposals, table, numericFields, columnByField, dates: false);
 
         if (numericFields.Count <= MaxNumericColumnsForCalculationScan)
             AddCalculationProposals(proposals, table, numericFields, columnByField);
@@ -46,8 +46,14 @@ public static class EntityRuleProposals
 
     private static void AddCrossFieldProposals(
         List<EntityRuleProposal> proposals, TabularTable table, List<CandidateField> fields,
-        IReadOnlyDictionary<string, string> columnByField)
+        IReadOnlyDictionary<string, string> columnByField, bool dates)
     {
+        // Date words for dates and number words for numbers: "Quantity is always on or before
+        // UnitPrice" read as a calendar.
+        var (holds, mustNot) = dates
+            ? ("is always on or before", "must not be after")
+            : ("is never more than", "must not be greater than");
+
         foreach (var left in fields)
         foreach (var right in fields)
         {
@@ -69,8 +75,8 @@ public static class EntityRuleProposals
                 Kind = EntityRuleProposalKind.CrossField,
                 Properties = [left.Name, right.Name],
                 Rule = new ComparisonRule(
-                    left.Name, right.Name, "> 0", $"{left.Name} must not be after {right.Name}"),
-                Evidence = $"{left.Name} is always on or before {right.Name}, in all {rows} rows{table.PartialNote}"
+                    left.Name, right.Name, "> 0", $"{left.Name} {mustNot} {right.Name}"),
+                Evidence = $"{left.Name} {holds} {right.Name}, in all {rows} rows{table.PartialNote}"
             });
         }
     }

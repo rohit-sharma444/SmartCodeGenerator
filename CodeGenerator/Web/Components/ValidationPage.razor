@@ -70,10 +70,13 @@
 
             @* Not a form: a form posts, and this page is interactive. *@
             <textarea class="val-box" rows="4" @bind="_text" @bind:event="oninput"
-                      placeholder="Age must be at least 18"></textarea>
+                      disabled="@_busy" placeholder="Age must be at least 18"></textarea>
 
+            @* Says it is working: the first add loads the rule catalog and compiles nothing, but
+               still took over a second and a half with no sign that the click had landed. *@
             <button type="button" class="val-add" disabled="@(_busy || _text.Trim().Length == 0)"
-                    @onclick="Add">Add validation</button>
+                    aria-busy="@(_busy ? "true" : "false")"
+                    @onclick="Add">@(_busy ? "Adding…" : "Add validation")</button>
         </section>
 
         @if (_added.Count > 0)
@@ -166,22 +169,28 @@
     /// not mean navigating back and right-clicking again. The transcript gets a line as well, so
     /// the conversation remains the record of what the tool did.
     /// </remarks>
-    private void Add()
+    private async Task Add()
     {
-        if (_target is null) return;
+        if (_target is null || _busy) return;
 
+        var target = _target;
+        var text = _text;
+
+        // Off the circuit, so the render that says "Adding…" goes out before the work starts.
         _busy = true;
 
         try
         {
-            var outcome = ValidationAdd.Apply(_target, _text);
+            var outcome = await Task.Run(() => ValidationAdd.Apply(target, text));
 
             _added = outcome.Added.ToList();
             _refused = outcome.Refused.ToList();
 
+            // What was written leaves the box; what was refused stays in it, as typed, to be
+            // corrected - not only listed underneath, to be typed again.
             if (_added.Count > 0)
             {
-                _text = string.Empty;
+                _text = string.Join(Environment.NewLine, outcome.Unwritten);
                 Session.Narrate(string.Join(" ", _added));
             }
 

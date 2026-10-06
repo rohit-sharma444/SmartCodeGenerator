@@ -149,9 +149,13 @@ internal static class WebAppStart
     /// <summary>
     /// Opens <paramref name="url"/> in the user's browser. True if it was handed over.
     /// </summary>
+    /// <remarks>
+    /// With <see cref="NoBrowserVariable"/> set to 1 nothing is opened and the answer is false, so
+    /// every caller falls through to printing the address (see <see cref="NotOpenedLine()"/>).
+    /// </remarks>
     public static bool OpenBrowser(string url)
     {
-        if (!Browsable(url))
+        if (!Browsable(url) || BrowserOptedOut())
             return false;
 
         try
@@ -169,6 +173,30 @@ internal static class WebAppStart
             return false;
         }
     }
+
+    /// <summary>The environment variable that keeps the pages but opens no browser tab.</summary>
+    /// <remarks>
+    /// <c>CG_NO_WEB=1</c> drops the pages altogether. This one keeps them and only stops the tab:
+    /// for a session driven by a test browser, or a user who would rather paste the address into
+    /// a browser of their choice than have one appear.
+    /// </remarks>
+    internal const string NoBrowserVariable = "CG_NO_BROWSER";
+
+    /// <summary>Whether this run was told not to open a browser tab.</summary>
+    internal static bool BrowserOptedOut()
+        => BrowserOptedOut(Environment.GetEnvironmentVariable(NoBrowserVariable));
+
+    /// <summary>Whether <paramref name="value"/>, read from <see cref="NoBrowserVariable"/>, opts out.</summary>
+    internal static bool BrowserOptedOut(string? value) => value == "1";
+
+    /// <summary>The line to print when <see cref="OpenBrowser"/> answered false.</summary>
+    internal static string NotOpenedLine() => NotOpenedLine(BrowserOptedOut());
+
+    /// <summary>The line to print when no tab was opened, by reason.</summary>
+    internal static string NotOpenedLine(bool optedOut)
+        => optedOut
+            ? $"{NoBrowserVariable}=1 is set, so no tab was opened — open that address yourself."
+            : "No default browser — open that address yourself.";
 
     /// <summary>
     /// Whether <paramref name="url"/> is something we are willing to hand to the shell.

@@ -67,7 +67,7 @@ internal sealed class ChatCommand
             Console.WriteLine($"  Opening the chat at {host.Url}");
 
             if (!WebAppStart.OpenBrowser(host.Url))
-                Console.WriteLine("  No default browser — open that address yourself.");
+                Console.WriteLine($"  {WebAppStart.NotOpenedLine()}");
 
             Console.WriteLine("  Ctrl-C here ends the session.");
             Console.WriteLine("");

@@ -140,20 +140,25 @@
                     }
                 </ul>
 
+                @* One draft per card. A single shared value let a name typed into one card's box
+                   be added to another card by that card's button. Bound, so a successful add
+                   clears the box it came from. *@
+                @{ var draft = DraftFor(entity); }
                 <div class="add-field-row">
-                    <input class="field-name" placeholder="new field"
-                           @onchange="e => _newField = e.Value?.ToString() ?? string.Empty" />
+                    <input class="field-name" placeholder="new field" value="@draft.Name"
+                           @onchange="e => draft.Name = e.Value?.ToString() ?? string.Empty" />
 
                     @* Built from the list the editor enforces, so a type this offers cannot be
                        one it will refuse. *@
-                    <select class="field-type" @onchange="TypeChosen">
+                    <select class="field-type" value="@draft.Type"
+                            @onchange="e => draft.Type = e.Value?.ToString() ?? DefaultType">
                         @foreach (var type in ModelEditor.SupportedTypes)
                         {
-                            <option value="@type">@type</option>
+                            <option value="@type" selected="@(type == draft.Type)">@type</option>
                         }
                     </select>
 
-                    <button type="button" class="add-field" @onclick="() => AddField(entity.Name)">
+                    <button type="button" class="add-field" @onclick="() => AddField(entity)">
                         add field
                     </button>
                 </div>
@@ -179,7 +184,7 @@
 </div>
 
 <div class="add-class-row">
-    <input class="new-class answer" placeholder="new class"
+    <input class="new-class answer" placeholder="new class" value="@_newClass"
            @onchange="e => _newClass = e.Value?.ToString() ?? string.Empty" />
     <button type="button" class="add-class" @onclick="AddClass">add class</button>
 </div>
@@ -233,8 +238,25 @@
             label: "Output");
 
     private string _newClass = string.Empty;
-    private string _newField = string.Empty;
-    private string _newType = "string";
+
+    private const string DefaultType = "string";
+
+    /// <summary>What one card's "add field" row holds.</summary>
+    private sealed class FieldDraft
+    {
+        public string Name { get; set; } = string.Empty;
+        public string Type { get; set; } = DefaultType;
+    }
+
+    private readonly Dictionary<CandidateEntity, FieldDraft> _drafts = [];
+
+    private FieldDraft DraftFor(CandidateEntity entity)
+    {
+        if (!_drafts.TryGetValue(entity, out var draft))
+            _drafts[entity] = draft = new FieldDraft();
+
+        return draft;
+    }
     private string? _message;
     private int _refusals;
     private List<string> _why = [];
@@ -325,7 +347,10 @@
         var fieldName = field.Name;
 
         if (name.Length == 0 || name == fieldName)
+        {
+            PutNamesBack();
             return;
+        }
 
         Report(
             ModelEditor.RenameField(Model, entityName, fieldName, name),
@@ -353,35 +378,58 @@
             "Could not change that type.");
     }
 
-    private void TypeChosen(ChangeEventArgs e)
-        => _newType = e.Value?.ToString() ?? "string";
+    /// <summary>
+    /// Abandons an edit: a blank box (or the name it already had) is put back to the model's name,
+    /// and the report of an earlier edit goes, since it no longer describes the last thing done.
+    /// </summary>
+    /// <remarks>
+    /// The key bump is what repaints the box. Blazor does not repaint an attribute whose value has
+    /// not changed, so the model said "Book" while the box still said "   ".
+    /// </remarks>
+    private void PutNamesBack()
+    {
+        _refusals++;
+        _message = null;
+    }
 
     private void Rename(CandidateEntity entity, string? typed)
     {
         var name = (typed ?? string.Empty).Trim();
 
         if (name.Length == 0 || name == entity.Name)
+        {
+            PutNamesBack();
             return;
+        }
 
-        var className = ClassNameOf(entity.Name);
-        var changed = ModelEditor.RenameEntity(Model, entity.Name, name);
+        var former = entity.Name;
+        var className = ClassNameOf(former);
+        var changed = ModelEditor.RenameEntity(Model, former, name, out var renamedTo);
 
         if (changed)
             FollowScreenChoice(
                 ScreenChoice.Rename(Session.Customization, className, ClassNameOf(entity.Name)));
 
+        // The name the model received, not the typing: "class" becomes "Class".
         Report(
             changed,
-            $"Renamed to {name}.",
-            "Could not rename — the name may already be in use.");
+            $"Renamed {former} to {renamedTo}.",
+            "Could not rename. A class name must be new to the model and a valid identifier: "
+            + "letters, digits and underscores, starting with a letter.");
     }
 
     private void AddClass()
     {
+        var before = Model.Entities.Count;
+
         // BuildAppCommand.AddLine reports the name the model actually received, which is not
         // always the name typed: promoting a suggestion keeps the suggestion's own spelling.
         _message = BuildAppCommand.AddLine(Model, ["add", _newClass]);
-        _newClass = string.Empty;
+
+        // Cleared only when it took: a refused name stays in the box to be corrected.
+        if (Model.Entities.Count > before)
+            _newClass = string.Empty;
+
         Session.ModelEdited();
     }
 
@@ -391,17 +439,25 @@
         Session.ModelEdited();
     }
 
-    private void AddField(string entityName)
+    private void AddField(CandidateEntity entity)
     {
+        var draft = DraftFor(entity);
+        var entityName = entity.Name;
+
         // The type is explicit, so TypeInference is deliberately bypassed: the drop-down is the
         // user overriding a guess before it is made.
+        var added = ModelEditor.AddField(Model, entityName, draft.Name, draft.Type);
+
+        // The name the model received ("pages" is added as "Pages"), not the typing.
         Report(
-            ModelEditor.AddField(Model, entityName, _newField, _newType),
-            $"Added {_newField} to {entityName}.",
+            added,
+            $"Added {(added ? entity.Fields[^1].Name : draft.Name)} to {entityName}.",
             "Could not add that field. The name must be new, a valid identifier, and neither "
             + "'Id' (generated) nor the class's own name.");
 
-        _newField = string.Empty;
+        // Cleared only when it took: a refused name stays in the box to be corrected.
+        if (added)
+            draft.Name = string.Empty;
     }
 
     private void Why(string name) => _why = [.. DecisionReport.ForName(Model, name)];

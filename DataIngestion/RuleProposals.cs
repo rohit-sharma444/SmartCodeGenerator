@@ -96,7 +96,7 @@ public static class RuleProposals
                     Name = "unique",
                     IsUnique = true
                 },
-                Evidence = $"no two of the {rows} rows share a {fieldName}{scan.PartialNote}"
+                Evidence = $"no two of the {rows} rows share the same {fieldName}{scan.PartialNote}"
             });
         }
 

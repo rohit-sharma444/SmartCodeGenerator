@@ -277,7 +277,10 @@ page is served by the tool itself, on this machine, and closes when the command 
 
 <div class="note"><p><strong>No browser?</strong> Set <code>CG_NO_WEB=1</code> and the command asks its
 questions in the console instead, as it did before. A run whose input is piped or redirected from a file also
-stays in the console, so existing scripts keep working exactly as they did.</p></div>
+stays in the console, so existing scripts keep working exactly as they did.</p>
+<p><strong>Page, but no new tab?</strong> Set <code>CG_NO_BROWSER=1</code>. The page still runs, but no browser
+tab opens: the console prints the address, and you open it yourself. This also applies to <code>chat</code>,
+<code>show relationships</code> and the web app that the Run stage starts.</p></div>
 
 <h3>The stages</h3>
 <p>The page draws the whole build as ten connected stages, so you can see where you are and what is still
@@ -1461,8 +1464,9 @@ published and nothing leaves the machine. The console that opened it waits while
 is printed there in case the browser does not open by itself.</p>
 
 <p>Before you have typed anything the page offers four commands to start with. Clicking one fills the box;
-none of them runs on its own. The page follows whichever of light or dark your operating system is set to,
-and changes with it — there is no setting of its own to get out of step with.</p>
+none of them runs on its own. The page is always drawn in the same light grey as the rest of the tool,
+whether your operating system is set to light or dark. It has no theme setting; the theme drop-down belongs
+to the <code>build app</code> page only.</p>
 
 <h3>Loading a solution</h3>
 
@@ -1630,7 +1634,8 @@ conversation; while a command is running the box is disabled in both, because th
 one command can be in flight at a time.</p>
 
 <p><code>chat</code> needs a browser. In a piped or scripted run, or with <code>CG_NO_WEB=1</code> set, it
-declines and says so; the console prompt is unaffected.</p>
+declines and says so; the console prompt is unaffected. With <code>CG_NO_BROWSER=1</code> set, it starts
+the page but opens no tab; the console prints the address for you to open.</p>
 
 <h2>18. Troubleshooting</h2>
 <table>

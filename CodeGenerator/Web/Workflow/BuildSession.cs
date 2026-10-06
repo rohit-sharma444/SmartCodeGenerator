@@ -597,11 +597,35 @@ public sealed class BuildSession
         {
             var count = Model.Entities.Count;
 
+            if (EarlierProject() is { } earlier)
+                return $"This discards the {count} {(count == 1 ? "class" : "classes")} discovered "
+                    + $"and generates nothing more. The project already at {earlier} stays on disk "
+                    + "as it is.";
+
             return $"This discards the {count} {(count == 1 ? "class" : "classes")} discovered, "
                 + "and nothing will be generated.";
         }
 
         return "This discards the answers so far, and nothing will be generated.";
+    }
+
+    /// <summary>
+    /// The project folder an earlier run already wrote where this one would write, when this run
+    /// has written nothing itself; otherwise null.
+    /// </summary>
+    /// <remarks>
+    /// A resumed build has no <see cref="Generated"/> of its own, yet the session it resumes may
+    /// have written the project. Saying "nothing will be generated" over it read as though there
+    /// were nothing on disk. Keyed on the project file, as the overwrite question is.
+    /// </remarks>
+    public string? EarlierProject()
+    {
+        if (Generated is not null || Target is null)
+            return null;
+
+        var name = GenerateStep.NameFor(this);
+
+        return GenerateStep.Collides(this, name, Target) ? GenerateStep.FolderFor(this, name, Target) : null;
     }
 
     /// <summary>Ends the workflow, the question having been answered.</summary>

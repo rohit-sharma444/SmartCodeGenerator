@@ -52,4 +52,11 @@ public sealed record ScaffoldResult(
     /// succeeds without these values, so <see cref="Message"/> would never carry it.
     /// </remarks>
     public IReadOnlyList<string> UnreadableSeedValues { get; init; } = [];
+
+    /// <summary>
+    /// What an overwrite did with the files an earlier generate wrote for classes the model no
+    /// longer has — removed, or kept because the user changed them — one sentence each. Empty on
+    /// a fresh generate, or when nothing was left over. See <see cref="GeneratedFilesManifest"/>.
+    /// </summary>
+    public IReadOnlyList<string> StaleFiles { get; init; } = [];
 }

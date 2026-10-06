@@ -33,6 +33,16 @@ internal sealed class ChatWebHost : IDisposable
     /// </remarks>
     private static readonly TimeSpan AbandonGrace = TimeSpan.FromSeconds(10);
 
+    /// <summary>
+    /// How long an ended session is given to draw its closing view before the host stops.
+    /// </summary>
+    /// <remarks>
+    /// Stopping the host the moment <c>exit</c> or Ctrl-C ended the session took the circuit down
+    /// before the page heard, so every tab sat on Blazor's "reconnecting" for two minutes instead
+    /// of saying the session was over. Same number as the build workflow's.
+    /// </remarks>
+    private static readonly TimeSpan FinishGrace = TimeSpan.FromSeconds(1);
+
     private readonly LoopbackHost _host;
 
     private ChatWebHost(LoopbackHost host) => _host = host;
@@ -59,7 +69,7 @@ internal sealed class ChatWebHost : IDisposable
         return true;
     }
 
-    public void Run(ChatSession session, CancellationToken ct, TimeSpan? grace = null)
+    public void Run(ChatSession session, CancellationToken ct, TimeSpan? grace = null, TimeSpan? linger = null)
     {
         var window = grace ?? AbandonGrace;
 
@@ -73,12 +83,17 @@ internal sealed class ChatWebHost : IDisposable
 
             if (Circuits.ShouldAbandon(window, DateTimeOffset.UtcNow))
             {
+                // No tab is left to draw a closing view to, so there is nothing to wait for.
                 session.End();
-                break;
+                return;
             }
 
             Thread.Sleep(PollInterval);
         }
+
+        // Ended by `exit` in a tab or by Ctrl-C here: the tabs are still open, and each has one
+        // more render to receive - the closing view.
+        Thread.Sleep(linger ?? FinishGrace);
     }
 
     public void Dispose() => _host.Dispose();

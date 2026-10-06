@@ -150,7 +150,7 @@ internal sealed class BuildAppCommand
                     Console.WriteLine($"  Opening the build workflow at {host.Url}");
 
                     if (!WebAppStart.OpenBrowser(host.Url))
-                        Console.WriteLine("  No default browser — open that address yourself.");
+                        Console.WriteLine($"  {WebAppStart.NotOpenedLine()}");
 
                     Console.WriteLine("  Ctrl-C here cancels.");
                     Console.WriteLine("");
@@ -638,7 +638,8 @@ internal sealed class BuildAppCommand
                     break;
 
                 case "rename" when parts.Length >= 3:
-                    Report(ModelEditor.RenameEntity(model, parts[1], parts[2]), $"Renamed to '{parts[2]}'.", "Could not rename (missing or name in use).");
+                    var renamed = ModelEditor.RenameEntity(model, parts[1], parts[2], out var renamedTo);
+                    Report(renamed, $"Renamed to '{renamedTo}'.", "Could not rename (missing, name in use, or not a valid class name).");
                     break;
 
                 case "field" when parts.Length >= 3:
@@ -927,6 +928,11 @@ internal sealed class BuildAppCommand
             // The user's own values, missing from the app: said, not left for them to notice.
             foreach (var unreadable in scaffold.UnreadableSeedValues)
                 Output.Warning("  " + unreadable + ".");
+
+            // What an overwrite removed (or kept) of the files an earlier generate wrote for
+            // classes the model no longer has.
+            foreach (var stale in scaffold.StaleFiles)
+                Console.WriteLine("  " + stale + ".");
 
             Console.WriteLine("");
             //foreach (var file in scaffold.FilesWritten)

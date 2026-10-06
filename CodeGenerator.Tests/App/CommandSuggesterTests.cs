@@ -24,6 +24,24 @@ public class CommandSuggesterTests
             CommandSuggester.Closest("lst projects").ToList(), "list projects");
 
     [TestMethod]
+    public void Closest_PrefersTheCloseCommand_OverAShortOneMatchedOnTheFirstWordOnly()
+    {
+        // "lsit clases" was answered with "exit" and "chat": a command that takes no arguments
+        // was compared with the first word alone, as if "clases" were its argument.
+        var guesses = CommandSuggester.Closest("lsit clases");
+
+        Assert.AreEqual("list classes", guesses[0]);
+        CollectionAssert.DoesNotContain(guesses.ToList(), "exit");
+        CollectionAssert.DoesNotContain(guesses.ToList(), "chat");
+    }
+
+    [TestMethod]
+    public void Closest_NeverSuggestsExactlyWhatWasTyped()
+        => CollectionAssert.DoesNotContain(
+            CommandSuggester.Closest("Show Relationships").Select(s => s.ToLowerInvariant()).ToList(),
+            "show relationships");
+
+    [TestMethod]
     public void Closest_ReturnsEmpty_ForGibberish()
         => Assert.IsEmpty(CommandSuggester.Closest("xyzzy plughfoo"));
 

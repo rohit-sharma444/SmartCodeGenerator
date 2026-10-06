@@ -156,6 +156,18 @@ public class OverwritePromptTests
     }
 
     [TestMethod]
+    public void Two_changed_classes_differ_and_one_differs()
+    {
+        var two = string.Join(" ", OverwritePrompt.Warning(Folder,
+            [new ClassDelta("Customer", ClassFate.Changed), new ClassDelta("Order", ClassFate.Changed)]));
+        var one = string.Join(" ", OverwritePrompt.Warning(Folder,
+            [new ClassDelta("Customer", ClassFate.Changed), new ClassDelta("Order", ClassFate.Unchanged)]));
+
+        StringAssert.Contains(two, "2 classes differ:");
+        StringAssert.Contains(one, "1 class differs:");
+    }
+
+    [TestMethod]
     public void Add_is_offered_with_a_count_when_something_is_new()
     {
         var delta = new[]

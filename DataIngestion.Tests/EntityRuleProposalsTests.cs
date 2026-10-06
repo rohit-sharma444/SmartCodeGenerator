@@ -100,6 +100,27 @@ public class EntityRuleProposalsTests
     }
 
     [Fact]
+    public void Numbers_are_compared_in_number_words_not_date_words()
+    {
+        // "Quantity is always on or before UnitPrice" - date wording for two numbers.
+        var entity = new CandidateEntity { Name = "Line" };
+        entity.Fields.Add(new CandidateField { Name = "Quantity", Type = "int" });
+        entity.Fields.Add(new CandidateField { Name = "UnitPrice", Type = "int" });
+
+        var table = TableOf("Line", ["Quantity", "UnitPrice"],
+        [
+            ["1", "10"],
+            ["2", "20"],
+        ]);
+
+        var crossField = Assert.Single(EntityRuleProposals.For(entity, table),
+            p => p.Kind == EntityRuleProposalKind.CrossField);
+
+        Assert.StartsWith("Quantity is never more than UnitPrice", crossField.Evidence);
+        Assert.Equal("Quantity must not be greater than UnitPrice", crossField.Rule.Describe());
+    }
+
+    [Fact]
     public void A_blank_end_is_judged_as_the_app_loads_it_and_breaks_the_rule()
     {
         var entity = new CandidateEntity { Name = "Booking" };

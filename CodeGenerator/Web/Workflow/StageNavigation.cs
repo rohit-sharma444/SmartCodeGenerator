@@ -65,6 +65,16 @@ public sealed class StageNavigation
         Changed?.Invoke();
     }
 
+    /// <summary>
+    /// Tells the diagram that the offered step's readiness may have changed.
+    /// </summary>
+    /// <remarks>
+    /// The <c>ready</c> delegate is only read when the page redraws, and a field edit inside a panel
+    /// redraws the panel alone. Without this, correcting a bad field cleared its error but left the
+    /// forward control disabled until something else redrew the page.
+    /// </remarks>
+    public void ReadinessChanged() => Changed?.Invoke();
+
     /// <summary>Whether the diagram should draw an enabled forward control.</summary>
     public bool CanContinue => _apply is not null && (_ready?.Invoke() ?? true);
 
