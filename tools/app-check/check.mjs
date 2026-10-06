@@ -68,6 +68,7 @@ for (const c of cases) {
 
   if (gen.ok) {
     result.classes = gen.app.classes;
+    result.steps.fields = ownKeyFields(gen.app);
 
     if (c.expect) {
       const score = scoreClasses(gen.app.classes, c.expect);
@@ -89,7 +90,7 @@ for (const c of cases) {
   if (result.steps.launch?.screenshot)
     result.steps.launch.screenshot = path.relative(runDir, result.steps.launch.screenshot).replaceAll('\\', '/');
 
-  const expected = ['generate', 'build', 'tests', ...(noLaunch ? [] : ['launch']), ...(c.expect ? ['classes'] : [])];
+  const expected = ['generate', 'fields', 'build', 'tests', ...(noLaunch ? [] : ['launch']), ...(c.expect ? ['classes'] : [])];
   result.ok = expected.every(s => result.steps[s]?.ok);
 
   const marks = expected.map(s => `${s} ${result.steps[s] ? (result.steps[s].ok ? 'ok' : 'FAIL') : '-'}`).join('  ');
@@ -108,6 +109,32 @@ console.log(`\n${passed} of ${run.cases.length} fully working.  Report: ${path.j
 function save() {
   fs.writeFileSync(path.join(runDir, 'results.json'), JSON.stringify(run, null, 2));
   writeReport(run, previous, path.join(runDir, 'report.html'));
+}
+
+/**
+ * No model may carry a dummy key of its own - an OrderId or OrderID on Order beside its Id. That
+ * defect (a column the store never fills, shown on every screen) was fixed once; this guards it.
+ */
+function ownKeyFields(app) {
+  const models = path.join(app.dir, 'Models');
+  const found = [];
+
+  for (const name of app.classes) {
+    const file = path.join(models, `${name}.cs`);
+    if (!fs.existsSync(file)) continue;
+
+    const source = fs.readFileSync(file, 'utf8');
+    const hasId = /public\s+int\s+Id\s*\{/.test(source);
+    const own = new RegExp(String.raw`public\s+\S+\s+(${name}I[dD])\s*\{`).exec(source);
+
+    if (hasId && own) found.push(`${name}.${own[1]}`);
+  }
+
+  return {
+    ok: found.length === 0,
+    secs: 0,
+    detail: found.length ? `a class's own key beside Id: ${found.join(', ')}` : `no own-key field in ${app.classes.length} class(es)`,
+  };
 }
 
 /** The most recent earlier run that got as far as writing results, to compare this one against. */

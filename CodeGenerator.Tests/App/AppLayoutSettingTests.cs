@@ -55,6 +55,7 @@ public class AppLayoutSettingTests
                 "ViewModels/MainViewModel.cs",
                 "Views/MainWindow.xaml",
                 "Views/MainWindow.xaml.cs",
+                "Views/DisplayCulture.cs",
             },
             Paths(new WpfTarget().FrontEndFiles("Shop", ["Order"], original)));
     }

@@ -23,6 +23,18 @@ public class ColumnTypeInferenceTests
     public void ZeroAndOne_StayInt_RatherThanBecomingBool()
         => Assert.Equal("int", ColumnTypeInference.Infer(new[] { "0", "1", "1", "0" }, "Active"));
 
+    /// <summary>
+    /// Text in exponent form is a code ("1E3" is batch 1E3), not a quantity: read as a number it
+    /// was seeded as 1000, a silent change to the user's own data. Only a SQL float, whose type the
+    /// source declares, is rendered that way and parsed as a number.
+    /// </summary>
+    [Theory]
+    [InlineData("1E3", "2E5", "3E1")]
+    [InlineData("1.5", "2.5e-3")]
+    [InlineData("4e2")]
+    public void ExponentFormText_StaysString(params string[] values)
+        => Assert.Equal("string", ColumnTypeInference.Infer(values, "Batch"));
+
     [Fact]
     public void EmptyValues_AreIgnored_NotTreatedAsStrings()
         => Assert.Equal("int", ColumnTypeInference.Infer(new[] { "1", "", null, "  ", "2" }, "Qty"));

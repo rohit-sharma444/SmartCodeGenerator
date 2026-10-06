@@ -254,7 +254,7 @@ public static class SeedData
     private static object? SampleValue(
         PropertyInfo prop, int n, Dictionary<string, List<int>> seededIds)
     {
-        var type = prop.PropertyType;
+        var type = Nullable.GetUnderlyingType(prop.PropertyType) ?? prop.PropertyType;
         var name = prop.Name;
 
         // Foreign key: an int named <Target>Id -> an existing seeded <Target> row's Id.

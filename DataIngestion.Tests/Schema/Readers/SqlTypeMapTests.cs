@@ -33,9 +33,25 @@ public class SqlTypeMapTests
     [InlineData("datetime2")]
     [InlineData("smalldatetime")]
     [InlineData("datetimeoffset")]
-    [InlineData("time")]
     public void The_date_family_becomes_DateTime(string sqlType)
         => Assert.Equal("DateTime", SqlTypeMap.ToModelType(sqlType));
+
+    /// <summary>
+    /// A time of day is not a date: mapped to DateTime, every value ("09:30:00") failed to read as
+    /// one, was dropped from the seed and showed as 01-Jan-01. As text it keeps every value, and
+    /// the change of type is said, as a uniqueidentifier's is.
+    /// </summary>
+    [Fact]
+    public void A_time_of_day_becomes_text_and_says_so()
+    {
+        Assert.Equal("string", SqlTypeMap.ToModelType("time"));
+
+        var note = SqlTypeMap.LossNote("time", "ShipTime");
+
+        Assert.NotNull(note);
+        Assert.Contains("ShipTime", note);
+        Assert.Contains("time", note);
+    }
 
     [Theory]
     [InlineData("nvarchar")]

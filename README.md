@@ -196,7 +196,8 @@ Started Shop.exe
 
 Next steps:
   Run it       dotnet run --project D:\Work\Shop
-  Seed data    D:\Work\Shop\Data\Seed\   (edit these, then re-run)
+  Seed data    D:\Work\Shop\Data\Seed\
+               loaded only into an empty store; to reload them after the first run, delete the <Class>.json files in D:\Work\Shop\bin\Debug\net10.0-windows
   Tests        dotnet test D:\Work\Shop.Tests\Shop.Tests.csproj
 ```
 

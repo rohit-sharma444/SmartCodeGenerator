@@ -52,8 +52,10 @@ public sealed class TransactionScreenViewModel<T> : MasterScreenViewModel<T> whe
     {
         _lines = lines;
 
+        // A date every record has comes before one some leave empty (DateTime?).
         DateField = typeof(T).GetProperties()
-            .Where(p => p.PropertyType == typeof(DateTime))
+            .Where(p => (Nullable.GetUnderlyingType(p.PropertyType) ?? p.PropertyType) == typeof(DateTime))
+            .OrderBy(p => p.PropertyType != typeof(DateTime))
             .Select(p => p.Name)
             .FirstOrDefault(name => !AuditFields.Contains(name, StringComparer.OrdinalIgnoreCase))
             ?? string.Empty;
@@ -118,7 +120,8 @@ public sealed class TransactionScreenViewModel<T> : MasterScreenViewModel<T> whe
 
     private static IEnumerable<PropertyInfo> MoneyColumns()
         => typeof(T).GetProperties()
-            .Where(p => p.PropertyType == typeof(decimal) || p.PropertyType == typeof(double))
+            .Where(p => (Nullable.GetUnderlyingType(p.PropertyType) ?? p.PropertyType) is var t
+                        && (t == typeof(decimal) || t == typeof(double)))
             .Where(p => !string.Equals(p.Name, "Id", StringComparison.OrdinalIgnoreCase)
                         && !p.Name.EndsWith("Id", StringComparison.Ordinal));
 

@@ -63,8 +63,37 @@ public static class ImportedValues
     public static bool TryInt(string value, out int result)
         => int.TryParse(value, IntegerStyles, CultureInfo.InvariantCulture, out result);
 
+    /// <summary>
+    /// A number as a value of a column already TYPED decimal — by a SQL schema, or by the user in
+    /// the review loop. Accepts the exponent a SQL float is rendered with ("1E-05").
+    /// </summary>
     public static bool TryDecimal(string value, out decimal result)
         => decimal.TryParse(value, DecimalStyles, CultureInfo.InvariantCulture, out result);
+
+    /// <summary>
+    /// Whether TEXT reads as a number on its own evidence — what column type inference asks. The
+    /// same as <see cref="TryDecimal"/> but WITHOUT the exponent: in a CSV, "1E3" is a code (batch
+    /// 1E3), and reading it as 1000 silently changes the user's data. A value read as text is
+    /// imprecise; a value read as the wrong number is corrupt.
+    /// </summary>
+    public static bool TryPlainDecimal(string value, out decimal result)
+    {
+        result = 0;
+        return value.IndexOfAny(['e', 'E']) < 0
+            && decimal.TryParse(value, DecimalStyles, CultureInfo.InvariantCulture, out result);
+    }
+
+    /// <summary>
+    /// A value the source's own FORMAT declares numeric (a JSON number, an Excel numeric cell) in
+    /// plain digits: "1E-05" becomes "0.00001". Exponent-form text is read as a code by inference,
+    /// so a number written that way must lose the exponent before it gets there. A value that is
+    /// not exponent-form, or that no decimal can hold, is returned unchanged.
+    /// </summary>
+    public static string PlainNumberText(string raw)
+        => raw.IndexOfAny(['e', 'E']) >= 0
+            && decimal.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var number)
+                ? number.ToString(CultureInfo.InvariantCulture)
+                : raw;
 
     /// <summary>
     /// The words that mean true or false, and a bare 1 or 0. Inference still never CHOOSES bool

@@ -48,7 +48,7 @@
     },
     {
       "id": "gym",
-      "target": "wpf",
+      "target": "blazor",
       "command": "build app: a gym that sells memberships to members and runs fitness classes",
       "expect": [["Member", "Customer"], ["Membership"], ["FitnessClass", "Class", "Session"]]
     }

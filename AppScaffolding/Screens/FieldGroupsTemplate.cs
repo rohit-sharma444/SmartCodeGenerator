@@ -173,12 +173,18 @@ public static class FieldGroups
 
     /// <summary>The fields an entry form shows, in declaration order, with the key fields and the
     /// long-text fields excluded — for a template with no grouping.</summary>
+    /// <remarks>
+    /// CreatedOn and ModifiedOn are left out too: the store stamps them on save, so the editable
+    /// pickers "Other Information" offered for them were silently overwritten. The console menu
+    /// and the web editor hide them the same way.
+    /// </remarks>
     public static IReadOnlyList<PropertyInfo> Flat(Type type)
     {
         var key = Key(type);
 
         return Displayable(type)
             .Where(p => p != key.Code && p != key.Date && p != key.Status)
+            .Where(p => !AuditFields.Contains(p.Name, StringComparer.OrdinalIgnoreCase))
             .Where(p => !IsLongText(p))
             .ToList();
     }
