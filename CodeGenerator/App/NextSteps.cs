@@ -51,19 +51,50 @@ internal static class NextSteps
         //
         // The folder, separator and all: Data\SeedData.cs is written by every app, and a bare
         // "Data\Seed" match found it, so this pointed at a folder that did not exist.
-        if (filesWritten.Any(
-                f => f.Contains(SeedFolder + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)))
+        var seeds = filesWritten
+            .Where(f => f.Contains(SeedFolder + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        if (seeds.Count > 0)
         {
-            lines.Add(Row(
-                "Seed data",
-                Path.Combine(projectPath, SeedFolder) + Path.DirectorySeparatorChar
-                + "   (edit these, then re-run)"));
+            lines.Add(Row("Seed data", Path.Combine(projectPath, SeedFolder) + Path.DirectorySeparatorChar));
+            lines.Add(Row(string.Empty, SeedNote(target, projectPath, seeds, filesWritten)));
         }
 
         if (testProjectPath is not null)
             lines.Add(Row("Tests", $"dotnet test {testProjectPath}"));
 
         return lines;
+    }
+
+    /// <summary>
+    /// What happens to the seed files, said truthfully. The store is seed-if-empty
+    /// (<c>SeedData.EnsureSeeded</c>): after the first run it holds data, so editing the seed files
+    /// and re-running changes nothing until the store file is deleted. This line used to say
+    /// "(edit these, then re-run)", which was true only once.
+    /// </summary>
+    private static string SeedNote(
+        ITargetScaffolder target, string projectPath, IReadOnlyList<string> seeds, IReadOnlyList<string> filesWritten)
+    {
+        // A class library is never run: its store lives beside whichever app references it.
+        if (target.ProjectType == DotNetProjectType.ClassLibrary)
+            return "loaded by SeedData.EnsureSeeded() into an empty store, in the app that references it";
+
+        // Where the built app keeps its store: AppContext.BaseDirectory, i.e. the Debug output.
+        var windows = target.ProjectType is DotNetProjectType.Wpf or DotNetProjectType.WinForms;
+        var output = Path.Combine(projectPath, "bin", "Debug", windows ? "net10.0-windows" : "net10.0");
+
+        // SQLite keeps one database file named after the project; the JSON store one file per class.
+        var sqlite = filesWritten.Any(f => string.Equals(
+            Path.GetFileName(f), "AppDbContext.cs", StringComparison.OrdinalIgnoreCase));
+
+        var store = sqlite
+            ? Path.Combine(output, Path.GetFileName(projectPath.TrimEnd(Path.DirectorySeparatorChar)) + ".db")
+            : seeds.Count == 1
+                ? Path.Combine(output, Path.GetFileName(seeds[0]))
+                : $"the <Class>.json files in {output}";
+
+        return $"loaded only into an empty store; to reload them after the first run, delete {store}";
     }
 
     private static string Row(string label, string command)
