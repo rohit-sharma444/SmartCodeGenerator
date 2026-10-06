@@ -1,4 +1,5 @@
 using CodeGenerationEngine.Core;
+using CodeGenerationEngine.Models;
 using CodeGenerator.App;
 
 namespace CodeGenerator.Tests.App;
@@ -26,6 +27,52 @@ public class WorkspaceTests
         Assert.AreEqual(2, load.ProjectCount);
         Assert.AreEqual(root, workspace.Root);
         Assert.IsNull(load.SolutionPath);
+    }
+
+    [TestMethod]
+    public void The_project_count_follows_projects_created_after_the_load()
+    {
+        // The chat header read "0 projects" after `create console project Shop` at the console,
+        // while the tree beside it drew Shop: the count was set by LoadFrom and nowhere else.
+        var root = NewTree("Api");
+        var workspace = new Workspace(root, projectPathSet: false);
+        workspace.LoadFrom(root);
+        Assert.AreEqual(1, workspace.ProjectCount);
+
+        var lib = Path.Combine(NewTree("Lib"), "Lib");
+        var moved = Path.Combine(root, "Lib");
+        Directory.Move(lib, moved);
+        ProjectManager.Register(new ProjectMetaData
+        {
+            Success = true,
+            ProjectPath = moved,
+            CsProjPath = Path.Combine(moved, "Lib.csproj"),
+            ProjectName = "Lib"
+        });
+
+        Assert.AreEqual(2, workspace.ProjectCount);
+    }
+
+    [TestMethod]
+    public void The_project_count_of_a_workspace_never_loaded_counts_its_registered_projects()
+    {
+        // Startup registers without LoadFrom; a project registered elsewhere is not counted.
+        var root = NewTree("Shop");
+        var elsewhere = NewTree("Other");
+        var workspace = new Workspace(root, projectPathSet: false);
+
+        foreach (var (folder, name) in new[] { (root, "Shop"), (elsewhere, "Other") })
+        {
+            ProjectManager.Register(new ProjectMetaData
+            {
+                Success = true,
+                ProjectPath = Path.Combine(folder, name),
+                CsProjPath = Path.Combine(folder, name, name + ".csproj"),
+                ProjectName = name
+            });
+        }
+
+        Assert.AreEqual(1, workspace.ProjectCount);
     }
 
     [TestMethod]

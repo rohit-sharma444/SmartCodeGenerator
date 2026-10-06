@@ -1,4 +1,6 @@
 using Bunit;
+using CodeGenerationEngine.Core;
+using CodeGenerationEngine.Models;
 using CodeGenerator.App;
 using CodeGenerator.Web.Chat;
 using CodeGenerator.Web.Components;
@@ -49,6 +51,32 @@ public class ChatChromeTests
 
         StringAssert.Contains(strip.Find(".strip-picker").TextContent, "Close");
     }
+
+    [TestMethod]
+    public void The_header_counts_one_project_in_the_singular()
+    {
+        using var context = new BunitContext();
+        var session = NewSession();
+
+        var strip = context.Render<ContextStrip>(p => p.Add(c => c.Session, session));
+        StringAssert.Contains(Facts(strip), "0 projects");
+
+        var folder = Path.Combine(session.Root, "Shop");
+        Directory.CreateDirectory(folder);
+        File.WriteAllText(Path.Combine(folder, "Shop.csproj"), "<Project />");
+        ProjectManager.Register(new ProjectMetaData
+        {
+            Success = true, ProjectPath = folder,
+            CsProjPath = Path.Combine(folder, "Shop.csproj"), ProjectName = "Shop"
+        });
+
+        strip.Render();
+        StringAssert.Contains(Facts(strip), "1 project ");
+        Assert.DoesNotContain("1 projects", Facts(strip));
+    }
+
+    private static string Facts(IRenderedComponent<ContextStrip> strip)
+        => System.Text.RegularExpressions.Regex.Replace(strip.Find(".strip-facts").TextContent, @"\s+", " ") + " ";
 
     [TestMethod]
     public void The_tree_button_asks_the_page_to_toggle_the_tree()

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using CodeGenerationEngine.Core;
+using CodeGenerationEngine.Helper;
 using CodeGenerationEngine.Models;
 
 namespace CodeGenerator.App;
@@ -54,7 +55,14 @@ public sealed class Workspace
 
     public List<PropertyRule> Rules { get; private set; } = [];
 
-    public int ProjectCount { get; internal set; }
+    /// <summary>The registered projects under <see cref="Root"/>, counted now.</summary>
+    /// <remarks>
+    /// Read from the registry each time rather than stored: a value set by <see cref="LoadFrom"/>
+    /// alone went stale the moment a command created a project, so the chat header said
+    /// "0 projects" beside a tree that drew one. The tree reads the same registry.
+    /// </remarks>
+    public int ProjectCount => ProjectManager.GetProjects().Count(p =>
+        PathHelper.IsWithin(p.ProjectPath, Root) || PathHelper.IsWithin(p.CsProjPath, Root));
 
     public string HistoryPath => Path.Combine(Root, HistoryFilename);
 
@@ -139,9 +147,7 @@ public sealed class Workspace
         LoadRules();
         LearnedIntentStore.Initialize(Root);
 
-        ProjectCount = projects.Count;
-
-        return new WorkspaceLoad(true, Root, ProjectCount, solution, null);
+        return new WorkspaceLoad(true, Root, projects.Count, solution, null);
     }
 
     /// <summary>
