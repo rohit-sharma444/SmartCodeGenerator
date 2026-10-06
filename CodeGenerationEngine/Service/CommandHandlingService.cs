@@ -294,8 +294,10 @@ public static class CommandHandlingService
     private static bool HandleRenameClass(CommandExecutionContext ctx)
     {
         var ok = ClassRenameService.RenameClass(
-            ctx.WorkspaceRoot, ctx.Command.ClassName, ctx.Command.NewClassName, out var message);
+            ctx.WorkspaceRoot, ctx.Command.ClassName, ctx.Command.NewClassName, out var message, out var warnings);
         Output.Result(ok, message);
+        foreach (var warning in warnings)
+            Output.Warning(warning);
         return ok;
     }
 

@@ -168,7 +168,7 @@ internal static class TypeResolution
     }
 
     /// <summary>The folder of the nearest .csproj at or above the file and within the workspace, or null.</summary>
-    private static string? ProjectFolderOf(string workspaceRoot, string file)
+    internal static string? ProjectFolderOf(string workspaceRoot, string file)
     {
         var top = Path.GetFullPath(workspaceRoot).TrimEnd(Path.DirectorySeparatorChar);
         for (var dir = Path.GetDirectoryName(Path.GetFullPath(file));
@@ -191,7 +191,7 @@ internal static class TypeResolution
 
     // No project file means nothing says otherwise, so the generous answer: the project files this
     // tool writes all turn them on.
-    private static bool ImplicitUsingsOn(string? folder)
+    internal static bool ImplicitUsingsOn(string? folder)
     {
         if (folder == null)
             return true;
