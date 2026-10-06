@@ -546,6 +546,12 @@ public static class CommandFront
         // which runs real commands back through this very method, so the demo cannot drift from
         // what the tool actually does.
 
+        // Parsing moves the current class before the handler runs ("create class Class1" sets it
+        // even when Class1 exists and the create is refused). A command that fails must leave the
+        // session as it found it: otherwise the undo journal sees a changed state, records an empty
+        // entry for the refusal and clears redo.
+        var before = ParsingStateSnapshot.Capture();
+
         if (onAnalyzed is not null)
             onAnalyzed(NlpActionProvider.Analyze(input ?? string.Empty));
 
@@ -575,6 +581,8 @@ public static class CommandFront
 
         var recognized = command.Intent != IntentType.Unknown;
         var handled = CommandHandlingService.Execute(command, ref project, configuredRules, workspace, setLastCreatedProject);
+        if (!handled)
+            before.Restore();
         return new RunResult(handled, recognized, neededAi);
     }
 }

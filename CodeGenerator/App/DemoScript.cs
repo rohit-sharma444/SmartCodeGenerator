@@ -41,8 +41,10 @@ internal static class DemoScript
         new("Require a value for one of them",
             "add validation Reference is required on Reference in Invoice"),
 
-        new("Add a rule that spans fields",
-            "add business validation Amount must be greater than 0 in Invoice"),
+        // A data rule: one field. It was "add business validation", whose parser reads only rules
+        // naming two fields, so this step failed in front of every user.
+        new("Add a second rule, on the other property",
+            "add validation must be greater than 0 on Amount in Invoice"),
 
         new("Generate the validator those rules describe",
             "generate validator Invoice"),

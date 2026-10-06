@@ -1115,6 +1115,12 @@ in the console.</p>
 <h2>10. Validation rules</h2>
 
 <p>Rules are declared in English and generated into a validator for the class.</p>
+<p>The rules are saved in the workspace, in <code>.codegen/validation-rules.json</code>, each one as
+you typed it. They are there again the next time you start the tool on the same folder, so a later
+<code>generate validator</code> writes every rule, not only the ones added since. Each add, remove and
+<code>undo</code> updates the file. It is separate from <code>rules.json</code> / <code>rules.txt</code> at
+the workspace root: those are property rules you write by hand, which the tool reads and never
+writes.</p>
 <table>
 <tr><th>Command</th><th>What it does</th></tr>
 <tr><td><code>add validation &lt;rule&gt; on &lt;property&gt; in &lt;class&gt;</code></td><td>A field-level rule.</td></tr>
@@ -1812,7 +1818,7 @@ own shows the shorter overview, and <code>help &lt;topic&gt;</code> shows one se
 <table>
 <tr><th>Command</th><th>Description</th><th>Example</th></tr>
 <tr><td><code>add business validation &lt;rule&gt; in &lt;class name&gt;</code></td><td>Adds an entity-level business rule, spanning more than one property: comparisons (after, before, must not exceed), required-when, either/or, arithmetic (equals A times B, plus, minus, divided by) and sameness (same as, different from).</td><td><code>add business validation EndDate must be after StartDate in Booking</code></td></tr>
-<tr><td><code>add validation &lt;rule&gt; on &lt;property&gt; in &lt;class name&gt;</code></td><td>Adds a field-level data rule to a class in plain English. Understands required (or &#x27;should not be blank&#x27;), numeric bounds (between, at least, at most, greater/less than, positive, not negative, not zero, whole number), text bounds (length between, at most &lt;n&gt; characters, starts or ends with, contains, uppercase, digits only), named formats (email, URL, phone number, postcode, GUID, IP address, date), relative dates (in the past, in the future, at least &lt;n&gt; years ago, within the last &lt;n&gt; days), must match &lt;regex&gt;, and a list of allowed values.</td><td><code>add validation must be between 18 and 65 on Age in Employee</code></td></tr>
+<tr><td><code>add validation &lt;rule&gt; on &lt;property&gt; in &lt;class name&gt;</code></td><td>Adds a field-level data rule to a class in plain English. Understands required (or &#x27;should not be blank&#x27;), numeric bounds (between, at least, at most, greater/less than, positive, not negative, not zero, whole number), text bounds (length between, at most &lt;n&gt; characters, starts or ends with, contains, uppercase, digits only), named formats (email, URL, phone number, postcode, GUID, IP address, date), relative dates (in the past, in the future, at least &lt;n&gt; years ago, within the last &lt;n&gt; days), must match &lt;regex&gt;, and a list of allowed values. Rules are saved in the workspace (.codegen/validation-rules.json) and are there again in the next session.</td><td><code>add validation must be between 18 and 65 on Age in Employee</code></td></tr>
 <tr><td><code>generate validator</code></td><td>Generates a validator for a class.</td><td><code>generate validator for Employee</code></td></tr>
 <tr><td><code>remove business validation &lt;number&gt; from &lt;class name&gt;</code></td><td>Removes one business rule, by the number show business validation prints.</td><td><code>remove business validation 1 from Booking</code></td></tr>
 <tr><td><code>remove validation from &lt;class name&gt;.&lt;property&gt;</code></td><td>Removes every data rule on a field. Also: remove validation on &lt;property&gt; in &lt;class name&gt;; or remove validation &lt;number&gt; from &lt;class name&gt;, with the number show validation prints.</td><td><code>remove validation from Employee.Name</code></td></tr>

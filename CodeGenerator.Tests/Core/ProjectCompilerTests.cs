@@ -111,6 +111,78 @@ public sealed class ProjectCompilerTests
         Assert.IsTrue(result.Success, result.Report());
     }
 
+    private void WriteProject(string folder, string csproj)
+    {
+        Directory.CreateDirectory(Path.Combine(_workspace, folder));
+        File.WriteAllText(Path.Combine(_workspace, folder, folder + ".csproj"), csproj);
+    }
+
+    private void WriteIn(string folder, string name, string code) =>
+        File.WriteAllText(Path.Combine(_workspace, folder, name), code);
+
+    private const string ConsoleCsproj =
+        "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><OutputType>Exe</OutputType>"
+        + "<TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings>"
+        + "<Nullable>enable</Nullable></PropertyGroup></Project>";
+
+    // dotnet new console writes Program.cs as Console.WriteLine("Hello, World!") with no using:
+    // the SDK's implicit global usings supply System. Every fresh console project reported CS0103.
+    [TestMethod]
+    public void A_fresh_console_project_compiles_with_the_sdk_implicit_usings()
+    {
+        WriteProject("App", ConsoleCsproj);
+        WriteIn("App", "Program.cs", "Console.WriteLine(\"Hello, World!\");");
+        WriteIn("App", "Order.cs",
+            "namespace App; public class Order { public List<string> Lines { get; } = new(); "
+            + "public decimal Total { get; set; } public Task Save() => File.WriteAllTextAsync(\"x\", \"\"); }");
+
+        var result = ProjectCompiler.CompileWorkspace(_workspace);
+
+        Assert.IsTrue(result.Success, result.Report());
+    }
+
+    [TestMethod]
+    public void A_project_without_implicit_usings_still_needs_its_own()
+    {
+        WriteProject("Lib", "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup>"
+            + "<TargetFramework>net10.0</TargetFramework></PropertyGroup></Project>");
+        WriteIn("Lib", "A.cs", "namespace Lib; public class A { public void M() => Console.WriteLine(); }");
+
+        var result = ProjectCompiler.CompileWorkspace(_workspace);
+
+        Assert.IsFalse(result.Success);
+        StringAssert.Contains(result.Report(), "CS0103");
+    }
+
+    // Two projects may each declare Shop.Customer; they are two assemblies, not a duplicate.
+    [TestMethod]
+    public void Each_project_compiles_on_its_own()
+    {
+        WriteProject("One", ConsoleCsproj);
+        WriteProject("Two", ConsoleCsproj);
+        WriteIn("One", "Customer.cs", "namespace Shop; public class Customer { }");
+        WriteIn("Two", "Customer.cs", "namespace Shop; public class Customer { }");
+
+        var result = ProjectCompiler.CompileWorkspace(_workspace);
+
+        Assert.IsTrue(result.Success, result.Report());
+        Assert.AreEqual(2, result.FileCount);
+    }
+
+    [TestMethod]
+    public void A_project_sees_the_types_of_a_project_it_references()
+    {
+        WriteProject("Core", ConsoleCsproj.Replace("<OutputType>Exe</OutputType>", ""));
+        WriteProject("App", ConsoleCsproj.Replace("</Project>",
+            "<ItemGroup><ProjectReference Include=\"..\\Core\\Core.csproj\" /></ItemGroup></Project>"));
+        WriteIn("Core", "Customer.cs", "namespace Core; public class Customer { public string Name { get; set; } = \"\"; }");
+        WriteIn("App", "Program.cs", "var c = new Core.Customer(); Console.WriteLine(c.Name);");
+
+        var result = ProjectCompiler.CompileWorkspace(_workspace);
+
+        Assert.IsTrue(result.Success, result.Report());
+    }
+
     [TestMethod]
     public void Validate_project_is_recognized()
     {

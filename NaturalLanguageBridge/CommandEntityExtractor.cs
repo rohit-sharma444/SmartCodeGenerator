@@ -331,8 +331,34 @@ public static class CommandEntityExtractor
         return $"{propertyName} is {rule}";
     }
 
+    // "add [business] validation to|for|on <class>: <rule>" — the class first, the rule after a
+    // colon. It matched none of the other shapes, so the rule was read as empty. The rule ends the
+    // sentence, so a full stop at the very end is the sentence's (quote a literal that ends in one).
+    private static bool TryClassFirst(string sentence, string verb, ParsedCommand command)
+    {
+        var m = Regex.Match(sentence,
+            $@"^\s*add\s+{verb}\s+(?:to|for|on)\s+(?<class>[A-Za-z_]\w*)\s*:\s*(?<rule>.+?)\s*$",
+            RegexOptions.IgnoreCase);
+        if (!m.Success)
+            return false;
+
+        var rule = m.Groups["rule"].Value.Trim();
+        if (rule.EndsWith('.') && !rule.EndsWith(".."))
+            rule = rule[..^1].TrimEnd();
+
+        command.ClassName = ToPascalCase(m.Groups["class"].Value);
+        command.ValidationText = rule;
+        return true;
+    }
+
     public static void ExtractValidationInfo(string sentence, ParsedCommand command)
     {
+        if (TryClassFirst(sentence, "validation", command))
+        {
+            command.PropertyName = ToPascalCase(command.ValidationText.Split(' ', 2)[0]);
+            return;
+        }
+
         // "add validation <rule> on <property> in <class>" (documented form).
         var onIn = Regex.Match(sentence,
             @"add\s+validation\s+(.+?)\s+on\s+([A-Za-z_]\w*)\s+in\s+([A-Za-z_]\w*)",
@@ -384,6 +410,9 @@ public static class CommandEntityExtractor
 
     public static void ExtractBusinessValidationInfo(string sentence, ParsedCommand command)
     {
+        if (TryClassFirst(sentence, @"business\s+validation", command))
+            return;
+
         // "add business validation <rule> in|for|on <class>"
         var withClass = Regex.Match(sentence,
             @"add\s+business\s+validation\s+(?<rule>.+?)\s+(?:in|for|on)\s+(?<class>[A-Za-z_]\w*)\s*[.!]?\s*$",

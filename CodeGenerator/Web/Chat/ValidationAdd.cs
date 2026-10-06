@@ -63,7 +63,7 @@ public static class ValidationAdd
                 {
                     // Registered as well as written, so `show validation <Class>` in the same
                     // session agrees with what is on disk.
-                    ValidationRegistry.Add(target.ClassName, rule);
+                    ValidationRegistry.Add(target.ClassName, rule, fragment);
                     added.Add(result.Message);
                 }
                 else

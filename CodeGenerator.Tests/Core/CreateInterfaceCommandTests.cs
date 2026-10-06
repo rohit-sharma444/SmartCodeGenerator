@@ -148,4 +148,28 @@ public sealed class CreateInterfaceCommandTests
 
         Assert.IsFalse(journal.CanUndo, journal.NextUndoLabel);
     }
+
+    // With the session state tracked, as the CLI's journal does: parsing set the current class
+    // before the handler refused, so the state differed and an empty entry was recorded — and it
+    // cleared redo.
+    [TestMethod]
+    [DataRow("create class Foo", "create class Class1", "Class1.cs", "namespace GeneratedCode { public class Class1 { } }")]
+    [DataRow("create class Foo", "create interface IShape", "IShape.cs", "namespace GeneratedCode { public interface IShape { } }")]
+    public void A_refused_create_keeps_redo_and_records_nothing_when_the_state_is_tracked(
+        string first, string refused, string existing, string code)
+    {
+        Directory.CreateDirectory(GeneratedDir);
+        File.WriteAllText(Path.Combine(GeneratedDir, existing), code);
+        using var journal = new UndoJournal(_workspace, shadowParent: _shadowParent, captureState: SessionState.Capture);
+
+        using (journal.Begin(first))
+            Assert.IsTrue(Run(first).Handled);
+        Assert.IsTrue(journal.Undo().Done);
+
+        using (journal.Begin(refused))
+            Assert.IsFalse(Run(refused).Handled);
+
+        Assert.IsFalse(journal.CanUndo, journal.NextUndoLabel);
+        Assert.IsTrue(journal.CanRedo);
+    }
 }

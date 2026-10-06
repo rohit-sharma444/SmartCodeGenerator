@@ -331,7 +331,9 @@ public static class CommandDictionary
                         + "or ends with, contains, uppercase, digits only), named formats (email, "
                         + "URL, phone number, postcode, GUID, IP address, date), relative dates "
                         + "(in the past, in the future, at least <n> years ago, within the last "
-                        + "<n> days), must match <regex>, and a list of allowed values.",
+                        + "<n> days), must match <regex>, and a list of allowed values. Rules "
+                        + "are saved in the workspace (.codegen/validation-rules.json) and are "
+                        + "there again in the next session.",
             Example = "add validation must be between 18 and 65 on Age in Employee"
         },
         new()

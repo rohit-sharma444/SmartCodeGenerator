@@ -10,12 +10,18 @@ namespace CodeGenerator.Tests.Core.Validation;
 [DoNotParallelize]
 public class BusinessValidationCommandTests
 {
+    private static string _root = string.Empty;
+
     [TestInitialize]
     public void Reset()
     {
         ValidationRegistry.Clear();
         LearnedIntentStore.UseInMemory();
+        _root = ValidationTestWorkspace.Create();
     }
+
+    [TestCleanup]
+    public void Cleanup() => ValidationTestWorkspace.Delete(_root);
 
     [TestMethod]
     public void Add_business_validation_registers_a_business_rule()
@@ -29,7 +35,7 @@ public class BusinessValidationCommandTests
         };
         ProjectMetaData? project = null;
 
-        var ok = CommandHandlingService.Execute(command, ref project, [], Path.GetTempPath(), _ => { });
+        var ok = CommandHandlingService.Execute(command, ref project, [], _root, _ => { });
 
         Assert.IsTrue(ok);
         Assert.HasCount(1, ValidationRegistry.Get("Booking", ValidationCategory.Business));
@@ -48,7 +54,7 @@ public class BusinessValidationCommandTests
         };
         ProjectMetaData? project = null;
 
-        var ok = CommandHandlingService.Execute(command, ref project, [], Path.GetTempPath(), _ => { });
+        var ok = CommandHandlingService.Execute(command, ref project, [], _root, _ => { });
 
         Assert.IsFalse(ok);
         Assert.IsEmpty(ValidationRegistry.Get(""));
@@ -68,7 +74,7 @@ public class BusinessValidationCommandTests
     {
         var command = CommandFront.Parse(sentence, "");
         ProjectMetaData? project = null;
-        return CommandHandlingService.Execute(command, ref project, [], Path.GetTempPath(), _ => { });
+        return CommandHandlingService.Execute(command, ref project, [], _root, _ => { });
     }
 
     private static void AssertRegistered(string sentence, string className, string expectedDescription)
@@ -110,4 +116,9 @@ public class BusinessValidationCommandTests
         "Either Phone or Email must be provided")]
     public void The_documented_phrasings_register_a_business_rule(string sentence, string className, string expected) =>
         AssertRegistered(sentence, className, expected);
+
+    [TestMethod]
+    public void Class_first_form_with_a_colon_registers_a_business_rule() =>
+        AssertRegistered("add business validation to Booking: EndDate must be after StartDate",
+            "Booking", "EndDate must be after StartDate");
 }

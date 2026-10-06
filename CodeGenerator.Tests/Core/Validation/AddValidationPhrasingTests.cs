@@ -17,18 +17,24 @@ namespace CodeGenerator.Tests.Core.Validation;
 [DoNotParallelize]
 public class AddValidationPhrasingTests
 {
+    private static string _root = string.Empty;
+
     [TestInitialize]
     public void Reset()
     {
         ValidationRegistry.Clear();
         LearnedIntentStore.UseInMemory();
+        _root = ValidationTestWorkspace.Create();
     }
+
+    [TestCleanup]
+    public void Cleanup() => ValidationTestWorkspace.Delete(_root);
 
     private static bool Run(string sentence)
     {
         var command = CommandFront.Parse(sentence, "");
         ProjectMetaData? project = null;
-        return CommandHandlingService.Execute(command, ref project, [], Path.GetTempPath(), _ => { });
+        return CommandHandlingService.Execute(command, ref project, [], _root, _ => { });
     }
 
     private static void AssertRegistered(string sentence, string className, string expectedDescription)
@@ -39,6 +45,15 @@ public class AddValidationPhrasingTests
         Assert.HasCount(1, rules);
         Assert.AreEqual(expectedDescription, rules[0].Describe());
     }
+
+    // "add validation to Customer: Name is required" read the rule as empty: the class-first form,
+    // with a colon, matched none of the shapes the extractor knew.
+    [TestMethod]
+    [DataRow("add validation to Customer: Name is required", "Name is required")]
+    [DataRow("add validation for Customer: Age must be between 18 and 65", "Age must be between 18 and 65")]
+    [DataRow("add validation to customer: Name is required.", "Name is required")]
+    public void Class_first_form_with_a_colon_registers_a_rule(string sentence, string expected) =>
+        AssertRegistered(sentence, "Customer", expected);
 
     [TestMethod]
     public void Bare_predicate_still_registers_a_required_rule() =>

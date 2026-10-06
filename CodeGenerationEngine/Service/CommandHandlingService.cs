@@ -503,8 +503,44 @@ public static class CommandHandlingService
             return false;
         }
 
+        // A rule on a class or property that is not there was accepted and reported as added, and
+        // generate validator later skipped it with only a source comment to show for it.
+        var className = ctx.Command.ClassName;
+        var classFile = EntityExtractor.FindClassFile(ctx.WorkspaceRoot, className);
+        if (classFile == null)
+        {
+            Output.Error($"Class '{className}' not found, so the rule was not added."
+                + CloseNames.Hint(className, EntityExtractor.ClassNames(ctx.WorkspaceRoot)));
+            return false;
+        }
+
+        var known = EntityExtractor.ExtractProperties(classFile).Select(p => p.Name).ToList();
+        var declared = EntityExtractor.DeclaredName(classFile, className);
         foreach (var rule in rules)
-            ValidationRegistry.Add(ctx.Command.ClassName, rule);
+        {
+            var missing = rule.Properties
+                .FirstOrDefault(p => !known.Contains(p, StringComparer.OrdinalIgnoreCase));
+            if (missing != null)
+            {
+                Output.Error($"'{declared}' has no property '{missing}', so the rule was not added."
+                    + CloseNames.Hint(missing, known));
+                return false;
+            }
+        }
+
+        // The same rule twice is two identical checks and two identical messages.
+        var existing = ValidationRegistry.Get(className, category);
+        var fresh = rules
+            .Where(rule => !existing.Any(r => r.Describe().Equals(rule.Describe(), StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+        if (fresh.Count == 0)
+        {
+            Output.Warning($"{declared} already has this rule: {rules[0].Describe()}. It was not added again.");
+            return true;
+        }
+
+        foreach (var rule in fresh)
+            ValidationRegistry.Add(className, rule, ctx.Command.ValidationText);
 
         Output.Success(successPrefix);
         return true;
@@ -515,7 +551,7 @@ public static class CommandHandlingService
             successPrefix: $"Business rule added to {ctx.Command.ClassName}: {ctx.Command.ValidationText}");
 
     private static bool HandleShowBusinessValidation(CommandExecutionContext ctx) =>
-        ShowRules(ctx.Command.ClassName, ValidationCategory.Business, "Business rules");
+        ShowRules(ctx.WorkspaceRoot, ctx.Command.ClassName, ValidationCategory.Business, "Business rules");
 
     private static bool HandleGenerateValidator(CommandExecutionContext ctx)
     {
@@ -748,13 +784,21 @@ public static class CommandHandlingService
     }
 
     private static bool HandleShowValidation(CommandExecutionContext ctx) =>
-        ShowRules(ctx.Command.ClassName, ValidationCategory.Data, "Validation rules");
+        ShowRules(ctx.WorkspaceRoot, ctx.Command.ClassName, ValidationCategory.Data, "Validation rules");
 
-    private static bool ShowRules(string className, ValidationCategory category, string heading)
+    private static bool ShowRules(string workspaceRoot, string className, ValidationCategory category, string heading)
     {
         var rules = ValidationRegistry.Get(className, category);
         if (rules.Count == 0)
         {
+            // "No validation rules for 'Nope'" read as though Nope were a class with none.
+            if (EntityExtractor.FindClassFile(workspaceRoot, className) == null)
+            {
+                Output.Warning($"Class '{className}' not found."
+                    + CloseNames.Hint(className, EntityExtractor.ClassNames(workspaceRoot)));
+                return true;
+            }
+
             Console.WriteLine($"No {heading.ToLowerInvariant()} for '{className}'.");
             return true;
         }

@@ -38,8 +38,17 @@ public static class ActionFormatter
                 or IntentType.AnalyzeClass
                 or IntentType.ClassInherit => command.ClassName,
 
+            // The class too: "Email : string" did not say where it would go.
             IntentType.CreateProperty
-                or IntentType.DeleteProperty => $"{command.PropertyName} : {command.PropertyType}",
+                or IntentType.DeleteProperty => string.IsNullOrWhiteSpace(command.ClassName)
+                    ? $"{command.PropertyName} : {command.PropertyType}"
+                    : $"{command.ClassName}.{command.PropertyName} : {command.PropertyType}",
+
+            // A bare "AddValidation" said nothing about what would be added, or to what.
+            IntentType.AddValidation
+                or IntentType.AddBusinessValidation => string.IsNullOrWhiteSpace(command.ClassName)
+                    ? command.ValidationText ?? string.Empty
+                    : $"{command.ClassName}: {command.ValidationText}",
 
             IntentType.CreateMethod
                 or IntentType.DeleteMethod => command.MethodName,

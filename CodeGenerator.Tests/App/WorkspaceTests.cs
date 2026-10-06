@@ -242,6 +242,33 @@ public class WorkspaceTests
     }
 
     [TestMethod]
+    public void Validation_rules_saved_in_a_workspace_are_loaded_with_it_and_replaced_on_re_root()
+    {
+        var first = NewTree("A");
+        var second = NewTree("B");
+        CodeGenerationEngine.Core.Validation.ValidationRuleFile.Write(
+            CodeGenerationEngine.Core.Validation.ValidationRuleFile.PathFor(second),
+            [new("Employee", CodeGenerationEngine.Core.Validation.ValidationCategory.Data, "Name is required")]);
+
+        try
+        {
+            var workspace = new Workspace(first, projectPathSet: false);
+            workspace.LoadFrom(first);
+            Assert.IsEmpty(ValidationRegistry.Get("Employee"));
+
+            workspace.LoadFrom(second);
+            Assert.AreEqual("Name is required", ValidationRegistry.Get("Employee").Single().Describe());
+
+            workspace.LoadFrom(first);
+            Assert.IsEmpty(ValidationRegistry.Get("Employee"));
+        }
+        finally
+        {
+            ValidationRegistry.Clear();
+        }
+    }
+
+    [TestMethod]
     public void A_path_that_does_not_exist_is_reported_not_thrown()
     {
         var root = NewTree("A");
