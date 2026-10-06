@@ -28,6 +28,15 @@ public sealed class WorkspaceSnapshot : IDisposable
     public const long MaxBytes = 200L * 1024 * 1024;
 
     private const string WorkspaceFolder = "workspace";
+
+    /// <summary>How a snapshot folder in the temp directory is named: this, the process id, '_',
+    /// and a random name — so a later session can tell a copy whose owner was killed from one a
+    /// running session still needs (see <c>UndoJournal.RemoveStale</c>).</summary>
+    public const string FolderPrefix = "codegen_snapshot_";
+
+    /// <summary>A file in a snapshot kept because putting it back failed: the user may still need
+    /// it, so no clean-up deletes it.</summary>
+    public const string KeptMarker = "KEPT-restore-failed.txt";
     private const string RegistryFileName = "ProjectManager.dat";
     private const string RegistryBackupName = "ProjectManager.dat.bak";
 
@@ -81,7 +90,7 @@ public sealed class WorkspaceSnapshot : IDisposable
     public static WorkspaceSnapshot Capture(string workspaceRoot)
     {
         var snapshotPath = Path.Combine(
-            Path.GetTempPath(), "codegen_snapshot_" + Path.GetRandomFileName());
+            Path.GetTempPath(), $"{FolderPrefix}{Environment.ProcessId}_{Path.GetRandomFileName()}");
 
         try
         {
@@ -192,6 +201,14 @@ public sealed class WorkspaceSnapshot : IDisposable
         catch
         {
             _restoreFailed = true;
+            try
+            {
+                File.WriteAllText(Path.Combine(SnapshotPath, KeptMarker),
+                    $"Putting {_workspaceRoot} back failed. This copy of it was kept so it can be recovered by hand.");
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+            }
             throw;
         }
     }

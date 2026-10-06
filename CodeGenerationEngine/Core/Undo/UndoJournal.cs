@@ -232,9 +232,11 @@ public sealed class UndoJournal : IDisposable
     private const string ShadowPrefix = "codegen_undo_";
 
     /// <summary>
-    /// Deletes the shadow copies whose session was killed before it could delete its own: those
-    /// named after a process that is no longer running. A copy named after a running process —
-    /// or with no process in its name, from an older version — is never touched.
+    /// Deletes the shadow copies — and the batch, run and build snapshots
+    /// (<see cref="WorkspaceSnapshot"/>) — whose session was killed before it could delete its own:
+    /// those named after a process that is no longer running. A copy named after a running process,
+    /// with no process in its name (from an older version), or kept because putting it back failed,
+    /// is never touched.
     /// </summary>
     /// <returns>How many copies were deleted.</returns>
     public static int RemoveStale(string? parent = null, Func<int, bool>? isRunning = null)
@@ -244,9 +246,14 @@ public sealed class UndoJournal : IDisposable
 
         try
         {
-            foreach (var folder in Directory.EnumerateDirectories(parent ?? Path.GetTempPath(), ShadowPrefix + "*"))
+            foreach (var (folder, prefix) in new[] { ShadowPrefix, WorkspaceSnapshot.FolderPrefix }
+                         .SelectMany(prefix => Directory.EnumerateDirectories(parent ?? Path.GetTempPath(), prefix + "*")
+                             .Select(folder => (folder, prefix))))
             {
-                var rest = Path.GetFileName(folder)[ShadowPrefix.Length..];
+                if (File.Exists(Path.Combine(folder, WorkspaceSnapshot.KeptMarker)))
+                    continue;
+
+                var rest = Path.GetFileName(folder)[prefix.Length..];
                 var underscore = rest.IndexOf('_');
                 if (underscore <= 0 || !int.TryParse(rest[..underscore], out var pid))
                     continue;

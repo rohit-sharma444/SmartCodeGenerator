@@ -476,16 +476,32 @@ public sealed class UndoJournalTests
         var live = Folder("codegen_undo_222_abcd.efg");
         var mine = Folder($"codegen_undo_{Environment.ProcessId}_abcd.efg");
         var unnamed = Folder("codegen_undo_abcd.efg");      // an older copy: whose it is is unknown
-        var other = Folder("codegen_snapshot_111_abcd.efg");
+        // Batch, run and build snapshots were named with no process and piled up in %TEMP%.
+        var deadSnapshot = Folder("codegen_snapshot_111_abcd.efg");
+        var liveSnapshot = Folder("codegen_snapshot_222_abcd.efg");
+        var unnamedSnapshot = Folder("codegen_snapshot_abcd.efg");
+        var keptSnapshot = Folder("codegen_snapshot_333_abcd.efg");   // its restore failed: the user's
+        File.WriteAllText(Path.Combine(keptSnapshot, CodeGenerationEngine.Core.WorkspaceSnapshot.KeptMarker), "");
 
         var removed = UndoJournal.RemoveStale(_shadowParent, pid => pid == 222);
 
-        Assert.AreEqual(1, removed);
+        Assert.AreEqual(2, removed);
         Assert.IsFalse(Directory.Exists(dead));
         Assert.IsTrue(Directory.Exists(live));
         Assert.IsTrue(Directory.Exists(mine));
         Assert.IsTrue(Directory.Exists(unnamed));
-        Assert.IsTrue(Directory.Exists(other));
+        Assert.IsFalse(Directory.Exists(deadSnapshot));
+        Assert.IsTrue(Directory.Exists(liveSnapshot));
+        Assert.IsTrue(Directory.Exists(unnamedSnapshot));
+        Assert.IsTrue(Directory.Exists(keptSnapshot));
+    }
+
+    [TestMethod]
+    public void A_workspace_snapshot_is_named_after_the_process_that_owns_it()
+    {
+        using var snapshot = CodeGenerationEngine.Core.WorkspaceSnapshot.Capture(_root);
+
+        StringAssert.StartsWith(Path.GetFileName(snapshot.SnapshotPath), $"codegen_snapshot_{Environment.ProcessId}_");
     }
 
     [TestMethod]
