@@ -145,12 +145,17 @@ async function desktop(target, app, caseDir, check) {
     if (check('New button works', created.ok, created.error)) {
       await send({ cmd: 'click-button', name: 'Save' });
       const status = await send({ cmd: 'read-status' });
-      check('Save gives an answer', status.ok, status.ok ? status.text : status.error);
 
       // Recounted, because "Save gives an answer" passes on any status at all. A blank record is
       // usually refused (a required field), and then nothing may appear; otherwise exactly one.
       await sleep(1000);
       const after = await send({ cmd: 'find-grid' });
+
+      // A transaction's editor saves and goes back to its list, which has no status line - the
+      // answer there is the new row, as the Blazor check already counts "returned to the list".
+      const returned = !status.ok && grid.ok && after.ok && total(after) === total(grid) + 1;
+      check('Save gives an answer', status.ok || returned,
+        status.ok ? status.text : returned ? 'saved and returned to the list' : status.error);
 
       if (grid.ok && after.ok) {
         const refused = status.ok && /cannot|required|must|refused|not allowed/i.test(status.text ?? '');
