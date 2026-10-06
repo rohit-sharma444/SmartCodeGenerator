@@ -174,10 +174,10 @@ else
             : "It did not compile — the log is above the last time it ran.");
     }
 
-    /// <summary>A typed name goes through the same rule the generated one did, so what is written
-    /// is always a usable identifier.</summary>
+    /// <summary>A typed name goes through the typed-name rule, so what is written is always a
+    /// usable identifier - and, being a name the user chose, is never shortened.</summary>
     private void NameTyped(ChangeEventArgs e)
-        => _name = DomainAppName.FromDescription(e.Value?.ToString() ?? _name);
+        => _name = DomainAppName.FromTypedName(e.Value?.ToString() ?? _name);
 
     private void PersistenceChosen(ChangeEventArgs e)
         => _persistence = e.Value?.ToString() == "sqlite"

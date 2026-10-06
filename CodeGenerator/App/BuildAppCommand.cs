@@ -449,8 +449,8 @@ internal sealed class BuildAppCommand
 
     /// <summary>
     /// The project name. A description names the app when there is one; otherwise the source's base
-    /// name goes through the SAME <see cref="DomainAppName.FromDescription"/> rule, so there is one
-    /// naming rule in the product rather than a second one invented for this path.
+    /// name goes through the same <see cref="DomainAppName"/> rules (as a typed name, so it is never
+    /// cut at "for" or "with"), rather than a second rule invented for this path.
     /// </summary>
     internal static string AppNameFor(string description, DataSourceSpec? source)
     {
@@ -460,7 +460,8 @@ internal sealed class BuildAppCommand
         if (source is null)
             return DomainAppName.FromDescription(string.Empty);
 
-        return DomainAppName.FromDescription(
+        // A file or database name is a name the user chose, not a sentence to shorten.
+        return DomainAppName.FromTypedName(
             source.Kind == DataSourceKind.Sql
                 ? source.SqlDatabase ?? string.Empty
                 : Path.GetFileNameWithoutExtension(source.Location));
@@ -1099,10 +1100,10 @@ internal sealed class BuildAppCommand
     /// A new app name, or null to cancel.
     /// </summary>
     /// <remarks>
-    /// Normalized through <see cref="DomainAppName.FromDescription"/>, the same routine that
-    /// derived the original name from the description — so "cash book" becomes CashBook here
-    /// exactly as it would have there, and a name that cannot be a .NET identifier cannot be
-    /// typed in by this route either.
+    /// Normalized through <see cref="DomainAppName.FromTypedName"/> — so "cash book" becomes
+    /// CashBook here exactly as it would from a description, and a name that cannot be a .NET
+    /// identifier cannot be typed in by this route either; but a name the user typed is never
+    /// shortened to a description's subject.
     /// </remarks>
     private static string? AskNewAppName()
     {
@@ -1125,7 +1126,7 @@ internal sealed class BuildAppCommand
             if (text.Length == 0)
                 continue;
 
-            var name = DomainAppName.FromDescription(text);
+            var name = DomainAppName.FromTypedName(text);
 
             Console.WriteLine($"  Generating as {name}.");
 

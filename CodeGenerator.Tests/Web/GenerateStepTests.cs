@@ -29,6 +29,17 @@ public class GenerateStepTests
         Assert.AreEqual("Orders", GenerateStep.NameFor(session));
     }
 
+    // A file name is a name the user chose, not a sentence: it is never cut at "for" or "with"
+    // the way a description is shortened to its subject.
+    [TestMethod]
+    public void Keeps_every_word_of_the_source_file_name()
+    {
+        var session = new BuildSession("", Path.GetTempPath(), AppCustomization.Default,
+            new DataIngestion.DataSourceSpec(DataIngestion.DataSourceKind.Csv, @"C:\data\sales for 2024.csv"));
+
+        Assert.AreEqual("SalesFor2024", GenerateStep.NameFor(session));
+    }
+
     [TestMethod]
     public void Reports_no_collision_for_a_name_that_is_not_on_disk()
     {
