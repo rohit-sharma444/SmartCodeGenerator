@@ -201,9 +201,12 @@ public static class CommandHandlingService
             Framework = string.IsNullOrWhiteSpace(command.Framework) ? "net10.0" : command.Framework
         };
 
-        Console.WriteLine(
-            $"Creating project '{projectReq.ProjectName}' of type '{projectReq.ProjectType}' " +
-            $"in '{projectReq.OutputFolder}' targeting '{projectReq.Framework}'...");
+        // Said only when one is really created: an existing project printed "Creating project..."
+        // and then "Existing project loaded".
+        if (ExistingProjectFile(projectReq, ctx.WorkspaceRoot) == null)
+            Console.WriteLine(
+                $"Creating project '{projectReq.ProjectName}' of type '{projectReq.ProjectType}' " +
+                $"in '{projectReq.OutputFolder}' targeting '{projectReq.Framework}'...");
 
         var projResult = LoadOrCreateProject(projectReq, ctx.WorkspaceRoot);
         ProjectManager.Register(projResult);
@@ -928,12 +931,14 @@ public static class CommandHandlingService
         return true;
     }
 
+    private static string? ExistingProjectFile(ProjectRequest request, string workspaceRoot) =>
+        Directory.GetFiles(workspaceRoot, $"{request.ProjectName}.csproj", SearchOption.AllDirectories)
+            .FirstOrDefault();
+
     // FIX #8: Correct path handling - store .csproj path and directory separately
     private static ProjectMetaData LoadOrCreateProject(ProjectRequest request, string workspaceRoot)
     {
-        var existingProject = Directory
-            .GetFiles(workspaceRoot, $"{request.ProjectName}.csproj", SearchOption.AllDirectories)
-            .FirstOrDefault();
+        var existingProject = ExistingProjectFile(request, workspaceRoot);
 
         if (existingProject != null)
         {
@@ -944,7 +949,8 @@ public static class CommandHandlingService
                 ProjectPath = projectDir ?? Path.GetDirectoryName(workspaceRoot) ?? workspaceRoot,
                 CsProjPath = existingProject,
                 ProjectName = Path.GetFileNameWithoutExtension(existingProject),
-                Message = $"Existing project loaded: {existingProject}"
+                Message = $"Project '{Path.GetFileNameWithoutExtension(existingProject)}' already exists ({existingProject}); "
+                    + "nothing was created, and it is now the current project."
             };
         }
 

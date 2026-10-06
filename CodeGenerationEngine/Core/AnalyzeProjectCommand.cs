@@ -28,17 +28,16 @@ public static class AnalyzeProjectCommand
         if (projectPath == null)
             return $"Project '{projectName}' not found.";
 
-        var csFiles = Directory.GetFiles(
-            projectPath,
-            "*.cs",
-            SearchOption.AllDirectories);
+        // The project's own source: build output under obj (and kept copies of deleted classes) were
+        // counted too, and the file count was printed as "Classes: 2" above the real "Classes: 1".
+        var csFiles = ClassFiles.Under(projectPath).ToArray();
 
         var sb = new StringBuilder();
 
         sb.AppendLine($"Project: {projectName}");
         sb.AppendLine();
 
-        sb.AppendLine($"Classes: {csFiles.Length}");
+        sb.AppendLine($"Files: {csFiles.Length}");
 
         int classCount = 0;
         int propertyCount = 0;
