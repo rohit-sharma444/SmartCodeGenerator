@@ -5,7 +5,10 @@ using CodeGenerationEngine.Core.Validation;
 namespace CodeGenerator.Web.Chat;
 
 /// <summary>What one submission of the box did.</summary>
-public sealed record ValidationOutcome(IReadOnlyList<string> Added, IReadOnlyList<string> Refused);
+/// <param name="Unwritten">The lines of the box that produced no rule on disk, as typed, so the
+/// page can leave exactly those in the box to be corrected.</param>
+public sealed record ValidationOutcome(
+    IReadOnlyList<string> Added, IReadOnlyList<string> Refused, IReadOnlyList<string> Unwritten);
 
 /// <summary>
 /// One box of plain English, applied to one class.
@@ -24,6 +27,7 @@ public static class ValidationAdd
     {
         var added = new List<string>();
         var refused = new List<string>();
+        var unwritten = new List<string>();
 
         var properties = EntityExtractor.ExtractProperties(target.File);
         var known = properties.Select(p => p.Name).ToList();
@@ -45,8 +49,11 @@ public static class ValidationAdd
             if (rules.Count == 0)
             {
                 refused.Add($"I could not turn this into a rule: \"{fragment}\"");
+                unwritten.Add(fragment);
                 continue;
             }
+
+            var wroteAll = true;
 
             foreach (var rule in rules)
             {
@@ -62,11 +69,15 @@ public static class ValidationAdd
                 else
                 {
                     refused.Add(result.Message);
+                    wroteAll = false;
                 }
             }
+
+            if (!wroteAll)
+                unwritten.Add(fragment);
         }
 
-        return new ValidationOutcome(added, refused);
+        return new ValidationOutcome(added, refused, unwritten);
     }
 
     /// <summary>Every phrasing the catalog accepts, asked of the catalog.</summary>
