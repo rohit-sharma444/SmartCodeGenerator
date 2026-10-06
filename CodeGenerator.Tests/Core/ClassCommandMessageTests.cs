@@ -56,7 +56,8 @@ public sealed class ClassCommandMessageTests
     public void Analyze_project_prints_one_class_count_from_the_source_only()
     {
         Write("Alpha/Alpha.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\" />");
-        Write("Alpha/Customer.cs", "namespace Alpha { public class Customer { public int Id { get; set; } } }");
+        Write("Alpha/Customer.cs", "namespace Alpha { public partial class Customer { public int Id { get; set; } } }");
+        Write("Alpha/Customer.Validation.cs", "namespace Alpha { public partial class Customer { } }");
         Write("Alpha/obj/Debug/Alpha.AssemblyInfo.cs", "namespace Alpha { class Generated { } }");
         ProjectManager.CurrentProject = new ProjectMetaData { ProjectName = "Alpha", ProjectPath = Path.Combine(_workspace, "Alpha") };
 
