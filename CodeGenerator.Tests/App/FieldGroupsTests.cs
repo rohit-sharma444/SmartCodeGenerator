@@ -375,6 +375,26 @@ public class Ticket
         CollectionAssert.Contains(shown, "Total");
     }
 
+    /// <summary>The store stamps CreatedOn and ModifiedOn on save, so "Other Information" offering
+    /// them as editable pickers let a user type a ModifiedOn that was silently overwritten.</summary>
+    [TestMethod]
+    public void The_audit_dates_appear_in_no_panel()
+    {
+        var source = EmittedSource.Flatten(
+            OrderStub,
+            FieldGroupsTemplate.Source("Acme").Replace("namespace Acme.Screens;", string.Empty));
+
+        var assembly = Assembly.Load(Compiler.Compile(source).AssemblyBytes!);
+        var flat = ((IEnumerable<PropertyInfo>)assembly.GetType("FieldGroups")!
+                .GetMethod("Flat")!.Invoke(null, [assembly.GetType("Order")!])!)
+            .Select(p => p.Name)
+            .ToList();
+
+        CollectionAssert.DoesNotContain(flat, "CreatedOn");
+        CollectionAssert.DoesNotContain(flat, "ModifiedOn");
+        CollectionAssert.Contains(flat, "Total");
+    }
+
     [TestMethod]
     public void A_model_with_no_code_date_or_status_yields_none()
     {

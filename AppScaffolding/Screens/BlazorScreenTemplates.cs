@@ -63,10 +63,12 @@ public static class ScreenFields
             .ToArray();
 
     /// <summary>The fields an editor offers. Id is shown by the list and assigned by the store, so
-    /// it is never typed into.</summary>
+    /// it is never typed into; nor are CreatedOn and ModifiedOn, which the store stamps on save --
+    /// a typed ModifiedOn was silently overwritten. The console menu hides them the same way.</summary>
     public static PropertyInfo[] Editable(Type type)
         => Columns(type)
             .Where(p => p.CanWrite && !string.Equals(p.Name, "Id", StringComparison.Ordinal))
+            .Where(p => !AuditFields.Contains(p.Name, StringComparer.OrdinalIgnoreCase))
             .ToArray();
 
     public static int IdOf(object record)

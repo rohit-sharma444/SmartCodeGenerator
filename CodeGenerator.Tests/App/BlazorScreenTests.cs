@@ -458,7 +458,9 @@ public class Order
     public int CustomerId { get; set; }
     public DateTime OrderedOn { get; set; }
     public decimal Amount { get; set; }
+    public int? Quantity { get; set; }
     public DateTime CreatedOn { get; set; }
+    public DateTime ModifiedOn { get; set; }
 }
 """;
 
@@ -581,6 +583,19 @@ public class Order
         orderType.GetProperty("Reference")!.SetValue(clone, "Changed");
 
         Assert.AreEqual("Original", orderType.GetProperty("Reference")!.GetValue(original));
+    }
+
+    /// <summary>The store stamps CreatedOn and ModifiedOn on save, so a typed one was silently
+    /// overwritten; the editor no longer offers them, as the console menu never did.</summary>
+    [TestMethod]
+    public void The_editor_does_not_offer_the_audit_dates()
+    {
+        var assembly = EmitFields();
+        var editable = Names_(Invoke(assembly, "Editable", assembly.GetType("Order")));
+
+        CollectionAssert.DoesNotContain(editable, "CreatedOn");
+        CollectionAssert.DoesNotContain(editable, "ModifiedOn");
+        CollectionAssert.Contains(editable, "OrderedOn");
     }
 
     [TestMethod]
