@@ -132,6 +132,28 @@ public class ChatPageTests
     }
 
     [TestMethod]
+    public void Exit_replaces_the_composer_with_a_closing_view()
+    {
+        // `exit` left every tab on "Reconnecting to SmartCodeGenerator..." for two minutes, with
+        // no word that the session had ended.
+        using var context = NewContext(out var session);
+        var page = context.Render<ChatPage>();
+        session.Send("help").Wait();
+
+        session.Send("exit").Wait();
+
+        page.WaitForAssertion(() =>
+        {
+            var ended = page.Find(".chat-ended");
+            Assert.AreEqual("status", ended.GetAttribute("role"));
+            StringAssert.Contains(ended.TextContent, "ended");
+            StringAssert.Contains(ended.TextContent, "close this tab");
+            Assert.IsEmpty(page.FindAll(".composer"));
+            Assert.IsNotEmpty(page.FindAll(".turn"), "the transcript stays readable");
+        });
+    }
+
+    [TestMethod]
     public void A_second_circuit_repaints_when_the_first_one_sends()
     {
         // Two tabs on one conversation. The session raises Changed; both pages must redraw, or the
