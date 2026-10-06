@@ -45,7 +45,7 @@ public static class CommandEntityExtractor
         var command = new ParsedCommand
         {
             Intent = intent,
-            OriginalSentence = rawSentence
+            OriginalSentence = rawSentence ?? string.Empty
         };
 
         var tokens = sentence.Split(' ', StringSplitOptions.RemoveEmptyEntries);
