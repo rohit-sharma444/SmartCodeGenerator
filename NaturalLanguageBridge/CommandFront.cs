@@ -99,6 +99,27 @@ public static class CommandFront
             + @"(?<class>[A-Za-z_]\w*)\s*[.!?]?$",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    // `show|analyze|delete|restore class <Class>`, ahead of the mapper, which did not recognise a
+    // lower-case name ("show class customer" was "Command not recognized"). The verbs are the
+    // mapper's own for these intents.
+    private static readonly Regex ClassVerbRe =
+        new(@"^(?<verb>show|view|display|open|analy[sz]e|delete|remove|restore)\s+(?:the\s+)?class\s+"
+            + @"(?<class>[A-Za-z_]\w*)\s*[.!?]?$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    // `rename class <old> to <new>`, for the same reason.
+    private static readonly Regex RenameClassRe =
+        new(@"^rename\s+(?:the\s+)?class\s+(?<old>[A-Za-z_]\w*)\s+(?:to|into)\s+(?<new>[A-Za-z_]\w*)\s*[.!]?$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    // `add method <name> [returns <type>] to <Class>`, for the same reason: "add method save to
+    // Circle" was not recognised.
+    private static readonly Regex AddMethodRe =
+        new(@"^(?:add|create|generate)\s+(?:(?:a|an|new)\s+)?method\s+(?<method>[A-Za-z_]\w*)"
+            + @"(?:\s+returns?\s+(?<returns>[A-Za-z_][\w<>\[\],\.\?]*))?"
+            + @"\s+(?:to|for|in|on)\s+(?:class\s+(?=\S))?(?<class>[A-Za-z_]\w*)\s*[.!]?$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     // The start of `add property ...`; the rest is CommandEntityExtractor.AddPropertyRe, which
     // reads the fields.
     private static readonly Regex AddPropertyStartRe =
@@ -172,6 +193,12 @@ public static class CommandFront
         IntentType.CreateProperty,
         IntentType.ListProperties,
         IntentType.ListMethods,
+        IntentType.ShowClass,
+        IntentType.DeleteClass,
+        IntentType.RestoreClass,
+        IntentType.AnalyzeClass,
+        IntentType.RenameClass,
+        IntentType.CreateMethod,
         IntentType.RenameProperty,
         IntentType.DeleteMethod,
         IntentType.RenameMethod,
@@ -266,6 +293,42 @@ public static class CommandFront
                     ? IntentType.ListMethods
                     : IntentType.ListProperties,
                 memberListMatch.Groups["class"].Value, input, workspace);
+
+        var classVerbMatch = ClassVerbRe.Match(text);
+        if (classVerbMatch.Success)
+        {
+            var verb = classVerbMatch.Groups["verb"].Value.ToLowerInvariant();
+            var classIntent = verb switch
+            {
+                "delete" or "remove" => IntentType.DeleteClass,
+                "restore" => IntentType.RestoreClass,
+                "analyze" or "analyse" => IntentType.AnalyzeClass,
+                _ => IntentType.ShowClass,
+            };
+            return ClassCommand(classIntent, classVerbMatch.Groups["class"].Value, input, workspace);
+        }
+
+        var renameClassMatch = RenameClassRe.Match(text);
+        if (renameClassMatch.Success)
+        {
+            var renameClassCmd = ClassCommand(
+                IntentType.RenameClass, renameClassMatch.Groups["old"].Value, input, workspace);
+            // The new name as typed: the rename service refuses one that is no identifier.
+            renameClassCmd.NewClassName = renameClassMatch.Groups["new"].Value;
+            return renameClassCmd;
+        }
+
+        var addMethodMatch = AddMethodRe.Match(text);
+        if (addMethodMatch.Success)
+        {
+            var addMethodCmd = ClassCommand(
+                IntentType.CreateMethod, addMethodMatch.Groups["class"].Value, input, workspace);
+            addMethodCmd.MethodName = CommandEntityExtractor.ToPascalCase(addMethodMatch.Groups["method"].Value);
+            addMethodCmd.ReturnType = addMethodMatch.Groups["returns"].Success
+                ? addMethodMatch.Groups["returns"].Value
+                : "void";
+            return addMethodCmd;
+        }
 
         // `add property <name> [<type>] to <Class>`, ahead of the mapper, which needs a capitalised
         // name to see a property: "add property note string to Circle" was not recognised, and a
@@ -407,38 +470,29 @@ public static class CommandFront
     }
 
     // A command on one class, named as typed in any case.
-    private static ParsedCommand ClassCommand(IntentType intent, string typed, string? input, string workspace)
-    {
-        var command = new ParsedCommand
+    private static ParsedCommand ClassCommand(IntentType intent, string typed, string? input, string workspace) =>
+        new()
         {
             Intent = intent,
             ClassName = DeclaredClassName(workspace, typed),
             OriginalSentence = input ?? string.Empty,
             Confidence = 1.0
         };
-        SessionContext.CurrentClass = command.ClassName;
-        return command;
-    }
 
     /// <summary>
     /// The class name as the workspace declares it - its file is named after it - so "orderline"
-    /// finds OrderLine; else the typed name PascalCased, as create class makes it.
+    /// finds OrderLine; else the typed name PascalCased, as create class makes it. A deleted class
+    /// is not in the workspace, and restore class matches its name without regard to case.
     /// </summary>
     internal static string DeclaredClassName(string workspace, string typed)
     {
-        if (!string.IsNullOrWhiteSpace(workspace) && Directory.Exists(workspace))
+        try
         {
-            try
-            {
-                var file = Directory.EnumerateFiles(workspace, typed + ".cs", SearchOption.AllDirectories)
-                    .FirstOrDefault(f => !f.Contains(Path.DirectorySeparatorChar + "bin" + Path.DirectorySeparatorChar)
-                                         && !f.Contains(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar));
-                if (file is not null)
-                    return Path.GetFileNameWithoutExtension(file);
-            }
-            catch (IOException) { }
-            catch (UnauthorizedAccessException) { }
+            if (ClassFiles.FileOf(workspace, typed) is { } file)
+                return Path.GetFileNameWithoutExtension(file);
         }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
 
         return CommandEntityExtractor.ToPascalCase(typed);
     }
