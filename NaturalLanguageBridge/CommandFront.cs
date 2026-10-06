@@ -91,6 +91,14 @@ public static class CommandFront
             + @"(?:\s+with\s+.+)?$",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    // `list|show properties|methods [of|in|for] [class] <Class>`. The mapper took the third word as
+    // the class - "list methods of Employee" looked for a class called of - and found none at all
+    // in the documented "show methods Customer"; a lower-case name was not recognised.
+    private static readonly Regex MemberListRe =
+        new(@"^(?<verb>list|show|display|view)\s+(?<what>properties|methods)\s+(?:(?:of|in|for|on)\s+)?(?:(?:the\s+)?class\s+)?"
+            + @"(?<class>[A-Za-z_]\w*)\s*[.!?]?$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     // The start of `add property ...`; the rest is CommandEntityExtractor.AddPropertyRe, which
     // reads the fields.
     private static readonly Regex AddPropertyStartRe =
@@ -162,6 +170,8 @@ public static class CommandFront
         IntentType.CreateClass,
         IntentType.CreateInterface,
         IntentType.CreateProperty,
+        IntentType.ListProperties,
+        IntentType.ListMethods,
         IntentType.RenameProperty,
         IntentType.DeleteMethod,
         IntentType.RenameMethod,
@@ -248,6 +258,14 @@ public static class CommandFront
             SessionContext.CurrentClass = name;
             return interfaceCmd;
         }
+
+        var memberListMatch = MemberListRe.Match(text);
+        if (memberListMatch.Success)
+            return ClassCommand(
+                memberListMatch.Groups["what"].Value.Equals("methods", StringComparison.OrdinalIgnoreCase)
+                    ? IntentType.ListMethods
+                    : IntentType.ListProperties,
+                memberListMatch.Groups["class"].Value, input, workspace);
 
         // `add property <name> [<type>] to <Class>`, ahead of the mapper, which needs a capitalised
         // name to see a property: "add property note string to Circle" was not recognised, and a
@@ -386,6 +404,43 @@ public static class CommandFront
         var command = CommandEntityExtractor.Extract(input ?? string.Empty, intent, workspace);
         command.Confidence = analysis?.Confidence ?? 0d;
         return command;
+    }
+
+    // A command on one class, named as typed in any case.
+    private static ParsedCommand ClassCommand(IntentType intent, string typed, string? input, string workspace)
+    {
+        var command = new ParsedCommand
+        {
+            Intent = intent,
+            ClassName = DeclaredClassName(workspace, typed),
+            OriginalSentence = input ?? string.Empty,
+            Confidence = 1.0
+        };
+        SessionContext.CurrentClass = command.ClassName;
+        return command;
+    }
+
+    /// <summary>
+    /// The class name as the workspace declares it - its file is named after it - so "orderline"
+    /// finds OrderLine; else the typed name PascalCased, as create class makes it.
+    /// </summary>
+    internal static string DeclaredClassName(string workspace, string typed)
+    {
+        if (!string.IsNullOrWhiteSpace(workspace) && Directory.Exists(workspace))
+        {
+            try
+            {
+                var file = Directory.EnumerateFiles(workspace, typed + ".cs", SearchOption.AllDirectories)
+                    .FirstOrDefault(f => !f.Contains(Path.DirectorySeparatorChar + "bin" + Path.DirectorySeparatorChar)
+                                         && !f.Contains(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar));
+                if (file is not null)
+                    return Path.GetFileNameWithoutExtension(file);
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+
+        return CommandEntityExtractor.ToPascalCase(typed);
     }
 
     // A guard's optional `class` group, or the class the session is on.
