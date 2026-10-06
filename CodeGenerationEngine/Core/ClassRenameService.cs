@@ -43,15 +43,16 @@ public static class ClassRenameService
         message = string.Empty;
         warnings = [];
 
-        // As create class names one: a capital first letter, the rest as typed.
-        if (!string.IsNullOrEmpty(newClassName) && char.IsLower(newClassName[0]))
-            newClassName = char.ToUpperInvariant(newClassName[0]) + newClassName[1..];
-
+        // Checked as typed, so a keyword (class, int) is refused rather than capitalised past.
         if (MemberNames.NotAnIdentifier(newClassName, "class") is { } bad)
         {
             message = bad;
             return false;
         }
+
+        // As create class names one: a capital first letter, the rest as typed.
+        if (char.IsLower(newClassName[0]))
+            newClassName = char.ToUpperInvariant(newClassName[0]) + newClassName[1..];
 
         try
         {
