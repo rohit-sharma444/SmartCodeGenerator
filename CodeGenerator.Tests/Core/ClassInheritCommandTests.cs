@@ -105,6 +105,94 @@ public sealed class ClassInheritCommandTests
         Assert.IsFalse(Run("Ghost inherits AuditableBase"));
     }
 
+    private string WriteOrder(string code)
+    {
+        var file = Path.Combine(_workspace, "Order.cs");
+        File.WriteAllText(file, code);
+        return file;
+    }
+
+    // Always inserted at index 0: Order inherits AuditableBase, then Order extends IRepository,
+    // wrote class Order : IRepository, AuditableBase (CS1722).
+    [TestMethod]
+    public void An_interface_added_after_a_base_class_goes_after_it()
+    {
+        var file = WriteOrder("namespace Shop { public interface IRepository { } public class AuditableBase { } "
+            + "public class Order { } }");
+
+        Assert.IsTrue(Run("Order inherits AuditableBase"));
+        Assert.IsTrue(Run("Order extends IRepository"));
+
+        var code = File.ReadAllText(file);
+        StringAssert.Contains(code, "class Order : AuditableBase, IRepository");
+        AssertCompiles(code);
+    }
+
+    [TestMethod]
+    // derives from Missing was written as it was (CS0246) and said "now inherits".
+    public void An_unknown_type_is_refused_and_the_file_left_alone()
+    {
+        const string code = "namespace Shop { public class Order { } }";
+        var file = WriteOrder(code);
+
+        Assert.IsFalse(ClassInheritanceService.AddInheritance(_workspace, "Order", "Missing", out var message), message);
+
+        StringAssert.Contains(message, "Missing");
+        Assert.AreEqual(code, File.ReadAllText(file));
+    }
+
+    [TestMethod]
+    // Order inherits Order was accepted (CS0146).
+    public void A_class_cannot_inherit_itself_or_its_own_subclass()
+    {
+        const string code = "namespace Shop { public class Order { } public class SpecialOrder : Order { } }";
+        var file = WriteOrder(code);
+
+        Assert.IsFalse(ClassInheritanceService.AddInheritance(_workspace, "Order", "Order", out var self), self);
+        Assert.IsFalse(ClassInheritanceService.AddInheritance(_workspace, "Order", "SpecialOrder", out var cycle), cycle);
+
+        StringAssert.Contains(cycle, "SpecialOrder");
+        Assert.AreEqual(code, File.ReadAllText(file));
+    }
+
+    [TestMethod]
+    // A second base class was inserted in front of the first (CS1721).
+    public void A_second_base_class_is_refused()
+    {
+        const string code = "namespace Shop { public class AuditableBase { } public class Entity { } "
+            + "public class Order : AuditableBase { } }";
+        var file = WriteOrder(code);
+
+        Assert.IsFalse(ClassInheritanceService.AddInheritance(_workspace, "Order", "Entity", out var message), message);
+
+        StringAssert.Contains(message, "AuditableBase");
+        Assert.AreEqual(code, File.ReadAllText(file));
+    }
+
+    [TestMethod]
+    public void A_framework_interface_is_added_and_its_missing_members_named()
+    {
+        var file = WriteOrder("namespace Shop { public class Order { } }");
+
+        Assert.IsTrue(ClassInheritanceService.AddInheritance(_workspace, "Order", "IDisposable", out var message), message);
+
+        StringAssert.Contains(File.ReadAllText(file), "class Order : IDisposable");
+        StringAssert.Contains(message, "implements");
+        StringAssert.Contains(message, "Dispose");
+    }
+
+    [TestMethod]
+    public void A_sealed_class_cannot_be_a_base()
+    {
+        const string code = "namespace Shop { public sealed class Locked { } public class Order { } }";
+        var file = WriteOrder(code);
+
+        Assert.IsFalse(ClassInheritanceService.AddInheritance(_workspace, "Order", "Locked", out var message), message);
+
+        StringAssert.Contains(message, "sealed");
+        Assert.AreEqual(code, File.ReadAllText(file));
+    }
+
     // `create a Customer class that inherits X` resolves to Unknown today: NlpCommandMapper
     // never tags "that inherits" as an Action entity, so no (verb, target) row matches. That
     // is a pre-existing gap, out of scope here, and this test deliberately does NOT pin

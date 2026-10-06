@@ -1,4 +1,5 @@
 using CodeGenerationEngine.Core;
+using CodeGenerationEngine.Helper;
 using CodeGenerationEngine.Models;
 
 namespace CodeGenerationEngine.Service;
@@ -22,5 +23,10 @@ public static class GeneratedCodeService
             parsed?.ClassName, formattedCode);
 
         ProjectFileUpdater.Update(target.ProjectFile, filePath, formattedCode);
+
+        // Written to <workspace>\Generated with no project file: nothing builds it, and it said nothing.
+        if (string.IsNullOrWhiteSpace(target.ProjectFile))
+            Output.Warning($"No project is selected, so {Path.GetFileName(filePath)} is not part of any project and nothing will build it. "
+                + "Select one with 'use project <name>' or make one with 'create console project <name>', then create it again.");
     }
 }

@@ -72,7 +72,12 @@ public sealed class CreateInterfaceCommandTests
 
     [TestMethod]
     [DataRow("create interface IShape", "IShape")]
-    [DataRow("create interface ishape", "Ishape")]
+    // Kept only when it reads I + a capital letter; otherwise PascalCased and prefixed. "Item" and
+    // "invoice" made Item and Invoice, and "ishape" made Ishape. All lower case cannot tell
+    // item from ishape, so it is always prefixed.
+    [DataRow("create interface ishape", "IIshape")]
+    [DataRow("create interface Item", "IItem")]
+    [DataRow("create interface invoice", "IInvoice")]
     [DataRow("create interface shape", "IShape")]
     public void A_new_interface_is_written(string input, string expected)
     {
@@ -86,11 +91,9 @@ public sealed class CreateInterfaceCommandTests
 
     [TestMethod]
     // "create interface IShape" over an existing IShape.cs wrote over it unchecked, losing every
-    // member a user had added. "Shape" names IShape too, and "ishape" names
-    // Ishape.cs, which on Windows is IShape.cs.
+    // member a user had added. "Shape" names IShape too.
     [DataRow("create interface IShape")]
     [DataRow("create interface Shape")]
-    [DataRow("create interface ishape")]
     [DataRow("create interface shape")]
     public void An_existing_interface_is_not_replaced(string again)
     {
@@ -106,6 +109,15 @@ public sealed class CreateInterfaceCommandTests
         CollectionAssert.AreEqual(new[] { "IShape.cs" }, FilesWritten());
         CollectionAssert.AreEqual(new[] { "IShape" }, AssertCompilesAndDeclaresInterfaces(file));
         StringAssert.Contains(output, file, output);
+    }
+
+    [TestMethod]
+    public void The_reply_names_an_interface_that_was_renamed_by_the_prefix_rule()
+    {
+        var (handled, output) = Run("create interface invoice");
+
+        Assert.IsTrue(handled, output);
+        StringAssert.Contains(output, "Named the interface IInvoice");
     }
 
     [TestMethod]

@@ -8,8 +8,6 @@ public static class DeletedClassListingService
     public static string GetDeletedClasses(string workspaceRoot)
     {
         var items = DeletedClassRegistry.GetAll(workspaceRoot);
-        
-        Console.WriteLine($"Registry Count: {items.Count}");
 
         if (items.Count == 0)
             return "No deleted classes found.";
@@ -23,7 +21,7 @@ public static class DeletedClassListingService
 
         foreach (var item in items)
         {
-            lines.Add($"{item.ClassName}  |  {item.DeletedAt:g}");
+            lines.Add($"{item.ClassName}  |  {item.DeletedAt.ToLocalTime():g}");
         }
 
         return string.Join(Environment.NewLine, lines);

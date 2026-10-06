@@ -30,7 +30,7 @@ public static class ClassPropertyRenameService
             // remove property finds it.
             if (ClassMethodEditService.PropertyNamed(parts, oldName) is not (var part, var property))
             {
-                message = $"Property '{oldName}' not found in '{className}'.";
+                message = ClassMethodEditService.NotFound(parts, oldName, "Property");
                 return false;
             }
 
@@ -46,7 +46,7 @@ public static class ClassPropertyRenameService
             }
 
             if (parts.Any(p => p.Node.Members.OfType<PropertyDeclarationSyntax>()
-                    .Any(x => x.Identifier.Text.Equals(newName, StringComparison.Ordinal))))
+                    .Any(x => x != property && x.Identifier.Text.Equals(newName, StringComparison.Ordinal))))
             {
                 message = $"Property '{newName}' already exists in '{className}'.";
                 return false;

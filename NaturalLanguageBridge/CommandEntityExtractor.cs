@@ -233,9 +233,7 @@ public static class CommandEntityExtractor
             if (!match.Success)
                 continue;
 
-            var name = ToPascalCase(match.Groups[1].Value);
-            if (!name.StartsWith("I", StringComparison.Ordinal))
-                name = "I" + name;
+            var name = InterfaceNaming.NameFor(match.Groups[1].Value);
 
             command.InterfaceName = name;
             command.ClassName = name;

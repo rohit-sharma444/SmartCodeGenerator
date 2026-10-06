@@ -79,7 +79,7 @@
 
 | Command | Description | Example |
 | --- | --- | --- |
-| `create interface <interface name>` | Creates a new interface. | `create interface IRepository` |
+| `create interface <interface name>` | Creates a new interface. A name that is I followed by a capital letter (IShape) is kept as typed; any other name is PascalCased and given the I prefix, so Item makes IItem, invoice makes IInvoice, and an all lower case name is always prefixed (ishape makes IIshape - type IShape for that name). The reply names the interface when it differs from what you typed. | `create interface IRepository` |
 
 ## Learning
 
