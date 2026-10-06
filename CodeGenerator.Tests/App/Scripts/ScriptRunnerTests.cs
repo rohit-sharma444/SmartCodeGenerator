@@ -108,7 +108,7 @@ public sealed class ScriptRunnerTests
     [TestMethod]
     public void A_rule_added_before_the_failure_is_gone_too()   // Review Focus 5
     {
-        var outcome = Run("add validation Title is required in Book\nadd property Pages int to Ghost");
+        var outcome = Run("add property Title string to Book\nadd validation Title is required in Book\nadd property Pages int to Ghost");
 
         Assert.IsFalse(outcome.Succeeded);
         Assert.IsEmpty(ValidationRegistry.Get("Book"));
@@ -148,13 +148,13 @@ public sealed class ScriptRunnerTests
         try
         {
             var outcome = ScriptRunner.Run("t.cgs",
-                ScriptFile.Parse("add validation Title is required in Book\nadd property Pages int to Book\nlist classes").Steps,
+                ScriptFile.Parse("add property Title string to Book\nadd validation Title is required in Book\nadd property Pages int to Book\nlist classes").Steps,
                 _root,
                 step =>
                 {
                     if (((CommandStep)step).Text == "list classes")
                     {
-                        // Book.cs changed on line 2; holding it open stops the restore writing it.
+                        // Book.cs changed on lines 1 and 3; holding it open stops the restore writing it.
                         held = new FileStream(Path.Combine(_root, "Book.cs"), FileMode.Open, FileAccess.Read, FileShare.None);
                         return false;
                     }

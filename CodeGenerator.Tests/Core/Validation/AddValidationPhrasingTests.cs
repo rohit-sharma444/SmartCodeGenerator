@@ -17,18 +17,24 @@ namespace CodeGenerator.Tests.Core.Validation;
 [DoNotParallelize]
 public class AddValidationPhrasingTests
 {
+    private static string _root = string.Empty;
+
     [TestInitialize]
     public void Reset()
     {
         ValidationRegistry.Clear();
         LearnedIntentStore.UseInMemory();
+        _root = ValidationTestWorkspace.Create();
     }
+
+    [TestCleanup]
+    public void Cleanup() => ValidationTestWorkspace.Delete(_root);
 
     private static bool Run(string sentence)
     {
         var command = CommandFront.Parse(sentence, "");
         ProjectMetaData? project = null;
-        return CommandHandlingService.Execute(command, ref project, [], Path.GetTempPath(), _ => { });
+        return CommandHandlingService.Execute(command, ref project, [], _root, _ => { });
     }
 
     private static void AssertRegistered(string sentence, string className, string expectedDescription)
