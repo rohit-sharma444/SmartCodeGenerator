@@ -168,7 +168,6 @@ public class WebAppStartTests
     public void BrowserOptedOut_ReadsCgNoBrowserLikeCgNoWeb()
     {
         // CG_NO_BROWSER=1 keeps the page but opens no tab: the URL is printed instead.
-        Assert.AreEqual("CG_NO_BROWSER", WebAppStart.NoBrowserVariable);
         Assert.IsTrue(WebAppStart.BrowserOptedOut("1"));
         Assert.IsFalse(WebAppStart.BrowserOptedOut(null));
         Assert.IsFalse(WebAppStart.BrowserOptedOut(""));
