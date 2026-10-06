@@ -177,7 +177,9 @@ the source that answered, then a typed review loop reads the next lines:
 `approve`, `add <name>`, `remove <name>`, `rename <old> <new>`, `field`,
 `why`, `cancel` and more — `?` lists them all. `CG_NO_WEB=1` keeps the
 console instead of the page for an interactive session too, asking the
-questions there. On `approve`, [`AppScaffolding`](AppScaffolding/README.md)
+questions there. `CG_NO_BROWSER=1` keeps the page but opens no browser
+tab for it (nor for `chat` or `show relationships`); the console prints
+the address instead. On `approve`, [`AppScaffolding`](AppScaffolding/README.md)
 writes a runnable project for the chosen target.
 
 On the console path it then **compiles what it wrote** and says so, rather than

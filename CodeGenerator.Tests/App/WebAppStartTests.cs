@@ -163,4 +163,23 @@ public class WebAppStartTests
         Assert.IsFalse(WebAppStart.OpenBrowser("file:///C:/Windows/System32/calc.exe"));
         Assert.IsFalse(WebAppStart.OpenBrowser(""));
     }
+
+    [TestMethod]
+    public void BrowserOptedOut_ReadsCgNoBrowserLikeCgNoWeb()
+    {
+        // CG_NO_BROWSER=1 keeps the page but opens no tab: the URL is printed instead.
+        Assert.AreEqual("CG_NO_BROWSER", WebAppStart.NoBrowserVariable);
+        Assert.IsTrue(WebAppStart.BrowserOptedOut("1"));
+        Assert.IsFalse(WebAppStart.BrowserOptedOut(null));
+        Assert.IsFalse(WebAppStart.BrowserOptedOut(""));
+        Assert.IsFalse(WebAppStart.BrowserOptedOut("0"));
+    }
+
+    [TestMethod]
+    public void NotOpenedLine_SaysWhyTheTabDidNotOpen()
+    {
+        StringAssert.Contains(WebAppStart.NotOpenedLine(optedOut: true), "CG_NO_BROWSER");
+        StringAssert.Contains(WebAppStart.NotOpenedLine(optedOut: true), "open that address yourself");
+        StringAssert.Contains(WebAppStart.NotOpenedLine(optedOut: false), "No default browser");
+    }
 }

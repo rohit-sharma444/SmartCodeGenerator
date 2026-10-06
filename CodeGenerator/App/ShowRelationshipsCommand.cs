@@ -64,7 +64,7 @@ internal sealed class ShowRelationshipsCommand
             Console.WriteLine($"  Opening the relationships at {host.Url}");
 
             if (!WebAppStart.OpenBrowser(host.Url))
-                Console.WriteLine("  No default browser — open that address yourself.");
+                Console.WriteLine($"  {WebAppStart.NotOpenedLine()}");
 
             Console.WriteLine("  Close the tab, or Ctrl-C here, to come back.");
             Console.WriteLine("");

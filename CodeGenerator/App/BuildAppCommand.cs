@@ -150,7 +150,7 @@ internal sealed class BuildAppCommand
                     Console.WriteLine($"  Opening the build workflow at {host.Url}");
 
                     if (!WebAppStart.OpenBrowser(host.Url))
-                        Console.WriteLine("  No default browser — open that address yourself.");
+                        Console.WriteLine($"  {WebAppStart.NotOpenedLine()}");
 
                     Console.WriteLine("  Ctrl-C here cancels.");
                     Console.WriteLine("");

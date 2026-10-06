@@ -149,8 +149,9 @@ else
 
             if (url is not null && await Task.Run(() => WebAppStart.Wait(url)))
             {
-                WebAppStart.OpenBrowser(url);
-                _report.Add($"Opened {url}");
+                _report.Add(WebAppStart.OpenBrowser(url)
+                    ? $"Opened {url}"
+                    : $"It is listening at {url} — open that in your browser.");
             }
             else if (url is not null)
             {
