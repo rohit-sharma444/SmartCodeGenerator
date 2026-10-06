@@ -147,18 +147,38 @@ public static class ScreenFields
     /// <remarks>
     /// A value that will not convert is reported rather than swallowed: silently keeping the old
     /// number is how a user comes to distrust a form.
+    /// <para>
+    /// An emptied number or date is "none" only for a nullable property. For any other value type
+    /// it is reported: SetValue(null) on an int quietly stored 0, and on a DateTime 0001-01-01.
+    /// </para>
+    /// <para>
+    /// Read in the INVARIANT culture: a browser's number input always sends "12.5" and its date
+    /// input "2026-08-05", whatever the server's culture. Read with the current culture, de-DE
+    /// turned 12.5 into 125.
+    /// </para>
     /// </remarks>
     public static string? Assign(object record, PropertyInfo property, string? text)
     {
         try
         {
-            var target = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+            var underlying = Nullable.GetUnderlyingType(property.PropertyType);
+            var target = underlying ?? property.PropertyType;
+
+            if (string.IsNullOrWhiteSpace(text) && target != typeof(string))
+            {
+                if (underlying is null && target.IsValueType)
+                    return $"{property.Name} needs a value.";
+
+                property.SetValue(record, null);
+                return null;
+            }
 
             property.SetValue(
                 record,
-                string.IsNullOrWhiteSpace(text) && target != typeof(string)
-                    ? null
-                    : Convert.ChangeType(text, target, CultureInfo.CurrentCulture));
+                target == typeof(DateTime)
+                    ? DateTime.ParseExact(
+                        text!.Trim(), DateInputFormats, CultureInfo.InvariantCulture, DateTimeStyles.None)
+                    : Convert.ChangeType(text, target, CultureInfo.InvariantCulture));
 
             return null;
         }
@@ -182,7 +202,26 @@ public static class ScreenFields
     /// generated model has no change notification to subscribe to.</summary>
     public static string Snapshot(object record) => JsonSerializer.Serialize(record);
 
-    /// <summary>What an input shows for a value: a date without a time, and everything else as
+    /// <summary>What a browser's date input sends: an ISO date, or a date and time from a
+    /// datetime-local input.</summary>
+    private static readonly string[] DateInputFormats =
+        ["yyyy-MM-dd", "yyyy-MM-ddTHH:mm", "yyyy-MM-ddTHH:mm:ss"];
+
+    /// <summary>
+    /// What an input's value attribute holds: an ISO date, and a number in the invariant culture,
+    /// which is the only form a browser's number input accepts -- "12,5" from a de-DE server showed
+    /// as an empty box.
+    /// </summary>
+    public static string InputValue(object? value)
+        => value switch
+        {
+            null => string.Empty,
+            DateTime date => date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture),
+            _ => value.ToString() ?? string.Empty,
+        };
+
+    /// <summary>What a list cell shows for a value: a date without a time, and everything else as
     /// itself.</summary>
     public static string Display(object? value)
         => value switch
@@ -550,7 +589,7 @@ else
             {
                 <input type="@ScreenFields.InputType(field)" id="@field.Name"
                        class="form-control @CssFor(field)"
-                       value="@ScreenFields.Display(field.GetValue(_draft))"
+                       value="@ScreenFields.InputValue(field.GetValue(_draft))"
                        @onchange="e => Set(field, e.Value?.ToString())" />
             }
         </div>
@@ -584,7 +623,7 @@ else
                             {
                                 <td>
                                     <input type="@ScreenFields.InputType(field)" class="form-control form-control-sm"
-                                           value="@ScreenFields.Display(field.GetValue(line))"
+                                           value="@ScreenFields.InputValue(field.GetValue(line))"
                                            @onchange="e => SetLine(line, field, e.Value?.ToString())" />
                                 </td>
                             }
@@ -631,6 +670,11 @@ else
     /// <summary>The properties the last refused save named, so their inputs can be marked. Stays
     /// empty in an app generated with no validators: nothing names a field there.</summary>
     private readonly HashSet<string> _invalid = new(StringComparer.Ordinal);
+
+    /// <summary>What was typed and would not go onto the record, by field. Save refuses while any
+    /// is left: the draft still holds the OLD value, so saving would quietly keep it while the box
+    /// on screen shows something else.</summary>
+    private readonly Dictionary<string, string> _unreadable = new(StringComparer.Ordinal);
 {{AuthStateParameter(login)}}
     /// <summary>Whichever record the URL named, or null for a new one.</summary>
     [Parameter] public int? Id { get; set; }
@@ -675,7 +719,19 @@ else
             .Where(field => !string.Equals(field.Name, lines.ForeignKey, StringComparison.Ordinal));
 
     private void SetLine(object line, PropertyInfo field, string? text)
-        => _status = ScreenFields.Assign(line, field, text) ?? string.Empty;
+        => Track($"{System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(line)}.{field.Name}",
+            ScreenFields.Assign(line, field, text));
+
+    /// <summary>Records or clears a value that would not go onto a record.</summary>
+    private void Track(string key, string? error)
+    {
+        if (error is null)
+            _unreadable.Remove(key);
+        else
+            _unreadable[key] = error;
+
+        _status = error ?? string.Empty;
+    }
 
     /// <summary>Set while leaving deliberately, so Save and Cancel are not asked to confirm a
     /// discard the user just chose.</summary>
@@ -709,6 +765,7 @@ else
         // from one record to another, so a mark left over from the record before would sit on a
         // field of this one with nothing on screen saying why.
         _invalid.Clear();
+        _unreadable.Clear();
 
         var stored = Id is { } id
             ? _store.GetAll().FirstOrDefault(record => ScreenFields.IdOf(record) == id)
@@ -739,7 +796,17 @@ else
     /// <summary>Writes a typed value onto the draft, reporting one that will not convert rather
     /// than swallowing it.</summary>
     private void Set(PropertyInfo field, string? text)
-        => _status = ScreenFields.Assign(_draft, field, text) ?? string.Empty;
+    {
+        var error = ScreenFields.Assign(_draft, field, text);
+
+        // Marked like a field the pipeline refused, so the box that holds the bad value says so.
+        if (error is null)
+            _invalid.Remove(field.Name);
+        else
+            _invalid.Add(field.Name);
+
+        Track(field.Name, error);
+    }
 
     /// <summary>
     /// Bootstrap's own marker for an input the pipeline refused, or nothing.
@@ -755,6 +822,12 @@ else
 
     {{(login ? "private async Task Save()" : "private void Save()")}}
     {
+        if (_unreadable.Count > 0)
+        {
+            _status = $"Cannot save: {_unreadable.Values.First()}";
+            return;
+        }
+
 {{ValidateCall(validation, login)}}        var all = _store.GetAll();
 
         if (IsNew)
