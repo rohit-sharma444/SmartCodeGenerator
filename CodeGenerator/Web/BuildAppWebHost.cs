@@ -170,16 +170,23 @@ internal sealed class BuildAppWebHost : IDisposable
     internal static BuildOutcome OutcomeFor(BuildSession session)
     {
         var written = session.Generated?.Scaffold.ProjectPath;
+        var earlier = written is null && session.Phase != SessionPhase.Generated
+            ? session.EarlierProject()
+            : null;
 
         var outcome = session.Phase switch
         {
-            SessionPhase.Abandoned => written is null
-                ? BuildOutcome.Abandoned
-                : BuildOutcome.AbandonedLeaving(written),
+            SessionPhase.Abandoned => written is not null
+                ? BuildOutcome.AbandonedLeaving(written)
+                : earlier is not null
+                    ? BuildOutcome.AbandonedKeeping(earlier)
+                    : BuildOutcome.Abandoned,
             SessionPhase.Generated => session.Outcome ?? BuildOutcome.Cancelled,
-            _ => written is null
-                ? BuildOutcome.Cancelled
-                : BuildOutcome.CancelledLeaving(written),
+            _ => written is not null
+                ? BuildOutcome.CancelledLeaving(written)
+                : earlier is not null
+                    ? BuildOutcome.CancelledKeeping(earlier)
+                    : BuildOutcome.Cancelled,
         };
 
         return outcome with { Lines = [.. outcome.Lines, .. Repeatable(session)] };
