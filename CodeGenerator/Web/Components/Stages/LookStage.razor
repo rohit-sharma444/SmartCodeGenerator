@@ -11,6 +11,24 @@
     Customize appearance and features
 </label>
 
+@* Unticked is not "defaults": the customization this build started with - remembered in
+   .codegen/app-profile.json, or typed inline - still applies. Said here, with the way out, so a
+   setting in force is never one the panel hides. *@
+@if (!_customize && !_cleared && Applied.Count > 0)
+{
+    <div class="look-remembered">
+        <p>These settings still apply — remembered from your last build in
+            .codegen/app-profile.json, or typed with the command:</p>
+        <ul>
+            @foreach (var line in Applied)
+            {
+                <li>@line.Trim()</li>
+            }
+        </ul>
+        <button type="button" class="look-clear" @onclick="UseDefaults">Use the defaults instead</button>
+    </div>
+}
+
 @if (_customize)
 {
     <div class="fields">
@@ -93,6 +111,13 @@
     [Parameter] public EventCallback OnAdvance { get; set; }
 
     private bool _customize;
+
+    /// <summary>Whether "Use the defaults instead" was chosen, so Continue applies the defaults
+    /// rather than the customization the build started with.</summary>
+    private bool _cleared;
+
+    /// <summary>What the session's customization sets that the defaults do not, one line each.</summary>
+    private IReadOnlyList<string> Applied => CustomizationSummary.Lines(Session.Customization, Session.Target);
     private string _layout = "tabs";
     private string _company = string.Empty;
     private string _theme = "default";
@@ -160,6 +185,31 @@
         _logging = start.Logging;
         _seed = start.SampleSeedData;
         _login = start.Login;
+
+        // Open, with the values in the boxes, whenever anything differs from the defaults: a
+        // remembered company or accent that the panel kept behind an unticked box was applied to
+        // the app all the same.
+        _customize = Applied.Count > 0;
+    }
+
+    /// <summary>Drops what was remembered: the boxes go back to the defaults, and so will the app.</summary>
+    private void UseDefaults()
+    {
+        _cleared = true;
+
+        var start = AppCustomization.Default;
+
+        _layout = AppLayoutCatalog.KeyFor(start.EffectiveLayout);
+        _company = start.Company;
+        _theme = "default";
+        _accent = string.Empty;
+        _icon = string.Empty;
+        _title = start.TitlePattern;
+        _prefix = string.Empty;
+        _validation = start.Validation;
+        _logging = start.Logging;
+        _seed = start.SampleSeedData;
+        _login = start.Login;
     }
 
     /// <summary>
@@ -184,7 +234,8 @@
         // Applied either way, and the unchanged value is not a no-op: it is what records that this
         // node was answered at all. The customization always HAS a value, so without this the box
         // above could never tell "left at the defaults" from "never reached".
-        Session.SetCustomization(_customize ? Compose() : Session.Customization);
+        Session.SetCustomization(
+            _customize ? Compose() : _cleared ? AppCustomization.Default : Session.Customization);
 
         // Saved even when the gate was left off: what the user settled on this time is what the
         // next run should offer, and declining settled it too.
@@ -194,11 +245,15 @@
     }
 
     private AppCustomization Compose()
-        => Session.Customization with
+        => (_cleared ? AppCustomization.Default : Session.Customization) with
         {
+            // Left unset when the box still shows the layout an unset one means: opening the panel
+            // must not turn "the default" into a remembered explicit choice.
             Layout = AsksLayout && AppLayoutCatalog.TryResolve(_layout, out var layout)
+                     && !(Session.Customization.Layout is null
+                          && _layout == AppLayoutCatalog.KeyFor(Session.Customization.EffectiveLayout))
                 ? layout
-                : Session.Customization.Layout,
+                : _cleared ? null : Session.Customization.Layout,
             Company = _company.Trim(),
             Theme = Enum.TryParse<AppTheme>(_theme, ignoreCase: true, out var theme)
                 ? theme

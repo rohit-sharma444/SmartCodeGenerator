@@ -721,6 +721,34 @@ body {
     font-weight: 600;
 }
 
+/* What an unticked Look panel still applies. A note rather than a warning: nothing is wrong,
+   but a setting in force must be visible where the choice about it is made. Theme tokens, so
+   every theme follows. */
+.look-remembered {
+    max-width: 34rem;
+    margin: var(--space-2) 0 var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    border-left: 3px solid var(--accent);
+    background: var(--accent-wash);
+    color: var(--ink);
+    font-size: 0.9em;
+}
+
+.look-remembered p { margin: 0 0 0.25rem; color: var(--muted); }
+.look-remembered ul { margin: 0 0 var(--space-2); padding-left: 1.1rem; }
+
+.look-clear {
+    padding: 0.3rem 0.7rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--ink);
+    font: inherit;
+    cursor: pointer;
+}
+
+.look-clear:hover { border-color: var(--accent); }
+
 .panel .answer:has(+ .field-error) {
     border-color: var(--failed);
     box-shadow: 0 0 0 1px var(--failed);
