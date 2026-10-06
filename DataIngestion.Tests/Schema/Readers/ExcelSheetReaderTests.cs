@@ -52,6 +52,19 @@ public class ExcelSheetReaderTests
     }
 
     /// <summary>
+    /// Excel stores a very small or large number in exponent form. The cell is numeric, so it is
+    /// passed on as plain digits: exponent-form TEXT is read as a code, never as a number.
+    /// </summary>
+    [Fact]
+    public void AnExponentNumericCell_IsReadAsPlainDigits()
+    {
+        var records = Records(
+            ExcelFixture.Row(1, ExcelFixture.Cell("A1", "1E-05"), ExcelFixture.Cell("B1", "2.5E+3")));
+
+        Assert.Equal(new[] { "0.00001", "2500" }, Assert.Single(records));
+    }
+
+    /// <summary>
     /// Excel omits an empty cell entirely, so a row's cells must be placed by their reference. Read
     /// in document order instead, every value after the first gap lands one column early — the
     /// single most damaging bug this reader can have, because the file still parses.

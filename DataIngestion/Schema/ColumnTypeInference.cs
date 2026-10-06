@@ -59,8 +59,9 @@ public static class ColumnTypeInference
 
             // The seed writer's own parsers, so whatever type is chosen here, every value in the
             // column is one it can write. See ImportedValues for why each is as strict as it is.
+            // Decimal is the PLAIN form: exponent-form text ("1E3") is a code, not a number.
             isInt = isInt && ImportedValues.TryInt(value, out _);
-            isDecimal = isDecimal && ImportedValues.TryDecimal(value, out _);
+            isDecimal = isDecimal && ImportedValues.TryPlainDecimal(value, out _);
             isBool = isBool && ImportedValues.TryBoolean(value, out _);
             isDate = isDate && ImportedValues.TryDateTime(value, out _);
 
