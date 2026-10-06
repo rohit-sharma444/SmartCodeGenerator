@@ -5,6 +5,7 @@ import fs from 'fs';
 
 const STEPS = [
   ['generate', 'Generated'],
+  ['fields', 'No own-key field'],
   ['build', 'Compiles'],
   ['tests', 'Tests pass'],
   ['launch', 'Runs'],

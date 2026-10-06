@@ -134,19 +134,35 @@ async function desktop(target, app, caseDir, check) {
 
     await sleep(1500);
 
-    // Drawn by the window itself, so a covered app still shows what it showed, not what covered it.
-    await send({ cmd: 'screenshot', path: shot });
-
     const grid = await send({ cmd: 'find-grid' });
     check('list shows the seeded records', grid.ok && grid.rowCount > 0,
       grid.ok ? `${grid.rowCount} row(s) visible` : `${grid.error} - the record list is not on screen`);
+
+    // Every row the grid holds, not just those on screen, so a saved record below the fold counts.
+    const total = g => (g.totalRows || g.rowCount);
 
     const created = await send({ cmd: 'click-button', name: 'New' });
     if (check('New button works', created.ok, created.error)) {
       await send({ cmd: 'click-button', name: 'Save' });
       const status = await send({ cmd: 'read-status' });
       check('Save gives an answer', status.ok, status.ok ? status.text : status.error);
+
+      // Recounted, because "Save gives an answer" passes on any status at all. A blank record is
+      // usually refused (a required field), and then nothing may appear; otherwise exactly one.
+      await sleep(1000);
+      const after = await send({ cmd: 'find-grid' });
+
+      if (grid.ok && after.ok) {
+        const refused = status.ok && /cannot|required|must|refused|not allowed/i.test(status.text ?? '');
+        const expected = total(grid) + (refused ? 0 : 1);
+        check('the list is recounted after Save', total(after) === expected,
+          `${total(grid)} -> ${total(after)} row(s)` + (refused ? ' (the save was refused, so no new row)' : ', one new record expected'));
+      }
     }
+
+    // After New and Save, not before, so the picture shows what they left on screen. Drawn by the
+    // window itself, so a covered app still shows what it showed, not what covered it.
+    await send({ cmd: 'screenshot', path: shot });
 
     await sleep(500);
     check('app is still running', !proc.exited(), proc.exited() ? `exited with code ${proc.exitCode()}` : '');
