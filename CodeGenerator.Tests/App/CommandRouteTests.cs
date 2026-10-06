@@ -22,6 +22,15 @@ public class CommandRouteTests
         Assert.AreEqual(CommandKind.Pipeline, CommandRoute.Classify("exit the building"));
     }
 
+    // "quit" was "Command not recognized" and the session went on.
+    [TestMethod]
+    public void Quit_is_exit()
+    {
+        Assert.AreEqual(CommandKind.Exit, CommandRoute.Classify("quit"));
+        Assert.AreEqual(CommandKind.Exit, CommandRoute.Classify("QUIT"));
+        Assert.AreEqual(CommandKind.Pipeline, CommandRoute.Classify("quit the review"));
+    }
+
     [TestMethod]
     public void Help_about_build_app_is_help_not_build_app()
     {

@@ -24,7 +24,9 @@ internal static class CommandRoute
 
         // Not trimmed, deliberately: the REPL compares the raw input to "exit", and this must
         // classify exactly what that ladder classified.
-        if (text.Equals("exit", StringComparison.OrdinalIgnoreCase))
+        // "quit" too, the word many people type to leave a console program.
+        if (text.Equals("exit", StringComparison.OrdinalIgnoreCase)
+            || text.Equals("quit", StringComparison.OrdinalIgnoreCase))
             return CommandKind.Exit;
 
         if (ClearCommand.IsClear(text))

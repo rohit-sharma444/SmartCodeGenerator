@@ -62,6 +62,8 @@ public sealed class ClassTargetGuardTests
     [DataRow("delete class customer", IntentType.DeleteClass, "Customer")]
     [DataRow("remove class orderline", IntentType.DeleteClass, "OrderLine")]
     [DataRow("restore class customer", IntentType.RestoreClass, "Customer")]
+    [DataRow("recover class customer", IntentType.RestoreClass, "Customer")]
+    [DataRow("recover class Customer", IntentType.RestoreClass, "Customer")]
     [DataRow("analyze class customer", IntentType.AnalyzeClass, "Customer")]
     [DataRow("analyse class customer", IntentType.AnalyzeClass, "Customer")]
     public void A_lower_case_class_name_is_recognised_as_declared(string sentence, IntentType intent, string className)
@@ -80,6 +82,19 @@ public sealed class ClassTargetGuardTests
         Assert.AreEqual(IntentType.RenameClass, command.Intent);
         Assert.AreEqual("Customer", command.ClassName);
         Assert.AreEqual("Client", command.NewClassName);
+    }
+
+    // "rename class Staff as Worker" said "A new class name is required."
+    [TestMethod]
+    [DataRow("rename class Customer as Client")]
+    [DataRow("rename class customer as Client")]
+    public void Rename_class_takes_as(string sentence)
+    {
+        var command = CommandFront.Parse(sentence, _workspace);
+
+        Assert.AreEqual(IntentType.RenameClass, command.Intent, sentence);
+        Assert.AreEqual("Customer", command.ClassName, sentence);
+        Assert.AreEqual("Client", command.NewClassName, sentence);
     }
 
     [TestMethod]

@@ -103,13 +103,13 @@ public static class CommandFront
     // lower-case name ("show class customer" was "Command not recognized"). The verbs are the
     // mapper's own for these intents.
     private static readonly Regex ClassVerbRe =
-        new(@"^(?<verb>show|view|display|open|analy[sz]e|delete|remove|restore)\s+(?:the\s+)?class\s+"
+        new(@"^(?<verb>show|view|display|open|analy[sz]e|delete|remove|restore|recover)\s+(?:the\s+)?class\s+"
             + @"(?<class>[A-Za-z_]\w*)\s*[.!?]?$",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-    // `rename class <old> to <new>`, for the same reason.
+    // `rename class <old> to|as <new>`, for the same reason; "as" was "A new class name is required".
     private static readonly Regex RenameClassRe =
-        new(@"^rename\s+(?:the\s+)?class\s+(?<old>[A-Za-z_]\w*)\s+(?:to|into)\s+(?<new>[A-Za-z_]\w*)\s*[.!]?$",
+        new(@"^rename\s+(?:the\s+)?class\s+(?<old>[A-Za-z_]\w*)\s+(?:to|as|into)\s+(?<new>[A-Za-z_]\w*)\s*[.!]?$",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     // `add method <name> [returns <type>] to <Class>`, for the same reason: "add method save to
@@ -301,7 +301,7 @@ public static class CommandFront
             var classIntent = verb switch
             {
                 "delete" or "remove" => IntentType.DeleteClass,
-                "restore" => IntentType.RestoreClass,
+                "restore" or "recover" => IntentType.RestoreClass,
                 "analyze" or "analyse" => IntentType.AnalyzeClass,
                 _ => IntentType.ShowClass,
             };
