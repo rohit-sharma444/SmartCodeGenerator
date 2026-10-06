@@ -137,7 +137,7 @@ public static class LlmModelNormalizer
         // The class's own key, in whatever spelling - Id, id, CourseID, CourseId. EnsureKey gives
         // every class the one canonical Id; a CourseID kept beside it was a second, user-typed int
         // defaulting to 0 that nothing checked was unique, on every class the default model made.
-        if (IsKeyOf(name, entity.Name))
+        if (IsKeyOf(name, entity.Name) || IsKeyByLastWords(name, entity.Name, byName))
             return;
 
         if (entity.Fields.Any(f => f.Name == name))
@@ -190,6 +190,27 @@ public static class LlmModelNormalizer
     private static bool IsKeyOf(string fieldName, string entityName)
         => fieldName.Equals("Id", StringComparison.OrdinalIgnoreCase)
            || fieldName.Equals($"{entityName}Id", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Whether <paramref name="fieldName"/> keys a compound class by its last word or words - the
+    /// ReviewID on CustomerReview, the EmployeeID on RentalAgencyEmployee, as qwen2.5:3b writes
+    /// them. A last word that is itself a class in the model (CourseID on SchoolCourse) is a
+    /// reference to that class, not the own key.
+    /// </summary>
+    private static bool IsKeyByLastWords(
+        string fieldName, string entityName, IReadOnlyDictionary<string, CandidateEntity> byName)
+    {
+        if (!fieldName.EndsWith("id", StringComparison.OrdinalIgnoreCase) || fieldName.Length <= 2)
+            return false;
+
+        var stem = fieldName[..^2];
+        if (stem.Length >= entityName.Length
+            || !entityName.EndsWith(stem, StringComparison.OrdinalIgnoreCase)
+            || !char.IsUpper(entityName[entityName.Length - stem.Length]))
+            return false;
+
+        return !byName.Keys.Any(k => k.Equals(stem, StringComparison.OrdinalIgnoreCase));
+    }
 
     /// <summary>
     /// Adds a relationship if — and only if — the existing role rules allow it.

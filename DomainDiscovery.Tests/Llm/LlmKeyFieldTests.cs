@@ -34,7 +34,16 @@ public class LlmKeyFieldTests
           { "name": "FitnessEquipment", "role": "Device", "properties": [
               { "name": "Name", "type": "string" }, { "name": "schoolid", "type": "int" } ] },
           { "name": "Enrolment", "role": "Transaction", "properties": [
-              { "name": "EnrolmentID", "type": "int" }, { "name": "CourseID", "type": "int" } ] }
+              { "name": "EnrolmentID", "type": "int" }, { "name": "CourseID", "type": "int" } ] },
+          { "name": "Customer", "role": "Party", "properties": [
+              { "name": "FullName", "type": "string" } ] },
+          { "name": "CustomerReview", "role": "Document", "properties": [
+              { "name": "ReviewID", "type": "int" }, { "name": "CustomerID", "type": "int" },
+              { "name": "Rating", "type": "int" } ] },
+          { "name": "RentalAgencyEmployee", "role": "Party", "properties": [
+              { "name": "EmployeeID", "type": "int" }, { "name": "FullName", "type": "string" } ] },
+          { "name": "SchoolCourse", "role": "Item", "properties": [
+              { "name": "CourseID", "type": "int" }, { "name": "Term", "type": "string" } ] }
         ] }
         """;
 
@@ -55,6 +64,10 @@ public class LlmKeyFieldTests
     [InlineData("Course", "CourseID")]
     [InlineData("Vehicle", "VehicleID")]
     [InlineData("Enrolment", "EnrolmentID")]
+    // Measured live (car rental): the model keys a compound class by its LAST word -
+    // CustomerReview.ReviewID, RentalAgencyEmployee.EmployeeID - and those survived the first fix.
+    [InlineData("CustomerReview", "ReviewID")]
+    [InlineData("RentalAgencyEmployee", "EmployeeID")]
     public void A_field_that_repeats_the_classs_own_key_is_dropped(string className, string ownKey)
     {
         var entity = Class(className);
@@ -69,6 +82,9 @@ public class LlmKeyFieldTests
     [InlineData("Vehicle", "VehicleType")]
     [InlineData("FitnessEquipment", "School")]
     [InlineData("Enrolment", "Course")]
+    [InlineData("CustomerReview", "Customer")]
+    // A last word that is itself a class is a reference to it, not the own key.
+    [InlineData("SchoolCourse", "Course")]
     public void A_reference_to_a_class_in_the_model_is_a_relationship(string className, string target)
     {
         var entity = Class(className);
