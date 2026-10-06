@@ -80,5 +80,38 @@ public static class ValidationRegistry
     public static void Set(string className, IReadOnlyList<IValidationRule> rules) =>
         _rules[className] = rules.ToList();
 
+    /// <summary>
+    /// Moves every rule of <paramref name="oldName"/> to <paramref name="newName"/>, after any it
+    /// already has, for a class that was renamed. Returns how many rules moved.
+    /// </summary>
+    public static int RenameClass(string oldName, string newName)
+    {
+        if (string.IsNullOrWhiteSpace(oldName) || string.IsNullOrWhiteSpace(newName)
+            || !_rules.TryGetValue(oldName, out var moving) || moving.Count == 0)
+            return 0;
+
+        // Only the case changed: the key is case-insensitive, so there is nothing to move.
+        if (oldName.Equals(newName, System.StringComparison.OrdinalIgnoreCase))
+            return moving.Count;
+
+        _rules.Remove(oldName);
+        if (_rules.TryGetValue(newName, out var existing))
+            existing.AddRange(moving);
+        else
+            _rules[newName] = moving;
+
+        return moving.Count;
+    }
+
+    /// <summary>Drops every rule of a class that was deleted. Returns how many rules were dropped.</summary>
+    public static int RemoveClass(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name) || !_rules.TryGetValue(name, out var list))
+            return 0;
+
+        _rules.Remove(name);
+        return list.Count;
+    }
+
     public static void Clear() => _rules.Clear();
 }
