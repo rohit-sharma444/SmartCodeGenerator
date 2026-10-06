@@ -176,6 +176,10 @@ public sealed class WorkspaceSnapshot : IDisposable
             ProjectManager.CurrentProject = _currentProject;
             _parsingState.Restore();
 
+            // The validation rules file is back in .codegen/; the registry still holds what the
+            // rolled-back commands added, and would save it over the file on the next change.
+            ValidationRegistry.ReloadFromDisk();
+
             // learned.json is back, but the store that writes it is a process-wide
             // singleton still holding what the rolled-back commands taught it. The
             // next Save() would put all of it back on disk.

@@ -191,6 +191,33 @@ public sealed class Workspace
             Console.WriteLine($"Failed to load rules: {ex.Message}");
             Rules = [];
         }
+
+        LoadValidationRules();
+    }
+
+    /// <summary>
+    /// Loads the add-validation rules saved in this workspace, and saves every later change there.
+    /// </summary>
+    /// <remarks>
+    /// A separate file from rules.json / rules.txt above: those are hand-written property rules the
+    /// tool only reads; this one the tool writes on every add, remove or undo (see
+    /// <see cref="CodeGenerationEngine.Core.Validation.ValidationRuleFile"/>). Re-rooting replaces
+    /// the rules with the new workspace's, rather than carrying the old one's across.
+    /// </remarks>
+    private void LoadValidationRules()
+    {
+        var load = ValidationRegistry.Attach(Root);
+        var file = Path.Combine(global::CodeGenerationEngine.Core.Validation.ValidationRuleFile.FolderName,
+            global::CodeGenerationEngine.Core.Validation.ValidationRuleFile.FileName);
+
+        if (load.Problem is not null)
+            Console.WriteLine($"Failed to load validation rules from {file}: {load.Problem}");
+        else if (load.Rules.Count > 0)
+            Console.WriteLine($"Loaded {load.Rules.Count} validation rule{(load.Rules.Count == 1 ? "" : "s")} from {file}");
+
+        if (load.Unreadable.Count > 0)
+            Console.WriteLine($"  {load.Unreadable.Count} saved rule(s) could not be read and were kept as they are: "
+                + string.Join("; ", load.Unreadable.Select(r => $"{r.ClassName}: {r.Text}")));
     }
 
     /// <summary>

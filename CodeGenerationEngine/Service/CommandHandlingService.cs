@@ -471,7 +471,7 @@ public static class CommandHandlingService
         }
 
         foreach (var rule in rules)
-            ValidationRegistry.Add(ctx.Command.ClassName, rule);
+            ValidationRegistry.Add(ctx.Command.ClassName, rule, ctx.Command.ValidationText);
 
         Output.Success(successPrefix);
         return true;
