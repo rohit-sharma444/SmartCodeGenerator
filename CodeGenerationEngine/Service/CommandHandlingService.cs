@@ -462,7 +462,8 @@ public static class CommandHandlingService
             TargetProperty = string.IsNullOrWhiteSpace(ctx.Command.PropertyName) ? null : ctx.Command.PropertyName
         };
 
-        var rules = ValidationRuleCatalog.Default.Parse(ctx.Command.ValidationText, category, parseCtx);
+        // One rule per command, as typed (see ParseOne).
+        var rules = ValidationRuleCatalog.Default.ParseOne(ctx.Command.ValidationText, category, parseCtx);
         if (rules.Count == 0)
         {
             Output.Warning($"Could not parse a validation rule from: '{ctx.Command.ValidationText}'");

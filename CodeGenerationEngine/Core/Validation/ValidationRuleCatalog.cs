@@ -22,13 +22,27 @@ public sealed class ValidationRuleCatalog
     public IReadOnlyList<IValidationRuleParser> Parsers { get; }
 
     public IReadOnlyList<IValidationRule> Parse(
-        string text, ValidationCategory category, ValidationParseContext ctx)
+        string text, ValidationCategory category, ValidationParseContext ctx) =>
+        ParseFragments(Fragments(text), category, ctx);
+
+    /// <summary>
+    /// Exactly one rule, as typed: not split on ';' and with no full stop dropped.
+    /// </summary>
+    /// <remarks>
+    /// For the add validation commands, which add one rule and end the sentence with the class
+    /// name, so a full stop or ';' inside the rule was typed as part of it: "must start with Mr."
+    /// was stored as "must start with Mr", and ^[a;b]+$ was split into two fragments.
+    /// </remarks>
+    public IReadOnlyList<IValidationRule> ParseOne(
+        string text, ValidationCategory category, ValidationParseContext ctx) =>
+        ParseFragments(string.IsNullOrWhiteSpace(text) ? [] : [text.Trim()], category, ctx);
+
+    private IReadOnlyList<IValidationRule> ParseFragments(
+        IReadOnlyList<string> fragments, ValidationCategory category, ValidationParseContext ctx)
     {
         var rules = new List<IValidationRule>();
-        if (string.IsNullOrWhiteSpace(text))
-            return rules;
 
-        foreach (var fragment in Fragments(text))
+        foreach (var fragment in fragments)
         {
             var fragCtx = new ValidationParseContext
             {

@@ -161,6 +161,10 @@ public class AddValidationPhrasingTests
     // A full stop at the very end of a rule is read as the end of the sentence (the catalog drops
     // it); quoted, it is part of the text.
     [DataRow("add validation must start with \"Mr.\" on Title in Item", "Title must start with Mr.")]
+    // A command adds one rule, and the class name ends the sentence, so a full stop or a ';'
+    // inside the rule was typed as part of it. The catalog dropped the one and split on the other.
+    [DataRow("add validation must start with Mr. on Title in Item", "Title must start with Mr.")]
+    [DataRow("add validation must match ^[a;b]+$ on Code in Item", "Code must match ^[a;b]+$")]
     [DataRow("add validation must be between 0.5 and 9.99 on Price in Item", "Price must be between 0.5 and 9.99")]
     [DataRow("add validation must be at most 2.5 on Price in Item", "Price must be at most 2.5")]
     [DataRow("add validation must be Draft, Sent, Paid on Status in Item", "Status must be one of: Draft, Sent, Paid")]
