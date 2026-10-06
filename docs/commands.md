@@ -129,8 +129,8 @@
 | Command | Description | Example |
 | --- | --- | --- |
 | `delete class <class name>` | Moves a class to DeletedClasses. | `delete class Employee` |
-| `restore class <class name>` | Restores a deleted class. | `restore class Employee` |
-| `restore last class` | Restores a deleted class. | `restore last class` |
+| `restore class <class name>` | Restores a deleted class by name, to the folder it was deleted from. | `restore class Employee` |
+| `restore last class` | Restores the class deleted most recently, without naming it. | `restore last class` |
 | `show deleted classes` | Displays all deleted classes. | `show deleted classes` |
 
 ## Utility
