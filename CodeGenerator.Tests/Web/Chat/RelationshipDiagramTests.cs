@@ -43,6 +43,10 @@ public class RelationshipDiagramTests
         // The sentence matters as much as the dashed box: it is what tells someone scrolling past
         // that a class they expected to be joined up is not.
         StringAssert.Contains(page.Find(".rel-note").TextContent, "Bill");
+
+        // "1 of 3 class is" agreed the noun with the one, not with the three.
+        var note = System.Text.RegularExpressions.Regex.Replace(page.Find(".rel-note").TextContent, "[ \t\r\n]+", " ");
+        StringAssert.Contains(note, "1 of 3 classes is related to nothing");
     }
 
     [TestMethod]

@@ -134,7 +134,8 @@
         {
             <p class="rel-note">
                 @map.Unrelated.Count of @(map.Boxes.Count + map.Unrelated.Count)
-                @(map.Unrelated.Count == 1 ? "class is" : "classes are") related to nothing:
+                @(map.Boxes.Count + map.Unrelated.Count == 1 ? "class" : "classes")
+                @(map.Unrelated.Count == 1 ? "is" : "are") related to nothing:
                 @string.Join(", ", map.Unrelated.Select(b => b.Name)).
             </p>
         }
