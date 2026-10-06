@@ -53,6 +53,20 @@ public static class EntityRoles
             roles[definition.Name] = Role(definition, names, overrides);
         }
 
+        // A dated document that owns lines is a header even with no foreign key of its own: a
+        // JSON invoice nests its Lines and names its customer as text. Promoted before the line
+        // pass, which only accepts a transaction as a parent. Not over a user's own "master".
+        foreach (var definition in classes)
+        {
+            if (roles[definition.Name] == EntityRole.Master
+                && !overrides.IsMaster(definition.Name)
+                && (HasNonAuditDate(definition) || TransactionWords.Contains(definition.Name))
+                && classes.Any(child => LooksLikeLines(child.Name)
+                                        && ForeignKeys.TargetsOf(child, names)
+                                            .Contains(definition.Name, StringComparer.OrdinalIgnoreCase)))
+                roles[definition.Name] = EntityRole.Transaction;
+        }
+
         var lines = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var definition in classes)
