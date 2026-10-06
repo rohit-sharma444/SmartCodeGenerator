@@ -46,6 +46,15 @@ public class AddValidationPhrasingTests
         Assert.AreEqual(expectedDescription, rules[0].Describe());
     }
 
+    // "add validation to Customer: Name is required" read the rule as empty: the class-first form,
+    // with a colon, matched none of the shapes the extractor knew.
+    [TestMethod]
+    [DataRow("add validation to Customer: Name is required", "Name is required")]
+    [DataRow("add validation for Customer: Age must be between 18 and 65", "Age must be between 18 and 65")]
+    [DataRow("add validation to customer: Name is required.", "Name is required")]
+    public void Class_first_form_with_a_colon_registers_a_rule(string sentence, string expected) =>
+        AssertRegistered(sentence, "Customer", expected);
+
     [TestMethod]
     public void Bare_predicate_still_registers_a_required_rule() =>
         AssertRegistered(

@@ -116,4 +116,9 @@ public class BusinessValidationCommandTests
         "Either Phone or Email must be provided")]
     public void The_documented_phrasings_register_a_business_rule(string sentence, string className, string expected) =>
         AssertRegistered(sentence, className, expected);
+
+    [TestMethod]
+    public void Class_first_form_with_a_colon_registers_a_business_rule() =>
+        AssertRegistered("add business validation to Booking: EndDate must be after StartDate",
+            "Booking", "EndDate must be after StartDate");
 }
