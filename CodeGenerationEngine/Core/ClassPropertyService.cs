@@ -16,6 +16,15 @@ public static class ClassPropertyService
     {
         message = string.Empty;
 
+        // With no usable name the exists-check below built its pattern from an empty string,
+        // matched any property at all and said "Property '' already exists."
+        if (MemberNames.NotAnIdentifier(propertyName, "property") is { } bad)
+        {
+            message = bad.Replace("A new property", "A property", StringComparison.Ordinal)
+                + " Type it as: add property Title string to Book";
+            return false;
+        }
+
         try
         {
             var file = Directory.GetFiles(workspaceRoot, "*.cs",

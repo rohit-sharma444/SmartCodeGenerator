@@ -121,4 +121,68 @@ public sealed class MemberListParseTests
         Assert.HasCount(1, command.IgnoredProperties);
         Assert.AreEqual("Customer Customer", command.IgnoredProperties[0]);
     }
+
+    // ----- add property ----------------------------------------------------
+
+    // Each of these reported "Property '' already exists.": the quote, the article-like class
+    // name A, the comma inside the generic type and the dot in System.Double were all lost to the
+    // normaliser, so the name pattern matched nothing.
+    [TestMethod]
+    [DataRow("add property \"Title\" string to Employee", "Title", "string", "Employee")]
+    [DataRow("add property Y string to A", "Y", "string", "A")]
+    [DataRow("add property Map Dictionary<string, int> to Book", "Map", "Dictionary<string, int>", "Book")]
+    [DataRow("add property Ratio System.Double to Book", "Ratio", "System.Double", "Book")]
+    [DataRow("add property Notes string? to Book", "Notes", "string?", "Book")]
+    [DataRow("add property Tags List<string> to Book.", "Tags", "List<string>", "Book")]
+    [DataRow("add property New string to Book", "New", "string", "Book")]
+    [DataRow("add a property Title string to Book", "Title", "string", "Book")]
+    [DataRow("add property Title to Book", "Title", "string", "Book")]
+    [DataRow("add property note string to Circle", "Note", "string", "Circle")]
+    [DataRow("add field price decimal to item", "Price", "decimal", "Item")]
+    public void Add_property_reads_the_name_type_and_class_as_typed(
+        string sentence, string name, string type, string className)
+    {
+        var command = CommandFront.Parse(sentence, _workspace);
+
+        Assert.AreEqual(IntentType.CreateProperty, command.Intent, sentence);
+        Assert.AreEqual(name, command.PropertyName, sentence);
+        Assert.AreEqual(type, command.PropertyType, sentence);
+        Assert.AreEqual(className, command.ClassName, sentence);
+    }
+
+    [TestMethod]
+    public void A_generic_typed_property_is_written_and_compiles()
+    {
+        Assert.IsTrue(Run("create class Book"));
+        Assert.IsTrue(Run("add property Map Dictionary<string, int> to Book"));
+        Assert.IsTrue(Run("add property Notes string? to Book"));
+
+        var code = Source("Book");
+        StringAssert.Contains(code, "public Dictionary<string, int> Map");
+        StringAssert.Contains(code, "public string? Notes");
+        AssertCompiles("using System.Collections.Generic;\n#nullable enable\n" + code);
+    }
+
+    // A name that cannot be a property is refused by name, never as "Property ''".
+    [TestMethod]
+    [DataRow("add property 9x string to Book", "'9x' is not a valid property name")]
+    [DataRow("add property \"\" string to Book", "property name is required")]
+    public void An_unusable_property_name_is_refused_clearly(string sentence, string expected)
+    {
+        Assert.IsTrue(Run("create class Book"));
+        var output = new StringWriter();
+        var original = Console.Out;
+        Console.SetOut(output);
+        try
+        {
+            Assert.IsFalse(Run(sentence), sentence);
+        }
+        finally
+        {
+            Console.SetOut(original);
+        }
+
+        StringAssert.Contains(output.ToString(), expected, sentence);
+        Assert.DoesNotContain("Property ''", output.ToString(), sentence);
+    }
 }

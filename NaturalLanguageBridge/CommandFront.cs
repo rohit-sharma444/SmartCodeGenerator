@@ -91,6 +91,12 @@ public static class CommandFront
             + @"(?:\s+with\s+.+)?$",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    // The start of `add property ...`; the rest is CommandEntityExtractor.AddPropertyRe, which
+    // reads the fields.
+    private static readonly Regex AddPropertyStartRe =
+        new(@"^(?:add|create)\s+(?:(?:a|an|new)\s+)?(?:property|field)\s",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     // `rename property <old> to <new> in <Class>`. The mapper's Table is keyed on
     // (verb, whole remainder), so it cannot match an argument-bearing form; and
     // Normalize maps field -> property, so the fields come from these groups.
@@ -155,6 +161,7 @@ public static class CommandFront
         IntentType.CreateProject,
         IntentType.CreateClass,
         IntentType.CreateInterface,
+        IntentType.CreateProperty,
         IntentType.RenameProperty,
         IntentType.DeleteMethod,
         IntentType.RenameMethod,
@@ -240,6 +247,17 @@ public static class CommandFront
             interfaceCmd.Confidence = 1.0;
             SessionContext.CurrentClass = name;
             return interfaceCmd;
+        }
+
+        // `add property <name> [<type>] to <Class>`, ahead of the mapper, which needs a capitalised
+        // name to see a property: "add property note string to Circle" was not recognised, and a
+        // name that is no identifier ("9x") never reached the handler to be refused by name.
+        if (AddPropertyStartRe.IsMatch(text) && CommandEntityExtractor.AddPropertyRe.IsMatch(text))
+        {
+            var addPropertyCmd = CommandEntityExtractor.Extract(text, IntentType.CreateProperty, workspace);
+            addPropertyCmd.OriginalSentence = input ?? string.Empty;
+            addPropertyCmd.Confidence = 1.0;
+            return addPropertyCmd;
         }
 
         var renamePropertyMatch = RenamePropertyRe.Match(text);

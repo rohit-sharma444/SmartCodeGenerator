@@ -33,8 +33,11 @@ public static class CommandEntityExtractor
         // A project name is the same: "A" is a stop word, Data.Core lost its dot and a quoted
         // name lost everything, so the project was made as NewProject or under another name; and
         // net8.0 and C:\path lost their punctuation too.
+        //
+        // And add/remove property: a quoted name, the class A, string?, System.Double and
+        // Dictionary<string, int> (see ExtractPropertyInfo).
         var verbatim = intent is IntentType.AddValidation or IntentType.AddBusinessValidation
-            or IntentType.CreateProject;
+            or IntentType.CreateProject or IntentType.CreateProperty or IntentType.DeleteProperty;
         var sentence = verbatim
             ? Verbatim(rawSentence)
             : CommandParser.Normalize(rawSentence ?? string.Empty);
@@ -415,34 +418,45 @@ public static class CommandEntityExtractor
     // Parses single-property member commands:
     //   "add property <name> [<type>] to <class>"
     //   "remove property <name> from <class>"
+    // A property type as typed: any run of non-spaces, so string?, System.Double and List<string>
+    // arrive whole; inside angle brackets (one level of nesting) spaces are allowed too, because
+    // that is how Dictionary<string, int> is written. ChangePropertyTypeRe reads it the same way.
+    private const string TypedPropertyType = @"(?:[^\s<]|<[^<>]*(?:<[^<>]*>[^<>]*)*>)+";
+
+    internal static readonly Regex AddPropertyRe = new(
+        @"\b(?:add|create)\s+(?:(?:a|an|new)\s+)?(?:property|field)\s+"
+        + @"(?<name>""[^""]*""|'[^']*'|\S+)"
+        + $@"(?:\s+(?<type>{TypedPropertyType}))?"
+        + @"\s+(?:to|in|on|into)\s+(?:class\s+(?=\S))?(?<class>[A-Za-z_]\w*)\s*[.!]?\s*$",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>
+    /// add property and remove property, read from the sentence as typed.
+    /// </summary>
+    /// <remarks>
+    /// It was read from the normalised sentence, which drops the stop words a, an, the, removes
+    /// , . ? and quotes nothing out: add property Y string to A lost its class, a quoted name, a
+    /// Dictionary&lt;string, int&gt; or a System.Double matched no pattern at all, string? was
+    /// stored as string, and a property called New was written as Create. With no name matched
+    /// the add went ahead with an empty one and said "Property '' already exists."
+    /// A name that is not an identifier is passed on as typed, to be refused by name.
+    /// </remarks>
     public static void ExtractPropertyInfo(string sentence, ParsedCommand command)
     {
-        // add/create property <name> <type> to/in <class>
-        var addTyped = Regex.Match(sentence,
-            @"\b(?:add|create)\s+property\s+([A-Za-z_]\w*)\s+([A-Za-z_][\w<>\[\],\.\?]*)\s+(?:to|in|on)\s+([A-Za-z_]\w*)",
-            RegexOptions.IgnoreCase);
-        if (addTyped.Success)
+        var add = AddPropertyRe.Match(sentence);
+        if (add.Success)
         {
-            command.PropertyName = ToPascalCase(addTyped.Groups[1].Value);
-            command.PropertyType = addTyped.Groups[2].Value.Trim();
-            command.ClassName = ToPascalCase(addTyped.Groups[3].Value);
-            return;
-        }
-
-        // add/create property <name> to/in <class> (type defaults to string)
-        var addUntyped = Regex.Match(sentence,
-            @"\b(?:add|create)\s+property\s+([A-Za-z_]\w*)\s+(?:to|in|on)\s+([A-Za-z_]\w*)",
-            RegexOptions.IgnoreCase);
-        if (addUntyped.Success)
-        {
-            command.PropertyName = ToPascalCase(addUntyped.Groups[1].Value);
-            command.ClassName = ToPascalCase(addUntyped.Groups[2].Value);
+            var name = add.Groups["name"].Value.Trim('"', '\'');
+            command.PropertyName = Regex.IsMatch(name, @"^[A-Za-z_]\w*$") ? ToPascalCase(name) : name;
+            if (add.Groups["type"].Success)
+                command.PropertyType = add.Groups["type"].Value.Trim();
+            command.ClassName = ToPascalCase(add.Groups["class"].Value);
             return;
         }
 
         // remove/delete property <name> from <class>
         var remove = Regex.Match(sentence,
-            @"\b(?:remove|delete|drop)\s+property\s+([A-Za-z_]\w*)\s+(?:from|of|in|on)\s+([A-Za-z_]\w*)",
+            @"\b(?:remove|delete|drop)\s+(?:property|field)\s+([A-Za-z_]\w*)\s+(?:from|of|in|on)\s+([A-Za-z_]\w*)",
             RegexOptions.IgnoreCase);
         if (remove.Success)
         {
