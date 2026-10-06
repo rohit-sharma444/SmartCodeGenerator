@@ -95,6 +95,20 @@ public sealed class MemberListParseTests
         AssertCompiles(code);
     }
 
+    // "with property Name string" made the class with Name and still warned that
+    // 'property Name string' had been ignored.
+    [TestMethod]
+    [DataRow("create class Item with property Name string")]
+    [DataRow("create class Item with properties Name string")]
+    [DataRow("create class Item with field Name string")]
+    public void The_singular_property_form_is_read(string sentence)
+    {
+        var command = CommandFront.Parse(sentence, _workspace);
+
+        CollectionAssert.AreEqual(new[] { "Name" }, Names(command), sentence);
+        Assert.IsEmpty(command.IgnoredProperties, sentence);
+    }
+
     // The ignored-entry report splits the list on commas, which the normaliser had removed, so on
     // the real command path nothing was ever reported.
     [TestMethod]

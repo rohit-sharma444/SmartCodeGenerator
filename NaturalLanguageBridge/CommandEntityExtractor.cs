@@ -881,6 +881,13 @@ public static class CommandEntityExtractor
 
         var section = match.Groups[1].Value;
 
+        // "with property Name string" and "with fields ...": the leading noun is the list's
+        // label, not its first entry. It was read as one ("property Name string" ignored, as a
+        // non-primitive) - but only when a name and a type follow, so a property that is itself
+        // called Property is kept.
+        section = Regex.Replace(section, @"^(?:propert(?:y|ies)|fields?|attributes?)\s+(?=\S+\s+\S)",
+            string.Empty, RegexOptions.IgnoreCase);
+
         // If the properties section contains a methods/functions clause, cut it off
         var stopMatch = Regex.Match(section, @"\b(?:and\s+)?(?:with\s+)?(?:having\s+)?(?:methods|functions)\b", RegexOptions.IgnoreCase);
         if (stopMatch.Success)
