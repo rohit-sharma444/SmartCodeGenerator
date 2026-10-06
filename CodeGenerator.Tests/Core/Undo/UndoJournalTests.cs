@@ -82,6 +82,23 @@ public sealed class UndoJournalTests
         Assert.AreEqual("Undid: add two — removed 2 files", _journal.Undo().Message);
     }
 
+    // Undo of create class said "restored 1 file, removed 1 file" — the restored one being the
+    // .csproj the command added a package reference to — and redo said "restored 2 files".
+    [TestMethod]
+    public void Undo_and_redo_of_a_created_class_name_the_class_file_and_the_project_file_apart()
+    {
+        Write("Shop/Shop.csproj", "<Project />");
+        Command("create class Foo", () =>
+        {
+            Write("Shop/Foo.cs", "class Foo { }");
+            Write("Shop/Shop.csproj", "<Project><ItemGroup /></Project>");
+        });
+
+        var foo = Path.Combine("Shop", "Foo.cs");
+        Assert.AreEqual($"Undid: create class Foo — removed {foo}; Shop.csproj put back as it was", _journal.Undo().Message);
+        Assert.AreEqual($"Redid: create class Foo — re-created {foo}; Shop.csproj updated again", _journal.Redo().Message);
+    }
+
     // U5: a csproj rewritten with the same bytes has a new stamp, and was counted as changed.
     [TestMethod]
     public void A_file_rewritten_with_the_same_bytes_is_not_part_of_the_entry()
