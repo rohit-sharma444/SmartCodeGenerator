@@ -545,7 +545,17 @@ public static class CommandHandlingService
             return false;
         }
 
-        return GenerateAndSave(ctx);
+        var ok = GenerateAndSave(ctx);
+
+        // Say which name was made when it is not what was typed (InterfaceNaming).
+        var typed = System.Text.RegularExpressions.Regex.Match(ctx.RawInput,
+            @"\binterface\s+(?:(?:a|an|new)\s+)?(?<name>[A-Za-z_]\w*)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        var made = ctx.Command.InterfaceName ?? ctx.Command.ClassName;
+        if (ok && typed.Success && !string.IsNullOrWhiteSpace(made) && typed.Groups["name"].Value != made)
+            Console.WriteLine($"Named the interface {made}: a name is kept as typed only when it is I followed by a "
+                + $"capital letter, as IShape is; anything else is given the I prefix.");
+
+        return ok;
     }
 
     private static bool HandleListProperties(CommandExecutionContext ctx)

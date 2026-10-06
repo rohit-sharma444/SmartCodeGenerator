@@ -273,10 +273,8 @@ public static class CommandFront
         {
             var interfaceCmd = CommandEntityExtractor.Extract(text, IntentType.CreateInterface, workspace);
 
-            // The capitalised path's rule (ExtractInterfaceName): PascalCased, I added when missing.
-            var name = CommandEntityExtractor.ToPascalCase(createInterfaceMatch.Groups["name"].Value);
-            if (!name.StartsWith('I'))
-                name = "I" + name;
+            // The one rule (InterfaceNaming): IShape kept, anything else PascalCased and prefixed.
+            var name = InterfaceNaming.NameFor(createInterfaceMatch.Groups["name"].Value);
 
             interfaceCmd.InterfaceName = name;
             interfaceCmd.ClassName = name;

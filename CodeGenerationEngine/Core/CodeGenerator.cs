@@ -145,10 +145,7 @@ public static class CodeGenerationEngine
         if (string.IsNullOrWhiteSpace(interfaceName))
             interfaceName = "INewInterface";
 
-        interfaceName = ToPascalCase(interfaceName);
-
-        if (!interfaceName.StartsWith("I", StringComparison.Ordinal))
-            interfaceName = $"I{interfaceName}";
+        interfaceName = InterfaceNaming.NameFor(interfaceName);
 
         var sb = new StringBuilder();
 
