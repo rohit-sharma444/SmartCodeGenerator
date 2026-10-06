@@ -115,7 +115,7 @@ public static class BlazorShellTemplate
                 <span class="text-light opacity-75 small">@context.User.Identity?.Name</span>
                 <form method="post" action="/auth/logout">
                     <AntiforgeryToken />
-                    <button type="submit" class="btn btn-link nav-link p-0">Sign out</button>
+                    <button type="submit" class="btn btn-link nav-link p-0 text-light">Sign out</button>
                 </form>
             </div>
         </Authorized>
