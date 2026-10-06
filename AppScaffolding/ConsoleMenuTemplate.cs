@@ -63,8 +63,13 @@ public sealed class EntityMenu<T> where T : class, new()
                 continue;
             }
 
-            System.Console.Write($"{prop.Name} ({prop.PropertyType.Name}): ");
-            var value = Parse(System.Console.ReadLine() ?? string.Empty, prop.PropertyType);
+            // A nullable property ("decimal?") is one whose source data had gaps: it is prompted
+            // as its underlying type, and a blank answer leaves it empty rather than 0.
+            var underlying = Nullable.GetUnderlyingType(prop.PropertyType);
+            System.Console.Write(underlying is null
+                ? $"{prop.Name} ({prop.PropertyType.Name}): "
+                : $"{prop.Name} ({underlying.Name}, blank for none): ");
+            var value = Parse(System.Console.ReadLine() ?? string.Empty, underlying ?? prop.PropertyType);
             if (value is not null) prop.SetValue(item, value);
         }
 
@@ -184,9 +189,13 @@ public sealed class EntityMenu<T> where T : class, new()
                         && p.Name is not ("Id" or "CreatedOn" or "ModifiedOn")
                         && IsScalar(p.PropertyType));
 
-    private static bool IsScalar(Type type) =>
-        type == typeof(string) || type == typeof(int) || type == typeof(decimal)
-        || type == typeof(bool) || type == typeof(DateTime);
+    private static bool IsScalar(Type type)
+    {
+        type = Nullable.GetUnderlyingType(type) ?? type;
+
+        return type == typeof(string) || type == typeof(int) || type == typeof(decimal)
+               || type == typeof(bool) || type == typeof(DateTime);
+    }
 
     private static object? Parse(string raw, Type type)
     {

@@ -95,9 +95,12 @@ public static class ScreenFields
 
     /// <summary>The date a transaction list filters on, or empty when the model has none — in
     /// which case the screen renders no range rather than filtering on something arbitrary.</summary>
+    /// <remarks>A date every record has comes before one some records leave empty
+    /// (<c>DateTime?</c>), and a record whose date is empty is kept by <see cref="InRange"/>.</remarks>
     public static string DateField(Type type)
         => type.GetProperties()
-            .Where(p => p.PropertyType == typeof(DateTime))
+            .Where(p => (Nullable.GetUnderlyingType(p.PropertyType) ?? p.PropertyType) == typeof(DateTime))
+            .OrderBy(p => p.PropertyType != typeof(DateTime))
             .Select(p => p.Name)
             .FirstOrDefault(name => !AuditFields.Contains(name, StringComparer.OrdinalIgnoreCase))
             ?? string.Empty;
@@ -127,7 +130,8 @@ public static class ScreenFields
     /// </remarks>
     public static PropertyInfo[] MoneyColumns(Type type)
         => type.GetProperties()
-            .Where(p => p.PropertyType == typeof(decimal) || p.PropertyType == typeof(double))
+            .Where(p => (Nullable.GetUnderlyingType(p.PropertyType) ?? p.PropertyType) is var t
+                        && (t == typeof(decimal) || t == typeof(double)))
             .Where(p => !string.Equals(p.Name, "Id", StringComparison.OrdinalIgnoreCase)
                         && !p.Name.EndsWith("Id", StringComparison.Ordinal))
             .ToArray();

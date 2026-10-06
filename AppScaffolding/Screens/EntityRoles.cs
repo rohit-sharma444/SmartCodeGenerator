@@ -138,6 +138,6 @@ public static class EntityRoles
 
     private static bool HasNonAuditDate(ClassDefinition definition)
         => definition.Properties.Any(p =>
-            string.Equals(p.Type, "DateTime", StringComparison.Ordinal)
+            string.Equals(DomainModelMapper.BaseType(p.Type), "DateTime", StringComparison.Ordinal)
             && !AuditFields.Contains(p.Name, StringComparer.OrdinalIgnoreCase));
 }

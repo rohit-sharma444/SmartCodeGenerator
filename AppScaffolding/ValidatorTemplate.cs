@@ -223,7 +223,7 @@ internal sealed class NullValidator<T> : IValidator<T>
     /// </summary>
     public static bool CanEmit(string propertyType, string ruleName)
         => EmittableRules.Any(pair =>
-            string.Equals(pair.Type, propertyType, StringComparison.Ordinal)
+            string.Equals(pair.Type, DomainModelMapper.BaseType(propertyType), StringComparison.Ordinal)
             && string.Equals(pair.Rule, ruleName, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>Rule name recorded by DomainModelMapper for a uniqueness constraint.</summary>
@@ -252,7 +252,7 @@ internal sealed class NullValidator<T> : IValidator<T>
     /// a property of type <paramref name="propertyType"/>.</summary>
     public static bool CanEmitEntityRule(string propertyType, string ruleName)
         => EntityStageRules.Any(pair =>
-            string.Equals(pair.Type, propertyType, StringComparison.Ordinal)
+            string.Equals(pair.Type, DomainModelMapper.BaseType(propertyType), StringComparison.Ordinal)
             && string.Equals(pair.Rule, ruleName, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
@@ -758,6 +758,11 @@ public sealed partial class {{className}}Validator
         var checks = new List<string>();
         var name = property.Name;
 
+        // A nullable property ("decimal?") takes its kind's checks, each of which passes a null:
+        // a missing value is what the column holds, not a value out of range.
+        var type = DomainModelMapper.BaseType(property.Type);
+        var nullable = DomainModelMapper.IsNullable(property.Type);
+
         if (property.Type == "string")
         {
             if (IsRequired(property))
@@ -822,13 +827,14 @@ public sealed partial class {{className}}Validator
             }
         }
 
-        if (property.Type is "int" or "decimal")
+        // Lifted comparisons: a null is neither below a minimum nor above a maximum.
+        if (type is "int" or "decimal")
         {
             var min = Rule(property, MinValueRule)?.MinValue;
 
             if (min.HasValue)
             {
-                checks.Add($"if (item.{name} < {Literal(min.Value, property.Type)})");
+                checks.Add($"if (item.{name} < {Literal(min.Value, type)})");
                 checks.Add($"    errors.Add(new ValidationError(\"{name}\", \"{name} must be {min.Value} or more.\"));");
             }
 
@@ -836,14 +842,16 @@ public sealed partial class {{className}}Validator
 
             if (max.HasValue)
             {
-                checks.Add($"if (item.{name} > {Literal(max.Value, property.Type)})");
+                checks.Add($"if (item.{name} > {Literal(max.Value, type)})");
                 checks.Add($"    errors.Add(new ValidationError(\"{name}\", \"{name} must be {max.Value} or less.\"));");
             }
         }
 
-        if (property.Type == "decimal" && Rule(property, ScaleRule)?.Scale is { } places)
+        if (type == "decimal" && Rule(property, ScaleRule)?.Scale is { } places)
         {
-            checks.Add($"if (decimal.Round(item.{name}, {places}) != item.{name})");
+            checks.Add(nullable
+                ? $"if (item.{name} is decimal scaled && decimal.Round(scaled, {places}) != scaled)"
+                : $"if (decimal.Round(item.{name}, {places}) != item.{name})");
             // "0 decimal places or fewer" is what a decimal(18,0) column showed the user, and
             // there is no fewer than none. decimal(P,0) is a common declaration, so that
             // sentence would be the one such a column shows every time it refuses a value.
@@ -852,7 +860,7 @@ public sealed partial class {{className}}Validator
                 : $"    errors.Add(new ValidationError(\"{name}\", \"{name} must have {places} decimal places or fewer.\"));");
         }
 
-        if (property.Type == "DateTime")
+        if (type == "DateTime")
         {
             if (Rule(property, MinDateRule)?.MinDate is { } floor)
             {
@@ -869,7 +877,9 @@ public sealed partial class {{className}}Validator
 
             if (Rule(property, DateOnlyRule) is not null)
             {
-                checks.Add($"if (item.{name}.TimeOfDay != TimeSpan.Zero)");
+                checks.Add(nullable
+                    ? $"if (item.{name} is DateTime dated && dated.TimeOfDay != TimeSpan.Zero)"
+                    : $"if (item.{name}.TimeOfDay != TimeSpan.Zero)");
                 checks.Add($"    errors.Add(new ValidationError(\"{name}\", \"{name} must be a date with no time of day.\"));");
             }
         }

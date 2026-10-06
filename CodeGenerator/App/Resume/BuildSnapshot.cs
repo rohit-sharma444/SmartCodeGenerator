@@ -178,6 +178,8 @@ internal sealed class BuildSnapshot
         public int? Precision { get; set; }
         public int? Scale { get; set; }
         public string? DeclaredType { get; set; }
+        public bool? NameImpliedFormatHolds { get; set; }
+        public bool? HasMissingValues { get; set; }
     }
 
     internal sealed class Proposal
@@ -512,6 +514,8 @@ internal sealed class BuildSnapshot
         Precision = facts.Precision,
         Scale = facts.Scale,
         DeclaredType = facts.DeclaredType,
+        NameImpliedFormatHolds = facts.NameImpliedFormatHolds,
+        HasMissingValues = facts.HasMissingValues,
     };
 
     /// <summary>
@@ -527,6 +531,8 @@ internal sealed class BuildSnapshot
         Precision = dto.Precision,
         Scale = dto.Scale,
         DeclaredType = dto.DeclaredType,
+        NameImpliedFormatHolds = dto.NameImpliedFormatHolds,
+        HasMissingValues = dto.HasMissingValues ?? false,
     };
 
     private static Proposal ToDto(RuleProposal proposal) => new()

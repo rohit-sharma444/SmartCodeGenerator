@@ -244,11 +244,29 @@ public static class DataModelBuilder
     /// </summary>
     private static TypeFacts? EffectiveFacts(TabularColumn column, string fieldName, TabularTable table)
     {
-        if (column.Type != "string")
-            return column.Facts;
-
         var values = table.ColumnValues(column.Name).ToList();
 
+        if (column.Type != "string")
+            return WithMissingValues(column.Facts, values);
+
+        return WithMissingValues(StringFacts(column, fieldName, values), values);
+    }
+
+    /// <summary>
+    /// <paramref name="facts"/> with <see cref="TypeFacts.HasMissingValues"/> set when any row is
+    /// blank. Recorded for every column, string or not, so a column the user retypes in the review
+    /// loop from string to a number still comes out nullable when its rows have gaps.
+    /// </summary>
+    private static TypeFacts? WithMissingValues(TypeFacts? facts, List<string?> values)
+    {
+        if (!values.Any(string.IsNullOrWhiteSpace))
+            return facts;
+
+        return (facts ?? new TypeFacts()) with { HasMissingValues = true };
+    }
+
+    private static TypeFacts? StringFacts(TabularColumn column, string fieldName, List<string?> values)
+    {
         if (column.Facts is not null)
         {
             var requiredHolds = column.Facts.IsNullable != false
