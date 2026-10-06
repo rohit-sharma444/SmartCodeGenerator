@@ -197,6 +197,26 @@ public class ChatChromeTests
     }
 
     [TestMethod]
+    public void A_relationships_turn_draws_the_diagram()
+    {
+        using var context = new BunitContext();
+
+        var rendered = context.Render<ChatTranscript>(p => p.Add(
+            c => c.Turns,
+            new List<ChatTurn>
+            {
+                new("show relationships", CommandKind.ShowRelationships, ChatVerdict.Succeeded,
+                    [new RelationshipsBlock([
+                        new CodeGenerator.Web.Workflow.RelationshipSource("Book", ["Author"]),
+                        new CodeGenerator.Web.Workflow.RelationshipSource("Author", [])])])
+            }));
+
+        var diagram = rendered.Find(".rel-diagram");
+        StringAssert.Contains(diagram.TextContent, "Book");
+        StringAssert.Contains(diagram.TextContent, "Author");
+    }
+
+    [TestMethod]
     public void A_stamped_turn_shows_the_time_it_ran()
     {
         using var context = new BunitContext();
