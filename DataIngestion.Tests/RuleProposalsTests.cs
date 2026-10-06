@@ -55,6 +55,8 @@ public class RuleProposalsTests
 
         Assert.Equal("unique", unique.Rule.Name);
         Assert.Contains("12,431", unique.Evidence);
+        // "share a OrderDate": no article to get wrong.
+        Assert.Contains("share the same Code", unique.Evidence);
         Assert.False(unique.Accepted);
     }
 
