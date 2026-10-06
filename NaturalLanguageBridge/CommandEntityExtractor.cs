@@ -50,18 +50,24 @@ public static class CommandEntityExtractor
         switch (intent)
         {
             case IntentType.CreateClass:
+            {
+                // The members are read from the sentence as typed, not the normalised one: that
+                // rewrote a property called New to Create, manager to Service and entity to Class,
+                // and removed the commas the ignored-entry report splits the list on.
+                var members = MemberListText(rawSentence);
                 ExtractClassName(sentence, command);
-                ExtractProperties(sentence, command);
+                ExtractProperties(members, command);
                 if (command.Properties.Count == 0)
                 {
-                    ExtractEnglishProperties(sentence, command);
+                    ExtractEnglishProperties(members, command);
                 }
-                ExtractMethods(sentence, command);
+                ExtractMethods(members, command);
                 if (!string.IsNullOrWhiteSpace(command.ClassName))
                     SessionContext.CurrentClass = command.ClassName;
-                ExtractInheritanceInfo(sentence, command);
-                ExtractInterfaceInfo(sentence, command);
+                ExtractInheritanceInfo(members, command);
+                ExtractInterfaceInfo(members, command);
                 break;
+            }
 
             case IntentType.ClassInherit:
                 ExtractClassName(sentence, command);
@@ -69,14 +75,17 @@ public static class CommandEntityExtractor
                 break;
 
             case IntentType.CreateInterface:
+            {
+                var members = MemberListText(rawSentence);
                 ExtractInterfaceName(sentence, command);
-                ExtractProperties(sentence, command);
+                ExtractProperties(members, command);
                 if (command.Properties.Count == 0)
-                    ExtractEnglishProperties(sentence, command);
-                ExtractMethods(sentence, command);
+                    ExtractEnglishProperties(members, command);
+                ExtractMethods(members, command);
                 if (!string.IsNullOrWhiteSpace(command.InterfaceName))
                     SessionContext.CurrentClass = command.InterfaceName;
                 break;
+            }
 
             case IntentType.DeleteClass:
 
@@ -141,6 +150,17 @@ public static class CommandEntityExtractor
     /// <summary>The sentence as typed, trimmed and with each run of whitespace made one space.</summary>
     internal static string Verbatim(string? rawSentence) =>
         Regex.Replace((rawSentence ?? string.Empty).Trim(), @"\s+", " ");
+
+    /// <summary>
+    /// The sentence a member list is read from: as typed, without filler words ("with a Name and
+    /// an Email") and without the full stop that ends it.
+    /// </summary>
+    internal static string MemberListText(string? rawSentence) =>
+        CommandParser.RemoveFillerWords(Verbatim(rawSentence)).TrimEnd('.', '!').TrimEnd();
+
+    /// <summary>A member name as typed with its first letter capitalised: new becomes New.</summary>
+    internal static string Capitalised(string name) =>
+        string.IsNullOrEmpty(name) ? name : char.ToUpperInvariant(name[0]) + name[1..];
 
     public static void ExtractInheritanceInfo(
         string sentence,
@@ -472,7 +492,9 @@ public static class CommandEntityExtractor
 
         var match = Regex.Match(
             sentence,
-            @"\bmethods?\b\s+(?<methods>.+)$",
+            // functions/operations too: the member list is read as typed, so the normaliser no
+            // longer rewrites them to methods first.
+            @"\b(?:methods?|functions?|operations?)\b\s+(?<methods>.+)$",
             RegexOptions.IgnoreCase);
 
         if (!match.Success)
@@ -779,7 +801,7 @@ public static class CommandEntityExtractor
                 command.Properties.Add(
                     new PropertyDefinition
                     {
-                        Name = match.Groups[1].Value,
+                        Name = Capitalised(match.Groups[1].Value),
                         Type = match.Groups[2].Value
                     });
             }
@@ -803,6 +825,7 @@ public static class CommandEntityExtractor
         foreach (var token in tokens)
         {
             var property = ParseProperty(token);
+            property.Name = Capitalised(property.Name);
 
             if (!string.IsNullOrWhiteSpace(property.Name))
                 command.Properties.Add(property);

@@ -220,6 +220,14 @@ public static partial class CommandParser
         return input;
     }
 
+    /// <summary>
+    /// The sentence without its filler words ("please", "a", "the" ...) and nothing else changed:
+    /// no punctuation removed and no word rewritten. For text whose words are names the user chose,
+    /// such as a property list, where Normalize would turn a property called New into Create.
+    /// </summary>
+    public static string RemoveFillerWords(string input) =>
+        string.IsNullOrWhiteSpace(input) ? string.Empty : RemoveStopWords(input.Trim());
+
     private static string RemoveStopWords(string input)
     {
         var words = input.Split(' ', StringSplitOptions.RemoveEmptyEntries);
