@@ -287,8 +287,9 @@ public static class CommandHandlingService
 
     private static bool HandleShowClass(CommandExecutionContext ctx)
     {
-        Console.WriteLine(ClassValidator.ShowClass(ctx.Command.ClassName));
-        return true;
+        // ShowClass prints the class, or the warning that says why not; its return value is a
+        // status, and echoing it printed "Class 'Nope' not found." and then "Class not found.".
+        return ClassValidator.ShowClass(ctx.Command.ClassName) == ClassValidator.ClassShown;
     }
 
     private static bool HandleRenameClass(CommandExecutionContext ctx)
@@ -353,6 +354,7 @@ public static class CommandHandlingService
 
     private static bool HandleCreateMethod(CommandExecutionContext ctx)
     {
+        UseDeclaredNames(ctx, member: null);
         var ok = ClassMethodService.AddMethod(
             ctx.WorkspaceRoot, ctx.Command.ClassName,
             ctx.Command.MethodName, ctx.Command.ReturnType, out var message);
@@ -375,6 +377,8 @@ public static class CommandHandlingService
             return false;
         }
 
+        UseDeclaredNames(ctx, member: "Method");
+
         var ok = ClassMethodEditService.DeleteMethod(
             ctx.WorkspaceRoot, ctx.Command.ClassName, ctx.Command.MethodName, out var message);
         Console.WriteLine(message);
@@ -394,6 +398,8 @@ public static class CommandHandlingService
             return false;
         }
 
+        UseDeclaredNames(ctx, member: "Method");
+
         var ok = ClassMethodEditService.RenameMethod(
             ctx.WorkspaceRoot, ctx.Command.ClassName,
             ctx.Command.MethodName, ctx.Command.NewMethodName, out var message);
@@ -404,6 +410,28 @@ public static class CommandHandlingService
             WarnOfImplementers(ctx, $"rename {ctx.Command.MethodName} to {ctx.Command.NewMethodName} there as well, or that code will not compile.");
         }
         return ok;
+    }
+
+    // The class, and the member the command edits, as declared: the warnings after an edit repeated
+    // what was typed - "rules still name name", "rename area to Size there as well" for Area. The
+    // services already find a name in another case; this makes the handlers' own messages agree.
+    // A member that cannot be told (none, or two differing only in case) is left as typed, and the
+    // service then says why.
+    private static void UseDeclaredNames(CommandExecutionContext ctx, string? member)
+    {
+        if (string.IsNullOrWhiteSpace(ctx.Command.ClassName)
+            || !ClassMethodEditService.TryLoadParts(ctx.WorkspaceRoot, ctx.Command.ClassName, out var parts, out _))
+            return;
+
+        ctx.Command.ClassName = parts[0].Node.Identifier.Text;
+
+        if (member == "Property" && !string.IsNullOrWhiteSpace(ctx.Command.PropertyName)
+            && ClassMethodEditService.PropertyNamed(parts, ctx.Command.PropertyName) is { } property)
+            ctx.Command.PropertyName = property.Property.Identifier.Text;
+
+        if (member == "Method" && !string.IsNullOrWhiteSpace(ctx.Command.MethodName)
+            && ClassMethodEditService.MethodNamed(parts, ctx.Command.MethodName) is { } method)
+            ctx.Command.MethodName = method;
     }
 
     // After a member is added to an interface: the classes implementing it that do not have it yet.
@@ -532,16 +560,31 @@ public static class CommandHandlingService
             return true;
         }
 
-        var properties = EntityExtractor.ExtractProperties(file);
+        var properties = EntityExtractor.ExtractProperties(file)
+            .Select(p => (p.Type, p.Name))
+            .ToList();
+        var className = ctx.Command.ClassName;
+
+        // The class's other partial files as well, as the edit commands search them:
+        // a property in Customer.Extra.cs was not listed.
+        if (ClassMethodEditService.TryLoadParts(ctx.WorkspaceRoot, className, out var parts, out _))
+        {
+            className = parts[0].Node.Identifier.Text;
+            foreach (var part in parts.Skip(1))
+                properties.AddRange(part.Node.Members
+                    .OfType<Microsoft.CodeAnalysis.CSharp.Syntax.PropertyDeclarationSyntax>()
+                    .Select(p => (p.Type.ToString(), p.Identifier.Text)));
+        }
+
         if (properties.Count == 0)
         {
-            Console.WriteLine($"No properties found in '{ctx.Command.ClassName}'.");
+            Console.WriteLine($"No properties found in '{className}'.");
             return true;
         }
 
-        Console.WriteLine($"Properties in {ctx.Command.ClassName}:");
-        foreach (var property in properties)
-            Console.WriteLine($"  {property.Type} {property.Name}");
+        Console.WriteLine($"Properties in {className}:");
+        foreach (var (type, name) in properties)
+            Console.WriteLine($"  {type} {name}");
         return true;
     }
 
@@ -557,6 +600,7 @@ public static class CommandHandlingService
 
     private static bool HandleCreateProperty(CommandExecutionContext ctx)
     {
+        UseDeclaredNames(ctx, member: null);
         var ok = ClassPropertyService.AddProperty(
             ctx.WorkspaceRoot, ctx.Command.ClassName,
             ctx.Command.PropertyName, ctx.Command.PropertyType, out var message);
@@ -568,6 +612,7 @@ public static class CommandHandlingService
 
     private static bool HandleDeleteProperty(CommandExecutionContext ctx)
     {
+        UseDeclaredNames(ctx, member: "Property");
         var ok = ClassPropertyService.RemoveProperty(
             ctx.WorkspaceRoot, ctx.Command.ClassName,
             ctx.Command.PropertyName, out var message);
@@ -608,6 +653,8 @@ public static class CommandHandlingService
             return false;
         }
 
+        UseDeclaredNames(ctx, member: "Property");
+
         var ok = ClassPropertyRenameService.RenameProperty(
             ctx.WorkspaceRoot, ctx.Command.ClassName,
             ctx.Command.PropertyName, ctx.Command.NewPropertyName, out var message);
@@ -640,6 +687,8 @@ public static class CommandHandlingService
             Console.WriteLine("No class specified for the type change.");
             return false;
         }
+
+        UseDeclaredNames(ctx, member: "Property");
 
         var ok = ClassPropertyTypeService.ChangeType(
             ctx.WorkspaceRoot, ctx.Command.ClassName,
