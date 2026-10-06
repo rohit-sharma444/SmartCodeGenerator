@@ -55,6 +55,10 @@ public class RelationshipDiagramTests
 
         Assert.IsEmpty(page.FindAll(".rel-edge"));
         StringAssert.Contains(page.Find(".rel-empty").TextContent, "Nothing is related yet");
+
+        // The same diagram draws classes already on disk (show relationships), so it must not
+        // promise they "will be generated".
+        Assert.DoesNotContain("generated", page.Find(".rel-empty").TextContent);
     }
 
     [TestMethod]

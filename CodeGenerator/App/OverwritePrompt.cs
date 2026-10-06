@@ -109,7 +109,7 @@ internal static class OverwritePrompt
         if (changed.Count > 0)
         {
             lines.Add(
-                $"{Classes(changed.Count)} differs: {string.Join(", ", changed)}. "
+                $"{Classes(changed.Count)} {(changed.Count == 1 ? "differs" : "differ")}:{string.Join(", ", changed)}. "
                 + "Adding leaves them as they are.");
         }
 
