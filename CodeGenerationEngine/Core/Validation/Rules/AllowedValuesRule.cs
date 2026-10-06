@@ -35,7 +35,10 @@ public sealed class AllowedValuesRuleParser : IValidationRuleParser
         rule = null;
         if (!m.Success) return false;
 
-        var raw = m.Groups["values"].Value;
+        // "must be one of Open, Closed, Pending" says the same as "must be Open, Closed, Pending";
+        // the lead-in is not the first value. Describe() prints it as "one of: ...", so that form
+        // is read back too.
+        var raw = Regex.Replace(m.Groups["values"].Value, @"^one\s+of\s*:?\s*", string.Empty, RegexOptions.IgnoreCase);
         // The guard requires a comma or " or ", which rules out a bare " and " (e.g. "Age must be
         // greater than 0 and less than 100"). The split still breaks on " and " because legitimate
         // English lists use it ("Status must be Draft, Sent and Paid"), and by the time split runs,

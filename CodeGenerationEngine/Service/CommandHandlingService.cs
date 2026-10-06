@@ -180,11 +180,16 @@ public static class CommandHandlingService
     {
         var command = ctx.Command;
 
-        // Resolve the project name once so the name and the default output
-        // folder stay consistent (the old code defaulted them independently).
-        string projectName = string.IsNullOrWhiteSpace(command.ProjectName)
-            ? "NewProject"
-            : command.ProjectName;
+        // No name used to make a project called NewProject, which nobody asked for - and a name the
+        // parser could not read (a quoted one, once) made it too, without a word.
+        if (string.IsNullOrWhiteSpace(command.ProjectName))
+        {
+            Console.WriteLine(
+                "A project name is required, e.g. create console project EmployeeManagement");
+            return false;
+        }
+
+        string projectName = command.ProjectName;
 
         var projectReq = new ProjectRequest
         {
@@ -457,7 +462,8 @@ public static class CommandHandlingService
             TargetProperty = string.IsNullOrWhiteSpace(ctx.Command.PropertyName) ? null : ctx.Command.PropertyName
         };
 
-        var rules = ValidationRuleCatalog.Default.Parse(ctx.Command.ValidationText, category, parseCtx);
+        // One rule per command, as typed (see ParseOne).
+        var rules = ValidationRuleCatalog.Default.ParseOne(ctx.Command.ValidationText, category, parseCtx);
         if (rules.Count == 0)
         {
             Output.Warning($"Could not parse a validation rule from: '{ctx.Command.ValidationText}'");

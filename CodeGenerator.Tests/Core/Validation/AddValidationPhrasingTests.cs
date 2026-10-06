@@ -150,4 +150,36 @@ public class AddValidationPhrasingTests
         AssertRegistered(
             "add validation must be a valid date on Born in Employee",
             "Employee", "Born must be a valid date");
+
+    // The rule text is kept exactly as typed. It went through the command-word normaliser, which
+    // turns , ; : . ? ! into spaces: ^(a|b)?$ was stored as ^(a|b) $ and the command still said
+    // "Validation added"; 0.5 became "0 5" and the rule was refused.
+    [TestMethod]
+    [DataRow(@"add validation must match ^(a|b)?$ on Code in Item", @"Code must match ^(a|b)?$")]
+    [DataRow(@"add validation must match ^[0-9]+\.[0-9]{2}$ on Code in Item", @"Code must match ^[0-9]+\.[0-9]{2}$")]
+    [DataRow(@"add validation must match ^[A-Z]{2}:[0-9]+$ on Code in Item", @"Code must match ^[A-Z]{2}:[0-9]+$")]
+    // A full stop at the very end of a rule is read as the end of the sentence (the catalog drops
+    // it); quoted, it is part of the text.
+    [DataRow("add validation must start with \"Mr.\" on Title in Item", "Title must start with Mr.")]
+    // A command adds one rule, and the class name ends the sentence, so a full stop or a ';'
+    // inside the rule was typed as part of it. The catalog dropped the one and split on the other.
+    [DataRow("add validation must start with Mr. on Title in Item", "Title must start with Mr.")]
+    [DataRow("add validation must match ^[a;b]+$ on Code in Item", "Code must match ^[a;b]+$")]
+    [DataRow("add validation must be between 0.5 and 9.99 on Price in Item", "Price must be between 0.5 and 9.99")]
+    [DataRow("add validation must be at most 2.5 on Price in Item", "Price must be at most 2.5")]
+    [DataRow("add validation must be Draft, Sent, Paid on Status in Item", "Status must be one of: Draft, Sent, Paid")]
+    [DataRow("add validation must be one of Open, Closed, Pending on Status in Item", "Status must be one of: Open, Closed, Pending")]
+    [DataRow("add validation Status must be Draft, Sent, Paid in Item", "Status must be one of: Draft, Sent, Paid")]
+    [DataRow("add validation Name is required on Name in Item.", "Name is required")]
+    [DataRow("add validation Name is required in Item.", "Name is required")]
+    public void Rule_text_keeps_its_punctuation(string sentence, string expected) =>
+        AssertRegistered(sentence, "Item", expected);
+
+    // A word the normaliser rewrites is a command word only outside the rule: "new" became
+    // "create" and "manager" became "service" inside the values list.
+    [TestMethod]
+    public void Rule_text_keeps_words_the_normaliser_rewrites() =>
+        AssertRegistered(
+            "add validation must be New, Manager, Model on Kind in Item",
+            "Item", "Kind must be one of: New, Manager, Model");
 }

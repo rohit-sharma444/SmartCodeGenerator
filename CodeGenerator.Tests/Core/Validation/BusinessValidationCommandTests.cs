@@ -94,4 +94,20 @@ public class BusinessValidationCommandTests
         AssertRegistered(
             "add business validation BillingPostcode must be the same as ShippingPostcode in Customer",
             "Customer", "BillingPostcode must be the same as ShippingPostcode");
+
+    // The phrasings the help documents ("equals A times B", "same as", "either/or") and the ones
+    // people type: only "must equal", "must be the same as" and "Either ... must be provided" parsed.
+    [TestMethod]
+    [DataRow("add business validation Total equals Qty times Price in Order", "Order",
+        "Total must equal Qty times Price")]
+    [DataRow("add business validation Total must be equal to Qty times Price in Order", "Order",
+        "Total must equal Qty times Price")]
+    [DataRow("add business validation BillingPostcode must be same as ShippingPostcode in Customer", "Customer",
+        "BillingPostcode must be the same as ShippingPostcode")]
+    [DataRow("add business validation either Phone or Email is required in Customer", "Customer",
+        "Either Phone or Email must be provided")]
+    [DataRow("add business validation Either Phone or Email must be given in Customer", "Customer",
+        "Either Phone or Email must be provided")]
+    public void The_documented_phrasings_register_a_business_rule(string sentence, string className, string expected) =>
+        AssertRegistered(sentence, className, expected);
 }

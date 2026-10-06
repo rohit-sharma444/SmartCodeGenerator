@@ -22,13 +22,30 @@ public static class CommandEntityExtractor
         // before ComposeRuleFragment or ExtractBusinessValidationInfo ever see it, so
         // those two intents keep their stop words while every other intent still gets
         // the friendlier, stopword-stripped prose.
-        var keepStopWords = intent is IntentType.AddValidation or IntentType.AddBusinessValidation;
-        var sentence = CommandParser.Normalize(rawSentence, removeStopWords: !keepStopWords);
+        //
+        // Nor may anything else in the normaliser touch them: it turns , ; : . ? ! into spaces and
+        // rewrites new -> create, manager -> service, and so on. A regex ^(a|b)?$ was stored as
+        // ^(a|b) $ with "Validation added", 0.5 became "0 5", and "Draft, Sent, Paid" lost the
+        // commas that make it a list. The command words of these two are fixed ("add validation",
+        // "on", "in") and are matched as typed, so the sentence is only trimmed and its runs of
+        // whitespace collapsed.
+        //
+        // A project name is the same: "A" is a stop word, Data.Core lost its dot and a quoted
+        // name lost everything, so the project was made as NewProject or under another name; and
+        // net8.0 and C:\path lost their punctuation too.
+        //
+        // And add/remove property: a quoted name, the class A, string?, System.Double and
+        // Dictionary<string, int> (see ExtractPropertyInfo).
+        var verbatim = intent is IntentType.AddValidation or IntentType.AddBusinessValidation
+            or IntentType.CreateProject or IntentType.CreateProperty or IntentType.DeleteProperty;
+        var sentence = verbatim
+            ? Verbatim(rawSentence)
+            : CommandParser.Normalize(rawSentence ?? string.Empty);
 
         var command = new ParsedCommand
         {
             Intent = intent,
-            OriginalSentence = rawSentence
+            OriginalSentence = rawSentence ?? string.Empty
         };
 
         var tokens = sentence.Split(' ', StringSplitOptions.RemoveEmptyEntries);
@@ -36,18 +53,24 @@ public static class CommandEntityExtractor
         switch (intent)
         {
             case IntentType.CreateClass:
+            {
+                // The members are read from the sentence as typed, not the normalised one: that
+                // rewrote a property called New to Create, manager to Service and entity to Class,
+                // and removed the commas the ignored-entry report splits the list on.
+                var members = MemberListText(rawSentence);
                 ExtractClassName(sentence, command);
-                ExtractProperties(sentence, command);
+                ExtractProperties(members, command);
                 if (command.Properties.Count == 0)
                 {
-                    ExtractEnglishProperties(sentence, command);
+                    ExtractEnglishProperties(members, command);
                 }
-                ExtractMethods(sentence, command);
+                ExtractMethods(members, command);
                 if (!string.IsNullOrWhiteSpace(command.ClassName))
                     SessionContext.CurrentClass = command.ClassName;
-                ExtractInheritanceInfo(sentence, command);
-                ExtractInterfaceInfo(sentence, command);
+                ExtractInheritanceInfo(members, command);
+                ExtractInterfaceInfo(members, command);
                 break;
+            }
 
             case IntentType.ClassInherit:
                 ExtractClassName(sentence, command);
@@ -55,14 +78,17 @@ public static class CommandEntityExtractor
                 break;
 
             case IntentType.CreateInterface:
+            {
+                var members = MemberListText(rawSentence);
                 ExtractInterfaceName(sentence, command);
-                ExtractProperties(sentence, command);
+                ExtractProperties(members, command);
                 if (command.Properties.Count == 0)
-                    ExtractEnglishProperties(sentence, command);
-                ExtractMethods(sentence, command);
+                    ExtractEnglishProperties(members, command);
+                ExtractMethods(members, command);
                 if (!string.IsNullOrWhiteSpace(command.InterfaceName))
                     SessionContext.CurrentClass = command.InterfaceName;
                 break;
+            }
 
             case IntentType.DeleteClass:
 
@@ -123,6 +149,21 @@ public static class CommandEntityExtractor
             command.ClassName = SessionContext.CurrentClass ?? string.Empty;
         return command;
     }
+
+    /// <summary>The sentence as typed, trimmed and with each run of whitespace made one space.</summary>
+    internal static string Verbatim(string? rawSentence) =>
+        Regex.Replace((rawSentence ?? string.Empty).Trim(), @"\s+", " ");
+
+    /// <summary>
+    /// The sentence a member list is read from: as typed, without filler words ("with a Name and
+    /// an Email") and without the full stop that ends it.
+    /// </summary>
+    internal static string MemberListText(string? rawSentence) =>
+        CommandParser.RemoveFillerWords(Verbatim(rawSentence)).TrimEnd('.', '!').TrimEnd();
+
+    /// <summary>A member name as typed with its first letter capitalised: new becomes New.</summary>
+    internal static string Capitalised(string name) =>
+        string.IsNullOrEmpty(name) ? name : char.ToUpperInvariant(name[0]) + name[1..];
 
     public static void ExtractInheritanceInfo(
         string sentence,
@@ -319,7 +360,7 @@ public static class CommandEntityExtractor
         // form so the documented shape wins; the non-greedy rule keeps the class as
         // the final token even when the rule itself contains "in".
         var inClass = Regex.Match(sentence,
-            @"add\s+validation\s+(.+?)\s+in\s+([A-Za-z_]\w*)\s*$",
+            @"add\s+validation\s+(.+?)\s+in\s+([A-Za-z_]\w*)\s*[.!]?\s*$",
             RegexOptions.IgnoreCase);
 
         if (inClass.Success)
@@ -333,7 +374,7 @@ public static class CommandEntityExtractor
 
         // "add validation <rule> to <class>" (legacy form).
         var to = Regex.Match(sentence,
-            @"add\s+validation\s+(.+?)\s+to\s+([A-Za-z_]\w*)\s*$",
+            @"add\s+validation\s+(.+?)\s+to\s+([A-Za-z_]\w*)\s*[.!]?\s*$",
             RegexOptions.IgnoreCase);
 
         if (to.Success)
@@ -347,7 +388,7 @@ public static class CommandEntityExtractor
     {
         // "add business validation <rule> in|for|on <class>"
         var withClass = Regex.Match(sentence,
-            @"add\s+business\s+validation\s+(?<rule>.+?)\s+(?:in|for|on)\s+(?<class>[A-Za-z_]\w*)\s*$",
+            @"add\s+business\s+validation\s+(?<rule>.+?)\s+(?:in|for|on)\s+(?<class>[A-Za-z_]\w*)\s*[.!]?\s*$",
             RegexOptions.IgnoreCase);
         if (withClass.Success)
         {
@@ -359,8 +400,10 @@ public static class CommandEntityExtractor
         // "add business validation <rule>" (class comes from session context)
         var noClass = Regex.Match(sentence,
             @"add\s+business\s+validation\s+(?<rule>.+)$", RegexOptions.IgnoreCase);
+        // A business rule names properties, never a literal, so a full stop typed at the end of
+        // the sentence is not part of it.
         if (noClass.Success)
-            command.ValidationText = noClass.Groups["rule"].Value.Trim();
+            command.ValidationText = noClass.Groups["rule"].Value.Trim().TrimEnd('.', '!').TrimEnd();
     }
 
     public static void ExtractBusinessShowTarget(string sentence, ParsedCommand command)
@@ -375,34 +418,45 @@ public static class CommandEntityExtractor
     // Parses single-property member commands:
     //   "add property <name> [<type>] to <class>"
     //   "remove property <name> from <class>"
+    // A property type as typed: any run of non-spaces, so string?, System.Double and List<string>
+    // arrive whole; inside angle brackets (one level of nesting) spaces are allowed too, because
+    // that is how Dictionary<string, int> is written. ChangePropertyTypeRe reads it the same way.
+    private const string TypedPropertyType = @"(?:[^\s<]|<[^<>]*(?:<[^<>]*>[^<>]*)*>)+";
+
+    internal static readonly Regex AddPropertyRe = new(
+        @"\b(?:add|create)\s+(?:(?:a|an|new)\s+)?(?:property|field)\s+"
+        + @"(?<name>""[^""]*""|'[^']*'|\S+)"
+        + $@"(?:\s+(?<type>{TypedPropertyType}))?"
+        + @"\s+(?:to|in|on|into)\s+(?:class\s+(?=\S))?(?<class>[A-Za-z_]\w*)\s*[.!]?\s*$",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>
+    /// add property and remove property, read from the sentence as typed.
+    /// </summary>
+    /// <remarks>
+    /// It was read from the normalised sentence, which drops the stop words a, an, the, removes
+    /// , . ? and quotes nothing out: add property Y string to A lost its class, a quoted name, a
+    /// Dictionary&lt;string, int&gt; or a System.Double matched no pattern at all, string? was
+    /// stored as string, and a property called New was written as Create. With no name matched
+    /// the add went ahead with an empty one and said "Property '' already exists."
+    /// A name that is not an identifier is passed on as typed, to be refused by name.
+    /// </remarks>
     public static void ExtractPropertyInfo(string sentence, ParsedCommand command)
     {
-        // add/create property <name> <type> to/in <class>
-        var addTyped = Regex.Match(sentence,
-            @"\b(?:add|create)\s+property\s+([A-Za-z_]\w*)\s+([A-Za-z_][\w<>\[\],\.\?]*)\s+(?:to|in|on)\s+([A-Za-z_]\w*)",
-            RegexOptions.IgnoreCase);
-        if (addTyped.Success)
+        var add = AddPropertyRe.Match(sentence);
+        if (add.Success)
         {
-            command.PropertyName = ToPascalCase(addTyped.Groups[1].Value);
-            command.PropertyType = addTyped.Groups[2].Value.Trim();
-            command.ClassName = ToPascalCase(addTyped.Groups[3].Value);
-            return;
-        }
-
-        // add/create property <name> to/in <class> (type defaults to string)
-        var addUntyped = Regex.Match(sentence,
-            @"\b(?:add|create)\s+property\s+([A-Za-z_]\w*)\s+(?:to|in|on)\s+([A-Za-z_]\w*)",
-            RegexOptions.IgnoreCase);
-        if (addUntyped.Success)
-        {
-            command.PropertyName = ToPascalCase(addUntyped.Groups[1].Value);
-            command.ClassName = ToPascalCase(addUntyped.Groups[2].Value);
+            var name = add.Groups["name"].Value.Trim('"', '\'');
+            command.PropertyName = Regex.IsMatch(name, @"^[A-Za-z_]\w*$") ? ToPascalCase(name) : name;
+            if (add.Groups["type"].Success)
+                command.PropertyType = add.Groups["type"].Value.Trim();
+            command.ClassName = ToPascalCase(add.Groups["class"].Value);
             return;
         }
 
         // remove/delete property <name> from <class>
         var remove = Regex.Match(sentence,
-            @"\b(?:remove|delete|drop)\s+property\s+([A-Za-z_]\w*)\s+(?:from|of|in|on)\s+([A-Za-z_]\w*)",
+            @"\b(?:remove|delete|drop)\s+(?:property|field)\s+([A-Za-z_]\w*)\s+(?:from|of|in|on)\s+([A-Za-z_]\w*)",
             RegexOptions.IgnoreCase);
         if (remove.Success)
         {
@@ -452,7 +506,9 @@ public static class CommandEntityExtractor
 
         var match = Regex.Match(
             sentence,
-            @"\bmethods?\b\s+(?<methods>.+)$",
+            // functions/operations too: the member list is read as typed, so the normaliser no
+            // longer rewrites them to methods first.
+            @"\b(?:methods?|functions?|operations?)\b\s+(?<methods>.+)$",
             RegexOptions.IgnoreCase);
 
         if (!match.Success)
@@ -759,7 +815,7 @@ public static class CommandEntityExtractor
                 command.Properties.Add(
                     new PropertyDefinition
                     {
-                        Name = match.Groups[1].Value,
+                        Name = Capitalised(match.Groups[1].Value),
                         Type = match.Groups[2].Value
                     });
             }
@@ -783,6 +839,7 @@ public static class CommandEntityExtractor
         foreach (var token in tokens)
         {
             var property = ParseProperty(token);
+            property.Name = Capitalised(property.Name);
 
             if (!string.IsNullOrWhiteSpace(property.Name))
                 command.Properties.Add(property);
@@ -837,6 +894,13 @@ public static class CommandEntityExtractor
             return string.Empty;
 
         var section = match.Groups[1].Value;
+
+        // "with property Name string" and "with fields ...": the leading noun is the list's
+        // label, not its first entry. It was read as one ("property Name string" ignored, as a
+        // non-primitive) - but only when a name and a type follow, so a property that is itself
+        // called Property is kept.
+        section = Regex.Replace(section, @"^(?:propert(?:y|ies)|fields?|attributes?)\s+(?=\S+\s+\S)",
+            string.Empty, RegexOptions.IgnoreCase);
 
         // If the properties section contains a methods/functions clause, cut it off
         var stopMatch = Regex.Match(section, @"\b(?:and\s+)?(?:with\s+)?(?:having\s+)?(?:methods|functions)\b", RegexOptions.IgnoreCase);
@@ -1092,23 +1156,31 @@ public static class CommandEntityExtractor
         return "string";
     }
 
-    // Project extraction (unchanged)
+    // The name after "project", or after the type noun of a type phrased without the word
+    // ("create worker service MyWorker", "create class library MyLib"). Quoted, or a dotted .NET
+    // name; never one of the words that start the folder or framework clause.
+    private static readonly Regex ProjectNameRe = new(
+        @"\b(?:project|service|library|classlib|lib|app|application)(?:\s+(?:named|called))?\s+"
+        + @"(?!(?:in|at|for|with|targeting|using|as|type|on|to)\b)(?!net\d)"
+        + @"(?<name>""[^""]+""|'[^']+'|[A-Za-z0-9_][A-Za-z0-9_\-\.]*)",
+        RegexOptions.IgnoreCase);
+
+    /// <summary>
+    /// A project name as typed, unquoted, with a sentence's full stop dropped and its first letter
+    /// capitalised - "shop" becomes Shop, as "create class shop" makes Shop - and nothing else
+    /// changed: Data.Core and my_lib keep their dots and underscores, which are part of the name.
+    /// </summary>
+    internal static string ProjectNameAsTyped(string raw)
+    {
+        var name = raw.Trim().Trim('"', '\'').Trim().TrimEnd('.');
+        return name.Length == 0 ? name : char.ToUpperInvariant(name[0]) + name[1..];
+    }
+
     public static void ExtractProjectInfo(string sentence, ParsedCommand command)
     {
-        var nameMatch = Regex.Match(sentence, @"project(?:\s+named|\s+called)?\s+([A-Za-z0-9_\-\.]+)", RegexOptions.IgnoreCase);
+        var nameMatch = ProjectNameRe.Match(sentence);
         if (nameMatch.Success)
-            command.ProjectName = nameMatch.Groups[1].Value.Trim();
-        else
-        {
-            // Project types phrased without the word "project" (e.g. "create
-            // worker service MyWorker", "create class library MyLib") — take the
-            // identifier that follows the type noun so the name isn't lost.
-            var altName = Regex.Match(sentence,
-                @"\b(?:service|library|lib|app|application)\s+(?:named\s+|called\s+)?([A-Za-z_][A-Za-z0-9_\.\-]*)",
-                RegexOptions.IgnoreCase);
-            if (altName.Success)
-                command.ProjectName = altName.Groups[1].Value.Trim();
-        }
+            command.ProjectName = ProjectNameAsTyped(nameMatch.Groups["name"].Value);
 
         var folderMatch = Regex.Match(sentence, @"\bin\s+(""[^""]+""|'[^']+'|[A-Za-z]:\\[^\s]+)", RegexOptions.IgnoreCase);
         if (folderMatch.Success)
