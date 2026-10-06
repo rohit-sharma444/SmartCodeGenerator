@@ -134,7 +134,7 @@ public static class SeedFileWriter
             if (misses.TryGetValue(property.Name, out var miss))
                 skipped.Add(
                     $"{definition.Name}.{property.Name}: {miss.Count} value(s) could not be read as "
-                    + $"{property.Type} and were left out of the seed data, the first being "
+                    + $"{DomainModelMapper.BaseType(property.Type)} and were left out of the seed data, the first being "
                     + $"\"{miss.First}\"");
         }
 

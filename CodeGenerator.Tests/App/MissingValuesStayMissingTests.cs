@@ -121,6 +121,31 @@ public class MissingValuesStayMissingTests
     }
 
     /// <summary>
+    /// A value a nullable column cannot hold is reported by its kind ("int"), not by the C#
+    /// spelling the user never wrote ("int?").
+    /// </summary>
+    [TestMethod]
+    public void An_unreadable_value_in_a_nullable_column_is_reported_by_its_kind()
+    {
+        var table = new TabularTable { Name = "Customer" };
+        table.Columns.Add(new TabularColumn { Name = "Name", Type = "string" });
+        table.Columns.Add(new TabularColumn
+        {
+            Name = "BigNo", Type = "int",
+            Facts = new TypeFacts { IsNullable = true, DeclaredType = "bigint" }
+        });
+        table.Rows.Add(["Ann", "9000000000"]);
+        table.Rows.Add(["Bob", null]);
+
+        var model = DataModelBuilder.Build([table], []);
+        var classes = DomainModelMapper.ToClassDefinitions(model, out var classNames);
+        SeedFileWriter.Files(classes, classNames, TabularImport.ToImportedData([table]), out var unreadable);
+
+        var line = unreadable.Single();
+        StringAssert.Contains(line, "could not be read as int and");
+    }
+
+    /// <summary>
     /// A blank foreign key already means "no parent" at 0, and every relationship consumer matches
     /// an int key, so it stays an int.
     /// </summary>
