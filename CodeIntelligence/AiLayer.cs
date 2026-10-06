@@ -122,6 +122,19 @@ public sealed class AiLayer
         }
     }
 
+    /// <summary>
+    /// Switches AI off for this session as well as in the saved config: the resolver goes, so
+    /// nothing goes on consulting it, and <see cref="StatusText"/> says off. Saving alone left
+    /// `ai status` saying "enabled" until the next start.
+    /// </summary>
+    public void Disable()
+    {
+        Config.Enabled = false;
+        Config.Save(ConfigPath);
+        Resolver = null;
+        Unavailable = "disabled - run 'ai enable'";
+    }
+
     /// <summary>Rebuilds the corpus and its embeddings. ReplaceAll is one transaction,
     /// so an interrupted reindex leaves the previous index intact and serving.</summary>
     public string Reindex()
