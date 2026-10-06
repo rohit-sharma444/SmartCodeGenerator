@@ -179,7 +179,8 @@ public class WpfDashboardLayoutTests
             ("Views/MainWindow.xaml.cs", CodeBehind()),
             ("Views/MainWindow.g.cs", XamlPartialStub),
             ("ViewModels/MainViewModel.cs", ViewModelStub),
-            ("Auth/Session.cs", SessionStub));
+            ("Auth/Session.cs", SessionStub),
+            ("Views/DisplayCulture.cs", WpfDisplayCultureTemplate.Source("Payroll")));
     }
 
     [TestMethod]

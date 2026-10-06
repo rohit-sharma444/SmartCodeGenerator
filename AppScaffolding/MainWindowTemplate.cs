@@ -158,6 +158,12 @@ public partial class MainWindow : Window
         if (string.Equals(e.PropertyName, "Id", StringComparison.OrdinalIgnoreCase))
             e.Column.IsReadOnly = true;
 
+        // A date shows as the DatePicker beside it does: the machine's short date, without the
+        // 12:00:00 AM a midnight value would otherwise carry.
+        if ((Nullable.GetUnderlyingType(e.PropertyType) ?? e.PropertyType) == typeof(DateTime)
+            && e.Column is DataGridTextColumn { Binding: System.Windows.Data.Binding dateBinding })
+            dateBinding.Converter = DisplayCulture.DateCell;
+
         // A foreign key (int <Nav>Id whose sibling <Nav> is another entity) is shown as a combo
         // box over that entity's rows, so a user picks a Customer rather than typing its id.
         if (TryBuildRelationshipColumn(sender, e))
