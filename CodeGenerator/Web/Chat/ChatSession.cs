@@ -343,6 +343,12 @@ public sealed class ChatSession
     /// </remarks>
     public WorkspaceLoad Load(string path)
     {
+        // Asked for in words, and not recorded: .NET's own "The path is empty. (Parameter 'path')"
+        // in a card whose input line was blank told nobody anything. The picker shows this under
+        // the box, which is where it is fixed.
+        if (string.IsNullOrWhiteSpace(path))
+            return new WorkspaceLoad(false, _workspace.Root, 0, null, "Type a folder or solution path.");
+
         var load = _workspace.LoadFrom(path);
 
         if (load.Ok)

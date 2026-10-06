@@ -5,11 +5,13 @@
     <div class="picker-inner">
         <span class="picker-title">Work on</span>
 
-        <div class="picker-row">
+        @* A form so that Enter in the box loads it, as it does in every other path box. The box's
+           change event is raised before the submit, so Load reads what was typed. *@
+        <form class="picker-row" @onsubmit="Load">
             <input class="picker-path" value="@_path" @onchange="OnPathChanged"
                    placeholder="Path to a .sln, .slnx, .csproj or folder" />
-            <button type="button" class="picker-load" @onclick="Load">Load</button>
-        </div>
+            <button type="submit" class="picker-load">Load</button>
+        </form>
 
         @if (_problem is not null)
         {
