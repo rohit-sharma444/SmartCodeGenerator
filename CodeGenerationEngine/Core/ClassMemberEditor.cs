@@ -49,9 +49,18 @@ internal static class ClassMemberEditor
             member = InInterfaceForm(member, iface);
 
         root = root.ReplaceNode(classNode, classNode.AddMembers(member));
-        File.WriteAllText(filePath, root.NormalizeWhitespace().ToFullString());
+        File.WriteAllText(filePath, IndentLoneComments(root.NormalizeWhitespace().ToFullString()));
         return true;
     }
+
+    // NormalizeWhitespace indents a comment by the token it is attached to, and in an empty body
+    // that is the closing brace: the stub's "// TODO: implement" sat at the brace's indent. A comment
+    // line directly above a closing brace at the same indent is moved one level in.
+    private static readonly System.Text.RegularExpressions.Regex LoneComment = new(
+        @"(?m)^(?<indent>[ \t]*)(?<comment>//[^\r\n]*)(?<nl>\r?\n)\k<indent>\}");
+
+    internal static string IndentLoneComments(string code) =>
+        LoneComment.Replace(code, m => $"{m.Groups["indent"].Value}    {m.Groups["comment"].Value}{m.Groups["nl"].Value}{m.Groups["indent"].Value}}}");
 
     /// <summary>
     /// <paramref name="member"/> as an interface declares it: a method is a signature with no body,

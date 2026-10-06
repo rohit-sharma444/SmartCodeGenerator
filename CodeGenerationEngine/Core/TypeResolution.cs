@@ -114,8 +114,19 @@ internal static class TypeResolution
             return true;
 
         var written = type.ToString();
+
+        // A project type typed in another case - customer for Customer - is suggested as datetime
+        // is: the suggestion is shown, not applied, as for every other near miss.
+        var bare = written.TrimEnd('?');
+        var projectType = trees.Skip(1)
+            .SelectMany(t => t.GetRoot().DescendantNodes().OfType<BaseTypeDeclarationSyntax>())
+            .Select(t => t.Identifier.Text)
+            .FirstOrDefault(n => n.Equals(bare, StringComparison.OrdinalIgnoreCase) && n != bare);
+
         reason = Meant.TryGetValue(written, out var meant)
             ? $"'{written}' is not a C# type. Did you mean {meant}?"
+            : projectType != null
+                ? $"'{written}' is not a type this project knows. Did you mean {projectType}{written[bare.Length..]}?"
             : Keywords.FirstOrDefault(k => k.Equals(written, StringComparison.OrdinalIgnoreCase)) is { } keyword
                 ? $"'{written}' is not a C# type. Did you mean {keyword}?"
                 : $"'{written}' is not a type this project knows ({errors[0].GetMessage()}). "

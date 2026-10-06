@@ -27,7 +27,7 @@ public static class ClassMethodEditService
 
         if (matches.Count == 0)
         {
-            message = $"Method '{methodName}' not found in '{className}'.";
+            message = NotFound(parts, methodName, "Method");
             return false;
         }
 
@@ -63,7 +63,7 @@ public static class ClassMethodEditService
 
         if (matches.Count == 0)
         {
-            message = $"Method '{oldName}' not found in '{className}'.";
+            message = NotFound(parts, oldName, "Method");
             return false;
         }
 
@@ -125,6 +125,10 @@ public static class ClassMethodEditService
         return loose.Select(nameOf).Distinct(StringComparer.Ordinal).Count() == 1 ? loose : [];
     }
 
+    /// <summary>The declared name of the method called <paramref name="name"/> in any part, or null.</summary>
+    internal static string? MethodNamed(IReadOnlyList<ClassPart> parts, string name) =>
+        MethodsNamed(parts, name) is { Count: > 0 } found ? found[0].Member.Identifier.Text : null;
+
     /// <summary>The first property called <paramref name="name"/> in any part, with its part.</summary>
     internal static (ClassPart Part, PropertyDeclarationSyntax Property)? PropertyNamed(
         IReadOnlyList<ClassPart> parts, string name)
@@ -133,6 +137,26 @@ public static class ClassMethodEditService
             parts.SelectMany(p => p.Node.Members.OfType<PropertyDeclarationSyntax>().Select(m => (Part: p, Member: m))),
             x => x.Member.Identifier.Text, name);
         return found.Count > 0 ? (found[0].Part, found[0].Member) : null;
+    }
+
+    /// <summary>
+    /// Why no <paramref name="kind"/> called <paramref name="wanted"/> was found: none has the name
+    /// in any case, or it fits two that differ only in case (Email and email), which
+    /// <see cref="Named"/> refuses to choose between.
+    /// </summary>
+    internal static string NotFound(IReadOnlyList<ClassPart> parts, string wanted, string kind)
+    {
+        var className = parts.Count > 0 ? parts[0].Node.Identifier.Text : wanted;
+        var fits = parts.SelectMany(p => p.Node.Members)
+            .Where(m => kind == "Method" ? m is MethodDeclarationSyntax : m is PropertyDeclarationSyntax)
+            .Select(m => m is MethodDeclarationSyntax md ? md.Identifier.Text : ((PropertyDeclarationSyntax)m).Identifier.Text)
+            .Where(n => n.Equals(wanted, StringComparison.OrdinalIgnoreCase))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        return fits.Count > 1
+            ? $"'{wanted}' is ambiguous in '{className}': it fits {string.Join(" and ", fits)}. Type the name with its exact case."
+            : $"{kind} '{wanted}' not found in '{className}'.";
     }
 
     private static string Signature(MethodDeclarationSyntax method) =>
