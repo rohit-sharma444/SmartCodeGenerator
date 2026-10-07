@@ -27,33 +27,34 @@ and what remains. It works on both surfaces: the console wizard and the browser 
 ## Design
 
 ### 1. `BuildDiagnostics` (CodeGenerationEngine)
-Pure parser: `dotnet build` output → `BuildDiagnostic { File, Line, Column, Code, Message, Severity }`.
+Pure parser, in `CodeGenerator/BuildFix`: `dotnet build` output → `BuildDiagnostic { File, Line, Column, Code, Message, Severity }`.
 Handles MSBuild's repeated lines (same error per target framework / project), relative paths
-(resolved against the project folder), and `warning` lines (ignored). `BuildReport` keeps its public
-behaviour and uses the parser for its counts.
+(resolved against the project folder), and `warning` lines (ignored). `BuildReport` is not changed.
 
-### 2. Fix rules (CodeGenerationEngine)
-`IBuildFixRule { bool CanFix(BuildDiagnostic d); FixResult Fix(FixContext ctx, BuildDiagnostic d); }`.
-A rule edits only files inside the generated project folder and returns the files it changed.
-First set, each one verified against the generator source before it is written (the plan checks
-the real cause of each code):
+### 2. Fix rules (CodeGenerator/BuildFix)
+`IBuildFixRule { string Name; bool Fix(BuildDiagnostic d, FixSession session); }`. A rule edits only
+files inside the generated project folder (the session refuses any other path) and returns true only
+when it changed a file. Verified against the generator source: the generator already prevents these
+errors in NEW output, so the rules exist for folders made by an earlier version and for hand edits.
+Three rules, each narrow and safe:
 
 | Code | Cause | Rule |
 |---|---|---|
-| CS0260, CS0101 | validator partial clashes with the user's class | make the declaring half `partial` / drop the duplicate |
-| CS0759, CS8795 | stale write-once `Validator.Custom.cs` stub | regenerate the stub (existing `OutdatedValidatorStubs` logic) |
-| CS0542 | member has the same name as its class | rename the member |
-| (none) | member named `Equals`, `ToString`, `GetHashCode`, `GetType` | rename the member |
-| CS0234 | namespace missing (nologin Auth folder, `System`/`Microsoft` entity-name clash) | add or correct the using / namespace |
+| CS0260 | a type is declared without `partial` beside a partial half (`create class` writes `public class X`; the validator half is `public partial class X`) | insert `partial ` before the type keyword (Roslyn match on the type name) |
+| CS0759, CS8795 | stale write-once `Validator.Custom.cs` hook (old instance signature) | only when the hook body is empty: rewrite the file with `ValidatorTemplate.CustomStub`; a non-empty body is left for the AI step / the report, as `ValidatorTemplate.HasOutdatedCustomHook` documents |
+| CS0234 | `using <Root>.Auth;` in a nologin app that has no `Auth` folder | delete that one using line |
 
-A rule that cannot prove its fix is safe returns "not fixed"; the error then goes to the AI step.
+Not given a rule, because a text-only fix is high risk (the rename touches models, validators,
+repositories, seeds and every screen binding): CS0542 (member named like its class), a member named
+`Equals`/`ToString`/`GetHashCode`/`GetType` (CS0108 is only a warning), and an entity named
+`System`/`Microsoft`. These go to the AI step and then to the report.
 
-### 3. AI step (DomainDiscovery `Llm/`)
-For an error no rule fixed. A new method on the Ollama layer, `AskForFix`, sends the error, the file
+### 3. AI step (CodeGenerator/BuildFix)
+For an error no rule fixed. `IBuildFixAi` with one implementation, `OllamaBuildFixAi`, a small non-streaming `/api/chat` client that reads `discovery.json` (the existing `OllamaClient` is shaped for domain models). It sends the error, the file
 name and about 30 lines around the error line, and expects the replacement for those lines only.
 Settings come from `discovery.json` (endpoint, model, timeouts). The tool accepts an edit only if
 (a) the file still parses and (b) the total error count does not rise after the next build. If not,
-the edit is reverted. If Ollama is not running, the step is skipped and the report says so.
+the round's AI edits are reverted. Only `.cs` files, at most 5 asks per round. If Ollama is not running, the step is skipped and the report says so.
 
 ### 4. `BuildFixLoop` (CodeGenerationEngine, no UI)
 `Run(projectPath, build, ...)`: build → parse → rules → AI step → rebuild. Stops when the build is
