@@ -1,4 +1,5 @@
 using CodeGenerator.BuildFix;
+using System.Diagnostics;
 
 namespace CodeGenerator.Tests.BuildFix;
 
@@ -30,6 +31,7 @@ public class FixSessionTests
 
         Assert.Throws<InvalidOperationException>(() => session.Write(outside, "x", "test"));
         Assert.AreEqual("class B {}", File.ReadAllText(outside));
+        Assert.IsFalse(Directory.Exists(Path.Combine(root, ".codegen")));
     }
 
     [TestMethod]
@@ -57,9 +59,7 @@ public class FixSessionTests
         session.RevertRound(1);
 
         CollectionAssert.AreEqual(original, File.ReadAllBytes(file));
-#pragma warning disable MSTEST0037
         Assert.IsTrue(session.Edits[0].Reverted);
-#pragma warning restore MSTEST0037
     }
 
     [TestMethod]
@@ -74,10 +74,10 @@ public class FixSessionTests
         session.Write(file, "a\r\nb", "test");
 
         var bytes = File.ReadAllBytes(file);
-#pragma warning disable MSTEST0037
-        Assert.AreEqual(0xEF, bytes[0]);
-        Assert.IsTrue(System.Text.Encoding.UTF8.GetString(bytes).Contains("a\r\nb"));
-#pragma warning restore MSTEST0037
+        Assert.AreEqual((byte)0xEF, bytes[0]);
+        Assert.AreEqual((byte)0xBB, bytes[1]);
+        Assert.AreEqual((byte)0xBF, bytes[2]);
+        Assert.AreEqual("a\r\nb", File.ReadAllText(file));
     }
 
     [TestMethod]
@@ -94,5 +94,75 @@ public class FixSessionTests
         session.RevertRound(2);
 
         Assert.AreEqual("v1", File.ReadAllText(file));
+    }
+
+    [TestMethod]
+    public void Write_RefusesAJunctionPointingOutsideTheProject()
+    {
+        var root = FixTestSupport.TempProject();
+        var outside = FixTestSupport.TempProject();
+        var outsideFile = FixTestSupport.Write(outside, "target.cs", "class T {}");
+        var link = Path.Combine(root, "link");
+
+        var mklinkResult = RunMklink(link, outside);
+        if (!mklinkResult)
+        {
+            Assert.Inconclusive("mklink not available on this machine");
+            return;
+        }
+
+        var session = new FixSession(root);
+        session.BeginRound(1);
+        var linkedFile = Path.Combine(link, "target.cs");
+
+        Assert.Throws<InvalidOperationException>(() => session.Write(linkedFile, "modified", "test"));
+        Assert.Throws<InvalidOperationException>(() => session.Read(linkedFile));
+        Assert.AreEqual("class T {}", File.ReadAllText(outsideFile));
+    }
+
+    [TestMethod]
+    public void Write_ThrowsIfCalledBeforeBeginRound()
+    {
+        var root = FixTestSupport.TempProject();
+        var file = FixTestSupport.Write(root, "A.cs", "class A {}");
+        var session = new FixSession(root);
+
+        var ex = Assert.Throws<InvalidOperationException>(() => session.Write(file, "x", "test"));
+        Assert.AreEqual("Call BeginRound first", ex.Message);
+    }
+
+    [TestMethod]
+    public void Read_ThrowsIfCalledBeforeBeginRound()
+    {
+        var root = FixTestSupport.TempProject();
+        var file = FixTestSupport.Write(root, "A.cs", "class A {}");
+        var session = new FixSession(root);
+
+        var ex = Assert.Throws<InvalidOperationException>(() => session.Read(file));
+        Assert.AreEqual("Call BeginRound first", ex.Message);
+    }
+
+    private static bool RunMklink(string link, string target)
+    {
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = "cmd",
+                Arguments = $"/c mklink /J \"{link}\" \"{target}\"",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            };
+            using var p = Process.Start(psi);
+            if (p == null) return false;
+            p.WaitForExit(5000);
+            return p.ExitCode == 0;
+        }
+        catch
+        {
+            return false;
+        }
     }
 }

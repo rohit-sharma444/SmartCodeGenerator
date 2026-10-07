@@ -11,8 +11,8 @@ internal sealed class FixEdit(string file, string by, int round)
 }
 
 /// <summary>
-/// The only way a fix touches a file: every path is checked to be inside the generated project,
-/// and the first write to a file in a round copies the original aside so the round can be undone.
+/// The only way a fix touches a file: every path is checked to be inside the generated project (guarding against
+/// symlinks and junctions), and the first write to a file in a round copies the original aside so the round can be undone.
 /// </summary>
 internal sealed class FixSession
 {
@@ -20,11 +20,13 @@ internal sealed class FixSession
     private readonly Dictionary<int, Dictionary<string, string>> _backups = [];
     private readonly List<FixEdit> _edits = [];
     private int _round;
+    private bool _roundStarted;
 
     public FixSession(string projectRoot)
     {
         Root = Path.GetFullPath(projectRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        _backupRoot = Path.Combine(Root, ".codegen", "fix-backups", DateTime.Now.ToString("yyyyMMdd-HHmmss"));
+        var suffix = Guid.NewGuid().ToString("N")[..6];
+        _backupRoot = Path.Combine(Root, ".codegen", "fix-backups", DateTime.Now.ToString("yyyyMMdd-HHmmss") + "-" + suffix);
     }
 
     public string Root { get; }
@@ -34,6 +36,7 @@ internal sealed class FixSession
     public void BeginRound(int round)
     {
         _round = round;
+        _roundStarted = true;
         _backups.TryAdd(round, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
     }
 
@@ -42,6 +45,9 @@ internal sealed class FixSession
 
     public string Read(string path)
     {
+        if (!_roundStarted)
+            throw new InvalidOperationException("Call BeginRound first");
+
         var bytes = File.ReadAllBytes(Guard(path));
         var skip = HasBom(bytes) ? 3 : 0;
         return Encoding.UTF8.GetString(bytes, skip, bytes.Length - skip);
@@ -49,6 +55,9 @@ internal sealed class FixSession
 
     public void Write(string path, string text, string by)
     {
+        if (!_roundStarted)
+            throw new InvalidOperationException("Call BeginRound first");
+
         var full = Guard(path);
         var old = File.ReadAllBytes(full);
 
@@ -81,6 +90,18 @@ internal sealed class FixSession
 
         if (!full.StartsWith(Root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException($"Refusing to edit '{path}': it is outside the generated project.");
+
+        // Check for junctions and symlinks from the file (if it exists) up to (but not including) Root.
+        var toCheck = File.Exists(full) ? full : Path.GetDirectoryName(full);
+        while (toCheck != null && toCheck.Length > Root.Length)
+        {
+            if (new FileInfo(toCheck).Attributes.HasFlag(FileAttributes.ReparsePoint))
+                throw new InvalidOperationException($"Refusing to edit '{path}': it passes through a junction or symlink.");
+
+            var parent = Path.GetDirectoryName(toCheck);
+            if (parent == toCheck) break; // Reached filesystem root
+            toCheck = parent;
+        }
 
         return full;
     }
