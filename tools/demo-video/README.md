@@ -1,11 +1,14 @@
 # build app demo video
 
-**[build-app-demo.mp4](build-app-demo.mp4)** is a narrated walkthrough of `build app`. It is one
-real run, from a CSV of orders to a running WPF desktop application. [build-app-demo.vtt](build-app-demo.vtt)
-has the same captions as a subtitle track.
+These scripts make `build-app-demo.mp4`, a narrated walkthrough of `build app`. It is one
+real run, from a CSV of orders to a running WPF desktop application. `build-app-demo.vtt` has the
+same captions as a subtitle track.
+
+**No video is committed at the moment.** The old recording was removed because it no longer
+matched the product. Record a new one with `make-demo.ps1` (below) when the open gaps are fixed.
 
 The video is recorded from the real product, not a mock-up. Every screen in it is the workflow
-page and the app it generated, as they behave today - the workflow pages captured by Playwright in
+page and the app it generated, as they behave on the day of the recording - the workflow pages captured by Playwright in
 a browser, and the generated WPF app captured as a native window and driven with UI Automation,
 since a desktop app has no page for Playwright to see into.
 
