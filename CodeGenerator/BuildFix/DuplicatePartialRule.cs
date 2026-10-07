@@ -44,6 +44,11 @@ internal sealed class DuplicatePartialRule : IBuildFixRule
             if (lineIndex < text.Lines.Count)
             {
                 var line = text.Lines[lineIndex];
+
+                // Reject if column is invalid (0 or beyond end of line)
+                if (d.Column < 1 || d.Column > line.Span.Length)
+                    return false;
+
                 var charPosition = line.Start + d.Column - 1;
 
                 // Find types whose identifier span contains this position and match the name
