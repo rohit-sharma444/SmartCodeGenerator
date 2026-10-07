@@ -25,15 +25,52 @@ internal sealed class DuplicatePartialRule : IBuildFixRule
         if (TypeName.Match(d.Message) is not { Success: true } m)
             return false;
 
+        var typeName = m.Groups["n"].Value;
+        // Handle generic types: "Order<T>" -> "Order"
+        var nameOnly = typeName.Contains('<') ? typeName[..typeName.IndexOf('<')] : typeName;
+
         var source = session.Read(d.File);
+        var tree = CSharpSyntaxTree.ParseText(source);
+        var root = tree.GetCompilationUnitRoot();
 
-        var type = CSharpSyntaxTree.ParseText(source).GetCompilationUnitRoot()
-            .DescendantNodes().OfType<TypeDeclarationSyntax>()
-            .FirstOrDefault(t => t.Identifier.ValueText == m.Groups["n"].Value
-                                 && !t.Modifiers.Any(x => x.IsKind(SyntaxKind.PartialKeyword)));
+        TypeDeclarationSyntax? type = null;
 
-        if (type is null)
-            return false;
+        // If a position is given, use it to locate the type
+        if (d.Line >= 1)
+        {
+            var text = tree.GetText();
+            // Convert 1-based line/column to 0-based
+            var lineIndex = d.Line - 1;
+            if (lineIndex < text.Lines.Count)
+            {
+                var line = text.Lines[lineIndex];
+                var charPosition = line.Start + d.Column - 1;
+
+                // Find types whose identifier span contains this position and match the name
+                type = root.DescendantNodes().OfType<TypeDeclarationSyntax>()
+                    .FirstOrDefault(t => t.Identifier.ValueText == nameOnly
+                                         && t.Identifier.Span.Contains(charPosition)
+                                         && !t.Modifiers.Any(x => x.IsKind(SyntaxKind.PartialKeyword)));
+
+                // If positioned type is already partial or doesn't exist at that position, return false
+                if (type is null)
+                    return false;
+            }
+            else
+            {
+                return false;
+            }
+        }
+        else
+        {
+            // Fall back to name-only matching when no position given
+            type = root.DescendantNodes().OfType<TypeDeclarationSyntax>()
+                .FirstOrDefault(t => t.Identifier.ValueText == nameOnly
+                                     && !t.Modifiers.Any(x => x.IsKind(SyntaxKind.PartialKeyword)));
+
+            if (type is null)
+                return false;
+        }
 
         session.Write(d.File, source.Insert(type.Keyword.SpanStart, "partial "), Name);
 
