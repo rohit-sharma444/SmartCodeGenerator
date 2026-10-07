@@ -1,148 +1,63 @@
 ﻿Overview
 
-CodeGenerator is an advanced without AI-powered .NET code generation and management engine. It allows developers to create, modify, analyze, and maintain C# codebases using natural language commands.
-The system combines:
+CodeGenerationEngine is the library that executes parsed commands against a workspace of C# projects. It creates, changes, analyzes and checks classes, interfaces, properties, methods, validation rules and relationships on disk, and it uses Roslyn (Microsoft.CodeAnalysis 5.3.0) to build and check the code it writes.
 
-Roslyn (Microsoft.CodeAnalysis) for deep code understanding and generation
-Natural Language Processing (custom intent detection, entity extraction, vocabulary/synonym handling)
-Project-aware operations (analyzes existing .csproj solutions, handles dependencies, circular references, etc.)
+It does not read raw text. The NaturalLanguageBridge turns a sentence into a ParsedCommand (an IntentType plus fields), and this library runs it. The CodeGenerator console application and the Blazor chat page are the callers.
 
-It consists of two main components:
+Target framework: .NET 10.0 (class library, no entry point). The only package references are Microsoft.CodeAnalysis.Common and Microsoft.CodeAnalysis.CSharp.
 
-CodeGenerationEngine - Core library with all the intelligence
-CodeGenerator - Console application/entry point
+Command flow
 
-Target Framework: .NET 10.0
+1. A caller (normally the bridge, through CommandFront.RunDetailed) builds a ParsedCommand.
+2. CommandHandlingService.Execute(command, ref currentProject, configuredRules, workspaceRoot, setLastCreatedProject) looks up command.Intent in its handler table and runs the handler.
+3. The handler uses the services in Core/ (generate, edit, delete, validate) and writes files.
+4. Execute passes the outcome to LearningCoordinator.RecordOutcome, then returns true or false.
+5. CommandHandlingService.IsSupported(intent) tells a caller whether an intent has a handler. An intent with no handler (for example GenerateCrud) fails with a report.
 
-Key Features
-1. Natural Language Interface
+Folders
 
-Parse commands like: "Create a User class with name, email (required, max 100 chars), and age (range 18-120)"
-Intent detection with confidence scoring
-Entity extraction (classes, properties, methods, validation rules)
-Context awareness and session memory
+Core/ - the services and generators.
+- Parsing helpers: CommandParser, CommandNormalizer, CommandDictionary, EntityExtractor, ClassExtractor, NamespaceExtractor, RuleParser, SentenceFramer (in Helper/).
+- Generators: CodeGenerator, RoslynClassGenerator, InterfaceGenerator, MethodBodyGenerator, CodeFormatter, DesignDocumentGenerator.
+- Class services: ClassDeletionService, ClassRestoreService (with DeletedClassRegistry and DeletedClassListingService), ClassRenameService, ClassInheritanceService, ClassMemberEditor, ClassPropertyService, ClassPropertyRenameService, ClassPropertyTypeService, ClassMethodService, ClassMethodEditService, ClassMethodLister, MemberRemoval, MemberReferences, StaleValidators.
+- Project services: ProjectManager (the registry of projects and the current one), ProjectLocator, ProjectCompiler, CsProjUpdater, DependencyGraphBuilder, CircularDependencyDetector, AnalyzeClassCommand, AnalyzeProjectCommand.
+- Checks: ClassValidator, ClassNameValidator, PropertyValidator, MethodValidator, TypeValidator, NamespaceValidator, DuplicateClassDetector, DuplicatePropertyValidator, SolutionDuplicateValidator, GenericTypeValidator, SemanticValidator, SemanticCompilerRunner, Compiler (Compile for one source, CompileSources for a set).
+- Learning: LearningCoordinator, LearnedIntentStore, LearnedIntentMemory, PhraseCandidates. IntentRepository holds the default intent rules; the recognition path in the bridge does not read it.
+- Validation/ - the validation rule registry: IValidationRule, IValidationRuleParser, ValidationRuleCatalog, ValidationCategory (Data, Business, Workflow), 20 rule files in Validation/Rules/, ClassValidationWriter, ValidationRuleFile. ValidationRegistry and ValidationEngine are in Core/.
+- Relationships/ - RelationshipDetector, RelationshipConvention, RelationshipWriter, JoinClassWriter, AttributedPropertyWriter, ClassSnapshot, RelationshipKind, RelationshipProposal.
+- Undo/ - UndoJournal (capacity 50), UndoScope, SessionState, SessionRecorder. WorkspaceSnapshot (in Core/) is the file copy it restores from.
 
-2. Code Generation Capabilities
+Models/ - ParsedCommand, IntentType, ClassDefinition, PropertyDefinition, MethodDefinition, ProjectMetaData, PropertyRule, SessionContext, and the semantic and result types.
+Service/ - CommandHandlingService and GeneratedCodeService.
+Factory/ - DotNetProjectFactory.CreateProject scaffolds a project from a ProjectRequest.
+Rules/ - IPropertyRule and DefaultTypeRules.
+Helper/ - FileHelper, FileReader, PathHelper, ProcessRunner, Output, OutputCapture, AnsiCodes, CloseNames, CommandHistoryFile and similar.
 
-Class Generation with properties, validation attributes ([Required], [StringLength], [Range], etc.)
-Method Generation with parameters and basic implementation
-Specialized generators:
-Controllers (API)
-Services
-Repositories
-Interfaces
-DTOs / Entities
+Handled intents
 
+Projects: CreateProject, UseProject, ListProjects, ShowProject, CurrentProject.
+Classes: CreateClass, ShowClass, RenameClass, DeleteClass, RestoreClass, RestoreLastClass, ListDeletedClasses, ClassInherit, ListClasses, ListClassesInProject.
+Interfaces: CreateInterface.
+Properties: CreateProperty, ListProperties, DeleteProperty, RenameProperty, ChangePropertyType.
+Methods: CreateMethod, ListMethods, DeleteMethod, RenameMethod.
+Validation: AddValidation, ShowValidation, RemoveValidation, AddBusinessValidation, ShowBusinessValidation, RemoveBusinessValidation, GenerateValidator.
+Analysis and documents: AnalyzeClass, AnalyzeProject, GenerateDocumentation, GenerateDesignDocument, ValidateProject, CompileProject.
+Other: Help, ShowLearning, ResetLearning, Unknown.
 
-3. Project Management & Refactoring
+Validation
 
-Analyze Project/Class – Deep inspection using Roslyn
-Rename / Delete / Restore classes (with safe handling)
-List classes, methods, properties
-Circular dependency detection
-Project compilation & validation
-Design document generation
+Rules are discovered by reflection. ValidationRuleCatalog finds every IValidationRuleParser in the assembly and orders them by Priority. A rule knows how to Describe itself and how to Emit its own C# check. ValidationRegistry keeps the rules for each class and saves them to .codegen/validation-rules.json in the workspace (as the text that was typed, parsed again on load). ValidationEngine.EmitValidationPartial writes one Validate() partial class with a data section and a business section. To add a rule type, add one rule file and one parser to Core/Validation/Rules/.
 
-4. Robust Validation & Safety
+Relationships and undo
 
-Duplicate class/property detection
-Namespace validation
-Type inference
-Generic type support
-Semantic validation
+RelationshipDetector proposes the relationships a set of classes is missing. RelationshipWriter writes one and compiles the whole workspace to check it, or leaves the files as they were. JoinClassWriter makes the third class of a many-to-many relationship.
 
-5. Developer Experience
+UndoJournal records the files and the session state a command changed, so that Undo and Redo can put them back. It keeps at most 50 entries.
 
-Interactive console
-Command suggestions
-Help system
-File system helpers
-Encryption utilities (for sensitive contexts)
+Safety
 
+Duplicate class and property checks, namespace and type checks, a compile check after a class is written, backups of deleted classes that ClassRestoreService restores, and a workspace snapshot for undo.
 
-Project Structure
-textCodeGenerator/
-├── CodeGenerationEngine/          # Core Class Library
-│   ├── Core/                      # Main business logic
-│   ├── Models/                    # Data models (ClassDefinition, ParsedCommand, etc.)
-│   ├── Helper/                    # Utilities (FileHelper, InteractiveConsole, etc.)
-│   ├── Service/                   # High-level services
-│   ├── Factory/
-│   ├── Rules/
-│   ├── Tokenizer/
-│   └── CodeGenerationEngine.csproj
-│
-├── CodeGenerator/                 # Console App
-│   ├── Program.cs
-│   └── CodeGenerator.csproj
-│
-└── Various build artifacts, bins, objs
-Important Directories & Files
+How to run
 
-Core/CodeGenerator.cs: Main code emission logic
-Core/NaturalLanguageCodeEngine.cs: Orchestrates command processing
-Core/CommandParser.cs: Tokenization and parsing
-Core/IntentAnalyzer.cs + SemanticIntentAnalyzer.cs: Understanding user intent
-Models/: Strongly-typed representations of code elements and commands
-Core/RoslynClassGenerator.cs: Heavy Roslyn integration
-
-
-Architecture Highlights
-Command Flow
-
-Input → CommandNormalizer + CommandParser
-Intent Detection → IntentAnalyzer / SemanticIntentAnalyzer
-Entity Extraction → EntityExtractor, ClassExtractor, etc.
-Validation → ValidationEngine, multiple specialized validators
-Execution → CodeGenerationEngine.Generate() or specific services
-Output → File writing + feedback
-
-Extensibility
-
-CommandDictionary and CommandCatalog for easy addition of new commands
-Rule-based validation system: an extensible IValidationRule / IValidationRuleParser registry discovered by ValidationRuleCatalog, covering both data rules and cross-field business rules
-Vocabulary and synonym support for natural language flexibility
-
-
-Technologies & Dependencies
-
-Roslyn: Microsoft.CodeAnalysis.CSharp (v5.3.0) – for parsing, analysis, and generation
-.NET 10.0 with nullable reference types and implicit usings
-Custom NLP components (no external LLM dependency in core)
-Humanizer (via transitive deps)
-
-
-How to Run
-
-Build the solution
-Run CodeGenerator executable
-Use natural language commands in the interactive console
-
-Example commands the system supports:
-
-Create class User with properties: Id int, Name string required, Email string
-Analyze project
-List classes
-Rename class OldName to NewName
-Generate API controller for User
-
-
-Potential Use Cases
-
-Rapid prototyping of domain models
-Consistent code scaffolding across large solutions
-Automated refactoring assistance
-Educational tool for learning C# patterns
-Integration into IDEs or CI/CD pipelines
-
-
-Status & Notes
-
-The project appears to be in active development (recent build artifacts from June 2026)
-Strong focus on safety (validation, backups for deletions, duplicate detection)
-Highly modular and extensible architecture
-
-This system represents a sophisticated "AI Pair Programmer" specialized for .NET/C# project maintenance and generation.
-Created: June 2026
-Framework: .NET 10.0
-License: Not specified (proprietary/custom)
+Build CodeGenerationEngine/CodeGenerationEngine.csproj (for example, dotnet build). The library has no executable. Run the CodeGenerator project to use it. Its behavior is tested in CodeGenerator.Tests.

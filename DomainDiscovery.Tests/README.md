@@ -17,6 +17,9 @@ NLE, so no network access is required.
 | `Enrichment/` | `DomainEnricher`, `EntityHarvester`, `EntityShaper`, `RelationshipMiner`, `TypeInference`. |
 | `Wikipedia/` | `WikipediaCache` and `HttpWikipediaClient` resilience (cache misses, fetch failures, timeouts). |
 | `Wikipedia/Dump/` | The offline store: `WikipediaStore` and `DumpWikipediaClient`, over small temporary databases. |
+| `Llm/` | The Ollama source: client and streaming, the two-phase flow, partial-JSON recovery, the normaliser and key-field rules. `OllamaIntegrationTests` needs a live server. |
+| `Bundled/` | The 25 built-in domains: catalogue loading, matching and stemming, and `CatalogContentTests`, which holds every domain file to the rules. |
+| *(root)* | Also `DomainModelSourceFactoryTests` (the fallback order), `DiscoveryConfigTests`, `WikipediaStoreLocationTests` and `WikipediaDomainModelSourceTests`. |
 | `Review/` | `ModelEditor` add/remove/rename edits. |
 | `Model/` | `CandidateDomainModel` behavior. |
 | `Fakes/` | `FakeWikipediaClient`, `StubAnalyzer` — the stand-ins that keep the suite offline. |

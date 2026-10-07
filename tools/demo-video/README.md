@@ -39,7 +39,7 @@ After a change to `build app`, re-record so the video matches the product:
 powershell -ExecutionPolicy Bypass -File tools\demo-video\make-demo.ps1
 ```
 
-This takes about 10 minutes. It overwrites `build-app-demo.mp4` and `build-app-demo.vtt`, and runs these steps:
+This takes about 10 minutes. `-Workspace <folder>` changes the working folder (default `C:\dv`). It overwrites `build-app-demo.mp4` and `build-app-demo.vtt`, and runs these steps:
 
 | Step | What it does |
 |---|---|
@@ -85,10 +85,11 @@ The first Blazor-based recordings showed two bugs that no test had caught, and b
 - A field renamed on Review lost its imported data.
 - A Blazor app with a login could not save a transaction's lines.
 
-Two smaller problems in the generated Blazor app, not yet fixed:
+A smaller problem in the generated Blazor app, not yet fixed:
 
-- Its sidebar group headings (*Masters*, *Transactions*) are nearly invisible against the dark background.
 - The totals row adds up `TaxRate`.
+
+The sidebar group headings (*Masters*, *Transactions*) were nearly invisible against the dark background; that is fixed.
 
 Switching the recording to WPF found more, in the generator rather than in `build app` itself:
 

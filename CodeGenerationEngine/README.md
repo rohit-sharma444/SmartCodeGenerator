@@ -11,57 +11,79 @@ consumed as a project reference.
 
 ## What it does
 
-Given a user command such as `create class Customer with properties Name string`,
-the engine:
+The engine does **not** read raw text. The
+[`NaturalLanguageBridge`](../NaturalLanguageBridge/README.md) turns a sentence
+into a `ParsedCommand` (intent plus fields); the engine executes it. Given the
+command for `create class Customer with properties Name string`, the engine:
 
-1. **Analyzes** the text into a semantic model (optionally guided by an action
-   verb supplied by the NLP bridge).
-2. **Detects intent** — `CreateClass`, `CreateProject`, `AddValidation`,
-   `AddBusinessValidation`, `AnalyzeClass`, and the rest of
-   [`IntentType`](Models/IntentType.cs).
-3. **Extracts entities** — class/project names, properties, methods, types,
-   validation rules.
-4. **Generates and persists code** using Roslyn, then runs semantic and
+1. **Dispatches** on the command's [`IntentType`](Models/IntentType.cs) to one
+   handler (`CreateClass`, `AddValidation`, `AddBusinessValidation`,
+   `AnalyzeClass`, and so on).
+2. **Generates and persists code** using Roslyn, then runs semantic and
    compilation checks over the result.
-5. **Learns** from each outcome so repeated phrasings resolve faster.
+3. **Reports the outcome** to `LearningCoordinator`, which reinforces or weakens
+   the learned intent memory (`LearnedIntentMemory`, stored by
+   `LearnedIntentStore`). Learning of whole phrases from a miss followed by a
+   retry (`PhraseCandidates`) is also recorded here, and shipped phrases are
+   reviewed by hand.
+
+`CommandParser`, `CommandNormalizer`, `CommandDictionary` and `EntityExtractor`
+in `Core/` normalize text and read entities back out of generated class files.
 
 ## Entry points
 
-Most callers go through a single façade:
+Most callers go through one façade:
 
 ```csharp
 using CodeGenerationEngine.Service;
 
-bool handled = CommandHandlingService.ProcessInput(
-    input:               "create class Customer with properties Name string",
-    currentProject:      ref project,          // ProjectMetaData? (updated in place)
-    configuredRules:     rules,                // List<PropertyRule>
-    workspaceRoot:       workspaceRoot,        // where files are written
-    setLastCreatedProject: p => { /* persist selection */ },
-    nlpAction:           "create");            // optional verb hint from NLE
+bool handled = CommandHandlingService.Execute(
+    command:               parsedCommand,        // ParsedCommand, made by the bridge
+    currentProject:        ref project,          // ProjectMetaData? (updated in place)
+    configuredRules:       rules,                // List<PropertyRule>
+    workspaceRoot:         workspaceRoot,        // where files are written
+    setLastCreatedProject: p => { /* persist selection */ });
 ```
 
-`ProcessInput` parses the command, dispatches it to the matching handler,
-records the outcome for the learning layer, and returns whether the command was
-handled.
+`Execute` looks the command's intent up in a handler table, runs the handler,
+records the outcome for the learning layer, and returns whether the command
+succeeded. `CommandHandlingService.IsSupported(intent)` says whether an intent
+has a handler, so a caller can preview a command without running it.
 
 Lower-level building blocks are also public, e.g.:
 
 - `NaturalLanguageCodeEngine.ExecuteCommand(command, workspaceRoot)` — generate
   code for an already-parsed command.
-- `RoslynClassGenerator.Generate(classDefinition)` — build C# source from a
-  `ClassDefinition`.
+- `RoslynClassGenerator` — build C# source from a `ClassDefinition`.
+- `Compiler.Compile` / `Compiler.CompileSources` — compile one source, or every
+  class in a workspace together.
 
 ## Layout
 
 | Folder | Contents |
 | --- | --- |
-| `Core/` | Parsing, intent analysis, entity extraction, the Roslyn generators, the learning engine, and `Validation/` — the extensible validation rule registry (see below). |
+| `Core/` | Command parsing helpers, entity extraction, the Roslyn generators, the class, property, method and project services, and the learning types (`LearningCoordinator`, `LearnedIntentStore`, `PhraseCandidates`). Sub-folders below. |
+| `Core/Validation/` | The extensible validation rule registry (see below). |
+| `Core/Relationships/` | Class relationships: `RelationshipDetector` proposes missing ones; `RelationshipWriter` and `JoinClassWriter` write them and verify the whole workspace still compiles. |
+| `Core/Undo/` | Undo and redo: `UndoJournal` (capacity 50), `UndoScope`, `SessionState` and `SessionRecorder`. `WorkspaceSnapshot` (in `Core/`) is the file copy it restores from. |
 | `Service/` | `CommandHandlingService` (the dispatch façade) and `GeneratedCodeService` (persistence). |
 | `Models/` | Command, semantic, project, and validation record/DTO types. |
 | `Factory/` | `DotNetProjectFactory` — scaffolds `.csproj` projects by type. |
-| `Rules/` | Supporting rule definitions. |
-| `Helper/` | File and console helpers. |
+| `Rules/` | `IPropertyRule` and `DefaultTypeRules`: the type rules for properties. |
+| `Helper/` | File, path, process and console-output helpers. |
+
+## Handled intents
+
+The handler table in `CommandHandlingService` covers: projects (create, use,
+list, show, current), classes (create, show, rename, delete, restore, restore
+last, list deleted, inherit), interfaces (`CreateInterface`), properties
+(create, list, delete, rename, change type), methods (create, list, delete,
+rename), validation (data and business: add, show, remove; `GenerateValidator`),
+analysis and documentation (`AnalyzeClass`, `AnalyzeProject`,
+`GenerateDocumentation`, `GenerateDesignDocument`), `ValidateProject` and
+`CompileProject`, `ListClasses`, `ListClassesInProject`, `Help`, and
+`ShowLearning` / `ResetLearning`. An intent with no entry (for example
+`GenerateCrud`) fails with a "not supported yet" report.
 
 ## Validation
 
@@ -72,7 +94,7 @@ modification: a new rule type is one new file, discovered automatically.
 
 - **`IValidationRule`** — a parsed rule that knows how to `Describe()` itself
   (for the `show …` commands) and `Emit()` its own C# check into the generated
-  `Validate()` method. `Category` is `Data` or `Business`.
+  `Validate()` method. `Category` is `Data`, `Business` or `Workflow`.
 - **`IValidationRuleParser`** — recognizes one rule type's natural-language
   phrasing (`TryParse`); `Priority` gives deterministic ordering.
 - **`ValidationRuleCatalog`** — reflection-discovers every parser in the
@@ -85,11 +107,21 @@ modification: a new rule type is one new file, discovered automatically.
   partial with a data-validation section and a business-rules section, asking
   each stored rule to emit itself.
 
-Shipped rule types: `RequiredRule`, `LengthRangeRule`, `NumericRangeRule`,
-`GreaterThanRule`, `LessThanRule`, `RegexRule` (email + pattern),
-`AllowedValuesRule` (data); `ComparisonRule` (cross-field, e.g. `EndDate must be
-after StartDate`) and `RequiredWhenRule` (conditional) (business). Emitted code
-is verified by compiling it with Roslyn in the tests, not just string-matching.
+Shipped rule types, in `Core/Validation/Rules/` (20 files):
+
+- Data: `RequiredRule`, `LengthRangeRule`, `LengthBoundRule`, `NumericRangeRule`,
+  `GreaterThanRule`, `LessThanRule`, `InclusiveBoundRule`, `RegexRule` (email +
+  pattern), `AllowedValuesRule`, `NamedFormatRule`, `NumberShapeRule`,
+  `TextShapeRule`, `RelativeDateRule`.
+- Business: `ComparisonRule` (cross-field, e.g. `EndDate must be after
+  StartDate`), `RequiredWhenRule` (conditional), `SameAsRule`, `EitherOrRule`,
+  `ArithmeticRule`, `PercentageRule` (total = net times one plus a rate).
+- Workflow: `WorkflowRule` — a status may only move forward through a stated
+  order. It has no parser: it is built only from an accepted, ordered Status
+  proposal, never typed by hand.
+
+Emitted code is verified by compiling it with Roslyn in the tests, not just
+string-matching.
 
 ## Dependencies
 

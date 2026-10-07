@@ -2,21 +2,31 @@
 
 A multi-layered natural language processing pipeline that analyzes English text
 to extract **entities**, **relationships**, and **intent**. It is a self-contained
-`net10.0` class library with no third-party NLP dependencies — the English
+`net10.0` project with no third-party NLP dependencies — the English
 knowledge base, tokenizers, tagger, and parser are all built in.
+
+The project's `OutputType` is `Exe`, so it is also a small console program
+([`Program.cs`](Program.cs)). It analyzes the sentences given as arguments (or
+typed on standard input, one per line, until a blank line), prints the intent,
+entities, relationships and diagnostics of each, and appends each result to
+`prompts.json` through `PromptStore`. Other projects reference it as a library.
 
 ## 🏗️ Architecture
 
 The engine processes text through seven sequential stages, each isolated in its
 own layer and communicating via a shared `AnalysisContext`:
 
-1. **Normalization** (Order: 10) — standardizes text (whitespace, case handling)
-2. **Tokenization** (Order: 20) — breaks text into sentences and tokens
-3. **Morphology** (Order: 30) — lemmatization and stemming
-4. **Part-of-Speech Tagging** (Order: 35) — identifies word types (noun, verb, …)
+1. **Normalization** (Order: 5) — standardizes text (whitespace, case handling)
+2. **Tokenization** (Order: 10) — breaks text into sentences and tokens
+3. **Morphology** (Order: 20) — lemmatization and stemming
+4. **Part-of-Speech Tagging** (Order: 30) — identifies word types (noun, verb, …)
 5. **Phrase Detection** (Order: 40) — identifies noun/verb phrases and their heads
 6. **Dependency Parsing** (Order: 45) — extracts syntactic relationships between words
 7. **Semantic Analysis** (Order: 50) — recognizes entities, derives intent, and extracts relationships
+
+The stage classes are in `Core/Stages/`, except `TokenizationStage`, which is in
+`Lexical/Stages/`. `Pipeline.Execute` runs the stages in that order and rejects
+blank input with an `ArgumentException`.
 
 Assembly of the whole pipeline lives in [`Core/EngineBuilder.cs`](Core/EngineBuilder.cs).
 
@@ -96,20 +106,22 @@ free-form `Metadata` bag.
 ### Intent derivation
 
 - Extracts the first action verb and derives intent (e.g. `"book"` → `"BookIntent"`).
-- Falls back to `"DescribeIntent"` for noun-only sentences.
-- Confidence is blended from the action's confidence.
+- Falls back to `"DescribeIntent"` for noun-only sentences, with 0.8 times the
+  lead entity's confidence.
+- Confidence is the action's confidence.
 
 ### Relationship extraction
 
 Recognized [`RelationshipType`](Models/Semantics/RelationshipType.cs) roles link
-a source entity to a target — subject, object, location, time, and modifier
-relationships. The extractor prefers syntactic dependency parsing when available
+a source entity to a target: `Subject`, `Object`, `Recipient`, `Owner`,
+`Location`, `Time` and `Modifier` (and `Unknown`). The extractor prefers syntactic dependency parsing when available
 and falls back to positional heuristics for edge cases.
 
 ### Diagnostics
 
 - Errors and warnings are reported on `SemanticResult.Diagnostics`.
-- A **Critical** diagnostic means a stage failed and analysis stopped early — so
+- A **Critical** diagnostic (code `NLE.Stage.<StageName>`) means a stage threw and
+  the pipeline stopped at that stage, always — so
   entities/relationships/intent may be partial. Callers that care about
   completeness should check `Diagnostics` rather than assuming a normal empty
   result.
@@ -123,9 +135,12 @@ and falls back to positional heuristics for edge cases.
 | --- | --- | --- |
 | `EnableLogging` | `false` | Capture per-stage execution metrics via `PipelineLogger`. |
 | `EnableCaching` | `false` | Memoize analysis results by input text. |
-| `MaxCacheSize` | `100` | Max cached results; oldest is evicted when full. |
-| `StopOnCriticalError` | `true` | Stop the pipeline on the first critical error (results partial). |
-| `IncludeDiagnostics` | `true` | Report warnings/errors in `SemanticResult.Diagnostics`. |
+| `MaxCacheSize` | `100` | Max cached results; the first entry is removed when full. |
+| `StopOnCriticalError` | `true` | **Never read.** The pipeline always stops on the first stage that throws. |
+| `IncludeDiagnostics` | `true` | **Never read.** Diagnostics are always reported. |
+
+Only `EnableLogging`, `EnableCaching` and `MaxCacheSize` change behavior (they are
+read in `EngineBuilder.Build`). The cache removes its first entry when it is full.
 
 ## 📈 Performance
 
@@ -176,7 +191,7 @@ Tests are organized by layer: **Core** (pipeline, engine), **Lexical**
 
 The pipeline is a list of stages implementing
 [`IPipelineStage`](Abstractions/Pipeline/IPipelineStage.cs). To add behavior,
-implement a stage, give it an `Order` that slots it between existing stages, and
+implement a stage, give it an `Order` that slots it between existing stages (5, 10, 20, 30, 40, 45, 50), and
 register it on the `Pipeline` (see `EngineBuilder.Build`). The English knowledge
 base is assembled by `LanguageRepositoryBuilder().UseEnglish()`; swap that
 builder to supply a different `ILanguageRepository`.

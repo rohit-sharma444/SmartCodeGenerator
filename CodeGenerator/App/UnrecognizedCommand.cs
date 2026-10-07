@@ -9,7 +9,7 @@ internal static class UnrecognizedCommand
     internal static string Describe(string input, IReadOnlyList<string> suggestions)
     {
         var head = $"Command not recognized: '{(input ?? string.Empty).Trim()}'. " +
-                   "Type 'help' for the command list.";
+                   "Type 'help' for help, or 'help all' for the command list.";
 
         if (suggestions is null || suggestions.Count == 0)
             return head;

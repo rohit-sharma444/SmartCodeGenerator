@@ -11,7 +11,10 @@ dotnet run --project CodeGenerator
 ```
 
 By default the workspace (where projects and classes are written) is the current
-directory. Point it somewhere else with the `PROJECTPATH` environment variable:
+directory — or, when that directory holds no `.csproj`, `.sln` or `.slnx` of its own, or is a
+build-output folder such as `bin\Debug`, the nearest parent folder that does
+(`PathHelper.ResolveWorkspaceRoot`). Point it somewhere else with the `PROJECTPATH`
+environment variable, which always wins:
 
 ```bash
 # Windows (PowerShell)
@@ -159,10 +162,11 @@ the commit sha there, so a naive read prints a hash at the user. `<Version>` liv
 ### Startup is quiet when nothing is wrong
 
 `PrintBanner` is three lines. The store report and the AI line are conditional:
-`StoreStatusReport.IsHealthy` decides the first, and the second prints only when
-`AiLayer.Unavailable` has a reason — an AI that was meant to load and could not.
-"Enabled" and a deliberate "off (disabled)" are states the user chose and say
-nothing useful at every launch.
+`StoreStatusReport.IsHealthy` decides the first, and the second prints whenever
+`AiLayer.Unavailable` has a reason. That includes a deliberate `ai disable`, which reports
+`AI: off (disabled - run 'ai enable')`, so an unrecognized command never behaves as if AI were
+switched off without a word. Only "enabled" is silent. `PrintHeader` prints the line, not
+`PrintBanner`, because `clear` re-runs the banner and would repaint it on every screen wipe.
 
 `IsHealthy` is deliberately asymmetric: anything not plainly well counts as
 unhealthy, including both `Unknown` states ("we could not tell" is not "fine") and
@@ -203,15 +207,12 @@ Inside a session, `save session <file>` writes the commands that worked and chan
 to a `.cgs` script, and `run <file>` replays one, all or nothing. See *Scripts: save session
 and run* in the [user manual](../docs/user-manual-source.html).
 
-Inside a session, `save session <file>` writes the commands that worked and changed something
-to a `.cgs` script, and `run <file>` replays one, all or nothing. See *Scripts: save session
-and run* in the [user manual](../docs/user-manual-source.html).
-
 ## Signing in to a generated app
 
-Every generated WPF, Windows Forms and web application opens at a login screen, and nothing else
-is reachable until someone signs in — on the web that includes the home page, and typing a page's
-address directly does not get past it.
+Every generated WPF, Windows Forms and Blazor web application opens at a login screen, and nothing else
+is reachable until someone signs in — in the Blazor app that includes the home page, and typing a
+page's address directly does not get past it. The console, web API, class library and worker
+targets have no login screen.
 
 The first run creates one account, `admin`, with the password `admin`. The login screen says so
 while that password is still in place and stops once it is changed. Passwords are never stored:
@@ -305,6 +306,65 @@ The build and the run offer are gated on `Console.IsInputRedirected`, the same
 gate the wizard and the review loop use: a piped run does neither, so scripted
 end-to-end runs neither slow down nor change shape. The next-step lines are
 always printed.
+
+### JSON or SQLite
+
+Every target stores its rows in per-type JSON files by default. `approve sqlite` or
+`approve <target> sqlite` picks a SQLite database through EF Core instead; on the workflow page
+it is the Persistence choice. It is offered for every target except `wpf` and `winforms`,
+whose shared view models read the JSON store directly — `IsPersistenceAllowed` refuses the
+pair and says they stay JSON.
+
+### The `chat` page
+
+`chat` (or `ui`) serves a second Blazor Server page from this process, the same way
+`BuildAppWebHost` serves the workflow: `ChatWebHost` on `LoopbackHost`, a loopback port and a
+one-off token, alive for exactly one command. `ChatSession` is a singleton per host, so two tabs
+see one conversation. It runs the commands one at a time, because the output capture swaps the
+process-wide `Console.Out` and the engine keeps static state; the composer is disabled in every
+tab while one runs. The page draws the transcript, a Solution Explorer–style tree of the
+registered projects (`ProjectTree`), and Undo and Redo beside Send. A tab closed and never
+replaced ends the session, so the console is not left waiting on a page nobody has open.
+`show relationships` and the validation page are served the same way.
+
+### Session scripts
+
+`save session <file>` writes the commands that worked and changed something to a `.cgs` file;
+`run <file>` replays it through the same pipeline, and restores the workspace if a line fails.
+A `build app` block in a script cannot run in-process: `ScriptBuildApp` starts a **separate copy
+of the tool** with the block's lines piped in, `PROJECTPATH` set to the workspace and
+`CODEGEN_SCRIPT_STEP=1` in its environment, so the copy knows it is a script step (it prints
+`Refused: ` for an answer it will not take and will not replace an existing app). A piped CLI
+exits 0 whatever happens, so success is read from its output — the `Generated project at` line —
+not from its exit code. The copy's registered project is reloaded afterwards so the next
+`create class` lands in it.
+
+### The AI layer and phrase learning
+
+When no rule recognizes a line, `CodeIntelligence` embeds it with a local ONNX model and offers
+the nearest known phrasings' command, only ever as a suggestion that needs a yes. The phrase
+index (`ai-index.db`, beside the executable) builds itself at startup and rebuilds when the
+phrase corpus it ships (including `learned-phrases.tsv`) changes, by content hash; `ai reindex` forces it, which
+`ai status` asks for when it reports `REINDEX REQUIRED`. `ai why` explains the last reading,
+`ai mode` sets how unrecognized input is read (only `retrieval` works today), and
+`ai enable` / `ai disable` switch it.
+
+Separately, the CLI learns *commands* from a miss followed by a retry that worked.
+`PhraseCandidates` appends each such pair to `.codegen/phrase-candidates.jsonl`, and
+`show learning` groups them into `phrase-candidates.tsv`. Nothing there changes what the tool
+understands: a line only ships once it has been reviewed, copied into `learned-phrases.tsv`
+(embedded in `CodeIntelligence`) and has passed the golden-set gate. `reset learning` deletes the
+log, since it holds lines the user typed.
+
+### Where the CLI writes
+
+| Where | What |
+| --- | --- |
+| `<workspace>\.codegen\validation-rules.json` | The validation rules, saved by `ValidationRuleFile` after every add or remove. |
+| `<workspace>\.codegen\` (other files) | Learned signatures, phrase candidates, the app profile, the unfinished build and the workflow theme. The full list is in [`docs/architecture.md`](../docs/architecture.md#where-things-are-written). |
+| `<workspace>\<App>\.codegen\generated-files.txt` | What a `build app` wrote into the project, with hashes, so a regeneration removes files for classes the model no longer has and leaves the ones you edited. |
+| `<workspace>\<App>.Tests\` | The xUnit project generated beside every app; `dotnet test` runs it. |
+| `<workspace>\<App>\Data\Seed\` | Seed rows from the data you imported. The data file itself is read in place and never copied or changed. |
 
 ## Example session
 

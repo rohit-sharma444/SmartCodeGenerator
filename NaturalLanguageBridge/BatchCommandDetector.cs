@@ -6,7 +6,7 @@ namespace NaturalLanguageBridge;
 
 /// <summary>
 /// Turns the lines of a batch into structured actions without executing any of
-/// them. Reconstructs the chain <c>CommandHandlingService.ParseInput</c> runs
+/// them. Reconstructs the chain the command handling service runs
 /// privately, from the three stages it composes — all of which are public.
 /// </summary>
 public static class BatchCommandDetector

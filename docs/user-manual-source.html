@@ -102,7 +102,7 @@ colour text in that terminal and the cause is the terminal or its settings.</p><
 
 <div class="note"><p><strong>A quiet start is a healthy one.</strong> The tool reports its own state only when
 something is wrong with it — a Wikipedia store it was pinned to and cannot find, nothing updating an installed one, an AI model it was told to load and
-could not. So if all you see is those three lines, everything it depends on is in order. Type
+could not. That last one reads <code>AI: off (reason) — 'status' for detail.</code> and is printed under the three. So if all you see is those three lines, everything it depends on is in order. Type
 <code>status</code> at any time for the full picture. Earlier versions printed that picture at every launch,
 which meant the warnings in it were easy to skim past.</p></div>
 
@@ -140,13 +140,13 @@ of this session that worked and changed something, and <code>run &lt;file&gt;</c
 <tr><th>Command</th><th>What it does</th></tr>
 <tr><td><code>status</code></td><td>The full picture: which folder it is writing to, how many projects it found and which is selected, any rules it loaded, whether AI recognition is on, and the state of the Wikipedia store and its updater service.</td></tr>
 <tr><td><code>help</code></td><td>A one-screen overview: a few commands worth starting with, then every category and how many commands it holds.</td></tr>
-<tr><td><code>help &lt;topic&gt;</code></td><td>The commands in one category — <code>help build app</code>, <code>help validation</code>. Capitals and spaces do not matter, so <code>buildapp</code> works too. A command name is also a topic, so <code>help approve</code> explains that one command.</td></tr>
+<tr><td><code>help &lt;topic&gt;</code></td><td>The commands in one category — <code>help build app</code>, <code>help validation</code>. Capitals and spaces do not matter, so <code>buildapp</code> works too. A command name is also a topic, so <code>help approve</code> explains that one command. <code>help set for you</code> lists what the tool offers on its own, such as relationships.</td></tr>
 <tr><td><code>help all</code></td><td>Every command with an example, in one list. This is what plain <code>help</code> printed in earlier versions — over 600 lines now, which is why it moved behind its own word.</td></tr>
 <tr><td><code>history</code></td><td>The last 20 commands. It does not record itself.</td></tr>
 <tr><td><code>clear</code> / <code>cls</code></td><td>Clears the screen. History is kept.</td></tr>
 <tr><td><code>batch</code></td><td>Type several commands, review what the tool understood, then run only the ones you approve.</td></tr>
-<tr><td><code>demo</code></td><td>A short guided walkthrough. It runs seven real commands — creating a small project, adding a class with two validation rules, generating the validator and showing the result — naming the folder it will create and asking before it writes anything. Delete that folder when you are done.</td></tr>
-<tr><td><code>exit</code></td><td>Leaves the tool.</td></tr>
+<tr><td><code>demo</code></td><td>A short guided walkthrough. It runs seven real commands — creating a small project, adding a class with two validation rules, generating the validator and showing the result — naming the folder it will create and asking before it writes anything. Delete that folder when you are done. The default answer to <em>Run it?</em> is no, and then nothing is created. It refuses in two cases: when input is piped it creates nothing, says it needs a console to confirm on and prints the steps for you to run yourself; and when the folder it would create is already there it asks you to delete or rename it first.</td></tr>
+<tr><td><code>exit</code></td><td>Leaves the tool. <code>quit</code> does the same. On the chat page either one ends the chat session only (chapter 17).</td></tr>
 </table>
 
 <h2>3. Core ideas</h2>
@@ -170,11 +170,14 @@ of this session that worked and changed something, and <code>run &lt;file&gt;</c
 <tr><td><code>app-profile.json</code></td><td>The customization answers an interactive <code>build app</code> offers back to you next time (chapter 7).</td></tr>
 <tr><td><code>build-in-progress.json</code></td><td>A build you left unfinished on the workflow page, so the next <code>build app</code> can offer to resume it (chapter 4).</td></tr>
 <tr><td><code>workflow-theme.json</code></td><td>The theme you chose on the workflow page.</td></tr>
+<tr><td><code>validation-rules.json</code></td><td>Every validation rule you added with <code>add validation</code> or <code>add business validation</code>, each as you typed it, so a later <code>generate validator</code> writes all of them (chapter 10). <strong>Do not delete this one:</strong> it is the only copy of your rules.</td></tr>
 <tr><td><code>learned.json</code></td><td>The command signatures the tool has learned and how often each worked; <code>show learning</code> lists them and <code>reset learning</code> clears them.</td></tr>
 <tr><td><code>phrase-candidates.jsonl</code>, <code>phrase-candidates.tsv</code></td><td>Lines that were not understood, each paired with the next command that worked, kept for review (chapter 12).</td></tr>
 </table>
-<p>They are safe to delete. You will be asked again, an unfinished build is no longer offered, and what was
-learned starts over.</p>
+<p>All of them except <code>validation-rules.json</code> are safe to delete. You will be asked again, an
+unfinished build is no longer offered, and what was learned starts over. Delete <code>validation-rules.json</code>
+and every validation rule you added is gone. A generated application keeps a <code>.codegen</code> folder of its
+own as well (chapter 8).</p>
 
 <h3>Undo and redo</h3>
 <p><code>undo</code> reverses the last command that changed something, and <code>redo</code> puts it back.
@@ -251,7 +254,7 @@ whole run that worked.</li>
 approve console</pre>
 An answer the review refuses — renaming a class that is not there, say — fails the script, since the app would
 not be the one its lines describe. A script never replaces an app that already exists: it may have been edited by
-hand since, so the line fails and says so; delete the app first, or build it under another name.</li>
+hand since, so the line fails and says so; delete the app first, or build it under another name. As when you type it, the app a script builds becomes the current project when none was selected, so a line after it such as <code>create class Extra</code> goes into that app.</li>
 <li><strong>Nothing is overwritten by accident.</strong> Saving over an existing file is refused; add
 <code>replace</code> to overwrite: <code>save session library replace</code>.</li>
 <li>Script lines never stop to ask a question and never use the AI reading.</li>
@@ -506,6 +509,31 @@ tracks fines</code> gives the Library classes plus <code>Fine</code> — and <co
 shows only the classes it took from your words. A very short description — two or three words — often finds
 nothing. Add a few more words about what the system does, or add the classes by hand in the review loop.</p></div>
 
+<h4>Verbs that name a record</h4>
+<p>When the classes come from the built-in domains or from Wikipedia, a few verbs in your description are read
+as naming a record, and that record is added as a class. <code>a clinic that books patients</code> gets a
+<code>Booking</code> even though you never wrote the word.</p>
+<table>
+<tr><th>Verb</th><th>Class added</th></tr>
+<tr><td><code>book</code></td><td><code>Booking</code></td></tr>
+<tr><td><code>reserve</code></td><td><code>Reservation</code></td></tr>
+<tr><td><code>lend</code>, <code>loan</code>, <code>borrow</code> (also <code>lent</code>)</td><td><code>Loan</code></td></tr>
+<tr><td><code>rent</code>, <code>hire</code></td><td><code>Rental</code></td></tr>
+<tr><td><code>enrol</code>, <code>enroll</code></td><td><code>Enrolment</code></td></tr>
+<tr><td><code>order</code></td><td><code>Order</code></td></tr>
+<tr><td><code>buy</code>, <code>purchase</code> (also <code>bought</code>)</td><td><code>Purchase</code></td></tr>
+<tr><td><code>pay</code> (also <code>paid</code>)</td><td><code>Payment</code></td></tr>
+<tr><td><code>ship</code></td><td><code>Shipment</code></td></tr>
+<tr><td><code>deliver</code></td><td><code>Delivery</code></td></tr>
+<tr><td><code>subscribe</code></td><td><code>Subscription</code></td></tr>
+</table>
+<p>The other forms count too: <em>books</em>, <em>booked</em>, <em>enrolled</em>, <em>shipped</em>. An <em>-ing</em>
+word does not, because <em>booking</em> is already the name of the record. A word that is a noun as often as a
+verb counts only where a verb is plain: in <em>lends books</em>, <em>books</em> is the thing lent and stays a class
+of its own. <em>Hire</em> counts only when it acts on things: <code>a firm that hires vans</code> gets
+<code>Rental</code>, <code>a firm that hires staff</code> does not. A verb whose record is not nearly always
+wanted, such as <em>sells</em>, <em>runs</em> or <em>teaches</em>, is left out on purpose.</p>
+
 <h3>Configuring discovery</h3>
 <p>Which source discovery uses, and how, is read from <code>discovery.json</code> beside the tool's own
 <code>.exe</code> — the same folder and the same pattern as <code>ai.json</code> (chapter 12). It is optional:
@@ -516,7 +544,7 @@ to configure.</p>
 <tr><td><code>Source</code></td><td><code>Ollama</code></td><td>Which source to use. <code>Ollama</code> asks
 the local model first and falls back to Wikipedia when it is unreachable, when the configured model is not
 pulled (see below), or when the model runs but produces nothing usable — to the next source in the order
-above. <code>Wikipedia</code> skips Ollama entirely and always reads the local Wikipedia store (the built-in
+above. <code>Wikipedia</code> skips Ollama entirely and reads the local Wikipedia store, or the online Wikipedia API when no store is installed (the built-in
 domains still catch a topic it does not recognize) —
 choose this when a run needs to be exactly repeatable, since a local model is sampled and can answer a
 little differently between runs even at the low temperature this tool asks for. Anything else falls back to
@@ -591,7 +619,7 @@ you can add fields to it in the review step or simply run discovery again.</p>
 <code>%ProgramData%\SmartCodeGenerator\Wikipedia\</code> when that is blank, and looks for the downloaded
 dump in the same folder.</p>
 <h4>Pinning to Wikipedia</h4>
-<p>Set <code>"Source": "Wikipedia"</code> to skip Ollama and always use the local Wikipedia store. This is the
+<p>Set <code>"Source": "Wikipedia"</code> to skip Ollama and use the local Wikipedia store, or the online Wikipedia API when no store is installed. This is the
 option for a run that must be repeatable — a CI job, a demonstration you will run more than once and expect
 to look the same — since a local model is a sampled source and Wikipedia's lookup, for a topic it has already
 met, is not.</p>
@@ -612,6 +640,8 @@ build app from excel D:\data\shop.xlsx</pre>
 <tr><td><code>excel</code></td><td>An <code>.xlsx</code> workbook. Each visible sheet becomes a class; hidden sheets are ignored.</td></tr>
 <tr><td><code>sql</code></td><td>A SQL Server database. The location is a connection string, not a path &mdash; see <em>Building from a SQL Server database</em> below.</td></tr>
 </table>
+<p>Other spellings of a format are accepted too, such as <code>tsv</code>, <code>xlsx</code> and
+<code>sqlserver</code>. A relative path to a data file is looked for in the workspace first.</p>
 <div class="warn"><p><strong>The location is taken as the rest of the line</strong>, because Windows paths
 contain spaces. Anything you want to add after it must be one of the recognized options in chapter 7 —
 otherwise it becomes part of the path.</p></div>
@@ -652,8 +682,9 @@ otherwise it becomes part of the path.</p></div>
    all. <strong>Foreign keys</strong> become relationships &mdash; read from the constraint that
    enforces them, rather than inferred from a column being called <code>CustomerId</code>.</p>
 
-<p>The generator has five types, so two mappings lose something and say so: a <code>bigint</code>
-   becomes an <code>int</code>, and a <code>uniqueidentifier</code> becomes a <code>string</code>.
+<p>The generator has five types, so three mappings lose something and say so: a <code>bigint</code>
+   becomes an <code>int</code>, a <code>uniqueidentifier</code> becomes a <code>string</code>, and a
+   <code>time</code> becomes a <code>string</code> written <code>hh:mm:ss</code>.
    Composite foreign keys are skipped rather than half-emitted.</p>
 
 <p>For a scripted run, name the tables on the line. Naming none reads all of them:</p>
@@ -674,6 +705,12 @@ columns exactly as they are.</p>
 <p>Every change you accept is remembered, so <code>why</code> in the review loop can explain a class you never
 named yourself. When input is piped, add <code>normalize</code> to the command line to accept every finding, or
 leave it off to accept none — that way a script is deterministic.</p>
+
+<h3>Missing values stay missing</h3>
+<p>An empty cell, or a SQL <code>NULL</code>, is not turned into a value that looks real. When a number, flag or
+date column has a gap in its rows, its property is made nullable &mdash; <code>int?</code>, <code>decimal?</code>,
+<code>bool?</code> or <code>DateTime?</code> &mdash; instead of reading as 0, False or 01-Jan-0001. The
+<code>Id</code> and the columns that point at another class stay as they are.</p>
 
 <h3>Your rows come with it</h3>
 <p>Rows from your file are written into the generated project as starting data, and loaded on first run. If a
@@ -907,6 +944,7 @@ read the JSON store directly. The tool tells you rather than generating somethin
   Logging/       AppLog.cs                                          (only with logging)
   Assets/        your icon                                          (only with icon)
   Views/ ViewModels/   the front end, for the desktop types
+  .codegen/      generated-files.txt: what the tool wrote, kept for the next regenerate
 Shop.Tests/      a companion test project, generated with the app</pre>
 <p>Each class gets a typed repository with <code>GetAll</code>, <code>GetById</code>, <code>Create</code>,
 <code>Update</code> and <code>Delete</code>. Each validator comes in two halves: a
@@ -967,6 +1005,12 @@ asked for. The next-step lines are always printed.</p></div>
 <h3>Regenerating over an existing project</h3>
 <p>Running <code>build app</code> again against an existing project reuses it: generated sources are
 overwritten, but the project file and anything you have edited by hand are left in place.</p>
+<p>The tool records what it wrote in <code>.codegen/generated-files.txt</code> inside the project folder, each file
+with a hash of its contents. That record is how a regenerate cleans up after a rename: when you rename or remove a
+class on the review page, the files an earlier run wrote for the old name and this run did not (its model,
+repository and validator halves) are deleted. A file is deleted only if it still holds exactly what the tool wrote.
+A file you have changed is kept and reported, and a file the tool never wrote is never touched. An application
+generated before the record existed has none, and nothing is removed from it.</p>
 <p>Because that is not always what you meant — two descriptions can easily arrive at the same name — you are
 asked first:</p>
 <pre>D:\Work\Shop already holds a generated project.
@@ -1024,18 +1068,24 @@ where the old overwrite-without-asking behaviour is kept so that scripts are unc
 <tr><td><code>current project</code> / <code>show project</code></td><td>Reports the current project.</td></tr>
 </table>
 
+<p><code>create project</code> needs a name; a bare <code>create project</code> is refused. With no type it makes a
+console project on net10.0. Add a type (<code>console</code>, <code>classlib</code>, <code>webapi</code>,
+<code>blazor</code>, <code>blazorwasm</code>, <code>wpf</code>, <code>winforms</code>, <code>worker</code>,
+<code>mvc</code>), a framework such as <code>net8.0</code>, and <code>in &lt;folder&gt;</code> to put it somewhere
+other than a folder of its own name in the workspace.</p>
+
 <h3>Classes</h3>
 <table>
 <tr><th>Command</th><th>What it does</th></tr>
-<tr><td><code>create class</code></td><td>Creates a class — <code>create class Employee</code>.</td></tr>
-<tr><td><code>create class &lt;name&gt; with properties</code></td><td>Creates a class and its properties in one line: <code>create class Employee with properties EmpCode int, Name string</code>.</td></tr>
+<tr><td><code>create class</code></td><td>Creates a class — <code>create class Employee</code>. Refuses a name that already exists and leaves that file as it is.</td></tr>
+<tr><td><code>create class &lt;name&gt; with properties</code></td><td>Creates a class and its properties in one line: <code>create class Employee with properties EmpCode int, Name string</code>. After the properties you can add <code>and methods &lt;list&gt;</code>, <code>inherits &lt;base&gt;</code> and <code>implements &lt;interfaces&gt;</code>. Refuses a name that already exists.</td></tr>
 <tr><td><code>list classes</code></td><td>Lists the classes in the current project.</td></tr>
 <tr><td><code>list classes in &lt;project&gt;</code></td><td>Lists another project's classes.</td></tr>
 <tr><td><code>show class &lt;name&gt;</code></td><td>Prints the source.</td></tr>
-<tr><td><code>rename class &lt;old&gt; to &lt;new&gt;</code></td><td>Renames a class.</td></tr>
-<tr><td><code>&lt;class&gt; inherits &lt;base&gt;</code></td><td>Adds a base class, keeping any interfaces. Also <code>extends</code>, <code>derives from</code>.</td></tr>
-<tr><td><code>delete class &lt;name&gt;</code></td><td>Moves it to <code>DeletedClasses</code> — not gone.</td></tr>
-<tr><td><code>restore class &lt;name&gt;</code> / <code>restore last class</code></td><td>Brings it back.</td></tr>
+<tr><td><code>rename class &lt;old&gt; to &lt;new&gt;</code></td><td>Renames a class or an interface, its file, and every reference to it in the workspace. References are found by the compiler, so a same-named word in a comment or a string is left alone, and the reply lists the files it changed and any it could not. Refuses a name that already exists.</td></tr>
+<tr><td><code>&lt;class&gt; inherits &lt;base&gt;</code></td><td>Adds a base class, keeping any interfaces. Also <code>extends</code>, <code>derives from</code>. When the base is an interface, a class implements it and an interface extends it. It refuses a base the type already has, the type itself, a base that would make a cycle, and an interface extending a class.</td></tr>
+<tr><td><code>delete class &lt;name&gt;</code></td><td>Moves it to <code>DeletedClasses</code> — not gone. Every <code>partial</code> file of the class goes with it, each kept as <code>&lt;Name&gt;_&lt;time&gt;.cs.deleted</code> so that it no longer compiles. A file that also declares other types is not moved: the reply names it, and you remove that part by hand. The validation rules saved for the class are dropped, and the reply says how many.</td></tr>
+<tr><td><code>restore class &lt;name&gt;</code> / <code>restore last class</code></td><td>Brings it back, with its partial files, to the folder it was deleted from. Also <code>recover class</code>. It refuses, and says why, when a class of that name is there now (rename or delete that one first), when a file it would restore already exists, or when the kept copy is missing. When the class was deleted more than once, the newest copy comes back and the reply says how many older ones remain. The validation rules dropped at delete time are not restored.</td></tr>
 <tr><td><code>list deleted classes</code> / <code>show deleted classes</code></td><td>Lists what is in the recycle bin.</td></tr>
 </table>
 
@@ -1045,18 +1095,45 @@ where the old overwrite-without-asking behaviour is kept so that scripts are unc
 <tr><td><code>add property &lt;name&gt; &lt;type&gt; to &lt;class&gt;</code></td><td>Adds a property.</td></tr>
 <tr><td><code>list properties &lt;class&gt;</code> / <code>show properties &lt;class&gt;</code></td><td>Lists them.</td></tr>
 <tr><td><code>rename property &lt;old&gt; to &lt;new&gt; in &lt;class&gt;</code></td><td>Renames one. <code>field</code> works for <code>property</code>, and <code>on</code>/<code>of</code> for <code>in</code>.</td></tr>
-<tr><td><code>change type of &lt;name&gt; to &lt;type&gt; in &lt;class&gt;</code></td><td>Changes a property's type to any C# type: <code>int</code>, <code>decimal?</code>, <code>List&lt;string&gt;</code>. An initial value written for the old type (<code>= "";</code>) is removed, and the message says so. Also <code>retype property &lt;name&gt; to &lt;type&gt; in &lt;class&gt;</code>.</td></tr>
+<tr><td><code>change type of &lt;name&gt; to &lt;type&gt; in &lt;class&gt;</code></td><td>Changes a property's type to any C# type: <code>int</code>, <code>decimal?</code>, <code>List&lt;string&gt;</code>. An initial value that still compiles for the new type is kept; one that does not (<code>= "";</code> on an <code>int</code>), and an attribute that only suits text, is removed, and the message says so. The command refuses a change it cannot make safely. It works on interfaces too. Also <code>retype property &lt;name&gt; to &lt;type&gt; in &lt;class&gt;</code>.</td></tr>
 <tr><td><code>remove property &lt;name&gt; from &lt;class&gt;</code></td><td>Removes one, and any validation rules on it.</td></tr>
-<tr><td><code>add method &lt;name&gt; to &lt;class&gt;</code></td><td>Adds a method.</td></tr>
+<tr><td><code>add method &lt;name&gt; to &lt;class&gt;</code></td><td>Adds a method to a class or an interface. Give it a return type with <code>add method &lt;name&gt; returns &lt;type&gt; to &lt;class&gt;</code>.</td></tr>
 <tr><td><code>show methods &lt;class&gt;</code></td><td>Lists a class's methods.</td></tr>
 <tr><td><code>rename method &lt;old&gt; to &lt;new&gt; in &lt;class&gt;</code></td><td>Renames a method, every overload of it.</td></tr>
 <tr><td><code>remove method &lt;name&gt; from &lt;class&gt;</code></td><td>Removes one. When the name is overloaded it lists them and removes none.</td></tr>
-<tr><td><code>create interface &lt;name&gt;</code></td><td>Creates an interface.</td></tr>
+<tr><td><code>create interface &lt;name&gt;</code></td><td>Creates an interface — see <em>Interfaces</em> below.</td></tr>
 </table>
 
 <div class="note"><p>Renames change the declaration only. Code elsewhere that uses the old name is not
 updated, and the message says so. Renaming a property that has validation rules also warns that those
 rules still name the old field: remove them and add them again for the new name.</p></div>
+
+<h3>Interfaces</h3>
+<p>An interface is made with <code>create interface &lt;name&gt;</code> and edited with the same commands as a
+class: <code>add property</code>, <code>remove property</code>, <code>rename property</code>, <code>change type of</code>,
+<code>add method</code>, <code>remove method</code> and <code>rename method</code> all accept an interface as the
+target. <code>Circle inherits IShape</code> (or <code>implements</code>) makes a class implement one.</p>
+<table>
+<tr><th>You type</th><th>The interface is called</th></tr>
+<tr><td><code>create interface IShape</code></td><td><code>IShape</code> &mdash; an <em>I</em> followed by a capital letter is kept as typed.</td></tr>
+<tr><td><code>create interface Item</code></td><td><code>IItem</code> &mdash; any other name is turned into PascalCase and given the <em>I</em>.</td></tr>
+<tr><td><code>create interface invoice</code></td><td><code>IInvoice</code></td></tr>
+<tr><td><code>create interface ishape</code></td><td><code>IIshape</code> &mdash; an all-lower-case name is always prefixed. Type <code>IShape</code> for that name.</td></tr>
+</table>
+<p>The reply names the interface when it differs from what you typed. <code>create interface</code> refuses a name
+that already exists and leaves that file as it is.</p>
+<p>The tool never edits the classes that implement an interface. It tells you which ones now need a change:</p>
+<ul>
+<li>After you add a member, it names the implementers that lack it, and says they will not compile until you add
+it there. It also names an implementer whose member has the same name but a different type or parameters.</li>
+<li>After you remove, rename or retype a member, it names the implementers it left as they were, and says what
+to do there: a member you removed stays in the class but is no longer part of the interface, and a renamed or
+retyped one has to be renamed or retyped in each implementer too.</li>
+</ul>
+<p>An interface holds no data, so there is nothing for a validation rule to check. <code>add validation</code>,
+<code>add business validation</code> and <code>generate validator</code> all refuse one, and the reply points at a
+class that implements it:
+<code>'IShape' is an interface, so it holds no data to validate. Add the rule to a class that implements it, such as Circle or Square.</code></p>
 
 <h3>Relationships between classes</h3>
 
@@ -1174,6 +1251,24 @@ writes.</p>
 add validation must be at most 50 characters on Name in Employee
 add business validation Either Email or Phone must be provided in Customer</pre>
 
+<p>The class can also come first, with the rule after a colon. <code>to</code>, <code>for</code> and
+<code>on</code> all work, for field rules and business rules alike, and the property is the first word of the rule:</p>
+<pre>add validation to Customer: Name is required
+add validation for Customer: Age must be between 18 and 65
+add business validation on Booking: EndDate must be after StartDate</pre>
+<p>A full stop at the very end of the sentence is dropped; quote a literal that has to end in one. One command
+adds one rule.</p>
+<p>The command refuses, and writes nothing, when:</p>
+<table>
+<tr><th>When</th><th>What it says</th></tr>
+<tr><td>No class is named</td><td><code>No class specified for the validation rule.</code></td></tr>
+<tr><td>The class is not there</td><td>That the class was not found, so the rule was not added, with the nearest class names.</td></tr>
+<tr><td>The rule names a property the class does not have</td><td>That the class has no such property, with the nearest property names.</td></tr>
+<tr><td>The sentence is not a rule it understands</td><td><code>Could not parse a validation rule from: '&hellip;'</code></td></tr>
+<tr><td>The class is an interface</td><td>That an interface holds no data to validate, and a class that implements it to use instead (chapter 9).</td></tr>
+</table>
+<p>A rule the class already has is not added a second time; the reply says it is already there.</p>
+
 <div class="note"><p>The chat page can add these without the surrounding command: right-click a class in
 its tree and type the rule on its own. See <em>Adding a validation from the tree</em> in chapter 17. The
 two routes understand exactly the same English, because they ask the same parser.</p></div>
@@ -1186,7 +1281,7 @@ together.</p></div>
 <h2>11. Checking and documenting a project</h2>
 <table>
 <tr><th>Command</th><th>What it does</th></tr>
-<tr><td><code>validate project</code></td><td>Compiles every <code>.cs</code> file in the project as one workspace and reports the real errors. Also <code>check project</code>, <code>compile project</code>.</td></tr>
+<tr><td><code>validate project</code></td><td>Compiles every <code>.cs</code> file in the project as one workspace and reports the real errors, grouped by <code>.csproj</code>. With no project selected it checks the whole workspace, one <code>.csproj</code> at a time. Also <code>check project</code>, <code>compile project</code>.</td></tr>
 <tr><td><code>analyze project</code></td><td>Analyzes the current project.</td></tr>
 <tr><td><code>analyze class &lt;name&gt;</code></td><td>Analyzes one class.</td></tr>
 <tr><td><code>generate design document</code></td><td>Writes a design document for the project. Also <code>generate documentation</code>, <code>generate project report</code>.</td></tr>
@@ -1208,6 +1303,27 @@ ever <em>suggests</em> — it never runs a command you did not confirm.</p>
 <tr><td><code>ai mode retrieval</code></td><td>How unrecognized input is read. Only <code>retrieval</code> works today; <code>generative</code> and <code>hybrid</code> are declined.</td></tr>
 </table>
 
+<h3>The <code>ai.json</code> file</h3>
+<p>The settings live in <code>ai.json</code>, beside the tool's own <code>.exe</code>. <code>ai enable</code> and
+<code>ai disable</code> write it. A missing file means the defaults below, so AI is on. A file the tool cannot read
+turns AI off, so that a broken file leaves the tool working exactly as it does without AI.</p>
+<table>
+<tr><th>Field</th><th>Default</th><th>Meaning</th></tr>
+<tr><td><code>Enabled</code></td><td><code>true</code></td><td>Whether AI recognition is on.</td></tr>
+<tr><td><code>ResolverMode</code></td><td><code>Retrieval</code></td><td>How a line is read: by finding the known phrasings nearest to it. The only mode that works today.</td></tr>
+<tr><td><code>MinTopScore</code></td><td><code>0.55</code></td><td>First gate: how close the nearest known phrasing must be before any reading is offered.</td></tr>
+<tr><td><code>ConfidenceFloor</code></td><td><code>0.55</code></td><td>Second gate: how far the nearest phrasings must agree on one command.</td></tr>
+<tr><td><code>TopK</code></td><td><code>2</code></td><td>How many of the nearest phrasings vote.</td></tr>
+<tr><td><code>EmbeddingModelId</code></td><td><code>all-MiniLM-L6-v2-int8</code></td><td>The model that turns a line into numbers for the comparison.</td></tr>
+<tr><td><code>RetrievalTimeoutMs</code></td><td><code>500</code></td><td>How long a reading may take before the tool gives up on it.</td></tr>
+</table>
+<p>When a line is not a known command and a reading passes both gates, the tool asks before it does anything:</p>
+<pre>Not a known command. Closest match "make a class" suggests: CreateClass (72% confidence). Run it?
+  Yes, run it
+  No, leave it</pre>
+<p>The default is <em>No, leave it</em>, so pressing Enter or Esc never runs a command that writes code. A piped
+or scripted run never uses the AI reading and never asks.</p>
+
 <h3>Learned commands</h3>
 <p>The tool also keeps a record of the commands you run and how often each worked. It is a record only: it does not change what the tool recognizes.</p>
 <table>
@@ -1217,6 +1333,16 @@ ever <em>suggests</em> — it never runs a command you did not confirm.</p>
 </table>
 
 <p>When a line is not understood and the next command you type does work, the pair is kept in the workspace's <code>.codegen\phrase-candidates.jsonl</code>; <code>show learning</code> also writes the grouped list to <code>.codegen\phrase-candidates.tsv</code>. Nothing there changes what the tool understands: a phrasing is recognized only once someone has reviewed it into the <code>learned-phrases.tsv</code> that ships with the tool.</p>
+
+<p>A pair is kept only when all of these hold:</p>
+<ul>
+<li>the line was not understood, and the next command you typed was understood and worked;</li>
+<li>the second command came within 20 seconds of the first, and reads as a retry of it rather than a new request;</li>
+<li>learning is on. Set <code>CG_NO_LEARN=1</code> to turn it off; nothing is then recorded or remembered.</li>
+</ul>
+<p>The words the working command took as its arguments are removed from the kept phrasing, so it reads as a way of
+asking for the command and not as one use of it. <code>reset learning</code> deletes both files. The tool ships with
+five reviewed phrasings, among them <em>whip up a class</em> and <em>spin up a project</em>.</p>
 
 <h2>13. Two worked examples</h2>
 
@@ -1229,7 +1355,7 @@ ever <em>suggests</em> — it never runs a command you did not confirm.</p>
   <li>Read the candidate model. Remove anything irrelevant (<code>remove Manuscript</code>), add anything
       missing (<code>add late fee</code>), then <code>approve</code>.</li>
   <li>Wait for the build the tool runs for you, then answer <code>y</code> to <em>Run it now?</em>. The window
-      is titled <em>Codis Ltd - LibraryThatLendsBooksToMembers</em>, painted dark, and every file carries the
+      is titled <em>Codis Ltd - Library</em>, painted dark, and every file carries the
       copyright banner.</li>
 </ol>
 
@@ -1302,9 +1428,16 @@ ever <em>suggests</em> — it never runs a command you did not confirm.</p>
    Employee with a hire date one. Everything else is a master, which is the safe answer &mdash; a
    master screen is the ordinary list this generator has always produced.</p>
 
+<p>One further case counts. A dated document that owns lines is a transaction even with no foreign key of its own:
+a JSON invoice nests its lines and names its customer as text. A class is promoted this way when it has a date of
+its own or a recognised name, and a line class points at it. A class you named as a master yourself stays a
+master.</p>
+
 <p>A third kind gets no screen at all. A <strong>line</strong> &mdash; OrderLine, InvoiceItem
    &mdash; is a child of a transaction, named after it, and is edited inside its parent rather
-   than on a screen of its own.</p>
+   than on a screen of its own. The test is by name, on purpose: a class is a line when its name ends in
+<code>Line</code>, <code>Item</code>, <code>Detail</code> or <code>Row</code> and it points at a transaction. A
+child of a master called <code>CustomerLine</code> is not a line, because there is no document to edit it inside.</p>
 
 <h3>What it decided</h3>
 
@@ -1423,6 +1556,11 @@ OrderLine  lines of Order   [ own screen ]</pre>
    behind. <em>Save</em> runs the same validation rules the rest of the application runs
    (chapter 10) and says what it refused rather than silently keeping the old value.</p>
 
+<p>Two fields are never typed. <code>CreatedOn</code> and <code>ModifiedOn</code> are stamped when the record is
+saved: <code>ModifiedOn</code> with the time of the save, and <code>CreatedOn</code> with the same time when the
+record is new. A record you saved without changing keeps its <code>ModifiedOn</code>, and a <code>CreatedOn</code>
+that was already set, an imported one for example, is kept.</p>
+
 <h3>Lines</h3>
 
 <p>A transaction's editor also holds its <strong>lines</strong> &mdash; the OrderLines of an Order
@@ -1475,6 +1613,17 @@ none of them runs on its own. The page is always drawn in the same light grey as
 whether your operating system is set to light or dark. It has no theme setting; the theme drop-down belongs
 to the <code>build app</code> page only.</p>
 
+<h3>The header</h3>
+
+<p>The band across the top says what the next command will act on. From the left it shows the workspace folder,
+how many projects are registered, the current project (<em>none</em> until one is chosen), how many validation rules
+are loaded, and whether AI is on, with a dot as well as the word. <strong>Tree</strong> shows or hides the project
+tree, and <strong>Change…</strong> opens the panel that loads another solution; while that panel is open the same
+button reads <strong>Close</strong>.</p>
+
+<p>When a command stops to ask you something, such as the relationship offers in chapter 9, the question appears as
+a band under the header with a button for each answer. The box stays disabled until you answer.</p>
+
 <h3>Loading a solution</h3>
 
 <p>Until now the tool worked wherever it was started, or wherever <code>PROJECTPATH</code> pointed.
@@ -1483,6 +1632,10 @@ to the <code>build app</code> page only.</p>
 you can click your way there instead. Solution files are listed first, because that is usually what you
 came for. The panel closes itself once a path loads, and it is already open when the tool starts somewhere
 with no projects in it — there, choosing somewhere else is the first thing to do.</p>
+
+<p>The panel is headed <strong>Work on</strong>. Type or paste a path and press <kbd>Enter</kbd> or
+<strong>Load</strong>. An empty box is asked for in words rather than loaded. A path that cannot be loaded leaves
+the panel open and writes the problem under the box, which is where you fix it.</p>
 
 <div class="note"><p>A solution is rooted at the common ancestor of the projects it declares, not at the
 folder the solution file happens to sit in. Many solutions keep the <code>.sln</code> in a folder of its
@@ -1572,6 +1725,7 @@ well, so the conversation stays the record of what the tool did.</p></div>
 <tr><td>The class already has that rule</td><td>That it is already there</td></tr>
 <tr><td>The class has a <code>Validate()</code> you wrote</td><td>That it is yours, and to rename it — the tool only extends the one it made</td></tr>
 <tr><td>The class is a record with no <code>{ }</code> body</td><td>That there is nowhere to put a check</td></tr>
+<tr><td>The type is an interface</td><td>That an interface holds no data to validate, and that the rule belongs on a class that implements it</td></tr>
 </table>
 
 <p>A rule added here is registered with the session as well as written, so <code>show validation</code> at
@@ -1620,6 +1774,13 @@ typed here is one the prompt's <kbd>↑</kbd> finds afterwards, and the other wa
 Clicking one fills the box. It never runs the command — these commands write files, and a guess is not
 something to act on because you clicked near it.</p>
 
+<h3>Stopping a command</h3>
+
+<p>While a command runs, a strip above the box says <em>Working on</em> and the command, with a <strong>Stop</strong>
+button beside it. <strong>Stop</strong> asks the command to stop, and the strip then says <em>Stopping</em>. It
+never says <em>Stopped</em>: much of what runs underneath cannot be interrupted once started, so the page claims
+only that it asked.</p>
+
 <h3>What the page will not do</h3>
 
 <table>
@@ -1627,18 +1788,23 @@ something to act on because you clicked near it.</p>
 <tr><td><code>build app</code></td><td>It asks questions as it goes, and has a workflow page of its own (chapter 4).</td></tr>
 <tr><td><code>batch</code></td><td>It asks you to review what it detected before it runs anything.</td></tr>
 <tr><td><code>demo</code></td><td>It asks before it writes anything.</td></tr>
+<tr><td><code>chat</code></td><td>You are already in it. The page says <em>You are already in the chat.</em></td></tr>
 </table>
 
-<p>All three are declined in the page rather than half-run, with a line pointing at the console, where they
+<p>All four are declined in the page rather than half-run. The first three point at the console, where they
 work exactly as this manual describes.</p>
 
 <h3>Ending the session</h3>
 
-<p>Type <code>exit</code> in the page, close the tab, or press <kbd>Ctrl</kbd>+<kbd>C</kbd> at the console.
+<p>Type <code>exit</code> (or <code>quit</code>) in the page, close the tab, or press <kbd>Ctrl</kbd>+<kbd>C</kbd> at the console.
 Closing the last tab ends the session about ten seconds later — long enough that refreshing the page is not
 mistaken for leaving — and the console prompt comes back. Two tabs on the same address share one
 conversation; while a command is running the box is disabled in both, because there is one workspace and
 one command can be in flight at a time.</p>
+
+<p>When the session ends, the box is replaced by a card, <em>This chat session has ended</em>, which says the
+console prompt is back, that <code>chat</code> there opens a new session, and that you can close the tab. The
+transcript stays above it to be read.</p>
 
 <p><code>chat</code> needs a browser. In a piped or scripted run, or with <code>CG_NO_WEB=1</code> set, it
 declines and says so; the console prompt is unaffected. With <code>CG_NO_BROWSER=1</code> set, it starts
@@ -1669,6 +1835,9 @@ the page but opens no tab; the console prints the address for you to open.</p>
 <tr><td>You answered <code>y</code> to <em>Run it now?</em> and no window appeared</td><td>Look for it behind the terminal — it opens as a separate window and does not steal focus. A Web API and a worker have no window and open a console of their own instead.</td></tr>
 <tr><td>"… already holds a generated project" for an application you have never built</td><td>Two different descriptions reduced to the same project name — <em>a shop</em> and <em>the shop system</em> both give <code>Shop</code>. Answer <code>r</code> and give it a name of your own; the existing project is left alone.</td></tr>
 <tr><td>You meant to overwrite and it did nothing</td><td>Enter cancels at that question, on purpose. Answer <code>o</code> to overwrite. Nothing is lost either way — the model is still in the review loop, so simply approve again.</td></tr>
+<tr><td>A file for a class you renamed or removed is still there after regenerating</td><td>The tool deletes only files it wrote and that still hold exactly what it wrote (chapter 8). A file you changed is kept and reported, and an application generated before the record existed has no record to sweep from. Delete the file by hand.</td></tr>
+<tr><td>"&hellip; is an interface, so it holds no data to validate"</td><td>You tried to add a validation rule, or generate a validator, on an interface. Put the rule on a class that implements it.</td></tr>
+<tr><td>"Class '&hellip;' already exists" when creating, renaming or restoring a class</td><td>The tool does not overwrite. <code>create class</code> and <code>create interface</code> leave the existing file as it is; <code>rename class</code> changes nothing; <code>restore class</code> asks you to rename or delete the live class first.</td></tr>
 <tr><td>Your edits to a generated file are gone after regenerating</td><td>Answering <code>o</code> overwrites generated sources, which includes any changes you made inside them. Only <code>&lt;Class&gt;Validator.Custom.cs</code>, the project file and files you added yourself are preserved. Put your own code in new files, or in the <code>.Custom.cs</code> halves.</td></tr>
 </table>
 
@@ -1692,7 +1861,7 @@ own shows the shorter overview, and <code>help &lt;topic&gt;</code> shows one se
 <tr><th>Command</th><th>Description</th><th>Example</th></tr>
 <tr><td><code>analyze class &lt;class name&gt;</code></td><td>Analyzes a specific class.</td><td><code>analyze class Employee</code></td></tr>
 <tr><td><code>analyze project</code></td><td>Analyzes the current project.</td><td><code>analyze project</code></td></tr>
-<tr><td><code>validate project</code></td><td>Compiles every .cs file in the project as one workspace and reports real errors. Aliases: check project, compile project.</td><td><code>validate project</code></td></tr>
+<tr><td><code>validate project</code></td><td>Compiles every .cs file in the project as one workspace and reports real errors, grouped by .csproj. With no project selected it uses the workspace. Aliases: check project, compile project.</td><td><code>validate project</code></td></tr>
 </table>
 <h3>Build App</h3>
 <table>
@@ -1700,15 +1869,15 @@ own shows the shorter overview, and <code>help &lt;topic&gt;</code> shows one se
 <tr><td><code>accept &lt;n&gt;</code></td><td>Review loop: accepts a rule `rules` listed, by its number, or `accept all` for every one.</td><td><code>accept 2</code></td></tr>
 <tr><td><code>add &lt;name&gt;</code></td><td>Review loop: adds a class to the candidate model. The name keeps the shape you type, so a compound survives; several words become one class name.</td><td><code>add cash register</code></td></tr>
 <tr><td><code>approve (when the app already exists)</code></td><td>Offers to add only what is new. When the project folder already holds a generated app, the guard reads the classes already there and compares them with the model you just reviewed: it has 8 class(es), this model has 10, of which 2 are new. Answering a writes those 2 classes and the files that list the entities so their screens appear - and nothing else, so every other generated file is left byte-identical. The run says how many files it did not touch. A class that exists with DIFFERENT fields is named and left alone: adding will not reconcile it, overwriting would. Your .Custom.cs validator rules are never overwritten - which is also why an app generated before the validation pipeline needs one hand edit: its kept stub still declares the old ValidateCustom hook, so the run names each such file and the line to put in it, and the project will not compile until you change them. a is offered only when something really is new, Enter still cancels, and a piped run overwrites in silence as it always has.</td><td><code>approve wpf</code></td></tr>
-<tr><td><code>approve [target] [sqlite]</code></td><td>Review loop: generates the app using the type chosen at the start. Name a target to override it: wpf (default), winforms, console, webapi, blazor, classlib, worker. Add &#x27;sqlite&#x27; for EF Core persistence (JSON is the default; the wpf and winforms targets are JSON-only). Alias: a.</td><td><code>approve webapi sqlite</code></td></tr>
-<tr><td><code>build app</code></td><td>Starts the same flow with nothing filled in. Interactively it opens a workflow page in the browser drawn as ten connected stages, ending in one that starts the application it just built. The stages are the navigation: each box shows the answer it holds, the box being answered carries the step forward and an arrow back one stage, the next box lights up when that step is ready, and clicking a finished box goes back to change it — there are no Back and Next buttons. Generate and Run stay disabled until the project has actually been written. Review classes is where the model is corrected: every class can be renamed or removed and every property renamed, retyped or deleted, on the card itself. Output, the stage after it, draws how the classes connect and states in one table the screen each class will get — master, transaction, or the transaction a line is edited inside — and lets you change it before anything is written. Entry Template, the stage after that, chooses how a business-shell entry form arranges its fields, when the target is wpf and the layout is business. A long step reports its progress as it works, and changing the description or the data source asks first, because it discards the model that was discovered from the old one; Cancel asks the same way once there is an answer to lose. The panel that opens holds the keyboard and Enter takes the step it offers — never Generate or Run, which stay deliberate clicks. A named data file is summarised — how many rows and columns — before anything is built from it; a step that fails says why and stays clickable rather than ending the run; the application the last stage starts can be stopped from the page; and the console signs off with the `build app:` line that would do the same run again. Two tabs on the same workflow stay in step, and closing the last one ends the command. Piped runs skip both the page and the wizard and go straight to the review loop; CG_NO_WEB=1 keeps the console wizard.</td><td><code>build app</code></td></tr>
+<tr><td><code>approve [target] [sqlite]</code></td><td>Review loop: generates the app using the type chosen at the start. Type ? or help there for its commands. Name a target to override it: wpf (default), winforms, console, webapi, blazor, classlib, worker. Add &#x27;sqlite&#x27; for EF Core persistence (JSON is the default; the wpf and winforms targets are JSON-only). Alias: a.</td><td><code>approve webapi sqlite</code></td></tr>
+<tr><td><code>build app</code></td><td>Starts the same flow with nothing filled in. Interactively it opens a workflow page in the browser drawn as ten connected stages, ending in one that starts the application it just built. The stages are the navigation: each box shows the answer it holds, the box being answered carries the step forward and an arrow back one stage, the next box lights up when that step is ready, and clicking a finished box goes back to change it — there are no Back and Next buttons. Generate and Run stay disabled until the project has actually been written. Review classes is where the model is corrected: every class can be renamed or removed and every property renamed, retyped or deleted, on the card itself; a class or a field can be added, and a suggestion promoted to a class. Output, the stage after it, draws how the classes connect and states in one table the screen each class will get — master, transaction, or the transaction a line is edited inside — and lets you change it before anything is written. Entry Template, the stage after that, chooses how a business-shell entry form arranges its fields, when the target is wpf and the layout is business. A long step reports its progress as it works, and changing the description or the data source asks first, because it discards the model that was discovered from the old one; Cancel asks the same way once there is an answer to lose. The panel that opens holds the keyboard and Enter takes the step it offers — never Generate or Run, which stay deliberate clicks. A named data file is summarised — how many rows and columns — before anything is built from it; a step that fails says why and stays clickable rather than ending the run; the application the last stage starts can be stopped from the page; and the console signs off with the `build app:` line that would do the same run again. Two tabs on the same workflow stay in step, and closing the last one ends the command. Piped runs skip both the page and the wizard and go straight to the review loop; CG_NO_WEB=1 keeps the console wizard.</td><td><code>build app</code></td></tr>
 <tr><td><code>build app (with an unfinished build in the workspace)</code></td><td>Offers the build you left. Closing the browser tab no longer loses the work: the answers and the reviewed model - renames, added and removed fields, promoted suggestions, the master/transaction split - are saved to .codegen/build-in-progress.json after every change, and the next interactive run in that workspace offers to resume, start fresh or discard. Enter starts fresh and deletes nothing - that fresh run is not saved as you go, so the build you left is still offered next time. Your DATA is not saved, only where it came from, so the source is re-read on resume; a file that has moved, or a SQL connection string (which is never saved), opens the data stage instead of failing. A finished or cancelled build clears the snapshot; one abandoned by closing the tab keeps it. Piped runs neither write one nor read one.</td><td><code>build app</code></td></tr>
-<tr><td><code>build app: &lt;description&gt;</code></td><td>Describes a system in plain English. Interactively this opens a workflow page in the browser — the console prints the address and waits — where the rest of the build happens: application type, data, look, domain discovery, model review, generate-and-build, then running the finished application. Every step that takes a while says what it is doing and how long it has been doing it, and the compiler&#x27;s output appears line by line as it builds. Piped runs are unchanged, and CG_NO_WEB=1 keeps the console wizard.</td><td><code>build app: a library that lends books to members</code></td></tr>
-<tr><td><code>build app: &lt;description&gt; [customization options]</code></td><td>Customizes the generated application. Options go LAST on the line, after any data source: company &quot;&lt;name&gt;&quot; sets the company (used in the project metadata, the window title and a copyright header); theme light|dark and accent #rrggbb colour the desktop front ends; icon &lt;path&gt; supplies a .ico or .png; title &quot;&lt;pattern&gt;&quot; overrides the window title, where {company} and {app} are substituted; namespace &lt;prefix&gt; puts the generated code under that namespace root (CodisLtd.Shop), leaving the project and assembly names alone; layout tabs|sidebar|master-detail|dashboard|business chooses the shape of the window (wpf and winforms only); business is the default and is the shell with a dashboard home, a rail grouped into masters and transactions, and an editor for every record; the web app is always that shell, which is why naming a layout does not apply to it. entry-template classic|grouped|tabbed|two-column|split|ribbon chooses how a business-shell entry form arranges its fields (wpf only, for now, and only when the layout is business); grouped is the default. A layout you chose on an earlier interactive run is remembered in .codegen/app-profile.json and kept, default or not, so a run that is using a remembered one says so and names the file.</td><td><code>build app: a shop company &quot;Codis Ltd&quot; namespace CodisLtd theme dark</code></td></tr>
+<tr><td><code>build app: &lt;description&gt;</code></td><td>Describes a system in plain English. Classes are found from a local Ollama model, then the Wikipedia store, then the 25 built-in domains, then Wikipedia online. Interactively this opens a workflow page in the browser — the console prints the address and waits — where the rest of the build happens: application type, data, look, domain discovery, model review, generate-and-build, then running the finished application. Every step that takes a while says what it is doing and how long it has been doing it, and the compiler&#x27;s output appears line by line as it builds. Piped runs are unchanged, and CG_NO_WEB=1 keeps the console wizard.</td><td><code>build app: a library that lends books to members</code></td></tr>
+<tr><td><code>build app: &lt;description&gt; [customization options]</code></td><td>Customizes the generated application. Options go LAST on the line, after any data source: company &quot;&lt;name&gt;&quot; sets the company (used in the project metadata, the window title and a copyright header); theme light|dark and accent #rrggbb colour the desktop front ends; icon &lt;path&gt; supplies a .ico or .png; title &quot;&lt;pattern&gt;&quot; overrides the window title, where {company} and {app} are substituted; namespace &lt;prefix&gt; puts the generated code under that namespace root (CodisLtd.Shop), leaving the project and assembly names alone, and namespace none clears a remembered prefix; layout tabs|sidebar|master-detail|dashboard|business chooses the shape of the window (wpf and winforms only); business is the default and is the shell with a dashboard home, a rail grouped into masters and transactions, and an editor for every record; the web app is always that shell, which is why naming a layout does not apply to it. entry-template classic|grouped|tabbed|two-column|split|ribbon chooses how a business-shell entry form arranges its fields (wpf only, for now, and only when the layout is business); grouped is the default. A layout you chose on an earlier interactive run is remembered in .codegen/app-profile.json and kept, default or not, so a run that is using a remembered one says so and names the file.</td><td><code>build app: a shop company &quot;Codis Ltd&quot; namespace CodisLtd theme dark</code></td></tr>
 <tr><td><code>build app: &lt;description&gt; [novalidation] [logging] [noseed] [nologin]</code></td><td>Chooses which optional layers are generated. &#x27;novalidation&#x27; omits the per-model validators and the field, entity and business checks; the permission matrix is always generated, because turning validation off must not turn permissions off; &#x27;logging&#x27; adds a logging layer (off by default); &#x27;noseed&#x27; omits the sample seed rows (rows imported from your own data file are unaffected); &#x27;nologin&#x27; omits the login screen, the user accounts and the Users screen, which an app with screens is given by default. Interactively these are asked by the &#x27;Customize appearance and features?&#x27; step, which remembers your answers in .codegen/app-profile.json.</td><td><code>build app: a shop novalidation logging noseed nologin</code></td></tr>
 <tr><td><code>build app: &lt;description&gt; [transactions &lt;A,B&gt;] [masters &lt;A,B&gt;]</code></td><td>Overrules how the generator split your model into screens. It decides by itself which classes are transactions (a class with a foreign key AND either a date of its own or a transactional name) and which are masters (everything else); these name the ones it got wrong. Comma-joined with no spaces, or quoted. Naming a line entity as a master gives it a screen of its own instead of editing it inside its parent. Interactively you need name nothing: the workflow page&#x27;s Output stage states the screen each class will get, in one table, and lets you change it there - which is the first point at which you know what the classes are called. A line names the transaction it is edited inside and offers one button to pull it out. Only the classes you move are recorded, so the run&#x27;s command line names those and no others.</td><td><code>build app: a shop transactions Order,Invoice masters Region</code></td></tr>
-<tr><td><code>build app: &lt;description&gt; from &lt;format&gt; &lt;location&gt;</code></td><td>Builds the model from existing data with no prompts when piped; interactively the file is already answered and the workflow page opens on what is left. Formats: csv, txt, json, excel, sql. For sql the location is a SQL Server connection string rather than a path. Add &#x27;normalize&#x27; to apply every normalization change the data needs.</td><td><code>build app: order tracking from csv D:\data\orders.csv normalize</code></td></tr>
-<tr><td><code>build app: &lt;description&gt; from sql &quot;&lt;connection&gt;&quot; [tables &lt;A,B&gt;]</code></td><td>Builds the model from a SQL Server database. Interactively the Data stage lists the tables with their column and row counts and you tick the ones you want; nothing is read until you take the step, and up to 100,000 rows of each table you ticked are then read - a bigger table is read that far and the build says so, and any rule offered from it says it came from the rows read. The rows SEEDED into the generated project are capped per class, and the build says that too. &#x27;tables A,B,C&#x27; names them for a piped run, and naming none reads them all. Column types come from the database instead of being inferred from the text, and declared foreign keys become relationships rather than being guessed from column names. A bigint column becomes int and a uniqueidentifier becomes string; both are reported. Composite foreign keys are skipped. Any password in the connection string is masked wherever the run is echoed back, so the replay line needs the password typed in again before it will run.</td><td><code>build app: a shop from sql &quot;Server=.;Database=Shop&quot; tables Customer</code></td></tr>
+<tr><td><code>build app: &lt;description&gt; from &lt;format&gt; &lt;location&gt;</code></td><td>Builds the model from existing data with no prompts when piped; interactively the file is already answered and the workflow page opens on what is left. Formats: csv, txt, json, excel, sql (also typed as tsv, xlsx, sqlserver and the like). A relative path is looked for in the workspace first. For sql the location is a SQL Server connection string rather than a path. Add &#x27;normalize&#x27; to apply every normalization change the data needs.</td><td><code>build app: order tracking from csv D:\data\orders.csv normalize</code></td></tr>
+<tr><td><code>build app: &lt;description&gt; from sql &quot;&lt;connection&gt;&quot; [tables &lt;A,B&gt;]</code></td><td>Builds the model from a SQL Server database. Interactively the Data stage lists the tables with their column and row counts and you tick the ones you want; nothing is read until you take the step, and up to 100,000 rows of each table you ticked are then read - a bigger table is read that far and the build says so, and any rule offered from it says it came from the rows read. The rows SEEDED into the generated project are capped per class, and the build says that too. &#x27;tables A,B,C&#x27; names them for a piped run, and naming none reads them all. Column types come from the database instead of being inferred from the text, and declared foreign keys become relationships rather than being guessed from column names. A bigint column becomes int, a uniqueidentifier becomes string and a time becomes string (hh:mm:ss); each is reported. Composite foreign keys are skipped. Any password in the connection string is masked wherever the run is echoed back, so the replay line needs the password typed in again before it will run.</td><td><code>build app: a shop from sql &quot;Server=.;Database=Shop&quot; tables Customer</code></td></tr>
 <tr><td><code>cancel</code></td><td>Review loop: abandons the model without generating anything. Alias: c.</td><td><code>cancel</code></td></tr>
 <tr><td><code>field &lt;class&gt; &lt;name&gt;[:&lt;type&gt;]</code></td><td>Review loop: adds a field to a class. Omit the type to have it inferred; explicit types are string, int, decimal, bool or DateTime.</td><td><code>field Book Title:string</code></td></tr>
 <tr><td><code>final status &lt;values&gt; in &lt;class&gt;</code></td><td>Review loop: for a class with an accepted status proposal, marks which of its discovered values are FINAL — no further transition is expected from them.</td><td><code>final status Cancelled,Delivered in Order</code></td></tr>
@@ -1726,13 +1895,13 @@ own shows the shorter overview, and <code>help &lt;topic&gt;</code> shows one se
 <table>
 <tr><th>Command</th><th>Description</th><th>Example</th></tr>
 <tr><td><code>&lt;class name&gt; inherits &lt;base class name&gt;</code></td><td>Adds a base class to a class, keeping any existing interfaces. Aliases: extends, derives from.</td><td><code>Order inherits AuditableBase</code></td></tr>
-<tr><td><code>create class</code></td><td>Creates a new class.</td><td><code>create class Employee</code></td></tr>
-<tr><td><code>create class &lt;class name&gt; with properties</code></td><td>Creates a new class with the specified properties.</td><td><code>create class Employee with properties EmpCode int, Name string</code></td></tr>
-<tr><td><code>delete class</code></td><td>Moves a class to DeletedClasses.</td><td><code>delete class Employee</code></td></tr>
-<tr><td><code>list classes</code></td><td>Lists all classes in the current project.</td><td><code>list classes</code></td></tr>
+<tr><td><code>create class</code></td><td>Creates a new class. Refuses a name that already exists, and leaves that file as it is.</td><td><code>create class Employee</code></td></tr>
+<tr><td><code>create class &lt;class name&gt; with properties</code></td><td>Creates a new class with the specified properties. After them you can add &#x27;and methods &lt;list&gt;&#x27;, &#x27;inherits &lt;base&gt;&#x27; and &#x27;implements &lt;interfaces&gt;&#x27;. Refuses a name that already exists.</td><td><code>create class Employee with properties EmpCode int, Name string</code></td></tr>
+<tr><td><code>delete class</code></td><td>Moves a class to DeletedClasses, every partial file of it. Drops the validation rules saved for it.</td><td><code>delete class Employee</code></td></tr>
+<tr><td><code>list classes</code></td><td>Lists all classes in the current project, or in the workspace when none is selected.</td><td><code>list classes</code></td></tr>
 <tr><td><code>list classes in &lt;project name&gt;</code></td><td>Lists all classes in a project.</td><td><code>list classes in EmployeeManagement</code></td></tr>
 <tr><td><code>list deleted classes</code></td><td>Lists all deleted classes.</td><td><code>list deleted classes</code></td></tr>
-<tr><td><code>rename class</code></td><td>Rename a class.</td><td><code>rename class Employee to Staff</code></td></tr>
+<tr><td><code>rename class</code></td><td>Renames a class and every reference to it in the workspace (read by the compiler, so a same-named word in a comment or string is left alone). Refuses a name that already exists.</td><td><code>rename class Employee to Staff</code></td></tr>
 <tr><td><code>restore class</code></td><td>Restores a deleted class.</td><td><code>restore class Employee</code></td></tr>
 <tr><td><code>show class</code></td><td>Displays the class source code.</td><td><code>show class Employee</code></td></tr>
 <tr><td><code>show relationships</code></td><td>Draws the classes in the workspace and what each one is related to, as boxes and arrows on a page in the browser. A relationship is a pair - an int &lt;Target&gt;Id and a property typed as that class - so a class carrying only one half of it is drawn apart, which is what the tool offers to finish. Classes related to nothing are shown too rather than hidden. Aliases: show relationship, list relationships, relationships. A piped run gets the same answer as lines.</td><td><code>show relationships</code></td></tr>
@@ -1747,7 +1916,7 @@ own shows the shorter overview, and <code>help &lt;topic&gt;</code> shows one se
 <h3>Interfaces</h3>
 <table>
 <tr><th>Command</th><th>Description</th><th>Example</th></tr>
-<tr><td><code>create interface &lt;interface name&gt;</code></td><td>Creates a new interface. A name that is I followed by a capital letter (IShape) is kept as typed; any other name is PascalCased and given the I prefix, so Item makes IItem, invoice makes IInvoice, and an all lower case name is always prefixed (ishape makes IIshape - type IShape for that name). The reply names the interface when it differs from what you typed.</td><td><code>create interface IRepository</code></td></tr>
+<tr><td><code>create interface &lt;interface name&gt;</code></td><td>Creates a new interface. A name that is I followed by a capital letter (IShape) is kept as typed; any other name is PascalCased and given the I prefix, so Item makes IItem, invoice makes IInvoice, and an all lower case name is always prefixed (ishape makes IIshape - type IShape for that name). The reply names the interface when it differs from what you typed. Refuses a name that already exists. Add, remove, rename and retype members with the commands for properties and methods; they name the classes that implement it. A validation rule or a validator cannot go on an interface.</td><td><code>create interface IRepository</code></td></tr>
 </table>
 <h3>Learning</h3>
 <table>
@@ -1758,9 +1927,9 @@ own shows the shorter overview, and <code>help &lt;topic&gt;</code> shows one se
 <h3>Methods</h3>
 <table>
 <tr><th>Command</th><th>Description</th><th>Example</th></tr>
-<tr><td><code>add method &lt;method name&gt; to &lt;class name&gt;</code></td><td>Adds a method to a class.</td><td><code>add method Save to Employee</code></td></tr>
-<tr><td><code>remove method &lt;method name&gt; from &lt;class name&gt;</code></td><td>Removes a method from a class. When the name is overloaded it lists them and removes none.</td><td><code>remove method Save from Employee</code></td></tr>
-<tr><td><code>rename method &lt;old&gt; to &lt;new&gt; in &lt;class name&gt;</code></td><td>Renames a method, every overload of it. References elsewhere are not updated.</td><td><code>rename method Save to Store in Employee</code></td></tr>
+<tr><td><code>add method &lt;method name&gt; to &lt;class name&gt;</code></td><td>Adds a method to a class or an interface. Give a return type with &#x27;add method &lt;name&gt; returns &lt;type&gt; to &lt;class name&gt;&#x27;. On an interface it names the implementers that lack the method.</td><td><code>add method Save to Employee</code></td></tr>
+<tr><td><code>remove method &lt;method name&gt; from &lt;class name&gt;</code></td><td>Removes a method from a class or an interface. When the name is overloaded it lists them and removes none.</td><td><code>remove method Save from Employee</code></td></tr>
+<tr><td><code>rename method &lt;old&gt; to &lt;new&gt; in &lt;class name&gt;</code></td><td>Renames a method on a class or an interface, every overload of it. References elsewhere are not updated; the command names the code that still uses the old name.</td><td><code>rename method Save to Store in Employee</code></td></tr>
 <tr><td><code>show methods &lt;class name&gt;</code></td><td>Lists all methods in a class.</td><td><code>show methods of Employee</code></td></tr>
 </table>
 <h3>Projects</h3>
@@ -1769,7 +1938,7 @@ own shows the shorter overview, and <code>help &lt;topic&gt;</code> shows one se
 <tr><td><code>create blazor project</code></td><td>Creates a new Blazor project.</td><td><code>create blazor project EmployeeManagement</code></td></tr>
 <tr><td><code>create class library</code></td><td>Creates a new class library.</td><td><code>create class library EmployeeManagement</code></td></tr>
 <tr><td><code>create console project</code></td><td>Creates a new console project.</td><td><code>create console project EmployeeManagement</code></td></tr>
-<tr><td><code>create project</code></td><td>Creates a new project.</td><td><code>create project EmployeeManagement</code></td></tr>
+<tr><td><code>create project</code></td><td>Creates a new project: a console project on net10.0 unless you say otherwise. It needs a name - a bare &#x27;create project&#x27; is refused. Add a type (console, classlib, webapi, blazor, blazorwasm, wpf, winforms, worker, mvc), a framework such as net8.0, and in &#x27;&lt;folder&gt;&#x27; to put it somewhere other than a folder of its own name in the workspace.</td><td><code>create project EmployeeManagement</code></td></tr>
 <tr><td><code>create webapi project</code></td><td>Creates a new Web API project.</td><td><code>create webapi project EmployeeManagement</code></td></tr>
 <tr><td><code>create worker service</code></td><td>Creates a new Worker Service project.</td><td><code>create worker service BackgroundJobs</code></td></tr>
 <tr><td><code>create wpf project</code></td><td>Creates a new WPF project.</td><td><code>create wpf project EmployeeManagement</code></td></tr>
@@ -1781,11 +1950,11 @@ own shows the shorter overview, and <code>help &lt;topic&gt;</code> shows one se
 <h3>Properties</h3>
 <table>
 <tr><th>Command</th><th>Description</th><th>Example</th></tr>
-<tr><td><code>add property</code></td><td>Adds a property to a class.</td><td><code>add property Name string to Employee</code></td></tr>
-<tr><td><code>change type of &lt;property&gt; to &lt;type&gt; in &lt;class name&gt;</code></td><td>Changes a property&#x27;s type to any C# type (int, decimal?, List&lt;string&gt;). An initial value written for the old type is removed. Also: retype property &lt;property&gt; to &lt;type&gt; in &lt;class name&gt;.</td><td><code>change type of Pages to int in Book</code></td></tr>
+<tr><td><code>add property</code></td><td>Adds a property to a class or an interface. On an interface it names the classes that implement it and now lack the property.</td><td><code>add property Name string to Employee</code></td></tr>
+<tr><td><code>change type of &lt;property&gt; to &lt;type&gt; in &lt;class name&gt;</code></td><td>Changes a property&#x27;s type to any C# type (int, decimal?, List&lt;string&gt;). An initial value that still compiles for the new type is kept; one that does not, and an attribute that only suits text, is removed. The command refuses a change it cannot make safely. Works on interfaces too. Also: retype property &lt;property&gt; to &lt;type&gt; in &lt;class name&gt;.</td><td><code>change type of Pages to int in Book</code></td></tr>
 <tr><td><code>list properties &lt;class name&gt;</code></td><td>Lists all properties in a class.</td><td><code>list properties of Employee</code></td></tr>
-<tr><td><code>remove property</code></td><td>Removes a property from a class.</td><td><code>remove property Name from Employee</code></td></tr>
-<tr><td><code>rename property &lt;old&gt; to &lt;new&gt; in &lt;class name&gt;</code></td><td>Renames a property on a class. Aliases: field for property; on/of for in.</td><td><code>rename property Name to FullName in Employee</code></td></tr>
+<tr><td><code>remove property</code></td><td>Removes a property from a class or an interface, with the validation rules saved for it, and writes the class&#x27;s validator again. On an interface it names the implementers it left as they were.</td><td><code>remove property Name from Employee</code></td></tr>
+<tr><td><code>rename property &lt;old&gt; to &lt;new&gt; in &lt;class name&gt;</code></td><td>Renames a property on a class or an interface. Aliases: field for property; on/of for in.</td><td><code>rename property Name to FullName in Employee</code></td></tr>
 <tr><td><code>show properties &lt;class name&gt;</code></td><td>Lists all properties in a class.</td><td><code>show properties of Employee</code></td></tr>
 </table>
 <h3>RecycleBin</h3>
@@ -1800,28 +1969,28 @@ own shows the shorter overview, and <code>help &lt;topic&gt;</code> shows one se
 <table>
 <tr><th>Command</th><th>Description</th><th>Example</th></tr>
 <tr><td><code>batch</code></td><td>Enter several commands, review what was detected, then run only the approved ones.</td><td><code>batch</code></td></tr>
-<tr><td><code>chat</code></td><td>Opens a page in the browser where every command except &#x27;build app&#x27;, &#x27;batch&#x27; and &#x27;demo&#x27; can be run in a conversation: a command&#x27;s whole output appears below what you typed, tinted green when it worked, red when it failed and amber when the words were not understood. The header says which solution is loaded and which project the next command will act on, and &#x27;Load&#x27; points the whole session - console included - at another .sln, .slnx, .csproj or folder. The box completes from the command catalog as you type, and shares its history with the prompt. Closing the tab ends the session. Alias: ui. Piped runs and CG_NO_WEB=1 keep the console.</td><td><code>chat</code></td></tr>
+<tr><td><code>chat</code></td><td>Opens a page in the browser where every command except &#x27;build app&#x27;, &#x27;batch&#x27;, &#x27;demo&#x27; and &#x27;chat&#x27; can be run in a conversation: a command&#x27;s whole output appears below what you typed, tinted green when it worked, red when it failed and amber when the words were not understood. The header says which solution is loaded and which project the next command will act on, and &#x27;Load&#x27; points the whole session - console included - at another .sln, .slnx, .csproj or folder. The box completes from the command catalog as you type, and shares its history with the prompt. Typing exit there ends the chat session only, not the console. Closing the tab ends the session. Alias: ui. Piped runs and CG_NO_WEB=1 keep the console.</td><td><code>chat</code></td></tr>
 <tr><td><code>clear</code></td><td>Clears the screen (history is kept). Alias: cls.</td><td><code>clear</code></td></tr>
 <tr><td><code>cls</code></td><td>Alias for clear (clears the screen; history is kept).</td><td><code>cls</code></td></tr>
 <tr><td><code>demo</code></td><td>Runs a short guided walkthrough: creates a small project, adds a class with two validation rules, generates the validator and shows the result. Asks before writing anything, and names the folder it creates so you can delete it afterwards.</td><td><code>demo</code></td></tr>
-<tr><td><code>exit</code></td><td>Exits the application.</td><td><code>exit</code></td></tr>
+<tr><td><code>exit</code></td><td>Exits the application. Alias: quit. In the chat page it ends the chat session only.</td><td><code>exit</code></td></tr>
 <tr><td><code>help</code></td><td>Shows a one-screen overview: a few commands to start with, and every category with its command count.</td><td><code>help</code></td></tr>
 <tr><td><code>help &lt;topic&gt;</code></td><td>Shows one category&#x27;s commands. A topic is any category name &#x27;help&#x27; lists, spelled however you like; a command name works too, so &#x27;help approve&#x27; explains that command.</td><td><code>help build app</code></td></tr>
 <tr><td><code>help all</code></td><td>Every command in one list — the complete catalog, which is what plain &#x27;help&#x27; used to print.</td><td><code>help all</code></td></tr>
 <tr><td><code>history</code></td><td>Lists the last 20 commands (not itself recorded).</td><td><code>history</code></td></tr>
 <tr><td><code>redo</code></td><td>Puts back what undo reversed. The next command that changes something clears it.</td><td><code>redo</code></td></tr>
-<tr><td><code>run &lt;file&gt;</code></td><td>Runs a script of commands (.cgs) saved with save session or written by hand: every line, or none if one fails. One undo reverses the whole run.</td><td><code>run library.cgs</code></td></tr>
-<tr><td><code>save session &lt;file&gt; [replace]</code></td><td>Saves this session&#x27;s commands that worked and changed something, as a script for run. Won&#x27;t overwrite a file unless you add replace.</td><td><code>save session library.cgs</code></td></tr>
-<tr><td><code>status</code></td><td>Reports the workspace, the projects found and which is selected, any loaded rules, the AI state, and the Wikipedia store and its updater service. Startup prints only what is wrong; this prints everything.</td><td><code>status</code></td></tr>
-<tr><td><code>undo</code></td><td>Reverses the last command that changed something: its files, the validation rules and the current project. A whole batch or build app is one step. This session only, up to 50 steps; refuses, naming the file, if you have edited one it would restore.</td><td><code>undo</code></td></tr>
+<tr><td><code>run &lt;file&gt;</code></td><td>Runs a script of commands (.cgs) saved with save session or written by hand: every line, or none if one fails. Blank lines and lines starting with # are skipped. Only the commands the prompt runs one at a time, and build app blocks that end with approve or cancel, can be in a script; undo, batch, demo, chat, exit and the like are refused before anything runs. One undo reverses the whole run.</td><td><code>run library.cgs</code></td></tr>
+<tr><td><code>save session &lt;file&gt; [replace]</code></td><td>Saves this session&#x27;s commands that worked and changed something, as a script for run. A line a script cannot replay - a build app chosen on the page, a line only the AI could read, a relationship set from the offer, demo - is saved as a # note. Won&#x27;t overwrite a file unless you add replace.</td><td><code>save session library.cgs</code></td></tr>
+<tr><td><code>status</code></td><td>Reports the version, whether colour is on, the workspace, the projects found and which is selected, any loaded rules, the AI state, and the Wikipedia store and its updater service. Startup prints only what is wrong; this prints everything.</td><td><code>status</code></td></tr>
+<tr><td><code>undo</code></td><td>Reverses the last command that changed something: its files, the validation rules and the current project. A whole batch or build app is one step. This session only, up to 50 steps; refuses, naming the file, if you have edited one it would restore. Off for a workspace of more than 5,000 files or 200 MB. Loading another folder starts a new history. The chat page has Undo and Redo buttons, with a history of its own.</td><td><code>undo</code></td></tr>
 </table>
 <h3>Validation</h3>
 <table>
 <tr><th>Command</th><th>Description</th><th>Example</th></tr>
-<tr><td><code>add business validation &lt;rule&gt; in &lt;class name&gt;</code></td><td>Adds an entity-level business rule, spanning more than one property: comparisons (after, before, must not exceed), required-when, either/or, arithmetic (equals A times B, plus, minus, divided by) and sameness (same as, different from).</td><td><code>add business validation EndDate must be after StartDate in Booking</code></td></tr>
-<tr><td><code>add validation &lt;rule&gt; on &lt;property&gt; in &lt;class name&gt;</code></td><td>Adds a field-level data rule to a class in plain English. Understands required (or &#x27;should not be blank&#x27;), numeric bounds (between, at least, at most, greater/less than, positive, not negative, not zero, whole number), text bounds (length between, at most &lt;n&gt; characters, starts or ends with, contains, uppercase, digits only), named formats (email, URL, phone number, postcode, GUID, IP address, date), relative dates (in the past, in the future, at least &lt;n&gt; years ago, within the last &lt;n&gt; days), must match &lt;regex&gt;, and a list of allowed values. Rules are saved in the workspace (.codegen/validation-rules.json) and are there again in the next session.</td><td><code>add validation must be between 18 and 65 on Age in Employee</code></td></tr>
-<tr><td><code>generate validator</code></td><td>Generates a validator for a class.</td><td><code>generate validator for Employee</code></td></tr>
-<tr><td><code>remove business validation &lt;number&gt; from &lt;class name&gt;</code></td><td>Removes one business rule, by the number show business validation prints.</td><td><code>remove business validation 1 from Booking</code></td></tr>
+<tr><td><code>add business validation &lt;rule&gt; in &lt;class name&gt;</code></td><td>Adds an entity-level business rule, spanning more than one property: comparisons (after, before, must not exceed), required-when, either/or, arithmetic (equals A times B, plus, minus, divided by) and sameness (same as, different from). Refused on an interface.</td><td><code>add business validation EndDate must be after StartDate in Booking</code></td></tr>
+<tr><td><code>add validation &lt;rule&gt; on &lt;property&gt; in &lt;class name&gt;</code></td><td>Adds a field-level data rule to a class in plain English. Understands required (or &#x27;should not be blank&#x27;), numeric bounds (between, at least, at most, greater/less than, positive, not negative, not zero, whole number), text bounds (length between, at most &lt;n&gt; characters, starts or ends with, contains, uppercase, digits only), named formats (email, URL, phone number, postcode, GUID, IP address, date), relative dates (in the past, in the future, at least &lt;n&gt; years ago, within the last &lt;n&gt; days), must match &lt;regex&gt;, and a list of allowed values. Rules are saved in the workspace (.codegen/validation-rules.json) and are there again in the next session. Refused on an interface.</td><td><code>add validation must be between 18 and 65 on Age in Employee</code></td></tr>
+<tr><td><code>generate validator</code></td><td>Generates a validator for a class. Refused on an interface.</td><td><code>generate validator for Employee</code></td></tr>
+<tr><td><code>remove business validation &lt;number&gt; from &lt;class name&gt;</code></td><td>Removes one business rule, by the number show business validation prints. Also: remove business validation from &lt;class name&gt;.&lt;property&gt; removes every business rule that names that field.</td><td><code>remove business validation 1 from Booking</code></td></tr>
 <tr><td><code>remove validation from &lt;class name&gt;.&lt;property&gt;</code></td><td>Removes every data rule on a field. Also: remove validation on &lt;property&gt; in &lt;class name&gt;; or remove validation &lt;number&gt; from &lt;class name&gt;, with the number show validation prints.</td><td><code>remove validation from Employee.Name</code></td></tr>
 <tr><td><code>show business validation &lt;class name&gt;</code></td><td>Show business rules for a class.</td><td><code>show business validation Booking</code></td></tr>
 <tr><td><code>show validation &lt;class name&gt;</code></td><td>Show data validation rules for a class.</td><td><code>show validation Employee</code></td></tr>

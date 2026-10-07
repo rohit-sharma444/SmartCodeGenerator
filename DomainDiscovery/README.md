@@ -7,7 +7,9 @@ later phase can scaffold into code. It combines the
 go from *"a library that lends books to members"* to a concrete list of entities
 like `Book`, `Member`, `Loan`.
 
-Wikipedia is read **from a local store by default** — see [Where the articles
+Which source answers is chosen by `DomainModelSourceFactory` — see [Where the model
+comes from](#where-the-model-comes-from). The Wikipedia pipeline below is one source in that chain,
+and reads **from a local store by default** — see [Where the articles
 come from](#where-the-articles-come-from).
 
 This is a class library (`net10.0`) with no console I/O. The
@@ -18,7 +20,54 @@ when [`AppScaffolding`](../AppScaffolding/README.md) turns that same model into 
 runnable app for the selected target (WPF, console, web API, class library, or
 worker).
 
+## Where the model comes from
+
+`DomainModelSourceFactory.Create` returns an `IDomainModelSource` (`Discover(description,
+onProgress)` → `DiscoveryOutcome`). Unless `discovery.json` pins `"Source": "Wikipedia"`, the order is:
+
+1. **Ollama** (`Llm/OllamaDomainModelSource`) — a local LLM, asked once with a millisecond probe of
+   `/api/tags` before it is committed to, so an unreachable server costs one probe and not a long
+   timeout. It is the default `Source`.
+2. **The installed Wikipedia store** — the pipeline below, when the store file exists.
+3. **The 25 built-in domains** (`Bundled/`).
+4. **Online Wikipedia** — the pipeline over the live API, when no store is installed.
+
+With no store, steps 3 and 4 swap: the built-in domains are tried before online Wikipedia. A source
+that produces no classes falls through to the next one, and the result is labelled `(fallback)` with
+the reason, so a fallback never looks like a deliberate choice. A run that Ollama stopped early but
+that kept classes is **not** replaced: its classes came from the model the user asked for. Pinning
+`"Wikipedia"` still lets the built-in domains catch a Wikipedia that recognised nothing; an
+unrecognised `Source` falls back with a message saying so.
+
+### The `Llm/` folder
+
+| Type | Role |
+| --- | --- |
+| `IOllamaClient`, `OllamaClient` | The seam and its HTTP implementation: `IsAvailable()` plus a streaming generate call with a whole-call timeout and a stall bound. |
+| `OllamaDomainModelSource` | The source. Two phases by default: the class list first, then each class's detail. |
+| `OllamaPrompts`, `TwoPhaseModel` | The prompts and the two-phase flow. A names-only first pass puts the complete class list on screen in about a quarter of the time. |
+| `PartialLlmJson` | Recovers the classes a cut-short generation had already finished. |
+| `LlmDomainModel`, `LlmModelNormalizer` | The JSON shape the model returns, and the repair of it into a `CandidateDomainModel` (valid identifiers, types the model editor knows, links as `<Target>Id`). |
+| `ModelOrigin` | Where a model came from: the language model or a built-in domain (`LanguageModel`, `BuiltIn`). |
+
+### `discovery.json`
+
+Read from beside the binary by `DiscoveryConfig.Load`, which never throws: a missing or unreadable
+file yields the defaults.
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `Source` | `Ollama` | `Ollama` or `Wikipedia`. |
+| `Model` | `qwen2.5:3b` | The Ollama model. |
+| `Endpoint` | `http://localhost:11434` | The Ollama server. |
+| `TimeoutMinutes` | `5` | Whole-call ceiling. |
+| `StallSeconds` | `120` | How long a generation may go without finishing another class before it is stopped and its finished classes kept. |
+| `Phases` | `2` | `2` asks which classes exist, then what is in them; `1` asks for everything at once (shorter in total, but no complete class list until the end). |
+| `StorePath` | blank | Where the Wikipedia store is; environment variables such as `%LOCALAPPDATA%` are expanded. |
+
 ## Pipeline
+
+The Wikipedia pipeline:
 
 ```
 free text
@@ -74,6 +123,13 @@ Three things about that order are deliberate:
 | present | `DumpWikipediaClient` — local, deterministic, no rate limit | `ArticleRefresher` — updates the ~30 articles a run reads |
 | absent | `HttpWikipediaClient` — the live MediaWiki API, cached under `cacheDirectory` | none (it is already reading a live Wikipedia) |
 
+`WikipediaStoreLocation.Resolve()` is the one answer to "where is the store", for the CLI, the web
+page, `WikipediaDumpImporter` and `WikipediaUpdateService`. It takes `StorePath` from this program's
+`discovery.json`, else from the machine-wide `%ProgramData%\SmartCodeGenerator\discovery.json`
+(`SharedConfigPath`, so the three programs, which live in three folders, agree), else
+`%ProgramData%\SmartCodeGenerator\Wikipedia\enwiki-full.db`. ProgramData rather than a user
+folder, because the updater service runs as LocalSystem.
+
 ## Built-in domains
 
 `Bundled/Domains/*.json` are 25 hand-built domains, embedded in the assembly: each is the JSON shape Ollama
@@ -82,7 +138,8 @@ them (a weight-3 term names the domain on its own; 3 points needed; terms match 
 `words` map scores whole words by their own spelling, so "banking" can outweigh the "bank" it stems to),
 runs the winner through
 `LlmModelNormalizer` as `ModelOrigin.BuiltIn`, and adds the seed classes the domain lacks.
-`DomainModelSourceFactory` puts it after Ollama and an installed store, before online Wikipedia.
+`DomainModelSourceFactory` puts it after Ollama and an installed store, before online Wikipedia
+(see [Where the model comes from](#where-the-model-comes-from)).
 
 To add a domain, add a file; `CatalogContentTests` holds every file to the rules: types the normaliser
 knows, links written as `<Target>Id` on Document/Transaction/Event classes only (the only roles that may
@@ -148,6 +205,7 @@ sources, use the constructor directly and supply your own `ISemanticAnalyzer`,
 
 | Type | Role |
 | --- | --- |
+| `DomainModelSourceFactory` | Chooses the source and builds the fallback chain. |
 | `DomainDiscoveryPipeline` | Orchestrates the stages; `Discover(text)` returns a `DiscoveryResult`. `CreateDefault` wires the dump store or the HTTP fallback. |
 | `DiscoveryResult` | The recognized `TopicResult` plus the `CandidateDomainModel`. |
 | `CandidateDomainModel` / `CandidateEntity` | The output model. Each entity carries a `Provenance` (`Seed` = from the user's text, `Wiki` = harvested, `Data` = read from a data source the user supplied), fields, relationships, and a confidence. `Data` is produced by [`DataIngestion`](../DataIngestion/README.md), not by anything in this project — the type is shared so the review loop and the scaffolder see one model whichever path built it. |
@@ -167,6 +225,9 @@ sources, use the constructor directly and supply your own `ISemanticAnalyzer`,
 | `SeedExtraction/` | `SeedEntityExtractor`, `NameNormalizer`. |
 | `Recognition/` | `ITopicRecognizer` and the Wikipedia implementation. |
 | `Enrichment/` | `DomainEnricher`, `EntityHarvester`, `EntityShaper`, `RelationshipMiner`, `PropertyMiner`, `TypeInference`, `HypernymExtractor`, and the lexicons (`ArchetypeLexicon`, `DomainFieldLexicon`, `StopWords`). |
+| `Llm/` | The Ollama source — see [The `Llm/` folder](#the-llm-folder). |
+| `Bundled/` | `BundledDomainCatalog`, `BundledDomainSource`, `WordStem`, and `Domains/*.json`. |
+| *(root)* | `DomainDiscoveryPipeline`, `DomainModelSourceFactory`, `IDomainModelSource`, `WikipediaDomainModelSource`, `DiscoveryConfig`, `DiscoveryOutcome`, `WikipediaStoreLocation`. |
 | `Wikipedia/` | `IWikipediaClient`, `HttpWikipediaClient`, `WikipediaCache`. |
 | `Wikipedia/Dump/` | The offline store: `WikipediaStore`, `DumpWikipediaClient`, `WikitextStripper`, `DumpPageReader`, `ArticleRefresher`, `DumpFreshness`, `IncrementalUpdater`. |
 | `Review/` | `ModelEditor`, `FieldSpec` for interactive edits. |
@@ -174,7 +235,8 @@ sources, use the constructor directly and supply your own `ISemanticAnalyzer`,
 
 ## Dependencies
 
-Project reference to `NaturalLanguageEngine`. The offline store is SQLite
+Project reference to `NaturalLanguageEngine`. The Ollama source talks to a local server over HTTP
+and needs no package. The offline store is SQLite
 (`Microsoft.Data.Sqlite`) and dump decoding uses `SharpZipLib`; the HTTP
 fallback uses the built-in `HttpClient` and caches pages under the directory
 passed to `CreateDefault`.

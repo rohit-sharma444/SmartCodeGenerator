@@ -31,7 +31,7 @@ over that text. Conversion happens once, at seed-writing time, so no two stages
 have to agree about when a value became typed.
 
 That single shape is why Excel cost one more `IDataSourceReader` and nothing
-downstream, and why SQL Server — the one format left — will cost the same.
+downstream, and why SQL Server cost the same.
 
 ## Where it sits
 
@@ -64,11 +64,11 @@ input to `DomainAppName`.
 | Delimited text | `txt` | Delimiter **sniffed** across tab / pipe / semicolon / comma. A non-tabular file is rejected with a message saying what to use instead. |
 | JSON | `json` | Array-of-objects to one table; a nested array becomes a child table with a foreign key, a nested object is flattened onto the parent. |
 | Excel | `excel` | One visible sheet per entity. Shared strings, inline strings, formula results, booleans and sparse rows; a date serial becomes a date and a `00000`-formatted code keeps its zeros. Hidden sheets skipped; legacy binary `.xls` refused with instructions. |
-| SQL Server | `sql` | Not in this build. Named at the prompt and answered with what to use instead — never a crash, never a silent fallback. |
+| SQL Server | `sql` | `SqlServerReader` over an `ISqlSchemaSource` (`SqlClientSchemaSource` in production; a fake in tests). The location is a connection string; `DataSourceSpec` also carries the database name and an optional table list (`tables a,b` in the inline tail). Each table is read to `MaxRowsPerTable` (100,000) rows, a cap that is stated, and the catalogue's declared types, lengths, nullability and foreign keys are carried as facts. A column type the model cannot hold produces a `LossNotes` entry rather than a silent change. Passwords are masked by `ConnectionSecret` wherever a connection string is echoed. |
 
-SQL is deliberately on the menu: a menu missing it reads as "we never thought of
-SQL" rather than "SQL is next". Exactly one place — `DataSourceReaders` — knows
-which formats have readers.
+Exactly one place — `DataSourceReaders` — knows which formats have readers. A kind with no
+reader is answered with `NotSupportedMessage`, naming what to use instead — never a crash, never a
+silent fallback.
 
 ## Types
 
@@ -159,6 +159,21 @@ so `why OrderItem` in the review loop answers for a class nobody named.
 Non-interactive runs print the findings and **apply nothing** unless `normalize`
 was passed inline, so scripts stay deterministic.
 
+## Rule proposals
+
+Past the schema, the data is scanned for rules that hold in **every** row. Every threshold is a
+counter-example test over the full table, never a sample, and nothing proposed is enforced until
+the user takes it.
+
+- `RuleProposals` scans one column at a time and proposes a `Status` (a small set of short
+  distinct values), `Unique`, or `Pattern` rule. A pattern is offered only from a short list of
+  formats the rule catalog already has (email, phone, web address, postcode and similar), copied
+  from the catalog's own parsers so a value the catalog accepts is never rejected here.
+- `EntityRuleProposals` scans a whole entity for `CrossField` rules (a pair of date or number columns
+  that never breaks an ordering in any row) and `Calculation` rules (one numeric column equal to a product or sum of
+  others). The calculation search is skipped above 12 numeric columns, rather than left to grow
+  cubically.
+
 ## Seed data
 
 `TabularImport` produces `AppScaffolding.ImportedData` — entity name → rows, keyed
@@ -180,20 +195,24 @@ claim about someone's data.
 | `DataSourceSpec.cs` | where the data is: kind, location, and the two SQL-only members |
 | `InlineDataSource.cs` | parses the scriptable `from <format> <location> [normalize]` tail |
 | `DataSourceInterview.cs` | the interactive prompts, over `TextReader`/`TextWriter` |
+| `DataSourcePath.cs`, `DataSourceLabel.cs` | normalizing a typed location, and the label shown for a source |
+| `SqlConnectionInfo.cs`, `ConnectionSecret.cs` | the database named in a connection string, and password masking |
 | `DataModelBuilder.cs` | `TabularTable[]` → `CandidateDomainModel`, and `FieldNames` |
+| `RuleProposals.cs`, `EntityRuleProposals.cs` | the column and entity rule scans above |
 | `TabularImport.cs` | `TabularTable[]` → `ImportedData` |
 | `Schema/TabularTable.cs`, `TabularColumn.cs` | the one shape every reader produces |
 | `Schema/IDataSourceReader.cs` | the seam |
 | `Schema/ColumnTypeInference.cs` | values → one of the five types |
-| `Schema/Readers/` | `CsvReader`, `DelimitedTextReader`, `JsonTableReader`, `ExcelReader` (with `ExcelWorkbook`, `ExcelSheetReader`, `ExcelNumberFormats`, `ExcelSerialDate`), and the `DataSourceReaders` registry |
+| `Schema/Readers/` | `CsvReader`, `DelimitedTextReader`, `JsonTableReader`, `ExcelReader` (with `ExcelWorkbook`, `ExcelSheetReader`, `ExcelNumberFormats`, `ExcelSerialDate`), `Sql/` (`SqlServerReader`, `ISqlSchemaSource`, `SqlClientSchemaSource`, `SqlServerCatalog`), `SqlTypeMap`, and the `DataSourceReaders` registry |
 | `Normalization/` | `NormalizationFinding`, `NormalizationReport`, `NormalizationAnalyzer` (+ `.Dependencies`), `NormalizationPlan`, `NormalizationPrompt` |
 
 ## Why its own project
 
 Not a folder inside `DomainDiscovery`, for two reasons. `DomainDiscovery` means
 *Wikipedia* in this repo and carries `Microsoft.Data.Sqlite` and `SharpZipLib`
-with it; and this project's own coming dependencies (`DocumentFormat.OpenXml`,
-`Microsoft.Data.SqlClient`) must not leak into the discovery path.
+with it; and this project's own dependency (`Microsoft.Data.SqlClient`) must not leak into the discovery path.
+
+Its one package, `Microsoft.Data.SqlClient` for SQL Server, stays here for that reason.
 
 It references `DomainDiscovery` for `CandidateDomainModel`, `NameNormalizer` and
 `DecisionRecord`, and `AppScaffolding` for `ImportedData`. Neither references it

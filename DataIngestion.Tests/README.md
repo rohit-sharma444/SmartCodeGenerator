@@ -25,6 +25,10 @@ over `TextReader`/`TextWriter` rather than the console.
 | `Schema/Readers/ExcelSerialDateTests.cs` | 1900 and 1904 epochs, the phantom 1900-02-29, times of day, rounding, and out-of-range serials. |
 | `Schema/Readers/ExcelNumberFormatTests.cs` | Which builtin ids and custom codes are dates, the codes that must NOT be (quoted units, escapes, colours, locales), and the narrow all-zeros padding rule. |
 | `Schema/Readers/DataSourceReadersTests.cs` | Which formats have readers, the alias spellings a user would type, and the not-supported message naming the alternatives. |
+| `Schema/Readers/Sql/`, `Schema/Readers/SqlTypeMapTests.cs`, `FileSourcesDeclareNoFactsTests.cs` | `SqlServerReader` over a fake `ISqlSchemaSource`, the SQL type map and its loss notes, and that file readers declare no catalogue facts. |
+| `InlineDataSourceSqlTests.cs`, `SqlConnectionInfoTests.cs`, `ConnectionSecretTests.cs` | The `sql` inline tail and its `tables` list, the database named in a connection string, and password masking. |
+| `RuleProposalsTests.cs`, `EntityRuleProposalsTests.cs`, `ColumnScanTests.cs` | The column and entity rule scans and the column facts they read. |
+| `DataSourceInterviewMenuTests.cs`, `DataSourcePathTests.cs`, `DataSourceLabelTests.cs` | The format menu, location normalization and source labels. |
 | `DataModelBuilderTests.cs` | The Id drop, the `Product.Product` rename and its second fallback, plural → singular, FK-to-relationship pairing, unusable column names, the default `Name` field. |
 | `TabularImportTests.cs` | Row keying by **final** field name, the `MaxSeedRows` cap and its stated note, and the invariant that every imported key is a field the model declares. |
 | `InlineDataSourceTests.cs` | The scriptable `from <format> <location> [normalize]` tail, including a description that contains the word "from", quoted and spaced paths, and `from csv` with no location. |

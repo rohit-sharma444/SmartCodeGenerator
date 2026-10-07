@@ -2,10 +2,13 @@
 
 Smart Code Generator turns plain-English commands into .NET code. The
 [`CodeGenerator`](../CodeGenerator/README.md) CLI is the executable you run; the
-other projects are class libraries it composes, apart from two executables that
+other projects are class libraries it composes, apart from executables that
 look after the local Wikipedia store —
 [`WikipediaDumpImporter`](../WikipediaDumpImporter/README.md), which builds it,
 and `WikipediaUpdateService`, a Windows service that keeps it up to date.
+`NaturalLanguageEngine` is also built as an `Exe`, but the CLI and
+`DomainDiscovery` use it as a library. Twelve projects hold the product and five
+test projects cover it; the solution is `SmartCodeGenerator/SmartCodeGenerator.slnx`.
 
 Beneath the command path sits an **AI layer** (`CodeIntelligence`, on by
 default): a line the rules do not recognize is embedded by a local ONNX model
@@ -48,10 +51,11 @@ the compiler's output arrives line by line through
 to the end and therefore cannot report anything until it is over. The page calls the same services the console path calls; there is no
 second pipeline behind it.
 
-> **Note:** the SVGs below are pre-rendered from the Mermaid source in each
-> `<details>` block. The data path, the discovery sources and the AI layer were
-> added to the Mermaid sources but the images have not been re-rendered, so where
-> the two disagree the Mermaid is current.
+> **Note:** the SVGs below are drawn by hand and match the solution as it stands:
+> twelve source projects, five data-source formats, the AI layer and the
+> browser pages. The Mermaid in each `<details>` block is the same picture as
+> text, for reading in a diff. If an image and its Mermaid ever disagree, fix
+> the one that is wrong; do not trust either blindly.
 
 ## End-to-end flow
 
@@ -72,7 +76,7 @@ flowchart TD
     exit -- no --> isbuild{"is a<br/>build app line?"}
 
     %% Front step: does the user already have data?
-    isbuild -- yes --> src{"inline<br/>from &lt;format&gt; &lt;loc&gt;?"}
+    isbuild -- yes --> src{"inline<br/>from &lt;format&gt; &lt;loc&gt;?<br/>(csv, txt, json, excel, sql)"}
     src -- yes --> readdata["DataIngestion:<br/>reader → TabularTable[]"]
     src -- no --> piped{"stdin<br/>redirected?"}
     piped -- yes --> desc
@@ -103,13 +107,15 @@ flowchart TD
     bundled --> review
     review --> action{"user action"}
     action -- "add / remove / rename" --> edit["ModelEditor<br/>updates model"] --> review
-    action -- approve --> approved([Model approved]) --> read
+    action -- "approve &lt;target&gt; [sqlite]" --> scaffold["AppScaffolder: app + .Tests + Data/Seed"] --> built["Compile; offer to run<br/>(interactive only)"] --> read
     action -- "cancel / EOF" --> cancelled([Cancelled —<br/>nothing generated]) --> read
 
     %% Command path
     isbuild -- no --> handle["NaturalLanguagePipeline.Handle"]
     handle --> nle2["NlpActionProvider.Analyze (NLE)<br/>→ primary action verb"]
-    nle2 --> process["CommandHandlingService.ProcessInput"]
+    nle2 --> known{"rules recognize<br/>the line?"}
+    known -- "no, interactive" --> ai["AI layer suggests a command<br/>(runs only after you confirm)"] --> process
+    known -- yes --> process["CommandHandlingService.ProcessInput"]
     process --> parse["Parse → detect intent<br/>→ extract entities"]
     parse --> dispatch{"intent?"}
     dispatch -- "create class / interface" --> genclass["Roslyn generate<br/>+ compile check"]
@@ -145,6 +151,8 @@ flowchart TD
         starter["CodeGeneratorStarter<br/>(interactive loop / RunOnce)"]
         editor["CommandLineEditor<br/>(history, suggestions)"]
         buildapp["BuildAppCommand<br/>(build app: …)"]
+        web["Web: workflow page, chat page,<br/>relationships page (Blazor Server)"]
+        scripts["Scripts: save session / run<br/>(ScriptBuildApp child process)"]
     end
 
     subgraph bridge["NaturalLanguageBridge"]
@@ -155,7 +163,7 @@ flowchart TD
     subgraph cge["CodeGenerationEngine"]
         handling["CommandHandlingService<br/>(parse → dispatch)"]
         gen["Roslyn generators<br/>(classes, projects, validators)"]
-        learn["Learning + validation<br/>(LearnedIntentStore, ValidationRegistry)"]
+        learn["Learning + validation<br/>(LearnedIntentStore, PhraseCandidates,<br/>ValidationRegistry)"]
         undo["UndoJournal<br/>(undo / redo)"]
     end
 
@@ -167,7 +175,7 @@ flowchart TD
     end
 
     subgraph nle["NaturalLanguageEngine"]
-        engine["EngineBuilder →<br/>7-stage pipeline"]
+        engine["EngineBuilder →<br/>7-stage pipeline (orders 5 to 50)"]
     end
 
     subgraph dd["DomainDiscovery"]
@@ -175,7 +183,7 @@ flowchart TD
         ollamasrc["OllamaDomainModelSource"]
         bundledsrc["BundledDomainSource<br/>(25 built-in domains)"]
         ddp["DomainDiscoveryPipeline"]
-        seed["SeedEntityExtractor"]
+        seed["SeedEntityExtractor<br/>(+ TransactionVerbs)"]
         topic["WikipediaTopicRecognizer"]
         enrich["DomainEnricher / EntityHarvester"]
         editor2["ModelEditor<br/>(review edits)"]
@@ -185,14 +193,14 @@ flowchart TD
 
     subgraph di["DataIngestion"]
         inline["InlineDataSource /<br/>DataSourceInterview"]
-        readers["IDataSourceReader<br/>(Csv / DelimitedText / JsonTable)"]
+        readers["IDataSourceReader<br/>(Csv / DelimitedText / JsonTable /<br/>Excel / SqlServer)"]
         analyzer["NormalizationAnalyzer<br/>+ Plan + Prompt"]
         dmb["DataModelBuilder /<br/>TabularImport"]
     end
 
     subgraph asc["AppScaffolding"]
         mapper["DomainModelMapper"]
-        scaffolder["AppScaffolder<br/>+ ITargetScaffolder targets"]
+        scaffolder["AppScaffolder<br/>+ ITargetScaffolder targets<br/>(JSON or SQLite store)"]
         seedwriter["SeedFileWriter<br/>+ ImportedData"]
     end
 
@@ -236,11 +244,13 @@ flowchart TD
     buildapp --> editor2
     wiki --> wikipedia
 
+    buildapp --> web
+    buildapp --> scripts
     buildapp -->|"has data"| inline
     inline --> readers
     readers --> analyzer
     analyzer --> dmb
-    readers -.->|"reads the file"| fs
+    readers -.->|"reads the file / database"| fs
 
     buildapp -->|approve| scaffolder
     dmb -->|"ImportedData"| seedwriter
@@ -267,7 +277,10 @@ flowchart TD
 
 </details>
 
-**Project references** (compile-time dependencies):
+**Project references** (compile-time dependencies). The five test projects
+(`CodeGenerator.Tests`, `NaturalLanguageEngine.Tests`, `DomainDiscovery.Tests`,
+`DataIngestion.Tests`, `CodeIntelligence.Tests`) each reference what they test and are left
+off the picture:
 
 ![Project references](diagrams/project-references.svg)
 
@@ -300,10 +313,13 @@ flowchart LR
     DataIngestion --> DomainDiscovery
     DataIngestion --> AppScaffolding
     CodeGenerationEngine --> Roslyn["Roslyn<br/>(Microsoft.CodeAnalysis)"]
+    CodeIntelligence.Onnx --> OnnxRuntime["ONNX Runtime +<br/>ML.Tokenizers"]
+    CodeIntelligence --> Sqlite["Microsoft.Data.Sqlite"]
+    DataIngestion --> SqlClient["Microsoft.Data.SqlClient"]
     NaturalLanguageEngine --> selfcontained["(self-contained,<br/>no NLP deps)"]
 
     classDef ext fill:#6e40c9,stroke:#3f228f,color:#fff
-    class Roslyn,selfcontained ext
+    class Roslyn,OnnxRuntime,Sqlite,SqlClient,selfcontained ext
 ```
 
 </details>
@@ -340,6 +356,7 @@ sequenceDiagram
     CHS->>FS: save + compile check
     CHS->>CHS: record outcome (learning)
     CHS-->>User: result
+    Note over Pipe,CHS: A line no rule recognizes goes to the AI layer instead:<br/>it may suggest a command, which runs only after you confirm.
 ```
 
 </details>
@@ -377,7 +394,7 @@ sequenceDiagram
     Src->>DDP: Discover(description)
     DDP->>NLE: Analyze(description)
     NLE-->>DDP: SemanticResult
-    DDP->>Seed: Extract seed entities (nouns)
+    DDP->>Seed: Extract seed entities (nouns, transaction verbs)
     DDP->>Topic: Recognize(seed names)
     Topic->>Wiki: fetch / cache lookup
     Wiki-->>Topic: article (or miss → not recognized)
@@ -399,8 +416,7 @@ sequenceDiagram
 
 ## Runtime flow — data path (`build app` with a source)
 
-No diagram is pre-rendered for this path yet; the Mermaid below is the source of
-truth.
+![Data-path sequence](diagrams/data-path-sequence.svg)
 
 <details>
 <summary>Mermaid source</summary>
@@ -415,7 +431,7 @@ sequenceDiagram
     participant Build as DataModelBuilder / TabularImport
     participant Scaf as AppScaffolder / SeedFileWriter
 
-    User->>CLI: build app [: description] [from &lt;format&gt; &lt;loc&gt;]
+    User->>CLI: build app [: description] [from csv|txt|json|excel|sql &lt;loc&gt;]
     CLI->>Inline: parse the tail; if interactive and no inline source, ask
     Inline-->>CLI: DataSourceSpec (or NoData / Cancelled)
     Note over CLI: NoData → unchanged discovery path.<br/>Cancelled → generate nothing.
@@ -462,10 +478,10 @@ lives in [`EngineBuilder`](../NaturalLanguageEngine/Core/EngineBuilder.cs).
 
 ```mermaid
 flowchart LR
-    text([English text]) --> n["1. Normalization<br/>(10)"]
-    n --> t["2. Tokenization<br/>(20)"]
-    t --> m["3. Morphology<br/>(30)"]
-    m --> p["4. POS Tagging<br/>(35)"]
+    text([English text]) --> n["1. Normalization<br/>(5)"]
+    n --> t["2. Tokenization<br/>(10)"]
+    t --> m["3. Morphology<br/>(20)"]
+    m --> p["4. POS Tagging<br/>(30)"]
     p --> ph["5. Phrase Detection<br/>(40)"]
     ph --> dep["6. Dependency Parsing<br/>(45)"]
     dep --> sem["7. Semantic Analysis<br/>(50)"]
@@ -473,6 +489,58 @@ flowchart LR
 ```
 
 </details>
+
+## The browser pages and session scripts
+
+Three pages are served from the CLI process itself, each by a host built on
+`LoopbackHost` (Kestrel on a loopback port, a one-off token in the address, alive for
+exactly one command): the **workflow page** (`BuildAppWebHost`, ten stages), the
+**chat page** (`ChatWebHost`) and the **relationships page**. `CodeGenerator` therefore
+builds under the Web SDK.
+
+The chat page is one `ChatSession` per host, so two tabs see one conversation. It runs
+commands one at a time, because the output capture swaps the process-wide `Console.Out`
+and the engine keeps static state. Its tree (`ProjectTree`) draws the registered
+projects, and Undo and Redo sit beside Send. A tab closed and not replaced ends the
+session, so the console never waits on a page nobody has open.
+
+**Session scripts** record and replay a session. `save session <file>` writes the commands
+that worked and changed something to a `.cgs` file; `run <file>` replays it and puts the
+workspace back if a line fails. A `build app` block cannot run in-process, since the
+command reads its input in many places, so `ScriptBuildApp` starts a **child copy of the
+tool** with the block's lines piped in, `PROJECTPATH` set and `CODEGEN_SCRIPT_STEP=1` in its
+environment. A piped CLI exits 0 whatever happens, so success is read from the line it
+prints (`Generated project at`), never from the exit code.
+
+## The AI layer and phrase learning
+
+`AiLayer` loads the ONNX model and opens `ai-index.db`. It builds the index itself at
+startup, and again when the content hash of the phrase corpus it ships differs from what
+was indexed; `ai reindex` forces it, and `ai status` says `REINDEX REQUIRED` when one is
+due. Every reading is written to a decision log, which `ai why` explains. `ai mode` names
+how unrecognized input is read; only `retrieval` works today. `ai disable` turns the layer
+off, and the next start prints `AI: off (disabled - run 'ai enable')`.
+
+The CLI also learns commands from use. When a line is not understood and the next line
+works, `PhraseCandidates` records the pair in `.codegen/phrase-candidates.jsonl`; `show
+learning` groups them for review. Nothing there changes what the tool understands. A phrase
+ships only after a person copies it into `CodeIntelligence/Corpus/learned-phrases.tsv`
+(embedded in the build) and the golden-set test still passes.
+
+## Tests and CI
+
+CI (`.github/workflows/ci.yml`) restores, builds and tests `SmartCodeGenerator.slnx` in
+Release on `windows-latest`, with Git LFS checkout (the ONNX weights are in LFS) and
+`-warnaserror`. Two tests compare a committed file with one generated from the code, and the
+environment variables below regenerate them:
+
+| Variable | Rewrites |
+| --- | --- |
+| `UPDATE_COMMAND_DOCS=1` | `docs/commands.md`, from `CommandDictionary`. |
+| `UPDATE_MANUAL_APPENDIX=1` | The command appendix of the user manual. |
+
+Run them as `UPDATE_COMMAND_DOCS=1 dotnet test CodeGenerator.Tests`. The same dictionary
+feeds the in-tool `help`, so the reference, the manual and the prompt cannot drift apart.
 
 ## Where things are written
 
@@ -482,7 +550,11 @@ flowchart LR
 | `<workspace>/<Project>/DeletedClasses/` | CodeGenerationEngine | Classes moved there by `delete class`, timestamped, for `restore class`. |
 | `<workspace>/deleted-classes.json` | CodeGenerationEngine | Which deleted class came from where (`DeletedClassRegistry`). |
 | `<workspace>/<AppName><suffix>/…` | AppScaffolding | A runnable generated app: model classes, store, repositories, validators, and the target's front end. |
+| `<workspace>/<AppName><suffix>/.codegen/generated-files.txt` | AppScaffolding | The files a generation wrote, with hashes (`GeneratedFilesManifest`), so a regeneration can remove what a renamed or removed class left behind without touching files you edited. |
+| `<workspace>/<AppName><suffix>.Tests/` | AppScaffolding | The xUnit project written beside every generated app (`dotnet test` runs it). |
 | `<workspace>/<AppName><suffix>/Data/Seed/` | AppScaffolding | `<Class>.json` per entity when the app was built from the user's own data — registered as copied-to-output content and loaded by the generated seeder on first run. |
+| `<workspace>/.codegen/validation-rules.json` | CodeGenerationEngine | The validation rules, rewritten by `ValidationRuleFile` after each add or remove. |
+| The path you give after `from` | none | A data source (a CSV, text, JSON or Excel file, or a SQL Server connection) is **read in place**; nothing is copied or changed, and only the seed rows reach the generated app. |
 | `<workspace>/.dd-cache/` | DomainDiscovery | Cached Wikipedia article content, when discovery reads the online API. |
 | `<workspace>/.codegen/learned.json` | CodeGenerationEngine | Learned command signatures and how often each worked (`LearnedIntentStore`; `show learning`, `reset learning`). |
 | `<workspace>/.codegen/phrase-candidates.jsonl` | CodeGenerationEngine | Each line that was not understood, paired with the next command that worked (`PhraseCandidates`). |
