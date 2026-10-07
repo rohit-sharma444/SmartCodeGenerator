@@ -80,12 +80,15 @@ public class OllamaIntegrationTests
                 f.Name.Equals("Id", StringComparison.OrdinalIgnoreCase)
                 || f.Name.Equals($"{entity.Name}Id", StringComparison.OrdinalIgnoreCase));
 
-            // The rule a 3B model reproduces the mistakes of: only a Document, Transaction or
-            // Event may carry a foreign key.
-            if (entity.Relationships.Count > 0)
-                Assert.True(
-                    DomainDiscovery.Enrichment.EntityRoleRank.CanReference(entity.Role),
-                    $"'{entity.Name}' ({entity.Role}) must not carry a relationship.");
+            // The rule a 3B model reproduces the mistakes of: a place or a machine holding ONE
+            // person (CashRegister.CustomerId). Any other key the model declared is a real
+            // "belongs to" (POSTerminal.StoreId) - LlmModelNormalizer.MayCarryAKeyTo.
+            if (entity.Role is DomainDiscovery.Enrichment.EntityRole.Place or DomainDiscovery.Enrichment.EntityRole.Device)
+                foreach (var relationship in entity.Relationships)
+                    Assert.False(
+                        outcome.Model.Entities.Any(e => e.Name == relationship.Target
+                            && e.Role == DomainDiscovery.Enrichment.EntityRole.Party),
+                        $"'{entity.Name}' ({entity.Role}) must not hold one person ({relationship.Target}).");
         }
     }
 }
