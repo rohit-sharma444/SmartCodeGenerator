@@ -17,7 +17,7 @@ namespace CodeGenerator.Web.Chat;
 /// </remarks>
 public static class CommandCatalog
 {
-    private static readonly string[] Declined = ["build app", "batch", "demo"];
+    private static readonly string[] Declined = ["build app", "batch", "demo", "chat"];
 
     public static IReadOnlyList<CommandInfo> Matches(string typed, int limit = 8)
     {
@@ -70,6 +70,9 @@ public static class CommandCatalog
         ];
     }
 
+    // The "Build App" category also holds the review-loop rows (approve, accept, rules, ...), which
+    // are typed at the prompt that `build app` opens and are not commands at the chat's own prompt.
     private static bool Runnable(CommandInfo command)
-        => !Declined.Any(d => command.Command.StartsWith(d, StringComparison.OrdinalIgnoreCase));
+        => command.Category != "Build App"
+           && !Declined.Any(d => command.Command.StartsWith(d, StringComparison.OrdinalIgnoreCase));
 }

@@ -52,19 +52,35 @@ both paths, and the NLE internal pipeline — see
 | --- | --- |
 | [`CodeGenerator`](CodeGenerator/README.md) | Interactive command-line front end, plus the `build app` workflow page and the `chat` page it serves in the browser. The command reference is [`docs/commands.md`](docs/commands.md). |
 | [`CodeGenerationEngine`](CodeGenerationEngine/README.md) | Core library: intent handling, entity extraction, and the project/class/property/method services plus data & business validation on an extensible rule registry (Roslyn-based generation). |
-| [`NaturalLanguageEngine`](NaturalLanguageEngine/README.md) | Multi-stage NLP pipeline that turns English text into entities, relationships, and intent. |
+| [`NaturalLanguageEngine`](NaturalLanguageEngine/README.md) | Multi-stage NLP pipeline that turns English text into entities, relationships, and intent. Built as an executable (`OutputType` is `Exe`), but the CLI uses it as a library. |
 | [`NaturalLanguageBridge`](NaturalLanguageBridge/README.md) | Wires the NLP engine to the code generator. |
-| [`DomainDiscovery`](DomainDiscovery/README.md) | Turns a plain-English system description into a candidate domain model (used by `build app:`), from a local Ollama model, the Wikipedia store, its 25 built-in domains, or online Wikipedia. |
+| [`DomainDiscovery`](DomainDiscovery/README.md) | Turns a plain-English system description into a candidate domain model (used by `build app:`), from a local Ollama model, the Wikipedia store, its 25 built-in domains, or online Wikipedia. Verbs such as *books*, *lends* and *enrols* name the transaction a system keeps (a Booking, a Loan, an Enrolment). |
 | [`DataIngestion`](DataIngestion/README.md) | Turns data you already have — CSV, delimited text, JSON, Excel, or a SQL Server database — into the same candidate domain model, checked for normalization problems, with the rows carried through as the generated app's seed data. |
 | [`AppScaffolding`](AppScaffolding/README.md) | Turns an approved domain model into a runnable app on disk for the chosen target — WPF, Windows Forms, console, web API, Blazor web app, class library, or worker (the last stage of `build app:`). |
 | [`WikipediaDumpImporter`](WikipediaDumpImporter/README.md) | One-off tool that builds the local Wikipedia store `DomainDiscovery` reads offline, and maintains it afterwards. Not part of the normal build-and-run loop. |
 | `WikipediaUpdateService` | Windows service (`SmartCodeGenWikipediaUpdater`) that keeps an installed Wikipedia store up to date, once every 24 hours by default. Installed with `tools\install-updater-service.ps1`. |
-| `CodeIntelligence`, `CodeIntelligence.Abstractions`, `CodeIntelligence.Onnx` | The AI layer, on by default: for a line the rules do not recognize, it embeds the line with a local ONNX model, finds the nearest known phrasings in a SQLite index, and suggests the command they point to — it never runs one you did not confirm (`ai status`, `ai enable`/`ai disable`). The abstractions project holds the contracts only; the ONNX project holds the model runtime. |
+| `CodeIntelligence`, `CodeIntelligence.Abstractions`, `CodeIntelligence.Onnx` | The AI layer, on by default: for a line the rules do not recognize, it embeds the line with a local ONNX model, finds the nearest known phrasings in a SQLite index, and suggests the command they point to — it never runs one you did not confirm. The index builds itself at startup and rebuilds when the shipped phrases change. `ai status`, `ai enable`/`ai disable`, `ai reindex`, `ai why` and `ai mode` manage it. The abstractions project holds the contracts only; the ONNX project holds the model runtime. |
 | [`CodeGenerator.Tests`](CodeGenerator.Tests/README.md), [`NaturalLanguageEngine.Tests`](NaturalLanguageEngine.Tests/README.md), [`DomainDiscovery.Tests`](DomainDiscovery.Tests/README.md), [`DataIngestion.Tests`](DataIngestion.Tests/README.md), `CodeIntelligence.Tests` | Test suites for the engine, the generator, domain discovery, data ingestion, and the AI layer. |
+
+Outside the solution, the repository also holds
+[`vscode-extension`](vscode-extension/README.md) (an in-editor panel that drives the CLI) and
+`tools/` — [`app-check`](tools/app-check/README.md), the user-manual build scripts, the
+Wikipedia updater service scripts and `demo-video`, the narrated-demo tooling.
 
 ## Requirements
 
+- Windows. The scaffolder emits WPF and Windows Forms code, and the tests compile generated
+  projects, some of which target Windows.
 - [.NET SDK 10.0](https://dotnet.microsoft.com/download) or newer.
+- [Git LFS](https://git-lfs.com). The ONNX model weights are stored in LFS; a clone made without
+  it holds a 133-byte pointer file, and the AI layer then fails with an ONNX
+  `InvalidProtobuf` error.
+- Optional: [Ollama](https://ollama.com) with a local model (default `qwen2.5:3b`) for the best
+  `build app:` discovery. Without it, discovery falls back to the Wikipedia store and the
+  built-in domains.
+- Optional: SQL Server, only to build an app `from sql`.
+- Optional: Node.js, only for `tools/app-check` (with Playwright's Chromium), the VS Code
+  extension and the demo tooling.
 
 ## Build & test
 
@@ -74,6 +90,23 @@ dotnet build SmartCodeGenerator/SmartCodeGenerator.slnx
 dotnet test  SmartCodeGenerator/SmartCodeGenerator.slnx
 ```
 
+CI runs the same solution in Release, with warnings as errors, on `windows-latest`:
+
+```bash
+dotnet build SmartCodeGenerator/SmartCodeGenerator.slnx -c Release -warnaserror
+dotnet test  SmartCodeGenerator/SmartCodeGenerator.slnx -c Release --no-build
+```
+
+`-warnaserror` is deliberately not in `Directory.Build.props`, so run it locally (with
+`--no-incremental`, or an analyzer error can hide) before you push. Two tests compare a committed
+file with one generated from the code. When you change the command catalog they fail, and you
+regenerate the files with environment variables:
+
+```bash
+UPDATE_COMMAND_DOCS=1    dotnet test CodeGenerator.Tests   # rewrites docs/commands.md
+UPDATE_MANUAL_APPENDIX=1 dotnet test CodeGenerator.Tests   # rewrites the manual's command appendix
+```
+
 ## Run
 
 ```bash
@@ -81,7 +114,9 @@ dotnet run --project CodeGenerator
 ```
 
 The workspace (where projects and classes are written) defaults to the current
-directory; set `PROJECTPATH` to choose another location:
+directory, or the nearest parent folder that holds a `.csproj`, `.sln` or `.slnx` when the
+current one holds none (or is a `bin` output folder). Set `PROJECTPATH` to choose another
+location:
 
 ```bash
 # Windows (PowerShell)
@@ -232,7 +267,8 @@ always printed.
 
 The targets are `wpf` (the default), `winforms`, `console`, `webapi`, `blazor`,
 `classlib` and `worker`. All of them share the same generated core — the model
-classes, a JSON store, and a typed `<Entity>Repository` with
+classes, a JSON store (or SQLite, with `approve <target> sqlite`, for every target
+except `wpf` and `winforms`), and a typed `<Entity>Repository` with
 `GetAll`/`GetById`/`Create`/`Update`/`Delete` per entity — and differ only in the
 front end. For example, the **console** app is a runnable CRUD menu: a top-level
 list of entities, each with list/add/delete backed by its repository. A piped run
@@ -244,7 +280,9 @@ approve console
 ```
 
 This writes a `<AppName>.Console` project you can `dotnet run`. A bare `approve`
-in a piped run generates the WPF app.
+in a piped run generates the WPF app. The WPF, Windows Forms and Blazor apps open at a
+login screen unless the line says `nologin`; a `<AppName>.Tests` project is written beside
+every app.
 
 Discovery tries its sources in this order, moving on whenever one finds no classes:
 
@@ -330,7 +368,12 @@ relationships). See chapter 5 of the [user manual](docs/user-manual-source.html)
   step.
 - **`save session <file>`** writes the commands of this session that worked and
   changed something to a `.cgs` script; **`run <file>`** replays one, and puts
-  everything back if a line fails.
+  everything back if a line fails. A `build app` inside a script runs in a separate
+  copy of the tool (`CODEGEN_SCRIPT_STEP=1`).
+- **Phrase learning.** When a line is not understood and the next one works, the pair is
+  kept in `.codegen/phrase-candidates.jsonl`; `show learning` groups them for review.
+  Nothing changes what the tool understands until a person adds the phrase to the shipped
+  `learned-phrases.tsv`.
 - **`chat`** (or `ui`) opens the same tool as a page in your browser: a
   transcript of commands and their output, a Solution Explorer–style tree of the
   loaded workspace, and Undo and Redo buttons beside Send.

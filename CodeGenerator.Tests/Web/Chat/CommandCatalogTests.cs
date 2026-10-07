@@ -65,6 +65,40 @@ public class CommandCatalogTests
     }
 
     [TestMethod]
+    public void Review_loop_commands_are_never_offered()
+    {
+        // approve, accept, rules, cancel and the rest are typed at the review-loop prompt that
+        // `build app` opens, which the chat declines. At the chat's own prompt they are not
+        // commands, so offering them is the same dead end as offering build app.
+        var reviewLoop = CodeGenerationEngine.Core.CommandDictionary.Commands
+            .Where(c => c.Category == "Build App"
+                        && !c.Command.StartsWith("build app", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        // Guards the loop below against passing because there was nothing to check.
+        Assert.IsNotEmpty(reviewLoop);
+        Assert.IsTrue(reviewLoop.Any(c => c.Command.StartsWith("approve", StringComparison.Ordinal)));
+
+        foreach (var row in reviewLoop)
+        {
+            var matches = CommandCatalog.Matches(row.Command, limit: 500);
+
+            Assert.IsFalse(matches.Contains(row), $"The composer offers the review-loop row '{row.Command}'");
+        }
+    }
+
+    [TestMethod]
+    public void Chat_itself_is_never_offered()
+    {
+        // The chat declines `chat` ("You are already in the chat."), so the composer must not
+        // offer it.
+        var chat = CodeGenerationEngine.Core.CommandDictionary.Commands
+            .Single(c => c.Command == "chat");
+
+        Assert.IsFalse(CommandCatalog.Matches("chat", limit: 500).Contains(chat));
+    }
+
+    [TestMethod]
     public void Every_offer_carries_its_description_and_example()
     {
         foreach (var match in CommandCatalog.Matches("list", limit: 50))

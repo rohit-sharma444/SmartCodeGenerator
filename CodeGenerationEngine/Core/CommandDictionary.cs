@@ -48,7 +48,11 @@ public static class CommandDictionary
         {
             Category = "Projects",
             Command = "create project",
-            Description = "Creates a new project.",
+            Description = "Creates a new project: a console project on net10.0 unless you say otherwise. "
+                        + "It needs a name - a bare 'create project' is refused. Add a type (console, "
+                        + "classlib, webapi, blazor, blazorwasm, wpf, winforms, worker, mvc), a "
+                        + "framework such as net8.0, and in '<folder>' to put it somewhere other than "
+                        + "a folder of its own name in the workspace.",
             Example = "create project EmployeeManagement"
         },
         new()
@@ -128,14 +132,16 @@ public static class CommandDictionary
         {
             Category = "Class",
             Command = "create class",
-            Description = "Creates a new class.",
+            Description = "Creates a new class. Refuses a name that already exists, and leaves that file as it is.",
             Example = "create class Employee"
         },
         new()
         {
             Category = "Class",
             Command = "create class <class name> with properties",
-            Description = "Creates a new class with the specified properties.",
+            Description = "Creates a new class with the specified properties. After them you can add "
+                        + "'and methods <list>', 'inherits <base>' and 'implements <interfaces>'. "
+                        + "Refuses a name that already exists.",
             Example = "create class Employee with properties EmpCode int, Name string"
         },
         new()
@@ -149,7 +155,7 @@ public static class CommandDictionary
         {
             Category = "Class",
             Command = "list classes",
-            Description = "Lists all classes in the current project.",
+            Description = "Lists all classes in the current project, or in the workspace when none is selected.",
             Example = "list classes"
         },
         new()
@@ -163,7 +169,8 @@ public static class CommandDictionary
         {
             Category = "Class",
             Command = "delete class",
-            Description = "Moves a class to DeletedClasses.",
+            Description = "Moves a class to DeletedClasses, every partial file of it. Drops the "
+                        + "validation rules saved for it.",
             Example = "delete class Employee"
         },
         new()
@@ -177,7 +184,9 @@ public static class CommandDictionary
         {
             Category = "Class",
             Command = "rename class",
-            Description = "Rename a class.",
+            Description = "Renames a class and every reference to it in the workspace (read by the "
+                        + "compiler, so a same-named word in a comment or string is left alone). "
+                        + "Refuses a name that already exists.",
             Example = "rename class Employee to Staff"
         },
         new()
@@ -232,14 +241,17 @@ public static class CommandDictionary
         {
             Category = "Properties",
             Command = "add property",
-            Description = "Adds a property to a class.",
+            Description = "Adds a property to a class or an interface. On an interface it names the "
+                        + "classes that implement it and now lack the property.",
             Example = "add property Name string to Employee"
         },
         new()
         {
             Category = "Properties",
             Command = "remove property",
-            Description = "Removes a property from a class.",
+            Description = "Removes a property from a class or an interface, with the validation rules "
+                        + "saved for it, and writes the class's validator again. On an interface it "
+                        + "names the implementers it left as they were.",
             Example = "remove property Name from Employee"
         },
         new()
@@ -260,7 +272,8 @@ public static class CommandDictionary
         {
             Category = "Properties",
             Command = "rename property <old> to <new> in <class name>",
-            Description = "Renames a property on a class. Aliases: field for property; on/of for in.",
+            Description = "Renames a property on a class or an interface. Aliases: field for property; "
+                        + "on/of for in.",
             Example = "rename property Name to FullName in Employee"
         },
         new()
@@ -268,7 +281,9 @@ public static class CommandDictionary
             Category = "Properties",
             Command = "change type of <property> to <type> in <class name>",
             Description = "Changes a property's type to any C# type (int, decimal?, List<string>). "
-                        + "An initial value written for the old type is removed. "
+                        + "An initial value that still compiles for the new type is kept; one that does "
+                        + "not, and an attribute that only suits text, is removed. The command "
+                        + "refuses a change it cannot make safely. Works on interfaces too. "
                         + "Also: retype property <property> to <type> in <class name>.",
             Example = "change type of Pages to int in Book"
         },
@@ -279,7 +294,9 @@ public static class CommandDictionary
         {
             Category = "Methods",
             Command = "add method <method name> to <class name>",
-            Description = "Adds a method to a class.",
+            Description = "Adds a method to a class or an interface. Give a return type with "
+                        + "'add method <name> returns <type> to <class name>'. On an interface it "
+                        + "names the implementers that lack the method.",
             Example = "add method Save to Employee"
         },
         new()
@@ -293,7 +310,7 @@ public static class CommandDictionary
         {
             Category = "Methods",
             Command = "remove method <method name> from <class name>",
-            Description = "Removes a method from a class. When the name is overloaded it lists "
+            Description = "Removes a method from a class or an interface. When the name is overloaded it lists "
                         + "them and removes none.",
             Example = "remove method Save from Employee"
         },
@@ -301,7 +318,8 @@ public static class CommandDictionary
         {
             Category = "Methods",
             Command = "rename method <old> to <new> in <class name>",
-            Description = "Renames a method, every overload of it. References elsewhere are not updated.",
+            Description = "Renames a method on a class or an interface, every overload of it. References "
+                        + "elsewhere are not updated; the command names the code that still uses the old name.",
             Example = "rename method Save to Store in Employee"
         },
         #endregion
@@ -314,7 +332,10 @@ public static class CommandDictionary
             Description = "Creates a new interface. A name that is I followed by a capital letter (IShape) is kept as typed; "
                 + "any other name is PascalCased and given the I prefix, so Item makes IItem, invoice makes IInvoice, "
                 + "and an all lower case name is always prefixed (ishape makes IIshape - type IShape for that name). "
-                + "The reply names the interface when it differs from what you typed.",
+                + "The reply names the interface when it differs from what you typed. Refuses a name "
+                + "that already exists. Add, remove, rename and retype members with the commands "
+                + "for properties and methods; they name the classes that implement it. "
+                + "A validation rule or a validator cannot go on an interface.",
             Example = "create interface IRepository"
         },
         #endregion
@@ -333,14 +354,14 @@ public static class CommandDictionary
                         + "(in the past, in the future, at least <n> years ago, within the last "
                         + "<n> days), must match <regex>, and a list of allowed values. Rules "
                         + "are saved in the workspace (.codegen/validation-rules.json) and are "
-                        + "there again in the next session.",
+                        + "there again in the next session. Refused on an interface.",
             Example = "add validation must be between 18 and 65 on Age in Employee"
         },
         new()
         {
             Category = "Validation",
             Command = "generate validator",
-            Description = "Generates a validator for a class.",
+            Description = "Generates a validator for a class. Refused on an interface.",
             Example = "generate validator for Employee"
         },
         new()
@@ -357,7 +378,7 @@ public static class CommandDictionary
             Description = "Adds an entity-level business rule, spanning more than one property: "
                         + "comparisons (after, before, must not exceed), required-when, "
                         + "either/or, arithmetic (equals A times B, plus, minus, divided by) and "
-                        + "sameness (same as, different from).",
+                        + "sameness (same as, different from). Refused on an interface.",
             Example = "add business validation EndDate must be after StartDate in Booking"
         },
         new()
@@ -380,7 +401,9 @@ public static class CommandDictionary
         {
             Category = "Validation",
             Command = "remove business validation <number> from <class name>",
-            Description = "Removes one business rule, by the number show business validation prints.",
+            Description = "Removes one business rule, by the number show business validation prints. "
+                        + "Also: remove business validation from <class name>.<property> removes "
+                        + "every business rule that names that field.",
             Example = "remove business validation 1 from Booking"
         },
         #endregion
@@ -411,7 +434,7 @@ public static class CommandDictionary
         {
             Category = "Utility",
             Command = "status",
-            Description = "Reports the workspace, the projects found and which is selected, any loaded rules, the AI state, and the Wikipedia store and its updater service. Startup prints only what is wrong; this prints everything.",
+            Description = "Reports the version, whether colour is on, the workspace, the projects found and which is selected, any loaded rules, the AI state, and the Wikipedia store and its updater service. Startup prints only what is wrong; this prints everything.",
             Example = "status"
         },
         new()
@@ -420,7 +443,9 @@ public static class CommandDictionary
             Command = "undo",
             Description = "Reverses the last command that changed something: its files, the validation rules and the current project. "
                         + "A whole batch or build app is one step. This session only, up to 50 steps; refuses, naming the file, "
-                        + "if you have edited one it would restore.",
+                        + "if you have edited one it would restore. Off for a workspace of more than "
+                        + "5,000 files or 200 MB. Loading another folder starts a new history. The "
+                        + "chat page has Undo and Redo buttons, with a history of its own.",
             Example = "undo"
         },
         new()
@@ -448,13 +473,14 @@ public static class CommandDictionary
             Category = "Utility",
             Command = "chat",
             Description =
-                "Opens a page in the browser where every command except 'build app', 'batch' and "
-                + "'demo' can be run in a conversation: a command's whole output appears below what "
+                "Opens a page in the browser where every command except 'build app', 'batch', "
+                + "'demo' and 'chat' can be run in a conversation: a command's whole output appears below what "
                 + "you typed, tinted green when it worked, red when it failed and amber when the "
                 + "words were not understood. The header says which solution is loaded and which "
                 + "project the next command will act on, and 'Load' points the whole session - "
                 + "console included - at another .sln, .slnx, .csproj or folder. The box completes "
                 + "from the command catalog as you type, and shares its history with the prompt. "
+                + "Typing exit there ends the chat session only, not the console. "
                 + "Closing the tab ends the session. Alias: ui. Piped runs and CG_NO_WEB=1 keep "
                 + "the console.",
             Example = "chat"
@@ -471,7 +497,10 @@ public static class CommandDictionary
             Category = "Utility",
             Command = "run <file>",
             Description = "Runs a script of commands (.cgs) saved with save session or written by hand: every line, or none if one fails. "
-                        + "One undo reverses the whole run.",
+                        + "Blank lines and lines starting with # are skipped. Only the commands the "
+                        + "prompt runs one at a time, and build app blocks that end with approve or "
+                        + "cancel, can be in a script; undo, batch, demo, chat, exit and the like are "
+                        + "refused before anything runs. One undo reverses the whole run.",
             Example = "run library.cgs"
         },
         new()
@@ -479,7 +508,9 @@ public static class CommandDictionary
             Category = "Utility",
             Command = "save session <file> [replace]",
             Description = "Saves this session's commands that worked and changed something, as a script for run. "
-                        + "Won't overwrite a file unless you add replace.",
+                        + "A line a script cannot replay - a build app chosen on the page, a line only "
+                        + "the AI could read, a relationship set from the offer, demo - is saved as a "
+                        + "# note. Won't overwrite a file unless you add replace.",
             Example = "save session library.cgs"
         },
         new()
@@ -493,7 +524,7 @@ public static class CommandDictionary
         {
             Category = "Utility",
             Command = "exit",
-            Description = "Exits the application.",
+            Description = "Exits the application. Alias: quit. In the chat page it ends the chat session only.",
             Example = "exit"
         },
         new()
@@ -538,7 +569,8 @@ public static class CommandDictionary
         {
             Category = "Analysis",
             Command = "validate project",
-            Description = "Compiles every .cs file in the project as one workspace and reports real errors. "
+            Description = "Compiles every .cs file in the project as one workspace and reports real errors, "
+                        + "grouped by .csproj. With no project selected it uses the workspace. "
                         + "Aliases: check project, compile project.",
             Example = "validate project"
         },
@@ -649,7 +681,9 @@ public static class CommandDictionary
         {
             Category = "Build App",
             Command = "build app: <description>",
-            Description = "Describes a system in plain English. Interactively this opens a "
+            Description = "Describes a system in plain English. Classes are found from a local Ollama model, "
+                        + "then the Wikipedia store, then the 25 built-in domains, then Wikipedia online. "
+                        + "Interactively this opens a "
                         + "workflow page in the browser — the console prints the address and "
                         + "waits — where the rest of the build happens: application type, data, "
                         + "look, domain discovery, model review, generate-and-build, then running "
@@ -672,7 +706,8 @@ public static class CommandDictionary
                         + "to change it — there are no Back and Next buttons. Generate and Run stay "
                         + "disabled until the project has actually been written. Review classes "
                         + "is where the model is corrected: every class can be renamed or removed "
-                        + "and every property renamed, retyped or deleted, on the card itself. "
+                        + "and every property renamed, retyped or deleted, on the card itself; a class "
+                        + "or a field can be added, and a suggestion promoted to a class. "
                         + "Output, the stage after it, draws how the classes connect and "
                         + "states in one table the "
                         + "screen each class will get — master, transaction, or the transaction a "
@@ -723,7 +758,8 @@ public static class CommandDictionary
             Command = "build app: <description> from <format> <location>",
             Description = "Builds the model from existing data with no prompts when piped; "
                         + "interactively the file is already answered and the workflow page opens "
-                        + "on what is left. Formats: csv, txt, json, excel, sql. For sql the "
+                        + "on what is left. Formats: csv, txt, json, excel, sql (also typed as tsv, xlsx, "
+                        + "sqlserver and the like). A relative path is looked for in the workspace first. For sql the "
                         + "location is a SQL Server connection string rather than a path. Add "
                         + "'normalize' to apply every normalization change the data needs.",
             Example = "build app: order tracking from csv D:\\data\\orders.csv normalize"
@@ -744,8 +780,9 @@ public static class CommandDictionary
                         + "A,B,C' names them for a piped run, and naming none reads them all. "
                         + "Column types come from the database instead of being inferred from "
                         + "the text, and declared foreign keys become relationships rather "
-                        + "than being guessed from column names. A bigint column becomes int "
-                        + "and a uniqueidentifier becomes string; both are reported. Composite "
+                        + "than being guessed from column names. A bigint column becomes int, "
+                        + "a uniqueidentifier becomes string and a time becomes string (hh:mm:ss); "
+                        + "each is reported. Composite "
                         + "foreign keys are skipped. Any password in the connection string is "
                         + "masked wherever the run is echoed back, so the replay line needs "
                         + "the password typed in again before it will run.",
@@ -762,7 +799,8 @@ public static class CommandDictionary
                         + "icon <path> supplies a .ico or .png; title \"<pattern>\" overrides the "
                         + "window title, where {company} and {app} are substituted; "
                         + "namespace <prefix> puts the generated code under that namespace root "
-                        + "(CodisLtd.Shop), leaving the project and assembly names alone; "
+                        + "(CodisLtd.Shop), leaving the project and assembly names alone, and "
+                        + "namespace none clears a remembered prefix; "
                         + "layout tabs|sidebar|master-detail|dashboard|business chooses the shape "
                         + "of the window (wpf and winforms only); business is the default and is "
                         + "the shell with a dashboard home, a rail grouped into masters and "
@@ -818,6 +856,7 @@ public static class CommandDictionary
             Category = "Build App",
             Command = "approve [target] [sqlite]",
             Description = "Review loop: generates the app using the type chosen at the start. "
+                        + "Type ? or help there for its commands. "
                         + "Name a target to override it: wpf (default), winforms, console, webapi, "
                         + "blazor, classlib, worker. Add 'sqlite' for EF Core persistence (JSON is the "
                         + "default; the wpf and winforms targets are JSON-only). Alias: a.",
@@ -1013,7 +1052,7 @@ public static class CommandDictionary
     [
         // Both summaries fit an eighty-column console after the indent and the command column,
         // which leaves 56 characters. A test pins that; the first draft ran to 161 and wrapped.
-        new("relationships", "offered after any command except creating a class"),
+        new("relationships", "offered after most commands, not class creation"),
         new("show relationships", "draws what is related to what, as boxes and arrows"),
     ];
 

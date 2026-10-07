@@ -1,11 +1,14 @@
 # build app demo video
 
-**[build-app-demo.mp4](build-app-demo.mp4)** is a narrated walkthrough of `build app`. It is one
-real run, from a CSV of orders to a running WPF desktop application. [build-app-demo.vtt](build-app-demo.vtt)
-has the same captions as a subtitle track.
+These scripts make `build-app-demo.mp4`, a narrated walkthrough of `build app`. It is one
+real run, from a CSV of orders to a running WPF desktop application. `build-app-demo.vtt` has the
+same captions as a subtitle track.
+
+**No video is committed at the moment.** The old recording was removed because it no longer
+matched the product. Record a new one with `make-demo.ps1` (below) when the open gaps are fixed.
 
 The video is recorded from the real product, not a mock-up. Every screen in it is the workflow
-page and the app it generated, as they behave today - the workflow pages captured by Playwright in
+page and the app it generated, as they behave on the day of the recording - the workflow pages captured by Playwright in
 a browser, and the generated WPF app captured as a native window and driven with UI Automation,
 since a desktop app has no page for Playwright to see into.
 
@@ -36,7 +39,7 @@ After a change to `build app`, re-record so the video matches the product:
 powershell -ExecutionPolicy Bypass -File tools\demo-video\make-demo.ps1
 ```
 
-This takes about 10 minutes. It overwrites `build-app-demo.mp4` and `build-app-demo.vtt`, and runs these steps:
+This takes about 10 minutes. `-Workspace <folder>` changes the working folder (default `C:\dv`). It overwrites `build-app-demo.mp4` and `build-app-demo.vtt`, and runs these steps:
 
 | Step | What it does |
 |---|---|
@@ -82,10 +85,11 @@ The first Blazor-based recordings showed two bugs that no test had caught, and b
 - A field renamed on Review lost its imported data.
 - A Blazor app with a login could not save a transaction's lines.
 
-Two smaller problems in the generated Blazor app, not yet fixed:
+A smaller problem in the generated Blazor app, not yet fixed:
 
-- Its sidebar group headings (*Masters*, *Transactions*) are nearly invisible against the dark background.
 - The totals row adds up `TaxRate`.
+
+The sidebar group headings (*Masters*, *Transactions*) were nearly invisible against the dark background; that is fixed.
 
 Switching the recording to WPF found more, in the generator rather than in `build app` itself:
 

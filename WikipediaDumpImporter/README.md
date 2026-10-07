@@ -4,7 +4,8 @@ Builds and maintains the **local Wikipedia store** — the SQLite database that
 [`DomainDiscovery`](../DomainDiscovery/README.md) reads instead of calling the
 Wikipedia API. It takes the ~25 GB compressed `enwiki` XML dump, strips each
 article's wikitext down to prose, and writes the result to
-`Dump\enwiki-full.db` (~20 GB, ~7.2M articles).
+the store at `WikipediaStoreLocation.Resolve()` (by default
+`%ProgramData%\SmartCodeGenerator\Wikipedia\enwiki-full.db`; ~20 GB, ~7.2M articles).
 
 The store is what makes `build app: <description>` work offline, deterministically,
 and without the API's rate limit.
@@ -30,7 +31,7 @@ system expects:
 | Positional | Default |
 | --- | --- |
 | `dump` | `enwiki-latest-pages-articles.xml.bz2` in the store's folder |
-| `store` | `WikipediaStoreLocation.Resolve()`: `StorePath` in `discovery.json`, else `%ProgramData%\SmartCodeGenerator\Wikipedia\enwiki-full.db` |
+| `store` | `WikipediaStoreLocation.Resolve()`: `StorePath` in the importer's own `discovery.json`, else in the machine-wide `%ProgramData%\SmartCodeGenerator\discovery.json` (which moves the store for the CLI, the importer and the updater service together), else `%ProgramData%\SmartCodeGenerator\Wikipedia\enwiki-full.db` |
 
 ## Modes
 

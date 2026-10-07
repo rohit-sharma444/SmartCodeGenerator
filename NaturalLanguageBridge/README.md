@@ -19,18 +19,21 @@ acts on it. Everything in between lives here.
 
 ## How a command is parsed
 
-`CommandFront.Parse(input, workspace)` is the whole contract, and the order is
+`CommandFront.Parse(input, workspace)` is the whole parse contract, and the order is
 load-bearing:
 
 ```
 user text
     │
     ▼
+KeywordCorrector          step 0: near-miss spellings of business /
+    │                     validation / validator are put right
+    ▼
 LiteralCommandTable       exact match — meta-commands that are not natural
     │                     language at all, and must never enter the NLP path
     ▼
-residual pattern guards   the few forms the literal table cannot express
-    │                     (see below)
+CommandFront guards       regexes on the corrected sentence, in a fixed order
+    │                     (22 of them, see below)
     ▼
 NlpCommandMapper          NLE analysis → CodeGenerationEngine IntentType
     │
@@ -41,16 +44,38 @@ CommandEntityExtractor    pull the fields (names, types, targets) out of the pro
 ParsedCommand             intent + fields + confidence + the original sentence
 ```
 
-The **residual guards** are regexes read from the raw sentence, ahead of the
-mapper, each earning its place by a case the layers around it get wrong:
+Recognition has exactly three sources: `LiteralCommandTable`, the `CommandFront`
+guards, and `NlpCommandMapper`. `IntentRepository` (in `CodeGenerationEngine`)
+drives none of them; only the AI corpus harvester reads it.
 
-| Guard | Why it can't live elsewhere |
-| --- | --- |
-| `list/show/display classes in <project>` | NLE drops the trailing `in`, so the mapper loses the project. |
-| `\bvalidator\b` | A bare substring match; the literal table only does whole-input equality. |
-| `add validation <args>`, `show/list/view validation <args>` | Argument-bearing forms the exact table can't cover and the mapper has no entry for — without these, `add validation Email should not be blank on Email in Customer` fell through to `Unknown`. |
-| `add business validation <args>`, `show/list/view business validation <args>` | The entity-level counterparts — argument-bearing forms the exact table can't cover and the mapper has no entry for, checked ahead of the data-validation guards — e.g. `add business validation EndDate must be after StartDate in Booking`. |
-| `use/select/switch/open/activate project <name>` | The mapper's `UseProject` rule only covers the bare form with no name. The bridge captures the name so the handler reads a field instead of slicing the sentence itself. |
+**Literal table.** `LiteralCommandTable` holds 19 phrases: `show/list/view learning`,
+`reset/clear/forget learning`, `show project`, `add validation`, `show/list/view
+validation`, `add business validation`, `show/list/view business validation`,
+`help`, and `validate/check/compile project`. Each must be the whole input.
+
+**Guards.** Each guard is a regex read from the corrected sentence, ahead of the
+mapper, and each earns its place by a case the layers around it get wrong. In
+order: list classes in a project, `use/select/switch/open/activate project
+<name>`, class inheritance, create project, create class, create interface, list
+properties/methods of a class, `show/delete/remove/restore/recover/analyze
+class <name>`, rename class, add method, add property, rename property, delete
+method, delete property, rename method, change a property's type, remove a
+validation (by field or by number, data or business), add business validation,
+show business validation, add validation, show validation, and any sentence with
+the word `validator` (generate validator). `CommandFront.GuardedIntents` lists
+the intents the guards can produce, by hand, and a gate test reads it.
+
+**Mapper.** `NlpCommandMapper` maps an NLE (verb, target) pair to an intent, for
+project, class, property, method, interface and document commands that no guard
+caught. `MappedIntents` lists what it can produce.
+
+**Running.** `CommandFront.Run` and `RunDetailed` parse, then call
+`CommandHandlingService.Execute`. `RunDetailed` returns a `RunResult` (`Handled`,
+`Recognized`, `NeededAi`). It saves the parsing state first and restores it if the
+command fails. The AI seam: when parsing gives `Unknown`, and both an
+`IIntentResolver` and a `confirmAi` callback are supplied, the resolver is asked
+once and its answer is used only if it is not `Unknown` and the user confirms. With
+both null the behavior is the same as before the AI layer.
 
 > **Note:** `CommandEntityExtractor` parses the **normalized raw sentence with
 > regexes**, not NLE's entity output. That is deliberate and measured — NLE's
@@ -68,7 +93,7 @@ mapper, each earning its place by a case the layers around it get wrong:
 | `CommandEntityExtractor` | Prose → the `ParsedCommand`'s fields. Regex over the sentence. Stateless. |
 | `NlpActionProvider` | Builds the NLE analyzer once (lazily) and reuses it. `Analyze` is serialized with a lock, because the pipeline shares mutable stage instances across calls. Returns `null` for blank input or if NLE throws — never throws itself. `GetPrimaryAction` extracts the lowercased action verb, falling back to the intent name (`"AddIntent"` → `"add"`) and ignoring the generic `DescribeIntent`. |
 | `NaturalLanguagePipeline` / `PipelineOutcome` | NLE-led handling of one command: analyze once, surface the analysis via a callback, then delegate to `CommandHandlingService`. |
-| `BatchCommandDetector` | Turns the lines of a batch into structured actions **without executing any of them**, by reconstructing the chain `CommandHandlingService.ParseInput` runs privately. |
+| `BatchCommandDetector` | Turns the lines of a batch into structured actions **without executing any of them**: each line goes through `CommandFront.Parse`, and `CommandHandlingService.IsSupported` marks an intent with no handler. It saves and restores the parsing state around the whole preview. |
 | `DetectedAction` | One batch line plus the command it was understood to be. The raw `Sentence` — not `Preview` — is what executes, by being re-parsed against live state at execution time. |
 | `ActionFormatter` | Renders a `DetectedAction` as one line for the review list. Presentation only, kept apart because it churns most. |
 | `ApprovalReply` / `ApprovalReplyParser` | The meaning of one answer at a batch approval prompt. Lives here so it can be unit-tested — `CodeGenerator.Tests` cannot reference the CLI executable. |
@@ -91,6 +116,7 @@ PipelineOutcome outcome = pipeline.Handle(
     workspaceRoot:         workspaceRoot,
     setLastCreatedProject: p => { /* persist selection */ },
     onAnalyzed:            a => { /* optional: inspect the SemanticResult */ });
+    // optional: aiResolver, confirmAi, ct
 
 // outcome.Handled  -> did the code generator handle it?
 // outcome.Analysis -> the NLE SemanticResult (null if NLE failed)
@@ -98,7 +124,8 @@ PipelineOutcome outcome = pipeline.Handle(
 
 ## Dependencies
 
-Project references only — `CodeGenerationEngine` and `NaturalLanguageEngine`.
+Project references: `CodeGenerationEngine`, `NaturalLanguageEngine` and
+`CodeIntelligence.Abstractions` (the `IIntentResolver` seam).
 
 ## Build & test
 

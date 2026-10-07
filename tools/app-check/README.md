@@ -15,13 +15,22 @@ of unit tests, and only showed when someone ran the generated app.
 powershell -ExecutionPolicy Bypass -File tools\app-check\run.ps1              # every case
 powershell -ExecutionPolicy Bypass -File tools\app-check\run.ps1 -Only sql    # ids containing "sql"
 powershell -ExecutionPolicy Bypass -File tools\app-check\run.ps1 -NoLaunch    # generate, build, test only
+powershell -ExecutionPolicy Bypass -File tools\app-check\run.ps1 -Runs D:\ac  # runs folder (default C:\ac\runs)
 ```
 
-`run.ps1` rebuilds the CLI (Release) and the window driver first, then runs `check.mjs`. Once
-those are built, `node check.mjs [--only <text>] [--no-launch]` is the same thing.
+`run.ps1` runs `npm install` if `node_modules` is missing, rebuilds the CLI (Release) and the
+window driver (`tools\demo-video\WpfDriver`, which the WPF and WinForms checks use), then runs
+`check.mjs`. Once those are built, `node check.mjs [--only <text>] [--no-launch] [--runs <folder>]`
+is the same thing.
+
+Each case pipes `build app: ...` then `approve <target>` into
+`CodeGenerator\bin\Release\net10.0\CodeGenerator.exe`, with `CG_NO_WEB=1` and
+`PROJECTPATH=<case folder>\ws` (`lib/generate.mjs`), so it never writes into this repository.
 
 Needs:
 
+- **Node.js**, and Playwright's Chromium for the Blazor checks (`npx playwright install chromium`
+  once, in `tools\app-check`).
 - **an unlocked desktop**: the WPF and WinForms checks drive real windows through UI Automation.
   Other windows may sit on top of them: the checks sign in, open screens and press buttons
   through UI Automation rather than the mouse and keyboard, and screenshots are drawn by the
@@ -34,6 +43,8 @@ Needs:
   `shop-sql`.
 
 ## What a case is
+
+`prompts.json` has 3 data prompts, 7 targets and 5 description prompts: 3 × 7 + 5 = 26 cases.
 
 - Each **data** prompt (CSV, JSON, SQL) is built once for **every** target. The classes come from
   the data, so these are the same every run: a change here means the generator changed.
@@ -49,7 +60,7 @@ Needs:
 | Target | Checks |
 |---|---|
 | WPF, WinForms | window opens, signs in as admin / admin, opens the first entity, the list shows seeded rows, New then Save gives a status, the list recounted after Save holds one more record (or the same number when the save was refused), app still running; the screenshot is taken after Save |
-| Blazor | `dotnet run` serves, signs in, the entity page lists seeded rows, New opens the editor, Save answers, no browser errors or HTTP 500s |
+| Blazor | `dotnet run` serves, signs in (only when the app has an `Auth` folder), the entity page lists seeded rows, New opens the editor, Save answers, no browser errors or HTTP 500s |
 | Web API | every mapped route answers GET with seeded records |
 | Worker | still running after 8 seconds, logs no `fail:`/`crit:` |
 | Console | lists every entity in its menu, exits when told to |
@@ -57,8 +68,8 @@ Needs:
 
 ## Output
 
-Every run gets its own folder under `C:\ac\runs\<yyyyMMdd-HHmm>\` (short on purpose: a generated
-project under a long path hits MAX_PATH during its build):
+Every run gets its own folder under `<runs>\<yyyyMMdd-HHmm>\`, `C:\ac\runs` by default (short on
+purpose: a generated project under a long path hits MAX_PATH during its build):
 
 - `report.html`: the page. It compares itself with the previous run's `results.json`.
 - `results.json`: the same results, for a script.
