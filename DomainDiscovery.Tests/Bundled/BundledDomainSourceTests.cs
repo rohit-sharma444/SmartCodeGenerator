@@ -224,4 +224,81 @@ public class BundledDomainSourceTests
         foreach (var word in words.Split(','))
             Assert.DoesNotContain(word, names);
     }
+
+    // Measured live: "customers" became an empty Customer beside the Veterinary domain's Owner,
+    // and "treats" an empty Treat - each with screens, tiles and three seeded rows of nothing.
+    [Fact]
+    public void ASeedThatIsAnotherWordForADomainClassIsThatClass()
+    {
+        var model = BundledDomainSource.CreateDefault()
+            .Discover("a veterinary clinic that treats pets owned by customers").Model;
+
+        var names = model.Entities.Select(e => e.Name).ToList();
+        Assert.Contains("Owner", names);
+        Assert.Contains("Pet", names);
+        Assert.DoesNotContain("Customer", names);
+        Assert.DoesNotContain("Treat", names);
+
+        var customer = model.Decisions.Last(d => d.Name == "Customer");
+        Assert.Equal(DecisionOutcome.Rejected, customer.Outcome);
+        Assert.Equal(DecisionReasons.AnotherWordFor("Owner", "Veterinary"), customer.Reason);
+    }
+
+    [Theory]
+    [InlineData("an hr system for staff and departments", "Staff", "Employee")]
+    [InlineData("a car rental company that rents vehicles to clients", "Vehicle", "Car")]
+    [InlineData("a car rental company that rents vehicles to clients", "Client", "Customer")]
+    [InlineData("a school where tutors teach pupils", "Pupil", "Student")]
+    public void ACommonSynonymMapsOntoTheDomainsClass(string description, string seed, string domainClass)
+    {
+        var model = BundledDomainSource.CreateDefault().Discover(description).Model;
+
+        Assert.DoesNotContain(model.Entities, e => e.Name == seed);
+        Assert.Contains(model.Entities, e => e.Name == domainClass);
+    }
+
+    // Measured live: these real records were refused as "the software being built".
+    [Theory]
+    [InlineData("a recruitment agency that tracks job applications", "Application", "covered by JobApplication in the built-in Recruitment domain")]
+    [InlineData("a warehouse that tracks stock movement", "Movement", "covered by StockMovement in the built-in Inventory domain")]
+    [InlineData("a fleet company that tracks maintenance of vans", "Maintenance", "another word for ServiceRecord in the built-in Fleet domain")]
+    public void AWordTheDomainKeepsUnderItsOwnNameSaysSo(string description, string seed, string reason)
+    {
+        var model = BundledDomainSource.CreateDefault().Discover(description).Model;
+
+        var decision = model.Decisions.Last(d => d.Name == seed);
+        Assert.Equal(DecisionOutcome.Rejected, decision.Outcome);
+        Assert.Equal(reason, decision.Reason);
+    }
+
+    [Fact]
+    public void AnActivityWordIsNotCalledTheSoftware()
+    {
+        var outcome = new BundledDomainSource(Catalog, _ => Seeds("Knitting", "Maintenance", "Portal"))
+            .Discover("a knitting maintenance portal");
+
+        Assert.Equal(DecisionReasons.NamesAnActivity, outcome.Model.Decisions.Last(d => d.Name == "Maintenance").Reason);
+        Assert.Equal(DecisionReasons.NamesTheSoftware, outcome.Model.Decisions.Last(d => d.Name == "Portal").Reason);
+    }
+
+    // Measured live: the Veterinary domain's Pet had no link to its Owner.
+    [Fact]
+    public void APetBelongsToItsOwner()
+    {
+        var pet = BundledDomainSource.CreateDefault().Discover("a veterinary clinic").Model
+            .Entities.Single(e => e.Name == "Pet");
+
+        Assert.Contains(pet.Relationships, r => r.Target == "Owner");
+    }
+
+    [Fact]
+    public void ASynonymForAClassTheDomainLacksIsRefusedWhenTheFileLoads()
+    {
+        var ex = Assert.Throws<FormatException>(() => BundledDomain.Parse("""
+            { "name": "Vet", "terms": { "vet": 3 }, "synonyms": { "customer": "Ghost" },
+              "classes": [ { "name": "Owner", "role": "Party", "properties": [] } ] }
+            """));
+
+        Assert.Contains("Ghost", ex.Message);
+    }
 }

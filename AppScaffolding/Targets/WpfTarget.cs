@@ -72,6 +72,9 @@ public sealed class WpfTarget : ITargetScaffolder
         if (palette is not null)
             files.Add(new("Views", ThemeXamlTemplate.FileName, ThemeXamlTemplate.Source(palette)));
 
+        // Every layout's grids and pickers format dates in one culture, the machine's.
+        files.Add(new("Views", WpfDisplayCultureTemplate.FileName, WpfDisplayCultureTemplate.Source(ns)));
+
         // App.xaml.cs is emitted, replacing the template's: the sign-in has to happen before
         // any window opens, and StartupUri opens one before OnStartup finishes. The matching
         // StartupUri removal is WpfProjectFixup.RemoveStartupUri, called by the scaffolder.

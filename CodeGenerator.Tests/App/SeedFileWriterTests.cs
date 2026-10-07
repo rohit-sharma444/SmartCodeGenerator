@@ -200,6 +200,42 @@ public class SeedFileWriterTests
         Assert.AreEqual(0.00001m, row.GetProperty("Rate").GetDecimal());
     }
 
+    /// <summary>
+    /// A CSV code in exponent form ("1E3") reached the seed as the number 1000, with nothing
+    /// reported, because inference used the SQL float parser on CSV text. Read from a real CSV,
+    /// through the model the app is generated from, the code must arrive as its own text.
+    /// </summary>
+    [TestMethod]
+    public void AnExponentCodeInACsvIsSeededAsItsText()
+    {
+        var csv = Path.Combine(Path.GetTempPath(), "sales_" + Path.GetRandomFileName() + ".csv");
+        File.WriteAllText(csv, "Ref,Batch\nS-1,1E3\nS-2,2E5\nS-3,3E1\n");
+
+        try
+        {
+            var tables = new DataIngestion.Schema.Readers.CsvReader().Read(
+                new DataIngestion.DataSourceSpec(DataIngestion.DataSourceKind.Csv, csv));
+            var model = DataIngestion.DataModelBuilder.Build(tables);
+            var classes = DomainModelMapper.ToClassDefinitions(model, out var classNames);
+
+            var sale = classes.Single();
+            Assert.AreEqual("string", sale.Properties.Single(p => p.Name == "Batch").Type);
+
+            var rows = Rows(SeedFileWriter.Files(
+                classes, classNames, DataIngestion.TabularImport.ToImportedData(tables),
+                out var unreadable).Single().Json);
+
+            Assert.IsEmpty(unreadable);
+            CollectionAssert.AreEqual(
+                new[] { "1E3", "2E5", "3E1" },
+                rows.Select(r => r.GetProperty("Batch").GetString()).ToArray());
+        }
+        finally
+        {
+            File.Delete(csv);
+        }
+    }
+
     /// <summary>A SQL bigint is typed int, and a value past int.MaxValue cannot be held by one.
     /// That used to be one warning about the column and then silence about every value lost.</summary>
     [TestMethod]
@@ -253,7 +289,7 @@ public class SeedFileWriterTests
     /// </summary>
     [TestMethod]
     [DataRow("1", "-2", "+3")]
-    [DataRow("1.5", "2", "-0.25", "1E5", "2.5e-3")]
+    [DataRow("1.5", "2", "-0.25")]
     [DataRow("true", "no", "Y")]
     [DataRow("2026-01-15", "2026/02/01", "2026-01-15 09:30", "15 Jan 2026", "January 5, 2026",
         "2026-01-15T09:30:00Z", "2026-01-15T09:30:00.123+05:00")]

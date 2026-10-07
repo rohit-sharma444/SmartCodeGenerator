@@ -153,6 +153,9 @@ public class TransactionVerbSeedTests
     [InlineData("a company that hires staff and pays salaries")]
     [InlineData("an agency hires staff")]
     [InlineData("a hospital that hires nurses")]
+    [InlineData("a cleaning company that hires cleaners")]
+    [InlineData("a security firm that hires guards")]
+    [InlineData("a firm that hires labourers and builders")]
     public void Hiring_people_is_not_a_rental(string description)
     {
         var seeds = Seeds(description);
@@ -164,9 +167,21 @@ public class TransactionVerbSeedTests
     [Theory]
     [InlineData("a company that hires vans to customers")]
     [InlineData("a shop hires bikes to tourists")]
+    [InlineData("a shop that hires generators and trailers")]
+    [InlineData("a company that hires out vans")]
+    [InlineData("a firm that hires equipment to builders")]
     public void Hiring_out_a_thing_is_still_a_rental(string description)
     {
         Assert.Contains("Rental", Seeds(description));
+    }
+
+    [Fact]
+    public void The_out_of_hires_out_is_not_a_class()
+    {
+        var seeds = Seeds("a company that hires out vans");
+
+        Assert.DoesNotContain("Out", seeds);
+        Assert.Contains("Van", seeds);
     }
 
     [Fact]

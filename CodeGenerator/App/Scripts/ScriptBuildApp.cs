@@ -47,6 +47,7 @@ internal static class ScriptBuildApp
         var refused = false;
         var prompts = 0;
         string? ranAfter = null;
+        string? generatedAt = null;
         var input = string.Join("\n", lines.Append("exit")) + "\n";
 
         ProcessResult result;
@@ -61,7 +62,12 @@ internal static class ScriptBuildApp
                     // StringWriter.
                     lock (gate)
                     {
-                        generated |= line.Contains(SuccessMarker, StringComparison.Ordinal);
+                        var marker = line.IndexOf(SuccessMarker, StringComparison.Ordinal);
+                        if (marker >= 0)
+                        {
+                            generated = true;
+                            generatedAt ??= line[(marker + SuccessMarker.Length)..].Trim();
+                        }
                         cancelled |= line.Contains(CancelledMarker, StringComparison.Ordinal);
                         refused |= line.Contains(RefusedMarker, StringComparison.Ordinal);
 
@@ -91,6 +97,16 @@ internal static class ScriptBuildApp
         {
             // The copy may have registered a project in the file this process also reads.
             ProjectManager.ReloadWithin(workspaceRoot);
+
+            // Typed, the build registers the project it generates, and the first one registered
+            // with nothing selected becomes the selection - so the next create class goes into it.
+            // The copy did that in its own memory; without the same here, a replayed script put
+            // the next class in the workspace's Generated folder instead.
+            lock (gate)
+                if (ProjectManager.CurrentProject is null && generatedAt is not null)
+                    ProjectManager.CurrentProject = ProjectManager.GetProjects().FirstOrDefault(p =>
+                        string.Equals(Path.GetFullPath(p.ProjectPath), Path.GetFullPath(generatedAt),
+                            StringComparison.OrdinalIgnoreCase));
         }
 
         if (result.TimedOut)

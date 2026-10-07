@@ -324,8 +324,13 @@ public static class ProjectManager
     // command prints. Two enumerations of "the classes in a project" that could
     // disagree with each other would be worse than one that is merely awkward
     // to reach.
+    //
+    // A partial file named after its class - Customer.Validation.cs beside Customer.cs - is part of
+    // that class, not a class called "Customer.Validation". It is listed only when there is no
+    // Customer.cs, because then its own name is the only one the class can be reached by.
     public static IReadOnlyList<string> ClassNamesIn(string folder)
-        => Directory.GetFiles(folder, "*.cs", SearchOption.AllDirectories)
+    {
+        var names = Directory.GetFiles(folder, "*.cs", SearchOption.AllDirectories)
             .Where(x =>
                 !x.Contains("\\bin\\") && !x.Contains("\\obj\\") &&
                 !x.Contains("DeletedClasses", StringComparison.OrdinalIgnoreCase))
@@ -333,8 +338,15 @@ public static class ProjectManager
             .Where(n => !string.IsNullOrWhiteSpace(n))
             .Select(n => n!)
             .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var whole = names.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        return names
+            .Where(n => n.IndexOf('.') is var dot && (dot <= 0 || !whole.Contains(n[..dot])))
             .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
 
     // ProjectPath is normally the project directory, but persisted/registered
     // entries occasionally hold the .csproj file path - handle both.

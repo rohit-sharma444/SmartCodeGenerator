@@ -164,7 +164,7 @@ public sealed class CreateClassCommandTests
             "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup></Project>");
         Assert.IsTrue(Run("create class Employee with properties Name string"));
         Assert.IsTrue(Run("delete class Employee"));
-        Assert.IsNotEmpty(Directory.GetFiles(Path.Combine(_workspace, "DeletedClasses"), "Employee*.cs"));
+        Assert.IsNotEmpty(Directory.GetFiles(Path.Combine(_workspace, "DeletedClasses"), "Employee_*"));
 
         Assert.IsTrue(Run("create class Employee with properties Code int"));
 

@@ -40,7 +40,8 @@ public sealed class EitherOrRule : IValidationRule
 public sealed class EitherOrRuleParser : IValidationRuleParser
 {
     private static readonly Regex Pattern = new(
-        @"^either\s+(?<a>\w+)\s+or\s+(?<b>\w+)\s+must\s+be\s+(?:provided|present|supplied|set)$",
+        // "is required" too: "Either Phone or Email is required" is how people say it.
+        @"^either\s+(?<a>\w+)\s+or\s+(?<b>\w+)\s+(?:must\s+be\s+(?:provided|present|supplied|set|given|entered)|(?:is|are)\s+required)$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     public int Priority => 12;

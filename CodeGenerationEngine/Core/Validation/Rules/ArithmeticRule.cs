@@ -79,7 +79,8 @@ public sealed class ArithmeticRule : IValidationRule
 public sealed class ArithmeticRuleParser : IValidationRuleParser
 {
     private static readonly Regex Pattern = new(
-        @"^(?<target>\w+)\s+must\s+equal\s+(?<left>\w+)\s+(?<op>times|multiplied\s+by|plus|minus|divided\s+by)\s+(?<right>\w+)$",
+        // "equals" is how the help writes it, "must be equal to" how people do.
+        @"^(?<target>\w+)\s+(?:must\s+equal|must\s+be\s+equal\s+to|equals)\s+(?<left>\w+)\s+(?<op>times|multiplied\s+by|plus|minus|divided\s+by)\s+(?<right>\w+)$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     public int Priority => 15;

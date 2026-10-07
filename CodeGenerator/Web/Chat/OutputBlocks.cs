@@ -18,6 +18,13 @@ public sealed record TableBlock(
 public sealed record ListBlock(string Heading, IReadOnlyList<string> Items) : OutputBlock;
 
 /// <summary>
+/// The workspace's relationships, drawn as the diagram <c>show relationships</c> opens on the
+/// console. Never parsed out of text: the chat builds it from the classes on disk.
+/// </summary>
+public sealed record RelationshipsBlock(IReadOnlyList<CodeGenerator.Web.Workflow.RelationshipSource> Sources)
+    : OutputBlock;
+
+/// <summary>
 /// Reads a command's captured output and says how to draw it.
 /// </summary>
 /// <remarks>

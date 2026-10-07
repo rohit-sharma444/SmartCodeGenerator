@@ -726,15 +726,25 @@ internal class CodeGeneratorStarter
             // Echoed as though typed, so the user can see — and repeat — exactly what ran.
             Console.WriteLine($"CodeGenerator >> {step.Command}");
 
-            _pipeline.Handle(step.Command, ref currentProject, _workspace.Rules, _workspace.Root,
+            var outcome = _pipeline.Handle(step.Command, ref currentProject, _workspace.Rules, _workspace.Root,
                 r => ProjectManager.CurrentProject = r, ct: Interrupt.Token);
 
-            if (!Interrupt.Requested)
-                continue;
+            if (Interrupt.Requested)
+            {
+                Output.Warning($"Cancelled. {target} was left as far as the demo got.");
+                Console.WriteLine();
+                return;
+            }
 
-            Output.Warning($"Cancelled. {target} was left as far as the demo got.");
-            Console.WriteLine();
-            return;
+            // A failed step was passed over and the demo carried on, ending with its usual outro as
+            // though every step had worked; the later steps then failed for want of this one.
+            if (!outcome.Handled)
+            {
+                Output.Error($"The demo stopped: step {DemoScript.Steps.ToList().IndexOf(step) + 1} "
+                    + $"({step.Command}) did not work. {target} was left as far as the demo got.");
+                Console.WriteLine();
+                return;
+            }
         }
 
         foreach (var line in DemoScript.Outro(target))

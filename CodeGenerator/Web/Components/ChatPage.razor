@@ -17,7 +17,7 @@
     <ContextStrip Session="Session" PickerOpen="_picking" OnChangeSolution="TogglePicker"
                   TreeOpen="Session.TreeOpen" OnToggleTree="ToggleTree" />
 
-    @if (_picking)
+    @if (_picking && !Session.Ended)
     {
         <SolutionPicker Session="Session" OnLoaded="ClosePicker" />
     }
@@ -56,6 +56,22 @@
 
     <div class="chat-foot">
         <div class="foot-inner">
+            @* The end of the session, in place of the box. The transcript stays above it to be
+               read; the box goes, because nothing typed into it can run any more. Without this
+               the next thing every tab showed was the host stopping underneath it, reported by
+               Blazor as a server it was still trying to reach - for two minutes. *@
+            @if (Session.Ended)
+            {
+                <div class="chat-ended" role="status">
+                    <h2>This chat session has ended</h2>
+                    <p>
+                        The console prompt is back. Type <code>chat</code> there to open a new
+                        session — you can close this tab.
+                    </p>
+                </div>
+            }
+            else
+            {
             @if (Session.Running)
             {
                 <div class="working">
@@ -76,6 +92,7 @@
                           UndoLabel="@Session.NextUndoLabel"
                           RedoLabel="@Session.NextRedoLabel"
                           OnSend="Send" />
+            }
         </div>
     </div>
 </div>

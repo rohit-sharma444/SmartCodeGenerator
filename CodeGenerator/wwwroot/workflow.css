@@ -705,6 +705,55 @@ body {
 
 .panel textarea.answer { resize: vertical; }
 
+/* A field the panel refuses, said under the box in the failure colour, with the box itself drawn
+   in that colour too. Unstyled, the sentence read as help text in the label's own ink, and nothing
+   on the page tied it to the step that had just gone disabled. Every theme re-points --failed and
+   --failure-wash, so this follows them. */
+.field-error {
+    display: block;
+    max-width: 34rem;
+    margin: 0.3rem 0 0;
+    padding: 0.25rem 0.55rem;
+    border-left: 3px solid var(--failed);
+    background: var(--failure-wash);
+    color: var(--failed);
+    font-size: 0.88em;
+    font-weight: 600;
+}
+
+/* What an unticked Look panel still applies. A note rather than a warning: nothing is wrong,
+   but a setting in force must be visible where the choice about it is made. Theme tokens, so
+   every theme follows. */
+.look-remembered {
+    max-width: 34rem;
+    margin: var(--space-2) 0 var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    border-left: 3px solid var(--accent);
+    background: var(--accent-wash);
+    color: var(--ink);
+    font-size: 0.9em;
+}
+
+.look-remembered p { margin: 0 0 0.25rem; color: var(--muted); }
+.look-remembered ul { margin: 0 0 var(--space-2); padding-left: 1.1rem; }
+
+.look-clear {
+    padding: 0.3rem 0.7rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--ink);
+    font: inherit;
+    cursor: pointer;
+}
+
+.look-clear:hover { border-color: var(--accent); }
+
+.panel .answer:has(+ .field-error) {
+    border-color: var(--failed);
+    box-shadow: 0 0 0 1px var(--failed);
+}
+
 /* The run as a line to copy. Monospace and wrapping: a path with spaces in it must be readable
    whole, and a horizontal scrollbar in a sidebar hides the end of the command. */
 .command-echo {
@@ -1383,7 +1432,10 @@ body {
 
 /* The end of a run, in place of the diagram and the panel. A card like the panel it replaces —
    the page has not become a different page, it has stopped asking questions. */
+/* Both columns: once the run is over there is no rail, and as a grid child of .workflow the card
+   otherwise lands in the 190px rail column, squeezed into a strip beside empty space. */
 .finished {
+    grid-column: 1 / -1;
     padding: 1.25rem 1.5rem;
     border: 1px solid var(--line);
     border-left: 4px solid var(--done);
@@ -1472,3 +1524,41 @@ body:has(.finished) #components-reconnect-modal { display: none; }
 .tables .cols, .tables .rows { text-align: right; color: var(--pending); }
 
 .picked { font-style: italic; margin: 0.25rem 0 0; }
+
+/* Phone width. At 390px the theme picker, absolutely placed level with the heading, sat on top of
+   "Build an application", and the ten stage boxes stacked one per row filled the first screen and
+   a half, so the panel being worked on started below all of them.
+
+   Here the picker takes a row of its own under the heading, and the rail becomes a compact map:
+   two columns, titles only, with the open stage across both so its answer and its Continue stay
+   readable. Every box is still there and still clickable, and clicking one opens its stage with
+   its answer; the panel, not the map, is what a phone has room to read. The page gutter drops to
+   16px. */
+@media (max-width: 600px) {
+    body { padding: var(--space-4) 16px; }
+
+    .theme-picker {
+        position: static;
+        grid-column: 1 / -1;
+        justify-content: flex-end;
+        margin: -0.5rem 0 0.75rem;
+    }
+
+    .workflow > h1 { margin-bottom: 0.5rem; }
+
+    .stage-diagram {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.2rem 0.5rem;
+        margin: 0 0 1.25rem;
+    }
+
+    .stage-node { padding-top: 0.3rem; padding-bottom: 0.3rem; }
+    .stage-node .stage-mark { top: 0.35rem; }
+
+    .stage-node:not(.active) .stage-blurb,
+    .stage-node:not(.active) .stage-answer { display: none; }
+
+    .stage-node.active { grid-column: 1 / -1; }
+
+    .stage-node + .stage-node::before { display: none; }
+}

@@ -42,15 +42,16 @@ public static class BlazorShellTemplate
 <input type="checkbox" title="Navigation menu" class="navbar-toggler" />
 
 <div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
-    <nav class="nav flex-column">
+    <div class="d-flex flex-column h-100">
+    <nav class="nav flex-column flex-nowrap flex-grow-1 overflow-auto">
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
                 <span aria-hidden="true"></span> Home
             </NavLink>
         </div>
 {{NavGroups(classNames, roles, login)}}{{AdminNav(login)}}    </nav>
+{{SignOut(login)}}    </div>
 </div>
-{{SignOut(login)}}
 """;
 
     /// <summary>
@@ -71,10 +72,10 @@ public static class BlazorShellTemplate
     /// </remarks>
     private static string AdminNav(bool login)
         => login
-            ? """
+            ? $$"""
         <AuthorizeView Roles="Admin">
             <Authorized>
-                <div class="nav-item px-3 pt-3 text-uppercase small text-body-secondary">Admin</div>
+                <div class="{{GroupHeadingClass}}">Admin</div>
                 <div class="nav-item px-3">
                     <NavLink class="nav-link" href="users">
                         <span aria-hidden="true"></span> Users
@@ -86,22 +87,40 @@ public static class BlazorShellTemplate
 """
             : string.Empty;
 
-    /// <summary>The signed-in strip, or nothing at all for an app with no login.</summary>
+    /// <summary>
+    /// A rail group heading: light and dimmed on the template's dark sidebar gradient.
+    /// </summary>
+    /// <remarks>
+    /// Was Bootstrap's <c>text-body-secondary</c>, a grey meant for a light page, which on the dark
+    /// sidebar left MASTERS, TRANSACTIONS and ADMIN almost invisible. <c>text-light</c> at 75%
+    /// opacity is about 7:1 against the gradient and still reads as quieter than the links.
+    /// </remarks>
+    private const string GroupHeadingClass = "nav-item px-3 pt-3 text-uppercase small text-light opacity-75";
+
+    /// <summary>
+    /// The signed-in strip, or nothing at all for an app with no login.
+    /// </summary>
+    /// <remarks>
+    /// Pinned to the bottom of the sidebar, inside the same scrollable column as the nav, which
+    /// grows and scrolls above it. It used to be a second <c>nav-scrollable</c> block after the
+    /// first; the template makes that class <c>100vh - 3.5rem</c> tall on a wide screen, so the
+    /// strip sat a whole screen down, below the sticky 100vh sidebar: off screen at 1280x720.
+    /// </remarks>
     private static string SignOut(bool login)
         => login
             ? """
+    <AuthorizeView>
+        <Authorized>
+            <div class="flex-shrink-0 px-3 py-2 border-top border-secondary">
+                <span class="text-light opacity-75 small">@context.User.Identity?.Name</span>
+                <form method="post" action="/auth/logout">
+                    <AntiforgeryToken />
+                    <button type="submit" class="btn btn-link nav-link p-0 text-light">Sign out</button>
+                </form>
+            </div>
+        </Authorized>
+    </AuthorizeView>
 
-<AuthorizeView>
-    <Authorized>
-        <div class="nav-scrollable px-3 py-2">
-            <span class="text-body-secondary small">@context.User.Identity?.Name</span>
-            <form method="post" action="/auth/logout">
-                <AntiforgeryToken />
-                <button type="submit" class="btn btn-link nav-link p-0">Sign out</button>
-            </form>
-        </div>
-    </Authorized>
-</AuthorizeView>
 """
             : string.Empty;
 
@@ -159,7 +178,7 @@ public static class BlazorShellTemplate
     private static string NavGroup(string title, IReadOnlyList<string> names)
         => names.Count == 0
             ? string.Empty
-            : $"        <div class=\"nav-item px-3 pt-3 text-uppercase small text-body-secondary\">"
+            : $"        <div class=\"{GroupHeadingClass}\">"
               + $"{title}</div>{Environment.NewLine}"
               + NavItems(names);
 

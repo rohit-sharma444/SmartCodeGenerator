@@ -73,6 +73,29 @@ public static class EntityExtractor
             .FirstOrDefault();
     }
 
+    /// <summary>
+    /// The class names <see cref="FindClassFile"/> could find, from the file names under the same
+    /// root: for suggesting one when a name is not found.
+    /// </summary>
+    internal static IReadOnlyList<string> ClassNames(string workspaceRoot)
+    {
+        var searchRoot = ProjectManager.CurrentProject?.ProjectPath;
+        if (string.IsNullOrWhiteSpace(searchRoot))
+            searchRoot = workspaceRoot;
+
+        if (string.IsNullOrWhiteSpace(searchRoot) || !Directory.Exists(searchRoot))
+            return [];
+
+        var separator = Path.DirectorySeparatorChar;
+        return Directory.EnumerateFiles(searchRoot, "*.cs", SearchOption.AllDirectories)
+            .Where(f => !f.Contains($"{separator}bin{separator}") && !f.Contains($"{separator}obj{separator}"))
+            .Select(Path.GetFileNameWithoutExtension)
+            .OfType<string>()
+            .Where(n => !n.Contains('.'))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
     internal static string ValidatorPathFor(string classFile, string className) =>
         Path.Combine(Path.GetDirectoryName(classFile)!, $"{className}.Validation.cs");
 

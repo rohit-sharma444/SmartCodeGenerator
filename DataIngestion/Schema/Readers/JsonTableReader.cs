@@ -222,6 +222,9 @@ public sealed class JsonTableReader : IDataSourceReader
             JsonValueKind.String => element.GetString(),
             JsonValueKind.True => "true",
             JsonValueKind.False => "false",
+            // A JSON number is numeric by its format, so an exponent is dropped here: inference
+            // reads exponent-form TEXT as a code.
+            JsonValueKind.Number => AppScaffolding.ImportedValues.PlainNumberText(element.GetRawText()),
             _ => element.GetRawText(),
         };
 }

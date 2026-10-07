@@ -37,21 +37,52 @@ public sealed class SeedEntityExtractor
         // explained, and filtering it out here would leave nothing to explain it with.
         var words = WordsOf(description);
 
+        // Whether the entity before this one was read as a verb. Its next noun is then the verb's
+        // object - a thing the user named - and never a verb itself: in "that records orders"
+        // and "that ships orders", "orders" is what is recorded or shipped.
+        var previousWasAVerb = false;
+
         for (var i = 0; i < result.Entities.Count; i++)
         {
             var entity = result.Entities[i];
             var previous = i > 0 ? result.Entities[i - 1] : null;
+            var next = i + 1 < result.Entities.Count ? result.Entities[i + 1] : null;
+            var afterAVerb = previousWasAVerb;
+            previousWasAVerb = false;
 
-            if ((RecordMadeBy(entity) ?? BareVerbRecord(entity, previous, words)) is { } record)
+            // "hires OUT vans", "signs UP members": the particle belongs to the verb.
+            if (afterAVerb && Particles.Contains(entity.Text.Trim(), StringComparer.OrdinalIgnoreCase))
             {
-                var next = i + 1 < result.Entities.Count ? result.Entities[i + 1] : null;
+                previousWasAVerb = true;
+                model.Record(entity.Text, DecisionStage.SeedExtraction, DecisionOutcome.Skipped,
+                    DecisionReasons.ItIsAVerbHere, $"\"{entity.Text}\" belongs to the verb before it");
+                continue;
+            }
+
+            var record = RecordMadeBy(entity) ?? (afterAVerb ? null : BareVerbRecord(entity, previous, words));
+
+            if (record is null && (VerbPhrase(entity) || (!afterAVerb && BareVerb(entity, previous, next, words))))
+            {
+                previousWasAVerb = true;
+                model.Record(NameOrText(entity), DecisionStage.SeedExtraction, DecisionOutcome.Skipped,
+                    DecisionReasons.ItIsAVerbHere,
+                    $"\"{entity.Text}\" says what is done, not a thing that is kept");
+                continue;
+            }
+
+            if (record is not null)
+            {
+                previousWasAVerb = true;
                 var verbWord = entity.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries)[^1];
 
-                if (TransactionVerbs.MakesNoRecordForAPerson(verbWord) && IsAPerson(next))
+                if (TransactionVerbs.MakesNoRecordForAPerson(verbWord)
+                    && ObjectOf(result.Entities, i) is var hired && !IsAHireableThing(hired))
                 {
                     model.Record(entity.Text, DecisionStage.SeedExtraction, DecisionOutcome.Skipped,
                         DecisionReasons.NotRecognizedAsAThing,
-                        $"to {verbWord.ToLowerInvariant()} {next!.Text} is to employ them, not a rental");
+                        hired is null
+                            ? $"to {verbWord.ToLowerInvariant()} with nothing hired out is not a rental"
+                            : $"to {verbWord.ToLowerInvariant()} {hired.Text} is to employ them, not a rental");
                     continue;
                 }
 
@@ -163,17 +194,129 @@ public sealed class SeedEntityExtractor
 
     private static readonly string[] Conjunctions = ["and", "or", "nor"];
 
-    // The archetype table already knows which nouns are people (staff, nurse, driver...).
-    private static bool IsAPerson(Entity? entity)
+    /// <summary>
+    /// Whether <paramref name="entity"/> is a relative pronoun and a verb the engine typed as a
+    /// thing: "that records", "that treats", "that signs".
+    /// </summary>
+    /// <remarks>
+    /// "that" before a word can be a determiner ("that data"), but a determiner "that" takes a
+    /// singular noun - "those records", never "that records" - so a word ending in -s after it is
+    /// a verb. The words that end in -s and are still singular (status, process, analysis, news)
+    /// are left alone.
+    /// </remarks>
+    private static bool VerbPhrase(Entity entity)
     {
-        if (entity is null)
-            return false;
-        if (entity.Type == EntityType.Person)
-            return true;
-
-        var last = entity.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries).LastOrDefault() ?? string.Empty;
-        return Enrichment.ArchetypeLexicon.Resolve(last).Role == Enrichment.EntityRole.Party;
+        var parts = entity.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return EntityTypes.Contains(entity.Type) && parts.Length == 2
+               && RelativePronouns.Contains(parts[0], StringComparer.OrdinalIgnoreCase)
+               && LooksLikeAVerbForm(parts[1]);
     }
+
+    /// <summary>
+    /// Whether <paramref name="entity"/> is a bare verb standing between its subject and its
+    /// object: "a warehouse RECORDS orders", "a library of books KEEPS loans".
+    /// </summary>
+    /// <remarks>
+    /// Its words must stand straight after the noun before it and straight before the noun after
+    /// it - "a store with orders and payments" and "orders and payments" fail - and the noun after
+    /// it must not be the software ("a school records system", where "records" is a noun).
+    /// </remarks>
+    private static bool BareVerb(Entity entity, Entity? previous, Entity? next, IReadOnlyList<string> words)
+    {
+        if (previous is null || next is null || words.Count == 0
+            || !EntityTypes.Contains(entity.Type) || !EntityTypes.Contains(previous.Type)
+            || !EntityTypes.Contains(next.Type))
+            return false;
+
+        var verb = entity.Text.Trim().ToLowerInvariant();
+        if (verb.Contains(' ') || !LooksLikeAVerbForm(verb))
+            return false;
+
+        var before = previous.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries)[^1].ToLowerInvariant();
+        var after = next.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries)[0].ToLowerInvariant();
+        var head = next.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries)[^1].ToLowerInvariant();
+
+        if (SoftwareWords.Contains(head))
+            return false;
+
+        // "... for classes AND employs staff": a second verb joined to the first verb's object.
+        for (var j = 0; j + 2 < words.Count; j++)
+        {
+            var at = words[j + 1] == "and" ? j + 2 : j + 1;
+            if (words[j] == before && at + 1 < words.Count && words[at] == verb && words[at + 1] == after)
+                return true;
+        }
+
+        return false;
+    }
+
+    private static readonly string[] SoftwareWords =
+        ["system", "systems", "app", "application", "software", "database", "platform", "tool", "portal"];
+
+    private static readonly string[] SingularWordsEndingInS =
+        ["news", "series", "species", "means", "data", "lens", "gas", "bus", "chaos"];
+
+    // A third-person verb: records, logs, treats, schedules. Not a word whose singular ends in -s.
+    private static bool LooksLikeAVerbForm(string word)
+    {
+        var w = word.ToLowerInvariant();
+        return w.Length > 3 && w.EndsWith('s') && w.All(char.IsLetter)
+               && !w.EndsWith("ss", StringComparison.Ordinal)
+               && !w.EndsWith("us", StringComparison.Ordinal)
+               && !w.EndsWith("is", StringComparison.Ordinal)
+               && !SingularWordsEndingInS.Contains(w);
+    }
+
+    // The name `why` is asked with: "that records" is asked about as Record.
+    private static string NameOrText(Entity entity)
+    {
+        var name = NameNormalizer.ToEntityName(entity.Text);
+        return name.Length == 0 ? entity.Text : name;
+    }
+
+    private static readonly string[] Particles = ["out", "up", "off", "back"];
+
+    // The entity a verb at index i acts on, past a particle: "hires out VANS".
+    private static Entity? ObjectOf(IList<Entity> entities, int i)
+    {
+        var at = i + 1;
+        if (at < entities.Count && Particles.Contains(entities[at].Text.Trim(), StringComparer.OrdinalIgnoreCase))
+            at++;
+        return at < entities.Count ? entities[at] : null;
+    }
+
+    /// <summary>
+    /// Whether "hire" acting on <paramref name="entity"/> rents it out. The rule runs this way
+    /// round - a Rental only for a known thing - because the other way cannot be made to work:
+    /// the people hired are an open list (cleaners, guards, builders, labourers each gave a Rental
+    /// while only the archetype table's people were caught), and an agent-noun test (-er, -or)
+    /// cannot tell them apart from the things a hire shop hires (generators, trailers, scooters,
+    /// projectors, containers). Missing a Rental costs one class the user can add back; inventing
+    /// one gave an employer a rental screen nobody wanted.
+    /// </summary>
+    private static bool IsAHireableThing(Entity? entity)
+    {
+        if (entity is null || entity.Type == EntityType.Person)
+            return false;
+
+        var head = NameNormalizer.ToEntityName(entity.Text).ToLowerInvariant();
+        if (head.Length == 0)
+            return false;
+
+        return HireableThings.Contains(head)
+               || Enrichment.ArchetypeLexicon.Resolve(head).Role
+                   is Enrichment.EntityRole.Item or Enrichment.EntityRole.Device or Enrichment.EntityRole.Place;
+    }
+
+    // What hire firms hire out, beyond the archetype table's vehicles, tools, equipment and rooms.
+    private static readonly HashSet<string> HireableThings = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "van", "bike", "bicycle", "boat", "scooter", "trailer", "generator", "marquee", "tent",
+        "costume", "suit", "dress", "skip", "plant", "machinery", "crane", "caravan", "campervan",
+        "motorhome", "minibus", "coach", "limousine", "limo", "kayak", "canoe", "ski", "camera",
+        "projector", "speaker", "furniture", "scaffolding", "digger", "forklift", "hall", "heater",
+        "yacht", "jet", "lorry", "motorbike", "motorcycle", "cottage", "villa", "apartment", "flat",
+    };
 
     private static IReadOnlyList<string> WordsOf(string? description) =>
         System.Text.RegularExpressions.Regex.Matches(description ?? string.Empty, "[A-Za-z']+")

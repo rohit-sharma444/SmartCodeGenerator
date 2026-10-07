@@ -14,15 +14,20 @@ public static class DecisionReasons
     public const string YouNamedIt = "you named it";
     public const string NamesTheWholeSystem = "it names the whole system, not a class in it";
     public const string NamesTheSoftware = "it names the software being built, not something it keeps";
+    public const string NamesAnActivity = "it names an activity or an idea, not something the app keeps a row for";
 
     public static string FromTheBuiltInDomain(string domain) => $"from the built-in {domain} domain";
 
     public static string CoveredBy(string className, string domain) =>
         $"covered by {className} in the built-in {domain} domain";
 
+    public static string AnotherWordFor(string className, string domain) =>
+        $"another word for {className} in the built-in {domain} domain";
+
     public static string LeftToTheBuiltInDomain(string domain) =>
         $"the built-in {domain} domain defines its own records";
     public const string YouSaidItAsAVerb = "you said it as a verb";
+    public const string ItIsAVerbHere = "it is a verb here, not a thing";
 
     // --- Enrichment ---
     public const string NotAUsableClassName = "not a usable class name";

@@ -47,6 +47,9 @@ public static class ClassValidator
         return errors;
     }
 
+    /// <summary>What <see cref="ShowClass"/> returns when it printed the class.</summary>
+    public const string ClassShown = "Class details displayed.";
+
     public static string ShowClass(string className)
     {
         var project = ProjectManager.CurrentProject;
@@ -85,7 +88,7 @@ public static class ClassValidator
         Console.WriteLine();
         Console.WriteLine(File.ReadAllText(classFile));
         Console.WriteLine();
-        return "Class details displayed.";
+        return ClassShown;
     }
 
     public static bool IsValidClassName(string? name)

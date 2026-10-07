@@ -102,8 +102,30 @@ public class ValidationPageTests
         page.Find("textarea").Input("Age ought to be sensible");
         page.Find("button.val-add").Click();
 
-        StringAssert.Contains(page.Find(".val-refused").TextContent, "Age ought to be sensible");
-        StringAssert.Contains(page.Markup, "Nothing was written");
+        page.WaitForAssertion(() =>
+        {
+            StringAssert.Contains(page.Find(".val-refused").TextContent, "Age ought to be sensible");
+            StringAssert.Contains(page.Markup, "Nothing was written");
+        });
+    }
+
+    [TestMethod]
+    public void A_mixed_add_keeps_the_refused_lines_in_the_box()
+    {
+        // The box was cleared after any success, so a refused line had to be typed again from
+        // the list below it.
+        using var context = NewContext();
+
+        var page = Open(context, "Employee", _file);
+
+        page.Find("textarea").Input("Age must be at least 18" + Environment.NewLine + "Age ought to be sensible");
+        page.Find("button.val-add").Click();
+
+        page.WaitForAssertion(() =>
+        {
+            StringAssert.Contains(page.Find(".val-existing").TextContent, "Age must be at least 18");
+            Assert.AreEqual("Age ought to be sensible", page.Find("textarea").GetAttribute("value"));
+        });
     }
 
     [TestMethod]
@@ -119,8 +141,10 @@ public class ValidationPageTests
 
         // The list of what is on the class, not the "added" confirmation: this is the assertion
         // that the page re-read the file rather than just echoing what it was told.
-        StringAssert.Contains(page.Find(".val-existing").TextContent, "Age must be at least 18");
+        page.WaitForAssertion(() =>
+            StringAssert.Contains(page.Find(".val-existing").TextContent, "Age must be at least 18"));
         StringAssert.Contains(File.ReadAllText(_file), "// Age must be at least 18");
+        Assert.AreEqual(string.Empty, page.Find("textarea").GetAttribute("value") ?? string.Empty);
     }
 
     /// <summary>

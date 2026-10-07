@@ -73,12 +73,57 @@ public static class CommandFront
             + @"(?:\s+with\s+.+)?$",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    // `create [<type>] project [<name>]`, `create class library [<name>]`, `create worker service
+    // [<name>]`, ahead of the mapper, which did not recognise a lower-case name ("create console
+    // project shop" was "Command not recognized"). The name, type, folder and framework are read by
+    // ExtractProjectInfo from the sentence as typed.
+    private static readonly Regex CreateProjectRe =
+        new(@"^(?:create|new|make|generate)\s+(?:(?:a|an|new)\s+)?"
+            + @"(?:(?:console|webapi|web\s+api|api|blazor|blazorserver|blazorwasm|wasm|wpf|winforms|mvc|worker)\s+)?"
+            + @"(?:project|class\s+library|classlib|worker\s+service)(?:\s+.*)?$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     // `create interface <name>`, ahead of the mapper, for the create class reason: a lower-case
     // name is tagged as part of the target, so "create interface shape" was not recognised.
     private static readonly Regex CreateInterfaceRe =
         new(@"^(?:create|generate|build)\s+(?:(?:a|an|new)\s+)?interface\s+"
             + @"(?!(?:with|called|named|that|which|for|to|in|of|from)\b)(?<name>[A-Za-z_]\w*)"
             + @"(?:\s+with\s+.+)?$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    // `list|show properties|methods [of|in|for] [class] <Class>`. The mapper took the third word as
+    // the class - "list methods of Employee" looked for a class called of - and found none at all
+    // in the documented "show methods Customer"; a lower-case name was not recognised.
+    private static readonly Regex MemberListRe =
+        new(@"^(?<verb>list|show|display|view)\s+(?<what>properties|methods)\s+(?:(?:of|in|for|on)\s+)?(?:(?:the\s+)?class\s+)?"
+            + @"(?<class>[A-Za-z_]\w*)\s*[.!?]?$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    // `show|analyze|delete|restore class <Class>`, ahead of the mapper, which did not recognise a
+    // lower-case name ("show class customer" was "Command not recognized"). The verbs are the
+    // mapper's own for these intents.
+    private static readonly Regex ClassVerbRe =
+        new(@"^(?<verb>show|view|display|open|analy[sz]e|delete|remove|restore|recover)\s+(?:the\s+)?class\s+"
+            + @"(?<class>[A-Za-z_]\w*)\s*[.!?]?$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    // `rename class <old> to|as <new>`, for the same reason; "as" was "A new class name is required".
+    private static readonly Regex RenameClassRe =
+        new(@"^rename\s+(?:the\s+)?class\s+(?<old>[A-Za-z_]\w*)\s+(?:to|as|into)\s+(?<new>[A-Za-z_]\w*)\s*[.!]?$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    // `add method <name> [returns <type>] to <Class>`, for the same reason: "add method save to
+    // Circle" was not recognised.
+    private static readonly Regex AddMethodRe =
+        new(@"^(?:add|create|generate)\s+(?:(?:a|an|new)\s+)?method\s+(?<method>[A-Za-z_]\w*)"
+            + @"(?:\s+returns?\s+(?<returns>[A-Za-z_][\w<>\[\],\.\?]*))?"
+            + @"\s+(?:to|for|in|on)\s+(?:class\s+(?=\S))?(?<class>[A-Za-z_]\w*)\s*[.!]?$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    // The start of `add property ...`; the rest is CommandEntityExtractor.AddPropertyRe, which
+    // reads the fields.
+    private static readonly Regex AddPropertyStartRe =
+        new(@"^(?:add|create)\s+(?:(?:a|an|new)\s+)?(?:property|field)\s",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     // `rename property <old> to <new> in <Class>`. The mapper's Table is keyed on
@@ -142,8 +187,18 @@ public static class CommandFront
         IntentType.ShowValidation,
         IntentType.GenerateValidator,
         IntentType.ClassInherit,
+        IntentType.CreateProject,
         IntentType.CreateClass,
         IntentType.CreateInterface,
+        IntentType.CreateProperty,
+        IntentType.ListProperties,
+        IntentType.ListMethods,
+        IntentType.ShowClass,
+        IntentType.DeleteClass,
+        IntentType.RestoreClass,
+        IntentType.AnalyzeClass,
+        IntentType.RenameClass,
+        IntentType.CreateMethod,
         IntentType.RenameProperty,
         IntentType.DeleteMethod,
         IntentType.RenameMethod,
@@ -194,6 +249,14 @@ public static class CommandFront
                 Confidence = 1.0
             };
 
+        if (CreateProjectRe.IsMatch(text))
+        {
+            var projectCmd = CommandEntityExtractor.Extract(text, IntentType.CreateProject, workspace);
+            projectCmd.OriginalSentence = input ?? string.Empty;
+            projectCmd.Confidence = 1.0;
+            return projectCmd;
+        }
+
         var createClassMatch = CreateClassRe.Match(text);
         if (createClassMatch.Success)
         {
@@ -210,10 +273,8 @@ public static class CommandFront
         {
             var interfaceCmd = CommandEntityExtractor.Extract(text, IntentType.CreateInterface, workspace);
 
-            // The capitalised path's rule (ExtractInterfaceName): PascalCased, I added when missing.
-            var name = CommandEntityExtractor.ToPascalCase(createInterfaceMatch.Groups["name"].Value);
-            if (!name.StartsWith('I'))
-                name = "I" + name;
+            // The one rule (InterfaceNaming): IShape kept, anything else PascalCased and prefixed.
+            var name = InterfaceNaming.NameFor(createInterfaceMatch.Groups["name"].Value);
 
             interfaceCmd.InterfaceName = name;
             interfaceCmd.ClassName = name;
@@ -221,6 +282,61 @@ public static class CommandFront
             interfaceCmd.Confidence = 1.0;
             SessionContext.CurrentClass = name;
             return interfaceCmd;
+        }
+
+        var memberListMatch = MemberListRe.Match(text);
+        if (memberListMatch.Success)
+            return ClassCommand(
+                memberListMatch.Groups["what"].Value.Equals("methods", StringComparison.OrdinalIgnoreCase)
+                    ? IntentType.ListMethods
+                    : IntentType.ListProperties,
+                memberListMatch.Groups["class"].Value, input, workspace);
+
+        var classVerbMatch = ClassVerbRe.Match(text);
+        if (classVerbMatch.Success)
+        {
+            var verb = classVerbMatch.Groups["verb"].Value.ToLowerInvariant();
+            var classIntent = verb switch
+            {
+                "delete" or "remove" => IntentType.DeleteClass,
+                "restore" or "recover" => IntentType.RestoreClass,
+                "analyze" or "analyse" => IntentType.AnalyzeClass,
+                _ => IntentType.ShowClass,
+            };
+            return ClassCommand(classIntent, classVerbMatch.Groups["class"].Value, input, workspace);
+        }
+
+        var renameClassMatch = RenameClassRe.Match(text);
+        if (renameClassMatch.Success)
+        {
+            var renameClassCmd = ClassCommand(
+                IntentType.RenameClass, renameClassMatch.Groups["old"].Value, input, workspace);
+            // The new name as typed: the rename service refuses one that is no identifier.
+            renameClassCmd.NewClassName = renameClassMatch.Groups["new"].Value;
+            return renameClassCmd;
+        }
+
+        var addMethodMatch = AddMethodRe.Match(text);
+        if (addMethodMatch.Success)
+        {
+            var addMethodCmd = ClassCommand(
+                IntentType.CreateMethod, addMethodMatch.Groups["class"].Value, input, workspace);
+            addMethodCmd.MethodName = CommandEntityExtractor.ToPascalCase(addMethodMatch.Groups["method"].Value);
+            addMethodCmd.ReturnType = addMethodMatch.Groups["returns"].Success
+                ? addMethodMatch.Groups["returns"].Value
+                : "void";
+            return addMethodCmd;
+        }
+
+        // `add property <name> [<type>] to <Class>`, ahead of the mapper, which needs a capitalised
+        // name to see a property: "add property note string to Circle" was not recognised, and a
+        // name that is no identifier ("9x") never reached the handler to be refused by name.
+        if (AddPropertyStartRe.IsMatch(text) && CommandEntityExtractor.AddPropertyRe.IsMatch(text))
+        {
+            var addPropertyCmd = CommandEntityExtractor.Extract(text, IntentType.CreateProperty, workspace);
+            addPropertyCmd.OriginalSentence = input ?? string.Empty;
+            addPropertyCmd.Confidence = 1.0;
+            return addPropertyCmd;
         }
 
         var renamePropertyMatch = RenamePropertyRe.Match(text);
@@ -351,6 +467,34 @@ public static class CommandFront
         return command;
     }
 
+    // A command on one class, named as typed in any case.
+    private static ParsedCommand ClassCommand(IntentType intent, string typed, string? input, string workspace) =>
+        new()
+        {
+            Intent = intent,
+            ClassName = DeclaredClassName(workspace, typed),
+            OriginalSentence = input ?? string.Empty,
+            Confidence = 1.0
+        };
+
+    /// <summary>
+    /// The class name as the workspace declares it - its file is named after it - so "orderline"
+    /// finds OrderLine; else the typed name PascalCased, as create class makes it. A deleted class
+    /// is not in the workspace, and restore class matches its name without regard to case.
+    /// </summary>
+    internal static string DeclaredClassName(string workspace, string typed)
+    {
+        try
+        {
+            if (ClassFiles.FileOf(workspace, typed) is { } file)
+                return Path.GetFileNameWithoutExtension(file);
+        }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
+
+        return CommandEntityExtractor.ToPascalCase(typed);
+    }
+
     // A guard's optional `class` group, or the class the session is on.
     private static string ClassOrCurrent(Match match) =>
         match.Groups["class"].Success
@@ -402,6 +546,12 @@ public static class CommandFront
         // which runs real commands back through this very method, so the demo cannot drift from
         // what the tool actually does.
 
+        // Parsing moves the current class before the handler runs ("create class Class1" sets it
+        // even when Class1 exists and the create is refused). A command that fails must leave the
+        // session as it found it: otherwise the undo journal sees a changed state, records an empty
+        // entry for the refusal and clears redo.
+        var before = ParsingStateSnapshot.Capture();
+
         if (onAnalyzed is not null)
             onAnalyzed(NlpActionProvider.Analyze(input ?? string.Empty));
 
@@ -431,6 +581,8 @@ public static class CommandFront
 
         var recognized = command.Intent != IntentType.Unknown;
         var handled = CommandHandlingService.Execute(command, ref project, configuredRules, workspace, setLastCreatedProject);
+        if (!handled)
+            before.Restore();
         return new RunResult(handled, recognized, neededAi);
     }
 }

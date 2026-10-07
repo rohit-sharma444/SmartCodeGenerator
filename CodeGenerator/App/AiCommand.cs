@@ -36,8 +36,7 @@ internal static class AiCommand
                 return "AI enabled. Restart the CLI to load the model; it indexes its phrasings itself.";
 
             case "disable":
-                layer.Config.Enabled = false;
-                layer.Config.Save(layer.ConfigPath);
+                layer.Disable();
                 return "AI disabled. Command recognition is unchanged from the rule-based path.";
 
             case "reindex":

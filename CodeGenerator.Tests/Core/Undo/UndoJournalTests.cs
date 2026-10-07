@@ -82,6 +82,23 @@ public sealed class UndoJournalTests
         Assert.AreEqual("Undid: add two — removed 2 files", _journal.Undo().Message);
     }
 
+    // Undo of create class said "restored 1 file, removed 1 file" — the restored one being the
+    // .csproj the command added a package reference to — and redo said "restored 2 files".
+    [TestMethod]
+    public void Undo_and_redo_of_a_created_class_name_the_class_file_and_the_project_file_apart()
+    {
+        Write("Shop/Shop.csproj", "<Project />");
+        Command("create class Foo", () =>
+        {
+            Write("Shop/Foo.cs", "class Foo { }");
+            Write("Shop/Shop.csproj", "<Project><ItemGroup /></Project>");
+        });
+
+        var foo = Path.Combine("Shop", "Foo.cs");
+        Assert.AreEqual($"Undid: create class Foo — removed {foo}; Shop.csproj put back as it was", _journal.Undo().Message);
+        Assert.AreEqual($"Redid: create class Foo — re-created {foo}; Shop.csproj updated again", _journal.Redo().Message);
+    }
+
     // U5: a csproj rewritten with the same bytes has a new stamp, and was counted as changed.
     [TestMethod]
     public void A_file_rewritten_with_the_same_bytes_is_not_part_of_the_entry()
@@ -459,16 +476,32 @@ public sealed class UndoJournalTests
         var live = Folder("codegen_undo_222_abcd.efg");
         var mine = Folder($"codegen_undo_{Environment.ProcessId}_abcd.efg");
         var unnamed = Folder("codegen_undo_abcd.efg");      // an older copy: whose it is is unknown
-        var other = Folder("codegen_snapshot_111_abcd.efg");
+        // Batch, run and build snapshots were named with no process and piled up in %TEMP%.
+        var deadSnapshot = Folder("codegen_snapshot_111_abcd.efg");
+        var liveSnapshot = Folder("codegen_snapshot_222_abcd.efg");
+        var unnamedSnapshot = Folder("codegen_snapshot_abcd.efg");
+        var keptSnapshot = Folder("codegen_snapshot_333_abcd.efg");   // its restore failed: the user's
+        File.WriteAllText(Path.Combine(keptSnapshot, CodeGenerationEngine.Core.WorkspaceSnapshot.KeptMarker), "");
 
         var removed = UndoJournal.RemoveStale(_shadowParent, pid => pid == 222);
 
-        Assert.AreEqual(1, removed);
+        Assert.AreEqual(2, removed);
         Assert.IsFalse(Directory.Exists(dead));
         Assert.IsTrue(Directory.Exists(live));
         Assert.IsTrue(Directory.Exists(mine));
         Assert.IsTrue(Directory.Exists(unnamed));
-        Assert.IsTrue(Directory.Exists(other));
+        Assert.IsFalse(Directory.Exists(deadSnapshot));
+        Assert.IsTrue(Directory.Exists(liveSnapshot));
+        Assert.IsTrue(Directory.Exists(unnamedSnapshot));
+        Assert.IsTrue(Directory.Exists(keptSnapshot));
+    }
+
+    [TestMethod]
+    public void A_workspace_snapshot_is_named_after_the_process_that_owns_it()
+    {
+        using var snapshot = CodeGenerationEngine.Core.WorkspaceSnapshot.Capture(_root);
+
+        StringAssert.StartsWith(Path.GetFileName(snapshot.SnapshotPath), $"codegen_snapshot_{Environment.ProcessId}_");
     }
 
     [TestMethod]

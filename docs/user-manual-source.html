@@ -277,7 +277,10 @@ page is served by the tool itself, on this machine, and closes when the command 
 
 <div class="note"><p><strong>No browser?</strong> Set <code>CG_NO_WEB=1</code> and the command asks its
 questions in the console instead, as it did before. A run whose input is piped or redirected from a file also
-stays in the console, so existing scripts keep working exactly as they did.</p></div>
+stays in the console, so existing scripts keep working exactly as they did.</p>
+<p><strong>Page, but no new tab?</strong> Set <code>CG_NO_BROWSER=1</code>. The page still runs, but no browser
+tab opens: the console prints the address, and you open it yourself. This also applies to <code>chat</code>,
+<code>show relationships</code> and the web app that the Run stage starts.</p></div>
 
 <h3>The stages</h3>
 <p>The page draws the whole build as ten connected stages, so you can see where you are and what is still
@@ -931,7 +934,8 @@ Started Shop.exe
 
 Next steps:
   Run it       dotnet run --project D:\Work\Shop
-  Seed data    D:\Work\Shop\Data\Seed\   (edit these, then re-run)
+  Seed data    D:\Work\Shop\Data\Seed\
+               loaded only into an empty store; to reload them after the first run, delete the &lt;Class&gt;.json files in D:\Work\Shop\bin\Debug\net10.0-windows
   Tests        dotnet test D:\Work\Shop.Tests</pre>
 <p>Answering <code>y</code> starts the application in a window of its own and hands the prompt straight back, so
 the tool stays usable while your application is open. Close the application when you are done with it; the tool
@@ -1112,6 +1116,12 @@ in the console.</p>
 <h2>10. Validation rules</h2>
 
 <p>Rules are declared in English and generated into a validator for the class.</p>
+<p>The rules are saved in the workspace, in <code>.codegen/validation-rules.json</code>, each one as
+you typed it. They are there again the next time you start the tool on the same folder, so a later
+<code>generate validator</code> writes every rule, not only the ones added since. Each add, remove and
+<code>undo</code> updates the file. It is separate from <code>rules.json</code> / <code>rules.txt</code> at
+the workspace root: those are property rules you write by hand, which the tool reads and never
+writes.</p>
 <table>
 <tr><th>Command</th><th>What it does</th></tr>
 <tr><td><code>add validation &lt;rule&gt; on &lt;property&gt; in &lt;class&gt;</code></td><td>A field-level rule.</td></tr>
@@ -1461,8 +1471,9 @@ published and nothing leaves the machine. The console that opened it waits while
 is printed there in case the browser does not open by itself.</p>
 
 <p>Before you have typed anything the page offers four commands to start with. Clicking one fills the box;
-none of them runs on its own. The page follows whichever of light or dark your operating system is set to,
-and changes with it — there is no setting of its own to get out of step with.</p>
+none of them runs on its own. The page is always drawn in the same light grey as the rest of the tool,
+whether your operating system is set to light or dark. It has no theme setting; the theme drop-down belongs
+to the <code>build app</code> page only.</p>
 
 <h3>Loading a solution</h3>
 
@@ -1630,7 +1641,8 @@ conversation; while a command is running the box is disabled in both, because th
 one command can be in flight at a time.</p>
 
 <p><code>chat</code> needs a browser. In a piped or scripted run, or with <code>CG_NO_WEB=1</code> set, it
-declines and says so; the console prompt is unaffected.</p>
+declines and says so; the console prompt is unaffected. With <code>CG_NO_BROWSER=1</code> set, it starts
+the page but opens no tab; the console prints the address for you to open.</p>
 
 <h2>18. Troubleshooting</h2>
 <table>
@@ -1735,7 +1747,7 @@ own shows the shorter overview, and <code>help &lt;topic&gt;</code> shows one se
 <h3>Interfaces</h3>
 <table>
 <tr><th>Command</th><th>Description</th><th>Example</th></tr>
-<tr><td><code>create interface &lt;interface name&gt;</code></td><td>Creates a new interface.</td><td><code>create interface IRepository</code></td></tr>
+<tr><td><code>create interface &lt;interface name&gt;</code></td><td>Creates a new interface. A name that is I followed by a capital letter (IShape) is kept as typed; any other name is PascalCased and given the I prefix, so Item makes IItem, invoice makes IInvoice, and an all lower case name is always prefixed (ishape makes IIshape - type IShape for that name). The reply names the interface when it differs from what you typed.</td><td><code>create interface IRepository</code></td></tr>
 </table>
 <h3>Learning</h3>
 <table>
@@ -1780,8 +1792,8 @@ own shows the shorter overview, and <code>help &lt;topic&gt;</code> shows one se
 <table>
 <tr><th>Command</th><th>Description</th><th>Example</th></tr>
 <tr><td><code>delete class &lt;class name&gt;</code></td><td>Moves a class to DeletedClasses.</td><td><code>delete class Employee</code></td></tr>
-<tr><td><code>restore class &lt;class name&gt;</code></td><td>Restores a deleted class.</td><td><code>restore class Employee</code></td></tr>
-<tr><td><code>restore last class</code></td><td>Restores a deleted class.</td><td><code>restore last class</code></td></tr>
+<tr><td><code>restore class &lt;class name&gt;</code></td><td>Restores a deleted class by name, to the folder it was deleted from.</td><td><code>restore class Employee</code></td></tr>
+<tr><td><code>restore last class</code></td><td>Restores the class deleted most recently, without naming it.</td><td><code>restore last class</code></td></tr>
 <tr><td><code>show deleted classes</code></td><td>Displays all deleted classes.</td><td><code>show deleted classes</code></td></tr>
 </table>
 <h3>Utility</h3>
@@ -1807,7 +1819,7 @@ own shows the shorter overview, and <code>help &lt;topic&gt;</code> shows one se
 <table>
 <tr><th>Command</th><th>Description</th><th>Example</th></tr>
 <tr><td><code>add business validation &lt;rule&gt; in &lt;class name&gt;</code></td><td>Adds an entity-level business rule, spanning more than one property: comparisons (after, before, must not exceed), required-when, either/or, arithmetic (equals A times B, plus, minus, divided by) and sameness (same as, different from).</td><td><code>add business validation EndDate must be after StartDate in Booking</code></td></tr>
-<tr><td><code>add validation &lt;rule&gt; on &lt;property&gt; in &lt;class name&gt;</code></td><td>Adds a field-level data rule to a class in plain English. Understands required (or &#x27;should not be blank&#x27;), numeric bounds (between, at least, at most, greater/less than, positive, not negative, not zero, whole number), text bounds (length between, at most &lt;n&gt; characters, starts or ends with, contains, uppercase, digits only), named formats (email, URL, phone number, postcode, GUID, IP address, date), relative dates (in the past, in the future, at least &lt;n&gt; years ago, within the last &lt;n&gt; days), must match &lt;regex&gt;, and a list of allowed values.</td><td><code>add validation must be between 18 and 65 on Age in Employee</code></td></tr>
+<tr><td><code>add validation &lt;rule&gt; on &lt;property&gt; in &lt;class name&gt;</code></td><td>Adds a field-level data rule to a class in plain English. Understands required (or &#x27;should not be blank&#x27;), numeric bounds (between, at least, at most, greater/less than, positive, not negative, not zero, whole number), text bounds (length between, at most &lt;n&gt; characters, starts or ends with, contains, uppercase, digits only), named formats (email, URL, phone number, postcode, GUID, IP address, date), relative dates (in the past, in the future, at least &lt;n&gt; years ago, within the last &lt;n&gt; days), must match &lt;regex&gt;, and a list of allowed values. Rules are saved in the workspace (.codegen/validation-rules.json) and are there again in the next session.</td><td><code>add validation must be between 18 and 65 on Age in Employee</code></td></tr>
 <tr><td><code>generate validator</code></td><td>Generates a validator for a class.</td><td><code>generate validator for Employee</code></td></tr>
 <tr><td><code>remove business validation &lt;number&gt; from &lt;class name&gt;</code></td><td>Removes one business rule, by the number show business validation prints.</td><td><code>remove business validation 1 from Booking</code></td></tr>
 <tr><td><code>remove validation from &lt;class name&gt;.&lt;property&gt;</code></td><td>Removes every data rule on a field. Also: remove validation on &lt;property&gt; in &lt;class name&gt;; or remove validation &lt;number&gt; from &lt;class name&gt;, with the number show validation prints.</td><td><code>remove validation from Employee.Name</code></td></tr>

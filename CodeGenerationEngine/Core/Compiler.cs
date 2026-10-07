@@ -66,7 +66,8 @@ public static class Compiler
     /// </summary>
     public static CompilationResult CompileSources(
         IEnumerable<(string Path, string Code)> sources,
-        IEnumerable<string>? additionalAssemblyPaths = null)
+        IEnumerable<string>? additionalAssemblyPaths = null,
+        IEnumerable<MetadataReference>? extraReferences = null)
     {
         var parseOptions = new CSharpParseOptions(LanguageVersion.Latest);
 
@@ -89,7 +90,7 @@ public static class Compiler
         var compilation = CSharpCompilation.Create(
             assemblyName: $"WorkspaceAssembly_{Guid.NewGuid():N}",
             syntaxTrees: syntaxTrees,
-            references: BuildReferences(additionalAssemblyPaths),
+            references: BuildReferences(additionalAssemblyPaths).Concat(extraReferences ?? []),
             options: new CSharpCompilationOptions(
                 OutputKind.DynamicallyLinkedLibrary,
                 nullableContextOptions: NullableContextOptions.Enable));

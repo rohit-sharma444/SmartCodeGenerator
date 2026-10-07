@@ -96,5 +96,38 @@ public class HelpCommandTests
 
         StringAssert.Contains(entry.Description.ToLowerInvariant(), "browser");
     }
+    // "help business validation" named no command because topics matched only from the start of
+    // a command, and every business validation command starts with a verb.
+    [TestMethod]
+    public void A_topic_from_the_middle_of_a_command_finds_it()
+    {
+        var rendered = HelpCommand.Render("help business validation");
+
+        Assert.DoesNotContain("No help for", rendered);
+        StringAssert.Contains(rendered, "add business validation");
+        StringAssert.Contains(rendered, "show business validation");
+    }
+
+    // The overview shows a "Set for you" section, and help says a heading can be asked about.
+    [TestMethod]
+    public void The_set_for_you_section_is_a_topic()
+    {
+        var rendered = HelpCommand.Render("help set for you");
+
+        Assert.DoesNotContain("No help for", rendered);
+        StringAssert.Contains(rendered, "show relationships");
+    }
+
+    // help recyclebin gave restore class and restore last class one description between them.
+    [TestMethod]
+    public void Restore_last_class_says_how_it_differs_from_restore_class()
+    {
+        var commands = CodeGenerationEngine.Core.CommandDictionary.Commands;
+        var byName = commands.First(c => c.Command == "restore class <class name>").Description;
+        var last = commands.First(c => c.Command == "restore last class").Description;
+
+        Assert.AreNotEqual(byName, last);
+        StringAssert.Contains(last.ToLowerInvariant(), "most recently");
+    }
 
 }

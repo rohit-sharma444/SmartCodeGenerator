@@ -79,7 +79,7 @@
 
 | Command | Description | Example |
 | --- | --- | --- |
-| `create interface <interface name>` | Creates a new interface. | `create interface IRepository` |
+| `create interface <interface name>` | Creates a new interface. A name that is I followed by a capital letter (IShape) is kept as typed; any other name is PascalCased and given the I prefix, so Item makes IItem, invoice makes IInvoice, and an all lower case name is always prefixed (ishape makes IIshape - type IShape for that name). The reply names the interface when it differs from what you typed. | `create interface IRepository` |
 
 ## Learning
 
@@ -129,8 +129,8 @@
 | Command | Description | Example |
 | --- | --- | --- |
 | `delete class <class name>` | Moves a class to DeletedClasses. | `delete class Employee` |
-| `restore class <class name>` | Restores a deleted class. | `restore class Employee` |
-| `restore last class` | Restores a deleted class. | `restore last class` |
+| `restore class <class name>` | Restores a deleted class by name, to the folder it was deleted from. | `restore class Employee` |
+| `restore last class` | Restores the class deleted most recently, without naming it. | `restore last class` |
 | `show deleted classes` | Displays all deleted classes. | `show deleted classes` |
 
 ## Utility
@@ -158,7 +158,7 @@
 | Command | Description | Example |
 | --- | --- | --- |
 | `add business validation <rule> in <class name>` | Adds an entity-level business rule, spanning more than one property: comparisons (after, before, must not exceed), required-when, either/or, arithmetic (equals A times B, plus, minus, divided by) and sameness (same as, different from). | `add business validation EndDate must be after StartDate in Booking` |
-| `add validation <rule> on <property> in <class name>` | Adds a field-level data rule to a class in plain English. Understands required (or 'should not be blank'), numeric bounds (between, at least, at most, greater/less than, positive, not negative, not zero, whole number), text bounds (length between, at most <n> characters, starts or ends with, contains, uppercase, digits only), named formats (email, URL, phone number, postcode, GUID, IP address, date), relative dates (in the past, in the future, at least <n> years ago, within the last <n> days), must match <regex>, and a list of allowed values. | `add validation must be between 18 and 65 on Age in Employee` |
+| `add validation <rule> on <property> in <class name>` | Adds a field-level data rule to a class in plain English. Understands required (or 'should not be blank'), numeric bounds (between, at least, at most, greater/less than, positive, not negative, not zero, whole number), text bounds (length between, at most <n> characters, starts or ends with, contains, uppercase, digits only), named formats (email, URL, phone number, postcode, GUID, IP address, date), relative dates (in the past, in the future, at least <n> years ago, within the last <n> days), must match <regex>, and a list of allowed values. Rules are saved in the workspace (.codegen/validation-rules.json) and are there again in the next session. | `add validation must be between 18 and 65 on Age in Employee` |
 | `generate validator` | Generates a validator for a class. | `generate validator for Employee` |
 | `remove business validation <number> from <class name>` | Removes one business rule, by the number show business validation prints. | `remove business validation 1 from Booking` |
 | `remove validation from <class name>.<property>` | Removes every data rule on a field. Also: remove validation on <property> in <class name>; or remove validation <number> from <class name>, with the number show validation prints. | `remove validation from Employee.Name` |

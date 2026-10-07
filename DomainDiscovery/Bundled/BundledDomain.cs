@@ -28,12 +28,19 @@ public sealed record BundledDomain(
     /// </summary>
     public IReadOnlyDictionary<string, int> Words { get; init; } = new Dictionary<string, int>(StringComparer.Ordinal);
 
+    /// <summary>
+    /// Other words for one of this domain's classes, keyed by stem: in a vet's, the customer is
+    /// the pet's Owner. A seed that is one of them is that class, not a new empty one beside it.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> Synonyms { get; init; } = new Dictionary<string, string>(StringComparer.Ordinal);
+
     private sealed class DomainFile
     {
         [JsonPropertyName("name")] public string Name { get; set; } = string.Empty;
         [JsonPropertyName("self")] public List<string>? Self { get; set; }
         [JsonPropertyName("terms")] public Dictionary<string, int> Terms { get; set; } = new();
         [JsonPropertyName("words")] public Dictionary<string, int>? Words { get; set; }
+        [JsonPropertyName("synonyms")] public Dictionary<string, string>? Synonyms { get; set; }
         [JsonPropertyName("classes")] public List<LlmClass> Classes { get; set; } = new();
     }
 
@@ -88,9 +95,20 @@ public sealed record BundledDomain(
             words[word.ToLowerInvariant()] = weight;
         }
 
+        var synonyms = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (word, className) in file.Synonyms ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(word) || word.Any(c => !char.IsLetter(c)))
+                throw new FormatException($"{file.Name}: synonym \"{word}\" must be one word of letters");
+            if (!file.Classes.Any(c => c.Name == className))
+                throw new FormatException($"{file.Name}: synonym \"{word}\" names no class \"{className}\"");
+            synonyms[WordStem.Of(word)] = className;
+        }
+
         return new BundledDomain(file.Name.Trim(), terms, self, new LlmDomainModel { Classes = file.Classes })
         {
             Words = words,
+            Synonyms = synonyms,
         };
     }
 }

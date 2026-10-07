@@ -91,6 +91,46 @@ public class NextStepsTests
         Assert.DoesNotContain("Seed data", Steps("blazor", filesWritten: written));
     }
 
+    /// <summary>
+    /// The store is seed-if-empty: after the first run, editing Data/Seed and re-running changes
+    /// nothing. The line used to say "(edit these, then re-run)"; it now names the store file to
+    /// delete, where the built app keeps it.
+    /// </summary>
+    [TestMethod]
+    public void SeedData_SaysTheSeedsLoadOnlyIntoAnEmptyStoreAndNamesTheFileToDelete()
+    {
+        var console = Steps("console", filesWritten: SeedFiles);
+
+        Assert.DoesNotContain("then re-run", console);
+        Assert.Contains("empty", console);
+        Assert.Contains(Path.Combine(ProjectPath, "bin", "Debug", "net10.0", "Order.json"), console);
+
+        // A desktop app is built for net10.0-windows, so its store sits there.
+        Assert.Contains(Path.Combine(ProjectPath, "bin", "Debug", "net10.0-windows", "Order.json"),
+            Steps("wpf", filesWritten: SeedFiles));
+    }
+
+    [TestMethod]
+    public void SeedData_NamesTheDatabaseFileForASqliteApp()
+    {
+        string[] written = [.. SeedFiles, Path.Combine(ProjectPath, "Data", "AppDbContext.cs")];
+
+        var steps = Steps("console", filesWritten: written);
+
+        Assert.Contains(Path.Combine(ProjectPath, "bin", "Debug", "net10.0", "Shop.db"), steps);
+        Assert.DoesNotContain("Order.json", steps.Replace(Path.Combine("Seed", "Order.json"), ""));
+    }
+
+    /// <summary>A class library has nothing to re-run: its seeds load in the app that references it.</summary>
+    [TestMethod]
+    public void SeedData_ForAClassLibrary_SaysWhoLoadsThem()
+    {
+        var steps = Steps("classlib", filesWritten: SeedFiles);
+
+        Assert.DoesNotContain("re-run", steps);
+        Assert.Contains("SeedData.EnsureSeeded()", steps);
+    }
+
     [TestMethod]
     public void TestProject_IsMentionedOnlyWhenOneWasGenerated()
     {

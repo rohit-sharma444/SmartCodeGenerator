@@ -351,6 +351,34 @@ public class ModelEditorTests
         Assert.Equal("CashRegister", Assert.Single(model.Entities).Name);
     }
 
+    // "1 Bad!" normalized to "1Bad" and was accepted: the class became uncompilable and Generate
+    // failed with 89 errors. A field rename to "2nd author" was already refused; a class rename
+    // must be refused the same way.
+    [Theory]
+    [InlineData("1 Bad!")]
+    [InlineData("2nd")]
+    public void RenameEntity_RefusesANameThatIsNotAnIdentifier(string typed)
+    {
+        var model = ModelWith("Book");
+
+        Assert.False(ModelEditor.RenameEntity(model, "Book", typed));
+
+        Assert.Equal("Book", Assert.Single(model.Entities).Name);
+        Assert.Empty(model.Decisions);
+    }
+
+    // The page used to echo the typing back ("Renamed to class.") when the class was "Class".
+    [Fact]
+    public void RenameEntity_ReportsTheNameItApplied()
+    {
+        var model = ModelWith("Book");
+
+        Assert.True(ModelEditor.RenameEntity(model, "Book", "class", out var renamedTo));
+
+        Assert.Equal("Class", renamedTo);
+        Assert.Equal("Class", Assert.Single(model.Entities).Name);
+    }
+
     [Fact]
     public void RenameEntity_CarriesTheRelationshipsThatPointAtIt()
     {

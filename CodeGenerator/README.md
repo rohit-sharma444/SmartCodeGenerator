@@ -255,7 +255,8 @@ prints the address, says that Ctrl-C cancels, and waits. The page has the ten st
 
 If the page cannot be started, the console says so and runs the console wizard
 (`BuildAppWizard`) instead. `CG_NO_WEB=1` keeps the console wizard too, for a session with no
-browser to open.
+browser to open. `CG_NO_BROWSER=1` keeps the page but opens no browser tab: the console prints
+the address to open yourself. It applies to `chat` and `show relationships` too.
 
 Redirected input opens no page and asks no questions. It uses the inline form
 (`build app: <description> from <format> <location>`), picks a target at `approve <target>`, and

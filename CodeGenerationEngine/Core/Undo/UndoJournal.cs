@@ -197,7 +197,7 @@ public sealed class UndoJournal : IDisposable
         _redo.Push(entry);
 
         Undone?.Invoke();
-        return new UndoResult(true, "Undid: " + entry.Label + Describe(entry, entry.Before));
+        return new UndoResult(true, "Undid: " + entry.Label + Describe(entry, entry.Before, entry.After, redo: false));
     }
 
     public UndoResult Redo()
@@ -226,15 +226,17 @@ public sealed class UndoJournal : IDisposable
         _undo.Add(entry);
 
         Redone?.Invoke();
-        return new UndoResult(true, "Redid: " + entry.Label + Describe(entry, entry.After));
+        return new UndoResult(true, "Redid: " + entry.Label + Describe(entry, entry.After, entry.Before, redo: true));
     }
 
     private const string ShadowPrefix = "codegen_undo_";
 
     /// <summary>
-    /// Deletes the shadow copies whose session was killed before it could delete its own: those
-    /// named after a process that is no longer running. A copy named after a running process —
-    /// or with no process in its name, from an older version — is never touched.
+    /// Deletes the shadow copies — and the batch, run and build snapshots
+    /// (<see cref="WorkspaceSnapshot"/>) — whose session was killed before it could delete its own:
+    /// those named after a process that is no longer running. A copy named after a running process,
+    /// with no process in its name (from an older version), or kept because putting it back failed,
+    /// is never touched.
     /// </summary>
     /// <returns>How many copies were deleted.</returns>
     public static int RemoveStale(string? parent = null, Func<int, bool>? isRunning = null)
@@ -244,9 +246,14 @@ public sealed class UndoJournal : IDisposable
 
         try
         {
-            foreach (var folder in Directory.EnumerateDirectories(parent ?? Path.GetTempPath(), ShadowPrefix + "*"))
+            foreach (var (folder, prefix) in new[] { ShadowPrefix, WorkspaceSnapshot.FolderPrefix }
+                         .SelectMany(prefix => Directory.EnumerateDirectories(parent ?? Path.GetTempPath(), prefix + "*")
+                             .Select(folder => (folder, prefix))))
             {
-                var rest = Path.GetFileName(folder)[ShadowPrefix.Length..];
+                if (File.Exists(Path.Combine(folder, WorkspaceSnapshot.KeptMarker)))
+                    continue;
+
+                var rest = Path.GetFileName(folder)[prefix.Length..];
                 var underscore = rest.IndexOf('_');
                 if (underscore <= 0 || !int.TryParse(rest[..underscore], out var pid))
                     continue;
@@ -600,25 +607,54 @@ public sealed class UndoJournal : IDisposable
             _known.Remove(path);
     }
 
-    private static string Describe(Entry entry, string side)
+    // What the user did, in files: the files they asked for named or counted, and a project or
+    // solution file the command also touched (a package reference) mentioned on its own, so
+    // undoing "create class Foo" does not read "restored 1 file, removed 1 file" about a .csproj.
+    // A file a redo writes back that the command had created is "re-created", not "restored".
+    private static string Describe(Entry entry, string side, string otherSide, bool redo)
     {
-        if (entry.Paths.Count == 0)
-            return string.Empty;
+        var projectFiles = entry.Paths.Where(IsProjectFile).ToList();
+        var files = entry.Paths.Where(p => !IsProjectFile(p)).ToList();
 
-        if (entry.Paths.Count == 1)
-            return (File.Exists(Path.Combine(side, entry.Paths[0])) ? " — restored " : " — removed ") + entry.Paths[0];
-
-        var restored = entry.Paths.Count(p => File.Exists(Path.Combine(side, p)));
-        var removed = entry.Paths.Count - restored;
+        bool OnSide(string p) => File.Exists(Path.Combine(side, p));
+        bool OnOther(string p) => File.Exists(Path.Combine(otherSide, p));
 
         var parts = new List<string>();
-        if (restored > 0)
-            parts.Add($"restored {restored} file{(restored == 1 ? "" : "s")}");
-        if (removed > 0)
-            parts.Add($"removed {removed} file{(removed == 1 ? "" : "s")}");
 
-        return " — " + string.Join(", ", parts);
+        if (files.Count == 1)
+        {
+            var path = files[0];
+            parts.Add((!OnSide(path) ? "removed " : redo && !OnOther(path) ? "re-created " : "restored ") + path);
+        }
+        else if (files.Count > 1)
+        {
+            var recreated = redo ? files.Count(p => OnSide(p) && !OnOther(p)) : 0;
+            var restored = files.Count(OnSide) - recreated;
+            var removed = files.Count - restored - recreated;
+
+            var counts = new List<string>();
+            if (restored > 0)
+                counts.Add($"restored {Files(restored)}");
+            if (recreated > 0)
+                counts.Add($"re-created {Files(recreated)}");
+            if (removed > 0)
+                counts.Add($"removed {Files(removed)}");
+            parts.Add(string.Join(", ", counts));
+        }
+
+        foreach (var group in projectFiles.GroupBy(p =>
+                     !OnSide(p) ? "removed"
+                     : !OnOther(p) ? (redo ? "re-created" : "restored")
+                     : redo ? "updated again" : "put back as it was"))
+            parts.Add($"{string.Join(", ", group.Select(Path.GetFileName))} {group.Key}");
+
+        return parts.Count == 0 ? string.Empty : " — " + string.Join("; ", parts);
+
+        static string Files(int n) => $"{n} file{(n == 1 ? "" : "s")}";
     }
+
+    private static bool IsProjectFile(string path) =>
+        Path.GetExtension(path).ToLowerInvariant() is ".csproj" or ".sln" or ".slnx" or ".props" or ".targets";
 
     // ----- the registry beside the exe ----------------------------------------------------------
 

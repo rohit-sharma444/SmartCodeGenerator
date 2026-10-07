@@ -32,7 +32,10 @@ public static class SqlTypeMap
             ["datetime2"] = "DateTime",
             ["smalldatetime"] = "DateTime",
             ["datetimeoffset"] = "DateTime",
-            ["time"] = "DateTime",
+
+            // Not DateTime: a time of day ("09:30:00") is not a date, so every value failed to read
+            // as one and was dropped, showing 01-Jan-01. None of the five model types holds a time
+            // alone, so it is text -- every value kept, and LossNote says the type changed.
         };
 
     /// <summary>
@@ -59,6 +62,9 @@ public static class SqlTypeMap
             "uniqueidentifier" =>
                 $"{columnName} is uniqueidentifier and becomes string — correct to look at, but "
                 + "no longer a Guid.",
+            "time" =>
+                $"{columnName} is time and becomes string (hh:mm:ss) — every value kept, but no "
+                + "longer a TimeSpan.",
             _ => null
         };
 }

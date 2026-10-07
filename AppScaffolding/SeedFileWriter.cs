@@ -134,7 +134,7 @@ public static class SeedFileWriter
             if (misses.TryGetValue(property.Name, out var miss))
                 skipped.Add(
                     $"{definition.Name}.{property.Name}: {miss.Count} value(s) could not be read as "
-                    + $"{property.Type} and were left out of the seed data, the first being "
+                    + $"{DomainModelMapper.BaseType(property.Type)} and were left out of the seed data, the first being "
                     + $"\"{miss.First}\"");
         }
 
@@ -143,7 +143,7 @@ public static class SeedFileWriter
 
     /// <summary>The five types the model can carry. Anything else is a navigation property.</summary>
     private static bool IsScalar(string type)
-        => type is "string" or "int" or "decimal" or "bool" or "DateTime";
+        => DomainModelMapper.BaseType(type) is "string" or "int" or "decimal" or "bool" or "DateTime";
 
     /// <summary>
     /// Writes one value as its declared JSON type, or returns false and writes nothing. A value
@@ -156,7 +156,9 @@ public static class SeedFileWriter
     /// </remarks>
     private static bool Write(Utf8JsonWriter writer, PropertyDefinition property, string raw)
     {
-        switch (property.Type)
+        // The base type: a nullable property reads its values as its kind does. A missing value is
+        // omitted before this is reached, and an omitted nullable property loads as null.
+        switch (DomainModelMapper.BaseType(property.Type))
         {
             case "int":
                 if (!ImportedValues.TryInt(raw, out var i))

@@ -50,14 +50,24 @@ internal static class CommandSuggester
             return [];
 
         var inputWords = trimmed.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+        var typed = string.Join(' ', inputWords);
 
-        return CommandDictionary.Commands
-            .Select(c => LiteralPrefix(c.Command))
-            .Where(prefix => prefix.Length > 0)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Select(prefix => (Prefix: prefix, Distance: Distance(LeadingWords(inputWords, prefix), prefix)))
-            .Where(x => x.Distance <= Budget(
-                LeadingWords(inputWords, x.Prefix), x.Prefix, maxDistance))
+        // A command that takes nothing after its words ("exit", "list classes") is compared with
+        // everything typed; only a templated one is compared with the leading words, the rest
+        // being its arguments. Comparing "exit" with "lsit" alone offered it for "lsit clases".
+        var prefixes = CommandDictionary.Commands
+            .Select(c => (Prefix: LiteralPrefix(c.Command), Whole: LiteralPrefix(c.Command) == c.Command.Trim()))
+            .Where(c => c.Prefix.Length > 0)
+            .GroupBy(c => c.Prefix, StringComparer.OrdinalIgnoreCase)
+            // A prefix that is both a whole command and the head of a templated one takes arguments.
+            .Select(g => (Prefix: g.First().Prefix, Whole: g.All(c => c.Whole)));
+
+        return prefixes
+            .Select(c => (c.Prefix, Compared: c.Whole ? typed : LeadingWords(inputWords, c.Prefix)))
+            .Select(x => (x.Prefix, x.Compared, Distance: Distance(x.Compared, x.Prefix)))
+            .Where(x => x.Distance <= Budget(x.Compared, x.Prefix, maxDistance))
+            // What was typed, word for word, is no correction of itself.
+            .Where(x => !x.Prefix.Equals(typed, StringComparison.OrdinalIgnoreCase))
             .OrderBy(x => x.Distance)
             .ThenBy(x => x.Prefix, StringComparer.OrdinalIgnoreCase)
             .Take(max)

@@ -64,6 +64,22 @@ public static class DomainModelMapper
     /// it for a column whose own longest value already exceeds it.</summary>
     public const int DefaultStringLength = 200;
 
+    /// <summary>The value types a property can be made nullable in: the four of the five model
+    /// types that cannot hold a missing value on their own.</summary>
+    private static readonly HashSet<string> NullableCapableTypes =
+        new(StringComparer.Ordinal) { "int", "decimal", "bool", "DateTime" };
+
+    /// <summary>
+    /// <paramref name="type"/> without a trailing <c>?</c>: "int?" is "int". Every consumer that
+    /// asks what KIND of value a property holds asks this, so a nullable property gets the same
+    /// rules, seed reading and screens as its non-nullable form.
+    /// </summary>
+    public static string BaseType(string type)
+        => type.EndsWith('?') ? type[..^1] : type;
+
+    /// <summary>Whether <paramref name="type"/> is a nullable value type ("int?").</summary>
+    public static bool IsNullable(string type) => type.EndsWith('?');
+
     public static IReadOnlyList<ClassDefinition> ToClassDefinitions(CandidateDomainModel model)
         => ToClassDefinitions(model, out _);
 
@@ -144,6 +160,7 @@ public static class DomainModelMapper
         }
 
         AddNavigationProperties(model, classes, names);
+        AddNullability(classes);
         AddAuditFields(classes);
         AddValidation(classes);
         AddEntityValidation(classes, model, names);
@@ -207,6 +224,39 @@ public static class DomainModelMapper
 
         if (!definition.Usings.Contains(RelationshipConvention.ComponentModelNamespace))
             definition.Usings.Add(RelationshipConvention.ComponentModelNamespace);
+    }
+
+    /// <summary>
+    /// Makes a number, flag or date property NULLABLE when its source rows hold a missing value
+    /// (<see cref="TypeFacts.HasMissingValues"/>), so an empty cell or a SQL NULL stays missing
+    /// rather than becoming 0, False or 01-Jan-0001 -- values that look exactly like real data.
+    /// </summary>
+    /// <remarks>
+    /// Two exceptions. The Id key, which the store assigns. And a foreign key: a blank one already
+    /// reads as "no parent" at 0 (seeded Ids start at 1), and every relationship consumer -- the
+    /// seeder's ordering, the resolver, the lookups -- matches an <c>int</c> key, so it stays one.
+    /// </remarks>
+    private static void AddNullability(List<ClassDefinition> classes)
+    {
+        var names = ForeignKeys.ClassNameSet(classes);
+
+        foreach (var definition in classes)
+        {
+            var foreignKeys = ForeignKeys.TargetsOf(definition, names)
+                .Select(target => target + "Id")
+                .ToHashSet(StringComparer.Ordinal);
+
+            foreach (var property in definition.Properties)
+            {
+                if (property.Facts?.HasMissingValues != true
+                    || !NullableCapableTypes.Contains(property.Type)
+                    || string.Equals(property.Name, "Id", StringComparison.OrdinalIgnoreCase)
+                    || foreignKeys.Contains(property.Name))
+                    continue;
+
+                property.Type += "?";
+            }
+        }
     }
 
     /// <summary>
@@ -377,7 +427,9 @@ public static class DomainModelMapper
 
         var facts = property.Facts;
 
-        switch (property.Type)
+        // The base type: a nullable property ("int?") takes its kind's rules. "required" stays a
+        // string-only rule, so a nullable number is never made required by its missing values.
+        switch (BaseType(property.Type))
         {
             case "string":
                 // A column the source declared NOT NULL is required, whatever it is called.

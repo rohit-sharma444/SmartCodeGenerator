@@ -90,6 +90,30 @@ public class DocumentLineTests
             EntityRole.DocumentLine, EntityRoles.Classify(classes).RoleOf("CustomerLine"));
     }
 
+    /// <summary>
+    /// A dated document whose lines point at it is a transaction header even with no foreign key of
+    /// its own. invoices.json nests each invoice's Lines array, the JSON reader makes Line a child
+    /// with an InvoiceId, and the invoice names its customer as text: the model came out "2
+    /// masters, 0 transactions", Line got a screen of its own and the invoice editor had no lines.
+    /// </summary>
+    [TestMethod]
+    public void A_dated_parent_of_lines_is_a_transaction_even_with_no_foreign_key_of_its_own()
+    {
+        var classes = new List<ClassDefinition>
+        {
+            EntityRolesTests.Entity(
+                "Invoice", ("InvoiceNumber", "string"), ("InvoiceDate", "DateTime"), ("CustomerName", "string")),
+            EntityRolesTests.Entity(
+                "Line",
+                [.. EntityRolesTests.ForeignKeyTo("Invoice"), ("Product", "string"), ("Quantity", "int")]),
+        };
+
+        var map = EntityRoles.Classify(classes);
+
+        Assert.AreEqual(EntityRole.Transaction, map.RoleOf("Invoice"));
+        Assert.AreEqual(EntityRole.DocumentLine, map.RoleOf("Line"));
+    }
+
     /// <summary>A line never appears among the navigable entities, which is the whole point of the
     /// role.</summary>
     [TestMethod]

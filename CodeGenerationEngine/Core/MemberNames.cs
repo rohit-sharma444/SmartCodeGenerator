@@ -34,11 +34,11 @@ internal static class MemberNames
     /// </summary>
     /// <remarks>
     /// Any member kind: a method and a property of one name is CS0102, and a member named like its
-    /// class is CS0542. Overloads of the member being renamed are passed in <paramref name="except"/>.
+    /// class is CS0542. Compared ignoring case, so no two members differ only in case. Overloads of the member being renamed are passed in <paramref name="except"/>.
     /// </remarks>
     public static string? Taken(TypeDeclarationSyntax classNode, string name, IEnumerable<MemberDeclarationSyntax> except)
     {
-        if (classNode.Identifier.Text.Equals(name, StringComparison.Ordinal))
+        if (classNode.Identifier.Text.Equals(name, StringComparison.OrdinalIgnoreCase))
             return $"'{name}' is the {(classNode is InterfaceDeclarationSyntax ? "interface" : "class")}'s own name; "
                 + "a member cannot share it.";
 
@@ -48,8 +48,11 @@ internal static class MemberNames
             if (skip.Contains(member))
                 continue;
 
-            if (NamesOf(member).Contains(name, StringComparer.Ordinal))
-                return $"'{classNode.Identifier.Text}' already has a {KindOf(member)} named '{name}'.";
+            // Any case: Email beside email compiles, but a name typed for either then fits both
+            // and every later edit has to refuse it as ambiguous.
+            if (NamesOf(member).FirstOrDefault(n => n.Equals(name, StringComparison.OrdinalIgnoreCase)) is { } existing)
+                return $"'{classNode.Identifier.Text}' already has a {KindOf(member)} named '{existing}'"
+                    + (existing == name ? "." : $"; '{name}' differs from it only in case.");
         }
 
         return null;

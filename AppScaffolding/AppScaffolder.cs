@@ -613,6 +613,9 @@ public sealed class AppScaffolder
         // does not compile. Reported, never rewritten -- see ValidatorTemplate.HasOutdatedCustomHook.
         var outdatedStubs = new List<string>();
 
+        // The stubs left as they were: still this generator's, so the record keeps them.
+        var keptStubs = new List<string>();
+
         foreach (var definition in validation ? classes : Array.Empty<ClassDefinition>())
         {
             var fileName = $"{definition.Name}Validator.Custom.cs";
@@ -620,6 +623,8 @@ public sealed class AppScaffolder
 
             if (File.Exists(customPath))
             {
+                keptStubs.Add(customPath);
+
                 ValidatorTemplate.ReconcileCustomStubNamespace(customPath, rootNamespace);
 
                 if (ValidatorTemplate.HasOutdatedCustomHookAt(customPath))
@@ -637,10 +642,33 @@ public sealed class AppScaffolder
                 written.Add(writtenPath);
         }
 
+        var testWritten = new List<string>();
         var (testProjectPath, testProjectProblem) = ScaffoldTestProject(
-            workspaceRoot, projectName, rootNamespace, classes, validation, seed, auth, sessionAuth);
+            workspaceRoot, projectName, rootNamespace, classes, validation, seed, auth, sessionAuth,
+            testWritten);
 
         var allWritten = written.Count == expected;
+
+        // Overwriting replaces the generated sources, which includes removing the ones this model
+        // no longer produces: a class renamed or removed on Review used to leave its files behind,
+        // and after a rename to a name that could not compile, no overwrite could build again.
+        // Only a complete run sweeps — a file this run failed to write says nothing about what
+        // the model has, and must not cost the copy already on disk.
+        var staleFiles = new List<string>();
+
+        if (allWritten)
+            staleFiles.AddRange(
+                GeneratedFilesManifest.Sweep(outputFolder, written, keptStubs).Sentences(projectName));
+        else
+            GeneratedFilesManifest.Record(outputFolder, written);
+
+        if (testProjectPath is not null)
+        {
+            var testFolder = Path.GetDirectoryName(testProjectPath)!;
+            staleFiles.AddRange(
+                GeneratedFilesManifest.Sweep(testFolder, testWritten, []).Sentences(
+                    Path.GetFileName(testFolder)));
+        }
 
         // A renamed entity is reported, never silent: the user described a class by one name and
         // the app declares it under another, so without this they go looking for something that
@@ -672,6 +700,7 @@ public sealed class AppScaffolder
             OutdatedValidatorStubs = outdatedStubs,
             TestProjectProblem = testProjectProblem,
             UnreadableSeedValues = unreadableSeedValues,
+            StaleFiles = staleFiles,
         };
     }
 
@@ -691,7 +720,7 @@ public sealed class AppScaffolder
     private static (string? Path, string? Problem) ScaffoldTestProject(
         string workspaceRoot, string appProjectName, string appRootNamespace,
         IReadOnlyList<ClassDefinition> classes, bool validation, bool seed, bool auth,
-        bool sessionAuth)
+        bool sessionAuth, List<string> written)
     {
         var entityNames = classes.Select(c => c.Name).ToList();
 
@@ -774,6 +803,12 @@ public sealed class AppScaffolder
             || supportPath is null)
             return (null, incomplete);
 
+        written.Add(roundTripPath);
+        written.Add(parallelizationPath);
+        written.Add(supportPath);
+        if (seedPath is not null)
+            written.Add(seedPath);
+
         // One validator test file per model, so the generated suite covers the generated rules —
         // and none at all when there are no validators to cover, since a test naming a validator
         // the app never generated would not compile.
@@ -783,10 +818,13 @@ public sealed class AppScaffolder
                 p.Type == "string"
                 && p.Rules.Any(r => string.Equals(r.Name, "required", StringComparison.OrdinalIgnoreCase)));
 
-            if (WriteSource(testFolder, $"{definition.Name}ValidatorTests.cs",
-                    TestProjectTemplates.ValidatorTests(
-                        appRootNamespace, definition.Name, required?.Name)) is null)
+            var testPath = WriteSource(testFolder, $"{definition.Name}ValidatorTests.cs",
+                TestProjectTemplates.ValidatorTests(appRootNamespace, definition.Name, required?.Name));
+
+            if (testPath is null)
                 return (null, incomplete);
+
+            written.Add(testPath);
         }
 
         return (testCsproj, null);

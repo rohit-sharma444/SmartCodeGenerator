@@ -32,7 +32,7 @@ public static class ClassPropertyTypeService
         // remove property finds it.
         if (ClassMethodEditService.PropertyNamed(parts, propertyName) is not (var part, var property))
         {
-            message = $"Property '{propertyName}' not found in '{className}'.";
+            message = ClassMethodEditService.NotFound(parts, propertyName, "Property");
             return false;
         }
 

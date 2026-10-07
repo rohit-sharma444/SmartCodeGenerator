@@ -1,5 +1,6 @@
 using System.Text.Json;
 using CodeGenerationEngine.Core;
+using CodeGenerationEngine.Helper;
 using CodeGenerationEngine.Models;
 
 namespace CodeGenerator.App;
@@ -54,7 +55,14 @@ public sealed class Workspace
 
     public List<PropertyRule> Rules { get; private set; } = [];
 
-    public int ProjectCount { get; internal set; }
+    /// <summary>The registered projects under <see cref="Root"/>, counted now.</summary>
+    /// <remarks>
+    /// Read from the registry each time rather than stored: a value set by <see cref="LoadFrom"/>
+    /// alone went stale the moment a command created a project, so the chat header said
+    /// "0 projects" beside a tree that drew one. The tree reads the same registry.
+    /// </remarks>
+    public int ProjectCount => ProjectManager.GetProjects().Count(p =>
+        PathHelper.IsWithin(p.ProjectPath, Root) || PathHelper.IsWithin(p.CsProjPath, Root));
 
     public string HistoryPath => Path.Combine(Root, HistoryFilename);
 
@@ -139,9 +147,7 @@ public sealed class Workspace
         LoadRules();
         LearnedIntentStore.Initialize(Root);
 
-        ProjectCount = projects.Count;
-
-        return new WorkspaceLoad(true, Root, ProjectCount, solution, null);
+        return new WorkspaceLoad(true, Root, projects.Count, solution, null);
     }
 
     /// <summary>
@@ -185,6 +191,33 @@ public sealed class Workspace
             Console.WriteLine($"Failed to load rules: {ex.Message}");
             Rules = [];
         }
+
+        LoadValidationRules();
+    }
+
+    /// <summary>
+    /// Loads the add-validation rules saved in this workspace, and saves every later change there.
+    /// </summary>
+    /// <remarks>
+    /// A separate file from rules.json / rules.txt above: those are hand-written property rules the
+    /// tool only reads; this one the tool writes on every add, remove or undo (see
+    /// <see cref="CodeGenerationEngine.Core.Validation.ValidationRuleFile"/>). Re-rooting replaces
+    /// the rules with the new workspace's, rather than carrying the old one's across.
+    /// </remarks>
+    private void LoadValidationRules()
+    {
+        var load = ValidationRegistry.Attach(Root);
+        var file = Path.Combine(global::CodeGenerationEngine.Core.Validation.ValidationRuleFile.FolderName,
+            global::CodeGenerationEngine.Core.Validation.ValidationRuleFile.FileName);
+
+        if (load.Problem is not null)
+            Console.WriteLine($"Failed to load validation rules from {file}: {load.Problem}");
+        else if (load.Rules.Count > 0)
+            Console.WriteLine($"Loaded {load.Rules.Count} validation rule{(load.Rules.Count == 1 ? "" : "s")} from {file}");
+
+        if (load.Unreadable.Count > 0)
+            Console.WriteLine($"  {load.Unreadable.Count} saved rule(s) could not be read and were kept as they are: "
+                + string.Join("; ", load.Unreadable.Select(r => $"{r.ClassName}: {r.Text}")));
     }
 
     /// <summary>

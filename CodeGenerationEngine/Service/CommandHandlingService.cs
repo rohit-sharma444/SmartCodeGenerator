@@ -180,11 +180,16 @@ public static class CommandHandlingService
     {
         var command = ctx.Command;
 
-        // Resolve the project name once so the name and the default output
-        // folder stay consistent (the old code defaulted them independently).
-        string projectName = string.IsNullOrWhiteSpace(command.ProjectName)
-            ? "NewProject"
-            : command.ProjectName;
+        // No name used to make a project called NewProject, which nobody asked for - and a name the
+        // parser could not read (a quoted one, once) made it too, without a word.
+        if (string.IsNullOrWhiteSpace(command.ProjectName))
+        {
+            Console.WriteLine(
+                "A project name is required, e.g. create console project EmployeeManagement");
+            return false;
+        }
+
+        string projectName = command.ProjectName;
 
         var projectReq = new ProjectRequest
         {
@@ -196,9 +201,12 @@ public static class CommandHandlingService
             Framework = string.IsNullOrWhiteSpace(command.Framework) ? "net10.0" : command.Framework
         };
 
-        Console.WriteLine(
-            $"Creating project '{projectReq.ProjectName}' of type '{projectReq.ProjectType}' " +
-            $"in '{projectReq.OutputFolder}' targeting '{projectReq.Framework}'...");
+        // Said only when one is really created: an existing project printed "Creating project..."
+        // and then "Existing project loaded".
+        if (ExistingProjectFile(projectReq, ctx.WorkspaceRoot) == null)
+            Console.WriteLine(
+                $"Creating project '{projectReq.ProjectName}' of type '{projectReq.ProjectType}' " +
+                $"in '{projectReq.OutputFolder}' targeting '{projectReq.Framework}'...");
 
         var projResult = LoadOrCreateProject(projectReq, ctx.WorkspaceRoot);
         ProjectManager.Register(projResult);
@@ -282,15 +290,18 @@ public static class CommandHandlingService
 
     private static bool HandleShowClass(CommandExecutionContext ctx)
     {
-        Console.WriteLine(ClassValidator.ShowClass(ctx.Command.ClassName));
-        return true;
+        // ShowClass prints the class, or the warning that says why not; its return value is a
+        // status, and echoing it printed "Class 'Nope' not found." and then "Class not found.".
+        return ClassValidator.ShowClass(ctx.Command.ClassName) == ClassValidator.ClassShown;
     }
 
     private static bool HandleRenameClass(CommandExecutionContext ctx)
     {
         var ok = ClassRenameService.RenameClass(
-            ctx.WorkspaceRoot, ctx.Command.ClassName, ctx.Command.NewClassName, out var message);
+            ctx.WorkspaceRoot, ctx.Command.ClassName, ctx.Command.NewClassName, out var message, out var warnings);
         Output.Result(ok, message);
+        foreach (var warning in warnings)
+            Output.Warning(warning);
         return ok;
     }
 
@@ -305,7 +316,7 @@ public static class CommandHandlingService
         var ok = ClassInheritanceService.AddInheritance(
             ctx.WorkspaceRoot, ctx.Command.ClassName, ctx.Command.BaseClass, out var message);
 
-        Console.WriteLine(message);
+        Output.Result(ok, message);
         return ok;
     }
 
@@ -346,6 +357,7 @@ public static class CommandHandlingService
 
     private static bool HandleCreateMethod(CommandExecutionContext ctx)
     {
+        UseDeclaredNames(ctx, member: null);
         var ok = ClassMethodService.AddMethod(
             ctx.WorkspaceRoot, ctx.Command.ClassName,
             ctx.Command.MethodName, ctx.Command.ReturnType, out var message);
@@ -368,6 +380,8 @@ public static class CommandHandlingService
             return false;
         }
 
+        UseDeclaredNames(ctx, member: "Method");
+
         var ok = ClassMethodEditService.DeleteMethod(
             ctx.WorkspaceRoot, ctx.Command.ClassName, ctx.Command.MethodName, out var message);
         Console.WriteLine(message);
@@ -387,6 +401,8 @@ public static class CommandHandlingService
             return false;
         }
 
+        UseDeclaredNames(ctx, member: "Method");
+
         var ok = ClassMethodEditService.RenameMethod(
             ctx.WorkspaceRoot, ctx.Command.ClassName,
             ctx.Command.MethodName, ctx.Command.NewMethodName, out var message);
@@ -397,6 +413,28 @@ public static class CommandHandlingService
             WarnOfImplementers(ctx, $"rename {ctx.Command.MethodName} to {ctx.Command.NewMethodName} there as well, or that code will not compile.");
         }
         return ok;
+    }
+
+    // The class, and the member the command edits, as declared: the warnings after an edit repeated
+    // what was typed - "rules still name name", "rename area to Size there as well" for Area. The
+    // services already find a name in another case; this makes the handlers' own messages agree.
+    // A member that cannot be told (none, or two differing only in case) is left as typed, and the
+    // service then says why.
+    private static void UseDeclaredNames(CommandExecutionContext ctx, string? member)
+    {
+        if (string.IsNullOrWhiteSpace(ctx.Command.ClassName)
+            || !ClassMethodEditService.TryLoadParts(ctx.WorkspaceRoot, ctx.Command.ClassName, out var parts, out _))
+            return;
+
+        ctx.Command.ClassName = parts[0].Node.Identifier.Text;
+
+        if (member == "Property" && !string.IsNullOrWhiteSpace(ctx.Command.PropertyName)
+            && ClassMethodEditService.PropertyNamed(parts, ctx.Command.PropertyName) is { } property)
+            ctx.Command.PropertyName = property.Property.Identifier.Text;
+
+        if (member == "Method" && !string.IsNullOrWhiteSpace(ctx.Command.MethodName)
+            && ClassMethodEditService.MethodNamed(parts, ctx.Command.MethodName) is { } method)
+            ctx.Command.MethodName = method;
     }
 
     // After a member is added to an interface: the classes implementing it that do not have it yet.
@@ -457,15 +495,52 @@ public static class CommandHandlingService
             TargetProperty = string.IsNullOrWhiteSpace(ctx.Command.PropertyName) ? null : ctx.Command.PropertyName
         };
 
-        var rules = ValidationRuleCatalog.Default.Parse(ctx.Command.ValidationText, category, parseCtx);
+        // One rule per command, as typed (see ParseOne).
+        var rules = ValidationRuleCatalog.Default.ParseOne(ctx.Command.ValidationText, category, parseCtx);
         if (rules.Count == 0)
         {
             Output.Warning($"Could not parse a validation rule from: '{ctx.Command.ValidationText}'");
             return false;
         }
 
+        // A rule on a class or property that is not there was accepted and reported as added, and
+        // generate validator later skipped it with only a source comment to show for it.
+        var className = ctx.Command.ClassName;
+        var classFile = EntityExtractor.FindClassFile(ctx.WorkspaceRoot, className);
+        if (classFile == null)
+        {
+            Output.Error($"Class '{className}' not found, so the rule was not added."
+                + CloseNames.Hint(className, EntityExtractor.ClassNames(ctx.WorkspaceRoot)));
+            return false;
+        }
+
+        var known = EntityExtractor.ExtractProperties(classFile).Select(p => p.Name).ToList();
+        var declared = EntityExtractor.DeclaredName(classFile, className);
         foreach (var rule in rules)
-            ValidationRegistry.Add(ctx.Command.ClassName, rule);
+        {
+            var missing = rule.Properties
+                .FirstOrDefault(p => !known.Contains(p, StringComparer.OrdinalIgnoreCase));
+            if (missing != null)
+            {
+                Output.Error($"'{declared}' has no property '{missing}', so the rule was not added."
+                    + CloseNames.Hint(missing, known));
+                return false;
+            }
+        }
+
+        // The same rule twice is two identical checks and two identical messages.
+        var existing = ValidationRegistry.Get(className, category);
+        var fresh = rules
+            .Where(rule => !existing.Any(r => r.Describe().Equals(rule.Describe(), StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+        if (fresh.Count == 0)
+        {
+            Output.Warning($"{declared} already has this rule: {rules[0].Describe()}. It was not added again.");
+            return true;
+        }
+
+        foreach (var rule in fresh)
+            ValidationRegistry.Add(className, rule, ctx.Command.ValidationText);
 
         Output.Success(successPrefix);
         return true;
@@ -476,7 +551,7 @@ public static class CommandHandlingService
             successPrefix: $"Business rule added to {ctx.Command.ClassName}: {ctx.Command.ValidationText}");
 
     private static bool HandleShowBusinessValidation(CommandExecutionContext ctx) =>
-        ShowRules(ctx.Command.ClassName, ValidationCategory.Business, "Business rules");
+        ShowRules(ctx.WorkspaceRoot, ctx.Command.ClassName, ValidationCategory.Business, "Business rules");
 
     private static bool HandleGenerateValidator(CommandExecutionContext ctx)
     {
@@ -509,7 +584,17 @@ public static class CommandHandlingService
             return false;
         }
 
-        return GenerateAndSave(ctx);
+        var ok = GenerateAndSave(ctx);
+
+        // Say which name was made when it is not what was typed (InterfaceNaming).
+        var typed = System.Text.RegularExpressions.Regex.Match(ctx.RawInput,
+            @"\binterface\s+(?:(?:a|an|new)\s+)?(?<name>[A-Za-z_]\w*)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        var made = ctx.Command.InterfaceName ?? ctx.Command.ClassName;
+        if (ok && typed.Success && !string.IsNullOrWhiteSpace(made) && typed.Groups["name"].Value != made)
+            Console.WriteLine($"Named the interface {made}: a name is kept as typed only when it is I followed by a "
+                + $"capital letter, as IShape is; anything else is given the I prefix.");
+
+        return ok;
     }
 
     private static bool HandleListProperties(CommandExecutionContext ctx)
@@ -524,16 +609,31 @@ public static class CommandHandlingService
             return true;
         }
 
-        var properties = EntityExtractor.ExtractProperties(file);
+        var properties = EntityExtractor.ExtractProperties(file)
+            .Select(p => (p.Type, p.Name))
+            .ToList();
+        var className = ctx.Command.ClassName;
+
+        // The class's other partial files as well, as the edit commands search them:
+        // a property in Customer.Extra.cs was not listed.
+        if (ClassMethodEditService.TryLoadParts(ctx.WorkspaceRoot, className, out var parts, out _))
+        {
+            className = parts[0].Node.Identifier.Text;
+            foreach (var part in parts.Skip(1))
+                properties.AddRange(part.Node.Members
+                    .OfType<Microsoft.CodeAnalysis.CSharp.Syntax.PropertyDeclarationSyntax>()
+                    .Select(p => (p.Type.ToString(), p.Identifier.Text)));
+        }
+
         if (properties.Count == 0)
         {
-            Console.WriteLine($"No properties found in '{ctx.Command.ClassName}'.");
+            Console.WriteLine($"No properties found in '{className}'.");
             return true;
         }
 
-        Console.WriteLine($"Properties in {ctx.Command.ClassName}:");
-        foreach (var property in properties)
-            Console.WriteLine($"  {property.Type} {property.Name}");
+        Console.WriteLine($"Properties in {className}:");
+        foreach (var (type, name) in properties)
+            Console.WriteLine($"  {type} {name}");
         return true;
     }
 
@@ -549,6 +649,7 @@ public static class CommandHandlingService
 
     private static bool HandleCreateProperty(CommandExecutionContext ctx)
     {
+        UseDeclaredNames(ctx, member: null);
         var ok = ClassPropertyService.AddProperty(
             ctx.WorkspaceRoot, ctx.Command.ClassName,
             ctx.Command.PropertyName, ctx.Command.PropertyType, out var message);
@@ -560,6 +661,7 @@ public static class CommandHandlingService
 
     private static bool HandleDeleteProperty(CommandExecutionContext ctx)
     {
+        UseDeclaredNames(ctx, member: "Property");
         var ok = ClassPropertyService.RemoveProperty(
             ctx.WorkspaceRoot, ctx.Command.ClassName,
             ctx.Command.PropertyName, out var message);
@@ -600,6 +702,8 @@ public static class CommandHandlingService
             return false;
         }
 
+        UseDeclaredNames(ctx, member: "Property");
+
         var ok = ClassPropertyRenameService.RenameProperty(
             ctx.WorkspaceRoot, ctx.Command.ClassName,
             ctx.Command.PropertyName, ctx.Command.NewPropertyName, out var message);
@@ -632,6 +736,8 @@ public static class CommandHandlingService
             Console.WriteLine("No class specified for the type change.");
             return false;
         }
+
+        UseDeclaredNames(ctx, member: "Property");
 
         var ok = ClassPropertyTypeService.ChangeType(
             ctx.WorkspaceRoot, ctx.Command.ClassName,
@@ -678,13 +784,21 @@ public static class CommandHandlingService
     }
 
     private static bool HandleShowValidation(CommandExecutionContext ctx) =>
-        ShowRules(ctx.Command.ClassName, ValidationCategory.Data, "Validation rules");
+        ShowRules(ctx.WorkspaceRoot, ctx.Command.ClassName, ValidationCategory.Data, "Validation rules");
 
-    private static bool ShowRules(string className, ValidationCategory category, string heading)
+    private static bool ShowRules(string workspaceRoot, string className, ValidationCategory category, string heading)
     {
         var rules = ValidationRegistry.Get(className, category);
         if (rules.Count == 0)
         {
+            // "No validation rules for 'Nope'" read as though Nope were a class with none.
+            if (EntityExtractor.FindClassFile(workspaceRoot, className) == null)
+            {
+                Output.Warning($"Class '{className}' not found."
+                    + CloseNames.Hint(className, EntityExtractor.ClassNames(workspaceRoot)));
+                return true;
+            }
+
             Console.WriteLine($"No {heading.ToLowerInvariant()} for '{className}'.");
             return true;
         }
@@ -861,12 +975,14 @@ public static class CommandHandlingService
         return true;
     }
 
+    private static string? ExistingProjectFile(ProjectRequest request, string workspaceRoot) =>
+        Directory.GetFiles(workspaceRoot, $"{request.ProjectName}.csproj", SearchOption.AllDirectories)
+            .FirstOrDefault();
+
     // FIX #8: Correct path handling - store .csproj path and directory separately
     private static ProjectMetaData LoadOrCreateProject(ProjectRequest request, string workspaceRoot)
     {
-        var existingProject = Directory
-            .GetFiles(workspaceRoot, $"{request.ProjectName}.csproj", SearchOption.AllDirectories)
-            .FirstOrDefault();
+        var existingProject = ExistingProjectFile(request, workspaceRoot);
 
         if (existingProject != null)
         {
@@ -877,7 +993,8 @@ public static class CommandHandlingService
                 ProjectPath = projectDir ?? Path.GetDirectoryName(workspaceRoot) ?? workspaceRoot,
                 CsProjPath = existingProject,
                 ProjectName = Path.GetFileNameWithoutExtension(existingProject),
-                Message = $"Existing project loaded: {existingProject}"
+                Message = $"Project '{Path.GetFileNameWithoutExtension(existingProject)}' already exists ({existingProject}); "
+                    + "nothing was created, and it is now the current project."
             };
         }
 

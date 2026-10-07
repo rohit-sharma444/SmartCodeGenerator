@@ -672,6 +672,7 @@ public class WpfBusinessLayoutTests
                 ("Screens/RequiredFields.cs", RequiredFieldsTemplate.Source("Payroll", null)),
                 ("ViewModels/Shell.cs", ShellStub),
                 ("Auth/Session.cs", SessionStub),
+                ("Views/DisplayCulture.cs", WpfDisplayCultureTemplate.Source("Payroll")),
             ]);
     }
 
@@ -1385,6 +1386,7 @@ public class WpfBusinessLayoutTests
                     ("Screens/RequiredFields.cs", RequiredFieldsTemplate.Source("Payroll", null)),
                     ("ViewModels/Shell.cs", ShellStub),
                     ("Auth/Session.cs", SessionStub),
+                    ("Views/DisplayCulture.cs", WpfDisplayCultureTemplate.Source("Payroll")),
                 ]);
         }
     }

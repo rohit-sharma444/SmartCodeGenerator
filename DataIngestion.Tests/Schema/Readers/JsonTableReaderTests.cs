@@ -107,6 +107,23 @@ public class JsonTableReaderTests
         Assert.Equal("decimal", table.Columns.Single(c => c.Name == "Total").Type);
     }
 
+    /// <summary>
+    /// A JSON NUMBER in exponent form is a number — the format says so — and is passed on as plain
+    /// digits, since exponent-form TEXT is read as a code. A JSON STRING "1E3" stays text.
+    /// </summary>
+    [Fact]
+    public void AnExponentNumber_IsPlainDigits_AndAnExponentString_StaysText()
+    {
+        var table = Assert.Single(JsonTableReader.ReadJson(
+            """[{"Rate":1e3,"Batch":"1E3"},{"Rate":2.5E-3,"Batch":"2E5"}]""", "Thing", "t.json"));
+
+        Assert.Equal("decimal", table.Columns.Single(c => c.Name == "Rate").Type);
+        Assert.Equal("1000", table.Value(0, "Rate"));
+        Assert.Equal("0.0025", table.Value(1, "Rate"));
+        Assert.Equal("string", table.Columns.Single(c => c.Name == "Batch").Type);
+        Assert.Equal("1E3", table.Value(0, "Batch"));
+    }
+
     [Fact]
     public void SingleTopLevelObject_IsReadAsAOneRowTable()
         => Assert.Single(Assert.Single(JsonTableReader.ReadJson(

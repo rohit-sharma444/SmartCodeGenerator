@@ -13,7 +13,7 @@
 //   {"cmd":"type","name":"User name","value":"admin"}              -> {"ok":true}  (WinForms: no ids)
 //   add "direct":true to set it through UI Automation rather than the keyboard
 //   {"cmd":"dump"}                                                 -> {"ok":true,"elements":[...]}
-//   {"cmd":"find-grid"}                                            -> {"ok":true,"columns":[...],"rowCount":N}
+//   {"cmd":"find-grid"}                                            -> {"ok":true,"columns":[...],"rowCount":N,"totalRows":N}
 //   {"cmd":"type-field","label":"OrderNumber","value":"SO-2001"}   -> {"ok":true}
 //   {"cmd":"read-status"}                                          -> {"ok":true,"text":"..."}
 //   {"cmd":"screenshot","path":"C:\\...\\frame.png"}               -> {"ok":true}
@@ -377,11 +377,17 @@ JsonObject FindGrid()
         rowCount = grid.FindAllChildren()
             .Count(c => (c.Properties.Name.ValueOrDefault ?? "").StartsWith("Row ", StringComparison.Ordinal));
 
+    // Every item the grid holds, scrolled into view or not: a WPF DataGrid realizes only the rows
+    // on screen, so Rows cannot tell whether a save added one below the fold. app-check compares
+    // this before New and after Save.
+    var totalRows = grid.Patterns.Grid.PatternOrDefault?.RowCount.ValueOrDefault ?? 0;
+
     return new JsonObject
     {
         ["ok"] = true,
         ["columns"] = columns,
         ["rowCount"] = rowCount,
+        ["totalRows"] = totalRows,
     };
 }
 

@@ -19,8 +19,8 @@ public static class NaturalLanguageCodeEngine
             IntentType.ShowClass => ClassValidator.ShowClass(command.ClassName!),
 
             IntentType.RenameClass => ClassRenameService.RenameClass(
-                workspaceRoot, command.ClassName!, command.NewClassName!, out var msg)
-                    ? msg : msg,
+                workspaceRoot, command.ClassName!, command.NewClassName!, out var msg, out var renameWarnings)
+                    ? string.Join(Environment.NewLine, [msg, .. renameWarnings]) : msg,
 
             IntentType.DeleteClass => ClassDeletionService.DeleteClass(
                 workspaceRoot, command.ClassName!).Message,

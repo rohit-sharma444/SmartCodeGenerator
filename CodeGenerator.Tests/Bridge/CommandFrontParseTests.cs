@@ -147,8 +147,8 @@ public class CommandFrontParseTests
     [TestMethod]
     // "create interface ishape" was "Command not recognized" while "create interface IShape"
     // worked - the create class defect again: NLE tags the lower-case name as part of the target.
-    // The name follows the capitalised path's rule: PascalCased, I added when it is missing.
-    [DataRow("create interface ishape", "Ishape")]
+    // The name follows InterfaceNaming: kept when it is I + a capital, else PascalCased and prefixed.
+    [DataRow("create interface ishape", "IIshape")]
     [DataRow("create interface shape", "IShape")]
     [DataRow("generate interface repository", "IRepository")]
     [DataRow("create an interface shape", "IShape")]

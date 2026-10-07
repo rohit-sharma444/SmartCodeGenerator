@@ -66,23 +66,61 @@ public static class InterfaceImplementers
     /// </summary>
     public static string? AddedWarning(string workspaceRoot, string typeName, string member)
     {
-        if (InterfaceNamed(workspaceRoot, typeName) is not { } iface)
+        if (!ClassMethodEditService.TryLoad(workspaceRoot, typeName, out _, out _, out var node, out _)
+            || node is not InterfaceDeclarationSyntax declared)
             return null;
+
+        var iface = declared.Identifier.Text;
+        var wanted = declared.Members.Where(m => DeclaredName(m) == member).Select(SignatureOf).ToList();
 
         // By name, so a partial class with the member in its other file is not named.
-        var lacking = Of(workspaceRoot, iface)
-            .GroupBy(t => t.Identifier.Text)
-            .Where(g => !g.Any(t => t.Members.Any(m => DeclaredName(m) == member)))
-            .SelectMany(g => g)
-            .ToList();
+        var lacking = new List<TypeDeclarationSyntax>();
+        var mismatched = new List<string>();
+        foreach (var group in Of(workspaceRoot, iface).GroupBy(t => t.Identifier.Text))
+        {
+            var have = group.SelectMany(t => t.Members).Where(m => DeclaredName(m) == member).ToList();
+            if (have.Count == 0)
+            {
+                lacking.AddRange(group);
+                continue;
+            }
 
-        if (lacking.Count == 0)
-            return null;
+            // Same name, another signature: the class has double Perimeter() and the interface now
+            // asks for void Perimeter(), which is CS0738, or CS0535 for other parameters.
+            var signatures = have.Select(SignatureOf).ToList();
+            if (wanted.Count > 0 && !wanted.All(w => signatures.Contains(w)))
+                mismatched.Add($"{group.Key} has {string.Join(" and ", signatures.Distinct())}");
+        }
 
-        var one = lacking.Count == 1;
-        return $"{Names(lacking)} {(one ? "implements" : "implement")} {iface} but {(one ? "has" : "have")} no {member} yet: "
-            + $"add it there, or {(one ? "that class" : "those classes")} will not compile.";
+        var warnings = new List<string>();
+        if (lacking.Count > 0)
+        {
+            var one = lacking.Count == 1;
+            warnings.Add($"{Names(lacking)} {(one ? "implements" : "implement")} {iface} but {(one ? "has" : "have")} no {member} yet: "
+                + $"add it there, or {(one ? "that class" : "those classes")} will not compile.");
+        }
+
+        if (mismatched.Count > 0)
+            warnings.Add($"{iface} now declares {string.Join(" and ", wanted)}, but {string.Join("; ", mismatched.Take(MaxShown))}"
+                + (mismatched.Count > MaxShown ? $" and {mismatched.Count - MaxShown} more" : string.Empty)
+                + ": change one to match the other, or that code will not compile.");
+
+        return warnings.Count == 0 ? null : string.Join(" ", warnings);
     }
+
+    // The return or property type and the parameter types, as written, with whitespace removed:
+    // double Perimeter(), int Count.
+    private static string SignatureOf(MemberDeclarationSyntax member) => member switch
+    {
+        MethodDeclarationSyntax m => $"{Squeeze(m.ReturnType)} {m.Identifier.Text}"
+            + $"({string.Join(", ", m.ParameterList.Parameters.Select(p => p.Type == null ? "" : Squeeze(p.Type)))})",
+        PropertyDeclarationSyntax p => $"{Squeeze(p.Type)} {p.Identifier.Text}",
+        EventDeclarationSyntax e => $"event {Squeeze(e.Type)} {e.Identifier.Text}",
+        _ => member.ToString(),
+    };
+
+    private static string Squeeze(TypeSyntax type) =>
+        string.Concat(type.ToString().Where(c => !char.IsWhiteSpace(c))).Replace(",", ", ");
 
     /// <summary>
     /// After a member of the interface was removed, renamed or retyped: the implementers, which

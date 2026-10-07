@@ -38,6 +38,28 @@ public sealed class ScriptBuildAppTests
         Assert.IsTrue(output.Any(l => l.Contains(ScriptBuildApp.SuccessMarker, StringComparison.Ordinal)));
     }
 
+    // Typed, build app selects the project it generates (the first one registered with nothing
+    // selected), so the next create class goes into it. Run from a script, the build ran in a copy
+    // and this process kept nothing selected: create class Extra went to the workspace's Generated.
+    [TestMethod]
+    public void The_generated_project_is_selected_as_a_typed_build_selects_it()
+    {
+        CodeGenerationEngine.Core.ProjectManager.CurrentProject = null;
+        try
+        {
+            var ok = ScriptBuildApp.Run(
+                ["build app from csv " + Path.Combine(_root, "books.csv"), "approve console"], _root, _ => { });
+
+            Assert.IsTrue(ok);
+            Assert.AreEqual(Path.Combine(_root, "Books.Console"),
+                CodeGenerationEngine.Core.ProjectManager.CurrentProject?.ProjectPath);
+        }
+        finally
+        {
+            CodeGenerationEngine.Core.ProjectManager.CurrentProject = null;
+        }
+    }
+
     // S1: the copy's piped lines (and its "exit") are not what the user typed; writing them to the
     // workspace's history polluted the up-arrow and made the run that started it impossible to undo.
     [TestMethod]

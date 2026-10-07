@@ -95,6 +95,33 @@ public class ChatWebHostTests
     }
 
     [TestMethod]
+    public void An_ended_session_is_given_a_moment_to_draw_its_closing_view()
+    {
+        // Disposing the host the instant the session ended stopped the circuit before the page
+        // could draw that it had ended.
+        using var host = Start(out var session);
+        session.End();
+
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        host.Run(session, CancellationToken.None, linger: TimeSpan.FromMilliseconds(600));
+
+        Assert.IsGreaterThanOrEqualTo(550L, clock.ElapsedMilliseconds);
+    }
+
+    [TestMethod]
+    public void An_abandoned_session_does_not_linger()
+    {
+        using var host = Start(out var session);
+        host.Circuits.Opened(DateTimeOffset.UtcNow);
+        host.Circuits.Closed(DateTimeOffset.UtcNow);
+
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        host.Run(session, CancellationToken.None, TimeSpan.Zero, linger: TimeSpan.FromSeconds(30));
+
+        Assert.IsLessThan(10_000L, clock.ElapsedMilliseconds);
+    }
+
+    [TestMethod]
     public void Returns_when_cancelled()
     {
         using var host = Start(out var session);

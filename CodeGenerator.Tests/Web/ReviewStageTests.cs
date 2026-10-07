@@ -647,6 +647,92 @@ public class ReviewStageTests
         CollectionAssert.AreEqual(new[] { "Approved", "Draft", "Shipped" }, proposal.Order?.ToArray());
     }
 
+    // "1 Bad!" was accepted as "1Bad" and Generate then failed with 89 compile errors, while a
+    // property renamed to "2nd author" was refused. The class rename is refused the same way.
+    [TestMethod]
+    public void A_class_name_that_is_not_an_identifier_is_refused()
+    {
+        using var context = new BunitContext();
+        var rendered = Render(context, out var session);
+
+        rendered.Find("[data-entity=Book] input.entity-name").Change("1 Bad!");
+
+        Assert.AreEqual("Book", session.Model!.Entities.Single().Name);
+        StringAssert.Contains(rendered.Find(".edit-report").TextContent, "Could not rename");
+    }
+
+    // The report echoed the typing ("Renamed to class.") while the class became "Class".
+    [TestMethod]
+    public void A_class_rename_reports_the_name_the_model_applied()
+    {
+        using var context = new BunitContext();
+        var rendered = Render(context, out var session);
+
+        rendered.Find("[data-entity=Book] input.entity-name").Change("class");
+
+        Assert.AreEqual("Class", session.Model!.Entities.Single().Name);
+        Assert.AreEqual("Renamed Book to Class.", rendered.Find(".edit-report").TextContent);
+    }
+
+    // A blank box is an abandoned edit. The report used to keep saying the previous rename, as
+    // if the blank had been taken.
+    [TestMethod]
+    public void Clearing_a_class_name_drops_the_previous_report()
+    {
+        using var context = new BunitContext();
+        var rendered = Render(context, out var session);
+
+        rendered.Find("[data-entity=Book] input.entity-name").Change("class");
+        rendered.Find("[data-entity=Class] input.entity-name").Change("   ");
+
+        Assert.AreEqual("Class", session.Model!.Entities.Single().Name);
+        Assert.IsEmpty(rendered.FindAll(".edit-report"));
+    }
+
+    // One "new field" value was shared by every card: typed into Book's box, added by Member's
+    // button, it went to Member.
+    [TestMethod]
+    public void Each_class_has_its_own_add_field_box()
+    {
+        using var context = new BunitContext();
+        var rendered = Render(context, out var session);
+
+        rendered.Find("input.new-class").Change("Member");
+        rendered.Find("button.add-class").Click();
+
+        rendered.Find("[data-entity=Book] .add-field-row input.field-name").Change("Shelf");
+        rendered.Find("[data-entity=Member] button.add-field").Click();
+
+        var member = session.Model!.Entities.Single(e => e.Name == "Member");
+        Assert.IsFalse(member.Fields.Any(f => f.Name == "Shelf"), "Book's box added to Member");
+        Assert.AreEqual(
+            "Shelf",
+            rendered.Find("[data-entity=Book] .add-field-row input.field-name").GetAttribute("value"));
+    }
+
+    [TestMethod]
+    public void A_successful_add_clears_its_box()
+    {
+        using var context = new BunitContext();
+        var rendered = Render(context, out var session);
+
+        rendered.Find("input.new-class").Change("Member");
+        Assert.AreEqual("Member", rendered.Find("input.new-class").GetAttribute("value"),
+            "the box should show what it holds, or clearing it below proves nothing");
+        rendered.Find("button.add-class").Click();
+        rendered.Find("[data-entity=Book] .add-field-row input.field-name").Change("Pages");
+        Assert.AreEqual(
+            "Pages",
+            rendered.Find("[data-entity=Book] .add-field-row input.field-name").GetAttribute("value"));
+        rendered.Find("[data-entity=Book] button.add-field").Click();
+
+        Assert.IsTrue(session.Model!.Entities.Single(e => e.Name == "Book").Fields.Any(f => f.Name == "Pages"));
+        Assert.AreEqual("", rendered.Find("input.new-class").GetAttribute("value") ?? "");
+        Assert.AreEqual(
+            "",
+            rendered.Find("[data-entity=Book] .add-field-row input.field-name").GetAttribute("value") ?? "");
+    }
+
     private static IRenderedComponent<ReviewStage> Render(
         BunitContext context, out BuildSession session, StageNavigation? navigation = null)
     {

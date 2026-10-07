@@ -110,8 +110,12 @@ public sealed class PropertyEditor : Grid
 
             // Id is assigned by the store's NextId(), so it is shown but never edited -- the same
             // rule the window's column handler applies to the grid.
+            // CreatedOn and ModifiedOn likewise: the store stamps them on save, so a typed one was
+            // silently overwritten.
             box.IsReadOnly = !property.CanWrite
-                || string.Equals(property.Name, "Id", StringComparison.OrdinalIgnoreCase);
+                || string.Equals(property.Name, "Id", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(property.Name, "CreatedOn", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(property.Name, "ModifiedOn", StringComparison.OrdinalIgnoreCase);
 
             // A box that refuses typing while looking editable reads as a bug, so a read-only one
             // is visibly muted.

@@ -51,6 +51,29 @@ public class ActionFormatterTests
         StringAssert.Contains(result, "Email : string");
     }
 
+    // The preview said "CreateProperty Email : string" and never which class it goes to.
+    [TestMethod]
+    public void Format_PropertyIntent_ShowsTheClassItGoesTo()
+    {
+        var result = ActionFormatter.Format(
+            Actionable(IntentType.CreateProperty,
+                new ParsedCommand { ClassName = "Customer", PropertyName = "Email", PropertyType = "string" }));
+
+        StringAssert.Contains(result, "Customer.Email : string");
+    }
+
+    // A bare "AddValidation" said nothing about what would be added, or where.
+    [TestMethod]
+    [DataRow(IntentType.AddValidation)]
+    [DataRow(IntentType.AddBusinessValidation)]
+    public void Format_ValidationIntent_ShowsTheClassAndTheRule(IntentType intent)
+    {
+        var result = ActionFormatter.Format(
+            Actionable(intent, new ParsedCommand { ClassName = "Customer", ValidationText = "Name is required" }));
+
+        StringAssert.Contains(result, "Customer: Name is required");
+    }
+
     [TestMethod]
     [DataRow(IntentType.CreateInterface, "ICustomer")]
     [DataRow(IntentType.CreateService, "PaymentService")]

@@ -755,6 +755,50 @@ public sealed class MainForm : Form
             return lookup;
         }
 
+        // A nullable flag or date (bool?, DateTime?) is one whose source rows had gaps. Neither a
+        // CheckBox's Checked nor a DateTimePicker's Value can hold "none": bound directly, a
+        // missing date showed TODAY, which reads as real data. So both are synced by hand, the
+        // flag as a three-state box (indeterminate = none) and the date with a tick box.
+        var nullable = Nullable.GetUnderlyingType(field.PropertyType) is not null;
+
+        if (underlying == typeof(bool) && nullable)
+        {
+            var check = new CheckBox { Width = 190, ThreeState = true };
+
+            check.CheckState = field.GetValue(record) switch
+            {
+                true => CheckState.Checked,
+                false => CheckState.Unchecked,
+                _ => CheckState.Indeterminate,
+            };
+            check.CheckStateChanged += (_, _) => field.SetValue(record, check.CheckState switch
+            {
+                CheckState.Checked => true,
+                CheckState.Unchecked => false,
+                _ => (bool?)null,
+            });
+
+            return check;
+        }
+
+        if (underlying == typeof(DateTime) && nullable)
+        {
+            var current = field.GetValue(record) as DateTime?;
+            var picker = new DateTimePicker
+            {
+                Width = 190,
+                Format = DateTimePickerFormat.Short,
+                ShowCheckBox = true,
+                Value = current ?? DateTime.Today,
+                Checked = current.HasValue,
+            };
+
+            picker.ValueChanged += (_, _) =>
+                field.SetValue(record, picker.Checked ? picker.Value.Date : (DateTime?)null);
+
+            return picker;
+        }
+
         if (underlying == typeof(bool))
         {
             var check = new CheckBox { Width = 190 };
@@ -792,8 +836,15 @@ public sealed class MainForm : Form
 
         var box = new TextBox { Width = 190 };
 
-        box.DataBindings.Add(
-            new Binding("Text", record, field.Name, true, DataSourceUpdateMode.OnPropertyChanged));
+        // An emptied box is "none" for a nullable number, not a value the binding cannot convert
+        // (its default DataSourceNullValue is DBNull, which an int? refuses, keeping the old value).
+        box.DataBindings.Add(nullable
+            ? new Binding("Text", record, field.Name, true, DataSourceUpdateMode.OnPropertyChanged)
+            {
+                NullValue = string.Empty,
+                DataSourceNullValue = null,
+            }
+            : new Binding("Text", record, field.Name, true, DataSourceUpdateMode.OnPropertyChanged));
 
         return box;
     }

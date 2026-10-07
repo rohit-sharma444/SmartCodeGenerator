@@ -197,6 +197,96 @@ public class SetupStageTests
         Assert.IsFalse(navigation.CanContinue);
     }
 
+    // The box drawing Continue is the page's, and the page redraws only when told. A field edit
+    // re-renders the panel alone, so correcting a bad accent left Continue disabled until
+    // something else happened to redraw the page.
+    [TestMethod]
+    public void The_look_panel_tells_the_diagram_when_a_corrected_field_makes_the_step_usable()
+    {
+        using var context = new BunitContext();
+        var navigation = new StageNavigation();
+
+        var rendered = context.Render<LookStage>(p => p
+            .Add(c => c.Session, New("a shop"))
+            .Add(c => c.Navigation, navigation)
+            .Add(c => c.OnAdvance, () => { }));
+
+        var drawn = navigation.CanContinue;
+        navigation.Changed += () => drawn = navigation.CanContinue;
+
+        rendered.Find("input.customize").Change(true);
+        rendered.Find("input.accent").Change("notacolour");
+        rendered.Find("input.prefix").Change("1bad prefix");
+        Assert.IsFalse(drawn, "the diagram should have been told the step became unusable");
+
+        rendered.Find("input.accent").Change("#1f6feb");
+        rendered.Find("input.prefix").Change("Acme");
+
+        Assert.IsTrue(drawn, "the diagram should have been told the step became usable again");
+    }
+
+    [TestMethod]
+    public void A_remembered_look_opens_ticked_with_its_values_showing()
+    {
+        // The second build applied Company, prefix and accent from app-profile.json while the
+        // panel showed Customize unticked and no fields: values in force that nobody could see.
+        using var context = new BunitContext();
+        var remembered = AppCustomization.Default with { Company = "Codis", Accent = "#123456" };
+
+        var rendered = context.Render<LookStage>(p => p
+            .Add(c => c.Session, new BuildSession("a shop", NewRoot(), remembered))
+            .Add(c => c.Navigation, new StageNavigation())
+            .Add(c => c.OnAdvance, () => { }));
+
+        Assert.IsTrue(rendered.Find("input.customize").HasAttribute("checked"));
+        Assert.AreEqual("Codis", rendered.Find("input.company").GetAttribute("value"));
+        Assert.AreEqual("#123456", rendered.Find("input.accent").GetAttribute("value"));
+    }
+
+    [TestMethod]
+    public void Unticking_a_remembered_look_says_what_still_applies_and_offers_the_defaults()
+    {
+        using var context = new BunitContext();
+        var navigation = new StageNavigation();
+        var remembered = AppCustomization.Default with { Company = "Codis" };
+        var session = new BuildSession("a shop", NewRoot(), remembered);
+
+        var rendered = context.Render<LookStage>(p => p
+            .Add(c => c.Session, session)
+            .Add(c => c.Navigation, navigation)
+            .Add(c => c.OnAdvance, () => { }));
+
+        rendered.Find("input.customize").Change(false);
+        StringAssert.Contains(rendered.Find(".look-remembered").TextContent, "Codis");
+
+        rendered.Find(".look-clear").Click();
+        Assert.IsEmpty(rendered.FindAll(".look-remembered"));
+
+        Assert.IsTrue(navigation.ApplyAsync().Result);
+        Assert.AreEqual(AppCustomization.Default, session.Customization);
+    }
+
+    [TestMethod]
+    public void A_default_look_opens_unticked()
+    {
+        using var context = new BunitContext();
+
+        var rendered = context.Render<LookStage>(p => p
+            .Add(c => c.Session, New("a shop"))
+            .Add(c => c.Navigation, new StageNavigation())
+            .Add(c => c.OnAdvance, () => { }));
+
+        Assert.IsFalse(rendered.Find("input.customize").HasAttribute("checked"));
+        Assert.IsEmpty(rendered.FindAll(".look-remembered"));
+    }
+
+    private static string NewRoot()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "look-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(root);
+        return root;
+    }
+
     [TestMethod]
     public void The_look_panel_refuses_the_step_on_an_unusable_namespace_prefix()
     {

@@ -76,6 +76,24 @@ public sealed class AiCommandTests
         Assert.IsFalse(AiConfig.Load(ConfigPath).Enabled);
     }
 
+    // "AI disabled", and then ai status said "AI: enabled": disable only saved the config, and the
+    // session went on using the resolver it had loaded.
+    [TestMethod]
+    public void Disable_takes_effect_in_the_session_at_once()
+    {
+        var enabled = AiConfig.Load(ConfigPath);
+        enabled.Enabled = true;
+        enabled.Save(ConfigPath);
+        var layer = Layer();
+        if (layer.Resolver is null)
+            Assert.Inconclusive($"The AI model is not available here: {layer.Unavailable}");
+
+        AiCommand.Handle("ai disable", layer);
+
+        Assert.IsNull(layer.Resolver);
+        StringAssert.Contains(AiCommand.Handle("ai status", layer), "AI: off (disabled");
+    }
+
     [TestMethod]
     public void Enable_does_not_write_to_the_default_config_path()
     {

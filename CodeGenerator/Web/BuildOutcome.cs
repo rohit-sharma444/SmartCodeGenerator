@@ -33,6 +33,20 @@ public sealed record BuildOutcome(SessionPhase Phase, IReadOnlyList<string> Line
         => new(SessionPhase.Cancelled,
             ["Cancelled.", $"The project at {projectPath} was already written, and is still there."]);
 
+    /// <summary>
+    /// Cancelled having written nothing, over a project an earlier run wrote - which stays.
+    /// </summary>
+    public static BuildOutcome CancelledKeeping(string projectPath)
+        => new(SessionPhase.Cancelled,
+            ["Cancelled. Nothing more was generated.",
+             $"The project an earlier run wrote at {projectPath} is still there, unchanged."]);
+
+    /// <summary>The same, for a tab closed without a decision.</summary>
+    public static BuildOutcome AbandonedKeeping(string projectPath)
+        => new(SessionPhase.Abandoned,
+            ["The build workflow was closed before it finished. Nothing more was generated.",
+             $"The project an earlier run wrote at {projectPath} is still there, unchanged."]);
+
     /// <summary>The same, for a tab closed after the project was written.</summary>
     public static BuildOutcome AbandonedLeaving(string projectPath)
         => new(SessionPhase.Abandoned,

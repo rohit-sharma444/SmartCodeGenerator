@@ -44,7 +44,7 @@ public sealed class SameAsRule : IValidationRule
 public sealed class SameAsRuleParser : IValidationRuleParser
 {
     private static readonly Regex Pattern = new(
-        @"^(?<a>\w+)\s+must\s+(?<neg>not\s+)?(?:be\s+the\s+same\s+as|equal|be\s+(?<diff>different\s+from))\s+(?<b>\w+)$",
+        @"^(?<a>\w+)\s+must\s+(?<neg>not\s+)?(?:be\s+(?:the\s+)?same\s+as|equal|be\s+(?<diff>different\s+from))\s+(?<b>\w+)$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     public int Priority => 16;

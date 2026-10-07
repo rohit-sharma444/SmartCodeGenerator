@@ -39,13 +39,16 @@ Needs:
   the data, so these are the same every run: a change here means the generator changed.
 - Each **description** prompt is built once, as its own target, and additionally scored on
   whether discovery found the classes listed in its `expect`. Discovery varies a little from run
-  to run, so read a single miss there with that in mind.
+  to run, so read a single miss there with that in mind. One of them (gym) is built for Blazor,
+  so a described app is run on a stack other than WPF too.
+- Every case also checks the generated models: no class may carry a key of its own (an
+  `OrderId` or `OrderID` on `Order`) beside its `Id`.
 
 ## What "runs" checks, per target
 
 | Target | Checks |
 |---|---|
-| WPF, WinForms | window opens, signs in as admin / admin, opens the first entity, the list shows seeded rows, New then Save gives a status, app still running |
+| WPF, WinForms | window opens, signs in as admin / admin, opens the first entity, the list shows seeded rows, New then Save gives a status, the list recounted after Save holds one more record (or the same number when the save was refused), app still running; the screenshot is taken after Save |
 | Blazor | `dotnet run` serves, signs in, the entity page lists seeded rows, New opens the editor, Save answers, no browser errors or HTTP 500s |
 | Web API | every mapped route answers GET with seeded records |
 | Worker | still running after 8 seconds, logs no `fail:`/`crit:` |

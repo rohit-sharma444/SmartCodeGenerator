@@ -76,6 +76,10 @@ public static class IncrementalScaffolder
             var outdatedStubs = new List<string>();
             var written = Copy(source, destination, outdatedStubs, newClassNames);
 
+            // Added to the destination's record of generated files, never swept: an add writes
+            // only part of the app, so what it did not write is not stale.
+            GeneratedFilesManifest.Record(destination, written);
+
             return new IncrementalResult(
                 true,
                 written,
@@ -120,7 +124,8 @@ public static class IncrementalScaffolder
         {
             var relative = Path.GetRelativePath(source, file);
 
-            if (IsBuildOutput(relative))
+            // The staging run's own record lists the staging copy; the destination keeps its own.
+            if (IsBuildOutput(relative) || IsGeneratedFilesRecord(relative))
                 continue;
 
             var target = Path.Combine(destination, relative);
@@ -162,11 +167,17 @@ public static class IncrementalScaffolder
         => relativePath.StartsWith("obj", StringComparison.OrdinalIgnoreCase)
         || relativePath.StartsWith("bin", StringComparison.OrdinalIgnoreCase);
 
+    private static bool IsGeneratedFilesRecord(string relativePath)
+        => relativePath.StartsWith(
+            GeneratedFilesManifest.FolderName + Path.DirectorySeparatorChar,
+            StringComparison.OrdinalIgnoreCase);
+
     private static int CountFiles(string folder)
         => Directory.Exists(folder)
             ? Directory
                 .GetFiles(folder, "*", SearchOption.AllDirectories)
-                .Count(f => !IsBuildOutput(Path.GetRelativePath(folder, f)))
+                .Select(f => Path.GetRelativePath(folder, f))
+                .Count(f => !IsBuildOutput(f) && !IsGeneratedFilesRecord(f))
             : 0;
 
     private static void TryDelete(string folder)

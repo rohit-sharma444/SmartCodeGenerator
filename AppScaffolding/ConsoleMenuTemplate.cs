@@ -63,9 +63,48 @@ public sealed class EntityMenu<T> where T : class, new()
                 continue;
             }
 
-            System.Console.Write($"{prop.Name} ({prop.PropertyType.Name}): ");
-            var value = Parse(System.Console.ReadLine() ?? string.Empty, prop.PropertyType);
-            if (value is not null) prop.SetValue(item, value);
+            // A nullable property ("decimal?") is one whose source data had gaps: it is prompted
+            // as its underlying type, and a blank answer leaves it empty rather than 0.
+            var underlying = Nullable.GetUnderlyingType(prop.PropertyType);
+            var type = underlying ?? prop.PropertyType;
+
+            // Asked again until the answer parses. A value that would not parse used to be
+            // dropped silently, leaving 0 or 0001-01-01, and the record was still "Added.".
+            while (true)
+            {
+                System.Console.Write(underlying is null
+                    ? $"{prop.Name} ({prop.PropertyType.Name}): "
+                    : $"{prop.Name} ({underlying.Name}, blank for none): ");
+
+                var raw = System.Console.ReadLine();
+
+                // The input ended (a piped script ran out): add nothing rather than half a record.
+                if (raw is null)
+                {
+                    System.Console.WriteLine();
+                    System.Console.WriteLine("Not added.");
+                    return;
+                }
+
+                raw = raw.Trim();
+
+                if (raw.Length == 0 && type != typeof(string))
+                {
+                    if (underlying is not null)
+                        break;
+
+                    System.Console.WriteLine($"  {prop.Name} needs a value.");
+                    continue;
+                }
+
+                if (TryParse(raw, type, out var value))
+                {
+                    prop.SetValue(item, value);
+                    break;
+                }
+
+                System.Console.WriteLine($"  '{raw}' is not {Kind(type)}. Try again.");
+            }
         }
 
         var result = _repository.Create(item);
@@ -184,19 +223,35 @@ public sealed class EntityMenu<T> where T : class, new()
                         && p.Name is not ("Id" or "CreatedOn" or "ModifiedOn")
                         && IsScalar(p.PropertyType));
 
-    private static bool IsScalar(Type type) =>
-        type == typeof(string) || type == typeof(int) || type == typeof(decimal)
-        || type == typeof(bool) || type == typeof(DateTime);
-
-    private static object? Parse(string raw, Type type)
+    private static bool IsScalar(Type type)
     {
-        if (type == typeof(string)) return raw;
-        if (raw.Length == 0) return null;
-        if (type == typeof(int)) return int.TryParse(raw, out var i) ? i : null;
-        if (type == typeof(decimal)) return decimal.TryParse(raw, out var d) ? d : null;
-        if (type == typeof(bool)) return bool.TryParse(raw, out var b) ? b : null;
-        if (type == typeof(DateTime)) return DateTime.TryParse(raw, out var dt) ? dt : null;
-        return null;
+        type = Nullable.GetUnderlyingType(type) ?? type;
+
+        return type == typeof(string) || type == typeof(int) || type == typeof(decimal)
+               || type == typeof(bool) || type == typeof(DateTime);
+    }
+
+    private static bool TryParse(string raw, Type type, out object? value)
+    {
+        value = null;
+
+        if (type == typeof(string)) { value = raw; return true; }
+        if (type == typeof(int) && int.TryParse(raw, out var i)) { value = i; return true; }
+        if (type == typeof(decimal) && decimal.TryParse(raw, out var d)) { value = d; return true; }
+        if (type == typeof(bool) && bool.TryParse(raw, out var b)) { value = b; return true; }
+        if (type == typeof(DateTime) && DateTime.TryParse(raw, out var dt)) { value = dt; return true; }
+
+        return false;
+    }
+
+    /// <summary>What a refused answer should have been, for the message that asks again.</summary>
+    private static string Kind(Type type)
+    {
+        if (type == typeof(int)) return "a whole number";
+        if (type == typeof(decimal)) return "a number";
+        if (type == typeof(bool)) return "true or false";
+        if (type == typeof(DateTime)) return $"a date (for example {DateTime.Today:d})";
+        return "a valid " + type.Name;
     }
 
     private static string Describe(T item)

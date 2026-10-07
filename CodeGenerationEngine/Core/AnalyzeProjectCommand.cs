@@ -28,19 +28,19 @@ public static class AnalyzeProjectCommand
         if (projectPath == null)
             return $"Project '{projectName}' not found.";
 
-        var csFiles = Directory.GetFiles(
-            projectPath,
-            "*.cs",
-            SearchOption.AllDirectories);
+        // The project's own source: build output under obj (and kept copies of deleted classes) were
+        // counted too, and the file count was printed as "Classes: 2" above the real "Classes: 1".
+        var csFiles = ClassFiles.Under(projectPath).ToArray();
 
         var sb = new StringBuilder();
 
         sb.AppendLine($"Project: {projectName}");
         sb.AppendLine();
 
-        sb.AppendLine($"Classes: {csFiles.Length}");
+        sb.AppendLine($"Files: {csFiles.Length}");
 
-        int classCount = 0;
+        // By name: the partial declarations of one class (Customer.cs, Customer.Validation.cs) are one class.
+        var classNames = new HashSet<string>(StringComparer.Ordinal);
         int propertyCount = 0;
         int methodCount = 0;
 
@@ -50,9 +50,9 @@ public static class AnalyzeProjectCommand
             var tree = CSharpSyntaxTree.ParseText(code);
             var root = tree.GetRoot();
 
-            classCount += root.DescendantNodes()
+            classNames.UnionWith(root.DescendantNodes()
                 .OfType<ClassDeclarationSyntax>()
-                .Count();
+                .Select(c => string.Join(".", c.AncestorsAndSelf().OfType<BaseTypeDeclarationSyntax>().Reverse().Select(t => t.Identifier.Text))));
             propertyCount += root.DescendantNodes()
                 .OfType<PropertyDeclarationSyntax>()
                 .Count();
@@ -61,7 +61,7 @@ public static class AnalyzeProjectCommand
                 .Count();
         }
 
-        sb.AppendLine($"Classes: {classCount}");
+        sb.AppendLine($"Classes: {classNames.Count}");
         sb.AppendLine($"Properties: {propertyCount}");
         sb.AppendLine($"Methods: {methodCount}");
 

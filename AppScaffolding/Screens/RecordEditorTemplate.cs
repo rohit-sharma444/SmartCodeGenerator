@@ -269,7 +269,8 @@ public sealed class RecordEditorViewModel<T> : ObservableObject, IRecordEditor w
             foreach (var set in Lines)
             {
                 var columns = set.LineType.GetProperties()
-                    .Where(p => p.PropertyType == typeof(decimal) || p.PropertyType == typeof(double))
+                    .Where(p => (Nullable.GetUnderlyingType(p.PropertyType) ?? p.PropertyType) is var t
+                                && (t == typeof(decimal) || t == typeof(double)))
                     .Where(p => !string.Equals(p.Name, "Id", StringComparison.OrdinalIgnoreCase)
                                 && !p.Name.EndsWith("Id", StringComparison.Ordinal))
                     .ToList();

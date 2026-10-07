@@ -208,14 +208,14 @@ public static class CommandDictionary
         {
             Category = "RecycleBin",
             Command = "restore class <class name>",
-            Description = "Restores a deleted class.",
+            Description = "Restores a deleted class by name, to the folder it was deleted from.",
             Example = "restore class Employee"
         },
         new()
         {
             Category = "RecycleBin",
             Command = "restore last class",
-            Description = "Restores a deleted class.",
+            Description = "Restores the class deleted most recently, without naming it.",
             Example = "restore last class"
         },
         new()
@@ -311,7 +311,10 @@ public static class CommandDictionary
         {
             Category = "Interfaces",
             Command = "create interface <interface name>",
-            Description = "Creates a new interface.",
+            Description = "Creates a new interface. A name that is I followed by a capital letter (IShape) is kept as typed; "
+                + "any other name is PascalCased and given the I prefix, so Item makes IItem, invoice makes IInvoice, "
+                + "and an all lower case name is always prefixed (ishape makes IIshape - type IShape for that name). "
+                + "The reply names the interface when it differs from what you typed.",
             Example = "create interface IRepository"
         },
         #endregion
@@ -328,7 +331,9 @@ public static class CommandDictionary
                         + "or ends with, contains, uppercase, digits only), named formats (email, "
                         + "URL, phone number, postcode, GUID, IP address, date), relative dates "
                         + "(in the past, in the future, at least <n> years ago, within the last "
-                        + "<n> days), must match <regex>, and a list of allowed values.",
+                        + "<n> days), must match <regex>, and a list of allowed values. Rules "
+                        + "are saved in the workspace (.codegen/validation-rules.json) and are "
+                        + "there again in the next session.",
             Example = "add validation must be between 18 and 65 on Age in Employee"
         },
         new()
@@ -1178,11 +1183,21 @@ public static class CommandDictionary
         if (category is not null)
             return Render(category, Commands.Where(c => c.Category == category));
 
+        // The overview's "Set for you" heading, which is no category of the command table.
+        if (TopicKey(UnpromptedHeading) == wanted)
+            return string.Join(Environment.NewLine, UnpromptedSection()).TrimEnd();
+
         // Prefix, not equality: catalog entries carry their arguments ("approve [target]
         // [sqlite]"), and nobody types those to ask about one.
         var named = Commands
             .Where(c => TopicKey(c.Command).StartsWith(wanted, StringComparison.Ordinal))
             .ToList();
+
+        // Then anywhere in the command: "business validation" is in each of add, show and
+        // remove business validation, and none of them starts with it. Not for a short topic,
+        // which would be found inside nearly every command.
+        if (named.Count == 0 && wanted.Length >= 4)
+            named = [.. Commands.Where(c => TopicKey(c.Command).Contains(wanted, StringComparison.Ordinal))];
 
         return named.Count == 0 ? null : Render(topic!.Trim(), named);
     }
@@ -1206,21 +1221,11 @@ public static class CommandDictionary
     }
 
     /// <summary>
-    /// Every command, grouped by category. What <c>help all</c> prints.
+    /// The "Set for you" section as <c>help all</c> and <c>help set for you</c> print it.
     /// </summary>
-    /// <remarks>
-    /// Bare <c>help</c> shows <see cref="GetOverview"/> instead. This stayed exactly as it was so
-    /// that the guarantee worth keeping — that every catalog entry is reachable from one screen of
-    /// output — still has something to be asserted against.
-    /// </remarks>
-    public static string GetHelpText()
+    private static List<string> UnpromptedSection()
     {
-        var lines = new List<string>
-        {
-            "Smart Code Generator — every command",
-            string.Empty
-        };
-
+        var lines = new List<string>();
         lines.AddRange(Heading(UnpromptedHeading));
 
         foreach (var offer in Unprompted)
@@ -1245,6 +1250,26 @@ public static class CommandDictionary
         }
 
         lines.Add(string.Empty);
+        return lines;
+    }
+
+    /// <summary>
+    /// Every command, grouped by category. What <c>help all</c> prints.
+    /// </summary>
+    /// <remarks>
+    /// Bare <c>help</c> shows <see cref="GetOverview"/> instead. This stayed exactly as it was so
+    /// that the guarantee worth keeping — that every catalog entry is reachable from one screen of
+    /// output — still has something to be asserted against.
+    /// </remarks>
+    public static string GetHelpText()
+    {
+        var lines = new List<string>
+        {
+            "Smart Code Generator — every command",
+            string.Empty
+        };
+
+        lines.AddRange(UnpromptedSection());
 
         foreach (var group in Commands
                      .OrderBy(c => c.Category)

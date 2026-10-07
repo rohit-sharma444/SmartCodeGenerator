@@ -45,4 +45,13 @@ public sealed record TypeFacts
     /// (a discovered domain has none), and the name alone decides, as it always has.
     /// </summary>
     public bool? NameImpliedFormatHolds { get; init; }
+
+    /// <summary>
+    /// Whether the source's own rows hold a MISSING value in this column -- an empty CSV cell, a
+    /// JSON null, a SQL NULL. A number, flag or date property with this set is emitted NULLABLE
+    /// (<c>int?</c>, <c>DateTime?</c>), so the missing value stays missing: a non-nullable one
+    /// silently became 0, False or 01-Jan-0001, which looks like real data. Unlike a NOT NULL
+    /// fact, this makes the generated app more permissive, never stricter.
+    /// </summary>
+    public bool HasMissingValues { get; init; }
 }

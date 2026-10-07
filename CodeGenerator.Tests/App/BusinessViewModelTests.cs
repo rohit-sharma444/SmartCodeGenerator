@@ -93,7 +93,7 @@ public class BusinessViewModelTests
             {
                 "EntityRole.cs", "RelationshipResolver.cs", "ObservableObject.cs",
                 "RelayCommand.cs", "IEntityViewModel.cs", "EntityViewModel.cs",
-                "MainViewModel.cs", "MainWindow.xaml", "MainWindow.xaml.cs",
+                "MainViewModel.cs", "MainWindow.xaml", "MainWindow.xaml.cs", "DisplayCulture.cs",
             },
             files.Select(f => f.Name).ToList());
     }

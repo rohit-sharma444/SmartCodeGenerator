@@ -343,6 +343,12 @@ public sealed class ChatSession
     /// </remarks>
     public WorkspaceLoad Load(string path)
     {
+        // Asked for in words, and not recorded: .NET's own "The path is empty. (Parameter 'path')"
+        // in a card whose input line was blank told nobody anything. The picker shows this under
+        // the box, which is where it is fixed.
+        if (string.IsNullOrWhiteSpace(path))
+            return new WorkspaceLoad(false, _workspace.Root, 0, null, "Type a folder or solution path.");
+
         var load = _workspace.LoadFrom(path);
 
         if (load.Ok)
@@ -502,6 +508,7 @@ public sealed class ChatSession
 
         var verdict = ChatVerdict.Failed;
         string captured;
+        _drawn = null;
 
         using var capture = OutputCapture.Start();
 
@@ -522,9 +529,18 @@ public sealed class ChatSession
             captured = capture.Text;
         }
 
-        return new ChatTurn(
-            input, kind, verdict, OutputBlocks.Parse(input, captured), DateTimeOffset.Now);
+        var blocks = OutputBlocks.Parse(input, captured);
+
+        // Drawn, not printed: a picture has no text for the parser to find.
+        if (_drawn is { } drawn)
+            blocks = [drawn, .. blocks.Where(b => b is not TextBlock { Text.Length: 0 })];
+
+        return new ChatTurn(input, kind, verdict, blocks, DateTimeOffset.Now);
     }
+
+    // What the command just run asked to have drawn rather than printed. One command at a time
+    // runs, so one slot is enough; Run clears it before each.
+    private OutputBlock? _drawn;
 
     /// <summary>
     /// The reason a kind cannot be run here, or null if it can.
@@ -591,6 +607,16 @@ public sealed class ChatSession
                 var saved = SaveSessionCommand.Handle(input, _workspace.Root, _recorder, DateTime.Now);
                 Console.WriteLine(saved.Message);
                 return saved.Saved ? ChatVerdict.Succeeded : ChatVerdict.Failed;
+
+            case CommandKind.ShowRelationships:
+                // The diagram the console opens a page for, drawn in the turn instead: the chat is
+                // already a page.
+                var sources = WorkspaceRelationships.Of(_workspace.Root);
+                if (sources.Count == 0)
+                    Console.WriteLine("No classes in this workspace yet, so there is nothing to relate.");
+                else
+                    _drawn = new RelationshipsBlock(sources);
+                return ChatVerdict.Succeeded;
 
             case CommandKind.Undo:
             case CommandKind.Redo:

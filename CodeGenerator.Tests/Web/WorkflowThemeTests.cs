@@ -143,6 +143,47 @@ public class WorkflowThemeTests
             StringAssert.Contains(css, $""":root:has(.workflow[data-theme="{theme.Key}"])""");
     }
 
+    /// <summary>
+    /// The relationship diagram is drawn on the build page too, from tokens chat.css declares.
+    /// Each of its colours must reach a name every build-page theme re-points, or that theme
+    /// leaves it on its light fallback.
+    /// </summary>
+    /// <remarks>
+    /// The diagram's boxes read --panel and --accent-soft, which only the chat page declares; the
+    /// Dark and High contrast themes left them white and pale blue under light text.
+    /// </remarks>
+    [TestMethod]
+    public void The_relationship_diagram_follows_every_build_page_theme()
+    {
+        var wwwroot = Path.Combine(
+            AppContext.BaseDirectory, "..", "..", "..", "..", "CodeGenerator", "wwwroot");
+        var chat = File.ReadAllText(Path.Combine(wwwroot, "chat.css"));
+        var workflow = File.ReadAllText(Path.Combine(wwwroot, "workflow.css"));
+
+        var tokens = System.Text.RegularExpressions.Regex.Matches(
+                chat, @"^\s*(--rel-[a-z-]+):\s*(.+);", System.Text.RegularExpressions.RegexOptions.Multiline)
+            .Select(m => (Name: m.Groups[1].Value, Value: m.Groups[2].Value))
+            .ToList();
+
+        Assert.IsNotEmpty(tokens);
+
+        foreach (var theme in WorkflowThemes.All.Where(t => t.Key != WorkflowThemes.Default))
+        {
+            var start = workflow.IndexOf($""":root:has(.workflow[data-theme="{theme.Key}"])""", StringComparison.Ordinal);
+            var block = workflow[start..workflow.IndexOf('}', start)];
+
+            foreach (var (name, value) in tokens)
+            {
+                var referenced = System.Text.RegularExpressions.Regex.Matches(value, @"var\((--[a-z-]+)")
+                    .Select(m => m.Groups[1].Value);
+
+                Assert.IsTrue(
+                    referenced.Any(r => block.Contains(r + ":", StringComparison.Ordinal)),
+                    $"{name} ({value}) reaches no colour the {theme.Key} theme sets");
+            }
+        }
+    }
+
     private static string? ThemeOf(IRenderedComponent<BuildWorkflow> page)
         => page.Find("main.workflow").GetAttribute("data-theme");
 

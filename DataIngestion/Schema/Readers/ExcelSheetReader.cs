@@ -157,8 +157,10 @@ public static class ExcelSheetReader
 
         // Everything else is emitted exactly as stored. Applying the display format would inject
         // a thousands separator that ColumnTypeInference refuses to parse, turning a clean decimal
-        // column into strings; the stored value is what the file actually holds.
-        return raw;
+        // column into strings; the stored value is what the file actually holds. Only an exponent
+        // is dropped ("1E-05" -> "0.00001"): the cell is numeric, and inference reads
+        // exponent-form TEXT as a code.
+        return AppScaffolding.ImportedValues.PlainNumberText(raw);
     }
 
     /// <summary>

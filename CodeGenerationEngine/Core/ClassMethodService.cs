@@ -1,10 +1,16 @@
-﻿using System.Text.RegularExpressions;
+using Microsoft.CodeAnalysis.CSharp;
 
 namespace CodeGenerationEngine.Core;
 
 /// <summary>
 /// Provides services for adding methods to existing classes in a C# project.
 /// </summary>
+/// <remarks>
+/// The name is checked against every member of every partial declaration of the class, as rename
+/// method checks it: a method named like a property was written (CS0102), and one named like the
+/// class (CS0542). The return type is bound in the class's project, as add property and retype bind
+/// theirs, so a type that does not exist is refused rather than written.
+/// </remarks>
 public static class ClassMethodService
 {
     public static bool AddMethod(string workspaceRoot, string className,
@@ -12,32 +18,47 @@ public static class ClassMethodService
     {
         message = string.Empty;
 
+        if (MemberNames.NotAnIdentifier(methodName, "method") is { } bad)
+        {
+            message = bad.Replace("A new method", "A method", StringComparison.Ordinal);
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(returnType))
+            returnType = "void";
+
         try
         {
-            var file = Directory.GetFiles(workspaceRoot, "*.cs",
-                    SearchOption.AllDirectories).FirstOrDefault(f =>
-                    Path.GetFileNameWithoutExtension(f)
-                        .Equals(className, StringComparison.OrdinalIgnoreCase));
+            if (!ClassMethodEditService.TryLoadParts(workspaceRoot, className, out var parts, out message))
+                return false;
 
-            if (file == null)
+            var part = parts[0];
+            className = part.Node.Identifier.Text;
+
+            if (MemberNames.Taken(parts, methodName, []) is { } taken)
             {
-                message = $"Class '{className}' not found.";
+                message = taken + $" Method '{methodName}' was not added.";
                 return false;
             }
 
-            var code = File.ReadAllText(file);
-
-            if (Regex.IsMatch(code, $@"\b{Regex.Escape(methodName)}\s*\(", RegexOptions.IgnoreCase))
+            if (returnType != "void")
             {
-                message = $"Method '{methodName}' already exists.";
-                return false;
+                var type = SyntaxFactory.ParseTypeName(returnType);
+                if (type.ContainsDiagnostics || type.ToString() != returnType.Trim())
+                {
+                    message = $"'{returnType}' is not a C# type.";
+                    return false;
+                }
+
+                if (!TypeResolution.Resolves(workspaceRoot, part.File, part.Node, type, out message))
+                    return false;
             }
 
             var methodCode = $@"public {returnType} {methodName}()
 {{
 {GenerateBody(returnType)}}}";
 
-            if (!ClassMemberEditor.TryAddMember(file, className, methodCode, out var error))
+            if (!ClassMemberEditor.TryAddMember(part.File, className, methodCode, out var error))
             {
                 message = error;
                 return false;
@@ -47,7 +68,7 @@ public static class ClassMethodService
 
             return true;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             message = ex.Message;
             return false;

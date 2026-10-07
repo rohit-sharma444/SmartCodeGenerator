@@ -1,4 +1,5 @@
-﻿using System.Reflection;
+﻿using System.Globalization;
+using System.Reflection;
 using AppScaffolding;
 using AppScaffolding.Screens;
 using AppScaffolding.Targets;
@@ -458,7 +459,9 @@ public class Order
     public int CustomerId { get; set; }
     public DateTime OrderedOn { get; set; }
     public decimal Amount { get; set; }
+    public int? Quantity { get; set; }
     public DateTime CreatedOn { get; set; }
+    public DateTime ModifiedOn { get; set; }
 }
 """;
 
@@ -581,6 +584,80 @@ public class Order
         orderType.GetProperty("Reference")!.SetValue(clone, "Changed");
 
         Assert.AreEqual("Original", orderType.GetProperty("Reference")!.GetValue(original));
+    }
+
+    /// <summary>The store stamps CreatedOn and ModifiedOn on save, so a typed one was silently
+    /// overwritten; the editor no longer offers them, as the console menu never did.</summary>
+    [TestMethod]
+    public void The_editor_does_not_offer_the_audit_dates()
+    {
+        var assembly = EmitFields();
+        var editable = Names_(Invoke(assembly, "Editable", assembly.GetType("Order")));
+
+        CollectionAssert.DoesNotContain(editable, "CreatedOn");
+        CollectionAssert.DoesNotContain(editable, "ModifiedOn");
+        CollectionAssert.Contains(editable, "OrderedOn");
+    }
+
+    /// <summary>
+    /// Clearing a number or a date used to SetValue(null) on a value type, which quietly stored 0
+    /// or 0001-01-01. Now it is refused, the old value kept; for a nullable property it is null.
+    /// </summary>
+    [TestMethod]
+    public void An_emptied_value_type_is_reported_and_an_emptied_nullable_is_null()
+    {
+        var assembly = EmitFields();
+        var order = Order(assembly, orderedOn: new DateTime(2026, 6, 15));
+        var type = assembly.GetType("Order")!;
+        var amount = type.GetProperty("Amount")!;
+        var orderedOn = type.GetProperty("OrderedOn")!;
+        var quantity = type.GetProperty("Quantity")!;
+
+        Assert.IsNull(Invoke(assembly, "Assign", order, amount, "7"));
+
+        StringAssert.Contains((string)Invoke(assembly, "Assign", order, amount, ""), "Amount");
+        Assert.AreEqual(7m, amount.GetValue(order));
+
+        StringAssert.Contains((string)Invoke(assembly, "Assign", order, orderedOn, " "), "OrderedOn");
+        Assert.AreEqual(new DateTime(2026, 6, 15), orderedOn.GetValue(order));
+
+        Assert.IsNull(Invoke(assembly, "Assign", order, quantity, "3"));
+        Assert.AreEqual(3, quantity.GetValue(order));
+        var cleared = assembly.GetType("ScreenFields")!.GetMethod("Assign")!.Invoke(null, [order, quantity, ""]);
+        Assert.IsNull(cleared);
+        Assert.IsNull(quantity.GetValue(order));
+    }
+
+    /// <summary>
+    /// A browser's number input always sends "12.5" and its date input "2026-08-05". Read in the
+    /// server's culture, de-DE turned 12.5 into 125; and a de-DE "12,5" written back into the box
+    /// is a value a number input refuses to show.
+    /// </summary>
+    [TestMethod]
+    public void Number_and_date_inputs_are_read_and_written_in_the_invariant_culture()
+    {
+        var assembly = EmitFields();
+        var order = Order(assembly);
+        var type = assembly.GetType("Order")!;
+        var previous = CultureInfo.CurrentCulture;
+
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo("de-DE");
+
+            Assert.IsNull(Invoke(assembly, "Assign", order, type.GetProperty("Amount")!, "12.5"));
+            Assert.AreEqual(12.5m, type.GetProperty("Amount")!.GetValue(order));
+
+            Assert.IsNull(Invoke(assembly, "Assign", order, type.GetProperty("OrderedOn")!, "2026-08-05"));
+            Assert.AreEqual(new DateTime(2026, 8, 5), type.GetProperty("OrderedOn")!.GetValue(order));
+
+            Assert.AreEqual("12.5", Invoke(assembly, "InputValue", 12.5m));
+            Assert.AreEqual("2026-08-05", Invoke(assembly, "InputValue", new DateTime(2026, 8, 5)));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = previous;
+        }
     }
 
     [TestMethod]
