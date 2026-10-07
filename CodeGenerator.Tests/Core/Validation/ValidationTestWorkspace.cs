@@ -21,6 +21,10 @@ internal static class ValidationTestWorkspace
 
     public static string Create()
     {
+        // The class lookup searches the selected project before the workspace, so a project an
+        // earlier test left selected hid these classes: 33 tests failed in the full suite only.
+        CodeGenerationEngine.Core.ProjectManager.CurrentProject = null;
+
         var root = Path.Combine(Path.GetTempPath(), "cg_val_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
 
