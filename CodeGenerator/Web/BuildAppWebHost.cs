@@ -1,3 +1,4 @@
+using CodeGenerator.BuildFix;
 using CodeGenerator.Web.Workflow;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -77,7 +78,7 @@ internal sealed class BuildAppWebHost : IDisposable
 
         // Singleton, so a second tab attaches to the running workflow rather than starting a
         // rival one against the same workspace.
-        if (!LoopbackHost.TryStart(Route, s => s.AddSingleton(session), out var loopback))
+        if (!LoopbackHost.TryStart(Route, s => { s.AddSingleton(session); s.AddSingleton<IBuildFixer>(new BuildFixer()); }, out var loopback))
             return false;
 
         host = new BuildAppWebHost(loopback);

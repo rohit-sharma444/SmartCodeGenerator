@@ -17,3 +17,7 @@ internal sealed record BuildAttempt(ProcessResult? Result, TimeSpan Elapsed)
 {
     public bool Ran => Result is not null;
 }
+
+/// <summary>Starts a build and streams its lines. A seam: the stage resolves one from DI so a test can
+/// give it a build that finishes at once; with none registered it is <see cref="GenerateStep.Build"/>.</summary>
+internal delegate BuildAttempt BuildRunner(string projectPath, Action<string> onLine);

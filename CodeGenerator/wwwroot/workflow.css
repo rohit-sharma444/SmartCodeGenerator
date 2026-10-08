@@ -783,6 +783,24 @@ body {
     font-size: 0.82em;
 }
 
+/* The offer to fix a failed build, and what the fix said. Wrapped inside the box: a long path in a
+   report line must not widen the page sideways. */
+.fix-offer { margin-top: 1rem; }
+.fix-question { font-weight: 600; margin: 0 0 0.5rem; }
+.fix-report {
+    max-width: 100%;
+    max-height: 20rem;
+    overflow: auto;
+    margin: 0.75rem 0;
+    padding: 0.75rem;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    font-family: ui-monospace, Consolas, monospace;
+    font-size: 0.82em;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
 .stage-node.pending { color: var(--pending); }
 /* Colour only. The ring this used to add lived here, later in the file than the elevation
    rules, so it silently replaced the active stage's lift - the one box meant to float highest

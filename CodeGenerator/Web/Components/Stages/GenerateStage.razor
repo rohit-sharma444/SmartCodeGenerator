@@ -2,8 +2,11 @@
 @using AppScaffolding.Targets
 @using CodeGenerationEngine.Models
 @using CodeGenerator.App
+@using CodeGenerationEngine.Helper
+@using CodeGenerator.BuildFix
 @using CodeGenerator.Web.Workflow
 @implements IDisposable
+@inject IServiceProvider Services
 
 @if (_phase == Phase.Confirm)
 {
@@ -70,6 +73,31 @@ else
         <p class="report-line">@line</p>
     }
 
+    @* The build result is its own list, not part of _report, so that the rebuild after a fix can
+       replace it: an old red result and a new green one on one page would contradict each other. *@
+    @foreach (var line in _buildLines)
+    {
+        <p class="report-line">@line</p>
+    }
+
+    @if (_fixLines.Count > 0)
+    {
+        @* Text, never markup: these lines quote the compiler and the user's own file names. One
+           line each, wrapped inside the box so a long path cannot widen the page. *@
+        <pre class="fix-report">@string.Join("\n", _fixLines)</pre>
+    }
+
+    @if (_phase == Phase.Done && _failedBuild is not null && !_fixDeclined && !_fixing && Fixer is not null)
+    {
+        <div class="fix-offer">
+            <p class="fix-question">@BuildFixReport.Title(_failedErrors)</p>
+            <div class="actions">
+                <button type="button" class="fix-yes" @onclick="FixErrors">@BuildFixReport.Options[0]</button>
+                <button type="button" class="fix-no" @onclick="DeclineFix">@BuildFixReport.Options[1]</button>
+            </div>
+        </div>
+    }
+
     @if (_log.Count > 0)
     {
         @* The compiler's own output, as it arrives. Scrolled to the end, so what is on screen is
@@ -104,6 +132,22 @@ else
     private string _name = string.Empty;
     private PersistenceKind _persistence = PersistenceKind.Json;
     private readonly List<string> _report = [];
+
+    /// <summary>What the last build said; replaced when a fix rebuilds.</summary>
+    private readonly List<string> _buildLines = [];
+
+    /// <summary>Progress while the fixer runs, then its report.</summary>
+    private readonly List<string> _fixLines = [];
+
+    /// <summary>The red build the offer is about; null when there is nothing to offer a fix for.</summary>
+    private ProcessResult? _failedBuild;
+    private int _failedErrors;
+    private bool _fixDeclined;
+
+    /// <summary>True from the click until the fixer is done: a second click must not start a second fixer.</summary>
+    private bool _fixing;
+
+    private bool _disposed;
     private readonly List<string> _log = [];
 
     /// <summary>What has finished, and what is running — the progress the user watches.</summary>
@@ -174,7 +218,8 @@ else
 
         _report.Add(app.BuildSucceeded
             ? "It compiled."
-            : "It did not compile — the log is above the last time it ran.");
+            : "It did not compile — the log is above the last time it ran. "
+              + "A fix is offered only straight after a build, so it is not offered again on a reloaded page.");
     }
 
     /// <summary>A typed name goes through the typed-name rule, so what is written is always a
@@ -225,6 +270,10 @@ else
     {
         _phase = Phase.Working;
         _report.Clear();
+        _buildLines.Clear();
+        _fixLines.Clear();
+        _failedBuild = null;
+        _fixDeclined = false;
         _log.Clear();
         _steps.Clear();
 
@@ -305,7 +354,9 @@ else
 
         StateHasChanged();
 
-        var built = await Task.Run(() => GenerateStep.Build(
+        var runBuild = Runner;
+
+        var built = await Task.Run(() => runBuild(
             scaffold.ProjectPath,
             line => InvokeAsync(() => { _log.Add(line); StateHasChanged(); })));
 
@@ -340,7 +391,8 @@ else
             ? "Compiled"
             : "The compiler reported problems — the log is below");
 
-        _report.AddRange(BuildReport.Lines(result, built.Elapsed, scaffold.ProjectPath));
+        _buildLines.AddRange(BuildReport.Lines(result, built.Elapsed, scaffold.ProjectPath));
+        SetFailedBuild(result, scaffold.ProjectPath);
 
         // Handed to the session, not kept here: the run stage starts what this stage wrote, and
         // it needs the build log to find the assembly.
@@ -423,7 +475,159 @@ else
         _clock = null;
     }
 
-    public void Dispose() => StopClock();
+    public void Dispose()
+    {
+        _disposed = true;
+        StopClock();
+    }
+
+    private BuildRunner Runner
+        => Services.GetService(typeof(BuildRunner)) as BuildRunner ?? ((path, onLine) => GenerateStep.Build(path, onLine));
+
+    private IBuildFixer? Fixer => Services.GetService(typeof(IBuildFixer)) as IBuildFixer;
+
+    /// <summary>The offer exists only for a red build that ended, with errors the fixer can read.</summary>
+    private void SetFailedBuild(ProcessResult build, string projectPath)
+    {
+        _failedBuild = null;
+        _failedErrors = 0;
+        _fixDeclined = false;
+
+        if (!BuildAppCommand.ShouldOfferFix(build))
+            return;
+
+        var errors = BuildDiagnostics.Parse(build, projectPath).Count;
+
+        if (errors == 0)
+            return;
+
+        _failedBuild = build;
+        _failedErrors = errors;
+    }
+
+    private void DeclineFix() => _fixDeclined = true;
+
+    /// <summary>Queues a change onto the renderer from the fixer's thread; never throws once the page is gone.</summary>
+    private void Post(Action change)
+    {
+        if (_disposed)
+            return;
+
+        try
+        {
+            _ = InvokeAsync(() =>
+            {
+                if (_disposed)
+                    return;
+
+                change();
+                StateHasChanged();
+            }).ContinueWith(
+                t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
+        }
+        catch (Exception ex) when (ex is ObjectDisposedException or InvalidOperationException)
+        {
+            // The circuit went away; nothing left to repaint.
+        }
+    }
+
+    /// <summary>
+    /// Runs the fixer on a worker thread, then shows its report and the rebuilt result.
+    /// </summary>
+    /// <remarks>
+    /// Awaited, for the reason <see cref="Write"/> gives. The fixer cannot be cancelled, so a page
+    /// closed mid-run lets it finish: its edits are on disk, so the session is told the result either way.
+    /// </remarks>
+    private async Task FixErrors()
+    {
+        if (_fixing || _failedBuild is not { } failed || _scaffold is not { } scaffold || Fixer is not { } fixer)
+            return;
+
+        _fixing = true;
+        _fixLines.Clear();
+        _phase = Phase.Working;
+        Navigation.Withdraw();
+        Step("Fixing the build errors");
+        _log.Add("--- fixing the build errors ---");
+        StateHasChanged();
+
+        TimeSpan elapsed = default;
+        var runBuild = Runner;
+
+        var (outcome, error) = await Task.Run<(FixOutcome?, Exception?)>(() =>
+        {
+            try
+            {
+                var result = fixer.Fix(
+                    scaffold.ProjectPath,
+                    failed,
+                    () =>
+                    {
+                        var attempt = runBuild(
+                            scaffold.ProjectPath, line => Post(() => _log.Add(line)));
+
+                        elapsed = attempt.Elapsed;
+
+                        return attempt.Result ?? throw new System.ComponentModel.Win32Exception();
+                    },
+                    line => Post(() => _fixLines.Add(BuildFixReport.Clean(line, scaffold.ProjectPath))));
+
+                return (result, (Exception?)null);
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                return (null, ex);
+            }
+        });
+
+        _fixing = false;
+
+        if (outcome is null)
+        {
+            // The files may have changed, so the old red build is stale: no second offer.
+            _failedBuild = null;
+
+            if (!_disposed)
+            {
+                Finished("The fix stopped");
+                _fixLines.Clear();
+                _fixLines.Add(
+                    $"The fix could not finish ({error!.GetType().Name}). "
+                    + "The errors above are from before the fix; check the project files.");
+                _phase = Phase.Done;
+                Navigation.Offer(Continue);
+                StateHasChanged();
+            }
+
+            return;
+        }
+
+        // Handed to the session again even when the page is gone: the fix changed files on disk,
+        // and the run stage needs the NEW build log to find the assembly.
+        Session.SetGenerated(new GeneratedApp(
+            scaffold,
+            string.Join(Environment.NewLine, _log),
+            BuildReport.Succeeded(outcome.LastBuild),
+            Persistence: _persistence));
+
+        if (_disposed)
+            return;
+
+        Finished(outcome.Green ? "Compiled after the fix" : "The compiler still reports problems after the fix");
+
+        _fixLines.Clear();
+        _fixLines.AddRange(BuildFixReport.Lines(outcome, scaffold.ProjectPath));
+
+        _buildLines.Clear();
+        _buildLines.AddRange(BuildReport.Lines(outcome.LastBuild, elapsed, scaffold.ProjectPath));
+
+        // Red again: the offer comes back, so the user can try another round or leave it.
+        SetFailedBuild(outcome.LastBuild, scaffold.ProjectPath);
+        _phase = Phase.Done;
+
+        Navigation.Offer(Continue);
+        StateHasChanged();
+    }
 
     /// <summary>The project is already written; the step is only the move to the run node.</summary>
     private static Task<bool> Continue() => Task.FromResult(true);
