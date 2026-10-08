@@ -140,14 +140,28 @@ internal static class BuildFixReport
     /// </summary>
     internal static string Clean(string text, string projectPath)
     {
+        // Strip the project root from the raw text first: the root pattern keeps the real
+        // characters, so a non-ASCII folder name must not be turned into '?' before it matches.
+        text = StripRoot(text, projectPath);
         text = Plain(text);
 
-        var root = Path.GetFullPath(projectPath).TrimEnd('\\', '/');
-        var pattern = string.Join(
-            @"[\\/]+", root.Split('\\', '/').Select(Regex.Escape)) + @"[\\/]";
-        text = Regex.Replace(text, pattern, string.Empty, RegexOptions.IgnoreCase);
-
         return RootedPath.Replace(UncPath.Replace(DrivePath.Replace(text, LastSegment), LastSegment), LastSegment);
+    }
+
+    private static string StripRoot(string text, string projectPath)
+    {
+        try
+        {
+            var root = Path.GetFullPath(projectPath).TrimEnd('\\', '/');
+            var pattern = string.Join(
+                @"[\\/]+", root.Split('\\', '/').Select(Regex.Escape)) + @"[\\/]";
+
+            return Regex.Replace(text, pattern, string.Empty, RegexOptions.IgnoreCase);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return text;
+        }
     }
 
     private static string LastSegment(Match m)

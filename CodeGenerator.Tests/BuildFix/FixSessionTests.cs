@@ -233,4 +233,76 @@ public class FixSessionTests
         Assert.IsTrue(session.Edits.Single(e => e.File == b).RestoreFailed);
         Assert.IsFalse(session.Edits.Single(e => e.File == b).Reverted);
     }
+
+    [TestMethod]
+    public void RestoreFailed_AndReverted_CanNeverBeTrueTogether()
+    {
+        var edit = new FixEdit("f", "by", 1);
+
+        edit.Reverted = true;
+        edit.RestoreFailed = true;
+        Assert.IsFalse(edit.Reverted);
+
+        edit.Reverted = true;
+        Assert.IsFalse(edit.RestoreFailed);
+    }
+
+    [TestMethod]
+    public void RevertRound_DoesNotMarkAnEditRestoreFailed_WhenUndoSinceAlreadyRestoredIt()
+    {
+        var root = FixTestSupport.TempProject();
+        var file = FixTestSupport.Write(root, "A.cs", "a");
+        var session = new FixSession(root);
+        session.BeginRound(1);
+        session.Write(file, "b", "AI");
+        Assert.HasCount(0, session.UndoSince(0));
+
+        using (new FileStream(file, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            session.RevertRound(1);
+
+        Assert.IsTrue(session.Edits[0].Reverted);
+        Assert.IsFalse(session.Edits[0].RestoreFailed);
+        Assert.AreEqual("a", File.ReadAllText(file));
+    }
+
+    [TestMethod]
+    public void RevertRound_StillFlagsAnEditNotUndone_AndAnUndoneOneStaysReverted()
+    {
+        var root = FixTestSupport.TempProject();
+        var file = FixTestSupport.Write(root, "A.cs", "a");
+        var session = new FixSession(root);
+        session.BeginRound(1);
+        session.Write(file, "b", "first");
+        var mark = session.Mark();
+        session.Write(file, "c", "second");
+        session.UndoSince(mark);
+
+        using (new FileStream(file, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            session.RevertRound(1);
+
+        Assert.IsTrue(session.Edits[0].RestoreFailed);
+        Assert.IsFalse(session.Edits[0].Reverted);
+        Assert.IsTrue(session.Edits[1].Reverted);
+        Assert.IsFalse(session.Edits[1].RestoreFailed);
+    }
+
+    [TestMethod]
+    public void Write_StillEditsAndKeepsTheOriginal_WhenTheBackupMapCannotBeWritten()
+    {
+        var root = FixTestSupport.TempProject();
+        var file = FixTestSupport.Write(root, "A.cs", "original");
+        var session = new FixSession(root);
+        session.BeginRound(1);
+        var field = typeof(FixSession).GetField(
+            "_backupRoot", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        var map = Path.Combine((string)field.GetValue(session)!, BuildFixReport.BackupMapName);
+        Directory.CreateDirectory(map);
+
+        session.Write(file, "changed", "test");
+
+        Assert.AreEqual("changed", File.ReadAllText(file));
+        Assert.HasCount(1, session.Edits);
+        Assert.HasCount(0, session.RevertRound(1));
+        Assert.AreEqual("original", File.ReadAllText(file));
+    }
 }

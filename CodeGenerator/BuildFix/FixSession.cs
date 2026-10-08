@@ -7,10 +7,32 @@ internal sealed class FixEdit(string file, string by, int round)
     public string File { get; } = file;
     public string By { get; } = by;
     public int Round { get; } = round;
-    public bool Reverted { get; set; }
+    private bool _reverted;
+    private bool _restoreFailed;
+
+    /// <summary>True when this edit was undone. Never true together with <see cref="RestoreFailed"/>.</summary>
+    public bool Reverted
+    {
+        get => _reverted;
+        set
+        {
+            _reverted = value;
+            if (value)
+                _restoreFailed = false;
+        }
+    }
 
     /// <summary>True when undoing this edit was tried and failed: the file still holds the edit.</summary>
-    public bool RestoreFailed { get; set; }
+    public bool RestoreFailed
+    {
+        get => _restoreFailed;
+        set
+        {
+            _restoreFailed = value;
+            if (value)
+                _reverted = false;
+        }
+    }
 }
 
 /// <summary>
@@ -75,14 +97,24 @@ internal sealed class FixSession
         if (!backups.ContainsKey(full))
         {
             Directory.CreateDirectory(Path.Combine(_backupRoot, "r" + _round));
-            var bak = Path.Combine(_backupRoot, "r" + _round, backups.Count + ".bak");
+            var index = backups.Count;
+            var bak = Path.Combine(_backupRoot, "r" + _round, index + ".bak");
             File.WriteAllBytes(bak, old);
-            backups[full] = bak;
 
             // The .bak names say nothing about the file: this map does, with relative paths only.
-            File.AppendAllText(
-                Path.Combine(_backupRoot, BuildFixReport.BackupMapName),
-                $"r{_round}\\{backups.Count - 1}.bak = {Relative(full)}{Environment.NewLine}");
+            // A map that cannot be written must never block the edit or lose the original.
+            try
+            {
+                File.AppendAllText(
+                    Path.Combine(_backupRoot, BuildFixReport.BackupMapName),
+                    $"r{_round}\\{index}.bak = {Relative(full)}{Environment.NewLine}");
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // The backup itself exists and is registered below.
+            }
+
+            backups[full] = bak;
         }
 
         File.WriteAllText(full, text, new UTF8Encoding(HasBom(old)));
@@ -157,12 +189,11 @@ internal sealed class FixSession
                 }
             }
 
-        foreach (var edit in _edits.Where(e => e.Round == round))
+        foreach (var edit in _edits.Where(e => e.Round == round && !e.Reverted))
         {
-            var stuck = failed.Contains(edit.File);
-            edit.RestoreFailed = stuck;
-
-            if (!stuck)
+            if (failed.Contains(edit.File))
+                edit.RestoreFailed = true;
+            else
                 edit.Reverted = true;
         }
 

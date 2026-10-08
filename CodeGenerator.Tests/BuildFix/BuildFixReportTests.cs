@@ -472,12 +472,12 @@ public class BuildFixReportTests
 
     // ---- BuildFixer wiring (no Ollama, no dotnet) ----
 
-    private sealed class FakeAi : IBuildFixAi, IDisposable
+    private sealed class FakeAi(Func<string, string?>? reply = null) : IBuildFixAi, IDisposable
     {
         public bool Disposed { get; private set; }
         public int Asked { get; private set; }
         public bool IsAvailable() => true;
-        public string? Propose(BuildDiagnostic d, string excerpt) { Asked++; return null; }
+        public string? Propose(BuildDiagnostic d, string excerpt) { Asked++; return reply?.Invoke(excerpt); }
         public void Dispose() => Disposed = true;
     }
 
@@ -602,12 +602,126 @@ public class BuildFixReportTests
         var root = Project(out var file);
         var before = File.ReadAllBytes(file);
         var failed = FixTestSupport.Result($"{file}(1,1): error CS0103: The name 'x' does not exist");
+        var ai = new FakeAi();
 
-        var outcome = new BuildFixer(() => new DiscoveryConfig(), _ => new FakeAi())
+        var outcome = new BuildFixer(() => new DiscoveryConfig(), _ => ai)
             .Fix(root, failed, () => throw new InvalidOperationException("must not rebuild"), _ => { });
 
+        Assert.IsGreaterThan(0, ai.Asked);
         CollectionAssert.AreEqual(before, File.ReadAllBytes(file));
         Assert.HasCount(0, outcome.Edits);
         Assert.HasCount(1, outcome.Remaining);
+    }
+
+    [TestMethod]
+    public void Fixer_Fix_WithARealProject_EditsExactlyTheProposedBytes_WhenTheModelHelps()
+    {
+        var root = FixTestSupport.TempProject();
+        var file = FixTestSupport.Write(root, "A.cs", "int a = 1\n");
+        var other = FixTestSupport.Write(root, "B.cs", "int b = 2;\n");
+        var otherBefore = File.ReadAllBytes(other);
+        var failed = FixTestSupport.Result($"{file}(1,1): error CS1002: ; expected");
+
+        var outcome = new BuildFixer(() => new DiscoveryConfig(), _ => new FakeAi(_ => "int a = 1;"))
+            .Fix(root, failed, () => FixTestSupport.Result("", 0), _ => { });
+
+        Assert.IsTrue(outcome.Green);
+        Assert.HasCount(1, outcome.Edits);
+        CollectionAssert.AreEqual(
+            System.Text.Encoding.UTF8.GetBytes("int a = 1;\n"), File.ReadAllBytes(file));
+        CollectionAssert.AreEqual(otherBefore, File.ReadAllBytes(other));
+    }
+
+    [TestMethod]
+    public void Clean_StripsANonAsciiRoot_InEveryForm()
+    {
+        string[] roots =
+        [
+            "D:\\Caf\u00E9\\proj",
+            "D:\\Folder \U0001F600\\proj",
+            "D:\\Zo\u00EB Ma\u00F1ana\\proj",
+        ];
+
+        foreach (var root in roots)
+        {
+            var slashed = root.Replace('\\', '/');
+
+            Assert.AreEqual("see A.cs now", BuildFixReport.Clean($"see {root}\\A.cs now", root), root);
+            Assert.AreEqual("see A.cs now", BuildFixReport.Clean($"see {slashed}/A.cs now", root), root);
+            Assert.AreEqual(
+                "see Sub\\A.cs now", BuildFixReport.Clean($"see {root}\\Sub\\A.cs now", root), root);
+        }
+    }
+
+    [TestMethod]
+    public void Lines_ANonAsciiRoot_NeverLeaksIntoAMessageOrNote()
+    {
+        var root = "D:\\Caf\u00E9\\proj";
+        var (outcome, _) = Outcome(false, 0, 0, 0, $"Saw {root}\\A.cs here");
+        var one = outcome with
+        {
+            Remaining = [new BuildDiagnostic($"{root}\\A.cs", 1, 1, "CS0001", $"in {root}\\B.cs")],
+        };
+
+        var text = string.Join("\n", BuildFixReport.Lines(one, root));
+
+        Assert.DoesNotContain("Caf", text);
+        Assert.DoesNotContain("proj", text);
+        Assert.Contains("A.cs(1,1): CS0001: in B.cs", text);
+        Assert.Contains("Saw A.cs here", text);
+    }
+
+    [TestMethod]
+    public void Clean_WithAnEmptyOrInvalidProjectPath_StillSanitisesAndDoesNotThrow()
+    {
+        foreach (var bad in new[] { string.Empty, "\0bad", "  " })
+            Assert.AreEqual("caf? x", BuildFixReport.Clean("caf\u00E9\tx", bad), bad);
+    }
+
+    [TestMethod]
+    public void Lines_UndoneAndStuckCounts_NeverOverlap_WhenARevertFailsAfterAnUndo()
+    {
+        var root = FixTestSupport.TempProject();
+        var session = new FixSession(root);
+        session.BeginRound(1);
+        var a = FixTestSupport.Write(root, "A.cs", "a");
+        var b = FixTestSupport.Write(root, "B.cs", "a");
+        session.Write(a, "b", "AI");
+        session.Write(b, "b", "AI");
+        session.UndoSince(0);
+        using (new FileStream(b, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            session.RevertRound(1);
+        var left = new BuildDiagnostic(Path.Combine(root, "A.cs"), 1, 1, "CS0103", "x");
+        var outcome = new FixOutcome(
+            false, 1, session.Edits, [left], [], FixTestSupport.Result("", 1));
+
+        var undone = outcome.Edits.Count(e => e.Reverted);
+        var stuck = outcome.Edits.Count(e => e.RestoreFailed);
+        var lines = BuildFixReport.Lines(outcome, root);
+
+        Assert.AreEqual(outcome.Edits.Count, undone + stuck);
+        Assert.AreEqual(2, undone);
+        Assert.AreEqual(0, stuck);
+        Assert.AreEqual("Nothing was kept: all 2 edits made were undone.", lines[0]);
+    }
+
+    [TestMethod]
+    public void Lines_CountsAddUp_WhenOneEditIsStuckAndOneUndone()
+    {
+        var root = FixTestSupport.TempProject();
+        var session = new FixSession(root);
+        session.BeginRound(1);
+        var a = FixTestSupport.Write(root, "A.cs", "a");
+        var b = FixTestSupport.Write(root, "B.cs", "a");
+        session.Write(a, "b", "AI");
+        session.Write(b, "b", "AI");
+        using (new FileStream(b, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            session.RevertRound(1);
+        var outcome = new FixOutcome(false, 1, session.Edits, [], [], FixTestSupport.Result("", 1));
+
+        Assert.AreEqual(1, outcome.Edits.Count(e => e.Reverted));
+        Assert.AreEqual(1, outcome.Edits.Count(e => e.RestoreFailed));
+        Assert.AreEqual(0, outcome.Edits.Count(e => e.Reverted && e.RestoreFailed));
+        Assert.Contains("  1 edit could not be undone; check it by hand.", BuildFixReport.Lines(outcome, root));
     }
 }
