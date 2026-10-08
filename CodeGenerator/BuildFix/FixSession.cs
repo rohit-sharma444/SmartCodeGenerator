@@ -8,6 +8,9 @@ internal sealed class FixEdit(string file, string by, int round)
     public string By { get; } = by;
     public int Round { get; } = round;
     public bool Reverted { get; set; }
+
+    /// <summary>True when undoing this edit was tried and failed: the file still holds the edit.</summary>
+    public bool RestoreFailed { get; set; }
 }
 
 /// <summary>
@@ -75,6 +78,11 @@ internal sealed class FixSession
             var bak = Path.Combine(_backupRoot, "r" + _round, backups.Count + ".bak");
             File.WriteAllBytes(bak, old);
             backups[full] = bak;
+
+            // The .bak names say nothing about the file: this map does, with relative paths only.
+            File.AppendAllText(
+                Path.Combine(_backupRoot, BuildFixReport.BackupMapName),
+                $"r{_round}\\{backups.Count - 1}.bak = {Relative(full)}{Environment.NewLine}");
         }
 
         File.WriteAllText(full, text, new UTF8Encoding(HasBom(old)));
@@ -120,6 +128,7 @@ internal sealed class FixSession
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)
             {
+                _edits[i].RestoreFailed = true;
                 failed.Add(Relative(_edits[i].File));
             }
         }
@@ -148,8 +157,14 @@ internal sealed class FixSession
                 }
             }
 
-        foreach (var edit in _edits.Where(e => e.Round == round && !failed.Contains(e.File)))
-            edit.Reverted = true;
+        foreach (var edit in _edits.Where(e => e.Round == round))
+        {
+            var stuck = failed.Contains(edit.File);
+            edit.RestoreFailed = stuck;
+
+            if (!stuck)
+                edit.Reverted = true;
+        }
 
         return failed.Select(Relative).ToList();
     }

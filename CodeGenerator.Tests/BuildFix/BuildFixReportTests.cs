@@ -7,7 +7,9 @@ namespace CodeGenerator.Tests.BuildFix;
 public class BuildFixReportTests
 {
     private const string BackupLine1 = "  The original of each edited file is kept under .codegen\\fix-backups";
-    private const string BackupLine2 = "  (newest folder, then r1, r2 and r3 for each round).";
+    private const string BackupLine2 = "  in the newest folder. The file files.txt there names each backup.";
+    private const string BackupLine3 = "  If a file was edited in more than one round, its true original is in";
+    private const string BackupLine4 = "  the earliest round (r1 before r2 before r3).";
 
     /// <summary>
     /// <paramref name="kept"/> edits in round 1 stay; <paramref name="undone"/> edits in round 2 are reverted.
@@ -62,12 +64,14 @@ public class BuildFixReportTests
 
         AreLines(
             [
-                "The build fixed itself: it builds now (2 edits kept).",
+                "The build now succeeds with 2 edits kept.",
                 "  Edited F0.cs: make the class partial",
                 "  Edited F1.cs: make the class partial",
                 "  The build is green after 1 round(s).",
                 BackupLine1,
                 BackupLine2,
+                BackupLine3,
+                BackupLine4,
             ],
             BuildFixReport.Lines(outcome, root));
     }
@@ -77,7 +81,7 @@ public class BuildFixReportTests
     {
         var (outcome, root) = Outcome(true, 0, 1, 0);
 
-        Assert.AreEqual("The build fixed itself: it builds now (1 edit kept).", BuildFixReport.Lines(outcome, root)[0]);
+        Assert.AreEqual("The build now succeeds with 1 edit kept.", BuildFixReport.Lines(outcome, root)[0]);
     }
 
     [TestMethod]
@@ -104,6 +108,8 @@ public class BuildFixReportTests
                 "  Ollama is not running, so only the fix rules ran.",
                 BackupLine1,
                 BackupLine2,
+                BackupLine3,
+                BackupLine4,
             ],
             BuildFixReport.Lines(outcome, root));
     }
@@ -149,6 +155,8 @@ public class BuildFixReportTests
                 "  Round 1 was reverted: the errors rose from 3 to 4.",
                 BackupLine1,
                 BackupLine2,
+                BackupLine3,
+                BackupLine4,
             ],
             BuildFixReport.Lines(outcome, root));
     }
@@ -183,8 +191,7 @@ public class BuildFixReportTests
             var (outcome, root) = Outcome(false, 1, kept, undone);
             var text = string.Join("\n", BuildFixReport.Lines(outcome, root));
 
-            Assert.DoesNotContain("builds now", text);
-            Assert.DoesNotContain("fixed itself", text);
+            Assert.DoesNotContain("now succeeds", text);
             Assert.DoesNotContain("succeeds", text);
             Assert.Contains("still fails", text);
         }
@@ -295,6 +302,172 @@ public class BuildFixReportTests
 
         Assert.StartsWith("  CS0001: word", lines[2]);
         Assert.StartsWith("      word", lines[3]);
+    }
+
+    [TestMethod]
+    public void Lines_Green_WithEveryEditUndone_DoesNotSayNoEditsWereNeeded()
+    {
+        var (outcome, root) = Outcome(true, 0, 0, 2);
+
+        var lines = BuildFixReport.Lines(outcome, root);
+
+        Assert.AreEqual("The build succeeds. No edits were kept: all 2 edits made were undone.", lines[0]);
+        Assert.IsFalse(lines.Any(l => l.Contains("needed", StringComparison.Ordinal)));
+        Assert.Contains(BackupLine1, lines);
+    }
+
+    private static (FixOutcome Outcome, string Root) WithStuckEdit(bool green, int kept)
+    {
+        var root = FixTestSupport.TempProject();
+        var session = new FixSession(root);
+        session.BeginRound(1);
+        for (var i = 0; i < kept; i++)
+            session.Write(FixTestSupport.Write(root, $"F{i}.cs", "a"), "b", "make the class partial");
+
+        session.BeginRound(2);
+        var locked = FixTestSupport.Write(root, "L.cs", "a");
+        session.Write(locked, "b", "AI");
+        using (new FileStream(locked, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            session.RevertRound(2);
+
+        var left = new[] { new BuildDiagnostic(Path.Combine(root, "A.cs"), 1, 1, "CS0103", "The name 'x' does not exist") };
+
+        return (new FixOutcome(green, 2, session.Edits, green ? [] : left, [], FixTestSupport.Result("", green ? 0 : 1)), root);
+    }
+
+    [TestMethod]
+    public void Lines_AnEditThatCouldNotBeUndone_IsNeverCountedAsKept()
+    {
+        var (outcome, root) = WithStuckEdit(false, 0);
+
+        AreLines(
+            [
+                "Nothing was fixed.",
+                "The build still fails: 1 error remains.",
+                "  1 edit could not be undone; check it by hand.",
+                "  A.cs(1,1): CS0103: The name 'x' does not exist",
+                BackupLine1,
+                BackupLine2,
+                BackupLine3,
+                BackupLine4,
+            ],
+            BuildFixReport.Lines(outcome, root));
+    }
+
+    [TestMethod]
+    public void Lines_PartlyFixed_WithAStuckEdit_CountsOnlyTheRealKeptOnes()
+    {
+        var (outcome, root) = WithStuckEdit(false, 1);
+
+        var lines = BuildFixReport.Lines(outcome, root);
+
+        Assert.AreEqual("Partly fixed: 1 edit kept.", lines[0]);
+        Assert.AreEqual("  1 edit could not be undone; check it by hand.", lines[2]);
+        Assert.AreEqual(1, lines.Count(l => l.StartsWith("  Edited ", StringComparison.Ordinal)));
+    }
+
+    [TestMethod]
+    public void Lines_Green_WithAStuckEdit_StillSaysItCouldNotBeUndone()
+    {
+        var (outcome, root) = WithStuckEdit(true, 0);
+
+        var lines = BuildFixReport.Lines(outcome, root);
+
+        Assert.AreEqual("The build succeeds.", lines[0]);
+        Assert.AreEqual("  1 edit could not be undone; check it by hand.", lines[1]);
+    }
+
+    private static string OneMessage(string message, string root, string file = "")
+    {
+        var (outcome, _) = Outcome(false, 0, 0, 0);
+        var one = outcome with { Remaining = [new BuildDiagnostic(file, file.Length == 0 ? 0 : 1, 1, "CS0001", message)] };
+
+        return BuildFixReport.Lines(one, root).Single(l => l.Contains("CS0001", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void Lines_ANuGetCachePath_IsReducedToItsFileName()
+    {
+        var root = FixTestSupport.TempProject();
+
+        Assert.AreEqual(
+            "  CS0001: Could not load foo.dll now",
+            OneMessage("Could not load C:\\Users\\John Smith\\.nuget\\packages\\foo\\1.0\\lib\\net8.0\\foo.dll now", root));
+        Assert.AreEqual(
+            "  CS0001: Could not load foo.dll now",
+            OneMessage("Could not load D:/cache/pkgs/foo/lib/foo.dll now", root));
+    }
+
+    [TestMethod]
+    public void Lines_UncAndRootedPaths_AreReducedToTheirFileName()
+    {
+        var root = FixTestSupport.TempProject();
+
+        Assert.AreEqual("  CS0001: see f.cs here", OneMessage("see \\\\srv\\share\\dir\\f.cs here", root));
+        Assert.AreEqual("  CS0001: see x.dll here", OneMessage("see /home/me/.nuget/pkg/x.dll here", root));
+        Assert.AreEqual("  CS0001: see (x.dll) here", OneMessage("see (/home/me/x.dll) here", root));
+    }
+
+    [TestMethod]
+    public void Lines_RelativeAndUrlText_IsLeftAlone()
+    {
+        var root = FixTestSupport.TempProject();
+
+        Assert.AreEqual(
+            "  CS0001: Models/X.cs and/or http://host/a/b and /x",
+            OneMessage("Models/X.cs and/or http://host/a/b and /x", root));
+    }
+
+    [TestMethod]
+    public void Lines_TheProjectRoot_IsStrippedWithEitherSlash_AnyCase()
+    {
+        var root = FixTestSupport.TempProject();
+        var forward = root.Replace('\\', '/');
+
+        Assert.AreEqual("  CS0001: no Models/X.cs", OneMessage($"no {forward}/Models/X.cs", root));
+        Assert.AreEqual("  CS0001: no Models\\X.cs", OneMessage($"no {root.ToUpperInvariant()}\\Models\\X.cs", root));
+        Assert.AreEqual("  CS0001: no Models/X.cs", OneMessage($"no {forward.ToLowerInvariant()}/Models/X.cs", root));
+    }
+
+    [TestMethod]
+    public void Lines_ARootWithRegexCharacters_IsStrippedLikeAnyOther()
+    {
+        var root = Path.Combine(FixTestSupport.TempProject(), "a+b(1)[x]{2}$^.z");
+        Directory.CreateDirectory(root);
+
+        Assert.AreEqual("  CS0001: no Models\\X.cs", OneMessage($"no {root}\\Models\\X.cs", root));
+        Assert.AreEqual("  CS0001: no Y.cs", OneMessage($"no {root}x\\Y.cs", root));
+    }
+
+    [TestMethod]
+    public void Lines_ADirectoryNamedLikeParentButLonger_IsNotTreatedAsOutside()
+    {
+        var root = FixTestSupport.TempProject();
+
+        Assert.AreEqual("  ..x\\A.cs(1,1): CS0001: m", OneMessage("m", root, Path.Combine(root, "..x", "A.cs")));
+        Assert.AreEqual("  ..x.cs(1,1): CS0001: m", OneMessage("m", root, Path.Combine(root, "..x.cs")));
+        Assert.AreEqual(
+            "  Other.cs(1,1): CS0001: m",
+            OneMessage("m", root, Path.Combine(Path.GetDirectoryName(root)!, "Other.cs")));
+    }
+
+    [TestMethod]
+    public void Lines_ControlAndNonAsciiCharacters_AreMadePlain()
+    {
+        var (outcome, root) = Outcome(false, 0, 0, 0, "Note\twith\ttabs\r\nand a \u201cquote\u201d");
+        var message = "a\tb\r\nc \u2018x\u2019 \u201cy\u201d \u2013 \u2014 \u2026 caf\u00e9 \u00a0z \u0007bell \U0001F600";
+        var odd = outcome with
+        {
+            Remaining = [new BuildDiagnostic(string.Empty, 0, 0, "CS0001", message)],
+        };
+
+        var lines = BuildFixReport.Lines(odd, root);
+
+        Assert.Contains("  CS0001: a b c 'x' \"y\" - - ... caf? z bell ??", lines);
+        Assert.Contains("  Note with tabs and a \"quote\"", lines);
+
+        foreach (var line in lines)
+            Assert.IsTrue(line.All(c => c is >= ' ' and <= '~'), $"not plain ASCII: {line}");
     }
 
     // ---- BuildFixer wiring (no Ollama, no dotnet) ----
@@ -415,6 +588,26 @@ public class BuildFixReportTests
         Assert.IsFalse(outcome.Green);
         Assert.StartsWith("The fix stopped (", outcome.Notes[0]);
         Assert.Contains(BuildFixReport.BackupLocation, outcome.Notes[0]);
+        Assert.HasCount(1, outcome.Notes);
+        Assert.HasCount(0, outcome.Edits);
+        Assert.HasCount(0, outcome.Remaining);
+        Assert.AreEqual(0, outcome.Rounds);
+        Assert.AreSame(failed, outcome.LastBuild);
         Assert.IsTrue(ai.Disposed);
+    }
+
+    [TestMethod]
+    public void Fixer_Fix_WithARealProject_LeavesTheFilesAsTheyWere_WhenNothingCanBeDone()
+    {
+        var root = Project(out var file);
+        var before = File.ReadAllBytes(file);
+        var failed = FixTestSupport.Result($"{file}(1,1): error CS0103: The name 'x' does not exist");
+
+        var outcome = new BuildFixer(() => new DiscoveryConfig(), _ => new FakeAi())
+            .Fix(root, failed, () => throw new InvalidOperationException("must not rebuild"), _ => { });
+
+        CollectionAssert.AreEqual(before, File.ReadAllBytes(file));
+        Assert.HasCount(0, outcome.Edits);
+        Assert.HasCount(1, outcome.Remaining);
     }
 }

@@ -189,4 +189,48 @@ public class FixSessionTests
         Assert.IsFalse(session.Edits.Single(e => e.File == b).Reverted);
         Assert.IsTrue(session.Edits.Single(e => e.File == c).Reverted);
     }
+
+    [TestMethod]
+    public void Write_KeepsAMapOfEveryBackup_RelativePathsOnly()
+    {
+        var root = FixTestSupport.TempProject();
+        var a = FixTestSupport.Write(root, "A.cs", "a0");
+        var b = FixTestSupport.Write(root, Path.Combine("Models", "B.cs"), "b0");
+        var session = new FixSession(root);
+        session.BeginRound(1);
+        session.Write(a, "a1", "t");
+        session.Write(b, "b1", "t");
+        session.Write(a, "a1b", "t");
+        session.BeginRound(2);
+        session.Write(a, "a2", "t");
+
+        var folder = Directory.GetDirectories(Path.Combine(root, ".codegen", "fix-backups")).Single();
+        var map = Path.Combine(folder, BuildFixReport.BackupMapName);
+
+        CollectionAssert.AreEqual(
+            new[] { "r1\\0.bak = A.cs", "r1\\1.bak = Models\\B.cs", "r2\\0.bak = A.cs" },
+            File.ReadAllLines(map));
+        Assert.AreEqual("a0", File.ReadAllText(Path.Combine(folder, "r1", "0.bak")));
+        Assert.AreEqual("a1b", File.ReadAllText(Path.Combine(folder, "r2", "0.bak")));
+        Assert.DoesNotContain(root, File.ReadAllText(map));
+    }
+
+    [TestMethod]
+    public void RevertRound_MarksAnEditWhoseFileCannotBeRestored()
+    {
+        var root = FixTestSupport.TempProject();
+        var a = FixTestSupport.Write(root, "A.cs", "aaa");
+        var b = FixTestSupport.Write(root, "B.cs", "bbb");
+        var session = new FixSession(root);
+        session.BeginRound(1);
+        session.Write(a, "A2", "t");
+        session.Write(b, "B2", "t");
+
+        using (new FileStream(b, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            session.RevertRound(1);
+
+        Assert.IsFalse(session.Edits.Single(e => e.File == a).RestoreFailed);
+        Assert.IsTrue(session.Edits.Single(e => e.File == b).RestoreFailed);
+        Assert.IsFalse(session.Edits.Single(e => e.File == b).Reverted);
+    }
 }

@@ -50,22 +50,46 @@ internal sealed class BuildFixer : IBuildFixer
     public FixOutcome Fix(string projectPath, ProcessResult failedBuild, Func<ProcessResult> rebuild, Action<string> progress)
     {
         var ai = CreateAi();
+        var loop = new BuildFixLoop(Rules(), ai);
 
         try
         {
-            return new BuildFixLoop(Rules(), ai).Run(projectPath, failedBuild, rebuild, progress);
+            return loop.Run(projectPath, failedBuild, rebuild, progress);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
+            // The loop undoes its own round on any failure; this is the last resort. The edits
+            // it made are still reported, and the round in progress is undone when it can be.
+            var notes = new List<string>
+            {
+                $"The fix stopped ({ex.GetType().Name}). Some files may have been changed; "
+                    + $"their originals are under {BuildFixReport.BackupLocation}.",
+            };
+            var session = loop.LastSession;
+
+            if (session is not null)
+                foreach (var file in SafeRevert(session))
+                    notes.Add($"{file} was not restored; check it by hand.");
+
             return new FixOutcome(
-                false, 0, [], SafeParse(failedBuild, projectPath),
-                [$"The fix stopped ({ex.GetType().Name}). Some files may have been changed; "
-                    + $"their originals are under {BuildFixReport.BackupLocation}."],
-                failedBuild);
+                false, session?.CurrentRound ?? 0, session?.Edits ?? [], SafeParse(failedBuild, projectPath),
+                notes, failedBuild);
         }
         finally
         {
             (ai as IDisposable)?.Dispose();
+        }
+    }
+
+    private static IReadOnlyList<string> SafeRevert(FixSession session)
+    {
+        try
+        {
+            return session.RevertRound(session.CurrentRound);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            return [];
         }
     }
 

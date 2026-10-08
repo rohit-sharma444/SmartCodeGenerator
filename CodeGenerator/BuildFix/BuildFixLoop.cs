@@ -31,104 +31,137 @@ internal sealed class BuildFixLoop(IReadOnlyList<IBuildFixRule> rules, IBuildFix
     private static readonly Regex FileHeader = new(
         @"^\s*(//|/\*|#)?\s*(file|path|filename)\s*:", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    /// <summary>The session of the latest <see cref="Run"/>, or null before it starts.</summary>
+    internal FixSession? LastSession { get; private set; }
+
     public FixOutcome Run(
         string projectPath, ProcessResult firstBuild, Func<ProcessResult> rebuild, Action<string>? progress = null)
     {
         progress ??= _ => { };
 
         var session = new FixSession(projectPath);
+        LastSession = session;
         var notes = new List<string>();
         var build = firstBuild;
-        var diagnostics = BuildDiagnostics.Parse(build, projectPath);
+        IReadOnlyList<BuildDiagnostic> diagnostics = [];
         var rounds = 0;
-        bool? aiUp = null;
 
-        if (!BuildReport.Succeeded(build) && diagnostics.Count == 0)
-            notes.Add("The build failed, but no compiler errors could be read from its output, so nothing was changed.");
+        // What the user saw when the current round began: where an undone round leaves things.
+        var roundBuild = firstBuild;
+        IReadOnlyList<BuildDiagnostic> roundDiagnostics = [];
 
-        while (!BuildReport.Succeeded(build) && rounds < MaxRounds && diagnostics.Count > 0)
+        try
         {
-            rounds++;
-            session.BeginRound(rounds);
-
-            var before = build;
-            var beforeDiagnostics = diagnostics;
-            var aiRound = false;
-
-            var ruleFixes = ApplyRules(diagnostics, session, progress, notes);
-
-            if (ruleFixes.Count == 0)
-            {
-                if (ai is null)
-                {
-                    notes.Add("No local AI is set up, so only the fix rules ran.");
-                    break;
-                }
-
-                aiUp ??= IsUp(ai);
-
-                if (aiUp != true)
-                {
-                    notes.Add("Ollama is not running, so only the fix rules ran.");
-                    break;
-                }
-
-                var aiEdits = ApplyAi(diagnostics, session, progress, notes);
-
-                if (aiEdits == 0)
-                {
-                    notes.Add("The AI had no usable fix for the remaining errors.");
-                    break;
-                }
-
-                aiRound = true;
-                notes.Add($"Round {rounds}: the AI proposed {aiEdits} edit(s).");
-            }
-            else
-            {
-                notes.Add($"Round {rounds}: rules fixed {ruleFixes.Count} error(s): {string.Join(", ", ruleFixes.Distinct())}.");
-            }
-
-            try
-            {
-                progress("Building again");
-                build = rebuild();
-            }
-            catch (Exception ex) when (ex is not OutOfMemoryException)
-            {
-                // Edits that no build has checked are not kept, whoever made them.
+            return Loop();
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // Whatever failed, edits that no build has checked are not kept.
+            if (rounds > 0)
                 Revert(session, rounds, notes);
-                notes.Add($"The rebuild with dotnet failed ({ex.GetType().Name}), so round {rounds} was reverted: its edits could not be checked.");
-                break;
-            }
 
-            diagnostics = BuildDiagnostics.Parse(build, projectPath);
+            notes.Add(rounds > 0
+                ? $"The fix stopped ({ex.GetType().Name}), so round {rounds} was undone."
+                : $"The fix stopped ({ex.GetType().Name}) before it changed anything.");
 
-            if (BuildReport.Succeeded(build))
-                break;
-
-            var verdict = Judge(beforeDiagnostics, diagnostics, aiRound);
-
-            if (verdict is not null)
-            {
-                Revert(session, rounds, notes);
-                notes.Add($"Round {rounds} was reverted: {verdict}");
-                build = before;
-                diagnostics = beforeDiagnostics;
-                break;
-            }
-
-            notes.Add($"Round {rounds}: errors went from {beforeDiagnostics.Count} to {diagnostics.Count}.");
+            return new FixOutcome(false, rounds, session.Edits, roundDiagnostics, notes, roundBuild);
         }
 
-        var green = BuildReport.Succeeded(build);
+        FixOutcome Loop()
+        {
+            bool? aiUp = null;
+            diagnostics = BuildDiagnostics.Parse(build, projectPath);
+            roundDiagnostics = diagnostics;
 
-        if (green)
-            notes.Add($"The build is green after {rounds} round(s).");
-        else if (rounds >= MaxRounds && diagnostics.Count > 0)
-            notes.Add($"Stopped after {MaxRounds} rounds; {diagnostics.Count} error(s) remain.");
+            if (!BuildReport.Succeeded(build) && diagnostics.Count == 0)
+                notes.Add("The build failed, but no compiler errors could be read from its output, so nothing was changed.");
 
-        return new FixOutcome(green, rounds, session.Edits, diagnostics, notes, build);
+            while (!BuildReport.Succeeded(build) && rounds < MaxRounds && diagnostics.Count > 0)
+            {
+                rounds++;
+                session.BeginRound(rounds);
+
+                var before = build;
+                var beforeDiagnostics = diagnostics;
+                roundBuild = before;
+                roundDiagnostics = beforeDiagnostics;
+                var aiRound = false;
+
+                var ruleFixes = ApplyRules(diagnostics, session, progress, notes);
+
+                if (ruleFixes.Count == 0)
+                {
+                    if (ai is null)
+                    {
+                        notes.Add("No local AI is set up, so only the fix rules ran.");
+                        break;
+                    }
+
+                    aiUp ??= IsUp(ai);
+
+                    if (aiUp != true)
+                    {
+                        notes.Add("Ollama is not running, so only the fix rules ran.");
+                        break;
+                    }
+
+                    var aiEdits = ApplyAi(diagnostics, session, progress, notes);
+
+                    if (aiEdits == 0)
+                    {
+                        notes.Add("The AI had no usable fix for the remaining errors.");
+                        break;
+                    }
+
+                    aiRound = true;
+                    notes.Add($"Round {rounds}: the AI proposed {aiEdits} edit(s).");
+                }
+                else
+                {
+                    notes.Add($"Round {rounds}: rules fixed {ruleFixes.Count} error(s): {string.Join(", ", ruleFixes.Distinct())}.");
+                }
+
+                try
+                {
+                    progress("Building again");
+                    build = rebuild();
+                }
+                catch (Exception ex) when (ex is not OutOfMemoryException)
+                {
+                    // Edits that no build has checked are not kept, whoever made them.
+                    Revert(session, rounds, notes);
+                    notes.Add($"The rebuild with dotnet failed ({ex.GetType().Name}), so round {rounds} was reverted: its edits could not be checked.");
+                    break;
+                }
+
+                diagnostics = BuildDiagnostics.Parse(build, projectPath);
+
+                if (BuildReport.Succeeded(build))
+                    break;
+
+                var verdict = Judge(beforeDiagnostics, diagnostics, aiRound);
+
+                if (verdict is not null)
+                {
+                    Revert(session, rounds, notes);
+                    notes.Add($"Round {rounds} was reverted: {verdict}");
+                    build = before;
+                    diagnostics = beforeDiagnostics;
+                    break;
+                }
+
+                notes.Add($"Round {rounds}: errors went from {beforeDiagnostics.Count} to {diagnostics.Count}.");
+            }
+
+            var green = BuildReport.Succeeded(build);
+
+            if (green)
+                notes.Add($"The build is green after {rounds} round(s).");
+            else if (rounds >= MaxRounds && diagnostics.Count > 0)
+                notes.Add($"Stopped after {MaxRounds} rounds; {diagnostics.Count} error(s) remain.");
+
+            return new FixOutcome(green, rounds, session.Edits, diagnostics, notes, build);
+        }
     }
 
     private static void Revert(FixSession session, int round, List<string> notes)

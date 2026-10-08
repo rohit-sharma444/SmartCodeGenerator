@@ -831,4 +831,30 @@ public class BuildFixLoopTests
         byte[] expected = [0xEF, 0xBB, 0xBF, .. Encoding.UTF8.GetBytes("int a = 1;\r\n")];
         CollectionAssert.AreEqual(expected, Bytes(file));
     }
+
+    [TestMethod]
+    public void Run_RevertsTheRound_AndReturnsItsEdits_WhenReadingTheRebuildThrows()
+    {
+        var root = FixTestSupport.TempProject();
+        var file = FixTestSupport.Write(root, "A.cs", "int BAD;\n");
+        var before = Bytes(file);
+        var first = FixTestSupport.Result(Err(file, 1, "CS0001"));
+        var poisoned = FixTestSupport.Result("bad\0name.cs(1,1): error CS0001: x");
+        var loop = new BuildFixLoop([new StripBad()], null);
+
+        var outcome = loop.Run(root, first, () => poisoned);
+
+        CollectionAssert.AreEqual(before, Bytes(file));
+        Assert.IsFalse(outcome.Green);
+        Assert.HasCount(1, outcome.Edits);
+        Assert.IsTrue(outcome.Edits[0].Reverted);
+        Assert.HasCount(1, outcome.Remaining);
+        Assert.AreEqual("CS0001", outcome.Remaining[0].Code);
+        Assert.Contains(n => n.Contains("ArgumentException", StringComparison.Ordinal), outcome.Notes);
+        Assert.AreSame(loop.LastSession!.Edits, outcome.Edits);
+
+        var lines = BuildFixReport.Lines(outcome, root);
+        Assert.AreEqual("Nothing was kept: all 1 edit made was undone.", lines[0]);
+        Assert.Contains("  The original of each edited file is kept under " + BuildFixReport.BackupLocation, lines);
+    }
 }
