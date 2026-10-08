@@ -91,6 +91,10 @@ else
     {
         <div class="fix-offer">
             <p class="fix-question">@BuildFixReport.Title(_failedErrors)</p>
+            @if (_fixerThrew)
+            {
+                <p class="fix-stale">The errors listed may be out of date, because files may have changed.</p>
+            }
             <div class="actions">
                 <button type="button" class="fix-yes" @onclick="FixErrors">@BuildFixReport.Options[0]</button>
                 <button type="button" class="fix-no" @onclick="DeclineFix">@BuildFixReport.Options[1]</button>
@@ -146,6 +150,9 @@ else
 
     /// <summary>True from the click until the fixer is done: a second click must not start a second fixer.</summary>
     private bool _fixing;
+
+    // The fixer threw once: files may have changed, so the listed errors may be out of date.
+    private bool _fixerThrew;
 
     private bool _disposed;
     private readonly List<string> _log = [];
@@ -273,6 +280,7 @@ else
         _buildLines.Clear();
         _fixLines.Clear();
         _failedBuild = null;
+        _fixerThrew = false;
         _fixDeclined = false;
         _log.Clear();
         _steps.Clear();
@@ -555,32 +563,49 @@ else
         // meanwhile, and the app this fix repairs is then no longer the session's.
         var wanted = Session.Generated;
 
-        _fixing = true;
-        _fixLines.Clear();
-        _phase = Phase.Working;
-        Navigation.Withdraw();
-        Step("Fixing the build errors");
-        _log.Add("--- fixing the build errors ---");
-        StateHasChanged();
-
         TimeSpan elapsed = default;
-        var runBuild = Runner;
 
-        // Only the latest rebuild, because the run stage parses this text to find the assembly:
-        // the red log and the fixer's own lines would send it looking at the wrong build.
+        // Each finished rebuild with its own lines, because the run stage parses the build log to find
+        // the assembly: only the log of the build the session ends up holding may be handed over.
         var rebuildLog = new List<string>();
+        var rebuilds = new List<(ProcessResult Result, string Log)>();
 
         (FixOutcome?, Exception?) ran;
 
+        // Everything after the lock is taken is inside the try, so no exit can leave it held.
         try
         {
+            _fixing = true;
+            _fixLines.Clear();
+            _phase = Phase.Working;
+            Navigation.Withdraw();
+            Step("Fixing the build errors");
+            _log.Add("--- fixing the build errors ---");
+            StateHasChanged();
+
+            var runBuild = Runner;
+            var reread = _fixerThrew;
+
             ran = await Task.Run<(FixOutcome?, Exception?)>(() =>
             {
                 try
                 {
+                    // After a throw the files may have changed, so the old errors may be wrong:
+                    // read them again. An unusable fresh build leaves the old errors as they were.
+                    var basis = failed;
+
+                    if (reread)
+                    {
+                        var fresh = runBuild(scaffold.ProjectPath, line => Post(() => _log.Add(line))).Result;
+
+                        if (fresh is not null && BuildAppCommand.ShouldOfferFix(fresh)
+                            && BuildDiagnostics.Parse(fresh, scaffold.ProjectPath).Count > 0)
+                            basis = fresh;
+                    }
+
                     var result = fixer.Fix(
                         scaffold.ProjectPath,
-                        failed,
+                        basis,
                         () =>
                         {
                             lock (rebuildLog)
@@ -598,7 +623,13 @@ else
 
                             elapsed = attempt.Elapsed;
 
-                            return attempt.Result ?? throw new System.ComponentModel.Win32Exception();
+                            if (attempt.Result is null)
+                                throw new System.ComponentModel.Win32Exception();
+
+                            lock (rebuildLog)
+                                rebuilds.Add((attempt.Result, string.Join(Environment.NewLine, rebuildLog)));
+
+                            return attempt.Result;
                         },
                         line => Post(() => _fixLines.Add(BuildFixReport.Clean(line, scaffold.ProjectPath))));
 
@@ -624,6 +655,7 @@ else
             if (!_disposed)
             {
                 Finished("The fix stopped");
+                _fixerThrew = true;
                 _fixLines.Clear();
                 _fixLines.Add(
                     $"The fix could not finish ({error!.GetType().Name}). "
@@ -658,14 +690,20 @@ else
 
         // Handed to the session again even when the page is gone: the fix changed files on disk,
         // and the run stage needs the NEW build log to find the assembly.
-        string rebuilt;
+        // The log of the build that outcome.LastBuild is. When that build was rejected, timed out or
+        // never ran, the session keeps the log of the build it already held.
+        var rebuilt = wanted?.BuildLog ?? string.Empty;
 
         lock (rebuildLog)
-            rebuilt = string.Join(Environment.NewLine, rebuildLog);
+        {
+            foreach (var (result, log) in rebuilds)
+            {
+                if (ReferenceEquals(result, outcome.LastBuild) && !result.TimedOut)
+                    rebuilt = log;
+            }
+        }
 
-        // No rebuild ran (nothing was edited): the build the session holds is still the latest.
-        if (rebuilt.Length == 0)
-            rebuilt = wanted?.BuildLog ?? string.Empty;
+        _fixerThrew = false;
 
         Session.SetGenerated(new GeneratedApp(
             scaffold,
