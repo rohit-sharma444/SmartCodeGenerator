@@ -73,8 +73,21 @@ public class GenerateFixTests
         public string EditedBy = "removed the duplicate";
         public Action? Block;
         public Exception? Throw;
+        public volatile bool Returned;
 
         public FixOutcome Fix(string p, ProcessResult failed, Func<ProcessResult> rebuild, Action<string> progress)
+        {
+            try
+            {
+                return FixCore(p, failed, rebuild, progress);
+            }
+            finally
+            {
+                Returned = true;
+            }
+        }
+
+        private FixOutcome FixCore(string p, ProcessResult failed, Func<ProcessResult> rebuild, Action<string> progress)
         {
             Interlocked.Increment(ref Calls);
             Path = p;
@@ -102,7 +115,7 @@ public class GenerateFixTests
         IRenderedComponent<GenerateStage> Cut, BuildSession Session, StageNavigation Nav, BunitContext Context);
 
     /// <summary>A page whose write button has been pressed and whose first build has finished.</summary>
-    private Page Written(FakeFixer? fixer, FakeBuild build)
+    private Page Written(FakeFixer? fixer, FakeBuild build, BuildSession? given = null, bool addNew = false)
     {
         var context = new BunitContext();
         context.Services.AddSingleton<BuildRunner>(build.Run);
@@ -110,7 +123,7 @@ public class GenerateFixTests
         if (fixer is not null)
             context.Services.AddSingleton<IBuildFixer>(fixer);
 
-        var session = NewSession();
+        var session = given ?? NewSession();
         var nav = new StageNavigation();
         var cut = context.Render<GenerateStage>(p => p
             .Add(c => c.Session, session)
@@ -118,19 +131,29 @@ public class GenerateFixTests
             .Add(c => c.OnAdvance, () => { }));
 
         cut.Find("button.write").Click();
-        cut.WaitForAssertion(() => Assert.IsNotNull(session.Generated), TimeSpan.FromSeconds(60));
+
+        // The collision is decided before the first await, so the question is already on screen.
+        if (addNew)
+            cut.Find("button.overwrite-add").Click();
+        else if (cut.FindAll("button.overwrite-yes").Count > 0)
+            cut.Find("button.overwrite-yes").Click();
+
+        // A real scaffold on a loaded machine: a long cap, never a tight one.
+        cut.WaitForAssertion(
+            () => Assert.IsNotNull(session.Generated), TimeSpan.FromMinutes(5));
 
         return new Page(cut, session, nav, context);
     }
 
-    private BuildSession NewSession()
+    private BuildSession NewSession(AppCustomization? customization = null)
     {
+        customization ??= AppCustomization.Default;
         var session = new BuildSession("a shop", _root, AppCustomization.Default);
         session.SetTarget(new WpfTarget());
         session.Advance();
         session.SetNoData();
         session.Advance();
-        session.SetCustomization(AppCustomization.Default);
+        session.SetCustomization(customization);
         session.Advance();
 
         var model = new CandidateDomainModel();
@@ -255,7 +278,9 @@ public class GenerateFixTests
         Assert.IsTrue(ReportLines(page.Cut).Any(l => l.StartsWith("Build succeeded (2.0s)")));
         Assert.IsTrue(page.Nav.HasStep, "the box offers the way on again");
         Assert.IsTrue(GenerateStep.CanRun(page.Session.Generated, page.Session.Target!));
-        StringAssert.Contains(page.Session.Generated!.BuildLog, "build line 2");
+        Assert.AreEqual("build line 2", page.Session.Generated!.BuildLog, "the run stage parses ONLY the rebuild");
+        StringAssert.Contains(page.Cut.Find("pre.build-log").TextContent, "--- fixing the build errors ---");
+        StringAssert.Contains(page.Cut.Find("pre.build-log").TextContent, "build line 1");
     }
 
     [TestMethod]
@@ -278,11 +303,12 @@ public class GenerateFixTests
     }
 
     [TestMethod]
-    public void A_fixer_that_throws_gives_one_plain_line_and_leaves_the_page_alive()
+    public void A_fixer_that_throws_gives_one_plain_line_and_still_offers_the_fix_again()
     {
         var fixer = new FakeFixer { Throw = new InvalidOperationException("secret C:\\x\\y.cs") };
-        var page = Written(fixer, new FakeBuild(Red(OneError)));
+        var page = Written(fixer, new FakeBuild(Red(OneError), Green));
         using var _ = page.Context;
+        var before = page.Session.Generated;
 
         page.Cut.Find("button.fix-yes").Click();
         page.Cut.WaitForAssertion(() => StringAssert.StartsWith(FixReport(page.Cut), "The fix could not finish"), TimeSpan.FromSeconds(30));
@@ -291,9 +317,14 @@ public class GenerateFixTests
             "The fix could not finish (InvalidOperationException). The errors above are from before the fix; check the project files.",
             FixReport(page.Cut));
         Assert.DoesNotContain("secret", page.Cut.Markup);
-        Assert.HasCount(0, page.Cut.FindAll(".fix-offer"), "the old build is stale after an aborted fix");
-        Assert.IsTrue(page.Nav.HasStep);
+        Assert.AreEqual("The build failed with 1 error. Fix them?", page.Cut.Find(".fix-question").TextContent.Trim());
+        Assert.AreSame(before, page.Session.Generated, "the old failed build is still the session's");
         Assert.AreEqual(1, fixer.Calls);
+
+        fixer.Throw = null;
+        page.Cut.Find("button.fix-yes").Click();
+        page.Cut.WaitForAssertion(() => Assert.IsTrue(page.Session.Generated!.BuildSucceeded), TimeSpan.FromSeconds(30));
+        Assert.AreEqual(2, fixer.Calls);
     }
 
     [TestMethod]
@@ -400,7 +431,143 @@ public class GenerateFixTests
 
         Assert.HasCount(0, cut.FindAll(".fix-offer"));
         Assert.IsTrue(ReportLines(cut).Contains(
-            "It did not compile — the log is above the last time it ran. "
+            "It did not compile. "
             + "A fix is offered only straight after a build, so it is not offered again on a reloaded page."));
+    }
+
+    [TestMethod]
+    public void A_change_during_the_fix_keeps_the_stale_app_from_coming_back()
+    {
+        using var gate = new ManualResetEventSlim();
+        var fixer = new FakeFixer { Block = () => gate.Wait(TimeSpan.FromSeconds(30)) };
+        var page = Written(fixer, new FakeBuild(Red(OneError), Green));
+        using var _ = page.Context;
+
+        page.Cut.Find("button.fix-yes").Click();
+        page.Cut.WaitForState(() => fixer.Calls == 1, TimeSpan.FromSeconds(10));
+
+        page.Session.ModelEdited();
+        var stage = page.Session.StateOf(BuildStage.Generate);
+        Assert.IsNull(page.Session.Generated);
+
+        gate.Set();
+        page.Cut.WaitForAssertion(
+            () => Assert.AreEqual(
+                "The app was changed while the fix ran, so its result was not kept.", FixReport(page.Cut)),
+            TimeSpan.FromSeconds(30));
+
+        Assert.IsNull(page.Session.Generated, "the stale app must not be written back");
+        Assert.AreEqual(stage, page.Session.StateOf(BuildStage.Generate));
+        Assert.HasCount(0, page.Cut.FindAll(".fix-offer"));
+    }
+
+    [TestMethod]
+    public async Task A_change_then_a_closed_page_still_writes_nothing()
+    {
+        using var gate = new ManualResetEventSlim();
+        var fixer = new FakeFixer { Block = () => gate.Wait(TimeSpan.FromSeconds(30)) };
+        var page = Written(fixer, new FakeBuild(Red(OneError), Green));
+
+        page.Cut.Find("button.fix-yes").Click();
+        page.Cut.WaitForState(() => fixer.Calls == 1, TimeSpan.FromSeconds(10));
+
+        page.Session.ModelEdited();
+        page.Context.Dispose();
+        gate.Set();
+
+        for (var i = 0; i < 100 && !fixer.Returned; i++)
+            await Task.Delay(50);
+
+        // The write, if it were wrongly made, follows the fixer's return within moments.
+        for (var i = 0; i < 20; i++)
+        {
+            await Task.Delay(50);
+            Assert.IsNull(page.Session.Generated, "the stale app came back");
+        }
+    }
+
+    [TestMethod]
+    public void Two_pages_fixing_one_project_run_one_fixer()
+    {
+        using var gate = new ManualResetEventSlim();
+        var first = new FakeFixer { Block = () => gate.Wait(TimeSpan.FromSeconds(30)) };
+        var second = new FakeFixer();
+        var a = Written(first, new FakeBuild(Red(OneError), Green));
+        using var contextA = a.Context;
+        var b = Written(second, new FakeBuild(Red(OneError), Green));
+        using var contextB = b.Context;
+
+        Assert.AreEqual(a.Session.Generated!.Scaffold.ProjectPath, b.Session.Generated!.Scaffold.ProjectPath);
+
+        a.Cut.Find("button.fix-yes").Click();
+        a.Cut.WaitForState(() => first.Calls == 1, TimeSpan.FromSeconds(10));
+
+        b.Cut.Find("button.fix-yes").Click();
+
+        Assert.AreEqual("A fix is already running for this project.", FixReport(b.Cut));
+        Assert.AreEqual(0, second.Calls);
+        Assert.HasCount(1, b.Cut.FindAll(".fix-offer"), "its own offer stays");
+
+        gate.Set();
+        a.Cut.WaitForAssertion(() => StringAssert.StartsWith(FixReport(a.Cut), "The build now succeeds"), TimeSpan.FromSeconds(30));
+
+        b.Cut.Find("button.fix-yes").Click();
+        b.Cut.WaitForAssertion(() => StringAssert.StartsWith(FixReport(b.Cut), "The build now succeeds"), TimeSpan.FromSeconds(30));
+        Assert.AreEqual(1, second.Calls, "the lock was released");
+    }
+
+    [TestMethod]
+    public void A_rebuild_that_times_out_after_the_fix_is_reported_honestly()
+    {
+        var fixer = new FakeFixer();
+        var timedOut = new ProcessResult(1, OneError, string.Empty, true);
+        var page = Written(fixer, new FakeBuild(Red(OneError), timedOut));
+        using var _ = page.Context;
+
+        page.Cut.Find("button.fix-yes").Click();
+        page.Cut.WaitForAssertion(() => Assert.IsTrue(ReportLines(page.Cut).Any(l => l.StartsWith("Build timed out"))), TimeSpan.FromSeconds(30));
+
+        Assert.IsFalse(page.Session.Generated!.BuildSucceeded);
+        Assert.IsFalse(GenerateStep.CanRun(page.Session.Generated, page.Session.Target!));
+        Assert.IsFalse(FixReport(page.Cut).StartsWith("The build now succeeds", StringComparison.Ordinal));
+        Assert.IsFalse(ReportLines(page.Cut).Any(l => l.StartsWith("Build succeeded")));
+        Assert.HasCount(0, page.Cut.FindAll(".fix-offer"), "a timeout is not an error list to fix");
+    }
+
+    [TestMethod]
+    public void The_nologin_variant_offers_and_runs_the_fix_the_same_way()
+    {
+        var fixer = new FakeFixer();
+        var session = NewSession(AppCustomization.Default with { Login = false });
+        var page = Written(fixer, new FakeBuild(Red(OneError), Green), session);
+        using var _ = page.Context;
+
+        Assert.AreEqual("The build failed with 1 error. Fix them?", page.Cut.Find(".fix-question").TextContent.Trim());
+
+        page.Cut.Find("button.fix-yes").Click();
+        page.Cut.WaitForAssertion(() => Assert.IsTrue(page.Session.Generated!.BuildSucceeded), TimeSpan.FromSeconds(30));
+        Assert.AreEqual(1, fixer.Calls);
+    }
+
+    [TestMethod]
+    public void The_add_only_flow_offers_and_runs_the_fix_the_same_way()
+    {
+        var session = NewSession();
+        var first = GenerateStep.Scaffold(session, GenerateStep.NameFor(session), session.Target!, PersistenceKind.Json);
+        Assert.IsTrue(first.Success, first.Message);
+
+        var supplier = new CandidateEntity { Name = "Supplier", Provenance = Provenance.Wiki };
+        supplier.Fields.Add(new CandidateField { Name = "Title", Type = "string", Provenance = Provenance.Wiki });
+        session.Model!.Entities.Add(supplier);
+
+        var fixer = new FakeFixer();
+        var page = Written(fixer, new FakeBuild(Red(OneError), Green), session, addNew: true);
+        using var _ = page.Context;
+
+        Assert.AreEqual("The build failed with 1 error. Fix them?", page.Cut.Find(".fix-question").TextContent.Trim());
+
+        page.Cut.Find("button.fix-yes").Click();
+        page.Cut.WaitForAssertion(() => Assert.IsTrue(page.Session.Generated!.BuildSucceeded), TimeSpan.FromSeconds(30));
+        Assert.AreEqual(first.ProjectPath, fixer.Path);
     }
 }

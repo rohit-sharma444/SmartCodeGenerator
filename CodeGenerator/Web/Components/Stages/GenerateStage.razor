@@ -218,7 +218,7 @@ else
 
         _report.Add(app.BuildSucceeded
             ? "It compiled."
-            : "It did not compile — the log is above the last time it ran. "
+            : "It did not compile. "
               + "A fix is offered only straight after a build, so it is not offered again on a reloaded page.");
     }
 
@@ -543,6 +543,18 @@ else
         if (_fixing || _failedBuild is not { } failed || _scaffold is not { } scaffold || Fixer is not { } fixer)
             return;
 
+        // One fixer per project across every page: two tabs would edit the same files at once.
+        if (!FixLocks.TryEnter(scaffold.ProjectPath))
+        {
+            _fixLines.Clear();
+            _fixLines.Add("A fix is already running for this project.");
+            return;
+        }
+
+        // What the session wants NOW. The fix takes minutes; the user can change an earlier answer
+        // meanwhile, and the app this fix repairs is then no longer the session's.
+        var wanted = Session.Generated;
+
         _fixing = true;
         _fixLines.Clear();
         _phase = Phase.Working;
@@ -554,39 +566,61 @@ else
         TimeSpan elapsed = default;
         var runBuild = Runner;
 
-        var (outcome, error) = await Task.Run<(FixOutcome?, Exception?)>(() =>
+        // Only the latest rebuild, because the run stage parses this text to find the assembly:
+        // the red log and the fixer's own lines would send it looking at the wrong build.
+        var rebuildLog = new List<string>();
+
+        (FixOutcome?, Exception?) ran;
+
+        try
         {
-            try
+            ran = await Task.Run<(FixOutcome?, Exception?)>(() =>
             {
-                var result = fixer.Fix(
-                    scaffold.ProjectPath,
-                    failed,
-                    () =>
-                    {
-                        var attempt = runBuild(
-                            scaffold.ProjectPath, line => Post(() => _log.Add(line)));
+                try
+                {
+                    var result = fixer.Fix(
+                        scaffold.ProjectPath,
+                        failed,
+                        () =>
+                        {
+                            lock (rebuildLog)
+                                rebuildLog.Clear();
 
-                        elapsed = attempt.Elapsed;
+                            var attempt = runBuild(
+                                scaffold.ProjectPath,
+                                line =>
+                                {
+                                    lock (rebuildLog)
+                                        rebuildLog.Add(line);
 
-                        return attempt.Result ?? throw new System.ComponentModel.Win32Exception();
-                    },
-                    line => Post(() => _fixLines.Add(BuildFixReport.Clean(line, scaffold.ProjectPath))));
+                                    Post(() => _log.Add(line));
+                                });
 
-                return (result, (Exception?)null);
-            }
-            catch (Exception ex) when (ex is not OutOfMemoryException)
-            {
-                return (null, ex);
-            }
-        });
+                            elapsed = attempt.Elapsed;
 
-        _fixing = false;
+                            return attempt.Result ?? throw new System.ComponentModel.Win32Exception();
+                        },
+                        line => Post(() => _fixLines.Add(BuildFixReport.Clean(line, scaffold.ProjectPath))));
+
+                    return (result, (Exception?)null);
+                }
+                catch (Exception ex) when (ex is not OutOfMemoryException)
+                {
+                    return (null, ex);
+                }
+            });
+        }
+        finally
+        {
+            FixLocks.Leave(scaffold.ProjectPath);
+            _fixing = false;
+        }
+
+        var (outcome, error) = ran;
 
         if (outcome is null)
         {
-            // The files may have changed, so the old red build is stale: no second offer.
-            _failedBuild = null;
-
+            // The old red build stays the offer's basis, so the user can say Yes again.
             if (!_disposed)
             {
                 Finished("The fix stopped");
@@ -602,11 +636,40 @@ else
             return;
         }
 
+        // Still the app the session wants? A changed answer or a review edit has discarded it, and
+        // writing it back would bring a stale app to the run stage.
+        var stale = !ReferenceEquals(Session.Generated, wanted)
+            || Session.StateOf(BuildStage.Generate) == StageState.Pending;
+
+        if (stale)
+        {
+            if (_disposed)
+                return;
+
+            Finished("The fix stopped");
+            _failedBuild = null;
+            _fixLines.Clear();
+            _fixLines.Add("The app was changed while the fix ran, so its result was not kept.");
+            _phase = Phase.Done;
+            StateHasChanged();
+
+            return;
+        }
+
         // Handed to the session again even when the page is gone: the fix changed files on disk,
         // and the run stage needs the NEW build log to find the assembly.
+        string rebuilt;
+
+        lock (rebuildLog)
+            rebuilt = string.Join(Environment.NewLine, rebuildLog);
+
+        // No rebuild ran (nothing was edited): the build the session holds is still the latest.
+        if (rebuilt.Length == 0)
+            rebuilt = wanted?.BuildLog ?? string.Empty;
+
         Session.SetGenerated(new GeneratedApp(
             scaffold,
-            string.Join(Environment.NewLine, _log),
+            rebuilt,
             BuildReport.Succeeded(outcome.LastBuild),
             Persistence: _persistence));
 
