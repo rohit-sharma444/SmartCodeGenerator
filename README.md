@@ -42,6 +42,8 @@ CodeGenerationEngine                   ▼  approve <target>
 Both `build app` paths converge on the same review loop and the same scaffolder,
 because both produce the same `CandidateDomainModel`.
 
+If the generated app fails to build, the tool offers to fix the errors (known rules first, then the local Ollama model if it runs), keeps only edits that help, and backs up each edited file under `.codegen\fix-backups`.
+
 For a fuller picture — component/dependency graph, runtime sequence flows for
 both paths, and the NLE internal pipeline — see
 [`docs/architecture.md`](docs/architecture.md).
