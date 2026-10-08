@@ -54,6 +54,49 @@ public class StaleCustomHookRuleTests
     }
 
     [TestMethod]
+    public void Fix_GivesTheHookTheStubsDocComment_WhenTheOldDeclarationHadNone()
+    {
+        var root = FixTestSupport.TempProject();
+        var file = FixTestSupport.Write(root, "Validation/OrderValidator.Custom.cs", OldEmpty);
+        FixTestSupport.Write(root, "Validation/OrderValidator.Generated.cs", Generated);
+
+        Assert.IsTrue(new StaleCustomHookRule().Fix(Diag(file), Session(root)));
+
+        var after = File.ReadAllText(file);
+        var current = ValidatorTemplate.CustomStub("Shop", "Order");
+        var hookDoc = string.Join("\n    ", ValidatorTemplate.CustomHookDocLines);
+        StringAssert.Contains(current.Replace("\r\n", "\n"), hookDoc, "the doc lines are the stub's own");
+        StringAssert.Contains(after, "    " + hookDoc + "\n    private static partial void ValidateCustom(Order item, List<ValidationError> errors) { }");
+        Assert.HasCount(0, FixTestSupport.CompileErrors(Models, Support, Generated, after));
+    }
+
+    [TestMethod]
+    public void Fix_KeepsADocCommentTheOldDeclarationAlreadyHad()
+    {
+        var root = FixTestSupport.TempProject();
+        var text = OldEmpty.Replace("    partial void", "    /// <summary>My own words.</summary>\n    partial void");
+        var file = FixTestSupport.Write(root, "Validation/OrderValidator.Custom.cs", text);
+
+        Assert.IsTrue(new StaleCustomHookRule().Fix(Diag(file), Session(root)));
+
+        var after = File.ReadAllText(file);
+        StringAssert.Contains(after, "    /// <summary>My own words.</summary>\n    private static partial void ValidateCustom");
+        Assert.DoesNotContain("Add rules the generator cannot infer", after);
+    }
+
+    [TestMethod]
+    public void Fix_UsesTheFilesLineEndingsForTheDocComment()
+    {
+        var root = FixTestSupport.TempProject();
+        var file = FixTestSupport.Write(root, "Validation/OrderValidator.Custom.cs", OldEmpty.Replace("\n", "\r\n"));
+
+        Assert.IsTrue(new StaleCustomHookRule().Fix(Diag(file), Session(root)));
+
+        var after = File.ReadAllText(file);
+        Assert.AreEqual(after.Count(c => c == '\n'), after.Count(c => c == '\r'), "no bare LF was added");
+    }
+
+    [TestMethod]
     public void Fix_NeverOverwritesHandWrittenCode()
     {
         var root = FixTestSupport.TempProject();

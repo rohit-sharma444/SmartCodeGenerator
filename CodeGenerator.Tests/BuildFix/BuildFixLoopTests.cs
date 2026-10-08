@@ -857,4 +857,54 @@ public class BuildFixLoopTests
         Assert.AreEqual("Nothing was kept: all 1 edit made was undone.", lines[0]);
         Assert.Contains("  The original of each edited file is kept under " + BuildFixReport.BackupLocation, lines);
     }
+
+    [TestMethod]
+    public void Run_AnAiEdit_RecordsTheFirstChangedLine_WithoutLineEndings()
+    {
+        var root = FixTestSupport.TempProject();
+        var file = FixTestSupport.Write(root, "A.cs", "int a = 1;\r\nint b = ;\r\nint c = 3;\r\n");
+        var first = FixTestSupport.Result(Err(file, 2, "CS1525", "bad"));
+        var ai = new FakeAi((d, ex) => "int a = 1;\nint b = 0;\nint c = 3;");
+
+        var outcome = new BuildFixLoop([], ai).Run(root, first, () => Green);
+
+        Assert.IsTrue(outcome.Green);
+        var change = outcome.Edits[0].Change;
+        Assert.IsNotNull(change);
+        Assert.AreEqual(2, change.Line);
+        Assert.AreEqual("int b = ;", change.Before);
+        Assert.AreEqual("int b = 0;", change.After);
+        Assert.AreEqual(1, change.Lines);
+        Assert.AreEqual("int a = 1;\r\nint b = 0;\r\nint c = 3;\r\n", File.ReadAllText(file));
+    }
+
+    [TestMethod]
+    public void Run_AnAiEditOfSeveralLines_CountsThem()
+    {
+        var root = FixTestSupport.TempProject();
+        var file = FixTestSupport.Write(root, "A.cs", "int a = ;\nint b = ;\nint c = 3;\n");
+        var first = FixTestSupport.Result(Err(file, 1, "CS1525", "bad") + "\n" + Err(file, 2, "CS1525", "bad"));
+        var ai = new FakeAi((d, ex) => "int a = 0;\nint b = 0;\nint c = 3;");
+
+        var outcome = new BuildFixLoop([], ai).Run(root, first, () => Green);
+
+        var change = outcome.Edits[0].Change;
+        Assert.IsNotNull(change);
+        Assert.AreEqual(1, change.Line);
+        Assert.AreEqual("int a = ;", change.Before);
+        Assert.AreEqual("int a = 0;", change.After);
+        Assert.AreEqual(2, change.Lines);
+    }
+
+    [TestMethod]
+    public void Run_ARuleEdit_HasNoChangeRecord()
+    {
+        var root = FixTestSupport.TempProject();
+        var file = FixTestSupport.Write(root, "A.cs", "int BAD;\n");
+        var first = FixTestSupport.Result(Err(file, 1, "CS0001"));
+
+        var outcome = new BuildFixLoop([new StripBad()], null).Run(root, first, () => Green);
+
+        Assert.IsNull(outcome.Edits[0].Change);
+    }
 }

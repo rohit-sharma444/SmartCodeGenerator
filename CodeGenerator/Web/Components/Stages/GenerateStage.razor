@@ -137,6 +137,10 @@ else
     private PersistenceKind _persistence = PersistenceKind.Json;
     private readonly List<string> _report = [];
 
+    /// <summary>The warnings about old-form validator stubs, which are in <see cref="_report"/> too.
+    /// A green fix rewrote those stubs, so they are taken out then.</summary>
+    private readonly HashSet<string> _stubWarnings = [];
+
     /// <summary>What the last build said; replaced when a fix rebuilds.</summary>
     private readonly List<string> _buildLines = [];
 
@@ -209,7 +213,10 @@ else
         // the circuit that watched it. A rebuilt panel that omits this is the one panel
         // whose user has nothing left to read the failure from.
         foreach (var stub in app.Scaffold.OutdatedValidatorStubs)
+        {
             _report.Add(stub + ".");
+            _stubWarnings.Add(stub + ".");
+        }
 
         foreach (var unreadable in app.Scaffold.UnreadableSeedValues)
             _report.Add(unreadable + ".");
@@ -277,6 +284,7 @@ else
     {
         _phase = Phase.Working;
         _report.Clear();
+        _stubWarnings.Clear();
         _buildLines.Clear();
         _fixLines.Clear();
         _failedBuild = null;
@@ -350,7 +358,10 @@ else
         // The add report has already listed them, under its own heading.
         if (!addOnly)
             foreach (var stub in scaffold.OutdatedValidatorStubs)
+            {
                 _report.Add(stub + ".");
+                _stubWarnings.Add(stub + ".");
+            }
 
         // The user's own values, missing from the app: said, not left for them to notice.
         foreach (var unreadable in scaffold.UnreadableSeedValues)
@@ -715,6 +726,19 @@ else
             return;
 
         Finished(outcome.Green ? "Compiled after the fix" : "The compiler still reports problems after the fix");
+
+        // A green rebuild makes the page's earlier complaints false: the compile warning about a
+        // stub the fix rewrote, the "problems" step, and the red log above the new one. A red one
+        // leaves them, because the user is still looking at the same failure.
+        if (outcome.Green)
+        {
+            _report.RemoveAll(_stubWarnings.Contains);
+            _stubWarnings.Clear();
+            _steps.RemoveAll(s => s.StartsWith("The compiler reported problems", StringComparison.Ordinal)
+                || s.StartsWith("The compiler still reports problems", StringComparison.Ordinal));
+            _log.Clear();
+            _log.AddRange(rebuilt.Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries));
+        }
 
         _fixLines.Clear();
         _fixLines.AddRange(BuildFixReport.Lines(outcome, scaffold.ProjectPath));

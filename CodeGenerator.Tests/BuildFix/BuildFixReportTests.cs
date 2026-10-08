@@ -724,4 +724,81 @@ public class BuildFixReportTests
         Assert.AreEqual(0, outcome.Edits.Count(e => e.Reverted && e.RestoreFailed));
         Assert.Contains("  1 edit could not be undone; check it by hand.", BuildFixReport.Lines(outcome, root));
     }
+
+    private static IReadOnlyList<string> EditLines(string file, EditChange? change, string root)
+    {
+        var session = new FixSession(root);
+        session.BeginRound(1);
+        session.Write(FixTestSupport.Write(root, file, "a"), "b", "AI");
+        session.Edits[0].Change = change;
+        var outcome = new FixOutcome(true, 1, session.Edits, [], [], FixTestSupport.Result("", 0));
+
+        return BuildFixReport.Lines(outcome, root).Where(l => l.StartsWith("  Edited ", StringComparison.Ordinal)
+            || l.StartsWith("      ", StringComparison.Ordinal)).ToList();
+    }
+
+    [TestMethod]
+    public void Lines_AnAiEdit_ShowsTheLineAndWhatChanged()
+    {
+        var root = FixTestSupport.TempProject();
+
+        var lines = EditLines(@"Models\Broken.cs", new EditChange(12, "int x = ;", "int x = 0;", 1), root);
+
+        AreLines(["  Edited Models\\Broken.cs (line 12): \"int x = ;\" -> \"int x = 0;\""], lines);
+    }
+
+    [TestMethod]
+    public void Lines_AnAiEditOfSeveralLines_SaysHowManyMore()
+    {
+        var root = FixTestSupport.TempProject();
+
+        var two = EditLines("A.cs", new EditChange(3, "a", "b", 2), root);
+        var three = EditLines("A.cs", new EditChange(3, "a", "b", 3), root);
+
+        AreLines(["  Edited A.cs (line 3): \"a\" -> \"b\" (+1 more line)"], two);
+        AreLines(["  Edited A.cs (line 3): \"a\" -> \"b\" (+2 more lines)"], three);
+    }
+
+    [TestMethod]
+    public void Lines_AnAiEdit_CutsEachSideTo40Characters_AndWrapsAt78()
+    {
+        var root = FixTestSupport.TempProject();
+        var before = "var total = first + second + third + fourth + fifth;";
+        var after = "var total = first + second + third + fourth + fifth + sixth;";
+
+        var lines = EditLines("A.cs", new EditChange(7, before, after, 1), root);
+
+        AreLines(
+            [
+                "  Edited A.cs (line 7): \"var total = first + second + third + ...\" -> \"var",
+                "      total = first + second + third + ...\"",
+            ],
+            lines);
+        Assert.IsTrue(lines.All(l => l.Length <= BuildFixReport.Width));
+    }
+
+    [TestMethod]
+    public void Lines_AnAiEdit_NeverShowsAnAbsolutePathOrNonAscii()
+    {
+        var root = FixTestSupport.TempProject();
+        var before = "var p = @\"C:\\Users\\Jo\\secret.txt\"; // caf\u00e9\t\r";
+
+        var text = string.Join("\n", EditLines("A.cs", new EditChange(1, before, "x", 1), root));
+
+        Assert.DoesNotContain("C:\\", text);
+        Assert.DoesNotContain("Users", text);
+        Assert.DoesNotContain("\r", text);
+        Assert.DoesNotContain("\t", text);
+        Assert.IsTrue(text.All(c => c is >= ' ' and <= '~' or '\n'));
+        StringAssert.Contains(text, "secret.txt");
+        StringAssert.Contains(text, "caf?");
+    }
+
+    [TestMethod]
+    public void Lines_ARuleEdit_KeepsItsWording()
+    {
+        var root = FixTestSupport.TempProject();
+
+        AreLines(["  Edited A.cs: AI"], EditLines("A.cs", null, root));
+    }
 }

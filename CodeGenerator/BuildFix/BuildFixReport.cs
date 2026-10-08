@@ -63,7 +63,7 @@ internal static class BuildFixReport
             lines.Add($"  {Count(stuck, "edit")} could not be undone; check {(stuck == 1 ? "it" : "them")} by hand.");
 
         foreach (var edit in applied)
-            AddWrapped(lines, $"  Edited {Display(edit.File, projectPath)}: {edit.By}", projectPath);
+            AddWrapped(lines, EditedLine(edit, projectPath), projectPath);
 
         if (undone > 0 && applied.Count > 0)
             lines.Add($"  {Count(undone, "other edit")} {(undone == 1 ? "was" : "were")} undone.");
@@ -92,6 +92,28 @@ internal static class BuildFixReport
         }
 
         return lines;
+    }
+
+    private const int SnippetMax = 40;
+
+    private static string EditedLine(FixEdit edit, string projectPath)
+    {
+        var where = Display(edit.File, projectPath);
+
+        if (edit.Change is not { } c)
+            return $"  Edited {where}: {edit.By}";
+
+        var more = c.Lines > 1 ? $" (+{c.Lines - 1} more {(c.Lines == 2 ? "line" : "lines")})" : string.Empty;
+
+        return $"  Edited {where} (line {c.Line}): \"{Snippet(c.Before, projectPath)}\" -> \"{Snippet(c.After, projectPath)}\"{more}";
+    }
+
+    /// <summary>One line of code, cleaned, with runs of blanks folded, cut to <see cref="SnippetMax"/> characters.</summary>
+    private static string Snippet(string text, string projectPath)
+    {
+        var one = Regex.Replace(Clean(text, projectPath), @"\s+", " ").Trim();
+
+        return one.Length <= SnippetMax ? one : one[..(SnippetMax - 3)] + "...";
     }
 
     private static string Count(int n, string noun) => $"{n} {noun}{(n == 1 ? string.Empty : "s")}";

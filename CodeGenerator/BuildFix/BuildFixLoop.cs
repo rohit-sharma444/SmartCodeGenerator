@@ -337,6 +337,7 @@ internal sealed class BuildFixLoop(IReadOnlyList<IBuildFixRule> rules, IBuildFix
             try
             {
                 session.Write(d.File, rebuilt, "AI");
+                session.Edits[^1].Change = DescribeChange(text, rebuilt);
                 edited.Add(d.File);
                 applied++;
             }
@@ -351,6 +352,32 @@ internal sealed class BuildFixLoop(IReadOnlyList<IBuildFixRule> rules, IBuildFix
         }
 
         return applied;
+    }
+
+    /// <summary>The first changed line, and how many lines differ. Small on purpose: no copy of the file is kept.</summary>
+    private static EditChange DescribeChange(string before, string after)
+    {
+        var a = before.Split('\n').Select(l => l.TrimEnd('\r')).ToArray();
+        var b = after.Split('\n').Select(l => l.TrimEnd('\r')).ToArray();
+        var prefix = 0;
+
+        while (prefix < a.Length && prefix < b.Length && a[prefix] == b[prefix])
+            prefix++;
+
+        var suffix = 0;
+
+        while (suffix < a.Length - prefix && suffix < b.Length - prefix
+            && a[a.Length - 1 - suffix] == b[b.Length - 1 - suffix])
+            suffix++;
+
+        var oldCount = a.Length - prefix - suffix;
+        var newCount = b.Length - prefix - suffix;
+
+        return new EditChange(
+            prefix + 1,
+            oldCount > 0 ? a[prefix] : string.Empty,
+            newCount > 0 ? b[prefix] : string.Empty,
+            Math.Max(1, Math.Max(oldCount, newCount)));
     }
 
     /// <summary>

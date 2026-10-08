@@ -588,6 +588,13 @@ public sealed partial class {{className}}Validator
 }
 """;
 
+    /// <summary>The doc comment <see cref="CustomStub"/> puts above the hook, one entry per line.</summary>
+    public static IReadOnlyList<string> CustomHookDocLines { get; } =
+    [
+        "/// <summary>Add rules the generator cannot infer \u2014 cross-field checks, business rules.",
+        "/// Regenerating the app never overwrites this file.</summary>",
+    ];
+
     /// <summary>The declaration an outdated stub has to be changed to, for
     /// <paramref name="className"/>.</summary>
     public static string CustomHookDeclaration(string className)

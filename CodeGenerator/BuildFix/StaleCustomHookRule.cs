@@ -44,11 +44,34 @@ internal sealed class StaleCustomHookRule : IBuildFixRule
         if (!hook.Success)
             return false;
 
-        var declaration = ValidatorTemplate.CustomHookDeclaration(hook.Groups["type"].Value) + " { }";
+        var declaration = DocComment(source, hook.Index) + ValidatorTemplate.CustomHookDeclaration(hook.Groups["type"].Value) + " { }";
         var updated = source[..hook.Index] + declaration + source[(hook.Index + hook.Length)..];
 
         session.Write(custom, updated, Name);
 
         return true;
+    }
+
+    /// <summary>
+    /// The stub's own doc comment, when the declaration has no comment above it. An old stub that
+    /// has one (or any comment, or an attribute) is left exactly as it is.
+    /// </summary>
+    private static string DocComment(string source, int hookIndex)
+    {
+        var lineStart = source.LastIndexOf('\n', Math.Max(0, hookIndex - 1)) + 1;
+        var indent = source[lineStart..hookIndex];
+
+        if (indent.Trim().Length > 0)
+            return string.Empty;
+
+        var above = source[..lineStart].TrimEnd().Split('\n')[^1].Trim();
+
+        if (above.StartsWith("//", StringComparison.Ordinal) || above.EndsWith("*/", StringComparison.Ordinal)
+            || above.StartsWith('['))
+            return string.Empty;
+
+        var eol = source.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+
+        return string.Concat(ValidatorTemplate.CustomHookDocLines.Select(l => l + eol + indent));
     }
 }

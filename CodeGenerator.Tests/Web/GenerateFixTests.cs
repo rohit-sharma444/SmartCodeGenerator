@@ -285,8 +285,65 @@ public class GenerateFixTests
         Assert.IsTrue(page.Nav.HasStep, "the box offers the way on again");
         Assert.IsTrue(GenerateStep.CanRun(page.Session.Generated, page.Session.Target!));
         Assert.AreEqual("build line 2", page.Session.Generated!.BuildLog, "the run stage parses ONLY the rebuild");
-        StringAssert.Contains(page.Cut.Find("pre.build-log").TextContent, "--- fixing the build errors ---");
+        Assert.AreEqual("build line 2", page.Cut.Find("pre.build-log").TextContent, "only the green rebuild is shown");
+    }
+
+    private const string StubWarning = "declares ValidateCustom in the shape emitted before";
+
+    /// <summary>A session whose project already holds an old-form stub, so the write warns about it.</summary>
+    private BuildSession SessionWithStaleStub()
+    {
+        var session = NewSession();
+        var folder = GenerateStep.FolderFor(session, GenerateStep.NameFor(session), new WpfTarget());
+        var stub = Path.Combine(folder, "Validation", "CustomerValidator.Custom.cs");
+        Directory.CreateDirectory(Path.GetDirectoryName(stub)!);
+        File.WriteAllText(
+            stub,
+            "using System.Collections.Generic;\nnamespace X.Validation;\npublic sealed partial class CustomerValidator\n{\n"
+            + "    partial void ValidateCustom(Customer item, List<string> errors)\n    {\n    }\n}\n");
+
+        return session;
+    }
+
+    [TestMethod]
+    public void A_green_fix_clears_the_warning_the_red_log_and_the_problem_step_from_before()
+    {
+        var page = Written(new FakeFixer(), new FakeBuild(Red(OneError), Green), SessionWithStaleStub());
+        using var _ = page.Context;
+
+        // Present BEFORE the fix, so the absences below are not vacuous.
+        Assert.IsTrue(ReportLines(page.Cut).Any(l => l.Contains(StubWarning)), "the warning is shown first");
+        StringAssert.Contains(page.Cut.Markup, "The compiler reported problems");
         StringAssert.Contains(page.Cut.Find("pre.build-log").TextContent, "build line 1");
+        Assert.IsTrue(ReportLines(page.Cut).Any(l => l.Contains("CS1002")));
+
+        page.Cut.Find("button.fix-yes").Click();
+        page.Cut.WaitForAssertion(() => StringAssert.StartsWith(FixReport(page.Cut), "The build now succeeds"), TimeSpan.FromSeconds(30));
+
+        Assert.IsFalse(ReportLines(page.Cut).Any(l => l.Contains(StubWarning)), "the warning is about a file that is now fixed");
+        Assert.DoesNotContain("The compiler reported problems", page.Cut.Markup);
+        Assert.DoesNotContain("build line 1", page.Cut.Markup);
+        Assert.DoesNotContain("--- fixing the build errors ---", page.Cut.Markup);
+        StringAssert.Contains(page.Cut.Markup, "Compiled after the fix");
+        Assert.IsTrue(ReportLines(page.Cut).Any(l => l.StartsWith("Build succeeded")));
+        Assert.IsTrue(ReportLines(page.Cut).Any(l => l.StartsWith("Generated project at")), "what is still true stays");
+    }
+
+    [TestMethod]
+    public void A_still_red_fix_keeps_the_warning_and_the_log_from_before()
+    {
+        var page = Written(new FakeFixer(), new FakeBuild(Red(OneError), Red(TwoErrors)), SessionWithStaleStub());
+        using var _ = page.Context;
+
+        Assert.IsTrue(ReportLines(page.Cut).Any(l => l.Contains(StubWarning)), "the warning is shown first");
+
+        page.Cut.Find("button.fix-yes").Click();
+        page.Cut.WaitForAssertion(() => StringAssert.StartsWith(FixReport(page.Cut), "Partly fixed"), TimeSpan.FromSeconds(30));
+
+        Assert.IsTrue(ReportLines(page.Cut).Any(l => l.Contains(StubWarning)));
+        StringAssert.Contains(page.Cut.Markup, "The compiler reported problems");
+        StringAssert.Contains(page.Cut.Find("pre.build-log").TextContent, "build line 1");
+        StringAssert.Contains(page.Cut.Find("pre.build-log").TextContent, "build line 2");
     }
 
     [TestMethod]

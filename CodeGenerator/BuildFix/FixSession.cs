@@ -7,6 +7,9 @@ internal sealed class FixEdit(string file, string by, int round)
     public string File { get; } = file;
     public string By { get; } = by;
     public int Round { get; } = round;
+
+    /// <summary>For an AI edit: the first changed line and how many lines changed. Null for a rule edit.</summary>
+    public EditChange? Change { get; set; }
     private bool _reverted;
     private bool _restoreFailed;
 
@@ -34,6 +37,9 @@ internal sealed class FixEdit(string file, string by, int round)
         }
     }
 }
+
+/// <summary>The first changed line of an edit (no line ending), and how many lines changed in all.</summary>
+internal sealed record EditChange(int Line, string Before, string After, int Lines);
 
 /// <summary>
 /// The only way a fix touches a file: every path is checked to be inside the generated project (guarding against
