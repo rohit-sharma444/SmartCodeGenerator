@@ -165,4 +165,28 @@ public class FixSessionTests
             return false;
         }
     }
+
+    [TestMethod]
+    public void RevertRound_RestoresEveryFile_EvenWhenOneCannotBeWritten_AndDoesNotThrow()
+    {
+        var root = FixTestSupport.TempProject();
+        var a = FixTestSupport.Write(root, "A.cs", "aaa");
+        var b = FixTestSupport.Write(root, "B.cs", "bbb");
+        var c = FixTestSupport.Write(root, "C.cs", "ccc");
+        var session = new FixSession(root);
+        session.BeginRound(1);
+        session.Write(a, "A2", "t");
+        session.Write(b, "B2", "t");
+        session.Write(c, "C2", "t");
+
+        using (new FileStream(b, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            session.RevertRound(1);
+
+        Assert.AreEqual("aaa", File.ReadAllText(a));
+        Assert.AreEqual("B2", File.ReadAllText(b));
+        Assert.AreEqual("ccc", File.ReadAllText(c));
+        Assert.IsTrue(session.Edits.Single(e => e.File == a).Reverted);
+        Assert.IsFalse(session.Edits.Single(e => e.File == b).Reverted);
+        Assert.IsTrue(session.Edits.Single(e => e.File == c).Reverted);
+    }
 }

@@ -535,4 +535,300 @@ public class BuildFixLoopTests
         Assert.IsFalse(asked);
         Assert.IsTrue(outcome.Notes.Any(n => n.Contains("no compiler errors")));
     }
+
+    /// <summary>A rule that writes, then says it fixed nothing.</summary>
+    private sealed class WriteThenFalse : IBuildFixRule
+    {
+        public string Name => "half";
+
+        public bool Fix(BuildDiagnostic d, FixSession s)
+        {
+            if (d.Code != "CS0002") return false;
+            s.Write(d.File, "half done", Name);
+            return false;
+        }
+    }
+
+    /// <summary>A rule that edits whatever file the diagnostic names.</summary>
+    private sealed class EditNamedFile : IBuildFixRule
+    {
+        public string Name => "named";
+
+        public bool Fix(BuildDiagnostic d, FixSession s)
+        {
+            s.Write(d.File, "EDITED", Name);
+            return true;
+        }
+    }
+
+    [TestMethod]
+    public void Run_RevertsRuleEdits_AndDoesNotThrow_WhenTheRebuildThrowsAnything()
+    {
+        Exception[] failures =
+        [
+            new InvalidOperationException(@"C:\secret\path.cs"),
+            new IOException(@"C:\secret\path.cs"),
+            new OperationCanceledException(),
+        ];
+
+        foreach (var failure in failures)
+        {
+            var root = FixTestSupport.TempProject();
+            var file = FixTestSupport.Write(root, "A.cs", "BAD");
+            var original = Bytes(file);
+            var red = FixTestSupport.Result(Err(file, 1, "CS0001"));
+
+            var outcome = new BuildFixLoop([new StripBad()], null).Run(root, red, () => throw failure);
+
+            Assert.IsFalse(outcome.Green);
+            CollectionAssert.AreEqual(original, Bytes(file));
+            Assert.IsTrue(outcome.Edits.All(e => e.Reverted));
+            Assert.IsTrue(
+                outcome.Notes.Any(n => n.Contains("rebuild") && n.Contains("reverted") && n.Contains(failure.GetType().Name)),
+                failure.GetType().Name);
+            Assert.IsFalse(outcome.Notes.Any(n => n.Contains("secret")));
+            Assert.HasCount(1, outcome.Remaining);
+        }
+    }
+
+    [TestMethod]
+    public void Run_RevertsAiEdits_AndDoesNotThrow_WhenTheRebuildThrowsAnything()
+    {
+        var root = FixTestSupport.TempProject();
+        var file = FixTestSupport.Write(root, "A.cs", "int a = 1\n");
+        var original = Bytes(file);
+        var red = FixTestSupport.Result(Err(file, 1, "CS1002"));
+
+        var outcome = new BuildFixLoop([], new FakeAi((d, ex) => "int a = 1;"))
+            .Run(root, red, () => throw new InvalidOperationException("x"));
+
+        CollectionAssert.AreEqual(original, Bytes(file));
+        Assert.IsTrue(outcome.Edits.All(e => e.Reverted));
+        Assert.IsTrue(outcome.Notes.Any(n => n.Contains("rebuild") && n.Contains("InvalidOperationException")));
+    }
+
+    [TestMethod]
+    public void Run_NamesAFileThatCouldNotBeRestored_AndStillRestoresTheOthers()
+    {
+        var root = FixTestSupport.TempProject();
+        var a = FixTestSupport.Write(root, "A.cs", "aaa");
+        var b = FixTestSupport.Write(root, Path.Combine("Sub", "B.cs"), "bbb");
+        var origA = Bytes(a);
+        var red = FixTestSupport.Result(Err(a, 1, "CS0001") + "\n" + Err(b, 1, "CS0001"));
+        FileStream? held = null;
+        FixOutcome outcome;
+
+        try
+        {
+            outcome = new BuildFixLoop([new EditNamedFile()], null).Run(root, red, () =>
+            {
+                held = new FileStream(b, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+                throw new IOException("boom");
+            });
+        }
+        finally
+        {
+            held?.Dispose();
+        }
+
+        CollectionAssert.AreEqual(origA, Bytes(a));
+        Assert.AreEqual("EDITED", File.ReadAllText(b));
+        Assert.IsTrue(outcome.Notes.Any(n => n.Contains(Path.Combine("Sub", "B.cs")) && n.Contains("not restored")));
+        Assert.IsTrue(outcome.Edits.Single(e => e.File == a).Reverted);
+        Assert.IsFalse(outcome.Edits.Single(e => e.File == b).Reverted);
+    }
+
+    [TestMethod]
+    public void Run_NeverAsksTheAi_AboutAFileUnderObjBinOrCodegen()
+    {
+        foreach (var folder in new[] { "obj", "bin", ".codegen", "OBJ", Path.Combine("Sub", "Bin", "Debug") })
+        {
+            var root = FixTestSupport.TempProject();
+            var file = FixTestSupport.Write(root, Path.Combine(folder, "G.cs"), "int a = 1\n");
+            var original = Bytes(file);
+            var red = FixTestSupport.Result(Err(file, 1, "CS1002"));
+            var ai = new FakeAi((d, ex) => "int a = 1;");
+            var rebuilt = false;
+
+            var outcome = new BuildFixLoop([], ai).Run(root, red, () => { rebuilt = true; return Green; });
+
+            Assert.AreEqual(0, ai.Asks, folder);
+            Assert.IsFalse(rebuilt, folder);
+            CollectionAssert.AreEqual(original, Bytes(file), folder);
+            Assert.HasCount(0, outcome.Edits);
+            Assert.IsTrue(outcome.Notes.Any(n => n.Contains("Skipped")), folder);
+        }
+    }
+
+    [TestMethod]
+    public void Run_NeverLetsARuleEditAFileUnderObj()
+    {
+        var root = FixTestSupport.TempProject();
+        var file = FixTestSupport.Write(root, Path.Combine("obj", "Debug", "G.cs"), "keep");
+        var red = FixTestSupport.Result(Err(file, 1, "CS0001"));
+
+        var outcome = new BuildFixLoop([new EditNamedFile()], null).Run(root, red, () => red);
+
+        Assert.AreEqual("keep", File.ReadAllText(file));
+        Assert.HasCount(0, outcome.Edits);
+    }
+
+    [TestMethod]
+    public void Run_NeverLetsARuleEditAFileOutsideTheProject_AndKeepsTheOtherRuleFixes()
+    {
+        var root = FixTestSupport.TempProject();
+        var outside = FixTestSupport.Write(FixTestSupport.TempProject(), "B.cs", "BAD");
+        var inside = FixTestSupport.Write(root, "A.cs", "BAD");
+        var red = FixTestSupport.Result(Err(outside, 1, "CS0001") + "\n" + Err(inside, 1, "CS0001"));
+
+        var outcome = new BuildFixLoop([new StripBad()], null).Run(root, red, () => Green);
+
+        Assert.AreEqual("BAD", File.ReadAllText(outside));
+        Assert.AreEqual("", File.ReadAllText(inside));
+        Assert.IsTrue(outcome.Green);
+    }
+
+    [TestMethod]
+    public void Run_UndoesAPartialAiRound_WhenALaterWriteFails()
+    {
+        var root = FixTestSupport.TempProject();
+        var a = FixTestSupport.Write(root, "A.cs", "int a = 1\n");
+        var b = FixTestSupport.Write(root, "B.cs", "int b = 1\n");
+        var origA = Bytes(a);
+        var origB = Bytes(b);
+        File.SetAttributes(b, FileAttributes.ReadOnly);
+        var red = FixTestSupport.Result(Err(a, 1, "CS1002") + "\n" + Err(b, 1, "CS1002"));
+        var rebuilt = false;
+        FixOutcome outcome;
+
+        try
+        {
+            outcome = new BuildFixLoop([], new FakeAi((d, ex) => ex + ";"))
+                .Run(root, red, () => { rebuilt = true; return Green; });
+        }
+        finally
+        {
+            File.SetAttributes(b, FileAttributes.Normal);
+        }
+
+        CollectionAssert.AreEqual(origA, Bytes(a));
+        CollectionAssert.AreEqual(origB, Bytes(b));
+        Assert.IsFalse(rebuilt);
+        Assert.IsTrue(outcome.Edits.All(e => e.Reverted));
+        Assert.IsFalse(outcome.Green);
+    }
+
+    [TestMethod]
+    public void Run_UndoesTheHalfEditOfARuleThatWroteAndSaidNo_ButKeepsTheOtherRuleFix()
+    {
+        var root = FixTestSupport.TempProject();
+        var a = FixTestSupport.Write(root, "A.cs", "BAD");
+        var b = FixTestSupport.Write(root, "B.cs", "int b = 1\n");
+        var origB = Bytes(b);
+        var red = FixTestSupport.Result(Err(a, 1, "CS0001") + "\n" + Err(b, 1, "CS0002"));
+        var ai = new FakeAi((d, ex) => "never");
+
+        var outcome = new BuildFixLoop([new StripBad(), new WriteThenFalse()], ai).Run(root, red, () => Green);
+
+        Assert.AreEqual("", File.ReadAllText(a));
+        CollectionAssert.AreEqual(origB, Bytes(b));
+        Assert.AreEqual(0, ai.Asks);
+        Assert.IsTrue(outcome.Green);
+        Assert.IsTrue(outcome.Edits.Single(e => e.File == b).Reverted);
+        Assert.IsFalse(outcome.Edits.Single(e => e.File == a).Reverted);
+    }
+
+    [TestMethod]
+    public void Run_UndoesTheHalfEditOfARuleThatThrew_ButKeepsTheOtherRuleFix()
+    {
+        var root = FixTestSupport.TempProject();
+        var a = FixTestSupport.Write(root, "A.cs", "BAD");
+        var b = FixTestSupport.Write(root, "B.cs", "int b = 1\n");
+        var origB = Bytes(b);
+        var red = FixTestSupport.Result(Err(b, 1, "CS0002") + "\n" + Err(a, 1, "CS0001"));
+
+        var outcome = new BuildFixLoop([new StripBad(), new WriteThenThrow()], null).Run(root, red, () => Green);
+
+        Assert.AreEqual("", File.ReadAllText(a));
+        CollectionAssert.AreEqual(origB, Bytes(b));
+        Assert.IsTrue(outcome.Green);
+    }
+
+    [TestMethod]
+    public void Run_RevertsOnlyRoundTwo_WhenRoundOneEditsWereGood()
+    {
+        var root = FixTestSupport.TempProject();
+        var a = FixTestSupport.Write(root, "A.cs", "BAD");
+        var b = FixTestSupport.Write(root, "B.cs", "int b = 1\n");
+        var origB = Bytes(b);
+        var first = FixTestSupport.Result(Err(a, 1, "CS0001") + "\n" + Err(b, 1, "CS1002"));
+        var second = FixTestSupport.Result(Err(b, 1, "CS1002"));
+        var worse = FixTestSupport.Result(Err(b, 1, "CS1002") + "\n" + Err(b, 2, "CS0103"));
+        var builds = new Queue<ProcessResult>([second, worse]);
+
+        var outcome = new BuildFixLoop([new StripBad()], new FakeAi((d, ex) => "int b = 2; // x"))
+            .Run(root, first, () => builds.Dequeue());
+
+        Assert.AreEqual(2, outcome.Rounds);
+        Assert.AreEqual("", File.ReadAllText(a));
+        CollectionAssert.AreEqual(origB, Bytes(b));
+        Assert.IsFalse(outcome.Edits.Single(e => e.Round == 1).Reverted);
+        Assert.IsTrue(outcome.Edits.Single(e => e.Round == 2).Reverted);
+        Assert.HasCount(1, outcome.Remaining);
+    }
+
+    [TestMethod]
+    public void Run_SkipsADiagnosticPastTheEndOfTheFile()
+    {
+        var root = FixTestSupport.TempProject();
+        var file = FixTestSupport.Write(root, "A.cs", "int a\n");
+        var original = Bytes(file);
+        var red = FixTestSupport.Result(Err(file, 99, "CS1002"));
+        var ai = new FakeAi((d, ex) => "x");
+
+        var outcome = new BuildFixLoop([], ai).Run(root, red, () => red);
+
+        Assert.AreEqual(0, ai.Asks);
+        CollectionAssert.AreEqual(original, Bytes(file));
+        Assert.HasCount(0, outcome.Edits);
+    }
+
+    [TestMethod]
+    public void Run_FixesASingleLineFileWithNoLineEnding()
+    {
+        var root = FixTestSupport.TempProject();
+        var file = FixTestSupport.Write(root, "A.cs", "int a = 1");
+        var red = FixTestSupport.Result(Err(file, 1, "CS1002"));
+
+        new BuildFixLoop([], new FakeAi((d, ex) => "int a = 1;")).Run(root, red, () => Green);
+
+        CollectionAssert.AreEqual(Encoding.UTF8.GetBytes("int a = 1;"), Bytes(file));
+    }
+
+    [TestMethod]
+    public void Run_HandlesAnEmptyFile()
+    {
+        var root = FixTestSupport.TempProject();
+        var file = FixTestSupport.Write(root, "A.cs", "");
+        var red = FixTestSupport.Result(Err(file, 1, "CS8803"));
+
+        var outcome = new BuildFixLoop([], new FakeAi((d, ex) => "class A { }")).Run(root, red, () => Green);
+
+        Assert.IsTrue(outcome.Green);
+        Assert.AreEqual("class A { }", File.ReadAllText(file));
+    }
+
+    [TestMethod]
+    public void Run_KeepsTheBomOfAFileTheAiEdits()
+    {
+        var root = FixTestSupport.TempProject();
+        var file = Path.Combine(root, "A.cs");
+        File.WriteAllBytes(file, [0xEF, 0xBB, 0xBF, .. Encoding.UTF8.GetBytes("int a = 1\r\n")]);
+        var red = FixTestSupport.Result(Err(file, 1, "CS1002"));
+
+        new BuildFixLoop([], new FakeAi((d, ex) => "int a = 1;")).Run(root, red, () => Green);
+
+        byte[] expected = [0xEF, 0xBB, 0xBF, .. Encoding.UTF8.GetBytes("int a = 1;\r\n")];
+        CollectionAssert.AreEqual(expected, Bytes(file));
+    }
 }

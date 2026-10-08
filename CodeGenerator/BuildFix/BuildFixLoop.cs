@@ -1,4 +1,3 @@
-using System.ComponentModel;
 using System.Text.RegularExpressions;
 using CodeGenerationEngine.Helper;
 using CodeGenerator.App;
@@ -60,13 +59,6 @@ internal sealed class BuildFixLoop(IReadOnlyList<IBuildFixRule> rules, IBuildFix
 
             if (ruleFixes.Count == 0)
             {
-                // A rule that wrote and then failed, or wrote and said "no", has left a half edit.
-                if (session.Edits.Any(e => e.Round == rounds && !e.Reverted))
-                {
-                    session.RevertRound(rounds);
-                    notes.Add("A fix rule changed a file without finishing, so its change was reverted.");
-                }
-
                 if (ai is null)
                 {
                     notes.Add("No local AI is set up, so only the fix rules ran.");
@@ -81,7 +73,7 @@ internal sealed class BuildFixLoop(IReadOnlyList<IBuildFixRule> rules, IBuildFix
                     break;
                 }
 
-                var aiEdits = ApplyAi(diagnostics, session, progress);
+                var aiEdits = ApplyAi(diagnostics, session, progress, notes);
 
                 if (aiEdits == 0)
                 {
@@ -102,18 +94,11 @@ internal sealed class BuildFixLoop(IReadOnlyList<IBuildFixRule> rules, IBuildFix
                 progress("Building again");
                 build = rebuild();
             }
-            catch (Win32Exception)
+            catch (Exception ex) when (ex is not OutOfMemoryException)
             {
-                if (aiRound)
-                {
-                    session.RevertRound(rounds);
-                    notes.Add("Could not start dotnet to build again, so the AI edits could not be checked and were reverted.");
-                }
-                else
-                {
-                    notes.Add("Could not start dotnet to build again, so the rule fixes were not checked.");
-                }
-
+                // Edits that no build has checked are not kept, whoever made them.
+                Revert(session, rounds, notes);
+                notes.Add($"The rebuild with dotnet failed ({ex.GetType().Name}), so round {rounds} was reverted: its edits could not be checked.");
                 break;
             }
 
@@ -126,7 +111,7 @@ internal sealed class BuildFixLoop(IReadOnlyList<IBuildFixRule> rules, IBuildFix
 
             if (verdict is not null)
             {
-                session.RevertRound(rounds);
+                Revert(session, rounds, notes);
                 notes.Add($"Round {rounds} was reverted: {verdict}");
                 build = before;
                 diagnostics = beforeDiagnostics;
@@ -144,6 +129,12 @@ internal sealed class BuildFixLoop(IReadOnlyList<IBuildFixRule> rules, IBuildFix
             notes.Add($"Stopped after {MaxRounds} rounds; {diagnostics.Count} error(s) remain.");
 
         return new FixOutcome(green, rounds, session.Edits, diagnostics, notes, build);
+    }
+
+    private static void Revert(FixSession session, int round, List<string> notes)
+    {
+        foreach (var file in session.RevertRound(round))
+            notes.Add($"{file} was not restored; check it by hand.");
     }
 
     /// <summary>Why a round made things worse, or null when it did not.</summary>
@@ -187,26 +178,45 @@ internal sealed class BuildFixLoop(IReadOnlyList<IBuildFixRule> rules, IBuildFix
         foreach (var d in diagnostics)
             foreach (var rule in rules)
             {
+                var mark = session.Mark();
+
                 try
                 {
-                    if (!rule.Fix(d, session))
-                        continue;
+                    if (rule.Fix(d, session))
+                    {
+                        fixedBy.Add(rule.Name);
+                        progress($"Fixed {d.Code} ({rule.Name})");
+                        break;
+                    }
 
-                    fixedBy.Add(rule.Name);
-                    progress($"Fixed {d.Code} ({rule.Name})");
-                    break;
+                    UndoHalfEdit(session, mark, rule, notes);
                 }
                 catch (Exception ex) when (ex is not OutOfMemoryException)
                 {
                     // A rule that cannot do its job safely is skipped, not allowed to stop the loop.
                     notes.Add($"The rule {rule.Name} failed on {d.Code} ({ex.GetType().Name}) and was skipped.");
+                    UndoHalfEdit(session, mark, rule, notes);
                 }
             }
 
         return fixedBy;
     }
 
-    private int ApplyAi(IReadOnlyList<BuildDiagnostic> diagnostics, FixSession session, Action<string> progress)
+    /// <summary>A rule that wrote and then failed, or wrote and said "no", must leave no edit behind.</summary>
+    private static void UndoHalfEdit(FixSession session, int mark, IBuildFixRule rule, List<string> notes)
+    {
+        if (session.Mark() == mark)
+            return;
+
+        var failed = session.UndoSince(mark);
+        notes.Add($"The rule {rule.Name} changed a file without finishing, so its change was reverted.");
+
+        foreach (var file in failed)
+            notes.Add($"{file} was not restored; check it by hand.");
+    }
+
+    private int ApplyAi(
+        IReadOnlyList<BuildDiagnostic> diagnostics, FixSession session, Action<string> progress, List<string> notes)
     {
         var applied = 0;
         var asked = 0;
@@ -223,12 +233,20 @@ internal sealed class BuildFixLoop(IReadOnlyList<IBuildFixRule> rules, IBuildFix
                 || !d.File.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
                 continue;
 
+            // Never the model's business: files outside the project, and build or tool output.
+            if (!session.IsEditable(d.File))
+            {
+                notes.Add($"Skipped {d.Code}: its file is outside the project or in an obj, bin or .codegen folder.");
+                continue;
+            }
+
             string text;
             try
             {
                 text = session.Read(d.File);
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException
+                or ArgumentException or NotSupportedException)
             {
                 continue;
             }
@@ -289,8 +307,13 @@ internal sealed class BuildFixLoop(IReadOnlyList<IBuildFixRule> rules, IBuildFix
                 edited.Add(d.File);
                 applied++;
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException
+                or ArgumentException or NotSupportedException)
             {
+                // A half-finished round is worse than none: undo what this round wrote and stop.
+                Revert(session, session.CurrentRound, notes);
+                notes.Add($"Writing an AI edit for {d.Code} failed ({ex.GetType().Name}), so the AI edits of this round were reverted.");
+                return 0;
             }
         }
 

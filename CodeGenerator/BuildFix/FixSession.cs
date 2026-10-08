@@ -19,6 +19,7 @@ internal sealed class FixSession
     private readonly string _backupRoot;
     private readonly Dictionary<int, Dictionary<string, string>> _backups = [];
     private readonly List<FixEdit> _edits = [];
+    private readonly List<byte[]> _before = [];
     private int _round;
     private bool _roundStarted;
 
@@ -30,6 +31,8 @@ internal sealed class FixSession
     }
 
     public string Root { get; }
+
+    public int CurrentRound => _round;
 
     public IReadOnlyList<FixEdit> Edits => _edits;
 
@@ -59,6 +62,10 @@ internal sealed class FixSession
             throw new InvalidOperationException("Call BeginRound first");
 
         var full = Guard(path);
+
+        if (InGeneratedFolder(full))
+            throw new InvalidOperationException($"Refusing to edit '{Relative(full)}': it is in a build or tool folder.");
+
         var old = File.ReadAllBytes(full);
 
         var backups = _backups[_round];
@@ -72,16 +79,88 @@ internal sealed class FixSession
 
         File.WriteAllText(full, text, new UTF8Encoding(HasBom(old)));
         _edits.Add(new FixEdit(full, by, _round));
+        _before.Add(old);
     }
 
-    public void RevertRound(int round)
+    /// <summary>True when a fix may edit this file: inside the project, and not under obj, bin or .codegen.</summary>
+    public bool IsEditable(string path)
     {
+        try
+        {
+            var full = Path.GetFullPath(path);
+            return full.StartsWith(Root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+                && !InGeneratedFolder(full);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>The number of edits so far; pass it to <see cref="UndoSince"/>.</summary>
+    public int Mark() => _edits.Count;
+
+    /// <summary>
+    /// Puts back what each edit made after <paramref name="mark"/> replaced, newest first.
+    /// Returns the relative paths that could not be restored.
+    /// </summary>
+    public IReadOnlyList<string> UndoSince(int mark)
+    {
+        var failed = new List<string>();
+
+        for (var i = _edits.Count - 1; i >= mark; i--)
+        {
+            if (_edits[i].Reverted)
+                continue;
+
+            try
+            {
+                File.WriteAllBytes(_edits[i].File, _before[i]);
+                _edits[i].Reverted = true;
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                failed.Add(Relative(_edits[i].File));
+            }
+        }
+
+        return failed.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    /// <summary>
+    /// Restores every file the round changed. One file that cannot be restored does not stop the
+    /// others; it is returned (relative path) and its edits stay marked as not reverted.
+    /// </summary>
+    public IReadOnlyList<string> RevertRound(int round)
+    {
+        var failed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
         if (_backups.TryGetValue(round, out var backups))
             foreach (var (file, bak) in backups)
-                File.WriteAllBytes(file, File.ReadAllBytes(bak));
+            {
+                try
+                {
+                    File.WriteAllBytes(file, File.ReadAllBytes(bak));
+                }
+                catch (Exception ex) when (ex is not OutOfMemoryException)
+                {
+                    failed.Add(file);
+                }
+            }
 
-        foreach (var edit in _edits.Where(e => e.Round == round))
+        foreach (var edit in _edits.Where(e => e.Round == round && !failed.Contains(e.File)))
             edit.Reverted = true;
+
+        return failed.Select(Relative).ToList();
+    }
+
+    private bool InGeneratedFolder(string full)
+    {
+        var parts = Path.GetRelativePath(Root, full).Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+        return parts[..^1].Any(p => p.Equals("obj", StringComparison.OrdinalIgnoreCase)
+            || p.Equals("bin", StringComparison.OrdinalIgnoreCase)
+            || p.Equals(".codegen", StringComparison.OrdinalIgnoreCase));
     }
 
     private string Guard(string path)
