@@ -1614,3 +1614,65 @@ body:has(.finished) #components-reconnect-modal { display: none; }
 .stage-help-close { color: var(--muted); margin-top: var(--space-4, 1.25rem); }
 .stage-help-list, .stage-help-steps { padding-left: 1.4rem; }
 .stage-help-list li, .stage-help-steps li { margin: 0.3rem 0; line-height: 1.45; }
+
+/* Home polish: a title with an accent bar, a one-line promise under it, a roomier panel and a
+   text box that invites typing. Colours come from the theme tokens only, so every theme follows. */
+.workflow > h1 {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin: 0;
+    font-size: 1.75rem;
+    letter-spacing: -0.01em;
+}
+
+.workflow > h1::before {
+    content: "";
+    width: 5px;
+    height: 1.6rem;
+    border-radius: 3px;
+    background: linear-gradient(180deg, var(--accent), var(--accent-ink));
+}
+
+.workflow > .tagline {
+    grid-column: 1 / -1;
+    margin: -1.1rem 0 var(--space-2);
+    padding-bottom: var(--space-4);
+    border-bottom: 1px solid var(--line-soft);
+    color: var(--muted);
+    font-size: 1rem;
+}
+
+.panel {
+    padding: 1.75rem 2rem;
+    border-radius: var(--radius);
+    border-top: 3px solid var(--accent);
+}
+
+.panel > h2 {
+    margin: 0 0 var(--space-4);
+    font-size: 1.3rem;
+    letter-spacing: -0.01em;
+}
+
+.panel textarea.answer {
+    max-width: none;
+    padding: 0.75rem 0.9rem;
+    border-radius: var(--radius-sm);
+    line-height: 1.5;
+    box-shadow: var(--lift-sunk);
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.panel textarea.answer::placeholder { color: var(--faint); }
+
+.panel textarea.answer:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-wash);
+}
+
+@media (max-width: 600px) {
+    .workflow > h1 { font-size: 1.4rem; }
+    .panel { padding: 1.25rem 1rem; }
+}
