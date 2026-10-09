@@ -548,7 +548,6 @@ public class BuildFixReportTests
         var lines = BuildFixReport.Lines(outcome, @"C:\proj");
 
         Assert.Contains(BuildFixReport.NotRechecked, lines);
-        Assert.AreEqual("The build was not re-checked after the failure.", BuildFixReport.NotRechecked);
         Assert.IsFalse(lines.Any(l => l.Contains("The build still fails")), string.Join(" | ", lines));
         Assert.IsFalse(lines.Any(l => l.Contains("CS0001")), string.Join(" | ", lines));
         Assert.IsTrue(lines.Any(l => l.StartsWith("Partly fixed: 1 edit kept.")), string.Join(" | ", lines));

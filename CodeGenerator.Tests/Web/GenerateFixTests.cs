@@ -141,7 +141,7 @@ public class GenerateFixTests
             () => StringAssert.Contains(FixReport(page.Cut), BuildFixReport.NotRechecked), TimeSpan.FromSeconds(30));
 
         Assert.AreSame(before, page.Session.Generated, "the old errors are not stored as the current build");
-        Assert.IsFalse(FixReport(page.Cut).Contains("The build still fails"));
+        Assert.DoesNotContain("The build still fails", FixReport(page.Cut));
         Assert.HasCount(1, page.Cut.FindAll(".fix-stale"));
         Assert.HasCount(1, page.Cut.FindAll("button.fix-yes"), "the user can try again");
         Assert.AreEqual(1, build.Calls);
