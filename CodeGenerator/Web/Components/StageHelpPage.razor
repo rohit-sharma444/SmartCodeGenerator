@@ -1,0 +1,67 @@
+@* Static on purpose, with no render mode: a page that opens no circuit is not counted by
+   CircuitWatch, so this tab can be opened and closed beside the workflow without keeping the
+   console waiting or ending the build. It is opened in a new tab for the same reason - the
+   workflow page keeps its state. *@
+@page "/help/{Stage}"
+@using CodeGenerator.Web.Workflow
+
+@if (_stage is { } stage)
+{
+    var node = StageGraph.Nodes.First(n => n.Stage == stage);
+    var help = StageHelp.For(stage);
+
+    <PageTitle>Help: @node.Title</PageTitle>
+
+    <main class="workflow stage-help-page">
+        <h1>@node.Title</h1>
+        <p class="stage-help-summary">@help.Summary</p>
+
+        @foreach (var section in help.Sections)
+        {
+            <section class="stage-help-section">
+                <h2>@section.Heading</h2>
+                @if (section.Numbered)
+                {
+                    <ol class="stage-help-steps">
+                        @foreach (var item in section.Items)
+                        {
+                            <li>@item</li>
+                        }
+                    </ol>
+                }
+                else
+                {
+                    <ul class="stage-help-list">
+                        @foreach (var item in section.Items)
+                        {
+                            <li>@item</li>
+                        }
+                    </ul>
+                }
+            </section>
+        }
+
+        <h2>What comes next</h2>
+        <p class="stage-help-next">@help.Next</p>
+
+        <p class="stage-help-close">You can close this tab. Your build is open in the other tab.</p>
+    </main>
+}
+else
+{
+    <PageTitle>Help</PageTitle>
+
+    <main class="workflow stage-help-page">
+        <h1>Help</h1>
+        <p class="stage-help-missing">There is no stage with the name "@Stage".</p>
+    </main>
+}
+
+@code {
+    [Parameter]
+    public string? Stage { get; set; }
+
+    private BuildStage? _stage;
+
+    protected override void OnParametersSet() => _stage = StageHelp.Parse(Stage);
+}

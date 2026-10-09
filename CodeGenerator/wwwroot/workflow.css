@@ -1580,3 +1580,37 @@ body:has(.finished) #components-reconnect-modal { display: none; }
 
     .stage-node + .stage-node::before { display: none; }
 }
+
+/* The help icon on each stage box. A sibling of the box button, pinned to the top right, so it is
+   one click on any box - including one not reached yet, which can be read about in advance. */
+.stage-node .stage-help {
+    position: absolute;
+    top: var(--space-2);
+    right: var(--space-2);
+    width: 16px;
+    height: 16px;
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--line);
+    border-radius: 50%;
+    font-size: 0.7em;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--muted);
+    background: var(--surface);
+    text-decoration: none;
+}
+
+.stage-node .stage-help:hover,
+.stage-node .stage-help:focus-visible {
+    color: var(--accent-ink);
+    border-color: var(--accent);
+    background: var(--accent-wash);
+}
+
+.workflow.stage-help-page { display: block; max-width: 42rem; }
+.stage-help-page h2 { font-size: 1.05em; margin-top: var(--space-4, 1.25rem); }
+.stage-help-summary { font-size: 1.05em; }
+.stage-help-close { color: var(--muted); margin-top: var(--space-4, 1.25rem); }
+.stage-help-list, .stage-help-steps { padding-left: 1.4rem; }
+.stage-help-list li, .stage-help-steps li { margin: 0.3rem 0; line-height: 1.45; }

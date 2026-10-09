@@ -78,6 +78,11 @@
                     }
                 </div>
             }
+
+            @* A sibling of the box, not inside it: a link in a button is not valid markup, and
+               the box is a button in two of its three forms. A new tab, so the build stays open. *@
+            <a class="stage-help" href="@StageHelp.AddressOf(stage)" target="_blank" rel="noopener"
+               aria-label="Help for @node.Title" title="Help for @node.Title">?</a>
         </li>
     }
 </ol>
