@@ -1,10 +1,14 @@
 @* The root component. Self-contained on purpose: no CDN, no external font. *@
+@using Microsoft.AspNetCore.Http
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SmartCodeGenerator</title>
+    @if (!IsStaticHelp)
+    {
+        <title>SmartCodeGenerator</title>
+    }
     <base href="/" />
     <link rel="stylesheet" href="workflow.css" />
     <link rel="stylesheet" href="chat.css" />
@@ -12,7 +16,11 @@
        updates arrive on the interactive circuit. A statically rendered outlet never hears them —
        the tab kept the title below for the whole run, which no unit test can see, because the
        component IS rendered and IS handed its content either way. *@
-    <HeadOutlet @rendermode="InteractiveServer" />
+    @* Except on a help page. That page has no render mode, so it opens no circuit (see
+       StageHelpPage), and an interactive outlet never hears a static page's PageTitle: the tab
+       kept the fixed title. A static outlet there writes the page's own title into the response,
+       and the fixed title above is left out so the two cannot both be in the head. *@
+    <HeadOutlet @rendermode="HeadMode" />
 </head>
 <body>
     <Routes />
@@ -62,3 +70,12 @@
     <script src="_framework/blazor.web.js"></script>
 </body>
 </html>
+
+@code {
+    [CascadingParameter] private HttpContext? HttpContext { get; set; }
+
+    private bool IsStaticHelp
+        => HttpContext?.Request.Path.StartsWithSegments("/help") == true;
+
+    private IComponentRenderMode? HeadMode => IsStaticHelp ? null : InteractiveServer;
+}
