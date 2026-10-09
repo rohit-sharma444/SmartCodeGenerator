@@ -16,13 +16,30 @@
         <h1>@node.Title</h1>
         <p class="stage-help-summary">@help.Summary</p>
 
-        <h2>What to do</h2>
-        <ol class="stage-help-steps">
-            @foreach (var step in help.Steps)
-            {
-                <li>@step</li>
-            }
-        </ol>
+        @foreach (var section in help.Sections)
+        {
+            <section class="stage-help-section">
+                <h2>@section.Heading</h2>
+                @if (section.Numbered)
+                {
+                    <ol class="stage-help-steps">
+                        @foreach (var item in section.Items)
+                        {
+                            <li>@item</li>
+                        }
+                    </ol>
+                }
+                else
+                {
+                    <ul class="stage-help-list">
+                        @foreach (var item in section.Items)
+                        {
+                            <li>@item</li>
+                        }
+                    </ul>
+                }
+            </section>
+        }
 
         <h2>What comes next</h2>
         <p class="stage-help-next">@help.Next</p>

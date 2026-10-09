@@ -19,7 +19,13 @@ public class StageHelpTests
             var help = StageHelp.For(stage);
 
             Assert.IsFalse(string.IsNullOrWhiteSpace(help.Summary), $"{stage} has no summary");
-            Assert.IsNotEmpty(help.Steps, $"{stage} has no steps");
+            Assert.IsGreaterThanOrEqualTo(3, help.Sections.Count, $"{stage} has too few sections");
+            Assert.IsTrue(help.Sections.Any(x => x.Numbered), $"{stage} has no numbered steps");
+            foreach (var section in help.Sections)
+            {
+                Assert.IsFalse(string.IsNullOrWhiteSpace(section.Heading), $"{stage} has a section with no heading");
+                Assert.IsNotEmpty(section.Items, $"{stage}: {section.Heading} is empty");
+            }
             Assert.IsFalse(string.IsNullOrWhiteSpace(help.Next), $"{stage} has no next");
         }
     }
@@ -63,6 +69,12 @@ public class StageHelpTests
 
         StringAssert.Contains(rendered.Markup, StageGraph.Nodes.First(n => n.Stage == BuildStage.Data).Title);
         StringAssert.Contains(rendered.Markup, StageHelp.For(BuildStage.Data).Summary);
+
+        // Every section reaches the page, not only the first.
+        foreach (var section in StageHelp.For(BuildStage.Data).Sections)
+            Assert.IsTrue(
+                rendered.FindAll("h2").Any(h => h.TextContent == section.Heading),
+                $"the page lacks the section {section.Heading}");
     }
 
     [TestMethod]

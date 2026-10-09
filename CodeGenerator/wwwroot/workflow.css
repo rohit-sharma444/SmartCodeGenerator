@@ -1612,3 +1612,5 @@ body:has(.finished) #components-reconnect-modal { display: none; }
 .stage-help-page h2 { font-size: 1.05em; margin-top: var(--space-4, 1.25rem); }
 .stage-help-summary { font-size: 1.05em; }
 .stage-help-close { color: var(--muted); margin-top: var(--space-4, 1.25rem); }
+.stage-help-list, .stage-help-steps { padding-left: 1.4rem; }
+.stage-help-list li, .stage-help-steps li { margin: 0.3rem 0; line-height: 1.45; }
