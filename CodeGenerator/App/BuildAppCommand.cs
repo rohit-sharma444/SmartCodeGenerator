@@ -1204,6 +1204,10 @@ internal sealed class BuildAppCommand
 
         Console.WriteLine("");
 
+        // A red build the user can act on: offer to fix it, and carry on with the rebuilt result.
+        // Everything below (run offer, the app's output) reads `result`, so it must be the rebuild.
+        result = Rebuilt(result, ShouldOfferFix(result) ? OfferToFix(scaffold, result) : null);
+
         // Nothing to offer for a class library, and nothing worth starting from a red build.
         if (!BuildReport.Succeeded(result)
             || target.ProjectType == DotNetProjectType.ClassLibrary)
@@ -1229,6 +1233,89 @@ internal sealed class BuildAppCommand
             OpenWhenListening(scaffold.ProjectPath);
 
         Console.WriteLine("");
+    }
+
+    /// <summary>A failed build that finished (a timed-out one has no errors worth reading) is worth offering a fix for.</summary>
+    internal static bool ShouldOfferFix(ProcessResult result)
+        => !BuildReport.Succeeded(result) && !result.TimedOut;
+
+    /// <summary>The build later steps must use: the rebuild when a fix ran, else the one they had.</summary>
+    internal static ProcessResult Rebuilt(ProcessResult current, ProcessResult? rebuilt)
+        => rebuilt ?? current;
+
+    /// <summary>
+    /// Asks whether to fix a failed build, and if so fixes it and rebuilds. Returns the last build, or
+    /// null when the user said no, there was nothing parsable to fix, or something went wrong.
+    /// </summary>
+    /// <remarks>
+    /// <paramref name="choose"/> and <paramref name="fixer"/> are seams: the console loop around this
+    /// cannot be driven from a test. It never throws: a failure here must not end the whole
+    /// <c>build app</c> command, so it says one plain line and returns null (the failed build stands).
+    /// Runs outside <c>CommandColour.Run</c> like the rest of <c>build app</c>, so the prompt is visible.
+    /// </remarks>
+    internal static ProcessResult? OfferToFix(
+        ScaffoldResult scaffold,
+        ProcessResult failed,
+        Func<string, IReadOnlyList<string>, int, int?>? choose = null,
+        CodeGenerator.BuildFix.IBuildFixer? fixer = null)
+    {
+        try
+        {
+            var errors = CodeGenerator.BuildFix.BuildDiagnostics.Parse(failed, scaffold.ProjectPath).Count;
+
+            if (errors == 0)
+                return null;
+
+            choose ??= SelectionPrompt.Choose;
+
+            var choice = choose(
+                CodeGenerator.BuildFix.BuildFixReport.Title(errors),
+                CodeGenerator.BuildFix.BuildFixReport.Options,
+                CodeGenerator.BuildFix.BuildFixReport.DefaultIndex);
+
+            if (!CodeGenerator.BuildFix.BuildFixReport.Accepted(choice))
+                return null;
+
+            fixer ??= new CodeGenerator.BuildFix.BuildFixer();
+
+            CodeGenerator.BuildFix.FixOutcome outcome;
+
+            // Spinner.Start already prints one plain line instead of animating when the console is
+            // redirected, so no extra gate is needed. Disposed on an exception by the using.
+            using (Spinner.Start("Fixing the build errors"))
+            {
+                // Ctrl+C ends the wait: the round being checked is undone and the report still prints.
+                outcome = fixer.Fix(
+                    scaffold.ProjectPath, failed,
+                    () => ProcessRunner.Run("dotnet", "build", scaffold.ProjectPath, BuildTimeout),
+                    _ => { },
+                    Interrupt.Token);
+            }
+
+            var lines = CodeGenerator.BuildFix.BuildFixReport.Lines(outcome, scaffold.ProjectPath);
+
+            for (var i = 0; i < lines.Count; i++)
+            {
+                if (i > 0)
+                    Console.WriteLine(lines[i]);
+                else if (outcome.Green)
+                    Output.Success(lines[i]);
+                else
+                    Output.Error(lines[i]);
+            }
+
+            Console.WriteLine("");
+
+            // A fix that stopped with no build to trust leaves the failed build as it was.
+            return outcome.BuildChecked ? outcome.LastBuild : null;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            Output.Warning($"The fix could not be offered ({ex.GetType().Name}); the build is left as it was.");
+            Console.WriteLine("");
+
+            return null;
+        }
     }
 
     /// <summary>

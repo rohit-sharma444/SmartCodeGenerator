@@ -31,8 +31,9 @@ internal static class BuildReport
     public static bool Succeeded(ProcessResult result)
         => result is { ExitCode: 0, TimedOut: false };
 
+    /// <param name="elapsed">How long this build took, or null when that is not known: the time is then left out.</param>
     public static IReadOnlyList<string> Lines(
-        ProcessResult result, TimeSpan elapsed, string projectPath)
+        ProcessResult result, TimeSpan? elapsed, string projectPath)
     {
         if (result.TimedOut)
         {
@@ -41,21 +42,21 @@ internal static class BuildReport
                 // Deliberately not "FAILED". Nothing is known to be wrong with the generated
                 // code; we simply stopped waiting, and telling the user their app does not
                 // compile on that evidence would be a lie.
-                $"Build timed out after {Elapsed(elapsed)} and was cancelled.",
+                elapsed is { } t ? $"Build timed out after {Elapsed(t)} and was cancelled." : "Build timed out and was cancelled.",
                 RerunLine(projectPath)
             ];
         }
 
         if (Succeeded(result))
-            return [$"Build succeeded ({Elapsed(elapsed)})"];
+            return [$"Build succeeded{Took(elapsed)}"];
 
         var errors = ErrorsIn(result, projectPath);
 
         var lines = new List<string>
         {
             errors.Count == 0
-                ? $"Build FAILED ({Elapsed(elapsed)})"
-                : $"Build FAILED ({Elapsed(elapsed)}) — {errors.Count} {Plural(errors.Count)}"
+                ? $"Build FAILED{Took(elapsed)}"
+                : $"Build FAILED{Took(elapsed)} — {errors.Count} {Plural(errors.Count)}"
         };
 
         lines.AddRange(errors.Take(MaxErrorsShown).Select(e => "  " + e));
@@ -67,6 +68,8 @@ internal static class BuildReport
 
         return lines;
     }
+
+    private static string Took(TimeSpan? elapsed) => elapsed is { } t ? $" ({Elapsed(t)})" : string.Empty;
 
     private static string RerunLine(string projectPath)
         => $"  Rerun with: dotnet build {projectPath}";

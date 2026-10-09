@@ -1002,6 +1002,44 @@ failed, because a project that does not yet compile still has seed data you may 
 scripted run does neither, so existing scripts are unchanged and no script is made slower by a compile it never
 asked for. The next-step lines are always printed.</p></div>
 
+<h3>When the build fails</h3>
+<p>When the build fails, the tool lists the compiler errors, then asks:</p>
+<pre>The build failed with 2 errors. Fix them?
+  Yes, fix them
+  No, leave them</pre>
+<p>The first choice, <strong>Yes, fix them</strong>, is the default, so pressing Enter accepts it. The same question
+appears on the Generate stage of the workflow page. Choose <strong>No, leave them</strong> and nothing is changed;
+the errors are listed as shown above. The question appears only straight after a build that you typed at the
+prompt or watched on the page. A piped or scripted run never builds, so it never asks.</p>
+<p>The fix works in rounds, and each round ends with a new <code>dotnet build</code> to check the result. Three
+rules run first. Each one repairs a known fault and touches nothing else:</p>
+<ul>
+<li><strong>Make the class partial.</strong> Error CS0260: a class is declared without <code>partial</code> beside
+a partial half of the same class, usually in a project made by an earlier version.</li>
+<li><strong>Update the empty validator stub.</strong> A <code>&lt;Class&gt;Validator.Custom.cs</code> file still has
+the old form of the <code>ValidateCustom</code> hook. It is changed only when the hook body is empty, so nothing
+you wrote is lost.</li>
+<li><strong>Remove the using for the missing Auth folder.</strong> An application made without login has no
+<code>Auth</code> folder, but a file still says <code>using &lt;Root&gt;.Auth;</code>.</li>
+</ul>
+<p>If no rule can fix anything in a round and the local AI (Ollama) is running, the tool asks it about the
+remaining errors, at most five in a round, and it changes a C# file only when the model's answer adds no syntax
+errors. If Ollama is not running, only the rules are used, and the report says so. The tool never starts it.</p>
+<p>A fix is kept only if it helps. A round is undone when it raises the number of errors, when it brings errors
+into a file that had none, or when the failed build can no longer be read. An AI round is undone also when it does
+not lower the number of errors. The tool stops when the build succeeds, when it cannot fix anything more, or after
+three rounds.</p>
+<p>The original of every file that is edited is copied first, under
+<code>.codegen\fix-backups\&lt;date-time&gt;\r&lt;round&gt;\&lt;number&gt;.bak</code>. The file
+<code>files.txt</code> in that folder says which backup belongs to which file. If one file was edited in more than
+one round, its true original is in the earliest round. The report ends with a list of what was edited, what was
+undone, and the errors that remain, for example:</p>
+<pre>Partly fixed: 1 edit kept.
+The build still fails: 1 error remains.
+  Edited Models\Order.cs: make the class partial
+  Models\Customer.cs(9,13): CS1002: ; expected</pre>
+<p>After a green rebuild, the normal <em>Run it now?</em> question follows.</p>
+
 <h3>Regenerating over an existing project</h3>
 <p>Running <code>build app</code> again against an existing project reuses it: generated sources are
 overwritten, but the project file and anything you have edited by hand are left in place.</p>
