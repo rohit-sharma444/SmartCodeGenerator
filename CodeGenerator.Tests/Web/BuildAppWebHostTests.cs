@@ -106,6 +106,34 @@ public class BuildAppWebHostTests
         StringAssert.Contains(html, "id=\"components-reconnect-modal\"");
     }
 
+    // The help page opens no circuit, so an interactive head outlet never hears its PageTitle and
+    // the tab kept the fixed title. No bUnit test can see it: the component is rendered and handed
+    // its title either way.
+    [TestMethod]
+    public async Task A_help_page_carries_its_own_tab_title()
+    {
+        using var host = Start(out _);
+        using var client = new HttpClient();
+        var uri = new Uri(host.Url);
+
+        var html = await client.GetStringAsync(
+            new Uri(uri, "/help/data" + uri.Query));
+
+        StringAssert.Contains(html, "<title>Help: Data</title>");
+        Assert.HasCount(1, System.Text.RegularExpressions.Regex.Matches(html, "<title"));
+    }
+
+    [TestMethod]
+    public async Task The_workflow_page_keeps_the_fixed_title_for_its_circuit_to_replace()
+    {
+        using var host = Start(out _);
+        using var client = new HttpClient();
+
+        var html = await client.GetStringAsync(host.Url);
+
+        StringAssert.Contains(html, "<title>SmartCodeGenerator</title>");
+    }
+
     // Any process on this machine can reach a loopback port, and this one writes files and runs
     // `dotnet`. The token is what makes that safe.
     [TestMethod]
