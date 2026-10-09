@@ -186,6 +186,57 @@ public class OllamaBuildFixAiTests
     }
 
     [TestMethod]
+    public void Propose_SaysItTimedOut_WhenTheDeadlineEndedTheWait()
+    {
+        var stub = new Stub(async (_, ct) =>
+        {
+            await Task.Delay(Timeout.Infinite, ct);
+            return Ok("```csharp\nint a = 1;\n```");
+        });
+        var ai = Make(stub, TimeSpan.FromMilliseconds(150));
+
+        Assert.IsFalse(ai.LastTimedOut);
+        Assert.IsNull(ai.Propose(Diag(), "int a = 1"));
+        Assert.IsTrue(ai.LastTimedOut);
+    }
+
+    [TestMethod]
+    public void Propose_ACancelledCallerToken_ReturnsNull_AndIsNotATimeout()
+    {
+        var ai = Make(new Stub(_ => Ok("```csharp\nint a = 1;\n```")), TimeSpan.FromMinutes(3));
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        Assert.IsNull(ai.Propose(Diag(), "int a = 2", cts.Token));
+        Assert.IsFalse(ai.LastTimedOut);
+    }
+
+    [TestMethod]
+    public void Propose_TheCallersToken_EndsAWaitingCall_AndIsNotATimeout()
+    {
+        using var cts = new CancellationTokenSource();
+        var stub = new Stub(async (_, ct) =>
+        {
+            cts.Cancel();
+            await Task.Delay(Timeout.Infinite, ct);
+            return Ok("```csharp\nint a = 1;\n```");
+        });
+        var ai = Make(stub, TimeSpan.FromMinutes(3));
+
+        Assert.IsNull(ai.Propose(Diag(), "int a = 2", cts.Token));
+        Assert.IsFalse(ai.LastTimedOut);
+    }
+
+    [TestMethod]
+    public void Propose_AServerError_IsNotATimeout()
+    {
+        var ai = Make(new Stub(_ => new HttpResponseMessage(HttpStatusCode.InternalServerError)));
+
+        Assert.IsNull(ai.Propose(Diag(), "int a = 1"));
+        Assert.IsFalse(ai.LastTimedOut);
+    }
+
+    [TestMethod]
     public void Propose_SendsTheErrorTheCodeAndTheConfiguredModel_Unstreamed()
     {
         var stub = new Stub(_ => Ok("```\nx\n```"));

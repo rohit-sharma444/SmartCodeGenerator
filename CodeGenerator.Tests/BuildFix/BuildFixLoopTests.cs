@@ -68,6 +68,288 @@ public class BuildFixLoopTests
 
     private static byte[] Bytes(string path) => File.ReadAllBytes(path);
 
+    private sealed class FakeClock
+    {
+        public DateTime Now = new(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        public Func<DateTime> Read => () => Now;
+    }
+
+    /// <summary>A model whose chosen asks time out: it says so the way the real client does.</summary>
+    private sealed class TimeoutAi(Func<BuildDiagnostic, string, string?> propose, Func<BuildDiagnostic, bool> timesOut) : IBuildFixAi
+    {
+        public int Asks;
+        public bool LastTimedOut { get; private set; }
+        public bool IsAvailable() => true;
+
+        public string? Propose(BuildDiagnostic d, string excerpt)
+        {
+            Asks++;
+            LastTimedOut = timesOut(d);
+
+            return LastTimedOut ? null : propose(d, excerpt);
+        }
+    }
+
+    /// <summary>A rule that edits the file, then lets the given action run (the clock moves, the user cancels).</summary>
+    private sealed class EditThen(Action then) : IBuildFixRule
+    {
+        public string Name => "edit-then";
+
+        public bool Fix(BuildDiagnostic d, FixSession s)
+        {
+            if (d.Code != "CS0001") return false;
+            s.Write(d.File, "int edited;\n", Name);
+            then();
+            return true;
+        }
+    }
+
+    [TestMethod]
+    public void Run_TheDefaultTimeBudget_IsTenMinutes()
+    {
+        Assert.AreEqual(TimeSpan.FromMinutes(10), BuildFixLoop.DefaultBudget);
+    }
+
+    [TestMethod]
+    public void Run_StopsBeforeTheNextRound_WhenTheTimeLimitPassed_AndKeepsTheCheckedRound()
+    {
+        var root = FixTestSupport.TempProject();
+        var file = FixTestSupport.Write(root, "A.cs", "int BAD;\nint BAD;\n");
+        var red = FixTestSupport.Result(Err(file, 1, "CS0001") + "\n" + Err(file, 2, "CS0001"));
+        var fewer = FixTestSupport.Result(Err(file, 1, "CS0002"));
+        var clock = new FakeClock();
+        var rebuilds = 0;
+
+        var outcome = new BuildFixLoop([new StripBad()], null, clock: clock.Read).Run(root, red, () =>
+        {
+            rebuilds++;
+            clock.Now += TimeSpan.FromMinutes(11);
+            return fewer;
+        });
+
+        Assert.AreEqual(1, rebuilds);
+        Assert.AreEqual(1, outcome.Rounds);
+        Assert.IsFalse(outcome.Green);
+        Assert.Contains(BuildFixLoop.TimeLimitNote, outcome.Notes);
+        Assert.IsFalse(outcome.Edits[0].Reverted, "the round was checked by a build, so it is kept");
+        Assert.AreEqual("int ;\nint ;\n", File.ReadAllText(file));
+        Assert.HasCount(1, outcome.Remaining);
+    }
+
+    [TestMethod]
+    public void Run_StopsBeforeTheRebuild_WhenTheTimeLimitPassedDuringTheRound_AndUndoesTheRound()
+    {
+        var root = FixTestSupport.TempProject();
+        var file = FixTestSupport.Write(root, "A.cs", "int BAD;\n");
+        var original = Bytes(file);
+        var red = FixTestSupport.Result(Err(file, 1, "CS0001"));
+        var clock = new FakeClock();
+
+        var outcome = new BuildFixLoop(
+            [new EditThen(() => clock.Now += TimeSpan.FromMinutes(11))], null, clock: clock.Read)
+            .Run(root, red, () => throw new InvalidOperationException("must not rebuild"));
+
+        CollectionAssert.AreEqual(original, Bytes(file));
+        Assert.IsTrue(outcome.Edits.All(e => e.Reverted));
+        Assert.Contains(BuildFixLoop.TimeLimitNote, outcome.Notes);
+        Assert.Contains("Round 1 was undone because its edits were not checked.", outcome.Notes);
+        Assert.IsFalse(outcome.Green);
+        Assert.HasCount(1, outcome.Remaining);
+    }
+
+    [TestMethod]
+    public void Run_StopsBeforeTheNextAiAsk_WhenTheTimeLimitPassed_AndUndoesTheRound()
+    {
+        var root = FixTestSupport.TempProject();
+        var a = FixTestSupport.Write(root, "A.cs", "int a = 1\n");
+        var b = FixTestSupport.Write(root, "B.cs", "int b = 1\n");
+        var original = Bytes(a);
+        var red = FixTestSupport.Result(Err(a, 1, "CS1002") + "\n" + Err(b, 1, "CS1002"));
+        var clock = new FakeClock();
+        var ai = new FakeAi((d, ex) =>
+        {
+            clock.Now += TimeSpan.FromMinutes(11);
+            return ex + ";";
+        });
+
+        var outcome = new BuildFixLoop([], ai, clock: clock.Read)
+            .Run(root, red, () => throw new InvalidOperationException("must not rebuild"));
+
+        Assert.AreEqual(1, ai.Asks);
+        CollectionAssert.AreEqual(original, Bytes(a));
+        Assert.IsTrue(outcome.Edits.All(e => e.Reverted));
+        Assert.Contains(BuildFixLoop.TimeLimitNote, outcome.Notes);
+        Assert.Contains("Round 1 was undone because its edits were not checked.", outcome.Notes);
+    }
+
+    [TestMethod]
+    public void Run_AfterOneAiTimeout_NoFurtherAskIsMade_InThisRoundOrLater()
+    {
+        var root = FixTestSupport.TempProject();
+        var a = FixTestSupport.Write(root, "A.cs", "int a = 1\n");
+        var b = FixTestSupport.Write(root, "B.cs", "int b = 1\n");
+        var c = FixTestSupport.Write(root, "C.cs", "int c = 1\n");
+        var red = FixTestSupport.Result(Err(a, 1, "CS1002") + "\n" + Err(b, 1, "CS1002") + "\n" + Err(c, 1, "CS1002"));
+        var fewer = FixTestSupport.Result(Err(b, 1, "CS1002") + "\n" + Err(c, 1, "CS1002"));
+        var ai = new TimeoutAi((d, ex) => ex + ";", d => d.File == b);
+
+        var outcome = new BuildFixLoop([], ai).Run(root, red, () => fewer);
+
+        Assert.AreEqual(2, ai.Asks, "A is answered, B times out, C is never asked, and round 2 asks nothing");
+        Assert.Contains("The AI timed out earlier, so it was not asked again.", outcome.Notes);
+        Assert.AreEqual(2, outcome.Rounds, "round 2 began but made no ask");
+        Assert.IsFalse(outcome.Edits[0].Reverted);
+    }
+
+    [TestMethod]
+    public void Run_AnAiTimeoutOnTheFirstAsk_SaysSo_AndAsksNoMore()
+    {
+        var root = FixTestSupport.TempProject();
+        var a = FixTestSupport.Write(root, "A.cs", "int a = 1\n");
+        var b = FixTestSupport.Write(root, "B.cs", "int b = 1\n");
+        var red = FixTestSupport.Result(Err(a, 1, "CS1002") + "\n" + Err(b, 1, "CS1002"));
+        var ai = new TimeoutAi((d, ex) => ex + ";", d => true);
+
+        var outcome = new BuildFixLoop([], ai).Run(root, red, () => throw new InvalidOperationException("must not rebuild"));
+
+        Assert.AreEqual(1, ai.Asks);
+        Assert.Contains("The AI timed out, so it will not be asked again.", outcome.Notes);
+        Assert.HasCount(0, outcome.Edits);
+    }
+
+    [TestMethod]
+    public void Run_ACancelledToken_StopsBeforeAnyRound()
+    {
+        var root = FixTestSupport.TempProject();
+        var file = FixTestSupport.Write(root, "A.cs", "int BAD;\n");
+        var original = Bytes(file);
+        var red = FixTestSupport.Result(Err(file, 1, "CS0001"));
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        var outcome = new BuildFixLoop([new StripBad()], null)
+            .Run(root, red, () => throw new InvalidOperationException("must not rebuild"), null, cts.Token);
+
+        Assert.AreEqual(0, outcome.Rounds);
+        Assert.HasCount(0, outcome.Edits);
+        Assert.Contains(BuildFixLoop.CancelledNote, outcome.Notes);
+        CollectionAssert.AreEqual(original, Bytes(file));
+        Assert.AreSame(red, outcome.LastBuild);
+    }
+
+    [TestMethod]
+    public void Run_CancelDuringTheRound_UndoesItBeforeAnyRebuild()
+    {
+        var root = FixTestSupport.TempProject();
+        var file = FixTestSupport.Write(root, "A.cs", "int BAD;\n");
+        var original = Bytes(file);
+        var red = FixTestSupport.Result(Err(file, 1, "CS0001"));
+        using var cts = new CancellationTokenSource();
+
+        var outcome = new BuildFixLoop([new EditThen(cts.Cancel)], null)
+            .Run(root, red, () => throw new InvalidOperationException("must not rebuild"), null, cts.Token);
+
+        CollectionAssert.AreEqual(original, Bytes(file));
+        Assert.IsTrue(outcome.Edits.All(e => e.Reverted));
+        Assert.Contains(BuildFixLoop.CancelledNote, outcome.Notes);
+        Assert.Contains("Round 1 was undone because its edits were not checked.", outcome.Notes);
+    }
+
+    [TestMethod]
+    public void Run_CancelDuringTheRebuild_UndoesTheRound_WhenTheBuildFailed()
+    {
+        var root = FixTestSupport.TempProject();
+        var file = FixTestSupport.Write(root, "A.cs", "int BAD;\n");
+        var original = Bytes(file);
+        var red = FixTestSupport.Result(Err(file, 1, "CS0001"));
+        using var cts = new CancellationTokenSource();
+
+        var outcome = new BuildFixLoop([new StripBad()], null).Run(root, red, () =>
+        {
+            cts.Cancel();
+            return FixTestSupport.Result(Err(file, 1, "CS0009"));
+        }, null, cts.Token);
+
+        CollectionAssert.AreEqual(original, Bytes(file));
+        Assert.IsTrue(outcome.Edits.All(e => e.Reverted));
+        Assert.Contains(BuildFixLoop.CancelledNote, outcome.Notes);
+        Assert.AreSame(red, outcome.LastBuild);
+        Assert.IsFalse(outcome.Green);
+    }
+
+    [TestMethod]
+    public void Run_CancelDuringTheRebuild_KeepsTheRound_WhenTheBuildStillSucceeded()
+    {
+        var root = FixTestSupport.TempProject();
+        var file = FixTestSupport.Write(root, "A.cs", "int BAD;\n");
+        var red = FixTestSupport.Result(Err(file, 1, "CS0001"));
+        using var cts = new CancellationTokenSource();
+
+        var outcome = new BuildFixLoop([new StripBad()], null).Run(root, red, () =>
+        {
+            cts.Cancel();
+            return Green;
+        }, null, cts.Token);
+
+        Assert.IsTrue(outcome.Green);
+        Assert.IsFalse(outcome.Edits[0].Reverted);
+    }
+
+    [TestMethod]
+    public void Run_AFailedRevertAfterAWorseBuild_NeverClaimsTheRoundWasReverted()
+    {
+        var root = FixTestSupport.TempProject();
+        var file = FixTestSupport.Write(root, "A.cs", "int BAD;\n");
+        var red = FixTestSupport.Result(Err(file, 1, "CS0001"));
+        var worse = FixTestSupport.Result(Err(file, 1, "CS0002") + "\n" + Err(file, 1, "CS0003"));
+        FileStream? held = null;
+        FixOutcome outcome;
+
+        try
+        {
+            outcome = new BuildFixLoop([new StripBad()], null).Run(root, red, () =>
+            {
+                held = new FileStream(file, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+                return worse;
+            });
+        }
+        finally
+        {
+            held?.Dispose();
+        }
+
+        Assert.IsFalse(outcome.Notes.Any(n => n.Contains("was reverted") || n.Contains("was undone")), string.Join(" | ", outcome.Notes));
+        Assert.IsTrue(outcome.Notes.Any(n => n == "Round 1 could not be fully undone: the errors rose from 1 to 2."), string.Join(" | ", outcome.Notes));
+        Assert.IsTrue(outcome.Notes.Any(n => n.Contains("A.cs") && n.Contains("not restored")));
+    }
+
+    [TestMethod]
+    public void Run_AFailedRevertAfterARebuildThatThrows_NeverClaimsTheRoundWasReverted()
+    {
+        var root = FixTestSupport.TempProject();
+        var file = FixTestSupport.Write(root, "A.cs", "int BAD;\n");
+        var red = FixTestSupport.Result(Err(file, 1, "CS0001"));
+        FileStream? held = null;
+        FixOutcome outcome;
+
+        try
+        {
+            outcome = new BuildFixLoop([new StripBad()], null).Run(root, red, () =>
+            {
+                held = new FileStream(file, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+                throw new InvalidOperationException("x");
+            });
+        }
+        finally
+        {
+            held?.Dispose();
+        }
+
+        Assert.IsFalse(outcome.Notes.Any(n => n.Contains("was reverted") || n.Contains("was undone")), string.Join(" | ", outcome.Notes));
+        Assert.IsTrue(outcome.Notes.Any(n => n.Contains("round 1 could not be fully undone")), string.Join(" | ", outcome.Notes));
+    }
+
     [TestMethod]
     public void Run_AppliesARule_Rebuilds_AndReportsGreen()
     {

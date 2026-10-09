@@ -6,13 +6,18 @@ using Microsoft.CodeAnalysis.CSharp;
 
 namespace CodeGenerator.BuildFix;
 
+/// <param name="BuildChecked">
+/// False only when the fix stopped in a way that left no build to trust (the last-resort catch):
+/// <see cref="LastBuild"/> is then the build the fix STARTED from, not the state of the files.
+/// </param>
 internal sealed record FixOutcome(
     bool Green,
     int Rounds,
     IReadOnlyList<FixEdit> Edits,
     IReadOnlyList<BuildDiagnostic> Remaining,
     IReadOnlyList<string> Notes,
-    ProcessResult LastBuild);
+    ProcessResult LastBuild,
+    bool BuildChecked = true);
 
 /// <summary>
 /// Fix, rebuild, repeat. Rules first; the AI only when no rule fixed anything in the round.
@@ -20,9 +25,27 @@ internal sealed record FixOutcome(
 /// that raises the error count, brings errors into a file that had none, or leaves a failed build
 /// whose errors cannot be read is undone, and so is an AI round that does not LOWER the count.
 /// A rule or a model that throws, or answers badly, is skipped and never stops the loop.
+/// <para>
+/// The whole run has a time budget (10 minutes unless told otherwise) and can be cancelled. Both are
+/// checked before each round, each AI ask and each rebuild; a stop undoes the round whose edits no
+/// build has checked, and the notes say which of the two it was.
+/// </para>
 /// </summary>
-internal sealed class BuildFixLoop(IReadOnlyList<IBuildFixRule> rules, IBuildFixAi? ai)
+internal sealed class BuildFixLoop(
+    IReadOnlyList<IBuildFixRule> rules, IBuildFixAi? ai, TimeSpan? budget = null, Func<DateTime>? clock = null)
 {
+    public static readonly TimeSpan DefaultBudget = TimeSpan.FromMinutes(10);
+
+    public const string TimeLimitNote = "The time limit was reached.";
+    public const string CancelledNote = "The fix was cancelled.";
+
+    private readonly TimeSpan _budget = budget ?? DefaultBudget;
+    private readonly Func<DateTime> _clock = clock ?? (() => DateTime.UtcNow);
+    private DateTime _started;
+    private CancellationToken _ct;
+    private string? _stopNote;
+    private bool _aiTimedOut;
+
     public const int MaxRounds = 3;
     public const int MaxAiAsksPerRound = 5;
     private const int ContextLines = 15;
@@ -34,10 +57,24 @@ internal sealed class BuildFixLoop(IReadOnlyList<IBuildFixRule> rules, IBuildFix
     /// <summary>The session of the latest <see cref="Run"/>, or null before it starts.</summary>
     internal FixSession? LastSession { get; private set; }
 
+    /// <summary>Why the run must stop now, or null. Cancelling wins over the clock.</summary>
+    private string? ShouldStop()
+    {
+        if (_ct.IsCancellationRequested)
+            return CancelledNote;
+
+        return _clock() - _started >= _budget ? TimeLimitNote : null;
+    }
+
     public FixOutcome Run(
-        string projectPath, ProcessResult firstBuild, Func<ProcessResult> rebuild, Action<string>? progress = null)
+        string projectPath, ProcessResult firstBuild, Func<ProcessResult> rebuild, Action<string>? progress = null,
+        CancellationToken ct = default)
     {
         progress ??= _ => { };
+        _ct = ct;
+        _started = _clock();
+        _stopNote = null;
+        _aiTimedOut = false;
 
         var session = new FixSession(projectPath);
         LastSession = session;
@@ -57,12 +94,13 @@ internal sealed class BuildFixLoop(IReadOnlyList<IBuildFixRule> rules, IBuildFix
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             // Whatever failed, edits that no build has checked are not kept.
-            if (rounds > 0)
-                Revert(session, rounds, notes);
+            var undone = rounds == 0 || Revert(session, rounds, notes);
 
-            notes.Add(rounds > 0
-                ? $"The fix stopped ({ex.GetType().Name}), so round {rounds} was undone."
-                : $"The fix stopped ({ex.GetType().Name}) before it changed anything.");
+            notes.Add(rounds == 0
+                ? $"The fix stopped ({ex.GetType().Name}) before it changed anything."
+                : undone
+                    ? $"The fix stopped ({ex.GetType().Name}), so round {rounds} was undone."
+                    : $"The fix stopped ({ex.GetType().Name}), and round {rounds} could not be fully undone.");
 
             return new FixOutcome(false, rounds, session.Edits, roundDiagnostics, notes, roundBuild);
         }
@@ -78,6 +116,13 @@ internal sealed class BuildFixLoop(IReadOnlyList<IBuildFixRule> rules, IBuildFix
 
             while (!BuildReport.Succeeded(build) && rounds < MaxRounds && diagnostics.Count > 0)
             {
+                // Nothing is unchecked at the top of a round: the last one has been judged.
+                if (ShouldStop() is { } stopNow)
+                {
+                    notes.Add(stopNow);
+                    break;
+                }
+
                 rounds++;
                 session.BeginRound(rounds);
 
@@ -97,6 +142,12 @@ internal sealed class BuildFixLoop(IReadOnlyList<IBuildFixRule> rules, IBuildFix
                         break;
                     }
 
+                    if (_aiTimedOut)
+                    {
+                        notes.Add("The AI timed out earlier, so it was not asked again.");
+                        break;
+                    }
+
                     aiUp ??= IsUp(ai);
 
                     if (aiUp != true)
@@ -107,9 +158,18 @@ internal sealed class BuildFixLoop(IReadOnlyList<IBuildFixRule> rules, IBuildFix
 
                     var aiEdits = ApplyAi(diagnostics, session, progress, notes);
 
+                    if (_stopNote is not null)
+                    {
+                        // Stopped between two asks: what this round wrote has not been built.
+                        StopRound(session, rounds, aiEdits > 0, _stopNote, notes);
+                        break;
+                    }
+
                     if (aiEdits == 0)
                     {
-                        notes.Add("The AI had no usable fix for the remaining errors.");
+                        notes.Add(_aiTimedOut
+                            ? "The AI timed out, so it will not be asked again."
+                            : "The AI had no usable fix for the remaining errors.");
                         break;
                     }
 
@@ -121,6 +181,12 @@ internal sealed class BuildFixLoop(IReadOnlyList<IBuildFixRule> rules, IBuildFix
                     notes.Add($"Round {rounds}: rules fixed {ruleFixes.Count} error(s): {string.Join(", ", ruleFixes.Distinct())}.");
                 }
 
+                if (ShouldStop() is { } stopBeforeBuild)
+                {
+                    StopRound(session, rounds, true, stopBeforeBuild, notes);
+                    break;
+                }
+
                 try
                 {
                     progress("Building again");
@@ -129,8 +195,17 @@ internal sealed class BuildFixLoop(IReadOnlyList<IBuildFixRule> rules, IBuildFix
                 catch (Exception ex) when (ex is not OutOfMemoryException)
                 {
                     // Edits that no build has checked are not kept, whoever made them.
-                    Revert(session, rounds, notes);
-                    notes.Add($"The rebuild with dotnet failed ({ex.GetType().Name}), so round {rounds} was reverted: its edits could not be checked.");
+                    notes.Add(Revert(session, rounds, notes)
+                        ? $"The rebuild with dotnet failed ({ex.GetType().Name}), so round {rounds} was reverted: its edits could not be checked."
+                        : $"The rebuild with dotnet failed ({ex.GetType().Name}), and round {rounds} could not be fully undone.");
+                    break;
+                }
+
+                // A build that ended because the user cancelled says nothing about the edits.
+                if (_ct.IsCancellationRequested && !BuildReport.Succeeded(build))
+                {
+                    StopRound(session, rounds, true, CancelledNote, notes);
+                    build = before;
                     break;
                 }
 
@@ -143,8 +218,9 @@ internal sealed class BuildFixLoop(IReadOnlyList<IBuildFixRule> rules, IBuildFix
 
                 if (verdict is not null)
                 {
-                    Revert(session, rounds, notes);
-                    notes.Add($"Round {rounds} was reverted: {verdict}");
+                    notes.Add(Revert(session, rounds, notes)
+                        ? $"Round {rounds} was reverted: {verdict}"
+                        : $"Round {rounds} could not be fully undone: {verdict}");
                     build = before;
                     diagnostics = beforeDiagnostics;
                     break;
@@ -164,10 +240,28 @@ internal sealed class BuildFixLoop(IReadOnlyList<IBuildFixRule> rules, IBuildFix
         }
     }
 
-    private static void Revert(FixSession session, int round, List<string> notes)
+    /// <summary>Undoes a round. False, with a note per file, when any file could not be put back.</summary>
+    private static bool Revert(FixSession session, int round, List<string> notes)
     {
-        foreach (var file in session.RevertRound(round))
+        var failed = session.RevertRound(round);
+
+        foreach (var file in failed)
             notes.Add($"{file} was not restored; check it by hand.");
+
+        return failed.Count == 0;
+    }
+
+    /// <summary>Ends the run at a stop request: says why, and undoes the round when it has unchecked edits.</summary>
+    private static void StopRound(FixSession session, int round, bool hasEdits, string why, List<string> notes)
+    {
+        notes.Add(why);
+
+        if (!hasEdits)
+            return;
+
+        notes.Add(Revert(session, round, notes)
+            ? $"Round {round} was undone because its edits were not checked."
+            : $"Round {round} could not be fully undone.");
     }
 
     /// <summary>Why a round made things worse, or null when it did not.</summary>
@@ -189,6 +283,18 @@ internal sealed class BuildFixLoop(IReadOnlyList<IBuildFixRule> rules, IBuildFix
             return $"the AI edits did not reduce the errors ({before.Count} before, {after.Count} after).";
 
         return null;
+    }
+
+    private static bool TimedOut(IBuildFixAi? ai)
+    {
+        try
+        {
+            return ai?.LastTimedOut == true;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            return false;
+        }
     }
 
     private static bool IsUp(IBuildFixAi ai)
@@ -260,6 +366,12 @@ internal sealed class BuildFixLoop(IReadOnlyList<IBuildFixRule> rules, IBuildFix
             if (asked >= MaxAiAsksPerRound)
                 break;
 
+            if (ShouldStop() is { } stopAsk)
+            {
+                _stopNote = stopAsk;
+                break;
+            }
+
             // Line numbers in the diagnostic belong to the file as it was built; once the file
             // has been edited this round they point at the wrong place.
             if (d.Line < 1 || d.File.Length == 0 || edited.Contains(d.File)
@@ -303,11 +415,18 @@ internal sealed class BuildFixLoop(IReadOnlyList<IBuildFixRule> rules, IBuildFix
             string? reply;
             try
             {
-                reply = ai!.Propose(d, excerpt);
+                reply = ai!.Propose(d, excerpt, _ct);
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)
             {
                 continue;
+            }
+
+            // Every further ask would wait as long again: one timeout ends the asking for the run.
+            if (string.IsNullOrWhiteSpace(reply) && TimedOut(ai))
+            {
+                _aiTimedOut = true;
+                break;
             }
 
             if (string.IsNullOrWhiteSpace(reply))
@@ -345,8 +464,9 @@ internal sealed class BuildFixLoop(IReadOnlyList<IBuildFixRule> rules, IBuildFix
                 or ArgumentException or NotSupportedException)
             {
                 // A half-finished round is worse than none: undo what this round wrote and stop.
-                Revert(session, session.CurrentRound, notes);
-                notes.Add($"Writing an AI edit for {d.Code} failed ({ex.GetType().Name}), so the AI edits of this round were reverted.");
+                notes.Add(Revert(session, session.CurrentRound, notes)
+                    ? $"Writing an AI edit for {d.Code} failed ({ex.GetType().Name}), so the AI edits of this round were reverted."
+                    : $"Writing an AI edit for {d.Code} failed ({ex.GetType().Name}), and the AI edits of this round could not be fully undone.");
                 return 0;
             }
         }

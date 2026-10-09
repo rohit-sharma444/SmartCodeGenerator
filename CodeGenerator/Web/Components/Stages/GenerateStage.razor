@@ -144,6 +144,10 @@ else
     /// <summary>What the last build said; replaced when a fix rebuilds.</summary>
     private readonly List<string> _buildLines = [];
 
+    /// <summary>The build whose lines are in <see cref="_buildLines"/>, and how long it took; null when not known.</summary>
+    private ProcessResult? _shownBuild;
+    private TimeSpan _shownElapsed;
+
     /// <summary>Progress while the fixer runs, then its report.</summary>
     private readonly List<string> _fixLines = [];
 
@@ -158,7 +162,8 @@ else
     // The fixer threw once: files may have changed, so the listed errors may be out of date.
     private bool _fixerThrew;
 
-    private bool _disposed;
+    // Read from the fixer's worker thread, written from the renderer's.
+    private volatile bool _disposed;
     private readonly List<string> _log = [];
 
     /// <summary>What has finished, and what is running — the progress the user watches.</summary>
@@ -411,6 +416,8 @@ else
             : "The compiler reported problems — the log is below");
 
         _buildLines.AddRange(BuildReport.Lines(result, built.Elapsed, scaffold.ProjectPath));
+        _shownBuild = result;
+        _shownElapsed = built.Elapsed;
         SetFailedBuild(result, scaffold.ProjectPath);
 
         // Handed to the session, not kept here: the run stage starts what this stage wrote, and
@@ -542,13 +549,16 @@ else
                 change();
                 StateHasChanged();
             }).ContinueWith(
-                t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
+                ObserveFault, TaskContinuationOptions.OnlyOnFaulted);
         }
         catch (Exception ex) when (ex is ObjectDisposedException or InvalidOperationException)
         {
             // The circuit went away; nothing left to repaint.
         }
     }
+
+    /// <summary>Reads the fault of a repaint that failed, so it is observed and never surfaces later.</summary>
+    private static void ObserveFault(Task faulted) => faulted.Exception?.Handle(_ => true);
 
     /// <summary>
     /// Runs the fixer on a worker thread, then shows its report and the rebuilt result.
@@ -574,7 +584,8 @@ else
         // meanwhile, and the app this fix repairs is then no longer the session's.
         var wanted = Session.Generated;
 
-        TimeSpan elapsed = default;
+        // How long each build took, so the time shown belongs to the build that is shown.
+        var timings = new List<(ProcessResult Result, TimeSpan Elapsed)>();
 
         // Each finished rebuild with its own lines, because the run stage parses the build log to find
         // the assembly: only the log of the build the session ends up holding may be handed over.
@@ -607,11 +618,15 @@ else
 
                     if (reread)
                     {
-                        var fresh = runBuild(scaffold.ProjectPath, line => Post(() => _log.Add(line))).Result;
+                        var fresh = runBuild(scaffold.ProjectPath, line => Post(() => _log.Add(line)));
 
-                        if (fresh is not null && BuildAppCommand.ShouldOfferFix(fresh)
-                            && BuildDiagnostics.Parse(fresh, scaffold.ProjectPath).Count > 0)
-                            basis = fresh;
+                        if (fresh.Result is not null)
+                            lock (rebuildLog)
+                                timings.Add((fresh.Result, fresh.Elapsed));
+
+                        if (fresh.Result is { } freshResult && BuildAppCommand.ShouldOfferFix(freshResult)
+                            && BuildDiagnostics.Parse(freshResult, scaffold.ProjectPath).Count > 0)
+                            basis = freshResult;
                     }
 
                     var result = fixer.Fix(
@@ -632,13 +647,14 @@ else
                                     Post(() => _log.Add(line));
                                 });
 
-                            elapsed = attempt.Elapsed;
-
                             if (attempt.Result is null)
                                 throw new System.ComponentModel.Win32Exception();
 
                             lock (rebuildLog)
+                            {
+                                timings.Add((attempt.Result, attempt.Elapsed));
                                 rebuilds.Add((attempt.Result, string.Join(Environment.NewLine, rebuildLog)));
+                            }
 
                             return attempt.Result;
                         },
@@ -699,6 +715,25 @@ else
             return;
         }
 
+        // The fix stopped with no build to trust: what the session and the page hold about the build
+        // is kept as it was (the old errors are not made "current"), and the next fix reads them again.
+        if (!outcome.BuildChecked)
+        {
+            _fixerThrew = true;
+
+            if (_disposed)
+                return;
+
+            Finished("The fix stopped");
+            _fixLines.Clear();
+            _fixLines.AddRange(BuildFixReport.Lines(outcome, scaffold.ProjectPath));
+            _phase = Phase.Done;
+            Navigation.Offer(Continue);
+            StateHasChanged();
+
+            return;
+        }
+
         // Handed to the session again even when the page is gone: the fix changed files on disk,
         // and the run stage needs the NEW build log to find the assembly.
         // The log of the build that outcome.LastBuild is. When that build was rejected, timed out or
@@ -744,7 +779,24 @@ else
         _fixLines.AddRange(BuildFixReport.Lines(outcome, scaffold.ProjectPath));
 
         _buildLines.Clear();
-        _buildLines.AddRange(BuildReport.Lines(outcome.LastBuild, elapsed, scaffold.ProjectPath));
+        TimeSpan? took = null;
+
+        lock (rebuildLog)
+        {
+            foreach (var (timed, time) in timings)
+            {
+                if (ReferenceEquals(timed, outcome.LastBuild))
+                    took = time;
+            }
+        }
+
+        // A fix that ended on the build it started from (every round undone) shows that build's own time.
+        if (took is null && ReferenceEquals(outcome.LastBuild, _shownBuild))
+            took = _shownElapsed;
+
+        _shownBuild = took is null ? null : outcome.LastBuild;
+        _shownElapsed = took ?? default;
+        _buildLines.AddRange(BuildReport.Lines(outcome.LastBuild, took, scaffold.ProjectPath));
 
         // Red again: the offer comes back, so the user can try another round or leave it.
         SetFailedBuild(outcome.LastBuild, scaffold.ProjectPath);

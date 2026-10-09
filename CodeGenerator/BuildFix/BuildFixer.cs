@@ -5,7 +5,9 @@ namespace CodeGenerator.BuildFix;
 
 internal interface IBuildFixer
 {
-    FixOutcome Fix(string projectPath, ProcessResult failedBuild, Func<ProcessResult> rebuild, Action<string> progress);
+    FixOutcome Fix(
+        string projectPath, ProcessResult failedBuild, Func<ProcessResult> rebuild, Action<string> progress,
+        CancellationToken ct = default);
 }
 
 /// <summary>Production wiring: the three rules, and the local model when discovery.json uses Ollama.</summary>
@@ -47,19 +49,23 @@ internal sealed class BuildFixer : IBuildFixer
         }
     }
 
-    public FixOutcome Fix(string projectPath, ProcessResult failedBuild, Func<ProcessResult> rebuild, Action<string> progress)
+    public FixOutcome Fix(
+        string projectPath, ProcessResult failedBuild, Func<ProcessResult> rebuild, Action<string> progress,
+        CancellationToken ct = default)
     {
         var ai = CreateAi();
         var loop = new BuildFixLoop(Rules(), ai);
 
         try
         {
-            return loop.Run(projectPath, failedBuild, rebuild, progress);
+            return loop.Run(projectPath, failedBuild, rebuild, progress, ct);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             // The loop undoes its own round on any failure; this is the last resort. The edits
             // it made are still reported, and the round in progress is undone when it can be.
+            // No build ran on what is on disk now, so the outcome says so (BuildChecked = false)
+            // instead of handing back the old failed build as if it were the current state.
             var notes = new List<string>
             {
                 $"The fix stopped ({ex.GetType().Name}). Some files may have been changed; "
@@ -72,8 +78,7 @@ internal sealed class BuildFixer : IBuildFixer
                     notes.Add($"{file} was not restored; check it by hand.");
 
             return new FixOutcome(
-                false, session?.CurrentRound ?? 0, session?.Edits ?? [], SafeParse(failedBuild, projectPath),
-                notes, failedBuild);
+                false, session?.CurrentRound ?? 0, session?.Edits ?? [], [], notes, failedBuild, BuildChecked: false);
         }
         finally
         {
@@ -86,18 +91,6 @@ internal sealed class BuildFixer : IBuildFixer
         try
         {
             return session.RevertRound(session.CurrentRound);
-        }
-        catch (Exception ex) when (ex is not OutOfMemoryException)
-        {
-            return [];
-        }
-    }
-
-    private static IReadOnlyList<BuildDiagnostic> SafeParse(ProcessResult build, string projectPath)
-    {
-        try
-        {
-            return BuildDiagnostics.Parse(build, projectPath);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {

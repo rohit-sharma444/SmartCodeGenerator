@@ -538,6 +538,35 @@ public class BuildFixReportTests
             new[] { typeof(DuplicatePartialRule), typeof(StaleCustomHookRule), typeof(NoLoginAuthUsingRule) }, types);
     }
 
+    [TestMethod]
+    public void Lines_WhenTheBuildWasNotRechecked_SayItInsteadOfListingOldErrors()
+    {
+        var edit = new FixEdit(@"A.cs", "rule", 1);
+        var failed = FixTestSupport.Result(@"A.cs(1,1): error CS0001: old");
+        var outcome = new FixOutcome(false, 1, [edit], [], [], failed, BuildChecked: false);
+
+        var lines = BuildFixReport.Lines(outcome, @"C:\proj");
+
+        Assert.Contains(BuildFixReport.NotRechecked, lines);
+        Assert.AreEqual("The build was not re-checked after the failure.", BuildFixReport.NotRechecked);
+        Assert.IsFalse(lines.Any(l => l.Contains("The build still fails")), string.Join(" | ", lines));
+        Assert.IsFalse(lines.Any(l => l.Contains("CS0001")), string.Join(" | ", lines));
+        Assert.IsTrue(lines.Any(l => l.StartsWith("Partly fixed: 1 edit kept.")), string.Join(" | ", lines));
+    }
+
+    [TestMethod]
+    public void Lines_WhenTheBuildWasChecked_StillSaysTheBuildFails()
+    {
+        var failed = FixTestSupport.Result(@"A.cs(1,1): error CS0001: old");
+        var outcome = new FixOutcome(false, 0, [], [], [], failed);
+
+        var lines = BuildFixReport.Lines(outcome, @"C:\proj");
+
+        Assert.IsTrue(outcome.BuildChecked);
+        Assert.Contains("The build still fails: its errors could not be read.", lines);
+        Assert.DoesNotContain(BuildFixReport.NotRechecked, lines);
+    }
+
     private static string Project(out string file)
     {
         var root = FixTestSupport.TempProject();
@@ -593,6 +622,8 @@ public class BuildFixReportTests
         Assert.HasCount(0, outcome.Remaining);
         Assert.AreEqual(0, outcome.Rounds);
         Assert.AreSame(failed, outcome.LastBuild);
+        Assert.IsFalse(outcome.BuildChecked, "no build ran on the files as they are now");
+        Assert.Contains(BuildFixReport.NotRechecked, BuildFixReport.Lines(outcome, "C:\\proj"));
         Assert.IsTrue(ai.Disposed);
     }
 

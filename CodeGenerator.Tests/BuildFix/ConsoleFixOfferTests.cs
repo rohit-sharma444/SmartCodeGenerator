@@ -14,19 +14,22 @@ public class ConsoleFixOfferTests
         public string? Path;
         public ProcessResult? Failed;
         public ProcessResult Last { get; } = new(green ? 0 : 1, "last", "", false);
+        public CancellationToken Seen;
+        public bool Unchecked;
 
-        public FixOutcome Fix(string p, ProcessResult failed, Func<ProcessResult> rebuild, Action<string> progress)
+        public FixOutcome Fix(string p, ProcessResult failed, Func<ProcessResult> rebuild, Action<string> progress, CancellationToken ct = default)
         {
             Calls++;
             Path = p;
             Failed = failed;
-            return new FixOutcome(green, 1, [], [], [], Last);
+            Seen = ct;
+            return new FixOutcome(green, 1, [], [], [], Last, BuildChecked: !Unchecked);
         }
     }
 
     private sealed class ThrowingFixer : IBuildFixer
     {
-        public FixOutcome Fix(string p, ProcessResult failed, Func<ProcessResult> rebuild, Action<string> progress)
+        public FixOutcome Fix(string p, ProcessResult failed, Func<ProcessResult> rebuild, Action<string> progress, CancellationToken ct = default)
             => throw new InvalidOperationException("boom");
     }
 
@@ -51,6 +54,30 @@ public class ConsoleFixOfferTests
         Assert.AreSame(failed, fixer.Failed);
         Assert.AreSame(fixer.Last, result);
         Assert.IsTrue(BuildReport.Succeeded(result!));
+    }
+
+    [TestMethod]
+    public void OfferToFix_Yes_PassesTheConsolesInterruptToken_ToTheFixer()
+    {
+        var (scaffold, failed) = Failed(FixTestSupport.TempProject());
+        var fixer = new FakeFixer(green: true);
+
+        BuildAppCommand.OfferToFix(scaffold, failed, (t, o, d) => 0, fixer);
+
+        Assert.AreEqual(Interrupt.Token, fixer.Seen);
+        Assert.IsTrue(fixer.Seen.CanBeCanceled);
+    }
+
+    [TestMethod]
+    public void OfferToFix_AFixThatStoppedWithNoBuildToTrust_LeavesTheFailedBuildAsItWas()
+    {
+        var (scaffold, failed) = Failed(FixTestSupport.TempProject());
+        var fixer = new FakeFixer(green: false) { Unchecked = true };
+
+        var result = BuildAppCommand.OfferToFix(scaffold, failed, (t, o, d) => 0, fixer);
+
+        Assert.AreEqual(1, fixer.Calls);
+        Assert.IsNull(result);
     }
 
     [TestMethod]

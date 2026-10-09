@@ -55,13 +55,17 @@ public class GenerateFixTests
         private int _next;
         public int Calls;
 
+        /// <summary>How long each call took; every call takes 2 seconds when this is empty.</summary>
+        public double[] Seconds = [];
+
         public BuildAttempt Run(string path, Action<string> onLine)
         {
             Calls++;
             var result = results[Math.Min(_next++, results.Length - 1)];
             onLine("build line " + Calls);
 
-            return new BuildAttempt(result, TimeSpan.FromSeconds(2));
+            return new BuildAttempt(
+                result, TimeSpan.FromSeconds(Seconds.Length == 0 ? 2 : Seconds[Math.Min(Calls - 1, Seconds.Length - 1)]));
         }
     }
 
@@ -74,8 +78,10 @@ public class GenerateFixTests
         public Action? Block;
         public Exception? Throw;
         public volatile bool Returned;
+        public bool Unchecked;
+        public bool ReturnOriginal;
 
-        public FixOutcome Fix(string p, ProcessResult failed, Func<ProcessResult> rebuild, Action<string> progress)
+        public FixOutcome Fix(string p, ProcessResult failed, Func<ProcessResult> rebuild, Action<string> progress, CancellationToken ct = default)
         {
             try
             {
@@ -98,13 +104,72 @@ public class GenerateFixTests
             if (Throw is not null)
                 throw Throw;
 
+            if (Unchecked)
+            {
+                return new FixOutcome(
+                    false, 1, [new FixEdit(@"Models\Customer.cs", EditedBy, 1)], [], [], failed, BuildChecked: false);
+            }
+
             var last = rebuild();
+
+            // Every round undone: the build the user is left with is the one the fix started from.
+            if (ReturnOriginal)
+            {
+                return new FixOutcome(
+                    false, 1, [new FixEdit(@"Models\Customer.cs", EditedBy, 1) { Reverted = true }],
+                    BuildDiagnostics.Parse(failed, p), [], failed);
+            }
+
             var green = BuildReport.Succeeded(last);
 
             return new FixOutcome(
                 green, 1, [new FixEdit(@"Models\Customer.cs", EditedBy, 1)],
                 green ? [] : BuildDiagnostics.Parse(last, p), [], last);
         }
+    }
+
+    [TestMethod]
+    public void A_fix_that_stopped_with_no_build_to_trust_keeps_the_session_build_and_says_so()
+    {
+        var build = new FakeBuild(Red(OneError));
+        var page = Written(new FakeFixer { Unchecked = true }, build);
+        using var _ = page.Context;
+        var before = page.Session.Generated;
+
+        page.Cut.Find("button.fix-yes").Click();
+        page.Cut.WaitForAssertion(
+            () => StringAssert.Contains(FixReport(page.Cut), BuildFixReport.NotRechecked), TimeSpan.FromSeconds(30));
+
+        Assert.AreSame(before, page.Session.Generated, "the old errors are not stored as the current build");
+        Assert.IsFalse(FixReport(page.Cut).Contains("The build still fails"));
+        Assert.HasCount(1, page.Cut.FindAll(".fix-stale"));
+        Assert.HasCount(1, page.Cut.FindAll("button.fix-yes"), "the user can try again");
+        Assert.AreEqual(1, build.Calls);
+    }
+
+    [TestMethod]
+    public void The_time_shown_belongs_to_the_build_that_is_shown_after_every_round_was_undone()
+    {
+        var build = new FakeBuild(Red(OneError), Red(TwoErrors)) { Seconds = [3, 9] };
+        var page = Written(new FakeFixer { ReturnOriginal = true }, build);
+        using var _ = page.Context;
+
+        Assert.IsTrue(ReportLines(page.Cut).Any(l => l.StartsWith("Build FAILED (3.0s)")));
+
+        page.Cut.Find("button.fix-yes").Click();
+        page.Cut.WaitForAssertion(() => StringAssert.StartsWith(FixReport(page.Cut), "Nothing was kept"), TimeSpan.FromSeconds(30));
+
+        Assert.IsTrue(ReportLines(page.Cut).Any(l => l.StartsWith("Build FAILED (3.0s)")), string.Join(" | ", ReportLines(page.Cut)));
+        Assert.IsFalse(ReportLines(page.Cut).Any(l => l.Contains("9.0s")));
+    }
+
+    [TestMethod]
+    public void The_disposed_flag_is_volatile_because_the_fixer_thread_reads_it()
+    {
+        var field = typeof(GenerateStage).GetField("_disposed", BindingFlags.NonPublic | BindingFlags.Instance);
+
+        Assert.IsNotNull(field);
+        Assert.Contains(typeof(System.Runtime.CompilerServices.IsVolatile), field.GetRequiredCustomModifiers());
     }
 
     private static ProcessResult Red(string text) => new(1, text, string.Empty, false);
@@ -455,6 +520,14 @@ public class GenerateFixTests
         EventHandler<UnobservedTaskExceptionEventArgs> watch = (_, e) => unobserved.Add(e.Exception);
         TaskScheduler.UnobservedTaskException += watch;
 
+        // The session says when the result is recorded: no polling, no sleeping.
+        var recorded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        page.Session.Changed += () =>
+        {
+            if (page.Session.Generated is { BuildSucceeded: true })
+                recorded.TrySetResult();
+        };
+
         try
         {
             page.Cut.Find("button.fix-yes").Click();
@@ -463,8 +536,7 @@ public class GenerateFixTests
             page.Context.Dispose();
             gate.Set();
 
-            for (var i = 0; i < 100 && !page.Session.Generated!.BuildSucceeded; i++)
-                await Task.Delay(100);
+            await recorded.Task.WaitAsync(TimeSpan.FromSeconds(30));
 
             GC.Collect();
             GC.WaitForPendingFinalizers();

@@ -1284,10 +1284,12 @@ internal sealed class BuildAppCommand
             // redirected, so no extra gate is needed. Disposed on an exception by the using.
             using (Spinner.Start("Fixing the build errors"))
             {
+                // Ctrl+C ends the wait: the round being checked is undone and the report still prints.
                 outcome = fixer.Fix(
                     scaffold.ProjectPath, failed,
                     () => ProcessRunner.Run("dotnet", "build", scaffold.ProjectPath, BuildTimeout),
-                    _ => { });
+                    _ => { },
+                    Interrupt.Token);
             }
 
             var lines = CodeGenerator.BuildFix.BuildFixReport.Lines(outcome, scaffold.ProjectPath);
@@ -1304,7 +1306,8 @@ internal sealed class BuildAppCommand
 
             Console.WriteLine("");
 
-            return outcome.LastBuild;
+            // A fix that stopped with no build to trust leaves the failed build as it was.
+            return outcome.BuildChecked ? outcome.LastBuild : null;
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {

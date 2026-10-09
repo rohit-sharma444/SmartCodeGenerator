@@ -13,4 +13,16 @@ internal interface IBuildFixAi
     /// edit (it parses, the error count does not rise) before keeping it.
     /// </summary>
     string? Propose(BuildDiagnostic d, string excerpt);
+
+    /// <summary>
+    /// The same, but the wait ends when <paramref name="ct"/> is cancelled. A model that ignores the
+    /// token still works: the loop checks it between asks.
+    /// </summary>
+    string? Propose(BuildDiagnostic d, string excerpt, CancellationToken ct) => Propose(d, excerpt);
+
+    /// <summary>
+    /// True when the latest <c>Propose</c> returned null because the wait ran out. The loop then
+    /// stops asking for the rest of the run: every further ask would wait just as long.
+    /// </summary>
+    bool LastTimedOut => false;
 }

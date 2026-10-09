@@ -74,8 +74,24 @@ internal sealed class OllamaBuildFixAi : IBuildFixAi, IDisposable
         }
     }
 
-    public string? Propose(BuildDiagnostic d, string excerpt)
+    /// <inheritdoc />
+    public bool LastTimedOut { get; private set; }
+
+    public string? Propose(BuildDiagnostic d, string excerpt) => Propose(d, excerpt, CancellationToken.None);
+
+    public string? Propose(BuildDiagnostic d, string excerpt, CancellationToken ct)
     {
+        LastTimedOut = false;
+
+        // The caller has already given up: do not even start the call.
+        if (ct.IsCancellationRequested)
+            return null;
+
+        // A per-call deadline: the whole wait is bounded in wall-clock time, however the
+        // injected client is configured. The caller's token ends the wait early.
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(_timeout);
+
         try
         {
             var body = new
@@ -93,10 +109,6 @@ internal sealed class OllamaBuildFixAi : IBuildFixAi, IDisposable
                     },
                 },
             };
-
-            // A per-call deadline: the whole wait is bounded in wall-clock time, however the
-            // injected client is configured.
-            using var cts = new CancellationTokenSource(_timeout);
 
             using var response = _http
                 .PostAsJsonAsync($"{_config.Endpoint.TrimEnd('/')}/api/chat", body, cts.Token)
@@ -120,6 +132,9 @@ internal sealed class OllamaBuildFixAi : IBuildFixAi, IDisposable
         }
         catch (Exception)
         {
+            // The wait ran out when our own deadline fired and the caller did not cancel.
+            LastTimedOut = cts.IsCancellationRequested && !ct.IsCancellationRequested;
+
             // Unreachable server, timeout or cancel, malformed JSON, or an unexpected shape: none of
             // these is a failure of the loop, only "no proposal".
             return null;

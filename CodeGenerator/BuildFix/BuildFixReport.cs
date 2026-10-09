@@ -22,6 +22,9 @@ internal static class BuildFixReport
     /// <summary>The map in each backup folder: which .bak is which file.</summary>
     internal const string BackupMapName = "files.txt";
 
+    /// <summary>Said when the fix stopped without a build to trust: the files may differ from the last build.</summary>
+    internal const string NotRechecked = "The build was not re-checked after the failure.";
+
     internal static IReadOnlyList<string> Options { get; } = ["Yes, fix them", "No, leave them"];
 
     internal static string Title(int errors)
@@ -56,7 +59,9 @@ internal static class BuildFixReport
                     : stuck > 0
                         ? "Nothing was fixed."
                         : $"Nothing was kept: all {Count(undone, "edit")} made {(undone == 1 ? "was" : "were")} undone.");
-            lines.Add($"The build still fails: {Errors(left)}.");
+            lines.Add(outcome.BuildChecked
+                ? $"The build still fails: {Errors(left)}."
+                : NotRechecked);
         }
 
         if (stuck > 0)

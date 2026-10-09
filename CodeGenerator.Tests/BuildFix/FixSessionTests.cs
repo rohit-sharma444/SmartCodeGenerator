@@ -104,20 +104,29 @@ public class FixSessionTests
         var outsideFile = FixTestSupport.Write(outside, "target.cs", "class T {}");
         var link = Path.Combine(root, "link");
 
-        var mklinkResult = RunMklink(link, outside);
-        if (!mklinkResult)
+        try
         {
-            Assert.Inconclusive("mklink not available on this machine");
-            return;
+            var mklinkResult = RunMklink(link, outside);
+            if (!mklinkResult)
+            {
+                Assert.Inconclusive("mklink not available on this machine");
+                return;
+            }
+
+            var session = new FixSession(root);
+            session.BeginRound(1);
+            var linkedFile = Path.Combine(link, "target.cs");
+
+            Assert.Throws<InvalidOperationException>(() => session.Write(linkedFile, "modified", "test"));
+            Assert.Throws<InvalidOperationException>(() => session.Read(linkedFile));
+            Assert.AreEqual("class T {}", File.ReadAllText(outsideFile));
         }
-
-        var session = new FixSession(root);
-        session.BeginRound(1);
-        var linkedFile = Path.Combine(link, "target.cs");
-
-        Assert.Throws<InvalidOperationException>(() => session.Write(linkedFile, "modified", "test"));
-        Assert.Throws<InvalidOperationException>(() => session.Read(linkedFile));
-        Assert.AreEqual("class T {}", File.ReadAllText(outsideFile));
+        finally
+        {
+            // The junction first, as a link: its target is another test folder and is not ours to follow.
+            FixTestSupport.DeleteTree(root);
+            FixTestSupport.DeleteTree(outside);
+        }
     }
 
     [TestMethod]
@@ -142,7 +151,7 @@ public class FixSessionTests
         Assert.AreEqual("Call BeginRound first", ex.Message);
     }
 
-    private static bool RunMklink(string link, string target)
+    internal static bool RunMklink(string link, string target)
     {
         try
         {

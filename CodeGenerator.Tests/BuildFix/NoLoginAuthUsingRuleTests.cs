@@ -29,6 +29,36 @@ public class NoLoginAuthUsingRuleTests
         return FixTestSupport.Write(root, "ViewModels/MainViewModel.cs", text);
     }
 
+    [TestMethod]
+    public void Fix_RemovesEveryAuthUsingOfTheFileInOneWrite_AndKeepsTheOthers()
+    {
+        var text = "using System;\r\nusing Shop.Auth;\r\nusing Shop.Models;\r\nusing Shop.Auth;\r\nusing Other.Auth;\r\nusing Shop.Auth;\r\nusing Shop.Auth;\r\n\r\nnamespace Shop;\r\n\r\npublic class MainViewModel { }\r\n";
+        var root = FixTestSupport.TempProject();
+        var file = Path.Combine(root, "MainViewModel.cs");
+        File.WriteAllText(file, text, new UTF8Encoding(true));
+        var session = Session(root);
+
+        Assert.IsTrue(new NoLoginAuthUsingRule().Fix(Diag(file, line: 2), session));
+
+        Assert.HasCount(1, session.Edits);
+        var bytes = File.ReadAllBytes(file);
+        CollectionAssert.AreEqual(new byte[] { 0xEF, 0xBB, 0xBF }, bytes[..3]);
+        var after = Encoding.UTF8.GetString(bytes, 3, bytes.Length - 3);
+        Assert.AreEqual(
+            "using System;\r\nusing Shop.Models;\r\nusing Other.Auth;\r\n\r\nnamespace Shop;\r\n\r\npublic class MainViewModel { }\r\n", after);
+        Assert.IsFalse(Regex.IsMatch(after, "(?<!\r)\n"), "a bare LF crept in");
+    }
+
+    [TestMethod]
+    public void Fix_KeepsAnAuthUsingThatHasATrailingComment_WhileRemovingTheOthers()
+    {
+        var text = "using Shop.Auth;\nusing Shop.Auth; // keep\nusing Shop.Auth;\n";
+        var file = Setup(text, out var root);
+
+        Assert.IsTrue(new NoLoginAuthUsingRule().Fix(Diag(file, line: 1), Session(root)));
+        Assert.AreEqual("using Shop.Auth; // keep\n", File.ReadAllText(file));
+    }
+
     private static void AssertUntouched(string file, string text)
         => Assert.AreEqual(text, File.ReadAllText(file));
 
