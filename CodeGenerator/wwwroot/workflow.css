@@ -837,6 +837,20 @@ body {
 
 .actions .cancel { color: var(--pending); }
 
+/* The overwrite question. Adding is the safe choice, so it is the loud one; overwriting loses
+   generated sources, so it is marked like Stop rather than filled. */
+.actions .overwrite-add {
+    border-color: var(--active);
+    background: var(--active);
+    color: var(--on-accent);
+    font-weight: 600;
+}
+
+.actions .overwrite-yes {
+    border-color: var(--failed);
+    color: var(--failed);
+}
+
 /* Quiet, not loud: stopping is the useful thing to be able to do, never the thing to be nudged
    towards. It sits beside the loud Run button and must not compete with it. */
 .actions .stop {
@@ -881,6 +895,10 @@ body {
 
 .step-done { color: var(--pending); }
 .step-done::before { content: "\2713\00a0"; color: var(--done); }
+
+/* Finished, but in failure: a cross in the failure colour, never the tick. */
+.step-failed { color: var(--failed); }
+.step-failed::before { content: "\2717\00a0"; color: var(--failed); }
 
 /* A static bold line with a middle dot read as settled rather than working, on a wait that runs
    to several minutes with nothing else moving on screen - Discover's local-model round trip

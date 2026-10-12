@@ -63,4 +63,26 @@ internal static class BuildDiagnostics
 
         return list;
     }
+
+    /// <summary>"Could not copy" and "unable to copy": the app being built is running and holds its exe.</summary>
+    private static readonly string[] LockedOutputCodes = ["MSB3027", "MSB3021"];
+
+    /// <summary>
+    /// True when a fix could edit the cause: a compiler (CS) error with a line, in a .cs file inside
+    /// the project and outside obj, bin and .codegen. Anything else (an MSBuild error in a targets
+    /// file, a file elsewhere) no rule and no AI may touch.
+    /// </summary>
+    public static bool IsFixable(BuildDiagnostic d, string projectPath)
+        => d.Code.StartsWith("CS", StringComparison.OrdinalIgnoreCase)
+            && d.Line >= 1
+            && d.File.EndsWith(".cs", StringComparison.OrdinalIgnoreCase)
+            && FixSession.IsEditableIn(projectPath, d.File);
+
+    /// <summary>How many of <paramref name="diagnostics"/> a fix could edit; the fix is offered only when some are.</summary>
+    public static int Fixable(IReadOnlyList<BuildDiagnostic> diagnostics, string projectPath)
+        => diagnostics.Count(d => IsFixable(d, projectPath));
+
+    /// <summary>True when the build could not replace the app's files because the app is running.</summary>
+    public static bool OutputLocked(IReadOnlyList<BuildDiagnostic> diagnostics)
+        => diagnostics.Any(d => LockedOutputCodes.Contains(d.Code, StringComparer.OrdinalIgnoreCase));
 }

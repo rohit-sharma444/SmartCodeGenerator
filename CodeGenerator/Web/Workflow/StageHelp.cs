@@ -16,10 +16,10 @@ public sealed record StageHelpEntry(string Summary, IReadOnlyList<HelpSection> S
 /// The text behind each stage's help icon, and the address that icon opens.
 /// </summary>
 /// <remarks>
-/// <see cref="For"/> is a total switch with no default, so a stage added to
-/// <see cref="BuildStage"/> will not compile until it has help — the same trick
-/// <see cref="StageGraph.Invalidates"/> uses. The address carries the enum name, lower-cased, which
-/// is also what a saved snapshot holds.
+/// <see cref="For"/> is a switch with no default arm, so a stage added to <see cref="BuildStage"/>
+/// with no help is warning CS8509, which CI's <c>-warnaserror</c> build refuses. Only CS8524 (an
+/// unnamed number) is turned off; such a value throws <c>SwitchExpressionException</c>.
+/// The address carries the enum name, lower-cased, which is also what a saved snapshot holds.
 /// <para>
 /// The wording names the controls as the stage draws them — "Write it", "Run it now", "own
 /// screen" — because a help page that says "click Generate" over a button called "Write it" is
@@ -35,6 +35,9 @@ public static class StageHelp
         => Enum.GetValues<BuildStage>().Cast<BuildStage?>()
             .FirstOrDefault(s => string.Equals(s.ToString(), name, StringComparison.OrdinalIgnoreCase));
 
+    // CS8524 (a number that names no stage) is the only warning turned off: CS8509 (a NAMED stage
+    // with no arm) must stay, because it is what refuses a new stage that has no help.
+#pragma warning disable CS8524
     public static StageHelpEntry For(BuildStage stage) => stage switch
     {
         BuildStage.Describe => new(
@@ -45,7 +48,7 @@ public static class StageHelp
                 new("What you see",
                 [
                     "One text box. Press Enter in the box to start a new line. A description can have more than one sentence.",
-                    "A Cancel button. It asks you to confirm before it ends the build.",
+                    "A Cancel button. It ends the build. If you have already given answers, it asks you to confirm first.",
                 ]),
                 new("What to do",
                 [
@@ -137,7 +140,8 @@ public static class StageHelp
                     "Layout (WPF and Windows Desktop only): business is the default. Others are tabs, sidebar, master-detail and dashboard.",
                     "Company: put in the project file and in a copyright line at the top of each generated C# file.",
                     "Theme: none, light or dark. This applies to the desktop applications.",
-                    "Accent colour: a colour as #rrggbb. A wrong value is ignored.",
+                    "Accent colour: a colour as #rrggbb, or leave it empty. A wrong value is refused: "
+                    + "the page shows what a colour looks like, and Continue stays off until you correct it.",
                     "Icon path: a .ico or .png file that becomes the application icon.",
                     "Window title: a pattern. {company} and {app} are replaced, so \"{company} - {app}\" gives Codis Ltd - Shop.",
                     "Namespace prefix: puts the code under your own namespace, for example CodisLtd.Shop.Models.",
@@ -347,7 +351,6 @@ public static class StageHelp
                 ]),
             ],
             "This is the last stage."),
-
-        _ => throw new ArgumentOutOfRangeException(nameof(stage), stage, null),
     };
+#pragma warning restore CS8524
 }

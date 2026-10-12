@@ -25,6 +25,26 @@ internal static class BuildFixReport
     /// <summary>Said when the fix stopped without a build to trust: the files may differ from the last build.</summary>
     internal const string NotRechecked = "The build was not re-checked after the failure.";
 
+    /// <summary>Said instead of an offer when the build failed only because the app holds its own files.</summary>
+    internal const string LockedOutput =
+        "The app is still running, so the build could not replace its files. Stop the app, then build again.";
+
+    /// <summary>Said instead of an offer when no error is in a C# file of the app that a fix may edit.</summary>
+    internal const string NothingToFix =
+        "None of the errors is in a C# file of the app, so no fix is offered.";
+
+    /// <summary>
+    /// Why no fix is offered for these errors, or null when one is (some error is fixable) or there
+    /// is nothing to say (no errors could be read).
+    /// </summary>
+    internal static string? NoFixReason(IReadOnlyList<BuildDiagnostic> diagnostics, string projectPath)
+    {
+        if (diagnostics.Count == 0 || BuildDiagnostics.Fixable(diagnostics, projectPath) > 0)
+            return null;
+
+        return BuildDiagnostics.OutputLocked(diagnostics) ? LockedOutput : NothingToFix;
+    }
+
     internal static IReadOnlyList<string> Options { get; } = ["Yes, fix them", "No, leave them"];
 
     internal static string Title(int errors)
@@ -91,9 +111,11 @@ internal static class BuildFixReport
         if (outcome.Edits.Count > 0)
         {
             lines.Add($"  The original of each edited file is kept under {BackupLocation}");
-            lines.Add($"  in the newest folder. The file {BackupMapName} there names each backup.");
-            lines.Add("  If a file was edited in more than one round, its true original is in");
-            lines.Add("  the earliest round (r1 before r2 before r3).");
+            // FixSession makes a new folder per run, so after a second run the newest folder holds
+            // files the first run had already edited: the true original is in the oldest.
+            lines.Add($"  in one folder per fix run, named by date and time; {BackupMapName} names each.");
+            lines.Add("  A file's true original is in the OLDEST folder that holds it, in its");
+            lines.Add("  earliest round (r1 before r2 before r3).");
         }
 
         return lines;

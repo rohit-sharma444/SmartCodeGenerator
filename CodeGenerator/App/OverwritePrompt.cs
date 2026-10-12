@@ -108,9 +108,10 @@ internal static class OverwritePrompt
 
         if (changed.Count > 0)
         {
+            // "Adding" only when adding is on the menu: with nothing new there is no Add to explain.
             lines.Add(
-                $"{Classes(changed.Count)} {(changed.Count == 1 ? "differs" : "differ")}:{string.Join(", ", changed)}. "
-                + "Adding leaves them as they are.");
+                $"{Classes(changed.Count)} {(changed.Count == 1 ? "differs" : "differ")}: {string.Join(", ", changed)}."
+                + (added > 0 ? " Adding leaves them as they are." : string.Empty));
         }
 
         lines.AddRange(
@@ -126,6 +127,42 @@ internal static class OverwritePrompt
         ]);
 
         return lines;
+    }
+
+    /// <summary>
+    /// The warning as paragraphs for a page: the lines the console wraps at 80 columns joined back
+    /// into their sentences, blank lines as the breaks, and the console's key hints left out
+    /// (the page has buttons instead).
+    /// </summary>
+    public static IReadOnlyList<string> Paragraphs(IReadOnlyList<string> lines)
+    {
+        var paragraphs = new List<string>();
+        var current = new List<string>();
+
+        foreach (var line in lines)
+        {
+            if (line.TrimStart().StartsWith('['))
+                continue;
+
+            if (line.Trim().Length == 0)
+            {
+                Flush();
+                continue;
+            }
+
+            current.Add(line.Trim());
+        }
+
+        Flush();
+        return paragraphs;
+
+        void Flush()
+        {
+            if (current.Count > 0)
+                paragraphs.Add(string.Join(" ", current));
+
+            current.Clear();
+        }
     }
 
     /// <summary>"1 class", "2 classes" — a line reading "1 classes" about a user's own model

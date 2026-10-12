@@ -161,6 +161,23 @@ public class ConsoleFixOfferTests
     }
 
     [TestMethod]
+    public void OfferToFix_OnlyALockedExe_DoesNotAsk_AndNeverFixes()
+    {
+        var root = FixTestSupport.TempProject();
+        var scaffold = new ScaffoldResult(true, root, [], "");
+        var failed = FixTestSupport.Result(
+            @"C:\Program Files\dotnet\sdk\10.0.100\Microsoft.Common.CurrentVersion.targets(4975,5): error MSB3027: Could not copy ""obj\Debug\App.exe"" to ""bin\Debug\App.exe"". The file is locked by: ""App (1234)""");
+        var asked = false;
+        var fixer = new FakeFixer(true);
+
+        var result = BuildAppCommand.OfferToFix(scaffold, failed, (t, o, d) => { asked = true; return 0; }, fixer);
+
+        Assert.IsFalse(asked, "nothing a fix can edit, so no offer");
+        Assert.AreEqual(0, fixer.Calls);
+        Assert.IsNull(result);
+    }
+
+    [TestMethod]
     public void OfferToFix_FixerThrows_ReturnsNull_AndDoesNotCrash()
     {
         var (scaffold, failed) = Failed(FixTestSupport.TempProject());

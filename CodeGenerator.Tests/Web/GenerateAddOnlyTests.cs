@@ -57,6 +57,14 @@ public class GenerateAddOnlyTests
         Assert.AreEqual("Add the 1 new class", rendered.Find("button.overwrite-add").TextContent.Trim());
         StringAssert.Contains(rendered.Find(".overwrite").TextContent, "of which 1 is new");
         Assert.DoesNotContain("[a]dd", rendered.Find(".overwrite").TextContent, "console key hints");
+
+        // One sentence is one paragraph, not three console-wrapped lines.
+        var paragraphs = rendered.FindAll(".overwrite p").Select(p => p.TextContent).ToList();
+        Assert.IsTrue(paragraphs.Any(p => p.StartsWith("Regenerating overwrites") && p.EndsWith("are kept.")),
+            string.Join(" | ", paragraphs));
+
+        // In an actions row, so they get the workflow's button style rather than the browser's.
+        Assert.HasCount(4, rendered.FindAll(".overwrite .actions button"));
     }
 
     /// <summary>Nothing new, nothing to add: the button would promise an empty write.</summary>

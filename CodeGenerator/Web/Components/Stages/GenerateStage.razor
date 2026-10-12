@@ -33,6 +33,11 @@
         <p class="notice">@LayoutNotice</p>
     }
 
+    @if (_fixRunning)
+    {
+        <p class="notice fix-running">@FixRunningNotice</p>
+    }
+
     <div class="actions">
         @* Writing is a real action rather than navigation, so it stays here and stays loud. *@
         <button type="button" class="write" @onclick="Write">Write it</button>
@@ -48,25 +53,28 @@ else if (_phase == Phase.Overwrite)
             <p>@line</p>
         }
 
-        @* The console's [a]dd, offered only when there is something to add. *@
-        @if (_newClasses > 0)
-        {
-            <button type="button" class="overwrite-add" @onclick="AddNew">
-                Add the @_newClasses new @(_newClasses == 1 ? "class" : "classes")
+        @* In an actions row, so they are drawn like every other workflow button. *@
+        <div class="actions">
+            @* The console's [a]dd, offered only when there is something to add. *@
+            @if (_newClasses > 0)
+            {
+                <button type="button" class="overwrite-add" @onclick="AddNew">
+                    Add the @_newClasses new @(_newClasses == 1 ? "class" : "classes")
+                </button>
+            }
+            <button type="button" class="overwrite-yes" @onclick="Overwrite">Overwrite it</button>
+            <button type="button" class="overwrite-rename" @onclick="() => _phase = Phase.Confirm">
+                Use a different name
             </button>
-        }
-        <button type="button" class="overwrite-yes" @onclick="Overwrite">Overwrite it</button>
-        <button type="button" class="overwrite-rename" @onclick="() => _phase = Phase.Confirm">
-            Use a different name
-        </button>
-        <button type="button" class="cancel" @onclick="() => Session.RequestCancel()">Cancel</button>
+            <button type="button" class="cancel" @onclick="() => Session.RequestCancel()">Cancel</button>
+        </div>
     </div>
 }
 else
 {
     @* Progress first, because during the minute this takes it is the only thing worth reading:
        scaffolding and a first build are both long enough that a still page reads as a hung one. *@
-    <ProgressList Done="_steps" Current="@_step" Seconds="_seconds" />
+    <ProgressList Done="_steps" Failed="_failedSteps" Current="@_step" Seconds="_seconds" />
 
     @foreach (var line in _report)
     {
@@ -168,6 +176,9 @@ else
 
     /// <summary>What has finished, and what is running — the progress the user watches.</summary>
     private readonly List<string> _steps = [];
+
+    /// <summary>Which of <see cref="_steps"/> ended in failure, so the list draws them with a cross, not a tick.</summary>
+    private readonly HashSet<string> _failedSteps = [];
     private string? _step;
     private int _seconds;
     private System.Timers.Timer? _clock;
@@ -235,6 +246,9 @@ else
         _steps.Add($"Wrote {app.Scaffold.FilesWritten.Count} file(s)");
         _steps.Add(app.BuildSucceeded ? "Compiled" : "The compiler reported problems");
 
+        if (!app.BuildSucceeded)
+            _failedSteps.Add("The compiler reported problems");
+
         _report.Add(app.BuildSucceeded
             ? "It compiled."
             : "It did not compile. "
@@ -269,10 +283,10 @@ else
             _newClasses = AppScaffolding.Incremental.ModelDelta.NewNames(delta).Count;
 
             // The console's own wording, less its key hints: the page has buttons instead.
-            _collision = OverwritePrompt
-                .Warning(GenerateStep.FolderFor(Session, _name, Target), delta)
-                .Where(line => line.Length > 0 && !line.TrimStart().StartsWith('['))
-                .ToList();
+            // As paragraphs: the console wraps a sentence over three lines, and three <p>s for
+            // one sentence read as three statements.
+            _collision = OverwritePrompt.Paragraphs(
+                OverwritePrompt.Warning(GenerateStep.FolderFor(Session, _name, Target), delta));
 
             _phase = Phase.Overwrite;
             return;
@@ -285,7 +299,41 @@ else
 
     private async Task AddNew() => await Go(addOnly: true);
 
+    /// <summary>Said when a write is refused because a fix is editing the same folder.</summary>
+    internal const string FixRunningNotice = "A fix is running on this app; wait for it to finish.";
+
+    /// <summary>True after a write was refused because a fix holds the folder.</summary>
+    private bool _fixRunning;
+
+    /// <summary>
+    /// Writes and builds, holding the folder's fix lock the whole time: a fix running on it (from any
+    /// page) would otherwise undo its round over the freshly written files with its old backups, and a
+    /// fix started meanwhile would edit files the scaffolder is still writing.
+    /// </summary>
     private async Task Go(bool addOnly = false)
+    {
+        var folder = GenerateStep.FolderFor(Session, _name, Target);
+
+        if (!FixLocks.TryEnter(folder))
+        {
+            _fixRunning = true;
+            _phase = Phase.Confirm;
+            return;
+        }
+
+        _fixRunning = false;
+
+        try
+        {
+            await WriteAndBuild(addOnly);
+        }
+        finally
+        {
+            FixLocks.Leave(folder);
+        }
+    }
+
+    private async Task WriteAndBuild(bool addOnly)
     {
         _phase = Phase.Working;
         _report.Clear();
@@ -297,6 +345,7 @@ else
         _fixDeclined = false;
         _log.Clear();
         _steps.Clear();
+        _failedSteps.Clear();
 
         Step($"Writing {_name} into {GenerateStep.FolderFor(Session, _name, Target)}");
 
@@ -333,7 +382,7 @@ else
 
         if (!scaffold.Success)
         {
-            Finished("Could not write the project");
+            Finished("Could not write the project", failed: true);
             _report.Add($"Generation failed: {scaffold.Message}");
             _phase = Phase.Done;
             StateHasChanged();
@@ -389,7 +438,7 @@ else
         // that were never reported. The console front end has always said this here.
         if (built.Result is not { } result)
         {
-            Finished("Could not start `dotnet` — the build was skipped");
+            Finished("Could not start `dotnet` — the build was skipped", failed: true);
 
             _report.Add(
                 "Could not start `dotnet`, so the project was written but not compiled. "
@@ -413,7 +462,8 @@ else
 
         Finished(BuildReport.Succeeded(result)
             ? "Compiled"
-            : "The compiler reported problems — the log is below");
+            : "The compiler reported problems — the log is below",
+            failed: !BuildReport.Succeeded(result));
 
         _buildLines.AddRange(BuildReport.Lines(result, built.Elapsed, scaffold.ProjectPath));
         _shownBuild = result;
@@ -456,9 +506,12 @@ else
     }
 
     /// <summary>Ticks the last step off and stops the clock — nothing is running any more.</summary>
-    private void Finished(string last)
+    private void Finished(string last, bool failed = false)
     {
         _steps.Add(last);
+
+        if (failed)
+            _failedSteps.Add(last);
         _step = null;
 
         StopClock();
@@ -522,10 +575,19 @@ else
         if (!BuildAppCommand.ShouldOfferFix(build))
             return;
 
-        var errors = BuildDiagnostics.Parse(build, projectPath).Count;
+        var diagnostics = BuildDiagnostics.Parse(build, projectPath);
+        var errors = diagnostics.Count;
 
         if (errors == 0)
             return;
+
+        // Only errors a fix may edit are worth an offer; a running app that holds its exe is said
+        // as what it is, with what to do about it.
+        if (BuildFixReport.NoFixReason(diagnostics, projectPath) is { } why)
+        {
+            _buildLines.Add(why);
+            return;
+        }
 
         _failedBuild = build;
         _failedErrors = errors;
@@ -625,7 +687,8 @@ else
                                 timings.Add((fresh.Result, fresh.Elapsed));
 
                         if (fresh.Result is { } freshResult && BuildAppCommand.ShouldOfferFix(freshResult)
-                            && BuildDiagnostics.Parse(freshResult, scaffold.ProjectPath).Count > 0)
+                            && BuildDiagnostics.Fixable(
+                                BuildDiagnostics.Parse(freshResult, scaffold.ProjectPath), scaffold.ProjectPath) > 0)
                             basis = freshResult;
                     }
 
@@ -681,7 +744,7 @@ else
             // The old red build stays the offer's basis, so the user can say Yes again.
             if (!_disposed)
             {
-                Finished("The fix stopped");
+                Finished("The fix stopped", failed: true);
                 _fixerThrew = true;
                 _fixLines.Clear();
                 _fixLines.Add(
@@ -705,7 +768,7 @@ else
             if (_disposed)
                 return;
 
-            Finished("The fix stopped");
+            Finished("The fix stopped", failed: true);
             _failedBuild = null;
             _fixLines.Clear();
             _fixLines.Add("The app was changed while the fix ran, so its result was not kept.");
@@ -724,7 +787,7 @@ else
             if (_disposed)
                 return;
 
-            Finished("The fix stopped");
+            Finished("The fix stopped", failed: true);
             _fixLines.Clear();
             _fixLines.AddRange(BuildFixReport.Lines(outcome, scaffold.ProjectPath));
             _phase = Phase.Done;
@@ -760,7 +823,9 @@ else
         if (_disposed)
             return;
 
-        Finished(outcome.Green ? "Compiled after the fix" : "The compiler still reports problems after the fix");
+        Finished(
+            outcome.Green ? "Compiled after the fix" : "The compiler still reports problems after the fix",
+            failed: !outcome.Green);
 
         // A green rebuild makes the page's earlier complaints false: the compile warning about a
         // stub the fix rewrote, the "problems" step, and the red log above the new one. A red one

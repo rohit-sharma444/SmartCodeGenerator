@@ -2,6 +2,7 @@ using AppScaffolding;
 using Bunit;
 using CodeGenerator.Web.Components;
 using CodeGenerator.Web.Workflow;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace CodeGenerator.Tests.Web;
 
@@ -28,6 +29,43 @@ public class StageHelpTests
             }
             Assert.IsFalse(string.IsNullOrWhiteSpace(help.Next), $"{stage} has no next");
         }
+    }
+
+    [TestMethod]
+    public void The_help_switch_has_no_default_arm_so_a_missing_stage_cannot_compile()
+    {
+        // Only a switch with no "_ =>" arm throws this for a value it has no arm for; with no
+        // default, CS8509 (under CI's -warnaserror) refuses a named stage that has no help.
+        Assert.ThrowsExactly<System.Runtime.CompilerServices.SwitchExpressionException>(
+            () => StageHelp.For((BuildStage)999));
+    }
+
+    [TestMethod]
+    public void The_describe_help_says_cancel_asks_first_only_when_there_are_answers()
+    {
+        var items = StageHelp.For(BuildStage.Describe).Sections.SelectMany(s => s.Items).ToList();
+        var cancel = items.Single(i => i.StartsWith("A Cancel button.", StringComparison.Ordinal));
+
+        // BuildSession.RequestCancel ends an empty build at once; it asks only when an answer would be lost.
+        var session = new BuildSession("", @"C:\ws", AppCustomization.Default);
+        Assert.IsTrue(session.RequestCancel(), "with no answers the build ends without a question");
+
+        Assert.AreEqual(
+            "A Cancel button. It ends the build. If you have already given answers, it asks you to confirm first.",
+            cancel);
+    }
+
+    [TestMethod]
+    public void The_look_help_says_a_wrong_accent_is_refused_not_ignored()
+    {
+        var items = StageHelp.For(BuildStage.Look).Sections.SelectMany(s => s.Items).ToList();
+        var accent = items.Single(i => i.StartsWith("Accent colour:", StringComparison.Ordinal));
+
+        // LookStage shows "A colour looks like #1f6feb." and keeps Continue off for a wrong value.
+        Assert.AreEqual(
+            "Accent colour: a colour as #rrggbb, or leave it empty. A wrong value is refused: "
+            + "the page shows what a colour looks like, and Continue stays off until you correct it.",
+            accent);
     }
 
     [TestMethod]
@@ -75,6 +113,40 @@ public class StageHelpTests
             Assert.IsTrue(
                 rendered.FindAll("h2").Any(h => h.TextContent == section.Heading),
                 $"the page lacks the section {section.Heading}");
+    }
+
+    [TestMethod]
+    public void The_help_page_is_drawn_in_the_theme_the_workflow_saved()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "cg-help-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(root);
+
+        try
+        {
+            WorkflowThemeStore.Save(root, "dark");
+            using var context = new BunitContext();
+            context.Services.AddSingleton(new BuildSession("", root, AppCustomization.Default));
+
+            var found = context.Render<StageHelpPage>(p => p.Add(x => x.Stage, "data"));
+            var missing = context.Render<StageHelpPage>(p => p.Add(x => x.Stage, "nonsense"));
+
+            Assert.AreEqual("dark", found.Find("main.stage-help-page").GetAttribute("data-theme"));
+            Assert.AreEqual("dark", missing.Find("main.stage-help-page").GetAttribute("data-theme"));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public void The_help_page_is_light_with_no_session()
+    {
+        using var context = new BunitContext();
+
+        var rendered = context.Render<StageHelpPage>(p => p.Add(x => x.Stage, "data"));
+
+        Assert.AreEqual(WorkflowThemes.Default, rendered.Find("main.stage-help-page").GetAttribute("data-theme"));
     }
 
     [TestMethod]
