@@ -111,9 +111,11 @@ internal static class BuildFixReport
         if (outcome.Edits.Count > 0)
         {
             lines.Add($"  The original of each edited file is kept under {BackupLocation}");
-            lines.Add($"  in the newest folder. The file {BackupMapName} there names each backup.");
-            lines.Add("  If a file was edited in more than one round, its true original is in");
-            lines.Add("  the earliest round (r1 before r2 before r3).");
+            // FixSession makes a new folder per run, so after a second run the newest folder holds
+            // files the first run had already edited: the true original is in the oldest.
+            lines.Add($"  in one folder per fix run, named by date and time; {BackupMapName} names each.");
+            lines.Add("  A file's true original is in the OLDEST folder that holds it, in its");
+            lines.Add("  earliest round (r1 before r2 before r3).");
         }
 
         return lines;
