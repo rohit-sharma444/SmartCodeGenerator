@@ -768,7 +768,13 @@ public class BuildFixLoopTests
         var outcome = new BuildFixLoop([], ai).Run(root, red, () => red);
 
         Assert.AreEqual(0, ai.Asks);
-        Assert.IsTrue(outcome.Notes.Any(n => n.Contains("Ollama is not running")));
+
+        // IsAvailable is false for a stopped Ollama AND for a running one without the model pulled,
+        // so the note must not claim the first.
+        Assert.Contains(
+            "The local AI could not be used: Ollama is not running, or its model is not pulled. Only the fix rules ran.",
+            outcome.Notes);
+        Assert.IsFalse(outcome.Notes.Any(n => n.StartsWith("Ollama is not running", StringComparison.Ordinal)));
         Assert.AreEqual("x", File.ReadAllText(file));
     }
 

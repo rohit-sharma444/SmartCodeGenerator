@@ -168,7 +168,9 @@ internal sealed class BuildFixLoop(
 
                     if (aiUp != true)
                     {
-                        notes.Add("Ollama is not running, so only the fix rules ran.");
+                        // IsAvailable is false for a stopped server and for a running one without
+                        // the configured model, and it cannot say which: the note names both.
+                        notes.Add("The local AI could not be used: Ollama is not running, or its model is not pulled. Only the fix rules ran.");
                         break;
                     }
 
