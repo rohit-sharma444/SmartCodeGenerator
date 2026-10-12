@@ -23,7 +23,8 @@ internal sealed record FixOutcome(
 /// Fix, rebuild, repeat. Rules first; the AI only when no rule fixed anything in the round.
 /// This is the safety net, so every round is checked against the build that follows it: a round
 /// that raises the error count, brings errors into a file that had none, or leaves a failed build
-/// whose errors cannot be read is undone, and so is an AI round that does not LOWER the count.
+/// whose errors cannot be read is undone, and so is any round that does not LOWER the count; the
+/// loop then stops.
 /// A rule or a model that throws, or answers badly, is skipped and never stops the loop.
 /// <para>
 /// The whole run has a time budget (10 minutes unless told otherwise) and can be cancelled. Both are
@@ -296,8 +297,11 @@ internal sealed class BuildFixLoop(
         if (after.Any(d => d.File.Length > 0 && !known.Contains(d.File)))
             return "the edit brought errors into a file that had none.";
 
-        if (aiRound && after.Count >= before.Count)
-            return $"the AI edits did not reduce the errors ({before.Count} before, {after.Count} after).";
+        // The spec stops the loop at a round that does not lower the count. Whoever made the
+        // edits, a round with no progress is undone like the others: an equal count may be the
+        // same mistake moved, and kept edits that fixed nothing are only noise to check by hand.
+        if (after.Count >= before.Count)
+            return $"the {(aiRound ? "AI" : "rule")} edits did not reduce the errors ({before.Count} before, {after.Count} after).";
 
         return null;
     }

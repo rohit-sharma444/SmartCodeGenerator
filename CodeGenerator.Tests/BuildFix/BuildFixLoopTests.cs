@@ -367,20 +367,47 @@ public class BuildFixLoopTests
     }
 
     [TestMethod]
-    public void Run_StopsAtThreeRounds_WhenARuleKeepsFiringButTheErrorStays()
+    public void Run_StopsAndUndoesARuleRound_ThatDoesNotLowerTheErrorCount()
     {
         var root = FixTestSupport.TempProject();
         var file = FixTestSupport.Write(root, "A.cs", "BAD");
+        var original = Bytes(file);
         var red = FixTestSupport.Result(Err(file, 1, "CS0001"));
+        var other = FixTestSupport.Result(Err(file, 1, "CS0002"));
         var rebuilds = 0;
 
-        // The rule fires only while the file still has BAD; re-add it each rebuild so it always fires.
+        // One error before, one (different) after: the round made no progress, so the loop stops.
         var outcome = new BuildFixLoop([new StripBad()], null).Run(root, red, () =>
         {
             rebuilds++;
-            File.WriteAllText(file, "BAD");
-            return red;
+            return other;
         });
+
+        Assert.IsFalse(outcome.Green);
+        Assert.AreEqual(1, outcome.Rounds);
+        Assert.AreEqual(1, rebuilds);
+        CollectionAssert.AreEqual(original, Bytes(file));
+        Assert.IsTrue(outcome.Edits.All(e => e.Reverted));
+        Assert.HasCount(1, outcome.Remaining);
+        Assert.AreEqual("CS0001", outcome.Remaining[0].Code, "the user is left with the build the round started from");
+        Assert.Contains("Round 1 was reverted: the rule edits did not reduce the errors (1 before, 1 after).", outcome.Notes);
+    }
+
+    [TestMethod]
+    public void Run_StopsAtThreeRounds_WhenARuleLowersTheErrorsEveryRound()
+    {
+        var root = FixTestSupport.TempProject();
+        var files = Enumerable.Range(1, 4).Select(i => FixTestSupport.Write(root, $"F{i}.cs", "BAD")).ToList();
+        ProcessResult Failing(int count)
+        {
+            foreach (var f in files.Take(count))
+                File.WriteAllText(f, "BAD");
+
+            return FixTestSupport.Result(string.Join("\n", files.Take(count).Select(f => Err(f, 1, "CS0001"))));
+        }
+
+        var rebuilds = 0;
+        var outcome = new BuildFixLoop([new StripBad()], null).Run(root, Failing(4), () => Failing(3 - rebuilds++));
 
         Assert.IsFalse(outcome.Green);
         Assert.AreEqual(BuildFixLoop.MaxRounds, outcome.Rounds);
