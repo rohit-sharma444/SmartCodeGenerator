@@ -31,6 +31,15 @@ public class StageHelpTests
     }
 
     [TestMethod]
+    public void The_help_switch_has_no_default_arm_so_a_missing_stage_cannot_compile()
+    {
+        // Only a switch with no "_ =>" arm throws this for a value it has no arm for; with no
+        // default, CS8509 (under CI's -warnaserror) refuses a named stage that has no help.
+        Assert.ThrowsExactly<System.Runtime.CompilerServices.SwitchExpressionException>(
+            () => StageHelp.For((BuildStage)999));
+    }
+
+    [TestMethod]
     public void The_address_of_a_stage_round_trips()
     {
         foreach (var stage in Enum.GetValues<BuildStage>())
