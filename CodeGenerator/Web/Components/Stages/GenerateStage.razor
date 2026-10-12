@@ -33,6 +33,11 @@
         <p class="notice">@LayoutNotice</p>
     }
 
+    @if (_fixRunning)
+    {
+        <p class="notice fix-running">@FixRunningNotice</p>
+    }
+
     <div class="actions">
         @* Writing is a real action rather than navigation, so it stays here and stays loud. *@
         <button type="button" class="write" @onclick="Write">Write it</button>
@@ -285,7 +290,41 @@ else
 
     private async Task AddNew() => await Go(addOnly: true);
 
+    /// <summary>Said when a write is refused because a fix is editing the same folder.</summary>
+    internal const string FixRunningNotice = "A fix is running on this app; wait for it to finish.";
+
+    /// <summary>True after a write was refused because a fix holds the folder.</summary>
+    private bool _fixRunning;
+
+    /// <summary>
+    /// Writes and builds, holding the folder's fix lock the whole time: a fix running on it (from any
+    /// page) would otherwise undo its round over the freshly written files with its old backups, and a
+    /// fix started meanwhile would edit files the scaffolder is still writing.
+    /// </summary>
     private async Task Go(bool addOnly = false)
+    {
+        var folder = GenerateStep.FolderFor(Session, _name, Target);
+
+        if (!FixLocks.TryEnter(folder))
+        {
+            _fixRunning = true;
+            _phase = Phase.Confirm;
+            return;
+        }
+
+        _fixRunning = false;
+
+        try
+        {
+            await WriteAndBuild(addOnly);
+        }
+        finally
+        {
+            FixLocks.Leave(folder);
+        }
+    }
+
+    private async Task WriteAndBuild(bool addOnly)
     {
         _phase = Phase.Working;
         _report.Clear();

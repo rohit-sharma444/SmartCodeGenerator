@@ -303,6 +303,45 @@ public class GenerateFixTests
     }
 
     [TestMethod]
+    public void Writing_is_refused_while_a_fix_runs_on_the_same_folder()
+    {
+        using var context = new BunitContext();
+        var build = new FakeBuild(Green);
+        context.Services.AddSingleton<BuildRunner>(build.Run);
+        context.Services.AddSingleton<IBuildFixer>(new FakeFixer());
+        var session = NewSession();
+        var folder = GenerateStep.FolderFor(session, GenerateStep.NameFor(session), new WpfTarget());
+        var cut = context.Render<GenerateStage>(p => p
+            .Add(c => c.Session, session)
+            .Add(c => c.Navigation, new StageNavigation())
+            .Add(c => c.OnAdvance, () => { }));
+
+        Assert.IsTrue(FixLocks.TryEnter(folder), "the test plays the other page's running fix");
+
+        try
+        {
+            cut.Find("button.write").Click();
+
+            Assert.AreEqual("A fix is running on this app; wait for it to finish.", cut.Find(".fix-running").TextContent.Trim());
+            Assert.IsNull(session.Generated);
+            Assert.AreEqual(0, build.Calls);
+            Assert.IsFalse(Directory.Exists(folder), "nothing was written");
+            Assert.HasCount(1, cut.FindAll("button.write"), "the user can try again later");
+        }
+        finally
+        {
+            FixLocks.Leave(folder);
+        }
+
+        // Once the fix is done, writing works and the lock is not left held.
+        cut.Find("button.write").Click();
+        cut.WaitForAssertion(() => Assert.IsNotNull(session.Generated), TimeSpan.FromMinutes(5));
+        Assert.HasCount(0, cut.FindAll(".fix-running"));
+        Assert.IsTrue(FixLocks.TryEnter(folder), "the write released its hold on the folder");
+        FixLocks.Leave(folder);
+    }
+
+    [TestMethod]
     public void A_locked_exe_offers_no_fix_and_says_to_stop_the_app()
     {
         const string locked =
