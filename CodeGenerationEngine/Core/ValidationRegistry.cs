@@ -18,8 +18,9 @@ public static class ValidationRegistry
         new(System.StringComparer.OrdinalIgnoreCase);
 
     // The text each rule was parsed from: what is saved. A rule with none is kept in memory only.
-    private static readonly Dictionary<IValidationRule, string> _sources =
-        new(ReferenceEqualityComparer.Instance);
+    // Never cleared, and weak: undo and a script's put-back can set an older rule object again
+    // after a reload, and it must still be saved with its text, not dropped from the file.
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<IValidationRule, string> _sources = new();
 
     // Saved entries no parser reads any more, written back on every save rather than lost.
     private static List<SavedValidationRule> _unreadable = [];
@@ -39,7 +40,6 @@ public static class ValidationRegistry
     public static ValidationRuleFileLoad Attach(string? workspaceRoot)
     {
         _rules.Clear();
-        _sources.Clear();
         _unreadable = [];
         _file = string.IsNullOrWhiteSpace(workspaceRoot) ? null : ValidationRuleFile.PathFor(workspaceRoot);
 
@@ -52,7 +52,7 @@ public static class ValidationRegistry
             if (!_rules.TryGetValue(entry.ClassName, out var list))
                 _rules[entry.ClassName] = list = [];
             list.Add(rule);
-            _sources[rule] = entry.Text;
+            _sources.AddOrUpdate(rule, entry.Text);
         }
 
         _unreadable = [.. load.Unreadable];
@@ -83,7 +83,7 @@ public static class ValidationRegistry
 
         list.Add(rule);
         if (!string.IsNullOrWhiteSpace(source))
-            _sources[rule] = source.Trim();
+            _sources.AddOrUpdate(rule, source.Trim());
         Save();
     }
 
@@ -208,8 +208,9 @@ public static class ValidationRegistry
 
         var entries = _rules
             .SelectMany(kv => kv.Value
-                .Where(_sources.ContainsKey)
-                .Select(rule => new SavedValidationRule(kv.Key, rule.Category, _sources[rule])))
+                .Select(rule => (rule, text: SourceOf(rule)))
+                .Where(r => r.text is not null)
+                .Select(r => new SavedValidationRule(kv.Key, r.rule.Category, r.text!)))
             .Concat(_unreadable)
             .ToList();
 
