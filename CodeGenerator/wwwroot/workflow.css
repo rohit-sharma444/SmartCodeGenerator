@@ -882,6 +882,10 @@ body {
 .step-done { color: var(--pending); }
 .step-done::before { content: "\2713\00a0"; color: var(--done); }
 
+/* Finished, but in failure: a cross in the failure colour, never the tick. */
+.step-failed { color: var(--failed); }
+.step-failed::before { content: "\2717\00a0"; color: var(--failed); }
+
 /* A static bold line with a middle dot read as settled rather than working, on a wait that runs
    to several minutes with nothing else moving on screen - Discover's local-model round trip
    above all. A spinning ring says "still going" without depending on the seconds counter being

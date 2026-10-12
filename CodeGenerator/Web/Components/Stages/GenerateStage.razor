@@ -71,7 +71,7 @@ else
 {
     @* Progress first, because during the minute this takes it is the only thing worth reading:
        scaffolding and a first build are both long enough that a still page reads as a hung one. *@
-    <ProgressList Done="_steps" Current="@_step" Seconds="_seconds" />
+    <ProgressList Done="_steps" Failed="_failedSteps" Current="@_step" Seconds="_seconds" />
 
     @foreach (var line in _report)
     {
@@ -173,6 +173,9 @@ else
 
     /// <summary>What has finished, and what is running — the progress the user watches.</summary>
     private readonly List<string> _steps = [];
+
+    /// <summary>Which of <see cref="_steps"/> ended in failure, so the list draws them with a cross, not a tick.</summary>
+    private readonly HashSet<string> _failedSteps = [];
     private string? _step;
     private int _seconds;
     private System.Timers.Timer? _clock;
@@ -239,6 +242,9 @@ else
 
         _steps.Add($"Wrote {app.Scaffold.FilesWritten.Count} file(s)");
         _steps.Add(app.BuildSucceeded ? "Compiled" : "The compiler reported problems");
+
+        if (!app.BuildSucceeded)
+            _failedSteps.Add("The compiler reported problems");
 
         _report.Add(app.BuildSucceeded
             ? "It compiled."
@@ -336,6 +342,7 @@ else
         _fixDeclined = false;
         _log.Clear();
         _steps.Clear();
+        _failedSteps.Clear();
 
         Step($"Writing {_name} into {GenerateStep.FolderFor(Session, _name, Target)}");
 
@@ -372,7 +379,7 @@ else
 
         if (!scaffold.Success)
         {
-            Finished("Could not write the project");
+            Finished("Could not write the project", failed: true);
             _report.Add($"Generation failed: {scaffold.Message}");
             _phase = Phase.Done;
             StateHasChanged();
@@ -428,7 +435,7 @@ else
         // that were never reported. The console front end has always said this here.
         if (built.Result is not { } result)
         {
-            Finished("Could not start `dotnet` — the build was skipped");
+            Finished("Could not start `dotnet` — the build was skipped", failed: true);
 
             _report.Add(
                 "Could not start `dotnet`, so the project was written but not compiled. "
@@ -452,7 +459,8 @@ else
 
         Finished(BuildReport.Succeeded(result)
             ? "Compiled"
-            : "The compiler reported problems — the log is below");
+            : "The compiler reported problems — the log is below",
+            failed: !BuildReport.Succeeded(result));
 
         _buildLines.AddRange(BuildReport.Lines(result, built.Elapsed, scaffold.ProjectPath));
         _shownBuild = result;
@@ -495,9 +503,12 @@ else
     }
 
     /// <summary>Ticks the last step off and stops the clock — nothing is running any more.</summary>
-    private void Finished(string last)
+    private void Finished(string last, bool failed = false)
     {
         _steps.Add(last);
+
+        if (failed)
+            _failedSteps.Add(last);
         _step = null;
 
         StopClock();
@@ -730,7 +741,7 @@ else
             // The old red build stays the offer's basis, so the user can say Yes again.
             if (!_disposed)
             {
-                Finished("The fix stopped");
+                Finished("The fix stopped", failed: true);
                 _fixerThrew = true;
                 _fixLines.Clear();
                 _fixLines.Add(
@@ -754,7 +765,7 @@ else
             if (_disposed)
                 return;
 
-            Finished("The fix stopped");
+            Finished("The fix stopped", failed: true);
             _failedBuild = null;
             _fixLines.Clear();
             _fixLines.Add("The app was changed while the fix ran, so its result was not kept.");
@@ -773,7 +784,7 @@ else
             if (_disposed)
                 return;
 
-            Finished("The fix stopped");
+            Finished("The fix stopped", failed: true);
             _fixLines.Clear();
             _fixLines.AddRange(BuildFixReport.Lines(outcome, scaffold.ProjectPath));
             _phase = Phase.Done;
@@ -809,7 +820,9 @@ else
         if (_disposed)
             return;
 
-        Finished(outcome.Green ? "Compiled after the fix" : "The compiler still reports problems after the fix");
+        Finished(
+            outcome.Green ? "Compiled after the fix" : "The compiler still reports problems after the fix",
+            failed: !outcome.Green);
 
         // A green rebuild makes the page's earlier complaints false: the compile warning about a
         // stub the fix rewrote, the "problems" step, and the red log above the new one. A red one

@@ -303,6 +303,26 @@ public class GenerateFixTests
     }
 
     [TestMethod]
+    public void A_red_build_and_a_still_red_fix_are_failed_steps_not_ticked_ones()
+    {
+        var page = Written(new FakeFixer(), new FakeBuild(Red(OneError), Red(OneError)));
+        using var _ = page.Context;
+
+        Assert.IsTrue(
+            page.Cut.FindAll("li.step-failed").Any(li => li.TextContent.StartsWith("The compiler reported problems")),
+            page.Cut.Find(".progress").OuterHtml);
+        Assert.IsFalse(page.Cut.FindAll("li.step-done").Any(li => li.TextContent.StartsWith("The compiler")));
+        Assert.IsTrue(page.Cut.FindAll("li.step-done").Any(li => li.TextContent.StartsWith("Wrote")));
+
+        page.Cut.Find("button.fix-yes").Click();
+        page.Cut.WaitForAssertion(
+            () => Assert.IsTrue(page.Cut.FindAll("li.step-failed")
+                .Any(li => li.TextContent.Trim() == "The compiler still reports problems after the fix")),
+            TimeSpan.FromSeconds(30));
+        Assert.IsFalse(page.Cut.FindAll("li.step-done").Any(li => li.TextContent.StartsWith("The compiler")));
+    }
+
+    [TestMethod]
     public void Writing_is_refused_while_a_fix_runs_on_the_same_folder()
     {
         using var context = new BunitContext();

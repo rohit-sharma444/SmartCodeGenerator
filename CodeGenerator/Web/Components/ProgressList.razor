@@ -9,7 +9,14 @@
     <ul class="progress">
         @foreach (var step in Done)
         {
-            <li class="step-done">@step</li>
+            @if (Failed.Contains(step))
+            {
+                <li class="step-failed">@step</li>
+            }
+            else
+            {
+                <li class="step-done">@step</li>
+            }
         }
 
         @if (Current is not null)
@@ -35,6 +42,12 @@
 @code {
     /// <summary>Steps already finished, oldest first.</summary>
     [Parameter] public IReadOnlyList<string> Done { get; set; } = [];
+
+    /// <summary>
+    /// Which of <see cref="Done"/> ended in failure. Drawn with a cross in the failure colour rather
+    /// than the tick: "✓ The compiler reported problems" read as a success.
+    /// </summary>
+    [Parameter] public IReadOnlySet<string> Failed { get; set; } = new HashSet<string>();
 
     /// <summary>What is happening now, or null when nothing is.</summary>
     [Parameter] public string? Current { get; set; }
