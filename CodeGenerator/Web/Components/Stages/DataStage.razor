@@ -8,13 +8,13 @@
 
 <label class="choice">
     <input type="radio" name="data" value="none" checked="@(!_hasFile)"
-           @onchange="() => _hasFile = false" />
+           @onchange="() => Choose(false)" />
     No data — discover the domain from the web
 </label>
 
 <label class="choice">
     <input type="radio" name="data" value="file" checked="@_hasFile"
-           @onchange="() => _hasFile = true" />
+           @onchange="() => Choose(true)" />
     I have a file
 </label>
 
@@ -301,6 +301,19 @@
     }
 
     private static string Megabytes(long bytes) => $"{bytes / 1024d / 1024d:0.#} MB";
+
+    /// <summary>
+    /// Switches between no data and a file.
+    /// </summary>
+    /// <remarks>
+    /// The error goes with the switch: whatever it said was about the other choice, and "nothing
+    /// to build from" left under the file controls told the user off for a choice already changed.
+    /// </remarks>
+    private void Choose(bool hasFile)
+    {
+        _hasFile = hasFile;
+        _error = null;
+    }
 
     private Task<bool> Next()
     {
