@@ -170,6 +170,36 @@ public class ChatPageTests
         two.WaitForAssertion(() => Assert.IsNotNull(two.Find(".turn")));
     }
 
+    /// <summary>
+    /// The transcript scrolls to the end again when the frame around it changes, not only when a
+    /// turn is added.
+    /// </summary>
+    /// <remarks>
+    /// A question band opening above the transcript, or the working bar coming and going below it,
+    /// resizes the scrolling box after it was scrolled to the end. The newest answer was then left
+    /// 184px below the fold, with the page reporting nothing wrong.
+    /// </remarks>
+    [TestMethod]
+    public void The_transcript_scrolls_to_the_end_again_when_a_question_opens()
+    {
+        using var context = NewContext(out var session);
+        var page = context.Render<ChatPage>();
+
+        session.Send("help").Wait();
+        page.WaitForAssertion(() => Assert.IsNotNull(page.Find(".turn")));
+
+        var before = context.JSInterop.Invocations.Count(i => i.Identifier == "chatScrollToEnd");
+
+        var asked = Task.Run(() => session.Ask(SessionQuestion.YesNo("Order and Customer look related?")));
+
+        page.WaitForAssertion(() => Assert.IsNotNull(page.Find(".question")));
+        page.WaitForAssertion(() => Assert.IsGreaterThan(
+            before, context.JSInterop.Invocations.Count(i => i.Identifier == "chatScrollToEnd")));
+
+        session.Answer(null);
+        asked.Wait();
+    }
+
     [TestMethod]
     public void An_unrecognised_turn_offers_what_it_might_have_meant()
     {
