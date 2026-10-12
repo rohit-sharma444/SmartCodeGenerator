@@ -86,7 +86,8 @@ public sealed class SessionState : ISessionState
             SessionContext.CurrentNamespace);
     }
 
-    // Rules are immutable objects, so the same rule is the same reference.
+    // Rules are immutable, but a reload from disk (a script's put-back) makes new objects for the
+    // same rules, so two rules are the same when they are of one kind and read the same.
     private static bool SameRules(
         IReadOnlyDictionary<string, IReadOnlyList<IValidationRule>> a,
         IReadOnlyDictionary<string, IReadOnlyList<IValidationRule>> b)
@@ -98,10 +99,16 @@ public sealed class SessionState : ISessionState
         {
             var x = a.TryGetValue(name, out var ra) ? ra : [];
             var y = b.TryGetValue(name, out var rb) ? rb : [];
-            if (x.Count != y.Count || x.Where((rule, i) => !ReferenceEquals(rule, y[i])).Any())
+            if (x.Count != y.Count || x.Where((rule, i) => !SameRule(rule, y[i])).Any())
                 return false;
         }
 
         return true;
     }
+
+    private static bool SameRule(IValidationRule a, IValidationRule b) =>
+        ReferenceEquals(a, b)
+        || (a.GetType() == b.GetType() && a.Category == b.Category
+            && a.Describe() == b.Describe()
+            && ValidationRegistry.SourceOf(a) == ValidationRegistry.SourceOf(b));
 }

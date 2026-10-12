@@ -57,7 +57,7 @@ public sealed class LengthBoundRule : IValidationRule
 public sealed class MinLengthRuleParser : IValidationRuleParser
 {
     private static readonly Regex Pattern = new(
-        @"^(?<prop>\w+)\s+must\s+be\s+(?:at\s+least|no\s+shorter\s+than)\s+(?<n>\d+)\s+characters?$",
+        @"^(?<prop>\w+)\s+(?:must\s+be\s+|is\s+)?(?:at\s+least|no\s+shorter\s+than)\s+(?<n>\d+)\s+characters?$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     public int Priority => 18;
@@ -80,7 +80,7 @@ public sealed class MinLengthRuleParser : IValidationRuleParser
 public sealed class MaxLengthRuleParser : IValidationRuleParser
 {
     private static readonly Regex Pattern = new(
-        @"^(?<prop>\w+)\s+must\s+(?:be\s+(?:at\s+most|no\s+longer\s+than)|not\s+exceed)\s+(?<n>\d+)\s+characters?$",
+        @"^(?<prop>\w+)\s+(?:(?:must\s+be\s+|is\s+)?(?:at\s+most|no\s+longer\s+than)|must\s+not\s+exceed)\s+(?<n>\d+)\s+characters?$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     public int Priority => 18;

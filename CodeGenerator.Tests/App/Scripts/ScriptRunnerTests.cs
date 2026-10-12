@@ -1,4 +1,5 @@
 using CodeGenerationEngine.Core;
+using CodeGenerationEngine.Core.Validation;
 using CodeGenerationEngine.Models;
 using CodeGenerator.App.Scripts;
 using NaturalLanguageBridge;
@@ -112,6 +113,27 @@ public sealed class ScriptRunnerTests
 
         Assert.IsFalse(outcome.Succeeded);
         Assert.IsEmpty(ValidationRegistry.Get("Book"));
+    }
+
+    // Gaps 5 #1: putting back after a failed run reloaded the rules from disk and then set the
+    // older objects again, which the registry no longer knew the text of — so it saved nothing
+    // and deleted the rules file.
+    [TestMethod]
+    public void A_failed_run_keeps_the_saved_rules_file()
+    {
+        ValidationRegistry.Attach(_root);
+        const string script = "add property Title string to Book\nadd property Author string to Book\n"
+            + "add validation Title is required in Book\nadd validation Author is required in Book";
+        Assert.IsTrue(Run(script).Succeeded);
+        var file = ValidationRuleFile.PathFor(_root);
+        Assert.HasCount(2, ValidationRuleFile.Read(file).Rules);
+
+        var again = Run(script);   // line 1 fails: Title is there already
+
+        Assert.IsFalse(again.Succeeded);
+        Assert.IsTrue(File.Exists(file), "the rules file was deleted");
+        Assert.HasCount(2, ValidationRuleFile.Read(file).Rules);
+        Assert.HasCount(2, ValidationRegistry.Get("Book"));
     }
 
     [TestMethod]

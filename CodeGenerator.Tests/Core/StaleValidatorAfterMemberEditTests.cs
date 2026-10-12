@@ -102,6 +102,41 @@ public sealed class StaleValidatorAfterMemberEditTests
         StringAssert.Contains(output, "Item.Validation.cs", output);
     }
 
+    // Gaps 5 #5: remove validation left Item.Validation.cs as it was, so the removed rule was still
+    // enforced until generate validator was run again.
+    [TestMethod]
+    [DataRow("remove validation from Item.Price")]
+    [DataRow("remove validation 1 from Item")]
+    public void Remove_validation_regenerates_the_validator(string command)
+    {
+        ItemWithValidator("Price must be positive");
+        CollectionAssert.AreEqual(new[] { 1 }, new[] { ErrorsForNegativePrice() }, "the rule is not enforced to begin with");
+
+        var output = Run(command);
+
+        StringAssert.Contains(output, "Item.Validation.cs", output);
+        AssertBothCompile();
+        Assert.AreEqual(0, ErrorsForNegativePrice(), File.ReadAllText(Path.Combine(ItemFolder, "Item.Validation.cs")));
+    }
+
+    // How many messages Validate() returns for an Item with Price -1, compiled and run.
+    private int ErrorsForNegativePrice()
+    {
+        var classFile = Path.Combine(ItemFolder, "Item.cs");
+        var validator = Path.Combine(ItemFolder, "Item.Validation.cs");
+        var result = Compiler.CompileSources(
+        [
+            (classFile, File.ReadAllText(classFile)),
+            (validator, File.ReadAllText(validator))
+        ]);
+        Assert.IsTrue(result.Success);
+        var type = System.Reflection.Assembly.Load(result.AssemblyBytes!).GetType("Shop.Item")!;
+        var item = Activator.CreateInstance(type)!;
+        type.GetProperty("Name")!.SetValue(item, "x");
+        type.GetProperty("Price")!.SetValue(item, -1m);
+        return ((System.Collections.Generic.List<string>)type.GetMethod("Validate")!.Invoke(item, null)!).Count;
+    }
+
     [TestMethod]
     public void Remove_the_last_ruled_property_still_leaves_a_validator_that_compiles()
     {
