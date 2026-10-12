@@ -46,6 +46,46 @@ public static class ValidationPipeline
 
         return ValidationOutcome.Valid;
     }
+
+    /// <summary>The fields the app stamps itself, which say nothing about whether the user
+    /// filled the record in.</summary>
+    private static readonly HashSet<string> Stamped =
+        new(System.StringComparer.OrdinalIgnoreCase) { "Id", "CreatedOn", "ModifiedOn", "CreatedBy", "ModifiedBy" };
+
+    /// <summary>Whether nothing a user types has been filled in on <paramref name="item"/>:
+    /// every text blank, every number zero, every flag off, every date unset. Related records
+    /// and the stamped fields are not looked at.</summary>
+    public static bool IsBlank(object item)
+    {
+        foreach (var property in item.GetType().GetProperties())
+        {
+            if (!property.CanRead || !property.CanWrite || property.GetIndexParameters().Length > 0
+                || Stamped.Contains(property.Name))
+                continue;
+
+            var type = System.Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+            if (type != typeof(string) && type != typeof(int) && type != typeof(decimal)
+                && type != typeof(bool) && type != typeof(System.DateTime))
+                continue;
+
+            var value = property.GetValue(item);
+            if (value is null)
+                continue;
+
+            if (value is string text)
+            {
+                if (!string.IsNullOrWhiteSpace(text))
+                    return false;
+
+                continue;
+            }
+
+            if (!value.Equals(System.Activator.CreateInstance(type)))
+                return false;
+        }
+
+        return true;
+    }
 }
 """;
 }

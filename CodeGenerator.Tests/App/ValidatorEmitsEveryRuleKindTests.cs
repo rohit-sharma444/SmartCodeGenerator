@@ -225,18 +225,18 @@ public class Customer
     }
 
     [TestMethod]
-    public void RequiredIsPairedWithStringAlone()
+    public void RequiredIsPairedWithStringAndDateAlone()
     {
-        // The pair that was wrong, pinned by name. string.IsNullOrWhiteSpace is the only
-        // meaningful emptiness test among the five types; a non-nullable int cannot be null and
-        // 0 is a legitimate value, so a required check on one would assert nothing true.
+        // The pair that was wrong, pinned by name. A blank string and a date left at its default
+        // are the only meaningful "not filled in" among the five types; a non-nullable int cannot
+        // be null and 0 is a legitimate value, so a required check on one would assert nothing.
         var types = ValidatorTemplate.EmittableRules
             .Where(pair => pair.Rule == "required")
             .Select(pair => pair.Type)
+            .Order()
             .ToList();
 
-        Assert.HasCount(1, types);
-        Assert.AreEqual("string", types[0]);
+        CollectionAssert.AreEqual(new[] { "DateTime", "string" }, types);
     }
 
     [TestMethod]

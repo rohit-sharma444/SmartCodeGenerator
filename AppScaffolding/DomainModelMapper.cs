@@ -542,6 +542,12 @@ public static class DomainModelMapper
                 return false;
 
             case "DateTime":
+                // A date the source declared NOT NULL is required, as a NOT NULL string is: the
+                // non-nullable model holds a blank as 0001-01-01, which such a column would store
+                // as though it were a real date. Unknown nullability infers nothing, as above.
+                if (facts?.IsNullable == false && !IsNullable(property.Type))
+                    property.Rules.Add(new PropertyRule { Name = "required" });
+
                 // SQL Server's own floor, and only for the type that actually carries it:
                 // datetime2 starts at year 1, and a rule from the wrong type would refuse
                 // dates the column accepts.
