@@ -85,7 +85,7 @@ public static class NewClassCompletion
         if (result.Added.Count > 0)
             Console.WriteLine(
                 $"{result.ClassName} implements {string.Join(" and ", result.Interfaces)}: added "
-                + $"{string.Join(", ", result.Added)}, which {(result.Added.Count == 1 ? "it" : "they")} lacked. "
+                + $"{string.Join(", ", result.Added)}, which it lacked. "
                 + "A method added this way throws NotImplementedException until you fill it in.");
 
         if (result.Errors.Count > 0)
