@@ -62,9 +62,16 @@ public static class ClassSnapshots
     public static IReadOnlyList<ClassSnapshot> Read(string workspaceRoot)
     {
         var snapshots = new List<ClassSnapshot>();
+        var testFolders = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var file in ClassFiles.Under(workspaceRoot))
         {
+            // A test project's classes are not the app's: the relationship offer was proposing
+            // "RepositoryRoundTripTests and Repository look related" out of a generated xunit
+            // project, and show relationships listed SeedDataTests beside the entities.
+            if (InTestProject(Path.GetDirectoryName(file)!, workspaceRoot, testFolders))
+                continue;
+
             var root = CSharpSyntaxTree.ParseText(File.ReadAllText(file)).GetRoot();
 
             var types = root.DescendantNodes()
@@ -89,5 +96,59 @@ public static class ClassSnapshots
         }
 
         return snapshots;
+    }
+
+    /// <summary>
+    /// Whether the nearest project file at or above <paramref name="folder"/>, up to the
+    /// workspace root, is a test project. Cached per folder, since every file in one asks.
+    /// </summary>
+    private static bool InTestProject(string folder, string workspaceRoot, Dictionary<string, bool> cache)
+    {
+        if (cache.TryGetValue(folder, out var known))
+            return known;
+
+        var csproj = Directory.Exists(folder)
+            ? Directory.GetFiles(folder, "*.csproj").FirstOrDefault()
+            : null;
+
+        bool answer;
+
+        if (csproj is not null)
+            answer = IsTestProject(csproj);
+        else
+        {
+            var parent = Path.GetDirectoryName(folder);
+            var atRoot = parent is null
+                || Path.GetFullPath(folder).TrimEnd(Path.DirectorySeparatorChar).Equals(
+                    Path.GetFullPath(workspaceRoot).TrimEnd(Path.DirectorySeparatorChar),
+                    StringComparison.OrdinalIgnoreCase);
+
+            answer = !atRoot && InTestProject(parent!, workspaceRoot, cache);
+        }
+
+        cache[folder] = answer;
+        return answer;
+    }
+
+    /// <summary>
+    /// A test project by what it references, as <c>dotnet test</c> decides: the test SDK, the
+    /// MSTest SDK, or an explicit IsTestProject.
+    /// </summary>
+    private static bool IsTestProject(string csproj)
+    {
+        string text;
+
+        try
+        {
+            text = File.ReadAllText(csproj);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+
+        return text.Contains("Microsoft.NET.Test.Sdk", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("MSTest.Sdk", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("<IsTestProject>true</IsTestProject>", StringComparison.OrdinalIgnoreCase);
     }
 }
