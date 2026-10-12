@@ -303,18 +303,58 @@ public static class ModelEditor
     public static bool ChangeFieldType(
         CandidateDomainModel model, string entityName, string fieldName, string type)
     {
-        if (!Supported.Contains(type))
+        if (RetypeProblem(model, entityName, fieldName, type) is not null)
             return false;
 
-        var owner = Find(model, NameNormalizer.ToEntityName(entityName));
-        var field = owner is null ? null : FindField(owner, NameNormalizer.ToFieldName(fieldName));
+        var owner = Find(model, NameNormalizer.ToEntityName(entityName))!;
+        var field = FindField(owner, NameNormalizer.ToFieldName(fieldName))!;
 
-        if (field is null || string.Equals(field.Type, type, StringComparison.Ordinal))
-            return false;
+        // int? -> int and int -> int? change only whether an empty value stays empty. Any other
+        // change keeps that as it was, so a column with empty cells retyped to decimal is decimal?
+        // and its empty cells do not become 0.
+        var nullable = type.EndsWith('?');
+        var baseType = nullable ? type[..^1] : type;
+        if (nullable || string.Equals(field.Type, baseType, StringComparison.Ordinal))
+            field.Facts = (field.Facts ?? new TypeFacts()) with { HasMissingValues = nullable };
 
-        field.Type = type;
+        field.Type = baseType;
         return true;
     }
+
+    // The model types a missing value turns nullable, as DomainModelMapper emits them.
+    private static readonly HashSet<string> NullableCapable =
+        new(StringComparer.Ordinal) { "int", "decimal", "bool", "DateTime" };
+
+    /// <summary>The type the field is generated as: <c>int?</c> when its rows hold an empty value.</summary>
+    public static string ShownType(CandidateField field) =>
+        field.Facts?.HasMissingValues == true && NullableCapable.Contains(field.Type)
+            ? field.Type + "?"
+            : field.Type;
+
+    /// <summary>Why <see cref="ChangeFieldType"/> would change nothing, or null when it would.</summary>
+    public static string? RetypeProblem(
+        CandidateDomainModel model, string entityName, string fieldName, string type)
+    {
+        if (!IsFieldType(type))
+            return $"'{type}' is not a type a field can have: use string, int, decimal, bool or DateTime, "
+                + "or int?, decimal?, bool? or DateTime? for one that may be empty.";
+
+        var owner = Find(model, NameNormalizer.ToEntityName(entityName));
+        if (owner is null)
+            return $"There is no class {entityName}.";
+
+        var field = FindField(owner, NameNormalizer.ToFieldName(fieldName));
+        if (field is null)
+            return $"{owner.Name} has no field {fieldName}.";
+
+        var shown = ShownType(field);
+        return string.Equals(shown, type, StringComparison.Ordinal)
+            ? $"{owner.Name}.{field.Name} is already {shown}."
+            : null;
+    }
+
+    private static bool IsFieldType(string type) =>
+        type.EndsWith('?') ? NullableCapable.Contains(type[..^1]) : Supported.Contains(type);
 
     private static CandidateField? FindField(CandidateEntity entity, string fieldName)
         => entity.Fields.FirstOrDefault(
