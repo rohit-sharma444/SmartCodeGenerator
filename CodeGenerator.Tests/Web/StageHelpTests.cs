@@ -40,6 +40,21 @@ public class StageHelpTests
     }
 
     [TestMethod]
+    public void The_describe_help_says_cancel_asks_first_only_when_there_are_answers()
+    {
+        var items = StageHelp.For(BuildStage.Describe).Sections.SelectMany(s => s.Items).ToList();
+        var cancel = items.Single(i => i.StartsWith("A Cancel button.", StringComparison.Ordinal));
+
+        // BuildSession.RequestCancel ends an empty build at once; it asks only when an answer would be lost.
+        var session = new BuildSession("", @"C:\ws", AppCustomization.Default);
+        Assert.IsTrue(session.RequestCancel(), "with no answers the build ends without a question");
+
+        Assert.AreEqual(
+            "A Cancel button. It ends the build. If you have already given answers, it asks you to confirm first.",
+            cancel);
+    }
+
+    [TestMethod]
     public void The_address_of_a_stage_round_trips()
     {
         foreach (var stage in Enum.GetValues<BuildStage>())

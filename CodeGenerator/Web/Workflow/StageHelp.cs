@@ -48,7 +48,7 @@ public static class StageHelp
                 new("What you see",
                 [
                     "One text box. Press Enter in the box to start a new line. A description can have more than one sentence.",
-                    "A Cancel button. It asks you to confirm before it ends the build.",
+                    "A Cancel button. It ends the build. If you have already given answers, it asks you to confirm first.",
                 ]),
                 new("What to do",
                 [
