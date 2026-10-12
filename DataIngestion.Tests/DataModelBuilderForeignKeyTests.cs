@@ -133,6 +133,59 @@ public class DataModelBuilderForeignKeyTests
     }
 
     /// <summary>
+    /// A declared key whose column is named for the TABLE, not the class: SQL's
+    /// <c>TableDefinitionsId</c> pointing at <c>TableDefinitions</c>, whose class is
+    /// <c>TableDefinition</c>. The column became <c>int TableDefinitionsId</c> beside a
+    /// <c>TableDefinition</c> navigation the resolver never paired with it, and its values kept
+    /// the source keys (330, 331...) while the parents were renumbered 1..N.
+    /// </summary>
+    [Fact]
+    public void A_declared_key_named_for_the_plural_table_is_paired_and_renumbered()
+    {
+        var definitions = Table("TableDefinitions", "Id");
+        definitions.Columns.Add(new TabularColumn { Name = "TableName" });
+        definitions.Rows.Add(["330", "Orders"]);
+        definitions.Rows.Add(["331", "Lines"]);
+
+        var links = Table("SnapshotTemplateTables", "Id", "TableDefinitionsId");
+        links.ForeignKeys.Add(new TabularForeignKey("TableDefinitionsId", "TableDefinitions", "Id"));
+        links.Rows.Add(["1", "331"]);
+        links.Rows.Add(["2", "330"]);
+
+        var classes = AppScaffolding.DomainModelMapper.ToClassDefinitions(
+            DataModelBuilder.Build([definitions, links]));
+
+        var link = classes.Single(c => c.Name == "SnapshotTemplateTable");
+        Assert.Equal(["TableDefinition"], AppScaffolding.ForeignKeys.TargetsOf(
+            link, AppScaffolding.ForeignKeys.ClassNameSet(classes)));
+
+        var rows = TabularImport.ToImportedData([definitions, links]).For("SnapshotTemplateTable");
+        Assert.Equal("2", rows[0]["TableDefinitionId"]);
+        Assert.Equal("1", rows[1]["TableDefinitionId"]);
+    }
+
+    /// <summary>
+    /// A declared key the class name cannot be read from (a bill-to customer) keeps its column
+    /// name, but its values still follow the parent's renumbering: left as the source keys they
+    /// would name whichever parent happens to sit at that position.
+    /// </summary>
+    [Fact]
+    public void A_declared_key_with_its_own_name_is_still_renumbered()
+    {
+        var customer = Table("Customer", "CustomerID");
+        customer.Columns.Add(new TabularColumn { Name = "Name" });
+        customer.Rows.Add(["70", "Ada"]);
+        customer.Rows.Add(["71", "Bob"]);
+
+        var order = Table("Order", "OrderID", "BillToCustomerID");
+        order.ForeignKeys.Add(new TabularForeignKey("BillToCustomerID", "Customer", "CustomerID"));
+        order.Rows.Add(["1", "71"]);
+
+        var row = TabularImport.ToImportedData([customer, order]).For("Order")[0];
+        Assert.Equal("2", row["BillToCustomerId"]);
+    }
+
+    /// <summary>
     /// Two columns pointing at the same table is ordinary - a bill-to and a ship-to customer.
     /// The model has one relationship per target, so the second must not be added again.
     /// </summary>
