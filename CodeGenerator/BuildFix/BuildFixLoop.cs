@@ -39,12 +39,18 @@ internal sealed class BuildFixLoop(
     public const string TimeLimitNote = "The time limit was reached.";
     public const string CancelledNote = "The fix was cancelled.";
 
+    public const string AiNotAskedNote =
+        "The AI was not asked: no error is in a C# file of the app that a fix may edit.";
+
     private readonly TimeSpan _budget = budget ?? DefaultBudget;
     private readonly Func<DateTime> _clock = clock ?? (() => DateTime.UtcNow);
     private DateTime _started;
     private CancellationToken _ct;
     private string? _stopNote;
     private bool _aiTimedOut;
+
+    /// <summary>How many times the latest AI step asked the model: none means it must not be said to have had no fix.</summary>
+    private int _lastAsks;
 
     public const int MaxRounds = 3;
     public const int MaxAiAsksPerRound = 5;
@@ -120,6 +126,9 @@ internal sealed class BuildFixLoop(
             if (!BuildReport.Succeeded(build) && diagnostics.Count == 0)
                 notes.Add("The build failed, but no compiler errors could be read from its output, so nothing was changed.");
 
+            if (BuildDiagnostics.OutputLocked(diagnostics))
+                notes.Add(BuildFixReport.LockedOutput);
+
             while (!BuildReport.Succeeded(build) && rounds < MaxRounds && diagnostics.Count > 0)
             {
                 // Nothing is unchecked at the top of a round: the last one has been judged.
@@ -175,7 +184,9 @@ internal sealed class BuildFixLoop(
                     {
                         notes.Add(_aiTimedOut
                             ? "The AI timed out, so it will not be asked again."
-                            : "The AI had no usable fix for the remaining errors.");
+                            : _lastAsks == 0
+                                ? AiNotAskedNote
+                                : "The AI had no usable fix for the remaining errors.");
                         break;
                     }
 
@@ -365,6 +376,7 @@ internal sealed class BuildFixLoop(
     {
         var applied = 0;
         var asked = 0;
+        _lastAsks = 0;
         var edited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var d in diagnostics)
@@ -415,6 +427,7 @@ internal sealed class BuildFixLoop(
             var excerpt = string.Join("\n", lines[lo..(hi + 1)].Select(l => l.TrimEnd('\r')));
 
             asked++;
+            _lastAsks = asked;
             progress($"Asking the local AI about {d.Code} in {session.Relative(d.File)}");
 
             string? reply;

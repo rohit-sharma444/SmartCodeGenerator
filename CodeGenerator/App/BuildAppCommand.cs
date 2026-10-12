@@ -1261,10 +1261,21 @@ internal sealed class BuildAppCommand
     {
         try
         {
-            var errors = CodeGenerator.BuildFix.BuildDiagnostics.Parse(failed, scaffold.ProjectPath).Count;
+            var diagnostics = CodeGenerator.BuildFix.BuildDiagnostics.Parse(failed, scaffold.ProjectPath);
+            var errors = diagnostics.Count;
 
             if (errors == 0)
                 return null;
+
+            // Only errors a fix may edit are worth an offer: a running app that holds its exe
+            // (MSB3027) is not something any rule or model can change.
+            if (CodeGenerator.BuildFix.BuildFixReport.NoFixReason(diagnostics, scaffold.ProjectPath) is { } why)
+            {
+                Output.Warning(why);
+                Console.WriteLine("");
+
+                return null;
+            }
 
             choose ??= SelectionPrompt.Choose;
 

@@ -746,6 +746,22 @@ public class BuildFixLoopTests
     }
 
     [TestMethod]
+    public void Run_NeverClaimsTheAiHadNoFix_WhenItWasNotAsked()
+    {
+        var root = FixTestSupport.TempProject();
+        var red = FixTestSupport.Result(
+            @"C:\Program Files\dotnet\sdk\10.0.100\Microsoft.Common.CurrentVersion.targets(4975,5): error MSB3027: Could not copy ""obj\Debug\App.exe"" to ""bin\Debug\App.exe"".");
+        var ai = new FakeAi((d, ex) => "y");
+
+        var outcome = new BuildFixLoop([], ai).Run(root, red, () => red);
+
+        Assert.AreEqual(0, ai.Asks);
+        Assert.IsFalse(outcome.Notes.Any(n => n.Contains("no usable fix")), string.Join(" | ", outcome.Notes));
+        Assert.Contains(BuildFixLoop.AiNotAskedNote, outcome.Notes);
+        Assert.Contains(BuildFixReport.LockedOutput, outcome.Notes);
+    }
+
+    [TestMethod]
     public void Run_NeverAsksTheAi_WhenARuleFixedSomething()
     {
         var root = FixTestSupport.TempProject();

@@ -303,6 +303,18 @@ public class GenerateFixTests
     }
 
     [TestMethod]
+    public void A_locked_exe_offers_no_fix_and_says_to_stop_the_app()
+    {
+        const string locked =
+            @"C:\Program Files\dotnet\sdk\10.0.100\Microsoft.Common.CurrentVersion.targets(4975,5): error MSB3027: Could not copy ""obj\Debug\App.exe"" to ""bin\Debug\App.exe"". The file is locked by: ""App (1234)""";
+        var page = Written(new FakeFixer(), new FakeBuild(Red(locked)));
+        using var _ = page.Context;
+
+        Assert.HasCount(0, page.Cut.FindAll(".fix-offer"));
+        Assert.IsTrue(ReportLines(page.Cut).Any(l => l == BuildFixReport.LockedOutput), string.Join(" | ", ReportLines(page.Cut)));
+    }
+
+    [TestMethod]
     public void No_hides_the_offer_and_keeps_the_errors_and_never_calls_the_fixer()
     {
         var fixer = new FakeFixer();

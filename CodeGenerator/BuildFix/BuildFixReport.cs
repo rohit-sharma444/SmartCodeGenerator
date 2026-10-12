@@ -25,6 +25,26 @@ internal static class BuildFixReport
     /// <summary>Said when the fix stopped without a build to trust: the files may differ from the last build.</summary>
     internal const string NotRechecked = "The build was not re-checked after the failure.";
 
+    /// <summary>Said instead of an offer when the build failed only because the app holds its own files.</summary>
+    internal const string LockedOutput =
+        "The app is still running, so the build could not replace its files. Stop the app, then build again.";
+
+    /// <summary>Said instead of an offer when no error is in a C# file of the app that a fix may edit.</summary>
+    internal const string NothingToFix =
+        "None of the errors is in a C# file of the app, so no fix is offered.";
+
+    /// <summary>
+    /// Why no fix is offered for these errors, or null when one is (some error is fixable) or there
+    /// is nothing to say (no errors could be read).
+    /// </summary>
+    internal static string? NoFixReason(IReadOnlyList<BuildDiagnostic> diagnostics, string projectPath)
+    {
+        if (diagnostics.Count == 0 || BuildDiagnostics.Fixable(diagnostics, projectPath) > 0)
+            return null;
+
+        return BuildDiagnostics.OutputLocked(diagnostics) ? LockedOutput : NothingToFix;
+    }
+
     internal static IReadOnlyList<string> Options { get; } = ["Yes, fix them", "No, leave them"];
 
     internal static string Title(int errors)

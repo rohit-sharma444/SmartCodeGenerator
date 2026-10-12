@@ -522,10 +522,19 @@ else
         if (!BuildAppCommand.ShouldOfferFix(build))
             return;
 
-        var errors = BuildDiagnostics.Parse(build, projectPath).Count;
+        var diagnostics = BuildDiagnostics.Parse(build, projectPath);
+        var errors = diagnostics.Count;
 
         if (errors == 0)
             return;
+
+        // Only errors a fix may edit are worth an offer; a running app that holds its exe is said
+        // as what it is, with what to do about it.
+        if (BuildFixReport.NoFixReason(diagnostics, projectPath) is { } why)
+        {
+            _buildLines.Add(why);
+            return;
+        }
 
         _failedBuild = build;
         _failedErrors = errors;
@@ -625,7 +634,8 @@ else
                                 timings.Add((fresh.Result, fresh.Elapsed));
 
                         if (fresh.Result is { } freshResult && BuildAppCommand.ShouldOfferFix(freshResult)
-                            && BuildDiagnostics.Parse(freshResult, scaffold.ProjectPath).Count > 0)
+                            && BuildDiagnostics.Fixable(
+                                BuildDiagnostics.Parse(freshResult, scaffold.ProjectPath), scaffold.ProjectPath) > 0)
                             basis = freshResult;
                     }
 
