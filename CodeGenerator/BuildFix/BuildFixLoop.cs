@@ -50,6 +50,12 @@ internal sealed class BuildFixLoop(
     public const int MaxAiAsksPerRound = 5;
     private const int ContextLines = 15;
 
+    /// <summary>A file this short is sent whole.</summary>
+    internal const int WholeFileLines = 150;
+
+    /// <summary>The largest member or type sent as one piece from a longer file.</summary>
+    internal const int MaxUnitLines = 150;
+
     // A model that names another file must not have its text pasted into this one.
     private static readonly Regex FileHeader = new(
         @"^\s*(//|/\*|#)?\s*(file|path|filename)\s*:", RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -404,8 +410,7 @@ internal sealed class BuildFixLoop(
             if (d.Line - 1 > last)
                 continue;
 
-            var lo = Math.Max(0, d.Line - 1 - ContextLines);
-            var hi = Math.Min(last, d.Line - 1 + ContextLines);
+            var (lo, hi) = ExcerptRange(text, lines, last, d);
             var crlf = text.Contains("\r\n", StringComparison.Ordinal);
             var excerpt = string.Join("\n", lines[lo..(hi + 1)].Select(l => l.TrimEnd('\r')));
 
@@ -442,15 +447,27 @@ internal sealed class BuildFixLoop(
 
             // The last line of the file may have no line ending; do not invent one.
             var lastHadCr = lines[hi].EndsWith('\r');
-            var newLines = clean.Split('\n');
-            var replacement = newLines
-                .Select((l, i) => crlf && (i < newLines.Length - 1 || lastHadCr) ? l + "\r" : l)
-                .ToArray();
 
-            var rebuilt = string.Join(
-                "\n", lines[..lo].Concat(replacement).Concat(lines[(hi + 1)..]));
+            string Splice(string reply)
+            {
+                var newLines = reply.Split('\n');
+                var replacement = newLines
+                    .Select((l, i) => crlf && (i < newLines.Length - 1 || lastHadCr) ? l + "\r" : l)
+                    .ToArray();
 
-            if (rebuilt == text || SyntaxErrors(rebuilt) > SyntaxErrors(text))
+                return string.Join("\n", lines[..lo].Concat(replacement).Concat(lines[(hi + 1)..]));
+            }
+
+            var rebuilt = Splice(clean);
+            var errorsBefore = SyntaxErrors(text);
+
+            // A small model often closes the class it was shown a part of, or closes it twice: the
+            // fix is right, and the braces after it are not. Those trailing closers, and only
+            // those, are dropped so the reply closes exactly what the excerpt closed.
+            if (SyntaxErrors(rebuilt) > errorsBefore && TrimTrailingClosers(clean, excerpt) is { } trimmed)
+                rebuilt = Splice(trimmed);
+
+            if (rebuilt == text || SyntaxErrors(rebuilt) > errorsBefore)
                 continue;
 
             try
@@ -473,6 +490,89 @@ internal sealed class BuildFixLoop(
 
         return applied;
     }
+
+    /// <summary>
+    /// Which lines (0-based, inclusive) the model is shown. Whole syntax units only, so the excerpt
+    /// never stops inside a class and the model has no braces to guess: the whole file when it is
+    /// short; else the largest member or type around the error that fits; else, for one huge member,
+    /// the lines around the error.
+    /// </summary>
+    private static (int Lo, int Hi) ExcerptRange(string text, string[] lines, int last, BuildDiagnostic d)
+    {
+        var window = (Math.Max(0, d.Line - 1 - ContextLines), Math.Min(last, d.Line - 1 + ContextLines));
+
+        if (last + 1 <= WholeFileLines)
+            return (0, last);
+
+        var tree = CSharpSyntaxTree.ParseText(text);
+        var source = tree.GetText();
+
+        // Roslyn also breaks lines at a lone \r and a few Unicode separators; then its line numbers
+        // are not ours, and the plain window is the safe choice.
+        if (source.Lines.Count != lines.Length)
+            return window;
+
+        var line = source.Lines[d.Line - 1];
+        var position = line.Start + Math.Clamp(d.Column - 1, 0, Math.Max(0, line.End - line.Start - 1));
+        var token = tree.GetRoot().FindToken(position);
+        (int, int)? best = null;
+
+        foreach (var node in token.Parent?.AncestorsAndSelf().OfType<Microsoft.CodeAnalysis.CSharp.Syntax.MemberDeclarationSyntax>() ?? [])
+        {
+            if (node is Microsoft.CodeAnalysis.CSharp.Syntax.BaseNamespaceDeclarationSyntax)
+                break;
+
+            // From its doc comment or first attribute, not from the blank lines before it.
+            var first = node.GetLeadingTrivia()
+                .FirstOrDefault(t => !t.IsKind(SyntaxKind.WhitespaceTrivia) && !t.IsKind(SyntaxKind.EndOfLineTrivia));
+            var start = first.RawKind == 0 ? node.SpanStart : first.SpanStart;
+            var lo = source.Lines.GetLineFromPosition(start).LineNumber;
+            var hi = source.Lines.GetLineFromPosition(Math.Max(node.SpanStart, node.Span.End - 1)).LineNumber;
+
+            if (hi - lo + 1 > MaxUnitLines)
+                break;
+
+            if (lo <= d.Line - 1 && d.Line - 1 <= hi)
+                best = (lo, hi);
+        }
+
+        return best ?? window;
+    }
+
+    /// <summary>
+    /// The reply less the lone closing braces at its end that close more than the excerpt closed,
+    /// or null when that cannot make the two balance.
+    /// </summary>
+    private static string? TrimTrailingClosers(string reply, string excerpt)
+    {
+        var target = Balance(excerpt);
+        var balance = Balance(reply);
+
+        if (balance >= target)
+            return null;
+
+        var kept = reply.Split('\n').ToList();
+
+        while (balance < target)
+        {
+            while (kept.Count > 0 && kept[^1].Trim().Length == 0)
+                kept.RemoveAt(kept.Count - 1);
+
+            if (kept.Count == 0 || kept[^1].Trim() is not ("}" or "};"))
+                return null;
+
+            kept.RemoveAt(kept.Count - 1);
+            balance++;
+        }
+
+        return string.Join("\n", kept);
+    }
+
+    /// <summary>Opening braces less closing ones, as the parser sees them (none in strings or comments).</summary>
+    private static int Balance(string source)
+        => CSharpSyntaxTree.ParseText(source).GetRoot().DescendantTokens(descendIntoTrivia: true)
+            .Where(t => !t.IsMissing)
+            .Sum(t => t.IsKind(SyntaxKind.OpenBraceToken) ? 1 : t.IsKind(SyntaxKind.CloseBraceToken) ? -1 : 0);
 
     /// <summary>The first changed line, and how many lines differ. Small on purpose: no copy of the file is kept.</summary>
     private static EditChange DescribeChange(string before, string after)

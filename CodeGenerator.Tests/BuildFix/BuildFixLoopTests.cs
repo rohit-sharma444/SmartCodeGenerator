@@ -547,6 +547,126 @@ public class BuildFixLoopTests
         Assert.AreEqual(text.Replace("int a = 1\n", "int a = 1;\n"), File.ReadAllText(file));
     }
 
+    /// <summary>The live case: a 36-line model class with a typo on line 14, mid-class.</summary>
+    private static string BookFile()
+    {
+        var sb = new StringBuilder();
+        sb.Append("using System;\n");
+        sb.Append("using System.Collections.Generic;\n");
+        sb.Append("\n");
+        sb.Append("namespace Library.Models\n");
+        sb.Append("{\n");
+        sb.Append("    /// <summary>A book.</summary>\n");
+        sb.Append("    public partial class Book\n");
+        sb.Append("    {\n");
+        sb.Append("        public int Id { get; set; }\n");
+        sb.Append("\n");
+        sb.Append("        public string Isbn { get; set; } = string.Empty;\n");
+        sb.Append("\n");
+        sb.Append("        /// <summary>The title.</summary>\n");
+        sb.Append("        public strng Title { get; set; } = string.Empty;\n");
+
+        for (var i = 0; i < 10; i++)
+            sb.Append($"\n        public int Field{i} {{ get; set; }}\n");
+
+        sb.Append("    }\n");
+        sb.Append("}\n");
+        return sb.ToString();
+    }
+
+    [TestMethod]
+    public void Run_KeepsAnAiFixInTheMiddleOfAClass_WhenTheReplyAddsTrailingClosers()
+    {
+        var root = FixTestSupport.TempProject();
+        var text = BookFile();
+        Assert.HasCount(37, text.Split('\n'), "36 lines and the empty tail");
+        var file = FixTestSupport.Write(root, "Book.cs", text);
+        var red = FixTestSupport.Result(Err(file, 14, "CS0246", "The type or namespace name 'strng' could not be found"));
+
+        // What qwen2.5:3b did: the right fix, then braces it thought were still open.
+        var ai = new FakeAi((d, ex) => ex.Replace("strng", "string").TrimEnd('\n') + "\n    }\n}");
+
+        var outcome = new BuildFixLoop([], ai).Run(root, red, () => Green);
+
+        Assert.AreEqual(1, ai.Asks);
+        Assert.IsTrue(outcome.Green, string.Join(" | ", outcome.Notes));
+        Assert.HasCount(1, outcome.Edits);
+        Assert.AreEqual(text.Replace("strng", "string"), File.ReadAllText(file));
+    }
+
+    [TestMethod]
+    public void Run_SendsTheWholeFile_WhenItIsShort()
+    {
+        var root = FixTestSupport.TempProject();
+        var text = BookFile();
+        var file = FixTestSupport.Write(root, "Book.cs", text);
+        var red = FixTestSupport.Result(Err(file, 14, "CS0246"));
+        string? seen = null;
+        var ai = new FakeAi((d, ex) => { seen = ex; return null; });
+
+        new BuildFixLoop([], ai).Run(root, red, () => red);
+
+        Assert.AreEqual(text.TrimEnd('\n'), seen, "a short file goes whole, so the excerpt never ends inside the class");
+    }
+
+    [TestMethod]
+    public void Run_SendsTheEnclosingClass_WhenTheFileIsLong()
+    {
+        var root = FixTestSupport.TempProject();
+        var sb = new StringBuilder("namespace N\n{\n");
+
+        for (var c = 0; c < 4; c++)
+        {
+            sb.Append($"    public class C{c}\n    {{\n");
+
+            for (var i = 0; i < 60; i++)
+                sb.Append($"        public int F{i} {{ get; set; }}\n");
+
+            sb.Append("    }\n");
+        }
+
+        sb.Append("}\n");
+        var lines = sb.ToString().Split('\n');
+        Assert.IsGreaterThan(200, lines.Length);
+
+        // A line in the middle of C2.
+        var c2Start = Array.IndexOf(lines, "    public class C2") + 1;
+        var errorLine = c2Start + 31;
+        lines[errorLine - 1] = "        public strng F29 { get; set; }";
+        var text = string.Join("\n", lines);
+        var file = FixTestSupport.Write(root, "Big.cs", text);
+        var red = FixTestSupport.Result(Err(file, errorLine, "CS0246"));
+        string? seen = null;
+        var ai = new FakeAi((d, ex) => { seen = ex; return ex.Replace("strng", "string") + "\n}"; });
+
+        var outcome = new BuildFixLoop([], ai).Run(root, red, () => Green);
+
+        Assert.IsNotNull(seen);
+        var sent = seen.Split('\n');
+        Assert.AreEqual("    public class C2", sent[0], "the excerpt starts at the class");
+        Assert.AreEqual("    }", sent[^1], "and ends with its closing brace");
+        Assert.HasCount(63, sent);
+        Assert.IsTrue(outcome.Green, string.Join(" | ", outcome.Notes));
+        Assert.AreEqual(text.Replace("strng", "string"), File.ReadAllText(file));
+    }
+
+    [TestMethod]
+    public void Run_StillRejectsAReplyWhoseExtraClosersAreNotTrailing()
+    {
+        var root = FixTestSupport.TempProject();
+        var text = BookFile();
+        var file = FixTestSupport.Write(root, "Book.cs", text);
+        var red = FixTestSupport.Result(Err(file, 14, "CS0246"));
+        var ai = new FakeAi((d, ex) => ex.Replace("strng Title", "string Title } }"));
+        var rebuilt = false;
+
+        var outcome = new BuildFixLoop([], ai).Run(root, red, () => { rebuilt = true; return red; });
+
+        Assert.IsFalse(rebuilt);
+        Assert.HasCount(0, outcome.Edits);
+        Assert.AreEqual(text, File.ReadAllText(file));
+    }
+
     [TestMethod]
     public void Run_RejectsAnAiAnswerThatChangesNothing()
     {
