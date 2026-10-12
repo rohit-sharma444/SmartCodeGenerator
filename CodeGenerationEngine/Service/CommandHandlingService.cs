@@ -838,6 +838,7 @@ public static class CommandHandlingService
             }
 
             Console.WriteLine($"Removed rule {number} from {className}: {rule.Describe()}");
+            RegenerateValidatorAfterRuleRemoval(ctx.WorkspaceRoot, className);
             return true;
         }
 
@@ -853,12 +854,21 @@ public static class CommandHandlingService
 
             Console.WriteLine($"Removed {removed.Count} rule(s) from {className}.{property}: "
                 + string.Join("; ", removed.Select(r => r.Describe())));
+            RegenerateValidatorAfterRuleRemoval(ctx.WorkspaceRoot, className);
             return true;
         }
 
         Output.Warning($"Say which rule: remove {words} from {className}.<field>, or "
             + $"remove {words} <number> from {className} with a number from show {words} {className}.");
         return false;
+    }
+
+    // A validator generate validator wrote still enforced the removed rule until it was run again,
+    // as remove property already regenerates it.
+    private static void RegenerateValidatorAfterRuleRemoval(string workspaceRoot, string className)
+    {
+        if (StaleValidators.Regenerate(workspaceRoot, className) is { } regenerated)
+            Console.WriteLine($"Validator regenerated: {regenerated}");
     }
 
     /// <summary>
