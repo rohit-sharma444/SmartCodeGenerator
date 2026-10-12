@@ -72,6 +72,55 @@ public class WinFormsMasterDetailLayoutTests
         }));
     }
 
+    /// <summary>
+    /// The PropertyGrid edits every public setter, so CreatedOn and ModifiedOn — which the store
+    /// stamps on save, overwriting whatever was typed — were editable, as was Id. The grid now
+    /// shows the record through a descriptor that marks those three read-only. Compiled and run
+    /// here: it is plain System.ComponentModel, so its behaviour can be checked off Windows.
+    /// </summary>
+    [TestMethod]
+    public void The_property_grid_shows_the_stamped_fields_read_only()
+    {
+        var source = "using System;\nusing System.ComponentModel;\nusing System.Linq;\nnamespace Acme;\n"
+            + "public class Book { public int Id { get; set; } public string Title { get; set; } = \"\";"
+            + " public DateTime CreatedOn { get; set; } public DateTime ModifiedOn { get; set; } }\n"
+            + "public static class Host {\n"
+            + "    public static ICustomTypeDescriptor Wrap(object item) => new StampsReadOnly(item);\n"
+            + WinFormsPaneCode.StampsReadOnlyClass
+            + "\n}\n";
+
+        var result = CodeGenerationEngine.Core.Compiler.Compile(source);
+        var errors = result.Diagnostics
+            .Where(d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error)
+            .Select(d => d.ToString())
+            .ToList();
+        Assert.IsEmpty(errors, string.Join("\n", errors));
+
+        var assembly = System.Reflection.Assembly.Load(result.AssemblyBytes!);
+        var book = Activator.CreateInstance(assembly.GetType("Acme.Book")!)!;
+        var wrapped = (System.ComponentModel.ICustomTypeDescriptor)assembly.GetType("Acme.Host")!
+            .GetMethod("Wrap")!.Invoke(null, [book])!;
+
+        var properties = wrapped.GetProperties(null);
+        Assert.IsTrue(properties["CreatedOn"]!.IsReadOnly, "CreatedOn is editable");
+        Assert.IsTrue(properties["ModifiedOn"]!.IsReadOnly, "ModifiedOn is editable");
+        Assert.IsTrue(properties["Id"]!.IsReadOnly, "Id is editable");
+        Assert.IsFalse(properties["Title"]!.IsReadOnly, "Title became read-only");
+
+        // An edit through the grid still lands on the record itself.
+        properties["Title"]!.SetValue(wrapped.GetPropertyOwner(properties["Title"]), "Emma");
+        Assert.AreEqual("Emma", book.GetType().GetProperty("Title")!.GetValue(book));
+    }
+
+    [TestMethod]
+    public void The_grid_columns_keep_the_stamped_fields_read_only()
+    {
+        var source = Source();
+
+        StringAssert.Contains(source, "detail.SelectedObject = grid.CurrentRow?.DataBoundItem is { } row ? new StampsReadOnly(row) : null");
+        StringAssert.Contains(source, "if (IsStamped(column.DataPropertyName))");
+    }
+
     [TestMethod]
     public void LeaksNoGeneratorImplementationDetails()
     {
