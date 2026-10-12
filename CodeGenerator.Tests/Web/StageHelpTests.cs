@@ -56,6 +56,19 @@ public class StageHelpTests
     }
 
     [TestMethod]
+    public void The_look_help_says_a_wrong_accent_is_refused_not_ignored()
+    {
+        var items = StageHelp.For(BuildStage.Look).Sections.SelectMany(s => s.Items).ToList();
+        var accent = items.Single(i => i.StartsWith("Accent colour:", StringComparison.Ordinal));
+
+        // LookStage shows "A colour looks like #1f6feb." and keeps Continue off for a wrong value.
+        Assert.AreEqual(
+            "Accent colour: a colour as #rrggbb, or leave it empty. A wrong value is refused: "
+            + "the page shows what a colour looks like, and Continue stays off until you correct it.",
+            accent);
+    }
+
+    [TestMethod]
     public void The_address_of_a_stage_round_trips()
     {
         foreach (var stage in Enum.GetValues<BuildStage>())

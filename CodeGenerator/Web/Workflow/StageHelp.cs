@@ -140,7 +140,8 @@ public static class StageHelp
                     "Layout (WPF and Windows Desktop only): business is the default. Others are tabs, sidebar, master-detail and dashboard.",
                     "Company: put in the project file and in a copyright line at the top of each generated C# file.",
                     "Theme: none, light or dark. This applies to the desktop applications.",
-                    "Accent colour: a colour as #rrggbb. A wrong value is ignored.",
+                    "Accent colour: a colour as #rrggbb, or leave it empty. A wrong value is refused: "
+                    + "the page shows what a colour looks like, and Continue stays off until you correct it.",
                     "Icon path: a .ico or .png file that becomes the application icon.",
                     "Window title: a pattern. {company} and {app} are replaced, so \"{company} - {app}\" gives Codis Ltd - Shop.",
                     "Namespace prefix: puts the code under your own namespace, for example CodisLtd.Shop.Models.",
