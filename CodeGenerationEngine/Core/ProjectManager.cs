@@ -177,12 +177,16 @@ public static class ProjectManager
 
     public static void RetainOnlyWithin(string workspaceRoot)
     {
+        // A relative path is inside whatever the current directory is, so it is in no workspace.
         _projects.RemoveAll(p =>
-            !PathHelper.IsWithin(p.ProjectPath, workspaceRoot) &&
-            !PathHelper.IsWithin(p.CsProjPath, workspaceRoot));
+            !(Rooted(p.ProjectPath) && PathHelper.IsWithin(p.ProjectPath, workspaceRoot)) &&
+            !(Rooted(p.CsProjPath) && PathHelper.IsWithin(p.CsProjPath, workspaceRoot)));
 
         ClearCurrentProjectIfOutside(workspaceRoot);
     }
+
+    private static bool Rooted(string? path) =>
+        !string.IsNullOrWhiteSpace(path) && Path.IsPathFullyQualified(path);
 
     public static void ClearCurrentProjectIfOutside(string workspaceRoot)
     {

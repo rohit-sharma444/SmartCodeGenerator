@@ -194,9 +194,12 @@ public static class CommandHandlingService
         var projectReq = new ProjectRequest
         {
             ProjectName = projectName,
+            // A relative folder is under the workspace, resolved once here: passed on as typed,
+            // `dotnet new -o` ran inside it and nested it twice, and the registry kept a relative
+            // path that counted as inside whatever the current directory was.
             OutputFolder = string.IsNullOrWhiteSpace(command.OutputFolder)
                 ? Path.Combine(ctx.WorkspaceRoot, projectName)
-                : command.OutputFolder,
+                : Path.GetFullPath(Path.Combine(ctx.WorkspaceRoot, command.OutputFolder)),
             ProjectType = command.ProjectType ?? DotNetProjectType.Console,
             Framework = string.IsNullOrWhiteSpace(command.Framework) ? "net10.0" : command.Framework
         };

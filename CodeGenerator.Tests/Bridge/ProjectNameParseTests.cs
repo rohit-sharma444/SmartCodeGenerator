@@ -1,3 +1,4 @@
+using CodeGenerationEngine.Core;
 using CodeGenerationEngine.Models;
 using CodeGenerationEngine.Service;
 using NaturalLanguageBridge;
@@ -103,6 +104,39 @@ public class ProjectNameParseTests
         {
             Console.SetOut(original);
             Directory.Delete(workspace, recursive: true);
+        }
+    }
+
+    // Gaps 5 #3: a relative folder was passed on as typed, so `dotnet new -o sub\toolsdir` ran
+    // inside sub\toolsdir and nested it twice, and the registry kept the relative path.
+    [TestMethod]
+    public void A_relative_folder_is_under_the_workspace_once_and_registered_absolute()
+    {
+        var workspace = Path.Combine(Path.GetTempPath(), "pn-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(workspace);
+        var output = new StringWriter();
+        var original = Console.Out;
+        Console.SetOut(output);
+        try
+        {
+            ProjectMetaData? project = null;
+            var ok = CommandHandlingService.Execute(
+                CommandFront.Parse(@"create classlib project Tools in 'sub\toolsdir'", workspace),
+                ref project, [], workspace, _ => { });
+
+            Assert.IsTrue(ok, output.ToString());
+            var expected = Path.Combine(workspace, "sub", "toolsdir", "Tools.csproj");
+            Assert.IsTrue(File.Exists(expected), output.ToString());
+            Assert.IsFalse(Directory.Exists(Path.Combine(workspace, "sub", "toolsdir", "sub")), "nested twice");
+            Assert.AreEqual(expected, project!.CsProjPath);
+            Assert.AreEqual(Path.Combine(workspace, "sub", "toolsdir"), project.ProjectPath);
+        }
+        finally
+        {
+            Console.SetOut(original);
+            ProjectManager.CurrentProject = null;
+            ProjectManager.RetainOnlyWithin(Path.Combine(Path.GetTempPath(), "none-" + Guid.NewGuid().ToString("N")));
+            try { Directory.Delete(workspace, recursive: true); } catch (IOException) { }
         }
     }
 
