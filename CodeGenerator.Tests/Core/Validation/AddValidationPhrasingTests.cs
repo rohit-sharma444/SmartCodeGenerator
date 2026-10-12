@@ -55,6 +55,29 @@ public class AddValidationPhrasingTests
     public void Class_first_form_with_a_colon_registers_a_rule(string sentence, string expected) =>
         AssertRegistered(sentence, "Customer", expected);
 
+    // Gaps 5 #6: the help lists GUID, IP address, date and "at most <n> characters", but only the
+    // "must be a valid ..." and "must be at most ..." forms parsed. The short form must make the
+    // very rule the long form makes.
+    [TestMethod]
+    [DataRow("add validation must be a GUID on Code in Item", "add validation must be a valid GUID on Code in Item")]
+    [DataRow("add validation Code must be a GUID in Item", "add validation Code must be a valid GUID in Item")]
+    [DataRow("add validation must be an IP address on Code in Item", "add validation must be a valid IP address on Code in Item")]
+    [DataRow("add validation Code must be an IP address in Item", "add validation Code must be a valid IP address in Item")]
+    [DataRow("add validation must be a URL on Website in Item", "add validation must be a valid URL on Website in Item")]
+    [DataRow("add validation must be a date on Born in Item", "add validation must be a valid date on Born in Item")]
+    [DataRow("add validation Born must be a date in Item", "add validation Born must be a valid date in Item")]
+    [DataRow("add validation at most 20 characters on Name in Item", "add validation must be at most 20 characters on Name in Item")]
+    [DataRow("add validation Name at most 20 characters in Item", "add validation Name must be at most 20 characters in Item")]
+    [DataRow("add validation at least 2 characters on Name in Item", "add validation must be at least 2 characters on Name in Item")]
+    public void A_documented_short_form_makes_the_rule_the_long_form_makes(string shortForm, string longForm)
+    {
+        Assert.IsTrue(Run(longForm), $"Command failed: {longForm}");
+        var expected = ValidationRegistry.Get("Item", ValidationCategory.Data).Single().Describe();
+        ValidationRegistry.Clear();
+
+        AssertRegistered(shortForm, "Item", expected);
+    }
+
     [TestMethod]
     public void Bare_predicate_still_registers_a_required_rule() =>
         AssertRegistered(
