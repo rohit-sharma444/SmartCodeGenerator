@@ -2,6 +2,7 @@ using AppScaffolding;
 using Bunit;
 using CodeGenerator.Web.Components;
 using CodeGenerator.Web.Workflow;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace CodeGenerator.Tests.Web;
 
@@ -99,6 +100,40 @@ public class StageHelpTests
             Assert.IsTrue(
                 rendered.FindAll("h2").Any(h => h.TextContent == section.Heading),
                 $"the page lacks the section {section.Heading}");
+    }
+
+    [TestMethod]
+    public void The_help_page_is_drawn_in_the_theme_the_workflow_saved()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "cg-help-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(root);
+
+        try
+        {
+            WorkflowThemeStore.Save(root, "dark");
+            using var context = new BunitContext();
+            context.Services.AddSingleton(new BuildSession("", root, AppCustomization.Default));
+
+            var found = context.Render<StageHelpPage>(p => p.Add(x => x.Stage, "data"));
+            var missing = context.Render<StageHelpPage>(p => p.Add(x => x.Stage, "nonsense"));
+
+            Assert.AreEqual("dark", found.Find("main.stage-help-page").GetAttribute("data-theme"));
+            Assert.AreEqual("dark", missing.Find("main.stage-help-page").GetAttribute("data-theme"));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public void The_help_page_is_light_with_no_session()
+    {
+        using var context = new BunitContext();
+
+        var rendered = context.Render<StageHelpPage>(p => p.Add(x => x.Stage, "data"));
+
+        Assert.AreEqual(WorkflowThemes.Default, rendered.Find("main.stage-help-page").GetAttribute("data-theme"));
     }
 
     [TestMethod]
