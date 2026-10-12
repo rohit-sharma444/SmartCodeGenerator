@@ -973,7 +973,20 @@ public static class CommandHandlingService
         if (string.IsNullOrWhiteSpace(code))
             return false;
 
-        SemanticCompilerRunner.RunSemanticAndCompile(ctx.Command, code, ctx.ConfiguredRules);
+        if (ctx.Command.Intent == IntentType.CreateClass)
+        {
+            // Checked beside the rest of its project, which also fills in the members of the
+            // interfaces it implements: compiled alone, a project interface was "CS0246 not found".
+            var completed = NewClassCompletion.Complete(
+                code, ProjectLocator.Resolve(ctx.Command, ctx.CurrentProject, ctx.WorkspaceRoot));
+            NewClassCompletion.Report(completed);
+            code = completed.Code;
+        }
+        else
+        {
+            SemanticCompilerRunner.RunSemanticAndCompile(ctx.Command, code, ctx.ConfiguredRules);
+        }
+
         GeneratedCodeService.Save(ctx.Command, code, ctx.CurrentProject, ctx.WorkspaceRoot);
         return true;
     }
