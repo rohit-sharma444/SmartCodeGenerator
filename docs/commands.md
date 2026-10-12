@@ -45,7 +45,7 @@
 | `remove <name>` | Review loop: removes a class from the candidate model. | `remove Reservation` |
 | `rename <old> <new>` | Review loop: renames a class in the candidate model. | `rename Member Borrower` |
 | `renamefield <class> <old> <new>` | Review loop: renames a field, keeping its type, where it came from and the rules proposed for it - which removing it and adding it again would lose. | `renamefield Book Name Title` |
-| `retype <class> <field> <type>` | Review loop: changes a field's type to string, int, decimal, bool or DateTime. | `retype Book Pages int` |
+| `retype <class> <field> <type>` | Review loop: changes a field's type to string, int, decimal, bool or DateTime, or to int?, decimal?, bool? or DateTime? for a field that may be empty (int? to int makes an empty value 0). | `retype Book Pages int` |
 | `rules` | Review loop: lists every validation rule your data supports, numbered, with the evidence for each and whether it is accepted. None is applied until you accept it. | `rules` |
 | `unaccept <n>` | Review loop: takes an accepted rule back, by number, or `unaccept all` for every one. | `unaccept 2` |
 | `unfield <class> <name>` | Review loop: removes a field from a class. | `unfield Book Title` |

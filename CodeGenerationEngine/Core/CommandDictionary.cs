@@ -936,7 +936,8 @@ public static class CommandDictionary
             Category = "Build App",
             Command = "retype <class> <field> <type>",
             Description = "Review loop: changes a field's type to string, int, decimal, bool "
-                        + "or DateTime.",
+                        + "or DateTime, or to int?, decimal?, bool? or DateTime? for a field that may be "
+                        + "empty (int? to int makes an empty value 0).",
             Example = "retype Book Pages int"
         },
         new()
