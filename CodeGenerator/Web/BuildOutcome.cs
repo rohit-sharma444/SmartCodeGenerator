@@ -30,8 +30,14 @@ public sealed record BuildOutcome(SessionPhase Phase, IReadOnlyList<string> Line
     /// just ended.
     /// </remarks>
     public static BuildOutcome CancelledLeaving(string projectPath)
-        => new(SessionPhase.Cancelled,
-            ["Cancelled.", $"The project at {projectPath} was already written, and is still there."]);
+        => CancelledLeaving([projectPath]);
+
+    /// <summary>
+    /// The same, for every folder the run wrote - more than one when the application type changed
+    /// after a project was generated, which does not delete the first one.
+    /// </summary>
+    public static BuildOutcome CancelledLeaving(IReadOnlyList<string> projectPaths)
+        => new(SessionPhase.Cancelled, ["Cancelled.", .. StillThere(projectPaths)]);
 
     /// <summary>
     /// Cancelled having written nothing, over a project an earlier run wrote - which stays.
@@ -49,7 +55,13 @@ public sealed record BuildOutcome(SessionPhase Phase, IReadOnlyList<string> Line
 
     /// <summary>The same, for a tab closed after the project was written.</summary>
     public static BuildOutcome AbandonedLeaving(string projectPath)
+        => AbandonedLeaving([projectPath]);
+
+    /// <summary>The same, for every folder the run wrote.</summary>
+    public static BuildOutcome AbandonedLeaving(IReadOnlyList<string> projectPaths)
         => new(SessionPhase.Abandoned,
-            ["The build workflow was closed before it finished.",
-             $"The project at {projectPath} was already written, and is still there."]);
+            ["The build workflow was closed before it finished.", .. StillThere(projectPaths)]);
+
+    private static IEnumerable<string> StillThere(IReadOnlyList<string> projectPaths)
+        => projectPaths.Select(p => $"The project at {p} was already written, and is still there.");
 }
