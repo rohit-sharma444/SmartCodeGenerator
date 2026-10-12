@@ -58,6 +58,10 @@ public static class SeedFileWriter
         foreach (var (entity, className) in classNames)
             entityByClass[className] = entity;
 
+        // A foreign key renamed with its class (LibraryId -> LibraryItemId) still has its value
+        // filed under the old name in the rows, which were read before the rename.
+        var renamedKeys = DomainModelMapper.RenamedKeys(classNames);
+
         var files = new List<(string, string)>();
 
         foreach (var definition in classes)
@@ -69,7 +73,7 @@ public static class SeedFileWriter
             if (rows.Count == 0)
                 continue;
 
-            files.Add((definition.Name + ".json", Render(definition, rows, skipped)));
+            files.Add((definition.Name + ".json", Render(definition, rows, renamedKeys, skipped)));
         }
 
         return files;
@@ -78,6 +82,7 @@ public static class SeedFileWriter
     private static string Render(
         ClassDefinition definition,
         IReadOnlyList<IReadOnlyDictionary<string, string?>> rows,
+        IReadOnlyDictionary<string, string> renamedKeys,
         List<string> skipped)
     {
         // Per property, in declaration order: how many values it could not read, and the first.
@@ -109,7 +114,9 @@ public static class SeedFileWriter
                     if (!IsScalar(property.Type))
                         continue;
 
-                    if (!rows[index].TryGetValue(property.Name, out var raw)
+                    if ((!rows[index].TryGetValue(property.Name, out var raw)
+                         && !(renamedKeys.TryGetValue(property.Name, out var oldName)
+                              && rows[index].TryGetValue(oldName, out raw)))
                         || string.IsNullOrWhiteSpace(raw))
                         continue;
 
