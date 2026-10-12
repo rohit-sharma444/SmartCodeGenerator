@@ -837,6 +837,20 @@ body {
 
 .actions .cancel { color: var(--pending); }
 
+/* The overwrite question. Adding is the safe choice, so it is the loud one; overwriting loses
+   generated sources, so it is marked like Stop rather than filled. */
+.actions .overwrite-add {
+    border-color: var(--active);
+    background: var(--active);
+    color: var(--on-accent);
+    font-weight: 600;
+}
+
+.actions .overwrite-yes {
+    border-color: var(--failed);
+    color: var(--failed);
+}
+
 /* Quiet, not loud: stopping is the useful thing to be able to do, never the thing to be nudged
    towards. It sits beside the loud Run button and must not compete with it. */
 .actions .stop {

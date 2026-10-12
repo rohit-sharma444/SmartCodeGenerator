@@ -53,18 +53,21 @@ else if (_phase == Phase.Overwrite)
             <p>@line</p>
         }
 
-        @* The console's [a]dd, offered only when there is something to add. *@
-        @if (_newClasses > 0)
-        {
-            <button type="button" class="overwrite-add" @onclick="AddNew">
-                Add the @_newClasses new @(_newClasses == 1 ? "class" : "classes")
+        @* In an actions row, so they are drawn like every other workflow button. *@
+        <div class="actions">
+            @* The console's [a]dd, offered only when there is something to add. *@
+            @if (_newClasses > 0)
+            {
+                <button type="button" class="overwrite-add" @onclick="AddNew">
+                    Add the @_newClasses new @(_newClasses == 1 ? "class" : "classes")
+                </button>
+            }
+            <button type="button" class="overwrite-yes" @onclick="Overwrite">Overwrite it</button>
+            <button type="button" class="overwrite-rename" @onclick="() => _phase = Phase.Confirm">
+                Use a different name
             </button>
-        }
-        <button type="button" class="overwrite-yes" @onclick="Overwrite">Overwrite it</button>
-        <button type="button" class="overwrite-rename" @onclick="() => _phase = Phase.Confirm">
-            Use a different name
-        </button>
-        <button type="button" class="cancel" @onclick="() => Session.RequestCancel()">Cancel</button>
+            <button type="button" class="cancel" @onclick="() => Session.RequestCancel()">Cancel</button>
+        </div>
     </div>
 }
 else
@@ -280,10 +283,10 @@ else
             _newClasses = AppScaffolding.Incremental.ModelDelta.NewNames(delta).Count;
 
             // The console's own wording, less its key hints: the page has buttons instead.
-            _collision = OverwritePrompt
-                .Warning(GenerateStep.FolderFor(Session, _name, Target), delta)
-                .Where(line => line.Length > 0 && !line.TrimStart().StartsWith('['))
-                .ToList();
+            // As paragraphs: the console wraps a sentence over three lines, and three <p>s for
+            // one sentence read as three statements.
+            _collision = OverwritePrompt.Paragraphs(
+                OverwritePrompt.Warning(GenerateStep.FolderFor(Session, _name, Target), delta));
 
             _phase = Phase.Overwrite;
             return;

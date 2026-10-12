@@ -168,6 +168,40 @@ public class OverwritePromptTests
     }
 
     [TestMethod]
+    public void The_changed_list_has_a_space_after_the_colon()
+    {
+        var lines = OverwritePrompt.Warning(Folder,
+            [new ClassDelta("Order", ClassFate.Changed), new ClassDelta("Supplier", ClassFate.New)]);
+
+        Assert.Contains("1 class differs: Order. Adding leaves them as they are.", lines);
+    }
+
+    [TestMethod]
+    public void Adding_is_not_mentioned_when_nothing_can_be_added()
+    {
+        var lines = OverwritePrompt.Warning(Folder,
+            [new ClassDelta("Order", ClassFate.Changed), new ClassDelta("Customer", ClassFate.Unchanged)]);
+
+        Assert.Contains("1 class differs: Order.", lines);
+        Assert.IsFalse(lines.Any(l => l.Contains("Adding")), string.Join(" | ", lines));
+    }
+
+    [TestMethod]
+    public void Paragraphs_join_the_console_wrapped_lines_and_drop_the_key_hints()
+    {
+        var paragraphs = OverwritePrompt.Paragraphs(OverwritePrompt.Warning(Folder,
+            [new ClassDelta("Order", ClassFate.Changed), new ClassDelta("Supplier", ClassFate.New)]));
+
+        Assert.HasCount(2, paragraphs, string.Join(" | ", paragraphs));
+        StringAssert.StartsWith(paragraphs[0], Folder + " already holds a generated project. It has 1 class(es)");
+        Assert.AreEqual(
+            "Regenerating overwrites its generated sources — Models, Data, Views and the "
+            + "*.Generated.cs validator halves. Your .Custom.cs rules, the project file and "
+            + "anything you added yourself are kept.",
+            paragraphs[1]);
+    }
+
+    [TestMethod]
     public void Add_is_offered_with_a_count_when_something_is_new()
     {
         var delta = new[]
