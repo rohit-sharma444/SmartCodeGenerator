@@ -206,10 +206,33 @@ public sealed record AppCustomization(
             .Replace("\r", "\\r")
             .Replace("\n", "\\n");
 
-    /// <summary>The title as an XML attribute value.</summary>
-    public string TitleAttributeFor(string appName)
-        => TitleFor(appName)
+    /// <summary>The title as a XAML attribute value.</summary>
+    public string TitleAttributeFor(string appName) => XamlAttribute(TitleFor(appName));
+
+    /// <summary>The title as text in Razor markup.</summary>
+    public string TitleMarkupFor(string appName) => RazorText(TitleFor(appName));
+
+    /// <summary>
+    /// <paramref name="value"/> as a XAML attribute value: XML-escaped, and with a leading
+    /// <c>{</c> escaped by the <c>{}</c> prefix, since XAML reads an attribute that starts with a
+    /// brace as a markup extension ("{Smith} Ltd" is MC3074, "the tag 'Smith' does not exist").
+    /// </summary>
+    public static string XamlAttribute(string value)
+    {
+        var escaped = value
             .Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;").Replace("\"", "&quot;");
+        return escaped.StartsWith('{') ? "{}" + escaped : escaped;
+    }
+
+    /// <summary>
+    /// <paramref name="value"/> as text inside Razor markup: HTML-escaped, and with every
+    /// <c>@</c> doubled, since Razor reads <c>@Jones</c> as C# (CS0103). C# string escaping is
+    /// wrong here — markup is not a literal, so <c>\"</c> is shown to the user as a backslash.
+    /// </summary>
+    public static string RazorText(string value)
+        => value
+            .Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;").Replace("\"", "&quot;")
+            .Replace("@", "@@");
 
     /// <summary>
     /// The namespace root emitted code declares: the project name, under the prefix when there is

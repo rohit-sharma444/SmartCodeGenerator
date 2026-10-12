@@ -205,6 +205,5 @@ public partial class App : Application
     /// <summary>An attribute value: a company name with an ampersand in it would otherwise make
     /// the XAML unparseable.</summary>
     private static string Escape(string value)
-        => value.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;")
-                .Replace("\"", "&quot;");
+        => AppCustomization.XamlAttribute(value);
 }

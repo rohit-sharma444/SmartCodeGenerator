@@ -398,6 +398,64 @@ public class GeneratedProjectBuildTests
     }
 
     /// <summary>
+    /// A company name carrying characters each front end treats specially still builds and shows
+    /// as typed. Razor reads <c>@</c> as code (CS0103 on the word after it) and shows a C#-escaped
+    /// quote as a literal backslash; XAML reads an attribute that starts with <c>{</c> as a markup
+    /// extension. Each target writes the title into a different context, so each needs its own
+    /// escaping, and only a real build can see a wrong one.
+    /// </summary>
+    [TestMethod]
+    [TestCategory("Integration")]
+    [DataRow("blazor")]
+    [DataRow("wpf")]
+    [DataRow("winforms")]
+    [DataRow("webapi")]
+    [DataRow("console")]
+    public void ACompanyNameWithSpecialCharacters_BuildsAndShowsAsTyped(string targetKey)
+    {
+        if ((targetKey == "wpf" || targetKey == "winforms") && !OperatingSystem.IsWindows())
+            Assert.Inconclusive($"The {targetKey} target needs the Windows desktop targeting pack.");
+
+        Assert.IsTrue(TargetScaffolders.TryResolve(targetKey, out var target));
+
+        var workspace = Path.Combine(Path.GetTempPath(), "gen_" + Path.GetRandomFileName());
+        Directory.CreateDirectory(workspace);
+        try
+        {
+            var result = new AppScaffolder().Scaffold(
+                ScaffoldRequest.For(SampleModel(), "Sample", workspace, target)
+                with
+                {
+                    Customization = AppCustomization.Default with
+                    {
+                        Company = "{Smith} @Jones \"Quote\" & <Co> \\ 50%",
+                        TitlePattern = AppCustomization.CompanyTitlePattern,
+                        Login = true,
+                    },
+                    Year = 2026,
+                });
+
+            Assert.IsTrue(result.Success, "scaffold failed: " + result.Message);
+
+            var (exit, output) = RunDotNet($"build \"{result.ProjectPath}\" -c Release");
+            Assert.AreEqual(0, exit, $"dotnet build failed for {targetKey}:\n{output}");
+
+            if (targetKey != "blazor")
+                return;
+
+            // Razor markup is HTML: a C# escape there is shown to the user as a backslash.
+            var nav = File.ReadAllText(
+                Path.Combine(result.ProjectPath, "Components", "Layout", "NavMenu.razor"));
+            Assert.DoesNotContain("\\\"", nav, "the nav shows a C#-escaped quote");
+            Assert.Contains("&quot;Quote&quot;", nav);
+        }
+        finally
+        {
+            TryDeleteDirectory(workspace);
+        }
+    }
+
+    /// <summary>
     /// An app generated with logging builds — which is the only way the emitted AppLog.cs is
     /// compiled at all, since Microsoft.Extensions.Logging is not among the assemblies
     /// Compiler.Compile can reach. It also restores the versions LoggingTemplate.Packages pins: an
