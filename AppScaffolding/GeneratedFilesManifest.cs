@@ -209,9 +209,9 @@ public static class GeneratedFilesManifest
 
 /// <summary>What <see cref="GeneratedFilesManifest.Sweep"/> did, as paths relative to the project
 /// folder.</summary>
-/// <param name="Removed">Files an earlier run generated that this model no longer produces.</param>
+/// <param name="Removed">Files an earlier run generated that this run no longer produces.</param>
 /// <param name="Changed">
-/// Files an earlier run generated that this model no longer produces, kept because they were
+/// Files an earlier run generated that this run no longer produces, kept because they were
 /// changed after they were written.
 /// </param>
 public sealed record SweepResult(IReadOnlyList<string> Removed, IReadOnlyList<string> Changed)
@@ -222,13 +222,20 @@ public sealed record SweepResult(IReadOnlyList<string> Removed, IReadOnlyList<st
     {
         var lines = new List<string>();
 
+        // Not "for classes no longer in the model": a file a switched-off option wrote, such as
+        // Logging/AppLog.cs, never belonged to a class at all.
         if (Removed.Count > 0)
             lines.Add($"Removed {Removed.Count} file(s) from {projectName} that an earlier generate "
-                + $"wrote for classes no longer in the model: {string.Join(", ", Removed)}");
+                + $"wrote and this one no longer needs: {string.Join(", ", Removed)}");
 
         if (Changed.Count > 0)
-            lines.Add($"Kept {string.Join(", ", Changed)} in {projectName}: generated for classes no "
-                + "longer in the model, but changed since, so remove them by hand if they are not wanted");
+        {
+            var (it, was, itIs) = Changed.Count == 1 ? ("it", "it was", "it is") : ("them", "they were", "they are");
+
+            lines.Add($"Kept {string.Join(", ", Changed)} in {projectName}: an earlier generate wrote {it} "
+                + $"and this one no longer needs {it}, but {was} changed since, so remove {it} by hand "
+                + $"if {itIs} not wanted");
+        }
 
         return lines;
     }

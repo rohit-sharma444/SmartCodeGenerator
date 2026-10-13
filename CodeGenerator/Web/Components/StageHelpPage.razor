@@ -4,6 +4,7 @@
    workflow page keeps its state. *@
 @page "/help/{Stage}"
 @using CodeGenerator.Web.Workflow
+@inject IServiceProvider Services
 
 @if (_stage is { } stage)
 {
@@ -12,7 +13,7 @@
 
     <PageTitle>Help: @node.Title</PageTitle>
 
-    <main class="workflow stage-help-page">
+    <main class="workflow stage-help-page" data-theme="@_theme">
         <h1>@node.Title</h1>
         <p class="stage-help-summary">@help.Summary</p>
 
@@ -51,7 +52,7 @@ else
 {
     <PageTitle>Help</PageTitle>
 
-    <main class="workflow stage-help-page">
+    <main class="workflow stage-help-page" data-theme="@_theme">
         <h1>Help</h1>
         <p class="stage-help-missing">There is no stage with the name "@Stage".</p>
     </main>
@@ -63,5 +64,18 @@ else
 
     private BuildStage? _stage;
 
-    protected override void OnParametersSet() => _stage = StageHelp.Parse(Stage);
+    /// <summary>
+    /// The theme the workflow page last saved, read the way BuildWorkflow reads it (from the
+    /// workspace's .codegen folder, not browser storage: the port, and so the origin, changes each
+    /// run). Light when no build session is registered.
+    /// </summary>
+    private string _theme = WorkflowThemes.Default;
+
+    protected override void OnParametersSet()
+    {
+        _stage = StageHelp.Parse(Stage);
+        _theme = Services.GetService(typeof(BuildSession)) is BuildSession session
+            ? WorkflowThemeStore.Load(session.WorkspaceRoot)
+            : WorkflowThemes.Default;
+    }
 }

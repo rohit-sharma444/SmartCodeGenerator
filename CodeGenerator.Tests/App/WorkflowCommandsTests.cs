@@ -119,22 +119,68 @@ public class WorkflowCommandsTests
         StringAssert.Contains(result, "was not discovered");
     }
 
-    [TestMethod]
-    public void A_class_with_two_accepted_status_proposals_is_refused_not_guessed()
+    private static RuleProposal AddValueList(CandidateDomainModel model, string field, params string[] values)
     {
-        var model = ModelWithAnAcceptedStatusProposal();
-        var second = new CandidateField { Name = "ReviewState", Type = "string" };
-        second.Proposals.Add(new RuleProposal
+        var candidate = new CandidateField { Name = field, Type = "string" };
+        var proposal = new RuleProposal
         {
             Kind = RuleProposalKind.Status,
-            Rule = new PropertyRule { PropertyName = "Status", Name = "allowedvalues", AllowedValues = ["Open", "Closed"] },
-            Evidence = "ReviewState holds only Open, Closed",
+            Rule = new PropertyRule { PropertyName = field, Name = "allowedvalues", AllowedValues = [.. values] },
+            Evidence = $"{field} holds only {string.Join(", ", values)}",
             Accepted = true
-        });
-        model.Entities.Single().Fields.Add(second);
+        };
+        candidate.Proposals.Add(proposal);
+        model.Entities.Single().Fields.Add(candidate);
+        return proposal;
+    }
+
+    /// <summary>
+    /// Every value list is a Status-kind proposal, so after `accept all` a Ticket with a Priority
+    /// list as well as a Status list refused every `order status`. The values given name the
+    /// field: only Status holds Draft, Approved and Shipped.
+    /// </summary>
+    [TestMethod]
+    public void The_values_given_pick_the_field_when_a_class_has_two_value_lists()
+    {
+        var model = ModelWithAnAcceptedStatusProposal();
+        var priority = AddValueList(model, "Priority", "Low", "High");
 
         var result = WorkflowCommands.OrderStatus(model, "Order", "Draft,Approved,Shipped");
 
-        StringAssert.Contains(result, "more than one confirmed status");
+        var status = model.Entities.Single().Fields.Single(f => f.Name == "Status").Proposals.Single();
+        CollectionAssert.AreEqual(new[] { "Draft", "Approved", "Shipped" }, status.Order?.ToArray());
+        Assert.IsNull(priority.Order);
+        StringAssert.Contains(result, "Order.Status");
+    }
+
+    [TestMethod]
+    public void The_values_given_can_pick_a_field_not_called_status()
+    {
+        var model = ModelWithAnAcceptedStatusProposal();
+        var priority = AddValueList(model, "Priority", "Low", "High");
+
+        var result = WorkflowCommands.OrderStatus(model, "Order", "Low,High");
+
+        CollectionAssert.AreEqual(new[] { "Low", "High" }, priority.Order?.ToArray());
+        StringAssert.Contains(result, "Order.Priority");
+    }
+
+    /// <summary>Values two lists both hold, neither called Status or State: a real ambiguity, so
+    /// it is refused, not guessed — and the refusal names both and says how to pick.</summary>
+    [TestMethod]
+    public void Values_that_fit_two_fields_are_refused_with_the_fields_named()
+    {
+        var model = new CandidateDomainModel();
+        model.Entities.Add(new CandidateEntity { Name = "Ticket" });
+        var priority = AddValueList(model, "Priority", "Low", "High");
+        var impact = AddValueList(model, "Impact", "Low", "High");
+
+        var result = WorkflowCommands.OrderStatus(model, "Ticket", "Low,High");
+
+        StringAssert.Contains(result, "Priority");
+        StringAssert.Contains(result, "Impact");
+        StringAssert.Contains(result, "unaccept");
+        Assert.IsNull(priority.Order);
+        Assert.IsNull(impact.Order);
     }
 }

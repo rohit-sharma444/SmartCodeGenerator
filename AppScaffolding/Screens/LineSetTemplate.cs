@@ -29,6 +29,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
+using System.Reflection;
 using System.Text.Json;
 using {{rootNamespace}}.Data;
 
@@ -142,7 +143,7 @@ public sealed class LineSet<TLine> : ILineSet where TLine : class, new()
 
     public void Add()
     {
-        var line = new TLine();
+        var line = NewRecord.Create<TLine>();
 
         _lines.Add(line);
         Selected = line;
@@ -223,5 +224,7 @@ public sealed class LineSet<TLine> : ILineSet where TLine : class, new()
     private static void SetId(TLine line, string property, int value)
         => typeof(TLine).GetProperty(property)?.SetValue(line, value);
 }
+
+{{NewRecordTemplate.Class()}}
 """;
 }

@@ -303,6 +303,77 @@ public class GenerateFixTests
     }
 
     [TestMethod]
+    public void A_red_build_and_a_still_red_fix_are_failed_steps_not_ticked_ones()
+    {
+        var page = Written(new FakeFixer(), new FakeBuild(Red(OneError), Red(OneError)));
+        using var _ = page.Context;
+
+        Assert.IsTrue(
+            page.Cut.FindAll("li.step-failed").Any(li => li.TextContent.StartsWith("The compiler reported problems")),
+            page.Cut.Find(".progress").OuterHtml);
+        Assert.IsFalse(page.Cut.FindAll("li.step-done").Any(li => li.TextContent.StartsWith("The compiler")));
+        Assert.IsTrue(page.Cut.FindAll("li.step-done").Any(li => li.TextContent.StartsWith("Wrote")));
+
+        page.Cut.Find("button.fix-yes").Click();
+        page.Cut.WaitForAssertion(
+            () => Assert.IsTrue(page.Cut.FindAll("li.step-failed")
+                .Any(li => li.TextContent.Trim() == "The compiler still reports problems after the fix")),
+            TimeSpan.FromSeconds(30));
+        Assert.IsFalse(page.Cut.FindAll("li.step-done").Any(li => li.TextContent.StartsWith("The compiler")));
+    }
+
+    [TestMethod]
+    public void Writing_is_refused_while_a_fix_runs_on_the_same_folder()
+    {
+        using var context = new BunitContext();
+        var build = new FakeBuild(Green);
+        context.Services.AddSingleton<BuildRunner>(build.Run);
+        context.Services.AddSingleton<IBuildFixer>(new FakeFixer());
+        var session = NewSession();
+        var folder = GenerateStep.FolderFor(session, GenerateStep.NameFor(session), new WpfTarget());
+        var cut = context.Render<GenerateStage>(p => p
+            .Add(c => c.Session, session)
+            .Add(c => c.Navigation, new StageNavigation())
+            .Add(c => c.OnAdvance, () => { }));
+
+        Assert.IsTrue(FixLocks.TryEnter(folder), "the test plays the other page's running fix");
+
+        try
+        {
+            cut.Find("button.write").Click();
+
+            Assert.AreEqual("A fix is running on this app; wait for it to finish.", cut.Find(".fix-running").TextContent.Trim());
+            Assert.IsNull(session.Generated);
+            Assert.AreEqual(0, build.Calls);
+            Assert.IsFalse(Directory.Exists(folder), "nothing was written");
+            Assert.HasCount(1, cut.FindAll("button.write"), "the user can try again later");
+        }
+        finally
+        {
+            FixLocks.Leave(folder);
+        }
+
+        // Once the fix is done, writing works and the lock is not left held.
+        cut.Find("button.write").Click();
+        cut.WaitForAssertion(() => Assert.IsNotNull(session.Generated), TimeSpan.FromMinutes(5));
+        Assert.HasCount(0, cut.FindAll(".fix-running"));
+        Assert.IsTrue(FixLocks.TryEnter(folder), "the write released its hold on the folder");
+        FixLocks.Leave(folder);
+    }
+
+    [TestMethod]
+    public void A_locked_exe_offers_no_fix_and_says_to_stop_the_app()
+    {
+        const string locked =
+            @"C:\Program Files\dotnet\sdk\10.0.100\Microsoft.Common.CurrentVersion.targets(4975,5): error MSB3027: Could not copy ""obj\Debug\App.exe"" to ""bin\Debug\App.exe"". The file is locked by: ""App (1234)""";
+        var page = Written(new FakeFixer(), new FakeBuild(Red(locked)));
+        using var _ = page.Context;
+
+        Assert.HasCount(0, page.Cut.FindAll(".fix-offer"));
+        Assert.IsTrue(ReportLines(page.Cut).Any(l => l == BuildFixReport.LockedOutput), string.Join(" | ", ReportLines(page.Cut)));
+    }
+
+    [TestMethod]
     public void No_hides_the_offer_and_keeps_the_errors_and_never_calls_the_fixer()
     {
         var fixer = new FakeFixer();
@@ -568,6 +639,49 @@ public class GenerateFixTests
         Assert.IsTrue(ReportLines(cut).Contains(
             "It did not compile. "
             + "A fix is offered only straight after a build, so it is not offered again on a reloaded page."));
+    }
+
+    /// <summary>
+    /// Coming back to a Generate stage that already ran shows the import notes again.
+    /// </summary>
+    /// <remarks>
+    /// They were said only while writing, so going back to the stage dropped the renumbering note
+    /// and the dropped-column note while the stale-file and stub notes beside them came back.
+    /// </remarks>
+    [TestMethod]
+    public void A_revisited_page_repeats_the_import_notes()
+    {
+        using var context = new BunitContext();
+        context.Services.AddSingleton<IBuildFixer>(new FakeFixer());
+
+        var session = NewSession();
+
+        var order = new CandidateEntity { Name = "Order", Provenance = Provenance.Wiki };
+        order.Fields.Add(new CandidateField { Name = "Customer", Type = "string", Provenance = Provenance.Wiki });
+        order.Fields.Add(new CandidateField { Name = "CustomerId", Type = "int", Provenance = Provenance.Wiki });
+        order.Relationships.Add(new CandidateRelationship { Target = "Customer", Role = "ManyToOne" });
+        session.Model!.Entities.Add(order);
+
+        const string renumbered = "Customer.Id was renumbered from 1 because the file's ids repeat.";
+        session.SetImportedData(new ImportedData(
+            new Dictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string?>>>
+            {
+                ["Customer"] = [new Dictionary<string, string?> { ["Title"] = "Acme" }],
+            },
+            [renumbered]));
+
+        var scaffold = GenerateStep.Scaffold(session, GenerateStep.NameFor(session), session.Target!, PersistenceKind.Json);
+        session.SetGenerated(new GeneratedApp(scaffold, "log", BuildSucceeded: true));
+
+        var cut = context.Render<GenerateStage>(p => p
+            .Add(c => c.Session, session)
+            .Add(c => c.Navigation, new StageNavigation()));
+
+        var lines = ReportLines(cut).ToList();
+
+        CollectionAssert.Contains(lines, renumbered);
+        CollectionAssert.Contains(
+            lines, "Order.Customer (text) was replaced by the link to Customer; its values were not kept.");
     }
 
     [TestMethod]

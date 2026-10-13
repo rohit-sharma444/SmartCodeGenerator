@@ -366,6 +366,39 @@ public class WorkspaceTests
         Assert.AreEqual(root, workspace.Root);
     }
 
+    // Gaps 5 #3: a project registered under a relative path ("sub\toolsdir") resolved against the
+    // current directory, so it was "within" whichever workspace that was, beside the absolute
+    // entry the scan made for the same folder: startup said 6 projects, status 7.
+    [TestMethod]
+    public void A_project_registered_by_a_relative_path_is_dropped_and_the_counts_agree()
+    {
+        var root = NewTree("Api");
+        var original = Environment.CurrentDirectory;
+        try
+        {
+            Environment.CurrentDirectory = root;
+            ProjectManager.Register(new ProjectMetaData
+            {
+                Success = true,
+                ProjectPath = "Api",
+                CsProjPath = Path.Combine("Api", "Api.csproj"),
+                ProjectName = "Api"
+            });
+
+            var workspace = new Workspace(root, projectPathSet: false);
+            var load = workspace.LoadFrom(root);
+
+            Assert.AreEqual(1, workspace.ProjectCount);
+            Assert.AreEqual(workspace.ProjectCount, load.ProjectCount);
+            Assert.IsTrue(ProjectManager.Projects.All(p => Path.IsPathRooted(p.ProjectPath)),
+                string.Join(", ", ProjectManager.Projects.Select(p => p.ProjectPath)));
+        }
+        finally
+        {
+            Environment.CurrentDirectory = original;
+        }
+    }
+
     /// <summary>A temp directory with one folder and one .csproj per name.</summary>
     private static string NewTree(params string[] projects)
     {

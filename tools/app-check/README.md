@@ -40,7 +40,9 @@ Needs:
   Wikipedia store if one is installed, then the 25 built-in domains, and online Wikipedia only
   when no store is installed. The report's "Classes" line says which source answered.
 - **SQL Server** (`.`, Windows authentication) with the `ValidationPhase3Test` database, for
-  `shop-sql`.
+  `shop-sql`. `sql\ValidationPhase3Test.sql` creates it (a Customer master and an `[Order]`
+  transaction); it only adds what is missing, so running it again is safe:
+  `sqlcmd -S . -E -b -i tools\app-check\sql\ValidationPhase3Test.sql`.
 
 ## What a case is
 

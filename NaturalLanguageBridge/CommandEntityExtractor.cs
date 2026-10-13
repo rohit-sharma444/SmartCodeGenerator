@@ -1185,10 +1185,12 @@ public static class CommandEntityExtractor
 
     // The name after "project", or after the type noun of a type phrased without the word
     // ("create worker service MyWorker", "create class library MyLib"). Quoted, or a dotted .NET
-    // name; never one of the words that start the folder or framework clause.
+    // name; never one of the words that start the folder or framework clause, nor another of the
+    // nouns ("create classlib project Shop" is Shop, not "Project").
     private static readonly Regex ProjectNameRe = new(
         @"\b(?:project|service|library|classlib|lib|app|application)(?:\s+(?:named|called))?\s+"
         + @"(?!(?:in|at|for|with|targeting|using|as|type|on|to)\b)(?!net\d)"
+        + @"(?!(?:project|service|library|classlib|lib|app|application)\b)"
         + @"(?<name>""[^""]+""|'[^']+'|[A-Za-z0-9_][A-Za-z0-9_\-\.]*)",
         RegexOptions.IgnoreCase);
 

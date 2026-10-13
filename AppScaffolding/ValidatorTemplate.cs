@@ -202,10 +202,10 @@ internal sealed class NullValidator<T> : IValidator<T>
     /// are the five the generator emits, compared as <see cref="Checks"/> compares them — Ordinal,
     /// against <see cref="PropertyDefinition.Type"/>.
     /// <para>
-    /// <c>required</c> is a string-only pair on purpose: <c>string.IsNullOrWhiteSpace</c> is the
-    /// only meaningful emptiness test among the five types. A non-nullable <c>int</c> cannot be
-    /// null and <c>0</c> is a legitimate value, so there is nothing for a required check to
-    /// assert.
+    /// <c>required</c> pairs with <c>string</c> and <c>DateTime</c> only: a blank string and a
+    /// date left at <c>default</c> (0001-01-01) are both plainly "not filled in". A non-nullable
+    /// <c>int</c> cannot be null and <c>0</c> is a legitimate value, so there is nothing for a
+    /// required check to assert.
     /// </para>
     /// </remarks>
     public static IReadOnlyCollection<(string Type, string Rule)> EmittableRules { get; } =
@@ -214,7 +214,7 @@ internal sealed class NullValidator<T> : IValidator<T>
         ("string", AllowedValuesRule), ("string", PatternRule),
         ("int", MinValueRule), ("int", MaxValueRule),
         ("decimal", MinValueRule), ("decimal", MaxValueRule), ("decimal", ScaleRule),
-        ("DateTime", MinDateRule), ("DateTime", DateOnlyRule)
+        ("DateTime", MinDateRule), ("DateTime", DateOnlyRule), ("DateTime", RequiredRule)
     ];
 
     /// <summary>
@@ -294,6 +294,9 @@ internal sealed class NullValidator<T> : IValidator<T>
         foreach (var property in definition.Properties)
             if (Checks(property) is { Count: > 0 } checks)
                 blocks.Add(Block(checks));
+
+        if (BlankRecordCheck(definition) is { } blank)
+            blocks.Add(Block(blank));
 
         var body = blocks.Count == 0
             ? "        // This model declares no inferred rules."
@@ -758,6 +761,45 @@ public sealed partial class {{className}}Validator
         return "        try\n        {\n" + emittedLines.TrimEnd('\n') + "\n        }\n        catch (Exception) { }";
     }
 
+    /// <summary>The fields the app stamps itself, which say nothing about whether the user
+    /// filled the record in. The same list <c>ValidationPipeline.IsBlank</c> skips.</summary>
+    private static readonly HashSet<string> StampedFields =
+        new(StringComparer.OrdinalIgnoreCase) { "Id", "CreatedOn", "ModifiedOn", "CreatedBy", "ModifiedBy" };
+
+    /// <summary>The five types <c>ValidationPipeline.IsBlank</c> judges a record by.</summary>
+    private static readonly HashSet<string> ScalarTypes =
+        new(StringComparer.Ordinal) { "string", "int", "decimal", "bool", "DateTime" };
+
+    /// <summary>
+    /// A check that refuses a record with nothing filled in, or null when the class has fewer
+    /// than two fields a user fills in, or none that is text or a date.
+    /// </summary>
+    /// <remarks>
+    /// New then Save stored an all-empty record in every generated app, its dates 0001-01-01. This
+    /// makes no single field stricter — a discovered domain must not become stricter than the user
+    /// described it, so a record with ANY one value still saves — and it never refuses a delete.
+    /// With one field, "fill in at least one" would be that field made required, so it is left
+    /// alone; so is a class of numbers and flags, where all zeros can be a real record.
+    /// The test itself lives in <c>ValidationPipeline.IsBlank</c>, which every validator shares.
+    /// </remarks>
+    private static List<string>? BlankRecordCheck(ClassDefinition definition)
+    {
+        var fields = definition.Properties
+            .Where(p => !StampedFields.Contains(p.Name)
+                        && ScalarTypes.Contains(DomainModelMapper.BaseType(p.Type)))
+            .ToList();
+
+        if (fields.Count < 2
+            || !fields.Any(p => DomainModelMapper.BaseType(p.Type) is "string" or "DateTime"))
+            return null;
+
+        return
+        [
+            "if (context.Op != ValidationOperation.Delete && ValidationPipeline.IsBlank(item))",
+            $"    errors.Add(new ValidationError(null, \"Fill in at least one field before saving this {definition.Name}.\"));",
+        ];
+    }
+
     /// <summary>The checks for one property, from the rules DomainModelMapper recorded. A
     /// navigation property and a [Key] Id both yield none.</summary>
     private static List<string> Checks(PropertyDefinition property)
@@ -869,6 +911,14 @@ public sealed partial class {{className}}Validator
 
         if (type == "DateTime")
         {
+            // A NOT NULL date: blank, the non-nullable model holds 0001-01-01, which the column
+            // would store as though it were a real date.
+            if (IsRequired(property) && !nullable)
+            {
+                checks.Add($"if (item.{name} == default(DateTime))");
+                checks.Add($"    errors.Add(new ValidationError(\"{name}\", \"{name} is required.\"));");
+            }
+
             if (Rule(property, MinDateRule)?.MinDate is { } floor)
             {
                 // The default(DateTime) guard is what makes an OPTIONAL date fillable. The
@@ -916,7 +966,7 @@ public sealed partial class {{className}}Validator
     /// newline. An unescaped one is a generated app that does not compile, and the tool would
     /// have reported success writing it.
     /// </remarks>
-    private static string Quoted(string value)
+    internal static string Quoted(string value)
         => "\"" + value
             .Replace("\\", "\\\\")
             .Replace("\"", "\\\"")

@@ -159,6 +159,7 @@ public static class DomainModelMapper
             classes.Add(definition);
         }
 
+        RenameKeysToRenamedClasses(classes, names);
         AddNavigationProperties(model, classes, names);
         AddNullability(classes);
         AddAuditFields(classes);
@@ -183,6 +184,61 @@ public static class DomainModelMapper
     /// that is never generated does not compile.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// <c>&lt;Entity&gt;Id</c> as <c>&lt;Class&gt;Id</c> on every other class, for each entity
+    /// <see cref="ToUniqueClassName"/> renamed.
+    /// </summary>
+    /// <remarks>
+    /// The relationship and its navigation follow the class name, and the resolver, the seeder,
+    /// the validators and the lookups all find a foreign key by <c>&lt;Class&gt;Id</c>. "a library
+    /// that lends books" renames Library to LibraryItem, and Book kept <c>int LibraryId</c> beside a
+    /// <c>LibraryItem</c> navigation nothing paired with it. The seed rows keep the old name;
+    /// <see cref="SeedFileWriter"/> reads a renamed key's value from there.
+    /// </remarks>
+    private static void RenameKeysToRenamedClasses(
+        List<ClassDefinition> classes, Dictionary<string, string> classNames)
+    {
+        foreach (var (entityName, className) in classNames)
+        {
+            if (string.Equals(entityName, className, StringComparison.Ordinal))
+                continue;
+
+            var oldKey = entityName + "Id";
+            var newKey = className + "Id";
+
+            foreach (var definition in classes)
+            {
+                if (string.Equals(definition.Name, className, StringComparison.OrdinalIgnoreCase)
+                    || definition.Properties.Any(
+                        p => string.Equals(p.Name, newKey, StringComparison.OrdinalIgnoreCase)))
+                    continue;
+
+                var key = definition.Properties.FirstOrDefault(
+                    p => string.Equals(p.Name, oldKey, StringComparison.OrdinalIgnoreCase)
+                         && BaseType(p.Type) == "int");
+
+                if (key is not null)
+                    key.Name = newKey;
+            }
+        }
+    }
+
+    /// <summary>The old key name each renamed foreign key's seed value is still filed under,
+    /// by the new name: <c>LibraryItemId</c> → <c>LibraryId</c>.</summary>
+    internal static IReadOnlyDictionary<string, string> RenamedKeys(
+        IReadOnlyDictionary<string, string> classNames)
+    {
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var (entityName, className) in classNames)
+        {
+            if (!string.Equals(entityName, className, StringComparison.Ordinal))
+                map.TryAdd(className + "Id", entityName + "Id");
+        }
+
+        return map;
+    }
+
     private static void AddNavigationProperties(
         CandidateDomainModel model,
         List<ClassDefinition> classes,
@@ -202,10 +258,32 @@ public static class DomainModelMapper
                     || !byName.TryGetValue(targetName, out var target))
                     continue;
 
+                DropTextShadowingTheRelationship(owner, targetName);
+
                 AddNavigation(owner, RelationshipConvention.Forward(targetName));
                 AddNavigation(target, RelationshipConvention.InverseCollection(ownerName));
             }
         }
+    }
+
+    /// <summary>
+    /// Drops a <c>string</c> field named for <paramref name="targetName"/> when the class also
+    /// holds <c>&lt;Target&gt;Id</c>: discovery can give Shipment both <c>string Customer</c> and
+    /// <c>int CustomerId</c>, and the text's name then blocked the navigation, so the app showed a
+    /// free-text customer box beside a key to a real one. With the key there, the relationship is
+    /// what the text was trying to say.
+    /// </summary>
+    private static void DropTextShadowingTheRelationship(ClassDefinition owner, string targetName)
+    {
+        var hasKey = owner.Properties.Any(
+            p => string.Equals(p.Name, targetName + "Id", StringComparison.Ordinal)
+                 && BaseType(p.Type) == "int");
+
+        if (!hasKey)
+            return;
+
+        owner.Properties.RemoveAll(
+            p => string.Equals(p.Name, targetName, StringComparison.Ordinal) && p.Type == "string");
     }
 
     /// <summary>
@@ -464,6 +542,12 @@ public static class DomainModelMapper
                 return false;
 
             case "DateTime":
+                // A date the source declared NOT NULL is required, as a NOT NULL string is: the
+                // non-nullable model holds a blank as 0001-01-01, which such a column would store
+                // as though it were a real date. Unknown nullability infers nothing, as above.
+                if (facts?.IsNullable == false && !IsNullable(property.Type))
+                    property.Rules.Add(new PropertyRule { Name = "required" });
+
                 // SQL Server's own floor, and only for the type that actually carries it:
                 // datetime2 starts at year 1, and a rule from the wrong type would refuse
                 // dates the column accepts.

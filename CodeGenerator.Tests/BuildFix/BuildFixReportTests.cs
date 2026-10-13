@@ -7,9 +7,21 @@ namespace CodeGenerator.Tests.BuildFix;
 public class BuildFixReportTests
 {
     private const string BackupLine1 = "  The original of each edited file is kept under .codegen\\fix-backups";
-    private const string BackupLine2 = "  in the newest folder. The file files.txt there names each backup.";
-    private const string BackupLine3 = "  If a file was edited in more than one round, its true original is in";
-    private const string BackupLine4 = "  the earliest round (r1 before r2 before r3).";
+    private const string BackupLine2 = "  in one folder per fix run, named by date and time; files.txt names each.";
+    private const string BackupLine3 = "  A file's true original is in the OLDEST folder that holds it, in its";
+    private const string BackupLine4 = "  earliest round (r1 before r2 before r3).";
+
+    [TestMethod]
+    public void Lines_PointAtTheOldestBackupFolder_NeverTheNewest()
+    {
+        var (outcome, root) = Outcome(green: false, remaining: 1, kept: 1, undone: 0);
+
+        var lines = BuildFixReport.Lines(outcome, root);
+
+        // A second fix run makes a new folder holding files the first run already edited.
+        Assert.IsFalse(lines.Any(l => l.Contains("newest", StringComparison.OrdinalIgnoreCase)), string.Join(" | ", lines));
+        Assert.IsTrue(lines.Any(l => l.Contains("OLDEST folder")), string.Join(" | ", lines));
+    }
 
     /// <summary>
     /// <paramref name="kept"/> edits in round 1 stay; <paramref name="undone"/> edits in round 2 are reverted.

@@ -194,9 +194,12 @@ public static class CommandHandlingService
         var projectReq = new ProjectRequest
         {
             ProjectName = projectName,
+            // A relative folder is under the workspace, resolved once here: passed on as typed,
+            // `dotnet new -o` ran inside it and nested it twice, and the registry kept a relative
+            // path that counted as inside whatever the current directory was.
             OutputFolder = string.IsNullOrWhiteSpace(command.OutputFolder)
                 ? Path.Combine(ctx.WorkspaceRoot, projectName)
-                : command.OutputFolder,
+                : Path.GetFullPath(Path.Combine(ctx.WorkspaceRoot, command.OutputFolder)),
             ProjectType = command.ProjectType ?? DotNetProjectType.Console,
             Framework = string.IsNullOrWhiteSpace(command.Framework) ? "net10.0" : command.Framework
         };
@@ -835,6 +838,7 @@ public static class CommandHandlingService
             }
 
             Console.WriteLine($"Removed rule {number} from {className}: {rule.Describe()}");
+            RegenerateValidatorAfterRuleRemoval(ctx.WorkspaceRoot, className);
             return true;
         }
 
@@ -850,12 +854,21 @@ public static class CommandHandlingService
 
             Console.WriteLine($"Removed {removed.Count} rule(s) from {className}.{property}: "
                 + string.Join("; ", removed.Select(r => r.Describe())));
+            RegenerateValidatorAfterRuleRemoval(ctx.WorkspaceRoot, className);
             return true;
         }
 
         Output.Warning($"Say which rule: remove {words} from {className}.<field>, or "
             + $"remove {words} <number> from {className} with a number from show {words} {className}.");
         return false;
+    }
+
+    // A validator generate validator wrote still enforced the removed rule until it was run again,
+    // as remove property already regenerates it.
+    private static void RegenerateValidatorAfterRuleRemoval(string workspaceRoot, string className)
+    {
+        if (StaleValidators.Regenerate(workspaceRoot, className) is { } regenerated)
+            Console.WriteLine($"Validator regenerated: {regenerated}");
     }
 
     /// <summary>
@@ -970,7 +983,20 @@ public static class CommandHandlingService
         if (string.IsNullOrWhiteSpace(code))
             return false;
 
-        SemanticCompilerRunner.RunSemanticAndCompile(ctx.Command, code, ctx.ConfiguredRules);
+        if (ctx.Command.Intent == IntentType.CreateClass)
+        {
+            // Checked beside the rest of its project, which also fills in the members of the
+            // interfaces it implements: compiled alone, a project interface was "CS0246 not found".
+            var completed = NewClassCompletion.Complete(
+                code, ProjectLocator.Resolve(ctx.Command, ctx.CurrentProject, ctx.WorkspaceRoot));
+            NewClassCompletion.Report(completed);
+            code = completed.Code;
+        }
+        else
+        {
+            SemanticCompilerRunner.RunSemanticAndCompile(ctx.Command, code, ctx.ConfiguredRules);
+        }
+
         GeneratedCodeService.Save(ctx.Command, code, ctx.CurrentProject, ctx.WorkspaceRoot);
         return true;
     }

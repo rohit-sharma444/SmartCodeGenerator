@@ -779,7 +779,7 @@ else
             return;
         }
 
-        _draft = stored is null ? new TRecord() : ScreenFields.Clone(stored);
+        _draft = stored is null ? NewRecord.Create<TRecord>() : ScreenFields.Clone(stored);
 {{StoredAssign(validation)}}        _openedAs = ScreenFields.Snapshot(_draft);
 
         _lines = Lines?.Invoke() ?? [];

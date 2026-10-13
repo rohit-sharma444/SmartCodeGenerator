@@ -180,6 +180,35 @@ public class DataStageSqlTests
         return rendered;
     }
 
+    /// <summary>
+    /// The connect button wears the panel buttons' look, not the browser's default grey box.
+    /// </summary>
+    /// <remarks>
+    /// It sits in the format block rather than in the panel's actions row, so the
+    /// <c>.actions button</c> rule never reached it. Added to that rule's selector list (and its
+    /// hover), never by renaming: bUnit tests find it as <c>button.connect</c>.
+    /// </remarks>
+    [TestMethod]
+    public void The_connect_button_is_styled_like_the_panel_buttons()
+    {
+        var css = File.ReadAllText(Path.Combine(
+            AppContext.BaseDirectory, "..", "..", "..", "..", "CodeGenerator", "wwwroot", "workflow.css"));
+
+        // Comments first: one holding a comma would otherwise split into the selector list.
+        css = System.Text.RegularExpressions.Regex.Replace(
+            css, @"/\*.*?\*/", string.Empty, System.Text.RegularExpressions.RegexOptions.Singleline);
+
+        var rules = System.Text.RegularExpressions.Regex.Matches(css, @"([^{}]+)\{([^}]*)\}")
+            .Select(m => (Selectors: m.Groups[1].Value.Split(',').Select(x => x.Trim()).ToList(), Body: m.Groups[2].Value))
+            .ToList();
+
+        var panel = rules.Single(r => r.Selectors.Contains(".actions button"));
+        CollectionAssert.Contains(panel.Selectors, ".file .connect");
+
+        var hover = rules.Single(r => r.Selectors.Contains(".actions button:hover:not(:disabled)"));
+        CollectionAssert.Contains(hover.Selectors, ".file .connect:hover");
+    }
+
     private static IRenderedComponent<DataStage> Render(
         BunitContext context,
         out BuildSession session,

@@ -1,3 +1,4 @@
+using CodeGenerationEngine.Core;
 using CodeGenerationEngine.Models;
 using CodeGenerationEngine.Service;
 using NaturalLanguageBridge;
@@ -30,6 +31,23 @@ public class ProjectNameParseTests
     [DataRow("create project EmployeeManagement", "EmployeeManagement", null)]
     [DataRow("create project named shop", "Shop", null)]
     [DataRow("new console project Shop", "Shop", DotNetProjectType.Console)]
+    // Gaps 5 #2: a type word that is also a noun ("classlib", "library", "service") took the word
+    // "project" after it as the name.
+    [DataRow("create classlib project Shop", "Shop", DotNetProjectType.ClassLibrary)]
+    [DataRow("create class library project Shop", "Shop", DotNetProjectType.ClassLibrary)]
+    [DataRow("create worker service project Shop", "Shop", DotNetProjectType.WorkerService)]
+    [DataRow("create worker project Shop", "Shop", DotNetProjectType.WorkerService)]
+    [DataRow("create webapi project Shop", "Shop", DotNetProjectType.WebApi)]
+    [DataRow("create web api project Shop", "Shop", DotNetProjectType.WebApi)]
+    [DataRow("create api project Shop", "Shop", DotNetProjectType.WebApi)]
+    [DataRow("create blazor project Shop", "Shop", DotNetProjectType.BlazorServer)]
+    [DataRow("create blazorserver project Shop", "Shop", DotNetProjectType.BlazorServer)]
+    [DataRow("create blazorwasm project Shop", "Shop", DotNetProjectType.BlazorWebAssembly)]
+    [DataRow("create wasm project Shop", "Shop", DotNetProjectType.BlazorWebAssembly)]
+    [DataRow("create wpf project Shop", "Shop", DotNetProjectType.Wpf)]
+    [DataRow("create winforms project Shop", "Shop", DotNetProjectType.WinForms)]
+    [DataRow("create mvc project Shop", "Shop", DotNetProjectType.Mvc)]
+    [DataRow("create console project Shop", "Shop", DotNetProjectType.Console)]
     public void The_project_name_is_kept_as_typed(string sentence, string expected, DotNetProjectType? type)
     {
         var cmd = CommandFront.Parse(sentence, "");
@@ -53,6 +71,7 @@ public class ProjectNameParseTests
     [DataRow("create project")]
     [DataRow("create console project")]
     [DataRow("create class library")]
+    [DataRow("create classlib project")]
     [DataRow(@"create console project in C:\work")]
     public void No_name_leaves_the_name_empty(string sentence)
     {
@@ -85,6 +104,39 @@ public class ProjectNameParseTests
         {
             Console.SetOut(original);
             Directory.Delete(workspace, recursive: true);
+        }
+    }
+
+    // Gaps 5 #3: a relative folder was passed on as typed, so `dotnet new -o sub\toolsdir` ran
+    // inside sub\toolsdir and nested it twice, and the registry kept the relative path.
+    [TestMethod]
+    public void A_relative_folder_is_under_the_workspace_once_and_registered_absolute()
+    {
+        var workspace = Path.Combine(Path.GetTempPath(), "pn-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(workspace);
+        var output = new StringWriter();
+        var original = Console.Out;
+        Console.SetOut(output);
+        try
+        {
+            ProjectMetaData? project = null;
+            var ok = CommandHandlingService.Execute(
+                CommandFront.Parse(@"create classlib project Tools in 'sub\toolsdir'", workspace),
+                ref project, [], workspace, _ => { });
+
+            Assert.IsTrue(ok, output.ToString());
+            var expected = Path.Combine(workspace, "sub", "toolsdir", "Tools.csproj");
+            Assert.IsTrue(File.Exists(expected), output.ToString());
+            Assert.IsFalse(Directory.Exists(Path.Combine(workspace, "sub", "toolsdir", "sub")), "nested twice");
+            Assert.AreEqual(expected, project!.CsProjPath);
+            Assert.AreEqual(Path.Combine(workspace, "sub", "toolsdir"), project.ProjectPath);
+        }
+        finally
+        {
+            Console.SetOut(original);
+            ProjectManager.CurrentProject = null;
+            ProjectManager.RetainOnlyWithin(Path.Combine(Path.GetTempPath(), "none-" + Guid.NewGuid().ToString("N")));
+            try { Directory.Delete(workspace, recursive: true); } catch (IOException) { }
         }
     }
 

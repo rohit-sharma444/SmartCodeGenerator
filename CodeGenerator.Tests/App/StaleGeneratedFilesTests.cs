@@ -102,6 +102,30 @@ public class StaleGeneratedFilesTests
         Assert.IsTrue(File.Exists(Path.Combine(project, "Models", "Loan.cs")));
     }
 
+    /// <summary>
+    /// The report does not call every removed file a class's: switching Logging off removes
+    /// Logging/AppLog.cs, which no model class ever had.
+    /// </summary>
+    [TestMethod]
+    public void The_report_does_not_say_a_removed_file_belonged_to_a_class()
+    {
+        var sentences = new SweepResult(["Logging/AppLog.cs"], ["Logging/Notes.cs"]).Sentences("Shop");
+
+        Assert.HasCount(2, sentences);
+
+        foreach (var sentence in sentences)
+            Assert.DoesNotContain("classes", sentence);
+
+        Assert.AreEqual(
+            "Removed 1 file(s) from Shop that an earlier generate wrote and this one no longer needs: "
+            + "Logging/AppLog.cs",
+            sentences[0]);
+        Assert.AreEqual(
+            "Kept Logging/Notes.cs in Shop: an earlier generate wrote it and this one no longer needs it, "
+            + "but it was changed since, so remove it by hand if it is not wanted",
+            sentences[1]);
+    }
+
     private static ScaffoldResult Scaffold(string workspace, params string[] classes)
     {
         Assert.IsTrue(TargetScaffolders.TryResolve("console", out var target));

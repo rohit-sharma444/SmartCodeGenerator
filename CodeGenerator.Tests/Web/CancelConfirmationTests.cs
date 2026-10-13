@@ -108,6 +108,38 @@ public class CancelConfirmationTests
         StringAssert.Contains(lines, Path.GetDirectoryName(csproj)!);
     }
 
+    /// <summary>
+    /// A project this run wrote stays on disk after the application type changes.
+    /// </summary>
+    /// <remarks>
+    /// Changing the type cleared <see cref="BuildSession.Generated"/>, and the earlier-project
+    /// check looks only where the NEW type would write. So the question said "nothing will be
+    /// generated" and the outcome said "Nothing was generated", with the Blazor project this run
+    /// had just written sitting in its folder.
+    /// </remarks>
+    [TestMethod]
+    public void A_project_written_before_the_type_changed_is_said_to_stay_on_disk()
+    {
+        var session = Discovered();
+        session.SetGenerated(new GeneratedApp(
+            new ScaffoldResult(true, @"C:\ws\Shop.Wpf", [], string.Empty),
+            BuildLog: string.Empty,
+            BuildSucceeded: true));
+
+        Assert.IsTrue(session.SetTarget(new ConsoleTarget()));
+        Assert.IsNull(session.Generated, "the premise: a new type drops the written app");
+
+        session.RequestCancel();
+
+        StringAssert.Contains(session.PendingCancel!, @"C:\ws\Shop.Wpf");
+        Assert.DoesNotContain("nothing will be generated", session.PendingCancel!);
+
+        session.ConfirmCancel();
+        var lines = string.Join(" ", CodeGenerator.Web.BuildAppWebHost.OutcomeFor(session).Lines);
+        Assert.DoesNotContain("Nothing was generated", lines);
+        StringAssert.Contains(lines, @"C:\ws\Shop.Wpf");
+    }
+
     [TestMethod]
     public void Keeping_the_build_leaves_the_workflow_exactly_where_it_was()
     {

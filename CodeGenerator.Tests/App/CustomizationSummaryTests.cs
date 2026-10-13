@@ -65,4 +65,20 @@ public class CustomizationSummaryTests
 
         Assert.IsFalse(lines.Any(l => l.Contains("Entry template")));
     }
+
+    /// <summary>The window caption the pattern produces, not the pattern: "{company} - {app}" is
+    /// the instruction, and what the user checks is the title it gives.</summary>
+    [TestMethod]
+    public void The_title_line_shows_the_rendered_title_once_the_app_has_a_name()
+    {
+        var customization = AppCustomization.Default with
+        {
+            Company = "Codis Ltd",
+            TitlePattern = AppCustomization.CompanyTitlePattern,
+        };
+
+        var lines = CustomizationSummary.Lines(customization, target: null, appName: "Shop");
+
+        CollectionAssert.Contains(lines.ToList(), "  Title: Codis Ltd - Shop");
+    }
 }

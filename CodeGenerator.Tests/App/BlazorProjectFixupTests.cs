@@ -345,6 +345,32 @@ app.Run();
     }
 
     [TestMethod]
+    public void ReconcileNamespace_RepointsTheImportsFileAndFollowsAChangedPrefix()
+    {
+        var folder = NewProjectFolder();
+        var imports = Path.Combine(folder, "Components", "_Imports.razor");
+        Directory.CreateDirectory(Path.GetDirectoryName(imports)!);
+        File.WriteAllText(imports, string.Join("\r\n",
+            "@using Microsoft.JSInterop",
+            "@using Shop",
+            "@using Shop.Components",
+            "@using Shop.Components.Layout",
+            "@using ShopLibrary.Widgets",
+            ""));
+
+        BlazorProjectFixup.ReconcileNamespace(folder, "CodisLtd.Shop");
+        BlazorProjectFixup.ReconcileNamespace(folder, "Acme.Shop");
+
+        Assert.AreEqual(string.Join("\r\n",
+            "@using Microsoft.JSInterop",
+            "@using Acme.Shop",
+            "@using Acme.Shop.Components",
+            "@using Acme.Shop.Components.Layout",
+            "@using ShopLibrary.Widgets",
+            ""), File.ReadAllText(imports));
+    }
+
+    [TestMethod]
     public void ReconcileNamespace_IsIdempotent()
     {
         var folder = NewProjectFolder();

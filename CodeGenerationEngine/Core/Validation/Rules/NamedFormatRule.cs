@@ -37,7 +37,7 @@ public sealed class ValidDateRule : IValidationRule
 public sealed class NamedFormatRuleParser : IValidationRuleParser
 {
     private static readonly Regex Pattern = new(
-        @"^(?<prop>\w+)\s+must\s+be\s+(?:a\s+|an\s+)?valid\s+(?<format>phone\s+number|phone|url|web\s+address|postcode|post\s+code|guid|uuid|ip\s+address|ip)$",
+        @"^(?<prop>\w+)\s+must\s+be\s+(?:a\s+|an\s+)?(?:valid\s+)?(?<format>phone\s+number|phone|url|web\s+address|postcode|post\s+code|guid|uuid|ip\s+address|ip)$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     /// <summary>Deliberately loose where the real-world format is: a phone number pattern that
@@ -92,7 +92,7 @@ public sealed class NamedFormatRuleParser : IValidationRuleParser
 public sealed class ValidDateRuleParser : IValidationRuleParser
 {
     private static readonly Regex Pattern = new(
-        @"^(?<prop>\w+)\s+must\s+be\s+a\s+valid\s+date$",
+        @"^(?<prop>\w+)\s+must\s+be\s+a\s+(?:valid\s+)?date$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     public int Priority => 66;

@@ -813,8 +813,11 @@ body {
 .stage-blurb { display: block; font-size: 0.82em; color: var(--pending); }
 
 /* Panel buttons: one loud action per panel at most, everything else quiet. Navigation is not
-   here any more — it is in the boxes. */
-.actions button {
+   here any more — it is in the boxes. The Data stage's connect button sits in the format block
+   rather than an actions row, and was left a browser-default grey box; it takes the same quiet
+   look by selector (bUnit finds it as button.connect, so it is never renamed). */
+.actions button,
+.file .connect {
     padding: 0.4rem 0.9rem;
     border: 1px solid var(--line);
     border-radius: 4px;
@@ -823,7 +826,11 @@ body {
     cursor: pointer;
 }
 
-.actions button:hover:not(:disabled) { border-color: var(--pending); }
+.actions button:hover:not(:disabled),
+.file .connect:hover { border-color: var(--pending); }
+
+/* Under the connection box it belongs to, not pressed against it. */
+.file .connect { margin: 0.2rem 0 0.4rem; color: var(--ink); }
 
 .actions .write,
 .actions .run,
@@ -836,6 +843,20 @@ body {
 }
 
 .actions .cancel { color: var(--pending); }
+
+/* The overwrite question. Adding is the safe choice, so it is the loud one; overwriting loses
+   generated sources, so it is marked like Stop rather than filled. */
+.actions .overwrite-add {
+    border-color: var(--active);
+    background: var(--active);
+    color: var(--on-accent);
+    font-weight: 600;
+}
+
+.actions .overwrite-yes {
+    border-color: var(--failed);
+    color: var(--failed);
+}
 
 /* Quiet, not loud: stopping is the useful thing to be able to do, never the thing to be nudged
    towards. It sits beside the loud Run button and must not compete with it. */
@@ -881,6 +902,10 @@ body {
 
 .step-done { color: var(--pending); }
 .step-done::before { content: "\2713\00a0"; color: var(--done); }
+
+/* Finished, but in failure: a cross in the failure colour, never the tick. */
+.step-failed { color: var(--failed); }
+.step-failed::before { content: "\2717\00a0"; color: var(--failed); }
 
 /* A static bold line with a middle dot read as settled rather than working, on a wait that runs
    to several minutes with nothing else moving on screen - Discover's local-model round trip
@@ -1675,4 +1700,11 @@ body:has(.finished) #components-reconnect-modal { display: none; }
 @media (max-width: 600px) {
     .workflow > h1 { font-size: 1.4rem; }
     .panel { padding: 1.25rem 1rem; }
+}
+
+/* The tagline's negative top margin takes back the grid gap above it. At 900px and below that gap
+   is 0, so the same margin pulled the tagline up over the heading - at 390px it covered the
+   bottom 18px of "Build an application". A small positive margin there instead. */
+@media (max-width: 900px) {
+    .workflow > .tagline { margin-top: 0.4rem; }
 }

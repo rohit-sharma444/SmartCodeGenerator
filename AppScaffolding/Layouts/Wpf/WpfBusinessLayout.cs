@@ -678,7 +678,7 @@ public sealed class WpfBusinessLayout : IAppLayout
     /// never going to draw as a picker anyway.
     /// </remarks>
     private const string LineGridColumnAnchor =
-        "        if (string.Equals(e.PropertyName, \"Id\", StringComparison.OrdinalIgnoreCase))";
+        "        if (string.Equals(e.PropertyName, \"Id\", StringComparison.OrdinalIgnoreCase)";
 
     /// <summary>
     /// Drops the foreign key from a lines grid.

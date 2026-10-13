@@ -46,6 +46,60 @@ public static class ValidationPipeline
 
         return ValidationOutcome.Valid;
     }
+
+    /// <summary>The fields the app stamps itself, which say nothing about whether the user
+    /// filled the record in.</summary>
+    private static readonly HashSet<string> Stamped =
+        new(System.StringComparer.OrdinalIgnoreCase) { "Id", "CreatedOn", "ModifiedOn", "CreatedBy", "ModifiedBy" };
+
+    /// <summary>Whether nothing a user types has been filled in on <paramref name="item"/>:
+    /// every text blank, every number zero, every flag off, every date unset or today. Related
+    /// records and the stamped fields are not looked at.</summary>
+    /// <remarks>
+    /// Today counts as unset because it is what a new record's dates start at: New then Save
+    /// otherwise stored a row holding nothing but today's date. A user who picks today and fills
+    /// nothing else has still filled nothing in. This is the blank-record check only; every other
+    /// rule judges today as the real date it is.
+    /// </remarks>
+    public static bool IsBlank(object item)
+    {
+        foreach (var property in item.GetType().GetProperties())
+        {
+            if (!property.CanRead || !property.CanWrite || property.GetIndexParameters().Length > 0
+                || Stamped.Contains(property.Name))
+                continue;
+
+            var type = System.Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+            if (type != typeof(string) && type != typeof(int) && type != typeof(decimal)
+                && type != typeof(bool) && type != typeof(System.DateTime))
+                continue;
+
+            var value = property.GetValue(item);
+            if (value is null)
+                continue;
+
+            if (value is System.DateTime date)
+            {
+                if (date != default && date != System.DateTime.Today)
+                    return false;
+
+                continue;
+            }
+
+            if (value is string text)
+            {
+                if (!string.IsNullOrWhiteSpace(text))
+                    return false;
+
+                continue;
+            }
+
+            if (!value.Equals(System.Activator.CreateInstance(type)))
+                return false;
+        }
+
+        return true;
+    }
 }
 """;
 }

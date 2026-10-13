@@ -22,6 +22,20 @@ public class ProgressListTests
     }
 
     [TestMethod]
+    public void A_failed_step_is_drawn_as_failed_never_with_the_done_tick()
+    {
+        using var context = new BunitContext();
+
+        var rendered = context.Render<ProgressList>(p => p
+            .Add(c => c.Done, ["Wrote 14 files", "The compiler reported problems"])
+            .Add(c => c.Failed, new HashSet<string> { "The compiler reported problems" }));
+
+        Assert.AreEqual("Wrote 14 files", rendered.Find("li.step-done").TextContent.Trim());
+        Assert.HasCount(1, rendered.FindAll("li.step-done"));
+        Assert.AreEqual("The compiler reported problems", rendered.Find("li.step-failed").TextContent.Trim());
+    }
+
+    [TestMethod]
     public void Shows_the_step_that_is_running_with_its_elapsed_time()
     {
         using var context = new BunitContext();

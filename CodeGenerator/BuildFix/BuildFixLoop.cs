@@ -23,7 +23,8 @@ internal sealed record FixOutcome(
 /// Fix, rebuild, repeat. Rules first; the AI only when no rule fixed anything in the round.
 /// This is the safety net, so every round is checked against the build that follows it: a round
 /// that raises the error count, brings errors into a file that had none, or leaves a failed build
-/// whose errors cannot be read is undone, and so is an AI round that does not LOWER the count.
+/// whose errors cannot be read is undone, and so is any round that does not LOWER the count; the
+/// loop then stops.
 /// A rule or a model that throws, or answers badly, is skipped and never stops the loop.
 /// <para>
 /// The whole run has a time budget (10 minutes unless told otherwise) and can be cancelled. Both are
@@ -39,6 +40,9 @@ internal sealed class BuildFixLoop(
     public const string TimeLimitNote = "The time limit was reached.";
     public const string CancelledNote = "The fix was cancelled.";
 
+    public const string AiNotAskedNote =
+        "The AI was not asked: no error is in a C# file of the app that a fix may edit.";
+
     private readonly TimeSpan _budget = budget ?? DefaultBudget;
     private readonly Func<DateTime> _clock = clock ?? (() => DateTime.UtcNow);
     private DateTime _started;
@@ -46,9 +50,18 @@ internal sealed class BuildFixLoop(
     private string? _stopNote;
     private bool _aiTimedOut;
 
+    /// <summary>How many times the latest AI step asked the model: none means it must not be said to have had no fix.</summary>
+    private int _lastAsks;
+
     public const int MaxRounds = 3;
     public const int MaxAiAsksPerRound = 5;
     private const int ContextLines = 15;
+
+    /// <summary>A file this short is sent whole.</summary>
+    internal const int WholeFileLines = 150;
+
+    /// <summary>The largest member or type sent as one piece from a longer file.</summary>
+    internal const int MaxUnitLines = 150;
 
     // A model that names another file must not have its text pasted into this one.
     private static readonly Regex FileHeader = new(
@@ -114,6 +127,9 @@ internal sealed class BuildFixLoop(
             if (!BuildReport.Succeeded(build) && diagnostics.Count == 0)
                 notes.Add("The build failed, but no compiler errors could be read from its output, so nothing was changed.");
 
+            if (BuildDiagnostics.OutputLocked(diagnostics))
+                notes.Add(BuildFixReport.LockedOutput);
+
             while (!BuildReport.Succeeded(build) && rounds < MaxRounds && diagnostics.Count > 0)
             {
                 // Nothing is unchecked at the top of a round: the last one has been judged.
@@ -152,7 +168,9 @@ internal sealed class BuildFixLoop(
 
                     if (aiUp != true)
                     {
-                        notes.Add("Ollama is not running, so only the fix rules ran.");
+                        // IsAvailable is false for a stopped server and for a running one without
+                        // the configured model, and it cannot say which: the note names both.
+                        notes.Add("The local AI could not be used: Ollama is not running, or its model is not pulled. Only the fix rules ran.");
                         break;
                     }
 
@@ -169,7 +187,9 @@ internal sealed class BuildFixLoop(
                     {
                         notes.Add(_aiTimedOut
                             ? "The AI timed out, so it will not be asked again."
-                            : "The AI had no usable fix for the remaining errors.");
+                            : _lastAsks == 0
+                                ? AiNotAskedNote
+                                : "The AI had no usable fix for the remaining errors.");
                         break;
                     }
 
@@ -279,8 +299,11 @@ internal sealed class BuildFixLoop(
         if (after.Any(d => d.File.Length > 0 && !known.Contains(d.File)))
             return "the edit brought errors into a file that had none.";
 
-        if (aiRound && after.Count >= before.Count)
-            return $"the AI edits did not reduce the errors ({before.Count} before, {after.Count} after).";
+        // The spec stops the loop at a round that does not lower the count. Whoever made the
+        // edits, a round with no progress is undone like the others: an equal count may be the
+        // same mistake moved, and kept edits that fixed nothing are only noise to check by hand.
+        if (after.Count >= before.Count)
+            return $"the {(aiRound ? "AI" : "rule")} edits did not reduce the errors ({before.Count} before, {after.Count} after).";
 
         return null;
     }
@@ -359,6 +382,7 @@ internal sealed class BuildFixLoop(
     {
         var applied = 0;
         var asked = 0;
+        _lastAsks = 0;
         var edited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var d in diagnostics)
@@ -404,12 +428,12 @@ internal sealed class BuildFixLoop(
             if (d.Line - 1 > last)
                 continue;
 
-            var lo = Math.Max(0, d.Line - 1 - ContextLines);
-            var hi = Math.Min(last, d.Line - 1 + ContextLines);
+            var (lo, hi) = ExcerptRange(text, lines, last, d);
             var crlf = text.Contains("\r\n", StringComparison.Ordinal);
             var excerpt = string.Join("\n", lines[lo..(hi + 1)].Select(l => l.TrimEnd('\r')));
 
             asked++;
+            _lastAsks = asked;
             progress($"Asking the local AI about {d.Code} in {session.Relative(d.File)}");
 
             string? reply;
@@ -442,15 +466,27 @@ internal sealed class BuildFixLoop(
 
             // The last line of the file may have no line ending; do not invent one.
             var lastHadCr = lines[hi].EndsWith('\r');
-            var newLines = clean.Split('\n');
-            var replacement = newLines
-                .Select((l, i) => crlf && (i < newLines.Length - 1 || lastHadCr) ? l + "\r" : l)
-                .ToArray();
 
-            var rebuilt = string.Join(
-                "\n", lines[..lo].Concat(replacement).Concat(lines[(hi + 1)..]));
+            string Splice(string reply)
+            {
+                var newLines = reply.Split('\n');
+                var replacement = newLines
+                    .Select((l, i) => crlf && (i < newLines.Length - 1 || lastHadCr) ? l + "\r" : l)
+                    .ToArray();
 
-            if (rebuilt == text || SyntaxErrors(rebuilt) > SyntaxErrors(text))
+                return string.Join("\n", lines[..lo].Concat(replacement).Concat(lines[(hi + 1)..]));
+            }
+
+            var rebuilt = Splice(clean);
+            var errorsBefore = SyntaxErrors(text);
+
+            // A small model often closes the class it was shown a part of, or closes it twice: the
+            // fix is right, and the braces after it are not. Those trailing closers, and only
+            // those, are dropped so the reply closes exactly what the excerpt closed.
+            if (SyntaxErrors(rebuilt) > errorsBefore && TrimTrailingClosers(clean, excerpt) is { } trimmed)
+                rebuilt = Splice(trimmed);
+
+            if (rebuilt == text || SyntaxErrors(rebuilt) > errorsBefore)
                 continue;
 
             try
@@ -473,6 +509,89 @@ internal sealed class BuildFixLoop(
 
         return applied;
     }
+
+    /// <summary>
+    /// Which lines (0-based, inclusive) the model is shown. Whole syntax units only, so the excerpt
+    /// never stops inside a class and the model has no braces to guess: the whole file when it is
+    /// short; else the largest member or type around the error that fits; else, for one huge member,
+    /// the lines around the error.
+    /// </summary>
+    private static (int Lo, int Hi) ExcerptRange(string text, string[] lines, int last, BuildDiagnostic d)
+    {
+        var window = (Math.Max(0, d.Line - 1 - ContextLines), Math.Min(last, d.Line - 1 + ContextLines));
+
+        if (last + 1 <= WholeFileLines)
+            return (0, last);
+
+        var tree = CSharpSyntaxTree.ParseText(text);
+        var source = tree.GetText();
+
+        // Roslyn also breaks lines at a lone \r and a few Unicode separators; then its line numbers
+        // are not ours, and the plain window is the safe choice.
+        if (source.Lines.Count != lines.Length)
+            return window;
+
+        var line = source.Lines[d.Line - 1];
+        var position = line.Start + Math.Clamp(d.Column - 1, 0, Math.Max(0, line.End - line.Start - 1));
+        var token = tree.GetRoot().FindToken(position);
+        (int, int)? best = null;
+
+        foreach (var node in token.Parent?.AncestorsAndSelf().OfType<Microsoft.CodeAnalysis.CSharp.Syntax.MemberDeclarationSyntax>() ?? [])
+        {
+            if (node is Microsoft.CodeAnalysis.CSharp.Syntax.BaseNamespaceDeclarationSyntax)
+                break;
+
+            // From its doc comment or first attribute, not from the blank lines before it.
+            var first = node.GetLeadingTrivia()
+                .FirstOrDefault(t => !t.IsKind(SyntaxKind.WhitespaceTrivia) && !t.IsKind(SyntaxKind.EndOfLineTrivia));
+            var start = first.RawKind == 0 ? node.SpanStart : first.SpanStart;
+            var lo = source.Lines.GetLineFromPosition(start).LineNumber;
+            var hi = source.Lines.GetLineFromPosition(Math.Max(node.SpanStart, node.Span.End - 1)).LineNumber;
+
+            if (hi - lo + 1 > MaxUnitLines)
+                break;
+
+            if (lo <= d.Line - 1 && d.Line - 1 <= hi)
+                best = (lo, hi);
+        }
+
+        return best ?? window;
+    }
+
+    /// <summary>
+    /// The reply less the lone closing braces at its end that close more than the excerpt closed,
+    /// or null when that cannot make the two balance.
+    /// </summary>
+    private static string? TrimTrailingClosers(string reply, string excerpt)
+    {
+        var target = Balance(excerpt);
+        var balance = Balance(reply);
+
+        if (balance >= target)
+            return null;
+
+        var kept = reply.Split('\n').ToList();
+
+        while (balance < target)
+        {
+            while (kept.Count > 0 && kept[^1].Trim().Length == 0)
+                kept.RemoveAt(kept.Count - 1);
+
+            if (kept.Count == 0 || kept[^1].Trim() is not ("}" or "};"))
+                return null;
+
+            kept.RemoveAt(kept.Count - 1);
+            balance++;
+        }
+
+        return string.Join("\n", kept);
+    }
+
+    /// <summary>Opening braces less closing ones, as the parser sees them (none in strings or comments).</summary>
+    private static int Balance(string source)
+        => CSharpSyntaxTree.ParseText(source).GetRoot().DescendantTokens(descendIntoTrivia: true)
+            .Where(t => !t.IsMissing)
+            .Sum(t => t.IsKind(SyntaxKind.OpenBraceToken) ? 1 : t.IsKind(SyntaxKind.CloseBraceToken) ? -1 : 0);
 
     /// <summary>The first changed line, and how many lines differ. Small on purpose: no copy of the file is kept.</summary>
     private static EditChange DescribeChange(string before, string after)

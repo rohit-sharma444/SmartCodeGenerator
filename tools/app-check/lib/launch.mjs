@@ -57,6 +57,23 @@ export async function launch(target, app, caseDir) {
 }
 
 /** The built executable, wherever its target framework put it. */
+/** What the checks type into a new record before saving it. */
+const FilledText = 'App check';
+
+/**
+ * A text field of <entity> to fill before Save: the first string property its model declares,
+ * leaving out the stamped fields, keys, and the shapes a validator checks (an email, a phone),
+ * which plain text would fail. Null when the model has none.
+ */
+function textField(app, entity) {
+  const file = path.join(app.dir, 'Models', `${entity}.cs`);
+  if (!fs.existsSync(file)) return null;
+
+  const names = [...fs.readFileSync(file, 'utf8').matchAll(/public\s+string\??\s+(\w+)\s*\{/g)].map(m => m[1]);
+
+  return names.find(n => !/^(CreatedBy|ModifiedBy)$/.test(n) && !/Id$/.test(n) && !/Email|Phone|Url|Web/i.test(n)) ?? null;
+}
+
 function builtExe(app) {
   const debug = path.join(app.dir, 'bin', 'Debug');
   if (!fs.existsSync(debug)) return null;
@@ -143,6 +160,15 @@ async function desktop(target, app, caseDir, check) {
 
     const created = await send({ cmd: 'click-button', name: 'New' });
     if (check('New button works', created.ok, created.error)) {
+      // One field first, as a person would: a record with nothing filled in is refused, and so is
+      // one holding only the dates a new record starts at. Through UI Automation, not the keyboard.
+      const field = textField(app, entity);
+      if (field) {
+        await sleep(500);
+        const filled = await send({ cmd: 'type-field', label: field, value: FilledText, direct: true });
+        check('fills a field before Save', filled.ok, filled.ok ? `${field} = ${FilledText}` : filled.error);
+      }
+
       await send({ cmd: 'click-button', name: 'Save' });
       const status = await send({ cmd: 'read-status' });
 
@@ -159,9 +185,16 @@ async function desktop(target, app, caseDir, check) {
 
       if (grid.ok && after.ok) {
         const refused = status.ok && /cannot|required|must|refused|not allowed/i.test(status.text ?? '');
-        const expected = total(grid) + (refused ? 0 : 1);
-        check('the list is recounted after Save', total(after) === expected,
-          `${total(grid)} -> ${total(after)} row(s)` + (refused ? ' (the save was refused, so no new row)' : ', one new record expected'));
+
+        // A refused save on a transaction leaves its editor open, so the grid found now is the
+        // editor's lines, not the list: counting it reported "5 -> 0 row(s)" for a refusal. The
+        // refusal is the answer there, and it is reported as what went wrong.
+        if (refused && total(after) !== total(grid))
+          check('the list is recounted after Save', false,
+            `the save was refused and the editor stayed open: ${status.text}`);
+        else
+          check('the list is recounted after Save', total(after) === total(grid) + (refused ? 0 : 1),
+            `${total(grid)} -> ${total(after)} row(s)` + (refused ? ' (the save was refused, so no new row)' : ', one new record expected'));
       }
     }
 
@@ -261,6 +294,21 @@ async function blazor(app, caseDir, check) {
 
     if (check('New opens the editor', opened, opened ? page.url() : `still on ${page.url()}`)) {
       await page.waitForTimeout(1000);
+
+      // One field first, as on the desktop: a record with nothing filled in is refused. Tab, so
+      // the input's change event - which is what the editor listens to - fires.
+      const field = textField(app, entity);
+      if (field) {
+        const input = page.locator(`input[id="${field}"]`);
+        const found = await input.count() > 0;
+        if (found) {
+          await input.fill(FilledText);
+          await input.press('Tab');
+          await page.waitForTimeout(500);
+        }
+        check('fills a field before Save', found, found ? `${field} = ${FilledText}` : `no input for ${field}`);
+      }
+
       await page.click('button:has-text("Save")');
       await page.waitForTimeout(2000);
       const status = (await page.locator('[role=status]').allTextContents()).join(' ').trim();

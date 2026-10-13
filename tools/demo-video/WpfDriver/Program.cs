@@ -80,7 +80,8 @@ JsonObject Handle(JsonObject request)
         "type" => Type(request["automationId"]?.GetValue<string>(), request["name"]?.GetValue<string>(),
             request["value"]!.GetValue<string>(), request["direct"]?.GetValue<bool>() == true),
         "find-grid" => FindGrid(),
-        "type-field" => TypeField(request["label"]!.GetValue<string>(), request["value"]!.GetValue<string>()),
+        "type-field" => TypeField(request["label"]!.GetValue<string>(), request["value"]!.GetValue<string>(),
+            request["direct"]?.GetValue<bool>() == true),
         "read-status" => ReadStatus(),
         "dump" => Dump(),
         "screenshot" => Screenshot(request["path"]!.GetValue<string>()),
@@ -402,7 +403,7 @@ JsonObject FindGrid()
 /// added in - the label immediately followed by its own editor, one pair per field - so the
 /// editor is found as the label's next sibling in the control-view tree rather than by name.
 /// </remarks>
-JsonObject TypeField(string label, string value)
+JsonObject TypeField(string label, string value, bool direct = false)
 {
     if (window is null)
         return NotAttached();
@@ -425,6 +426,21 @@ JsonObject TypeField(string label, string value)
     var target = editor.ControlType == ControlType.Edit
         ? editor
         : editor.FindFirstDescendant(cf => cf.ByAutomationId("PART_TextBox")) ?? editor;
+
+    // "direct", as for "type": through UI Automation, with no keyboard, so a window on top of
+    // the app cannot take the keys. app-check asks for this; the demo video types.
+    if (direct && target.Patterns.Value.PatternOrDefault is { } valuePattern)
+    {
+        try
+        {
+            valuePattern.SetValue(value);
+            return new JsonObject { ["ok"] = true, ["direct"] = true };
+        }
+        catch (Exception)
+        {
+            // Not writable this way: type into it as below.
+        }
+    }
 
     target.Focus();
 

@@ -94,7 +94,7 @@ internal sealed class FixSession
 
         var full = Guard(path);
 
-        if (InGeneratedFolder(full))
+        if (InGeneratedFolder(Root, full))
             throw new InvalidOperationException($"Refusing to edit '{Relative(full)}': it is in a build or tool folder.");
 
         var old = File.ReadAllBytes(full);
@@ -129,15 +129,19 @@ internal sealed class FixSession
     }
 
     /// <summary>True when a fix may edit this file: inside the project, and not under obj, bin or .codegen.</summary>
-    public bool IsEditable(string path)
+    public bool IsEditable(string path) => IsEditableIn(Root, path);
+
+    /// <summary>The same check, for a project no session has been opened on.</summary>
+    public static bool IsEditableIn(string projectRoot, string path)
     {
         try
         {
+            var root = Path.GetFullPath(projectRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
             var full = Path.GetFullPath(path);
-            return full.StartsWith(Root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
-                && !InGeneratedFolder(full);
+            return full.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+                && !InGeneratedFolder(root, full);
         }
-        catch (Exception ex) when (ex is ArgumentException or NotSupportedException)
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
         {
             return false;
         }
@@ -206,9 +210,9 @@ internal sealed class FixSession
         return failed.Select(Relative).ToList();
     }
 
-    private bool InGeneratedFolder(string full)
+    private static bool InGeneratedFolder(string root, string full)
     {
-        var parts = Path.GetRelativePath(Root, full).Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var parts = Path.GetRelativePath(root, full).Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
 
         return parts[..^1].Any(p => p.Equals("obj", StringComparison.OrdinalIgnoreCase)
             || p.Equals("bin", StringComparison.OrdinalIgnoreCase)

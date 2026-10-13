@@ -366,6 +366,5 @@ public static class AuthEndpoints
     /// <summary>An HTML text value: a company name with an ampersand would otherwise break the
     /// markup it is written into.</summary>
     private static string Escape(string value)
-        => value.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;")
-                .Replace("\"", "&quot;");
+        => AppCustomization.RazorText(value);
 }

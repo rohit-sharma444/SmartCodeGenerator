@@ -113,8 +113,11 @@ public sealed class EfStore<T> : IStore<T> where T : class, new()
     {
         var item = new T();
         IdProperty.SetValue(item, NextId(existing));
+        StartDatesAtToday(item);
         return item;
     }
+
+{{NewRecordTemplate.StoreMember()}}
 
     private static PropertyInfo IdProperty =>
         typeof(T).GetProperty("Id",

@@ -10,6 +10,9 @@
         <title>SmartCodeGenerator</title>
     }
     <base href="/" />
+    @* Inline, so the browser never asks for /favicon.ico: the host serves none, and that 404 was
+       one console error on every page load. *@
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%232f5fd0'/%3E%3Cpath d='M6 4.5 2.5 8 6 11.5M10 4.5 13.5 8 10 11.5' stroke='white' stroke-width='1.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
     <link rel="stylesheet" href="workflow.css" />
     <link rel="stylesheet" href="chat.css" />
     @* The render mode is load-bearing: the workflow page is InteractiveServer, so its PageTitle

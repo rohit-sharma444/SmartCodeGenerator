@@ -419,6 +419,10 @@ internal sealed class BuildAppCommand
         foreach (var note in imported.Notes)
             Console.WriteLine(note);
 
+        // A text column the class drops for the link beside it takes its values with it.
+        foreach (var note in DataModelBuilder.ReplacedTextNotes(model))
+            Console.WriteLine(note);
+
         RunReviewLoop(
             model, AppNameFor(description, source), workspaceRoot, imported, target, customization,
             reviewAi);
@@ -483,7 +487,7 @@ internal sealed class BuildAppCommand
 
             // Settled before discovery too, and for the same reason. Prints nothing at all when
             // nothing was customized.
-            foreach (var line in CustomizationSummary.Lines(customization, target))
+            foreach (var line in CustomizationSummary.Lines(customization, target, appName))
                 Console.WriteLine(line);
 
             if (ProposalReport.Summary(model) is { } proposals)
@@ -675,11 +679,13 @@ internal sealed class BuildAppCommand
 
                 case "retype" when parts.Length >= 3
                     && TwoWords(parts[2], out var retyped, out var newType):
+                    // The reason, not a list of every way it could fail: a field that already had
+                    // the type was told "the class and field must exist".
+                    var retypeProblem = ModelEditor.RetypeProblem(model, parts[1], retyped, newType);
                     Report(
-                        ModelEditor.ChangeFieldType(model, parts[1], retyped, newType),
+                        retypeProblem is null && ModelEditor.ChangeFieldType(model, parts[1], retyped, newType),
                         $"{parts[1]}.{retyped} is now {newType}.",
-                        "Could not change the type. The class and field must exist, and the type "
-                        + "must be string, int, decimal, bool or DateTime.");
+                        "Could not change the type. " + (retypeProblem ?? "The class and field must exist."));
                     break;
 
                 case "unaccept" when parts.Length >= 2:
@@ -1261,10 +1267,21 @@ internal sealed class BuildAppCommand
     {
         try
         {
-            var errors = CodeGenerator.BuildFix.BuildDiagnostics.Parse(failed, scaffold.ProjectPath).Count;
+            var diagnostics = CodeGenerator.BuildFix.BuildDiagnostics.Parse(failed, scaffold.ProjectPath);
+            var errors = diagnostics.Count;
 
             if (errors == 0)
                 return null;
+
+            // Only errors a fix may edit are worth an offer: a running app that holds its exe
+            // (MSB3027) is not something any rule or model can change.
+            if (CodeGenerator.BuildFix.BuildFixReport.NoFixReason(diagnostics, scaffold.ProjectPath) is { } why)
+            {
+                Output.Warning(why);
+                Console.WriteLine("");
+
+                return null;
+            }
 
             choose ??= SelectionPrompt.Choose;
 

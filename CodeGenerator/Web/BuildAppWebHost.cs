@@ -170,20 +170,27 @@ internal sealed class BuildAppWebHost : IDisposable
     /// </remarks>
     internal static BuildOutcome OutcomeFor(BuildSession session)
     {
-        var written = session.Generated?.Scaffold.ProjectPath;
-        var earlier = written is null && session.Phase != SessionPhase.Generated
+        // Every folder this run wrote, not only the one Generated still holds: changing the
+        // application type after generating drops Generated, and leaves the folder on disk.
+        List<string> written = [.. session.Written];
+
+        if (session.Generated?.Scaffold.ProjectPath is { Length: > 0 } current
+            && !written.Contains(current, StringComparer.OrdinalIgnoreCase))
+            written.Add(current);
+
+        var earlier = written.Count == 0 && session.Phase != SessionPhase.Generated
             ? session.EarlierProject()
             : null;
 
         var outcome = session.Phase switch
         {
-            SessionPhase.Abandoned => written is not null
+            SessionPhase.Abandoned => written.Count > 0
                 ? BuildOutcome.AbandonedLeaving(written)
                 : earlier is not null
                     ? BuildOutcome.AbandonedKeeping(earlier)
                     : BuildOutcome.Abandoned,
             SessionPhase.Generated => session.Outcome ?? BuildOutcome.Cancelled,
-            _ => written is not null
+            _ => written.Count > 0
                 ? BuildOutcome.CancelledLeaving(written)
                 : earlier is not null
                     ? BuildOutcome.CancelledKeeping(earlier)

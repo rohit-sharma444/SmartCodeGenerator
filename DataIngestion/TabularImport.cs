@@ -182,15 +182,24 @@ public static class TabularImport
         {
             var fieldNames = DataModelBuilder.FieldNames(table);
 
+            // A key the source DECLARED names its target outright; only the rest are read by the
+            // <Target>Id convention. A bill-to customer's key is still a key to Customer.
+            var declared = DataModelBuilder.DeclaredKeyTargets(table);
+
             foreach (var column in table.Columns)
             {
                 if (column.HoldsRowNumbers
                     || column.Type != "int"
-                    || !fieldNames.TryGetValue(column.Name, out var field)
-                    || !field.EndsWith("Id", StringComparison.OrdinalIgnoreCase))
+                    || !fieldNames.TryGetValue(column.Name, out var field))
                     continue;
 
-                var target = field[..^2];
+                string target;
+                if (declared.TryGetValue(field, out var declaredTarget))
+                    target = declaredTarget;
+                else if (field.EndsWith("Id", StringComparison.OrdinalIgnoreCase))
+                    target = field[..^2];
+                else
+                    continue;
 
                 if (string.Equals(target, entity, StringComparison.OrdinalIgnoreCase)
                     || !positions.TryGetValue(target, out var byKey))

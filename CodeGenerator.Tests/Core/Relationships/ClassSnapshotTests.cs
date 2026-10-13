@@ -176,6 +176,40 @@ public class ClassSnapshotTests
         Assert.Contains("CustomerId", snapshot.Properties.Select(p => p.Name).ToList());
     }
 
+    /// <summary>
+    /// A test project's classes are not the app's classes.
+    /// </summary>
+    /// <remarks>
+    /// A generated app carries an xunit project, and the relationship offer proposed pairs out of
+    /// it: "RepositoryRoundTripTests and Repository look related". <c>show relationships</c> listed
+    /// RepositoryRoundTripTests and SeedDataTests beside the entities.
+    /// </remarks>
+    [TestMethod]
+    public void Classes_in_a_test_project_are_left_out()
+    {
+        var root = NewRoot();
+        var app = Directory.CreateDirectory(Path.Combine(root, "Shop")).FullName;
+        var tests = Directory.CreateDirectory(Path.Combine(root, "Shop.Tests")).FullName;
+        var nested = Directory.CreateDirectory(Path.Combine(tests, "Data")).FullName;
+
+        Write(app, "Shop.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        Write(app, "Customer.cs", "public class Customer { public int Id { get; set; } }");
+        Write(tests, "Shop.Tests.csproj", """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <ItemGroup>
+                <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+              </ItemGroup>
+            </Project>
+            """);
+        Write(tests, "SeedDataTests.cs", "public class SeedDataTests { public int Count { get; set; } }");
+        Write(nested, "RepositoryRoundTripTests.cs",
+            "public class RepositoryRoundTripTests { public int RepositoryId { get; set; } }");
+
+        var names = ClassSnapshots.Read(root).Select(s => s.Name).ToList();
+
+        CollectionAssert.AreEquivalent(new[] { "Customer" }, names);
+    }
+
     private static string NewRoot()
     {
         var root = Path.Combine(Path.GetTempPath(), "cs-" + Guid.NewGuid().ToString("N")[..8]);

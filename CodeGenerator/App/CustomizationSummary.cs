@@ -28,7 +28,10 @@ internal static class CustomizationSummary
     /// whether to ask. Echoing the line for a build the choice will not affect would tell the user
     /// something untrue.
     /// </param>
-    public static IReadOnlyList<string> Lines(AppCustomization customization, ITargetScaffolder? target)
+    /// <param name="appName">The app the build will produce, when known; the title line then
+    /// shows the rendered title. Without it there is nothing to render, so the pattern is shown.</param>
+    public static IReadOnlyList<string> Lines(
+        AppCustomization customization, ITargetScaffolder? target, string? appName = null)
     {
         var defaults = AppCustomization.Default;
         var lines = new List<string>();
@@ -48,7 +51,7 @@ internal static class CustomizationSummary
         // The rendered title, not the pattern: "{company} - {app}" is the instruction, and what the
         // user wants to check is the window caption it produces.
         if (customization.TitlePattern != defaults.TitlePattern)
-            lines.Add($"  Title: {customization.TitlePattern}");
+            lines.Add($"  Title: {(string.IsNullOrEmpty(appName) ? customization.TitlePattern : customization.TitleFor(appName))}");
 
         // The bare prefix, not the resolved root: the root ends in the target's folder suffix
         // (Shop.Console, Shop.WinForms), and the target can still be changed at `approve`.

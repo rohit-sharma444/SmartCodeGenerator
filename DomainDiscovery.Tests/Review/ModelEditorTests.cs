@@ -655,6 +655,72 @@ public class ModelEditorTests
         Assert.False(ModelEditor.ChangeFieldType(model, "Recipe", "Missing", "string"));
     }
 
+    // Gaps 5 #7: a field whose rows have empty values is generated as int?, and
+    // `retype Order Quantity int` answered "the class and field must exist" — it was a refusal
+    // with the wrong reason, and int? -> int is a real change.
+    private static CandidateDomainModel OrderWithNullableQuantity()
+    {
+        var model = ModelWith("Order");
+        model.Entities[0].Fields.Add(new CandidateField
+        {
+            Name = "Quantity", Type = "int", Facts = new TypeFacts { HasMissingValues = true }
+        });
+        return model;
+    }
+
+    [Fact]
+    public void ChangeFieldType_MakesANullableFieldNonNullable()
+    {
+        var model = OrderWithNullableQuantity();
+        Assert.Equal("int?", ModelEditor.ShownType(model.Entities[0].Fields[0]));
+        Assert.Null(ModelEditor.RetypeProblem(model, "Order", "Quantity", "int"));
+
+        Assert.True(ModelEditor.ChangeFieldType(model, "Order", "Quantity", "int"));
+
+        Assert.Equal("int", ModelEditor.ShownType(model.Entities[0].Fields[0]));
+        Assert.False(model.Entities[0].Fields[0].Facts!.HasMissingValues);
+    }
+
+    [Fact]
+    public void ChangeFieldType_MakesAFieldNullable_AndSaysWhenItAlreadyIs()
+    {
+        var model = ModelWith("Order");
+        Assert.True(ModelEditor.AddField(model, "Order", "Quantity", "int"));
+
+        Assert.True(ModelEditor.ChangeFieldType(model, "Order", "Quantity", "int?"));
+        Assert.Equal("int?", ModelEditor.ShownType(model.Entities[0].Fields[0]));
+
+        Assert.False(ModelEditor.ChangeFieldType(model, "Order", "Quantity", "int?"));
+        Assert.Equal("Order.Quantity is already int?.", ModelEditor.RetypeProblem(model, "Order", "Quantity", "int?"));
+    }
+
+    [Fact]
+    public void ChangeFieldType_ToAnotherType_KeepsMissingValuesMissing()
+    {
+        // string -> decimal on a column with empty cells: the empty ones must stay empty, not 0.
+        var model = ModelWith("Order");
+        model.Entities[0].Fields.Add(new CandidateField
+        {
+            Name = "Price", Type = "string", Facts = new TypeFacts { HasMissingValues = true }
+        });
+
+        Assert.True(ModelEditor.ChangeFieldType(model, "Order", "Price", "decimal"));
+
+        Assert.Equal("decimal?", ModelEditor.ShownType(model.Entities[0].Fields[0]));
+    }
+
+    [Fact]
+    public void RetypeProblem_NamesTheRealReason()
+    {
+        var model = OrderWithNullableQuantity();
+
+        Assert.Equal("There is no class Nope.", ModelEditor.RetypeProblem(model, "Nope", "Quantity", "int"));
+        Assert.Equal("Order has no field Missing.", ModelEditor.RetypeProblem(model, "Order", "Missing", "int"));
+        Assert.Equal("Order.Quantity is already int?.", ModelEditor.RetypeProblem(model, "Order", "Quantity", "int?"));
+        Assert.StartsWith("'Widget' is not a type", ModelEditor.RetypeProblem(model, "Order", "Quantity", "Widget"));
+        Assert.StartsWith("'string?' is not a type", ModelEditor.RetypeProblem(model, "Order", "Quantity", "string?"));
+    }
+
     [Fact]
     public void SupportedTypes_AreTheOnesEveryTypeControlOffers()
     {

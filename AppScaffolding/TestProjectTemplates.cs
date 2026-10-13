@@ -1,3 +1,5 @@
+using CodeGenerationEngine.Models;
+
 namespace AppScaffolding;
 
 /// <summary>Emits the sources of the companion <c>&lt;app&gt;.Tests</c> xUnit project, and the
@@ -175,11 +177,16 @@ public class {{entityName}}ValidatorTests
     /// that wrote to a store before seeding ran left it half-seeded: <c>Fill</c>'s foreign-key row
     /// made the parent store non-empty, so its seed was skipped while the child's, pointing at
     /// parents that were never written, went in.</param>
-    public static string TestSupport(string rootNamespace, bool login, bool sessionAuth, bool seed = false)
+    public static string TestSupport(
+        string rootNamespace, bool login, bool sessionAuth, bool seed = false,
+        IReadOnlyList<ClassDefinition>? classes = null)
     {
         // The static constructor runs before the first use of TestSupport, which every round-trip
         // and validator test makes (ActAsAdministrator, Fill) before it goes near a store. Not a
         // [ModuleInitializer]: CA2255 warns about one in every generated test build.
+        var accepted = string.Concat(AcceptedValues(classes ?? Array.Empty<ClassDefinition>())
+            .Select(entry => $"        [{ValidatorTemplate.Quoted(entry.Key)}] = () => {entry.Expression},\n"));
+
         var seeding = seed
             ? $$"""
                   /// <summary>Seeds every store before the first test uses one, as the app itself does
@@ -251,6 +258,37 @@ internal static class TestSupport
     [ThreadStatic]
     private static HashSet<string>? _creating;
 
+    /// <summary>The value for each property whose generated rules the plain values below would
+    /// break -- a value list, a format, a short length, a floor above zero -- or which no two
+    /// records may share. Keyed "Model.Property"; worked out from the rules when the app was
+    /// generated.</summary>
+    private static readonly Dictionary<string, Func<object>> Accepted = new(StringComparer.Ordinal)
+    {
+{{accepted}}    };
+
+    /// <summary>Counts up from a random start, so a value no two records may share differs from
+    /// the one Fill wrote for a foreign key's row, and from a row an earlier run left.</summary>
+    private static int _distinct = Random.Shared.Next(100000, 900000);
+
+    /// <summary><paramref name="template"/> with its {n} replaced by a number not used before.</summary>
+    private static string Distinct(string template)
+        => template.Replace("{n}", (_distinct++).ToString(System.Globalization.CultureInfo.InvariantCulture));
+
+    /// <summary>A midnight date in the past few years not used before. Local, as FilledDate is:
+    /// a UTC date can be the local today, which the blank-record check treats as unfilled.</summary>
+    private static DateTime DistinctDate() => DateTime.Today.AddDays(-(1 + _distinct++ % 3650));
+
+    /// <summary>
+    /// The date Fill writes: yesterday, at midnight, the same for every date of a record.
+    /// </summary>
+    /// <remarks>
+    /// Not today: a new record's dates start at today, so the blank-record check counts today as
+    /// unfilled, and a class of only dates and numbers came out of Fill as a blank record its own
+    /// validator refused. Midnight, because a SQL date column's rule refuses a time of day; one
+    /// shared date, because a rule comparing two dates is satisfied by equal ones.
+    /// </remarks>
+    private static readonly DateTime FilledDate = DateTime.Today.AddDays(-1);
+
     /// <summary>Populates every writable property with a value the validators accept.</summary>
     public static void Fill<T>(T item)
     {
@@ -266,12 +304,12 @@ internal static class TestSupport
             if (!property.CanWrite)
                 continue;
 
-            if (property.PropertyType == typeof(string))
+            if (Accepted.TryGetValue(typeof(T).Name + "." + property.Name, out var accepted))
+                property.SetValue(item, accepted());
+            else if (property.PropertyType == typeof(string))
                 property.SetValue(item, Placeholder(property.Name));
-            // Midnight: a SQL date column's rule refuses a time of day, and today at midnight
-            // satisfies that and every other date rule the generator emits.
             else if (property.PropertyType == typeof(DateTime))
-                property.SetValue(item, DateTime.UtcNow.Date);
+                property.SetValue(item, FilledDate);
             else if (property.PropertyType == typeof(int) && IsForeignKey(property.Name))
                 property.SetValue(item, ForeignKeyValue(property.Name, appAssembly, root));
         }
@@ -364,6 +402,204 @@ internal static class TestSupport
 }
 """;
     }
+
+    /// <summary>
+    /// The emitted <c>Accepted</c> table: for each property whose rules Fill's plain values break,
+    /// or which no two records may share, the C# expression of a value the generated validator
+    /// accepts.
+    /// </summary>
+    /// <remarks>
+    /// Fill wrote "Test" into every string and left every number at 0, so once a user accepted a
+    /// value list (Status: Open, InProgress, Closed) every generated app failed its own
+    /// A_populated_..._is_valid and ..._round_trips tests. Each value here is checked against the
+    /// same rules <see cref="ValidatorTemplate"/> emits, the way the emitted validator checks
+    /// them, before it is chosen; a property no candidate satisfies is left to Fill's plain value.
+    /// A rule spanning fields (a Business or Workflow rule) needs nothing: Fill's equal dates and
+    /// zero numbers already satisfy every one the scan proposes.
+    /// </remarks>
+    internal static IReadOnlyList<(string Key, string Expression)> AcceptedValues(
+        IReadOnlyList<ClassDefinition> classes)
+    {
+        var entries = new List<(string Key, string Expression)>();
+
+        foreach (var definition in classes)
+        foreach (var property in definition.Properties)
+        {
+            // Fill gives a foreign key a real row's Id, and the Id is the store's to assign.
+            if (string.Equals(property.Name, "Id", StringComparison.OrdinalIgnoreCase)
+                || (property.Type == "int" && IsForeignKeyName(property.Name)))
+                continue;
+
+            if (AcceptedValue(property) is { } expression)
+                entries.Add(($"{definition.Name}.{property.Name}", expression));
+        }
+
+        return entries;
+    }
+
+    /// <summary>Values tried, in order, for a string with a rule "Test" breaks. Each is a shape
+    /// one of the formats RuleProposals offers accepts, or short enough for a small length.</summary>
+    private static readonly string[] PlainCandidates =
+    [
+        "Test", "test@example.com", "+1 555 0100", "www.example.com", "SW1A 1AA",
+        "00000000-0000-0000-0000-000000000001", "10.0.0.1", "T", "1",
+    ];
+
+    /// <summary>As <see cref="PlainCandidates"/>, for a value no two records may share: the
+    /// emitted Distinct replaces {n} with a six-digit number.</summary>
+    private static readonly string[] DistinctCandidates =
+    [
+        "Test {n}", "test{n}@example.com", "+1 555 {n}", "www.test{n}.com",
+        "00000000-0000-0000-0000-000000{n}", "T{n}", "{n}",
+    ];
+
+    /// <summary>The C# expression for <paramref name="property"/>'s value, or null when Fill's
+    /// plain value already passes and need not differ from record to record.</summary>
+    private static string? AcceptedValue(PropertyDefinition property)
+    {
+        var unique = HasRule(property, "unique")
+                     && ValidatorTemplate.CanEmitEntityRule(property.Type, "unique");
+
+        // The types Fill itself writes. A nullable number or date is left null by Fill, and a
+        // null passes every rule.
+        switch (property.Type)
+        {
+            case "string":
+                return AcceptedString(property, unique);
+
+            case "DateTime":
+                // Fill's FilledDate passes every date rule; only a shared value is a problem.
+                return unique ? "DistinctDate()" : null;
+
+            case "int" or "decimal":
+                return AcceptedNumber(property);
+
+            default:
+                return null;
+        }
+    }
+
+    private static string? AcceptedString(PropertyDefinition property, bool unique)
+    {
+        var plain = Placeholder(property.Name);
+
+        if (!unique && AcceptsString(property, plain))
+            return null;
+
+        var allowed = Rule(property, "allowedvalues")?.AllowedValues;
+
+        // A value list: its first value that passes the other rules. Sharing one is unavoidable,
+        // since a value list and "no two share" together allow only as many records as values.
+        if (allowed is { Count: > 0 })
+            return allowed.FirstOrDefault(value => AcceptsString(property, value)) is { } listed
+                ? ValidatorTemplate.Quoted(listed)
+                : null;
+
+        if (unique)
+        {
+            // Two different numbers stand in for {n}: every number Distinct produces has six digits.
+            var template = DistinctCandidates.FirstOrDefault(candidate =>
+                    AcceptsString(property, candidate.Replace("{n}", "100000"))
+                    && AcceptsString(property, candidate.Replace("{n}", "999999")));
+
+            if (template is not null)
+                return $"Distinct({ValidatorTemplate.Quoted(template)})";
+
+            if (AcceptsString(property, plain))
+                return null;
+        }
+
+        return PlainCandidates.FirstOrDefault(candidate => AcceptsString(property, candidate)) is { } value
+            ? ValidatorTemplate.Quoted(value)
+            : null;
+    }
+
+    /// <summary>Whether the string checks <see cref="ValidatorTemplate"/> emits for
+    /// <paramref name="property"/> accept <paramref name="value"/>, judged as the emitted code
+    /// judges them.</summary>
+    private static bool AcceptsString(PropertyDefinition property, string value)
+    {
+        if (Rule(property, "maxlength")?.MaxLength is { } max && value.Length > max)
+            return false;
+
+        if (Rule(property, "allowedvalues")?.AllowedValues is { Count: > 0 } allowed
+            && !allowed.Contains(value, StringComparer.Ordinal))
+            return false;
+
+        if (Rule(property, "pattern") is { RegexPattern.Length: > 0 } format
+            && !System.Text.RegularExpressions.Regex.IsMatch(value, format.RegexPattern!))
+            return false;
+
+        if (property.Attributes.Contains("EmailAddress"))
+        {
+            var at = value.IndexOf('@');
+            if (at <= 0 || at == value.Length - 1)
+                return false;
+        }
+
+        if (property.Attributes.Contains("Phone")
+            && value.Any(c => !char.IsDigit(c) && c is not (' ' or '+' or '-' or '(' or ')')))
+            return false;
+
+        return true;
+    }
+
+    /// <summary>A number with a floor above zero, or a ceiling below it, takes that bound;
+    /// otherwise Fill's 0 passes.</summary>
+    private static string? AcceptedNumber(PropertyDefinition property)
+    {
+        var min = Rule(property, "minvalue")?.MinValue;
+        var max = Rule(property, "maxvalue")?.MaxValue;
+
+        decimal value;
+        if (min is > 0)
+            value = min.Value;
+        else if (max is < 0)
+            value = max.Value;
+        else
+            return null;
+
+        var culture = System.Globalization.CultureInfo.InvariantCulture;
+
+        if (property.Type == "int")
+        {
+            var whole = value > 0 ? Math.Ceiling(value) : Math.Floor(value);
+            return ((long)whole).ToString(culture);
+        }
+
+        // Rounded away from zero to the column's scale, so it stays inside its bound.
+        if (Rule(property, "scale")?.Scale is { } places && decimal.Round(value, places) != value)
+        {
+            var factor = (decimal)Math.Pow(10, places);
+            value = value > 0 ? Math.Ceiling(value * factor) / factor : Math.Floor(value * factor) / factor;
+        }
+
+        return value.ToString(culture) + "m";
+    }
+
+    private static PropertyRule? Rule(PropertyDefinition property, string name)
+        => property.Rules.FirstOrDefault(r => string.Equals(r.Name, name, StringComparison.OrdinalIgnoreCase));
+
+    private static bool HasRule(PropertyDefinition property, string name) => Rule(property, name) is not null;
+
+    /// <summary>The emitted TestSupport.Placeholder, which Fill writes into a string with no
+    /// entry in the table. The two must agree.</summary>
+    private static string Placeholder(string propertyName)
+    {
+        if (propertyName.Contains("Email", StringComparison.OrdinalIgnoreCase))
+            return "test@example.com";
+
+        if (propertyName.Contains("Phone", StringComparison.OrdinalIgnoreCase))
+            return "+1 555 0100";
+
+        return "Test";
+    }
+
+    /// <summary>The emitted TestSupport.IsForeignKey.</summary>
+    private static bool IsForeignKeyName(string propertyName)
+        => propertyName.Length > 2
+           && propertyName.EndsWith("Id", StringComparison.Ordinal)
+           && !string.Equals(propertyName, "Id", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Asserts EnsureSeeded populates the first entity's store and is idempotent.</summary>
     public static string SeedTests(string rootNamespace, string firstEntityName) => $$"""

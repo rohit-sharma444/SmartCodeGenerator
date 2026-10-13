@@ -367,20 +367,47 @@ public class BuildFixLoopTests
     }
 
     [TestMethod]
-    public void Run_StopsAtThreeRounds_WhenARuleKeepsFiringButTheErrorStays()
+    public void Run_StopsAndUndoesARuleRound_ThatDoesNotLowerTheErrorCount()
     {
         var root = FixTestSupport.TempProject();
         var file = FixTestSupport.Write(root, "A.cs", "BAD");
+        var original = Bytes(file);
         var red = FixTestSupport.Result(Err(file, 1, "CS0001"));
+        var other = FixTestSupport.Result(Err(file, 1, "CS0002"));
         var rebuilds = 0;
 
-        // The rule fires only while the file still has BAD; re-add it each rebuild so it always fires.
+        // One error before, one (different) after: the round made no progress, so the loop stops.
         var outcome = new BuildFixLoop([new StripBad()], null).Run(root, red, () =>
         {
             rebuilds++;
-            File.WriteAllText(file, "BAD");
-            return red;
+            return other;
         });
+
+        Assert.IsFalse(outcome.Green);
+        Assert.AreEqual(1, outcome.Rounds);
+        Assert.AreEqual(1, rebuilds);
+        CollectionAssert.AreEqual(original, Bytes(file));
+        Assert.IsTrue(outcome.Edits.All(e => e.Reverted));
+        Assert.HasCount(1, outcome.Remaining);
+        Assert.AreEqual("CS0001", outcome.Remaining[0].Code, "the user is left with the build the round started from");
+        Assert.Contains("Round 1 was reverted: the rule edits did not reduce the errors (1 before, 1 after).", outcome.Notes);
+    }
+
+    [TestMethod]
+    public void Run_StopsAtThreeRounds_WhenARuleLowersTheErrorsEveryRound()
+    {
+        var root = FixTestSupport.TempProject();
+        var files = Enumerable.Range(1, 4).Select(i => FixTestSupport.Write(root, $"F{i}.cs", "BAD")).ToList();
+        ProcessResult Failing(int count)
+        {
+            foreach (var f in files.Take(count))
+                File.WriteAllText(f, "BAD");
+
+            return FixTestSupport.Result(string.Join("\n", files.Take(count).Select(f => Err(f, 1, "CS0001"))));
+        }
+
+        var rebuilds = 0;
+        var outcome = new BuildFixLoop([new StripBad()], null).Run(root, Failing(4), () => Failing(3 - rebuilds++));
 
         Assert.IsFalse(outcome.Green);
         Assert.AreEqual(BuildFixLoop.MaxRounds, outcome.Rounds);
@@ -547,6 +574,126 @@ public class BuildFixLoopTests
         Assert.AreEqual(text.Replace("int a = 1\n", "int a = 1;\n"), File.ReadAllText(file));
     }
 
+    /// <summary>The live case: a 36-line model class with a typo on line 14, mid-class.</summary>
+    private static string BookFile()
+    {
+        var sb = new StringBuilder();
+        sb.Append("using System;\n");
+        sb.Append("using System.Collections.Generic;\n");
+        sb.Append("\n");
+        sb.Append("namespace Library.Models\n");
+        sb.Append("{\n");
+        sb.Append("    /// <summary>A book.</summary>\n");
+        sb.Append("    public partial class Book\n");
+        sb.Append("    {\n");
+        sb.Append("        public int Id { get; set; }\n");
+        sb.Append("\n");
+        sb.Append("        public string Isbn { get; set; } = string.Empty;\n");
+        sb.Append("\n");
+        sb.Append("        /// <summary>The title.</summary>\n");
+        sb.Append("        public strng Title { get; set; } = string.Empty;\n");
+
+        for (var i = 0; i < 10; i++)
+            sb.Append($"\n        public int Field{i} {{ get; set; }}\n");
+
+        sb.Append("    }\n");
+        sb.Append("}\n");
+        return sb.ToString();
+    }
+
+    [TestMethod]
+    public void Run_KeepsAnAiFixInTheMiddleOfAClass_WhenTheReplyAddsTrailingClosers()
+    {
+        var root = FixTestSupport.TempProject();
+        var text = BookFile();
+        Assert.HasCount(37, text.Split('\n'), "36 lines and the empty tail");
+        var file = FixTestSupport.Write(root, "Book.cs", text);
+        var red = FixTestSupport.Result(Err(file, 14, "CS0246", "The type or namespace name 'strng' could not be found"));
+
+        // What qwen2.5:3b did: the right fix, then braces it thought were still open.
+        var ai = new FakeAi((d, ex) => ex.Replace("strng", "string").TrimEnd('\n') + "\n    }\n}");
+
+        var outcome = new BuildFixLoop([], ai).Run(root, red, () => Green);
+
+        Assert.AreEqual(1, ai.Asks);
+        Assert.IsTrue(outcome.Green, string.Join(" | ", outcome.Notes));
+        Assert.HasCount(1, outcome.Edits);
+        Assert.AreEqual(text.Replace("strng", "string"), File.ReadAllText(file));
+    }
+
+    [TestMethod]
+    public void Run_SendsTheWholeFile_WhenItIsShort()
+    {
+        var root = FixTestSupport.TempProject();
+        var text = BookFile();
+        var file = FixTestSupport.Write(root, "Book.cs", text);
+        var red = FixTestSupport.Result(Err(file, 14, "CS0246"));
+        string? seen = null;
+        var ai = new FakeAi((d, ex) => { seen = ex; return null; });
+
+        new BuildFixLoop([], ai).Run(root, red, () => red);
+
+        Assert.AreEqual(text.TrimEnd('\n'), seen, "a short file goes whole, so the excerpt never ends inside the class");
+    }
+
+    [TestMethod]
+    public void Run_SendsTheEnclosingClass_WhenTheFileIsLong()
+    {
+        var root = FixTestSupport.TempProject();
+        var sb = new StringBuilder("namespace N\n{\n");
+
+        for (var c = 0; c < 4; c++)
+        {
+            sb.Append($"    public class C{c}\n    {{\n");
+
+            for (var i = 0; i < 60; i++)
+                sb.Append($"        public int F{i} {{ get; set; }}\n");
+
+            sb.Append("    }\n");
+        }
+
+        sb.Append("}\n");
+        var lines = sb.ToString().Split('\n');
+        Assert.IsGreaterThan(200, lines.Length);
+
+        // A line in the middle of C2.
+        var c2Start = Array.IndexOf(lines, "    public class C2") + 1;
+        var errorLine = c2Start + 31;
+        lines[errorLine - 1] = "        public strng F29 { get; set; }";
+        var text = string.Join("\n", lines);
+        var file = FixTestSupport.Write(root, "Big.cs", text);
+        var red = FixTestSupport.Result(Err(file, errorLine, "CS0246"));
+        string? seen = null;
+        var ai = new FakeAi((d, ex) => { seen = ex; return ex.Replace("strng", "string") + "\n}"; });
+
+        var outcome = new BuildFixLoop([], ai).Run(root, red, () => Green);
+
+        Assert.IsNotNull(seen);
+        var sent = seen.Split('\n');
+        Assert.AreEqual("    public class C2", sent[0], "the excerpt starts at the class");
+        Assert.AreEqual("    }", sent[^1], "and ends with its closing brace");
+        Assert.HasCount(63, sent);
+        Assert.IsTrue(outcome.Green, string.Join(" | ", outcome.Notes));
+        Assert.AreEqual(text.Replace("strng", "string"), File.ReadAllText(file));
+    }
+
+    [TestMethod]
+    public void Run_StillRejectsAReplyWhoseExtraClosersAreNotTrailing()
+    {
+        var root = FixTestSupport.TempProject();
+        var text = BookFile();
+        var file = FixTestSupport.Write(root, "Book.cs", text);
+        var red = FixTestSupport.Result(Err(file, 14, "CS0246"));
+        var ai = new FakeAi((d, ex) => ex.Replace("strng Title", "string Title } }"));
+        var rebuilt = false;
+
+        var outcome = new BuildFixLoop([], ai).Run(root, red, () => { rebuilt = true; return red; });
+
+        Assert.IsFalse(rebuilt);
+        Assert.HasCount(0, outcome.Edits);
+        Assert.AreEqual(text, File.ReadAllText(file));
+    }
+
     [TestMethod]
     public void Run_RejectsAnAiAnswerThatChangesNothing()
     {
@@ -621,8 +768,30 @@ public class BuildFixLoopTests
         var outcome = new BuildFixLoop([], ai).Run(root, red, () => red);
 
         Assert.AreEqual(0, ai.Asks);
-        Assert.IsTrue(outcome.Notes.Any(n => n.Contains("Ollama is not running")));
+
+        // IsAvailable is false for a stopped Ollama AND for a running one without the model pulled,
+        // so the note must not claim the first.
+        Assert.Contains(
+            "The local AI could not be used: Ollama is not running, or its model is not pulled. Only the fix rules ran.",
+            outcome.Notes);
+        Assert.IsFalse(outcome.Notes.Any(n => n.StartsWith("Ollama is not running", StringComparison.Ordinal)));
         Assert.AreEqual("x", File.ReadAllText(file));
+    }
+
+    [TestMethod]
+    public void Run_NeverClaimsTheAiHadNoFix_WhenItWasNotAsked()
+    {
+        var root = FixTestSupport.TempProject();
+        var red = FixTestSupport.Result(
+            @"C:\Program Files\dotnet\sdk\10.0.100\Microsoft.Common.CurrentVersion.targets(4975,5): error MSB3027: Could not copy ""obj\Debug\App.exe"" to ""bin\Debug\App.exe"".");
+        var ai = new FakeAi((d, ex) => "y");
+
+        var outcome = new BuildFixLoop([], ai).Run(root, red, () => red);
+
+        Assert.AreEqual(0, ai.Asks);
+        Assert.IsFalse(outcome.Notes.Any(n => n.Contains("no usable fix")), string.Join(" | ", outcome.Notes));
+        Assert.Contains(BuildFixLoop.AiNotAskedNote, outcome.Notes);
+        Assert.Contains(BuildFixReport.LockedOutput, outcome.Notes);
     }
 
     [TestMethod]

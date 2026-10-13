@@ -192,7 +192,7 @@ public sealed class RecordEditorViewModel<T> : ObservableObject, IRecordEditor w
     public RecordEditorViewModel(T? record, bool isNew, IReadOnlyList<ILineSet>? lines = null)
     {
         IsNew = isNew;
-{{storedAssign}}        Draft = record is null ? new T() : Clone(record);
+{{storedAssign}}        Draft = record is null ? NewRecord.Create<T>() : Clone(record);
         Lines = lines ?? [];
 
         _openedAs = Snapshot(Draft);

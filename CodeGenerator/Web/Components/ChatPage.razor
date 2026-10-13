@@ -169,13 +169,16 @@
     private ElementReference _scroll;
 
     /// <summary>
-    /// How many turns were on screen the last time this scrolled to the bottom.
+    /// What was on screen the last time this scrolled to the bottom: the turn count, the last
+    /// turn, and whether the question band and the working bar were showing.
     /// </summary>
     /// <remarks>
-    /// Starts at -1 rather than 0 so the first render of a session resumed in a second tab scrolls
-    /// to the end of a transcript it did not itself produce.
+    /// Starts unset so the first render of a session resumed in a second tab scrolls to the end
+    /// of a transcript it did not itself produce. The band and the bar are in it because each one
+    /// resizes the scrolling box after the new turn was scrolled to: the question band opening
+    /// above the transcript left the answer it was asking about below the fold.
     /// </remarks>
-    private int _drawn = -1;
+    private (int Count, ChatTurn? Last, bool Asking, bool Running)? _drawn;
 
     /// <summary>The composer, so a "did you mean" chip can fill it.</summary>
     private ChatComposer? _composer;
@@ -222,15 +225,20 @@
     /// <remarks>
     /// The transcript scrolls inside its own box now, so a turn that arrives while the reader is
     /// at the bottom would otherwise appear below the fold and look like nothing happened. Only on
-    /// a change in the count, so this does not fight the reader scrolling back through a long
-    /// transcript on every unrelated repaint.
+    /// a change in what is drawn around the end (see <see cref="_drawn"/>), so this does not
+    /// fight the reader scrolling back through a long transcript on every unrelated repaint.
     /// </remarks>
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (_drawn == Session.Turns.Count)
+        var now = (Session.Turns.Count,
+                   Session.Turns.Count == 0 ? null : Session.Turns[^1],
+                   Session.Question is not null,
+                   Session.Running);
+
+        if (_drawn == now)
             return;
 
-        _drawn = Session.Turns.Count;
+        _drawn = now;
 
         try
         {

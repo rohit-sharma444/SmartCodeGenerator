@@ -147,7 +147,8 @@ public sealed class Workspace
         LoadRules();
         LearnedIntentStore.Initialize(Root);
 
-        return new WorkspaceLoad(true, Root, projects.Count, solution, null);
+        // The registry's count, which status shows too: the files found here can differ from it.
+        return new WorkspaceLoad(true, Root, ProjectCount, solution, null);
     }
 
     /// <summary>
