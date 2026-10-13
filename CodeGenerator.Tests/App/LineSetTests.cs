@@ -63,6 +63,9 @@ public class OrderLine
     public int OrderId { get; set; }
     public string Item { get; set; } = string.Empty;
     public int Quantity { get; set; }
+    public DateTime Due { get; set; }
+    public DateTime? Shipped { get; set; }
+    public DateTime CreatedOn { get; set; }
 }
 """;
 
@@ -267,6 +270,28 @@ public class OrderLine
 
         Assert.AreEqual(7, Parent(added));
         Assert.AreNotEqual(0, added.GetType().GetProperty("Id")!.GetValue(added));
+    }
+
+    /// <summary>
+    /// A new line's dates start at today, not 01-Jan-0001.
+    /// </summary>
+    /// <remarks>
+    /// Midnight, because a SQL date column's rule refuses a time of day. A nullable date stays
+    /// empty, and CreatedOn is left for the store to stamp with the time as well.
+    /// </remarks>
+    [TestMethod]
+    public void A_new_line_starts_its_dates_at_today()
+    {
+        var (set, _) = SetOverTwoParents();
+
+        Load(set, 7);
+        set.GetType().GetMethod("Add")!.Invoke(set, null);
+
+        var line = Items(set).Single();
+
+        Assert.AreEqual(DateTime.Today, line.GetType().GetProperty("Due")!.GetValue(line));
+        Assert.IsNull(line.GetType().GetProperty("Shipped")!.GetValue(line));
+        Assert.AreEqual(default(DateTime), line.GetType().GetProperty("CreatedOn")!.GetValue(line));
     }
 
     [TestMethod]

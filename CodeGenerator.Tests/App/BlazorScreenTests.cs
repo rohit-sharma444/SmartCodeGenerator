@@ -680,4 +680,18 @@ public class Order
 
         return order;
     }
+
+    /// <summary>
+    /// A new record on the web starts from the same rule as the desktop editor, so its dates show
+    /// today rather than 01-Jan-0001. Razor cannot be compiled here; NewRecord itself is run by
+    /// the desktop editor's tests, and a generated Blazor app is built in the live check.
+    /// </summary>
+    [TestMethod]
+    public void A_new_web_record_starts_from_NewRecord()
+    {
+        var source = BlazorScreenTemplates.RecordEditor("Acme", validation: true, login: false);
+
+        StringAssert.Contains(source, "_draft = stored is null ? NewRecord.Create<TRecord>() : ScreenFields.Clone(stored);");
+        Assert.DoesNotContain("new TRecord()", source);
+    }
 }
