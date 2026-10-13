@@ -641,6 +641,49 @@ public class GenerateFixTests
             + "A fix is offered only straight after a build, so it is not offered again on a reloaded page."));
     }
 
+    /// <summary>
+    /// Coming back to a Generate stage that already ran shows the import notes again.
+    /// </summary>
+    /// <remarks>
+    /// They were said only while writing, so going back to the stage dropped the renumbering note
+    /// and the dropped-column note while the stale-file and stub notes beside them came back.
+    /// </remarks>
+    [TestMethod]
+    public void A_revisited_page_repeats_the_import_notes()
+    {
+        using var context = new BunitContext();
+        context.Services.AddSingleton<IBuildFixer>(new FakeFixer());
+
+        var session = NewSession();
+
+        var order = new CandidateEntity { Name = "Order", Provenance = Provenance.Wiki };
+        order.Fields.Add(new CandidateField { Name = "Customer", Type = "string", Provenance = Provenance.Wiki });
+        order.Fields.Add(new CandidateField { Name = "CustomerId", Type = "int", Provenance = Provenance.Wiki });
+        order.Relationships.Add(new CandidateRelationship { Target = "Customer", Role = "ManyToOne" });
+        session.Model!.Entities.Add(order);
+
+        const string renumbered = "Customer.Id was renumbered from 1 because the file's ids repeat.";
+        session.SetImportedData(new ImportedData(
+            new Dictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string?>>>
+            {
+                ["Customer"] = [new Dictionary<string, string?> { ["Title"] = "Acme" }],
+            },
+            [renumbered]));
+
+        var scaffold = GenerateStep.Scaffold(session, GenerateStep.NameFor(session), session.Target!, PersistenceKind.Json);
+        session.SetGenerated(new GeneratedApp(scaffold, "log", BuildSucceeded: true));
+
+        var cut = context.Render<GenerateStage>(p => p
+            .Add(c => c.Session, session)
+            .Add(c => c.Navigation, new StageNavigation()));
+
+        var lines = ReportLines(cut).ToList();
+
+        CollectionAssert.Contains(lines, renumbered);
+        CollectionAssert.Contains(
+            lines, "Order.Customer (text) was replaced by the link to Customer; its values were not kept.");
+    }
+
     [TestMethod]
     public void A_change_during_the_fix_keeps_the_stale_app_from_coming_back()
     {
