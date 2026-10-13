@@ -380,6 +380,12 @@ else
         foreach (var note in Session.ImportedData.Notes)
             _report.Add(note);
 
+        // A text column the class drops for the link beside it takes its imported values with
+        // it. Asked of the model as reviewed, so a column renamed on Review is not reported.
+        if (!Session.ImportedData.IsEmpty && Session.Model is { } reviewed)
+            foreach (var note in DataIngestion.DataModelBuilder.ReplacedTextNotes(reviewed))
+                _report.Add(note);
+
         if (!scaffold.Success)
         {
             Finished("Could not write the project", failed: true);

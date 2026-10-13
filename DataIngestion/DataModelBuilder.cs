@@ -144,6 +144,44 @@ public static class DataModelBuilder
         }
     }
 
+    /// <summary>
+    /// One line for each text column the generated class will drop because the same row links to
+    /// the table it is named for: Shipment's <c>Customer</c> text beside a <c>CustomerId</c> key to
+    /// Customer.
+    /// </summary>
+    /// <remarks>
+    /// The drop itself is <c>DomainModelMapper.DropTextShadowingTheRelationship</c>, and this asks
+    /// its question of the model: a <c>string</c> field named for a relationship's target, and an
+    /// int <c>&lt;Target&gt;Id</c> field on the same entity. The class keeps the link, and the
+    /// text's values were never seeded anywhere — said here, or they vanish without a word.
+    /// </remarks>
+    public static IReadOnlyList<string> ReplacedTextNotes(CandidateDomainModel model)
+    {
+        var entityNames = new HashSet<string>(
+            model.Entities.Select(e => e.Name), StringComparer.OrdinalIgnoreCase);
+
+        var notes = new List<string>();
+
+        foreach (var entity in model.Entities)
+        foreach (var target in entity.Relationships.Select(r => r.Target).Distinct(StringComparer.Ordinal))
+        {
+            if (!entityNames.Contains(target))
+                continue;
+
+            var text = entity.Fields.Any(
+                f => string.Equals(f.Name, target, StringComparison.Ordinal) && f.Type == "string");
+            var key = entity.Fields.Any(
+                f => string.Equals(f.Name, target + "Id", StringComparison.Ordinal)
+                     && DomainModelMapper.BaseType(f.Type) == "int");
+
+            if (text && key)
+                notes.Add($"{entity.Name}.{target} (text) was replaced by the link to {target}; "
+                          + "its values were not kept.");
+        }
+
+        return notes;
+    }
+
     /// <summary>Why a column did or did not become a field.</summary>
     private enum ColumnFate
     {

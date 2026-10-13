@@ -966,7 +966,7 @@ public sealed partial class {{className}}Validator
     /// newline. An unescaped one is a generated app that does not compile, and the tool would
     /// have reported success writing it.
     /// </remarks>
-    private static string Quoted(string value)
+    internal static string Quoted(string value)
         => "\"" + value
             .Replace("\\", "\\\\")
             .Replace("\"", "\\\"")
