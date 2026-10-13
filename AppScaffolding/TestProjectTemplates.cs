@@ -274,8 +274,20 @@ internal static class TestSupport
     private static string Distinct(string template)
         => template.Replace("{n}", (_distinct++).ToString(System.Globalization.CultureInfo.InvariantCulture));
 
-    /// <summary>A midnight date in the past few years not used before.</summary>
-    private static DateTime DistinctDate() => DateTime.UtcNow.Date.AddDays(-(1 + _distinct++ % 3650));
+    /// <summary>A midnight date in the past few years not used before. Local, as FilledDate is:
+    /// a UTC date can be the local today, which the blank-record check treats as unfilled.</summary>
+    private static DateTime DistinctDate() => DateTime.Today.AddDays(-(1 + _distinct++ % 3650));
+
+    /// <summary>
+    /// The date Fill writes: yesterday, at midnight, the same for every date of a record.
+    /// </summary>
+    /// <remarks>
+    /// Not today: a new record's dates start at today, so the blank-record check counts today as
+    /// unfilled, and a class of only dates and numbers came out of Fill as a blank record its own
+    /// validator refused. Midnight, because a SQL date column's rule refuses a time of day; one
+    /// shared date, because a rule comparing two dates is satisfied by equal ones.
+    /// </remarks>
+    private static readonly DateTime FilledDate = DateTime.Today.AddDays(-1);
 
     /// <summary>Populates every writable property with a value the validators accept.</summary>
     public static void Fill<T>(T item)
@@ -296,10 +308,8 @@ internal static class TestSupport
                 property.SetValue(item, accepted());
             else if (property.PropertyType == typeof(string))
                 property.SetValue(item, Placeholder(property.Name));
-            // Midnight: a SQL date column's rule refuses a time of day, and today at midnight
-            // satisfies that and every other date rule the generator emits.
             else if (property.PropertyType == typeof(DateTime))
-                property.SetValue(item, DateTime.UtcNow.Date);
+                property.SetValue(item, FilledDate);
             else if (property.PropertyType == typeof(int) && IsForeignKey(property.Name))
                 property.SetValue(item, ForeignKeyValue(property.Name, appAssembly, root));
         }
@@ -458,7 +468,7 @@ internal static class TestSupport
                 return AcceptedString(property, unique);
 
             case "DateTime":
-                // Today at midnight passes every date rule; only a shared value is a problem.
+                // Fill's FilledDate passes every date rule; only a shared value is a problem.
                 return unique ? "DistinctDate()" : null;
 
             case "int" or "decimal":

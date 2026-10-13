@@ -145,6 +145,42 @@ public sealed class StoreEntityLookup : IEntityLookup
         Assert.IsEmpty(messages, string.Join("\n", messages));
     }
 
+    /// <summary>
+    /// A class of only dates and numbers is not blank once filled. Fill wrote today into every
+    /// date and left numbers at 0, and today is what the blank-record check treats as unfilled --
+    /// a new record's dates start there -- so such a class failed its own A_populated_..._is_valid.
+    /// </summary>
+    [TestMethod]
+    public void A_filled_record_of_only_dates_and_numbers_is_not_blank()
+    {
+        var classes = new List<ClassDefinition>
+        {
+            new()
+            {
+                Name = "Reading",
+                Properties =
+                {
+                    new PropertyDefinition { Name = "Id", Type = "int" },
+                    new PropertyDefinition { Name = "TakenOn", Type = "DateTime" },
+                    new PropertyDefinition { Name = "CheckedOn", Type = "DateTime" },
+                    new PropertyDefinition { Name = "Value", Type = "decimal" },
+                },
+            },
+        };
+
+        var app = Compile(classes, "Reading");
+        var item = app.Fill();
+
+        var messages = app.Validate(item);
+        Assert.IsEmpty(messages, string.Join("\n", messages));
+
+        // One shared date, still midnight: a rule comparing two dates is satisfied by equal ones.
+        var taken = (DateTime)app.Get(item, "TakenOn")!;
+        Assert.AreEqual(taken, app.Get(item, "CheckedOn"));
+        Assert.AreEqual(TimeSpan.Zero, taken.TimeOfDay);
+        Assert.IsLessThan(DateTime.Today, taken);
+    }
+
     /// <summary>The wiring: the scaffolder hands TestSupport the classes, rules and all.</summary>
     [TestMethod]
     public void A_scaffolded_apps_TestSupport_knows_the_accepted_value_list()
