@@ -419,6 +419,10 @@ internal sealed class BuildAppCommand
         foreach (var note in imported.Notes)
             Console.WriteLine(note);
 
+        // A text column the class drops for the link beside it takes its values with it.
+        foreach (var note in DataModelBuilder.ReplacedTextNotes(model))
+            Console.WriteLine(note);
+
         RunReviewLoop(
             model, AppNameFor(description, source), workspaceRoot, imported, target, customization,
             reviewAi);
