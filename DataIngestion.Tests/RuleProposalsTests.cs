@@ -22,6 +22,34 @@ public class RuleProposalsTests
         Assert.False(status.Accepted, "a proposal arrives unaccepted");
     }
 
+    /// <summary>
+    /// helpdesk tickets.csv: 7 rows, 7 different short Titles. A value list proposed from that
+    /// lists every title there is, and with "unique" also taken no new ticket can ever be saved.
+    /// Values that do not repeat are free text, not a status.
+    /// </summary>
+    [Theory]
+    [InlineData(7, 7)]
+    [InlineData(9, 10)]
+    public void A_column_whose_values_hardly_repeat_is_not_a_status(int distinct, int rows)
+    {
+        var scan = new ColumnScanResult(
+            [.. Enumerable.Range(1, distinct).Select(i => $"Title {i}")], false, 8, rows - distinct, rows, rows);
+
+        var proposals = RuleProposals.For(scan, "Title", "string", mayBeUnique: true);
+
+        Assert.DoesNotContain(proposals, p => p.Kind == RuleProposalKind.Status);
+    }
+
+    [Fact]
+    public void A_few_values_that_repeat_in_a_small_table_are_still_a_status()
+    {
+        var scan = new ColumnScanResult(["Open", "Closed"], false, 6, 1, 3, 3);
+
+        var proposals = RuleProposals.For(scan, "Status", "string", mayBeUnique: true);
+
+        Assert.Contains(proposals, p => p.Kind == RuleProposalKind.Status);
+    }
+
     [Fact]
     public void A_long_valued_column_is_not_a_status()
     {

@@ -85,8 +85,19 @@ public static class WinFormsPaneCode
                 PropertySort = PropertySort.NoSort,
             };
 
-            grid.SelectionChanged += (_, _) => detail.SelectedObject = grid.CurrentRow?.DataBoundItem;
+            // Through StampsReadOnly, so Id, CreatedOn and ModifiedOn show but cannot be typed into.
+            grid.SelectionChanged += (_, _) =>
+                detail.SelectedObject = grid.CurrentRow?.DataBoundItem is { } row ? new StampsReadOnly(row) : null;
     """
+            : string.Empty;
+
+        // Carries its own leading line break, from the raw literal, so it ends the same way
+        // (CRLF or LF) as the rest of the emitted file.
+        var stampsClass = withPropertyGrid
+            ? $$"""
+
+{{StampsReadOnlyClass}}
+"""
             : string.Empty;
 
         var layoutAdds = withPropertyGrid
@@ -210,9 +221,10 @@ public static class WinFormsPaneCode
             if (property is null)
                 continue;
 
-            // Id is generated, so it is shown but never edited. Setting ReadOnly again on a later
-            // pass is harmless, so no guard is needed here.
-            if (string.Equals(column.DataPropertyName, "Id", StringComparison.OrdinalIgnoreCase))
+            // Id is generated, and the store stamps CreatedOn and ModifiedOn on save, so they are
+            // shown but never edited. Setting ReadOnly again on a later pass is harmless, so no
+            // guard is needed here.
+            if (IsStamped(column.DataPropertyName))
             {
                 column.ReadOnly = true;
                 continue;
@@ -308,6 +320,45 @@ public static class WinFormsPaneCode
             || underlying == typeof(DateTime)
             || underlying == typeof(Guid);
     }
+
+    // The fields the app fills in itself: Id from the store, the two dates on every save.
+    private static bool IsStamped(string name)
+        => name.Equals("Id", StringComparison.OrdinalIgnoreCase)
+           || name.Equals("CreatedOn", StringComparison.OrdinalIgnoreCase)
+           || name.Equals("ModifiedOn", StringComparison.OrdinalIgnoreCase);{{stampsClass}}
 """;
     }
+
+    /// <summary>
+    /// A nested class for the MainForm body: the record as the PropertyGrid sees it, with Id,
+    /// CreatedOn and ModifiedOn read-only — the PropertyGrid edits every public setter, and the
+    /// store overwrites a typed stamp on save. Plain System.ComponentModel; edits still land on
+    /// the record itself through <c>GetPropertyOwner</c>.
+    /// </summary>
+    public const string StampsReadOnlyClass = """
+    private sealed class StampsReadOnly : CustomTypeDescriptor
+    {
+        private static readonly string[] Stamped = { "Id", "CreatedOn", "ModifiedOn" };
+
+        private readonly object _item;
+
+        public StampsReadOnly(object item)
+            : base(TypeDescriptor.GetProvider(item).GetTypeDescriptor(item))
+            => _item = item;
+
+        public override PropertyDescriptorCollection GetProperties() => Lock(base.GetProperties());
+
+        public override PropertyDescriptorCollection GetProperties(Attribute[]? attributes)
+            => Lock(base.GetProperties(attributes));
+
+        public override object? GetPropertyOwner(PropertyDescriptor? pd) => _item;
+
+        private static PropertyDescriptorCollection Lock(PropertyDescriptorCollection properties)
+            => new(properties.Cast<PropertyDescriptor>()
+                .Select(p => Stamped.Contains(p.Name, StringComparer.OrdinalIgnoreCase)
+                    ? TypeDescriptor.CreateProperty(p.ComponentType, p, ReadOnlyAttribute.Yes)
+                    : p)
+                .ToArray());
+    }
+""";
 }

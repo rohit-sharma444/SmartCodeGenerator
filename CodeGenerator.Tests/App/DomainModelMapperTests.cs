@@ -569,4 +569,97 @@ public class DomainModelMapperProposalTests
             classes.Single().Properties.Single(p => p.Name == "Status").Rules
                 .Any(r => r.Name == "allowedvalues"));
     }
+
+    /// <summary>A Book that belongs to a Library, as discovery shapes it: the key and the
+    /// relationship both name the ENTITY.</summary>
+    private static CandidateDomainModel LibraryModel()
+    {
+        var model = new CandidateDomainModel();
+        model.Entities.Add(new CandidateEntity
+        {
+            Name = "Library",
+            Fields = { new CandidateField { Name = "Name", Type = "string" } },
+        });
+        model.Entities.Add(new CandidateEntity
+        {
+            Name = "Book",
+            Fields =
+            {
+                new CandidateField { Name = "Title", Type = "string" },
+                new CandidateField { Name = "LibraryId", Type = "int" },
+            },
+            Relationships = { new CandidateRelationship { Target = "Library", Role = "references" } },
+        });
+        return model;
+    }
+
+    /// <summary>
+    /// "a library that lends books" names its app Library, so the Library entity becomes
+    /// LibraryItem — and Book kept <c>int LibraryId</c> beside a <c>LibraryItem LibraryItem</c>
+    /// navigation that the resolver, which looks for LibraryItemId, never paired with it. No
+    /// lookup, no FK rule, no inverse load.
+    /// </summary>
+    [TestMethod]
+    public void A_renamed_class_takes_the_foreign_keys_to_it_along()
+    {
+        var classes = DomainModelMapper.ToClassDefinitions(
+            LibraryModel(), out _, reserved: ["Library"]);
+
+        var book = classes.Single(c => c.Name == "Book");
+        CollectionAssert.AreEqual(
+            new[] { "LibraryItem" },
+            ForeignKeys.TargetsOf(book, ForeignKeys.ClassNameSet(classes)).ToList());
+        Assert.IsFalse(book.Properties.Any(p => p.Name == "LibraryId"), "the old key is still there");
+    }
+
+    /// <summary>The seed rows still say LibraryId — they were read under the entity's name — so
+    /// the renamed key has to find its value there or every book loses its library.</summary>
+    [TestMethod]
+    public void A_renamed_foreign_key_still_reads_its_seed_value()
+    {
+        var model = LibraryModel();
+        var classes = DomainModelMapper.ToClassDefinitions(model, out var names, reserved: ["Library"]);
+
+        var data = new ImportedData(
+            new Dictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string?>>>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["Library"] = [new Dictionary<string, string?> { ["Name"] = "Central" }],
+                ["Book"] = [new Dictionary<string, string?> { ["Title"] = "Emma", ["LibraryId"] = "1" }],
+            },
+            []);
+
+        var book = SeedFileWriter.Files(classes, names, data, out _).Single(f => f.FileName == "Book.json");
+
+        StringAssert.Contains(book.Json, "\"LibraryItemId\": 1");
+    }
+
+    /// <summary>
+    /// Discovery can give Shipment both <c>string Customer</c> and <c>int CustomerId</c> with a
+    /// relationship to Customer. The string's name blocked the navigation, so the app showed a
+    /// free-text box for a customer it also kept a key to. The relationship wins.
+    /// </summary>
+    [TestMethod]
+    public void A_text_field_named_for_a_related_class_gives_way_to_the_relationship()
+    {
+        var model = new CandidateDomainModel();
+        model.Entities.Add(new CandidateEntity
+        {
+            Name = "Customer",
+            Fields = { new CandidateField { Name = "Name", Type = "string" } },
+        });
+        model.Entities.Add(new CandidateEntity
+        {
+            Name = "Shipment",
+            Fields =
+            {
+                new CandidateField { Name = "Customer", Type = "string" },
+                new CandidateField { Name = "CustomerId", Type = "int" },
+            },
+            Relationships = { new CandidateRelationship { Target = "Customer", Role = "references" } },
+        });
+
+        var shipment = DomainModelMapper.ToClassDefinitions(model).Single(c => c.Name == "Shipment");
+
+        Assert.AreEqual("Customer", shipment.Properties.Single(p => p.Name == "Customer").Type);
+    }
 }

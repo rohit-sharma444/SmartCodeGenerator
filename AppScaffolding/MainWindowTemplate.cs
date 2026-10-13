@@ -153,9 +153,12 @@ public partial class MainWindow : Window
 
     // Column presentation is a view concern, so the Id lock lives here rather
     // than in a view model. This is the only code-behind in the generated app.
+    // CreatedOn and ModifiedOn are locked too: the store stamps them on save.
     private void OnAutoGeneratingColumn(object sender, DataGridAutoGeneratingColumnEventArgs e)
     {
-        if (string.Equals(e.PropertyName, "Id", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(e.PropertyName, "Id", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(e.PropertyName, "CreatedOn", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(e.PropertyName, "ModifiedOn", StringComparison.OrdinalIgnoreCase))
             e.Column.IsReadOnly = true;
 
         // A date shows as the DatePicker beside it does: the machine's short date, without the

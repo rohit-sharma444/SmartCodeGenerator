@@ -66,7 +66,7 @@ public sealed class BlazorTarget : ITargetScaffolder
     {
         // The namespace the emitted code declares; projectName still names the app in its title.
         var ns = customization.RootNamespaceFor(projectName);
-        var title = customization.TitleLiteralFor(projectName);
+        var title = customization.TitleMarkupFor(projectName);
 
         // A document line gets no page at all: it is edited inside its parent, which is the whole
         // point of the third role. Everything below works from these names, so the rail, the

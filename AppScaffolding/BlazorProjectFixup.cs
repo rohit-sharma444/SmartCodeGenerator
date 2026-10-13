@@ -217,6 +217,66 @@ builder.Services.AddCascadingAuthenticationState();
     /// </summary>
     public static void ReconcileNamespace(string projectFolder, string rootNamespace)
     {
+        ReconcileProgram(projectFolder, rootNamespace);
+        ReconcileImports(projectFolder, rootNamespace);
+    }
+
+    /// <summary>The template's own root import in <c>_Imports.razor</c>: <c>@using X.Components</c>,
+    /// whose X is the root every other template import hangs from.</summary>
+    private static readonly Regex ImportsComponentsLine =
+        new(@"^@using\s+(?<root>[\w.]+)\.Components\s*$", RegexOptions.Multiline);
+
+    /// <summary>
+    /// Repoints <c>Components/_Imports.razor</c>'s <c>@using</c> lines at
+    /// <paramref name="rootNamespace"/>. The template imports <c>&lt;Project&gt;</c>,
+    /// <c>&lt;Project&gt;.Components</c> and <c>&lt;Project&gt;.Components.Layout</c>; under a prefix
+    /// none of them exists, and the build still succeeds — with RZ10012 on
+    /// <c>&lt;ReconnectModal /&gt;</c>, which then renders as an unknown tag and the app loses its
+    /// reconnect overlay. Best-effort and idempotent, and it follows a changed prefix because the
+    /// old root is read from the file rather than assumed.
+    /// </summary>
+    private static void ReconcileImports(string projectFolder, string rootNamespace)
+    {
+        var path = Path.Combine(projectFolder, "Components", "_Imports.razor");
+
+        try
+        {
+            if (!File.Exists(path))
+                return;
+
+            var original = File.ReadAllText(path);
+            var match = ImportsComponentsLine.Match(original);
+            if (!match.Success)
+                return;
+
+            var oldRoot = match.Groups["root"].Value;
+            if (string.Equals(oldRoot, rootNamespace, StringComparison.Ordinal))
+                return;
+
+            // Exactly the old root, or the old root followed by a dot: `@using Shop` and
+            // `@using Shop.Components.Layout`, never `@using ShopLibrary`.
+            var oldImport = new Regex(
+                @"^@using\s+" + Regex.Escape(oldRoot) + @"(?<rest>(\.[\w.]+)?)(?<end>\s*)$",
+                RegexOptions.Multiline);
+
+            var updated = oldImport.Replace(
+                original, m => $"@using {rootNamespace}{m.Groups["rest"].Value}{m.Groups["end"].Value}");
+
+            // The template writes this file with a BOM; WriteAllText alone would drop it.
+            var bytes = File.ReadAllBytes(path);
+            var bom = bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF;
+
+            if (!string.Equals(original, updated, StringComparison.Ordinal))
+                File.WriteAllText(path, updated, new System.Text.UTF8Encoding(bom));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Leave it; the warning that follows is clearer than a crash here.
+        }
+    }
+
+    private static void ReconcileProgram(string projectFolder, string rootNamespace)
+    {
         var path = Path.Combine(projectFolder, "Program.cs");
         var wanted = $"using {rootNamespace}.Components;";
 

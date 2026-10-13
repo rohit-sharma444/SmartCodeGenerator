@@ -65,7 +65,8 @@ public static class RuleProposals
         if (propertyType == "string"
             && !scan.ExceededDistinctCap
             && scan.DistinctValues.Count is > 0 and <= MaxStatusValues
-            && scan.LongestValueLength <= MaxStatusValueLength)
+            && scan.LongestValueLength <= MaxStatusValueLength
+            && ValuesRepeat(scan))
         {
             proposals.Add(new RuleProposal
             {
@@ -118,6 +119,15 @@ public static class RuleProposals
 
         return proposals;
     }
+
+    /// <summary>
+    /// Whether the column's values repeat enough to be a fixed list: at most four distinct values
+    /// in every five rows. A column whose every row (or nearly every row) holds its own value is
+    /// free text — seven tickets with seven titles — and a value list made from it lists the
+    /// records there are, so with "unique" also taken nothing new can ever be saved.
+    /// </summary>
+    private static bool ValuesRepeat(ColumnScanResult scan)
+        => (long)scan.DistinctValues.Count * 5 <= (long)scan.NonBlankRowCount * 4;
 
     /// <summary>The first known format every scanned value matches, or null.</summary>
     /// <remarks>

@@ -138,22 +138,22 @@ public class TypeDrivenInferenceTests
     }
 
     [TestMethod]
-    public void ANotNullNumberOrDate_GetsNoRequiredRule()
+    public void ANotNullNumber_GetsNoRequiredRule()
     {
-        // required is recorded for a string and nothing else. A non-nullable int cannot be null
-        // and 0 is a legitimate value, so the rule would assert nothing true while still putting
-        // [Required] on the model and an asterisk on a field the user may correctly leave at
-        // zero. ValidatorTemplate emits a required check inside its `string` guard alone, so the
-        // rule would also produce no check at all -- the silent drop the guard below now catches.
+        // required is recorded for a string and a date and nothing else. A non-nullable int
+        // cannot be null and 0 is a legitimate value, so the rule would assert nothing true while
+        // still putting [Required] on the model and an asterisk on a field the user may correctly
+        // leave at zero.
         var notNull = new TypeFacts { IsNullable = false };
 
         Assert.IsNull(Rule(Mapped("Quantity", "int", notNull), "required"));
         Assert.IsNull(Rule(Mapped("Price", "decimal", notNull), "required"));
-        Assert.IsNull(Rule(Mapped("OrderedOn", "DateTime", notNull), "required"));
         Assert.IsNull(Rule(Mapped("IsActive", "bool", notNull), "required"));
 
-        // The string still gets it: this is the behaviour change the phase exists for.
+        // The string gets it: this is the behaviour change the phase exists for. And a NOT NULL
+        // date: left blank the model holds 0001-01-01, which the column would store as a date.
         Assert.IsNotNull(Rule(Mapped("Surname", "string", notNull), "required"));
+        Assert.IsNotNull(Rule(Mapped("OrderedOn", "DateTime", notNull), "required"));
     }
 
     [TestMethod]

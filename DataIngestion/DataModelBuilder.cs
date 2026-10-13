@@ -186,6 +186,23 @@ public static class DataModelBuilder
             .Select(c => WithIdSpelledId(NameNormalizer.ToFieldName(c.Name)))
             .ToList();
 
+        // A declared key named for the TABLE rather than the class — TableDefinitionsId pointing
+        // at TableDefinitions, whose class is TableDefinition — is spelled the way the generated
+        // app recognises a foreign key, <Class>Id. Left as it was, the class gets a navigation
+        // property nothing pairs with the key, and the key is just an int.
+        for (var i = 0; i < columnNames.Count; i++)
+        {
+            if (DeclaredClassKeyName(table, table.Columns[i].Name, columnNames[i], entityName) is not { } keyName)
+                continue;
+
+            if (!columnNames.Contains(keyName, StringComparer.OrdinalIgnoreCase))
+                columnNames[i] = keyName;
+        }
+
+        // The table's own name, before it was made singular: Customers keyed by CustomersId is
+        // as much keyed by itself as by CustomerId, and the keys pointing at it name that column.
+        var tableKeyName = NameNormalizer.ToFieldName(table.Name);
+
         var taken = new List<string>();
 
         for (var i = 0; i < table.Columns.Count; i++)
@@ -203,7 +220,7 @@ public static class DataModelBuilder
 
             // This entity's OWN key. Dropped because DomainModelMapper prepends `int Id` itself,
             // and a read string Id compiles and then makes JsonStore throw on the first Add.
-            if (IsOwnKey(fieldName, entityName))
+            if (IsOwnKey(fieldName, entityName) || IsOwnKey(fieldName, tableKeyName))
             {
                 outcomes.Add(new ColumnOutcome(
                     column.Name, null, column.Type, ColumnFate.DroppedGeneratedKey, facts));
@@ -394,6 +411,58 @@ public static class DataModelBuilder
            && !char.IsUpper(fieldName[^3])
             ? fieldName[..^2] + "Id"
             : fieldName;
+
+    /// <summary>
+    /// <c>&lt;Class&gt;Id</c> for a column that holds a declared foreign key and is named after the
+    /// target's table (<c>TableDefinitionsId</c> → <c>TableDefinitionId</c>); null for any other
+    /// column, for a key already spelled that way, for a self-reference (whose
+    /// <c>&lt;Class&gt;Id</c> would read as the entity's own key and be dropped), and for a key
+    /// whose name says more than its target (<c>BillToCustomerId</c> keeps its meaning).
+    /// </summary>
+    private static string? DeclaredClassKeyName(
+        TabularTable table, string column, string fieldName, string entityName)
+    {
+        var key = table.ForeignKeys.FirstOrDefault(
+            k => string.Equals(k.Column, column, StringComparison.OrdinalIgnoreCase));
+
+        if (key is null || !fieldName.EndsWith("Id", StringComparison.Ordinal) || fieldName.Length <= 2)
+            return null;
+
+        var target = NameNormalizer.ToUserTypedEntityName(key.TargetTable);
+        var wanted = target + "Id";
+
+        if (target.Length == 0
+            || string.Equals(target, entityName, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(fieldName, wanted, StringComparison.Ordinal)
+            || !string.Equals(
+                NameNormalizer.ToUserTypedEntityName(fieldName[..^2]), target, StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        return wanted;
+    }
+
+    /// <summary>The entity each of <paramref name="table"/>'s DECLARED foreign-key fields points
+    /// at, by field name. Self-references are left out.</summary>
+    internal static IReadOnlyDictionary<string, string> DeclaredKeyTargets(TabularTable table)
+    {
+        var entityName = NameNormalizer.ToUserTypedEntityName(table.Name);
+        var fields = FieldNames(table);
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var key in table.ForeignKeys)
+        {
+            var target = NameNormalizer.ToUserTypedEntityName(key.TargetTable);
+
+            if (target.Length == 0
+                || string.Equals(target, entityName, StringComparison.OrdinalIgnoreCase)
+                || !fields.TryGetValue(key.Column, out var field))
+                continue;
+
+            map.TryAdd(field, target);
+        }
+
+        return map;
+    }
 
     /// <summary>Whether <paramref name="fieldName"/> is this entity's own primary key —
     /// <c>Id</c>, or <c>&lt;Entity&gt;Id</c>. A <c>&lt;Other&gt;Id</c> is a foreign key and is

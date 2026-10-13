@@ -250,9 +250,12 @@ public sealed class MainForm : Form
             if (property is null)
                 continue;
 
-            // Id is generated, so it is shown but never edited. Setting ReadOnly again on a later
-            // pass is harmless, so no guard is needed here.
-            if (string.Equals(column.DataPropertyName, "Id", StringComparison.OrdinalIgnoreCase))
+            // Id is generated, and the store stamps CreatedOn and ModifiedOn on save, so they are
+            // shown but never edited. Setting ReadOnly again on a later pass is harmless, so no
+            // guard is needed here.
+            if (column.DataPropertyName.Equals("Id", StringComparison.OrdinalIgnoreCase)
+                || column.DataPropertyName.Equals("CreatedOn", StringComparison.OrdinalIgnoreCase)
+                || column.DataPropertyName.Equals("ModifiedOn", StringComparison.OrdinalIgnoreCase))
             {
                 column.ReadOnly = true;
                 continue;

@@ -483,7 +483,7 @@ internal sealed class BuildAppCommand
 
             // Settled before discovery too, and for the same reason. Prints nothing at all when
             // nothing was customized.
-            foreach (var line in CustomizationSummary.Lines(customization, target))
+            foreach (var line in CustomizationSummary.Lines(customization, target, appName))
                 Console.WriteLine(line);
 
             if (ProposalReport.Summary(model) is { } proposals)
