@@ -352,7 +352,7 @@ public sealed class MainForm : Form
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 74f));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40f));
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         KeepTabStripOnScreen(layout);
 
         var tabs = new TabControl { Dock = DockStyle.Fill };
@@ -1098,11 +1098,17 @@ public sealed class MainForm : Form
     /// </remarks>
     private Control BuildEntryActionBar(object owner, params (string Command, string Text)[] commands)
     {
-        var bar = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1 };
+        // Grows with its status line, never below the 40 pixels it always had. A fixed row and a
+        // fixed-size label cut a message that wrapped -- "Cannot save: Fill in at least one field
+        // before saving this Order." lost its second line at an orders app's default width, and it
+        // is the one message that says a save did NOT happen. An AutoSize label stretched across
+        // its column wraps to that column; the AutoSize bar and the AutoSize row under the screen
+        // carry its height up.
+        var bar = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, MinimumSize = new Size(0, 40) };
         bar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
         bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
-        var status = new Label { Dock = DockStyle.Fill, Name = "Status" };
+        var status = new Label { Dock = DockStyle.Fill, Name = "Status", AutoSize = true, TextAlign = ContentAlignment.MiddleLeft };
 
         // One row, sized to its buttons. Dock-Fill with wrapping on, in this AutoSize column, was
         // given too little width: a master's six buttons broke onto a second row that the bar's
@@ -1153,7 +1159,7 @@ public sealed class MainForm : Form
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 74f));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40f));
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         KeepTabStripOnScreen(layout);
 
         layout.Controls.Add(BuildEntryHeader(editor, draft), 0, 0);
@@ -1458,7 +1464,14 @@ public sealed class MainForm : Form
                 ? 0
                 : form.GetPreferredSize(new Size(layout.ClientSize.Width, 0)).Height + form.Margin.Vertical;
 
-            var spare = layout.ClientSize.Height - layout.RowStyles[0].Height - formHeight - layout.RowStyles[3].Height;
+            // The action bar's row is AutoSize, so it is measured, as the form is: it grows when
+            // a long status message wraps.
+            var bar = layout.GetControlFromPosition(0, 3);
+            var barHeight = bar is null
+                ? 0
+                : bar.GetPreferredSize(new Size(layout.ClientSize.Width, 0)).Height + bar.Margin.Vertical;
+
+            var spare = layout.ClientSize.Height - layout.RowStyles[0].Height - formHeight - barHeight;
             var wanted = spare >= TabStripFloor
                 ? new RowStyle(SizeType.Percent, 100f)
                 : new RowStyle(SizeType.Absolute, TabStripFloor);

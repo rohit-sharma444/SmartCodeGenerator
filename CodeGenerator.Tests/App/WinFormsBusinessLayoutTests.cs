@@ -362,7 +362,7 @@ public class WinFormsBusinessLayoutTests
     /// The action bar's buttons stay on one row, in the order they are given.
     /// </summary>
     /// <remarks>
-    /// The bar's row is 40 pixels high. A wrapping, Dock-Fill flow in an AutoSize column was
+    /// The bar is 40 pixels high at least. A wrapping, Dock-Fill flow in an AutoSize column was
     /// given too little width, so a master's six buttons broke onto a second row the row then
     /// cut off -- Save and Delete were unreachable even with the window maximised. Left to right,
     /// so the bar reads New, Edit, Delete, Save, Clear, Cancel, as the WPF shell's does; the old
@@ -377,6 +377,38 @@ public class WinFormsBusinessLayoutTests
         StringAssert.Contains(bar, "AutoSize = true,");
         StringAssert.Contains(bar, "FlowDirection = FlowDirection.LeftToRight,");
         Assert.DoesNotContain("FlowDirection.RightToLeft", bar);
+    }
+
+    /// <summary>
+    /// A long status message is shown in full: the bar grows to the lines the message wraps onto.
+    /// </summary>
+    /// <remarks>
+    /// The bar's row was a fixed 40 pixels and its label a fixed size. An orders app at its
+    /// default width wrapped "Cannot save: Fill in at least one field before saving this Order."
+    /// onto two lines and cut the second off at the bottom of the window -- the one message that
+    /// says a save did NOT happen. An AutoSize label stretched across its column wraps to that
+    /// column, and AutoSize rows carry its height up to the screen.
+    /// </remarks>
+    [TestMethod]
+    public void A_long_status_message_is_not_cut_off()
+    {
+        var bar = Body(Source(), "private Control BuildEntryActionBar(", "private Control BuildEditor(");
+
+        StringAssert.Contains(bar, "var bar = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, MinimumSize = new Size(0, 40) };");
+        StringAssert.Contains(bar, "var status = new Label { Dock = DockStyle.Fill, Name = \"Status\", AutoSize = true, TextAlign = ContentAlignment.MiddleLeft };");
+
+        foreach (var body in new[] { EntryBody(), EditorBody() })
+        {
+            Assert.DoesNotContain("layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40f));", body);
+            Assert.AreEqual(2, body.Split("layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));").Length - 1,
+                "the form's row and the action bar's row both size to their content");
+        }
+
+        // The tab strip's floor is measured against the bar as it now is, not a fixed 40.
+        var helper = Body(
+            Source(), "private static void KeepTabStripOnScreen(TableLayoutPanel layout)", "private static void ShowStatus(");
+        Assert.DoesNotContain("RowStyles[3].Height", helper);
+        StringAssert.Contains(helper, "layout.GetControlFromPosition(0, 3)");
     }
 
     /// <summary>A GroupBox caption cannot take the accent colour, so the panel is a bordered Panel
@@ -670,7 +702,7 @@ public class WinFormsBusinessLayoutTests
     /// A model with many field groups scrolls rather than squeezing the rest of the screen out.
     /// </summary>
     /// <remarks>
-    /// Both entry screens' root rows are Absolute 74 / AutoSize / Percent 100 / Absolute 40. When
+    /// Both entry screens' root rows are Absolute 74 / AutoSize / Percent 100 / AutoSize. When
     /// the AutoSize form row grows past the remaining height the Percent row collapses to zero --
     /// the tab strip holding the record list, or the lines and their totals, simply disappears --
     /// and the action bar under it clips. The_form_does_not_grow_with_the_model varies entity
