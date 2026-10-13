@@ -199,6 +199,10 @@ public static class DataModelBuilder
                 columnNames[i] = keyName;
         }
 
+        // The table's own name, before it was made singular: Customers keyed by CustomersId is
+        // as much keyed by itself as by CustomerId, and the keys pointing at it name that column.
+        var tableKeyName = NameNormalizer.ToFieldName(table.Name);
+
         var taken = new List<string>();
 
         for (var i = 0; i < table.Columns.Count; i++)
@@ -216,7 +220,7 @@ public static class DataModelBuilder
 
             // This entity's OWN key. Dropped because DomainModelMapper prepends `int Id` itself,
             // and a read string Id compiles and then makes JsonStore throw on the first Add.
-            if (IsOwnKey(fieldName, entityName))
+            if (IsOwnKey(fieldName, entityName) || IsOwnKey(fieldName, tableKeyName))
             {
                 outcomes.Add(new ColumnOutcome(
                     column.Name, null, column.Type, ColumnFate.DroppedGeneratedKey, facts));

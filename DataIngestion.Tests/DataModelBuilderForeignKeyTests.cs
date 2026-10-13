@@ -165,6 +165,34 @@ public class DataModelBuilderForeignKeyTests
     }
 
     /// <summary>
+    /// The plural table's OWN key spelled the same way: <c>Customers.CustomersId</c>. It was read
+    /// as an ordinary int field on Customer, so Customer was not renumbered and every
+    /// <c>Shipment.CustomerId</c> (101, 103) named no row and was cleared - the shipments lost
+    /// their customers.
+    /// </summary>
+    [Fact]
+    public void A_plural_table_keyed_by_its_own_name_is_renumbered_and_its_references_kept()
+    {
+        var customers = Table("Customers", "CustomersId");
+        customers.Columns.Add(new TabularColumn { Name = "Name" });
+        customers.Rows.Add(["101", "Acme"]);
+        customers.Rows.Add(["103", "Initech"]);
+
+        var shipments = Table("Shipment", "ShipmentId", "CustomersId");
+        shipments.ForeignKeys.Add(new TabularForeignKey("CustomersId", "Customers", "CustomersId"));
+        shipments.Rows.Add(["1", "103"]);
+        shipments.Rows.Add(["2", "101"]);
+
+        var model = DataModelBuilder.Build([customers, shipments]);
+        Assert.DoesNotContain(
+            model.Entities.Single(e => e.Name == "Customer").Fields, f => f.Name == "CustomersId");
+
+        var rows = TabularImport.ToImportedData([customers, shipments]).For("Shipment");
+        Assert.Equal("2", rows[0]["CustomerId"]);
+        Assert.Equal("1", rows[1]["CustomerId"]);
+    }
+
+    /// <summary>
     /// A declared key the class name cannot be read from (a bill-to customer) keeps its column
     /// name, but its values still follow the parent's renumbering: left as the source keys they
     /// would name whichever parent happens to sit at that position.
