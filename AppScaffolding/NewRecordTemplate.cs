@@ -26,8 +26,10 @@ public static class NewRecordTemplate
                 || property.Name is "CreatedOn" or "ModifiedOn")
                 continue;
 
+            // Unspecified, as every other date the stores write: a Local one went to JSON with an
+            // offset beside rows that have none.
             if ((DateTime)property.GetValue(item)! == default)
-                property.SetValue(item, DateTime.Today);
+                property.SetValue(item, DateTime.SpecifyKind(DateTime.Today, DateTimeKind.Unspecified));
         }
 """;
 

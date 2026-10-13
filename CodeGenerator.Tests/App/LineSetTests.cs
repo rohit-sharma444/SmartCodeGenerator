@@ -290,6 +290,10 @@ public class OrderLine
         var line = Items(set).Single();
 
         Assert.AreEqual(DateTime.Today, line.GetType().GetProperty("Due")!.GetValue(line));
+
+        // No Kind, as every other date the stores write: a Local one went to JSON as
+        // "2026-10-13T00:00:00+05:30" beside rows with no offset at all.
+        Assert.AreEqual(DateTimeKind.Unspecified, ((DateTime)line.GetType().GetProperty("Due")!.GetValue(line)!).Kind);
         Assert.IsNull(line.GetType().GetProperty("Shipped")!.GetValue(line));
         Assert.AreEqual(default(DateTime), line.GetType().GetProperty("CreatedOn")!.GetValue(line));
     }

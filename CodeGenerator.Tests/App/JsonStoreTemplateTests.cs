@@ -83,6 +83,7 @@ public class JsonStoreTemplateTests
 
         Assert.AreEqual(1, visitType.GetProperty("Id")!.GetValue(visit));
         Assert.AreEqual(DateTime.Today, visitType.GetProperty("On")!.GetValue(visit));
+        Assert.AreEqual(DateTimeKind.Unspecified, ((DateTime)visitType.GetProperty("On")!.GetValue(visit)!).Kind);
         Assert.IsNull(visitType.GetProperty("Left")!.GetValue(visit));
         Assert.AreEqual(default(DateTime), visitType.GetProperty("CreatedOn")!.GetValue(visit));
     }
