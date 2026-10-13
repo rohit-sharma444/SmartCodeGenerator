@@ -1694,3 +1694,10 @@ body:has(.finished) #components-reconnect-modal { display: none; }
     .workflow > h1 { font-size: 1.4rem; }
     .panel { padding: 1.25rem 1rem; }
 }
+
+/* The tagline's negative top margin takes back the grid gap above it. At 900px and below that gap
+   is 0, so the same margin pulled the tagline up over the heading - at 390px it covered the
+   bottom 18px of "Build an application". A small positive margin there instead. */
+@media (max-width: 900px) {
+    .workflow > .tagline { margin-top: 0.4rem; }
+}

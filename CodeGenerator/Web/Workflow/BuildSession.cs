@@ -184,6 +184,19 @@ public sealed class BuildSession
     /// matches the answers on screen.</summary>
     public GeneratedApp? Generated { get; private set; }
 
+    private readonly List<string> _written = [];
+
+    /// <summary>
+    /// Every project folder this run has written, in order, including any whose
+    /// <see cref="Generated"/> a changed answer has since dropped.
+    /// </summary>
+    /// <remarks>
+    /// Dropping <see cref="Generated"/> does not delete the folder. Changing the application type
+    /// after generating left a project on disk that nothing else remembered, so a cancel said
+    /// "nothing was generated" over it.
+    /// </remarks>
+    public IReadOnlyList<string> Written => _written;
+
     /// <summary>Why the node that failed, failed. Null whenever nothing has.</summary>
     public string? FailureMessage { get; private set; }
 
@@ -389,6 +402,10 @@ public sealed class BuildSession
         Generated = app;
         Started = false;
 
+        if (app.Scaffold.ProjectPath is { Length: > 0 } path
+            && !_written.Contains(path, StringComparer.OrdinalIgnoreCase))
+            _written.Add(path);
+
         Changed?.Invoke();
     }
 
@@ -592,6 +609,18 @@ public sealed class BuildSession
         if (Generated is not null)
             return $"The project at {Generated.Scaffold.ProjectPath} stays on disk, "
                 + "but the workflow ends here and the console reports it cancelled.";
+
+        // Written by this run, then dropped by a changed answer: the folder is still there.
+        if (Written.Count > 0)
+        {
+            var places = string.Join(" and ", Written);
+
+            return Written.Count == 1
+                ? $"The project this run wrote at {places} stays on disk, "
+                    + "but the workflow ends here and the console reports it cancelled."
+                : $"The projects this run wrote at {places} stay on disk, "
+                    + "but the workflow ends here and the console reports it cancelled.";
+        }
 
         if (Model is not null)
         {

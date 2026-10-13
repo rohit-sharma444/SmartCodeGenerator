@@ -106,6 +106,20 @@ public class BuildAppWebHostTests
         StringAssert.Contains(html, "id=\"components-reconnect-modal\"");
     }
 
+    // With no icon in the head, every browser asks for /favicon.ico, the host answers 404, and
+    // each page load put one error in the browser console.
+    [TestMethod]
+    public async Task Serves_the_page_with_an_icon_inline_so_no_favicon_request_fails()
+    {
+        using var host = Start(out _);
+        using var client = new HttpClient();
+
+        var html = await client.GetStringAsync(host.Url);
+
+        StringAssert.Matches(html, new System.Text.RegularExpressions.Regex(
+            "<link rel=\"icon\"[^>]*href=\"data:image/svg\\+xml,"));
+    }
+
     // The help page opens no circuit, so an interactive head outlet never hears its PageTitle and
     // the tab kept the fixed title. No bUnit test can see it: the component is rendered and handed
     // its title either way.
