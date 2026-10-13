@@ -52,4 +52,50 @@ public class JsonStoreTemplateTests
 
         StringAssert.Contains(source, "class JsonStore<T> : IStore<T> where T : new()");
     }
+
+    /// <summary>
+    /// The Add button of the older layouts asks the store for a new record: its dates start at
+    /// today, midnight, so the form never shows 01-Jan-0001.
+    /// </summary>
+    [TestMethod]
+    public void NewItem_starts_its_dates_at_today()
+    {
+        using var app = EmittedDataLayer.Compile(EmittedLogin.None, validation: true, ("Models/Visit.cs", """
+            using System;
+
+            namespace Acme.Models;
+
+            public sealed class Visit
+            {
+                public int Id { get; set; }
+                public DateTime On { get; set; }
+                public DateTime? Left { get; set; }
+                public DateTime CreatedOn { get; set; }
+            }
+            """));
+
+        var visitType = app.Assembly.GetType("Acme.Models.Visit")!;
+        var store = Activator.CreateInstance(
+            app.Assembly.GetType("Acme.Data.JsonStore`1")!.MakeGenericType(visitType))!;
+        var empty = Activator.CreateInstance(typeof(List<>).MakeGenericType(visitType))!;
+
+        var visit = store.GetType().GetMethod("NewItem")!.Invoke(store, [empty])!;
+
+        Assert.AreEqual(1, visitType.GetProperty("Id")!.GetValue(visit));
+        Assert.AreEqual(DateTime.Today, visitType.GetProperty("On")!.GetValue(visit));
+        Assert.AreEqual(DateTimeKind.Unspecified, ((DateTime)visitType.GetProperty("On")!.GetValue(visit)!).Kind);
+        Assert.IsNull(visitType.GetProperty("Left")!.GetValue(visit));
+        Assert.AreEqual(default(DateTime), visitType.GetProperty("CreatedOn")!.GetValue(visit));
+    }
+
+    /// <summary>No EF Core reference to run the SQLite store against; it shares the JSON store's
+    /// fragment, which the test above runs.</summary>
+    [TestMethod]
+    public void The_SQLite_store_starts_new_dates_at_today_the_same_way()
+    {
+        var source = EfStoreTemplate.Source("Acme");
+
+        StringAssert.Contains(source, NewRecordTemplate.StoreMember());
+        StringAssert.Contains(source, "StartDatesAtToday(item);");
+    }
 }

@@ -813,8 +813,11 @@ body {
 .stage-blurb { display: block; font-size: 0.82em; color: var(--pending); }
 
 /* Panel buttons: one loud action per panel at most, everything else quiet. Navigation is not
-   here any more — it is in the boxes. */
-.actions button {
+   here any more — it is in the boxes. The Data stage's connect button sits in the format block
+   rather than an actions row, and was left a browser-default grey box; it takes the same quiet
+   look by selector (bUnit finds it as button.connect, so it is never renamed). */
+.actions button,
+.file .connect {
     padding: 0.4rem 0.9rem;
     border: 1px solid var(--line);
     border-radius: 4px;
@@ -823,7 +826,11 @@ body {
     cursor: pointer;
 }
 
-.actions button:hover:not(:disabled) { border-color: var(--pending); }
+.actions button:hover:not(:disabled),
+.file .connect:hover { border-color: var(--pending); }
+
+/* Under the connection box it belongs to, not pressed against it. */
+.file .connect { margin: 0.2rem 0 0.4rem; color: var(--ink); }
 
 .actions .write,
 .actions .run,

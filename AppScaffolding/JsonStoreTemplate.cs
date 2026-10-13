@@ -119,8 +119,11 @@ public sealed class JsonStore<T> : IStore<T> where T : new()
     {
         var item = new T();
         IdProperty.SetValue(item, NextId(existing));
+        StartDatesAtToday(item);
         return item;
     }
+
+{{NewRecordTemplate.StoreMember()}}
 
     private static PropertyInfo IdProperty =>
         typeof(T).GetProperty("Id",

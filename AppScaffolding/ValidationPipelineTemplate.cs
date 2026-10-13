@@ -53,8 +53,14 @@ public static class ValidationPipeline
         new(System.StringComparer.OrdinalIgnoreCase) { "Id", "CreatedOn", "ModifiedOn", "CreatedBy", "ModifiedBy" };
 
     /// <summary>Whether nothing a user types has been filled in on <paramref name="item"/>:
-    /// every text blank, every number zero, every flag off, every date unset. Related records
-    /// and the stamped fields are not looked at.</summary>
+    /// every text blank, every number zero, every flag off, every date unset or today. Related
+    /// records and the stamped fields are not looked at.</summary>
+    /// <remarks>
+    /// Today counts as unset because it is what a new record's dates start at: New then Save
+    /// otherwise stored a row holding nothing but today's date. A user who picks today and fills
+    /// nothing else has still filled nothing in. This is the blank-record check only; every other
+    /// rule judges today as the real date it is.
+    /// </remarks>
     public static bool IsBlank(object item)
     {
         foreach (var property in item.GetType().GetProperties())
@@ -71,6 +77,14 @@ public static class ValidationPipeline
             var value = property.GetValue(item);
             if (value is null)
                 continue;
+
+            if (value is System.DateTime date)
+            {
+                if (date != default && date != System.DateTime.Today)
+                    return false;
+
+                continue;
+            }
 
             if (value is string text)
             {

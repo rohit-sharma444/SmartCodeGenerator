@@ -216,6 +216,11 @@ else
         _written = true;
         _phase = Phase.Done;
 
+        // Repeated, in the order a fresh write says them: the import notes describe the user's own
+        // data in this app, and coming back to the stage dropped them while the notes below came
+        // back.
+        _report.AddRange(ImportNotes());
+
         _report.Add($"Generated project at {app.Scaffold.ProjectPath}");
 
         if (app.Scaffold.TestProjectPath is not null)
@@ -253,6 +258,21 @@ else
             ? "It compiled."
             : "It did not compile. "
               + "A fix is offered only straight after a build, so it is not offered again on a reloaded page.");
+    }
+
+    /// <summary>What the import has to tell the user about their data, said on every write and again
+    /// whenever the stage is shown after one.</summary>
+    private IEnumerable<string> ImportNotes()
+    {
+        // Said out loud: a row cap the user is not told about reads as "all your data is in there".
+        foreach (var note in Session.ImportedData.Notes)
+            yield return note;
+
+        // A text column the class drops for the link beside it takes its imported values with
+        // it. Asked of the model as reviewed, so a column renamed on Review is not reported.
+        if (!Session.ImportedData.IsEmpty && Session.Model is { } reviewed)
+            foreach (var note in DataIngestion.DataModelBuilder.ReplacedTextNotes(reviewed))
+                yield return note;
     }
 
     /// <summary>A typed name goes through the typed-name rule, so what is written is always a
@@ -376,15 +396,7 @@ else
 
         _scaffold = scaffold;
 
-        // Said out loud: a row cap the user is not told about reads as "all your data is in there".
-        foreach (var note in Session.ImportedData.Notes)
-            _report.Add(note);
-
-        // A text column the class drops for the link beside it takes its imported values with
-        // it. Asked of the model as reviewed, so a column renamed on Review is not reported.
-        if (!Session.ImportedData.IsEmpty && Session.Model is { } reviewed)
-            foreach (var note in DataIngestion.DataModelBuilder.ReplacedTextNotes(reviewed))
-                _report.Add(note);
+        _report.AddRange(ImportNotes());
 
         if (!scaffold.Success)
         {

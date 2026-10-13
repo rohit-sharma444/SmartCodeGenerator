@@ -103,6 +103,56 @@ public sealed class StoreEntityLookup : IEntityLookup
         Assert.IsEmpty(messages, string.Join("\n", messages));
     }
 
+    /// <summary>
+    /// A new record's dates start at today, so a record whose only value is today's date is one
+    /// nobody filled in -- refused like a blank one, whether the date was left or picked.
+    /// </summary>
+    [TestMethod]
+    public void A_record_with_only_todays_date_is_refused()
+    {
+        var messages = Validate(Discovered(), "Book", book => Set(book, "PublishedOn", DateTime.Today), "Insert");
+
+        Assert.IsTrue(messages.Any(m => m.Contains("Fill in at least one field")), string.Join("\n", messages));
+    }
+
+    [TestMethod]
+    public void A_record_with_todays_date_and_one_other_value_is_accepted()
+    {
+        var messages = Validate(Discovered(), "Book", book =>
+        {
+            Set(book, "PublishedOn", DateTime.Today);
+            Set(book, "Pages", 12);
+        }, "Insert");
+
+        Assert.IsEmpty(messages, string.Join("\n", messages));
+    }
+
+    /// <summary>Only today counts as unfilled: any other date is a value.</summary>
+    [TestMethod]
+    public void A_record_with_only_another_date_is_accepted()
+    {
+        var messages = Validate(Discovered(), "Book", book => Set(book, "PublishedOn", new DateTime(1815, 12, 23)), "Insert");
+
+        Assert.IsEmpty(messages, string.Join("\n", messages));
+    }
+
+    /// <summary>The blank-record check only: a NOT NULL date at today is a real date to its own
+    /// required rule.</summary>
+    [TestMethod]
+    public void A_not_null_date_at_today_is_not_refused_as_required()
+    {
+        var model = Discovered();
+        model.Entities[0].Fields.Single(f => f.Name == "PublishedOn").Facts = new TypeFacts { IsNullable = false };
+
+        var messages = Validate(model, "Book", book =>
+        {
+            Set(book, "Title", "Emma");
+            Set(book, "PublishedOn", DateTime.Today);
+        }, "Insert");
+
+        Assert.IsEmpty(messages, string.Join("\n", messages));
+    }
+
     private static void Set(object item, string property, object value)
         => item.GetType().GetProperty(property)!.SetValue(item, value);
 

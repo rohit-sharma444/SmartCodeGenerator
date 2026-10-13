@@ -362,7 +362,7 @@ public class WinFormsBusinessLayoutTests
     /// The action bar's buttons stay on one row, in the order they are given.
     /// </summary>
     /// <remarks>
-    /// The bar's row is 40 pixels high. A wrapping, Dock-Fill flow in an AutoSize column was
+    /// The bar's row is 40 pixels high, more only for a status that wraps. A wrapping, Dock-Fill flow in an AutoSize column was
     /// given too little width, so a master's six buttons broke onto a second row the row then
     /// cut off -- Save and Delete were unreachable even with the window maximised. Left to right,
     /// so the bar reads New, Edit, Delete, Save, Clear, Cancel, as the WPF shell's does; the old
@@ -377,6 +377,43 @@ public class WinFormsBusinessLayoutTests
         StringAssert.Contains(bar, "AutoSize = true,");
         StringAssert.Contains(bar, "FlowDirection = FlowDirection.LeftToRight,");
         Assert.DoesNotContain("FlowDirection.RightToLeft", bar);
+    }
+
+    /// <summary>
+    /// A long status message is shown in full: the bar's row grows to the lines it wraps onto.
+    /// </summary>
+    /// <remarks>
+    /// The bar's row was a fixed 40 pixels. An orders app at its default width wrapped "Cannot
+    /// save: Fill in at least one field before saving this Order." onto two lines and cut the
+    /// second off at the bottom of the window -- the one message that says a save did NOT happen.
+    /// An AutoSize label and AutoSize rows were tried first: the running app showed the label's
+    /// one-line width becoming the bar's, which widened the screen past the window and pushed
+    /// Cancel off its edge. So the label keeps its column's width, and the row's height is
+    /// measured from the text at that width.
+    /// </remarks>
+    [TestMethod]
+    public void A_long_status_message_is_not_cut_off()
+    {
+        var source = Source();
+        var bar = Body(source, "private Control BuildEntryActionBar(", "private Control BuildEditor(");
+
+        // Never AutoSize: that is what let a long message widen the whole screen.
+        StringAssert.Contains(bar, "var status = new Label { Dock = DockStyle.Fill, Name = \"Status\", TextAlign = ContentAlignment.MiddleLeft };");
+        Assert.DoesNotContain("AutoSize = true, AutoSizeMode", bar);
+        StringAssert.Contains(bar, "status.TextChanged += (_, _) => FitStatusRow(bar, status);");
+        StringAssert.Contains(bar, "status.SizeChanged += (_, _) => FitStatusRow(bar, status);");
+
+        var fit = Body(source, "private static void FitStatusRow(Control bar, Label status)", "private static void ShowStatus(");
+        StringAssert.Contains(fit, "TextRenderer.MeasureText(");
+        StringAssert.Contains(fit, "TextFormatFlags.WordBreak");
+        StringAssert.Contains(fit, "Math.Max(ActionBarHeight,");
+        StringAssert.Contains(fit, "style.Height = wanted;");
+
+        // Absolute rows of at least the old 40 pixels, so the tab strip's floor still reads them.
+        StringAssert.Contains(source, "private const float ActionBarHeight = 40f;");
+
+        foreach (var body in new[] { EntryBody(), EditorBody() })
+            StringAssert.Contains(body, "layout.RowStyles.Add(new RowStyle(SizeType.Absolute, ActionBarHeight));");
     }
 
     /// <summary>A GroupBox caption cannot take the accent colour, so the panel is a bordered Panel

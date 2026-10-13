@@ -321,6 +321,39 @@ internal sealed class NullValidator<T> : IValidator<T>
     }
 
     /// <summary>
+    /// A new record's dates start at today, so the form never shows 01-Jan-0001.
+    /// </summary>
+    /// <remarks>
+    /// Midnight, because a SQL date column's rule refuses a time of day. A nullable date stays
+    /// empty, the stamped CreatedOn is left for the store, and the defaulted record is not dirty.
+    /// </remarks>
+    [TestMethod]
+    public void A_new_record_starts_its_dates_at_today()
+    {
+        var assembly = Emit("""
+            using System;
+
+            public class Visit
+            {
+                public int Id { get; set; }
+                public DateTime On { get; set; }
+                public DateTime? Left { get; set; }
+                public DateTime CreatedOn { get; set; }
+            }
+            """);
+
+        var visitType = assembly.GetType("Visit")!;
+        var editorType = assembly.GetType("RecordEditorViewModel`1")!.MakeGenericType(visitType);
+        var editor = Activator.CreateInstance(editorType, [null, true, null])!;
+        var draft = Draft(editor);
+
+        Assert.AreEqual(DateTime.Today, visitType.GetProperty("On")!.GetValue(draft));
+        Assert.IsNull(visitType.GetProperty("Left")!.GetValue(draft));
+        Assert.AreEqual(default(DateTime), visitType.GetProperty("CreatedOn")!.GetValue(draft));
+        Assert.IsFalse((bool)editorType.GetProperty("IsDirty")!.GetValue(editor)!);
+    }
+
+    /// <summary>
     /// The dirty check has to be reachable without knowing T.
     /// </summary>
     /// <remarks>
