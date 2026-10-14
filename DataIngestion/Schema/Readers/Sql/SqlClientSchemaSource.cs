@@ -51,12 +51,28 @@ public sealed class SqlClientSchemaSource : ISqlSchemaSource
     public IReadOnlyList<SqlColumnInfo> Columns(
         string connectionString, string schema, string table)
     {
+        // IS_PK marks the column of a single-column primary key. A composite key marks nothing:
+        // the model numbers its rows by one Id, and half a key is not one.
         const string sql = """
-            SELECT  COLUMN_NAME, DATA_TYPE, IS_NULLABLE,
-                    CHARACTER_MAXIMUM_LENGTH, NUMERIC_PRECISION, NUMERIC_SCALE
-            FROM    INFORMATION_SCHEMA.COLUMNS
-            WHERE   TABLE_SCHEMA = @schema AND TABLE_NAME = @table
-            ORDER BY ORDINAL_POSITION;
+            SELECT  c.COLUMN_NAME, c.DATA_TYPE, c.IS_NULLABLE,
+                    c.CHARACTER_MAXIMUM_LENGTH, c.NUMERIC_PRECISION, c.NUMERIC_SCALE,
+                    CASE WHEN pk.COLUMN_NAME IS NULL THEN 0 ELSE 1 END AS IS_PK
+            FROM    INFORMATION_SCHEMA.COLUMNS c
+            LEFT JOIN (
+                        SELECT   k.TABLE_SCHEMA, k.TABLE_NAME, MIN(k.COLUMN_NAME) AS COLUMN_NAME
+                        FROM     INFORMATION_SCHEMA.TABLE_CONSTRAINTS t
+                        JOIN     INFORMATION_SCHEMA.KEY_COLUMN_USAGE k
+                                   ON k.CONSTRAINT_SCHEMA = t.CONSTRAINT_SCHEMA
+                                  AND k.CONSTRAINT_NAME = t.CONSTRAINT_NAME
+                        WHERE    t.CONSTRAINT_TYPE = 'PRIMARY KEY'
+                        GROUP BY k.TABLE_SCHEMA, k.TABLE_NAME
+                        HAVING   COUNT(*) = 1
+                      ) pk
+                      ON pk.TABLE_SCHEMA = c.TABLE_SCHEMA
+                     AND pk.TABLE_NAME = c.TABLE_NAME
+                     AND pk.COLUMN_NAME = c.COLUMN_NAME
+            WHERE   c.TABLE_SCHEMA = @schema AND c.TABLE_NAME = @table
+            ORDER BY c.ORDINAL_POSITION;
             """;
 
         var columns = new List<SqlColumnInfo>();
@@ -70,7 +86,8 @@ public sealed class SqlClientSchemaSource : ISqlSchemaSource
                     (string)row["IS_NULLABLE"], "YES", StringComparison.OrdinalIgnoreCase),
                 AsInt(row["CHARACTER_MAXIMUM_LENGTH"]),
                 AsInt(row["NUMERIC_PRECISION"]),
-                AsInt(row["NUMERIC_SCALE"])));
+                AsInt(row["NUMERIC_SCALE"]),
+                Convert.ToInt32(row["IS_PK"], CultureInfo.InvariantCulture) == 1));
         }
 
         return columns;
@@ -89,16 +106,28 @@ public sealed class SqlClientSchemaSource : ISqlSchemaSource
         // Single-column keys only. A composite key produces one row per column, and the model has
         // no way to express the pair — half of it would be a relationship that is wrong rather
         // than incomplete. The HAVING COUNT(*) = 1 is what excludes them.
+        //
+        // The declaring table and both schemas come back too: without them a key is matched to
+        // every table that has a column of the same name.
         const string sql = """
-            SELECT  parent.name    AS [ColumnName],
-                    target.name    AS [TargetTable],
-                    targetCol.name AS [TargetColumn]
+            SELECT  parentSchema.name AS [ParentSchema],
+                    parentTable.name  AS [ParentTable],
+                    parent.name       AS [ColumnName],
+                    targetSchema.name AS [TargetSchema],
+                    target.name       AS [TargetTable],
+                    targetCol.name    AS [TargetColumn]
             FROM    sys.foreign_key_columns fkc
             JOIN    sys.columns parent
                       ON parent.object_id = fkc.parent_object_id
                      AND parent.column_id = fkc.parent_column_id
+            JOIN    sys.tables parentTable
+                      ON parentTable.object_id = fkc.parent_object_id
+            JOIN    sys.schemas parentSchema
+                      ON parentSchema.schema_id = parentTable.schema_id
             JOIN    sys.tables target
                       ON target.object_id = fkc.referenced_object_id
+            JOIN    sys.schemas targetSchema
+                      ON targetSchema.schema_id = target.schema_id
             JOIN    sys.columns targetCol
                       ON targetCol.object_id = fkc.referenced_object_id
                      AND targetCol.column_id = fkc.referenced_column_id
@@ -116,7 +145,10 @@ public sealed class SqlClientSchemaSource : ISqlSchemaSource
             keys.Add(new TabularForeignKey(
                 (string)row["ColumnName"],
                 (string)row["TargetTable"],
-                (string)row["TargetColumn"]));
+                (string)row["TargetColumn"],
+                (string)row["ParentTable"],
+                (string)row["ParentSchema"],
+                (string)row["TargetSchema"]));
         }
 
         return keys;

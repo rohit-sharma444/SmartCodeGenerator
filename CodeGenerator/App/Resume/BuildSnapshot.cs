@@ -217,6 +217,10 @@ internal sealed class BuildSnapshot
     {
         public string? Target { get; set; }
         public string? Role { get; set; }
+
+        /// <summary>The field holding the link, when it was read from data. Absent before it
+        /// existed, which resumes as a link held in &lt;Target&gt;Id.</summary>
+        public string? ForeignKey { get; set; }
     }
 
     internal sealed class Decision
@@ -375,7 +379,7 @@ internal sealed class BuildSnapshot
         })],
         Relationships = [.. entity.Relationships.Select(r => new Relationship
         {
-            Target = r.Target, Role = r.Role
+            Target = r.Target, Role = r.Role, ForeignKey = r.ForeignKey
         })],
         Proposals = entity.Proposals.Count > 0 ? [.. entity.Proposals.Select(ToDto)] : null,
     };
@@ -495,7 +499,8 @@ internal sealed class BuildSnapshot
 
             entity.Relationships.Add(new CandidateRelationship
             {
-                Target = relationship.Target, Role = relationship.Role
+                Target = relationship.Target, Role = relationship.Role,
+                ForeignKey = relationship.ForeignKey
             });
         }
 

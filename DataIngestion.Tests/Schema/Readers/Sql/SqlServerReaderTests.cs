@@ -84,6 +84,39 @@ public class SqlServerReaderTests
     }
 
     /// <summary>
+    /// A key belongs to the table that declares it, not to every table with a column of the same
+    /// name: Customers has its own CustomerID, and was handed the Orders key as a relationship to
+    /// itself. Two tables keyed to different targets by the same column name were each given both.
+    /// </summary>
+    [Fact]
+    public void A_foreign_key_is_carried_only_by_the_table_that_declares_it()
+    {
+        var source = Northwind();
+        source.TableList.Add(new SqlTableInfo("dbo", "Regions", 2, 1));
+        source.TableList.Add(new SqlTableInfo("sales", "Regions", 2, 1));
+        source.TableList.Add(new SqlTableInfo("dbo", "Stores", 2, 1));
+        source.ColumnsByTable["Regions"] = [new SqlColumnInfo("RegionID", "int", false)];
+        source.ColumnsByTable["Stores"] = [new SqlColumnInfo("RegionID", "int", false)];
+        source.ColumnsByTable["Orders"] =
+        [
+            new SqlColumnInfo("OrderID", "int", false),
+            new SqlColumnInfo("CustomerID", "int", false),
+            new SqlColumnInfo("RegionID", "int", false),
+        ];
+        source.Keys.Add(new TabularForeignKey("CustomerID", "Customers", "CustomerID", "Orders", "dbo", "dbo"));
+        source.Keys.Add(new TabularForeignKey("RegionID", "Regions", "RegionID", "Orders", "dbo", "sales"));
+
+        var tables = new SqlServerReader(source).Read(Spec("Customers", "Orders", "dbo.Regions", "Stores"));
+
+        Assert.Empty(tables.Single(t => t.Name == "Customers").ForeignKeys);
+        Assert.Empty(tables.Single(t => t.Name == "Stores").ForeignKeys);
+
+        // Its target is sales.Regions, which was not picked; dbo.Regions is another table.
+        var orders = tables.Single(t => t.Name == "Orders");
+        Assert.Equal(["CustomerID"], orders.ForeignKeys.Select(k => k.Column));
+    }
+
+    /// <summary>
     /// A key pointing at a table the user did not tick would become a navigation property typed
     /// as a class that is never generated, which does not compile.
     /// </summary>

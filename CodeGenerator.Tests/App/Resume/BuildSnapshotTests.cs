@@ -58,6 +58,25 @@ public class BuildSnapshotTests
         Assert.IsNotEmpty(restored.Decisions);
     }
 
+    /// <summary>
+    /// A relationship read from data names the field holding it (a payment's PaidById). Lost on
+    /// resume, the two links to Staff would collapse back into one navigation.
+    /// </summary>
+    [TestMethod]
+    public void Carries_the_field_each_relationship_is_held_in()
+    {
+        var session = SessionWithModel();
+        var book = session.Model!.Entities.Single();
+        book.Relationships.Add(new CandidateRelationship
+        {
+            Target = "Shelf", Role = "references", ForeignKey = "LentFromId"
+        });
+
+        var restored = BuildSnapshot.Of(session).ToModel()!;
+
+        Assert.AreEqual("LentFromId", restored.Entities.Single().Relationships.Single().ForeignKey);
+    }
+
     [TestMethod]
     public void Carries_the_customization_including_the_screen_split()
     {

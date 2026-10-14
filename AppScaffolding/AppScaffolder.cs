@@ -522,16 +522,16 @@ public sealed class AppScaffolder
         foreach (var name in entityNames)
             files.Add((dataFolder, $"{name}Repository.cs", RepositoryTemplate.Typed(rootNamespace, name)));
 
-        // The regenerated half of each model's validator. Foreign-key targets come from
-        // ForeignKeys.TargetsOf, so a lookup check is only ever emitted for a <Target>Id the
-        // class actually declares.
+        // The regenerated half of each model's validator. Foreign keys come from
+        // ForeignKeys.LinksOf, so a lookup check is only ever emitted for a key the class
+        // actually declares beside its navigation.
         var classNameSet = ForeignKeys.ClassNameSet(classes);
         if (validation)
         {
             foreach (var definition in classes)
                 files.Add((validationFolder, $"{definition.Name}Validator.Generated.cs",
-                    ValidatorTemplate.Generated(
-                        rootNamespace, definition, ForeignKeys.TargetsOf(definition, classNameSet),
+                    ValidatorTemplate.GeneratedForLinks(
+                        rootNamespace, definition, ForeignKeys.LinksOf(definition, classNameSet),
                         referencesRequired: roles.RoleOf(definition.Name)
                             is EntityRole.Transaction or EntityRole.DocumentLine,
                         referencedBy: ForeignKeys.ReferencesTo(definition.Name, classes),

@@ -11,7 +11,8 @@ public sealed record SqlTableInfo(string Schema, string Name, int Columns, long?
 /// <summary>
 /// One column as INFORMATION_SCHEMA describes it. The trailing three are optional so every
 /// existing construction and every test fake keeps compiling; a source that cannot supply them
-/// leaves them null, which reads as "not known".
+/// leaves them null, which reads as "not known". <paramref name="IsPrimaryKey"/> is true for the
+/// one column of a single-column primary key, and false for every column of a composite one.
 /// </summary>
 public sealed record SqlColumnInfo(
     string Name,
@@ -19,7 +20,8 @@ public sealed record SqlColumnInfo(
     bool Nullable,
     int? MaxLength = null,
     int? Precision = null,
-    int? Scale = null);
+    int? Scale = null,
+    bool IsPrimaryKey = false);
 
 /// <summary>
 /// The whole of this feature's contact with ADO.NET.
