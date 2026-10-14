@@ -33,6 +33,17 @@ public static class ClassDeletionService
         if (files.Count == 0)
             return (false, $"Class '{className}' not found.");
 
+        // The file is moved whole, so whatever else it declares would go with the class: deleting
+        // Customer also deleted the CustomerStatus enum and the Money record struct beside it, and
+        // said only that Customer was deleted. Refused, with nothing moved, rather than guessed at.
+        foreach (var file in files)
+        {
+            var others = OtherTypesIn(file);
+            if (others.Count > 0)
+                return (false, $"{Path.GetFileName(file)} also declares {string.Join(", ", others)}, so '{className}' was not deleted: "
+                    + "deleting it would delete them too. Move them to files of their own, then delete the class again.");
+        }
+
         var errors = new List<string>();
         var notes = new List<string>();
         var deletedNames = new List<string>();
@@ -123,6 +134,32 @@ public static class ClassDeletionService
             path = Path.Combine(deletedFolder, $"{stem}_{now:yyyyMMddHHmmssfff}_{n}.cs{KeptExtension}");
         return path;
     }
+
+    /// <summary>The top-level types <paramref name="file"/> declares besides the one its name says,
+    /// with their kind: "enum CustomerStatus". Types nested in the class are part of it.</summary>
+    private static List<string> OtherTypesIn(string file)
+    {
+        var stem = Path.GetFileNameWithoutExtension(file);
+
+        return
+        [
+            .. CSharpSyntaxTree.ParseText(File.ReadAllText(file)).GetRoot()
+                .DescendantNodes(n => n is not BaseTypeDeclarationSyntax)
+                .OfType<BaseTypeDeclarationSyntax>()
+                .Where(t => !t.Identifier.Text.Equals(stem, StringComparison.OrdinalIgnoreCase))
+                .Select(t => $"{KindOf(t)} {t.Identifier.Text}")
+                .Distinct(StringComparer.Ordinal),
+        ];
+    }
+
+    private static string KindOf(BaseTypeDeclarationSyntax type) => type switch
+    {
+        EnumDeclarationSyntax => "enum",
+        InterfaceDeclarationSyntax => "interface",
+        StructDeclarationSyntax => "struct",
+        RecordDeclarationSyntax r => r.ClassOrStructKeyword.IsKind(SyntaxKind.StructKeyword) ? "record struct" : "record",
+        _ => "class",
+    };
 
     private static string? DeclaredName(string file)
     {
