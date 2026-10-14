@@ -94,7 +94,7 @@ public sealed class SqlServerReader(ISqlSchemaSource source, int maxRowsPerTable
                 table.SourceRowCount = info.Rows > maxRowsPerTable ? info.Rows : null;
             }
 
-            foreach (var key in Carried(keys, table, wanted))
+            foreach (var key in Carried(keys, info, table, wanted))
                 table.ForeignKeys.Add(key);
 
             read.Add(table);
@@ -112,17 +112,29 @@ public sealed class SqlServerReader(ISqlSchemaSource source, int maxRowsPerTable
     /// target has to be a table being read, or the relationship becomes a navigation property
     /// typed as a class that is never generated, which does not compile. <c>DataModelBuilder</c>
     /// drops those too; dropping them here as well keeps the table honest about what it carries.
+    /// <para>
+    /// A key that says which table declares it, and which schema its target is in, is matched on
+    /// those as well. By column name alone, Customers was handed the Orders key on CustomerID as a
+    /// relationship to itself, and every table with a RegionID was given every key on one.
+    /// </para>
     /// </remarks>
     private static IEnumerable<TabularForeignKey> Carried(
         IReadOnlyList<TabularForeignKey> keys,
+        SqlTableInfo info,
         TabularTable table,
         List<SqlTableInfo> wanted)
         => keys.Where(key =>
             key.Column.Length > 0
+            && (key.Table is null || Same(key.Table, key.Schema, info))
             && table.Columns.Any(
                 c => string.Equals(c.Name, key.Column, StringComparison.OrdinalIgnoreCase))
-            && wanted.Any(
-                t => string.Equals(t.Name, key.TargetTable, StringComparison.OrdinalIgnoreCase)));
+            && wanted.Any(t => Same(key.TargetTable, key.TargetSchema, t)));
+
+    /// <summary>Whether <paramref name="name"/> in <paramref name="schema"/> (any schema, when
+    /// null) is the table <paramref name="info"/> describes.</summary>
+    private static bool Same(string name, string? schema, SqlTableInfo info)
+        => string.Equals(info.Name, name, StringComparison.OrdinalIgnoreCase)
+           && (schema is null || string.Equals(info.Schema, schema, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// The tables to read: the ones named, or all of them when none were.

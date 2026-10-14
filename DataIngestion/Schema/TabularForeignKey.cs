@@ -12,5 +12,17 @@ namespace DataIngestion.Schema;
 /// table is already the shared currency between every reader and the model builder, and a parallel
 /// path would be one more thing every later reader has to choose between.
 /// </para>
+/// <para>
+/// <paramref name="Table"/>, <paramref name="Schema"/> and <paramref name="TargetSchema"/> say
+/// which table declares the key and which schema its target is in. A database's list of keys
+/// covers every table, and matched by column name alone a key would be handed to every table that
+/// happens to have a column of that name. Null when the source cannot say, which matches by name.
+/// </para>
 /// </remarks>
-public sealed record TabularForeignKey(string Column, string TargetTable, string TargetColumn);
+public sealed record TabularForeignKey(
+    string Column,
+    string TargetTable,
+    string TargetColumn,
+    string? Table = null,
+    string? Schema = null,
+    string? TargetSchema = null);

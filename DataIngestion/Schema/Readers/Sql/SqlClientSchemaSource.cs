@@ -89,16 +89,28 @@ public sealed class SqlClientSchemaSource : ISqlSchemaSource
         // Single-column keys only. A composite key produces one row per column, and the model has
         // no way to express the pair — half of it would be a relationship that is wrong rather
         // than incomplete. The HAVING COUNT(*) = 1 is what excludes them.
+        //
+        // The declaring table and both schemas come back too: without them a key is matched to
+        // every table that has a column of the same name.
         const string sql = """
-            SELECT  parent.name    AS [ColumnName],
-                    target.name    AS [TargetTable],
-                    targetCol.name AS [TargetColumn]
+            SELECT  parentSchema.name AS [ParentSchema],
+                    parentTable.name  AS [ParentTable],
+                    parent.name       AS [ColumnName],
+                    targetSchema.name AS [TargetSchema],
+                    target.name       AS [TargetTable],
+                    targetCol.name    AS [TargetColumn]
             FROM    sys.foreign_key_columns fkc
             JOIN    sys.columns parent
                       ON parent.object_id = fkc.parent_object_id
                      AND parent.column_id = fkc.parent_column_id
+            JOIN    sys.tables parentTable
+                      ON parentTable.object_id = fkc.parent_object_id
+            JOIN    sys.schemas parentSchema
+                      ON parentSchema.schema_id = parentTable.schema_id
             JOIN    sys.tables target
                       ON target.object_id = fkc.referenced_object_id
+            JOIN    sys.schemas targetSchema
+                      ON targetSchema.schema_id = target.schema_id
             JOIN    sys.columns targetCol
                       ON targetCol.object_id = fkc.referenced_object_id
                      AND targetCol.column_id = fkc.referenced_column_id
@@ -116,7 +128,10 @@ public sealed class SqlClientSchemaSource : ISqlSchemaSource
             keys.Add(new TabularForeignKey(
                 (string)row["ColumnName"],
                 (string)row["TargetTable"],
-                (string)row["TargetColumn"]));
+                (string)row["TargetColumn"],
+                (string)row["ParentTable"],
+                (string)row["ParentSchema"],
+                (string)row["TargetSchema"]));
         }
 
         return keys;
