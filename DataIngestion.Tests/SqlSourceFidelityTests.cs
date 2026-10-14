@@ -278,6 +278,27 @@ public class SqlSourceFidelityTests
             m => m.Contains("Amount must be"));
     }
 
+    // --- S3: datetimeoffset ---
+
+    [Fact]
+    public void A_datetimeoffset_keeps_the_time_the_source_shows_and_says_its_offset_is_dropped()
+    {
+        Assert.Equal("0001-01-01T12:00:00.0000000",
+            SqlValueText.Render(new DateTimeOffset(1, 1, 1, 12, 0, 0, TimeSpan.FromHours(-12))));
+
+        var value = SqlValueText.Render(new DateTimeOffset(2024, 3, 1, 23, 30, 0, TimeSpan.FromHours(-12)));
+        var app = Generate(Database(add => add("Shift",
+            [new("ShiftId", "int", false, IsPrimaryKey: true), new("StartsAt", "datetimeoffset", false)],
+            [["1", value]])));
+
+        var assembly = Compile(app);
+        var row = SeedRows(assembly, app, "Shift")[0];
+
+        // Whatever zone this machine is in: the seed names none, so nothing converts it.
+        Assert.Equal(new DateTime(2024, 3, 1, 23, 30, 0), (DateTime)row.GetType().GetProperty("StartsAt")!.GetValue(row)!);
+        Assert.Contains(app.Data.Notes, n => n.Contains("StartsAt") && n.Contains("offset is dropped"));
+    }
+
     // --- S2: a column the schema declares NULL may be empty ---
 
     [Fact]

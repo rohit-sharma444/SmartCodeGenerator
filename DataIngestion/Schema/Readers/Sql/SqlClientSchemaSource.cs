@@ -178,37 +178,13 @@ public sealed class SqlClientSchemaSource : ISqlSchemaSource
             var row = new string?[reader.FieldCount];
 
             for (var i = 0; i < reader.FieldCount; i++)
-                row[i] = reader.IsDBNull(i) ? null : Render(reader.GetValue(i));
+                row[i] = reader.IsDBNull(i) ? null : SqlValueText.Render(reader.GetValue(i));
 
             rows.Add(row);
         }
 
         return rows;
     }
-
-    /// <summary>
-    /// A value as the string <see cref="TabularTable.Rows"/> holds.
-    /// </summary>
-    /// <remarks>
-    /// Invariant throughout, and round-trip formats for the types where a locale would otherwise
-    /// change the meaning. This is the opposite direction of travel from the file readers: the
-    /// type is known and the string is derived from it, rather than the string being read and the
-    /// type guessed.
-    /// </remarks>
-    private static string Render(object value) => value switch
-    {
-        DateTime date => date.ToString("O", CultureInfo.InvariantCulture),
-        DateTimeOffset offset => offset.ToString("O", CultureInfo.InvariantCulture),
-
-        // Words rather than 0/1, matching what ExcelSheetReader emits for the same reason:
-        // ColumnTypeInference recognises true/false, and a bool that reads back as an int is a
-        // column that silently changes type.
-        bool flag => flag ? "true" : "false",
-
-        byte[] bytes => Convert.ToBase64String(bytes),
-        IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture),
-        _ => value.ToString() ?? string.Empty
-    };
 
     /// <summary>Doubles a closing bracket, so a bracket inside an identifier cannot end it.</summary>
     private static string Escape(string name) => name.Replace("]", "]]");

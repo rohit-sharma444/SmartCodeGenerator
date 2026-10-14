@@ -102,6 +102,9 @@ public static class SqlTypeMap
             "time" =>
                 $"{columnName} is time and becomes string (hh:mm:ss) — every value kept, but no "
                 + "longer a TimeSpan.",
+            "datetimeoffset" =>
+                $"{columnName} is datetimeoffset and becomes DateTime — each value keeps the date "
+                + "and time the database shows, but its UTC offset is dropped.",
             _ => null
         };
 }
