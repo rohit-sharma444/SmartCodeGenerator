@@ -18,7 +18,9 @@ public static class SeedDataTemplate
     {
         var names = ForeignKeys.ClassNameSet(classes);
         var parents = classes.ToDictionary(
-            c => c.Name, c => ForeignKeys.TargetsOf(c, names), StringComparer.OrdinalIgnoreCase);
+            c => c.Name,
+            c => (IReadOnlyList<string>)[.. ForeignKeys.LinksOf(c, names).Select(l => l.Target)],
+            StringComparer.OrdinalIgnoreCase);
 
         var ordered = new List<string>();
         var placed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -257,10 +259,11 @@ public static class SeedData
         var type = Nullable.GetUnderlyingType(prop.PropertyType) ?? prop.PropertyType;
         var name = prop.Name;
 
-        // Foreign key: an int named <Target>Id -> an existing seeded <Target> row's Id.
+        // Foreign key: an int named <Nav>Id -> an existing seeded row of the type <Nav> is.
         if (type == typeof(int) && ForeignKeyFields.Contains(name))
         {
-            var target = name.Substring(0, name.Length - 2);
+            var navName = name.Substring(0, name.Length - 2);
+            var target = prop.DeclaringType?.GetProperty(navName)?.PropertyType.Name ?? navName;
             if (seededIds.TryGetValue(target, out var parentIds) && parentIds.Count > 0)
                 return parentIds[(n - 1) % parentIds.Count];
             return 0;

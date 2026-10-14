@@ -284,6 +284,26 @@ internal sealed class NullValidator<T> : IValidator<T>
         IReadOnlyList<(string Entity, string Property)>? referencedBy = null,
         IReadOnlyList<IValidationRule>? businessRules = null,
         IReadOnlyList<IValidationRule>? workflowRules = null)
+        => GeneratedForLinks(
+            rootNamespace, definition,
+            [.. foreignKeyTargets.Select(t => new ForeignKeys.Link(t + "Id", t, t))],
+            referencesRequired, referencedBy, businessRules, workflowRules);
+
+    /// <inheritdoc cref="Generated(string, ClassDefinition, IReadOnlyList{string}, bool, IReadOnlyList{ValueTuple{string, string}}?, IReadOnlyList{IValidationRule}?, IReadOnlyList{IValidationRule}?)"/>
+    /// <param name="foreignKeys">
+    /// Every key the class holds (<see cref="ForeignKeys.LinksOf"/>), a role's as well as one
+    /// spelled for its target: a payment's <c>ApprovedById</c> must name a real member of staff
+    /// as surely as its <c>CustomerId</c> names a real customer.
+    /// </param>
+    /// <param name="referencesRequired">
+    /// Whether every key must be set - true for a transaction or a document line.
+    /// </param>
+    public static string GeneratedForLinks(
+        string rootNamespace, ClassDefinition definition, IReadOnlyList<ForeignKeys.Link> foreignKeys,
+        bool referencesRequired,
+        IReadOnlyList<(string Entity, string Property)>? referencedBy = null,
+        IReadOnlyList<IValidationRule>? businessRules = null,
+        IReadOnlyList<IValidationRule>? workflowRules = null)
     {
         referencedBy ??= Array.Empty<(string Entity, string Property)>();
         businessRules ??= Array.Empty<IValidationRule>();
@@ -339,21 +359,22 @@ internal sealed class NullValidator<T> : IValidator<T>
             entityBlocks.Add(Block(uniqueChecks));
         }
 
-        foreach (var target in foreignKeyTargets)
+        foreach (var link in foreignKeys)
         {
+            var (key, navigation, target) = (link.Property, link.Navigation, link.Target);
             var checks = new List<string>();
 
             if (referencesRequired)
             {
-                checks.Add($"if (item.{target}Id == 0)");
-                checks.Add($"    errors.Add(new ValidationError(\"{target}Id\", \"{target} is required.\"));");
-                checks.Add($"else if (!context.Lookup.Exists<{target}>(item.{target}Id))");
-                checks.Add($"    errors.Add(new ValidationError(\"{target}Id\", \"{target}Id does not refer to a known {target}.\"));");
+                checks.Add($"if (item.{key} == 0)");
+                checks.Add($"    errors.Add(new ValidationError(\"{key}\", \"{navigation} is required.\"));");
+                checks.Add($"else if (!context.Lookup.Exists<{target}>(item.{key}))");
+                checks.Add($"    errors.Add(new ValidationError(\"{key}\", \"{key} does not refer to a known {target}.\"));");
             }
             else
             {
-                checks.Add($"if (item.{target}Id != 0 && !context.Lookup.Exists<{target}>(item.{target}Id))");
-                checks.Add($"    errors.Add(new ValidationError(\"{target}Id\", \"{target}Id does not refer to a known {target}.\"));");
+                checks.Add($"if (item.{key} != 0 && !context.Lookup.Exists<{target}>(item.{key}))");
+                checks.Add($"    errors.Add(new ValidationError(\"{key}\", \"{key} does not refer to a known {target}.\"));");
             }
 
             entityBlocks.Add(Block(checks));

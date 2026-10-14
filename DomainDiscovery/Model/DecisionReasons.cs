@@ -56,6 +56,12 @@ public static class DecisionReasons
     public const string ColumnWouldHideAnInheritedMember =
         "a column may not share a member every class already has";
     public const string ColumnNameIsNotAValidIdentifier = "its column name is not a usable name";
+    public const string KeyKeptAsAField =
+        "the table's own key holds values the app cannot number for itself, so they are kept in a field";
+    public const string ColumnRenamedForItsLink =
+        "it holds a link to another table, and is named the way the app recognises one";
+    public const string ValuesBecameLinks =
+        "its values name rows of another table, so each became a link to the row it names";
 
     // --- Normalization ---
     public const string ExtractedFromARepeatingGroup = "extracted from a repeating group";

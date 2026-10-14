@@ -30,4 +30,15 @@ public sealed class TabularColumn
     /// the source key it holds to the seeded Id of the row carrying it, and must leave these alone.
     /// </summary>
     public bool HoldsRowNumbers { get; init; }
+
+    /// <summary>
+    /// Whether the source DECLARED this column its table's primary key, on its own. Only SQL Server
+    /// declares one; every file reader leaves this false, and the key is then found by its name.
+    /// </summary>
+    /// <remarks>
+    /// Needed because a key is not always called <c>Id</c> or <c>&lt;Table&gt;Id</c>: a ticket
+    /// keyed by its <c>TicketNo</c> has its rows renumbered 1..N like any other, and the
+    /// references to it must follow, which only the declaration says.
+    /// </remarks>
+    public bool IsKey { get; init; }
 }

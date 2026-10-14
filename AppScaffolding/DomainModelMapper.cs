@@ -258,12 +258,55 @@ public static class DomainModelMapper
                     || !byName.TryGetValue(targetName, out var target))
                     continue;
 
+                if (RoleKey(relationship, owner) is { } roleKey)
+                {
+                    AddRoleNavigation(owner, roleKey, targetName);
+                    continue;
+                }
+
                 DropTextShadowingTheRelationship(owner, targetName);
 
                 AddNavigation(owner, RelationshipConvention.Forward(targetName));
                 AddNavigation(target, RelationshipConvention.InverseCollection(ownerName));
             }
         }
+    }
+
+    /// <summary>
+    /// The key property a relationship read from the user's data is held in, when it is named for
+    /// a role rather than for its target (<c>PaidById</c>, <c>ManagerId</c>); null for a key
+    /// spelled <c>&lt;Target&gt;Id</c>, for one discovery inferred, and for one the class no longer
+    /// has (removed on Review).
+    /// </summary>
+    private static PropertyDefinition? RoleKey(CandidateRelationship relationship, ClassDefinition owner)
+    {
+        if (relationship.ForeignKey is not { Length: > 2 } key
+            || !key.EndsWith("Id", StringComparison.Ordinal)
+            || string.Equals(key, relationship.Target + "Id", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        return owner.Properties.FirstOrDefault(
+            p => string.Equals(p.Name, key, StringComparison.Ordinal) && p.Type == "int");
+    }
+
+    /// <summary>
+    /// The navigation for a key named for a role: <c>Staff PaidBy</c> beside <c>PaidById</c>, and
+    /// <c>Staff Manager</c> beside a member of staff's own <c>ManagerId</c>.
+    /// </summary>
+    /// <remarks>
+    /// The generated app pairs a key with the navigation named for it - the resolver fills
+    /// <c>PaidBy</c> from <c>PaidById</c>, the pickers and lookups read the same pair - so each
+    /// key gets its own, and two keys to Staff are two navigations rather than one <c>Staff</c>
+    /// neither was paired with. No inverse collection: the resolver fills one only from
+    /// <c>&lt;Owner&gt;Id</c>, so a collection here would stay empty, and two roles would want the
+    /// same name for it.
+    /// </remarks>
+    private static void AddRoleNavigation(ClassDefinition owner, PropertyDefinition key, string targetName)
+    {
+        var navigation = RelationshipConvention.Forward(targetName);
+        navigation.Name = key.Name[..^2];
+
+        AddNavigation(owner, navigation);
     }
 
     /// <summary>
@@ -320,8 +363,8 @@ public static class DomainModelMapper
 
         foreach (var definition in classes)
         {
-            var foreignKeys = ForeignKeys.TargetsOf(definition, names)
-                .Select(target => target + "Id")
+            var foreignKeys = ForeignKeys.LinksOf(definition, names)
+                .Select(link => link.Property)
                 .ToHashSet(StringComparer.Ordinal);
 
             foreach (var property in definition.Properties)

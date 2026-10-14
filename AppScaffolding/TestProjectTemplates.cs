@@ -311,7 +311,7 @@ internal static class TestSupport
             else if (property.PropertyType == typeof(DateTime))
                 property.SetValue(item, FilledDate);
             else if (property.PropertyType == typeof(int) && IsForeignKey(property.Name))
-                property.SetValue(item, ForeignKeyValue(property.Name, appAssembly, root));
+                property.SetValue(item, ForeignKeyValue(typeof(T), property.Name, appAssembly, root));
         }
     }
 
@@ -336,14 +336,16 @@ internal static class TestSupport
            && propertyName.EndsWith("Id", StringComparison.Ordinal)
            && !string.Equals(propertyName, "Id", StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>The Id of a real row of the type <paramref name="propertyName"/> references --
+    /// <summary>The Id of a real row of the type <paramref name="propertyName"/> references -- the
+    /// type of its navigation (PaidById -> PaidBy, a Staff), or the type it is named for --
     /// an existing one if the store already has one, else one created through that type's own
     /// repository (and, recursively, Filled the same way this item was). Neither type existing by
     /// that name (an incidental "...Id" that names no entity) nor the creation failing is fatal:
     /// both fall back to 0, exactly what this property held before this method existed.</summary>
-    private static int ForeignKeyValue(string propertyName, Assembly appAssembly, string root)
+    private static int ForeignKeyValue(Type owner, string propertyName, Assembly appAssembly, string root)
     {
-        var targetName = propertyName[..^2];
+        var navName = propertyName[..^2];
+        var targetName = owner.GetProperty(navName)?.PropertyType.Name ?? navName;
 
         var repositoryType = appAssembly.GetType(root + ".Data." + targetName + "Repository");
         if (repositoryType is null)

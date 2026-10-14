@@ -141,10 +141,13 @@ public static class EntityRoles
     /// <remarks>
     /// The foreign key alone would make every child entity a transaction — an Address belonging to
     /// a Customer is not one. The other half alone would make an Employee with a HireDate one.
+    /// A key named for a role counts (a payment approved by a member of staff); a key to the
+    /// class's own table does not (an employee's manager is no document).
     /// </remarks>
     private static bool IsTransaction(ClassDefinition definition, HashSet<string> allNames)
     {
-        if (ForeignKeys.TargetsOf(definition, allNames).Count == 0)
+        if (!ForeignKeys.LinksOf(definition, allNames).Any(
+                l => !string.Equals(l.Target, definition.Name, StringComparison.OrdinalIgnoreCase)))
             return false;
 
         return HasNonAuditDate(definition) || TransactionWords.Contains(definition.Name);

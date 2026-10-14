@@ -22,13 +22,13 @@ public class DataModelBuilderForeignKeyTests
     public void A_declared_foreign_key_becomes_a_relationship()
     {
         var customers = Table("Customer", "Name");
-        var orders = Table("Order", "Placed");
+        var orders = Table("Order", "Placed", "CustomerID");
         orders.ForeignKeys.Add(new TabularForeignKey("CustomerID", "Customer", "CustomerID"));
 
         var model = DataModelBuilder.Build([customers, orders]);
 
         var order = model.Entities.Single(e => e.Name == "Order");
-        Assert.Contains(order.Relationships, r => r.Target == "Customer");
+        Assert.Contains(order.Relationships, r => r.Target == "Customer" && r.ForeignKey == "CustomerId");
     }
 
     /// <summary>
@@ -68,7 +68,7 @@ public class DataModelBuilderForeignKeyTests
     public void A_foreign_key_to_a_table_whose_name_was_normalised_still_resolves()
     {
         var orders = Table("Order", "Placed");
-        var details = Table("Order Details", "Quantity");
+        var details = Table("Order Details", "Quantity", "OrderID");
         details.ForeignKeys.Add(new TabularForeignKey("OrderID", "Order", "OrderID"));
 
         var model = DataModelBuilder.Build([orders, details]);
@@ -107,8 +107,11 @@ public class DataModelBuilderForeignKeyTests
         Assert.Empty(model.Entities.Single().Relationships);
     }
 
+    /// <summary>A manager is another employee: the link is kept, under a name that reads as a
+    /// link and not as the table's own key. Dropped, its values kept the source's keys while the
+    /// rows they named were renumbered.</summary>
     [Fact]
-    public void A_self_referencing_foreign_key_is_dropped()
+    public void A_self_referencing_foreign_key_is_kept()
     {
         var employees = Table("Employee", "ReportsTo");
         employees.ForeignKeys.Add(new TabularForeignKey("ReportsTo", "Employee", "EmployeeID"));
@@ -116,7 +119,7 @@ public class DataModelBuilderForeignKeyTests
         var model = DataModelBuilder.Build([employees]);
 
         var entity = model.Entities.Single();
-        Assert.DoesNotContain(entity.Relationships, r => r.Target == entity.Name);
+        Assert.Single(entity.Relationships, r => r.Target == entity.Name && r.ForeignKey == "ReportsToId");
     }
 
     // A file reader declares nothing, and must keep behaving exactly as it did.
@@ -215,19 +218,22 @@ public class DataModelBuilderForeignKeyTests
 
     /// <summary>
     /// Two columns pointing at the same table is ordinary - a bill-to and a ship-to customer.
-    /// The model has one relationship per target, so the second must not be added again.
+    /// Each is its own relationship, naming the field that holds it; one per target collapsed
+    /// them into a single navigation neither key was paired with.
     /// </summary>
     [Fact]
-    public void Two_foreign_keys_to_the_same_table_make_one_relationship()
+    public void Two_foreign_keys_to_the_same_table_make_two_relationships()
     {
         var customer = Table("Customer", "Name");
-        var order = Table("Order", "Placed");
+        var order = Table("Order", "Placed", "BillToCustomerID", "ShipToCustomerID");
         order.ForeignKeys.Add(new TabularForeignKey("BillToCustomerID", "Customer", "CustomerID"));
         order.ForeignKeys.Add(new TabularForeignKey("ShipToCustomerID", "Customer", "CustomerID"));
 
         var model = DataModelBuilder.Build([customer, order]);
 
         var entity = model.Entities.Single(e => e.Name == "Order");
-        Assert.Single(entity.Relationships, r => r.Target == "Customer");
+        Assert.Equal(
+            ["BillToCustomerId", "ShipToCustomerId"],
+            entity.Relationships.Where(r => r.Target == "Customer").Select(r => r.ForeignKey).Order());
     }
 }

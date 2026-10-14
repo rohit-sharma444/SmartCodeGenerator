@@ -205,18 +205,20 @@ public class ImportedKeyTests
         Assert.DoesNotContain(TabularImport.ToImportedData(tables).Notes, n => n.Contains("could not be linked"));
     }
 
-    /// <summary>A key held as text is the user's data, not a row number, and is written exactly as
-    /// it was read.</summary>
+    /// <summary>A key held as text that names a row of a text-keyed table is a link to that row:
+    /// the customer keeps its code in a field, and the order holds the customer's seeded Id.
+    /// (A text column naming no row is left as it was read: see SourceKeyTests.)</summary>
     [Fact]
-    public void A_text_foreign_key_is_left_as_it_was_read()
+    public void A_text_foreign_key_naming_a_row_is_linked_and_the_code_is_kept()
     {
         var customers = Table("Customers", [("CustomerId", "string"), ("Name", "string")],
-            ["ALFKI", "Ada"]);
+            ["BONAP", "Bob"], ["ALFKI", "Ada"]);
         var orders = Table("Orders", [("CustomerId", "string"), ("Ref", "string")],
             ["ALFKI", "ORD-1"]);
 
-        var row = TabularImport.ToImportedData([customers, orders]).For("Order")[0];
+        var data = TabularImport.ToImportedData([customers, orders]);
 
-        Assert.Equal("ALFKI", row["CustomerId"]);
+        Assert.Equal("2", data.For("Order")[0]["CustomerId"]);
+        Assert.Equal(["BONAP", "ALFKI"], data.For("Customer").Select(r => r["CustomerCode"]));
     }
 }

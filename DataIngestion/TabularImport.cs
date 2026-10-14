@@ -82,9 +82,13 @@ public static class TabularImport
             sources[entityName] = table;
         }
 
+        // The same links DataModelBuilder makes relationships of, so every relationship's values
+        // are renumbered and nothing that is not one is touched.
+        var links = DataModelBuilder.Links(tables);
+
         var unlinked = new Unlinked();
-        RewriteSourceKeys(rows, sources, notes, unlinked);
-        ClearDanglingForeignKeys(rows, sources, unlinked);
+        RewriteSourceKeys(rows, sources, links, notes, unlinked);
+        ClearDanglingForeignKeys(rows, sources, links, unlinked);
         unlinked.AddNotes(notes);
 
         return new ImportedData(rows, notes);
@@ -124,127 +128,123 @@ public static class TabularImport
     }
 
     /// <summary>
-    /// Rewrites every foreign key read from the source — the parent's own key value — to the Id
+    /// Rewrites every foreign key read from the source — a value of the parent's key — to the Id
     /// that parent row is seeded with.
     /// </summary>
     /// <remarks>
-    /// The parent's key column is dropped (<see cref="DataModelBuilder"/> records why) and
-    /// <c>SeedFileWriter</c> numbers the seeded rows 1..N instead. A child's key left as the
-    /// source spelled it would then name whichever row sits at that position: the wrong parent
-    /// when the keys happen to fall in 1..N, and no parent at all when they do not.
+    /// <c>SeedFileWriter</c> numbers every seeded row 1..N, whatever key the source gave it (the
+    /// key column is dropped, or for a text key kept in a field: <see cref="DataModelBuilder"/>
+    /// records which). A child's key left as the source spelled it would then name whichever row
+    /// sits at that position: the wrong parent when the keys happen to fall in 1..N, and no parent
+    /// at all when they do not, or when they are text ("EUR", "C002").
     /// <para>
     /// Remapped rather than kept: row numbers are what every foreign key this layer makes up
     /// already holds (a JSON child's, a normalization split's), and what
     /// <see cref="ClearDanglingForeignKeys"/> checks against, so bringing the source's own keys
-    /// into line leaves one numbering, not two. Those made-up keys carry
-    /// <see cref="TabularColumn.HoldsRowNumbers"/> and are skipped here.
+    /// into line leaves one numbering, not two. Those made-up keys have no target column to look
+    /// their values up in, and are skipped here.
     /// </para>
     /// <para>
-    /// Only int columns: a key held as text ("ALFKI") is not something the generated app treats
-    /// as a foreign key, and rewriting it would replace the user's value with a number.
+    /// Only links <see cref="DataModelBuilder.Links"/> found: a text column that names no row of
+    /// a text-keyed table is the user's data, and rewriting it would replace their value with a
+    /// number. A link to the row's own table (a manager) is renumbered like any other.
     /// </para>
     /// </remarks>
     private static void RewriteSourceKeys(
         Dictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string?>>> rows,
         Dictionary<string, TabularTable> sources,
+        IReadOnlyDictionary<string, IReadOnlyList<DataModelBuilder.KeyLink>> links,
         List<string> notes,
         Unlinked unlinked)
     {
-        // Entity -> its source key -> the 1-based position of the row carrying it, over EVERY
-        // row read, so a key past the cap can be told apart from a key that names no row.
-        var positions = new Dictionary<string, Dictionary<string, int>>(StringComparer.OrdinalIgnoreCase);
-        var repeated = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+        // (Entity, column) -> each value of that column -> the 1-based position of the row
+        // carrying it, over EVERY row read, so a key past the cap can be told apart from a key
+        // that names no row. Built once per column a link names.
+        var positions = new Dictionary<(string, string), (Dictionary<string, int> ByKey, HashSet<string> Twice)>();
 
-        foreach (var (entity, table) in sources)
+        (Dictionary<string, int> ByKey, HashSet<string> Twice) PositionsOf(string entity, string column)
         {
-            if (DataModelBuilder.KeyColumn(table) is not { } keyColumn)
-                continue;
+            var at = (entity.ToUpperInvariant(), column.ToUpperInvariant());
 
+            if (positions.TryGetValue(at, out var known))
+                return known;
+
+            var table = sources[entity];
             var byKey = new Dictionary<string, int>(StringComparer.Ordinal);
             var twice = new HashSet<string>(StringComparer.Ordinal);
 
             for (var row = 0; row < table.Rows.Count; row++)
             {
-                if (KeyText(table.Value(row, keyColumn)) is not { } key)
+                if (KeyText(table.Value(row, column)) is not { } key)
                     continue;
 
                 if (!byKey.TryAdd(key, row + 1))
                     twice.Add(key);
             }
 
-            positions[entity] = byKey;
-            repeated[entity] = twice;
+            return positions[at] = (byKey, twice);
         }
 
-        var rewritten = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+        // Target -> the columns its references were renumbered through, for the notes.
+        var rewritten = new SortedDictionary<string, SortedSet<string>>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var (entity, table) in sources)
+        foreach (var (entity, held) in links)
         {
-            var fieldNames = DataModelBuilder.FieldNames(table);
+            if (!rows.TryGetValue(entity, out var entityRows))
+                continue;
 
-            // A key the source DECLARED names its target outright; only the rest are read by the
-            // <Target>Id convention. A bill-to customer's key is still a key to Customer.
-            var declared = DataModelBuilder.DeclaredKeyTargets(table);
-
-            foreach (var column in table.Columns)
+            foreach (var link in held)
             {
-                if (column.HoldsRowNumbers
-                    || column.Type != "int"
-                    || !fieldNames.TryGetValue(column.Name, out var field))
+                if (link.TargetColumn is not { } targetColumn
+                    || !sources.TryGetValue(link.Target, out var targetTable)
+                    || targetTable.IndexOf(targetColumn) < 0
+                    || !rows.TryGetValue(link.Target, out var targetRows))
                     continue;
 
-                string target;
-                if (declared.TryGetValue(field, out var declaredTarget))
-                    target = declaredTarget;
-                else if (field.EndsWith("Id", StringComparison.OrdinalIgnoreCase))
-                    target = field[..^2];
-                else
-                    continue;
+                var (byKey, repeated) = PositionsOf(link.Target, targetColumn);
+                var imported = targetRows.Count;
 
-                if (string.Equals(target, entity, StringComparison.OrdinalIgnoreCase)
-                    || !positions.TryGetValue(target, out var byKey))
-                    continue;
-
-                var imported = rows[target].Count;
-
-                foreach (var row in rows[entity])
+                foreach (var row in entityRows)
                 {
                     // Mutable in practice: every row in here was built as a Dictionary above.
                     if (row is not Dictionary<string, string?> cells
-                        || !cells.TryGetValue(field, out var raw)
+                        || !cells.TryGetValue(link.Field, out var raw)
                         || KeyText(raw) is not { } key)
                         continue;
 
-                    if (repeated[target].Contains(key))
+                    if (repeated.Contains(key))
                     {
-                        cells[field] = null;
+                        cells[link.Field] = null;
                         unlinked.NamedTwoRows++;
                     }
                     else if (!byKey.TryGetValue(key, out var position))
                     {
-                        cells[field] = null;
+                        cells[link.Field] = null;
                         unlinked.NamedNoRow++;
                     }
                     else if (position > imported)
                     {
-                        cells[field] = null;
+                        cells[link.Field] = null;
                         unlinked.PastTheCap++;
                     }
                     else
                     {
-                        cells[field] = position.ToString(CultureInfo.InvariantCulture);
+                        cells[link.Field] = position.ToString(CultureInfo.InvariantCulture);
                     }
                 }
 
-                rewritten.Add(target);
+                if (!rewritten.TryGetValue(link.Target, out var columns))
+                    rewritten[link.Target] = columns = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+
+                columns.Add(targetColumn);
             }
         }
 
-        foreach (var target in rewritten)
+        foreach (var (target, columns) in rewritten)
         {
             notes.Add(
                 $"Each {target} is numbered 1, 2, 3... in the app rather than by its "
-                + $"{DataModelBuilder.KeyColumn(sources[target])} in {sources[target].Label}; "
+                + $"{string.Join(" or ", columns)} in {sources[target].Label}; "
                 + $"the references to it were renumbered to match.");
         }
     }
@@ -279,43 +279,40 @@ public static class TabularImport
     /// <para>
     /// Runs after every table is imported, not during: an extracted parent (`Customer`) is appended
     /// AFTER the table that references it, so a forward pass would not yet know its row count.
+    /// Every link is checked, named for its target or not: a manager's key is a key to Staff.
     /// </para>
     /// </remarks>
     private static void ClearDanglingForeignKeys(
         Dictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string?>>> rows,
         Dictionary<string, TabularTable> sources,
+        IReadOnlyDictionary<string, IReadOnlyList<DataModelBuilder.KeyLink>> links,
         Unlinked unlinked)
     {
-        foreach (var (_, entityRows) in rows)
+        foreach (var (entity, held) in links)
         {
-            foreach (var row in entityRows)
+            if (!rows.TryGetValue(entity, out var entityRows))
+                continue;
+
+            foreach (var link in held)
             {
-                // Mutable in practice: every row in here was built as a Dictionary above.
-                if (row is not Dictionary<string, string?> cells)
+                if (!rows.TryGetValue(link.Target, out var targetRows))
                     continue;
 
-                foreach (var field in cells.Keys.ToList())
+                foreach (var row in entityRows)
                 {
-                    if (!field.EndsWith("Id", StringComparison.OrdinalIgnoreCase))
-                        continue;
-
-                    var target = field[..^2];
-
-                    // Not a foreign key at all if it names no imported entity — an ordinary int
-                    // that happens to end in "Id" must be left exactly as it was read.
-                    if (target.Length == 0 || !rows.TryGetValue(target, out var targetRows))
-                        continue;
-
-                    if (!int.TryParse(cells[field], out var key))
+                    // Mutable in practice: every row in here was built as a Dictionary above.
+                    if (row is not Dictionary<string, string?> cells
+                        || !cells.TryGetValue(link.Field, out var raw)
+                        || !int.TryParse(raw, out var key))
                         continue;
 
                     if (key >= 1 && key <= targetRows.Count)
                         continue;
 
-                    cells[field] = null;
+                    cells[link.Field] = null;
 
                     // The cap is to blame only for a row that was read and then not imported.
-                    if (key > targetRows.Count && key <= sources[target].Rows.Count)
+                    if (key > targetRows.Count && key <= sources[link.Target].Rows.Count)
                         unlinked.PastTheCap++;
                     else
                         unlinked.NamedNoRow++;

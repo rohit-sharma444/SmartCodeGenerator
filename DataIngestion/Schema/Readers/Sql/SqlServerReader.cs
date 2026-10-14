@@ -56,6 +56,7 @@ public sealed class SqlServerReader(ISqlSchemaSource source, int maxRowsPerTable
                 {
                     Name = column.Name,
                     Type = SqlTypeMap.ToModelType(column.SqlType),
+                    IsKey = column.IsPrimaryKey,
                     Facts = new TypeFacts
                     {
                         IsNullable = column.Nullable,

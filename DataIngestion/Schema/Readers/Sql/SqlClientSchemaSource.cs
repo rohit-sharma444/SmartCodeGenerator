@@ -51,12 +51,28 @@ public sealed class SqlClientSchemaSource : ISqlSchemaSource
     public IReadOnlyList<SqlColumnInfo> Columns(
         string connectionString, string schema, string table)
     {
+        // IS_PK marks the column of a single-column primary key. A composite key marks nothing:
+        // the model numbers its rows by one Id, and half a key is not one.
         const string sql = """
-            SELECT  COLUMN_NAME, DATA_TYPE, IS_NULLABLE,
-                    CHARACTER_MAXIMUM_LENGTH, NUMERIC_PRECISION, NUMERIC_SCALE
-            FROM    INFORMATION_SCHEMA.COLUMNS
-            WHERE   TABLE_SCHEMA = @schema AND TABLE_NAME = @table
-            ORDER BY ORDINAL_POSITION;
+            SELECT  c.COLUMN_NAME, c.DATA_TYPE, c.IS_NULLABLE,
+                    c.CHARACTER_MAXIMUM_LENGTH, c.NUMERIC_PRECISION, c.NUMERIC_SCALE,
+                    CASE WHEN pk.COLUMN_NAME IS NULL THEN 0 ELSE 1 END AS IS_PK
+            FROM    INFORMATION_SCHEMA.COLUMNS c
+            LEFT JOIN (
+                        SELECT   k.TABLE_SCHEMA, k.TABLE_NAME, MIN(k.COLUMN_NAME) AS COLUMN_NAME
+                        FROM     INFORMATION_SCHEMA.TABLE_CONSTRAINTS t
+                        JOIN     INFORMATION_SCHEMA.KEY_COLUMN_USAGE k
+                                   ON k.CONSTRAINT_SCHEMA = t.CONSTRAINT_SCHEMA
+                                  AND k.CONSTRAINT_NAME = t.CONSTRAINT_NAME
+                        WHERE    t.CONSTRAINT_TYPE = 'PRIMARY KEY'
+                        GROUP BY k.TABLE_SCHEMA, k.TABLE_NAME
+                        HAVING   COUNT(*) = 1
+                      ) pk
+                      ON pk.TABLE_SCHEMA = c.TABLE_SCHEMA
+                     AND pk.TABLE_NAME = c.TABLE_NAME
+                     AND pk.COLUMN_NAME = c.COLUMN_NAME
+            WHERE   c.TABLE_SCHEMA = @schema AND c.TABLE_NAME = @table
+            ORDER BY c.ORDINAL_POSITION;
             """;
 
         var columns = new List<SqlColumnInfo>();
@@ -70,7 +86,8 @@ public sealed class SqlClientSchemaSource : ISqlSchemaSource
                     (string)row["IS_NULLABLE"], "YES", StringComparison.OrdinalIgnoreCase),
                 AsInt(row["CHARACTER_MAXIMUM_LENGTH"]),
                 AsInt(row["NUMERIC_PRECISION"]),
-                AsInt(row["NUMERIC_SCALE"])));
+                AsInt(row["NUMERIC_SCALE"]),
+                Convert.ToInt32(row["IS_PK"], CultureInfo.InvariantCulture) == 1));
         }
 
         return columns;
