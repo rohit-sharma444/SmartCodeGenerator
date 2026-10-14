@@ -1,3 +1,4 @@
+using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
@@ -24,6 +25,8 @@ public static class MemberReferences
         if (string.IsNullOrWhiteSpace(name))
             return users;
 
+        var compilations = new Dictionary<string, (CSharpCompilation, List<SyntaxTree>)>(StringComparer.OrdinalIgnoreCase);
+
         foreach (var file in ClassFiles.Under(workspaceRoot))
         {
             if (skipFiles?.Any(s => string.Equals(Path.GetFullPath(s), Path.GetFullPath(file), StringComparison.OrdinalIgnoreCase)) == true)
@@ -42,7 +45,8 @@ public static class MemberReferences
             if (!text.Contains(name, StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            var root = CSharpSyntaxTree.ParseText(text).GetRoot();
+            var (tree, model) = Bound(workspaceRoot, file, compilations);
+            var root = tree?.GetRoot() ?? CSharpSyntaxTree.ParseText(text).GetRoot();
             foreach (var id in root.DescendantNodes().OfType<IdentifierNameSyntax>())
             {
                 // Case-insensitive like the commands' own lookup, so a name typed in another case still finds them.
@@ -59,6 +63,12 @@ public static class MemberReferences
                 if (!inClass && !accessed)
                     continue;
 
+                // A name that binds to something other than this class's member is not a use of
+                // it: EntityBase.DisplayName's GetType().Name was listed as using Customer.Name.
+                // The removed or renamed member itself binds to nothing, so a real use stays.
+                if (model?.GetSymbolInfo(id).Symbol is { } symbol && !MemberOf(symbol, className))
+                    continue;
+
                 var where = Describe(owner, id, file);
                 if (!users.Contains(where))
                     users.Add(where);
@@ -66,6 +76,33 @@ public static class MemberReferences
         }
 
         return users;
+    }
+
+    private static bool MemberOf(ISymbol symbol, string className) =>
+        symbol.Kind is SymbolKind.Property or SymbolKind.Method or SymbolKind.Field or SymbolKind.Event
+        && symbol.ContainingType?.Name.Equals(className, StringComparison.OrdinalIgnoreCase) == true;
+
+    /// <summary>
+    /// The file's tree in a compilation of its project, and its semantic model; both null when
+    /// the file is not in it. One compilation per project, built on first need.
+    /// </summary>
+    private static (SyntaxTree? Tree, SemanticModel? Model) Bound(
+        string workspaceRoot, string file, Dictionary<string, (CSharpCompilation, List<SyntaxTree>)> compilations)
+    {
+        var csprojFolder = TypeResolution.ProjectFolderOf(workspaceRoot, file);
+        var folder = csprojFolder ?? workspaceRoot;
+
+        if (!compilations.TryGetValue(folder, out var entry))
+        {
+            var compilation = ClassRenameService.Compile("ReferenceProbe", folder, csprojFolder, [], out var trees);
+            entry = (compilation, trees);
+            compilations[folder] = entry;
+        }
+
+        var tree = entry.Item2.FirstOrDefault(t =>
+            string.Equals(t.FilePath, Path.GetFullPath(file), StringComparison.OrdinalIgnoreCase));
+
+        return tree is null ? (null, null) : (tree, entry.Item1.GetSemanticModel(tree));
     }
 
     /// <summary>The warning to print, or null when nothing uses it.</summary>
