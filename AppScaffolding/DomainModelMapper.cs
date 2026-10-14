@@ -715,6 +715,16 @@ public static class DomainModelMapper
         if (facts?.Scale is { } scale)
             property.Rules.Add(new PropertyRule { Name = "scale", Scale = scale });
 
+        // money and smallmoney are 64- and 32-bit integers counting ten-thousandths, not
+        // decimal(19,4) and decimal(10,4): their limits are the integer's, ±922,337,203,685,477.58
+        // and ±214,748.36, and the 999... bound their precision implies is one the column refuses.
+        if (MoneyRange(facts?.DeclaredType) is var (lowest, highest))
+        {
+            property.Rules.Add(new PropertyRule { Name = "maxvalue", MaxValue = highest });
+            property.Rules.Add(new PropertyRule { Name = "minvalue", MinValue = lowest });
+            return;
+        }
+
         if (facts?.Precision is not { } precision || facts.Scale is not { } places)
             return;
 
@@ -730,6 +740,15 @@ public static class DomainModelMapper
         property.Rules.Add(new PropertyRule { Name = "maxvalue", MaxValue = bound });
         property.Rules.Add(new PropertyRule { Name = "minvalue", MinValue = -bound });
     }
+
+    /// <summary>The range SQL Server's money or smallmoney holds, or null for any other type.</summary>
+    private static (decimal Lowest, decimal Highest)? MoneyRange(string? declaredType)
+        => declaredType?.ToLowerInvariant() switch
+        {
+            "money" => (long.MinValue / 10000m, long.MaxValue / 10000m),
+            "smallmoney" => (int.MinValue / 10000m, int.MaxValue / 10000m),
+            _ => null
+        };
 
     /// <summary>The bounds SqlTypeMap collapses away when it maps every integer width to int.</summary>
     private static void AddIntegerRange(PropertyDefinition property, string? declaredType)

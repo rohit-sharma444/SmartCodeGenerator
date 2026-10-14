@@ -247,4 +247,34 @@ public class SqlSourceFidelityTests
         Assert.Equal(16, table.Columns.Single(c => c.Name == "ShiftStart").Facts!.MaxLength);
         Assert.Equal(36, table.Columns.Single(c => c.Name == "Token").Facts!.MaxLength);
     }
+
+    // --- S16: money's real range ---
+
+    [Fact]
+    public void Money_and_smallmoney_are_bounded_by_what_they_really_hold()
+    {
+        var app = Generate(Database(add => add("Fee",
+            [
+                new("FeeId", "int", false, IsPrimaryKey: true),
+                new("Amount", "money", false, Precision: 19, Scale: 4),
+                new("Small", "smallmoney", false, Precision: 10, Scale: 4),
+            ],
+            [["1", "922337203685477.5807", "-214748.3648"]])));
+
+        decimal? Bound(string property, string rule)
+        {
+            var found = Property(app, "Fee", property).Rules.Single(r => r.Name == rule);
+            return rule == "minvalue" ? found.MinValue : found.MaxValue;
+        }
+
+        Assert.Equal(922337203685477.5807m, Bound("Amount", "maxvalue"));
+        Assert.Equal(-922337203685477.5808m, Bound("Amount", "minvalue"));
+        Assert.Equal(214748.3647m, Bound("Small", "maxvalue"));
+        Assert.Equal(-214748.3648m, Bound("Small", "minvalue"));
+
+        var assembly = Compile(app);
+        Assert.Empty(Validate(assembly, "Fee", SeedRows(assembly, app, "Fee")[0]));
+        Assert.Contains(Validate(assembly, "Fee", New(assembly, "Fee", ("Amount", 922337203685477.5808m))),
+            m => m.Contains("Amount must be"));
+    }
 }
