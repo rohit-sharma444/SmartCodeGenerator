@@ -251,13 +251,21 @@ public static class CommandHandlingService
             // It used to say "Saved generated class" and write over the file, losing every property
             // and method in it. "create class" makes a new class; changing one has its own commands.
             var name = EntityExtractor.DeclaredName(existing, classDef.Name);
-            Output.Error($"Class '{name}' already exists: {existing}");
+
+            // Declared in a file of another name (a record OrderLine in Order.cs): delete class
+            // works on a class's own file, so it is no way to start this one again.
+            var ownFile = Path.GetFileNameWithoutExtension(existing).Equals(name, StringComparison.OrdinalIgnoreCase);
+
+            Output.Error(ownFile
+                ? $"Class '{name}' already exists: {existing}"
+                : $"'{name}' already exists: it is declared in {existing}");
             Console.WriteLine(
                 "  It was left as it is: creating it again would replace its properties and methods."
                 + Environment.NewLine
-                + $"  To change it, use add property <name> <type> to {name} or add method <name> to {name};"
-                + Environment.NewLine
-                + $"  to start it again, delete class {name} first.");
+                + $"  To change it, use add property <name> <type> to {name} or add method <name> to {name}"
+                + (ownFile
+                    ? ";" + Environment.NewLine + $"  to start it again, delete class {name} first."
+                    : "."));
             return false;
         }
 

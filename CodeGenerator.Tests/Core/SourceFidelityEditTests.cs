@@ -417,9 +417,24 @@ public class SourceFidelityEditTests
         };
         CodeGenerationEngine.Models.ProjectMetaData? project = null;
 
-        var ok = CodeGenerationEngine.Service.CommandHandlingService.Execute(command, ref project, [], _root, _ => { });
+        var writer = new StringWriter();
+        var original = Console.Out;
+        Console.SetOut(writer);
+        bool ok;
+        try
+        {
+            ok = CodeGenerationEngine.Service.CommandHandlingService.Execute(command, ref project, [], _root, _ => { });
+        }
+        finally
+        {
+            Console.SetOut(original);
+        }
 
         Assert.IsFalse(ok);
+        StringAssert.Contains(writer.ToString(), $"'{name}' already exists: it is declared in");
+
+        // delete class works on a class's own file, so it is not offered for one declared elsewhere.
+        Assert.DoesNotContain("delete class", writer.ToString());
         Assert.HasCount(before, Directory.GetFiles(Path.Combine(_root, "Models")));
         Assert.IsFalse(File.Exists(PathOf(name + ".cs")));
         StringAssert.Contains(File.ReadAllText(ClassFiles.DeclaringFile(_root, name)!), declaration);

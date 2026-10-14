@@ -122,5 +122,10 @@ public class AddReportTests
 
         StringAssert.Contains(text, "Program.cs.new");
         StringAssert.Contains(text, "+ MapEntity<Supplier>(app, \"supplier\");");
+
+        // A file can differ because the reviewed model is not the one the app was built from, so
+        // the report does not claim the user changed it.
+        Assert.DoesNotContain("changes of yours", text);
+        StringAssert.Contains(text, "generated from a different model");
     }
 }

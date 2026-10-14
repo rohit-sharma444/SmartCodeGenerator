@@ -43,7 +43,12 @@ internal static class AddReport
         foreach (var aside in result.NotMerged)
         {
             lines.Add(string.Empty);
-            lines.Add($"  {aside.Path} has changes of yours where the new lines go, so it was left as it is.");
+            // Not "your changes": the file also differs when the reviewed model is not the one the
+            // app was generated from (a discovery run rarely gives the same properties twice), and
+            // a live run said "changes of yours" about files nobody had touched.
+            lines.Add($"  {aside.Path} is not what the generator would write for this app as it is now "
+                + "(it was edited, or the app was generated from a different model), so the new lines "
+                + "could not be placed with certainty and it was left as it is.");
             lines.Add($"  The version with the new classes is {aside.NewVersionPath}. To finish the add, make these changes in {aside.Path}:");
 
             foreach (var change in aside.Changes)
