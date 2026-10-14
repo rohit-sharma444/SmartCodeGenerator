@@ -11,7 +11,7 @@ namespace CodeGenerationEngine.Core.Validation;
 /// and a file written with the default newline lands LF-only in a CRLF checkout. Both have been
 /// real defects here, and neither shows up in a diff you skim.
 /// </remarks>
-internal static class SourceFileText
+public static class SourceFileText
 {
     public static string Read(string path, out bool hasBom, out string newline)
     {

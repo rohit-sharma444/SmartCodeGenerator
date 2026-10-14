@@ -37,6 +37,25 @@ internal static class AddReport
                 lines.Add("    " + stub);
         }
 
+        // Each file the add left as it was because the user had changed it where the new lines
+        // go: the new version is beside it, and the lines are spelled out so they can be copied
+        // without diffing two files.
+        foreach (var aside in result.NotMerged)
+        {
+            lines.Add(string.Empty);
+            lines.Add($"  {aside.Path} has changes of yours where the new lines go, so it was left as it is.");
+            lines.Add($"  The version with the new classes is {aside.NewVersionPath}. To finish the add, make these changes in {aside.Path}:");
+
+            foreach (var change in aside.Changes)
+            {
+                foreach (var removed in change.Removed)
+                    lines.Add("    - " + removed);
+
+                foreach (var added in change.Added)
+                    lines.Add("    + " + added);
+            }
+        }
+
         return lines;
     }
 }
