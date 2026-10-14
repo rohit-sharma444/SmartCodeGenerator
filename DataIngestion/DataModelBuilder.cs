@@ -926,7 +926,12 @@ public static class DataModelBuilder
             if (!sources.TryGetValue(entity.Name, out var table))
                 continue;
 
-            foreach (var proposal in EntityRuleProposals.For(entity, table, LinkFields(links, entity.Name)))
+            // A field spelled as a key (WarehouseId) holds a key even when it names no table of
+            // this run: "WarehouseId is never more than Qty" is a fact about numbering, not a rule.
+            var keyFields = LinkFields(links, entity.Name);
+            keyFields.UnionWith(entity.Fields.Select(f => f.Name).Where(IsLinkName));
+
+            foreach (var proposal in EntityRuleProposals.For(entity, table, keyFields))
                 entity.Proposals.Add(proposal);
         }
     }
