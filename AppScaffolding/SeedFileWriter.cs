@@ -117,10 +117,8 @@ public static class SeedFileWriter
                     if ((!rows[index].TryGetValue(property.Name, out var raw)
                          && !(renamedKeys.TryGetValue(property.Name, out var oldName)
                               && rows[index].TryGetValue(oldName, out raw)))
-                        || string.IsNullOrWhiteSpace(raw))
+                        || SeedText(property, raw) is not { } value)
                         continue;
-
-                    var value = raw.Trim();
 
                     if (!Write(writer, property, value))
                     {
@@ -146,6 +144,31 @@ public static class SeedFileWriter
         }
 
         return System.Text.Encoding.UTF8.GetString(stream.ToArray());
+    }
+
+    /// <summary>
+    /// The text <paramref name="property"/>'s value is written from, or null for a missing one.
+    /// </summary>
+    /// <remarks>
+    /// A string from a source that DECLARED its type (SQL Server, the one source that does) is
+    /// the value as stored: its leading and trailing spaces are the user's data, and a value of
+    /// spaces alone is not a missing one. Only a fixed-width char/nchar loses its trailing spaces,
+    /// which are padding the database adds and ignores when it compares. Everything else is
+    /// read from text a person typed into a file, and is trimmed as it always was.
+    /// </remarks>
+    private static string? SeedText(PropertyDefinition property, string? raw)
+    {
+        if (raw is null)
+            return null;
+
+        if (DomainModelMapper.BaseType(property.Type) == "string" && property.Facts?.DeclaredType is { } declared)
+        {
+            return declared.ToLowerInvariant() is "char" or "nchar"
+                ? raw.TrimEnd(' ')
+                : raw;
+        }
+
+        return string.IsNullOrWhiteSpace(raw) ? null : raw.Trim();
     }
 
     /// <summary>The five types the model can carry. Anything else is a navigation property.</summary>

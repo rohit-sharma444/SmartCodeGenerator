@@ -349,6 +349,42 @@ public class SqlSourceFidelityTests
         Assert.Contains(app.Unreadable, n => n.Contains("1.79E+308"));
     }
 
+    // --- S13: a SQL string is seeded exactly as stored ---
+
+    [Fact]
+    public void A_sql_string_is_seeded_exactly_except_a_fixed_width_pad()
+    {
+        var app = Generate(Database(add => add("Code",
+            [
+                new("CodeId", "int", false, IsPrimaryKey: true),
+                new("Label", "varchar", false, 20),
+                new("Short", "nchar", false, 3),
+            ],
+            [["1", "  lead", "NN "], ["2", "trail  ", "ABC"], ["3", "   ", "X  "]])));
+
+        var rows = Seed(app, "Code");
+        Assert.Equal(["  lead", "trail  ", "   "], rows.Select(r => r.GetProperty("Label").GetString()));
+        Assert.Equal(["NN", "ABC", "X"], rows.Select(r => r.GetProperty("Short").GetString()));
+
+        var assembly = Compile(app);
+        Assert.All(SeedRows(assembly, app, "Code"), row => Assert.Empty(Validate(assembly, "Code", row)));
+    }
+
+    [Fact]
+    public void A_file_string_is_still_trimmed()
+    {
+        var table = new TabularTable { Name = "Notes", SourceLabel = "notes.csv" };
+        table.Columns.Add(new TabularColumn { Name = "Text" });
+        table.Columns.Add(new TabularColumn { Name = "Other" });
+        table.Rows.Add(["  padded  ", "x"]);
+
+        var model = DataModelBuilder.Build([table]);
+        var classes = DomainModelMapper.ToClassDefinitions(model, out var classNames);
+        var json = SeedFileWriter.Files(classes, classNames, TabularImport.ToImportedData([table])).Single().Json;
+
+        Assert.Equal("padded", JsonDocument.Parse(json).RootElement[0].GetProperty("Text").GetString());
+    }
+
     // --- S2: a column the schema declares NULL may be empty ---
 
     [Fact]
