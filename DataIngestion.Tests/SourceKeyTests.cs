@@ -327,7 +327,9 @@ public class SourceKeyTests
             files.Add(($"Models/{definition.Name}.cs", RoslynClassGenerator.Generate(definition, "Acme.Models")));
             files.Add(($"Validation/{definition.Name}Validator.Generated.cs",
                 ValidatorTemplate.GeneratedForLinks("Acme", definition, ForeignKeys.LinksOf(definition, names),
-                    referencesRequired: false,
+                    // Payment is a transaction, whose keys are required unless the database
+                    // said otherwise.
+                    referencesRequired: definition.Name == "Payment",
                     referencedBy: ForeignKeys.ReferencesTo(definition.Name, app.Classes))));
             files.Add(($"Validation/{definition.Name}Validator.Custom.cs",
                 ValidatorTemplate.CustomStub("Acme", definition.Name)));
@@ -355,7 +357,8 @@ public class SourceKeyTests
             return (IReadOnlyList<string>)outcome.GetType().GetProperty("Messages")!.GetValue(outcome)!;
         }
 
-        // TicketNo was NOT NULL in the database (K7); ApprovedById was not.
+        // TicketNo was NOT NULL in the database (K7); ApprovedById was declared nullable, which
+        // a transaction's "every key is required" must not override.
         var unset = Validate("Payment", "Insert", ("Amount", 1m), ("Ref", "PAY-9"), ("CurrencyId", 1), ("PaidById", 1));
         Assert.Contains(unset, m => m.Contains("Ticket is required."));
         Assert.DoesNotContain(unset, m => m.Contains("ApprovedBy is required."));

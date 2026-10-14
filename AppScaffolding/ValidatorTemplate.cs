@@ -255,11 +255,16 @@ internal sealed class NullValidator<T> : IValidator<T>
             string.Equals(pair.Type, DomainModelMapper.BaseType(propertyType), StringComparison.Ordinal)
             && string.Equals(pair.Rule, ruleName, StringComparison.OrdinalIgnoreCase));
 
-    /// <summary>Whether the source declared <paramref name="key"/>'s column NOT NULL: a link the
-    /// database never let be empty, which the app must not let be 0.</summary>
-    private static bool IsDeclaredNotNull(ClassDefinition definition, string key)
-        => definition.Properties.Any(
-            p => string.Equals(p.Name, key, StringComparison.Ordinal) && p.Facts?.IsNullable == false);
+    /// <summary>Whether <paramref name="key"/> must be set: as the source declared its column
+    /// when it declared one (NOT NULL: a link the database never let be empty, which the app must
+    /// not let be 0; nullable: a payment not yet approved, which a transaction's rule must not
+    /// refuse), else <paramref name="byKind"/>, the rule for the kind of class.</summary>
+    private static bool IsKeyRequired(ClassDefinition definition, string key, bool byKind)
+        => definition.Properties
+               .FirstOrDefault(p => string.Equals(p.Name, key, StringComparison.Ordinal))
+               ?.Facts?.IsNullable is { } nullable
+            ? !nullable
+            : byKind;
 
     /// <summary>
     /// Whether <paramref name="property"/> carries the required rule DomainModelMapper recorded.
@@ -303,7 +308,8 @@ internal sealed class NullValidator<T> : IValidator<T>
     /// </param>
     /// <param name="referencesRequired">
     /// Whether every key must be set - true for a transaction or a document line. A key whose
-    /// column the source declared NOT NULL is required whatever the class is.
+    /// column the source declared NOT NULL is required whatever the class is, and one it declared
+    /// nullable is not.
     /// </param>
     public static string GeneratedForLinks(
         string rootNamespace, ClassDefinition definition, IReadOnlyList<ForeignKeys.Link> foreignKeys,
@@ -371,7 +377,7 @@ internal sealed class NullValidator<T> : IValidator<T>
             var (key, navigation, target) = (link.Property, link.Navigation, link.Target);
             var checks = new List<string>();
 
-            if (referencesRequired || IsDeclaredNotNull(definition, key))
+            if (IsKeyRequired(definition, key, referencesRequired))
             {
                 checks.Add($"if (item.{key} == 0)");
                 checks.Add($"    errors.Add(new ValidationError(\"{key}\", \"{navigation} is required.\"));");
