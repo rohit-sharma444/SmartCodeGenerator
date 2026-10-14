@@ -40,6 +40,18 @@ public class RuleProposalsTests
         Assert.DoesNotContain(proposals, p => p.Kind == RuleProposalKind.Status);
     }
 
+    /// <summary>A time of day is not an IP address: "23:59:59" matched the IPv6 branch, which
+    /// accepted any two to eight colon-separated groups.</summary>
+    [Fact]
+    public void Times_of_day_are_not_proposed_as_IP_addresses()
+    {
+        var scan = new ColumnScanResult(["23:59:59", "08:00:00", "12:30:00"], false, 8, 0, 3, 3);
+
+        var proposals = RuleProposals.For(scan, "ShiftStart", "string", mayBeUnique: false);
+
+        Assert.DoesNotContain(proposals, p => p.Kind == RuleProposalKind.Pattern);
+    }
+
     [Fact]
     public void A_few_values_that_repeat_in_a_small_table_are_still_a_status()
     {
