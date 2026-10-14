@@ -517,8 +517,10 @@ public static class CommandHandlingService
             return false;
         }
 
-        var known = EntityExtractor.ExtractProperties(classFile).Select(p => p.Name).ToList();
+        // The class's own properties, in all its partial files: Street on a nested Address was
+        // accepted (the validator then did not compile), and Notes in Customer.Notes.cs was not.
         var declared = EntityExtractor.DeclaredName(classFile, className);
+        var known = EntityExtractor.ExtractProperties(classFile, declared).Select(p => p.Name).ToList();
         foreach (var rule in rules)
         {
             var missing = rule.Properties
@@ -612,21 +614,13 @@ public static class CommandHandlingService
             return true;
         }
 
-        var properties = EntityExtractor.ExtractProperties(file)
+        // The class's own properties, in its other partial files as well (a property in
+        // Customer.Extra.cs was not listed), and not those of a nested or sibling type in its
+        // file (Address's Street and Money's Amount were listed as Customer's).
+        var className = EntityExtractor.DeclaredName(file, ctx.Command.ClassName);
+        var properties = EntityExtractor.ExtractProperties(file, className)
             .Select(p => (p.Type, p.Name))
             .ToList();
-        var className = ctx.Command.ClassName;
-
-        // The class's other partial files as well, as the edit commands search them:
-        // a property in Customer.Extra.cs was not listed.
-        if (ClassMethodEditService.TryLoadParts(ctx.WorkspaceRoot, className, out var parts, out _))
-        {
-            className = parts[0].Node.Identifier.Text;
-            foreach (var part in parts.Skip(1))
-                properties.AddRange(part.Node.Members
-                    .OfType<Microsoft.CodeAnalysis.CSharp.Syntax.PropertyDeclarationSyntax>()
-                    .Select(p => (p.Type.ToString(), p.Identifier.Text)));
-        }
 
         if (properties.Count == 0)
         {

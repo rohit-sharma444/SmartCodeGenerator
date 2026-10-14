@@ -81,7 +81,7 @@ public static class ClassValidationWriter
                 $"'{className}' is declared without a body, so there is nowhere to put a check. "
                 + "Give it a { } body and try again.");
 
-        var properties = EntityExtractor.ExtractProperties(classFile);
+        var properties = EntityExtractor.ExtractProperties(classFile, className);
 
         var missing = rule.Properties
             .Where(name => !properties.Any(p =>

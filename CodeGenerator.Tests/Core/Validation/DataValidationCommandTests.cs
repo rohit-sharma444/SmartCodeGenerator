@@ -59,6 +59,77 @@ public class DataValidationCommandTests
         }
     }
 
+    /// <summary>A partial Customer with a nested class and a sibling record struct in its file,
+    /// and a second part in Customer.Notes.cs.</summary>
+    private static void WriteCustomer()
+    {
+        File.WriteAllText(Path.Combine(_root, "Customer.cs"), """
+            namespace Shop.Models;
+
+            public partial class Customer
+            {
+                public string Name { get; set; } = "";
+
+                public class Address
+                {
+                    public string Street { get; set; } = string.Empty;
+                }
+            }
+
+            public readonly record struct Money(decimal Amount, string Currency = "GBP");
+            """);
+
+        File.WriteAllText(Path.Combine(_root, "Customer.Notes.cs"), """
+            namespace Shop.Models;
+
+            public partial class Customer
+            {
+                public string? Notes { get; set; }
+            }
+            """);
+    }
+
+    /// <summary>Street is Customer.Address's, so a rule on it in Customer would write
+    /// <c>this.Street</c> into Customer's validator, which does not compile.</summary>
+    [TestMethod]
+    [DataRow("Street")]
+    [DataRow("Amount")]
+    public void A_rule_on_a_property_of_a_nested_or_sibling_type_is_refused(string property)
+    {
+        WriteCustomer();
+
+        var (ok, said) = Say($"add validation required on {property} in Customer");
+
+        Assert.IsFalse(ok, said);
+        StringAssert.Contains(said, $"'Customer' has no property '{property}'");
+        Assert.IsEmpty(ValidationRegistry.Get("Customer"));
+    }
+
+    /// <summary>Notes is declared in Customer.Notes.cs, another part of the same class.</summary>
+    [TestMethod]
+    public void A_rule_on_a_property_in_another_partial_file_is_added()
+    {
+        WriteCustomer();
+
+        var (ok, said) = Say("add validation at most 50 characters on Notes in Customer");
+
+        Assert.IsTrue(ok, said);
+        Assert.HasCount(1, ValidationRegistry.Get("Customer", ValidationCategory.Data));
+    }
+
+    [TestMethod]
+    public void Show_properties_lists_only_the_class_own_properties_from_every_part()
+    {
+        WriteCustomer();
+
+        var (_, said) = Say("show properties of Customer");
+
+        StringAssert.Contains(said, "string Name");
+        StringAssert.Contains(said, "string? Notes");
+        Assert.DoesNotContain("Street", said);
+        Assert.DoesNotContain("Amount", said);
+    }
+
     [TestMethod]
     public void A_rule_on_a_property_the_class_does_not_have_is_refused_with_a_close_name()
     {
