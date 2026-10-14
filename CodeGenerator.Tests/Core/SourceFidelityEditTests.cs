@@ -15,6 +15,7 @@ namespace CodeGenerator.Tests.Core;
 /// files, a nested class, and an enum and a record struct in the class's file.
 /// </remarks>
 [TestClass]
+[DoNotParallelize] // create class goes through CommandHandlingService, which keeps static state.
 public class SourceFidelityEditTests
 {
     private string _root = string.Empty;
@@ -370,6 +371,79 @@ public class SourceFidelityEditTests
         StringAssert.Contains(message, "[Range]");
         StringAssert.Contains(text, "public string Age { get; init; } = string.Empty;");
         AssertCompilesWithoutNullWarnings();
+    }
+
+    [TestMethod]
+    public void Show_methods_shows_the_parameters()
+    {
+        var methods = ClassMethodLister.MethodsIn(PathOf("Customer.cs")).Select(m => m.Display).ToList();
+
+        CollectionAssert.Contains(methods, "void RaiseLimit(decimal amount)");
+    }
+
+    /// <summary>GetType().Name in EntityBase is System.Type's Name, not Customer's.</summary>
+    [TestMethod]
+    public void Rename_property_names_only_code_that_uses_that_class_member()
+    {
+        Write("Report.cs", """
+            namespace SfClsLib.Models;
+
+            public static class Report
+            {
+                public static string Of(Customer customer) => customer.Name;
+            }
+            """);
+
+        Assert.IsTrue(ClassPropertyRenameService.RenameProperty(_root, "Customer", "Name", "FullName", out var message), message);
+
+        var users = MemberReferences.UsersOf(_root, "Customer", "Name");
+
+        CollectionAssert.Contains(users.ToList(), "Report.Of()");
+        Assert.IsFalse(users.Any(u => u.StartsWith("EntityBase", StringComparison.Ordinal)), string.Join(", ", users));
+    }
+
+    [TestMethod]
+    [DataRow("OrderLine", "record OrderLine")]
+    [DataRow("IAuditable", "interface IAuditable")]
+    public void Create_class_refuses_a_name_another_file_declares(string name, string declaration)
+    {
+        var before = Directory.GetFiles(Path.Combine(_root, "Models")).Length;
+        var command = new CodeGenerationEngine.Models.ParsedCommand
+        {
+            Intent = CodeGenerationEngine.Models.IntentType.CreateClass,
+            ClassName = name,
+            OutputFolder = Path.Combine(_root, "Models"),
+            OriginalSentence = "create class " + name,
+        };
+        CodeGenerationEngine.Models.ProjectMetaData? project = null;
+
+        var ok = CodeGenerationEngine.Service.CommandHandlingService.Execute(command, ref project, [], _root, _ => { });
+
+        Assert.IsFalse(ok);
+        Assert.HasCount(before, Directory.GetFiles(Path.Combine(_root, "Models")));
+        Assert.IsFalse(File.Exists(PathOf(name + ".cs")));
+        StringAssert.Contains(File.ReadAllText(ClassFiles.DeclaringFile(_root, name)!), declaration);
+    }
+
+    [TestMethod]
+    public void Create_class_leaves_a_project_file_that_needs_nothing_byte_for_byte()
+    {
+        var csproj = Path.Combine(_root, "Tabbed.csproj");
+        var original = "<Project Sdk=\"Microsoft.NET.Sdk\">\r\n\t<PropertyGroup>\r\n\t\t<TargetFramework>net10.0</TargetFramework>\r\n\t</PropertyGroup>\r\n\r\n</Project>\r\n";
+        File.WriteAllText(csproj, original);
+        var bytes = File.ReadAllBytes(csproj);
+
+        ProjectFileUpdater.Update(csproj, PathOf("Thing.cs"), "public class Thing { }");
+
+        CollectionAssert.AreEqual(bytes, File.ReadAllBytes(csproj));
+
+        // When a line is needed, only that is added, in the file's own tabs and line ends.
+        ProjectFileUpdater.Update(csproj, PathOf("Thing.cs"), "public class Thing { [Required] public string A { get; set; } = \"\"; }");
+
+        Assert.AreEqual(
+            original.Replace("\r\n</Project>", "\r\n\t<ItemGroup>\r\n\t\t<PackageReference Include=\"System.ComponentModel.Annotations\" Version=\"5.0.0\" />\r\n\t</ItemGroup>\r\n</Project>"),
+            File.ReadAllText(csproj));
+        Assert.AreNotEqual(0xEF, File.ReadAllBytes(csproj)[0], "a byte-order mark was added");
     }
 
     [TestMethod]

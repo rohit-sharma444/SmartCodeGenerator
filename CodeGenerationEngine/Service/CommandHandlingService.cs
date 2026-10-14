@@ -964,7 +964,8 @@ public static class CommandHandlingService
             .FirstOrDefault(f => Path.GetFileNameWithoutExtension(f)
                 .Equals(className, StringComparison.OrdinalIgnoreCase));
 
-        return sameFolder ?? ClassFiles.FileOf(directory, className);
+        // Or a type of that name declared in another file: a record OrderLine in Order.cs.
+        return sameFolder ?? ClassFiles.FileOf(directory, className) ?? ClassFiles.DeclaringFile(directory, className);
     }
 
     /// <summary>
