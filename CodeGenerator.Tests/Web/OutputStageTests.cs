@@ -269,6 +269,44 @@ public class OutputStageTests
     }
 
     [TestMethod]
+    public void The_diagram_draws_each_key_read_from_the_data_source()
+    {
+        // An import from a database: two keys from Payment to Staff and Staff's own ManagerId,
+        // each its own navigation in the generated code. A relationship whose key the class no
+        // longer has (removed on Review) is drawn the way the mapper writes it: as <Target>Id.
+        var model = new CandidateDomainModel();
+
+        var staff = Entity("Staff", ("Name", "string"), ("ManagerId", "int"));
+        staff.Relationships.Add(new CandidateRelationship { Target = "Staff", Role = "belongs", ForeignKey = "ManagerId" });
+        model.Entities.Add(staff);
+
+        var payment = Entity("Payment", ("PaidById", "int"), ("ApprovedById", "int"));
+        payment.Relationships.Add(new CandidateRelationship { Target = "Staff", Role = "belongs", ForeignKey = "PaidById" });
+        payment.Relationships.Add(new CandidateRelationship { Target = "Staff", Role = "belongs", ForeignKey = "ApprovedById" });
+        payment.Relationships.Add(new CandidateRelationship { Target = "Region", Role = "belongs", ForeignKey = "AreaId" });
+        model.Entities.Add(payment);
+
+        model.Entities.Add(Entity("Region", ("Name", "string")));
+
+        using var context = new BunitContext();
+
+        var page = context.Render<OutputStage>(p => p
+            .Add(c => c.Session, SessionWith(model))
+            .Add(c => c.Navigation, new StageNavigation())
+            .Add(c => c.OnAdvance, () => { }));
+
+        Assert.HasCount(4, page.FindAll(".rel-edge"));
+
+        var label = page.Find("svg.rel-svg").GetAttribute("aria-label")!;
+
+        StringAssert.Contains(label, "Payment to Staff (PaidById)");
+        StringAssert.Contains(label, "Payment to Staff (ApprovedById)");
+        StringAssert.Contains(label, "Staff to Staff (ManagerId)");
+        StringAssert.Contains(label, "Payment to Region");
+        Assert.DoesNotContain("AreaId", label);
+    }
+
+    [TestMethod]
     public void The_step_forward_is_refused_on_an_empty_model()
     {
         using var context = new BunitContext();
