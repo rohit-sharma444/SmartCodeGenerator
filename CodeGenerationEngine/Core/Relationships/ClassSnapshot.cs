@@ -30,31 +30,16 @@ public sealed record ClassSnapshot(
 /// <see cref="EntityExtractor.ExtractProperties"/>, the same reader the chat page's tree uses, so
 /// the two cannot disagree about what a class holds.
 /// <para>
-/// A file that declares more than one <em>type</em> contributes no snapshot at all, the same as a
-/// file with no class in it. <see cref="EntityExtractor.ExtractProperties"/> works per file, not
-/// per type: it walks every type declaration in the file - nested ones included - and merges all
-/// of their properties into one flat list with no record of which type each property came from.
-/// Once a file holds two types there is no way to tell which properties are whose, so attributing
-/// that merged list to either name would silently hand the detector a class described with the
-/// other type's fields. A class that is skipped is recoverable - split the file and it shows up
-/// next run - a class silently described with someone else's fields is not, because nothing
-/// downstream can tell it happened.
+/// Every top-level class in a file is a snapshot, with only its own properties
+/// (<see cref="EntityExtractor.ExtractProperties(string, string)"/>), from all its partial parts.
+/// A file with a second type used to contribute no snapshot at all, because the per-file reader
+/// merged every type's properties into one list. That made a class with a nested class added by
+/// hand look absent - New - so an add to a generated app treated it as a class to write.
+/// A nested class is not a snapshot of its own: it is part of its parent.
 /// </para>
 /// <para>
-/// The rule is deliberately drawn around type <em>declarations</em>, not classes, because that is
-/// the scope <see cref="EntityExtractor.ExtractProperties"/> actually merges over. A record, a
-/// struct and an interface are all <see cref="TypeDeclarationSyntax"/> siblings of
-/// <see cref="ClassDeclarationSyntax"/> rather than subtypes of it, so counting classes alone is
-/// blind to them: a file pairing <c>class Order</c> with <c>record OrderNote</c> holds exactly one
-/// class and would slip through, carrying the record's properties under the class's name. An enum
-/// is not a <see cref="TypeDeclarationSyntax"/> and is correctly outside the rule. Nesting does not
-/// exempt a type either: a class nested inside another is still a second declaration in the file.
-/// </para>
-/// <para>
-/// What is counted is distinct type <em>names</em>, not declarations, so that two
-/// <c>partial class Order</c> fragments in one file collapse to one name and the file is allowed.
-/// There is nothing to misattribute in that case - every property the reader finds genuinely
-/// belongs to the one class Order, whichever fragment declares it.
+/// A partial class declared in several files is one snapshot, in the file named after it when
+/// there is one.
 /// </para>
 /// </remarks>
 public static class ClassSnapshots
@@ -74,29 +59,33 @@ public static class ClassSnapshots
 
             var root = CSharpSyntaxTree.ParseText(File.ReadAllText(file)).GetRoot();
 
-            var types = root.DescendantNodes()
-                .OfType<TypeDeclarationSyntax>()
-                .ToList();
+            // Classes only, and not nested ones: a record or an interface is a type the detector
+            // has no convention for, and a nested class belongs to its parent.
+            var names = root.DescendantNodes()
+                .OfType<ClassDeclarationSyntax>()
+                .Where(c => c.Parent is not TypeDeclarationSyntax)
+                .Select(c => c.Identifier.Text)
+                .Distinct(StringComparer.Ordinal);
 
-            var classes = types.OfType<ClassDeclarationSyntax>().ToList();
+            foreach (var name in names)
+            {
+                var snapshot = new ClassSnapshot(name, file, EntityExtractor.ExtractProperties(file, name));
 
-            // No class at all is nothing to snapshot; a record or an interface on its own is a
-            // type the detector has no convention for.
-            if (classes.Count == 0)
-                continue;
+                // One per class: its partial parts in other files describe the same class.
+                var same = snapshots.FindIndex(s => s.Name.Equals(name, StringComparison.Ordinal));
 
-            // Distinct names, not declarations: partial fragments of one class collapse to one.
-            if (types.Select(t => t.Identifier.Text).Distinct(StringComparer.Ordinal).Count() != 1)
-                continue;
-
-            snapshots.Add(new ClassSnapshot(
-                classes[0].Identifier.Text,
-                file,
-                EntityExtractor.ExtractProperties(file)));
+                if (same < 0)
+                    snapshots.Add(snapshot);
+                else if (!NamedAfter(snapshots[same]) && NamedAfter(snapshot))
+                    snapshots[same] = snapshot;
+            }
         }
 
         return snapshots;
     }
+
+    private static bool NamedAfter(ClassSnapshot snapshot)
+        => Path.GetFileNameWithoutExtension(snapshot.File).Equals(snapshot.Name, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Whether the nearest project file at or above <paramref name="folder"/>, up to the

@@ -52,14 +52,10 @@ public class ClassSnapshotTests
     }
 
     [TestMethod]
-    public void A_file_with_more_than_one_class_contributes_no_snapshot()
+    public void Each_class_in_a_file_is_a_snapshot_with_only_its_own_properties()
     {
-        // EntityExtractor.ExtractProperties works per file, not per type: it walks every type
-        // declaration in the file and merges all their properties into one flat list with no
-        // record of which type a property came from. Attributing that merged list to either
-        // class's name would silently hand the detector a class described with the other
-        // class's fields, so the whole file is skipped instead - the same as a file with no
-        // class at all.
+        // The reader used to merge every type's properties in the file, so such a file was
+        // skipped. Read per type, each class is described with its own fields and no other's.
         var root = NewRoot();
         Write(root, "Two.cs", """
             namespace Shop;
@@ -75,17 +71,23 @@ public class ClassSnapshotTests
             }
             """);
 
-        Assert.IsEmpty(ClassSnapshots.Read(root));
+        var snapshots = ClassSnapshots.Read(root);
+
+        Assert.HasCount(2, snapshots);
+        CollectionAssert.AreEquivalent(
+            new[] { "Id", "CustomerId" },
+            snapshots.Single(s => s.Name == "Order").Properties.Select(p => p.Name).ToList());
+        CollectionAssert.AreEquivalent(
+            new[] { "Text", "Rating" },
+            snapshots.Single(s => s.Name == "OrderNote").Properties.Select(p => p.Name).ToList());
     }
 
     [TestMethod]
-    public void A_class_nested_inside_another_counts_toward_more_than_one_and_yields_no_snapshot()
+    public void A_class_with_a_nested_class_is_a_snapshot_without_the_nested_class_properties()
     {
-        // EntityExtractor.ExtractProperties deliberately walks nested types too, so a class
-        // nested inside another is exactly as much a source of misattribution as a second
-        // top-level class in the same file: its properties land in the same merged, unattributed
-        // list. So nesting does not exempt a class from the "more than one class" rule above -
-        // Outer + Inner is two classes, and the file contributes no snapshot.
+        // A nested class added by hand made its parent vanish from the snapshots, so an add to a
+        // generated app took the parent for a New class. The nested class is part of its parent,
+        // not a snapshot of its own, and its properties are not the parent's.
         var root = NewRoot();
         Write(root, "Outer.cs", """
             namespace Shop;
@@ -100,17 +102,16 @@ public class ClassSnapshotTests
             }
             """);
 
-        Assert.IsEmpty(ClassSnapshots.Read(root));
+        var snapshot = ClassSnapshots.Read(root).Single();
+
+        Assert.AreEqual("Outer", snapshot.Name);
+        CollectionAssert.AreEqual(new[] { "Id" }, snapshot.Properties.Select(p => p.Name).ToList());
     }
 
     [TestMethod]
-    public void A_class_alongside_a_record_in_one_file_contributes_no_snapshot()
+    public void A_class_alongside_a_record_in_one_file_is_a_snapshot_without_the_record()
     {
-        // EntityExtractor.ExtractProperties iterates every TypeDeclarationSyntax, and
-        // RecordDeclarationSyntax is a sibling of ClassDeclarationSyntax under that base, not a
-        // subtype of it - so a record sharing a file with a class is exactly as much a
-        // misattribution risk as a second class, even though there is only one
-        // ClassDeclarationSyntax in the file.
+        // A record is a type the detector has no convention for, and its properties are its own.
         var root = NewRoot();
         Write(root, "Two.cs", """
             namespace Shop;
@@ -122,14 +123,16 @@ public class ClassSnapshotTests
             public record OrderNote(string Text, int Rating);
             """);
 
-        Assert.IsEmpty(ClassSnapshots.Read(root));
+        var snapshot = ClassSnapshots.Read(root).Single();
+
+        Assert.AreEqual("Order", snapshot.Name);
+        CollectionAssert.AreEquivalent(
+            new[] { "Id", "CustomerId" }, snapshot.Properties.Select(p => p.Name).ToList());
     }
 
     [TestMethod]
-    public void A_class_alongside_a_struct_in_one_file_contributes_no_snapshot()
+    public void A_class_alongside_a_struct_in_one_file_is_a_snapshot_without_the_struct()
     {
-        // StructDeclarationSyntax is also a TypeDeclarationSyntax that
-        // EntityExtractor.ExtractProperties merges over, so the same rule applies as for a record.
         var root = NewRoot();
         Write(root, "Two.cs", """
             namespace Shop;
@@ -145,7 +148,25 @@ public class ClassSnapshotTests
             }
             """);
 
-        Assert.IsEmpty(ClassSnapshots.Read(root));
+        var snapshot = ClassSnapshots.Read(root).Single();
+
+        Assert.AreEqual("Order", snapshot.Name);
+        CollectionAssert.AreEquivalent(
+            new[] { "Id", "CustomerId" }, snapshot.Properties.Select(p => p.Name).ToList());
+    }
+
+    [TestMethod]
+    public void A_partial_class_in_two_files_is_one_snapshot_in_its_own_file_with_both_parts()
+    {
+        var root = NewRoot();
+        Write(root, "Order.cs", "namespace Shop; public partial class Order { public int Id { get; set; } }");
+        Write(root, "Order.Extra.cs", "namespace Shop; public partial class Order { public string Note { get; set; } }");
+
+        var snapshot = ClassSnapshots.Read(root).Single();
+
+        Assert.AreEqual("Order.cs", Path.GetFileName(snapshot.File));
+        CollectionAssert.AreEquivalent(
+            new[] { "Id", "Note" }, snapshot.Properties.Select(p => p.Name).ToList());
     }
 
     [TestMethod]
