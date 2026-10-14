@@ -46,7 +46,7 @@ public sealed class DelimitedTextReader : IDataSourceReader
 
     private static TabularTable ToTableFrom(
         string text, char delimiter, string name, string label)
-        => CsvReader.ToTable(name, label, CsvReader.ParseFields(text, delimiter));
+        => CsvReader.FromText(name, label, text, delimiter);
 
     /// <summary>
     /// The delimiter that splits the first <see cref="SniffLines"/> lines into the same number

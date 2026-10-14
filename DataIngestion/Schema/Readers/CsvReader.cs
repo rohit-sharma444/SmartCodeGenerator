@@ -20,12 +20,11 @@ public sealed class CsvReader : IDataSourceReader
         if (!File.Exists(spec.Location))
             throw new FileNotFoundException($"No file at {spec.Location}.", spec.Location);
 
-        var records = ParseFields(SourceText.Read(spec.Location, out var encodingNote), ',');
-
-        var table = ToTable(
+        var table = FromText(
             Path.GetFileNameWithoutExtension(spec.Location),
             Path.GetFileName(spec.Location),
-            records);
+            SourceText.Read(spec.Location, out var encodingNote),
+            ',');
 
         if (encodingNote is not null)
             table.Notes.Insert(0, encodingNote);
@@ -178,6 +177,69 @@ public sealed class CsvReader : IDataSourceReader
         }
 
         return table;
+    }
+
+    /// <summary>
+    /// A delimited text file as a table: <see cref="ParseFields"/>, then <see cref="ToTable"/>,
+    /// with every row whose field count differs from the header's named in a note.
+    /// </summary>
+    /// <remarks>
+    /// A row with MORE fields than the header is left out. Its extra field almost always comes
+    /// from an unquoted delimiter inside a value ("Smith, John"), and which value it split cannot
+    /// be known: cut to the header's width, the row put "John" in Qty and lost the 2, and that one
+    /// row made the whole Qty column text. Extra fields that are all empty (a trailing delimiter)
+    /// hold nothing, so that row is kept as it is. A row with FEWER fields is kept, its missing
+    /// fields empty — the usual way an export ends a row early — but named all the same, since a
+    /// field dropped from the middle would shift the rest. Only text files: an Excel row is short
+    /// whenever its last cells are empty, which says nothing about its shape.
+    /// </remarks>
+    public static TabularTable FromText(string name, string label, string text, char delimiter)
+    {
+        var records = ParseFields(text, delimiter);
+
+        if (records.Count < 2)
+            return ToTable(name, label, records);
+
+        var width = records[0].Length;
+        var kept = new List<string?[]> { records[0] };
+        var longer = new List<string>();
+        var shorter = new List<string>();
+
+        for (var r = 1; r < records.Count; r++)
+        {
+            var record = records[r];
+            var where = $"row {r} ({record[0]?.Trim()})";
+
+            if (record.Length > width && record.Skip(width).Any(f => !string.IsNullOrEmpty(f)))
+            {
+                longer.Add(where);
+                continue;
+            }
+
+            if (record.Length < width)
+                shorter.Add(where);
+
+            kept.Add(record);
+        }
+
+        var table = ToTable(name, label, kept);
+
+        if (longer.Count > 0)
+            table.Notes.Add(
+                $"In {label}, {Rows(longer)} more fields than the header's {width}, so "
+                + $"{(longer.Count == 1 ? "it was" : "they were")} left out rather than have values "
+                + $"land in the wrong columns (a value holding the delimiter needs quotes): "
+                + $"{string.Join(", ", longer)}.");
+
+        if (shorter.Count > 0)
+            table.Notes.Add(
+                $"In {label}, {Rows(shorter)} fewer fields than the header's {width}; "
+                + $"the missing fields were left empty: {string.Join(", ", shorter)}.");
+
+        return table;
+
+        static string Rows(List<string> rows)
+            => rows.Count == 1 ? "1 row has" : $"{rows.Count} rows have";
     }
 
     /// <summary>The spelling a file source uses for "no value here".</summary>
