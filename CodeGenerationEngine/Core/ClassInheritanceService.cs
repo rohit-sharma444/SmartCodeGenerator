@@ -27,11 +27,14 @@ public static class ClassInheritanceService
     {
         message = string.Empty;
 
+        // By declaration when no file has its name: an interface declared in another type's file.
         var file = ClassFiles.FileOf(workspaceRoot, className);
         if (file == null)
         {
-            message = $"Class '{className}' not found.";
-            return false;
+            if (!ClassMethodEditService.TryLoad(workspaceRoot, className, out var declaring, out _, out _, out message))
+                return false;
+
+            file = declaring;
         }
 
         try
@@ -114,14 +117,21 @@ public static class ClassInheritanceService
             return false;
         }
 
-        BaseTypeSyntax added = SyntaxFactory.SimpleBaseType(typeSyntax);
-        SeparatedSyntaxList<BaseTypeSyntax> types;
+        // The edit is made in the text, at one place, so nothing else in the file moves: the whole
+        // file used to be reformatted (NormalizeWhitespace), which took out blank lines, moved
+        // #region to column 0 and split one-line statements.
+        var written = typeSyntax.ToString();
+        var afterName = node.ParameterList?.Span.End ?? node.TypeParameterList?.Span.End ?? node.Identifier.Span.End;
+        int insertAt;
+        string insert;
         string done;
 
         if (type.TypeKind == TypeKind.Interface)
         {
             // After everything already there: a base class must stay first.
-            types = node.BaseList is null ? SyntaxFactory.SingletonSeparatedList(added) : node.BaseList.Types.Add(added);
+            (insertAt, insert) = node.BaseList is null
+                ? (afterName, " : " + written)
+                : (node.BaseList.Types.Last().Span.End, ", " + written);
             done = node is InterfaceDeclarationSyntax
                 ? $"Interface '{name}' now extends interface '{shown}'."
                 : $"Class '{name}' now implements interface '{shown}'.";
@@ -150,14 +160,16 @@ public static class ClassInheritanceService
         else
         {
             // A base class goes first: class Order : IAuditable, AuditableBase is CS1722.
-            types = node.BaseList is null ? SyntaxFactory.SingletonSeparatedList(added) : node.BaseList.Types.Insert(0, added);
+            (insertAt, insert) = node.BaseList is null
+                ? (afterName, " : " + written)
+                : (node.BaseList.Types[0].SpanStart, written + ", ");
             done = $"Class '{name}' now inherits from '{shown}'.";
         }
 
-        var newNode = node.WithBaseList(node.BaseList is null ? SyntaxFactory.BaseList(types) : node.BaseList.WithTypes(types));
-        var newRoot = root.ReplaceNode(node, newNode).NormalizeWhitespace();
+        var text = root.ToFullString().Insert(insertAt, insert);
+        var newRoot = CSharpSyntaxTree.ParseText(text, (CSharpParseOptions)tree.Options).GetRoot();
 
-        File.WriteAllText(file, newRoot.ToFullString());
+        Validation.SourceFileText.Rewrite(file, text);
 
         message = done + Missing(compilation, tree, newRoot, name);
         return true;

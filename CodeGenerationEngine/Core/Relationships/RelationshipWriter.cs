@@ -213,7 +213,7 @@ public static class RelationshipWriter
         }
 
         foreach (var (file, code) in originals)
-            File.WriteAllText(file, code);
+            global::CodeGenerationEngine.Core.Validation.SourceFileText.Rewrite(file, code);
 
         return new RelationshipWritten(false, why + " Nothing was changed.", []);
     }

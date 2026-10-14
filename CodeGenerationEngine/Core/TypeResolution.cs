@@ -55,8 +55,16 @@ internal static class TypeResolution
     public static bool Resolves(
         string workspaceRoot, string classFile, TypeDeclarationSyntax classNode, TypeSyntax type,
         out string reason)
+        => Resolves(workspaceRoot, classFile, classNode, type, out reason, out _);
+
+    /// <summary>As <see cref="Resolves(string, string, TypeDeclarationSyntax, TypeSyntax, out string)"/>,
+    /// and gives what <paramref name="type"/> binds to; null for a keyword type, which is not bound.</summary>
+    public static bool Resolves(
+        string workspaceRoot, string classFile, TypeDeclarationSyntax classNode, TypeSyntax type,
+        out string reason, out ITypeSymbol? bound)
     {
         reason = string.Empty;
+        bound = null;
 
         // A keyword never needs binding, and this keeps the common case free of a compilation.
         if (type is PredefinedTypeSyntax
@@ -111,7 +119,10 @@ internal static class TypeResolution
             .ToList();
 
         if (errors.Count == 0)
+        {
+            bound = compilation.GetSemanticModel(probe).GetTypeInfo(field.Declaration.Type).Type;
             return true;
+        }
 
         var written = type.ToString();
 
