@@ -142,13 +142,34 @@ public sealed class JsonTableReader : IDataSourceReader
 
         var child = new TabularTable { Name = inner.Name, SourceLabel = label };
         child.Columns.Add(new TabularColumn { Name = foreignKey, Type = "int", HoldsRowNumbers = true });
-        child.Columns.AddRange(inner.Columns);
+
+        // A child that also carries its parent's key itself ("orderId": 1001 inside each line)
+        // holds the same link the nesting already gives. Kept as a second column of the same name,
+        // every lookup by name found the first, and the import then read the source keys as row
+        // numbers or the row numbers as source keys: links cleared, or pointed at the wrong
+        // parent. The nesting is the link that cannot be wrong, so the copy is left out.
+        var duplicate = inner.IndexOf(foreignKey);
+
+        for (var c = 0; c < inner.Columns.Count; c++)
+            if (c != duplicate)
+                child.Columns.Add(inner.Columns[c]);
+
+        if (duplicate >= 0)
+            child.Notes.Add(
+                $"In {label}, each {childName} item's own {inner.Columns[duplicate].Name} names the "
+                + $"{NameNormalizer.ToUserTypedEntityName(foreignKey[..^ParentIdSuffix.Length])} it is "
+                + "nested in, so it was read as that link rather than kept as a second column.");
 
         for (var i = 0; i < inner.Rows.Count; i++)
         {
             var row = new string?[child.Columns.Count];
             row[0] = elements[i].ParentRow.ToString();
-            Array.Copy(inner.Rows[i], 0, row, 1, inner.Rows[i].Length);
+
+            var to = 1;
+            for (var c = 0; c < inner.Rows[i].Length; c++)
+                if (c != duplicate)
+                    row[to++] = inner.Rows[i][c];
+
             child.Rows.Add(row);
         }
 

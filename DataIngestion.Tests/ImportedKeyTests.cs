@@ -160,6 +160,51 @@ public class ImportedKeyTests
         Assert.Equal("ORD-B", orderOf["BOLT"]);
     }
 
+    /// <summary>
+    /// A nested child that carries its parent's key itself ("orderId": 1001) as well as being
+    /// nested under it. The reader made up an OrderId of row numbers and then added the child's
+    /// own orderId as a second column of the same name; the row-number one was found first for
+    /// the field and the source-key one was then "rewritten" through the parent's ids, which
+    /// cleared every link and blamed the user's data. With small ids in another order it would
+    /// have linked each line to the wrong order.
+    /// </summary>
+    [Theory]
+    [InlineData("1001", "1002")]
+    [InlineData("2", "1")]
+    public void A_json_child_carrying_its_parents_key_links_to_the_parent_it_is_nested_in(
+        string firstId, string secondId)
+    {
+        var tables = JsonTableReader.ReadJson(
+            $$"""
+            [
+              { "orderId": {{firstId}}, "ref": "ORD-A",
+                "lines": [ { "orderId": {{firstId}}, "sku": "NUT" }, { "orderId": {{firstId}}, "sku": "PIN" } ] },
+              { "orderId": {{secondId}}, "ref": "ORD-B",
+                "lines": [ { "orderId": {{secondId}}, "sku": "BOLT" } ] }
+            ]
+            """,
+            "Orders", "orders.json");
+
+        var line = Assert.Single(tables, t => t.Name == "Line");
+        Assert.Single(line.Columns, c => string.Equals(c.Name, "OrderId", StringComparison.OrdinalIgnoreCase));
+
+        var seeds = Seeds(tables);
+
+        var refById = seeds["Order"].ToDictionary(
+            r => r.GetProperty("Id").GetInt32(), r => r.GetProperty("Ref").GetString());
+
+        var orderOf = seeds["Line"].ToDictionary(
+            r => r.GetProperty("Sku").GetString()!,
+            r => r.TryGetProperty("OrderId", out var id) && refById.TryGetValue(id.GetInt32(), out var o)
+                ? o
+                : null);
+
+        Assert.Equal("ORD-A", orderOf["NUT"]);
+        Assert.Equal("ORD-A", orderOf["PIN"]);
+        Assert.Equal("ORD-B", orderOf["BOLT"]);
+        Assert.DoesNotContain(TabularImport.ToImportedData(tables).Notes, n => n.Contains("could not be linked"));
+    }
+
     /// <summary>A key held as text is the user's data, not a row number, and is written exactly as
     /// it was read.</summary>
     [Fact]
