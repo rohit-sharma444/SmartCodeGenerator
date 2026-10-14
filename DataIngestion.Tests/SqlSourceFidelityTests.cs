@@ -277,4 +277,35 @@ public class SqlSourceFidelityTests
         Assert.Contains(Validate(assembly, "Fee", New(assembly, "Fee", ("Amount", 922337203685477.5808m))),
             m => m.Contains("Amount must be"));
     }
+
+    // --- S2: a column the schema declares NULL may be empty ---
+
+    [Fact]
+    public void A_column_declared_null_is_nullable_even_when_no_row_read_is_null()
+    {
+        var app = Generate(Database(add =>
+        {
+            add("Ticket",
+                [
+                    new("TicketId", "int", false, IsPrimaryKey: true),
+                    new("TicketNo", "int", true),
+                    new("Small", "smalldatetime", true),
+                    new("Num", "numeric", true, Precision: 18, Scale: 0),
+                    new("Done", "bit", true),
+                    new("Note", "nvarchar", true, 50),
+                    new("Count", "int", false),
+                ],
+                [["1", "7001", "2024-01-02T00:00:00", "5", "true", "x", "3"]]);
+        }));
+
+        Assert.Equal("int?", Property(app, "Ticket", "TicketNo").Type);
+        Assert.Equal("DateTime?", Property(app, "Ticket", "Small").Type);
+        Assert.Equal("decimal?", Property(app, "Ticket", "Num").Type);
+        Assert.Equal("bool?", Property(app, "Ticket", "Done").Type);
+        Assert.Equal("int", Property(app, "Ticket", "Count").Type);
+        Assert.DoesNotContain(Property(app, "Ticket", "Note").Rules, r => r.Name == "required");
+
+        var assembly = Compile(app);
+        Assert.Empty(Validate(assembly, "Ticket", New(assembly, "Ticket", ("Count", 1))));
+    }
 }

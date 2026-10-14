@@ -65,6 +65,12 @@ public sealed class SqlServerReader(ISqlSchemaSource source, int maxRowsPerTable
                     Facts = new TypeFacts
                     {
                         IsNullable = column.Nullable,
+
+                        // A column the schema declares NULL may be empty whether or not the rows
+                        // read happen to hold a NULL: typed int rather than int?, the app had no
+                        // way to leave a ticket's number unset, and saved 0 where the database
+                        // would have held nothing.
+                        HasMissingValues = column.Nullable,
                         MaxLength = maxLength,
                         IsUnbounded = unbounded,
                         Precision = column.Precision,

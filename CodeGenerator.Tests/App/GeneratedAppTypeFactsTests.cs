@@ -39,8 +39,9 @@ public class GeneratedAppTypeFactsTests
         StringAssert.Contains(validator, "item.Rating > 255");
 
         // decimal(18,2), in both halves: the places, and the integer part the database will
-        // overflow on at 10^16 whatever the app thinks.
-        StringAssert.Contains(validator, "decimal.Round(item.Price, 2) != item.Price");
+        // overflow on at 10^16 whatever the app thinks. Price is declared NULL, so it is a
+        // decimal? and its check passes a missing value.
+        StringAssert.Contains(validator, "item.Price is decimal scaled && decimal.Round(scaled, 2) != scaled");
         StringAssert.Contains(validator, "item.Price > 9999999999999999");
 
         // datetime, which really does start in 1753 -- and the guard that keeps a date the user
