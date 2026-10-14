@@ -29,7 +29,7 @@ public static class ValidationAdd
         var refused = new List<string>();
         var unwritten = new List<string>();
 
-        var properties = EntityExtractor.ExtractProperties(target.File);
+        var properties = EntityExtractor.ExtractProperties(target.File, target.ClassName);
         var known = properties.Select(p => p.Name).ToList();
 
         foreach (var fragment in ValidationRuleCatalog.Fragments(text))

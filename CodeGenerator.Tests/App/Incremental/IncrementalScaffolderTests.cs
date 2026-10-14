@@ -238,6 +238,198 @@ public class IncrementalScaffolderTests
         CollectionAssert.AreEqual(before, File.ReadAllBytes(customerPath), "an add rewrote a class it said it would leave");
     }
 
+    private static ScaffoldRequest Request(
+        CandidateDomainModel model, string root, ITargetScaffolder target,
+        AppCustomization customization)
+        => ScaffoldRequest.For(model, "Shop", root, target) with { Customization = customization };
+
+    private static readonly AppCustomization Acme =
+        AppCustomization.Default with { NamespacePrefix = "Acme", Company = "Acme Ltd" };
+
+    /// <summary>
+    /// An add writes the new class into the namespace the app already uses, not the one the
+    /// current answers name. An app built without a prefix, then added to from a workspace whose
+    /// profile named one, had files rewritten into ABCLtd.* and stopped compiling (88 errors).
+    /// </summary>
+    [TestMethod]
+    [DataRow(true, DisplayName = "settings recorded at generate")]
+    [DataRow(false, DisplayName = "app generated before the record existed")]
+    public void An_add_uses_the_namespace_the_app_was_generated_with(bool recorded)
+    {
+        var target = new ConsoleTarget();
+
+        new AppScaffolder().Scaffold(
+            Request(Model("Customer"), _root, target, AppCustomization.Default));
+
+        var folder = GeneratedProjectPath.Folder(_root, "Shop", target);
+        var csproj = GeneratedProjectPath.CsprojPath(_root, "Shop", target);
+        var csprojBefore = File.ReadAllBytes(csproj);
+
+        if (!recorded)
+            File.Delete(BuildSettingsRecord.PathFor(folder));
+
+        var result = IncrementalScaffolder.Add(
+            Request(Model("Customer", "Supplier"), _root, target, Acme), ["Supplier"]);
+
+        Assert.IsTrue(result.Success, result.Message);
+
+        var supplier = File.ReadAllText(Path.Combine(folder, "Models", "Supplier.cs"));
+        StringAssert.Contains(supplier, "namespace Shop.Console.Models");
+        Assert.DoesNotContain("Acme", supplier);
+
+        foreach (var file in result.Written)
+            Assert.DoesNotContain("Acme", File.ReadAllText(file), file);
+
+        CollectionAssert.AreEqual(csprojBefore, File.ReadAllBytes(csproj), "the project file was rewritten");
+    }
+
+    /// <summary>The other direction: a prefixed app keeps its prefix when the add's answers
+    /// name none.</summary>
+    [TestMethod]
+    [DataRow(true)]
+    [DataRow(false)]
+    public void An_add_keeps_the_prefix_of_a_prefixed_app(bool recorded)
+    {
+        var target = new ConsoleTarget();
+
+        new AppScaffolder().Scaffold(Request(Model("Customer"), _root, target, Acme));
+
+        var folder = GeneratedProjectPath.Folder(_root, "Shop", target);
+
+        if (!recorded)
+            File.Delete(BuildSettingsRecord.PathFor(folder));
+
+        IncrementalScaffolder.Add(
+            Request(Model("Customer", "Supplier"), _root, target, AppCustomization.Default),
+            ["Supplier"]);
+
+        StringAssert.Contains(
+            File.ReadAllText(Path.Combine(folder, "Models", "Supplier.cs")),
+            "namespace Acme.Shop.Console.Models");
+    }
+
+    /// <summary>
+    /// A class whose generated text merely mentions a word starting with the new class's name is
+    /// still an existing class, left as it is. Order's SupplierName made the old prefix test
+    /// rewrite Order.cs - and its hand edit with it - when Supplier was added.
+    /// </summary>
+    [TestMethod]
+    public void An_add_leaves_a_class_that_only_mentions_the_new_name()
+    {
+        var target = new ConsoleTarget();
+        var model = Model("Customer", "Order");
+        model.Entities[1].Fields.Add(new CandidateField
+        {
+            Name = "SupplierName", Type = "string", Provenance = Provenance.Wiki
+        });
+
+        new AppScaffolder().Scaffold(ScaffoldRequest.For(model, "Shop", _root, target));
+
+        var orderPath = Path.Combine(
+            GeneratedProjectPath.Folder(_root, "Shop", target), "Models", "Order.cs");
+        var edited = File.ReadAllText(orderPath).Replace(
+            "public class Order", "/// <summary>HAND</summary>\n    public class Order");
+        File.WriteAllText(orderPath, edited);
+
+        var grown = Model("Customer", "Order", "Supplier");
+        grown.Entities[1].Fields.Add(new CandidateField
+        {
+            Name = "SupplierName", Type = "string", Provenance = Provenance.Wiki
+        });
+
+        IncrementalScaffolder.Add(ScaffoldRequest.For(grown, "Shop", _root, target), ["Supplier"]);
+
+        Assert.AreEqual(edited, File.ReadAllText(orderPath), "an add rewrote Order.cs");
+    }
+
+    /// <summary>
+    /// A file that lists the entities gets the new class's lines, and keeps the user's own. The
+    /// whole generated file used to be copied over it.
+    /// </summary>
+    [TestMethod]
+    public void An_add_merges_its_lines_into_a_hand_edited_composition_file()
+    {
+        var target = new WpfTarget();
+
+        new AppScaffolder().Scaffold(ScaffoldRequest.For(Model("Customer"), "Shop", _root, target));
+
+        var folder = GeneratedProjectPath.Folder(_root, "Shop", target);
+        var seed = Path.Combine(folder, "Data", "SeedData.cs");
+        var factory = Path.Combine(folder, "Validation", "ValidatorFactory.cs");
+
+        // A line of the user's own, at the top, away from where the new lines go.
+        File.WriteAllText(seed, "// HAND: seed notes\r\n" + File.ReadAllText(seed));
+        File.WriteAllText(factory, "// HAND: factory notes\r\n" + File.ReadAllText(factory));
+
+        var result = IncrementalScaffolder.Add(
+            ScaffoldRequest.For(Model("Customer", "Supplier"), "Shop", _root, target), ["Supplier"]);
+
+        Assert.IsTrue(result.Success, result.Message);
+        Assert.IsEmpty(result.NotMerged, string.Join(", ", result.NotMerged.Select(n => n.Path)));
+
+        var seedText = File.ReadAllText(seed);
+        StringAssert.Contains(seedText, "// HAND: seed notes");
+        StringAssert.Contains(seedText, "Seed<Supplier>");
+
+        var factoryText = File.ReadAllText(factory);
+        StringAssert.Contains(factoryText, "// HAND: factory notes");
+        StringAssert.Contains(factoryText, "SupplierValidator");
+    }
+
+    /// <summary>
+    /// When the user has changed the very lines a new class's line goes beside, the file is left
+    /// as it is, the add's version goes beside it, and the report says what to add.
+    /// </summary>
+    [TestMethod]
+    public void An_add_that_cannot_place_its_lines_leaves_the_file_and_says_what_to_add()
+    {
+        var target = new ConsoleTarget();
+
+        new AppScaffolder().Scaffold(ScaffoldRequest.For(Model("Customer"), "Shop", _root, target));
+
+        var folder = GeneratedProjectPath.Folder(_root, "Shop", target);
+        var seed = Path.Combine(folder, "Data", "SeedData.cs");
+
+        // Every line around the Seed<Customer> call rewritten: there is nowhere certain to go.
+        var lines = File.ReadAllLines(seed).ToList();
+        var call = lines.FindIndex(l => l.Contains("Seed<Customer>", StringComparison.Ordinal));
+        Assert.IsGreaterThanOrEqualTo(0, call, "fixture: no Seed<Customer> line");
+        for (var i = Math.Max(0, call - 4); i <= Math.Min(lines.Count - 1, call + 4); i++)
+            lines[i] = "// HAND " + i;
+        File.WriteAllLines(seed, lines);
+        var edited = File.ReadAllBytes(seed);
+
+        var result = IncrementalScaffolder.Add(
+            ScaffoldRequest.For(Model("Customer", "Supplier"), "Shop", _root, target), ["Supplier"]);
+
+        Assert.IsTrue(result.Success, result.Message);
+        CollectionAssert.AreEqual(edited, File.ReadAllBytes(seed), "the edited file was changed");
+
+        var aside = result.NotMerged.Single(n => n.Path == Path.Combine("Data", "SeedData.cs"));
+        Assert.IsTrue(File.Exists(Path.Combine(folder, aside.NewVersionPath)));
+        Assert.IsTrue(aside.Changes.Any(c => c.Added.Any(l => l.Contains("Seed<Supplier>"))));
+    }
+
+    /// <summary>A generated file the app does not have - removed, or of a feature it was built
+    /// without - is not put back by an add.</summary>
+    [TestMethod]
+    public void An_add_does_not_bring_back_a_file_the_app_does_not_have()
+    {
+        var target = new ConsoleTarget();
+
+        new AppScaffolder().Scaffold(ScaffoldRequest.For(Model("Customer"), "Shop", _root, target));
+
+        var folder = GeneratedProjectPath.Folder(_root, "Shop", target);
+        File.Delete(BuildSettingsRecord.PathFor(folder));
+
+        IncrementalScaffolder.Add(
+            Request(Model("Customer", "Supplier"), _root, target,
+                AppCustomization.Default with { Logging = true }),
+            ["Supplier"]);
+
+        Assert.IsFalse(File.Exists(Path.Combine(folder, "Logging", "AppLog.cs")));
+    }
+
     [TestMethod]
     public void Adding_nothing_writes_nothing()
     {

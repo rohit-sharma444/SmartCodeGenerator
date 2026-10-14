@@ -65,7 +65,7 @@ public static class ClassPropertyRenameService
 
             // ToFullString, not NormalizeWhitespace: renaming one identifier must not
             // reformat the user's whole file.
-            File.WriteAllText(part.File, root.ToFullString());
+            Validation.SourceFileText.Rewrite(part.File, root.ToFullString());
 
             message = $"Property '{name}' renamed to '{newName}' in '{className}'. "
                 + "References elsewhere were not updated.";

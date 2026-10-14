@@ -662,6 +662,10 @@ public sealed class AppScaffolder
         else
             GeneratedFilesManifest.Record(outputFolder, written);
 
+        // What this app was generated with, so a later add writes its new classes the same way
+        // rather than with whatever that run's answers happen to be.
+        BuildSettingsRecord.Save(outputFolder, request with { Customization = customization });
+
         if (testProjectPath is not null)
         {
             var testFolder = Path.GetDirectoryName(testProjectPath)!;

@@ -251,13 +251,21 @@ public static class CommandHandlingService
             // It used to say "Saved generated class" and write over the file, losing every property
             // and method in it. "create class" makes a new class; changing one has its own commands.
             var name = EntityExtractor.DeclaredName(existing, classDef.Name);
-            Output.Error($"Class '{name}' already exists: {existing}");
+
+            // Declared in a file of another name (a record OrderLine in Order.cs): delete class
+            // works on a class's own file, so it is no way to start this one again.
+            var ownFile = Path.GetFileNameWithoutExtension(existing).Equals(name, StringComparison.OrdinalIgnoreCase);
+
+            Output.Error(ownFile
+                ? $"Class '{name}' already exists: {existing}"
+                : $"'{name}' already exists: it is declared in {existing}");
             Console.WriteLine(
                 "  It was left as it is: creating it again would replace its properties and methods."
                 + Environment.NewLine
-                + $"  To change it, use add property <name> <type> to {name} or add method <name> to {name};"
-                + Environment.NewLine
-                + $"  to start it again, delete class {name} first.");
+                + $"  To change it, use add property <name> <type> to {name} or add method <name> to {name}"
+                + (ownFile
+                    ? ";" + Environment.NewLine + $"  to start it again, delete class {name} first."
+                    : "."));
             return false;
         }
 
@@ -517,8 +525,10 @@ public static class CommandHandlingService
             return false;
         }
 
-        var known = EntityExtractor.ExtractProperties(classFile).Select(p => p.Name).ToList();
+        // The class's own properties, in all its partial files: Street on a nested Address was
+        // accepted (the validator then did not compile), and Notes in Customer.Notes.cs was not.
         var declared = EntityExtractor.DeclaredName(classFile, className);
+        var known = EntityExtractor.ExtractProperties(classFile, declared).Select(p => p.Name).ToList();
         foreach (var rule in rules)
         {
             var missing = rule.Properties
@@ -612,21 +622,13 @@ public static class CommandHandlingService
             return true;
         }
 
-        var properties = EntityExtractor.ExtractProperties(file)
+        // The class's own properties, in its other partial files as well (a property in
+        // Customer.Extra.cs was not listed), and not those of a nested or sibling type in its
+        // file (Address's Street and Money's Amount were listed as Customer's).
+        var className = EntityExtractor.DeclaredName(file, ctx.Command.ClassName);
+        var properties = EntityExtractor.ExtractProperties(file, className)
             .Select(p => (p.Type, p.Name))
             .ToList();
-        var className = ctx.Command.ClassName;
-
-        // The class's other partial files as well, as the edit commands search them:
-        // a property in Customer.Extra.cs was not listed.
-        if (ClassMethodEditService.TryLoadParts(ctx.WorkspaceRoot, className, out var parts, out _))
-        {
-            className = parts[0].Node.Identifier.Text;
-            foreach (var part in parts.Skip(1))
-                properties.AddRange(part.Node.Members
-                    .OfType<Microsoft.CodeAnalysis.CSharp.Syntax.PropertyDeclarationSyntax>()
-                    .Select(p => (p.Type.ToString(), p.Identifier.Text)));
-        }
 
         if (properties.Count == 0)
         {
@@ -970,7 +972,8 @@ public static class CommandHandlingService
             .FirstOrDefault(f => Path.GetFileNameWithoutExtension(f)
                 .Equals(className, StringComparison.OrdinalIgnoreCase));
 
-        return sameFolder ?? ClassFiles.FileOf(directory, className);
+        // Or a type of that name declared in another file: a record OrderLine in Order.cs.
+        return sameFolder ?? ClassFiles.FileOf(directory, className) ?? ClassFiles.DeclaringFile(directory, className);
     }
 
     /// <summary>
