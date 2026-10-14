@@ -149,6 +149,8 @@ public sealed class CsvReader : IDataSourceReader
         var header = records[0];
         var table = new TabularTable { Name = name, SourceLabel = label };
 
+        var renamed = new List<string>();
+
         for (var i = 0; i < header.Length; i++)
         {
             // An unnamed column is still addressable, and its position is the only name it has.
@@ -156,8 +158,24 @@ public sealed class CsvReader : IDataSourceReader
                 ? $"Column{i + 1}"
                 : header[i]!.Trim();
 
-            table.Columns.Add(new TabularColumn { Name = columnName });
+            // Every column is looked up by name, ignoring case, so a second Notes read the first
+            // one's values. Numbered, it keeps its own; DuplicateOf keeps the name it came with.
+            var unique = UniqueColumnName(columnName, table.Columns.Select(c => c.Name));
+
+            if (unique != columnName)
+                renamed.Add($"{columnName} as {unique}");
+
+            table.Columns.Add(new TabularColumn
+            {
+                Name = unique,
+                DuplicateOf = unique == columnName ? null : columnName
+            });
         }
+
+        if (renamed.Count > 0)
+            table.Notes.Add(
+                $"In {label}, an earlier column already had the name, so the next one was "
+                + $"numbered to keep its own values: {string.Join(", ", renamed)}.");
 
         foreach (var record in records.Skip(1))
         {
@@ -240,6 +258,23 @@ public sealed class CsvReader : IDataSourceReader
 
         static string Rows(List<string> rows)
             => rows.Count == 1 ? "1 row has" : $"{rows.Count} rows have";
+    }
+
+    /// <summary><paramref name="name"/>, or the first of name2, name3... that no name in
+    /// <paramref name="taken"/> has, ignoring case.</summary>
+    public static string UniqueColumnName(string name, IEnumerable<string> taken)
+    {
+        var used = new HashSet<string>(taken, StringComparer.OrdinalIgnoreCase);
+
+        if (!used.Contains(name))
+            return name;
+
+        for (var n = 2; ; n++)
+        {
+            var candidate = name + n;
+            if (!used.Contains(candidate))
+                return candidate;
+        }
     }
 
     /// <summary>The spelling a file source uses for "no value here".</summary>
