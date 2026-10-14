@@ -718,10 +718,11 @@ public static class DomainModelMapper
         // money and smallmoney are 64- and 32-bit integers counting ten-thousandths, not
         // decimal(19,4) and decimal(10,4): their limits are the integer's, ±922,337,203,685,477.58
         // and ±214,748.36, and the 999... bound their precision implies is one the column refuses.
-        if (MoneyRange(facts?.DeclaredType) is var (lowest, highest))
+        // A bigint held as a decimal (its values were beyond int) is bounded by long the same way.
+        if (DeclaredRange(facts?.DeclaredType) is { } range)
         {
-            property.Rules.Add(new PropertyRule { Name = "maxvalue", MaxValue = highest });
-            property.Rules.Add(new PropertyRule { Name = "minvalue", MinValue = lowest });
+            property.Rules.Add(new PropertyRule { Name = "maxvalue", MaxValue = range.Highest });
+            property.Rules.Add(new PropertyRule { Name = "minvalue", MinValue = range.Lowest });
             return;
         }
 
@@ -741,10 +742,12 @@ public static class DomainModelMapper
         property.Rules.Add(new PropertyRule { Name = "minvalue", MinValue = -bound });
     }
 
-    /// <summary>The range SQL Server's money or smallmoney holds, or null for any other type.</summary>
-    private static (decimal Lowest, decimal Highest)? MoneyRange(string? declaredType)
+    /// <summary>The range SQL Server's money or smallmoney holds, or a bigint held as a decimal
+    /// because its values are beyond int; null for any other type.</summary>
+    private static (decimal Lowest, decimal Highest)? DeclaredRange(string? declaredType)
         => declaredType?.ToLowerInvariant() switch
         {
+            "bigint" => (long.MinValue, long.MaxValue),
             "money" => (long.MinValue / 10000m, long.MaxValue / 10000m),
             "smallmoney" => (int.MinValue / 10000m, int.MaxValue / 10000m),
             _ => null

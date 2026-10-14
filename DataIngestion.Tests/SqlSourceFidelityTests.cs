@@ -299,6 +299,56 @@ public class SqlSourceFidelityTests
         Assert.Contains(app.Data.Notes, n => n.Contains("StartsAt") && n.Contains("offset is dropped"));
     }
 
+    // --- S4: values the mapped type cannot hold ---
+
+    [Fact]
+    public void A_bigint_holding_values_beyond_int_keeps_every_value()
+    {
+        var app = Generate(Database(add => add("Counter",
+            [
+                new("CounterId", "int", false, IsPrimaryKey: true),
+                new("Total", "bigint", false),
+                new("Small", "bigint", false),
+            ],
+            [["1", "9223372036854775807", "5"], ["2", "-9223372036854775808", "6"]])));
+
+        Assert.Equal("decimal", Property(app, "Counter", "Total").Type);
+        Assert.Equal("int", Property(app, "Counter", "Small").Type);
+        Assert.Empty(app.Unreadable);
+        Assert.Contains(app.Data.Notes, n => n.Contains("Total") && n.Contains("every value kept"));
+
+        var assembly = Compile(app);
+        var rows = SeedRows(assembly, app, "Counter");
+        Assert.Equal(9223372036854775807m, rows[0].GetType().GetProperty("Total")!.GetValue(rows[0]));
+        Assert.All(rows, row => Assert.Empty(Validate(assembly, "Counter", row)));
+        Assert.Contains(Validate(assembly, "Counter", New(assembly, "Counter", ("Total", 9223372036854775808m))),
+            m => m.Contains("Total must be"));
+    }
+
+    [Fact]
+    public void A_float_value_no_decimal_can_hold_is_left_empty_and_said_so_up_front()
+    {
+        var app = Generate(Database(add => add("Reading",
+            [
+                new("ReadingId", "int", false, IsPrimaryKey: true),
+                new("Huge", "float", false, Precision: 53),
+                new("Ratio", "real", false, Precision: 24),
+            ],
+            [["1", "1.79E+308", "0.5"], ["2", "2.5", "3.4E+38"]])));
+
+        Assert.Contains(app.Data.Notes, n => n.Contains("Huge is float"));
+        Assert.Contains(app.Data.Notes, n => n.Contains("Ratio is real"));
+
+        // Left out, the row must not load a made-up 0 in its place: the value is missing.
+        Assert.Equal("decimal?", Property(app, "Reading", "Huge").Type);
+        Assert.Equal("decimal?", Property(app, "Reading", "Ratio").Type);
+
+        var assembly = Compile(app);
+        var first = SeedRows(assembly, app, "Reading")[0];
+        Assert.Null(first.GetType().GetProperty("Huge")!.GetValue(first));
+        Assert.Contains(app.Unreadable, n => n.Contains("1.79E+308"));
+    }
+
     // --- S2: a column the schema declares NULL may be empty ---
 
     [Fact]

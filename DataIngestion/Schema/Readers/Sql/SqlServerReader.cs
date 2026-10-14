@@ -78,14 +78,6 @@ public sealed class SqlServerReader(ISqlSchemaSource source, int maxRowsPerTable
                         DeclaredType = column.SqlType
                     }
                 });
-
-                var note = SqlTypeMap.LossNote(column.SqlType, column.Name);
-
-                if (note is not null)
-                {
-                    _lossNotes.Add(note);
-                    table.Notes.Add($"In {table.Label}, {note}");
-                }
             }
 
             // One past the cap, so a full read PROVES there was more: the catalogue's count is an
@@ -104,6 +96,8 @@ public sealed class SqlServerReader(ISqlSchemaSource source, int maxRowsPerTable
                 table.SourceRowCount = info.Rows > maxRowsPerTable ? info.Rows : null;
             }
 
+            NoteWhatTheTypesCost(table);
+
             foreach (var key in Carried(keys, info, table, wanted))
                 table.ForeignKeys.Add(key);
 
@@ -111,6 +105,58 @@ public sealed class SqlServerReader(ISqlSchemaSource source, int maxRowsPerTable
         }
 
         return read;
+    }
+
+    /// <summary>
+    /// What each of <paramref name="table"/>'s columns loses by being mapped to one of the five
+    /// model types, said in its notes, and the two losses that can be avoided avoided.
+    /// </summary>
+    /// <remarks>
+    /// After the rows are read, because both avoidable losses are about the values. A bigint
+    /// holding a value beyond int becomes a decimal of whole numbers, which holds every bigint
+    /// exactly: as an int, the value was left out of the seed and a NOT NULL row loaded 0, a
+    /// number the source never held. A float or real can hold what no decimal can (1.79E+308);
+    /// such a value is still left out, but the property becomes nullable so the row loads with
+    /// the value MISSING rather than a made-up 0.
+    /// </remarks>
+    private void NoteWhatTheTypesCost(TabularTable table)
+    {
+        for (var i = 0; i < table.Columns.Count; i++)
+        {
+            var column = table.Columns[i];
+            var declared = column.Facts?.DeclaredType ?? string.Empty;
+            var values = table.Rows.Select(r => i < r.Length ? r[i] : null).Where(v => v is not null).ToList();
+
+            string? note;
+
+            if (string.Equals(declared, "bigint", StringComparison.OrdinalIgnoreCase)
+                && values.Any(v => !AppScaffolding.ImportedValues.TryInt(v!, out _)))
+            {
+                column.Type = "decimal";
+                column.Facts = column.Facts! with { Precision = 19, Scale = 0 };
+                note = $"{column.Name} is bigint and holds values beyond int, so it becomes a decimal of "
+                       + "whole numbers — every value kept.";
+            }
+            else
+            {
+                note = SqlTypeMap.LossNote(declared, column.Name);
+            }
+
+            if (column.Type == "decimal"
+                && values.FirstOrDefault(v => !AppScaffolding.ImportedValues.TryDecimal(v!, out _)) is { } unheld)
+            {
+                column.Facts = (column.Facts ?? new TypeFacts()) with { HasMissingValues = true };
+                note = (note is null ? string.Empty : note + " ")
+                       + $"Some of {column.Name}'s values are beyond what a decimal holds (the first being "
+                       + $"{unheld}); they are left empty.";
+            }
+
+            if (note is null)
+                continue;
+
+            _lossNotes.Add(note);
+            table.Notes.Add($"In {table.Label}, {note}");
+        }
     }
 
     /// <summary>

@@ -102,6 +102,10 @@ public static class SqlTypeMap
             "time" =>
                 $"{columnName} is time and becomes string (hh:mm:ss) — every value kept, but no "
                 + "longer a TimeSpan.",
+            "float" or "real" =>
+                $"{columnName} is {sqlType!.ToLowerInvariant()} and becomes decimal — exact to 28 "
+                + "digits, but a value beyond ±7.9E+28 cannot be kept, and one nearer zero than "
+                + "1E-28 becomes 0.",
             "datetimeoffset" =>
                 $"{columnName} is datetimeoffset and becomes DateTime — each value keeps the date "
                 + "and time the database shows, but its UTC offset is dropped.",
