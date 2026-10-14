@@ -169,6 +169,8 @@ public sealed class CsvReader : IDataSourceReader
             table.Rows.Add(row);
         }
 
+        ReadNullTextAsMissing(table);
+
         foreach (var column in table.Columns)
         {
             var values = table.ColumnValues(column.Name).ToList();
@@ -176,5 +178,49 @@ public sealed class CsvReader : IDataSourceReader
         }
 
         return table;
+    }
+
+    /// <summary>The spelling a file source uses for "no value here".</summary>
+    public const string NullText = "NULL";
+
+    /// <summary>
+    /// Clears every cell that is exactly <see cref="NullText"/> (trimmed, any case), and says how
+    /// many each column had.
+    /// </summary>
+    /// <remarks>
+    /// A file has no null of its own, so SQL Server Management Studio, a pasted query result and
+    /// most database exports write the word instead. Kept as data, one NULL made a column of
+    /// numbers text, was seeded as the word, and was offered as an allowed value beside yes and
+    /// no. Read as missing, a column that is genuinely text loses nothing a user would want: the
+    /// cell becomes empty, which is what NULL meant. Only an exact cell is cleared, never one
+    /// that merely contains the word ("Nullable", "Annul").
+    /// </remarks>
+    private static void ReadNullTextAsMissing(TabularTable table)
+    {
+        var counts = new int[table.Columns.Count];
+
+        foreach (var row in table.Rows)
+        {
+            for (var i = 0; i < row.Length; i++)
+            {
+                if (row[i] is { } cell
+                    && string.Equals(cell.Trim(), NullText, StringComparison.OrdinalIgnoreCase))
+                {
+                    row[i] = null;
+                    counts[i]++;
+                }
+            }
+        }
+
+        var columns = table.Columns
+            .Select((column, i) => (column.Name, Count: counts[i]))
+            .Where(c => c.Count > 0)
+            .Select(c => $"{c.Name} ({c.Count})")
+            .ToList();
+
+        if (columns.Count > 0)
+            table.Notes.Add(
+                $"In {table.Label}, cells holding the text {NullText} were read as missing values: "
+                + $"{string.Join(", ", columns)}.");
     }
 }
