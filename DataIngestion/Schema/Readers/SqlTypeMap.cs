@@ -46,6 +46,43 @@ public static class SqlTypeMap
         => Types.TryGetValue(sqlType ?? string.Empty, out var type) ? type : "string";
 
     /// <summary>
+    /// How many characters a value of <paramref name="sqlType"/> can take as TEXT in the model,
+    /// given the length INFORMATION_SCHEMA declared for it; or <c>Unbounded</c> when the column
+    /// sets no limit, and neither when nothing is known.
+    /// </summary>
+    /// <remarks>
+    /// The declared length is not always a character count of the text the model holds. text,
+    /// ntext and image report 2147483647 (or 1073741823): no limit at all, and a bound of
+    /// int.MaxValue emits a validator check that cannot compile. A binary column reports BYTES,
+    /// while its value is held as base64 text, four characters for every three bytes — a 16-byte
+    /// hash is 24 characters and failed its own 16-character rule. time and uniqueidentifier
+    /// report nothing, so they were given the generic 200; their text is never longer than
+    /// hh:mm:ss.fffffff (16) and a GUID (36).
+    /// </remarks>
+    public static (int? MaxLength, bool Unbounded) TextLength(string sqlType, int? declared)
+    {
+        switch ((sqlType ?? string.Empty).ToLowerInvariant())
+        {
+            case "text" or "ntext" or "image" or "xml":
+                return (null, true);
+            case "time":
+                return (16, false);
+            case "uniqueidentifier":
+                return (36, false);
+        }
+
+        if (declared == -1)
+            return (null, true);
+
+        if (declared is not > 0)
+            return (null, false);
+
+        return (sqlType ?? string.Empty).ToLowerInvariant() is "binary" or "varbinary"
+            ? ((int)Math.Min(int.MaxValue, 4L * ((declared.Value + 2L) / 3)), false)
+            : (declared, false);
+    }
+
+    /// <summary>
     /// A sentence naming what this column loses by being mapped, or null when it loses nothing.
     /// </summary>
     /// <remarks>

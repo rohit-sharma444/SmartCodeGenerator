@@ -858,7 +858,9 @@ public sealed partial class {{className}}Validator
                 .FirstOrDefault(r => string.Equals(r.Name, MaxLengthRule, StringComparison.OrdinalIgnoreCase))
                 ?.MaxLength;
 
-            if (max.HasValue)
+            // A bound of int.MaxValue bounds nothing - no string is longer - and the pattern
+            // `Length: > 2147483647` is one the compiler refuses outright (CS8518).
+            if (max is < int.MaxValue)
             {
                 checks.Add($"if (item.{name} is {{ Length: > {max.Value} }})");
                 checks.Add($"    errors.Add(new ValidationError(\"{name}\", \"{name} must be {max.Value} characters or fewer.\"));");

@@ -52,6 +52,11 @@ public sealed class SqlServerReader(ISqlSchemaSource source, int maxRowsPerTable
 
             foreach (var column in source.Columns(spec.Location, info.Schema, info.Name))
             {
+                // -1 is INFORMATION_SCHEMA's spelling of nvarchar(max): a known absence of a
+                // bound, not a bound of -1. See TextLength for the lengths that are not what
+                // they say.
+                var (maxLength, unbounded) = SqlTypeMap.TextLength(column.SqlType, column.MaxLength);
+
                 table.Columns.Add(new TabularColumn
                 {
                     Name = column.Name,
@@ -60,10 +65,8 @@ public sealed class SqlServerReader(ISqlSchemaSource source, int maxRowsPerTable
                     Facts = new TypeFacts
                     {
                         IsNullable = column.Nullable,
-                        // -1 is INFORMATION_SCHEMA's spelling of nvarchar(max): a known
-                        // absence of a bound, not a bound of -1.
-                        MaxLength = column.MaxLength is > 0 ? column.MaxLength : null,
-                        IsUnbounded = column.MaxLength == -1,
+                        MaxLength = maxLength,
+                        IsUnbounded = unbounded,
                         Precision = column.Precision,
                         Scale = column.Scale,
                         DeclaredType = column.SqlType
