@@ -51,6 +51,15 @@ public sealed class JsonTableReader : IDataSourceReader
         {
             var root = document.RootElement;
 
+            // {"orders": [ ... ]} is a wrapper, not a record: read as one, it became an entity of
+            // its own with one row and no columns of its own, and the orders were its children.
+            // The one array of objects IS the data, named by its property.
+            if (Wrapped(root) is { } wrapped)
+            {
+                root = wrapped.Value;
+                rootName = wrapped.Name;
+            }
+
             var objects = root.ValueKind switch
             {
                 // A single object is a table of one row, not an error.
@@ -84,6 +93,29 @@ public sealed class JsonTableReader : IDataSourceReader
     }
 
     /// <summary>
+    /// The array inside a root object whose ONLY property is a non-empty array of objects, with
+    /// that property's name; null for any other root.
+    /// </summary>
+    private static (string Name, JsonElement Value)? Wrapped(JsonElement root)
+    {
+        if (root.ValueKind != JsonValueKind.Object)
+            return null;
+
+        var properties = root.EnumerateObject().ToList();
+
+        if (properties.Count != 1)
+            return null;
+
+        var value = properties[0].Value;
+
+        return value.ValueKind == JsonValueKind.Array
+               && value.GetArrayLength() > 0
+               && value.EnumerateArray().All(e => e.ValueKind == JsonValueKind.Object)
+            ? (properties[0].Name, value)
+            : null;
+    }
+
+    /// <summary>
     /// Builds one table from <paramref name="objects"/>, appending a child table to
     /// <paramref name="children"/> for each nested array. Columns are the UNION of every
     /// object's keys, in order of first appearance, so objects that disagree still line up.
@@ -94,35 +126,60 @@ public sealed class JsonTableReader : IDataSourceReader
         var entityName = NameNormalizer.ToUserTypedEntityName(name);
         var table = new TabularTable { Name = entityName, SourceLabel = label };
 
-        var columnNames = new List<string>();
+        var columns = new Columns();
         var cells = new List<Dictionary<string, string?>>();
 
-        // Nested arrays, keyed by property name, each element tagged with the 1-BASED index of
-        // the parent row it came from. That index is the child's foreign key, and it is 1-based
-        // because seeded Ids are assigned 1..N in row order.
-        var arrays = new Dictionary<string, List<(int ParentRow, JsonElement Element)>>(
-            StringComparer.Ordinal);
+        // Nested arrays, keyed by their PATH (billing.contacts), each element tagged with the
+        // 1-BASED index of the parent row it came from. That index is the child's foreign key,
+        // and it is 1-based because seeded Ids are assigned 1..N in row order. Keyed by the
+        // property name alone, billing.contacts and shipping.contacts became one table.
+        var arrays = new Dictionary<string, NestedArray>(StringComparer.Ordinal);
 
         for (var rowIndex = 0; rowIndex < objects.Count; rowIndex++)
         {
             var row = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
-            Flatten(objects[rowIndex], string.Empty, rowIndex + 1, row, columnNames, arrays);
+            Flatten(objects[rowIndex], string.Empty, string.Empty, rowIndex + 1, row, columns, arrays);
             cells.Add(row);
         }
 
+        var columnNames = columns.Names;
+
         foreach (var columnName in columnNames)
-            table.Columns.Add(new TabularColumn { Name = columnName });
+            table.Columns.Add(new TabularColumn
+            {
+                Name = columnName,
+                DuplicateOf = columns.DuplicateOf.GetValueOrDefault(columnName)
+            });
+
+        if (columns.DuplicateOf.Count > 0)
+            table.Notes.Add(
+                $"In {label}, two properties of each {entityName} would both be called "
+                + string.Join(" and ", columns.DuplicateOf.Values.Distinct())
+                + ", so the later one was numbered to keep its own values: "
+                + string.Join(", ", columns.DuplicateOf.Select(d => $"{d.Value} as {d.Key}"))
+                + ".");
 
         foreach (var row in cells)
             table.Rows.Add(columnNames
                 .Select(c => row.TryGetValue(c, out var v) ? v : null)
                 .ToArray());
 
+        // Two arrays that would share a name (billing.contacts, shipping.contacts) are each named
+        // for their parent as well: BillingContact and ShippingContact.
+        var sharedNames = arrays.Values
+            .GroupBy(a => NameNormalizer.ToUserTypedEntityName(a.Property), StringComparer.OrdinalIgnoreCase)
+            .Where(g => g.Count() > 1)
+            .Select(g => g.Key)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
         // Recursive: an array inside an array is a grandchild, and the same rule applies.
-        foreach (var (property, elements) in arrays)
+        foreach (var (property, namePrefix, elements) in arrays.Values)
         {
             var foreignKey = entityName + ParentIdSuffix;
             var childName = NameNormalizer.ToUserTypedEntityName(property);
+
+            if (sharedNames.Contains(childName) && namePrefix.Length > 0)
+                childName = NameNormalizer.ToUserTypedEntityName(namePrefix + NameNormalizer.ToFieldName(property));
 
             var allObjects = elements.All(e => e.Element.ValueKind == JsonValueKind.Object);
 
@@ -146,6 +203,7 @@ public sealed class JsonTableReader : IDataSourceReader
             childName, label, elements.Select(e => e.Element).ToList(), children);
 
         var child = new TabularTable { Name = inner.Name, SourceLabel = label };
+        child.Notes.AddRange(inner.Notes);
         child.Columns.Add(new TabularColumn { Name = foreignKey, Type = "int", HoldsRowNumbers = true });
 
         // A child that also carries its parent's key itself ("orderId": 1001 inside each line)
@@ -206,36 +264,73 @@ public sealed class JsonTableReader : IDataSourceReader
     private static void Flatten(
         JsonElement element,
         string prefix,
+        string pathPrefix,
         int parentRow,
         Dictionary<string, string?> row,
-        List<string> columnNames,
-        Dictionary<string, List<(int ParentRow, JsonElement Element)>> arrays)
+        Columns columns,
+        Dictionary<string, NestedArray> arrays)
     {
         foreach (var property in element.EnumerateObject())
         {
             var name = prefix + NameNormalizer.ToFieldName(property.Name);
 
+            // The property's place in the source, exactly as spelled: what tells "customerName"
+            // from customer.name, and "total" from "Total", once both are CustomerName or Total.
+            var path = pathPrefix + "/" + property.Name;
+
             switch (property.Value.ValueKind)
             {
                 case JsonValueKind.Object:
-                    Flatten(property.Value, name, parentRow, row, columnNames, arrays);
+                    Flatten(property.Value, name, path, parentRow, row, columns, arrays);
                     break;
 
                 case JsonValueKind.Array:
-                    if (!arrays.TryGetValue(property.Name, out var elements))
-                        arrays[property.Name] = elements = new();
+                    if (!arrays.TryGetValue(path, out var nested))
+                        arrays[path] = nested = new NestedArray(property.Name, prefix, new());
 
                     foreach (var item in property.Value.EnumerateArray())
-                        elements.Add((parentRow, item.Clone()));
+                        nested.Elements.Add((parentRow, item.Clone()));
                     break;
 
                 default:
-                    if (!columnNames.Contains(name, StringComparer.OrdinalIgnoreCase))
-                        columnNames.Add(name);
-
-                    row[name] = Scalar(property.Value);
+                    row[columns.For(path, name)] = Scalar(property.Value);
                     break;
             }
+        }
+    }
+
+    /// <summary>One nested array of a table: the property it was under, the flattened name of
+    /// the object holding it (empty at the top), and its elements.</summary>
+    private sealed record NestedArray(
+        string Property, string NamePrefix, List<(int ParentRow, JsonElement Element)> Elements);
+
+    /// <summary>
+    /// A table's columns, one per source PATH. Two paths that flatten to one name are two
+    /// columns, the later numbered (CustomerName2), where one dictionary entry used to take
+    /// whichever value came last.
+    /// </summary>
+    private sealed class Columns
+    {
+        private readonly Dictionary<string, string> byPath = new(StringComparer.Ordinal);
+
+        public List<string> Names { get; } = new();
+
+        /// <summary>Numbered column -> the name it would have had.</summary>
+        public Dictionary<string, string> DuplicateOf { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+        public string For(string path, string name)
+        {
+            if (byPath.TryGetValue(path, out var column))
+                return column;
+
+            column = CsvReader.UniqueColumnName(name, Names);
+
+            if (column != name)
+                DuplicateOf[column] = name;
+
+            Names.Add(column);
+            byPath[path] = column;
+            return column;
         }
     }
 
