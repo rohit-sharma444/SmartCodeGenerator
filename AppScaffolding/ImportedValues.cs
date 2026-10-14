@@ -44,8 +44,11 @@ public static class ImportedValues
         "yyyy-MM-ddTHH:mm:ss.FFFFFFF",
         "yyyy-MM-ddTHH:mm:ssK",
         "yyyy-MM-ddTHH:mm:ss.FFFFFFFK",
+        "yyyy-MM-ddTHH:mm",
+        "yyyy-MM-ddTHH:mmK",
         "yyyy-MM-dd HH:mm",
         "yyyy-MM-dd HH:mm:ss",
+        "yyyy-MM-dd HH:mm:ss.FFFFFFF",
         "yyyy/MM/dd",
         "d MMM yyyy",
         "d MMMM yyyy",
@@ -80,7 +83,8 @@ public static class ImportedValues
     {
         result = 0;
         return value.IndexOfAny(['e', 'E']) < 0
-            && decimal.TryParse(value, DecimalStyles, CultureInfo.InvariantCulture, out result);
+            && decimal.TryParse(value, DecimalStyles, CultureInfo.InvariantCulture, out result)
+            && HoldsExactly(value, result);
     }
 
     /// <summary>
@@ -92,8 +96,64 @@ public static class ImportedValues
     public static string PlainNumberText(string raw)
         => raw.IndexOfAny(['e', 'E']) >= 0
             && decimal.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var number)
+            && HoldsExactly(raw, number)
                 ? number.ToString(CultureInfo.InvariantCulture)
                 : raw;
+
+    /// <summary>
+    /// Whether <paramref name="number"/> is exactly the number <paramref name="text"/> writes.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="decimal.TryParse(string, NumberStyles, IFormatProvider, out decimal)"/> ROUNDS
+    /// to the 28 or so digits a decimal holds instead of failing: 1.5e-30 became 0, and a 32-digit
+    /// fraction lost its last four digits, both without a word. A value that is not held exactly
+    /// is left as the text it was, which is how every other value no type can hold is kept.
+    /// Compared by digits and exponent, so "1.50" and 1.5, or "1E-05" and 0.00001, still agree.
+    /// </remarks>
+    private static bool HoldsExactly(string text, decimal number)
+        => Canonical(text) is { } written
+           && written == Canonical(number.ToString(CultureInfo.InvariantCulture));
+
+    /// <summary>A number's text as sign, significant digits and exponent ("-15e-1" for
+    /// "-1.50"), or null when it is not a plain or exponent-form number.</summary>
+    private static string? Canonical(string text)
+    {
+        var value = text.Trim();
+        var negative = value.StartsWith('-');
+
+        if (value.Length > 0 && value[0] is '-' or '+')
+            value = value[1..];
+
+        var exponent = 0;
+        var e = value.IndexOfAny(['e', 'E']);
+
+        if (e >= 0)
+        {
+            if (!int.TryParse(value[(e + 1)..], NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out exponent))
+                return null;
+
+            value = value[..e];
+        }
+
+        var point = value.IndexOf('.');
+        var digits = point < 0 ? value : value[..point] + value[(point + 1)..];
+
+        if (point >= 0)
+            exponent -= value.Length - point - 1;
+
+        if (digits.Length == 0 || !digits.All(char.IsAsciiDigit))
+            return null;
+
+        digits = digits.TrimStart('0');
+
+        if (digits.Length == 0)
+            return "0";
+
+        var significant = digits.TrimEnd('0');
+        exponent += digits.Length - significant.Length;
+
+        return (negative ? "-" : "") + significant + "e" + exponent.ToString(CultureInfo.InvariantCulture);
+    }
 
     /// <summary>
     /// The words that mean true or false, and a bare 1 or 0. Inference still never CHOOSES bool
