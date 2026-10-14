@@ -60,6 +60,11 @@ public static class IncrementalScaffolder
         if (newClassNames.Count == 0)
             return new IncrementalResult(true, [], before, "Nothing new to add.");
 
+        // The namespace, company, persistence and features the app already has, never the
+        // current run's answers: an add under other answers wrote files into a namespace the
+        // rest of the app did not use, and the app stopped compiling.
+        request = BuildSettingsRecord.For(destination, request);
+
         var staging = Path.Combine(StagingRoot, Guid.NewGuid().ToString("N")[..8]);
 
         try

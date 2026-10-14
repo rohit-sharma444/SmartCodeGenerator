@@ -238,6 +238,76 @@ public class IncrementalScaffolderTests
         CollectionAssert.AreEqual(before, File.ReadAllBytes(customerPath), "an add rewrote a class it said it would leave");
     }
 
+    private static ScaffoldRequest Request(
+        CandidateDomainModel model, string root, ITargetScaffolder target,
+        AppCustomization customization)
+        => ScaffoldRequest.For(model, "Shop", root, target) with { Customization = customization };
+
+    private static readonly AppCustomization Acme =
+        AppCustomization.Default with { NamespacePrefix = "Acme", Company = "Acme Ltd" };
+
+    /// <summary>
+    /// An add writes the new class into the namespace the app already uses, not the one the
+    /// current answers name. An app built without a prefix, then added to from a workspace whose
+    /// profile named one, had files rewritten into ABCLtd.* and stopped compiling (88 errors).
+    /// </summary>
+    [TestMethod]
+    [DataRow(true, DisplayName = "settings recorded at generate")]
+    [DataRow(false, DisplayName = "app generated before the record existed")]
+    public void An_add_uses_the_namespace_the_app_was_generated_with(bool recorded)
+    {
+        var target = new ConsoleTarget();
+
+        new AppScaffolder().Scaffold(
+            Request(Model("Customer"), _root, target, AppCustomization.Default));
+
+        var folder = GeneratedProjectPath.Folder(_root, "Shop", target);
+        var csproj = GeneratedProjectPath.CsprojPath(_root, "Shop", target);
+        var csprojBefore = File.ReadAllBytes(csproj);
+
+        if (!recorded)
+            File.Delete(BuildSettingsRecord.PathFor(folder));
+
+        var result = IncrementalScaffolder.Add(
+            Request(Model("Customer", "Supplier"), _root, target, Acme), ["Supplier"]);
+
+        Assert.IsTrue(result.Success, result.Message);
+
+        var supplier = File.ReadAllText(Path.Combine(folder, "Models", "Supplier.cs"));
+        StringAssert.Contains(supplier, "namespace Shop.Console.Models");
+        Assert.DoesNotContain("Acme", supplier);
+
+        foreach (var file in result.Written)
+            Assert.DoesNotContain("Acme", File.ReadAllText(file), file);
+
+        CollectionAssert.AreEqual(csprojBefore, File.ReadAllBytes(csproj), "the project file was rewritten");
+    }
+
+    /// <summary>The other direction: a prefixed app keeps its prefix when the add's answers
+    /// name none.</summary>
+    [TestMethod]
+    [DataRow(true)]
+    [DataRow(false)]
+    public void An_add_keeps_the_prefix_of_a_prefixed_app(bool recorded)
+    {
+        var target = new ConsoleTarget();
+
+        new AppScaffolder().Scaffold(Request(Model("Customer"), _root, target, Acme));
+
+        var folder = GeneratedProjectPath.Folder(_root, "Shop", target);
+
+        if (!recorded)
+            File.Delete(BuildSettingsRecord.PathFor(folder));
+
+        IncrementalScaffolder.Add(
+            Request(Model("Customer", "Supplier"), _root, target, AppCustomization.Default),
+            ["Supplier"]);
+
+        StringAssert.Contains(
+            File.ReadAllText(Path.Combine(folder, "Models", "Supplier.cs")),
+            "namespace Acme.Shop.Console.Models");
+    }
+
     [TestMethod]
     public void Adding_nothing_writes_nothing()
     {
