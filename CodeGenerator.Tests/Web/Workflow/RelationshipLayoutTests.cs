@@ -301,6 +301,71 @@ public class RelationshipLayoutTests
         Assert.HasCount(2, map.Arrows.Select(a => a.Y1).Distinct().ToList());
     }
 
+    [TestMethod]
+    public void Two_keys_to_one_class_are_two_arrows_each_from_its_own_row()
+    {
+        // A payment's PaidById and ApprovedById are two relationships to Staff, each its own
+        // navigation in the generated code. One line per pair hid the second.
+        var map = RelationshipLayout.Of(
+        [
+            RelationshipSource.WithLinks("Payment",
+                [new("PaidById", "Staff"), new("ApprovedById", "Staff")],
+                ["Id", "Amount", "PaidById", "ApprovedById"]),
+            new RelationshipSource("Staff", [], ["Id", "Name"])
+        ]);
+
+        var payment = map.Boxes.Single(b => b.Name == "Payment");
+
+        CollectionAssert.AreEquivalent(
+            new[] { "PaidById", "ApprovedById" },
+            payment.Rows.Where(r => r.Marker == "FK").Select(r => r.Name).ToList());
+        Assert.HasCount(2, map.Arrows);
+
+        foreach (var arrow in map.Arrows)
+            Assert.AreEqual(payment.Rows.Single(r => r.Name == arrow.Field).Y, arrow.Y1, arrow.Field);
+
+        Assert.AreEqual(1, payment.Hidden, "Amount is the only field not drawn");
+    }
+
+    [TestMethod]
+    public void A_key_to_its_own_class_named_for_a_role_is_a_loop()
+    {
+        // A member of staff's ManagerId: DomainModelMapper writes a Manager navigation for it, the
+        // validator checks it and the delete refusal counts it, so the picture shows it too.
+        var map = RelationshipLayout.Of(
+        [
+            RelationshipSource.WithLinks("Staff", [new("ManagerId", "Staff")], ["Id", "Name", "ManagerId"])
+        ]);
+
+        Assert.IsEmpty(map.Unrelated);
+
+        var staff = map.Boxes.Single();
+        var loop = map.Arrows.Single();
+
+        Assert.IsTrue(loop.Self);
+        Assert.AreEqual("ManagerId", loop.Field);
+        Assert.AreEqual(staff.X + RelationshipLayout.BoxWidth, loop.X1, "leaves the right side");
+        Assert.AreEqual(loop.X1, loop.X2, "and comes back to it");
+        Assert.AreEqual(staff.Rows.Single(r => r.Name == "ManagerId").Y, loop.Y1);
+        Assert.AreEqual(staff.Rows.Single(r => r.Name == "Id").Y, loop.Y2);
+        Assert.IsGreaterThan(loop.X1, loop.Turn);
+        Assert.IsGreaterThanOrEqualTo(loop.Turn, map.Width, "the loop is inside the picture");
+    }
+
+    [TestMethod]
+    public void A_self_loop_does_not_move_its_class_into_another_column()
+    {
+        var map = RelationshipLayout.Of(
+        [
+            RelationshipSource.WithLinks("Staff",
+                [new("ManagerId", "Staff"), new("RegionId", "Region")], ["Id", "ManagerId", "RegionId"]),
+            new RelationshipSource("Region", [], ["Id"])
+        ]);
+
+        Assert.AreEqual(0, map.Boxes.Single(b => b.Name == "Staff").X);
+        Assert.HasCount(2, map.Arrows);
+    }
+
     private static RelationshipSource Entity(string name, params string[] targets)
         => new(name, targets);
 }

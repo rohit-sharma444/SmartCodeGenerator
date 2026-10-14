@@ -72,7 +72,7 @@
                         <path class="rel-edge-end" d="@Crow(arrow)" />
                         <path class="rel-edge-end" d="@Bar(arrow)" />
 
-                        <title>many @Plural(arrow.From) per @arrow.To</title>
+                        <title>@Tip(arrow)</title>
                     </g>
                 }
 
@@ -167,9 +167,19 @@
     private static string Crow(RelationshipArrow a) =>
         $"M {a.X1 + 12} {a.Y1 - 6} L {a.X1} {a.Y1} L {a.X1 + 12} {a.Y1 + 6}";
 
-    /// <summary>The one end, on the class being pointed at.</summary>
+    /// <summary>The one end, on the class being pointed at - on its right side for a self-loop,
+    /// which comes back into the box from the right.</summary>
     private static string Bar(RelationshipArrow a) =>
-        $"M {a.X2 - 9} {a.Y2 - 6} V {a.Y2 + 6}";
+        $"M {(a.Self ? a.X2 + 9 : a.X2 - 9)} {a.Y2 - 6} V {a.Y2 + 6}";
+
+    /// <summary>The key a line stands for, said when it is named for a role: two lines from
+    /// Payment to Staff are only told apart by PaidById and ApprovedById.</summary>
+    private static string Role(RelationshipArrow a) => a.IsRole ? $" ({a.Field})" : "";
+
+    private static string Tip(RelationshipArrow a) =>
+        a.Self
+            ? $"each {a.From} can point at another {a.From}{Role(a)}"
+            : $"many {Plural(a.From)} per {a.To}{Role(a)}";
 
     /// <summary>The title band: rounded along the top, square along the rule beneath it.</summary>
     private static string Head(RelationshipBox box)
@@ -202,5 +212,5 @@
     private static string Summary(RelationshipLayout map) =>
         map.Arrows.Count == 0
             ? "No relationships between the classes."
-            : string.Join("; ", map.Arrows.Select(a => $"{a.From} to {a.To}"));
+            : string.Join("; ", map.Arrows.Select(a => $"{a.From} to {a.To}{Role(a)}"));
 }

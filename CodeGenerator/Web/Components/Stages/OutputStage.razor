@@ -121,10 +121,21 @@
     /// generator cannot disagree about which targets count.
     /// </remarks>
     private List<RelationshipSource> Sources() =>
-        [.. Model.Entities.Select(e => new RelationshipSource(
+        [.. Model.Entities.Select(e => RelationshipSource.WithLinks(
             e.Name,
-            [.. e.Relationships.Select(r => r.Target)],
+            [.. e.Relationships.Select(r => new RelationshipLink(KeyOf(e, r), r.Target))],
             [.. e.Fields.Select(f => f.Name)]))];
+
+    /// <summary>The field a relationship is held in: its own key when the data source named one
+    /// the class still has (<c>PaidById</c>, <c>ManagerId</c>), else <c>&lt;Target&gt;Id</c>.</summary>
+    /// <remarks>The same choice DomainModelMapper makes when it gives a role key its own
+    /// navigation, so the picture shows the keys the generated code will hold.</remarks>
+    private static string KeyOf(CandidateEntity entity, CandidateRelationship relationship) =>
+        relationship.ForeignKey is { Length: > 2 } key
+        && key.EndsWith("Id", StringComparison.Ordinal)
+        && entity.Fields.Any(f => string.Equals(f.Name, key, StringComparison.Ordinal))
+            ? key
+            : relationship.Target + "Id";
 
     /// <summary>A model with no classes has nothing to generate, so the step is offered and
     /// disabled rather than hidden — the user can see what they are working towards.</summary>

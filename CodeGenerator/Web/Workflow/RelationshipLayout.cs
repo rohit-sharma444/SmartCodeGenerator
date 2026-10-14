@@ -21,6 +21,38 @@ public sealed record RelationshipSource(
     /// <summary>A class whose fields are not known, or not worth drawing.</summary>
     public RelationshipSource(string name, IReadOnlyList<string> targets)
         : this(name, targets, []) { }
+
+    /// <summary>
+    /// The key behind each relationship, when the caller knows it; null when every target is held
+    /// in <c>&lt;Target&gt;Id</c>.
+    /// </summary>
+    /// <remarks>
+    /// A class read from a database can hold two keys to one class (a payment's <c>PaidById</c>
+    /// and <c>ApprovedById</c>, both to Staff) or a key to itself (a member of staff's
+    /// <c>ManagerId</c>). A list of targets says neither: it is one Staff, and no line can leave
+    /// from <c>PaidById</c> when the only name it knows is <c>StaffId</c>.
+    /// </remarks>
+    public IReadOnlyList<RelationshipLink>? Links { get; init; }
+
+    /// <summary>Every relationship with the key that holds it.</summary>
+    public IReadOnlyList<RelationshipLink> Keys =>
+        Links ?? [.. Targets.Select(t => new RelationshipLink(t + "Id", t))];
+
+    /// <summary>A class whose relationships are known key by key.</summary>
+    public static RelationshipSource WithLinks(
+        string name, IReadOnlyList<RelationshipLink> links, IReadOnlyList<string> fields) =>
+        new(name, [.. links.Select(l => l.Target).Distinct(StringComparer.OrdinalIgnoreCase)], fields)
+        {
+            Links = links
+        };
+}
+
+/// <summary>One relationship: the key field that holds it, and the class it points at.</summary>
+public sealed record RelationshipLink(string Field, string Target)
+{
+    /// <summary>Whether the key is named for a role (<c>PaidById</c>, <c>ManagerId</c>) rather
+    /// than for its target (<c>CustomerId</c>).</summary>
+    public bool IsRole => !string.Equals(Field, Target + "Id", StringComparison.OrdinalIgnoreCase);
 }
 
 /// <summary>One line inside a box: a field worth showing, and what marks it.</summary>
@@ -47,8 +79,16 @@ public sealed record RelationshipBox(
 /// their vertical segments on top of one another and became one line that could not be traced back
 /// to any source.
 /// </param>
+/// <param name="Field">The key the line leaves from.</param>
+/// <param name="Self">A class pointing at itself: the line leaves the right side of the box and
+/// comes back into it, so its one end faces the other way.</param>
 public sealed record RelationshipArrow(
-    string From, string To, int X1, int Y1, int X2, int Y2, int Turn);
+    string From, string To, int X1, int Y1, int X2, int Y2, int Turn,
+    string Field = "", bool Self = false)
+{
+    /// <summary>Whether the key is named for a role rather than for its target.</summary>
+    public bool IsRole => new RelationshipLink(Field, To).IsRole;
+}
 
 /// <summary>
 /// Where the tables and lines go on the relationship diagram.
@@ -66,10 +106,17 @@ public sealed record RelationshipArrow(
 /// legible is the part no assertion can answer, which is what a screenshot is for.
 /// </para>
 /// <para>
-/// What it draws is what <c>DomainModelMapper</c> will write, so it applies the same two rules the
-/// mapper does: a target it cannot resolve to another entity is skipped, and a class cannot be
-/// related to itself (<c>RelationshipConvention.CanAdd</c> refuses a member named after its own
-/// class). A picture that showed either would be promising code that will not appear.
+/// What it draws is what <c>DomainModelMapper</c> will write, so it applies the same rules the
+/// mapper does: a target it cannot resolve to another entity is skipped, and a class is related
+/// to itself only through a key named for a role (<c>ManagerId</c> on Staff, which the mapper
+/// gives a <c>Manager</c> navigation) - <c>RelationshipConvention.CanAdd</c> refuses a member
+/// named after its own class, so a <c>StaffId</c> on Staff is written as nothing. A picture that
+/// showed it would be promising code that will not appear.
+/// </para>
+/// <para>
+/// One line per key, not per pair of classes: a payment's <c>PaidById</c> and
+/// <c>ApprovedById</c> are two relationships to Staff, each its own navigation in the generated
+/// code, and drawing them as one line would hide the second.
 /// </para>
 /// </remarks>
 public sealed class RelationshipLayout
@@ -167,20 +214,39 @@ public sealed class RelationshipLayout
             all.Count == 0
                 ? 0
                 : Math.Max(
-                    boxes.Count == 0 ? 0 : boxes.Max(b => b.X) + BoxWidth,
+                    boxes.Count == 0
+                        ? 0
+                        : boxes.Max(b => b.X + BoxWidth
+                                         + LoopReach(edges.Count(e => e.Self && Same(e.From, b.Name)))),
                     unrelated.Count == 0 ? 0 : unrelated.Max(b => b.X) + BandBoxWidth),
             all.Count == 0 ? 0 : all.Max(b => b.Y + b.Height));
     }
+
+    /// <summary>One relationship, by the key that holds it.</summary>
+    private sealed record Edge(string From, string To, string Field)
+    {
+        public bool Self => Same(From, To);
+    }
+
+    /// <summary>How far past a box's right side its self-loops reach: one lane each.</summary>
+    private static int LoopReach(int loops) => loops == 0 ? 0 : LoopFirst + (loops - 1) * LoopLane + 4;
+
+    private const int LoopFirst = 26;
+    private const int LoopLane = 12;
 
     /// <summary>The height a box needs for the rows it will show.</summary>
     public static int HeightFor(int rows, bool hasHidden) =>
         HeaderHeight + RowsTop + rows * RowHeight + (hasHidden ? RowHeight : 0) + RowsBottom;
 
-    /// <summary>Every distinct pair, in the order the columns will read.</summary>
-    private static List<(string From, string To)> Edges(
+    /// <summary>Every distinct key, in the order the columns will read.</summary>
+    /// <remarks>
+    /// Distinct by the key, not by the pair: two keys to one class are two relationships. A key to
+    /// the class itself counts only when it is named for a role - see the class remarks.
+    /// </remarks>
+    private static List<Edge> Edges(
         IReadOnlyList<RelationshipSource> entities, Dictionary<string, RelationshipSource> byName)
     {
-        var edges = new List<(string From, string To)>();
+        var edges = new List<Edge>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var entity in entities.OrderBy(e => e.Name, StringComparer.Ordinal))
@@ -188,15 +254,20 @@ public sealed class RelationshipLayout
             if (!byName.TryGetValue(entity.Name ?? string.Empty, out var from))
                 continue;
 
-            foreach (var target in entity.Targets)
+            foreach (var link in entity.Keys)
             {
-                if (!byName.TryGetValue(target ?? string.Empty, out var to))
+                if (!byName.TryGetValue(link.Target ?? string.Empty, out var to))
                     continue;
 
-                if (Same(from.Name, to.Name) || !seen.Add($"{from.Name}->{to.Name}"))
+                var field = link.IsRole ? link.Field : to.Name + "Id";
+
+                if (Same(from.Name, to.Name) && !link.IsRole)
                     continue;
 
-                edges.Add((from.Name, to.Name));
+                if (!seen.Add($"{from.Name}.{field}"))
+                    continue;
+
+                edges.Add(new Edge(from.Name, to.Name, field));
             }
         }
 
@@ -213,7 +284,7 @@ public sealed class RelationshipLayout
     /// more than a diagram that throws or loops on a model the user is still allowed to fix.
     /// </remarks>
     private static Dictionary<string, int> Layer(
-        IReadOnlyList<string> connected, List<(string From, string To)> edges)
+        IReadOnlyList<string> connected, List<Edge> edges)
     {
         var layer = connected.ToDictionary(n => n, _ => 0, StringComparer.OrdinalIgnoreCase);
 
@@ -221,7 +292,8 @@ public sealed class RelationshipLayout
         {
             var moved = false;
 
-            foreach (var (from, to) in edges)
+            // A self-loop has no column to push its class into: it leaves and returns to one box.
+            foreach (var (from, to, _) in edges.Where(e => !e.Self))
             {
                 if (layer[to] >= layer[from] + 1)
                     continue;
@@ -247,7 +319,7 @@ public sealed class RelationshipLayout
     private static List<RelationshipBox> Place(
         Dictionary<string, int> layers,
         Dictionary<string, RelationshipSource> byName,
-        List<(string From, string To)> edges)
+        List<Edge> edges)
     {
         var boxes = new List<RelationshipBox>();
 
@@ -284,7 +356,7 @@ public sealed class RelationshipLayout
     /// </para>
     /// </remarks>
     private static RelationshipBox Box(
-        RelationshipSource source, int x, int y, List<(string From, string To)> edges)
+        RelationshipSource source, int x, int y, List<Edge> edges)
     {
         var shown = new List<string>();
 
@@ -296,7 +368,7 @@ public sealed class RelationshipLayout
 
         var foreign = edges
             .Where(e => Same(e.From, source.Name))
-            .Select(e => e.To + "Id")
+            .Select(e => e.Field)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
@@ -345,15 +417,36 @@ public sealed class RelationshipLayout
     /// is the thing that otherwise means opening the file.
     /// <para>
     /// Lines are grouped by the gap they cross and spaced evenly across it, so no two share a
-    /// vertical segment.
+    /// vertical segment. A self-loop crosses no gap: it leaves the key's row on the right side of
+    /// the box and comes back to the key row, each loop of one box in its own lane.
     /// </para>
     /// </remarks>
     private static List<RelationshipArrow> Route(
-        List<(string From, string To)> edges, Dictionary<string, RelationshipBox> placed)
+        List<Edge> edges, Dictionary<string, RelationshipBox> placed)
     {
         var routed = new List<RelationshipArrow>();
 
+        foreach (var loops in edges.Where(e => e.Self).GroupBy(e => placed[e.From]))
+        {
+            var box = loops.Key;
+            var side = box.X + BoxWidth;
+            var lane = 0;
+
+            foreach (var edge in loops.OrderBy(e => RowY(box, e.Field)))
+            {
+                routed.Add(new RelationshipArrow(
+                    edge.From, edge.To,
+                    side, RowY(box, edge.Field),
+                    side, RowY(box, "Id"),
+                    side + LoopFirst + lane * LoopLane,
+                    edge.Field, Self: true));
+
+                lane++;
+            }
+        }
+
         var byGap = edges
+            .Where(e => !e.Self)
             .Select(e => (Edge: e, From: placed[e.From], To: placed[e.To]))
             .GroupBy(a => (a.From.X, a.To.X));
 
@@ -366,16 +459,17 @@ public sealed class RelationshipLayout
             var lane = 0;
 
             foreach (var (edge, from, to) in gap
-                         .OrderBy(a => RowY(a.From, a.Edge.To + "Id"))
+                         .OrderBy(a => RowY(a.From, a.Edge.Field))
                          .ThenBy(a => a.To.Y))
             {
                 lane++;
 
                 routed.Add(new RelationshipArrow(
                     edge.From, edge.To,
-                    start, RowY(from, edge.To + "Id"),
+                    start, RowY(from, edge.Field),
                     to.X, RowY(to, "Id"),
-                    start + span * lane / (lanes + 1)));
+                    start + span * lane / (lanes + 1),
+                    edge.Field));
             }
         }
 
