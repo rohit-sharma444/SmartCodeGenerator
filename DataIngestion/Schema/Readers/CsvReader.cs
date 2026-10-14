@@ -20,15 +20,17 @@ public sealed class CsvReader : IDataSourceReader
         if (!File.Exists(spec.Location))
             throw new FileNotFoundException($"No file at {spec.Location}.", spec.Location);
 
-        var records = ParseFields(File.ReadAllText(spec.Location), ',');
+        var records = ParseFields(SourceText.Read(spec.Location, out var encodingNote), ',');
 
-        return new[]
-        {
-            ToTable(
-                Path.GetFileNameWithoutExtension(spec.Location),
-                Path.GetFileName(spec.Location),
-                records)
-        };
+        var table = ToTable(
+            Path.GetFileNameWithoutExtension(spec.Location),
+            Path.GetFileName(spec.Location),
+            records);
+
+        if (encodingNote is not null)
+            table.Notes.Insert(0, encodingNote);
+
+        return new[] { table };
     }
 
     /// <summary>

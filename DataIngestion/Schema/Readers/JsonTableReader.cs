@@ -22,10 +22,15 @@ public sealed class JsonTableReader : IDataSourceReader
         if (!File.Exists(spec.Location))
             throw new FileNotFoundException($"No file at {spec.Location}.", spec.Location);
 
-        return ReadJson(
-            File.ReadAllText(spec.Location),
+        var tables = ReadJson(
+            SourceText.Read(spec.Location, out var encodingNote),
             Path.GetFileNameWithoutExtension(spec.Location),
             Path.GetFileName(spec.Location));
+
+        if (encodingNote is not null)
+            tables[0].Notes.Insert(0, encodingNote);
+
+        return tables;
     }
 
     /// <summary>Parses <paramref name="json"/> into a root table named after
