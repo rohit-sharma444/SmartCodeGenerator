@@ -355,6 +355,11 @@ public class SourceKeyTests
             return (IReadOnlyList<string>)outcome.GetType().GetProperty("Messages")!.GetValue(outcome)!;
         }
 
+        // TicketNo was NOT NULL in the database (K7); ApprovedById was not.
+        var unset = Validate("Payment", "Insert", ("Amount", 1m), ("Ref", "PAY-9"), ("CurrencyId", 1), ("PaidById", 1));
+        Assert.Contains(unset, m => m.Contains("Ticket is required."));
+        Assert.DoesNotContain(unset, m => m.Contains("ApprovedBy is required."));
+
         // 99 is an Id no lookup knows (the stub knows 1..9).
         var unknown = Validate("Payment", "Insert",
             ("Amount", 1m), ("Ref", "PAY-9"), ("CurrencyId", 1), ("PaidById", 1), ("TicketId", 1), ("ApprovedById", 99));

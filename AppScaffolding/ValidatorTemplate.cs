@@ -255,6 +255,12 @@ internal sealed class NullValidator<T> : IValidator<T>
             string.Equals(pair.Type, DomainModelMapper.BaseType(propertyType), StringComparison.Ordinal)
             && string.Equals(pair.Rule, ruleName, StringComparison.OrdinalIgnoreCase));
 
+    /// <summary>Whether the source declared <paramref name="key"/>'s column NOT NULL: a link the
+    /// database never let be empty, which the app must not let be 0.</summary>
+    private static bool IsDeclaredNotNull(ClassDefinition definition, string key)
+        => definition.Properties.Any(
+            p => string.Equals(p.Name, key, StringComparison.Ordinal) && p.Facts?.IsNullable == false);
+
     /// <summary>
     /// Whether <paramref name="property"/> carries the required rule DomainModelMapper recorded.
     /// </summary>
@@ -296,7 +302,8 @@ internal sealed class NullValidator<T> : IValidator<T>
     /// as surely as its <c>CustomerId</c> names a real customer.
     /// </param>
     /// <param name="referencesRequired">
-    /// Whether every key must be set - true for a transaction or a document line.
+    /// Whether every key must be set - true for a transaction or a document line. A key whose
+    /// column the source declared NOT NULL is required whatever the class is.
     /// </param>
     public static string GeneratedForLinks(
         string rootNamespace, ClassDefinition definition, IReadOnlyList<ForeignKeys.Link> foreignKeys,
@@ -364,7 +371,7 @@ internal sealed class NullValidator<T> : IValidator<T>
             var (key, navigation, target) = (link.Property, link.Navigation, link.Target);
             var checks = new List<string>();
 
-            if (referencesRequired)
+            if (referencesRequired || IsDeclaredNotNull(definition, key))
             {
                 checks.Add($"if (item.{key} == 0)");
                 checks.Add($"    errors.Add(new ValidationError(\"{key}\", \"{navigation} is required.\"));");
