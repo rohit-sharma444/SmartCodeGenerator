@@ -55,7 +55,26 @@ public sealed class SqlServerReader(ISqlSchemaSource source, int maxRowsPerTable
                 table.Notes.Add($"{info.Schema}.{info.Name} is read as {names[info]}, because another schema "
                                 + $"also has a table called {info.Name}.");
 
-            foreach (var column in source.Columns(spec.Location, info.Schema, info.Name))
+            var columns = source.Columns(spec.Location, info.Schema, info.Name);
+
+            // A computed column holds no data of its own: the database works it out from the
+            // others. As an ordinary field the app let it be typed over, saved what was typed, and
+            // proposed rules from it, so it is left out and its expression said instead.
+            var stored = new List<int>();
+
+            for (var i = 0; i < columns.Count; i++)
+            {
+                if (columns[i].ComputedAs is { } expression)
+                {
+                    table.Notes.Add($"In {table.Label}, {columns[i].Name} is computed by the database as "
+                                    + $"{expression}, so it is left out of the app: it holds no data of its own.");
+                    continue;
+                }
+
+                stored.Add(i);
+            }
+
+            foreach (var column in stored.Select(i => columns[i]))
             {
                 // -1 is INFORMATION_SCHEMA's spelling of nvarchar(max): a known absence of a
                 // bound, not a bound of -1. See TextLength for the lengths that are not what
@@ -90,7 +109,11 @@ public sealed class SqlServerReader(ISqlSchemaSource source, int maxRowsPerTable
             var rows = source.Rows(spec.Location, info.Schema, info.Name, maxRowsPerTable + 1);
             var partial = rows.Count > maxRowsPerTable;
 
-            table.Rows.AddRange(partial ? rows.Take(maxRowsPerTable) : rows);
+            // SELECT * returns every column, the computed ones too, in the order Columns lists them.
+            table.Rows.AddRange((partial ? rows.Take(maxRowsPerTable) : rows)
+                .Select(row => stored.Count == columns.Count
+                    ? row
+                    : stored.Select(i => i < row.Length ? row[i] : null).ToArray()));
 
             if (partial)
             {
@@ -161,12 +184,37 @@ public sealed class SqlServerReader(ISqlSchemaSource source, int maxRowsPerTable
                        + $"{unheld}); they are left empty.";
             }
 
+            NoteYearOneDates(table, column, values);
+
             if (note is null)
                 continue;
 
             _lossNotes.Add(note);
             table.Notes.Add($"In {table.Label}, {note}");
         }
+    }
+
+    /// <summary>
+    /// Says how many rows of a NOT NULL date column hold 0001-01-01 00:00, when any do.
+    /// </summary>
+    /// <remarks>
+    /// The generated app reads that value as a date never filled in: it is what a non-nullable
+    /// DateTime holds when nobody set it, and the required check refuses it on purpose, so a blank
+    /// record cannot be saved. A row the source really stored it in is seeded as stored, and fails
+    /// that check the first time it is saved, which the user should know before it happens.
+    /// </remarks>
+    private static void NoteYearOneDates(TabularTable table, TabularColumn column, List<string?> values)
+    {
+        if (column.Type != "DateTime" || column.Facts?.IsNullable != false)
+            return;
+
+        var count = values.Count(v => DateTime.TryParse(
+            v, System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.RoundtripKind, out var date) && date == DateTime.MinValue);
+
+        if (count > 0)
+            table.Notes.Add($"In {table.Label}, {count:N0} row(s) of {column.Name} hold 0001-01-01, which the app "
+                            + "reads as a date not filled in; those rows fail its required check until the date is changed.");
     }
 
     /// <summary>

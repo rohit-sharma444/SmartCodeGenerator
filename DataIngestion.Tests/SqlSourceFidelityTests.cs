@@ -459,6 +459,47 @@ public class SqlSourceFidelityTests
         Assert.Contains(app.Data.Notes, n => n.Contains("dbo.Notes") && n.Contains("left out"));
     }
 
+    // --- S10: a computed column ---
+
+    [Fact]
+    public void A_computed_column_is_left_out_and_its_expression_said()
+    {
+        var app = Generate(Database(add => add("Product",
+            [
+                new("ProductId", "int", false, IsPrimaryKey: true),
+                new("PriceWithTax", "decimal", true, Precision: 19, Scale: 4, ComputedAs: "([UnitPrice]*(1.2))"),
+                new("UnitPrice", "decimal", false, Precision: 18, Scale: 2),
+                new("Title", "nvarchar", false, 20),
+            ],
+            [["1", "12.0000", "10.00", "Bolt"], ["2", "12.0000", "10.00", "Nut"]])));
+
+        Assert.DoesNotContain(Class(app, "Product").Properties, p => p.Name == "PriceWithTax");
+        Assert.Contains(app.Data.Notes, n => n.Contains("PriceWithTax") && n.Contains("([UnitPrice]*(1.2))"));
+
+        // The columns after it still line up with their own values.
+        Assert.Equal(["Bolt", "Nut"], Seed(app, "Product").Select(r => r.GetProperty("Title").GetString()));
+        Assert.Equal(10.00m, Seed(app, "Product")[0].GetProperty("UnitPrice").GetDecimal());
+        Compile(app);
+    }
+
+    // --- S15: a seeded date the app reads as not filled in ---
+
+    [Fact]
+    public void A_not_null_date_holding_year_one_is_said_to_fail_its_own_check()
+    {
+        var app = Generate(Database(add => add("Staff",
+            [new("StaffId", "int", false, IsPrimaryKey: true), new("HiredOn", "date", false), new("Name", "nvarchar", false, 20)],
+            [["1", "0001-01-01T00:00:00.0000000", "Ann"], ["2", "2020-05-01T00:00:00.0000000", "Bob"]])));
+
+        Assert.Contains(app.Data.Notes, n => n.Contains("HiredOn") && n.Contains("0001-01-01") && n.Contains("1 row"));
+
+        // The note is true: the seeded row is refused, the other is not.
+        var assembly = Compile(app);
+        var rows = SeedRows(assembly, app, "Staff");
+        Assert.Contains(Validate(assembly, "Staff", rows[0]), m => m.Contains("HiredOn"));
+        Assert.Empty(Validate(assembly, "Staff", rows[1]));
+    }
+
     // --- S12: a column whose name starts with a digit ---
 
     [Fact]

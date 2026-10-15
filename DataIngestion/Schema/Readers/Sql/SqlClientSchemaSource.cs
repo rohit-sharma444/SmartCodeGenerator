@@ -56,8 +56,12 @@ public sealed class SqlClientSchemaSource : ISqlSchemaSource
         const string sql = """
             SELECT  c.COLUMN_NAME, c.DATA_TYPE, c.IS_NULLABLE,
                     c.CHARACTER_MAXIMUM_LENGTH, c.NUMERIC_PRECISION, c.NUMERIC_SCALE,
-                    CASE WHEN pk.COLUMN_NAME IS NULL THEN 0 ELSE 1 END AS IS_PK
+                    CASE WHEN pk.COLUMN_NAME IS NULL THEN 0 ELSE 1 END AS IS_PK,
+                    c.COLUMN_DEFAULT, cc.definition AS COMPUTED_AS
             FROM    INFORMATION_SCHEMA.COLUMNS c
+            LEFT JOIN sys.computed_columns cc
+                      ON cc.object_id = OBJECT_ID(QUOTENAME(c.TABLE_SCHEMA) + '.' + QUOTENAME(c.TABLE_NAME))
+                     AND cc.name = c.COLUMN_NAME
             LEFT JOIN (
                         SELECT   k.TABLE_SCHEMA, k.TABLE_NAME, MIN(k.COLUMN_NAME) AS COLUMN_NAME
                         FROM     INFORMATION_SCHEMA.TABLE_CONSTRAINTS t
@@ -87,7 +91,9 @@ public sealed class SqlClientSchemaSource : ISqlSchemaSource
                 AsInt(row["CHARACTER_MAXIMUM_LENGTH"]),
                 AsInt(row["NUMERIC_PRECISION"]),
                 AsInt(row["NUMERIC_SCALE"]),
-                Convert.ToInt32(row["IS_PK"], CultureInfo.InvariantCulture) == 1));
+                Convert.ToInt32(row["IS_PK"], CultureInfo.InvariantCulture) == 1,
+                row["COMPUTED_AS"] as string,
+                row["COLUMN_DEFAULT"] as string));
         }
 
         return columns;
