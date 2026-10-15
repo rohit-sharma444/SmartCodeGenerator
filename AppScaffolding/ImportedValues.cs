@@ -184,7 +184,8 @@ public static class ImportedValues
     /// invents the generating machine's own offset for a string that named none, and a
     /// <see cref="DateTime"/> of <see cref="DateTimeKind.Local"/> cannot hold an arbitrary source
     /// offset at all — formatting it always reports the CURRENT machine's, silently reweighting the
-    /// value by the difference. Written out through this instead, the source's own offset survives.
+    /// value by the difference. Read through this instead, the source's own wall-clock time
+    /// survives; SeedFileWriter writes it without the offset, and says so.
     /// </summary>
     public static bool TryDateTimeOffset(string value, out DateTimeOffset result)
     {

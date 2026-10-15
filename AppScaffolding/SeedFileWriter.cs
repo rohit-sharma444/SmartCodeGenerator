@@ -145,7 +145,48 @@ public static class SeedFileWriter
                     + $"\"{miss.First}\"");
         }
 
+        NoteDroppedOffsets(definition, rows, renamedKeys, skipped);
+
         return System.Text.Encoding.UTF8.GetString(stream.ToArray());
+    }
+
+    /// <summary>
+    /// One sentence per DateTime field whose source values named a UTC offset, which the seed
+    /// leaves out (see <see cref="Write"/>): how many, and the first, as the source wrote it.
+    /// </summary>
+    private static void NoteDroppedOffsets(
+        ClassDefinition definition,
+        IReadOnlyList<IReadOnlyDictionary<string, string?>> rows,
+        IReadOnlyDictionary<string, string> renamedKeys,
+        List<string> notes)
+    {
+        foreach (var property in definition.Properties)
+        {
+            if (DomainModelMapper.BaseType(property.Type) != "DateTime")
+                continue;
+
+            var count = 0;
+            string? first = null;
+
+            foreach (var row in rows)
+            {
+                if ((row.TryGetValue(property.Name, out var raw)
+                     || (renamedKeys.TryGetValue(property.Name, out var oldName)
+                         && row.TryGetValue(oldName, out raw)))
+                    && raw is not null
+                    && ImportedValues.TryDateTimeOffset(raw.Trim(), out _))
+                {
+                    count++;
+                    first ??= raw.Trim();
+                }
+            }
+
+            if (count > 0)
+                notes.Add(
+                    $"{definition.Name}.{property.Name}: {count} value(s) named a UTC offset, which a "
+                    + "DateTime cannot hold; each keeps the date and time the source shows, without its "
+                    + $"offset, the first being \"{first}\"");
+        }
     }
 
     /// <summary>The five types the model can carry. Anything else is a navigation property.</summary>
@@ -188,15 +229,13 @@ public static class SeedFileWriter
             case "DateTime":
                 if (ImportedValues.TryDateTimeOffset(raw, out var withZone))
                 {
-                    // Written by hand, not the DateTimeOffset overload: that one renders a zero
-                    // offset as "+00:00", where "Z" is what the source itself wrote.
-                    var offset = withZone.Offset == TimeSpan.Zero
-                        ? "Z"
-                        : withZone.ToString("zzz", CultureInfo.InvariantCulture);
+                    // The wall-clock time the source shows, WITHOUT its offset. A DateTime cannot
+                    // hold one: written with it, System.Text.Json loaded the value as the RUNNING
+                    // machine's local time (08:00-08:00 showed as 21:30 in India), and a re-save
+                    // lost the offset anyway. NoteDroppedOffsets says so, per field.
                     writer.WriteString(
                         property.Name,
-                        withZone.ToString("yyyy-MM-ddTHH:mm:ss.FFFFFFF", CultureInfo.InvariantCulture)
-                            + offset);
+                        withZone.DateTime.ToString("yyyy-MM-ddTHH:mm:ss.FFFFFFF", CultureInfo.InvariantCulture));
                     return true;
                 }
                 if (!ImportedValues.TryDateTime(raw, out var moment))

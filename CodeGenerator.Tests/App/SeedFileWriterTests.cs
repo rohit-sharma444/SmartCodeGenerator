@@ -254,23 +254,26 @@ public class SeedFileWriterTests
     [TestMethod]
     public void ASqlRoundTripDateWithAnOffsetIsRead()
     {
-        SeedFileWriter.Files(
+        var row = Rows(SeedFileWriter.Files(
             [Order(("Placed", "DateTime"))], Map(),
             Data(new Dictionary<string, string?> { ["Placed"] = "2026-01-02T10:00:00.1234567+05:00" }),
-            out var unreadable);
+            out var unreadable).Single().Json)[0];
 
-        Assert.IsEmpty(unreadable);
+        Assert.AreEqual("2026-01-02T10:00:00.1234567", row.GetProperty("Placed").GetString());
+        Assert.IsFalse(unreadable.Any(n => n.Contains("could not be read")));
     }
 
     /// <summary>
-    /// A date is written as the source wrote it. DateTimeStyles.None converted anything with a
-    /// zone into the GENERATING machine's local time, so the same CSV seeded different values on
-    /// different machines, and a UTC "Z" came out as another clock time with a local offset.
+    /// A date is written as the time the source shows. DateTimeStyles.None converted anything
+    /// with a zone into the GENERATING machine's local time; and an offset written into the seed
+    /// was converted by System.Text.Json into the RUNNING machine's local time instead
+    /// (08:00-08:00 showed as 21:30 in India), and a re-save lost the offset anyway. A DateTime
+    /// cannot hold an offset, so the wall-clock time is kept and the offset dropped, with a note.
     /// </summary>
     [TestMethod]
-    [DataRow("2026-01-02T10:00:00Z", "2026-01-02T10:00:00Z")]
-    [DataRow("2026-01-02T10:00:00+05:00", "2026-01-02T10:00:00+05:00")]
-    [DataRow("2026-01-02T10:00:00.5-08:00", "2026-01-02T10:00:00.5-08:00")]
+    [DataRow("2026-01-02T10:00:00Z", "2026-01-02T10:00:00")]
+    [DataRow("2026-01-02T10:00:00+05:00", "2026-01-02T10:00:00")]
+    [DataRow("2026-01-02T10:00:00.5-08:00", "2026-01-02T10:00:00.5")]
     [DataRow("2026-01-02T10:00:00", "2026-01-02T10:00:00")]
     [DataRow("2026-01-02", "2026-01-02T00:00:00")]
     public void ADateIsWrittenUnshiftedByTheMachinesTimeZone(string raw, string expected)
@@ -303,8 +306,45 @@ public class SeedFileWriterTests
             Data(values.Select(v => new Dictionary<string, string?> { ["Value"] = v }).ToArray()),
             out var unreadable).Single().Json);
 
-        Assert.IsEmpty(unreadable);
+        Assert.IsFalse(unreadable.Any(n => n.Contains("could not be read")));
         Assert.IsTrue(rows.All(r => r.TryGetProperty("Value", out _)));
+    }
+
+    /// <summary>The offset a DateTime cannot hold is dropped, and said so: once per field, with
+    /// how many values had one and the first of them.</summary>
+    [TestMethod]
+    public void ADroppedOffsetIsReportedWithItsField()
+    {
+        var rows = Rows(SeedFileWriter.Files(
+            [Order(("Updated", "DateTime"))], Map(),
+            Data(
+                new Dictionary<string, string?> { ["Updated"] = "2024-02-03T08:00:00-08:00" },
+                new Dictionary<string, string?> { ["Updated"] = "2024-02-04" },
+                new Dictionary<string, string?> { ["Updated"] = "2024-02-05T09:00:00Z" }),
+            out var notes).Single().Json);
+
+        Assert.AreEqual("2024-02-03T08:00:00", rows[0].GetProperty("Updated").GetString());
+
+        var note = notes.Single();
+        StringAssert.Contains(note, "Order.Updated");
+        StringAssert.Contains(note, "2 value(s)");
+        StringAssert.Contains(note, "offset");
+        StringAssert.Contains(note, "\"2024-02-03T08:00:00-08:00\"");
+    }
+
+    /// <summary>The seed as the generated app loads it: the time the source showed, whatever the
+    /// running machine's own zone.</summary>
+    [TestMethod]
+    public void AnOffsetValueLoadsAsTheTimeTheSourceShows()
+    {
+        var json = SeedFileWriter.Files(
+            [Order(("Updated", "DateTime"))], Map(),
+            Data(new Dictionary<string, string?> { ["Updated"] = "2024-02-03T08:00:00-08:00" })).Single().Json;
+
+        var loaded = JsonSerializer.Deserialize<DateTime>(
+            Rows(json)[0].GetProperty("Updated").GetRawText());
+
+        Assert.AreEqual(new DateTime(2024, 2, 3, 8, 0, 0), loaded);
     }
 
     [TestMethod]
