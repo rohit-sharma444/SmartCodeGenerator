@@ -177,19 +177,24 @@ public static class SeedFileWriter
     }
 
     /// <summary>
-    /// Writes an explicit null for a value the row does not hold, when leaving it out would load
-    /// something else: a property with a declared DEFAULT starts every new instance at it, so a
-    /// row the source stored NULL in would have loaded as that default instead.
+    /// Writes the value a missing one loads as without a declared DEFAULT, when leaving it out
+    /// would load something else: a property with a DEFAULT starts every new instance at it, so
+    /// a row the source stored NULL in would have loaded as that default instead.
     /// </summary>
     /// <remarks>
-    /// Only for a property that can hold null. Every other property still leaves a missing value
-    /// out, as it always has, and loads as its type's default.
+    /// Null for a nullable property; an empty string for a string, which is what a missing text
+    /// loads as everywhere else (a null there would break a SQLite store's NOT NULL column). Any
+    /// other property still leaves a missing value out, as it always has.
     /// </remarks>
     private static void WriteMissing(Utf8JsonWriter writer, PropertyDefinition property)
     {
-        if (property.Initializer is not null
-            && (DomainModelMapper.IsNullable(property.Type) || property.Type == "string"))
+        if (property.Initializer is null)
+            return;
+
+        if (DomainModelMapper.IsNullable(property.Type))
             writer.WriteNull(property.Name);
+        else if (property.Type == "string")
+            writer.WriteString(property.Name, string.Empty);
     }
 
     /// <summary>The five types the model can carry. Anything else is a navigation property.</summary>

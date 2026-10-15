@@ -522,7 +522,7 @@ public class SqlSourceFidelityTests
         var row = SeedRows(assembly, app, "Employee")[0];
         Assert.Null(Get(row, "Flag"));
         Assert.Null(Get(row, "Rate"));
-        Assert.Null(Get(row, "Token"));
+        Assert.Equal("", Get(row, "Token"));
         Assert.Equal(false, Get(row, "IsActive"));
         Assert.Equal("Retired", Get(row, "Status"));
     }
@@ -638,9 +638,14 @@ public class SqlSourceFidelityTests
             new("PK_Emp", SqlConstraintKind.PrimaryKey, ["EmpId"]),
             new("UQ_Emp_Email", SqlConstraintKind.Unique, ["Email"]),
             new("UX_Emp_Badge", SqlConstraintKind.Unique, ["Badge"]),
+            new("UX_Emp_Mail", SqlConstraintKind.FilteredUnique, ["Email", "DeptId"], "([Badge] IS NOT NULL)"),
         ];
 
         var app = Generate(source);
+
+        // Unique only where its filter holds: not enforced, and said so.
+        Assert.Empty(Class(app, "Emp").UniqueTogether);
+        Assert.Contains(app.Data.Notes, n => n.Contains("UX_Emp_Mail") && n.Contains("([Badge] IS NOT NULL)"));
 
         Assert.Contains(Property(app, "Emp", "Email").Rules, r => r.Name == "unique");
         Assert.Contains(Property(app, "Emp", "Badge").Rules, r => r.Name == "unique");

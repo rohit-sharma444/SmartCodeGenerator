@@ -73,7 +73,11 @@ public enum SqlConstraintKind
     Unique,
 
     /// <summary>A CHECK constraint: every row satisfies <see cref="SqlConstraintInfo.Definition"/>.</summary>
-    Check
+    Check,
+
+    /// <summary>A unique index with a filter: no two rows that satisfy
+    /// <see cref="SqlConstraintInfo.Definition"/> share these columns' values.</summary>
+    FilteredUnique
 }
 
 /// <summary>One constraint on a table.</summary>

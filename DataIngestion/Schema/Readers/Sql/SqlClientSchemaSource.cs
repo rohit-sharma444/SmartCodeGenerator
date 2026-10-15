@@ -163,14 +163,14 @@ public sealed class SqlClientSchemaSource : ISqlSchemaSource
     public IReadOnlyList<SqlConstraintInfo> Constraints(string connectionString, string schema, string table)
     {
         // Unique indexes include the primary key's and every UNIQUE constraint's, which SQL Server
-        // implements as one. A filtered index is unique only where its filter holds, so it is left
-        // out: carried, it would refuse rows the database accepts. A disabled check enforces
-        // nothing, and is left out for the same reason.
+        // implements as one. A filtered index is unique only where its filter holds, so it comes
+        // back as its own kind, for the reader to say it was not carried. A disabled index or
+        // check enforces nothing, and is left out.
         const string sql = """
             SELECT  i.name AS [Name],
-                    CASE WHEN i.is_primary_key = 1 THEN 'P' ELSE 'U' END AS [Kind],
+                    CASE WHEN i.is_primary_key = 1 THEN 'P' WHEN i.has_filter = 1 THEN 'F' ELSE 'U' END AS [Kind],
                     c.name AS [ColumnName],
-                    CAST(NULL AS nvarchar(max)) AS [Definition],
+                    CAST(i.filter_definition AS nvarchar(max)) AS [Definition],
                     ic.key_ordinal AS [Ordinal]
             FROM    sys.indexes i
             JOIN    sys.index_columns ic
@@ -178,7 +178,7 @@ public sealed class SqlClientSchemaSource : ISqlSchemaSource
             JOIN    sys.columns c
                       ON c.object_id = ic.object_id AND c.column_id = ic.column_id
             WHERE   i.object_id = OBJECT_ID(QUOTENAME(@schema) + '.' + QUOTENAME(@table))
-              AND   i.is_unique = 1 AND i.has_filter = 0 AND i.is_disabled = 0
+              AND   i.is_unique = 1 AND i.is_disabled = 0
             UNION ALL
             SELECT  k.name, 'C', c.name, k.definition, 0
             FROM    sys.check_constraints k
@@ -198,6 +198,7 @@ public sealed class SqlClientSchemaSource : ISqlSchemaSource
             {
                 "P" => SqlConstraintKind.PrimaryKey,
                 "U" => SqlConstraintKind.Unique,
+                "F" => SqlConstraintKind.FilteredUnique,
                 _ => SqlConstraintKind.Check
             };
 

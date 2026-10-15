@@ -218,7 +218,13 @@ public sealed class SqlServerReader(ISqlSchemaSource source, int maxRowsPerTable
     /// </remarks>
     private static void CarryConstraints(TabularTable table, IReadOnlyList<SqlConstraintInfo> constraints)
     {
-        foreach (var key in constraints.Where(c => c.Kind != SqlConstraintKind.Check))
+        // Unique only where its filter holds (WHERE Badge IS NOT NULL), which the app has no
+        // rule for: carried as a plain unique, it would refuse rows the database accepts.
+        foreach (var filtered in constraints.Where(c => c.Kind == SqlConstraintKind.FilteredUnique))
+            table.Notes.Add($"In {table.Label}, the unique index {filtered.Name} ({string.Join(", ", filtered.Columns)}) "
+                            + $"applies only {filtered.Definition} and was not carried: the app does not enforce it.");
+
+        foreach (var key in constraints.Where(c => c.Kind is SqlConstraintKind.PrimaryKey or SqlConstraintKind.Unique))
         {
             var members = key.Columns.Select(table.IndexOf).ToList();
 
