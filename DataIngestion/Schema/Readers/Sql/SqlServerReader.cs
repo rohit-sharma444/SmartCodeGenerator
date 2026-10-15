@@ -76,6 +76,14 @@ public sealed class SqlServerReader(ISqlSchemaSource source, int maxRowsPerTable
 
             foreach (var column in stored.Select(i => columns[i]))
             {
+                // A DEFAULT is what a new row starts with; without it, a new employee began
+                // inactive where the database would have made them active.
+                var initial = SqlDefault.Parse(column.Default);
+
+                if (initial is null && column.Default is { } unread && !IsNullDefault(unread))
+                    table.Notes.Add($"In {table.Label}, {column.Name}'s DEFAULT {unread} was not carried: "
+                                    + "a new record starts empty instead.");
+
                 // -1 is INFORMATION_SCHEMA's spelling of nvarchar(max): a known absence of a
                 // bound, not a bound of -1. See TextLength for the lengths that are not what
                 // they say.
@@ -99,7 +107,9 @@ public sealed class SqlServerReader(ISqlSchemaSource source, int maxRowsPerTable
                         IsUnbounded = unbounded,
                         Precision = column.Precision,
                         Scale = column.Scale,
-                        DeclaredType = column.SqlType
+                        DeclaredType = column.SqlType,
+                        DefaultValue = initial?.Value,
+                        DefaultFunction = initial?.Function
                     }
                 });
             }
@@ -216,6 +226,10 @@ public sealed class SqlServerReader(ISqlSchemaSource source, int maxRowsPerTable
             table.Notes.Add($"In {table.Label}, {count:N0} row(s) of {column.Name} hold 0001-01-01, which the app "
                             + "reads as a date not filled in; those rows fail its required check until the date is changed.");
     }
+
+    /// <summary>Whether a DEFAULT definition is NULL, which gives a new row nothing.</summary>
+    private static bool IsNullDefault(string definition)
+        => definition.Trim().Trim('(', ')').Trim().Equals("null", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// The name each table is read under: its own, unless a table in another schema has the same

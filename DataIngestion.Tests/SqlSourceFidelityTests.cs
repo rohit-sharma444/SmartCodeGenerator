@@ -459,6 +459,47 @@ public class SqlSourceFidelityTests
         Assert.Contains(app.Data.Notes, n => n.Contains("dbo.Notes") && n.Contains("left out"));
     }
 
+    // --- S9: DEFAULT values ---
+
+    [Fact]
+    public void A_literal_default_starts_every_new_record_and_a_null_stays_null()
+    {
+        var app = Generate(Database(add => add("Employee",
+            [
+                new("EmployeeId", "int", false, IsPrimaryKey: true),
+                new("IsActive", "bit", false, Default: "((1))"),
+                new("Status", "nvarchar", false, 20, Default: "(N'Active')"),
+                new("Joined", "datetime", false, Default: "(getdate())"),
+                new("Token", "uniqueidentifier", true, Default: "(newid())"),
+                new("Rate", "decimal", true, Precision: 5, Scale: 2, Default: "((-2.5))"),
+                new("Grade", "int", false, Default: "((3))"),
+                new("Flag", "bit", true, Default: "((1))"),
+                new("Odd", "int", false, Default: "(abs((-1)))"),
+            ],
+            [["1", "false", "Retired", "2020-01-01T00:00:00", null, null, "1", null, "4"]])));
+
+        var assembly = Compile(app);
+        var fresh = New(assembly, "Employee");
+        object? Get(object item, string name) => item.GetType().GetProperty(name)!.GetValue(item);
+
+        Assert.Equal(true, Get(fresh, "IsActive"));
+        Assert.Equal("Active", Get(fresh, "Status"));
+        Assert.InRange((DateTime)Get(fresh, "Joined")!, DateTime.Now.AddMinutes(-1), DateTime.Now.AddMinutes(1));
+        Assert.True(Guid.TryParse((string)Get(fresh, "Token")!, out _));
+        Assert.Equal(-2.5m, Get(fresh, "Rate"));
+        Assert.Equal(3, Get(fresh, "Grade"));
+        Assert.Equal(0, Get(fresh, "Odd"));
+        Assert.Contains(app.Data.Notes, n => n.Contains("Odd") && n.Contains("(abs((-1)))"));
+
+        // A row the source stored NULL in is NULL, not the default a new record starts with.
+        var row = SeedRows(assembly, app, "Employee")[0];
+        Assert.Null(Get(row, "Flag"));
+        Assert.Null(Get(row, "Rate"));
+        Assert.Null(Get(row, "Token"));
+        Assert.Equal(false, Get(row, "IsActive"));
+        Assert.Equal("Retired", Get(row, "Status"));
+    }
+
     // --- S10: a computed column ---
 
     [Fact]

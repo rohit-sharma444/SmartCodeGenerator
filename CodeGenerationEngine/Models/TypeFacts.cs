@@ -56,4 +56,16 @@ public sealed record TypeFacts
     /// fact, this makes the generated app more permissive, never stricter.
     /// </summary>
     public bool HasMissingValues { get; init; }
+
+    /// <summary>
+    /// The value the source's DEFAULT gives a new row, as invariant text ("1", "Active", "-2.5");
+    /// null when it declares none, or one <see cref="DefaultFunction"/> names instead.
+    /// </summary>
+    public string? DefaultValue { get; init; }
+
+    /// <summary>
+    /// The function the source's DEFAULT calls, when it is one a generated app can repeat: "now",
+    /// "utcnow" or "newguid". Null otherwise.
+    /// </summary>
+    public string? DefaultFunction { get; init; }
 }

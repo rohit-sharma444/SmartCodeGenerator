@@ -118,10 +118,15 @@ public static class SeedFileWriter
                          && !(renamedKeys.TryGetValue(property.Name, out var oldName)
                               && rows[index].TryGetValue(oldName, out raw)))
                         || SeedText(property, raw) is not { } value)
+                    {
+                        WriteMissing(writer, property);
                         continue;
+                    }
 
                     if (!Write(writer, property, value))
                     {
+                        WriteMissing(writer, property);
+
                         misses[property.Name] = misses.TryGetValue(property.Name, out var miss)
                             ? (miss.Count + 1, miss.First)
                             : (1, value);
@@ -169,6 +174,22 @@ public static class SeedFileWriter
         }
 
         return string.IsNullOrWhiteSpace(raw) ? null : raw.Trim();
+    }
+
+    /// <summary>
+    /// Writes an explicit null for a value the row does not hold, when leaving it out would load
+    /// something else: a property with a declared DEFAULT starts every new instance at it, so a
+    /// row the source stored NULL in would have loaded as that default instead.
+    /// </summary>
+    /// <remarks>
+    /// Only for a property that can hold null. Every other property still leaves a missing value
+    /// out, as it always has, and loads as its type's default.
+    /// </remarks>
+    private static void WriteMissing(Utf8JsonWriter writer, PropertyDefinition property)
+    {
+        if (property.Initializer is not null
+            && (DomainModelMapper.IsNullable(property.Type) || property.Type == "string"))
+            writer.WriteNull(property.Name);
     }
 
     /// <summary>The five types the model can carry. Anything else is a navigation property.</summary>

@@ -180,6 +180,8 @@ internal sealed class BuildSnapshot
         public string? DeclaredType { get; set; }
         public bool? NameImpliedFormatHolds { get; set; }
         public bool? HasMissingValues { get; set; }
+        public string? DefaultValue { get; set; }
+        public string? DefaultFunction { get; set; }
     }
 
     internal sealed class Proposal
@@ -521,6 +523,8 @@ internal sealed class BuildSnapshot
         DeclaredType = facts.DeclaredType,
         NameImpliedFormatHolds = facts.NameImpliedFormatHolds,
         HasMissingValues = facts.HasMissingValues,
+        DefaultValue = facts.DefaultValue,
+        DefaultFunction = facts.DefaultFunction,
     };
 
     /// <summary>
@@ -538,6 +542,8 @@ internal sealed class BuildSnapshot
         DeclaredType = dto.DeclaredType,
         NameImpliedFormatHolds = dto.NameImpliedFormatHolds,
         HasMissingValues = dto.HasMissingValues ?? false,
+        DefaultValue = dto.DefaultValue,
+        DefaultFunction = dto.DefaultFunction,
     };
 
     private static Proposal ToDto(RuleProposal proposal) => new()

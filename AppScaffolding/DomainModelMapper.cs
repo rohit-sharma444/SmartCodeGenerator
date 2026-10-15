@@ -162,6 +162,7 @@ public static class DomainModelMapper
         RenameKeysToRenamedClasses(classes, names);
         AddNavigationProperties(model, classes, names);
         AddNullability(classes);
+        AddDefaults(classes);
         AddAuditFields(classes);
         AddValidation(classes);
         AddEntityValidation(classes, model, names);
@@ -377,6 +378,89 @@ public static class DomainModelMapper
 
                 property.Type += "?";
             }
+        }
+    }
+
+    /// <summary>
+    /// Starts each property a new record has at the DEFAULT its source column declared, when that
+    /// default fits the property's type: <c>IsActive = true</c> for a <c>bit DEFAULT 1</c>.
+    /// </summary>
+    /// <remarks>
+    /// After <see cref="AddNullability"/>, because the type decides what the default can be
+    /// written as. A default that does not fit (the user retyped the field on Review) is left
+    /// out rather than guessed at. The Id key and the foreign keys are never given one: the
+    /// store numbers the first, and a default link would point at whichever row has that number.
+    /// </remarks>
+    private static void AddDefaults(List<ClassDefinition> classes)
+    {
+        var names = ForeignKeys.ClassNameSet(classes);
+
+        foreach (var definition in classes)
+        {
+            var foreignKeys = ForeignKeys.LinksOf(definition, names)
+                .Select(link => link.Property)
+                .ToHashSet(StringComparer.Ordinal);
+
+            foreach (var property in definition.Properties)
+            {
+                if (property.Facts is not { } facts
+                    || string.Equals(property.Name, "Id", StringComparison.OrdinalIgnoreCase)
+                    || foreignKeys.Contains(property.Name))
+                    continue;
+
+                property.Initializer = Initializer(BaseType(property.Type), facts.DefaultValue, facts.DefaultFunction);
+            }
+        }
+    }
+
+    /// <summary>The C# expression a default of <paramref name="value"/> or
+    /// <paramref name="function"/> is for a <paramref name="type"/>, or null when it does not fit.</summary>
+    private static string? Initializer(string type, string? value, string? function)
+    {
+        var invariant = System.Globalization.CultureInfo.InvariantCulture;
+
+        if (function is not null)
+            return (type, function) switch
+            {
+                ("DateTime", "now") => "global::System.DateTime.Now",
+                ("DateTime", "utcnow") => "global::System.DateTime.UtcNow",
+                ("string", "newguid") => "global::System.Guid.NewGuid().ToString()",
+                _ => null
+            };
+
+        if (value is null)
+            return null;
+
+        switch (type)
+        {
+            case "string":
+                return Microsoft.CodeAnalysis.CSharp.SymbolDisplay.FormatLiteral(value, quote: true);
+
+            case "int":
+                return int.TryParse(value, System.Globalization.NumberStyles.AllowLeadingSign, invariant, out var i)
+                    ? i.ToString(invariant)
+                    : null;
+
+            case "decimal":
+                return decimal.TryParse(value, System.Globalization.NumberStyles.Number, invariant, out var d)
+                    ? d.ToString(invariant) + "m"
+                    : null;
+
+            case "bool":
+                return value.Trim() switch
+                {
+                    "1" or "true" or "True" => "true",
+                    "0" or "false" or "False" => "false",
+                    _ => null
+                };
+
+            case "DateTime":
+                return DateTime.TryParse(value, invariant, System.Globalization.DateTimeStyles.None, out var date)
+                    ? $"new global::System.DateTime({date.Ticks}L)"
+                    : null;
+
+            default:
+                return null;
         }
     }
 
