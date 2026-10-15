@@ -142,22 +142,6 @@ public class NormalizationPlanTests
             order.Rows.Select(r => r[order.IndexOf("CustomerId")]));
     }
 
-    [Fact]
-    public void ADerivedColumnIsDroppedWithNoNewTable()
-    {
-        var tables = Apply(
-            Orders(["Qty", "UnitPrice", "Total"],
-                ["2", "5.00", "10.00"],
-                ["3", "2.50", "7.50"],
-                ["4", "1.25", "5.00"],
-                ["5", "2.00", "10.00"],
-                ["6", "0.50", "3.00"]),
-            NormalizationFindingKind.DerivedColumn);
-
-        var parent = Assert.Single(tables);
-        Assert.Equal(new[] { "Qty", "UnitPrice" }, parent.Columns.Select(c => c.Name));
-    }
-
     /// <summary>Applying nothing changes nothing -- this is the `k` (keep as-is) path.</summary>
     [Fact]
     public void ApplyingNoFindingsReturnsTheTablesUnchanged()

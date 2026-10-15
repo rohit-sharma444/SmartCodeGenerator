@@ -12,7 +12,10 @@ public enum NormalizationFindingKind
     /// <summary>2NF/3NF: columns determined by a non-key column.</summary>
     FunctionalDependency,
 
-    /// <summary>3NF: a column computed from others.</summary>
+    /// <summary>3NF: a column computed from others. The analyser no longer proposes these: the
+    /// generator cannot emit a computed property, so it reports them in
+    /// <see cref="NormalizationReport.Notes"/> and keeps the column. Applying one built by hand
+    /// still drops the column.</summary>
     DerivedColumn
 }
 

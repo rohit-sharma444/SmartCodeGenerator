@@ -70,26 +70,23 @@ public class NormalizationDecisionTests
         Assert.Contains(model.Decisions, d => d.Reason == reason);
     }
 
-    /// <summary>A dropped derived column is a removal, not an extraction, so it is recorded as one
-    /// -- and against the column's own name, which is what a user would ask `why` about.</summary>
+    /// <summary>A derived column stays in the model with its values: the generator cannot emit a
+    /// computed property, so dropping it "to compute it" lost it. Nothing records it as removed.</summary>
     [Fact]
-    public void ADroppedDerivedColumnIsRecordedAsRemoved()
+    public void ADerivedColumnStaysInTheModel()
     {
         var table = RepeatingGroupTests.Table("Orders",
             ["Qty", "UnitPrice", "Total"],
             ["2", "5.00", "10.00"], ["3", "2.50", "7.50"], ["4", "1.25", "5.00"],
             ["5", "2.00", "10.00"], ["6", "0.50", "3.00"]);
 
-        var findings = NormalizationAnalyzer.Analyze(table).Findings
-            .Where(f => f.Kind == NormalizationFindingKind.DerivedColumn).ToList();
+        var findings = NormalizationAnalyzer.Analyze(table).Findings;
 
         var model = DataModelBuilder.Build(NormalizationPlan.Apply([table], findings), findings);
 
-        Assert.Contains(model.Decisions, d =>
-            d.Name == "Total"
-            && d.Stage == DecisionStage.Normalization
-            && d.Outcome == DecisionOutcome.Rejected
-            && d.Reason == DecisionReasons.DroppedAsADerivedColumn);
+        Assert.Contains(model.Entities.Single().Fields, f => f.Name == "Total");
+        Assert.DoesNotContain(model.Decisions, d =>
+            d.Name == "Total" && d.Outcome == DecisionOutcome.Rejected);
     }
 
     /// <summary>Applying nothing records nothing about normalization -- the `k` path leaves no trail

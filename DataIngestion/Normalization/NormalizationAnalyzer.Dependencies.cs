@@ -218,10 +218,16 @@ public static partial class NormalizationAnalyzer
     }
 
     /// <summary>
-    /// A numeric column equal to the product or the sum of two others on every row. Storing it
-    /// duplicates what the other two already say, and the two can then disagree with it.
+    /// A note for each numeric column equal to the product or the sum of two others on every row.
     /// </summary>
-    private static IEnumerable<NormalizationFinding> DerivedColumns(TabularTable table)
+    /// <remarks>
+    /// A note and not a finding, so it is never applied. The finding it used to be proposed "drop
+    /// it and compute it", but the generator cannot emit a computed property: the column was
+    /// dropped and nothing computed it, so the user's values vanished from the app. Computing it
+    /// would not be faithful either, since a match allows <see cref="DerivedTolerance"/> and the
+    /// stored value is what the source says. So the column is kept as stored, and the user told.
+    /// </remarks>
+    private static IEnumerable<string> DerivedColumns(TabularTable table)
     {
         var numeric = table.Columns
             .Where(c => c.Type is "int" or "decimal")
@@ -236,35 +242,36 @@ public static partial class NormalizationAnalyzer
             var operands = numeric.Where(
                 n => !string.Equals(n, target, StringComparison.OrdinalIgnoreCase)).ToList();
 
-            for (var i = 0; i < operands.Count; i++)
+            var explanation = Explain(table, target, operands);
+            if (explanation is not null)
             {
-                for (var j = i + 1; j < operands.Count; j++)
-                {
-                    var (left, right) = (operands[i], operands[j]);
-
-                    var operatorName =
-                        Matches(table, target, left, right, (a, b) => a * b) ? "x"
-                        : Matches(table, target, left, right, (a, b) => a + b) ? "+"
-                        : null;
-
-                    if (operatorName is null)
-                        continue;
-
-                    yield return new NormalizationFinding
-                    {
-                        Kind = NormalizationFindingKind.DerivedColumn,
-                        TableName = table.Name,
-                        SourceLabel = table.Label,
-                        Columns = [target],
-                        Headline = $"Derived column: \"{target}\" is always {left} {operatorName} {right}",
-                        Proposal = $"drop {target} and compute it",
-                        Evidence = RowEvidence(table, [target, left, right]),
-                    };
-
-                    yield break;   // one explanation per column is enough
-                }
+                yield return
+                    $"Derived column in {table.Label}: \"{target}\" is always {explanation} on "
+                    + $"every row (within {DerivedTolerance}). It is kept as stored: the generated app "
+                    + "cannot compute a column, and computing it would change any value the source rounded.";
             }
         }
+    }
+
+    /// <summary>The first "Left x Right" or "Left + Right" that <paramref name="target"/> equals
+    /// on every row, or null. One explanation per column is enough.</summary>
+    private static string? Explain(TabularTable table, string target, List<string> operands)
+    {
+        for (var i = 0; i < operands.Count; i++)
+        {
+            for (var j = i + 1; j < operands.Count; j++)
+            {
+                var (left, right) = (operands[i], operands[j]);
+
+                if (Matches(table, target, left, right, (a, b) => a * b))
+                    return $"{left} x {right}";
+
+                if (Matches(table, target, left, right, (a, b) => a + b))
+                    return $"{left} + {right}";
+            }
+        }
+
+        return null;
     }
 
     /// <summary>

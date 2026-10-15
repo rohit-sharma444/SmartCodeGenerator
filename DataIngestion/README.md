@@ -119,7 +119,7 @@ and the evidence behind it.
 | 1 | Repeating group (1NF) | ≥2 columns sharing a stem with an ordinal suffix: `Item1/Item2`, `Phone_1/Phone_2` | child entity `<Stem>`, one row per non-empty cell, FK to parent |
 | 2 | Non-atomic values (1NF) | a string column where ≥`NonAtomicShare` (60%) of non-empty values contain one consistent separator **and** at least one split part recurs | child entity `<Column>` singularized, FK to parent |
 | 3 | Partial / transitive dependency (2NF/3NF) | every value of a non-key column D maps to exactly one value in each of C1..Cn | extract `<D-stem>`, parent keeps an FK |
-| 4 | Derived column (3NF) | a numeric column exactly equal to the product or sum of two others on every row | drop it as computed |
+| 4 | Derived column (3NF) | a numeric column exactly equal to the product or sum of two others on every row | none: a note only, and the column is kept as stored (the generator cannot emit a computed property) |
 
 Two guards keep the report honest rather than noisy:
 
