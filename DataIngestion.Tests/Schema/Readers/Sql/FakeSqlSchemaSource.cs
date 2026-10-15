@@ -18,14 +18,24 @@ internal sealed class FakeSqlSchemaSource : ISqlSchemaSource
     public Dictionary<string, List<string?[]>> RowsByTable { get; } = [];
     public List<TabularForeignKey> Keys { get; } = [];
 
+    /// <summary>Each table's keys, unique indexes and checks, filed as its columns are.</summary>
+    public Dictionary<string, List<SqlConstraintInfo>> Constraints { get; } = [];
+
+    IReadOnlyList<SqlConstraintInfo> ISqlSchemaSource.Constraints(string connectionString, string schema, string table)
+        => Constraints.TryGetValue($"{schema}.{table}", out var qualified) ? qualified
+            : Constraints.TryGetValue(table, out var constraints) ? constraints : [];
+
     /// <summary>Every table whose rows were actually fetched, in order, so a test can assert that
     /// nothing was read before it was asked for.</summary>
     public List<string> RowsFetched { get; } = [];
 
     public IReadOnlyList<SqlTableInfo> Tables(string connectionString) => TableList;
 
+    /// <summary>Columns and rows are filed under "schema.table" when two schemas share a table
+    /// name, else under the table name alone.</summary>
     public IReadOnlyList<SqlColumnInfo> Columns(string connectionString, string schema, string table)
-        => ColumnsByTable.TryGetValue(table, out var columns) ? columns : [];
+        => ColumnsByTable.TryGetValue($"{schema}.{table}", out var qualified) ? qualified
+            : ColumnsByTable.TryGetValue(table, out var columns) ? columns : [];
 
     public IReadOnlyList<TabularForeignKey> ForeignKeys(string connectionString) => Keys;
 
@@ -36,6 +46,7 @@ internal sealed class FakeSqlSchemaSource : ISqlSchemaSource
     {
         RowsFetched.Add(table);
         LastLimit = limit;
-        return RowsByTable.TryGetValue(table, out var rows) ? [.. rows.Take(limit)] : [];
+        return RowsByTable.TryGetValue($"{schema}.{table}", out var qualified) ? [.. qualified.Take(limit)]
+            : RowsByTable.TryGetValue(table, out var rows) ? [.. rows.Take(limit)] : [];
     }
 }

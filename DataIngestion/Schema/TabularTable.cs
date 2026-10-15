@@ -38,6 +38,16 @@ public sealed class TabularTable
 
     public string Label => SourceLabel ?? Name;
 
+    /// <summary>
+    /// The table's own name in the source, when it is read under another one: hr.Note, read as
+    /// HrNote because dbo has a Note too. Null when <see cref="Name"/> is the source's name.
+    /// </summary>
+    /// <remarks>
+    /// The table's key is still named for it (NoteId), and is recognised as the table's own key
+    /// by this name; without it, HrNote kept NoteId as an ordinary field.
+    /// </remarks>
+    public string? SourceName { get; init; }
+
     /// <summary>Whether the reader stopped before the source's last row, so <see cref="Rows"/> is
     /// only part of the table. Only the SQL reader stops early.</summary>
     public bool IsPartial { get; set; }

@@ -56,6 +56,8 @@ public static class DecisionReasons
     public const string ColumnWouldHideAnInheritedMember =
         "a column may not share a member every class already has";
     public const string ColumnNameIsNotAValidIdentifier = "its column name is not a usable name";
+    public const string ColumnRenamedToAUsableName =
+        "its column name starts with a digit, so the number moved behind the words";
     public const string KeyKeptAsAField =
         "the table's own key holds values the app cannot number for itself, so they are kept in a field";
     public const string ColumnRenamedForItsLink =

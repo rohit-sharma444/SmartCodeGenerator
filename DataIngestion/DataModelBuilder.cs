@@ -200,7 +200,11 @@ public static class DataModelBuilder
 
         /// <summary>A column whose name an earlier column already had (Notes beside Notes,
         /// e-mail beside Email), numbered so it keeps its own values.</summary>
-        RenamedOffADuplicate
+        RenamedOffADuplicate,
+
+        /// <summary>A column whose name starts with a digit, kept under a name a C# identifier
+        /// can carry (<c>2ndRef</c> as <c>Ref2nd</c>).</summary>
+        RenamedToAUsableName
     }
 
     /// <summary>The <see cref="object"/> members every class already declares. A field with one
@@ -232,15 +236,21 @@ public static class DataModelBuilder
         // class's name must not be handed a name a LATER column already owns: that column has
         // not been resolved yet, so the taken-names check alone cannot see the collision coming.
         var columnNames = table.Columns
-            .Select(c => WithIdSpelledId(NameNormalizer.ToFieldName(c.Name)))
+            .Select(c => WithIdSpelledId(NameNormalizer.ToFieldNameFromData(c.Name)))
             .ToList();
 
         // The table's own name, before it was made singular: Customers keyed by CustomersId is
         // as much keyed by itself as by CustomerId, and the keys pointing at it name that column.
         var tableKeyName = NameNormalizer.ToFieldName(table.Name);
 
+        // A table read under another name (hr.Note as HrNote) is still keyed by NoteId.
+        var sourceKeyNames = table.SourceName is { } sourceName
+            ? new[] { NameNormalizer.ToUserTypedEntityName(sourceName), NameNormalizer.ToFieldName(sourceName) }
+            : [];
+
         bool IsOwnKeyName(string name)
-            => IsOwnKey(name, entityName) || IsOwnKey(name, tableKeyName);
+            => IsOwnKey(name, entityName) || IsOwnKey(name, tableKeyName)
+               || sourceKeyNames.Any(source => IsOwnKey(name, source));
 
         // A declared key is spelled the way the generated app recognises a foreign key,
         // <Name>Id. Named for the TABLE rather than the class (TableDefinitionsId pointing at
@@ -322,6 +332,7 @@ public static class DataModelBuilder
             var fate = string.Equals(resolved, fieldName, StringComparison.Ordinal)
                 ? renamedForLink[i] ? ColumnFate.RenamedForItsLink
                   : column.DuplicateOf is not null ? ColumnFate.RenamedOffADuplicate
+                  : StartsWithADigit(column.Name) ? ColumnFate.RenamedToAUsableName
                   : ColumnFate.Kept
                 : ReservedMemberNames.Contains(fieldName)
                     ? ColumnFate.RenamedOffAnInheritedMember
@@ -333,6 +344,11 @@ public static class DataModelBuilder
 
         return outcomes;
     }
+
+    /// <summary>Whether <paramref name="column"/>'s first letter or digit is a digit, which
+    /// <c>NameNormalizer.ToFieldNameFromData</c> moves behind the words so the name compiles.</summary>
+    private static bool StartsWithADigit(string column)
+        => column.FirstOrDefault(char.IsLetterOrDigit) is var first && char.IsDigit(first);
 
     /// <summary>
     /// The field a table's own non-numeric key is kept in: <c>&lt;Entity&gt;Code</c>, else
@@ -509,6 +525,12 @@ public static class DataModelBuilder
                 case ColumnFate.RenamedOffItsClassName:
                     model.Record(outcome.Column, DecisionStage.SeedExtraction, DecisionOutcome.Kept,
                         DecisionReasons.ColumnWouldCollideWithItsClassName,
+                        $"'{outcome.Column}' in {table.Label} became {outcome.Field}");
+                    break;
+
+                case ColumnFate.RenamedToAUsableName:
+                    model.Record(outcome.Column, DecisionStage.SeedExtraction, DecisionOutcome.Kept,
+                        DecisionReasons.ColumnRenamedToAUsableName,
                         $"'{outcome.Column}' in {table.Label} became {outcome.Field}");
                     break;
 
@@ -840,7 +862,11 @@ public static class DataModelBuilder
                     : new CodeGenerationEngine.Models.TypeFacts
                     {
                         IsNullable = field.Facts.IsNullable,
-                        HasMissingValues = field.Facts.HasMissingValues
+                        HasMissingValues = field.Facts.HasMissingValues,
+
+                        // Renumbering keeps distinct values distinct, so a key the text was part
+                        // of still holds of the numbers.
+                        UniqueKeys = field.Facts.UniqueKeys
                     };
 
                 var label = sources.TryGetValue(entity.Name, out var table) ? table.Label : entity.Name;

@@ -180,6 +180,18 @@ internal sealed class BuildSnapshot
         public string? DeclaredType { get; set; }
         public bool? NameImpliedFormatHolds { get; set; }
         public bool? HasMissingValues { get; set; }
+        public string? DefaultValue { get; set; }
+        public string? DefaultFunction { get; set; }
+        public decimal? MinValue { get; set; }
+        public decimal? MaxValue { get; set; }
+        public List<string>? AllowedValues { get; set; }
+        public List<UniqueKeyDto>? UniqueKeys { get; set; }
+    }
+
+    internal sealed class UniqueKeyDto
+    {
+        public string? Name { get; set; }
+        public int? Columns { get; set; }
     }
 
     internal sealed class Proposal
@@ -521,6 +533,14 @@ internal sealed class BuildSnapshot
         DeclaredType = facts.DeclaredType,
         NameImpliedFormatHolds = facts.NameImpliedFormatHolds,
         HasMissingValues = facts.HasMissingValues,
+        DefaultValue = facts.DefaultValue,
+        DefaultFunction = facts.DefaultFunction,
+        MinValue = facts.MinValue,
+        MaxValue = facts.MaxValue,
+        AllowedValues = facts.AllowedValues is { } allowed ? [.. allowed] : null,
+        UniqueKeys = facts.UniqueKeys is { } keys
+            ? [.. keys.Select(k => new UniqueKeyDto { Name = k.Name, Columns = k.Columns })]
+            : null,
     };
 
     /// <summary>
@@ -538,6 +558,14 @@ internal sealed class BuildSnapshot
         DeclaredType = dto.DeclaredType,
         NameImpliedFormatHolds = dto.NameImpliedFormatHolds,
         HasMissingValues = dto.HasMissingValues ?? false,
+        DefaultValue = dto.DefaultValue,
+        DefaultFunction = dto.DefaultFunction,
+        MinValue = dto.MinValue,
+        MaxValue = dto.MaxValue,
+        AllowedValues = dto.AllowedValues,
+        UniqueKeys = dto.UniqueKeys is { } keys
+            ? [.. keys.Where(k => k.Name is not null && k.Columns is > 0).Select(k => new UniqueKey(k.Name!, k.Columns!.Value))]
+            : null,
     };
 
     private static Proposal ToDto(RuleProposal proposal) => new()

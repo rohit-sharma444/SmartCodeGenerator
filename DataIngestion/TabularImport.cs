@@ -31,10 +31,17 @@ public static class TabularImport
 
             // The same three guards DataModelBuilder applies, for the same reasons. They must agree:
             // rows imported for a table the builder skipped belong to a class that will never exist.
-            if (entityName.Length == 0
-                || !NameNormalizer.IsValidIdentifier(entityName)
-                || rows.ContainsKey(entityName))
+            if (entityName.Length == 0 || !NameNormalizer.IsValidIdentifier(entityName))
                 continue;
+
+            // Said here as well as in `why`: the summary counts the table as read, and its rows
+            // are about to go nowhere.
+            if (sources.TryGetValue(entityName, out var first))
+            {
+                notes.Add($"{table.Label} was left out: it would become {entityName}, which {first.Label} "
+                          + "already is. Rename one of them to keep both.");
+                continue;
+            }
 
             // The FINAL field names, from the same resolution DataModelBuilder uses. Keying by the
             // raw normalized column name instead would silently lose any column that had to be

@@ -65,6 +65,35 @@ public static class NameNormalizer
     }
 
     /// <summary>
+    /// As <see cref="ToFieldName"/>, for a name read from the user's data rather than typed: a
+    /// leading number is moved behind the words that follow it ("2ndRef" as "Ref2nd",
+    /// "2024 Sales" as "Sales2024", "3D model" as "Model3D"), and a name that is only a number,
+    /// or whose number cannot be told apart from the word after it, gets "Field" in front.
+    /// </summary>
+    /// <remarks>
+    /// A C# identifier cannot start with a digit, and a column whose name did was dropped along
+    /// with every value it held. A name the user TYPES is refused instead, so they can choose
+    /// the name; a column has nobody to ask. Moving the number keeps the name readable as the
+    /// source spelled it, where a prefix would start every such field with the same word.
+    /// </remarks>
+    public static string ToFieldNameFromData(string text)
+        => StartingWithALetter(ToFieldName(text));
+
+    /// <summary>See <see cref="ToFieldNameFromData"/>.</summary>
+    private static string StartingWithALetter(string name)
+    {
+        if (name.Length == 0 || !char.IsDigit(name[0]))
+            return name;
+
+        var number = System.Text.RegularExpressions.Regex.Match(name, @"^\d+[A-Za-z]{0,2}(?=[A-Z]|$)").Value;
+        var rest = name[number.Length..];
+
+        return number.Length > 0 && rest.Length > 0 && char.IsLetter(rest[0])
+            ? rest + number
+            : "Field" + name;
+    }
+
+    /// <summary>
     /// Turns a multi-word concept into a PascalCase type name, keeping every word and
     /// singularizing only the last ("Cash register" -> "CashRegister"). Unlike
     /// <see cref="ToEntityName"/>, which reduces a phrase to its head noun, this preserves
