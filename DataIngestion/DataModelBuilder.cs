@@ -932,8 +932,13 @@ public static class DataModelBuilder
 
                 var scan = ColumnScan.Of(table, column);
 
+                // A column a CHECK limits to a list can never hold more distinct values than the
+                // list has: three rows using all three statuses is not uniqueness, and accepting it
+                // would refuse every new record.
+                var fieldMayBeUnique = mayBeUnique && field.Facts?.AllowedValues is null;
+
                 foreach (var proposal in RuleProposals.For(
-                             scan, field.Name, field.Type, mayBeUnique))
+                             scan, field.Name, field.Type, fieldMayBeUnique))
                     field.Proposals.Add(proposal);
             }
         }

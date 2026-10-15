@@ -611,6 +611,33 @@ public class SqlSourceFidelityTests
         Assert.All(SeedRows(assembly, app, "Member"), row => Assert.Empty(Validate(assembly, "Member", row)));
     }
 
+    [Fact]
+    public void A_column_a_check_limits_to_a_list_is_not_proposed_unique()
+    {
+        // Three rows, three statuses: the data alone reads as "no two share Status", but the
+        // CHECK allows only three values, so accepting that rule would refuse every new Product.
+        var source = Database(add => add("Product",
+            [
+                new("ProductId", "int", false, IsPrimaryKey: true),
+                new("Name", "nvarchar", false, 40),
+                new("Status", "nvarchar", false, 20),
+            ],
+            [["1", "Pen", "Active"], ["2", "Ink", "Retired"], ["3", "Pad", "Draft"]]));
+
+        source.Constraints["Product"] =
+        [
+            new("CK_Status", SqlConstraintKind.Check, ["Status"], "([Status]='Draft' OR [Status]='Retired' OR [Status]='Active')"),
+        ];
+
+        var product = Generate(source).Model.Entities.Single(e => e.Name == "Product");
+
+        bool ProposedUnique(string field)
+            => product.Fields.Single(f => f.Name == field).Proposals.Any(p => p.Kind == RuleProposalKind.Unique);
+
+        Assert.False(ProposedUnique("Status"));
+        Assert.True(ProposedUnique("Name"));
+    }
+
     // --- S6, S7: unique constraints, unique indexes, composite keys ---
 
     /// <summary>A lookup over a fixed set of stored records, so a uniqueness check can collide.</summary>
