@@ -197,7 +197,11 @@ public static class DataModelBuilder
 
         /// <summary>A declared foreign key renamed to the <c>&lt;Name&gt;Id</c> spelling the
         /// generated app recognises a link by.</summary>
-        RenamedForItsLink
+        RenamedForItsLink,
+
+        /// <summary>A column whose name starts with a digit, kept under a name a C# identifier
+        /// can carry (<c>2ndRef</c> as <c>Ref2nd</c>).</summary>
+        RenamedToAUsableName
     }
 
     /// <summary>The <see cref="object"/> members every class already declares. A field with one
@@ -228,7 +232,7 @@ public static class DataModelBuilder
         // class's name must not be handed a name a LATER column already owns: that column has
         // not been resolved yet, so the taken-names check alone cannot see the collision coming.
         var columnNames = table.Columns
-            .Select(c => WithIdSpelledId(NameNormalizer.ToFieldName(c.Name)))
+            .Select(c => WithIdSpelledId(NameNormalizer.ToFieldNameFromData(c.Name)))
             .ToList();
 
         // The table's own name, before it was made singular: Customers keyed by CustomersId is
@@ -310,7 +314,8 @@ public static class DataModelBuilder
             taken.Add(resolved);
 
             var fate = string.Equals(resolved, fieldName, StringComparison.Ordinal)
-                ? renamedForLink[i] ? ColumnFate.RenamedForItsLink : ColumnFate.Kept
+                ? renamedForLink[i] ? ColumnFate.RenamedForItsLink
+                    : StartsWithADigit(column.Name) ? ColumnFate.RenamedToAUsableName : ColumnFate.Kept
                 : ReservedMemberNames.Contains(fieldName)
                     ? ColumnFate.RenamedOffAnInheritedMember
                     : ColumnFate.RenamedOffItsClassName;
@@ -320,6 +325,11 @@ public static class DataModelBuilder
 
         return outcomes;
     }
+
+    /// <summary>Whether <paramref name="column"/>'s first letter or digit is a digit, which
+    /// <c>NameNormalizer.ToFieldNameFromData</c> moves behind the words so the name compiles.</summary>
+    private static bool StartsWithADigit(string column)
+        => column.FirstOrDefault(char.IsLetterOrDigit) is var first && char.IsDigit(first);
 
     /// <summary>
     /// The field a table's own non-numeric key is kept in: <c>&lt;Entity&gt;Code</c>, else
@@ -486,6 +496,12 @@ public static class DataModelBuilder
                 case ColumnFate.RenamedOffItsClassName:
                     model.Record(outcome.Column, DecisionStage.SeedExtraction, DecisionOutcome.Kept,
                         DecisionReasons.ColumnWouldCollideWithItsClassName,
+                        $"'{outcome.Column}' in {table.Label} became {outcome.Field}");
+                    break;
+
+                case ColumnFate.RenamedToAUsableName:
+                    model.Record(outcome.Column, DecisionStage.SeedExtraction, DecisionOutcome.Kept,
+                        DecisionReasons.ColumnRenamedToAUsableName,
                         $"'{outcome.Column}' in {table.Label} became {outcome.Field}");
                     break;
 

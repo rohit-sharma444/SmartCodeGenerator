@@ -415,4 +415,20 @@ public class SqlSourceFidelityTests
         var assembly = Compile(app);
         Assert.Empty(Validate(assembly, "Ticket", New(assembly, "Ticket", ("Count", 1))));
     }
+
+    // --- S12: a column whose name starts with a digit ---
+
+    [Fact]
+    public void A_column_named_with_a_leading_digit_is_kept_with_its_data()
+    {
+        var app = Generate(Database(add => add("Part",
+            [new("PartId", "int", false, IsPrimaryKey: true), new("2ndRef", "nvarchar", true, 20), new("Title", "nvarchar", false, 20)],
+            [["1", "B-7", "Bolt"]])));
+
+        Assert.Equal("B-7", Seed(app, "Part")[0].GetProperty("Ref2nd").GetString());
+        Assert.Contains(app.Model.Decisions, d => d.Name == "2ndRef" && d.Evidence!.Contains("became Ref2nd"));
+
+        var assembly = Compile(app);
+        Assert.Empty(Validate(assembly, "Part", SeedRows(assembly, app, "Part")[0]));
+    }
 }
