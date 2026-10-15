@@ -464,6 +464,9 @@ public class SqlSourceFidelityTests
 
         Assert.Equal(["Note", "HrNote", "Task"], app.Model.Entities.Select(e => e.Name));
         Assert.Equal("personnel", Seed(app, "HrNote")[0].GetProperty("Text").GetString());
+
+        // Its key is still its own key, named for the table it was in the source.
+        Assert.DoesNotContain(Class(app, "HrNote").Properties, p => p.Name == "NoteId");
         Assert.Equal("general", Seed(app, "Note")[0].GetProperty("Body").GetString());
         Assert.Contains(app.Data.Notes, n => n.Contains("hr.Note") && n.Contains("HrNote"));
 

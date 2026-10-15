@@ -437,7 +437,7 @@ internal sealed class NullValidator<T> : IValidator<T>
 
             entityBlocks.Add(Block(
             [
-                $"if ({string.Concat(guards)}context.Lookup.AnyOtherWithAll<{definition.Name}>(new[] {{ {names} }}, new object?[] {{ {values} }}, item.Id))",
+                $"if ({string.Concat(guards)}context.Lookup.AnyOtherWithAll<{definition.Name}>(new[] {{ {names} }}, new object[] {{ {values} }}, item.Id))",
                 $"    errors.Add(new ValidationError(null, \"Another {definition.Name} already has this {said}.\"));",
             ]));
         }

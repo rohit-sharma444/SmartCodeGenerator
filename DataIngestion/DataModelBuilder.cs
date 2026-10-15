@@ -239,8 +239,14 @@ public static class DataModelBuilder
         // as much keyed by itself as by CustomerId, and the keys pointing at it name that column.
         var tableKeyName = NameNormalizer.ToFieldName(table.Name);
 
+        // A table read under another name (hr.Note as HrNote) is still keyed by NoteId.
+        var sourceKeyNames = table.SourceName is { } sourceName
+            ? new[] { NameNormalizer.ToUserTypedEntityName(sourceName), NameNormalizer.ToFieldName(sourceName) }
+            : [];
+
         bool IsOwnKeyName(string name)
-            => IsOwnKey(name, entityName) || IsOwnKey(name, tableKeyName);
+            => IsOwnKey(name, entityName) || IsOwnKey(name, tableKeyName)
+               || sourceKeyNames.Any(source => IsOwnKey(name, source));
 
         // A declared key is spelled the way the generated app recognises a foreign key,
         // <Name>Id. Named for the TABLE rather than the class (TableDefinitionsId pointing at

@@ -187,6 +187,9 @@ public class {{entityName}}ValidatorTests
         var accepted = string.Concat(AcceptedValues(classes ?? Array.Empty<ClassDefinition>())
             .Select(entry => $"        [{ValidatorTemplate.Quoted(entry.Key)}] = () => {entry.Expression},\n"));
 
+        var fresh = string.Concat(FreshKeys(classes ?? Array.Empty<ClassDefinition>())
+            .Select(key => $"        {ValidatorTemplate.Quoted(key)},\n"));
+
         var seeding = seed
             ? $$"""
                   /// <summary>Seeds every store before the first test uses one, as the app itself does
@@ -266,6 +269,13 @@ internal static class TestSupport
     {
 {{accepted}}    };
 
+    /// <summary>The foreign keys Fill gives a NEW row of the type they reference, rather than the
+    /// first one stored: each is part of a key no two records may share in combination, and a
+    /// seeded record already holds the first row's pair. Keyed "Model.Property".</summary>
+    private static readonly HashSet<string> FreshKeys = new(StringComparer.Ordinal)
+    {
+{{fresh}}    };
+
     /// <summary>Counts up from a random start, so a value no two records may share differs from
     /// the one Fill wrote for a foreign key's row, and from a row an earlier run left.</summary>
     private static int _distinct = Random.Shared.Next(100000, 900000);
@@ -311,7 +321,8 @@ internal static class TestSupport
             else if (property.PropertyType == typeof(DateTime))
                 property.SetValue(item, FilledDate);
             else if (property.PropertyType == typeof(int) && IsForeignKey(property.Name))
-                property.SetValue(item, ForeignKeyValue(typeof(T), property.Name, appAssembly, root));
+                property.SetValue(item, ForeignKeyValue(typeof(T), property.Name, appAssembly, root,
+                    FreshKeys.Contains(typeof(T).Name + "." + property.Name)));
         }
     }
 
@@ -342,7 +353,7 @@ internal static class TestSupport
     /// repository (and, recursively, Filled the same way this item was). Neither type existing by
     /// that name (an incidental "...Id" that names no entity) nor the creation failing is fatal:
     /// both fall back to 0, exactly what this property held before this method existed.</summary>
-    private static int ForeignKeyValue(Type owner, string propertyName, Assembly appAssembly, string root)
+    private static int ForeignKeyValue(Type owner, string propertyName, Assembly appAssembly, string root, bool fresh)
     {
         var navName = propertyName[..^2];
         var targetName = owner.GetProperty(navName)?.PropertyType.Name ?? navName;
@@ -361,7 +372,10 @@ internal static class TestSupport
 
             var existing = (IEnumerable)repositoryType.GetMethod("GetAll")!.Invoke(repository, null)!;
             foreach (var row in existing)
-                return IdOf(row);
+            {
+                if (!fresh)
+                    return IdOf(row);
+            }
 
             var modelType = appAssembly.GetType(root + ".Models." + targetName);
             if (modelType is null)
@@ -425,19 +439,48 @@ internal static class TestSupport
         var entries = new List<(string Key, string Expression)>();
 
         foreach (var definition in classes)
-        foreach (var property in definition.Properties)
         {
-            // Fill gives a foreign key a real row's Id, and the Id is the store's to assign.
-            if (string.Equals(property.Name, "Id", StringComparison.OrdinalIgnoreCase)
-                || (property.Type == "int" && IsForeignKeyName(property.Name)))
-                continue;
+            var distinct = DistinctInCombination(definition);
 
-            if (AcceptedValue(property) is { } expression)
-                entries.Add(($"{definition.Name}.{property.Name}", expression));
+            foreach (var property in definition.Properties)
+            {
+                // Fill gives a foreign key a real row's Id, and the Id is the store's to assign.
+                if (string.Equals(property.Name, "Id", StringComparison.OrdinalIgnoreCase)
+                    || (property.Type == "int" && IsForeignKeyName(property.Name)))
+                    continue;
+
+                if (AcceptedValue(property, distinct.Contains(property)) is { } expression)
+                    entries.Add(($"{definition.Name}.{property.Name}", expression));
+            }
         }
 
         return entries;
     }
+
+    /// <summary>
+    /// For each set of properties no two records may share in combination
+    /// (<see cref="ClassDefinition.UniqueTogether"/>), the first foreign key in it, which Fill
+    /// gives a new row so the combination is new too.
+    /// </summary>
+    /// <remarks>
+    /// A set with no foreign key has its first text property filled with a distinct value instead:
+    /// see <see cref="AcceptedValues"/>.
+    /// </remarks>
+    internal static IReadOnlyList<string> FreshKeys(IReadOnlyList<ClassDefinition> classes)
+        => [.. classes.SelectMany(definition => definition.UniqueTogether
+            .Select(group => group.FirstOrDefault(name => IsForeignKeyName(name)
+                && definition.Properties.Any(p => p.Name == name && p.Type == "int")))
+            .OfType<string>()
+            .Distinct()
+            .Select(name => $"{definition.Name}.{name}"))];
+
+    /// <summary>The first text property of each set of properties no two records may share in
+    /// combination that holds no foreign key: Fill's plain "Test" would repeat a seeded one.</summary>
+    private static HashSet<PropertyDefinition> DistinctInCombination(ClassDefinition definition)
+        => [.. definition.UniqueTogether
+            .Where(group => !group.Any(IsForeignKeyName))
+            .Select(group => definition.Properties.FirstOrDefault(p => group.Contains(p.Name) && p.Type == "string"))
+            .OfType<PropertyDefinition>()];
 
     /// <summary>Values tried, in order, for a string with a rule "Test" breaks. Each is a shape
     /// one of the formats RuleProposals offers accepts, or short enough for a small length.</summary>
@@ -457,10 +500,10 @@ internal static class TestSupport
 
     /// <summary>The C# expression for <paramref name="property"/>'s value, or null when Fill's
     /// plain value already passes and need not differ from record to record.</summary>
-    private static string? AcceptedValue(PropertyDefinition property)
+    private static string? AcceptedValue(PropertyDefinition property, bool distinctInCombination = false)
     {
-        var unique = HasRule(property, "unique")
-                     && ValidatorTemplate.CanEmitEntityRule(property.Type, "unique");
+        var unique = distinctInCombination
+                     || (HasRule(property, "unique") && ValidatorTemplate.CanEmitEntityRule(property.Type, "unique"));
 
         // The types Fill itself writes. A nullable number or date is left null by Fill, and a
         // null passes every rule.

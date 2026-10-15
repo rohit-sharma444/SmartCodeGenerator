@@ -211,6 +211,52 @@ public sealed class StoreEntityLookup : IEntityLookup
         }
     }
 
+    /// <summary>
+    /// A key over several columns (an invoice line's invoice and line, a composite primary key):
+    /// Fill's plain values would repeat a seeded record's combination, so the app's own
+    /// round-trip test was refused as a duplicate.
+    /// </summary>
+    [TestMethod]
+    public void Two_filled_records_do_not_share_a_combination_that_must_be_unique()
+    {
+        var line = new ClassDefinition
+        {
+            Name = "Line",
+            Properties =
+            {
+                new PropertyDefinition { Name = "Id", Type = "int" },
+                new PropertyDefinition { Name = "Batch", Type = "string" },
+                new PropertyDefinition { Name = "Code", Type = "string" },
+            },
+            UniqueTogether = { new[] { "Batch", "Code" } },
+        };
+
+        var app = Compile([line], "Line");
+
+        Assert.AreNotEqual(app.Get(app.Fill(), "Batch"), app.Get(app.Fill(), "Batch"));
+    }
+
+    [TestMethod]
+    public void A_combination_holding_a_foreign_key_gets_a_new_row_for_it()
+    {
+        var pair = new ClassDefinition
+        {
+            Name = "Pair",
+            Properties =
+            {
+                new PropertyDefinition { Name = "Id", Type = "int" },
+                new PropertyDefinition { Name = "OwnerId", Type = "int" },
+                new PropertyDefinition { Name = "ItemId", Type = "int" },
+            },
+            UniqueTogether = { new[] { "OwnerId", "ItemId" } },
+        };
+
+        var support = TestProjectTemplates.TestSupport("Acme", login: false, sessionAuth: false, seed: false, [pair]);
+
+        StringAssert.Contains(support, "        \"Pair.OwnerId\",\n");
+        Compile([pair], "Pair");
+    }
+
     private static CompiledApp Compile(CandidateDomainModel model, string className)
         => Compile(DomainModelMapper.ToClassDefinitions(model), className);
 
