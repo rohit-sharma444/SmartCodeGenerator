@@ -160,6 +160,57 @@ public sealed class SqlClientSchemaSource : ISqlSchemaSource
         return keys;
     }
 
+    public IReadOnlyList<SqlConstraintInfo> Constraints(string connectionString, string schema, string table)
+    {
+        // Unique indexes include the primary key's and every UNIQUE constraint's, which SQL Server
+        // implements as one. A filtered index is unique only where its filter holds, so it is left
+        // out: carried, it would refuse rows the database accepts. A disabled check enforces
+        // nothing, and is left out for the same reason.
+        const string sql = """
+            SELECT  i.name AS [Name],
+                    CASE WHEN i.is_primary_key = 1 THEN 'P' ELSE 'U' END AS [Kind],
+                    c.name AS [ColumnName],
+                    CAST(NULL AS nvarchar(max)) AS [Definition],
+                    ic.key_ordinal AS [Ordinal]
+            FROM    sys.indexes i
+            JOIN    sys.index_columns ic
+                      ON ic.object_id = i.object_id AND ic.index_id = i.index_id AND ic.is_included_column = 0
+            JOIN    sys.columns c
+                      ON c.object_id = ic.object_id AND c.column_id = ic.column_id
+            WHERE   i.object_id = OBJECT_ID(QUOTENAME(@schema) + '.' + QUOTENAME(@table))
+              AND   i.is_unique = 1 AND i.has_filter = 0 AND i.is_disabled = 0
+            UNION ALL
+            SELECT  k.name, 'C', c.name, k.definition, 0
+            FROM    sys.check_constraints k
+            LEFT JOIN sys.columns c
+                      ON c.object_id = k.parent_object_id AND c.column_id = k.parent_column_id
+            WHERE   k.parent_object_id = OBJECT_ID(QUOTENAME(@schema) + '.' + QUOTENAME(@table))
+              AND   k.is_disabled = 0
+            ORDER BY [Name], [Ordinal];
+            """;
+
+        var constraints = new List<SqlConstraintInfo>();
+
+        foreach (var group in Query(connectionString, sql, ("@schema", schema), ("@table", table))
+                     .GroupBy(row => (Name: (string)row["Name"], Kind: (string)row["Kind"])))
+        {
+            var kind = group.Key.Kind switch
+            {
+                "P" => SqlConstraintKind.PrimaryKey,
+                "U" => SqlConstraintKind.Unique,
+                _ => SqlConstraintKind.Check
+            };
+
+            constraints.Add(new SqlConstraintInfo(
+                group.Key.Name,
+                kind,
+                [.. group.Select(row => row["ColumnName"] as string).OfType<string>()],
+                group.First()["Definition"] as string));
+        }
+
+        return constraints;
+    }
+
     public IReadOnlyList<string?[]> Rows(string connectionString, string schema, string table, int limit)
     {
         // The only place a name is interpolated rather than parameterised, because a table name

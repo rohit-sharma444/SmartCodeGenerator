@@ -182,6 +182,9 @@ internal sealed class BuildSnapshot
         public bool? HasMissingValues { get; set; }
         public string? DefaultValue { get; set; }
         public string? DefaultFunction { get; set; }
+        public decimal? MinValue { get; set; }
+        public decimal? MaxValue { get; set; }
+        public List<string>? AllowedValues { get; set; }
     }
 
     internal sealed class Proposal
@@ -525,6 +528,9 @@ internal sealed class BuildSnapshot
         HasMissingValues = facts.HasMissingValues,
         DefaultValue = facts.DefaultValue,
         DefaultFunction = facts.DefaultFunction,
+        MinValue = facts.MinValue,
+        MaxValue = facts.MaxValue,
+        AllowedValues = facts.AllowedValues is { } allowed ? [.. allowed] : null,
     };
 
     /// <summary>
@@ -544,6 +550,9 @@ internal sealed class BuildSnapshot
         HasMissingValues = dto.HasMissingValues ?? false,
         DefaultValue = dto.DefaultValue,
         DefaultFunction = dto.DefaultFunction,
+        MinValue = dto.MinValue,
+        MaxValue = dto.MaxValue,
+        AllowedValues = dto.AllowedValues,
     };
 
     private static Proposal ToDto(RuleProposal proposal) => new()

@@ -52,4 +52,36 @@ public interface ISqlSchemaSource
     /// <summary>At most <paramref name="limit"/> rows of one table, each value already rendered
     /// invariantly to a string.</summary>
     IReadOnlyList<string?[]> Rows(string connectionString, string schema, string table, int limit);
+
+    /// <summary>
+    /// The table's primary key, UNIQUE constraints, unique indexes and CHECK constraints.
+    /// </summary>
+    /// <remarks>
+    /// Empty by default, so a source that cannot read them (and every older fake) reads as a
+    /// table that declares none, which is what this feature assumed before it read them.
+    /// </remarks>
+    IReadOnlyList<SqlConstraintInfo> Constraints(string connectionString, string schema, string table) => [];
 }
+
+/// <summary>What a <see cref="SqlConstraintInfo"/> declares.</summary>
+public enum SqlConstraintKind
+{
+    /// <summary>The primary key: no two rows share these columns' values.</summary>
+    PrimaryKey,
+
+    /// <summary>A UNIQUE constraint or unique index: no two rows share these columns' values.</summary>
+    Unique,
+
+    /// <summary>A CHECK constraint: every row satisfies <see cref="SqlConstraintInfo.Definition"/>.</summary>
+    Check
+}
+
+/// <summary>One constraint on a table.</summary>
+/// <param name="Columns">The columns a key or unique index covers, in order; for a check, the
+/// one column it was declared on, or empty for a table-level check.</param>
+/// <param name="Definition">A check's condition, as the database stores it; null for a key.</param>
+public sealed record SqlConstraintInfo(
+    string Name,
+    SqlConstraintKind Kind,
+    IReadOnlyList<string> Columns,
+    string? Definition = null);

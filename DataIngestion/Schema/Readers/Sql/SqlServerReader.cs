@@ -135,6 +135,7 @@ public sealed class SqlServerReader(ISqlSchemaSource source, int maxRowsPerTable
             }
 
             NoteWhatTheTypesCost(table);
+            CarryConstraints(table, source.Constraints(spec.Location, info.Schema, info.Name));
 
             // A key names its target as the database does; a target read under its schema's name
             // (HrNote) must be named that way here, or the key points at the other schema's table.
@@ -202,6 +203,110 @@ public sealed class SqlServerReader(ISqlSchemaSource source, int maxRowsPerTable
             _lossNotes.Add(note);
             table.Notes.Add($"In {table.Label}, {note}");
         }
+    }
+
+    /// <summary>
+    /// What the table's CHECK constraints allow, carried onto the columns they bound as the
+    /// range or list of values the generated app enforces, and every one that cannot be carried
+    /// said in the notes.
+    /// </summary>
+    /// <remarks>
+    /// Without this the app offered the column TYPE's range instead: a tinyint age with
+    /// CHECK (Age BETWEEN 16 AND 99) said "Age must be 0..255", and a status limited to three
+    /// words took any text. A check is carried whole or not at all: half of one would claim the
+    /// app enforces a rule it only partly does.
+    /// </remarks>
+    private static void CarryConstraints(TabularTable table, IReadOnlyList<SqlConstraintInfo> constraints)
+    {
+        foreach (var check in constraints.Where(c => c.Kind == SqlConstraintKind.Check))
+        {
+            var bounded = SqlCheck.Parse(check.Definition ?? string.Empty) is { Count: > 0 } bounds
+                ? Bounded(table, bounds)
+                : null;
+
+            if (bounded is null)
+            {
+                table.Notes.Add($"In {table.Label}, the check {check.Name} {check.Definition} was not carried: "
+                                + "the app does not enforce it, and the database will refuse what breaks it.");
+                continue;
+            }
+
+            foreach (var (column, facts) in bounded)
+                column.Facts = facts;
+        }
+    }
+
+    /// <summary>
+    /// Each column <paramref name="bounds"/> names, with its facts narrowed to them; null when
+    /// any column is not in the table or its type cannot carry what the check says.
+    /// </summary>
+    private static List<(TabularColumn Column, TypeFacts Facts)>? Bounded(
+        TabularTable table, IReadOnlyDictionary<string, CheckBounds> bounds)
+    {
+        var bounded = new List<(TabularColumn, TypeFacts)>();
+
+        foreach (var (name, bound) in bounds)
+        {
+            var index = table.IndexOf(name);
+            if (index < 0)
+                return null;
+
+            var column = table.Columns[index];
+            var facts = column.Facts ?? new TypeFacts();
+
+            if (bound.Allowed is { } allowed)
+            {
+                // A list of words for a text column; a list of numbers has nothing to become.
+                if (!bound.AllowedAreText || column.Type != "string" || bound.Min is not null || bound.Max is not null)
+                    return null;
+
+                bounded.Add((column, facts with
+                {
+                    AllowedValues = facts.AllowedValues is { } earlier
+                        ? [.. earlier.Intersect(allowed, StringComparer.Ordinal)]
+                        : allowed
+                }));
+                continue;
+            }
+
+            // The smallest step the column's values move by: a strict bound is the next value
+            // past it. Without a known scale, a strict decimal bound has no next value.
+            decimal? step = column.Type switch
+            {
+                "int" => 1m,
+                "decimal" when facts.Scale is { } scale and >= 0 and <= 28 => 1m / Pow10(scale),
+                _ => null
+            };
+
+            if (column.Type is not ("int" or "decimal")
+                || (step is null && ((bound.Min is not null && !bound.MinInclusive) || (bound.Max is not null && !bound.MaxInclusive))))
+                return null;
+
+            var min = bound.Min is not { } lo ? (decimal?)null
+                : step is { } up ? (bound.MinInclusive ? Math.Ceiling(lo / up) * up : (Math.Floor(lo / up) + 1) * up)
+                : lo;
+
+            var max = bound.Max is not { } hi ? (decimal?)null
+                : step is { } down ? (bound.MaxInclusive ? Math.Floor(hi / down) * down : (Math.Ceiling(hi / down) - 1) * down)
+                : hi;
+
+            bounded.Add((column, facts with
+            {
+                MinValue = min is null ? facts.MinValue : facts.MinValue is { } a ? Math.Max(a, min.Value) : min,
+                MaxValue = max is null ? facts.MaxValue : facts.MaxValue is { } b ? Math.Min(b, max.Value) : max
+            }));
+        }
+
+        return bounded;
+    }
+
+    private static decimal Pow10(int power)
+    {
+        var result = 1m;
+        for (var i = 0; i < power; i++)
+            result *= 10m;
+
+        return result;
     }
 
     /// <summary>

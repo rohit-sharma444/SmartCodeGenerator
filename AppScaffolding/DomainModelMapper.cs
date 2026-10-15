@@ -658,10 +658,16 @@ public static class DomainModelMapper
                         MaxLength = facts?.MaxLength ?? DefaultStringLength
                     });
 
+                // The values a CHECK constraint lists, as a rule the source declared rather than
+                // one proposed from the rows.
+                if (facts?.AllowedValues is { Count: > 0 } allowed
+                    && !property.Rules.Any(r => string.Equals(r.Name, "allowedvalues", StringComparison.OrdinalIgnoreCase)))
+                    property.Rules.Add(new PropertyRule { Name = "allowedvalues", AllowedValues = [.. allowed] });
+
                 return AddFormatAttribute(property);
 
             case "int":
-                AddIntegerRange(property, facts?.DeclaredType);
+                AddIntegerRange(property, facts);
                 return false;
 
             case "decimal":
@@ -803,27 +809,51 @@ public static class DomainModelMapper
         // decimal(19,4) and decimal(10,4): their limits are the integer's, ±922,337,203,685,477.58
         // and ±214,748.36, and the 999... bound their precision implies is one the column refuses.
         // A bigint held as a decimal (its values were beyond int) is bounded by long the same way.
-        if (DeclaredRange(facts?.DeclaredType) is { } range)
-        {
-            property.Rules.Add(new PropertyRule { Name = "maxvalue", MaxValue = range.Highest });
-            property.Rules.Add(new PropertyRule { Name = "minvalue", MinValue = range.Lowest });
-            return;
-        }
+        var (lowest, highest) = DeclaredRange(facts?.DeclaredType) is { } range
+            ? ((decimal?)range.Lowest, (decimal?)range.Highest)
+            : PrecisionRange(facts);
 
+        AddRange(property, lowest, highest, facts, maxFirst: true);
+    }
+
+    /// <summary>What decimal(P,S)'s integer digits allow, or no bound when P or S is unknown.</summary>
+    private static (decimal? Lowest, decimal? Highest) PrecisionRange(TypeFacts? facts)
+    {
         if (facts?.Precision is not { } precision || facts.Scale is not { } places)
-            return;
+            return (null, null);
 
         var integerDigits = precision - places;
 
         if (integerDigits <= 0 || integerDigits > 28)
-            return;
+            return (null, null);
 
         var bound = decimal.Parse(
             new string('9', integerDigits) + "." + new string('9', places),
             System.Globalization.CultureInfo.InvariantCulture);
 
-        property.Rules.Add(new PropertyRule { Name = "maxvalue", MaxValue = bound });
-        property.Rules.Add(new PropertyRule { Name = "minvalue", MinValue = -bound });
+        return (-bound, bound);
+    }
+
+    /// <summary>
+    /// Records the type's range, narrowed by any a CHECK constraint declared
+    /// (<see cref="TypeFacts.MinValue"/>, <see cref="TypeFacts.MaxValue"/>): a tinyint age checked
+    /// to 16..99 is 16..99, not 0..255. Either end may be absent.
+    /// </summary>
+    private static void AddRange(
+        PropertyDefinition property, decimal? lowest, decimal? highest, TypeFacts? facts, bool maxFirst)
+    {
+        if (facts?.MinValue is { } checkedLowest)
+            lowest = lowest is { } l ? Math.Max(l, checkedLowest) : checkedLowest;
+
+        if (facts?.MaxValue is { } checkedHighest)
+            highest = highest is { } h ? Math.Min(h, checkedHighest) : checkedHighest;
+
+        var min = lowest is { } low ? new PropertyRule { Name = "minvalue", MinValue = low } : null;
+        var max = highest is { } high ? new PropertyRule { Name = "maxvalue", MaxValue = high } : null;
+
+        foreach (var rule in maxFirst ? new[] { max, min } : [min, max])
+            if (rule is not null)
+                property.Rules.Add(rule);
     }
 
     /// <summary>The range SQL Server's money or smallmoney holds, or a bigint held as a decimal
@@ -837,21 +867,18 @@ public static class DomainModelMapper
             _ => null
         };
 
-    /// <summary>The bounds SqlTypeMap collapses away when it maps every integer width to int.</summary>
-    private static void AddIntegerRange(PropertyDefinition property, string? declaredType)
+    /// <summary>The bounds SqlTypeMap collapses away when it maps every integer width to int,
+    /// narrowed by any CHECK constraint.</summary>
+    private static void AddIntegerRange(PropertyDefinition property, TypeFacts? facts)
     {
-        var (min, max) = declaredType?.ToLowerInvariant() switch
+        var (min, max) = facts?.DeclaredType?.ToLowerInvariant() switch
         {
-            "tinyint" => (0m, 255m),
+            "tinyint" => ((decimal?)0m, (decimal?)255m),
             "smallint" => (-32768m, 32767m),
-            _ => (0m, 0m)
+            _ => (null, null)
         };
 
-        if (min == 0m && max == 0m)
-            return;
-
-        property.Rules.Add(new PropertyRule { Name = "minvalue", MinValue = min });
-        property.Rules.Add(new PropertyRule { Name = "maxvalue", MaxValue = max });
+        AddRange(property, min, max, facts, maxFirst: false);
     }
 
     /// <summary>

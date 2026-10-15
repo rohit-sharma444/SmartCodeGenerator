@@ -18,6 +18,13 @@ internal sealed class FakeSqlSchemaSource : ISqlSchemaSource
     public Dictionary<string, List<string?[]>> RowsByTable { get; } = [];
     public List<TabularForeignKey> Keys { get; } = [];
 
+    /// <summary>Each table's keys, unique indexes and checks, filed as its columns are.</summary>
+    public Dictionary<string, List<SqlConstraintInfo>> Constraints { get; } = [];
+
+    IReadOnlyList<SqlConstraintInfo> ISqlSchemaSource.Constraints(string connectionString, string schema, string table)
+        => Constraints.TryGetValue($"{schema}.{table}", out var qualified) ? qualified
+            : Constraints.TryGetValue(table, out var constraints) ? constraints : [];
+
     /// <summary>Every table whose rows were actually fetched, in order, so a test can assert that
     /// nothing was read before it was asked for.</summary>
     public List<string> RowsFetched { get; } = [];

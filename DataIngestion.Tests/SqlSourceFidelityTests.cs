@@ -500,6 +500,87 @@ public class SqlSourceFidelityTests
         Assert.Equal("Retired", Get(row, "Status"));
     }
 
+    // --- S8: CHECK constraints ---
+
+    [Theory]
+    [InlineData("([Age]>=(16) AND [Age]<=(99))", "Age", 16, 99)]
+    [InlineData("([Grade]>=(1) AND [Grade]<=(10))", "Grade", 1, 10)]
+    [InlineData("(Grade BETWEEN 1 AND 10)", "Grade", 1, 10)]
+    [InlineData("([Qty]>(0))", "Qty", 0, null)]
+    [InlineData("((0)<[Qty])", "Qty", 0, null)]
+    [InlineData("([Qty] IS NULL OR [Qty]<(100))", "Qty", null, 100)]
+    public void A_check_the_database_rewrote_is_read_as_bounds(string definition, string column, int? min, int? max)
+    {
+        var bounds = SqlCheck.Parse(definition)!;
+
+        Assert.Equal((decimal?)min, bounds[column].Min);
+        Assert.Equal((decimal?)max, bounds[column].Max);
+    }
+
+    [Theory]
+    [InlineData("([Status]='Draft' OR [Status]='Retired' OR [Status]='Active')")]
+    [InlineData("([Status] IN ('Active', 'Retired', 'Draft'))")]
+    [InlineData("([Status]=N'Active' OR [Status]=N'Retired' OR [Status]=N'Draft' OR [Status] IS NULL)")]
+    public void A_check_listing_values_is_read_as_the_list(string definition)
+    {
+        var bounds = SqlCheck.Parse(definition)!;
+
+        Assert.Equal(["Active", "Draft", "Retired"], bounds["Status"].Allowed!.Order());
+    }
+
+    [Theory]
+    [InlineData("(len([Code])=(3))")]
+    [InlineData("([Ends]>[Starts])")]
+    [InlineData("(NOT [Qty]=(0))")]
+    [InlineData("([Qty]>(0) OR [Price]>(0))")]
+    public void A_check_not_understood_is_not_read_at_all(string definition)
+        => Assert.Null(SqlCheck.Parse(definition));
+
+    [Fact]
+    public void A_check_becomes_the_range_or_list_the_app_enforces()
+    {
+        var source = Database(add => add("Member",
+            [
+                new("MemberId", "int", false, IsPrimaryKey: true),
+                new("Age", "tinyint", false),
+                new("Grade", "smallint", false),
+                new("Status", "nvarchar", false, 20),
+                new("Qty", "int", false),
+                new("Price", "decimal", false, Precision: 8, Scale: 2),
+                new("Code", "nvarchar", false, 10),
+            ],
+            [["1", "30", "5", "Active", "2", "1.50", "ABC"]]));
+
+        source.Constraints["Member"] =
+        [
+            new("CK_Age", SqlConstraintKind.Check, ["Age"], "([Age]>=(16) AND [Age]<=(99))"),
+            new("CK_Grade", SqlConstraintKind.Check, ["Grade"], "([Grade]>=(1) AND [Grade]<=(10))"),
+            new("CK_Status", SqlConstraintKind.Check, ["Status"], "([Status]='Draft' OR [Status]='Retired' OR [Status]='Active')"),
+            new("CK_Qty", SqlConstraintKind.Check, ["Qty"], "([Qty]>(0))"),
+            new("CK_Price", SqlConstraintKind.Check, ["Price"], "([Price]>(0))"),
+            new("CK_Code", SqlConstraintKind.Check, ["Code"], "(len([Code])=(3))"),
+        ];
+
+        var app = Generate(source);
+        var assembly = Compile(app);
+
+        IReadOnlyList<string> Saving(params (string, object?)[] values)
+            => Validate(assembly, "Member", New(assembly, "Member",
+                [("Age", 30), ("Grade", 5), ("Status", "Active"), ("Qty", 2), ("Price", 1.50m), ("Code", "ABC"), .. values]));
+
+        Assert.Empty(Saving());
+        Assert.Contains(Saving(("Age", 15)), m => m.Contains("Age must be 16 or more"));
+        Assert.Contains(Saving(("Age", 100)), m => m.Contains("Age must be 99 or less"));
+        Assert.Contains(Saving(("Grade", 11)), m => m.Contains("Grade"));
+        Assert.Contains(Saving(("Status", "Closed")), m => m.Contains("Status must be one of"));
+        Assert.Contains(Saving(("Qty", 0)), m => m.Contains("Qty must be 1 or more"));
+        Assert.Contains(Saving(("Price", 0m)), m => m.Contains("Price must be 0.01 or more"));
+        Assert.Empty(Saving(("Price", 0.01m)));
+
+        Assert.Contains(app.Data.Notes, n => n.Contains("CK_Code") && n.Contains("(len([Code])=(3))") && n.Contains("not carried"));
+        Assert.All(SeedRows(assembly, app, "Member"), row => Assert.Empty(Validate(assembly, "Member", row)));
+    }
+
     // --- S10: a computed column ---
 
     [Fact]

@@ -68,4 +68,14 @@ public sealed record TypeFacts
     /// "utcnow" or "newguid". Null otherwise.
     /// </summary>
     public string? DefaultFunction { get; init; }
+
+    /// <summary>The lowest value a CHECK constraint allows, inclusive; null when none says.</summary>
+    public decimal? MinValue { get; init; }
+
+    /// <summary>The highest value a CHECK constraint allows, inclusive; null when none says.</summary>
+    public decimal? MaxValue { get; init; }
+
+    /// <summary>The only values a CHECK constraint allows (<c>Status IN ('Active', 'Retired')</c>);
+    /// null when none lists them.</summary>
+    public IReadOnlyList<string>? AllowedValues { get; init; }
 }
