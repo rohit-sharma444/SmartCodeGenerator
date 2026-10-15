@@ -47,7 +47,7 @@ public static class ClassPropertyTypeService
             return true;
         }
 
-        if (!TypeResolution.Resolves(workspaceRoot, part.File, part.Node, type, out message))
+        if (!TypeResolution.Resolves(workspaceRoot, part.File, part.Node, type, out message, out var bound))
             return false;
 
         var dropped = new List<string>();
@@ -90,7 +90,33 @@ public static class ClassPropertyTypeService
             keepsInitializer = !fresh.Any(d => In(probed.Initializer, d));
         }
 
-        if (property.Initializer != null && !keepsInitializer)
+        // With nullable reference types on, a property of a reference type needs an initial
+        // value: Tags retyped from a list to an array lost its `= new();` and got nothing, and
+        // was CS8618. An auto-property only; a computed one has no value to start with.
+        var replacement = !keepsInitializer || property.Initializer == null
+            ? (!computed && property.AccessorList != null
+               && PropertyInitializers.CanHaveInitializer(part.Node)
+               && PropertyInitializers.NullableOn(workspaceRoot, part.File, part.Root)
+                ? PropertyInitializers.SafeFor(type, bound)
+                : null)
+            : null;
+
+        if (replacement != null)
+        {
+            var initializer = SyntaxFactory.EqualsValueClause(SyntaxFactory.ParseExpression(replacement))
+                .WithEqualsToken(SyntaxFactory.Token(SyntaxKind.EqualsToken)
+                    .WithLeadingTrivia(SyntaxFactory.Space).WithTrailingTrivia(SyntaxFactory.Space));
+
+            retyped = property.Initializer != null
+                ? retyped.WithInitializer(initializer.WithEqualsToken(
+                    initializer.EqualsToken.WithLeadingTrivia(property.Initializer.EqualsToken.LeadingTrivia)))
+                : retyped
+                    .WithAccessorList(retyped.AccessorList!.WithoutTrailingTrivia())
+                    .WithInitializer(initializer)
+                    .WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken)
+                        .WithTrailingTrivia(retyped.AccessorList!.GetTrailingTrivia()));
+        }
+        else if (property.Initializer != null && !keepsInitializer)
             retyped = retyped
                 .WithInitializer(null)
                 .WithSemicolonToken(default)
@@ -102,7 +128,10 @@ public static class ClassPropertyTypeService
         return ClassMethodEditService.TryWrite(part.File, root,
             $"'{className}.{name}' changed from {property.Type} to {type}."
             + (property.Initializer != null && !keepsInitializer
-                ? $" Its initial value ({property.Initializer!.Value}) was removed." : string.Empty)
+                ? replacement != null
+                    ? $" Its initial value ({property.Initializer!.Value}) did not fit {type} and is now {replacement}."
+                    : $" Its initial value ({property.Initializer!.Value}) was removed."
+                : replacement != null ? $" It now starts as {replacement}, as {type} cannot be null here." : string.Empty)
             + (dropped.Count > 0
                 ? $" Removed {string.Join(", ", dropped.Select(d => $"[{d}]"))}, which {(dropped.Count == 1 ? "does" : "do")} not apply to {type}." : string.Empty),
             out message);
@@ -121,9 +150,7 @@ public static class ClassPropertyTypeService
             || bare.ToString() is "String" or "System.String";
         var isCollection = bare is ArrayTypeSyntax or GenericNameSyntax
             || bare is QualifiedNameSyntax { Right: GenericNameSyntax };
-
-        if (isText)
-            return property;
+        var isBool = bare is PredefinedTypeSyntax b && b.Keyword.IsKind(SyntaxKind.BoolKeyword);
 
         bool Fits(AttributeSyntax attribute)
         {
@@ -135,6 +162,16 @@ public static class ClassPropertyTypeService
                 _ => attribute.Name.ToString(),
             };
             var bareName = written.EndsWith("Attribute", StringComparison.Ordinal) ? written[..^"Attribute".Length] : written;
+
+            // [Range(0, 150)] on a string compiles, and throws when the record is validated.
+            if (bareName == "Range" && (isText || isBool || isCollection))
+            {
+                dropped.Add(bareName);
+                return false;
+            }
+
+            if (isText)
+                return true;
 
             if (TextOnly.Contains(bareName) || (!isCollection && TextOrCollection.Contains(bareName)))
             {

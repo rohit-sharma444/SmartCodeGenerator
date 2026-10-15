@@ -125,7 +125,7 @@ public static class ClassRenameService
             }
 
             foreach (var (path, text) in plan.Edits)
-                File.WriteAllText(path, text);
+                Validation.SourceFileText.Rewrite(path, text);
 
             foreach (var (from, to) in moves)
                 File.Move(from, to);

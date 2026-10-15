@@ -236,28 +236,49 @@ public static class ClassMethodEditService
                 .FirstOrDefault(f => Path.GetFileNameWithoutExtension(f)
                     .Equals(className, StringComparison.OrdinalIgnoreCase));
 
-            if (found == null)
+            if (found != null)
             {
-                message = $"Class '{className}' not found.";
-                return false;
+                file = found;
+                root = CSharpSyntaxTree.ParseText(File.ReadAllText(file)).GetRoot();
+
+                if (DeclarationOf(root, className) is { } node)
+                {
+                    classNode = node;
+                    return true;
+                }
             }
 
-            file = found;
-            root = CSharpSyntaxTree.ParseText(File.ReadAllText(file)).GetRoot();
-
-            var node = root.DescendantNodes()
-                .OfType<TypeDeclarationSyntax>()
-                .FirstOrDefault(c => c is ClassDeclarationSyntax or InterfaceDeclarationSyntax
-                    && c.Identifier.Text.Equals(className, StringComparison.OrdinalIgnoreCase));
-
-            if (node == null)
+            // Not in a file of its name: a record, struct or interface declared in another type's
+            // file (OrderLine in Order.cs) is listed by show properties, and was "not found" here.
+            foreach (var other in ClassFiles.Under(workspaceRoot))
             {
-                message = $"Class '{className}' not found in {Path.GetFileName(file)}.";
-                return false;
+                string text;
+                try
+                {
+                    text = File.ReadAllText(other);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    continue;
+                }
+
+                if (!text.Contains(className, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                var otherRoot = CSharpSyntaxTree.ParseText(text).GetRoot();
+                if (DeclarationOf(otherRoot, className) is { } node)
+                {
+                    file = other;
+                    root = otherRoot;
+                    classNode = node;
+                    return true;
+                }
             }
 
-            classNode = node;
-            return true;
+            message = found == null
+                ? $"Class '{className}' not found."
+                : $"Class '{className}' not found in {Path.GetFileName(found)}.";
+            return false;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -266,11 +287,24 @@ public static class ClassMethodEditService
         }
     }
 
+    /// <summary>
+    /// The class, interface, record or struct called <paramref name="name"/> in
+    /// <paramref name="root"/>: the exact spelling before another case, a top-level one before a
+    /// nested one.
+    /// </summary>
+    private static TypeDeclarationSyntax? DeclarationOf(SyntaxNode root, string name) =>
+        root.DescendantNodes()
+            .OfType<TypeDeclarationSyntax>()
+            .Where(t => t.Identifier.Text.Equals(name, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(t => t.Identifier.Text.Equals(name, StringComparison.Ordinal) ? 0 : 1)
+            .ThenBy(t => t.Parent is TypeDeclarationSyntax ? 1 : 0)
+            .FirstOrDefault();
+
     internal static bool TryWrite(string file, SyntaxNode root, string success, out string message)
     {
         try
         {
-            File.WriteAllText(file, root.ToFullString());
+            Validation.SourceFileText.Rewrite(file, root.ToFullString());
             message = success;
             return true;
         }

@@ -54,6 +54,41 @@ public class ModelEditorTests
         Assert.Equal(DecisionReasons.YouRemovedIt, decision.Reason);
     }
 
+    /// <summary>A relationship read from data names the field holding it; renaming that field
+    /// carries the relationship along, or the field is a plain number and the navigation has no
+    /// key.</summary>
+    [Fact]
+    public void RenameField_CarriesTheRelationshipHeldInIt()
+    {
+        var model = ModelWith("Staff", "Payment");
+        var payment = model.Entities.Single(e => e.Name == "Payment");
+        payment.Fields.Add(new CandidateField { Name = "PaidById", Type = "int" });
+        payment.Relationships.Add(new CandidateRelationship { Target = "Staff", Role = "references", ForeignKey = "PaidById" });
+
+        Assert.True(ModelEditor.RenameField(model, "Payment", "PaidById", "PayerId"));
+
+        Assert.Equal("PayerId", Assert.Single(payment.Relationships).ForeignKey);
+    }
+
+    /// <summary>Renaming the target class renames a key spelled for it, and leaves a key named
+    /// for a role (PaidById) as it was.</summary>
+    [Fact]
+    public void RenameEntity_LeavesAKeyNamedForARoleAlone()
+    {
+        var model = ModelWith("Staff", "Payment");
+        var payment = model.Entities.Single(e => e.Name == "Payment");
+        payment.Fields.Add(new CandidateField { Name = "PaidById", Type = "int" });
+        payment.Fields.Add(new CandidateField { Name = "StaffId", Type = "int" });
+        payment.Relationships.Add(new CandidateRelationship { Target = "Staff", Role = "references", ForeignKey = "PaidById" });
+        payment.Relationships.Add(new CandidateRelationship { Target = "Staff", Role = "references", ForeignKey = "StaffId" });
+
+        Assert.True(ModelEditor.RenameEntity(model, "Staff", "Employee"));
+
+        Assert.Equal(["EmployeeId", "PaidById"], payment.Fields.Select(f => f.Name).Order());
+        Assert.Equal(["EmployeeId", "PaidById"], payment.Relationships.Select(r => r.ForeignKey).Order());
+        Assert.All(payment.Relationships, r => Assert.Equal("Employee", r.Target));
+    }
+
     [Fact]
     public void RenameEntity_RenamesExisting_RejectsCollision()
     {

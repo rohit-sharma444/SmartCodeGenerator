@@ -162,6 +162,7 @@ public static class DomainModelMapper
         RenameKeysToRenamedClasses(classes, names);
         AddNavigationProperties(model, classes, names);
         AddNullability(classes);
+        AddDefaults(classes);
         AddAuditFields(classes);
         AddValidation(classes);
         AddEntityValidation(classes, model, names);
@@ -258,12 +259,55 @@ public static class DomainModelMapper
                     || !byName.TryGetValue(targetName, out var target))
                     continue;
 
+                if (RoleKey(relationship, owner) is { } roleKey)
+                {
+                    AddRoleNavigation(owner, roleKey, targetName);
+                    continue;
+                }
+
                 DropTextShadowingTheRelationship(owner, targetName);
 
                 AddNavigation(owner, RelationshipConvention.Forward(targetName));
                 AddNavigation(target, RelationshipConvention.InverseCollection(ownerName));
             }
         }
+    }
+
+    /// <summary>
+    /// The key property a relationship read from the user's data is held in, when it is named for
+    /// a role rather than for its target (<c>PaidById</c>, <c>ManagerId</c>); null for a key
+    /// spelled <c>&lt;Target&gt;Id</c>, for one discovery inferred, and for one the class no longer
+    /// has (removed on Review).
+    /// </summary>
+    private static PropertyDefinition? RoleKey(CandidateRelationship relationship, ClassDefinition owner)
+    {
+        if (relationship.ForeignKey is not { Length: > 2 } key
+            || !key.EndsWith("Id", StringComparison.Ordinal)
+            || string.Equals(key, relationship.Target + "Id", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        return owner.Properties.FirstOrDefault(
+            p => string.Equals(p.Name, key, StringComparison.Ordinal) && p.Type == "int");
+    }
+
+    /// <summary>
+    /// The navigation for a key named for a role: <c>Staff PaidBy</c> beside <c>PaidById</c>, and
+    /// <c>Staff Manager</c> beside a member of staff's own <c>ManagerId</c>.
+    /// </summary>
+    /// <remarks>
+    /// The generated app pairs a key with the navigation named for it - the resolver fills
+    /// <c>PaidBy</c> from <c>PaidById</c>, the pickers and lookups read the same pair - so each
+    /// key gets its own, and two keys to Staff are two navigations rather than one <c>Staff</c>
+    /// neither was paired with. No inverse collection: the resolver fills one only from
+    /// <c>&lt;Owner&gt;Id</c>, so a collection here would stay empty, and two roles would want the
+    /// same name for it.
+    /// </remarks>
+    private static void AddRoleNavigation(ClassDefinition owner, PropertyDefinition key, string targetName)
+    {
+        var navigation = RelationshipConvention.Forward(targetName);
+        navigation.Name = key.Name[..^2];
+
+        AddNavigation(owner, navigation);
     }
 
     /// <summary>
@@ -320,8 +364,8 @@ public static class DomainModelMapper
 
         foreach (var definition in classes)
         {
-            var foreignKeys = ForeignKeys.TargetsOf(definition, names)
-                .Select(target => target + "Id")
+            var foreignKeys = ForeignKeys.LinksOf(definition, names)
+                .Select(link => link.Property)
                 .ToHashSet(StringComparer.Ordinal);
 
             foreach (var property in definition.Properties)
@@ -334,6 +378,89 @@ public static class DomainModelMapper
 
                 property.Type += "?";
             }
+        }
+    }
+
+    /// <summary>
+    /// Starts each property a new record has at the DEFAULT its source column declared, when that
+    /// default fits the property's type: <c>IsActive = true</c> for a <c>bit DEFAULT 1</c>.
+    /// </summary>
+    /// <remarks>
+    /// After <see cref="AddNullability"/>, because the type decides what the default can be
+    /// written as. A default that does not fit (the user retyped the field on Review) is left
+    /// out rather than guessed at. The Id key and the foreign keys are never given one: the
+    /// store numbers the first, and a default link would point at whichever row has that number.
+    /// </remarks>
+    private static void AddDefaults(List<ClassDefinition> classes)
+    {
+        var names = ForeignKeys.ClassNameSet(classes);
+
+        foreach (var definition in classes)
+        {
+            var foreignKeys = ForeignKeys.LinksOf(definition, names)
+                .Select(link => link.Property)
+                .ToHashSet(StringComparer.Ordinal);
+
+            foreach (var property in definition.Properties)
+            {
+                if (property.Facts is not { } facts
+                    || string.Equals(property.Name, "Id", StringComparison.OrdinalIgnoreCase)
+                    || foreignKeys.Contains(property.Name))
+                    continue;
+
+                property.Initializer = Initializer(BaseType(property.Type), facts.DefaultValue, facts.DefaultFunction);
+            }
+        }
+    }
+
+    /// <summary>The C# expression a default of <paramref name="value"/> or
+    /// <paramref name="function"/> is for a <paramref name="type"/>, or null when it does not fit.</summary>
+    private static string? Initializer(string type, string? value, string? function)
+    {
+        var invariant = System.Globalization.CultureInfo.InvariantCulture;
+
+        if (function is not null)
+            return (type, function) switch
+            {
+                ("DateTime", "now") => "global::System.DateTime.Now",
+                ("DateTime", "utcnow") => "global::System.DateTime.UtcNow",
+                ("string", "newguid") => "global::System.Guid.NewGuid().ToString()",
+                _ => null
+            };
+
+        if (value is null)
+            return null;
+
+        switch (type)
+        {
+            case "string":
+                return Microsoft.CodeAnalysis.CSharp.SymbolDisplay.FormatLiteral(value, quote: true);
+
+            case "int":
+                return int.TryParse(value, System.Globalization.NumberStyles.AllowLeadingSign, invariant, out var i)
+                    ? i.ToString(invariant)
+                    : null;
+
+            case "decimal":
+                return decimal.TryParse(value, System.Globalization.NumberStyles.Number, invariant, out var d)
+                    ? d.ToString(invariant) + "m"
+                    : null;
+
+            case "bool":
+                return value.Trim() switch
+                {
+                    "1" or "true" or "True" => "true",
+                    "0" or "false" or "False" => "false",
+                    _ => null
+                };
+
+            case "DateTime":
+                return DateTime.TryParse(value, invariant, System.Globalization.DateTimeStyles.None, out var date)
+                    ? $"new global::System.DateTime({date.Ticks}L)"
+                    : null;
+
+            default:
+                return null;
         }
     }
 
@@ -392,11 +519,53 @@ public static class DomainModelMapper
             foreach (var property in definition.Properties)
                 added |= InferValidation(property);
 
+            AddDeclaredUniqueness(definition);
+
             added |= definition.Properties.Any(
                 p => p.Rules.Any(r => DataAnnotationRuleNames.Contains(r.Name)));
 
             if (added && !definition.Usings.Contains(DataAnnotationsNamespace))
                 definition.Usings.Add(DataAnnotationsNamespace);
+        }
+    }
+
+    /// <summary>
+    /// The uniqueness the source declared (<see cref="TypeFacts.UniqueKeys"/>): a key over one
+    /// property becomes its unique rule, and a key over several becomes one entry in
+    /// <see cref="ClassDefinition.UniqueTogether"/>.
+    /// </summary>
+    /// <remarks>
+    /// A declared key is a fact the source stated, so it is enforced whatever the entity is: the
+    /// proposals withhold uniqueness from an entity that links to another, because a repeating
+    /// value there is usually the design, but a UNIQUE the database declared says otherwise. A key
+    /// some of whose columns are no longer properties (removed on Review, or computed) is not
+    /// enforced: over fewer columns it would refuse records the source accepts.
+    /// </remarks>
+    private static void AddDeclaredUniqueness(ClassDefinition definition)
+    {
+        var keys = definition.Properties
+            .Where(p => !string.Equals(p.Name, "Id", StringComparison.OrdinalIgnoreCase))
+            .SelectMany(p => (p.Facts?.UniqueKeys ?? []).Select(k => (Property: p, Key: k)))
+            .GroupBy(pair => pair.Key.Name, StringComparer.Ordinal);
+
+        foreach (var key in keys)
+        {
+            var members = key.Select(pair => pair.Property).Distinct().ToList();
+
+            if (members.Count != key.First().Key.Columns)
+                continue;
+
+            if (members.Count > 1)
+            {
+                definition.UniqueTogether.Add([.. members.Select(p => p.Name)]);
+                continue;
+            }
+
+            var single = members[0];
+
+            if (ValidatorTemplate.CanEmitEntityRule(single.Type, "unique")
+                && !single.Rules.Any(r => string.Equals(r.Name, "unique", StringComparison.OrdinalIgnoreCase)))
+                single.Rules.Add(new PropertyRule { PropertyName = single.Name, Name = "unique", IsUnique = true });
         }
     }
 
@@ -531,10 +700,16 @@ public static class DomainModelMapper
                         MaxLength = facts?.MaxLength ?? DefaultStringLength
                     });
 
+                // The values a CHECK constraint lists, as a rule the source declared rather than
+                // one proposed from the rows.
+                if (facts?.AllowedValues is { Count: > 0 } allowed
+                    && !property.Rules.Any(r => string.Equals(r.Name, "allowedvalues", StringComparison.OrdinalIgnoreCase)))
+                    property.Rules.Add(new PropertyRule { Name = "allowedvalues", AllowedValues = [.. allowed] });
+
                 return AddFormatAttribute(property);
 
             case "int":
-                AddIntegerRange(property, facts?.DeclaredType);
+                AddIntegerRange(property, facts);
                 return false;
 
             case "decimal":
@@ -672,37 +847,80 @@ public static class DomainModelMapper
         if (facts?.Scale is { } scale)
             property.Rules.Add(new PropertyRule { Name = "scale", Scale = scale });
 
+        // money and smallmoney are 64- and 32-bit integers counting ten-thousandths, not
+        // decimal(19,4) and decimal(10,4): their limits are the integer's, ±922,337,203,685,477.58
+        // and ±214,748.36, and the 999... bound their precision implies is one the column refuses.
+        // A bigint held as a decimal (its values were beyond int) is bounded by long the same way.
+        var (lowest, highest) = DeclaredRange(facts?.DeclaredType) is { } range
+            ? ((decimal?)range.Lowest, (decimal?)range.Highest)
+            : PrecisionRange(facts);
+
+        AddRange(property, lowest, highest, facts, maxFirst: true);
+    }
+
+    /// <summary>What decimal(P,S)'s integer digits allow, or no bound when P or S is unknown.</summary>
+    private static (decimal? Lowest, decimal? Highest) PrecisionRange(TypeFacts? facts)
+    {
         if (facts?.Precision is not { } precision || facts.Scale is not { } places)
-            return;
+            return (null, null);
 
         var integerDigits = precision - places;
 
         if (integerDigits <= 0 || integerDigits > 28)
-            return;
+            return (null, null);
 
         var bound = decimal.Parse(
             new string('9', integerDigits) + "." + new string('9', places),
             System.Globalization.CultureInfo.InvariantCulture);
 
-        property.Rules.Add(new PropertyRule { Name = "maxvalue", MaxValue = bound });
-        property.Rules.Add(new PropertyRule { Name = "minvalue", MinValue = -bound });
+        return (-bound, bound);
     }
 
-    /// <summary>The bounds SqlTypeMap collapses away when it maps every integer width to int.</summary>
-    private static void AddIntegerRange(PropertyDefinition property, string? declaredType)
+    /// <summary>
+    /// Records the type's range, narrowed by any a CHECK constraint declared
+    /// (<see cref="TypeFacts.MinValue"/>, <see cref="TypeFacts.MaxValue"/>): a tinyint age checked
+    /// to 16..99 is 16..99, not 0..255. Either end may be absent.
+    /// </summary>
+    private static void AddRange(
+        PropertyDefinition property, decimal? lowest, decimal? highest, TypeFacts? facts, bool maxFirst)
     {
-        var (min, max) = declaredType?.ToLowerInvariant() switch
+        if (facts?.MinValue is { } checkedLowest)
+            lowest = lowest is { } l ? Math.Max(l, checkedLowest) : checkedLowest;
+
+        if (facts?.MaxValue is { } checkedHighest)
+            highest = highest is { } h ? Math.Min(h, checkedHighest) : checkedHighest;
+
+        var min = lowest is { } low ? new PropertyRule { Name = "minvalue", MinValue = low } : null;
+        var max = highest is { } high ? new PropertyRule { Name = "maxvalue", MaxValue = high } : null;
+
+        foreach (var rule in maxFirst ? new[] { max, min } : [min, max])
+            if (rule is not null)
+                property.Rules.Add(rule);
+    }
+
+    /// <summary>The range SQL Server's money or smallmoney holds, or a bigint held as a decimal
+    /// because its values are beyond int; null for any other type.</summary>
+    private static (decimal Lowest, decimal Highest)? DeclaredRange(string? declaredType)
+        => declaredType?.ToLowerInvariant() switch
         {
-            "tinyint" => (0m, 255m),
-            "smallint" => (-32768m, 32767m),
-            _ => (0m, 0m)
+            "bigint" => (long.MinValue, long.MaxValue),
+            "money" => (long.MinValue / 10000m, long.MaxValue / 10000m),
+            "smallmoney" => (int.MinValue / 10000m, int.MaxValue / 10000m),
+            _ => null
         };
 
-        if (min == 0m && max == 0m)
-            return;
+    /// <summary>The bounds SqlTypeMap collapses away when it maps every integer width to int,
+    /// narrowed by any CHECK constraint.</summary>
+    private static void AddIntegerRange(PropertyDefinition property, TypeFacts? facts)
+    {
+        var (min, max) = facts?.DeclaredType?.ToLowerInvariant() switch
+        {
+            "tinyint" => ((decimal?)0m, (decimal?)255m),
+            "smallint" => (-32768m, 32767m),
+            _ => (null, null)
+        };
 
-        property.Rules.Add(new PropertyRule { Name = "minvalue", MinValue = min });
-        property.Rules.Add(new PropertyRule { Name = "maxvalue", MaxValue = max });
+        AddRange(property, min, max, facts, maxFirst: false);
     }
 
     /// <summary>

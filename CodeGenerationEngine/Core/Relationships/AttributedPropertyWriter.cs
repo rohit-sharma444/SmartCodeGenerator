@@ -93,13 +93,34 @@ public static class AttributedPropertyWriter
 
             var missing = wanted
                 .Where(u => !declared.Contains(u))
-                .Select(u => SyntaxFactory.UsingDirective(SyntaxFactory.ParseName(u)))
+                .Select(u => SyntaxFactory.UsingDirective(SyntaxFactory.ParseName(u)).NormalizeWhitespace().ToFullString())
                 .ToArray();
 
+            // Put in as lines of text, after the last using there is (or at the top, after any
+            // header comment), so nothing else in the file is reformatted: the whole file used to
+            // go through NormalizeWhitespace.
             if (missing.Length > 0)
-                File.WriteAllText(
-                    filePath,
-                    unit.AddUsings(missing).NormalizeWhitespace().ToFullString());
+            {
+                var source = unit.ToFullString();
+                var newline = source.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+                var lines = string.Concat(missing.Select(m => m + newline));
+
+                string text;
+                if (unit.Usings.Count > 0)
+                {
+                    var after = unit.Usings.Last().FullSpan.End;
+                    text = source[..after] + lines + source[after..];
+                }
+                else
+                {
+                    var at = unit.Members.Count > 0 ? unit.Members[0].SpanStart
+                        : unit.AttributeLists.Count > 0 ? unit.AttributeLists[0].SpanStart
+                        : source.Length;
+                    text = source[..at] + lines + newline + source[at..];
+                }
+
+                global::CodeGenerationEngine.Core.Validation.SourceFileText.Rewrite(filePath, text);
+            }
 
             HashSet<string?> onDisk = Parse(filePath) is { } written ? Declared(written) : [];
 

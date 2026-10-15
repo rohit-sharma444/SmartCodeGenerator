@@ -59,6 +59,22 @@ public class NameNormalizerTests
         => Assert.Equal(expected, NameNormalizer.ToFieldName(input));
 
     [Theory]
+    [InlineData("2ndRef", "Ref2nd")]
+    [InlineData("2024 Sales", "Sales2024")]
+    [InlineData("3D model", "Model3D")]
+    [InlineData("2nd line", "Line2nd")]
+    [InlineData("2024", "Field2024")]
+    public void ToFieldNameFromData_MovesALeadingNumberBehindTheWords(string input, string expected)
+    {
+        // A name that starts with a digit is no C# identifier, and its column was dropped with
+        // all its data. The number moves to the end, where it reads the same and compiles.
+        var name = NameNormalizer.ToFieldNameFromData(input);
+
+        Assert.Equal(expected, name);
+        Assert.True(NameNormalizer.IsValidIdentifier(name));
+    }
+
+    [Theory]
     [InlineData("")]
     [InlineData("   ")]
     [InlineData("!!!")]

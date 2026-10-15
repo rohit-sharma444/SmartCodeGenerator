@@ -10,6 +10,9 @@
          there is no hand-written route the way ExcelReader avoided a package by parsing a
          zip. Confined to Schema/Readers/Sql/SqlClientSchemaSource.cs. -->
     <PackageReference Include="Microsoft.Data.SqlClient" Version="6.0.2" />
+    <!-- SqlClient 6.0.2 brings in Pkcs 9.0.4, which has known advisories (NU1902/NU1903);
+         pinned to a patched 9.0.x so the audit passes. -->
+    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="9.0.21" />
   </ItemGroup>
 
 </Project>

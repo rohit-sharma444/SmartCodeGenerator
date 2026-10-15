@@ -51,12 +51,32 @@ public sealed class SqlClientSchemaSource : ISqlSchemaSource
     public IReadOnlyList<SqlColumnInfo> Columns(
         string connectionString, string schema, string table)
     {
+        // IS_PK marks the column of a single-column primary key. A composite key marks nothing:
+        // the model numbers its rows by one Id, and half a key is not one.
         const string sql = """
-            SELECT  COLUMN_NAME, DATA_TYPE, IS_NULLABLE,
-                    CHARACTER_MAXIMUM_LENGTH, NUMERIC_PRECISION, NUMERIC_SCALE
-            FROM    INFORMATION_SCHEMA.COLUMNS
-            WHERE   TABLE_SCHEMA = @schema AND TABLE_NAME = @table
-            ORDER BY ORDINAL_POSITION;
+            SELECT  c.COLUMN_NAME, c.DATA_TYPE, c.IS_NULLABLE,
+                    c.CHARACTER_MAXIMUM_LENGTH, c.NUMERIC_PRECISION, c.NUMERIC_SCALE,
+                    CASE WHEN pk.COLUMN_NAME IS NULL THEN 0 ELSE 1 END AS IS_PK,
+                    c.COLUMN_DEFAULT, cc.definition AS COMPUTED_AS
+            FROM    INFORMATION_SCHEMA.COLUMNS c
+            LEFT JOIN sys.computed_columns cc
+                      ON cc.object_id = OBJECT_ID(QUOTENAME(c.TABLE_SCHEMA) + '.' + QUOTENAME(c.TABLE_NAME))
+                     AND cc.name = c.COLUMN_NAME
+            LEFT JOIN (
+                        SELECT   k.TABLE_SCHEMA, k.TABLE_NAME, MIN(k.COLUMN_NAME) AS COLUMN_NAME
+                        FROM     INFORMATION_SCHEMA.TABLE_CONSTRAINTS t
+                        JOIN     INFORMATION_SCHEMA.KEY_COLUMN_USAGE k
+                                   ON k.CONSTRAINT_SCHEMA = t.CONSTRAINT_SCHEMA
+                                  AND k.CONSTRAINT_NAME = t.CONSTRAINT_NAME
+                        WHERE    t.CONSTRAINT_TYPE = 'PRIMARY KEY'
+                        GROUP BY k.TABLE_SCHEMA, k.TABLE_NAME
+                        HAVING   COUNT(*) = 1
+                      ) pk
+                      ON pk.TABLE_SCHEMA = c.TABLE_SCHEMA
+                     AND pk.TABLE_NAME = c.TABLE_NAME
+                     AND pk.COLUMN_NAME = c.COLUMN_NAME
+            WHERE   c.TABLE_SCHEMA = @schema AND c.TABLE_NAME = @table
+            ORDER BY c.ORDINAL_POSITION;
             """;
 
         var columns = new List<SqlColumnInfo>();
@@ -70,7 +90,10 @@ public sealed class SqlClientSchemaSource : ISqlSchemaSource
                     (string)row["IS_NULLABLE"], "YES", StringComparison.OrdinalIgnoreCase),
                 AsInt(row["CHARACTER_MAXIMUM_LENGTH"]),
                 AsInt(row["NUMERIC_PRECISION"]),
-                AsInt(row["NUMERIC_SCALE"])));
+                AsInt(row["NUMERIC_SCALE"]),
+                Convert.ToInt32(row["IS_PK"], CultureInfo.InvariantCulture) == 1,
+                row["COMPUTED_AS"] as string,
+                row["COLUMN_DEFAULT"] as string));
         }
 
         return columns;
@@ -89,16 +112,28 @@ public sealed class SqlClientSchemaSource : ISqlSchemaSource
         // Single-column keys only. A composite key produces one row per column, and the model has
         // no way to express the pair — half of it would be a relationship that is wrong rather
         // than incomplete. The HAVING COUNT(*) = 1 is what excludes them.
+        //
+        // The declaring table and both schemas come back too: without them a key is matched to
+        // every table that has a column of the same name.
         const string sql = """
-            SELECT  parent.name    AS [ColumnName],
-                    target.name    AS [TargetTable],
-                    targetCol.name AS [TargetColumn]
+            SELECT  parentSchema.name AS [ParentSchema],
+                    parentTable.name  AS [ParentTable],
+                    parent.name       AS [ColumnName],
+                    targetSchema.name AS [TargetSchema],
+                    target.name       AS [TargetTable],
+                    targetCol.name    AS [TargetColumn]
             FROM    sys.foreign_key_columns fkc
             JOIN    sys.columns parent
                       ON parent.object_id = fkc.parent_object_id
                      AND parent.column_id = fkc.parent_column_id
+            JOIN    sys.tables parentTable
+                      ON parentTable.object_id = fkc.parent_object_id
+            JOIN    sys.schemas parentSchema
+                      ON parentSchema.schema_id = parentTable.schema_id
             JOIN    sys.tables target
                       ON target.object_id = fkc.referenced_object_id
+            JOIN    sys.schemas targetSchema
+                      ON targetSchema.schema_id = target.schema_id
             JOIN    sys.columns targetCol
                       ON targetCol.object_id = fkc.referenced_object_id
                      AND targetCol.column_id = fkc.referenced_column_id
@@ -116,10 +151,65 @@ public sealed class SqlClientSchemaSource : ISqlSchemaSource
             keys.Add(new TabularForeignKey(
                 (string)row["ColumnName"],
                 (string)row["TargetTable"],
-                (string)row["TargetColumn"]));
+                (string)row["TargetColumn"],
+                (string)row["ParentTable"],
+                (string)row["ParentSchema"],
+                (string)row["TargetSchema"]));
         }
 
         return keys;
+    }
+
+    public IReadOnlyList<SqlConstraintInfo> Constraints(string connectionString, string schema, string table)
+    {
+        // Unique indexes include the primary key's and every UNIQUE constraint's, which SQL Server
+        // implements as one. A filtered index is unique only where its filter holds, so it comes
+        // back as its own kind, for the reader to say it was not carried. A disabled index or
+        // check enforces nothing, and is left out.
+        const string sql = """
+            SELECT  i.name AS [Name],
+                    CASE WHEN i.is_primary_key = 1 THEN 'P' WHEN i.has_filter = 1 THEN 'F' ELSE 'U' END AS [Kind],
+                    c.name AS [ColumnName],
+                    CAST(i.filter_definition AS nvarchar(max)) AS [Definition],
+                    ic.key_ordinal AS [Ordinal]
+            FROM    sys.indexes i
+            JOIN    sys.index_columns ic
+                      ON ic.object_id = i.object_id AND ic.index_id = i.index_id AND ic.is_included_column = 0
+            JOIN    sys.columns c
+                      ON c.object_id = ic.object_id AND c.column_id = ic.column_id
+            WHERE   i.object_id = OBJECT_ID(QUOTENAME(@schema) + '.' + QUOTENAME(@table))
+              AND   i.is_unique = 1 AND i.is_disabled = 0
+            UNION ALL
+            SELECT  k.name, 'C', c.name, k.definition, 0
+            FROM    sys.check_constraints k
+            LEFT JOIN sys.columns c
+                      ON c.object_id = k.parent_object_id AND c.column_id = k.parent_column_id
+            WHERE   k.parent_object_id = OBJECT_ID(QUOTENAME(@schema) + '.' + QUOTENAME(@table))
+              AND   k.is_disabled = 0
+            ORDER BY [Name], [Ordinal];
+            """;
+
+        var constraints = new List<SqlConstraintInfo>();
+
+        foreach (var group in Query(connectionString, sql, ("@schema", schema), ("@table", table))
+                     .GroupBy(row => (Name: (string)row["Name"], Kind: (string)row["Kind"])))
+        {
+            var kind = group.Key.Kind switch
+            {
+                "P" => SqlConstraintKind.PrimaryKey,
+                "U" => SqlConstraintKind.Unique,
+                "F" => SqlConstraintKind.FilteredUnique,
+                _ => SqlConstraintKind.Check
+            };
+
+            constraints.Add(new SqlConstraintInfo(
+                group.Key.Name,
+                kind,
+                [.. group.Select(row => row["ColumnName"] as string).OfType<string>()],
+                group.First()["Definition"] as string));
+        }
+
+        return constraints;
     }
 
     public IReadOnlyList<string?[]> Rows(string connectionString, string schema, string table, int limit)
@@ -146,37 +236,13 @@ public sealed class SqlClientSchemaSource : ISqlSchemaSource
             var row = new string?[reader.FieldCount];
 
             for (var i = 0; i < reader.FieldCount; i++)
-                row[i] = reader.IsDBNull(i) ? null : Render(reader.GetValue(i));
+                row[i] = reader.IsDBNull(i) ? null : SqlValueText.Render(reader.GetValue(i));
 
             rows.Add(row);
         }
 
         return rows;
     }
-
-    /// <summary>
-    /// A value as the string <see cref="TabularTable.Rows"/> holds.
-    /// </summary>
-    /// <remarks>
-    /// Invariant throughout, and round-trip formats for the types where a locale would otherwise
-    /// change the meaning. This is the opposite direction of travel from the file readers: the
-    /// type is known and the string is derived from it, rather than the string being read and the
-    /// type guessed.
-    /// </remarks>
-    private static string Render(object value) => value switch
-    {
-        DateTime date => date.ToString("O", CultureInfo.InvariantCulture),
-        DateTimeOffset offset => offset.ToString("O", CultureInfo.InvariantCulture),
-
-        // Words rather than 0/1, matching what ExcelSheetReader emits for the same reason:
-        // ColumnTypeInference recognises true/false, and a bool that reads back as an int is a
-        // column that silently changes type.
-        bool flag => flag ? "true" : "false",
-
-        byte[] bytes => Convert.ToBase64String(bytes),
-        IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture),
-        _ => value.ToString() ?? string.Empty
-    };
 
     /// <summary>Doubles a closing bracket, so a bracket inside an identifier cannot end it.</summary>
     private static string Escape(string name) => name.Replace("]", "]]");

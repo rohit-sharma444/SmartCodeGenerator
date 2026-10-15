@@ -25,4 +25,11 @@ public class ClassDefinition
     /// final value -- built once the user has ordered an accepted Status proposal. Reaches
     /// the Workflow stage in the emitted validator.</summary>
     public List<IValidationRule> WorkflowRules { get; set; } = [];
+
+    /// <summary>
+    /// Sets of properties whose values no two records may share in COMBINATION — a composite key
+    /// or a unique index over several columns the source declared, such as an invoice line's
+    /// invoice and line number. Reaches the Entity stage in the emitted validator.
+    /// </summary>
+    public List<IReadOnlyList<string>> UniqueTogether { get; set; } = [];
 }

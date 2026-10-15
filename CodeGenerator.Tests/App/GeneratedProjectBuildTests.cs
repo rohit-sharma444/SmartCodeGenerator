@@ -1419,6 +1419,87 @@ public class GeneratedProjectBuildTests
         }
     }
 
+    /// <summary>
+    /// An app built with no namespace prefix and edited by hand still builds after an add whose
+    /// current answers name a prefix and a company - and keeps every hand edit.
+    /// </summary>
+    /// <remarks>
+    /// The reported case: a Web API built piped, then added to interactively from a workspace
+    /// whose profile named ABCLtd, had Book.cs, AppDbContext.cs, Program.cs and the csproj
+    /// rewritten into ABCLtd.* (88 errors), and lost a HasIndex line, a MapGet and a method.
+    /// </remarks>
+    [TestMethod]
+    [TestCategory("Integration")]
+    [DataRow("webapi", PersistenceKind.Sqlite)]
+    [DataRow("blazor", PersistenceKind.Json)]
+    [DataRow("wpf", PersistenceKind.Json)]
+    public void AnAddUnderOtherAnswersKeepsTheAppBuildingAndItsHandEdits(
+        string targetKey, PersistenceKind persistence)
+    {
+        if (targetKey == "wpf" && !OperatingSystem.IsWindows())
+            Assert.Inconclusive("The wpf target needs the Windows desktop targeting pack.");
+
+        Assert.IsTrue(TargetScaffolders.TryResolve(targetKey, out var target));
+
+        var workspace = Path.Combine(@"C:\cg-t", Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(workspace);
+
+        try
+        {
+            var first = new AppScaffolder().Scaffold(
+                ScaffoldRequest.For(AddModel("Book", "Member"), "Lib", workspace, target)
+                    with { Persistence = persistence });
+
+            Assert.IsTrue(first.Success, "scaffold failed: " + first.Message);
+
+            var folder = first.ProjectPath;
+            var csprojPath = GeneratedProjectPath.CsprojPath(workspace, "Lib", target);
+            var book = Path.Combine(folder, "Models", "Book.cs");
+            var bookText = File.ReadAllText(book);
+            var classLine = bookText.IndexOf("public class Book", StringComparison.Ordinal);
+            Assert.IsGreaterThanOrEqualTo(0, classLine, "fixture: no class line in Book.cs");
+            var closing = bookText.LastIndexOf('}', bookText.LastIndexOf('}') - 1);
+            bookText = bookText.Insert(closing, "    public string Label() => \"HAND\";\n    ");
+            File.WriteAllText(book, bookText);
+
+            var seed = Path.Combine(folder, "Data", "SeedData.cs");
+            File.WriteAllText(seed, "// HAND: seed\n" + File.ReadAllText(seed));
+
+            var csproj = File.ReadAllBytes(csprojPath);
+
+            var added = AppScaffolding.Incremental.IncrementalScaffolder.Add(
+                ScaffoldRequest.For(AddModel("Book", "Member", "Author"), "Lib", workspace, target)
+                    with
+                    {
+                        Persistence = persistence,
+                        Customization = AppCustomization.Default with
+                        {
+                            NamespacePrefix = "ABCLtd", Company = "ABC Ltd.", Logging = true
+                        },
+                    },
+                ["Author"]);
+
+            Assert.IsTrue(added.Success, "add failed: " + added.Message);
+            Assert.IsEmpty(added.NotMerged, string.Join(", ", added.NotMerged.Select(n => n.Path)));
+
+            Assert.AreEqual(bookText, File.ReadAllText(book), "Book.cs was rewritten");
+            StringAssert.Contains(File.ReadAllText(seed), "// HAND: seed");
+            StringAssert.Contains(File.ReadAllText(seed), "Seed<Author>");
+            CollectionAssert.AreEqual(csproj, File.ReadAllBytes(csprojPath), "csproj rewritten");
+
+            foreach (var file in added.Written)
+                Assert.DoesNotContain("ABCLtd", File.ReadAllText(file), file);
+
+            var (exit, output) = RunDotNet($"build \"{first.ProjectPath}\" -c Release");
+
+            Assert.AreEqual(0, exit, $"{targetKey} did not build after the add:\n{output}");
+        }
+        finally
+        {
+            TryDeleteDirectory(workspace);
+        }
+    }
+
     /// <summary>A model of plain masters, for the add tests.</summary>
     private static CandidateDomainModel AddModel(params string[] names)
     {

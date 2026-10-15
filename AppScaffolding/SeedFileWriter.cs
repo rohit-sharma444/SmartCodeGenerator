@@ -117,13 +117,16 @@ public static class SeedFileWriter
                     if ((!rows[index].TryGetValue(property.Name, out var raw)
                          && !(renamedKeys.TryGetValue(property.Name, out var oldName)
                               && rows[index].TryGetValue(oldName, out raw)))
-                        || string.IsNullOrWhiteSpace(raw))
+                        || SeedText(property, raw) is not { } value)
+                    {
+                        WriteMissing(writer, property);
                         continue;
-
-                    var value = raw.Trim();
+                    }
 
                     if (!Write(writer, property, value))
                     {
+                        WriteMissing(writer, property);
+
                         misses[property.Name] = misses.TryGetValue(property.Name, out var miss)
                             ? (miss.Count + 1, miss.First)
                             : (1, value);
@@ -145,7 +148,94 @@ public static class SeedFileWriter
                     + $"\"{miss.First}\"");
         }
 
+        NoteDroppedOffsets(definition, rows, renamedKeys, skipped);
+
         return System.Text.Encoding.UTF8.GetString(stream.ToArray());
+    }
+
+    /// <summary>
+    /// One sentence per DateTime field whose source values named a UTC offset, which the seed
+    /// leaves out (see <see cref="Write"/>): how many, and the first, as the source wrote it.
+    /// </summary>
+    private static void NoteDroppedOffsets(
+        ClassDefinition definition,
+        IReadOnlyList<IReadOnlyDictionary<string, string?>> rows,
+        IReadOnlyDictionary<string, string> renamedKeys,
+        List<string> notes)
+    {
+        foreach (var property in definition.Properties)
+        {
+            if (DomainModelMapper.BaseType(property.Type) != "DateTime")
+                continue;
+
+            var count = 0;
+            string? first = null;
+
+            foreach (var row in rows)
+            {
+                if ((row.TryGetValue(property.Name, out var raw)
+                     || (renamedKeys.TryGetValue(property.Name, out var oldName)
+                         && row.TryGetValue(oldName, out raw)))
+                    && raw is not null
+                    && ImportedValues.TryDateTimeOffset(raw.Trim(), out _))
+                {
+                    count++;
+                    first ??= raw.Trim();
+                }
+            }
+
+            if (count > 0)
+                notes.Add(
+                    $"{definition.Name}.{property.Name}: {count} value(s) named a UTC offset, which a "
+                    + "DateTime cannot hold; each keeps the date and time the source shows, without its "
+                    + $"offset, the first being \"{first}\"");
+        }
+    }
+
+    /// <summary>
+    /// The text <paramref name="property"/>'s value is written from, or null for a missing one.
+    /// </summary>
+    /// <remarks>
+    /// A string from a source that DECLARED its type (SQL Server, the one source that does) is
+    /// the value as stored: its leading and trailing spaces are the user's data, and a value of
+    /// spaces alone is not a missing one. Only a fixed-width char/nchar loses its trailing spaces,
+    /// which are padding the database adds and ignores when it compares. Everything else is
+    /// read from text a person typed into a file, and is trimmed as it always was.
+    /// </remarks>
+    private static string? SeedText(PropertyDefinition property, string? raw)
+    {
+        if (raw is null)
+            return null;
+
+        if (DomainModelMapper.BaseType(property.Type) == "string" && property.Facts?.DeclaredType is { } declared)
+        {
+            return declared.ToLowerInvariant() is "char" or "nchar"
+                ? raw.TrimEnd(' ')
+                : raw;
+        }
+
+        return string.IsNullOrWhiteSpace(raw) ? null : raw.Trim();
+    }
+
+    /// <summary>
+    /// Writes the value a missing one loads as without a declared DEFAULT, when leaving it out
+    /// would load something else: a property with a DEFAULT starts every new instance at it, so
+    /// a row the source stored NULL in would have loaded as that default instead.
+    /// </summary>
+    /// <remarks>
+    /// Null for a nullable property; an empty string for a string, which is what a missing text
+    /// loads as everywhere else (a null there would break a SQLite store's NOT NULL column). Any
+    /// other property still leaves a missing value out, as it always has.
+    /// </remarks>
+    private static void WriteMissing(Utf8JsonWriter writer, PropertyDefinition property)
+    {
+        if (property.Initializer is null)
+            return;
+
+        if (DomainModelMapper.IsNullable(property.Type))
+            writer.WriteNull(property.Name);
+        else if (property.Type == "string")
+            writer.WriteString(property.Name, string.Empty);
     }
 
     /// <summary>The five types the model can carry. Anything else is a navigation property.</summary>
@@ -188,15 +278,13 @@ public static class SeedFileWriter
             case "DateTime":
                 if (ImportedValues.TryDateTimeOffset(raw, out var withZone))
                 {
-                    // Written by hand, not the DateTimeOffset overload: that one renders a zero
-                    // offset as "+00:00", where "Z" is what the source itself wrote.
-                    var offset = withZone.Offset == TimeSpan.Zero
-                        ? "Z"
-                        : withZone.ToString("zzz", CultureInfo.InvariantCulture);
+                    // The wall-clock time the source shows, WITHOUT its offset. A DateTime cannot
+                    // hold one: written with it, System.Text.Json loaded the value as the RUNNING
+                    // machine's local time (08:00-08:00 showed as 21:30 in India), and a re-save
+                    // lost the offset anyway. NoteDroppedOffsets says so, per field.
                     writer.WriteString(
                         property.Name,
-                        withZone.ToString("yyyy-MM-ddTHH:mm:ss.FFFFFFF", CultureInfo.InvariantCulture)
-                            + offset);
+                        withZone.DateTime.ToString("yyyy-MM-ddTHH:mm:ss.FFFFFFF", CultureInfo.InvariantCulture));
                     return true;
                 }
                 if (!ImportedValues.TryDateTime(raw, out var moment))

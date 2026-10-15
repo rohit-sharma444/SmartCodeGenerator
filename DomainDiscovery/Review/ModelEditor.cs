@@ -230,6 +230,21 @@ public static class ModelEditor
         var former = field.Name;
         field.Name = normalized;
 
+        // A relationship read from data names the field holding it; renamed, the field would be
+        // a plain number and the relationship a navigation with no key.
+        for (var i = 0; i < owner.Relationships.Count; i++)
+        {
+            var relationship = owner.Relationships[i];
+
+            if (string.Equals(relationship.ForeignKey, former, StringComparison.OrdinalIgnoreCase))
+                owner.Relationships[i] = new CandidateRelationship
+                {
+                    Target = relationship.Target,
+                    Role = relationship.Role,
+                    ForeignKey = normalized
+                };
+        }
+
         for (var i = 0; i < owner.Proposals.Count; i++)
         {
             if (Names(owner.Proposals[i], former)
@@ -443,10 +458,15 @@ public static class ModelEditor
                 entity.Relationships[i] = new CandidateRelationship
                 {
                     Target = renamed,
-                    Role = relationship.Role
+                    Role = relationship.Role,
+                    ForeignKey = relationship.ForeignKey
                 };
 
-                if (FindField(entity, $"{former}Id") is { } key)
+                // Only a key named for the target moves with it: a role's key (PaidById) says
+                // nothing about the class's name. TryRename carries the relationship's key along.
+                if ((relationship.ForeignKey is null
+                     || string.Equals(relationship.ForeignKey, $"{former}Id", StringComparison.OrdinalIgnoreCase))
+                    && FindField(entity, $"{former}Id") is { } key)
                     TryRename(entity, key, $"{renamed}Id");
             }
         }

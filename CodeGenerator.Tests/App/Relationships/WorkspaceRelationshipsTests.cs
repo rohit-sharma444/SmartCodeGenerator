@@ -1,4 +1,5 @@
 using CodeGenerator.App.Relationships;
+using CodeGenerator.Web.Workflow;
 
 namespace CodeGenerator.Tests.App.Relationships;
 
@@ -79,6 +80,44 @@ public class WorkspaceRelationshipsTests
         Write(root, "Customer.cs", "namespace Shop; public class Customer { public int Id { get; set; } }");
 
         Assert.IsEmpty(WorkspaceRelationships.Of(root).SelectMany(s => s.Targets).ToList());
+    }
+
+    [TestMethod]
+    public void Keys_named_for_a_role_are_read_one_by_one()
+    {
+        // The shape an import from a database writes: two keys from Payment to Staff, and Staff's
+        // own ManagerId. TargetsOf sees none of them; the validators, the delete refusal and the
+        // seeder act on all three.
+        var root = NewRoot();
+        Write(root, "Payment.cs", """
+            namespace Shop;
+            public class Payment
+            {
+                public int Id { get; set; }
+                public int PaidById { get; set; }
+                public Staff PaidBy { get; set; }
+                public int ApprovedById { get; set; }
+                public Staff ApprovedBy { get; set; }
+            }
+            """);
+        Write(root, "Staff.cs", """
+            namespace Shop;
+            public class Staff
+            {
+                public int Id { get; set; }
+                public int ManagerId { get; set; }
+                public Staff Manager { get; set; }
+            }
+            """);
+
+        var sources = WorkspaceRelationships.Of(root);
+
+        CollectionAssert.AreEquivalent(
+            new[] { new RelationshipLink("PaidById", "Staff"), new RelationshipLink("ApprovedById", "Staff") },
+            sources.Single(s => s.Name == "Payment").Keys.ToList());
+        CollectionAssert.AreEqual(
+            new[] { new RelationshipLink("ManagerId", "Staff") },
+            sources.Single(s => s.Name == "Staff").Keys.ToList());
     }
 
     [TestMethod]

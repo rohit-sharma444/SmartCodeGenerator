@@ -247,7 +247,7 @@ public sealed class ProjectTree
         List<TreeMember> found =
         [
             .. EntityExtractor
-                .ExtractProperties(@class.File)
+                .ExtractProperties(@class.File, @class.Name)
                 .Select(p => new TreeMember(p.Name, p.Type, IsMethod: false)),
 
             .. ClassMethodLister

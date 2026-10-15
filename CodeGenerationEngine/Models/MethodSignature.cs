@@ -1,9 +1,13 @@
 namespace CodeGenerationEngine.Models;
 
-/// <summary>One public method of a class: what it is called, and what it returns.</summary>
+/// <summary>One public method of a class: what it is called, what it returns, and its parameters
+/// as written between the brackets.</summary>
 /// <remarks>
-/// Parameters are deliberately absent. The parser this comes from reads as far as the opening
-/// bracket and no further, and a record with an empty parameter list would invite a caller to
-/// draw <c>Save()</c> for a method that takes three arguments.
+/// <c>show methods</c> printed <c>void RaiseLimit()</c> for <c>RaiseLimit(decimal amount)</c>,
+/// because the parser read only as far as the opening bracket.
 /// </remarks>
-public sealed record MethodSignature(string Name, string ReturnType);
+public sealed record MethodSignature(string Name, string ReturnType, string Parameters = "")
+{
+    /// <summary><c>void RaiseLimit(decimal amount)</c>.</summary>
+    public string Display => $"{ReturnType} {Name}({Parameters})";
+}

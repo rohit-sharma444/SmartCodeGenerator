@@ -22,11 +22,23 @@ public static class EntityRuleProposals
     private const int MaxNumericColumnsForCalculationScan = 12;
 
     public static IReadOnlyList<EntityRuleProposal> For(CandidateEntity entity, TabularTable table)
+        => For(entity, table, new HashSet<string>());
+
+    /// <inheritdoc cref="For(CandidateEntity, TabularTable)"/>
+    /// <param name="linkFields">
+    /// Fields holding links to other rows. Their values are the source's keys, renumbered on
+    /// import, so "ManagerId is never more than Salary" is a fact about numbers the app will not
+    /// hold, and they take part in no rule.
+    /// </param>
+    public static IReadOnlyList<EntityRuleProposal> For(
+        CandidateEntity entity, TabularTable table, IReadOnlySet<string> linkFields)
     {
         var proposals = new List<EntityRuleProposal>();
 
         var dateFields = entity.Fields.Where(f => f.Type == "DateTime").ToList();
-        var numericFields = entity.Fields.Where(f => f.Type is "int" or "decimal").ToList();
+        var numericFields = entity.Fields
+            .Where(f => f.Type is "int" or "decimal" && !linkFields.Contains(f.Name))
+            .ToList();
 
         // The raw source column for each field, not the normalized field name: a source header
         // that was renamed off its class name (see DataModelBuilder.ResolveColumns) never appears
@@ -199,7 +211,19 @@ public static class EntityRuleProposals
             var l = (decimal)AsLoaded(table.Value(row, leftField.Column), leftField.Type, out var lPresent);
             var r = (decimal)AsLoaded(table.Value(row, rightField.Column), rightField.Type, out var rPresent);
 
-            if (System.Math.Abs(t - combine(l, r)) > 0.0001m)
+            // A result past decimal's range is a counter-example, not a crash: the generated app
+            // could not compute it either. SQL money and bigint at their limits get here.
+            decimal difference;
+            try
+            {
+                difference = System.Math.Abs(t - combine(l, r));
+            }
+            catch (System.OverflowException)
+            {
+                return false;
+            }
+
+            if (difference > 0.0001m)
                 return false;
 
             if (tPresent && lPresent && rPresent)

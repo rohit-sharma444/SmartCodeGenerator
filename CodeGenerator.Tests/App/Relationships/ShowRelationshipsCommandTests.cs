@@ -68,6 +68,25 @@ public class ShowRelationshipsCommandTests
     }
 
     [TestMethod]
+    public void A_key_named_for_a_role_is_named_beside_its_target()
+    {
+        var view = new RelationshipView("D:\\ws",
+        [
+            RelationshipSource.WithLinks("Payment",
+                [new("PaidById", "Staff"), new("ApprovedById", "Staff"), new("CurrencyId", "Currency")], []),
+            RelationshipSource.WithLinks("Staff", [new("ManagerId", "Staff")], []),
+            new RelationshipSource("Currency", [])
+        ]);
+
+        var lines = ShowRelationshipsCommand.Lines(view);
+        var all = string.Join("|", lines);
+
+        Assert.IsTrue(lines.Any(l => l.Contains("Payment -> Staff (PaidById), Staff (ApprovedById), Currency")), all);
+        Assert.IsTrue(lines.Any(l => l.Contains("Staff -> Staff (ManagerId)")), all);
+        Assert.IsFalse(lines.Any(l => l.Contains("Related to nothing")), all);
+    }
+
+    [TestMethod]
     public void A_workspace_with_no_relationships_at_all_says_so()
     {
         var view = new RelationshipView("D:\\ws",

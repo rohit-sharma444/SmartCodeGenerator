@@ -81,6 +81,26 @@ public class EntityRuleProposalsTests
     }
 
     [Fact]
+    public void Values_whose_product_overflows_decimal_block_the_proposal_and_do_not_throw()
+    {
+        // A bigint at its limit times SQL money at its limit: far past decimal.MaxValue.
+        var entity = new CandidateEntity { Name = "Typed" };
+        entity.Fields.Add(new CandidateField { Name = "Total", Type = "decimal" });
+        entity.Fields.Add(new CandidateField { Name = "Price", Type = "decimal" });
+        entity.Fields.Add(new CandidateField { Name = "Huge", Type = "decimal" });
+
+        var table = TableOf("Typed", ["Total", "Price", "Huge"],
+        [
+            ["1", "922337203685477.5807", "9223372036854775807"],
+            ["2", "-922337203685477.5808", "42"],
+        ]);
+
+        var proposals = EntityRuleProposals.For(entity, table);
+
+        Assert.DoesNotContain(proposals, p => p.Kind == EntityRuleProposalKind.Calculation);
+    }
+
+    [Fact]
     public void A_blank_start_is_judged_as_the_app_loads_it_and_holds()
     {
         var entity = new CandidateEntity { Name = "Booking" };

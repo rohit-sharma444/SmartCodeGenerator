@@ -27,5 +27,12 @@ public class PropertyDefinition
     /// can be applied where every other rule is recorded.</summary>
     public List<RuleProposal> Proposals { get; set; } = new();
 
+    /// <summary>
+    /// The C# expression a new instance starts this property at (<c>true</c>,
+    /// <c>"Active"</c>, <c>global::System.DateTime.Now</c>), or null for the type's own default.
+    /// Set from a DEFAULT the source declared.
+    /// </summary>
+    public string? Initializer { get; set; }
+
     public override string ToString() => $"{Type} {Name}";
 }

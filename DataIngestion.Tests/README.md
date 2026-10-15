@@ -36,7 +36,7 @@ over `TextReader`/`TextWriter` rather than the console.
 | `Normalization/RepeatingGroupTests.cs` | Finding 1, positive and negative, plus its evidence. Also holds the shared `Table(...)` fixture helper the other normalization tests use. |
 | `Normalization/NonAtomicValueTests.cs` | Finding 2, including the recurrence guard that keeps prose out and the minority-separator guard. |
 | `Normalization/FunctionalDependencyTests.cs` | Finding 3: the two-dependent case, the shared-prefix second signal, the near-unique-column exclusion, one contradicting row, and the too-few-rows note. |
-| `Normalization/DerivedColumnTests.cs` | Finding 4: product and sum, one row that does not add up, the all-zero coincidence guard. |
+| `Normalization/DerivedColumnTests.cs` | Finding 4, now a note: product and sum, the column kept when every finding is applied, one row that does not add up, the all-zero coincidence guard. |
 | `Normalization/NormalizationPlanTests.cs` | Applying each finding kind, the FK rewrite, `k` changing nothing, only the chosen subset applying, and a child name suffixed rather than colliding. |
 | `Normalization/NormalizationDecisionTests.cs` | The audit trail: a reason constant per finding kind, evidence naming the columns and the file, and `k` recording nothing. |
 | `Normalization/NormalizationPromptTests.cs` | `n` / `n <ids>` / `k` / `d <n>`, bad input re-asking, and no prompt at all when there is nothing to decide. |

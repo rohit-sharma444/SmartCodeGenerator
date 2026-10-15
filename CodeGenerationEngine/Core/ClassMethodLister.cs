@@ -31,8 +31,8 @@ public static class ClassMethodLister
 
         return
         [
-            .. Regex.Matches(code, @"public\s+([\w<>]+)\s+(\w+)\s*\(")
-                .Select(m => new MethodSignature(m.Groups[2].Value, m.Groups[1].Value)),
+            .. Regex.Matches(code, @"public\s+([\w<>]+)\s+(\w+)\s*\(([^)]*)")
+                .Select(m => new MethodSignature(m.Groups[2].Value, m.Groups[1].Value, Collapse(m.Groups[3].Value))),
             .. InterfaceMethodsWithoutModifier(code)
         ];
     }
@@ -49,8 +49,13 @@ public static class ClassMethodLister
             .OfType<Microsoft.CodeAnalysis.CSharp.Syntax.InterfaceDeclarationSyntax>()
             .SelectMany(i => i.Members.OfType<Microsoft.CodeAnalysis.CSharp.Syntax.MethodDeclarationSyntax>())
             .Where(m => m.Modifiers.Count == 0)
-            .Select(m => new MethodSignature(m.Identifier.Text, m.ReturnType.ToString()));
+            .Select(m => new MethodSignature(
+                m.Identifier.Text, m.ReturnType.ToString(), Collapse(m.ParameterList.Parameters.ToString())));
     }
+
+    // A parameter list written over several lines, shown on one.
+    private static string Collapse(string parameters) =>
+        Regex.Replace(parameters.Trim(), @"\s+", " ");
 
     /// <summary>
     /// The file a class lives in, or null.
@@ -99,7 +104,7 @@ public static class ClassMethodLister
 
         foreach (var method in methods)
         {
-            Console.WriteLine($"{method.ReturnType} {method.Name}()");
+            Console.WriteLine(method.Display);
         }
         return true;
     }

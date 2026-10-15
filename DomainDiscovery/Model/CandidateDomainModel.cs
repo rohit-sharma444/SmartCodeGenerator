@@ -74,6 +74,19 @@ public sealed class CandidateRelationship
 {
     public required string Target { get; init; }
     public required string Role { get; init; }
+
+    /// <summary>
+    /// The field on the referencing entity that holds this link, when it is known; null for a
+    /// relationship discovery inferred, which is always held in <c>&lt;Target&gt;Id</c>.
+    /// </summary>
+    /// <remarks>
+    /// Read from a data source, a link can have a name of its own: a payment's <c>PaidById</c> and
+    /// <c>ApprovedById</c> both point at Staff, and a member of staff's <c>ManagerId</c> points at
+    /// another. One relationship per such field, each generated as its own navigation
+    /// (<c>PaidBy</c>, <c>ApprovedBy</c>, <c>Manager</c>) - one per target collapsed them into a
+    /// single <c>Staff</c> nothing paired with either key.
+    /// </remarks>
+    public string? ForeignKey { get; init; }
 }
 
 public sealed class CandidateEntity

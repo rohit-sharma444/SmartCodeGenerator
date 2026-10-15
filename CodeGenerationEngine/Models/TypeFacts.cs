@@ -48,10 +48,47 @@ public sealed record TypeFacts
 
     /// <summary>
     /// Whether the source's own rows hold a MISSING value in this column -- an empty CSV cell, a
-    /// JSON null, a SQL NULL. A number, flag or date property with this set is emitted NULLABLE
+    /// JSON null, a SQL NULL -- or whether the source DECLARES the column may hold one (a SQL
+    /// column that is not NOT NULL), whatever the rows read happened to hold. A number, flag or
+    /// date property with this set is emitted NULLABLE
     /// (<c>int?</c>, <c>DateTime?</c>), so the missing value stays missing: a non-nullable one
     /// silently became 0, False or 01-Jan-0001, which looks like real data. Unlike a NOT NULL
     /// fact, this makes the generated app more permissive, never stricter.
     /// </summary>
     public bool HasMissingValues { get; init; }
+
+    /// <summary>
+    /// The value the source's DEFAULT gives a new row, as invariant text ("1", "Active", "-2.5");
+    /// null when it declares none, or one <see cref="DefaultFunction"/> names instead.
+    /// </summary>
+    public string? DefaultValue { get; init; }
+
+    /// <summary>
+    /// The function the source's DEFAULT calls, when it is one a generated app can repeat: "now",
+    /// "utcnow" or "newguid". Null otherwise.
+    /// </summary>
+    public string? DefaultFunction { get; init; }
+
+    /// <summary>The lowest value a CHECK constraint allows, inclusive; null when none says.</summary>
+    public decimal? MinValue { get; init; }
+
+    /// <summary>The highest value a CHECK constraint allows, inclusive; null when none says.</summary>
+    public decimal? MaxValue { get; init; }
+
+    /// <summary>The only values a CHECK constraint allows (<c>Status IN ('Active', 'Retired')</c>);
+    /// null when none lists them.</summary>
+    public IReadOnlyList<string>? AllowedValues { get; init; }
+
+    /// <summary>
+    /// The primary keys, UNIQUE constraints and unique indexes this column is part of; null when
+    /// it is in none. A key over one column makes its values unique; a key over several makes
+    /// only their COMBINATION unique, and is enforced only when every one of its columns is
+    /// still a property.
+    /// </summary>
+    public IReadOnlyList<UniqueKey>? UniqueKeys { get; init; }
 }
+
+/// <summary>One declared key a column is part of.</summary>
+/// <param name="Name">The constraint's or index's name, which the columns of one key share.</param>
+/// <param name="Columns">How many columns the key covers.</param>
+public sealed record UniqueKey(string Name, int Columns);

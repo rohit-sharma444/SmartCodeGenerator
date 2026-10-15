@@ -39,7 +39,7 @@ public static class RuleProposals
         ("web address", @"^(?:https?://)?[^\s.]+(?:\.[^\s.]+)+$"),
         ("postcode", @"^[A-Za-z]{1,2}[0-9][0-9A-Za-z]?\s*[0-9][A-Za-z]{2}$"),
         ("GUID", @"^\{[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}\}$|^[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$|^[0-9a-fA-F]{32}$"),
-        ("IP address", @"^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$|^::$|^(?=[0-9A-Fa-f:]*[0-9A-Fa-f])(?!.*:::)[0-9A-Fa-f]{0,4}(?::[0-9A-Fa-f]{0,4}){2,7}$")
+        ("IP address", @"^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$|^::$|^[0-9A-Fa-f]{1,4}(?::[0-9A-Fa-f]{1,4}){7}$|^(?=.*::)(?!.*::.*::)(?!.*:::)[0-9A-Fa-f]{0,4}(?::[0-9A-Fa-f]{0,4}){2,7}$")
     ];
 
     /// <summary>
@@ -144,8 +144,16 @@ public static class RuleProposals
         {
             var regex = new System.Text.RegularExpressions.Regex(format.Pattern);
 
-            if (scan.DistinctValues.All(v => regex.IsMatch(v)))
-                return format;
+            if (!scan.DistinctValues.All(v => regex.IsMatch(v)))
+                continue;
+
+            // The pattern takes a GUID's bare 32-hex form, so 32 digits match it too. A real GUID
+            // is all digits about once in three million; a column of such values is a number
+            // written long, and "every one is a valid GUID" would be false.
+            if (format.Name == "GUID" && scan.DistinctValues.Any(v => v.All(char.IsAsciiDigit)))
+                continue;
+
+            return format;
         }
 
         return null;

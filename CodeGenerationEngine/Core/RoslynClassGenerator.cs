@@ -127,7 +127,8 @@ public static class RoslynClassGenerator
                     AccessorDeclaration(SyntaxKind.SetAccessorDeclaration)
                         .WithSemicolonToken(Token(SyntaxKind.SemicolonToken)));
 
-        if (InitializerFor(property.Type) is { } initializer)
+        if ((property.Initializer is { } declared ? ParseExpression(declared) : InitializerFor(property.Type))
+            is { } initializer)
         {
             propertyDeclaration = propertyDeclaration
                 .WithInitializer(EqualsValueClause(initializer))

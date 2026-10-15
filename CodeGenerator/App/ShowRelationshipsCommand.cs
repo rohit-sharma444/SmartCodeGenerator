@@ -84,8 +84,12 @@ internal sealed class ShowRelationshipsCommand
     {
         var lines = new List<string>();
 
+        // A key named for a role is said beside its target: "Payment -> Staff (PaidById), Staff
+        // (ApprovedById)" rather than "Staff, Staff", and a member of staff's own ManagerId reads
+        // as "Staff -> Staff (ManagerId)".
         foreach (var source in view.Sources.Where(s => s.Targets.Count > 0))
-            lines.Add($"  {source.Name} -> {string.Join(", ", source.Targets)}");
+            lines.Add($"  {source.Name} -> {string.Join(", ", source.Keys.Select(
+                k => k.IsRole ? $"{k.Target} ({k.Field})" : k.Target))}");
 
         var alone = view.Sources.Where(s => s.Targets.Count == 0)
             .Select(s => s.Name)

@@ -46,6 +46,47 @@ public sealed class ClassDeleteRestoreTests
     private const string CustomerCode = "namespace App { public partial class Customer { public string Name { get; set; } = \"\"; } }";
     private const string CustomerValidation = "namespace App { public partial class Customer { public bool Validate() => Name.Length > 0; } }";
 
+    /// <summary>The file is moved whole, so the enum and the record struct beside the class went
+    /// with it, and the message named only the class.</summary>
+    [TestMethod]
+    public void Delete_refuses_a_class_whose_file_declares_other_types_and_moves_nothing()
+    {
+        Write("App/App.csproj", Csproj);
+        var code = """
+            namespace App;
+            public class Customer
+            {
+                public CustomerStatus Status { get; set; }
+                public class Address { }
+            }
+            public enum CustomerStatus { Active }
+            public readonly record struct Money(decimal Amount);
+            """;
+        var file = Write("App/Customer.cs", code);
+
+        var (deleted, message) = ClassDeletionService.DeleteClass(_workspace, "Customer");
+
+        Assert.IsFalse(deleted, message);
+        Assert.AreEqual(code, File.ReadAllText(file));
+        StringAssert.Contains(message, "enum CustomerStatus");
+        StringAssert.Contains(message, "record struct Money");
+        Assert.DoesNotContain("Address", message);
+        Assert.IsFalse(Directory.Exists(PathOf("App/DeletedClasses")));
+    }
+
+    /// <summary>A class with only a nested type is still deleted: the nested type is part of it.</summary>
+    [TestMethod]
+    public void Delete_takes_a_class_with_a_nested_type()
+    {
+        Write("App/App.csproj", Csproj);
+        Write("App/Customer.cs", "namespace App { public class Customer { public class Address { } } }");
+
+        var (deleted, message) = ClassDeletionService.DeleteClass(_workspace, "Customer");
+
+        Assert.IsTrue(deleted, message);
+        Assert.IsFalse(File.Exists(PathOf("App/Customer.cs")));
+    }
+
     [TestMethod]
     // delete class left Customer.Validation.cs behind, a partial of a class that no longer exists,
     // and list classes showed it as a class called Customer.Validation.

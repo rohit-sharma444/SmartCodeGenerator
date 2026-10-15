@@ -48,10 +48,21 @@ public static class ClassPropertyService
                 return false;
             }
 
-            if (!TypeResolution.Resolves(workspaceRoot, part.File, part.Node, type, out message))
+            if (!TypeResolution.Resolves(workspaceRoot, part.File, part.Node, type, out message, out var bound))
                 return false;
 
-            var propertyCode = $@"public {propertyType} {propertyName} {{ get; set; }}";
+            // A readonly struct cannot have a set accessor (CS8341); init is what it allows.
+            var setter = part.Node.Modifiers.Any(Microsoft.CodeAnalysis.CSharp.SyntaxKind.ReadOnlyKeyword) ? "init" : "set";
+
+            // With nullable reference types on, a string or a list with no initial value is
+            // CS8618: it starts as null.
+            var initializer = PropertyInitializers.CanHaveInitializer(part.Node)
+                && PropertyInitializers.NullableOn(workspaceRoot, part.File, part.Root)
+                && PropertyInitializers.SafeFor(type, bound) is { } value
+                    ? $" = {value};"
+                    : string.Empty;
+
+            var propertyCode = $@"public {propertyType} {propertyName} {{ get; {setter}; }}{initializer}";
 
             if (!ClassMemberEditor.TryAddMember(part.File, className, propertyCode, out var error))
             {

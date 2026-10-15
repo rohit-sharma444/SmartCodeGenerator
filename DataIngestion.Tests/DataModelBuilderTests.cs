@@ -141,7 +141,7 @@ public class DataModelBuilderTests
     [Fact]
     public void AColumnNameThatCannotBeAnIdentifierIsDroppedWithAReason()
     {
-        var model = DataModelBuilder.Build([Table("Orders", ("2nd line", "string"), ("Ref", "string"))]);
+        var model = DataModelBuilder.Build([Table("Orders", ("!!!", "string"), ("Ref", "string"))]);
 
         Assert.Equal(new[] { "Ref" }, Assert.Single(model.Entities).Fields.Select(f => f.Name));
         Assert.Contains(model.Decisions,

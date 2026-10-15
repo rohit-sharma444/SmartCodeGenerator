@@ -101,4 +101,31 @@ public class AddReportTests
 
         Assert.DoesNotContain(Folder, text);
     }
+
+    /// <summary>A file the add left as it was names the version beside it and the exact lines
+    /// to copy in, so finishing the add needs no diff tool.</summary>
+    [TestMethod]
+    public void A_file_left_as_it_was_says_what_to_add()
+    {
+        var result = new IncrementalResult(
+            true, [Path.Combine(Folder, "Models", "Supplier.cs")], 41, "Added 1 class(es).")
+        {
+            NotMerged =
+            [
+                new SetAside(
+                    "Program.cs", "Program.cs.new",
+                    [new LineChange([], ["MapEntity<Supplier>(app, \"supplier\");"])]),
+            ],
+        };
+
+        var text = string.Join("\n", AddReport.Lines(result, Folder));
+
+        StringAssert.Contains(text, "Program.cs.new");
+        StringAssert.Contains(text, "+ MapEntity<Supplier>(app, \"supplier\");");
+
+        // A file can differ because the reviewed model is not the one the app was built from, so
+        // the report does not claim the user changed it.
+        Assert.DoesNotContain("changes of yours", text);
+        StringAssert.Contains(text, "generated from a different model");
+    }
 }

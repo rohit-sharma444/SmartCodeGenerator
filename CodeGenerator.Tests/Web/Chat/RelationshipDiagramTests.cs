@@ -30,6 +30,27 @@ public class RelationshipDiagramTests
     }
 
     [TestMethod]
+    public void A_role_key_is_named_on_its_line_and_a_self_loop_ends_on_the_right()
+    {
+        using var context = new BunitContext();
+
+        var page = context.Render<RelationshipDiagram>(p => p.Add(
+            c => c.Sources,
+            [RelationshipSource.WithLinks("Staff", [new("ManagerId", "Staff")], ["Id", "ManagerId"])]));
+
+        var edge = page.Find(".rel-edge");
+
+        StringAssert.Contains(edge.QuerySelector("title")!.TextContent, "(ManagerId)");
+        StringAssert.Contains(page.Find("svg.rel-svg").GetAttribute("aria-label")!, "Staff to Staff (ManagerId)");
+
+        // The bar sits outside the box, where the loop comes back in: past its right side.
+        var bar = edge.QuerySelectorAll(".rel-edge-end")[1].GetAttribute("d")!;
+        var barX = int.Parse(bar.Split(' ')[1]);
+
+        Assert.IsGreaterThan(RelationshipLayout.BoxWidth, barX, bar);
+    }
+
+    [TestMethod]
     public void A_class_related_to_nothing_is_drawn_apart_and_named_in_words()
     {
         using var context = new BunitContext();

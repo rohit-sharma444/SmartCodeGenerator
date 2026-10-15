@@ -160,18 +160,65 @@ public class ImportedKeyTests
         Assert.Equal("ORD-B", orderOf["BOLT"]);
     }
 
-    /// <summary>A key held as text is the user's data, not a row number, and is written exactly as
-    /// it was read.</summary>
+    /// <summary>
+    /// A nested child that carries its parent's key itself ("orderId": 1001) as well as being
+    /// nested under it. The reader made up an OrderId of row numbers and then added the child's
+    /// own orderId as a second column of the same name; the row-number one was found first for
+    /// the field and the source-key one was then "rewritten" through the parent's ids, which
+    /// cleared every link and blamed the user's data. With small ids in another order it would
+    /// have linked each line to the wrong order.
+    /// </summary>
+    [Theory]
+    [InlineData("1001", "1002")]
+    [InlineData("2", "1")]
+    public void A_json_child_carrying_its_parents_key_links_to_the_parent_it_is_nested_in(
+        string firstId, string secondId)
+    {
+        var tables = JsonTableReader.ReadJson(
+            $$"""
+            [
+              { "orderId": {{firstId}}, "ref": "ORD-A",
+                "lines": [ { "orderId": {{firstId}}, "sku": "NUT" }, { "orderId": {{firstId}}, "sku": "PIN" } ] },
+              { "orderId": {{secondId}}, "ref": "ORD-B",
+                "lines": [ { "orderId": {{secondId}}, "sku": "BOLT" } ] }
+            ]
+            """,
+            "Orders", "orders.json");
+
+        var line = Assert.Single(tables, t => t.Name == "Line");
+        Assert.Single(line.Columns, c => string.Equals(c.Name, "OrderId", StringComparison.OrdinalIgnoreCase));
+
+        var seeds = Seeds(tables);
+
+        var refById = seeds["Order"].ToDictionary(
+            r => r.GetProperty("Id").GetInt32(), r => r.GetProperty("Ref").GetString());
+
+        var orderOf = seeds["Line"].ToDictionary(
+            r => r.GetProperty("Sku").GetString()!,
+            r => r.TryGetProperty("OrderId", out var id) && refById.TryGetValue(id.GetInt32(), out var o)
+                ? o
+                : null);
+
+        Assert.Equal("ORD-A", orderOf["NUT"]);
+        Assert.Equal("ORD-A", orderOf["PIN"]);
+        Assert.Equal("ORD-B", orderOf["BOLT"]);
+        Assert.DoesNotContain(TabularImport.ToImportedData(tables).Notes, n => n.Contains("could not be linked"));
+    }
+
+    /// <summary>A key held as text that names a row of a text-keyed table is a link to that row:
+    /// the customer keeps its code in a field, and the order holds the customer's seeded Id.
+    /// (A text column naming no row is left as it was read: see SourceKeyTests.)</summary>
     [Fact]
-    public void A_text_foreign_key_is_left_as_it_was_read()
+    public void A_text_foreign_key_naming_a_row_is_linked_and_the_code_is_kept()
     {
         var customers = Table("Customers", [("CustomerId", "string"), ("Name", "string")],
-            ["ALFKI", "Ada"]);
+            ["BONAP", "Bob"], ["ALFKI", "Ada"]);
         var orders = Table("Orders", [("CustomerId", "string"), ("Ref", "string")],
             ["ALFKI", "ORD-1"]);
 
-        var row = TabularImport.ToImportedData([customers, orders]).For("Order")[0];
+        var data = TabularImport.ToImportedData([customers, orders]);
 
-        Assert.Equal("ALFKI", row["CustomerId"]);
+        Assert.Equal("2", data.For("Order")[0]["CustomerId"]);
+        Assert.Equal(["BONAP", "ALFKI"], data.For("Customer").Select(r => r["CustomerCode"]));
     }
 }

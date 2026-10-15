@@ -53,6 +53,15 @@ public interface IEntityLookup
     /// </remarks>
     bool AnyOtherWith<TEntity>(string propertyName, object? value, int exceptId)
         where TEntity : class, new();
+
+    /// <summary>Whether any record of this type OTHER than <paramref name="exceptId"/> holds
+    /// all of these values for these properties together.</summary>
+    /// <remarks>
+    /// Has a body so a lookup written before it existed still compiles; such a lookup finds no
+    /// duplicate, as it always did.
+    /// </remarks>
+    bool AnyOtherWithAll<TEntity>(string[] propertyNames, object?[] values, int exceptId)
+        where TEntity : class, new() => false;
 }
 """;
 
@@ -119,6 +128,38 @@ public sealed class StoreEntityLookup : IEntityLookup
                 continue;
 
             if (Equals(property.GetValue(item), value))
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <inheritdoc />
+    public bool AnyOtherWithAll<TEntity>(string[] propertyNames, object?[] values, int exceptId)
+        where TEntity : class, new()
+    {
+        var properties = new PropertyInfo?[propertyNames.Length];
+
+        for (var i = 0; i < propertyNames.Length; i++)
+        {
+            properties[i] = typeof(TEntity).GetProperty(propertyNames[i],
+                BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
+
+            // As AnyOtherWith: a name that is not there finds nothing.
+            if (properties[i] is null)
+                return false;
+        }
+
+        foreach (var item in StoreFactory.Create<TEntity>().GetAll())
+        {
+            if (IdOf(item) == exceptId)
+                continue;
+
+            var same = true;
+            for (var i = 0; i < properties.Length && same; i++)
+                same = Equals(properties[i]!.GetValue(item), values[i]);
+
+            if (same)
                 return true;
         }
 
@@ -255,6 +296,17 @@ internal sealed class NullValidator<T> : IValidator<T>
             string.Equals(pair.Type, DomainModelMapper.BaseType(propertyType), StringComparison.Ordinal)
             && string.Equals(pair.Rule, ruleName, StringComparison.OrdinalIgnoreCase));
 
+    /// <summary>Whether <paramref name="key"/> must be set: as the source declared its column
+    /// when it declared one (NOT NULL: a link the database never let be empty, which the app must
+    /// not let be 0; nullable: a payment not yet approved, which a transaction's rule must not
+    /// refuse), else <paramref name="byKind"/>, the rule for the kind of class.</summary>
+    private static bool IsKeyRequired(ClassDefinition definition, string key, bool byKind)
+        => definition.Properties
+               .FirstOrDefault(p => string.Equals(p.Name, key, StringComparison.Ordinal))
+               ?.Facts?.IsNullable is { } nullable
+            ? !nullable
+            : byKind;
+
     /// <summary>
     /// Whether <paramref name="property"/> carries the required rule DomainModelMapper recorded.
     /// </summary>
@@ -280,6 +332,28 @@ internal sealed class NullValidator<T> : IValidator<T>
     /// </remarks>
     public static string Generated(
         string rootNamespace, ClassDefinition definition, IReadOnlyList<string> foreignKeyTargets,
+        bool referencesRequired,
+        IReadOnlyList<(string Entity, string Property)>? referencedBy = null,
+        IReadOnlyList<IValidationRule>? businessRules = null,
+        IReadOnlyList<IValidationRule>? workflowRules = null)
+        => GeneratedForLinks(
+            rootNamespace, definition,
+            [.. foreignKeyTargets.Select(t => new ForeignKeys.Link(t + "Id", t, t))],
+            referencesRequired, referencedBy, businessRules, workflowRules);
+
+    /// <inheritdoc cref="Generated(string, ClassDefinition, IReadOnlyList{string}, bool, IReadOnlyList{ValueTuple{string, string}}?, IReadOnlyList{IValidationRule}?, IReadOnlyList{IValidationRule}?)"/>
+    /// <param name="foreignKeys">
+    /// Every key the class holds (<see cref="ForeignKeys.LinksOf"/>), a role's as well as one
+    /// spelled for its target: a payment's <c>ApprovedById</c> must name a real member of staff
+    /// as surely as its <c>CustomerId</c> names a real customer.
+    /// </param>
+    /// <param name="referencesRequired">
+    /// Whether every key must be set - true for a transaction or a document line. A key whose
+    /// column the source declared NOT NULL is required whatever the class is, and one it declared
+    /// nullable is not.
+    /// </param>
+    public static string GeneratedForLinks(
+        string rootNamespace, ClassDefinition definition, IReadOnlyList<ForeignKeys.Link> foreignKeys,
         bool referencesRequired,
         IReadOnlyList<(string Entity, string Property)>? referencedBy = null,
         IReadOnlyList<IValidationRule>? businessRules = null,
@@ -339,21 +413,51 @@ internal sealed class NullValidator<T> : IValidator<T>
             entityBlocks.Add(Block(uniqueChecks));
         }
 
-        foreach (var target in foreignKeyTargets)
+        // A key over several columns: no two records share the whole combination, though each
+        // value alone may repeat. A blank text or a missing value is no collision, as above.
+        foreach (var group in definition.UniqueTogether)
         {
+            var members = group
+                .Select(name => definition.Properties.FirstOrDefault(p => string.Equals(p.Name, name, StringComparison.Ordinal)))
+                .ToList();
+
+            if (members.Count < 2 || members.Any(p => p is null))
+                continue;
+
+            var guards = members
+                .Select(p => p!.Type == "string" ? $"!string.IsNullOrWhiteSpace(item.{p.Name})"
+                    : DomainModelMapper.IsNullable(p.Type) ? $"item.{p.Name} != null"
+                    : null)
+                .OfType<string>()
+                .Select(g => g + " && ");
+
+            var names = string.Join(", ", members.Select(p => $"\"{p!.Name}\""));
+            var values = string.Join(", ", members.Select(p => $"item.{p!.Name}"));
+            var said = string.Join(" and ", members.Select(p => p!.Name));
+
+            entityBlocks.Add(Block(
+            [
+                $"if ({string.Concat(guards)}context.Lookup.AnyOtherWithAll<{definition.Name}>(new[] {{ {names} }}, new object[] {{ {values} }}, item.Id))",
+                $"    errors.Add(new ValidationError(null, \"Another {definition.Name} already has this {said}.\"));",
+            ]));
+        }
+
+        foreach (var link in foreignKeys)
+        {
+            var (key, navigation, target) = (link.Property, link.Navigation, link.Target);
             var checks = new List<string>();
 
-            if (referencesRequired)
+            if (IsKeyRequired(definition, key, referencesRequired))
             {
-                checks.Add($"if (item.{target}Id == 0)");
-                checks.Add($"    errors.Add(new ValidationError(\"{target}Id\", \"{target} is required.\"));");
-                checks.Add($"else if (!context.Lookup.Exists<{target}>(item.{target}Id))");
-                checks.Add($"    errors.Add(new ValidationError(\"{target}Id\", \"{target}Id does not refer to a known {target}.\"));");
+                checks.Add($"if (item.{key} == 0)");
+                checks.Add($"    errors.Add(new ValidationError(\"{key}\", \"{navigation} is required.\"));");
+                checks.Add($"else if (!context.Lookup.Exists<{target}>(item.{key}))");
+                checks.Add($"    errors.Add(new ValidationError(\"{key}\", \"{key} does not refer to a known {target}.\"));");
             }
             else
             {
-                checks.Add($"if (item.{target}Id != 0 && !context.Lookup.Exists<{target}>(item.{target}Id))");
-                checks.Add($"    errors.Add(new ValidationError(\"{target}Id\", \"{target}Id does not refer to a known {target}.\"));");
+                checks.Add($"if (item.{key} != 0 && !context.Lookup.Exists<{target}>(item.{key}))");
+                checks.Add($"    errors.Add(new ValidationError(\"{key}\", \"{key} does not refer to a known {target}.\"));");
             }
 
             entityBlocks.Add(Block(checks));
@@ -824,7 +928,9 @@ public sealed partial class {{className}}Validator
                 .FirstOrDefault(r => string.Equals(r.Name, MaxLengthRule, StringComparison.OrdinalIgnoreCase))
                 ?.MaxLength;
 
-            if (max.HasValue)
+            // A bound of int.MaxValue bounds nothing - no string is longer - and the pattern
+            // `Length: > 2147483647` is one the compiler refuses outright (CS8518).
+            if (max is < int.MaxValue)
             {
                 checks.Add($"if (item.{name} is {{ Length: > {max.Value} }})");
                 checks.Add($"    errors.Add(new ValidationError(\"{name}\", \"{name} must be {max.Value} characters or fewer.\"));");

@@ -180,6 +180,18 @@ internal sealed class BuildSnapshot
         public string? DeclaredType { get; set; }
         public bool? NameImpliedFormatHolds { get; set; }
         public bool? HasMissingValues { get; set; }
+        public string? DefaultValue { get; set; }
+        public string? DefaultFunction { get; set; }
+        public decimal? MinValue { get; set; }
+        public decimal? MaxValue { get; set; }
+        public List<string>? AllowedValues { get; set; }
+        public List<UniqueKeyDto>? UniqueKeys { get; set; }
+    }
+
+    internal sealed class UniqueKeyDto
+    {
+        public string? Name { get; set; }
+        public int? Columns { get; set; }
     }
 
     internal sealed class Proposal
@@ -217,6 +229,10 @@ internal sealed class BuildSnapshot
     {
         public string? Target { get; set; }
         public string? Role { get; set; }
+
+        /// <summary>The field holding the link, when it was read from data. Absent before it
+        /// existed, which resumes as a link held in &lt;Target&gt;Id.</summary>
+        public string? ForeignKey { get; set; }
     }
 
     internal sealed class Decision
@@ -375,7 +391,7 @@ internal sealed class BuildSnapshot
         })],
         Relationships = [.. entity.Relationships.Select(r => new Relationship
         {
-            Target = r.Target, Role = r.Role
+            Target = r.Target, Role = r.Role, ForeignKey = r.ForeignKey
         })],
         Proposals = entity.Proposals.Count > 0 ? [.. entity.Proposals.Select(ToDto)] : null,
     };
@@ -495,7 +511,8 @@ internal sealed class BuildSnapshot
 
             entity.Relationships.Add(new CandidateRelationship
             {
-                Target = relationship.Target, Role = relationship.Role
+                Target = relationship.Target, Role = relationship.Role,
+                ForeignKey = relationship.ForeignKey
             });
         }
 
@@ -516,6 +533,14 @@ internal sealed class BuildSnapshot
         DeclaredType = facts.DeclaredType,
         NameImpliedFormatHolds = facts.NameImpliedFormatHolds,
         HasMissingValues = facts.HasMissingValues,
+        DefaultValue = facts.DefaultValue,
+        DefaultFunction = facts.DefaultFunction,
+        MinValue = facts.MinValue,
+        MaxValue = facts.MaxValue,
+        AllowedValues = facts.AllowedValues is { } allowed ? [.. allowed] : null,
+        UniqueKeys = facts.UniqueKeys is { } keys
+            ? [.. keys.Select(k => new UniqueKeyDto { Name = k.Name, Columns = k.Columns })]
+            : null,
     };
 
     /// <summary>
@@ -533,6 +558,14 @@ internal sealed class BuildSnapshot
         DeclaredType = dto.DeclaredType,
         NameImpliedFormatHolds = dto.NameImpliedFormatHolds,
         HasMissingValues = dto.HasMissingValues ?? false,
+        DefaultValue = dto.DefaultValue,
+        DefaultFunction = dto.DefaultFunction,
+        MinValue = dto.MinValue,
+        MaxValue = dto.MaxValue,
+        AllowedValues = dto.AllowedValues,
+        UniqueKeys = dto.UniqueKeys is { } keys
+            ? [.. keys.Where(k => k.Name is not null && k.Columns is > 0).Select(k => new UniqueKey(k.Name!, k.Columns!.Value))]
+            : null,
     };
 
     private static Proposal ToDto(RuleProposal proposal) => new()

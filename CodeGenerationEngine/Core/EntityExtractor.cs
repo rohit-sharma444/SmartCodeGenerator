@@ -112,7 +112,7 @@ public static class EntityExtractor
         // than emitting a file that cannot build beside it.
         Validation.ClassValidationWriter.EnsurePartial(classFile, className);
 
-        var properties = ExtractProperties(classFile);
+        var properties = ExtractProperties(classFile, className);
 
         var namespaceName = ExtractNamespace(classFile);
 
@@ -188,6 +188,110 @@ public static class EntityExtractor
         // Every type in the file, nested ones included. A property belongs to exactly one type's
         // Members, so walking all of them lists each property once.
         foreach (var type in root.DescendantNodes().OfType<TypeDeclarationSyntax>())
+            properties.AddRange(PropertiesDeclaredBy(type));
+
+        return properties;
+    }
+
+    /// <summary>
+    /// The public data the type called <paramref name="typeName"/> declares: in
+    /// <paramref name="classFile"/>, and - when it is partial - in its other partial declarations
+    /// in the same project.
+    /// </summary>
+    /// <remarks>
+    /// Only that type's own members. The per-file reader above also lists the properties of every
+    /// other type in the file: a nested <c>Customer.Address</c>'s Street, a sibling record
+    /// struct's Amount. A rule accepted on one of those wrote <c>this.Street</c> into Customer's
+    /// validator, which does not compile (CS1061). And a property in another partial file
+    /// (<c>Customer.Notes.cs</c>) was not found at all, so it could get no rule.
+    /// </remarks>
+    public static List<PropertyDefinition> ExtractProperties(string classFile, string typeName)
+    {
+        if (!File.Exists(classFile))
+            return [];
+
+        var root = CSharpSyntaxTree.ParseText(File.ReadAllText(classFile)).GetRoot();
+        var all = root.DescendantNodes().OfType<TypeDeclarationSyntax>().ToList();
+
+        // The exact spelling first, else a different case of it: "customer" finds Customer.
+        var declared = all.Where(t => t.Identifier.Text.Equals(typeName, StringComparison.Ordinal)).ToList();
+        if (declared.Count == 0)
+            declared = [.. all.Where(t => t.Identifier.Text.Equals(typeName, StringComparison.OrdinalIgnoreCase))];
+
+        if (declared.Count == 0)
+            return [];
+
+        var properties = declared.SelectMany(PropertiesDeclaredBy).ToList();
+
+        var first = declared[0];
+
+        if (first.Modifiers.Any(m => m.ValueText == "partial"))
+        {
+            var name = first.Identifier.Text;
+            var scope = ScopeOf(first);
+
+            foreach (var other in ClassFiles.Under(ProjectFolderOf(classFile)))
+            {
+                if (string.Equals(Path.GetFullPath(other), Path.GetFullPath(classFile), StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                string text;
+                try
+                {
+                    text = File.ReadAllText(other);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    continue;
+                }
+
+                if (!text.Contains("partial", StringComparison.Ordinal) || !text.Contains(name, StringComparison.Ordinal))
+                    continue;
+
+                properties.AddRange(CSharpSyntaxTree.ParseText(text).GetRoot()
+                    .DescendantNodes().OfType<TypeDeclarationSyntax>()
+                    .Where(t => t.Kind() == first.Kind()
+                        && t.Identifier.Text.Equals(name, StringComparison.Ordinal)
+                        && t.Modifiers.Any(m => m.ValueText == "partial")
+                        && ScopeOf(t) == scope)
+                    .SelectMany(PropertiesDeclaredBy));
+            }
+        }
+
+        return properties;
+    }
+
+    // The namespace and the enclosing types: a nested partial Order is not the top-level one.
+    private static string ScopeOf(TypeDeclarationSyntax node) =>
+        string.Join(".", node.Ancestors().OfType<BaseNamespaceDeclarationSyntax>().Reverse().Select(n => n.Name.ToString()))
+        + "/" + string.Join(".", node.Ancestors().OfType<TypeDeclarationSyntax>().Reverse().Select(t => t.Identifier.Text));
+
+    /// <summary>The folder of the nearest project file at or above <paramref name="file"/>, or the
+    /// file's own folder when there is none: a partial class's parts are all in one project.</summary>
+    private static string ProjectFolderOf(string file)
+    {
+        var folder = Path.GetDirectoryName(Path.GetFullPath(file));
+
+        for (var at = folder; at is not null; at = Path.GetDirectoryName(at))
+        {
+            try
+            {
+                if (Directory.EnumerateFiles(at, "*.csproj").Any())
+                    return at;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                break;
+            }
+        }
+
+        return folder ?? ".";
+    }
+
+    /// <summary>The public data <paramref name="type"/> itself declares, not its nested types'.</summary>
+    private static IEnumerable<PropertyDefinition> PropertiesDeclaredBy(TypeDeclarationSyntax type)
+    {
+        var properties = new List<PropertyDefinition>();
         {
             if (type is RecordDeclarationSyntax { ParameterList: { } positional })
             {
