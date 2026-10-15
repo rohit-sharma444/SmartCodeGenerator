@@ -53,6 +53,15 @@ public interface IEntityLookup
     /// </remarks>
     bool AnyOtherWith<TEntity>(string propertyName, object? value, int exceptId)
         where TEntity : class, new();
+
+    /// <summary>Whether any record of this type OTHER than <paramref name="exceptId"/> holds
+    /// all of these values for these properties together.</summary>
+    /// <remarks>
+    /// Has a body so a lookup written before it existed still compiles; such a lookup finds no
+    /// duplicate, as it always did.
+    /// </remarks>
+    bool AnyOtherWithAll<TEntity>(string[] propertyNames, object?[] values, int exceptId)
+        where TEntity : class, new() => false;
 }
 """;
 
@@ -119,6 +128,38 @@ public sealed class StoreEntityLookup : IEntityLookup
                 continue;
 
             if (Equals(property.GetValue(item), value))
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <inheritdoc />
+    public bool AnyOtherWithAll<TEntity>(string[] propertyNames, object?[] values, int exceptId)
+        where TEntity : class, new()
+    {
+        var properties = new PropertyInfo?[propertyNames.Length];
+
+        for (var i = 0; i < propertyNames.Length; i++)
+        {
+            properties[i] = typeof(TEntity).GetProperty(propertyNames[i],
+                BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
+
+            // As AnyOtherWith: a name that is not there finds nothing.
+            if (properties[i] is null)
+                return false;
+        }
+
+        foreach (var item in StoreFactory.Create<TEntity>().GetAll())
+        {
+            if (IdOf(item) == exceptId)
+                continue;
+
+            var same = true;
+            for (var i = 0; i < properties.Length && same; i++)
+                same = Equals(properties[i]!.GetValue(item), values[i]);
+
+            if (same)
                 return true;
         }
 
@@ -370,6 +411,35 @@ internal sealed class NullValidator<T> : IValidator<T>
             };
 
             entityBlocks.Add(Block(uniqueChecks));
+        }
+
+        // A key over several columns: no two records share the whole combination, though each
+        // value alone may repeat. A blank text or a missing value is no collision, as above.
+        foreach (var group in definition.UniqueTogether)
+        {
+            var members = group
+                .Select(name => definition.Properties.FirstOrDefault(p => string.Equals(p.Name, name, StringComparison.Ordinal)))
+                .ToList();
+
+            if (members.Count < 2 || members.Any(p => p is null))
+                continue;
+
+            var guards = members
+                .Select(p => p!.Type == "string" ? $"!string.IsNullOrWhiteSpace(item.{p.Name})"
+                    : DomainModelMapper.IsNullable(p.Type) ? $"item.{p.Name} != null"
+                    : null)
+                .OfType<string>()
+                .Select(g => g + " && ");
+
+            var names = string.Join(", ", members.Select(p => $"\"{p!.Name}\""));
+            var values = string.Join(", ", members.Select(p => $"item.{p!.Name}"));
+            var said = string.Join(" and ", members.Select(p => p!.Name));
+
+            entityBlocks.Add(Block(
+            [
+                $"if ({string.Concat(guards)}context.Lookup.AnyOtherWithAll<{definition.Name}>(new[] {{ {names} }}, new object?[] {{ {values} }}, item.Id))",
+                $"    errors.Add(new ValidationError(null, \"Another {definition.Name} already has this {said}.\"));",
+            ]));
         }
 
         foreach (var link in foreignKeys)

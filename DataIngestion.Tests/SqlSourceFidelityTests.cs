@@ -94,6 +94,7 @@ public class SqlSourceFidelityTests
             ("Validation/ValidationPipeline.cs", ValidationPipelineTemplate.Source("Acme")),
             ("Validation/Permissions.cs", PermissionsTemplate.Source("Acme", [], login: false)),
             ("Validation/StoreEntityLookup.cs", Lookup),
+            ("Validation/ListLookup.cs", ListLookup),
         };
 
         foreach (var definition in app.Classes)
@@ -120,13 +121,18 @@ public class SqlSourceFidelityTests
 
     /// <summary>What <paramref name="className"/>'s validator says of <paramref name="item"/>.</summary>
     private static IReadOnlyList<string> Validate(Assembly assembly, string className, object item, string operation = "Insert")
+        => ValidateWith(assembly, className, item,
+            Activator.CreateInstance(assembly.GetType("Acme.Validation.StoreEntityLookup")!)!, operation);
+
+    /// <summary>As <see cref="Validate"/>, over <paramref name="lookup"/>.</summary>
+    private static IReadOnlyList<string> ValidateWith(
+        Assembly assembly, string className, object item, object lookup, string operation = "Insert")
     {
         var type = assembly.GetType("Acme.Models." + className)!;
         var validatorType = assembly.GetType($"Acme.Validation.{className}Validator")!;
         var context = assembly.GetType("Acme.Validation.ValidationContext`1")!.MakeGenericType(type)
             .GetMethod("For")!
-            .Invoke(null, [item, Enum.Parse(assembly.GetType("Acme.Validation.ValidationOperation")!, operation),
-                Activator.CreateInstance(assembly.GetType("Acme.Validation.StoreEntityLookup")!)]);
+            .Invoke(null, [item, Enum.Parse(assembly.GetType("Acme.Validation.ValidationOperation")!, operation), lookup]);
         var outcome = validatorType.GetMethod("Validate")!.Invoke(Activator.CreateInstance(validatorType), [context])!;
         return (IReadOnlyList<string>)outcome.GetType().GetProperty("Messages")!.GetValue(outcome)!;
     }
@@ -160,6 +166,27 @@ public class SqlSourceFidelityTests
             public bool Exists<TEntity>(int id) where TEntity : class, new() => id is >= 1 and <= 9;
             public int CountReferencing<TEntity>(string foreignKeyProperty, int id) where TEntity : class, new() => 0;
             public bool AnyOtherWith<TEntity>(string propertyName, object? value, int exceptId) where TEntity : class, new() => false;
+        }
+        """;
+
+    /// <summary>Ids 1..9 exist; the records given are the ones stored, compared by reflection.</summary>
+    private const string ListLookup = """
+        using System.Linq;
+
+        namespace Acme.Validation;
+
+        public sealed class ListLookup(object[] stored) : IEntityLookup
+        {
+            public bool Exists<TEntity>(int id) where TEntity : class, new() => id is >= 1 and <= 9;
+            public int CountReferencing<TEntity>(string foreignKeyProperty, int id) where TEntity : class, new() => 0;
+
+            public bool AnyOtherWith<TEntity>(string propertyName, object? value, int exceptId) where TEntity : class, new()
+                => AnyOtherWithAll<TEntity>([propertyName], [value], exceptId);
+
+            public bool AnyOtherWithAll<TEntity>(string[] propertyNames, object?[] values, int exceptId) where TEntity : class, new()
+                => stored.OfType<TEntity>().Any(item =>
+                    !Equals(typeof(TEntity).GetProperty("Id")!.GetValue(item), exceptId)
+                    && propertyNames.Select((name, i) => Equals(typeof(TEntity).GetProperty(name)!.GetValue(item), values[i])).All(same => same));
         }
         """;
 
@@ -579,6 +606,79 @@ public class SqlSourceFidelityTests
 
         Assert.Contains(app.Data.Notes, n => n.Contains("CK_Code") && n.Contains("(len([Code])=(3))") && n.Contains("not carried"));
         Assert.All(SeedRows(assembly, app, "Member"), row => Assert.Empty(Validate(assembly, "Member", row)));
+    }
+
+    // --- S6, S7: unique constraints, unique indexes, composite keys ---
+
+    /// <summary>A lookup over a fixed set of stored records, so a uniqueness check can collide.</summary>
+    private static object Stored(Assembly assembly, params object[] items)
+    {
+        var lookup = assembly.GetType("Acme.Validation.ListLookup")!;
+        return Activator.CreateInstance(lookup, [items])!;
+    }
+
+    [Fact]
+    public void Declared_uniqueness_is_enforced_even_on_an_entity_with_links()
+    {
+        var source = Database(add =>
+        {
+            add("Dept", [new("DeptId", "int", false, IsPrimaryKey: true), new("Title", "nvarchar", false, 20)], [["1", "Ops"]]);
+            add("Emp",
+                [
+                    new("EmpId", "int", false, IsPrimaryKey: true),
+                    new("Email", "nvarchar", false, 50),
+                    new("Badge", "int", true),
+                    new("DeptId", "int", false),
+                ],
+                [["1", "a@x.com", "7", "1"], ["2", "b@x.com", "8", "1"]]);
+        });
+        source.Keys.Add(new TabularForeignKey("DeptId", "Dept", "DeptId", "Emp", "dbo", "dbo"));
+        source.Constraints["Emp"] =
+        [
+            new("PK_Emp", SqlConstraintKind.PrimaryKey, ["EmpId"]),
+            new("UQ_Emp_Email", SqlConstraintKind.Unique, ["Email"]),
+            new("UX_Emp_Badge", SqlConstraintKind.Unique, ["Badge"]),
+        ];
+
+        var app = Generate(source);
+
+        Assert.Contains(Property(app, "Emp", "Email").Rules, r => r.Name == "unique");
+        Assert.Contains(Property(app, "Emp", "Badge").Rules, r => r.Name == "unique");
+        Assert.DoesNotContain(Property(app, "Emp", "DeptId").Rules, r => r.Name == "unique");
+        Compile(app);
+    }
+
+    [Fact]
+    public void A_composite_key_refuses_a_second_row_with_the_same_pair()
+    {
+        var source = Database(add =>
+        {
+            add("Invoice", [new("InvoiceId", "int", false, IsPrimaryKey: true), new("Number", "nvarchar", false, 20)], [["1", "INV-1"]]);
+            add("InvoiceLine",
+                [new("InvoiceId", "int", false), new("LineNo", "int", false), new("Qty", "int", false)],
+                [["1", "1", "5"], ["1", "2", "6"]]);
+        });
+        source.Keys.Add(new TabularForeignKey("InvoiceId", "Invoice", "InvoiceId", "InvoiceLine", "dbo", "dbo"));
+        source.Constraints["InvoiceLine"] = [new("PK_InvoiceLine", SqlConstraintKind.PrimaryKey, ["InvoiceId", "LineNo"])];
+
+        var app = Generate(source);
+
+        // Neither column is unique on its own: only the pair is.
+        Assert.DoesNotContain(Property(app, "InvoiceLine", "LineNo").Rules, r => r.Name == "unique");
+        Assert.Equal(["InvoiceId", "LineNo"], Assert.Single(Class(app, "InvoiceLine").UniqueTogether));
+
+        var assembly = Compile(app);
+        var rows = SeedRows(assembly, app, "InvoiceLine");
+        var lookup = Stored(assembly, [.. rows]);
+
+        object Line(int id, int invoice, int line)
+            => New(assembly, "InvoiceLine", ("Id", id), ("InvoiceId", invoice), ("LineNo", line), ("Qty", 1));
+
+        Assert.Contains(ValidateWith(assembly, "InvoiceLine", Line(3, 1, 2), lookup), m => m.Contains("InvoiceId and LineNo"));
+        Assert.Empty(ValidateWith(assembly, "InvoiceLine", Line(3, 1, 3), lookup));
+
+        // A record saved again over itself is not its own duplicate.
+        Assert.Empty(ValidateWith(assembly, "InvoiceLine", rows[1], lookup, "Update"));
     }
 
     // --- S10: a computed column ---

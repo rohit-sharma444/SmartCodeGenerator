@@ -78,4 +78,17 @@ public sealed record TypeFacts
     /// <summary>The only values a CHECK constraint allows (<c>Status IN ('Active', 'Retired')</c>);
     /// null when none lists them.</summary>
     public IReadOnlyList<string>? AllowedValues { get; init; }
+
+    /// <summary>
+    /// The primary keys, UNIQUE constraints and unique indexes this column is part of; null when
+    /// it is in none. A key over one column makes its values unique; a key over several makes
+    /// only their COMBINATION unique, and is enforced only when every one of its columns is
+    /// still a property.
+    /// </summary>
+    public IReadOnlyList<UniqueKey>? UniqueKeys { get; init; }
 }
+
+/// <summary>One declared key a column is part of.</summary>
+/// <param name="Name">The constraint's or index's name, which the columns of one key share.</param>
+/// <param name="Columns">How many columns the key covers.</param>
+public sealed record UniqueKey(string Name, int Columns);

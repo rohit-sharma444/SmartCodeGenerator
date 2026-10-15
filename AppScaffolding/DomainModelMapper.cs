@@ -519,11 +519,53 @@ public static class DomainModelMapper
             foreach (var property in definition.Properties)
                 added |= InferValidation(property);
 
+            AddDeclaredUniqueness(definition);
+
             added |= definition.Properties.Any(
                 p => p.Rules.Any(r => DataAnnotationRuleNames.Contains(r.Name)));
 
             if (added && !definition.Usings.Contains(DataAnnotationsNamespace))
                 definition.Usings.Add(DataAnnotationsNamespace);
+        }
+    }
+
+    /// <summary>
+    /// The uniqueness the source declared (<see cref="TypeFacts.UniqueKeys"/>): a key over one
+    /// property becomes its unique rule, and a key over several becomes one entry in
+    /// <see cref="ClassDefinition.UniqueTogether"/>.
+    /// </summary>
+    /// <remarks>
+    /// A declared key is a fact the source stated, so it is enforced whatever the entity is: the
+    /// proposals withhold uniqueness from an entity that links to another, because a repeating
+    /// value there is usually the design, but a UNIQUE the database declared says otherwise. A key
+    /// some of whose columns are no longer properties (removed on Review, or computed) is not
+    /// enforced: over fewer columns it would refuse records the source accepts.
+    /// </remarks>
+    private static void AddDeclaredUniqueness(ClassDefinition definition)
+    {
+        var keys = definition.Properties
+            .Where(p => !string.Equals(p.Name, "Id", StringComparison.OrdinalIgnoreCase))
+            .SelectMany(p => (p.Facts?.UniqueKeys ?? []).Select(k => (Property: p, Key: k)))
+            .GroupBy(pair => pair.Key.Name, StringComparer.Ordinal);
+
+        foreach (var key in keys)
+        {
+            var members = key.Select(pair => pair.Property).Distinct().ToList();
+
+            if (members.Count != key.First().Key.Columns)
+                continue;
+
+            if (members.Count > 1)
+            {
+                definition.UniqueTogether.Add([.. members.Select(p => p.Name)]);
+                continue;
+            }
+
+            var single = members[0];
+
+            if (ValidatorTemplate.CanEmitEntityRule(single.Type, "unique")
+                && !single.Rules.Any(r => string.Equals(r.Name, "unique", StringComparison.OrdinalIgnoreCase)))
+                single.Rules.Add(new PropertyRule { PropertyName = single.Name, Name = "unique", IsUnique = true });
         }
     }
 

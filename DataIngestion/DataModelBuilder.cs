@@ -810,7 +810,11 @@ public static class DataModelBuilder
                     : new CodeGenerationEngine.Models.TypeFacts
                     {
                         IsNullable = field.Facts.IsNullable,
-                        HasMissingValues = field.Facts.HasMissingValues
+                        HasMissingValues = field.Facts.HasMissingValues,
+
+                        // Renumbering keeps distinct values distinct, so a key the text was part
+                        // of still holds of the numbers.
+                        UniqueKeys = field.Facts.UniqueKeys
                     };
 
                 var label = sources.TryGetValue(entity.Name, out var table) ? table.Label : entity.Name;

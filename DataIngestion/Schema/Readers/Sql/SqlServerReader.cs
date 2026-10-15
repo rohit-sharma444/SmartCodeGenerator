@@ -218,6 +218,27 @@ public sealed class SqlServerReader(ISqlSchemaSource source, int maxRowsPerTable
     /// </remarks>
     private static void CarryConstraints(TabularTable table, IReadOnlyList<SqlConstraintInfo> constraints)
     {
+        foreach (var key in constraints.Where(c => c.Kind != SqlConstraintKind.Check))
+        {
+            var members = key.Columns.Select(table.IndexOf).ToList();
+
+            if (members.Count == 0 || members.Any(i => i < 0))
+            {
+                table.Notes.Add($"In {table.Label}, {key.Name} ({string.Join(", ", key.Columns)}) was not carried: "
+                                + "not every one of its columns is in the app.");
+                continue;
+            }
+
+            foreach (var column in members.Select(i => table.Columns[i]))
+            {
+                var facts = column.Facts ?? new TypeFacts();
+                column.Facts = facts with
+                {
+                    UniqueKeys = [.. facts.UniqueKeys ?? [], new UniqueKey(key.Name, members.Count)]
+                };
+            }
+        }
+
         foreach (var check in constraints.Where(c => c.Kind == SqlConstraintKind.Check))
         {
             var bounded = SqlCheck.Parse(check.Definition ?? string.Empty) is { Count: > 0 } bounds
