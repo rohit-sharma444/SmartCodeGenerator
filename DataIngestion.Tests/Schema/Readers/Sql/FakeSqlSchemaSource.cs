@@ -24,8 +24,11 @@ internal sealed class FakeSqlSchemaSource : ISqlSchemaSource
 
     public IReadOnlyList<SqlTableInfo> Tables(string connectionString) => TableList;
 
+    /// <summary>Columns and rows are filed under "schema.table" when two schemas share a table
+    /// name, else under the table name alone.</summary>
     public IReadOnlyList<SqlColumnInfo> Columns(string connectionString, string schema, string table)
-        => ColumnsByTable.TryGetValue(table, out var columns) ? columns : [];
+        => ColumnsByTable.TryGetValue($"{schema}.{table}", out var qualified) ? qualified
+            : ColumnsByTable.TryGetValue(table, out var columns) ? columns : [];
 
     public IReadOnlyList<TabularForeignKey> ForeignKeys(string connectionString) => Keys;
 
@@ -36,6 +39,7 @@ internal sealed class FakeSqlSchemaSource : ISqlSchemaSource
     {
         RowsFetched.Add(table);
         LastLimit = limit;
-        return RowsByTable.TryGetValue(table, out var rows) ? [.. rows.Take(limit)] : [];
+        return RowsByTable.TryGetValue($"{schema}.{table}", out var qualified) ? [.. qualified.Take(limit)]
+            : RowsByTable.TryGetValue(table, out var rows) ? [.. rows.Take(limit)] : [];
     }
 }

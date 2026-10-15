@@ -39,6 +39,7 @@ public sealed class SqlServerReader(ISqlSchemaSource source, int maxRowsPerTable
         var available = source.Tables(spec.Location);
         var wanted = Wanted(spec, available);
         var keys = source.ForeignKeys(spec.Location);
+        var names = TableNames(wanted);
 
         var read = new List<TabularTable>();
 
@@ -46,9 +47,13 @@ public sealed class SqlServerReader(ISqlSchemaSource source, int maxRowsPerTable
         {
             var table = new TabularTable
             {
-                Name = info.Name,
+                Name = names[info],
                 SourceLabel = $"{info.Schema}.{info.Name}"
             };
+
+            if (!string.Equals(names[info], info.Name, StringComparison.Ordinal))
+                table.Notes.Add($"{info.Schema}.{info.Name} is read as {names[info]}, because another schema "
+                                + $"also has a table called {info.Name}.");
 
             foreach (var column in source.Columns(spec.Location, info.Schema, info.Name))
             {
@@ -98,8 +103,13 @@ public sealed class SqlServerReader(ISqlSchemaSource source, int maxRowsPerTable
 
             NoteWhatTheTypesCost(table);
 
+            // A key names its target as the database does; a target read under its schema's name
+            // (HrNote) must be named that way here, or the key points at the other schema's table.
             foreach (var key in Carried(keys, info, table, wanted))
-                table.ForeignKeys.Add(key);
+                table.ForeignKeys.Add(key with
+                {
+                    TargetTable = names[wanted.First(t => Same(key.TargetTable, key.TargetSchema, t))]
+                });
 
             read.Add(table);
         }
@@ -157,6 +167,35 @@ public sealed class SqlServerReader(ISqlSchemaSource source, int maxRowsPerTable
             _lossNotes.Add(note);
             table.Notes.Add($"In {table.Label}, {note}");
         }
+    }
+
+    /// <summary>
+    /// The name each table is read under: its own, unless a table in another schema has the same
+    /// one, when each outside dbo takes its schema's name in front (hr.Note as HrNote).
+    /// </summary>
+    /// <remarks>
+    /// Read under one name, the second table became the same entity as the first and was skipped,
+    /// rows and all, while the summary still counted it as read. When neither is in dbo, every one
+    /// of them is renamed: there is no reason to prefer one.
+    /// </remarks>
+    private static Dictionary<SqlTableInfo, string> TableNames(List<SqlTableInfo> wanted)
+    {
+        var names = new Dictionary<SqlTableInfo, string>();
+
+        foreach (var group in wanted.GroupBy(t => t.Name, StringComparer.OrdinalIgnoreCase))
+        {
+            var tables = group.ToList();
+            var keepsItsName = tables.Count == 1
+                ? tables[0]
+                : tables.FirstOrDefault(t => string.Equals(t.Schema, "dbo", StringComparison.OrdinalIgnoreCase));
+
+            foreach (var table in tables)
+                names[table] = table == keepsItsName
+                    ? table.Name
+                    : DomainDiscovery.SeedExtraction.NameNormalizer.ToFieldName(table.Schema) + table.Name;
+        }
+
+        return names;
     }
 
     /// <summary>

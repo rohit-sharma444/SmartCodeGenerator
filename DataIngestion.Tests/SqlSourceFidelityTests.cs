@@ -416,6 +416,49 @@ public class SqlSourceFidelityTests
         Assert.Empty(Validate(assembly, "Ticket", New(assembly, "Ticket", ("Count", 1))));
     }
 
+    // --- S11: two schemas, one table name ---
+
+    [Fact]
+    public void Tables_of_one_name_in_two_schemas_are_both_kept_and_said_so()
+    {
+        var source = new FakeSqlSchemaSource();
+        source.TableList.Add(new SqlTableInfo("dbo", "Note", 2, 1));
+        source.TableList.Add(new SqlTableInfo("hr", "Note", 2, 1));
+        source.TableList.Add(new SqlTableInfo("dbo", "Task", 3, 1));
+        source.ColumnsByTable["dbo.Note"] = [new("NoteId", "int", false, IsPrimaryKey: true), new("Body", "nvarchar", false, 50)];
+        source.ColumnsByTable["hr.Note"] = [new("NoteId", "int", false, IsPrimaryKey: true), new("Text", "nvarchar", false, 50)];
+        source.ColumnsByTable["dbo.Task"] = [new("TaskId", "int", false, IsPrimaryKey: true), new("Title", "nvarchar", false, 50), new("HrNoteRef", "int", true)];
+        source.RowsByTable["dbo.Note"] = [["10", "general"]];
+        source.RowsByTable["hr.Note"] = [["20", "personnel"]];
+        source.RowsByTable["dbo.Task"] = [["1", "Hire", "20"]];
+        source.Keys.Add(new TabularForeignKey("HrNoteRef", "Note", "NoteId", "Task", "dbo", "hr"));
+
+        var app = Generate(source);
+
+        Assert.Equal(["Note", "HrNote", "Task"], app.Model.Entities.Select(e => e.Name));
+        Assert.Equal("personnel", Seed(app, "HrNote")[0].GetProperty("Text").GetString());
+        Assert.Equal("general", Seed(app, "Note")[0].GetProperty("Body").GetString());
+        Assert.Contains(app.Data.Notes, n => n.Contains("hr.Note") && n.Contains("HrNote"));
+
+        // The key follows the table it was declared against, under its new name.
+        var task = app.Model.Entities.Single(e => e.Name == "Task");
+        Assert.Equal("HrNote", Assert.Single(task.Relationships).Target);
+        Compile(app);
+    }
+
+    [Fact]
+    public void A_table_whose_entity_name_is_taken_is_left_out_with_a_note()
+    {
+        var app = Generate(Database(add =>
+        {
+            add("Note", [new("NoteId", "int", false, IsPrimaryKey: true), new("Body", "nvarchar", false, 50)], [["1", "a"]]);
+            add("Notes", [new("NotesId", "int", false, IsPrimaryKey: true), new("Text", "nvarchar", false, 50)], [["1", "b"]]);
+        }));
+
+        Assert.Equal(["Note"], app.Model.Entities.Select(e => e.Name));
+        Assert.Contains(app.Data.Notes, n => n.Contains("dbo.Notes") && n.Contains("left out"));
+    }
+
     // --- S12: a column whose name starts with a digit ---
 
     [Fact]
