@@ -20,15 +20,16 @@ public sealed class CsvReader : IDataSourceReader
         if (!File.Exists(spec.Location))
             throw new FileNotFoundException($"No file at {spec.Location}.", spec.Location);
 
-        var records = ParseFields(File.ReadAllText(spec.Location), ',');
+        var table = FromText(
+            Path.GetFileNameWithoutExtension(spec.Location),
+            Path.GetFileName(spec.Location),
+            SourceText.Read(spec.Location, out var encodingNote),
+            ',');
 
-        return new[]
-        {
-            ToTable(
-                Path.GetFileNameWithoutExtension(spec.Location),
-                Path.GetFileName(spec.Location),
-                records)
-        };
+        if (encodingNote is not null)
+            table.Notes.Insert(0, encodingNote);
+
+        return new[] { table };
     }
 
     /// <summary>
@@ -148,6 +149,8 @@ public sealed class CsvReader : IDataSourceReader
         var header = records[0];
         var table = new TabularTable { Name = name, SourceLabel = label };
 
+        var renamed = new List<string>();
+
         for (var i = 0; i < header.Length; i++)
         {
             // An unnamed column is still addressable, and its position is the only name it has.
@@ -155,8 +158,24 @@ public sealed class CsvReader : IDataSourceReader
                 ? $"Column{i + 1}"
                 : header[i]!.Trim();
 
-            table.Columns.Add(new TabularColumn { Name = columnName });
+            // Every column is looked up by name, ignoring case, so a second Notes read the first
+            // one's values. Numbered, it keeps its own; DuplicateOf keeps the name it came with.
+            var unique = UniqueColumnName(columnName, table.Columns.Select(c => c.Name));
+
+            if (unique != columnName)
+                renamed.Add($"{columnName} as {unique}");
+
+            table.Columns.Add(new TabularColumn
+            {
+                Name = unique,
+                DuplicateOf = unique == columnName ? null : columnName
+            });
         }
+
+        if (renamed.Count > 0)
+            table.Notes.Add(
+                $"In {label}, an earlier column already had the name, so the next one was "
+                + $"numbered to keep its own values: {string.Join(", ", renamed)}.");
 
         foreach (var record in records.Skip(1))
         {
@@ -167,6 +186,8 @@ public sealed class CsvReader : IDataSourceReader
             table.Rows.Add(row);
         }
 
+        ReadNullTextAsMissing(table);
+
         foreach (var column in table.Columns)
         {
             var values = table.ColumnValues(column.Name).ToList();
@@ -174,5 +195,129 @@ public sealed class CsvReader : IDataSourceReader
         }
 
         return table;
+    }
+
+    /// <summary>
+    /// A delimited text file as a table: <see cref="ParseFields"/>, then <see cref="ToTable"/>,
+    /// with every row whose field count differs from the header's named in a note.
+    /// </summary>
+    /// <remarks>
+    /// A row with MORE fields than the header is left out. Its extra field almost always comes
+    /// from an unquoted delimiter inside a value ("Smith, John"), and which value it split cannot
+    /// be known: cut to the header's width, the row put "John" in Qty and lost the 2, and that one
+    /// row made the whole Qty column text. Extra fields that are all empty (a trailing delimiter)
+    /// hold nothing, so that row is kept as it is. A row with FEWER fields is kept, its missing
+    /// fields empty — the usual way an export ends a row early — but named all the same, since a
+    /// field dropped from the middle would shift the rest. Only text files: an Excel row is short
+    /// whenever its last cells are empty, which says nothing about its shape.
+    /// </remarks>
+    public static TabularTable FromText(string name, string label, string text, char delimiter)
+    {
+        var records = ParseFields(text, delimiter);
+
+        if (records.Count < 2)
+            return ToTable(name, label, records);
+
+        var width = records[0].Length;
+        var kept = new List<string?[]> { records[0] };
+        var longer = new List<string>();
+        var shorter = new List<string>();
+
+        for (var r = 1; r < records.Count; r++)
+        {
+            var record = records[r];
+            var where = $"row {r} ({record[0]?.Trim()})";
+
+            if (record.Length > width && record.Skip(width).Any(f => !string.IsNullOrEmpty(f)))
+            {
+                longer.Add(where);
+                continue;
+            }
+
+            if (record.Length < width)
+                shorter.Add(where);
+
+            kept.Add(record);
+        }
+
+        var table = ToTable(name, label, kept);
+
+        if (longer.Count > 0)
+            table.Notes.Add(
+                $"In {label}, {Rows(longer)} more fields than the header's {width}, so "
+                + $"{(longer.Count == 1 ? "it was" : "they were")} left out rather than have values "
+                + $"land in the wrong columns (a value holding the delimiter needs quotes): "
+                + $"{string.Join(", ", longer)}.");
+
+        if (shorter.Count > 0)
+            table.Notes.Add(
+                $"In {label}, {Rows(shorter)} fewer fields than the header's {width}; "
+                + $"the missing fields were left empty: {string.Join(", ", shorter)}.");
+
+        return table;
+
+        static string Rows(List<string> rows)
+            => rows.Count == 1 ? "1 row has" : $"{rows.Count} rows have";
+    }
+
+    /// <summary><paramref name="name"/>, or the first of name2, name3... that no name in
+    /// <paramref name="taken"/> has, ignoring case.</summary>
+    public static string UniqueColumnName(string name, IEnumerable<string> taken)
+    {
+        var used = new HashSet<string>(taken, StringComparer.OrdinalIgnoreCase);
+
+        if (!used.Contains(name))
+            return name;
+
+        for (var n = 2; ; n++)
+        {
+            var candidate = name + n;
+            if (!used.Contains(candidate))
+                return candidate;
+        }
+    }
+
+    /// <summary>The spelling a file source uses for "no value here".</summary>
+    public const string NullText = "NULL";
+
+    /// <summary>
+    /// Clears every cell that is exactly <see cref="NullText"/> (trimmed, any case), and says how
+    /// many each column had.
+    /// </summary>
+    /// <remarks>
+    /// A file has no null of its own, so SQL Server Management Studio, a pasted query result and
+    /// most database exports write the word instead. Kept as data, one NULL made a column of
+    /// numbers text, was seeded as the word, and was offered as an allowed value beside yes and
+    /// no. Read as missing, a column that is genuinely text loses nothing a user would want: the
+    /// cell becomes empty, which is what NULL meant. Only an exact cell is cleared, never one
+    /// that merely contains the word ("Nullable", "Annul").
+    /// </remarks>
+    private static void ReadNullTextAsMissing(TabularTable table)
+    {
+        var counts = new int[table.Columns.Count];
+
+        foreach (var row in table.Rows)
+        {
+            for (var i = 0; i < row.Length; i++)
+            {
+                if (row[i] is { } cell
+                    && string.Equals(cell.Trim(), NullText, StringComparison.OrdinalIgnoreCase))
+                {
+                    row[i] = null;
+                    counts[i]++;
+                }
+            }
+        }
+
+        var columns = table.Columns
+            .Select((column, i) => (column.Name, Count: counts[i]))
+            .Where(c => c.Count > 0)
+            .Select(c => $"{c.Name} ({c.Count})")
+            .ToList();
+
+        if (columns.Count > 0)
+            table.Notes.Add(
+                $"In {table.Label}, cells holding the text {NullText} were read as missing values: "
+                + $"{string.Join(", ", columns)}.");
     }
 }

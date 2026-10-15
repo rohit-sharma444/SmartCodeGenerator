@@ -3,13 +3,20 @@ using Xunit;
 
 namespace DataIngestion.Tests.Normalization;
 
+/// <summary>
+/// A column equal to the product or sum of two others. Reported as a NOTE, never a finding: the
+/// generator cannot emit a computed property, so "drop it and compute it" dropped the column and
+/// computed nothing, and the user's values were gone from the app. The column is kept as stored.
+/// </summary>
 public class DerivedColumnTests
 {
     private static DataIngestion.Schema.TabularTable Table(string[] header, params string?[][] rows)
         => RepeatingGroupTests.Table("Orders", header, rows);
 
+    private static bool IsDerivedNote(string note) => note.Contains("is always");
+
     [Fact]
-    public void AProductOfTwoColumnsIsDerived()
+    public void AProductOfTwoColumnsIsNotedAndKept()
     {
         var report = NormalizationAnalyzer.Analyze(Table(
             ["Qty", "UnitPrice", "Total"],
@@ -19,17 +26,36 @@ public class DerivedColumnTests
             ["5", "2.00", "10.00"],
             ["6", "0.50", "3.00"]));
 
-        var finding = Assert.Single(
-            report.Findings, f => f.Kind == NormalizationFindingKind.DerivedColumn);
+        Assert.DoesNotContain(report.Findings, f => f.Kind == NormalizationFindingKind.DerivedColumn);
 
-        Assert.Equal(new[] { "Total" }, finding.Columns);
-        Assert.Null(finding.ProposedEntity);
-        Assert.Contains("Qty", finding.Headline);
-        Assert.Contains("UnitPrice", finding.Headline);
+        var note = Assert.Single(report.Notes, IsDerivedNote);
+        Assert.Contains("\"Total\" is always Qty x UnitPrice", note);
+        Assert.Contains("kept", note);
+        Assert.DoesNotContain("compute it", note);
+    }
+
+    /// <summary>Choosing every finding (`normalize`) leaves the derived column and its values in
+    /// the table.</summary>
+    [Fact]
+    public void ApplyingEveryFindingKeepsTheDerivedColumn()
+    {
+        var table = Table(
+            ["Qty", "UnitPrice", "Total"],
+            ["2", "5.00", "10.00"],
+            ["3", "2.50", "7.50"],
+            ["4", "1.25", "5.00"],
+            ["5", "2.00", "10.00"],
+            ["6", "0.50", "3.00"]);
+
+        var applied = NormalizationPlan.Apply([table], NormalizationAnalyzer.Analyze(table).Findings);
+
+        var order = Assert.Single(applied);
+        Assert.Equal(new[] { "Qty", "UnitPrice", "Total" }, order.Columns.Select(c => c.Name));
+        Assert.Equal("7.50", order.Value(1, "Total"));
     }
 
     [Fact]
-    public void ASumOfTwoColumnsIsDerived()
+    public void ASumOfTwoColumnsIsNoted()
     {
         var report = NormalizationAnalyzer.Analyze(Table(
             ["Net", "Tax", "Gross"],
@@ -39,8 +65,7 @@ public class DerivedColumnTests
             ["8.00", "1.60", "9.60"],
             ["3.00", "0.60", "3.60"]));
 
-        Assert.Contains(report.Findings, f =>
-            f.Kind == NormalizationFindingKind.DerivedColumn && f.Columns[0] == "Gross");
+        Assert.Contains(report.Notes, n => n.Contains("\"Gross\" is always Net + Tax"));
     }
 
     /// <summary>One row that does not add up means the column is not derived -- it holds data.</summary>
@@ -55,8 +80,7 @@ public class DerivedColumnTests
             ["8.00", "1.60", "9.60"],
             ["3.00", "0.60", "99.00"]));
 
-        Assert.DoesNotContain(report.Findings,
-            f => f.Kind == NormalizationFindingKind.DerivedColumn);
+        Assert.DoesNotContain(report.Notes, IsDerivedNote);
     }
 
     /// <summary>Coincidence protection: with all-zero columns everything is both sum and product
@@ -72,8 +96,7 @@ public class DerivedColumnTests
             ["0", "0", "0"],
             ["0", "0", "0"]));
 
-        Assert.DoesNotContain(report.Findings,
-            f => f.Kind == NormalizationFindingKind.DerivedColumn);
+        Assert.DoesNotContain(report.Notes, IsDerivedNote);
     }
 
     [Fact]
@@ -87,7 +110,6 @@ public class DerivedColumnTests
             ["v", "w", "a"],
             ["b", "c", "d"]));
 
-        Assert.DoesNotContain(report.Findings,
-            f => f.Kind == NormalizationFindingKind.DerivedColumn);
+        Assert.DoesNotContain(report.Notes, IsDerivedNote);
     }
 }

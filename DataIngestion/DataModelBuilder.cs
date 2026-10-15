@@ -189,7 +189,6 @@ public static class DataModelBuilder
         RenamedOffAnInheritedMember,
         DroppedUnusableName,
         DroppedGeneratedKey,
-        DroppedDuplicate,
 
         /// <summary>The table's own key, holding values the app cannot number for itself (text
         /// codes, GUIDs), kept as a field under a name that does not read as the generated Id.</summary>
@@ -197,7 +196,11 @@ public static class DataModelBuilder
 
         /// <summary>A declared foreign key renamed to the <c>&lt;Name&gt;Id</c> spelling the
         /// generated app recognises a link by.</summary>
-        RenamedForItsLink
+        RenamedForItsLink,
+
+        /// <summary>A column whose name an earlier column already had (Notes beside Notes,
+        /// e-mail beside Email), numbered so it keeps its own values.</summary>
+        RenamedOffADuplicate
     }
 
     /// <summary>The <see cref="object"/> members every class already declares. A field with one
@@ -207,7 +210,8 @@ public static class DataModelBuilder
         new(StringComparer.Ordinal) { "Equals", "ToString", "GetHashCode", "GetType" };
 
     private sealed record ColumnOutcome(
-        string Column, string? Field, string Type, ColumnFate Fate, TypeFacts? Facts);
+        string Column, string? Field, string Type, ColumnFate Fate, TypeFacts? Facts,
+        string? DuplicateOf = null);
 
     /// <summary>
     /// What each of <paramref name="table"/>'s columns becomes on an entity named
@@ -300,22 +304,31 @@ public static class DataModelBuilder
 
             var resolved = Resolve(fieldName, entityName, taken, otherColumns);
 
+            // An earlier column already has the name: "e-mail" and "Email", or "Order Date" and
+            // "OrderDate", both want Email or OrderDate. Dropped, the second column's values were
+            // lost without a record; numbered, it keeps them.
             if (resolved is null)
             {
+                resolved = Numbered(fieldName, entityName, taken, otherColumns);
+                taken.Add(resolved);
                 outcomes.Add(new ColumnOutcome(
-                    column.Name, null, column.Type, ColumnFate.DroppedDuplicate, facts));
+                    column.Name, resolved, column.Type, ColumnFate.RenamedOffADuplicate, facts,
+                    column.DuplicateOf ?? column.Name));
                 continue;
             }
 
             taken.Add(resolved);
 
             var fate = string.Equals(resolved, fieldName, StringComparison.Ordinal)
-                ? renamedForLink[i] ? ColumnFate.RenamedForItsLink : ColumnFate.Kept
+                ? renamedForLink[i] ? ColumnFate.RenamedForItsLink
+                  : column.DuplicateOf is not null ? ColumnFate.RenamedOffADuplicate
+                  : ColumnFate.Kept
                 : ReservedMemberNames.Contains(fieldName)
                     ? ColumnFate.RenamedOffAnInheritedMember
                     : ColumnFate.RenamedOffItsClassName;
 
-            outcomes.Add(new ColumnOutcome(column.Name, resolved, column.Type, fate, facts));
+            outcomes.Add(new ColumnOutcome(
+                column.Name, resolved, column.Type, fate, facts, column.DuplicateOf));
         }
 
         return outcomes;
@@ -467,8 +480,18 @@ public static class DataModelBuilder
                         $"'{outcome.Column}' in {table.Label}");
                     continue;
 
-                case ColumnFate.DroppedDuplicate:
-                    continue;   // the first spelling already won
+                case ColumnFate.RenamedOffADuplicate:
+                    var source = outcome.DuplicateOf ?? outcome.Column;
+                    var evidence = $"'{source}' in {table.Label} became {entity.Name}.{outcome.Field}";
+
+                    model.Record(source, DecisionStage.SeedExtraction, DecisionOutcome.Kept,
+                        DecisionReasons.ColumnRenamedOffADuplicate, evidence);
+
+                    // Asked about by its new name too: `why Notes2`.
+                    if (!string.Equals(source, outcome.Field, StringComparison.OrdinalIgnoreCase))
+                        model.Record(outcome.Field!, DecisionStage.SeedExtraction, DecisionOutcome.Kept,
+                            DecisionReasons.ColumnRenamedOffADuplicate, evidence);
+                    break;
 
                 case ColumnFate.KeptAsKeyField:
                     model.Record(outcome.Column, DecisionStage.SeedExtraction, DecisionOutcome.Kept,
@@ -711,6 +734,29 @@ public static class DataModelBuilder
            || string.Equals(fieldName, entityName + "Id", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
+    /// <paramref name="fieldName"/> numbered (Email2, Email3...) to the first form no column has
+    /// taken or will want, and that is not the class's own name.
+    /// </summary>
+    private static string Numbered(
+        string fieldName,
+        string entityName,
+        IReadOnlyList<string> takenNames,
+        IEnumerable<string> otherColumns)
+    {
+        var reserved = new HashSet<string>(otherColumns, StringComparer.OrdinalIgnoreCase);
+
+        for (var n = 2; ; n++)
+        {
+            var candidate = fieldName + n;
+
+            if (!reserved.Contains(candidate)
+                && !string.Equals(candidate, entityName, StringComparison.OrdinalIgnoreCase)
+                && !takenNames.Contains(candidate, StringComparer.OrdinalIgnoreCase))
+                return candidate;
+        }
+    }
+
+    /// <summary>
     /// The name this field can actually carry: itself, or a suffixed form when it would collide
     /// with its own class (CS0542). Null when every candidate is already taken, in which case the
     /// column is a duplicate of one already added.
@@ -880,7 +926,12 @@ public static class DataModelBuilder
             if (!sources.TryGetValue(entity.Name, out var table))
                 continue;
 
-            foreach (var proposal in EntityRuleProposals.For(entity, table, LinkFields(links, entity.Name)))
+            // A field spelled as a key (WarehouseId) holds a key even when it names no table of
+            // this run: "WarehouseId is never more than Qty" is a fact about numbering, not a rule.
+            var keyFields = LinkFields(links, entity.Name);
+            keyFields.UnionWith(entity.Fields.Select(f => f.Name).Where(IsLinkName));
+
+            foreach (var proposal in EntityRuleProposals.For(entity, table, keyFields))
                 entity.Proposals.Add(proposal);
         }
     }

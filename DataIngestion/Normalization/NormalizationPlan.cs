@@ -285,7 +285,8 @@ public static class NormalizationPlan
                 Type = column.Type,
                 Facts = column.Facts,
                 HoldsRowNumbers = column.HoldsRowNumbers,
-                IsKey = column.IsKey
+                IsKey = column.IsKey,
+                DuplicateOf = column.DuplicateOf
             });
 
         foreach (var (column, _) in addedKeys)

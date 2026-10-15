@@ -32,7 +32,7 @@ public static partial class NormalizationAnalyzer
         findings.AddRange(RepeatingGroups(table));
         findings.AddRange(NonAtomicColumns(table));
         findings.AddRange(FunctionalDependencies(table, notes));
-        findings.AddRange(DerivedColumns(table));
+        notes.AddRange(DerivedColumns(table));
 
         return new NormalizationReport(findings, notes);
     }

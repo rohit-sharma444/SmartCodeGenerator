@@ -25,7 +25,7 @@ public sealed class DelimitedTextReader : IDataSourceReader
         if (!File.Exists(spec.Location))
             throw new FileNotFoundException($"No file at {spec.Location}.", spec.Location);
 
-        var text = File.ReadAllText(spec.Location);
+        var text = SourceText.Read(spec.Location, out var encodingNote);
         var label = Path.GetFileName(spec.Location);
 
         var delimiter = SniffDelimiter(text)
@@ -35,16 +35,18 @@ public sealed class DelimitedTextReader : IDataSourceReader
                 + "table. If it is prose describing what you want, use `build app: <description>` "
                 + "instead.");
 
-        return new[]
-        {
-            ToTableFrom(text, delimiter,
-                Path.GetFileNameWithoutExtension(spec.Location), label)
-        };
+        var table = ToTableFrom(text, delimiter,
+            Path.GetFileNameWithoutExtension(spec.Location), label);
+
+        if (encodingNote is not null)
+            table.Notes.Insert(0, encodingNote);
+
+        return new[] { table };
     }
 
     private static TabularTable ToTableFrom(
         string text, char delimiter, string name, string label)
-        => CsvReader.ToTable(name, label, CsvReader.ParseFields(text, delimiter));
+        => CsvReader.FromText(name, label, text, delimiter);
 
     /// <summary>
     /// The delimiter that splits the first <see cref="SniffLines"/> lines into the same number
