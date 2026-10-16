@@ -31,6 +31,10 @@ internal static class ApplicationTypeMenu
     public static IReadOnlyList<string> Labels { get; } =
         Choices.Select(c => c.Label).ToList();
 
+    /// <summary>The target key of each row, in the same order as <see cref="Labels"/>.</summary>
+    public static IReadOnlyList<string> Keys { get; } =
+        Choices.Select(c => c.Key).ToList();
+
     /// <summary>The target the row at <paramref name="index"/> selects.</summary>
     public static ITargetScaffolder Resolve(int index)
     {

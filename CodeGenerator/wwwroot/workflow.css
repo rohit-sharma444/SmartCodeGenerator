@@ -2256,3 +2256,201 @@ body {
 
     .workflow:not(.stage-help-page) > .theme-picker .theme-choice { border-color: var(--line); }
 }
+
+/* Page polish, round four: application types as icon cards, the lone choices as cards too, quieter
+   help marks, and the panel's right edge in line with the banner. Theme tokens only. */
+
+/* The panel runs to the banner's right edge, so the page has one right margin rather than two.
+   The fields inside keep their own 34rem limit. */
+.panel { max-width: none; }
+
+/* An application type card: an icon tile, the name, and one line about it. The radio button is
+   still there for the keyboard and for screen readers, but the card itself shows the choice. */
+.choices .choice {
+    position: relative;
+    align-items: flex-start;
+    gap: 0.85rem;
+    padding: 1rem 2.4rem 1rem 1rem;
+}
+
+.choices .choice input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.choices .choice:has(input:focus-visible) {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-wash), 0 0 0 4px var(--accent);
+}
+
+.choice-icon {
+    flex: none;
+    width: 40px;
+    height: 40px;
+    display: grid;
+    place-items: center;
+    border-radius: 10px;
+    background: var(--machine);
+    color: var(--muted);
+    transition: background 120ms ease, color 120ms ease;
+}
+
+.choice-text { display: grid; gap: 0.15rem; min-width: 0; }
+
+.choice-label { font-weight: 600; color: var(--ink); line-height: 1.3; }
+
+.choice-note { color: var(--muted); font-size: 0.84em; font-weight: 400; line-height: 1.4; }
+
+.choices .choice:hover .choice-icon { color: var(--accent); }
+
+.choices .choice:has(input:checked) .choice-icon {
+    background: var(--accent);
+    color: var(--on-accent);
+}
+
+.choices .choice:has(input:checked) .choice-label { color: var(--accent-ink); }
+
+/* A tick in the corner of the chosen card. */
+.choices .choice:has(input:checked)::after {
+    content: "\2713";
+    position: absolute;
+    top: 0.7rem;
+    right: 0.75rem;
+    width: 20px;
+    height: 20px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--accent);
+    color: var(--on-accent);
+    font-size: 0.7rem;
+    font-weight: 700;
+}
+
+/* The lone choices - "I have a file", "Customize appearance" - as cards in a column, in the
+   same shape as the application types. */
+.panel > .choice {
+    max-width: 34rem;
+    box-sizing: border-box;
+    margin: 0 0 var(--space-2);
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--surface);
+    box-shadow: var(--lift-flat);
+    transition: border-color 120ms ease, background 120ms ease, box-shadow 120ms ease;
+}
+
+.panel > .choice:hover { border-color: var(--accent); box-shadow: var(--lift-raised); }
+
+.panel > .choice:has(input:checked) {
+    border-color: var(--accent);
+    background: var(--accent-wash);
+    box-shadow: 0 0 0 1px var(--accent);
+    color: var(--accent-ink);
+    font-weight: 600;
+}
+
+/* The help marks on the rail: present on every step, so quiet until the step is pointed at. */
+.stage-node .stage-help {
+    opacity: 0.45;
+    transition: opacity 120ms ease;
+}
+
+.stage-node:hover .stage-help,
+.stage-node.active .stage-help,
+.stage-node .stage-help:focus-visible { opacity: 1; }
+
+/* The Review page's offered rules: read as sentences, so in the reading face rather than in
+   code type, with the checkbox lined up on the first line. */
+.proposal-row {
+    align-items: flex-start;
+    gap: 0.5rem;
+    margin: 0.15rem 0 0.35rem;
+    padding: 0.35rem 0.5rem;
+    border-radius: var(--radius-sm);
+    font-family: var(--sans);
+    font-size: 0.8em;
+    line-height: 1.45;
+}
+
+.proposal-row:hover { background: var(--surface); }
+
+.proposal-row input { margin-top: 0.15rem; flex: none; }
+
+/* The Discover findings as cards, so each change to the data reads as one decision. */
+.findings { display: grid; gap: var(--space-2); }
+
+.findings li {
+    padding: 0.85rem 1rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--surface);
+    box-shadow: var(--lift-flat);
+}
+
+.findings li:last-child { border-bottom: 1px solid var(--line); }
+
+.findings li:has(input:checked) {
+    border-color: var(--accent);
+    background: var(--accent-wash);
+}
+
+/* The panel heading and its step count: a little more room under the count. */
+.panel-step { margin-bottom: 0.35rem; }
+
+/* The Review cards' details. The class-wide rules were a bulleted list, and every offered rule
+   wrapped under its own check box: `.fields label` is display: block and outranks the
+   .proposal-row rule. */
+.fields .proposal-row,
+.entity-proposals .proposal-row { display: flex; }
+
+.entity-proposals,
+.workflow-order {
+    margin: 0;
+    padding: var(--space-2) var(--space-3);
+    list-style: none;
+}
+
+.workflow-order li {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.15rem 0;
+    font-size: 0.8em;
+}
+
+/* The boxes that add a field or a class, in the shape of every other box on the page. */
+.add-field-row .field-name,
+.add-field-row .field-type {
+    padding: 0.35rem 0.5rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--ink);
+}
+
+.add-field-row .field-name:focus,
+.add-field-row .field-type:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-wash);
+}
+
+/* A new class: the box and its button on one line. */
+.add-class-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    max-width: 34rem;
+    margin-top: var(--space-4);
+}
+
+.add-class-row .new-class { margin: 0; }
+
+.add-class-row .add-class {
+    flex: none;
+    padding: 0.55rem 1rem;
+    font-size: 0.85em;
+}
