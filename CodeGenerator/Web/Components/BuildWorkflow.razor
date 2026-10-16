@@ -96,6 +96,11 @@
            next answer is typed, and without this the focus falls back to the document after every
            step and the whole wizard needs a mouse. *@
         <section class="panel" tabindex="-1" @ref="_panel" @onkeydown="Typed">
+            @* Where this step sits in the run, the same count the tab title gives. *@
+            <p class="panel-step">
+                Step @(StageGraph.Nodes.ToList().FindIndex(n => n.Stage == Session.Current) + 1)
+                of @StageGraph.Nodes.Count
+            </p>
             <h2>@StageGraph.Nodes.First(n => n.Stage == Session.Current).Title</h2>
 
             @if (Session.PendingDiscard is not null)

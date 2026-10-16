@@ -2054,3 +2054,205 @@ body {
     .panel { padding: 1.5rem 1rem; }
     .choices { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Page polish, round three: a banner for the header, numbered steps, a step count over the panel
+   title and a soft entrance for each step. Theme tokens only, as above. */
+
+/* A faint dot grid on the page ground, under the accent wash. */
+body {
+    background:
+        radial-gradient(1100px 420px at 0% -12%, var(--accent-wash), transparent 70%),
+        radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--ink) 7%, transparent) 1px, transparent 0) 0 0 / 22px 22px,
+        var(--paper);
+    background-attachment: fixed;
+}
+
+/* The banner's colours. On the light themes it is the accent itself, with white type; on the
+   dark ones the accent at full strength would be the brightest thing on the page, so it is a
+   deep blue there and a black field with a yellow rule in high contrast. */
+:root {
+    --banner-from:  var(--accent-ink);
+    --banner-to:    var(--accent);
+    --banner-ink:   var(--on-accent);
+    --banner-glow:  rgb(255 255 255 / 16%);
+    --banner-rule:  transparent;
+}
+
+:root:has(.workflow[data-theme="dark"]) {
+    --banner-from:  #14243a;
+    --banner-to:    #24476f;
+    --banner-ink:   #eef3f9;
+    --banner-glow:  rgb(120 170 235 / 22%);
+}
+
+:root:has(.workflow[data-theme="contrast"]) {
+    --banner-from:  #000000;
+    --banner-to:    #000000;
+    --banner-ink:   #ffffff;
+    --banner-glow:  transparent;
+    --banner-rule:  #ffd400;
+}
+
+/* The banner. A pseudo-element laid into the grid behind the heading and the tagline, so the
+   markup - and every test that finds the h1 - stays as it is. The heading and the tagline take
+   rows one and two explicitly; the rail and the panel then fall into row three. */
+.workflow:not(.stage-help-page) {
+    row-gap: 0;
+}
+
+.workflow:not(.stage-help-page)::before {
+    content: "";
+    grid-column: 1 / -1;
+    grid-row: 1 / span 2;
+
+    /* .workflow aligns its items to the start, which would leave this with no height at all. */
+    align-self: stretch;
+    z-index: 0;
+    margin-bottom: 2rem;
+    border: 2px solid var(--banner-rule);
+    border-radius: 16px;
+    background:
+        radial-gradient(520px 220px at 100% 0%, var(--banner-glow), transparent 70%),
+        radial-gradient(380px 200px at 12% 120%, var(--banner-glow), transparent 70%),
+        linear-gradient(120deg, var(--banner-from), var(--banner-to));
+    background-origin: border-box;
+    box-shadow: var(--lift-raised);
+}
+
+.workflow:not(.stage-help-page) > h1 {
+    grid-row: 1;
+    z-index: 1;
+    padding: 1.75rem 2rem 0;
+    color: var(--banner-ink);
+    font-size: 1.9rem;
+}
+
+.workflow:not(.stage-help-page) > h1::before {
+    background: color-mix(in srgb, var(--banner-ink) 16%, transparent);
+    border: 1px solid color-mix(in srgb, var(--banner-ink) 30%, transparent);
+    box-shadow: none;
+    color: var(--banner-ink);
+}
+
+.workflow:not(.stage-help-page) > .tagline {
+    grid-row: 2;
+    z-index: 1;
+    margin: 0.35rem 0 2rem;
+    padding: 0 2rem 1.9rem 5.05rem;
+    border-bottom: 0;
+    color: color-mix(in srgb, var(--banner-ink) 82%, transparent);
+    font-size: 1.02rem;
+}
+
+/* The theme drop-down sits on the banner, in its top right corner. */
+.workflow:not(.stage-help-page) > .theme-picker {
+    z-index: 2;
+    top: 1.85rem;
+    right: 2rem;
+    color: color-mix(in srgb, var(--banner-ink) 82%, transparent);
+}
+
+.workflow:not(.stage-help-page) > .theme-picker .theme-choice {
+    border-color: color-mix(in srgb, var(--banner-ink) 35%, transparent);
+    box-shadow: none;
+}
+
+/* The closing view sits under the banner, not in its row. */
+.workflow:not(.stage-help-page) > .finished { grid-row: 3; }
+
+/* A number in each step's circle, so the rail reads as one to ten. The marks the markup writes
+   (a tick, a dot, an arrow) stay for done, failed and next steps; the open and pending steps
+   show their number instead. */
+.stage-diagram { counter-reset: stage; }
+.stage-node { counter-increment: stage; }
+
+.stage-node.pending .stage-mark::before,
+.stage-node.active .stage-mark::before {
+    content: counter(stage);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.stage-node.active .stage-mark { font-size: 0; }
+
+/* The next step keeps its arrow: it is the click forward. */
+.stage-node.next .stage-mark::before { content: none; }
+
+.stage-node.pending .stage-mark { color: var(--muted); }
+
+/* Not dimmed as a whole: the number, the title and the line stay readable, and the lighter
+   colour alone says "not yet". */
+.stage-node.pending { opacity: 0.8; }
+
+/* The step count over the panel title, and the title tightened up under it. */
+.panel-step {
+    margin: 0 0 0.2rem;
+    color: var(--accent);
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+/* The content of each step comes in softly. The panel itself stays put - only what the step
+   puts in it moves, and only a little. */
+@keyframes panel-content-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: none; }
+}
+
+.panel > :not(h2):not(.panel-step) {
+    animation: panel-content-in 260ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .panel > :not(h2):not(.panel-step) { animation: none; }
+}
+
+/* The class cards: a tinted header so the name reads as the card's title. */
+.entity header {
+    background: linear-gradient(180deg, var(--accent-wash), var(--surface));
+}
+
+.entities { gap: var(--space-4); }
+
+.entity { border-radius: var(--radius); }
+
+/* The Output stage's screen drop-down in the shape of the other drop-downs. */
+.entity .screen select.role,
+.screens select.role {
+    padding: 0.3rem 0.5rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--ink);
+    font: inherit;
+}
+
+/* The steps of a build, on a tinted card of their own. */
+.progress {
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--line-soft);
+    border-radius: var(--radius);
+    background: var(--machine);
+}
+
+@media (max-width: 900px) {
+    .workflow:not(.stage-help-page) > .tagline { margin-bottom: 1.5rem; }
+    .workflow:not(.stage-help-page)::before { margin-bottom: 1.5rem; }
+}
+
+@media (max-width: 600px) {
+    .workflow:not(.stage-help-page) > h1 { padding: 1.25rem 1.25rem 0; font-size: 1.4rem; }
+    .workflow:not(.stage-help-page) > .tagline { padding: 0 1.25rem 1.25rem; margin-bottom: 1rem; }
+    .workflow:not(.stage-help-page)::before { margin-bottom: 1rem; }
+
+    /* The drop-down leaves the banner on a phone: there is no room beside the title. */
+    .workflow:not(.stage-help-page) > .theme-picker {
+        grid-row: 3;
+        color: var(--muted);
+    }
+
+    .workflow:not(.stage-help-page) > .theme-picker .theme-choice { border-color: var(--line); }
+}
