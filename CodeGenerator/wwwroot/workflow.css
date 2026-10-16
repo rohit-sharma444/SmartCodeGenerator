@@ -818,16 +818,19 @@ body {
    look by selector (bUnit finds it as button.connect, so it is never renamed). */
 .actions button,
 .file .connect {
-    padding: 0.4rem 0.9rem;
+    padding: 0.5rem 1.1rem;
     border: 1px solid var(--line);
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     background: var(--surface);
+    color: var(--ink);
     font: inherit;
+    font-weight: 500;
     cursor: pointer;
+    transition: border-color 120ms ease, box-shadow 120ms ease, filter 120ms ease;
 }
 
 .actions button:hover:not(:disabled),
-.file .connect:hover { border-color: var(--pending); }
+.file .connect:hover { border-color: var(--accent); box-shadow: var(--lift-flat); }
 
 /* Under the connection box it belongs to, not pressed against it. */
 .file .connect { margin: 0.2rem 0 0.4rem; color: var(--ink); }
@@ -1707,4 +1710,549 @@ body:has(.finished) #components-reconnect-modal { display: none; }
    bottom 18px of "Build an application". A small positive margin there instead. */
 @media (max-width: 900px) {
     .workflow > .tagline { margin-top: 0.4rem; }
+}
+
+/* Page polish, round two. Appended last so it wins on order alone, and kept to theme tokens so
+   every theme follows. Class names are untouched: bUnit asserts many of them. */
+
+/* A faint wash of the accent behind the header, so the page has a top and is not one flat
+   grey field. Fixed, so a long Review panel does not drag it down the page. */
+body {
+    min-height: 100vh;
+    background:
+        radial-gradient(1100px 420px at 0% -12%, var(--accent-wash), transparent 70%),
+        var(--paper);
+    background-attachment: fixed;
+}
+
+/* A product mark in place of the thin accent bar: a rounded tile with a code glyph. */
+.workflow > h1::before {
+    content: "</>";
+    flex: none;
+    width: 2.25rem;
+    height: 2.25rem;
+    display: grid;
+    place-items: center;
+    border-radius: 10px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-ink));
+    box-shadow: var(--lift-raised);
+    color: var(--on-accent);
+    font: 700 0.8rem/1 var(--mono);
+    letter-spacing: -0.04em;
+}
+
+.workflow > h1 { gap: 0.8rem; font-weight: 700; }
+
+/* Under the title text, not under the mark: the two read as one block. */
+.workflow > .tagline { padding-left: 3.05rem; }
+
+/* The theme drop-down as a quiet pill. */
+.theme-picker { top: 0.35rem; }
+
+.theme-choice {
+    padding: 0.35rem 0.8rem;
+    border-radius: 999px;
+    box-shadow: var(--lift-flat);
+}
+
+.theme-choice:focus-visible {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-wash);
+}
+
+/* Every check box and radio button in the page's own accent. */
+.workflow input[type="radio"],
+.workflow input[type="checkbox"] {
+    accent-color: var(--accent);
+    width: 1rem;
+    height: 1rem;
+}
+
+/* The rail as a card of its own, with a line joining the steps - it reads as one journey rather
+   than as a loose column of labels. Wide screens only: narrow, it is a wrapped row again. */
+@media (min-width: 901px) {
+    .workflow {
+        grid-template-columns: 236px minmax(0, 1fr);
+        gap: 2rem;
+    }
+
+    .stage-diagram {
+        gap: 2px;
+        padding: var(--space-2);
+        border: 1px solid var(--line-soft);
+        border-radius: var(--radius);
+        background: var(--surface);
+        box-shadow: var(--lift-flat);
+    }
+
+    .stage-node {
+        padding: 0.55rem 1.9rem 0.55rem 2.25rem;
+        border-radius: 8px;
+    }
+
+    .stage-node .stage-help { top: 0.6rem; }
+
+    .stage-mark {
+        z-index: 1;
+        left: 0.55rem;
+        top: 0.55rem;
+        width: 20px;
+        height: 20px;
+        background: var(--surface);
+        font-size: 0.7em;
+        font-weight: 700;
+    }
+
+    /* The line from this step's mark down to the next one's. */
+    .stage-node:not(:last-child)::after {
+        content: "";
+        position: absolute;
+        left: calc(0.55rem + 9px);
+        top: calc(0.55rem + 20px);
+        bottom: calc(-0.55rem - 2px);
+        width: 2px;
+        border-radius: 1px;
+        background: var(--line);
+    }
+
+    .stage-node.done:not(:last-child)::after { background: var(--done); opacity: 0.55; }
+}
+
+/* A step already answered is plain text with a green tick, not a green box: nine outlined boxes
+   was most of what made the rail look busy. The tick still says the state. */
+.stage-node.done { border-color: transparent; }
+
+.stage-node.done .stage-mark { color: var(--done); }
+
+/* The open step: a soft accent ground with a bar down its left edge. */
+.stage-node.active {
+    border-color: transparent;
+    background: var(--accent-wash);
+    box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.stage-node.done:hover,
+.stage-node.next:hover { background: var(--machine); }
+
+.stage-move { margin-top: 0.4rem; }
+
+.stage-continue {
+    padding: 0.4rem 0.95rem;
+    border-radius: var(--radius-sm);
+    box-shadow: var(--lift-flat);
+    transition: filter 120ms ease, box-shadow 120ms ease;
+}
+
+.stage-continue:hover:not(:disabled) { box-shadow: var(--lift-raised); }
+
+.stage-back {
+    padding: 0.4rem 0.6rem;
+    border-radius: var(--radius-sm);
+}
+
+/* The panel: a soft border all round and the accent as a band along the top, drawn inside the
+   rounded corners rather than as a border that bends round them. */
+.panel {
+    position: relative;
+    max-width: 780px;
+    padding: 2rem 2.25rem 2.25rem;
+    border: 1px solid var(--line-soft);
+    border-radius: 14px;
+    box-shadow: var(--lift-raised);
+}
+
+.panel::before {
+    content: "";
+    position: absolute;
+    top: -1px;
+    left: -1px;
+    right: -1px;
+    height: 4px;
+    border-radius: 14px 14px 0 0;
+    background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 35%, var(--surface)));
+}
+
+/* The section takes the keyboard when a step opens - see BuildWorkflow - and the browser drew
+   that as a hard black ring round the whole card. The ring is kept only for keyboard users. */
+.panel:focus { outline: none; }
+
+.panel:focus-visible { box-shadow: var(--lift-raised), 0 0 0 3px var(--accent-wash); }
+
+.panel > h2 {
+    margin: 0 0 var(--space-5);
+    padding-bottom: var(--space-4);
+    border-bottom: 1px solid var(--line-soft);
+    font-size: 1.4rem;
+    font-weight: 700;
+}
+
+/* A one-of-several choice as a grid of tiles, the chosen one filled - easier to scan and to hit
+   than a column of small radio buttons. */
+.choices {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: var(--space-3);
+    margin: var(--space-4) 0 var(--space-5);
+}
+
+.choices .choice {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    margin: 0;
+    padding: 0.8rem 1rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--surface);
+    box-shadow: var(--lift-flat);
+    cursor: pointer;
+    transition: border-color 120ms ease, background 120ms ease, box-shadow 120ms ease;
+}
+
+.choices .choice:hover { border-color: var(--accent); box-shadow: var(--lift-raised); }
+
+.choices .choice:has(input:checked) {
+    border-color: var(--accent);
+    background: var(--accent-wash);
+    box-shadow: 0 0 0 1px var(--accent);
+    color: var(--accent-ink);
+    font-weight: 600;
+}
+
+.choices .choice input { flex: none; margin: 0; }
+
+/* A lone check box line - Look, Data - as a row with some air round it. */
+.panel > .choice,
+.fields > .choice {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin: 0.45rem 0;
+    cursor: pointer;
+}
+
+/* Text boxes and drop-downs: a little taller, rounded, and a focus ring in the accent. */
+.panel .answer {
+    padding: 0.5rem 0.7rem;
+    border-radius: var(--radius-sm);
+    transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.panel .answer:hover { border-color: var(--faint); }
+
+/* The browser's grey "Choose File" button, in the shape of the page's own buttons. */
+.panel input[type="file"]::file-selector-button {
+    margin-right: 0.75rem;
+    padding: 0.3rem 0.9rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: var(--machine);
+    color: var(--ink);
+    font: inherit;
+    cursor: pointer;
+}
+
+.panel input[type="file"]::file-selector-button:hover { border-color: var(--accent); }
+
+.panel .answer:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-wash);
+}
+
+/* Direct children only: the Review cards hold a .fields list of their own. */
+.panel > .fields > label:not(.choice),
+.panel > .file > label { margin: 0.8rem 0; color: var(--muted); font-weight: 500; }
+
+.panel .answer { margin-top: 0.3rem; color: var(--ink); font-weight: 400; }
+
+/* Buttons: one shape for all of them, so a panel never shows five different defaults. The panel
+   buttons and the Data stage's connect button take it from their own rule above, which a test
+   holds as the only one; the Look stage's button matches it here. */
+.actions {
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin-top: var(--space-5);
+}
+
+.look-clear {
+    padding: 0.5rem 1.1rem;
+    border-radius: var(--radius-sm);
+    color: var(--ink);
+    font-weight: 500;
+    transition: border-color 120ms ease, box-shadow 120ms ease, filter 120ms ease;
+}
+
+.look-clear:hover { border-color: var(--accent); box-shadow: var(--lift-flat); }
+
+.actions .write,
+.actions .run,
+.actions .finish,
+.actions .start,
+.actions .overwrite-add {
+    color: var(--on-accent);
+    font-weight: 600;
+    box-shadow: var(--lift-flat);
+}
+
+.actions .write:hover:not(:disabled),
+.actions .run:hover:not(:disabled),
+.actions .finish:hover:not(:disabled),
+.actions .start:hover:not(:disabled),
+.actions .overwrite-add:hover:not(:disabled) { filter: brightness(1.08); box-shadow: var(--lift-raised); }
+
+.actions .cancel { background: transparent; color: var(--muted); }
+
+.actions .stop,
+.actions .overwrite-yes { color: var(--failed); }
+
+.actions button:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.actions button:focus-visible,
+.file .connect:focus-visible,
+.look-clear:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--accent-wash);
+    border-color: var(--accent);
+}
+
+/* Notes and questions: rounded, so they match the cards they sit in. */
+.notice,
+.failure,
+.cancel-question,
+.discard-question,
+.look-remembered,
+.field-error {
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+.notice,
+.failure,
+.cancel-question,
+.discard-question { padding: 0.8rem 1rem; }
+
+/* The closing view, in the panel's shape. */
+.finished {
+    padding: 2rem 2.25rem;
+    border: 1px solid var(--line-soft);
+    border-left: 4px solid var(--done);
+    border-radius: 14px;
+    box-shadow: var(--lift-raised);
+}
+
+.finished h2 { font-size: 1.4rem; }
+
+.build-log,
+.fix-report {
+    border-radius: var(--radius-sm);
+    background: var(--machine);
+}
+
+@media (max-width: 600px) {
+    .workflow > .tagline { padding-left: 0; }
+    .panel { padding: 1.5rem 1rem; }
+    .choices { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Page polish, round three: a banner for the header, numbered steps, a step count over the panel
+   title and a soft entrance for each step. Theme tokens only, as above. */
+
+/* A faint dot grid on the page ground, under the accent wash. */
+body {
+    background:
+        radial-gradient(1100px 420px at 0% -12%, var(--accent-wash), transparent 70%),
+        radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--ink) 7%, transparent) 1px, transparent 0) 0 0 / 22px 22px,
+        var(--paper);
+    background-attachment: fixed;
+}
+
+/* The banner's colours. On the light themes it is the accent itself, with white type; on the
+   dark ones the accent at full strength would be the brightest thing on the page, so it is a
+   deep blue there and a black field with a yellow rule in high contrast. */
+:root {
+    --banner-from:  var(--accent-ink);
+    --banner-to:    var(--accent);
+    --banner-ink:   var(--on-accent);
+    --banner-glow:  rgb(255 255 255 / 16%);
+    --banner-rule:  transparent;
+}
+
+:root:has(.workflow[data-theme="dark"]) {
+    --banner-from:  #14243a;
+    --banner-to:    #24476f;
+    --banner-ink:   #eef3f9;
+    --banner-glow:  rgb(120 170 235 / 22%);
+}
+
+:root:has(.workflow[data-theme="contrast"]) {
+    --banner-from:  #000000;
+    --banner-to:    #000000;
+    --banner-ink:   #ffffff;
+    --banner-glow:  transparent;
+    --banner-rule:  #ffd400;
+}
+
+/* The banner. A pseudo-element laid into the grid behind the heading and the tagline, so the
+   markup - and every test that finds the h1 - stays as it is. The heading and the tagline take
+   rows one and two explicitly; the rail and the panel then fall into row three. */
+.workflow:not(.stage-help-page) {
+    row-gap: 0;
+}
+
+.workflow:not(.stage-help-page)::before {
+    content: "";
+    grid-column: 1 / -1;
+    grid-row: 1 / span 2;
+
+    /* .workflow aligns its items to the start, which would leave this with no height at all. */
+    align-self: stretch;
+    z-index: 0;
+    margin-bottom: 2rem;
+    border: 2px solid var(--banner-rule);
+    border-radius: 16px;
+    background:
+        radial-gradient(520px 220px at 100% 0%, var(--banner-glow), transparent 70%),
+        radial-gradient(380px 200px at 12% 120%, var(--banner-glow), transparent 70%),
+        linear-gradient(120deg, var(--banner-from), var(--banner-to));
+    background-origin: border-box;
+    box-shadow: var(--lift-raised);
+}
+
+.workflow:not(.stage-help-page) > h1 {
+    grid-row: 1;
+    z-index: 1;
+    padding: 1.75rem 2rem 0;
+    color: var(--banner-ink);
+    font-size: 1.9rem;
+}
+
+.workflow:not(.stage-help-page) > h1::before {
+    background: color-mix(in srgb, var(--banner-ink) 16%, transparent);
+    border: 1px solid color-mix(in srgb, var(--banner-ink) 30%, transparent);
+    box-shadow: none;
+    color: var(--banner-ink);
+}
+
+.workflow:not(.stage-help-page) > .tagline {
+    grid-row: 2;
+    z-index: 1;
+    margin: 0.35rem 0 2rem;
+    padding: 0 2rem 1.9rem 5.05rem;
+    border-bottom: 0;
+    color: color-mix(in srgb, var(--banner-ink) 82%, transparent);
+    font-size: 1.02rem;
+}
+
+/* The theme drop-down sits on the banner, in its top right corner. */
+.workflow:not(.stage-help-page) > .theme-picker {
+    z-index: 2;
+    top: 1.85rem;
+    right: 2rem;
+    color: color-mix(in srgb, var(--banner-ink) 82%, transparent);
+}
+
+.workflow:not(.stage-help-page) > .theme-picker .theme-choice {
+    border-color: color-mix(in srgb, var(--banner-ink) 35%, transparent);
+    box-shadow: none;
+}
+
+/* The closing view sits under the banner, not in its row. */
+.workflow:not(.stage-help-page) > .finished { grid-row: 3; }
+
+/* A number in each step's circle, so the rail reads as one to ten. The marks the markup writes
+   (a tick, a dot, an arrow) stay for done, failed and next steps; the open and pending steps
+   show their number instead. */
+.stage-diagram { counter-reset: stage; }
+.stage-node { counter-increment: stage; }
+
+.stage-node.pending .stage-mark::before,
+.stage-node.active .stage-mark::before {
+    content: counter(stage);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.stage-node.active .stage-mark { font-size: 0; }
+
+/* The next step keeps its arrow: it is the click forward. */
+.stage-node.next .stage-mark::before { content: none; }
+
+.stage-node.pending .stage-mark { color: var(--muted); }
+
+/* Not dimmed as a whole: the number, the title and the line stay readable, and the lighter
+   colour alone says "not yet". */
+.stage-node.pending { opacity: 0.8; }
+
+/* The step count over the panel title, and the title tightened up under it. */
+.panel-step {
+    margin: 0 0 0.2rem;
+    color: var(--accent);
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+/* The content of each step comes in softly. The panel itself stays put - only what the step
+   puts in it moves, and only a little. */
+@keyframes panel-content-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: none; }
+}
+
+.panel > :not(h2):not(.panel-step) {
+    animation: panel-content-in 260ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .panel > :not(h2):not(.panel-step) { animation: none; }
+}
+
+/* The class cards: a tinted header so the name reads as the card's title. */
+.entity header {
+    background: linear-gradient(180deg, var(--accent-wash), var(--surface));
+}
+
+.entities { gap: var(--space-4); }
+
+.entity { border-radius: var(--radius); }
+
+/* The Output stage's screen drop-down in the shape of the other drop-downs. */
+.entity .screen select.role,
+.screens select.role {
+    padding: 0.3rem 0.5rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--ink);
+    font: inherit;
+}
+
+/* The steps of a build, on a tinted card of their own. */
+.progress {
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--line-soft);
+    border-radius: var(--radius);
+    background: var(--machine);
+}
+
+@media (max-width: 900px) {
+    .workflow:not(.stage-help-page) > .tagline { margin-bottom: 1.5rem; }
+    .workflow:not(.stage-help-page)::before { margin-bottom: 1.5rem; }
+}
+
+@media (max-width: 600px) {
+    .workflow:not(.stage-help-page) > h1 { padding: 1.25rem 1.25rem 0; font-size: 1.4rem; }
+    .workflow:not(.stage-help-page) > .tagline { padding: 0 1.25rem 1.25rem; margin-bottom: 1rem; }
+    .workflow:not(.stage-help-page)::before { margin-bottom: 1rem; }
+
+    /* The drop-down leaves the banner on a phone: there is no room beside the title. */
+    .workflow:not(.stage-help-page) > .theme-picker {
+        grid-row: 3;
+        color: var(--muted);
+    }
+
+    .workflow:not(.stage-help-page) > .theme-picker .theme-choice { border-color: var(--line); }
 }
