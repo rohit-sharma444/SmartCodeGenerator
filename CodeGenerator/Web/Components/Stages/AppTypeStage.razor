@@ -13,7 +13,11 @@
         <label class="choice">
             <input type="radio" name="apptype" checked="@(_index == index)"
                    @onchange="() => _index = index" />
-            @ApplicationTypeMenu.Labels[index]
+            <span class="choice-icon" aria-hidden="true">@IconFor(ApplicationTypeMenu.Keys[index])</span>
+            <span class="choice-text">
+                <span class="choice-label">@ApplicationTypeMenu.Labels[index]</span>
+                <span class="choice-note">@NoteFor(ApplicationTypeMenu.Keys[index])</span>
+            </span>
         </label>
     }
 </div>
@@ -34,6 +38,39 @@
         _index = Session.Target is null ? 0 : ApplicationTypeMenu.IndexOf(Session.Target);
 
         Navigation.Offer(Next);
+    }
+
+    /// <summary>One line under each label, so the choice can be made without knowing the names.</summary>
+    private static string NoteFor(string key) => key switch
+    {
+        "wpf" => "A modern Windows desktop app with XAML screens.",
+        "winforms" => "A classic Windows desktop app with forms.",
+        "webapi" => "HTTP endpoints for other programs to call.",
+        "blazor" => "An app people use in a web browser.",
+        "console" => "A text app that runs in a terminal.",
+        "classlib" => "Reusable code with no user interface.",
+        "worker" => "A long-running process with no screens.",
+        _ => string.Empty,
+    };
+
+    /// <summary>A small line drawing for each kind of application, in the text colour.</summary>
+    private static MarkupString IconFor(string key)
+    {
+        var paths = key switch
+        {
+            "wpf" => "<rect x='3' y='4' width='18' height='12' rx='2'/><path d='M8 20h8M12 16v4'/>",
+            "winforms" => "<rect x='3' y='4' width='18' height='16' rx='2'/><path d='M3 9h18M6.5 6.5h.01M9 6.5h.01'/>",
+            "webapi" => "<path d='M8 4c-2 0-3 1-3 3v2c0 1-1 2-2 2 1 0 2 1 2 2v2c0 2 1 3 3 3M16 4c2 0 3 1 3 3v2c0 1 1 2 2 2-1 0-2 1-2 2v2c0 2-1 3-3 3'/>",
+            "blazor" => "<circle cx='12' cy='12' r='9'/><path d='M3 12h18M12 3c2.5 2.5 3.8 5.5 3.8 9s-1.3 6.5-3.8 9c-2.5-2.5-3.8-5.5-3.8-9S9.5 5.5 12 3z'/>",
+            "console" => "<rect x='3' y='4' width='18' height='16' rx='2'/><path d='M7 9l3 3-3 3M12 15h5'/>",
+            "classlib" => "<path d='M4 19V6a2 2 0 0 1 2-2h13v14H6a2 2 0 0 0-2 2 2 2 0 0 0 2 2h13'/><path d='M8 8h7'/>",
+            "worker" => "<path d='M20 12a8 8 0 1 1-2.34-5.66'/><path d='M20 4v4h-4'/>",
+            _ => string.Empty,
+        };
+
+        return new MarkupString(
+            "<svg viewBox='0 0 24 24' width='22' height='22' fill='none' stroke='currentColor' "
+            + "stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'>" + paths + "</svg>");
     }
 
     private Task<bool> Next()
