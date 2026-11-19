@@ -346,6 +346,70 @@ public sealed class FindsEverything : IEntityLookup
         }
     }
 
+    /// <summary>
+    /// A seeded date is written without an offset, as every other date the stores write. The seeder
+    /// used DateTime.Today, whose Kind is Local, so a seeded row's dates went to JSON as
+    /// "2026-11-18T00:00:00+05:30" beside rows the app saved as "2026-11-18T00:00:00".
+    /// </summary>
+    [TestMethod]
+    public void A_seeded_date_is_stored_without_an_offset()
+    {
+        var entityName = $"Visit{Guid.NewGuid():N}"[..13];
+
+        var model = $$"""
+namespace Acme.Models;
+
+public class {{entityName}}
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = "";
+    public System.DateTime On { get; set; }
+    public System.DateTime CreatedOn { get; set; }
+}
+""";
+
+        var sources = new List<(string Path, string Code)>
+        {
+            ("Session.cs", SessionTemplate.Source("Acme")),
+            ("IStore.cs", StoreSeamTemplate.Source("Acme")),
+            ("JsonStore.cs", JsonStoreTemplate.Source("Acme.Data")),
+            ("StoreFactory.cs", StoreFactoryTemplate.Source("Acme", PersistenceKind.Json)),
+            ("Validation/ValidationContext.cs", ValidationContextTemplate.Source("Acme")),
+            ("Validation/IEntityLookup.cs", ValidatorTemplate.EntityLookupInterface("Acme")),
+            ("Validation/Permissions.cs", PermissionsTemplate.Source("Acme", [], login: false)),
+            ("Validation/ActingUser.cs", ActingUserTemplate.Source("Acme", sessionAuth: true)),
+            ("Models/Entity.cs", model),
+            ("Data/SeedData.cs", SeedDataTemplate.Source("Acme", [entityName], [])),
+        };
+        sources.AddRange(AuthCoreFiles.For("Acme").Select(f => (f.Name, f.Source)));
+
+        var result = Compiler.CompileSources(sources);
+        Assert.IsTrue(result.Success, string.Join("\n", result.Diagnostics));
+
+        var assembly = Assembly.Load(result.AssemblyBytes!);
+        var storeJson = Path.Combine(AppContext.BaseDirectory, entityName + ".json");
+
+        try
+        {
+            if (File.Exists(storeJson))
+                File.Delete(storeJson);
+
+            assembly.GetType("Acme.Data.SeedData")!.GetMethod("EnsureSeeded")!.Invoke(null, null);
+
+            var json = File.ReadAllText(storeJson);
+
+            Assert.IsFalse(
+                System.Text.RegularExpressions.Regex.IsMatch(json, @"T\d\d:\d\d:\d\d(\.\d+)?([+-]\d\d:\d\d|Z)"),
+                "a seeded date carries an offset:\n" + json);
+            StringAssert.Contains(json, "T00:00:00\"", "fixture: no seeded midnight date");
+        }
+        finally
+        {
+            if (File.Exists(storeJson))
+                File.Delete(storeJson);
+        }
+    }
+
     /// <summary>An app with no value list gets exactly the seeder it always had.</summary>
     [TestMethod]
     public void Classes_with_no_value_list_change_nothing()

@@ -435,7 +435,10 @@ public static class SeedData
         if (type == typeof(int)) return n;
         if (type == typeof(decimal)) return n * 10 + 0.99m;
         if (type == typeof(double)) return n * 10 + 0.99;
-        if (type == typeof(DateTime)) return DateTime.Today.AddDays(-n);
+        // Unspecified, as every other date the stores write: a Local one went to JSON with an
+        // offset beside rows that have none.
+        if (type == typeof(DateTime))
+            return DateTime.SpecifyKind(DateTime.Today.AddDays(-n), DateTimeKind.Unspecified);
         if (type == typeof(bool)) return n % 2 == 0;
 
         // Navigation properties (entity types, List<>) and anything else are left at default.
