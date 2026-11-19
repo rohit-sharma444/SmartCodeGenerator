@@ -883,4 +883,28 @@ public class GenerateFixTests
         page.Cut.WaitForAssertion(() => Assert.IsTrue(page.Session.Generated!.BuildSucceeded), TimeSpan.FromSeconds(30));
         Assert.AreEqual(first.ProjectPath, fixer.Path);
     }
+
+    /// <remarks>
+    /// The report lines carry whole paths with no spaces in them ("Generated test project at
+    /// C:\...\HospitalPatientAppointmentScheduling.Tests"), and an unbreakable line that long ran
+    /// about 180 px past the panel at 1024 px. Only <c>.fix-report</c> was told it may wrap.
+    /// </remarks>
+    [TestMethod]
+    public void A_report_line_wraps_a_long_path_inside_the_panel()
+    {
+        var css = File.ReadAllText(Path.Combine(
+            AppContext.BaseDirectory, "..", "..", "..", "..", "CodeGenerator", "wwwroot", "workflow.css"));
+
+        css = System.Text.RegularExpressions.Regex.Replace(
+            css, @"/\*.*?\*/", string.Empty, System.Text.RegularExpressions.RegexOptions.Singleline);
+
+        var bodies = System.Text.RegularExpressions.Regex.Matches(css, @"([^{}]+)\{([^}]*)\}")
+            .Where(m => m.Groups[1].Value.Split(',').Select(x => x.Trim()).Contains(".report-line"))
+            .Select(m => m.Groups[2].Value)
+            .ToList();
+
+        Assert.IsTrue(
+            bodies.Any(b => System.Text.RegularExpressions.Regex.IsMatch(b, @"overflow-wrap\s*:\s*anywhere")),
+            "no .report-line rule lets a long path wrap");
+    }
 }
