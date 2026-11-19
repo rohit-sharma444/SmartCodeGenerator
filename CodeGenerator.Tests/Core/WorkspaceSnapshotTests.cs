@@ -142,6 +142,30 @@ public class WorkspaceSnapshotTests
         Assert.IsFalse(Directory.Exists(Path.Combine(root, "A", "B")), "A/B is the run's");
     }
 
+    // B5: a rollback deleted the -wal and -shm files Visual Studio wrote under .vs during the run,
+    // and counted .vs toward the size limit.
+    [TestMethod]
+    public void Restore_LeavesIdeStateFoldersAlone()
+    {
+        var root = NewWorkspace();
+        Directory.CreateDirectory(Path.Combine(root, ".vs", "v17"));
+        Directory.CreateDirectory(Path.Combine(root, ".idea"));
+        File.WriteAllText(Path.Combine(root, ".vs", "v17", "Code.db"), "before");
+        File.WriteAllText(Path.Combine(root, ".idea", "workspace.xml"), "before");
+
+        Assert.AreEqual(0, WorkspaceSnapshot.Measure(root).FileCount, ".vs and .idea are not counted");
+
+        using var snapshot = WorkspaceSnapshot.Capture(root);
+        File.WriteAllText(Path.Combine(root, ".vs", "v17", "Code.db"), "after");
+        File.WriteAllText(Path.Combine(root, ".vs", "v17", "Code.db-wal"), "wal");
+        File.WriteAllText(Path.Combine(root, ".idea", "workspace.xml"), "after");
+        snapshot.Restore();
+
+        Assert.AreEqual("after", File.ReadAllText(Path.Combine(root, ".vs", "v17", "Code.db")));
+        Assert.IsTrue(File.Exists(Path.Combine(root, ".vs", "v17", "Code.db-wal")));
+        Assert.AreEqual("after", File.ReadAllText(Path.Combine(root, ".idea", "workspace.xml")));
+    }
+
     [TestMethod]
     public void Restore_PutsBackAnEmptyFolderTheRunDeleted()
     {

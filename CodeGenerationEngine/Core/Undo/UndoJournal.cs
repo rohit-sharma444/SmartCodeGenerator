@@ -479,8 +479,10 @@ public sealed class UndoJournal : IDisposable
     // Every directory under the root, relative, skipping (and not listing) excluded ones.
     private HashSet<string> Directories()
     {
+        // The snapshot's own list, so the two never disagree about what the workspace is: this
+        // one once lacked .vs while the file walk had it.
         var excluded = new HashSet<string>(
-            ["bin", "obj", ".git", "TestResults", "node_modules", .. AlsoExcluded], StringComparer.OrdinalIgnoreCase);
+            [.. WorkspaceSnapshot.ExcludedDirectories, .. AlsoExcluded], StringComparer.OrdinalIgnoreCase);
         var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var pending = new Stack<string>([WorkspaceRoot]);
 

@@ -19,8 +19,12 @@ public sealed record SnapshotSizing(int FileCount, long Bytes);
 /// </remarks>
 public sealed class WorkspaceSnapshot : IDisposable
 {
-    private static readonly string[] ExcludedDirectories =
-        ["bin", "obj", ".git", "TestResults", "node_modules"];
+    // .vs and .idea are an IDE's live state - SQLite with -wal and -shm, .vsidx, .dtbcache - that
+    // it writes while a command runs: journalled, an undo refused over them or copied stale bytes
+    // over open files, a rollback deleted -wal and -shm, a locked .vsidx made every command
+    // Unrecorded, and their size switched undo off. .vscode holds the user's settings, so stays.
+    internal static readonly string[] ExcludedDirectories =
+        ["bin", "obj", ".git", "TestResults", "node_modules", ".vs", ".idea"];
 
     /// <summary>The most files, and bytes, worth copying for a rollback: batch asks first above
     /// these, and undo switches itself off.</summary>
