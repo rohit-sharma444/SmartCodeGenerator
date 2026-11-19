@@ -283,8 +283,31 @@
     /// </summary>
     /// <remarks>
     /// Awaited, not discarded: a dropped task never repaints and swallows whatever it threw.
+    /// <para>
+    /// And caught: an exception that leaves an event handler ends the Blazor circuit, so one
+    /// command that threw (the relationship offer's duplicate-key crash was one) left a dead page
+    /// with no word of why. The error is a failed turn instead, and the page goes on.
+    /// </para>
     /// </remarks>
-    private async Task Send(string input) => await Session.Send(input);
+    private async Task Send(string input)
+    {
+        try
+        {
+            await Session.Send(input);
+        }
+        catch (Exception ex)
+        {
+            try
+            {
+                Session.Fail(input, $"Something went wrong: {ex.Message}");
+            }
+            catch (Exception)
+            {
+                // A listener that throws again must not end the circuit either; the turn is in
+                // the transcript, and the next repaint shows it.
+            }
+        }
+    }
 
     /// <summary>
     /// Asks the running command to stop.

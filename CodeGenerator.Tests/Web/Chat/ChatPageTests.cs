@@ -321,6 +321,43 @@ public class ChatPageTests
             page.Find(".tree-solution .tree-name").TextContent, "Solution 'Acme'");
     }
 
+    /// <summary>
+    /// A message whose command throws shows the error and leaves the page usable.
+    /// </summary>
+    /// <remarks>
+    /// The page awaited the session with nothing around it, so an exception from below (the
+    /// relationship offer's duplicate-key crash was one) left the event handler and Blazor ended
+    /// the circuit: a dead page with no word of why. Here a listener throws once, which is the one
+    /// failure a test can force from outside the session.
+    /// </remarks>
+    [TestMethod]
+    public void A_command_that_throws_shows_the_error_and_the_page_stays_usable()
+    {
+        using var context = NewContext(out var session);
+        var page = context.Render<ChatPage>();
+
+        var thrown = false;
+        session.Changed += () =>
+        {
+            if (thrown)
+                return;
+            thrown = true;
+            throw new InvalidOperationException("boom from below");
+        };
+
+        page.Find("textarea").Input("help");
+        page.Find(".composer-send").Click();
+
+        page.WaitForAssertion(() =>
+        {
+            var failed = page.Find(".turn-failed");
+            StringAssert.Contains(failed.TextContent, "boom from below");
+        });
+
+        Assert.IsFalse(session.Running, "the session is not left running");
+        page.WaitForAssertion(() => Assert.IsFalse(page.Find("textarea").HasAttribute("disabled")));
+    }
+
     private static BunitContext NewContext(ChatSession? session = null)
     {
         var context = new BunitContext();

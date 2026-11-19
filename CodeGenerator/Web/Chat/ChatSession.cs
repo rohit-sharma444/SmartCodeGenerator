@@ -216,10 +216,12 @@ public sealed class ChatSession
             InFlight = input;
         }
 
-        Raise();
-
         try
         {
+            // Inside the try: a throw here used to leave Running set, and every tab's composer
+            // shut for good.
+            Raise();
+
             var kind = CommandRoute.Classify(input);
 
             switch (kind)
@@ -326,6 +328,23 @@ public sealed class ChatSession
             string.Empty,
             CommandKind.Pipeline,
             ChatVerdict.Succeeded,
+            [new TextBlock(text)],
+            DateTimeOffset.Now));
+
+        Raise();
+    }
+
+    /// <summary>Puts a failed turn in the transcript for a message whose command threw.</summary>
+    /// <remarks>
+    /// The page calls this when <see cref="Send"/> throws, so the error is on screen rather than
+    /// ending the circuit.
+    /// </remarks>
+    public void Fail(string input, string text)
+    {
+        _turns.Add(new ChatTurn(
+            input,
+            CommandKind.Pipeline,
+            ChatVerdict.Failed,
             [new TextBlock(text)],
             DateTimeOffset.Now));
 
