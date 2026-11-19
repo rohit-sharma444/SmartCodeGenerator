@@ -23,9 +23,16 @@ internal static class PropertyInitializers
         "Stack", "LinkedList", "Collection", "ObservableCollection", "ConcurrentDictionary",
     };
 
+    // Read-only: an empty array is one, and needs no allocation per instance.
+    private static readonly HashSet<string> ReadOnlyCollectionInterfaces = new(StringComparer.Ordinal)
+    {
+        "IEnumerable", "IReadOnlyList", "IReadOnlyCollection",
+    };
+
+    // Writable: Add on an array throws, so a list.
     private static readonly HashSet<string> CollectionInterfaces = new(StringComparer.Ordinal)
     {
-        "IEnumerable", "IList", "ICollection", "IReadOnlyList", "IReadOnlyCollection",
+        "IList", "ICollection",
     };
 
     private static readonly HashSet<string> DictionaryInterfaces = new(StringComparer.Ordinal)
@@ -89,8 +96,8 @@ internal static class PropertyInitializers
                     _ => null,
                 };
 
-            case ArrayTypeSyntax:
-                return "[]";
+            case ArrayTypeSyntax array:
+                return EmptyArray(array);
         }
 
         var generic = type switch
@@ -105,14 +112,23 @@ internal static class PropertyInitializers
         {
             var name = generic.Identifier.Text;
 
+            // The type as written: it binds where the property is, so `new` of it does too, and
+            // this is C# 2 where target-typed `new()` is C# 9.
             if (ConcreteCollections.Contains(name))
-                return "new()";
+                return $"new {type}()";
 
-            if (CollectionInterfaces.Contains(name))
-                return "[]";
+            var arguments = generic.TypeArgumentList.Arguments;
 
-            if (DictionaryInterfaces.Contains(name))
-                return $"new Dictionary{generic.TypeArgumentList}()";
+            // `[]` is a C# 12 collection expression, and a net6 or net7 project is C# 10 or 11.
+            // Qualified from global::, as nothing says System.Collections.Generic is in scope.
+            if (ReadOnlyCollectionInterfaces.Contains(name) && arguments.Count == 1)
+                return $"global::System.Array.Empty<{arguments[0]}>()";
+
+            if (CollectionInterfaces.Contains(name) && arguments.Count == 1)
+                return $"new global::System.Collections.Generic.List<{arguments[0]}>()";
+
+            if (DictionaryInterfaces.Contains(name) && arguments.Count == 2)
+                return $"new global::System.Collections.Generic.Dictionary<{arguments[0]}, {arguments[1]}>()";
         }
 
         if (type.ToString() is "String" or "System.String")
@@ -122,6 +138,27 @@ internal static class PropertyInitializers
         // is set, as an entity's navigation property does. Said so, rather than inventing an
         // instance with `new()` that may not even have a constructor to call.
         return bound is { IsReferenceType: true } and not ITypeParameterSymbol ? "null!" : null;
+    }
+
+    /// <summary>
+    /// An empty array of <paramref name="array"/>'s type, in a form C# 6 compiles and that needs no
+    /// using: <c>global::System.Array.Empty&lt;T&gt;()</c>, or for a multi-dimensional array
+    /// <c>new T[0, 0]</c>.
+    /// </summary>
+    /// <remarks>
+    /// The first rank specifier is the outermost array: <c>int[][,]</c> is a one-dimensional array
+    /// of <c>int[,]</c>.
+    /// </remarks>
+    private static string EmptyArray(ArrayTypeSyntax array)
+    {
+        var outer = array.RankSpecifiers[0];
+        var rest = string.Concat(array.RankSpecifiers.Skip(1).Select(r => r.ToString()));
+
+        if (outer.Rank == 1)
+            return $"global::System.Array.Empty<{array.ElementType}{rest}>()";
+
+        var zeros = string.Join(", ", Enumerable.Repeat("0", outer.Rank));
+        return $"new {array.ElementType}[{zeros}]{rest}";
     }
 
     /// <summary>
