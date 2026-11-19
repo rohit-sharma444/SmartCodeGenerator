@@ -413,6 +413,13 @@ public static class DomainModelMapper
         }
     }
 
+    /// <summary>Whether a default of <paramref name="value"/> or <paramref name="function"/>
+    /// can start a new record's property of <paramref name="type"/>. A reader that knows the
+    /// source's default asks, so a default the app will leave out is said rather than dropped in
+    /// silence.</summary>
+    public static bool DefaultFits(string type, string? value, string? function)
+        => Initializer(BaseType(type), value, function) is not null;
+
     /// <summary>The C# expression a default of <paramref name="value"/> or
     /// <paramref name="function"/> is for a <paramref name="type"/>, or null when it does not fit.</summary>
     private static string? Initializer(string type, string? value, string? function)

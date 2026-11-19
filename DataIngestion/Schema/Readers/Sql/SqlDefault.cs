@@ -49,6 +49,29 @@ public static class SqlDefault
         return null;
     }
 
+    /// <summary>
+    /// A literal default for a date column of SQL type <paramref name="sqlType"/>, as the
+    /// invariant date text the generated app parses: SQL Server reads <c>'20200101'</c> as
+    /// 2020-01-01 and, for <c>datetime</c> and <c>smalldatetime</c>, a number as days since
+    /// 1900-01-01 (<c>((0))</c> is 1900-01-01). Any other value is returned as it is.
+    /// </summary>
+    public static string AsDate(string value, string sqlType)
+    {
+        var invariant = CultureInfo.InvariantCulture;
+        var text = value.Trim();
+
+        if (DateTime.TryParseExact(text, ["yyyyMMdd", "yyyyMMdd HH:mm", "yyyyMMdd HH:mm:ss", "yyyyMMdd HH:mm:ss.FFFFFFF"],
+                invariant, DateTimeStyles.None, out var compact))
+            return compact.ToString("yyyy-MM-ddTHH:mm:ss.FFFFFFF", invariant);
+
+        if (sqlType.ToLowerInvariant() is "datetime" or "smalldatetime"
+            && decimal.TryParse(text, NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint, invariant, out var days)
+            && days is >= -53690m and <= 2958463m)
+            return new DateTime(1900, 1, 1).AddDays((double)days).ToString("yyyy-MM-ddTHH:mm:ss.FFFFFFF", invariant);
+
+        return value;
+    }
+
     /// <summary><paramref name="text"/> without every pair of parentheses wrapping the whole of it.</summary>
     private static string Unwrapped(string text)
     {

@@ -570,6 +570,37 @@ public class SqlSourceFidelityTests
         Assert.Equal("Retired", Get(row, "Status"));
     }
 
+    [Fact]
+    public void A_date_default_sql_server_spells_as_a_number_or_yyyymmdd_starts_a_new_record()
+    {
+        // A5: datetime DEFAULT ((0)) is 1900-01-01 to SQL Server, and ('20200101') is 2020-01-01;
+        // neither was carried, nor said, so a new record started at 0001-01-01.
+        var app = Generate(Database(add => add("Event",
+            [
+                new("EventId", "int", false, IsPrimaryKey: true),
+                new("Logged", "datetime", false, Default: "((0))"),
+                new("Small", "smalldatetime", false, Default: "((1.5))"),
+                new("Starts", "date", false, Default: "('20200101')"),
+                new("Stamped", "datetime2", false, Default: "('20200101 13:45:10')"),
+                new("Grade", "int", false, Default: "('abc')"),
+            ],
+            [["1", "2024-01-01T00:00:00", "2024-01-01T00:00:00", "2024-01-01T00:00:00", "2024-01-01T00:00:00", "3"]])));
+
+        var assembly = Compile(app);
+        var fresh = New(assembly, "Event");
+        object? Get(string name) => fresh.GetType().GetProperty(name)!.GetValue(fresh);
+
+        Assert.Equal(new DateTime(1900, 1, 1), Get("Logged"));
+        Assert.Equal(new DateTime(1900, 1, 2, 12, 0, 0), Get("Small"));
+        Assert.Equal(new DateTime(2020, 1, 1), Get("Starts"));
+        Assert.Equal(new DateTime(2020, 1, 1, 13, 45, 10), Get("Stamped"));
+
+        // A default that fits no value of its type is said, not dropped in silence.
+        Assert.Equal(0, Get("Grade"));
+        Assert.Contains(app.Data.Notes, n => n.Contains("Grade") && n.Contains("('abc')") && n.Contains("not carried"));
+        Assert.DoesNotContain(app.Data.Notes, n => n.Contains("Logged") || n.Contains("Starts"));
+    }
+
     // --- S8: CHECK constraints ---
 
     [Theory]
