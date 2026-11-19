@@ -63,6 +63,13 @@ public class SqlSourceFidelityTests
             tables = DataIngestion.Normalization.NormalizationPlan.Apply(tables,
                 [.. tables.SelectMany(t => DataIngestion.Normalization.NormalizationAnalyzer.Analyze(t).Findings)]);
 
+        return Generate(tables, review);
+    }
+
+    /// <summary>As <see cref="Generate(FakeSqlSchemaSource, Action{CandidateDomainModel}?, bool)"/>,
+    /// from tables any reader produced.</summary>
+    private static Generated Generate(IReadOnlyList<TabularTable> tables, Action<CandidateDomainModel>? review = null)
+    {
         var model = DataModelBuilder.Build(tables);
         review?.Invoke(model);
         var classes = DomainModelMapper.ToClassDefinitions(model, out var classNames);
@@ -816,6 +823,24 @@ public class SqlSourceFidelityTests
         var rows = SeedRows(assembly, app, "Staff");
         Assert.Contains(Validate(assembly, "Staff", rows[0]), m => m.Contains("HiredOn"));
         Assert.Empty(Validate(assembly, "Staff", rows[1]));
+    }
+
+    [Fact]
+    public void A_file_date_filled_in_every_row_refuses_a_record_left_at_year_one()
+    {
+        // A8: a non-nullable DateTime with no check saved 0001-01-01 for a date never given.
+        var table = DataIngestion.Schema.Readers.CsvReader.FromText("Chores", "chores.csv",
+            "Title,Qty,DueOn\r\nWrite,1,2024-03-01\r\nTest,2,2024-04-15\r\n", ',');
+
+        var app = Generate([table]);
+
+        Assert.Equal("DateTime", Property(app, "Chore", "DueOn").Type);
+        Assert.Contains(Property(app, "Chore", "DueOn").Rules, r => r.Name == "required");
+
+        var assembly = Compile(app);
+        Assert.All(SeedRows(assembly, app, "Chore"), row => Assert.Empty(Validate(assembly, "Chore", row)));
+        Assert.Contains(Validate(assembly, "Chore", New(assembly, "Chore", ("Title", "x"), ("Qty", 1))),
+            m => m.Contains("DueOn"));
     }
 
     // --- S12: a column whose name starts with a digit ---

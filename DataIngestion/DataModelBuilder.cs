@@ -379,6 +379,9 @@ public static class DataModelBuilder
     {
         var values = table.ColumnValues(column.Name).ToList();
 
+        if (column.Type is "DateTime" or "DateOnly")
+            return WithMissingValues(DateFacts(column.Facts, values), values);
+
         if (column.Type != "string")
             return WithMissingValues(column.Facts, values);
 
@@ -397,6 +400,30 @@ public static class DataModelBuilder
 
         return (facts ?? new TypeFacts()) with { HasMissingValues = true };
     }
+
+    /// <summary>
+    /// A date column no source declared the nullability of (a file), filled in every row, as NOT
+    /// NULL: it becomes a non-nullable DateTime, which holds a date never given as 0001-01-01,
+    /// and without the required rule NOT NULL brings, the app saved that as a real date.
+    /// </summary>
+    /// <remarks>
+    /// A rule that follows from the type, not from the sample: a blank row makes the type
+    /// nullable and this adds nothing. A row already holding year one is left alone, so no
+    /// seeded row is refused by the rule.
+    /// </remarks>
+    private static TypeFacts? DateFacts(TypeFacts? facts, List<string?> values)
+    {
+        if (facts?.IsNullable is not null || values.Count == 0
+            || values.Any(v => string.IsNullOrWhiteSpace(v) || IsYearOne(v!)))
+            return facts;
+
+        return (facts ?? new TypeFacts()) with { IsNullable = false };
+    }
+
+    private static bool IsYearOne(string value)
+        => DateTime.TryParse(value, System.Globalization.CultureInfo.InvariantCulture,
+               System.Globalization.DateTimeStyles.None, out var date)
+           && date.Year == 1;
 
     private static TypeFacts? StringFacts(TabularColumn column, string fieldName, List<string?> values)
     {
