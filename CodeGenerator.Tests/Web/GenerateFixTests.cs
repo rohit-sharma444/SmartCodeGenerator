@@ -336,13 +336,13 @@ public class GenerateFixTests
             .Add(c => c.Navigation, new StageNavigation())
             .Add(c => c.OnAdvance, () => { }));
 
-        Assert.IsTrue(FixLocks.TryEnter(folder), "the test plays the other page's running fix");
+        Assert.IsTrue(FixLocks.TryEnter(folder, LockPurpose.Fix, out _), "the test plays the other page's running fix");
 
         try
         {
             cut.Find("button.write").Click();
 
-            Assert.AreEqual("A fix is running on this app; wait for it to finish.", cut.Find(".fix-running").TextContent.Trim());
+            Assert.AreEqual("A fix is already running for this app. Wait for it to finish.", cut.Find(".fix-running").TextContent.Trim());
             Assert.IsNull(session.Generated);
             Assert.AreEqual(0, build.Calls);
             Assert.IsFalse(Directory.Exists(folder), "nothing was written");
@@ -357,7 +357,7 @@ public class GenerateFixTests
         cut.Find("button.write").Click();
         cut.WaitForAssertion(() => Assert.IsNotNull(session.Generated), TimeSpan.FromMinutes(5));
         Assert.HasCount(0, cut.FindAll(".fix-running"));
-        Assert.IsTrue(FixLocks.TryEnter(folder), "the write released its hold on the folder");
+        Assert.IsTrue(FixLocks.TryEnter(folder, LockPurpose.Fix, out _), "the write released its hold on the folder");
         FixLocks.Leave(folder);
     }
 
@@ -750,7 +750,7 @@ public class GenerateFixTests
             () => page.Cut.InvokeAsync(() => (Task)handler.Invoke(page.Cut.Instance, null)!));
 
         Assert.IsFalse((bool)flag.GetValue(page.Cut.Instance)!, "the page must not stay busy");
-        Assert.IsTrue(FixLocks.TryEnter(project), "the project lock must be free");
+        Assert.IsTrue(FixLocks.TryEnter(project, LockPurpose.Fix, out var _), "the project lock must be free");
         FixLocks.Leave(project);
     }
 
@@ -817,7 +817,7 @@ public class GenerateFixTests
 
         b.Cut.Find("button.fix-yes").Click();
 
-        Assert.AreEqual("A fix is already running for this project.", FixReport(b.Cut));
+        Assert.AreEqual("A fix is already running for this app. Wait for it to finish.", FixReport(b.Cut));
         Assert.AreEqual(0, second.Calls);
         Assert.HasCount(1, b.Cut.FindAll(".fix-offer"), "its own offer stays");
 
@@ -827,6 +827,101 @@ public class GenerateFixTests
         b.Cut.Find("button.fix-yes").Click();
         b.Cut.WaitForAssertion(() => StringAssert.StartsWith(FixReport(b.Cut), "The build now succeeds"), TimeSpan.FromSeconds(30));
         Assert.AreEqual(1, second.Calls, "the lock was released");
+    }
+
+    /// <summary>Page A writing the project, held inside its build until the gate opens.</summary>
+    private (IRenderedComponent<GenerateStage> Cut, BuildSession Session, BunitContext Context) WritingPage(
+        ManualResetEventSlim entered, ManualResetEventSlim gate)
+    {
+        var context = new BunitContext();
+        context.Services.AddSingleton<BuildRunner>((path, onLine) =>
+        {
+            entered.Set();
+            gate.Wait(TimeSpan.FromSeconds(60));
+            return new BuildAttempt(Green, TimeSpan.FromSeconds(2));
+        });
+        context.Services.AddSingleton<IBuildFixer>(new FakeFixer());
+
+        var session = NewSession();
+        var cut = context.Render<GenerateStage>(p => p
+            .Add(c => c.Session, session)
+            .Add(c => c.Navigation, new StageNavigation())
+            .Add(c => c.OnAdvance, () => { }));
+
+        cut.Find("button.write").Click();
+
+        if (cut.FindAll("button.overwrite-yes").Count > 0)
+            cut.Find("button.overwrite-yes").Click();
+
+        Assert.IsTrue(entered.Wait(TimeSpan.FromMinutes(5)), "page A never reached its build");
+
+        return (cut, session, context);
+    }
+
+    [TestMethod]
+    public void A_fix_refused_by_another_page_writing_says_the_app_is_being_written()
+    {
+        var second = new FakeFixer();
+        var b = Written(second, new FakeBuild(Red(OneError), Green));
+        using var contextB = b.Context;
+
+        using var entered = new ManualResetEventSlim();
+        using var gate = new ManualResetEventSlim();
+        var a = WritingPage(entered, gate);
+        using var contextA = a.Context;
+
+        try
+        {
+            b.Cut.Find("button.fix-yes").Click();
+
+            var report = FixReport(b.Cut);
+            StringAssert.Contains(report, "being written or built");
+            Assert.IsFalse(report.Contains("A fix is already running", StringComparison.Ordinal), report);
+            Assert.AreEqual(0, second.Calls);
+        }
+        finally
+        {
+            gate.Set();
+        }
+
+        a.Cut.WaitForAssertion(() => Assert.IsTrue(a.Session.Generated?.BuildSucceeded), TimeSpan.FromSeconds(30));
+    }
+
+    [TestMethod]
+    public void A_write_refused_by_another_page_writing_does_not_say_a_fix_is_running()
+    {
+        using var entered = new ManualResetEventSlim();
+        using var gate = new ManualResetEventSlim();
+        var a = WritingPage(entered, gate);
+        using var contextA = a.Context;
+
+        using var contextB = new BunitContext();
+        var build = new FakeBuild(Green);
+        contextB.Services.AddSingleton<BuildRunner>(build.Run);
+        var session = NewSession();
+        var cut = contextB.Render<GenerateStage>(p => p
+            .Add(c => c.Session, session)
+            .Add(c => c.Navigation, new StageNavigation())
+            .Add(c => c.OnAdvance, () => { }));
+
+        try
+        {
+            cut.Find("button.write").Click();
+
+            if (cut.FindAll("button.overwrite-yes").Count > 0)
+                cut.Find("button.overwrite-yes").Click();
+
+            Assert.AreEqual(
+                "This app is being written or built on another page. Wait for it to finish.",
+                cut.Find(".fix-running").TextContent.Trim());
+            Assert.AreEqual(0, build.Calls);
+        }
+        finally
+        {
+            gate.Set();
+        }
+
+        a.Cut.WaitForAssertion(() => Assert.IsTrue(a.Session.Generated?.BuildSucceeded), TimeSpan.FromSeconds(30));
     }
 
     [TestMethod]
@@ -882,5 +977,29 @@ public class GenerateFixTests
         page.Cut.Find("button.fix-yes").Click();
         page.Cut.WaitForAssertion(() => Assert.IsTrue(page.Session.Generated!.BuildSucceeded), TimeSpan.FromSeconds(30));
         Assert.AreEqual(first.ProjectPath, fixer.Path);
+    }
+
+    /// <remarks>
+    /// The report lines carry whole paths with no spaces in them ("Generated test project at
+    /// C:\...\HospitalPatientAppointmentScheduling.Tests"), and an unbreakable line that long ran
+    /// about 180 px past the panel at 1024 px. Only <c>.fix-report</c> was told it may wrap.
+    /// </remarks>
+    [TestMethod]
+    public void A_report_line_wraps_a_long_path_inside_the_panel()
+    {
+        var css = File.ReadAllText(Path.Combine(
+            AppContext.BaseDirectory, "..", "..", "..", "..", "CodeGenerator", "wwwroot", "workflow.css"));
+
+        css = System.Text.RegularExpressions.Regex.Replace(
+            css, @"/\*.*?\*/", string.Empty, System.Text.RegularExpressions.RegexOptions.Singleline);
+
+        var bodies = System.Text.RegularExpressions.Regex.Matches(css, @"([^{}]+)\{([^}]*)\}")
+            .Where(m => m.Groups[1].Value.Split(',').Select(x => x.Trim()).Contains(".report-line"))
+            .Select(m => m.Groups[2].Value)
+            .ToList();
+
+        Assert.IsTrue(
+            bodies.Any(b => System.Text.RegularExpressions.Regex.IsMatch(b, @"overflow-wrap\s*:\s*anywhere")),
+            "no .report-line rule lets a long path wrap");
     }
 }

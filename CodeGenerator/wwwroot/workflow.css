@@ -801,6 +801,10 @@ body {
     overflow-wrap: anywhere;
 }
 
+/* The Generate stage's own lines ("Generated test project at C:\...\Name.Tests"): a path has no
+   space to wrap at, and at 1024 px a long app name ran it past the panel's right edge. */
+.report-line { overflow-wrap: anywhere; }
+
 .stage-node.pending { color: var(--pending); }
 /* Colour only. The ring this used to add lived here, later in the file than the elevation
    rules, so it silently replaced the active stage's lift - the one box meant to float highest
