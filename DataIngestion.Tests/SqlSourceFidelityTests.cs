@@ -645,6 +645,34 @@ public class SqlSourceFidelityTests
     }
 
     [Fact]
+    public void A_check_range_on_an_int_foreign_key_is_not_enforced_on_the_renumbered_ids()
+    {
+        // A2: the CHECK bounds the source's key values (100..999); the app holds Ids 1 and 2.
+        var source = Database(add =>
+        {
+            add("Department", [new("DepartmentId", "int", false, IsPrimaryKey: true), new("Title", "nvarchar", false, 20)],
+                [["100", "Ops"], ["200", "Sales"]]);
+            add("Employee",
+                [new("EmployeeId", "int", false, IsPrimaryKey: true), new("Name", "nvarchar", false, 20), new("DepartmentId", "int", false)],
+                [["1", "Ann", "200"], ["2", "Bob", "100"]]);
+        });
+        source.Keys.Add(new TabularForeignKey("DepartmentId", "Department", "DepartmentId", "Employee", "dbo", "dbo"));
+        source.Constraints["Employee"] =
+        [
+            new("CK_Dept", SqlConstraintKind.Check, ["DepartmentId"], "([DepartmentID]>=(100) AND [DepartmentID]<=(999))"),
+        ];
+
+        var app = Generate(source);
+
+        Assert.DoesNotContain(Property(app, "Employee", "DepartmentId").Rules, r => r.Name is "minvalue" or "maxvalue");
+
+        var assembly = Compile(app);
+        var rows = SeedRows(assembly, app, "Employee");
+        Assert.Equal([2, 1], rows.Select(r => (int)r.GetType().GetProperty("DepartmentId")!.GetValue(r)!));
+        Assert.All(rows, row => Assert.Empty(Validate(assembly, "Employee", row)));
+    }
+
+    [Fact]
     public void A_column_a_check_limits_to_a_list_is_not_proposed_unique()
     {
         // Three rows, three statuses: the data alone reads as "no two share Status", but the

@@ -851,7 +851,15 @@ public static class DataModelBuilder
                 });
 
                 if (field.Type == "int")
+                {
+                    // A CHECK range or list on the source's key values (100..999) says nothing of
+                    // the Ids they are renumbered to (1, 2): kept, it refused every seeded row.
+                    if (field.Facts is { } keyFacts
+                        && (keyFacts.MinValue is not null || keyFacts.MaxValue is not null || keyFacts.AllowedValues is not null))
+                        field.Facts = keyFacts with { MinValue = null, MaxValue = null, AllowedValues = null };
+
                     continue;
+                }
 
                 // "EUR" becomes the Id of the currency keyed EUR. What the source declared about
                 // the text (its length, its type) is not true of the number; whether it may be
