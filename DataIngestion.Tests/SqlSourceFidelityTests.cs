@@ -55,9 +55,14 @@ public class SqlSourceFidelityTests
         IReadOnlyList<string> Unreadable,
         ImportedData Data);
 
-    private static Generated Generate(FakeSqlSchemaSource source, Action<CandidateDomainModel>? review = null)
+    private static Generated Generate(
+        FakeSqlSchemaSource source, Action<CandidateDomainModel>? review = null, bool normalize = false)
     {
         var tables = Read(source);
+        if (normalize)
+            tables = DataIngestion.Normalization.NormalizationPlan.Apply(tables,
+                [.. tables.SelectMany(t => DataIngestion.Normalization.NormalizationAnalyzer.Analyze(t).Findings)]);
+
         var model = DataModelBuilder.Build(tables);
         review?.Invoke(model);
         var classes = DomainModelMapper.ToClassDefinitions(model, out var classNames);
@@ -473,6 +478,34 @@ public class SqlSourceFidelityTests
         // The key follows the table it was declared against, under its new name.
         var task = app.Model.Entities.Single(e => e.Name == "Task");
         Assert.Equal("HrNote", Assert.Single(task.Relationships).Target);
+        Compile(app);
+    }
+
+    [Fact]
+    public void A_renamed_table_split_by_normalization_still_owns_its_key()
+    {
+        // A1: hr.Note keyed by NoteId, with a Tag1..Tag3 group the user splits off. Rewriting the
+        // table lost its source name, so NoteId became a link to dbo.Note.
+        var source = new FakeSqlSchemaSource();
+        source.TableList.Add(new SqlTableInfo("dbo", "Note", 2, 2));
+        source.TableList.Add(new SqlTableInfo("hr", "Note", 5, 2));
+        source.ColumnsByTable["dbo.Note"] = [new("NoteId", "int", false, IsPrimaryKey: true), new("Body", "nvarchar", false, 50)];
+        source.ColumnsByTable["hr.Note"] =
+        [
+            new("NoteId", "int", false, IsPrimaryKey: true), new("Text", "nvarchar", false, 50),
+            new("Tag1", "nvarchar", true, 20), new("Tag2", "nvarchar", true, 20), new("Tag3", "nvarchar", true, 20),
+        ];
+        source.RowsByTable["dbo.Note"] = [["1", "general"], ["2", "other"]];
+        source.RowsByTable["hr.Note"] = [["2", "personnel", "a", "b", null], ["1", "payroll", "c", null, null]];
+
+        var app = Generate(source, normalize: true);
+
+        Assert.Contains(app.Model.Entities, e => e.Name == "HrNoteTag");
+        var hrNote = app.Model.Entities.Single(e => e.Name == "HrNote");
+        Assert.DoesNotContain(hrNote.Fields, f => f.Name == "NoteId");
+        Assert.DoesNotContain(hrNote.Relationships, r => r.Target == "Note");
+        Assert.DoesNotContain(Class(app, "HrNote").Properties, p => p.Name == "NoteId");
+        Assert.Equal(["personnel", "payroll"], Seed(app, "HrNote").Select(r => r.GetProperty("Text").GetString()));
         Compile(app);
     }
 
