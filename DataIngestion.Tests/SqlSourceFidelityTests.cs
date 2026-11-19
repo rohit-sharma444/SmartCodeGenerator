@@ -731,6 +731,29 @@ public class SqlSourceFidelityTests
     }
 
     [Fact]
+    public void A_value_the_database_took_ignoring_case_is_seeded_as_its_check_lists_it()
+    {
+        // A4: a case-insensitive database stored "open" under CHECK ('Closed','Open'); the app
+        // compares exactly, so that seeded record could not be saved until retyped.
+        var source = Database(add => add("Ticket",
+            [new("TicketId", "int", false, IsPrimaryKey: true), new("Status", "nvarchar", false, 10)],
+            [["1", "open"], ["2", "Closed"], ["3", "OPEN"], ["4", "Pending"]]));
+        source.Constraints["Ticket"] =
+        [
+            new("CK_Status", SqlConstraintKind.Check, ["Status"], "([Status]='Closed' OR [Status]='Open')"),
+        ];
+
+        var app = Generate(source);
+
+        // A value outside the list even ignoring case stays as the database holds it.
+        Assert.Equal(["Open", "Closed", "Open", "Pending"], Seed(app, "Ticket").Select(r => r.GetProperty("Status").GetString()));
+        Assert.Contains(app.Data.Notes, n => n.Contains("dbo.Ticket") && n.Contains("2 Status value(s) were re-cased"));
+
+        var assembly = Compile(app);
+        Assert.All(SeedRows(assembly, app, "Ticket").Take(3), row => Assert.Empty(Validate(assembly, "Ticket", row)));
+    }
+
+    [Fact]
     public void A_column_a_check_limits_to_a_list_is_not_proposed_unique()
     {
         // Three rows, three statuses: the data alone reads as "no two share Status", but the

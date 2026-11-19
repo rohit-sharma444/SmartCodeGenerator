@@ -51,6 +51,9 @@ public static class TabularImport
 
             var imported = new List<IReadOnlyDictionary<string, string?>>();
 
+            // Column -> how many seeded values were re-cased to the spelling its CHECK lists.
+            var recased = new Dictionary<TabularColumn, int>();
+
             // Indexed rather than iterating the rows themselves: List.IndexOf would be O(n²) and,
             // worse, would return the FIRST equal row, so duplicate rows would all read from one.
             for (var rowIndex = 0;
@@ -62,10 +65,18 @@ public static class TabularImport
                 foreach (var column in table.Columns)
                 {
                     if (fieldNames.TryGetValue(column.Name, out var fieldName))
-                        cells[fieldName] = table.Value(rowIndex, column.Name);
+                        cells[fieldName] = AsListed(column, table.Value(rowIndex, column.Name), recased);
                 }
 
                 imported.Add(cells);
+            }
+
+            foreach (var (column, count) in recased)
+            {
+                notes.Add(
+                    $"In {table.Label}, {count:N0} {column.Name} value(s) were re-cased to the spelling its CHECK "
+                    + $"constraint lists ({string.Join(", ", column.Facts!.AllowedValues!)}), which the database "
+                    + "accepted ignoring case and the app compares exactly.");
             }
 
             if (table.Rows.Count > ImportedData.MaxSeedRows)
@@ -260,6 +271,29 @@ public static class TabularImport
                 + $"{string.Join(" or ", columns)} in {sources[target].Label}; "
                 + $"the references to it were renumbered to match.");
         }
+    }
+
+    /// <summary>
+    /// <paramref name="value"/> as the CHECK on <paramref name="column"/> spells it, when it equals
+    /// exactly one listed value ignoring case: a case-insensitive database stores "open" under
+    /// a CHECK listing 'Open', and the app, which compares exactly, refused that seeded record.
+    /// </summary>
+    /// <remarks>
+    /// A value no listed value equals, even ignoring case, is left as it is: it was already
+    /// outside the list, and changing it would invent data.
+    /// </remarks>
+    private static string? AsListed(TabularColumn column, string? value, Dictionary<TabularColumn, int> recased)
+    {
+        if (value is null || column.Facts?.AllowedValues is not { Count: > 0 } allowed
+            || allowed.Contains(value, StringComparer.Ordinal))
+            return value;
+
+        var matches = allowed.Where(a => string.Equals(a, value, StringComparison.OrdinalIgnoreCase)).Take(2).ToList();
+        if (matches.Count != 1)
+            return value;
+
+        recased[column] = recased.GetValueOrDefault(column) + 1;
+        return matches[0];
     }
 
     /// <summary>
