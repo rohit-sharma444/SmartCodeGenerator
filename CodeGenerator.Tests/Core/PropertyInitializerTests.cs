@@ -63,6 +63,25 @@ public class PropertyInitializerTests
         Assert.IsEmpty(errors, string.Join(Environment.NewLine, errors) + Environment.NewLine + text);
     }
 
+    // B7: the directive in effect at the class decides, not the last one in the file.
+    [TestMethod]
+    [DataRow("#nullable enable\r\n", "\r\n#nullable disable\r\n", "", true, DisplayName = "enable before, disable at the end")]
+    [DataRow("#nullable restore\r\n", "", "enable", true, DisplayName = "restore in a project that enables")]
+    [DataRow("#nullable disable\r\n", "\r\n#nullable enable\r\n", "enable", false, DisplayName = "disable before, enable after")]
+    [DataRow("", "", "enable", true, DisplayName = "the project alone")]
+    [DataRow("", "", "", false, DisplayName = "nothing")]
+    public void Nullable_is_read_where_the_class_is(string before, string after, string projectNullable, bool expected)
+    {
+        Project("net8.0", nullable: projectNullable, implicitUsings: "enable");
+        File.WriteAllText(Path.Combine(_root, "Note.cs"),
+            before + "namespace Shop\r\n{\r\n    public class Note\r\n    {\r\n        public int Id { get; set; }\r\n    }\r\n}\r\n" + after);
+
+        Add("Title", "string");
+
+        var text = File.ReadAllText(Path.Combine(_root, "Note.cs"));
+        Assert.AreEqual(expected, text.Contains("public string Title { get; set; } = string.Empty;", StringComparison.Ordinal), text);
+    }
+
     private void Add(string name, string type)
     {
         Assert.IsTrue(ClassPropertyService.AddProperty(_root, "Note", name, type, out var message), message);

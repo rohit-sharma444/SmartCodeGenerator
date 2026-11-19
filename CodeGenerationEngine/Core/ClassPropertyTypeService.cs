@@ -96,7 +96,7 @@ public static class ClassPropertyTypeService
         var replacement = !keepsInitializer || property.Initializer == null
             ? (!computed && property.AccessorList != null
                && PropertyInitializers.CanHaveInitializer(part.Node)
-               && PropertyInitializers.NullableOn(workspaceRoot, part.File, part.Root)
+               && PropertyInitializers.NullableOn(workspaceRoot, part.File, part.Root, property.SpanStart)
                 ? PropertyInitializers.SafeFor(type, bound)
                 : null)
             : null;

@@ -41,37 +41,59 @@ internal static class PropertyInitializers
     };
 
     /// <summary>
-    /// Whether nullable reference types are on where <paramref name="root"/> is: a
-    /// <c>#nullable</c> directive in the file decides, else the project's <c>Nullable</c> setting.
+    /// Whether nullable annotations are on at <paramref name="position"/> in
+    /// <paramref name="root"/>'s file: the project's <c>Nullable</c> setting, as the
+    /// <c>#nullable</c> directives before that point change it.
     /// </summary>
-    public static bool NullableOn(string workspaceRoot, string file, SyntaxNode root)
+    /// <remarks>
+    /// Asked of Roslyn rather than read off the last directive in the file, which was wrong three
+    /// ways: a <c>#nullable disable</c> at the end of the file overrode an enable above the class,
+    /// a <c>#nullable restore</c> read as off in a project that enables, and an enable after the
+    /// class counted for it.
+    /// </remarks>
+    public static bool NullableOn(string workspaceRoot, string file, SyntaxNode root, int position)
     {
-        var directive = root.DescendantTrivia()
-            .Select(t => t.GetStructure())
-            .OfType<NullableDirectiveTriviaSyntax>()
-            .LastOrDefault();
+        var compilation = CSharpCompilation.Create(
+            "NullableProbe", [root.SyntaxTree], [],
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary,
+                nullableContextOptions: ProjectNullable(workspaceRoot, file)));
 
-        if (directive is not null)
-            return directive.SettingToken.IsKind(SyntaxKind.EnableKeyword);
+        return compilation.GetSemanticModel(root.SyntaxTree)
+            .GetNullableContext(position)
+            .AnnotationsEnabled();
+    }
 
+    /// <summary>Where a member added to <paramref name="type"/> goes: before its closing brace, or
+    /// at the end of a record with no body.</summary>
+    public static int InsertionPoint(TypeDeclarationSyntax type) =>
+        type.CloseBraceToken.IsKind(SyntaxKind.None) ? type.Span.End : type.CloseBraceToken.SpanStart;
+
+    private static NullableContextOptions ProjectNullable(string workspaceRoot, string file)
+    {
         var folder = TypeResolution.ProjectFolderOf(workspaceRoot, file);
         if (folder is null)
-            return false;
+            return NullableContextOptions.Disable;
 
         try
         {
             var project = Directory.EnumerateFiles(folder, "*.csproj").FirstOrDefault();
             if (project is null)
-                return false;
+                return NullableContextOptions.Disable;
 
             var value = XDocument.Load(project).Descendants()
                 .LastOrDefault(e => e.Name.LocalName == "Nullable")?.Value.Trim();
 
-            return string.Equals(value, "enable", StringComparison.OrdinalIgnoreCase);
+            return value?.ToLowerInvariant() switch
+            {
+                "enable" => NullableContextOptions.Enable,
+                "annotations" => NullableContextOptions.Annotations,
+                "warnings" => NullableContextOptions.Warnings,
+                _ => NullableContextOptions.Disable,
+            };
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Xml.XmlException)
         {
-            return false;
+            return NullableContextOptions.Disable;
         }
     }
 
