@@ -53,6 +53,10 @@ public static class DomainModelMapper
         // System.IO / System.Collections names pulled in by the templates.
         "Directory", "File", "Path", "Stream", "Dictionary", "List", "Queue", "Stack",
         "Enumerable", "IEnumerable",
+
+        // Words for "no value". A file called nulls.csv made a class Null, whose NullValidator sat
+        // beside the app's own NullValidator<T>: it compiled, but the name says nothing.
+        "Null", "Nil", "Void", "Undefined",
     };
 
     /// <summary>The namespace DataAnnotations attributes live in. Declared only by a class that uses one.</summary>
