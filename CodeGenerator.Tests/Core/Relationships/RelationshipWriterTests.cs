@@ -138,6 +138,39 @@ public class RelationshipWriterTests
         CollectionAssert.AreEquivalent(before, Snapshot(root));
     }
 
+    [TestMethod]
+    public void A_file_that_declares_two_classes_does_not_stop_the_relationship()
+    {
+        // Every generated app has such files (ValidatorFactory.cs holds two classes). The
+        // snapshot used to be a dictionary keyed by file over every class, and threw "An item
+        // with the same key has already been added".
+        var root = NewRoot();
+        Write(root, "Order.cs", "namespace Shop;\n\npublic class Order\n{\n    public int Id { get; set; }\n    public int CustomerId { get; set; }\n}\n\npublic class OrderLine\n{\n    public int Id { get; set; }\n}\n");
+        Write(root, "Customer.cs", "namespace Shop;\n\npublic class Customer\n{\n    public int Id { get; set; }\n}\n");
+
+        var result = RelationshipWriter.Apply(
+            root,
+            new RelationshipProposal("Order", "Customer", RelationshipKind.OneToMany, "because"));
+
+        Assert.IsTrue(result.Ok, result.Message);
+        Assert.Contains("List<Order> Orders", File.ReadAllText(Path.Combine(root, "Customer.cs")));
+    }
+
+    [TestMethod]
+    public void A_many_to_many_beside_a_file_that_declares_two_classes_is_written()
+    {
+        var root = NewRoot();
+        Write(root, "Order.cs", "namespace Shop;\n\npublic class Order\n{\n    public int Id { get; set; }\n}\n\npublic class OrderLine\n{\n    public int Id { get; set; }\n}\n");
+        Write(root, "Product.cs", "namespace Shop;\n\npublic class Product\n{\n    public int Id { get; set; }\n}\n");
+
+        var result = RelationshipWriter.Apply(
+            root,
+            new RelationshipProposal("Order", "Product", RelationshipKind.ManyToMany, "because"));
+
+        Assert.IsTrue(result.Ok, result.Message);
+        Assert.IsTrue(File.Exists(Path.Combine(root, "OrderProduct.cs")));
+    }
+
     private static Dictionary<string, string> Snapshot(string root) =>
         Directory.GetFiles(root, "*.cs", SearchOption.AllDirectories)
             .ToDictionary(f => Path.GetFileName(f), File.ReadAllText);

@@ -43,7 +43,17 @@ public static class ClassValidationWriter
         if (!File.Exists(classFile))
             return [];
 
-        var source = SourceFileText.Read(classFile, out _, out _);
+        // Only read: a file that is not UTF-8 is still listed (the rule comments are ASCII); Add
+        // is what refuses it.
+        string source;
+        try
+        {
+            source = SourceFileText.Load(classFile);
+        }
+        catch (NotUtf8Exception)
+        {
+            source = File.ReadAllText(classFile);
+        }
 
         var type = FindType(source, className);
         var method = type is null ? null : FindValidate(type);
@@ -64,7 +74,17 @@ public static class ClassValidationWriter
         if (!File.Exists(classFile))
             return ValidationWriteResult.Refused($"There is no file at {classFile}.");
 
-        var source = SourceFileText.Read(classFile, out var hasBom, out var newline);
+        string source;
+        System.Text.Encoding encoding;
+        string newline;
+        try
+        {
+            source = SourceFileText.Load(classFile, out encoding, out newline);
+        }
+        catch (NotUtf8Exception ex)
+        {
+            return ValidationWriteResult.Refused(ex.Message);
+        }
 
         var type = FindType(source, className);
         if (type is null)
@@ -124,7 +144,7 @@ public static class ClassValidationWriter
         if (verdict is not null)
             return ValidationWriteResult.Refused(verdict);
 
-        SourceFileText.Write(classFile, updated, hasBom);
+        SourceFileText.Save(classFile, updated, encoding);
 
         return ValidationWriteResult.Written(
             $"{rule.Describe()} - added to {className} in {Path.GetFileName(classFile)}.");
@@ -143,7 +163,7 @@ public static class ClassValidationWriter
         if (!File.Exists(classFile))
             return false;
 
-        var source = SourceFileText.Read(classFile, out var hasBom, out _);
+        var source = SourceFileText.Load(classFile, out var encoding, out _);
 
         var type = FindType(source, className);
         if (type is null)
@@ -154,7 +174,7 @@ public static class ClassValidationWriter
 
         var updated = source.Insert(type.Keyword.SpanStart, "partial ");
 
-        SourceFileText.Write(classFile, updated, hasBom);
+        SourceFileText.Save(classFile, updated, encoding);
 
         return true;
     }

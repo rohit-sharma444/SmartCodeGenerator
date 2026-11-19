@@ -142,7 +142,8 @@ public static class AttributedPropertyWriter
     }
 
     private static CompilationUnitSyntax? Parse(string filePath) =>
-        CSharpSyntaxTree.ParseText(File.ReadAllText(filePath)).GetRoot() as CompilationUnitSyntax;
+        CSharpSyntaxTree.ParseText(global::CodeGenerationEngine.Core.Validation.SourceFileText.Load(filePath))
+            .GetRoot() as CompilationUnitSyntax;
 
     private static HashSet<string?> Declared(CompilationUnitSyntax unit) =>
         unit.DescendantNodes()

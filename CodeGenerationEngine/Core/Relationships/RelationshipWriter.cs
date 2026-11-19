@@ -67,13 +67,18 @@ public static class RelationshipWriter
         if (Blocking(owner, target) is { } blocker)
             return new RelationshipWritten(false, blocker, []);
 
-        var originals = classes.ToDictionary(c => c.File, c => File.ReadAllText(c.File));
+        var parts = Parts(owner, target, proposal.Kind).ToList();
+
+        if (Unreadable(parts.Select(p => p.File)) is { } refusal)
+            return new RelationshipWritten(false, refusal, []);
+
+        var originals = Originals(parts.Select(p => p.File));
 
         var added = new List<string>();
 
         try
         {
-            foreach (var (file, className, property) in Parts(owner, target, proposal.Kind))
+            foreach (var (file, className, property) in parts)
             {
                 if (!AttributedPropertyWriter.TryAdd(
                         file, className, property, UsingsFor(property), out var error))
@@ -195,8 +200,50 @@ public static class RelationshipWriter
     }
 
     /// <summary>
-    /// Deletes every newly-created file in <paramref name="created"/>, then restores every
-    /// pre-existing file to its original content, and reports the failure.
+    /// The bytes of each file a relationship is about to write, keyed without regard to case.
+    /// </summary>
+    /// <remarks>
+    /// Only those files. Every class in the workspace used to be read here and written back on a
+    /// rollback, so a refused relationship rewrote files it never touched - and through a UTF-8
+    /// decode, which turned every Windows-1252 byte above 0x7F into U+FFFD. Keyed by file, not by
+    /// class: a file that declares two classes (Order and OrderLine) is one entry, where
+    /// <c>ToDictionary</c> over the classes threw "An item with the same key has already been
+    /// added". Raw bytes, so a rollback is exact whatever the encoding and line ends.
+    /// </remarks>
+    internal static Dictionary<string, byte[]> Originals(IEnumerable<string> files)
+    {
+        var originals = new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var file in files)
+            originals.TryAdd(file, File.ReadAllBytes(file));
+
+        return originals;
+    }
+
+    /// <summary>
+    /// Why one of <paramref name="files"/> cannot be edited - it is not UTF-8 - or <c>null</c>.
+    /// Asked before anything is written, so the refusal leaves the workspace untouched.
+    /// </summary>
+    internal static string? Unreadable(IEnumerable<string> files)
+    {
+        foreach (var file in files.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            try
+            {
+                global::CodeGenerationEngine.Core.Validation.SourceFileText.Load(file);
+            }
+            catch (global::CodeGenerationEngine.Core.Validation.NotUtf8Exception ex)
+            {
+                return ex.Message;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Deletes every newly-created file in <paramref name="created"/>, then puts back the bytes of
+    /// every file in <paramref name="originals"/>, and reports the failure.
     /// </summary>
     /// <remarks>
     /// Deletion happens before restoration: a path in <paramref name="created"/> was never in
@@ -204,7 +251,7 @@ public static class RelationshipWriter
     /// be left behind just because it was written before a pre-existing file was.
     /// </remarks>
     internal static RelationshipWritten Restore(
-        Dictionary<string, string> originals, IReadOnlyList<string> created, string why)
+        Dictionary<string, byte[]> originals, IReadOnlyList<string> created, string why)
     {
         foreach (var file in created)
         {
@@ -212,8 +259,8 @@ public static class RelationshipWriter
                 File.Delete(file);
         }
 
-        foreach (var (file, code) in originals)
-            global::CodeGenerationEngine.Core.Validation.SourceFileText.Rewrite(file, code);
+        foreach (var (file, bytes) in originals)
+            File.WriteAllBytes(file, bytes);
 
         return new RelationshipWritten(false, why + " Nothing was changed.", []);
     }

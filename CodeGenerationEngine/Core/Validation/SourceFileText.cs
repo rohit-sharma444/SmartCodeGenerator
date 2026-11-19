@@ -13,6 +13,96 @@ namespace CodeGenerationEngine.Core.Validation;
 /// </remarks>
 public static class SourceFileText
 {
+    /// <summary>
+    /// The text of the source file at <paramref name="path"/>, decoded the way it is written: by
+    /// its byte-order mark (UTF-8, UTF-16 or UTF-32, either byte order), else as strict UTF-8.
+    /// </summary>
+    /// <exception cref="NotUtf8Exception">
+    /// The file has no byte-order mark and is not valid UTF-8 - a Windows-1252 file, say. Decoding
+    /// it as UTF-8 anyway turns every byte above 0x7F into U+FFFD, and writing that back changes
+    /// a string literal like <c>"Café"</c> without a word. An edit refuses the file instead.
+    /// </exception>
+    public static string Load(string path, out Encoding encoding, out string newline)
+    {
+        var bytes = File.ReadAllBytes(path);
+
+        encoding = EncodingOf(bytes, out var preamble);
+
+        string text;
+        try
+        {
+            text = encoding.GetString(bytes, preamble, bytes.Length - preamble);
+        }
+        catch (DecoderFallbackException)
+        {
+            throw new NotUtf8Exception(path);
+        }
+
+        newline = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+
+        return text;
+    }
+
+    /// <summary>The text of the source file at <paramref name="path"/>; see
+    /// <see cref="Load(string, out Encoding, out string)"/>.</summary>
+    public static string Load(string path) => Load(path, out _, out _);
+
+    /// <summary>
+    /// Writes <paramref name="text"/> in <paramref name="encoding"/>, with that encoding's
+    /// byte-order mark when it has one: the encoding <see cref="Load(string, out Encoding, out string)"/>
+    /// gave back.
+    /// </summary>
+    public static void Save(string path, string text, Encoding encoding) =>
+        File.WriteAllBytes(path, [.. encoding.GetPreamble(), .. encoding.GetBytes(text)]);
+
+    private static Encoding EncodingOf(byte[] bytes, out int preamble)
+    {
+        // UTF-32 LE before UTF-16 LE: FF FE 00 00 starts with the UTF-16 LE mark.
+        if (StartsWith(bytes, 0xFF, 0xFE, 0x00, 0x00))
+        {
+            preamble = 4;
+            return new UTF32Encoding(bigEndian: false, byteOrderMark: true, throwOnInvalidCharacters: true);
+        }
+
+        if (StartsWith(bytes, 0x00, 0x00, 0xFE, 0xFF))
+        {
+            preamble = 4;
+            return new UTF32Encoding(bigEndian: true, byteOrderMark: true, throwOnInvalidCharacters: true);
+        }
+
+        if (StartsWith(bytes, 0xEF, 0xBB, 0xBF))
+        {
+            preamble = 3;
+            return new UTF8Encoding(encoderShouldEmitUTF8Identifier: true, throwOnInvalidBytes: true);
+        }
+
+        if (StartsWith(bytes, 0xFF, 0xFE))
+        {
+            preamble = 2;
+            return new UnicodeEncoding(bigEndian: false, byteOrderMark: true, throwOnInvalidBytes: true);
+        }
+
+        if (StartsWith(bytes, 0xFE, 0xFF))
+        {
+            preamble = 2;
+            return new UnicodeEncoding(bigEndian: true, byteOrderMark: true, throwOnInvalidBytes: true);
+        }
+
+        preamble = 0;
+        return new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
+    }
+
+    private static bool StartsWith(byte[] bytes, params byte[] mark) =>
+        bytes.Length >= mark.Length && bytes.AsSpan(0, mark.Length).SequenceEqual(mark);
+
+    /// <summary>
+    /// Reads a file as UTF-8 with or without its mark, and never refuses it.
+    /// </summary>
+    /// <remarks>
+    /// For files this tool generated itself. A file the user owns is read with
+    /// <see cref="Load(string, out Encoding, out string)"/>, which refuses one that is not UTF-8
+    /// rather than decoding it wrong.
+    /// </remarks>
     public static string Read(string path, out bool hasBom, out string newline)
     {
         var bytes = File.ReadAllBytes(path);
@@ -37,19 +127,21 @@ public static class SourceFileText
     /// <remarks>
     /// For an edit made on text read with <c>File.ReadAllText</c>, which drops the mark. Lines an
     /// edit adds come with the generator's own line end; in a file that is all CRLF (or all LF)
-    /// they are given the file's. A file that mixes the two is left mixed.
+    /// they are given the file's. A file that mixes the two is left mixed. The file keeps its
+    /// encoding too: a UTF-16 file is written back as UTF-16, not as UTF-8. A file that is not
+    /// UTF-8 is not written at all (<see cref="NotUtf8Exception"/>).
     /// </remarks>
     public static void Rewrite(string path, string text)
     {
-        var hasBom = false;
+        Encoding encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
 
         if (File.Exists(path))
         {
-            var original = Read(path, out hasBom, out _);
+            var original = Load(path, out encoding, out _);
             text = InLineEndsOf(original, text);
         }
 
-        Write(path, text, hasBom);
+        Save(path, text, encoding);
     }
 
     /// <summary><paramref name="text"/> with the line ends of <paramref name="original"/>, when
@@ -80,4 +172,17 @@ public static class SourceFileText
             count++;
         return count;
     }
+}
+
+/// <summary>
+/// A file an edit refused because it is not UTF-8 and has no byte-order mark that says what it is.
+/// </summary>
+/// <remarks>
+/// An <see cref="IOException"/>, so every edit path that already turns an I/O failure into a
+/// refusal message shows this one without a change.
+/// </remarks>
+public sealed class NotUtf8Exception(string path)
+    : IOException($"{Path.GetFileName(path)} is not UTF-8; save it as UTF-8 and try again. Nothing was changed.")
+{
+    public string FilePath { get; } = path;
 }
