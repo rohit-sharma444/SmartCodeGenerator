@@ -73,6 +73,7 @@ public static class RelationshipWriter
             return new RelationshipWritten(false, refusal, []);
 
         var originals = Originals(parts.Select(p => p.File));
+        var baseline = Baseline(workspaceRoot);
 
         var added = new List<string>();
 
@@ -90,7 +91,7 @@ public static class RelationshipWriter
                 added.Add($"{className}.{property.Name} ({property.Type})");
             }
 
-            var verdict = Verify(workspaceRoot);
+            var verdict = Verify(workspaceRoot, baseline);
 
             if (!verdict.Ok)
             {
@@ -173,10 +174,49 @@ public static class RelationshipWriter
                RelationshipConvention.ComponentModelNamespace];
 
     /// <summary>
-    /// Compiles every class in the workspace as one assembly, alongside the synthetic implicit
-    /// usings tree, so the check matches what `dotnet build` would see on disk.
+    /// The errors the workspace has now, compiled as <see cref="Verify"/> compiles it: taken
+    /// before anything is written, so the check after can tell the edit's errors from the ones
+    /// that were already there.
     /// </summary>
-    internal static (bool Ok, string Problem) Verify(string workspaceRoot)
+    internal static Dictionary<(string Id, string File, string Message), int> Baseline(string workspaceRoot) =>
+        Count(Errors(workspaceRoot));
+
+    /// <summary>
+    /// Compiles every class in the workspace as one assembly, alongside the synthetic implicit
+    /// usings tree, so the check matches what `dotnet build` would see on disk, and refuses only on
+    /// an error that is not in <paramref name="baseline"/>.
+    /// </summary>
+    /// <remarks>
+    /// One assembly over every file is not what the projects build as. The default
+    /// <c>dotnet new console</c> Program.cs is CS8805 here, a test project's xunit types and a
+    /// WinForms or EF type are not referenced, and two projects may each have a Customer - so this
+    /// refused every relationship in such a workspace, over errors the edit did not make. An error
+    /// is matched on its id, its file and its message, not its line: the edit moves lines. It is a
+    /// count, not a set, so a second error just like an old one still counts as new.
+    /// </remarks>
+    internal static (bool Ok, string Problem) Verify(
+        string workspaceRoot, Dictionary<(string Id, string File, string Message), int> baseline)
+    {
+        var errors = Errors(workspaceRoot);
+        var seen = new Dictionary<(string Id, string File, string Message), int>();
+        var added = new List<string>();
+
+        foreach (var error in errors)
+        {
+            var key = Key(error);
+            seen[key] = seen.GetValueOrDefault(key) + 1;
+
+            if (seen[key] > baseline.GetValueOrDefault(key))
+                added.Add(error.ToString());
+        }
+
+        if (added.Count == 0)
+            return (true, string.Empty);
+
+        return (false, "That relationship does not compile: " + string.Join("; ", added.Take(3)));
+    }
+
+    private static List<Microsoft.CodeAnalysis.Diagnostic> Errors(string workspaceRoot)
     {
         var sources = new List<(string Path, string Code)>
         {
@@ -186,17 +226,22 @@ public static class RelationshipWriter
         foreach (var file in ClassFiles.Under(workspaceRoot))
             sources.Add((file, File.ReadAllText(file)));
 
-        var result = Compiler.CompileSources(sources);
+        return [.. Compiler.CompileSources(sources).Diagnostics
+            .Where(d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error)];
+    }
 
-        if (result.Success)
-            return (true, string.Empty);
+    private static (string Id, string File, string Message) Key(Microsoft.CodeAnalysis.Diagnostic error) =>
+        (error.Id,
+         error.Location.SourceTree?.FilePath ?? string.Empty,
+         error.GetMessage(System.Globalization.CultureInfo.InvariantCulture));
 
-        var errors = result.Diagnostics
-            .Where(d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error)
-            .Select(d => d.ToString())
-            .Take(3);
-
-        return (false, "That relationship does not compile: " + string.Join("; ", errors));
+    private static Dictionary<(string Id, string File, string Message), int> Count(
+        IEnumerable<Microsoft.CodeAnalysis.Diagnostic> errors)
+    {
+        var counts = new Dictionary<(string Id, string File, string Message), int>();
+        foreach (var error in errors)
+            counts[Key(error)] = counts.GetValueOrDefault(Key(error)) + 1;
+        return counts;
     }
 
     /// <summary>

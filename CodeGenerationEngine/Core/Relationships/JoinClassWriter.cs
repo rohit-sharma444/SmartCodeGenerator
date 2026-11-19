@@ -49,6 +49,7 @@ public static class JoinClassWriter
             return new RelationshipWritten(false, refusal, []);
 
         var originals = RelationshipWriter.Originals([left.File, right.File]);
+        var baseline = RelationshipWriter.Baseline(workspaceRoot);
         var created = new List<string>();
         var added = new List<string>();
 
@@ -72,7 +73,7 @@ public static class JoinClassWriter
                 added.Add($"{parent.Name}.{collection.Name} ({collection.Type})");
             }
 
-            var verdict = RelationshipWriter.Verify(workspaceRoot);
+            var verdict = RelationshipWriter.Verify(workspaceRoot, baseline);
 
             if (!verdict.Ok)
                 return RelationshipWriter.Restore(originals, created, verdict.Problem);

@@ -171,6 +171,61 @@ public class RelationshipWriterTests
         Assert.IsTrue(File.Exists(Path.Combine(root, "OrderProduct.cs")));
     }
 
+    [TestMethod]
+    public void An_error_that_was_there_before_does_not_refuse_the_relationship()
+    {
+        // The default `dotnet new console` Program.cs: top-level statements compiled into a
+        // library are CS8805, there before the edit and after it, and not the relationship's doing.
+        var root = NewRoot();
+        Write(root, "Program.cs", "// See https://aka.ms/new-console-template for more information\nConsole.WriteLine(\"Hello, World!\");\n");
+        Write(root, "Invoice.cs", "namespace Shop;\n\npublic class Invoice\n{\n    public int Id { get; set; }\n    public int CustomerId { get; set; }\n}\n");
+        Write(root, "Customer.cs", "namespace Shop;\n\npublic class Customer\n{\n    public int Id { get; set; }\n}\n");
+
+        var result = RelationshipWriter.Apply(
+            root,
+            new RelationshipProposal("Invoice", "Customer", RelationshipKind.OneToMany, "because"));
+
+        Assert.IsTrue(result.Ok, result.Message);
+        Assert.Contains("List<Invoice> Invoices", File.ReadAllText(Path.Combine(root, "Customer.cs")));
+    }
+
+    [TestMethod]
+    public void A_many_to_many_beside_an_error_that_was_there_before_is_written()
+    {
+        var root = NewRoot();
+        Write(root, "Program.cs", "Console.WriteLine(\"Hello, World!\");\n");
+        Write(root, "Order.cs", "namespace Shop;\n\npublic class Order\n{\n    public int Id { get; set; }\n}\n");
+        Write(root, "Product.cs", "namespace Shop;\n\npublic class Product\n{\n    public int Id { get; set; }\n}\n");
+
+        var result = RelationshipWriter.Apply(
+            root,
+            new RelationshipProposal("Order", "Product", RelationshipKind.ManyToMany, "because"));
+
+        Assert.IsTrue(result.Ok, result.Message);
+    }
+
+    [TestMethod]
+    public void A_new_error_is_still_refused_and_only_the_new_error_is_named()
+    {
+        // Order has a method called Customer, so the navigation property is CS0102. Program.cs
+        // carries the old CS8805, which the message must not repeat.
+        var root = NewRoot();
+        Write(root, "Program.cs", "Console.WriteLine(\"Hello, World!\");\n");
+        Write(root, "Order.cs", "namespace Shop;\n\npublic class Order\n{\n    public int Id { get; set; }\n    public int CustomerId { get; set; }\n    public void Customer() { }\n}\n");
+        Write(root, "Customer.cs", "namespace Shop;\n\npublic class Customer\n{\n    public int Id { get; set; }\n}\n");
+
+        var before = Snapshot(root);
+
+        var result = RelationshipWriter.Apply(
+            root,
+            new RelationshipProposal("Order", "Customer", RelationshipKind.OneToMany, "because"));
+
+        Assert.IsFalse(result.Ok, result.Message);
+        Assert.Contains("CS0102", result.Message);
+        Assert.DoesNotContain("CS8805", result.Message);
+        CollectionAssert.AreEquivalent(before, Snapshot(root));
+    }
+
     private static Dictionary<string, string> Snapshot(string root) =>
         Directory.GetFiles(root, "*.cs", SearchOption.AllDirectories)
             .ToDictionary(f => Path.GetFileName(f), File.ReadAllText);
