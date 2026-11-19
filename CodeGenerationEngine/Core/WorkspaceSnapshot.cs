@@ -159,7 +159,11 @@ public sealed class WorkspaceSnapshot : IDisposable
             // 4. Directories the batch created are now empty — but for the build output a build
             // inside one left there, which would otherwise keep the folder, and the undo history
             // would then offer an entry that only removes it.
-            foreach (var created in IncludedDirectories(_workspaceRoot).Except(_directories, StringComparer.OrdinalIgnoreCase))
+            var createdDirectories = IncludedDirectories(_workspaceRoot)
+                .Except(_directories, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            foreach (var created in createdDirectories)
                 foreach (var name in BuildOutput)
                 {
                     var output = Path.Combine(_workspaceRoot, created, name);
@@ -167,7 +171,19 @@ public sealed class WorkspaceSnapshot : IDisposable
                         Directory.Delete(output, recursive: true);
                 }
 
-            RemoveEmptyDirectories(_workspaceRoot, isRoot: true);
+            // Only the directories the batch created, deepest first, and only when empty. Every
+            // empty directory used to go, the user's own among them: a Visual Studio
+            // <Folder Include="Migrations\" />, an empty wwwroot/images.
+            foreach (var created in createdDirectories.OrderByDescending(Depth))
+            {
+                var path = Path.Combine(_workspaceRoot, created);
+                if (Directory.Exists(path) && !Directory.EnumerateFileSystemEntries(path).Any())
+                    Directory.Delete(path);
+            }
+
+            // An empty directory the batch deleted: no file brought it back.
+            foreach (var existing in _directories)
+                Directory.CreateDirectory(Path.Combine(_workspaceRoot, existing));
 
             // 5. Registry file, then reload it into memory.
             var registry = Path.Combine(AppContext.BaseDirectory, RegistryFileName);
@@ -274,21 +290,8 @@ public sealed class WorkspaceSnapshot : IDisposable
         return result;
     }
 
-    private static void RemoveEmptyDirectories(string directory, bool isRoot)
-    {
-        foreach (var subdirectory in Directory.EnumerateDirectories(directory).ToList())
-        {
-            var name = Path.GetFileName(subdirectory);
-
-            if (ExcludedDirectories.Contains(name, StringComparer.OrdinalIgnoreCase))
-                continue;
-
-            RemoveEmptyDirectories(subdirectory, isRoot: false);
-        }
-
-        if (!isRoot && !Directory.EnumerateFileSystemEntries(directory).Any())
-            Directory.Delete(directory);
-    }
+    private static int Depth(string relative) =>
+        relative.Count(c => c == Path.DirectorySeparatorChar || c == Path.AltDirectorySeparatorChar);
 
     private static void TryDelete(string directory)
     {

@@ -110,6 +110,51 @@ public class WorkspaceSnapshotTests
         Assert.IsFalse(Directory.Exists(projectDir));
     }
 
+    // B4: a failed run deleted every empty folder in the workspace, the user's own among them
+    // (a VS <Folder Include="Migrations\" />, an empty wwwroot/images).
+    [TestMethod]
+    public void Restore_KeepsAnEmptyFolderThatWasThereAndRemovesANewOne()
+    {
+        var root = NewWorkspace();
+        Directory.CreateDirectory(Path.Combine(root, "Assets", "Images"));
+        Directory.CreateDirectory(Path.Combine(root, "EmptyTop"));
+
+        using var snapshot = WorkspaceSnapshot.Capture(root);
+        Directory.CreateDirectory(Path.Combine(root, "NewFolder"));
+        snapshot.Restore();
+
+        Assert.IsTrue(Directory.Exists(Path.Combine(root, "Assets", "Images")), "Assets/Images was there before");
+        Assert.IsTrue(Directory.Exists(Path.Combine(root, "EmptyTop")), "EmptyTop was there before");
+        Assert.IsFalse(Directory.Exists(Path.Combine(root, "NewFolder")), "NewFolder is the run's");
+    }
+
+    [TestMethod]
+    public void Restore_RemovesANewFolderInsideAnEmptyOneAndKeepsTheOldOne()
+    {
+        var root = NewWorkspace();
+        Directory.CreateDirectory(Path.Combine(root, "A"));
+
+        using var snapshot = WorkspaceSnapshot.Capture(root);
+        Directory.CreateDirectory(Path.Combine(root, "A", "B", "C"));
+        snapshot.Restore();
+
+        Assert.IsTrue(Directory.Exists(Path.Combine(root, "A")), "A was there before");
+        Assert.IsFalse(Directory.Exists(Path.Combine(root, "A", "B")), "A/B is the run's");
+    }
+
+    [TestMethod]
+    public void Restore_PutsBackAnEmptyFolderTheRunDeleted()
+    {
+        var root = NewWorkspace();
+        Directory.CreateDirectory(Path.Combine(root, "Migrations"));
+
+        using var snapshot = WorkspaceSnapshot.Capture(root);
+        Directory.Delete(Path.Combine(root, "Migrations"));
+        snapshot.Restore();
+
+        Assert.IsTrue(Directory.Exists(Path.Combine(root, "Migrations")));
+    }
+
     // S5: a build inside the rolled-back run left Foo/obj behind, so Foo survived the rollback and
     // undo then offered a phantom "Undid: run f" that only removed the leftovers.
     [TestMethod]
