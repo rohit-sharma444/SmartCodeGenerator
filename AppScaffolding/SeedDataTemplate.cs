@@ -86,6 +86,160 @@ public static class SeedDataTemplate
           """
         : string.Empty;
 
+    /// <summary>Rows inserted into each empty store: the emitted <c>SeedRowCount</c>.</summary>
+    private const int SeedRowCount = 3;
+
+    /// <summary>
+    /// For each string property with a value list, keyed "Class.Property", the values it allows.
+    /// The emitted validator checks exactly these (<see cref="ValidatorTemplate"/>), so it is the
+    /// same test: a property of type <c>string</c> with an <c>allowedvalues</c> rule.
+    /// </summary>
+    internal static IReadOnlyList<(string Key, IReadOnlyList<string> Values, bool Unique)> ValueLists(
+        IReadOnlyList<ClassDefinition> classes)
+        => [.. classes.SelectMany(definition => definition.Properties
+            .Where(p => p.Type == "string")
+            .Select(p => (Property: p, Allowed: p.Rules.FirstOrDefault(r =>
+                string.Equals(r.Name, "allowedvalues", StringComparison.OrdinalIgnoreCase))?.AllowedValues))
+            .Where(pair => pair.Allowed is { Count: > 0 })
+            .Select(pair => (
+                $"{definition.Name}.{pair.Property.Name}",
+                (IReadOnlyList<string>)[.. pair.Allowed!],
+                pair.Property.Rules.Any(r => string.Equals(r.Name, "unique", StringComparison.OrdinalIgnoreCase))
+                    && ValidatorTemplate.CanEmitEntityRule(pair.Property.Type, "unique"))))];
+
+    /// <summary>
+    /// The classes that are seeded with fewer rows than <see cref="SeedRowCount"/>, how many, and
+    /// why: a value list no two rows may share allows only as many rows as it has values.
+    /// </summary>
+    /// <remarks>
+    /// One value is left over, not every value used: a record the user adds, and the generated
+    /// round-trip test's own record, need a value no seeded row holds - with every value taken,
+    /// neither could ever be saved. A list of one value still seeds its one row.
+    /// </remarks>
+    internal static IReadOnlyList<(string ClassName, int Rows, string Why)> RowLimits(
+        IReadOnlyList<ClassDefinition> classes)
+    {
+        var limits = new List<(string, int, string)>();
+
+        foreach (var group in ValueLists(classes).Where(l => l.Unique).GroupBy(l => l.Key[..l.Key.IndexOf('.')]))
+        {
+            var tightest = group.MinBy(l => l.Values.Count);
+            var rows = Math.Max(1, tightest.Values.Count - 1);
+
+            if (rows >= SeedRowCount)
+                continue;
+
+            var property = tightest.Key[(tightest.Key.IndexOf('.') + 1)..];
+
+            limits.Add((group.Key, rows,
+                $"{property} allows {tightest.Values.Count} value(s) and no two rows may share one, "
+                + $"so {rows} row(s) are seeded and a value is left for a new record."));
+        }
+
+        return limits;
+    }
+
+    /// <inheritdoc cref="Source(string, IReadOnlyList{string}, IReadOnlyList{string})"/>
+    /// <param name="seededFromFile">As in the overload without <paramref name="classes"/>.</param>
+    /// <param name="classes">
+    /// The classes being seeded. A property with a value list takes its listed values in turn,
+    /// so a seeded row passes its own validator: "Status 1" broke the list on every row, and
+    /// saving a seeded row unchanged was refused. With no value list among them the emitted file
+    /// is exactly what it was before.
+    /// </param>
+    public static string Source(
+        string rootNamespace,
+        IReadOnlyList<string> orderedEntityNames,
+        IReadOnlyList<string> foreignKeyFieldNames,
+        IReadOnlyList<string> seededFromFile,
+        IReadOnlyList<ClassDefinition> classes)
+    {
+        var lists = ValueLists(classes);
+        var limits = RowLimits(classes);
+
+        var source = Source(rootNamespace, orderedEntityNames, foreignKeyFieldNames, seededFromFile);
+
+        if (lists.Count == 0)
+            return source;
+
+        var newline = source.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+
+        var tables = new System.Text.StringBuilder();
+        tables.Append(newline).Append(newline);
+        tables.Append("    /// <summary>The values each property's value list allows, keyed \"Model.Property\". A seeded").Append(newline);
+        tables.Append("    /// row takes them in turn, so it passes the validator's own check.</summary>").Append(newline);
+        tables.Append("    private static readonly Dictionary<string, string[]> ValueLists = new(StringComparer.Ordinal)").Append(newline);
+        tables.Append("    {").Append(newline);
+
+        foreach (var (key, values, _) in lists)
+            tables.Append("        [").Append(ValidatorTemplate.Quoted(key)).Append("] = new[] { ")
+                .Append(string.Join(", ", values.Select(ValidatorTemplate.Quoted))).Append(" },").Append(newline);
+
+        tables.Append("    };");
+
+        if (limits.Count > 0)
+        {
+            tables.Append(newline).Append(newline);
+            tables.Append("    /// <summary>The classes seeded with fewer than SeedRowCount rows, and how many.</summary>").Append(newline);
+            tables.Append("    private static readonly Dictionary<string, int> RowLimits = new(StringComparer.Ordinal)").Append(newline);
+            tables.Append("    {").Append(newline);
+
+            foreach (var (className, rows, why) in limits)
+            {
+                tables.Append("        // ").Append(className).Append(": ").Append(why).Append(newline);
+                tables.Append("        [").Append(ValidatorTemplate.Quoted(className)).Append("] = ")
+                    .Append(rows.ToString(System.Globalization.CultureInfo.InvariantCulture)).Append(',').Append(newline);
+            }
+
+            tables.Append("    };");
+        }
+
+        source = InsertAfterLine(source, "private static readonly HashSet<string> ForeignKeyFields = ", tables.ToString());
+
+        if (limits.Count > 0)
+            source = ReplaceOnce(source, "for (var n = 1; n <= SeedRowCount; n++)",
+                "for (var n = 1; n <= (RowLimits.TryGetValue(typeof(T).Name, out var limit) ? limit : SeedRowCount); n++)");
+
+        var listed = string.Join(newline,
+            "        if (type == typeof(string)",
+            "            && ValueLists.TryGetValue(prop.DeclaringType?.Name + \".\" + name, out var listed))",
+            "            return listed[(n - 1) % listed.Length];",
+            "",
+            "        if (type == typeof(string))");
+
+        return ReplaceOnce(source, "        if (type == typeof(string))", listed);
+    }
+
+    /// <summary><paramref name="source"/> with its one <paramref name="find"/> replaced by
+    /// <paramref name="replacement"/>.</summary>
+    private static string ReplaceOnce(string source, string find, string replacement)
+    {
+        var at = Once(source, find);
+        return source[..at] + replacement + source[(at + find.Length)..];
+    }
+
+    /// <summary><paramref name="source"/> with <paramref name="insert"/> at the end of the line
+    /// that holds its one <paramref name="find"/>.</summary>
+    private static string InsertAfterLine(string source, string find, string insert)
+    {
+        var end = source.IndexOf('\n', Once(source, find));
+        var lineEnd = end > 0 && source[end - 1] == '\r' ? end - 1 : end;
+        return source[..lineEnd] + insert + source[lineEnd..];
+    }
+
+    /// <summary>Where <paramref name="find"/> is in <paramref name="source"/>. Throws when it is not
+    /// there exactly once: a template that changed under this must fail its tests, not emit a
+    /// seeder that ignores the value lists.</summary>
+    private static int Once(string source, string find)
+    {
+        var at = source.IndexOf(find, StringComparison.Ordinal);
+
+        if (at < 0 || source.IndexOf(find, at + find.Length, StringComparison.Ordinal) >= 0)
+            throw new InvalidOperationException($"SeedData template: expected one \"{find}\".");
+
+        return at;
+    }
+
     /// <inheritdoc cref="Source(string, IReadOnlyList{string}, IReadOnlyList{string})"/>
     /// <param name="seededFromFile">
     /// Class names whose starting rows were imported from the user's own data and written to

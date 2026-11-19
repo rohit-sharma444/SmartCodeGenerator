@@ -570,6 +570,74 @@ public class GeneratedProjectBuildTests
     }
 
     /// <summary>
+    /// An app whose Ticket has a value list no two tickets may share, and a Note that references
+    /// a Ticket, passes its own generated tests with seeded rows in the store. The seeded rows now
+    /// hold listed values, so a test record that always took the first listed value was refused
+    /// as a duplicate of the first seeded row; it now takes one no stored row holds.
+    /// </summary>
+    [TestMethod]
+    [TestCategory("Integration")]
+    [DataRow(true, DisplayName = "seeded")]
+    [DataRow(false, DisplayName = "not seeded")]
+    public void ProjectWithAUniqueValueList_ItsTestsPass(bool seed)
+    {
+        Assert.IsTrue(TargetScaffolders.TryResolve("console", out var target));
+
+        static CodeGenerationEngine.Models.RuleProposal Accepted(
+            CodeGenerationEngine.Models.RuleProposalKind kind, CodeGenerationEngine.Models.PropertyRule rule)
+            => new() { Kind = kind, Rule = rule, Evidence = "in all rows", Accepted = true };
+
+        var status = new CandidateField { Name = "Status", Type = "string" };
+        status.Proposals.Add(Accepted(CodeGenerationEngine.Models.RuleProposalKind.Status, new CodeGenerationEngine.Models.PropertyRule
+        {
+            PropertyName = "Status", Name = "allowedvalues", AllowedValues = ["Open", "InProgress", "Closed", "Held", "Done"],
+        }));
+        status.Proposals.Add(Accepted(CodeGenerationEngine.Models.RuleProposalKind.Unique, new CodeGenerationEngine.Models.PropertyRule
+        {
+            PropertyName = "Status", Name = "unique", IsUnique = true,
+        }));
+
+        var model = new CandidateDomainModel();
+        model.Entities.Add(new CandidateEntity
+        {
+            Name = "Ticket",
+            Fields = { new CandidateField { Name = "Title", Type = "string" }, status },
+        });
+        model.Entities.Add(new CandidateEntity
+        {
+            Name = "Note",
+            Fields =
+            {
+                new CandidateField { Name = "Text", Type = "string" },
+                new CandidateField { Name = "TicketId", Type = "int" },
+            },
+            Relationships = { new CandidateRelationship { Target = "Ticket", Role = "references" } },
+        });
+
+        var workspace = Path.Combine(Path.GetTempPath(), "gen_" + Path.GetRandomFileName());
+        Directory.CreateDirectory(workspace);
+        try
+        {
+            var result = new AppScaffolder().Scaffold(
+                ScaffoldRequest.For(model, "Sample", workspace, target)
+                with
+                {
+                    Customization = AppCustomization.Default with { SampleSeedData = seed },
+                });
+
+            Assert.IsTrue(result.Success, "scaffold failed: " + result.Message);
+            Assert.IsNotNull(result.TestProjectPath, "no test project was emitted");
+
+            var (testExit, testOutput) = RunDotNet($"test \"{result.TestProjectPath}\" -c Release");
+            Assert.AreEqual(0, testExit, $"dotnet test failed:\n{testOutput}");
+        }
+        finally
+        {
+            TryDeleteDirectory(workspace);
+        }
+    }
+
+    /// <summary>
     /// An app generated without sample data builds. SeedData.EnsureSeeded() is called from four
     /// separate entry points, so every target is a row here: a missed call site is a CS0103 on a
     /// class the app no longer generates, and the console row's generated tests prove nothing left

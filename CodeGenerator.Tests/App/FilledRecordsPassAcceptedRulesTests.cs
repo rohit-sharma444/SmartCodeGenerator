@@ -257,10 +257,55 @@ public sealed class StoreEntityLookup : IEntityLookup
         Compile([pair], "Pair");
     }
 
+    /// <summary>
+    /// A value list no two records may share: Fill takes the first listed value no stored record
+    /// holds. It always took the first, so a seeded or imported row holding it - or a parent that
+    /// ForeignKeyValue had already created - made the generated round-trip test fail the unique
+    /// rule, and a child whose parent could not be created fell back to a foreign key of 0.
+    /// </summary>
+    [TestMethod]
+    public void A_value_list_no_two_records_share_takes_a_value_no_stored_record_holds()
+    {
+        var status = new CandidateField { Name = "Status", Type = "string" };
+        status.Proposals.Add(ValueList("Status", "Open", "InProgress", "Closed"));
+        status.Proposals.Add(Unique("Status"));
+        var model = new CandidateDomainModel();
+        var ticket = new CandidateEntity { Name = "Ticket" };
+        ticket.Fields.AddRange([new CandidateField { Name = "Title", Type = "string" }, status]);
+        model.Entities.Add(ticket);
+
+        var app = Compile(DomainModelMapper.ToClassDefinitions(model), "Ticket", StoredTickets);
+
+        app.Store("Open");
+        Assert.AreEqual("InProgress", app.Get(app.Fill(), "Status"));
+
+        app.Store("InProgress");
+        Assert.AreEqual("Closed", app.Get(app.Fill(), "Status"));
+
+        // Every value taken: no record can be saved, and the reason is said rather than a
+        // duplicate being written for the validator to refuse.
+        app.Store("Closed");
+        var thrown = Assert.ThrowsExactly<TargetInvocationException>(() => app.Fill());
+        StringAssert.Contains(thrown.InnerException!.Message, "Ticket.Status");
+    }
+
+    /// <summary>A stand-in for the generated TicketRepository: only GetAll is read.</summary>
+    private const string StoredTickets = """
+namespace Acme.Data;
+
+public class TicketRepository
+{
+    public static readonly List<Acme.Models.Ticket> Rows = new();
+
+    public IReadOnlyList<Acme.Models.Ticket> GetAll() => Rows;
+}
+""";
+
     private static CompiledApp Compile(CandidateDomainModel model, string className)
         => Compile(DomainModelMapper.ToClassDefinitions(model), className);
 
-    private static CompiledApp Compile(IReadOnlyList<ClassDefinition> classes, string className)
+    private static CompiledApp Compile(
+        IReadOnlyList<ClassDefinition> classes, string className, string? extra = null)
     {
         var definition = classes.Single(c => c.Name == className);
 
@@ -280,6 +325,7 @@ public sealed class StoreEntityLookup : IEntityLookup
                 ValidatorTemplate.CustomStub("Acme", className)),
             ("Tests/TestSupport.cs",
                 TestProjectTemplates.TestSupport("Acme", login: false, sessionAuth: false, seed: false, classes)),
+            ("Data/Extra.cs", extra ?? "namespace Acme.Data;"),
         });
 
         var compileErrors = result.Diagnostics
@@ -304,6 +350,17 @@ public sealed class StoreEntityLookup : IEntityLookup
         }
 
         public object? Get(object item, string property) => Entity.GetProperty(property)!.GetValue(item);
+
+        /// <summary>Puts a record with this Status into the stand-in repository's rows.</summary>
+        public void Store(string status)
+        {
+            var item = Activator.CreateInstance(Entity)!;
+            Entity.GetProperty("Status")!.SetValue(item, status);
+
+            var rows = (System.Collections.IList)assembly.GetType("Acme.Data." + className + "Repository")!
+                .GetField("Rows")!.GetValue(null)!;
+            rows.Add(item);
+        }
 
         public IReadOnlyList<string> Validate(object item)
         {
