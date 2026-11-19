@@ -1,4 +1,4 @@
-﻿using CodeGenerationEngine.Core;
+using CodeGenerationEngine.Core;
 using CodeGenerationEngine.Core.Relationships;
 using CodeGenerationEngine.Core.Validation;
 using CodeGenerationEngine.Core.Validation.Rules;
@@ -431,7 +431,7 @@ public static class DomainModelMapper
             {
                 ("DateTime", "now") => "global::System.DateTime.Now",
                 ("DateTime", "utcnow") => "global::System.DateTime.UtcNow",
-                ("string", "newguid") => "global::System.Guid.NewGuid().ToString()",
+                ("string", "newguid") => "global::System.Guid.NewGuid().ToString().ToUpperInvariant()",
                 _ => null
             };
 

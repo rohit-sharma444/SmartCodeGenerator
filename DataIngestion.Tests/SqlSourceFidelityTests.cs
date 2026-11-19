@@ -338,6 +338,23 @@ public class SqlSourceFidelityTests
         Assert.Contains(app.Data.Notes, n => n.Contains("StartsAt") && n.Contains("offset is dropped"));
     }
 
+    [Fact]
+    public void A_uniqueidentifier_is_seeded_and_started_in_the_uppercase_sql_server_shows()
+    {
+        // A6: seeded lowercase, a GUID pasted from SSMS in uppercase saved as a second record.
+        Assert.Equal("6F9619FF-8B86-D011-B42D-00C04FC964FF",
+            SqlValueText.Render(Guid.Parse("6f9619ff-8b86-d011-b42d-00c04fc964ff")));
+
+        var app = Generate(Database(add => add("Device",
+            [new("DeviceId", "int", false, IsPrimaryKey: true), new("Token", "uniqueidentifier", false, Default: "(newid())")],
+            [["1", SqlValueText.Render(Guid.Parse("6f9619ff-8b86-d011-b42d-00c04fc964ff"))]])));
+
+        var assembly = Compile(app);
+        var token = (string)New(assembly, "Device").GetType().GetProperty("Token")!.GetValue(New(assembly, "Device"))!;
+        Assert.True(Guid.TryParse(token, out _));
+        Assert.Equal(token.ToUpperInvariant(), token);
+    }
+
     // --- S4: values the mapped type cannot hold ---
 
     [Fact]
