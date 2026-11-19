@@ -48,6 +48,17 @@ public sealed class TabularTable
     /// </remarks>
     public string? SourceName { get; init; }
 
+    /// <summary>
+    /// Whether a key value naming one of this table's rows may differ from it in case, as SQL
+    /// Server's default collation lets c001 name C001. Only the SQL reader sets it; a file has no
+    /// collation to follow, so its keys match exactly.
+    /// </summary>
+    /// <remarks>
+    /// An exact match still wins, and when two of the table's keys differ only by case (a
+    /// case-sensitive database) only the exact match links.
+    /// </remarks>
+    public bool KeysMatchIgnoringCase { get; init; }
+
     /// <summary>Whether the reader stopped before the source's last row, so <see cref="Rows"/> is
     /// only part of the table. Only the SQL reader stops early.</summary>
     public bool IsPartial { get; set; }

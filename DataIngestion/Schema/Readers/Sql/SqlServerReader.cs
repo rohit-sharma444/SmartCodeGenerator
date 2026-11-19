@@ -49,7 +49,8 @@ public sealed class SqlServerReader(ISqlSchemaSource source, int maxRowsPerTable
             {
                 Name = names[info],
                 SourceLabel = $"{info.Schema}.{info.Name}",
-                SourceName = string.Equals(names[info], info.Name, StringComparison.Ordinal) ? null : info.Name
+                SourceName = string.Equals(names[info], info.Name, StringComparison.Ordinal) ? null : info.Name,
+                KeysMatchIgnoringCase = true
             };
 
             if (!string.Equals(names[info], info.Name, StringComparison.Ordinal))

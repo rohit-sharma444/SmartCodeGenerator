@@ -679,6 +679,57 @@ public class SqlSourceFidelityTests
         Assert.All(rows, row => Assert.Empty(Validate(assembly, "Employee", row)));
     }
 
+    /// <summary>Customers keyed by text, and Orders naming them in <paramref name="orderKeys"/>,
+    /// through a declared key.</summary>
+    private static FakeSqlSchemaSource CustomersAndOrders(string[] customerKeys, string[] orderKeys)
+    {
+        var source = Database(add =>
+        {
+            add("Customer", [new("CustomerCode", "nvarchar", false, 10, IsPrimaryKey: true), new("Title", "nvarchar", false, 20)],
+                [.. customerKeys.Select(k => new string?[] { k, "Name " + k })]);
+            add("Orders", [new("OrderId", "int", false, IsPrimaryKey: true), new("CustomerCode", "nvarchar", true, 10)],
+                [.. orderKeys.Select((k, i) => new string?[] { (i + 1).ToString(), k })]);
+        });
+        source.Keys.Add(new TabularForeignKey("CustomerCode", "Customer", "CustomerCode", "Orders", "dbo", "dbo"));
+        return source;
+    }
+
+    private static int?[] OrderCustomerIds(Generated app)
+        => [.. Seed(app, "Order").Select(r => r.TryGetProperty("CustomerId", out var id) && id.ValueKind == JsonValueKind.Number
+            ? id.GetInt32() : (int?)null)];
+
+    [Fact]
+    public void A_sql_text_key_links_whatever_its_case_as_the_database_did()
+    {
+        // A3: SQL Server's default collation took c001 as C001; the import left Order 1 unlinked.
+        var app = Generate(CustomersAndOrders(["C001", "C002"], ["c001", "C002"]));
+
+        Assert.Equal([1, 2], OrderCustomerIds(app));
+        Assert.DoesNotContain(app.Data.Notes, n => n.Contains("no row in your data carries"));
+    }
+
+    [Fact]
+    public void A_sql_text_key_that_two_rows_spell_only_by_case_links_the_exact_one()
+    {
+        var app = Generate(CustomersAndOrders(["A1", "a1"], ["a1", "A1"]));
+
+        Assert.Equal([2, 1], OrderCustomerIds(app));
+        Assert.Contains(app.Data.Notes, n => n.Contains("Customer") && n.Contains("only by case"));
+    }
+
+    [Fact]
+    public void A_file_text_key_still_matches_its_case_exactly()
+    {
+        var customers = DataIngestion.Schema.Readers.CsvReader.FromText("Customer", "customer.csv",
+            "CustomerId,Title\r\nC001,Ann\r\nC002,Bob\r\n", ',');
+        var orders = DataIngestion.Schema.Readers.CsvReader.FromText("Orders", "orders.csv",
+            "OrderNo,CustomerId\r\n1,C001\r\n2,c002\r\n", ',');
+
+        var app = Generate([customers, orders]);
+
+        Assert.Equal([1, null], OrderCustomerIds(app));
+    }
+
     [Fact]
     public void A_column_a_check_limits_to_a_list_is_not_proposed_unique()
     {

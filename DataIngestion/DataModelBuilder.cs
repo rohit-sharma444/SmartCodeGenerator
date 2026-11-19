@@ -769,7 +769,7 @@ public static class DataModelBuilder
         var keys = targetTable.ColumnValues(keyColumn)
             .Where(v => !string.IsNullOrWhiteSpace(v))
             .Select(v => v!.Trim())
-            .ToHashSet(StringComparer.Ordinal);
+            .ToHashSet(targetTable.KeysMatchIgnoringCase ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
 
         return table.ColumnValues(column)
             .Any(v => !string.IsNullOrWhiteSpace(v) && keys.Contains(v.Trim()));
