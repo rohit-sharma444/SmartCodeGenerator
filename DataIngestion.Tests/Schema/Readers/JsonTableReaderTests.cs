@@ -165,4 +165,33 @@ public class JsonTableReaderTests
             File.Delete(path);
         }
     }
+
+    /// <summary>
+    /// G10: several collections side by side are several tables. Read as one record, they made a
+    /// fake root entity named for the file, and every customer and order a required link to it.
+    /// </summary>
+    [Fact]
+    public void SeveralRootCollections_AreEachTheirOwnTable()
+    {
+        var tables = JsonTableReader.ReadJson(
+            """{"customers":[{"name":"Ann"},{"name":"Bob"}],"orders":[{"total":5},{"total":7},{"total":9}]}""",
+            "db", "db.json");
+
+        Assert.Equal(new[] { "Customer", "Order" }, tables.Select(t => t.Name));
+        Assert.Equal(2, tables[0].Rows.Count);
+        Assert.Equal(3, tables[1].Rows.Count);
+        Assert.All(tables, t => Assert.DoesNotContain(t.Columns, c => c.Name.Contains("Db", StringComparison.OrdinalIgnoreCase)));
+    }
+
+    /// <summary>A root with a scalar beside its arrays is still one record.</summary>
+    [Fact]
+    public void ARootWithAScalarBesideItsArrays_IsOneRecord()
+    {
+        var tables = JsonTableReader.ReadJson(
+            """{"name":"Shop","customers":[{"name":"Ann"}],"orders":[{"total":5}]}""",
+            "shop", "shop.json");
+
+        Assert.Equal("Shop", tables[0].Name);
+        Assert.Equal(3, tables.Count);
+    }
 }

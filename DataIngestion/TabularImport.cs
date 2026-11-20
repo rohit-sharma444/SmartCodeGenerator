@@ -13,6 +13,23 @@ namespace DataIngestion;
 public static class TabularImport
 {
     public static ImportedData ToImportedData(IReadOnlyList<TabularTable> tables)
+        => Import(tables, out _);
+
+    /// <summary>
+    /// Each (entity, field) holding a reference the import has to leave unset: one naming no row,
+    /// two rows, or a row past the seed cap.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="DataModelBuilder"/> asks, so such a key is not required: the seeded row holds 0
+    /// ("no parent") there, and a required key refused that row on its first unchanged save.
+    /// </remarks>
+    public static IReadOnlySet<(string Entity, string Field)> UnlinkedFields(IReadOnlyList<TabularTable> tables)
+    {
+        Import(tables, out var unlinked);
+        return unlinked.Fields;
+    }
+
+    private static ImportedData Import(IReadOnlyList<TabularTable> tables, out Unlinked unlinked)
     {
         var rows = new Dictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string?>>>(
             StringComparer.OrdinalIgnoreCase);
@@ -104,7 +121,7 @@ public static class TabularImport
         // are renumbered and nothing that is not one is touched.
         var links = DataModelBuilder.Links(tables);
 
-        var unlinked = new Unlinked();
+        unlinked = new Unlinked();
         RewriteSourceKeys(rows, sources, links, notes, unlinked);
         ClearDanglingForeignKeys(rows, sources, links, unlinked);
         unlinked.AddNotes(notes);
@@ -119,6 +136,9 @@ public static class TabularImport
         public int PastTheCap;
         public int NamedNoRow;
         public int NamedTwoRows;
+
+        /// <summary>The (entity, field) pairs a reference was cleared in.</summary>
+        public HashSet<(string Entity, string Field)> Fields { get; } = new(new IgnoreCasePair());
 
         public void AddNotes(List<string> notes)
         {
@@ -142,7 +162,27 @@ public static class TabularImport
                     $"{NamedTwoRows} reference(s) could not be linked because more than one row carries "
                     + "the key they name, so which was meant is unknown; they were left unset.");
             }
+
+            if (Fields.Count > 0)
+            {
+                notes.Add(
+                    "So those rows stay valid, "
+                    + string.Join(", ", Fields.Select(f => $"{f.Entity}.{f.Field}").Order(StringComparer.OrdinalIgnoreCase))
+                    + " is not required; link the rows later in the app.");
+            }
         }
+    }
+
+    private sealed class IgnoreCasePair : IEqualityComparer<(string Entity, string Field)>
+    {
+        public bool Equals((string Entity, string Field) x, (string Entity, string Field) y)
+            => string.Equals(x.Entity, y.Entity, StringComparison.OrdinalIgnoreCase)
+               && string.Equals(x.Field, y.Field, StringComparison.OrdinalIgnoreCase);
+
+        public int GetHashCode((string Entity, string Field) pair)
+            => HashCode.Combine(
+                StringComparer.OrdinalIgnoreCase.GetHashCode(pair.Entity),
+                StringComparer.OrdinalIgnoreCase.GetHashCode(pair.Field));
     }
 
     /// <summary>
@@ -240,16 +280,19 @@ public static class TabularImport
                     {
                         cells[link.Field] = null;
                         unlinked.NamedTwoRows++;
+                        unlinked.Fields.Add((entity, link.Field));
                     }
                     else if (position == KeyPositions.None)
                     {
                         cells[link.Field] = null;
                         unlinked.NamedNoRow++;
+                        unlinked.Fields.Add((entity, link.Field));
                     }
                     else if (position > imported)
                     {
                         cells[link.Field] = null;
                         unlinked.PastTheCap++;
+                        unlinked.Fields.Add((entity, link.Field));
                     }
                     else
                     {
@@ -414,6 +457,7 @@ public static class TabularImport
                         continue;
 
                     cells[link.Field] = null;
+                    unlinked.Fields.Add((entity, link.Field));
 
                     // The cap is to blame only for a row that was read and then not imported.
                     if (key > targetRows.Count && key <= sources[link.Target].Rows.Count)

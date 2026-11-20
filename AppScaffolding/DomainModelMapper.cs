@@ -54,6 +54,17 @@ public static class DomainModelMapper
         "Directory", "File", "Path", "Stream", "Dictionary", "List", "Queue", "Stack",
         "Enumerable", "IEnumerable",
 
+        // Types a target's own files name, or that its SDK's implicit usings bring into scope next
+        // to <App>.Models, so a same-named entity is ambiguous (CS0104) or clashes with the type
+        // (CS0118, CS0310, CS9338): System.Console in every target, Microsoft.Extensions.Hosting.Host
+        // and the Worker class in a worker, Microsoft.AspNetCore.Routing.Route, Results and
+        // WebApplication in a web API, the top-level Program, System.Threading's Lock, Monitor and
+        // Thread, System.Linq's Lookup, and xUnit's Assert, Fact, Theory and Record in every test
+        // project.
+        "Console", "Host", "Worker", "Route", "Results", "WebApplication", "Program",
+        "Lock", "Monitor", "Thread", "Lookup",
+        "Assert", "Fact", "Theory", "Record",
+
         // Words for "no value". A file called nulls.csv made a class Null, whose NullValidator sat
         // beside the app's own NullValidator<T>: it compiled, but the name says nothing.
         "Null", "Nil", "Void", "Undefined",
@@ -499,6 +510,13 @@ public static class DomainModelMapper
     }
 
     /// <summary>
+    /// Whether <paramref name="name"/> is one of the dates the store stamps on save (CreatedOn,
+    /// ModifiedOn). A user never types one in, so no rule may demand one or forbid a repeat.
+    /// </summary>
+    public static bool IsAuditField(string name)
+        => Screens.EntityRoles.AuditFields.Contains(name, StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
     /// Rule names <see cref="CodeGenerationEngine.Core.RoslynClassGenerator"/> renders as
     /// DataAnnotations attributes on the emitted model, rather than as a check in the generated
     /// validator.
@@ -731,7 +749,10 @@ public static class DomainModelMapper
                 // A date the source declared NOT NULL is required, as a NOT NULL string is: the
                 // non-nullable model holds a blank as 0001-01-01, which such a column would store
                 // as though it were a real date. Unknown nullability infers nothing, as above.
-                if (facts?.IsNullable == false && !IsNullable(property.Type))
+                //
+                // Never on CreatedOn or ModifiedOn: no screen and no API body fills them in, the
+                // store stamps them on save AFTER validation, so the rule refused every new record.
+                if (facts?.IsNullable == false && !IsNullable(property.Type) && !IsAuditField(property.Name))
                     property.Rules.Add(new PropertyRule { Name = "required" });
 
                 // SQL Server's own floor, and only for the type that actually carries it:

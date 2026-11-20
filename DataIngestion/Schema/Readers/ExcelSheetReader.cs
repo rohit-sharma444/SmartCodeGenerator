@@ -149,6 +149,10 @@ public static class ExcelSheetReader
         var style = int.TryParse(cell.Attribute("s")?.Value, NumberStyles.Integer,
             CultureInfo.InvariantCulture, out var s) ? s : 0;
 
+        // Before the date test: an elapsed format's [h] also counts as a time token there.
+        if (workbook.Formats.IsElapsed(style))
+            return ExcelSerialDate.ToElapsedText(number) ?? raw;
+
         if (workbook.Formats.IsDate(style))
             return ExcelSerialDate.ToText(number, workbook.Date1904) ?? raw;
 
@@ -160,7 +164,15 @@ public static class ExcelSheetReader
         // column into strings; the stored value is what the file actually holds. Only an exponent
         // is dropped ("1E-05" -> "0.00001"): the cell is numeric, and inference reads
         // exponent-form TEXT as a code.
-        return AppScaffolding.ImportedValues.PlainNumberText(raw);
+        //
+        // A fraction is rounded to the 15 significant digits Excel itself shows: Excel stores 2.3
+        // as 2.2999999999999998, and that binary noise is not what the user typed or sees. A whole
+        // number is kept as stored, so a long number is never shortened.
+        var text = number != Math.Floor(number) && double.IsFinite(number)
+            ? number.ToString("G15", CultureInfo.InvariantCulture)
+            : raw;
+
+        return AppScaffolding.ImportedValues.PlainNumberText(text);
     }
 
     /// <summary>

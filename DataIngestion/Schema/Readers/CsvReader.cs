@@ -20,16 +20,36 @@ public sealed class CsvReader : IDataSourceReader
         if (!File.Exists(spec.Location))
             throw new FileNotFoundException($"No file at {spec.Location}.", spec.Location);
 
-        var table = FromText(
-            Path.GetFileNameWithoutExtension(spec.Location),
-            Path.GetFileName(spec.Location),
-            SourceText.Read(spec.Location, out var encodingNote),
-            ',');
+        var text = SourceText.Read(spec.Location, out var encodingNote);
+        var label = Path.GetFileName(spec.Location);
+        var delimiter = Delimiter(text);
+
+        var table = FromText(Path.GetFileNameWithoutExtension(spec.Location), label, text, delimiter);
+
+        if (delimiter != ',')
+            table.Notes.Insert(0,
+                $"{label} separates its fields with {(delimiter == '\t' ? "a tab" : $"'{delimiter}'")}, "
+                + "not commas, so it was read that way.");
 
         if (encodingNote is not null)
             table.Notes.Insert(0, encodingNote);
 
         return new[] { table };
+    }
+
+    /// <summary>
+    /// ',' unless the header has no comma but has a semicolon or a tab, and that splits the file
+    /// evenly. Excel saves "CSV" with semicolons in locales whose decimal mark is a comma
+    /// (de, fr, nl, it, es); split on commas, such a file became one column and lost rows.
+    /// </summary>
+    private static char Delimiter(string text)
+    {
+        var header = ParseFields(text.Split('\n', 2)[0], ',').FirstOrDefault();
+
+        if (header is not { Length: 1 } || header[0] is not { } only || !(only.Contains(';') || only.Contains('\t')))
+            return ',';
+
+        return DelimitedTextReader.SniffDelimiter(text) is { } sniffed and (';' or '\t') ? sniffed : ',';
     }
 
     /// <summary>

@@ -157,16 +157,17 @@ public class DataModelBuilderTests
             Assert.Single(model.Entities).Fields.Select(f => f.Name));
     }
 
-    /// <summary>A column whose name cannot become an identifier is dropped with a reason, not
-    /// emitted as something that will not compile.</summary>
+    /// <summary>A column whose name cannot become an identifier is named by its position (G10),
+    /// with a reason, not emitted as something that will not compile, and not dropped with its
+    /// data.</summary>
     [Fact]
-    public void AColumnNameThatCannotBeAnIdentifierIsDroppedWithAReason()
+    public void AColumnNameThatCannotBeAnIdentifierIsNamedByPositionWithAReason()
     {
         var model = DataModelBuilder.Build([Table("Orders", ("!!!", "string"), ("Ref", "string"))]);
 
-        Assert.Equal(new[] { "Ref" }, Assert.Single(model.Entities).Fields.Select(f => f.Name));
+        Assert.Equal(new[] { "Column1", "Ref" }, Assert.Single(model.Entities).Fields.Select(f => f.Name));
         Assert.Contains(model.Decisions,
-            d => d.Reason == DecisionReasons.ColumnNameIsNotAValidIdentifier);
+            d => d.Reason == DecisionReasons.ColumnRenamedToAUsableName && d.Name == "!!!");
     }
 
     /// <summary>A table whose every column was dropped still needs one editable column, the same
@@ -270,5 +271,24 @@ public class DataModelBuilderTests
         // Every value past MaxSeedRows is Reversed. A scan over ImportedData would have proposed
         // a whitelist of one, and the generated app would then reject 500 rows of its own source.
         Assert.Contains("Reversed", proposal.Rule.AllowedValues);
+    }
+
+    /// <summary>
+    /// G10: a header that cannot become a name ("%", "#") is named by its position, as a blank
+    /// one is. It was dropped with its data, said only in `why`.
+    /// </summary>
+    [Fact]
+    public void AHeaderThatCannotBeAName_IsNamedByItsPosition()
+    {
+        var table = DataIngestion.Schema.Readers.CsvReader.FromText("Rates", "rates.csv",
+            "Name,%,#\r\nA,5,1\r\nB,7,2\r\n", ',');
+
+        var model = DataModelBuilder.Build([table]);
+        var entity = Assert.Single(model.Entities);
+        Assert.Equal(new[] { "Name", "Column2", "Column3" }, entity.Fields.Select(f => f.Name));
+
+        var data = TabularImport.ToImportedData([table]);
+        Assert.Equal("5", data.Rows["Rate"][0]["Column2"]);
+        Assert.Equal("2", data.Rows["Rate"][1]["Column3"]);
     }
 }

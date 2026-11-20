@@ -40,6 +40,25 @@ public static class ExcelSerialDate
             : date.Value.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
     }
 
+    /// <summary>
+    /// A duration in days as total hours, <c>h:mm:ss</c>, the way an elapsed-time format
+    /// (<c>[h]:mm</c>) shows it: 1.5 is "36:00:00", 0.5 is "12:00:00". Never a date. Null when
+    /// the number is too large to be a duration, which keeps the stored number.
+    /// </summary>
+    public static string? ToElapsedText(double days)
+    {
+        if (double.IsNaN(days) || double.IsInfinity(days) || Math.Abs(days) > 1e9)
+            return null;
+
+        var totalSeconds = (long)Math.Round(Math.Abs(days) * SecondsPerDay);
+        var hours = totalSeconds / 3600;
+        var minutes = totalSeconds / 60 % 60;
+        var seconds = totalSeconds % 60;
+        var sign = days < 0 && totalSeconds > 0 ? "-" : "";
+
+        return string.Create(CultureInfo.InvariantCulture, $"{sign}{hours}:{minutes:00}:{seconds:00}");
+    }
+
     /// <summary>The serial as a <see cref="DateTime"/>, or null when it names no real date.</summary>
     public static DateTime? ToDateTime(double serial, bool date1904)
     {

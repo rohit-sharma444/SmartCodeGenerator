@@ -60,6 +60,24 @@ public sealed class JsonTableReader : IDataSourceReader
                 rootName = wrapped.Name;
             }
 
+            // {"customers": [...], "orders": [...]} is several collections side by side, not one
+            // record: read as one, it made an entity named for the file with an empty row, and a
+            // required link to it on every customer and order. Each is its own table.
+            if (Collections(root) is { } collections)
+            {
+                var all = new List<TabularTable>();
+                foreach (var (name, value) in collections)
+                {
+                    var rows = value.EnumerateArray().Select(e => e.Clone()).ToList();
+                    var nested = new List<TabularTable>();
+                    all.Add(BuildTable(name, label, rows, nested));
+                    all.AddRange(nested);
+                }
+
+                InferTypes(all);
+                return all;
+            }
+
             var objects = root.ValueKind switch
             {
                 // A single object is a table of one row, not an error.
@@ -81,16 +99,42 @@ public sealed class JsonTableReader : IDataSourceReader
             var tables = new List<TabularTable> { BuildTable(rootName, label, objects, children) };
             tables.AddRange(children);
 
-            foreach (var table in tables)
-                foreach (var column in table.Columns)
-                {
-                    var values = table.ColumnValues(column.Name).ToList();
-                    column.Type = ColumnTypeInference.Infer(values, column.Name);
-                }
-
+            InferTypes(tables);
             return tables;
         }
     }
+
+    private static void InferTypes(List<TabularTable> tables)
+    {
+        foreach (var table in tables)
+            foreach (var column in table.Columns)
+            {
+                var values = table.ColumnValues(column.Name).ToList();
+                column.Type = ColumnTypeInference.Infer(values, column.Name);
+            }
+    }
+
+    /// <summary>
+    /// The arrays of a root object with two or more properties, EVERY one of them a non-empty
+    /// array of objects, each with its property's name; null for any other root.
+    /// </summary>
+    private static List<(string Name, JsonElement Value)>? Collections(JsonElement root)
+    {
+        if (root.ValueKind != JsonValueKind.Object)
+            return null;
+
+        var properties = root.EnumerateObject().ToList();
+
+        if (properties.Count < 2 || !properties.All(p => IsArrayOfObjects(p.Value)))
+            return null;
+
+        return [.. properties.Select(p => (p.Name, p.Value))];
+    }
+
+    private static bool IsArrayOfObjects(JsonElement value)
+        => value.ValueKind == JsonValueKind.Array
+           && value.GetArrayLength() > 0
+           && value.EnumerateArray().All(e => e.ValueKind == JsonValueKind.Object);
 
     /// <summary>
     /// The array inside a root object whose ONLY property is a non-empty array of objects, with

@@ -69,7 +69,11 @@ public sealed class ExcelReader : IDataSourceReader
 
             // The sheet's own name, unnormalized: DataModelBuilder normalizes and singularizes it,
             // and RECORDS a decision when a name will not do. Normalizing here would hide that.
-            tables.Add(CsvReader.ToTable(sheet.Name, $"{label} [{sheet.Name}]", records));
+            var sheetLabel = $"{label} [{sheet.Name}]";
+            var shaped = Shape(records, sheetLabel, out var notes);
+            var table = CsvReader.ToTable(sheet.Name, sheetLabel, shaped);
+            table.Notes.AddRange(notes.Select(note => note(table)));
+            tables.Add(table);
         }
 
         if (tables.Count == 0)
@@ -81,6 +85,87 @@ public sealed class ExcelReader : IDataSourceReader
         }
 
         return tables;
+    }
+
+    /// <summary>
+    /// A sheet's records with the header found and every cell kept: leading title rows are
+    /// skipped, and a cell to the right of the header's last column gets a numbered column of its
+    /// own rather than being cut off. Each change is named in a note, made once the table (and so
+    /// the numbered column's name) exists.
+    /// </summary>
+    /// <remarks>
+    /// A title row is one filled cell above a row with several ("Sales Report 2024" above
+    /// Region, Units, Revenue). Read as the header, it made a one-column table, and every other
+    /// column was cut to that width with nothing said. A one-column sheet is left alone: its
+    /// next row is not wider. A row with fewer cells is not named, unlike in a text file: Excel
+    /// writes nothing for the empty cells at the end of a row.
+    /// </remarks>
+    private static IReadOnlyList<string?[]> Shape(
+        IReadOnlyList<string?[]> records, string label, out List<Func<TabularTable, string>> notes)
+    {
+        notes = [];
+
+        var skipped = new List<string>();
+        var start = 0;
+        while (start + 2 < records.Count
+               && Filled(records[start]) == 1
+               && Filled(records[start + 1]) > 1)
+        {
+            skipped.Add(records[start].First(cell => !string.IsNullOrWhiteSpace(cell))!.Trim());
+            start++;
+        }
+
+        if (skipped.Count > 0)
+        {
+            var header = string.Join(", ", records[start].Where(cell => !string.IsNullOrWhiteSpace(cell)));
+            notes.Add(_ =>
+                $"In {label}, {(skipped.Count == 1 ? "a title row" : $"{skipped.Count} title rows")} "
+                + $"above the header ({header}) {(skipped.Count == 1 ? "was" : "were")} skipped: "
+                + $"{string.Join("; ", skipped)}.");
+        }
+
+        var shaped = records.Skip(start).ToList();
+        var width = shaped[0].Length;
+
+        var wider = new List<string>();
+        var widest = width;
+        for (var r = 1; r < shaped.Count; r++)
+        {
+            var last = LastFilled(shaped[r]);
+            if (last < width)
+                continue;
+
+            wider.Add($"row {r} ({shaped[r][0]?.Trim()})");
+            widest = Math.Max(widest, last + 1);
+        }
+
+        if (wider.Count > 0)
+        {
+            // Padded with nulls, which ToTable names Column<n> by position.
+            var header = new string?[widest];
+            Array.Copy(shaped[0], header, width);
+            shaped[0] = header;
+
+            var added = widest - width;
+            notes.Add(table =>
+                $"In {label}, {(wider.Count == 1 ? "1 row has" : $"{wider.Count} rows have")} values "
+                + "to the right of the header's last column, so "
+                + $"{(added == 1 ? "a column was" : $"{added} columns were")} added to keep them: "
+                + $"{string.Join(", ", table.Columns.Skip(width).Select(c => c.Name))}. "
+                + $"Rows: {string.Join(", ", wider)}.");
+        }
+
+        return shaped;
+
+        static int Filled(string?[] record) => record.Count(cell => !string.IsNullOrWhiteSpace(cell));
+
+        static int LastFilled(string?[] record)
+        {
+            for (var i = record.Length - 1; i >= 0; i--)
+                if (!string.IsNullOrWhiteSpace(record[i]))
+                    return i;
+            return -1;
+        }
     }
 
     /// <summary>

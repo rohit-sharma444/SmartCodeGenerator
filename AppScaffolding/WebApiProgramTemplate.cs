@@ -62,14 +62,24 @@ static void MapEntity<T>(WebApplication app, string route, Repository<T> reposit
     {
         var result = repository.Create(item);
         return result.Success
-            ? Results.Created($"/{route}", result.Item)
+            ? Results.Created($"/{route}/{IdOf(result.Item!)}", result.Item)
             : Results.ValidationProblem(result.AsDictionary());
     });
 
-    // NotFound is kept distinct from a validation failure: an unknown Id is 404, an invalid
-    // record is 400.
+    // The address names the record: a body with no id takes it, and a body naming another
+    // record is refused rather than overwriting that one. NotFound is kept distinct from a
+    // validation failure: an unknown Id is 404, an invalid record is 400.
     app.MapPut($"/{route}/{{id:int}}", (int id, T item) =>
     {
+        var bodyId = IdOf(item);
+        if (bodyId == 0)
+            typeof(T).GetProperty("Id")!.SetValue(item, id);
+        else if (bodyId != id)
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["Id"] = [$"The id in the body ({bodyId}) is not the id in the address ({id})."]
+            });
+
         var result = repository.Update(item);
         if (result.NotFound)
             return Results.NotFound();
@@ -90,6 +100,8 @@ static void MapEntity<T>(WebApplication app, string route, Repository<T> reposit
             : Results.ValidationProblem(result.AsDictionary());
     });
 }
+
+static int IdOf(object item) => (int)(item.GetType().GetProperty("Id")?.GetValue(item) ?? 0);
 """;
     }
 }

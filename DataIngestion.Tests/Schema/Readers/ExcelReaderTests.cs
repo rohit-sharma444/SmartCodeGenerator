@@ -20,6 +20,73 @@ public class ExcelReaderTests
         finally { File.Delete(path); }
     }
 
+    /// <summary>
+    /// G4: a title row above the header. Read as the header, it made one column out of the title
+    /// and dropped every other column with no word said.
+    /// </summary>
+    [Fact]
+    public void ATitleRowAboveTheHeader_IsSkippedWithANote()
+    {
+        WithWorkbook(path =>
+        {
+            var table = Assert.Single(Read(path));
+
+            Assert.Equal(new[] { "Region", "Units", "Revenue" }, table.Columns.Select(c => c.Name));
+            Assert.Equal(3, table.Rows.Count);
+            Assert.Equal("North", table.Value(0, "Region"));
+            Assert.Equal("120.5", table.Value(2, "Revenue"));
+            Assert.Contains(table.Notes, n => n.Contains("Sales Report 2024") && n.Contains("Region"));
+        },
+        null,
+        new ExcelFixture.Sheet("Sales", string.Concat(
+            ExcelFixture.Row(1, ExcelFixture.InlineCell("A1", "Sales Report 2024")),
+            ExcelFixture.Row(3, ExcelFixture.InlineCell("A3", "Region"), ExcelFixture.InlineCell("B3", "Units"),
+                ExcelFixture.InlineCell("C3", "Revenue")),
+            ExcelFixture.Row(4, ExcelFixture.InlineCell("A4", "North"), ExcelFixture.Cell("B4", "10"), ExcelFixture.Cell("C4", "100")),
+            ExcelFixture.Row(5, ExcelFixture.InlineCell("A5", "South"), ExcelFixture.Cell("B5", "20"), ExcelFixture.Cell("C5", "200")),
+            ExcelFixture.Row(6, ExcelFixture.InlineCell("A6", "East"), ExcelFixture.Cell("B6", "30"), ExcelFixture.Cell("C6", "120.5")))));
+    }
+
+    /// <summary>G4: a cell to the right of the header's last column was cut off silently. It
+    /// is kept, under a numbered column, and named in a note.</summary>
+    [Fact]
+    public void ACellRightOfTheHeader_IsKeptAndNamedInANote()
+    {
+        WithWorkbook(path =>
+        {
+            var table = Assert.Single(Read(path));
+
+            Assert.Equal(new[] { "Ref", "Qty", "Column3" }, table.Columns.Select(c => c.Name));
+            Assert.Equal("late", table.Value(1, "Column3"));
+            Assert.Contains(table.Notes, n => n.Contains("Column3") && n.Contains("row 2"));
+        },
+        null,
+        new ExcelFixture.Sheet("Orders", string.Concat(
+            ExcelFixture.Row(1, ExcelFixture.InlineCell("A1", "Ref"), ExcelFixture.InlineCell("B1", "Qty")),
+            ExcelFixture.Row(2, ExcelFixture.InlineCell("A2", "ORD-1"), ExcelFixture.Cell("B2", "1")),
+            ExcelFixture.Row(3, ExcelFixture.InlineCell("A3", "ORD-2"), ExcelFixture.Cell("B3", "2"),
+                ExcelFixture.InlineCell("C3", "late")))));
+    }
+
+    /// <summary>A one-column sheet is not a title row followed by data.</summary>
+    [Fact]
+    public void AOneColumnSheet_KeepsItsHeader()
+    {
+        WithWorkbook(path =>
+        {
+            var table = Assert.Single(Read(path));
+
+            Assert.Equal(new[] { "Name" }, table.Columns.Select(c => c.Name));
+            Assert.Equal(2, table.Rows.Count);
+            Assert.Empty(table.Notes);
+        },
+        null,
+        new ExcelFixture.Sheet("People", string.Concat(
+            ExcelFixture.Row(1, ExcelFixture.InlineCell("A1", "Name")),
+            ExcelFixture.Row(2, ExcelFixture.InlineCell("A2", "Ann")),
+            ExcelFixture.Row(3, ExcelFixture.InlineCell("A3", "Bob")))));
+    }
+
     /// <summary>Header row, data rows, and the sheet's own name — the sheet is the table.</summary>
     [Fact]
     public void ASheet_BecomesATableNamedAfterIt()

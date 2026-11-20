@@ -20,6 +20,39 @@ public class ColumnScanTests
         Assert.Equal(5, scan.NonBlankRowCount);
     }
 
+    /// <summary>
+    /// G5: the generated app compares typed values (1.5m == 1.50m), so the scan must too. Counted
+    /// as text, 1.5 and 1.50 were two values, a unique rule was offered, and the seeded rows then
+    /// failed it.
+    /// </summary>
+    [Theory]
+    [InlineData("Price", "1.5", "1.50", "2")]
+    [InlineData("Qty", "5", "+5", "6")]
+    [InlineData("DueOn", "2024-03-01", "2024-03-01T00:00:00", "2024-04-01")]
+    public void Values_equal_as_their_type_are_one_value(string column, string a, string b, string c)
+    {
+        var table = DataIngestion.Schema.Readers.CsvReader.FromText("Dups", "dups.csv",
+            $"Code,{column}\r\nA,{a}\r\nB,{b}\r\nC,{c}\r\n", ',');
+        Assert.NotEqual("string", table.Columns.Single(x => x.Name == column).Type);
+
+        Assert.Equal(1, ColumnScan.Of(table, column).DuplicateValueCount);
+
+        var entity = Assert.Single(DataModelBuilder.Build([table]).Entities);
+        Assert.DoesNotContain(entity.Fields.Single(f => f.Name == column).Proposals,
+            p => p.Rule.Name == "unique");
+    }
+
+    [Fact]
+    public void Distinct_decimals_still_get_a_unique_proposal()
+    {
+        var table = DataIngestion.Schema.Readers.CsvReader.FromText("Dups", "dups.csv",
+            "Code,Price\r\nA,1.5\r\nB,2.5\r\n", ',');
+
+        var entity = Assert.Single(DataModelBuilder.Build([table]).Entities);
+        Assert.Contains(entity.Fields.Single(f => f.Name == "Price").Proposals,
+            p => p.Rule.Name == "unique");
+    }
+
     [Fact]
     public void The_distinct_list_stops_at_the_cap()
     {
