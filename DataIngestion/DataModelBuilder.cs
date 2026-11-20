@@ -97,6 +97,7 @@ public static class DataModelBuilder
         var links = Links(tables);
 
         AddRelationships(model, links, sources);
+        OptionalWhereUnlinked(model, tables);
         AddProposals(model, sources, links);
         AddEntityProposals(model, sources, links);
         RecordNormalization(model, applied);
@@ -979,6 +980,24 @@ public static class DataModelBuilder
                              scan, field.Name, field.Type, fieldMayBeUnique))
                     field.Proposals.Add(proposal);
             }
+        }
+    }
+
+    /// <summary>
+    /// A key the import has to leave unset in some row (it names no row, two rows, or a row past
+    /// the seed cap) is not required: that row is seeded with 0, "no parent", and a required key
+    /// refused it on its first unchanged save. It stays an int, as every key does.
+    /// </summary>
+    private static void OptionalWhereUnlinked(CandidateDomainModel model, IReadOnlyList<TabularTable> tables)
+    {
+        foreach (var (entityName, fieldName) in TabularImport.UnlinkedFields(tables))
+        {
+            var field = model.Entities
+                .FirstOrDefault(e => string.Equals(e.Name, entityName, StringComparison.OrdinalIgnoreCase))
+                ?.Fields.FirstOrDefault(f => string.Equals(f.Name, fieldName, StringComparison.OrdinalIgnoreCase));
+
+            if (field is not null)
+                field.Facts = (field.Facts ?? new CodeGenerationEngine.Models.TypeFacts()) with { IsNullable = true };
         }
     }
 
