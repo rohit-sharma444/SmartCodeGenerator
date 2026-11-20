@@ -262,7 +262,11 @@ async function blazor(app, caseDir, check) {
     const page = await browser.newPage();
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
-    page.on('console', m => m.type() === 'error' && errors.push(m.text()));
+    // Not the SDK's own hot reload probe (see the circuit wait below): it 404s in every
+    // Development build from .NET SDK 11 that dotnet watch did not start.
+    page.on('console', m => m.type() === 'error'
+      && !(m.location().url ?? '').includes('/_framework/dotnet-browser-tools/')
+      && errors.push(m.text()));
     page.on('response', r => r.status() >= 500 && errors.push(`${r.status()} ${r.url()}`));
 
     if (app.hasLogin) {
@@ -278,8 +282,12 @@ async function blazor(app, caseDir, check) {
     if (!check('an entity has a page', entity, entity ?? 'no <Entity>Page.razor')) return null;
 
     const route = /@page\s+"([^"]+)"/.exec(fs.readFileSync(path.join(app.dir, 'Components', 'Pages', `${entity}Page.razor`), 'utf8'))?.[1];
+    // The circuit's WebSocket, not networkidle: from .NET SDK 11 a Development build adds a hot
+    // reload script whose hot-reload-settings.json request never ends, so the page is never idle.
+    const circuit = page.waitForEvent('websocket', { timeout: 15_000 }).catch(() => null);
     await page.goto(web.url + route);
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('load');
+    await circuit;
 
     const hasTable = await page.waitForSelector('table', { timeout: 15_000 }).then(() => true, () => false);
     const rows = hasTable ? await page.locator('table tbody tr').count() : 0;
@@ -287,7 +295,7 @@ async function blazor(app, caseDir, check) {
     check('list shows the seeded records', rows > 0, `${rows} row(s)`);
 
     // The page is prerendered first; a click before its circuit connects lands on a button with
-    // no handler yet and does nothing. Networkidle plus a short settle covers the connect.
+    // no handler yet and does nothing. The WebSocket above plus a short settle covers the connect.
     await page.waitForTimeout(2000);
     await page.click('button:has-text("New")');
     const opened = await page.waitForURL(u => String(u).includes('/new'), { timeout: 15_000 }).then(() => true, () => false);
