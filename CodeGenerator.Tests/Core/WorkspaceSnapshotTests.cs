@@ -411,4 +411,58 @@ public class WorkspaceSnapshotTests
         // Dispose keeps this one on purpose, so the test owns deleting it.
         _tempDirectories.Add(path);
     }
+
+    [TestMethod]
+    // Bug hunt 2, E3: data.csv held open by a viewer, untouched by the script, stopped the
+    // rollback before Customer.cs - the file the script did change - was put back.
+    public void Restore_PutsBackAChangedFileWhenAnUntouchedOneIsHeldOpen()
+    {
+        var root = NewWorkspace();
+        var data = Path.Combine(root, "data.csv");
+        var customer = Path.Combine(root, "Generated", "Customer.cs");
+        File.WriteAllText(data, "Id,Name,1,Ann");
+        Directory.CreateDirectory(Path.GetDirectoryName(customer)!);
+        File.WriteAllText(customer, "public class Customer { }");
+
+        var snapshot = WorkspaceSnapshot.Capture(root);
+        var path = snapshot.SnapshotPath;
+        File.WriteAllText(customer, "public class Customer { public int Age { get; set; } }");
+
+        using (new FileStream(data, FileMode.Open, FileAccess.Read, FileShare.Read))
+            snapshot.Restore();
+
+        snapshot.Dispose();
+
+        Assert.AreEqual("public class Customer { }", File.ReadAllText(customer));
+        Assert.IsFalse(Directory.Exists(path), "the snapshot was kept although everything was put back");
+    }
+
+    [TestMethod]
+    // A changed file that is held open is named, the others are still put back, and the snapshot
+    // is kept.
+    public void Restore_NamesAChangedFileItCannotPutBackAndRestoresTheRest()
+    {
+        var root = NewWorkspace();
+        var locked = Path.Combine(root, "Locked.cs");
+        var other = Path.Combine(root, "Other.cs");
+        File.WriteAllText(locked, "original locked");
+        File.WriteAllText(other, "original other");
+
+        var snapshot = WorkspaceSnapshot.Capture(root);
+        var path = snapshot.SnapshotPath;
+        _tempDirectories.Add(path);
+        File.WriteAllText(locked, "changed locked");
+        File.WriteAllText(other, "changed other");
+
+        IOException? failure;
+        using (new FileStream(locked, FileMode.Open, FileAccess.Read, FileShare.None))
+            failure = Assert.ThrowsExactly<IOException>(() => snapshot.Restore());
+
+        snapshot.Dispose();
+
+        StringAssert.Contains(failure.Message, "Locked.cs");
+        Assert.DoesNotContain("Other.cs", failure.Message);
+        Assert.AreEqual("original other", File.ReadAllText(other));
+        Assert.IsTrue(Directory.Exists(path), "the snapshot was deleted although a file was not put back");
+    }
 }
