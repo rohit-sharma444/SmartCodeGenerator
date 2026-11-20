@@ -181,7 +181,9 @@ public static class ClassMethodEditService
         var name = classNode.Identifier.Text;
         var ns = NamespaceOf(classNode);
 
-        foreach (var other in ClassFiles.Under(workspaceRoot))
+        // Parts in the class's own project: another project's partial of the same name is
+        // another class.
+        foreach (var other in ClassFiles.Under(TypeResolution.ProjectFolderOf(workspaceRoot, file) ?? ClassFiles.SearchRoot(workspaceRoot)))
         {
             if (string.Equals(Path.GetFullPath(other), Path.GetFullPath(file), StringComparison.OrdinalIgnoreCase))
                 continue;
@@ -235,10 +237,9 @@ public static class ClassMethodEditService
 
         try
         {
-            var found = Directory
-                .GetFiles(workspaceRoot, "*.cs", SearchOption.AllDirectories)
-                .FirstOrDefault(f => Path.GetFileNameWithoutExtension(f)
-                    .Equals(className, StringComparison.OrdinalIgnoreCase));
+            // In the selected project, and refused when more than one file has the name.
+            if (!ClassFiles.TryFind(workspaceRoot, className, out var found, out message))
+                return false;
 
             if (found != null)
             {
@@ -257,7 +258,7 @@ public static class ClassMethodEditService
 
             // Not in a file of its name: a record, struct or interface declared in another type's
             // file (OrderLine in Order.cs) is listed by show properties, and was "not found" here.
-            foreach (var other in ClassFiles.Under(workspaceRoot))
+            foreach (var other in ClassFiles.Under(ClassFiles.SearchRoot(workspaceRoot)))
             {
                 if (!TryReadCandidate(other, out var text, out var notUtf8))
                     continue;

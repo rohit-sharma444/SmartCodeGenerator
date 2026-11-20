@@ -61,6 +61,11 @@ public sealed class UndoJournal : IDisposable
     private readonly Stack<Entry> _redo = new();
     private Dictionary<string, Stamp> _known = new(StringComparer.OrdinalIgnoreCase);
 
+    // Files that could not be read into the shadow (a running app's log or database held open):
+    // left out of every entry, and tried again before each command. Each is named once.
+    private readonly HashSet<string> _uncovered = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _named = new(StringComparer.OrdinalIgnoreCase);
+
     private string? _shadow;
     private bool _started;
     private int _depth;
@@ -331,6 +336,9 @@ public sealed class UndoJournal : IDisposable
                 .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
+            // A file the shadow could not read is not undoable, so it is not part of the entry.
+            changed.RemoveAll(_uncovered.Contains);
+
             // A file written again with the same bytes (a csproj saved unchanged) has a new stamp
             // but nothing to undo; counting it would only inflate the entry and its message.
             changed.RemoveAll(p => SameBytes(Path.Combine(_shadow!, "files", p), Path.Combine(WorkspaceRoot, p)));
@@ -427,7 +435,7 @@ public sealed class UndoJournal : IDisposable
 
             _known = Scan();
             foreach (var path in _known.Keys)
-                Mirror(path);
+                TryMirror(path);
         }
         catch
         {
@@ -447,13 +455,45 @@ public sealed class UndoJournal : IDisposable
         var now = Scan();
 
         foreach (var (path, stamp) in now)
-            if (!_known.TryGetValue(path, out var known) || known != stamp)
-                Mirror(path);
+            if (!_known.TryGetValue(path, out var known) || known != stamp || _uncovered.Contains(path))
+                TryMirror(path);
+
+        _uncovered.RemoveWhere(p => !now.ContainsKey(p));
 
         foreach (var path in _known.Keys.Where(p => !now.ContainsKey(p)))
             Mirror(path);
 
         _known = now;
+    }
+
+    // Mirror, but a file that cannot be read is left out of the shadow and named once, rather
+    // than failing the whole copy: one locked app.log used to make every command unrecorded, so
+    // undo said "Nothing to undo." with no word why, and the full copy was tried again each time.
+    private void TryMirror(string path)
+    {
+        try
+        {
+            Mirror(path);
+            _uncovered.Remove(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            var copy = Path.Combine(_shadow!, "files", path);
+            try
+            {
+                if (File.Exists(copy))
+                    File.Delete(copy);
+            }
+            catch (Exception again) when (again is IOException or UnauthorizedAccessException)
+            {
+                // A stale copy is never used: the path is left out of every entry.
+            }
+
+            _uncovered.Add(path);
+            if (_named.Add(path))
+                _notify?.Invoke($"Undo cannot cover {path}: it could not be read ({ex.Message}). "
+                    + "Changes to it cannot be undone; undo still covers the other files.");
+        }
     }
 
     // Makes the shadow's copy of one path match the workspace: copied, or deleted.
@@ -705,7 +745,10 @@ public sealed class UndoJournal : IDisposable
         if (!File.Exists(source))
             return;
         Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
-        File.Copy(source, destination, overwrite: true);
+
+        // With the source's own spelling: the paths compare without case, so an undo of a rename
+        // that changed only the case put the old text back under the new name.
+        FileNameCase.Copy(source, destination);
     }
 
     private static void TryDeleteTree(string path)

@@ -76,4 +76,51 @@ public static class ClassFiles
     public static string? FileOf(string searchRoot, string className) =>
         Under(searchRoot).FirstOrDefault(f => Path.GetFileNameWithoutExtension(f)
             .Equals(className, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// Where an edit command looks for a class: the selected project's folder when a project is
+    /// selected inside <paramref name="workspaceRoot"/>, otherwise the whole workspace.
+    /// </summary>
+    /// <remarks>
+    /// The edit commands searched the whole workspace and took the first file of the name, so with
+    /// Alpha and Beta both holding a Customer and Beta selected, <c>add property</c>, <c>rename
+    /// class</c> and <c>remove property</c> changed Alpha's, and <c>delete class</c> deleted both.
+    /// </remarks>
+    public static string SearchRoot(string workspaceRoot)
+    {
+        var project = ProjectManager.CurrentProject?.ProjectPath;
+        if (!string.IsNullOrWhiteSpace(project) && Path.IsPathFullyQualified(project)
+            && Directory.Exists(project) && Helper.PathHelper.IsWithin(project, workspaceRoot))
+            return project;
+
+        return workspaceRoot;
+    }
+
+    /// <summary>
+    /// The one file of <paramref name="className"/> under <see cref="SearchRoot"/>, or null when
+    /// there is none. False, with a message naming them, when more than one file has the name:
+    /// which one was meant cannot be told, so nothing is to be changed.
+    /// </summary>
+    public static bool TryFind(string workspaceRoot, string className, out string? file, out string message)
+    {
+        file = null;
+        message = string.Empty;
+
+        var root = SearchRoot(workspaceRoot);
+        var matches = Under(root)
+            .Where(f => Path.GetFileNameWithoutExtension(f).Equals(className, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        if (matches.Count > 1)
+        {
+            message = $"{matches.Count} files hold a class called '{className}': "
+                + string.Join(", ", matches.Select(f => Path.GetRelativePath(workspaceRoot, f)))
+                + ". Nothing was changed."
+                + (ReferenceEquals(root, workspaceRoot) ? " Select the project with 'use project <name>' and try again." : string.Empty);
+            return false;
+        }
+
+        file = matches.FirstOrDefault();
+        return true;
+    }
 }

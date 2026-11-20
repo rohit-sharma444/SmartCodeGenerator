@@ -144,20 +144,47 @@ public sealed class WorkspaceSnapshot : IDisposable
             foreach (var file in EnumerateIncludedFiles(capturedRoot))
                 captured[Path.GetRelativePath(capturedRoot, file)] = file;
 
+            // A file that cannot be put back is named at the end, and the others are still put
+            // back: the first failure used to stop the restore, so a data.csv a viewer held open,
+            // which no command had touched, kept the class the script really changed as it was.
+            var notRestored = new List<string>();
+
             // 1. Delete what the batch added. Removes `dotnet new` project trees.
             foreach (var file in EnumerateIncludedFiles(_workspaceRoot).ToList())
             {
                 var relative = Path.GetRelativePath(_workspaceRoot, file);
                 if (!captured.ContainsKey(relative))
-                    File.Delete(file);
+                    PutBack(relative, () => File.Delete(file));
             }
 
-            // 2 & 3. Overwrite what changed, recreate what was deleted.
+            // 2 & 3. Overwrite what changed, recreate what was deleted. A file whose bytes are the
+            // captured ones is left alone, so an open file nothing changed is never written.
             foreach (var (relative, source) in captured)
             {
                 var destination = Path.Combine(_workspaceRoot, relative);
-                Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
-                File.Copy(source, destination, overwrite: true);
+                PutBack(relative, () =>
+                {
+                    // A file renamed only in case is the same path here; it gets its old name back.
+                    FileNameCase.Match(Path.Combine(Path.GetDirectoryName(destination)!, FileNameCase.ActualName(source)));
+
+                    if (SameBytes(source, destination))
+                        return;
+
+                    Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+                    File.Copy(source, destination, overwrite: true);
+                });
+            }
+
+            void PutBack(string relative, Action action)
+            {
+                try
+                {
+                    action();
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    notRestored.Add($"{relative} ({ex.Message})");
+                }
             }
 
             // 4. Directories the batch created are now empty — but for the build output a build
@@ -217,6 +244,9 @@ public sealed class WorkspaceSnapshot : IDisposable
             // The rephrase heuristic compares against the last command executed —
             // which, after a rollback, never happened.
             LearningCoordinator.ResetHistory();
+
+            if (notRestored.Count > 0)
+                throw new IOException("These files could not be put back: " + string.Join("; ", notRestored));
         }
         catch
         {
@@ -292,6 +322,18 @@ public sealed class WorkspaceSnapshot : IDisposable
             }
 
         return result;
+    }
+
+    // Whether the file at destination holds the bytes of source: length first, then content.
+    private static bool SameBytes(string source, string destination)
+    {
+        if (!File.Exists(destination))
+            return false;
+
+        if (new FileInfo(source).Length != new FileInfo(destination).Length)
+            return false;
+
+        return File.ReadAllBytes(source).AsSpan().SequenceEqual(File.ReadAllBytes(destination));
     }
 
     private static int Depth(string relative) =>

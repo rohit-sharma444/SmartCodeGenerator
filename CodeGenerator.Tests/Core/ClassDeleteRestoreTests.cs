@@ -207,7 +207,22 @@ public sealed class ClassDeleteRestoreTests
         const string b = "namespace B { public class Customer { public int InB { get; set; } } }";
         Write("A/Customer.cs", a);
         Write("B/Customer.cs", b);
-        Assert.IsTrue(ClassDeletionService.DeleteClass(_workspace, "Customer").Success);
+        // One class per delete (bug hunt 2, E1): each project's Customer is deleted with it selected.
+        try
+        {
+            foreach (var name in new[] { "A", "B" })
+            {
+                ProjectManager.CurrentProject = new CodeGenerationEngine.Models.ProjectMetaData
+                {
+                    Success = true, ProjectName = name, ProjectPath = PathOf(name), CsProjPath = PathOf($"{name}/{name}.csproj"),
+                };
+                Assert.IsTrue(ClassDeletionService.DeleteClass(_workspace, "Customer").Success);
+            }
+        }
+        finally
+        {
+            ProjectManager.CurrentProject = null;
+        }
 
         Assert.IsTrue(ClassRestoreService.RestoreClass(_workspace, "Customer").Success);
         Assert.IsTrue(ClassRestoreService.RestoreClass(_workspace, "Customer").Success);
