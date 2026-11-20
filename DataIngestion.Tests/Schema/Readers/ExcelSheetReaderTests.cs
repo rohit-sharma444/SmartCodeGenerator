@@ -65,6 +65,29 @@ public class ExcelSheetReaderTests
     }
 
     /// <summary>
+    /// G3: Excel stores 2.3 as 2.2999999999999998, and shows it to 15 significant digits. The
+    /// seed must hold what the user typed and sees, not the binary noise; whole numbers and a
+    /// value that already has 15 digits are kept as stored.
+    /// </summary>
+    [Theory]
+    [InlineData("2.2999999999999998", "2.3")]
+    [InlineData("1.1499999999999999", "1.15")]
+    [InlineData("19.989999999999998", "19.99")]
+    [InlineData("2.6749999999999998", "2.675")]
+    [InlineData("0.30000000000000004", "0.3")]
+    [InlineData("-0.30000000000000004", "-0.3")]
+    [InlineData("42", "42")]
+    [InlineData("12345678901234567", "12345678901234567")]
+    [InlineData("1.23456789012345", "1.23456789012345")]
+    [InlineData("1.0000000000000001E-05", "0.00001")]
+    public void ANumericCell_ReadsAsExcelShowsIt(string stored, string expected)
+    {
+        var records = Records(ExcelFixture.Row(1, ExcelFixture.Cell("A1", stored)));
+
+        Assert.Equal(expected, Assert.Single(Assert.Single(records)));
+    }
+
+    /// <summary>
     /// Excel omits an empty cell entirely, so a row's cells must be placed by their reference. Read
     /// in document order instead, every value after the first gap lands one column early — the
     /// single most damaging bug this reader can have, because the file still parses.
