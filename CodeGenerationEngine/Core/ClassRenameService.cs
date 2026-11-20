@@ -126,11 +126,17 @@ public static class ClassRenameService
                 moves.Add((part, to));
             }
 
-            foreach (var (path, text) in plan.Edits)
-                Validation.SourceFileText.Rewrite(path, text);
+            // Every file is read strictly before the first is written: a file that is not UTF-8
+            // threw half-way through, with the declaration already renamed, and the message said
+            // nothing was changed.
+            if (Relationships.RelationshipWriter.Unreadable(plan.Edits.Select(e => e.Path)) is { } refusal)
+            {
+                message = refusal;
+                return false;
+            }
 
-            foreach (var (from, to) in moves)
-                File.Move(from, to);
+            if (!Apply(plan.Edits, moves, oldName, out message))
+                return false;
 
             ValidationRegistry.RenameClass(oldName, newClassName);
 
@@ -149,6 +155,67 @@ public static class ClassRenameService
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             message = ex.Message;
+            return false;
+        }
+    }
+
+    // Writes the edits and moves the files; on any failure puts every file back as it was, so the
+    // refusal that says nothing was changed is true.
+    private static bool Apply(
+        List<(string Path, string Text)> edits, List<(string From, string To)> moves, string oldName, out string message)
+    {
+        message = string.Empty;
+        var originals = new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (path, _) in edits)
+            originals[path] = File.ReadAllBytes(path);
+
+        var moved = new List<(string From, string To)>();
+        try
+        {
+            foreach (var (path, text) in edits)
+                Validation.SourceFileText.Rewrite(path, text);
+
+            foreach (var (from, to) in moves)
+            {
+                File.Move(from, to);
+                moved.Add((from, to));
+            }
+
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            var notPutBack = new List<string>();
+
+            for (var i = moved.Count - 1; i >= 0; i--)
+            {
+                try
+                {
+                    File.Move(moved[i].To, moved[i].From);
+                }
+                catch (Exception back) when (back is IOException or UnauthorizedAccessException)
+                {
+                    notPutBack.Add(moved[i].To);
+                }
+            }
+
+            foreach (var (path, bytes) in originals)
+            {
+                try
+                {
+                    if (!File.Exists(path) || !File.ReadAllBytes(path).AsSpan().SequenceEqual(bytes))
+                        File.WriteAllBytes(path, bytes);
+                }
+                catch (Exception back) when (back is IOException or UnauthorizedAccessException)
+                {
+                    notPutBack.Add(path);
+                }
+            }
+
+            message = notPutBack.Count == 0
+                ? $"{ex.Message} '{oldName}' was not renamed; nothing was changed."
+                : $"{ex.Message} '{oldName}' was not renamed, and these files could not be put back: "
+                    + $"{string.Join(", ", notPutBack.Distinct(StringComparer.OrdinalIgnoreCase))}. 'undo' puts them back.";
             return false;
         }
     }
