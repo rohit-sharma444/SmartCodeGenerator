@@ -271,6 +271,9 @@ public static class NormalizationPlan
         {
             Name = table.Name,
             SourceLabel = table.SourceLabel,
+            // hr.Note, read as HrNote: without it, its own key NoteId reads as a link to dbo.Note.
+            SourceName = table.SourceName,
+            KeysMatchIgnoringCase = table.KeysMatchIgnoringCase,
             IsPartial = table.IsPartial,
             SourceRowCount = table.SourceRowCount,
         };

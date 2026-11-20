@@ -379,6 +379,9 @@ public static class DataModelBuilder
     {
         var values = table.ColumnValues(column.Name).ToList();
 
+        if (column.Type is "DateTime" or "DateOnly")
+            return WithMissingValues(DateFacts(column.Facts, values), values);
+
         if (column.Type != "string")
             return WithMissingValues(column.Facts, values);
 
@@ -397,6 +400,30 @@ public static class DataModelBuilder
 
         return (facts ?? new TypeFacts()) with { HasMissingValues = true };
     }
+
+    /// <summary>
+    /// A date column no source declared the nullability of (a file), filled in every row, as NOT
+    /// NULL: it becomes a non-nullable DateTime, which holds a date never given as 0001-01-01,
+    /// and without the required rule NOT NULL brings, the app saved that as a real date.
+    /// </summary>
+    /// <remarks>
+    /// A rule that follows from the type, not from the sample: a blank row makes the type
+    /// nullable and this adds nothing. A row already holding year one is left alone, so no
+    /// seeded row is refused by the rule.
+    /// </remarks>
+    private static TypeFacts? DateFacts(TypeFacts? facts, List<string?> values)
+    {
+        if (facts?.IsNullable is not null || values.Count == 0
+            || values.Any(v => string.IsNullOrWhiteSpace(v) || IsYearOne(v!)))
+            return facts;
+
+        return (facts ?? new TypeFacts()) with { IsNullable = false };
+    }
+
+    private static bool IsYearOne(string value)
+        => DateTime.TryParse(value, System.Globalization.CultureInfo.InvariantCulture,
+               System.Globalization.DateTimeStyles.None, out var date)
+           && date.Year == 1;
 
     private static TypeFacts? StringFacts(TabularColumn column, string fieldName, List<string?> values)
     {
@@ -742,7 +769,7 @@ public static class DataModelBuilder
         var keys = targetTable.ColumnValues(keyColumn)
             .Where(v => !string.IsNullOrWhiteSpace(v))
             .Select(v => v!.Trim())
-            .ToHashSet(StringComparer.Ordinal);
+            .ToHashSet(targetTable.KeysMatchIgnoringCase ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
 
         return table.ColumnValues(column)
             .Any(v => !string.IsNullOrWhiteSpace(v) && keys.Contains(v.Trim()));
@@ -851,7 +878,15 @@ public static class DataModelBuilder
                 });
 
                 if (field.Type == "int")
+                {
+                    // A CHECK range or list on the source's key values (100..999) says nothing of
+                    // the Ids they are renumbered to (1, 2): kept, it refused every seeded row.
+                    if (field.Facts is { } keyFacts
+                        && (keyFacts.MinValue is not null || keyFacts.MaxValue is not null || keyFacts.AllowedValues is not null))
+                        field.Facts = keyFacts with { MinValue = null, MaxValue = null, AllowedValues = null };
+
                     continue;
+                }
 
                 // "EUR" becomes the Id of the currency keyed EUR. What the source declared about
                 // the text (its length, its type) is not true of the number; whether it may be

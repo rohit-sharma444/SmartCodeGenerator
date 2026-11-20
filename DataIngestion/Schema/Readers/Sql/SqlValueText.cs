@@ -30,6 +30,11 @@ public static class SqlValueText
         bool flag => flag ? "true" : "false",
 
         byte[] bytes => Convert.ToBase64String(bytes),
+
+        // Uppercase, as SQL Server Management Studio shows it. The app compares text exactly,
+        // so a lowercase seed let a GUID pasted from SSMS save as a second record.
+        Guid guid => guid.ToString("D").ToUpperInvariant(),
+
         IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture),
         _ => value.ToString() ?? string.Empty
     };

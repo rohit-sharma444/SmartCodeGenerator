@@ -59,6 +59,76 @@ public class NormalizationPlanTests
             new[] { "CustomerId" }, rewritten.ForeignKeys.Select(k => k.Column));
     }
 
+    /// <summary>A value of <paramref name="type"/> that is not its default, for a member
+    /// named <paramref name="name"/>.</summary>
+    private static object NonDefault(Type type, string name)
+    {
+        var underlying = Nullable.GetUnderlyingType(type) ?? type;
+        if (underlying == typeof(string)) return "set-" + name;
+        if (underlying == typeof(bool)) return true;
+        if (underlying == typeof(int)) return 7;
+        if (underlying == typeof(long)) return 47_000_000L;
+        if (underlying == typeof(CodeGenerationEngine.Models.TypeFacts))
+            return new CodeGenerationEngine.Models.TypeFacts { MaxLength = 20 };
+
+        throw new InvalidOperationException(
+            $"{name} is a {type.Name}: teach this test a value for it, and make the rewrite copy it.");
+    }
+
+    /// <summary>
+    /// Every member a table or a surviving column carries is still there after the rewrite. Copied
+    /// by hand, a member added later was lost: hr.Note (read as HrNote) lost its source name, and
+    /// its own key NoteId became a link to dbo.Note.
+    /// </summary>
+    [Fact]
+    public void ARewriteCopiesEveryMemberOfTheTableAndItsColumns()
+    {
+        var settable = System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance;
+
+        var table = new TabularTable { Name = "Orders" };
+        foreach (var property in typeof(TabularTable).GetProperties(settable).Where(p => p.CanWrite))
+            property.SetValue(table, NonDefault(property.PropertyType, property.Name));
+
+        var column = new TabularColumn { Name = "Ref" };
+        foreach (var property in typeof(TabularColumn).GetProperties(settable).Where(p => p.CanWrite && p.Name != "Name"))
+            property.SetValue(column, NonDefault(property.PropertyType, property.Name));
+
+        table.Columns.Add(column);
+        table.Columns.Add(new TabularColumn { Name = "WarehouseId", Type = "int" });
+        table.Rows.Add(["ORD-1", "4"]);
+        table.ForeignKeys.Add(new TabularForeignKey("Ref", "Refs", "RefId"));
+        table.Notes.Add("a note");
+
+        var drop = new NormalizationFinding
+        {
+            Kind = NormalizationFindingKind.DerivedColumn,
+            TableName = table.Name,
+            SourceLabel = table.Label,
+            Columns = ["WarehouseId"],
+            Headline = "Derived column: WarehouseId",
+            Proposal = "drop it",
+            Evidence = [],
+        };
+
+        var rewritten = NormalizationPlan.Apply([table], [drop]).Single();
+
+        foreach (var property in typeof(TabularTable).GetProperties(settable)
+                     .Where(p => p.Name is not ("Columns" or "Rows") && p.GetIndexParameters().Length == 0))
+        {
+            var before = property.GetValue(table);
+            var after = property.GetValue(rewritten);
+            if (before is System.Collections.IEnumerable list && before is not string)
+                Assert.Equal(list.Cast<object>(), ((System.Collections.IEnumerable)after!).Cast<object>());
+            else
+                Assert.True(Equals(before, after), $"TabularTable.{property.Name}: {before} became {after}");
+        }
+
+        var kept = rewritten.Columns.Single(c => c.Name == "Ref");
+        foreach (var property in typeof(TabularColumn).GetProperties(settable))
+            Assert.True(Equals(property.GetValue(column), property.GetValue(kept)),
+                $"TabularColumn.{property.Name}: {property.GetValue(column)} became {property.GetValue(kept)}");
+    }
+
     [Fact]
     public void ARepeatingGroupBecomesAChildTableAndLeavesTheParent()
     {

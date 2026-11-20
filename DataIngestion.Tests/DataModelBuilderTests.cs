@@ -19,6 +19,27 @@ public class DataModelBuilderTests
         return table;
     }
 
+    /// <summary>
+    /// A file date filled in every row becomes a non-nullable DateTime; left without a required
+    /// rule, a record whose date was never given saved as 0001-01-01. A date with a blank row is
+    /// nullable and gets none.
+    /// </summary>
+    [Fact]
+    public void AFileDateFilledInEveryRowIsRequired_AndOneWithABlankIsNot()
+    {
+        var table = DataIngestion.Schema.Readers.CsvReader.FromText("Tasks", "tasks.csv",
+            "Title,DueOn,DoneOn\r\nWrite,2024-03-01,\r\nTest,2024-04-15,2024-05-01\r\n", ',');
+
+        var classes = DomainModelMapper.ToClassDefinitions(DataModelBuilder.Build([table]), out _);
+        var task = Assert.Single(classes);
+        PropertyDefinition Property(string name) => task.Properties.Single(p => p.Name == name);
+
+        Assert.Contains(Property("DueOn").Rules, r => r.Name == "required");
+        Assert.Equal("DateTime?", Property("DoneOn").Type);
+        Assert.DoesNotContain(Property("DoneOn").Rules, r => r.Name == "required");
+        Assert.DoesNotContain(Property("Title").Rules, r => r.Name == "required");
+    }
+
     [Fact]
     public void EachTableBecomesAnEntityCarryingItsColumnsAsTypedFields()
     {
