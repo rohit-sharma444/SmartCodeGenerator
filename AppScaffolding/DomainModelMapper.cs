@@ -54,6 +54,17 @@ public static class DomainModelMapper
         "Directory", "File", "Path", "Stream", "Dictionary", "List", "Queue", "Stack",
         "Enumerable", "IEnumerable",
 
+        // Types a target's own files name, or that its SDK's implicit usings bring into scope next
+        // to <App>.Models, so a same-named entity is ambiguous (CS0104) or clashes with the type
+        // (CS0118, CS0310, CS9338): System.Console in every target, Microsoft.Extensions.Hosting.Host
+        // and the Worker class in a worker, Microsoft.AspNetCore.Routing.Route, Results and
+        // WebApplication in a web API, the top-level Program, System.Threading's Lock, Monitor and
+        // Thread, System.Linq's Lookup, and xUnit's Assert, Fact, Theory and Record in every test
+        // project.
+        "Console", "Host", "Worker", "Route", "Results", "WebApplication", "Program",
+        "Lock", "Monitor", "Thread", "Lookup",
+        "Assert", "Fact", "Theory", "Record",
+
         // Words for "no value". A file called nulls.csv made a class Null, whose NullValidator sat
         // beside the app's own NullValidator<T>: it compiled, but the name says nothing.
         "Null", "Nil", "Void", "Undefined",

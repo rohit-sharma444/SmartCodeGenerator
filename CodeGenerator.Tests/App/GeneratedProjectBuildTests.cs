@@ -86,6 +86,58 @@ public class GeneratedProjectBuildTests
     }
 
     /// <summary>
+    /// Entities named for types a target already binds, or for a segment of its namespace, still
+    /// build: the app AND its test project. Each of these names broke at least one target before
+    /// (G1): Console (CS0104/CS0118), Host and Route (CS0104), Program (CS9338), Worker (CS0310),
+    /// Api in Shop.Api (CS0118), Assert and Fact in the xUnit test project (CS0104).
+    /// </summary>
+    [TestMethod]
+    [TestCategory("Integration")]
+    [DataRow("console")]
+    [DataRow("webapi")]
+    [DataRow("worker")]
+    [DataRow("classlib")]
+    [DataRow("blazor")]
+    public void EntitiesNamedForTypesTheTargetBinds_StillBuild(string targetKey)
+    {
+        Assert.IsTrue(TargetScaffolders.TryResolve(targetKey, out var target));
+
+        var model = new CandidateDomainModel();
+        foreach (var name in new[]
+                 {
+                     "Console", "Host", "Route", "Program", "Worker", "Api", "Results", "Assert", "Fact",
+                     "Record", "Lock", "Monitor", "Lookup", "Shop", "Tests",
+                 })
+            model.Entities.Add(new CandidateEntity
+            {
+                Name = name,
+                Fields = { new CandidateField { Name = "Title", Type = "string" } }
+            });
+
+        var workspace = Path.Combine(Path.GetTempPath(), "gen_" + Path.GetRandomFileName());
+        Directory.CreateDirectory(workspace);
+        try
+        {
+            var result = new AppScaffolder().Scaffold(ScaffoldRequest.For(model, "Shop", workspace, target));
+
+            Assert.IsTrue(result.Success, "scaffold failed: " + result.Message);
+
+            var (exit, output) = RunDotNet($"build \"{result.ProjectPath}\" -c Release");
+            Assert.AreEqual(0, exit, $"dotnet build failed for {targetKey}:\n{output}");
+
+            if (result.TestProjectPath is null)
+                return;
+
+            var (testExit, testOutput) = RunDotNet($"build \"{result.TestProjectPath}\" -c Release");
+            Assert.AreEqual(0, testExit, $"dotnet build of the tests failed for {targetKey}:\n{testOutput}");
+        }
+        finally
+        {
+            TryDeleteDirectory(workspace);
+        }
+    }
+
+    /// <summary>
     /// A model with a real transaction in it, so the business shell's own screens are compiled.
     /// </summary>
     /// <remarks>

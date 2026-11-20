@@ -114,19 +114,55 @@ public class ScreenPlanTests
     }
 
     /// <summary>
-    /// A namespace prefix moves the collision to the PREFIX's own outermost segment, not the
-    /// app name — <c>RootNamespaceFor</c> puts the prefix first (<c>Prefix.AppName</c>), so an
-    /// entity sharing the app's own name is safe once a prefix is in front of it.
+    /// EVERY segment of the root namespace is reserved, not only the outermost. Lookup inside
+    /// <c>Shop.Api.Data</c> walks <c>Shop.Api</c> and <c>Shop</c> before any using directive, so a
+    /// root table <c>Api</c> from api.json in a web API (<c>Shop.Api</c>) found the namespace and
+    /// the app did not compile (CS0118). The test project's own <c>.Tests</c> segment likewise.
     /// </summary>
     [TestMethod]
-    public void Only_the_namespaces_outermost_segment_is_reserved()
+    [DataRow("Acme.Shop", "Shop")]
+    [DataRow("Acme.Shop", "Acme")]
+    [DataRow("Shop.Api", "Api")]
+    [DataRow("Shop.Worker", "Worker")]
+    [DataRow("Shop", "Tests")]
+    public void Every_segment_of_the_namespace_is_reserved(string rootNamespace, string entity)
     {
         var model = new CandidateDomainModel();
-        model.Entities.Add(Entity("Shop", ("Name", "string")));
+        model.Entities.Add(Entity(entity, ("Name", "string")));
 
-        var plan = ScreenPlan.For(model, AppCustomization.Default, new ConsoleTarget(), "Acme.Shop");
+        var plan = ScreenPlan.For(model, AppCustomization.Default, new ConsoleTarget(), rootNamespace);
 
-        Assert.AreEqual("Shop", plan.ClassNameOf("Shop"));
+        Assert.AreEqual(entity + "Item", plan.ClassNameOf(entity));
+    }
+
+    /// <summary>
+    /// Names a target's own files or its SDK's implicit usings already bind: System.Console,
+    /// Hosting's Host, Routing's Route, the top-level Program, the worker's Worker class, xUnit's
+    /// Assert and Fact in the test project. A same-named entity did not compile (CS0104, CS0118,
+    /// CS0310, CS9338).
+    /// </summary>
+    [TestMethod]
+    [DataRow("Console")]
+    [DataRow("Host")]
+    [DataRow("Route")]
+    [DataRow("Program")]
+    [DataRow("Worker")]
+    [DataRow("Results")]
+    [DataRow("WebApplication")]
+    [DataRow("Assert")]
+    [DataRow("Fact")]
+    [DataRow("Record")]
+    [DataRow("Lock")]
+    [DataRow("Monitor")]
+    [DataRow("Lookup")]
+    public void A_name_a_target_already_binds_is_renamed(string entity)
+    {
+        var model = new CandidateDomainModel();
+        model.Entities.Add(Entity(entity, ("Name", "string")));
+
+        var plan = ScreenPlan.For(model, AppCustomization.Default, new WebApiTarget(), "Shop.Api");
+
+        Assert.AreEqual(entity + "Item", plan.ClassNameOf(entity));
     }
 
     /// <summary>Customer, Order (dated, references Customer) and OrderLine (references Order).</summary>
