@@ -117,6 +117,8 @@ public sealed class BuildSession
     {
         if (changed)
         {
+            Revision++;
+
             // A review edit changes what Generate would write, as a changed answer on an earlier
             // node does - but it never goes through Change, so it has to discard the written app
             // itself. Without this the old app stayed on the Generate node with no way to write
@@ -407,12 +409,34 @@ public sealed class BuildSession
         Generated = app;
         Started = false;
 
-        if (app.Scaffold.ProjectPath is { Length: > 0 } path
-            && !_written.Contains(path, StringComparer.OrdinalIgnoreCase))
-            _written.Add(path);
+        RecordWritten(app.Scaffold.ProjectPath);
 
         Changed?.Invoke();
     }
+
+    /// <summary>
+    /// Records a project folder this run wrote, without offering it to the run stage.
+    /// </summary>
+    /// <remarks>
+    /// For a write whose answers changed while it built: the app no longer matches them, so it is
+    /// not <see cref="Generated"/>, but the folder is on disk and a cancel must still name it.
+    /// </remarks>
+    public void RecordWritten(string? path)
+    {
+        if (path is { Length: > 0 } && !_written.Contains(path, StringComparer.OrdinalIgnoreCase))
+            _written.Add(path);
+    }
+
+    /// <summary>
+    /// Goes up by one on every change to an answer or to the model.
+    /// </summary>
+    /// <remarks>
+    /// Read by the generate stage before a write and again after its build: a build takes a
+    /// minute, and an answer changed meanwhile means the app it built is not the one the session
+    /// now wants. It recorded that app anyway, so Generate and Run described a WPF app under a
+    /// Console target.
+    /// </remarks>
+    public int Revision { get; private set; }
 
     /// <summary>
     /// The process the run stage started, while it is still ours to stop. Null before a run, and
@@ -699,6 +723,7 @@ public sealed class BuildSession
         if (!changed)
             return;
 
+        Revision++;
         FailureMessage = null;
 
         foreach (var invalidated in StageGraph.Invalidates(stage))
