@@ -149,6 +149,10 @@ public static class ExcelSheetReader
         var style = int.TryParse(cell.Attribute("s")?.Value, NumberStyles.Integer,
             CultureInfo.InvariantCulture, out var s) ? s : 0;
 
+        // Before the date test: an elapsed format's [h] also counts as a time token there.
+        if (workbook.Formats.IsElapsed(style))
+            return ExcelSerialDate.ToElapsedText(number) ?? raw;
+
         if (workbook.Formats.IsDate(style))
             return ExcelSerialDate.ToText(number, workbook.Date1904) ?? raw;
 

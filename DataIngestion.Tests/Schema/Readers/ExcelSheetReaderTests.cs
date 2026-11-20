@@ -218,6 +218,41 @@ public class ExcelSheetReaderTests
         Assert.Equal("2026-03-15", Assert.Single(records)[0]);
     }
 
+    /// <summary>
+    /// G7: an elapsed-time format ([h]:mm) is a duration, not a date. 1.5 is 36 hours; read as a
+    /// date it became "1900-01-01 12:00:00" beside "12:00:00" for 0.5, one column of mixed text.
+    /// </summary>
+    [Theory]
+    [InlineData("[h]:mm", "0.5", "12:00:00")]
+    [InlineData("[h]:mm", "1.5", "36:00:00")]
+    [InlineData("[h]:mm:ss", "2.25", "54:00:00")]
+    [InlineData("[mm]:ss", "0.0625", "1:30:00")]
+    [InlineData("[h]:mm", "-0.5", "-12:00:00")]
+    public void AnElapsedTimeCell_IsTotalHours(string code, string stored, string expected)
+    {
+        var styles = "<?xml version=\"1.0\"?>"
+            + "<styleSheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">"
+            + $"<numFmts count=\"1\"><numFmt numFmtId=\"170\" formatCode=\"{code}\"/></numFmts>"
+            + "<cellXfs count=\"1\"><xf numFmtId=\"170\" xfId=\"0\"/></cellXfs></styleSheet>";
+
+        var records = Records(ExcelFixture.Row(1, ExcelFixture.Cell("A1", stored, style: 0)), styles: styles);
+
+        Assert.Equal(expected, Assert.Single(records)[0]);
+    }
+
+    /// <summary>Excel's builtin elapsed format 46 ([h]:mm:ss) is a duration too.</summary>
+    [Fact]
+    public void TheBuiltinElapsedFormat_IsTotalHours()
+    {
+        var styles = "<?xml version=\"1.0\"?>"
+            + "<styleSheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">"
+            + "<cellXfs count=\"1\"><xf numFmtId=\"46\" xfId=\"0\"/></cellXfs></styleSheet>";
+
+        var records = Records(ExcelFixture.Row(1, ExcelFixture.Cell("A1", "1.5", style: 0)), styles: styles);
+
+        Assert.Equal("36:00:00", Assert.Single(records)[0]);
+    }
+
     /// <summary>An UNstyled number in the same file stays exactly what it was.</summary>
     [Fact]
     public void AnUnstyledNumber_KeepsItsStoredText()
