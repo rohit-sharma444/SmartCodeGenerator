@@ -51,6 +51,9 @@ public static class TabularImport
 
             var imported = new List<IReadOnlyDictionary<string, string?>>();
 
+            // Column -> how many seeded values were re-cased to the spelling its CHECK lists.
+            var recased = new Dictionary<TabularColumn, int>();
+
             // Indexed rather than iterating the rows themselves: List.IndexOf would be O(n²) and,
             // worse, would return the FIRST equal row, so duplicate rows would all read from one.
             for (var rowIndex = 0;
@@ -62,10 +65,18 @@ public static class TabularImport
                 foreach (var column in table.Columns)
                 {
                     if (fieldNames.TryGetValue(column.Name, out var fieldName))
-                        cells[fieldName] = table.Value(rowIndex, column.Name);
+                        cells[fieldName] = AsListed(column, table.Value(rowIndex, column.Name), recased);
                 }
 
                 imported.Add(cells);
+            }
+
+            foreach (var (column, count) in recased)
+            {
+                notes.Add(
+                    $"In {table.Label}, {count:N0} {column.Name} value(s) were re-cased to the spelling its CHECK "
+                    + $"constraint lists ({string.Join(", ", column.Facts!.AllowedValues!)}), which the database "
+                    + "accepted ignoring case and the app compares exactly.");
             }
 
             if (table.Rows.Count > ImportedData.MaxSeedRows)
@@ -167,9 +178,9 @@ public static class TabularImport
         // (Entity, column) -> each value of that column -> the 1-based position of the row
         // carrying it, over EVERY row read, so a key past the cap can be told apart from a key
         // that names no row. Built once per column a link names.
-        var positions = new Dictionary<(string, string), (Dictionary<string, int> ByKey, HashSet<string> Twice)>();
+        var positions = new Dictionary<(string, string), KeyPositions>();
 
-        (Dictionary<string, int> ByKey, HashSet<string> Twice) PositionsOf(string entity, string column)
+        KeyPositions PositionsOf(string entity, string column)
         {
             var at = (entity.ToUpperInvariant(), column.ToUpperInvariant());
 
@@ -177,19 +188,23 @@ public static class TabularImport
                 return known;
 
             var table = sources[entity];
-            var byKey = new Dictionary<string, int>(StringComparer.Ordinal);
-            var twice = new HashSet<string>(StringComparer.Ordinal);
+            var found = new KeyPositions(table.KeysMatchIgnoringCase);
 
             for (var row = 0; row < table.Rows.Count; row++)
             {
-                if (KeyText(table.Value(row, column)) is not { } key)
-                    continue;
-
-                if (!byKey.TryAdd(key, row + 1))
-                    twice.Add(key);
+                if (KeyText(table.Value(row, column)) is { } key)
+                    found.Add(key, row + 1);
             }
 
-            return positions[at] = (byKey, twice);
+            if (found.SpelledOnlyByCase.Count > 0)
+            {
+                notes.Add(
+                    $"In {table.Label}, {found.SpelledOnlyByCase.Count} {column} value(s) differ from another "
+                    + $"only by case (for example {found.SpelledOnlyByCase.First()}), so a reference to one "
+                    + "was linked only when it matched it exactly.");
+            }
+
+            return positions[at] = found;
         }
 
         // Target -> the columns its references were renumbered through, for the notes.
@@ -208,7 +223,7 @@ public static class TabularImport
                     || !rows.TryGetValue(link.Target, out var targetRows))
                     continue;
 
-                var (byKey, repeated) = PositionsOf(link.Target, targetColumn);
+                var keys = PositionsOf(link.Target, targetColumn);
                 var imported = targetRows.Count;
 
                 foreach (var row in entityRows)
@@ -219,12 +234,14 @@ public static class TabularImport
                         || KeyText(raw) is not { } key)
                         continue;
 
-                    if (repeated.Contains(key))
+                    var position = keys.Find(key);
+
+                    if (position == KeyPositions.Twice)
                     {
                         cells[link.Field] = null;
                         unlinked.NamedTwoRows++;
                     }
-                    else if (!byKey.TryGetValue(key, out var position))
+                    else if (position == KeyPositions.None)
                     {
                         cells[link.Field] = null;
                         unlinked.NamedNoRow++;
@@ -253,6 +270,86 @@ public static class TabularImport
                 $"Each {target} is numbered 1, 2, 3... in the app rather than by its "
                 + $"{string.Join(" or ", columns)} in {sources[target].Label}; "
                 + $"the references to it were renumbered to match.");
+        }
+    }
+
+    /// <summary>
+    /// <paramref name="value"/> as the CHECK on <paramref name="column"/> spells it, when it equals
+    /// exactly one listed value ignoring case: a case-insensitive database stores "open" under
+    /// a CHECK listing 'Open', and the app, which compares exactly, refused that seeded record.
+    /// </summary>
+    /// <remarks>
+    /// A value no listed value equals, even ignoring case, is left as it is: it was already
+    /// outside the list, and changing it would invent data.
+    /// </remarks>
+    private static string? AsListed(TabularColumn column, string? value, Dictionary<TabularColumn, int> recased)
+    {
+        if (value is null || column.Facts?.AllowedValues is not { Count: > 0 } allowed
+            || allowed.Contains(value, StringComparer.Ordinal))
+            return value;
+
+        var matches = allowed.Where(a => string.Equals(a, value, StringComparison.OrdinalIgnoreCase)).Take(2).ToList();
+        if (matches.Count != 1)
+            return value;
+
+        recased[column] = recased.GetValueOrDefault(column) + 1;
+        return matches[0];
+    }
+
+    /// <summary>
+    /// Where each key value of one column sits, 1-based over every row read, and how a
+    /// reference finds its row: exactly, else -- for a table whose keys match ignoring case, as
+    /// SQL Server's default collation does -- by the one row it equals ignoring case.
+    /// </summary>
+    private sealed class KeyPositions(bool ignoreCase)
+    {
+        public const int None = 0;
+        public const int Twice = -1;
+
+        private readonly Dictionary<string, int> _exact = new(StringComparer.Ordinal);
+        private readonly HashSet<string> _exactTwice = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, int> _folded = new(StringComparer.OrdinalIgnoreCase);
+        private readonly HashSet<string> _foldedTwice = new(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>Each key's spellings, by the key ignoring case, when case is ignored.</summary>
+        private readonly Dictionary<string, SortedSet<string>> _spellings = new(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>Key values another one equals ignoring case but not exactly, when case is
+        /// ignored: a case-sensitive database's A1 and a1.</summary>
+        public IReadOnlyList<string> SpelledOnlyByCase
+            => [.. _spellings.Values.Where(s => s.Count > 1).SelectMany(s => s)];
+
+        public void Add(string key, int position)
+        {
+            if (!_exact.TryAdd(key, position))
+                _exactTwice.Add(key);
+
+            if (!ignoreCase)
+                return;
+
+            if (!_folded.TryAdd(key, position))
+                _foldedTwice.Add(key);
+
+            if (!_spellings.TryGetValue(key, out var spellings))
+                _spellings[key] = spellings = new SortedSet<string>(StringComparer.Ordinal);
+
+            spellings.Add(key);
+        }
+
+        /// <summary>The row <paramref name="key"/> names, <see cref="None"/>, or
+        /// <see cref="Twice"/> when more than one row carries it.</summary>
+        public int Find(string key)
+        {
+            if (_exactTwice.Contains(key))
+                return Twice;
+
+            if (_exact.TryGetValue(key, out var exact))
+                return exact;
+
+            if (!ignoreCase || !_folded.TryGetValue(key, out var folded))
+                return None;
+
+            return _foldedTwice.Contains(key) ? Twice : folded;
         }
     }
 

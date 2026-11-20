@@ -61,6 +61,15 @@ public class DomainModelMapperTests
     }
 
     [TestMethod]
+    public void An_entity_named_for_nothing_gets_a_name_that_means_something()
+    {
+        // nulls.csv made a class Null, and a NullValidator beside the app's own NullValidator<T>.
+        var classes = DomainModelMapper.ToClassDefinitions(ModelOf("Null", "Nil", "Void", "Undefined"));
+
+        Assert.AreEqual("NullItem, NilItem, VoidItem, UndefinedItem", string.Join(", ", classes.Select(c => c.Name)));
+    }
+
+    [TestMethod]
     public void An_entity_named_after_a_global_namespace_still_compiles()
     {
         // "a library management system" on the built-in-domain path kept a class called System,

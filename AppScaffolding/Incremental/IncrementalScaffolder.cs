@@ -95,6 +95,14 @@ public static class IncrementalScaffolder
         // The namespace, company, persistence and features the app already has.
         request = BuildSettingsRecord.For(destination, request);
 
+        // The classes the app has that this model no longer names - most often one the model has
+        // renamed ("Member" became "LibraryMember") - go into BOTH generates, so the baseline is
+        // the app as it is on disk rather than the new model minus the new classes. Without them
+        // every file listing the entities differed from the baseline in their lines, no new line
+        // could be placed, and each such file was set aside: the new classes compiled and were
+        // never wired in.
+        request = request with { Model = WithKept(request.Model, KeptFromDisk(destination, request)) };
+
         var staging = Path.Combine(StagingRoot, Guid.NewGuid().ToString("N")[..8]);
 
         try
@@ -153,6 +161,109 @@ public static class IncrementalScaffolder
         {
             TryDelete(staging);
         }
+    }
+
+    /// <summary><paramref name="model"/> with <paramref name="kept"/> after its own entities, as a
+    /// new model: the review's model is still in use and is not changed.</summary>
+    private static CandidateDomainModel WithKept(
+        CandidateDomainModel model, IReadOnlyList<CandidateEntity> kept)
+    {
+        if (kept.Count == 0)
+            return model;
+
+        var result = new CandidateDomainModel();
+        result.Entities.AddRange(model.Entities);
+        result.Entities.AddRange(kept);
+
+        return result;
+    }
+
+    /// <summary>
+    /// An entity for each class in the app's <c>Models</c> folder that <paramref name="request"/>'s
+    /// model does not name, read from the class itself.
+    /// </summary>
+    /// <remarks>
+    /// Its scalar properties become fields, in the order the class declares them; a property typed
+    /// as another class becomes a relationship to that class (with the key it is paired with), and
+    /// a collection is left out, because the mapper derives both kinds of navigation from the
+    /// relationships. The read does not have to be exact: the class is in both generates, so its
+    /// own files are the same in each and never written, and its lines in the files that list the
+    /// entities are the same in each and never changed. It only has to put those lines where the
+    /// app has them, so the new lines beside them can be placed.
+    /// <para>
+    /// The auth core's <c>User</c> is not an entity: a login app emits it whatever the model says.
+    /// </para>
+    /// </remarks>
+    internal static IReadOnlyList<CandidateEntity> KeptFromDisk(string destination, ScaffoldRequest request)
+    {
+        var models = Path.Combine(destination, "Models");
+
+        if (!Directory.Exists(models))
+            return [];
+
+        DomainModelMapper.ToClassDefinitions(request.Model, out var classNames);
+
+        // Class name -> entity name: a relationship names its target by ENTITY name, and the
+        // mapper can rename one ("Type" -> "TypeItem").
+        var entityOf = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var (entityName, className) in classNames)
+        {
+            entityOf.TryAdd(className, entityName);
+            entityOf.TryAdd(entityName, entityName);
+        }
+
+        var login = request.Customization.Login && request.Target.HasScreens;
+
+        var snapshots = CodeGenerationEngine.Core.Relationships.ClassSnapshots.Read(models)
+            .Where(s => !entityOf.ContainsKey(s.Name))
+            .Where(s => !(login && string.Equals(s.Name, AppScaffolding.Auth.AuthCoreFiles.EntityName, StringComparison.Ordinal)))
+            .ToList();
+
+        foreach (var snapshot in snapshots)
+            entityOf.TryAdd(snapshot.Name, snapshot.Name);
+
+        var kept = new List<CandidateEntity>();
+
+        foreach (var snapshot in snapshots)
+        {
+            var entity = new CandidateEntity { Name = snapshot.Name, Provenance = Provenance.Wiki };
+
+            foreach (var property in snapshot.Properties)
+            {
+                var type = property.Type.Trim();
+
+                if (type.Contains('<') || type.EndsWith("[]", StringComparison.Ordinal))
+                    continue;
+
+                if (entityOf.TryGetValue(type.TrimEnd('?'), out var target))
+                {
+                    var key = property.Name + "Id";
+                    var paired = snapshot.Properties.Any(
+                        p => string.Equals(p.Name, key, StringComparison.Ordinal));
+
+                    entity.Relationships.Add(new CandidateRelationship
+                    {
+                        Target = target,
+                        Role = "references",
+                        ForeignKey = paired && !string.Equals(property.Name, type.TrimEnd('?'), StringComparison.Ordinal)
+                            ? key
+                            : null,
+                    });
+
+                    continue;
+                }
+
+                entity.Fields.Add(new CandidateField
+                {
+                    Name = property.Name, Type = type, Provenance = Provenance.Wiki
+                });
+            }
+
+            kept.Add(entity);
+        }
+
+        return kept;
     }
 
     /// <summary>

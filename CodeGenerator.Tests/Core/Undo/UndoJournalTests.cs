@@ -279,6 +279,41 @@ public sealed class UndoJournalTests
         Assert.IsFalse(_journal.CanUndo);
     }
 
+    // B5: Visual Studio writes its live SQLite, -wal, -shm and .vsidx files under .vs while a
+    // command runs; Rider does the same under .idea.
+    [TestMethod]
+    public void Ide_state_folders_are_never_journalled_and_an_undo_leaves_them_alone()
+    {
+        Write(".vs/Shop/v17/CodeChunks.db", "before");
+        Write(".idea/workspace.xml", "before");
+        _journal.Dispose();
+        _journal = new UndoJournal(_root, shadowParent: _shadowParent);
+
+        Command("add property", () =>
+        {
+            Write("Shop/Book.cs", "class Book { int Pages; }");
+            Write(".vs/Shop/v17/CodeChunks.db", "written by VS during the command");
+            Write(".vs/Shop/v17/CodeChunks.db-wal", "wal");
+            Write(".idea/workspace.xml", "written by Rider during the command");
+        });
+
+        Assert.IsTrue(_journal.CanUndo);
+        _journal.Undo();
+
+        Assert.AreEqual("class Book { }", Read("Shop/Book.cs"));
+        Assert.AreEqual("written by VS during the command", Read(".vs/Shop/v17/CodeChunks.db"));
+        Assert.IsTrue(File.Exists(P(".vs/Shop/v17/CodeChunks.db-wal")), "the -wal file is not deleted");
+        Assert.AreEqual("written by Rider during the command", Read(".idea/workspace.xml"));
+    }
+
+    [TestMethod]
+    public void A_command_that_only_touched_ide_state_leaves_no_entry()
+    {
+        Command("show classes", () => Write(".vs/Shop/v17/fileList.bin", "x"));
+
+        Assert.IsFalse(_journal.CanUndo);
+    }
+
     [TestMethod]
     public void The_command_history_file_is_never_journalled_and_never_blocks_an_undo()
     {

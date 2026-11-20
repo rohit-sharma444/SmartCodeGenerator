@@ -33,9 +33,9 @@
         <p class="notice">@LayoutNotice</p>
     }
 
-    @if (_fixRunning)
+    @if (_busyNotice is not null)
     {
-        <p class="notice fix-running">@FixRunningNotice</p>
+        <p class="notice fix-running">@_busyNotice</p>
     }
 
     <div class="actions">
@@ -319,14 +319,12 @@ else
 
     private async Task AddNew() => await Go(addOnly: true);
 
-    /// <summary>Said when a write is refused because a fix is editing the same folder.</summary>
-    internal const string FixRunningNotice = "A fix is running on this app; wait for it to finish.";
-
-    /// <summary>True after a write was refused because a fix holds the folder.</summary>
-    private bool _fixRunning;
+    /// <summary>Why the last write was refused - another page is fixing or writing the same folder -
+    /// or null when it was not.</summary>
+    private string? _busyNotice;
 
     /// <summary>
-    /// Writes and builds, holding the folder's fix lock the whole time: a fix running on it (from any
+    /// Writes and builds, holding the folder's lock the whole time: a fix running on it (from any
     /// page) would otherwise undo its round over the freshly written files with its old backups, and a
     /// fix started meanwhile would edit files the scaffolder is still writing.
     /// </summary>
@@ -334,14 +332,14 @@ else
     {
         var folder = GenerateStep.FolderFor(Session, _name, Target);
 
-        if (!FixLocks.TryEnter(folder))
+        if (!FixLocks.TryEnter(folder, LockPurpose.Write, out var holder))
         {
-            _fixRunning = true;
+            _busyNotice = FixLocks.Busy(holder);
             _phase = Phase.Confirm;
             return;
         }
 
-        _fixRunning = false;
+        _busyNotice = null;
 
         try
         {
@@ -652,11 +650,12 @@ else
         if (_fixing || _failedBuild is not { } failed || _scaffold is not { } scaffold || Fixer is not { } fixer)
             return;
 
-        // One fixer per project across every page: two tabs would edit the same files at once.
-        if (!FixLocks.TryEnter(scaffold.ProjectPath))
+        // One fixer per project across every page: two tabs would edit the same files at once. A
+        // write on another page holds the same lock, and is named as a write, not as a fix.
+        if (!FixLocks.TryEnter(scaffold.ProjectPath, LockPurpose.Fix, out var holder))
         {
             _fixLines.Clear();
-            _fixLines.Add("A fix is already running for this project.");
+            _fixLines.Add(FixLocks.Busy(holder));
             return;
         }
 

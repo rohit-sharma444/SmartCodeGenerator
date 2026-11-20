@@ -53,6 +53,10 @@ public static class DomainModelMapper
         // System.IO / System.Collections names pulled in by the templates.
         "Directory", "File", "Path", "Stream", "Dictionary", "List", "Queue", "Stack",
         "Enumerable", "IEnumerable",
+
+        // Words for "no value". A file called nulls.csv made a class Null, whose NullValidator sat
+        // beside the app's own NullValidator<T>: it compiled, but the name says nothing.
+        "Null", "Nil", "Void", "Undefined",
     };
 
     /// <summary>The namespace DataAnnotations attributes live in. Declared only by a class that uses one.</summary>
@@ -413,6 +417,13 @@ public static class DomainModelMapper
         }
     }
 
+    /// <summary>Whether a default of <paramref name="value"/> or <paramref name="function"/>
+    /// can start a new record's property of <paramref name="type"/>. A reader that knows the
+    /// source's default asks, so a default the app will leave out is said rather than dropped in
+    /// silence.</summary>
+    public static bool DefaultFits(string type, string? value, string? function)
+        => Initializer(BaseType(type), value, function) is not null;
+
     /// <summary>The C# expression a default of <paramref name="value"/> or
     /// <paramref name="function"/> is for a <paramref name="type"/>, or null when it does not fit.</summary>
     private static string? Initializer(string type, string? value, string? function)
@@ -424,7 +435,7 @@ public static class DomainModelMapper
             {
                 ("DateTime", "now") => "global::System.DateTime.Now",
                 ("DateTime", "utcnow") => "global::System.DateTime.UtcNow",
-                ("string", "newguid") => "global::System.Guid.NewGuid().ToString()",
+                ("string", "newguid") => "global::System.Guid.NewGuid().ToString().ToUpperInvariant()",
                 _ => null
             };
 

@@ -49,7 +49,8 @@ public sealed class SqlServerReader(ISqlSchemaSource source, int maxRowsPerTable
             {
                 Name = names[info],
                 SourceLabel = $"{info.Schema}.{info.Name}",
-                SourceName = string.Equals(names[info], info.Name, StringComparison.Ordinal) ? null : info.Name
+                SourceName = string.Equals(names[info], info.Name, StringComparison.Ordinal) ? null : info.Name,
+                KeysMatchIgnoringCase = true
             };
 
             if (!string.Equals(names[info], info.Name, StringComparison.Ordinal))
@@ -80,6 +81,18 @@ public sealed class SqlServerReader(ISqlSchemaSource source, int maxRowsPerTable
                 // A DEFAULT is what a new row starts with; without it, a new employee began
                 // inactive where the database would have made them active.
                 var initial = SqlDefault.Parse(column.Default);
+
+                var modelType = SqlTypeMap.ToModelType(column.SqlType);
+
+                // SQL Server's own spellings of a date: '20200101', and for datetime a number of
+                // days since 1900-01-01. Unread, a new record started at 0001-01-01.
+                if (initial is { Value: { } literal } && modelType == "DateTime")
+                    initial = (SqlDefault.AsDate(literal, column.SqlType), null);
+
+                // A literal the column's type cannot start from ('abc' on an int) is as lost as
+                // one that could not be read, and is said the same way.
+                if (initial is { } parsed && !AppScaffolding.DomainModelMapper.DefaultFits(modelType, parsed.Value, parsed.Function))
+                    initial = null;
 
                 if (initial is null && column.Default is { } unread && !IsNullDefault(unread))
                     table.Notes.Add($"In {table.Label}, {column.Name}'s DEFAULT {unread} was not carried: "

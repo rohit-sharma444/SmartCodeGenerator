@@ -438,7 +438,8 @@ public sealed class AppScaffolder
                     rootNamespace,
                     SeedDataTemplate.OrderByDependency(classes),
                     SeedDataTemplate.ForeignKeyFieldNames(classes),
-                    seededClassNames)));
+                    seededClassNames,
+                    classes)));
         }
 
         files.Add((dataFolder, "SaveResult.cs", SaveResultTemplate.Source(rootNamespace)));

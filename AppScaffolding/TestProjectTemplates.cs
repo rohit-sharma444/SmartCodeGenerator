@@ -184,8 +184,45 @@ public class {{entityName}}ValidatorTests
         // The static constructor runs before the first use of TestSupport, which every round-trip
         // and validator test makes (ActAsAdministrator, Fill) before it goes near a store. Not a
         // [ModuleInitializer]: CA2255 warns about one in every generated test build.
-        var accepted = string.Concat(AcceptedValues(classes ?? Array.Empty<ClassDefinition>())
+        var accepted = string.Concat(AcceptedValues(classes ?? Array.Empty<ClassDefinition>(), rootNamespace)
             .Select(entry => $"        [{ValidatorTemplate.Quoted(entry.Key)}] = () => {entry.Expression},\n"));
+
+        var unusedListed = accepted.Contains("UnusedListed(", StringComparison.Ordinal)
+            ? """
+
+
+                  /// <summary>The first of <paramref name="values"/> no stored <paramref name="model"/>
+                  /// record holds in <paramref name="propertyName"/>: a value list no two records may
+                  /// share. With every value taken no record can be saved, and that is said here rather
+                  /// than a duplicate being written for the validator to refuse.</summary>
+                  private static string UnusedListed(Type model, string propertyName, params string[] values)
+                  {
+                      var used = new HashSet<string>(StringComparer.Ordinal);
+                      var property = model.GetProperty(propertyName);
+                      var repositoryType = model.Assembly.GetType(
+                          model.Namespace![..^".Models".Length] + ".Data." + model.Name + "Repository");
+
+                      if (property is not null && repositoryType is not null)
+                      {
+                          var repository = Activator.CreateInstance(repositoryType)!;
+                          foreach (var row in (IEnumerable)repositoryType.GetMethod("GetAll")!.Invoke(repository, null)!)
+                          {
+                              if (property.GetValue(row) is string value)
+                                  used.Add(value);
+                          }
+                      }
+
+                      foreach (var value in values)
+                      {
+                          if (!used.Contains(value))
+                              return value;
+                      }
+
+                      throw new InvalidOperationException(
+                          $"Every value {model.Name}.{propertyName} allows ({string.Join(", ", values)}) is held by a stored record, and no two records may share one, so no new record can be saved.");
+                  }
+              """
+            : string.Empty;
 
         var fresh = string.Concat(FreshKeys(classes ?? Array.Empty<ClassDefinition>())
             .Select(key => $"        {ValidatorTemplate.Quoted(key)},\n"));
@@ -286,7 +323,7 @@ internal static class TestSupport
 
     /// <summary>A midnight date in the past few years not used before. Local, as FilledDate is:
     /// a UTC date can be the local today, which the blank-record check treats as unfilled.</summary>
-    private static DateTime DistinctDate() => DateTime.Today.AddDays(-(1 + _distinct++ % 3650));
+    private static DateTime DistinctDate() => DateTime.Today.AddDays(-(1 + _distinct++ % 3650));{{unusedListed}}
 
     /// <summary>
     /// The date Fill writes: yesterday, at midnight, the same for every date of a record.
@@ -433,8 +470,10 @@ internal static class TestSupport
     /// A rule spanning fields (a Business or Workflow rule) needs nothing: Fill's equal dates and
     /// zero numbers already satisfy every one the scan proposes.
     /// </remarks>
+    /// <param name="rootNamespace">The app's, so an expression can name a model type:
+    /// <c>UnusedListed</c> reads that type's stored records.</param>
     internal static IReadOnlyList<(string Key, string Expression)> AcceptedValues(
-        IReadOnlyList<ClassDefinition> classes)
+        IReadOnlyList<ClassDefinition> classes, string rootNamespace)
     {
         var entries = new List<(string Key, string Expression)>();
 
@@ -449,7 +488,9 @@ internal static class TestSupport
                     || (property.Type == "int" && IsForeignKeyName(property.Name)))
                     continue;
 
-                if (AcceptedValue(property, distinct.Contains(property)) is { } expression)
+                var model = $"typeof(global::{rootNamespace}.Models.{definition.Name})";
+
+                if (AcceptedValue(property, model, distinct.Contains(property)) is { } expression)
                     entries.Add(($"{definition.Name}.{property.Name}", expression));
             }
         }
@@ -500,7 +541,9 @@ internal static class TestSupport
 
     /// <summary>The C# expression for <paramref name="property"/>'s value, or null when Fill's
     /// plain value already passes and need not differ from record to record.</summary>
-    private static string? AcceptedValue(PropertyDefinition property, bool distinctInCombination = false)
+    /// <param name="model">The C# expression of the model's type, for a value read at run time.</param>
+    private static string? AcceptedValue(
+        PropertyDefinition property, string model, bool distinctInCombination = false)
     {
         var unique = distinctInCombination
                      || (HasRule(property, "unique") && ValidatorTemplate.CanEmitEntityRule(property.Type, "unique"));
@@ -510,7 +553,7 @@ internal static class TestSupport
         switch (property.Type)
         {
             case "string":
-                return AcceptedString(property, unique);
+                return AcceptedString(property, model, unique);
 
             case "DateTime":
                 // Fill's FilledDate passes every date rule; only a shared value is a problem.
@@ -524,7 +567,7 @@ internal static class TestSupport
         }
     }
 
-    private static string? AcceptedString(PropertyDefinition property, bool unique)
+    private static string? AcceptedString(PropertyDefinition property, string model, bool unique)
     {
         var plain = Placeholder(property.Name);
 
@@ -533,12 +576,21 @@ internal static class TestSupport
 
         var allowed = Rule(property, "allowedvalues")?.AllowedValues;
 
-        // A value list: its first value that passes the other rules. Sharing one is unavoidable,
-        // since a value list and "no two share" together allow only as many records as values.
+        // A value list: its first value that passes the other rules. One no two records may share
+        // is picked when Fill runs, from the values no stored record holds: a constant first value
+        // clashed with a seeded or imported row, or with a parent Fill had already created.
         if (allowed is { Count: > 0 })
-            return allowed.FirstOrDefault(value => AcceptsString(property, value)) is { } listed
-                ? ValidatorTemplate.Quoted(listed)
-                : null;
+        {
+            var passing = allowed.Where(value => AcceptsString(property, value)).ToList();
+
+            if (passing.Count == 0)
+                return null;
+
+            return unique
+                ? $"UnusedListed({model}, {ValidatorTemplate.Quoted(property.Name)}, "
+                  + string.Join(", ", passing.Select(ValidatorTemplate.Quoted)) + ")"
+                : ValidatorTemplate.Quoted(passing[0]);
+        }
 
         if (unique)
         {

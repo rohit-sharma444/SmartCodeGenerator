@@ -33,7 +33,7 @@ using {{rootNamespace}}.Validation;
 namespace {{namespaceName}};
 
 /// <summary>JSON-backed list store keyed by an int Id. One file per type.</summary>
-public sealed class JsonStore<T> : IStore<T> where T : new()
+public sealed class JsonStore<T> : IStore<T> where T : class, new()
 {
     private static readonly JsonSerializerOptions Options = new() { WriteIndented = true };
 

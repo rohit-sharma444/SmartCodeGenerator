@@ -55,9 +55,21 @@ public class SqlSourceFidelityTests
         IReadOnlyList<string> Unreadable,
         ImportedData Data);
 
-    private static Generated Generate(FakeSqlSchemaSource source, Action<CandidateDomainModel>? review = null)
+    private static Generated Generate(
+        FakeSqlSchemaSource source, Action<CandidateDomainModel>? review = null, bool normalize = false)
     {
         var tables = Read(source);
+        if (normalize)
+            tables = DataIngestion.Normalization.NormalizationPlan.Apply(tables,
+                [.. tables.SelectMany(t => DataIngestion.Normalization.NormalizationAnalyzer.Analyze(t).Findings)]);
+
+        return Generate(tables, review);
+    }
+
+    /// <summary>As <see cref="Generate(FakeSqlSchemaSource, Action{CandidateDomainModel}?, bool)"/>,
+    /// from tables any reader produced.</summary>
+    private static Generated Generate(IReadOnlyList<TabularTable> tables, Action<CandidateDomainModel>? review = null)
+    {
         var model = DataModelBuilder.Build(tables);
         review?.Invoke(model);
         var classes = DomainModelMapper.ToClassDefinitions(model, out var classNames);
@@ -326,6 +338,23 @@ public class SqlSourceFidelityTests
         Assert.Contains(app.Data.Notes, n => n.Contains("StartsAt") && n.Contains("offset is dropped"));
     }
 
+    [Fact]
+    public void A_uniqueidentifier_is_seeded_and_started_in_the_uppercase_sql_server_shows()
+    {
+        // A6: seeded lowercase, a GUID pasted from SSMS in uppercase saved as a second record.
+        Assert.Equal("6F9619FF-8B86-D011-B42D-00C04FC964FF",
+            SqlValueText.Render(Guid.Parse("6f9619ff-8b86-d011-b42d-00c04fc964ff")));
+
+        var app = Generate(Database(add => add("Device",
+            [new("DeviceId", "int", false, IsPrimaryKey: true), new("Token", "uniqueidentifier", false, Default: "(newid())")],
+            [["1", SqlValueText.Render(Guid.Parse("6f9619ff-8b86-d011-b42d-00c04fc964ff"))]])));
+
+        var assembly = Compile(app);
+        var token = (string)New(assembly, "Device").GetType().GetProperty("Token")!.GetValue(New(assembly, "Device"))!;
+        Assert.True(Guid.TryParse(token, out _));
+        Assert.Equal(token.ToUpperInvariant(), token);
+    }
+
     // --- S4: values the mapped type cannot hold ---
 
     [Fact]
@@ -477,6 +506,34 @@ public class SqlSourceFidelityTests
     }
 
     [Fact]
+    public void A_renamed_table_split_by_normalization_still_owns_its_key()
+    {
+        // A1: hr.Note keyed by NoteId, with a Tag1..Tag3 group the user splits off. Rewriting the
+        // table lost its source name, so NoteId became a link to dbo.Note.
+        var source = new FakeSqlSchemaSource();
+        source.TableList.Add(new SqlTableInfo("dbo", "Note", 2, 2));
+        source.TableList.Add(new SqlTableInfo("hr", "Note", 5, 2));
+        source.ColumnsByTable["dbo.Note"] = [new("NoteId", "int", false, IsPrimaryKey: true), new("Body", "nvarchar", false, 50)];
+        source.ColumnsByTable["hr.Note"] =
+        [
+            new("NoteId", "int", false, IsPrimaryKey: true), new("Text", "nvarchar", false, 50),
+            new("Tag1", "nvarchar", true, 20), new("Tag2", "nvarchar", true, 20), new("Tag3", "nvarchar", true, 20),
+        ];
+        source.RowsByTable["dbo.Note"] = [["1", "general"], ["2", "other"]];
+        source.RowsByTable["hr.Note"] = [["2", "personnel", "a", "b", null], ["1", "payroll", "c", null, null]];
+
+        var app = Generate(source, normalize: true);
+
+        Assert.Contains(app.Model.Entities, e => e.Name == "HrNoteTag");
+        var hrNote = app.Model.Entities.Single(e => e.Name == "HrNote");
+        Assert.DoesNotContain(hrNote.Fields, f => f.Name == "NoteId");
+        Assert.DoesNotContain(hrNote.Relationships, r => r.Target == "Note");
+        Assert.DoesNotContain(Class(app, "HrNote").Properties, p => p.Name == "NoteId");
+        Assert.Equal(["personnel", "payroll"], Seed(app, "HrNote").Select(r => r.GetProperty("Text").GetString()));
+        Compile(app);
+    }
+
+    [Fact]
     public void A_table_whose_entity_name_is_taken_is_left_out_with_a_note()
     {
         var app = Generate(Database(add =>
@@ -528,6 +585,37 @@ public class SqlSourceFidelityTests
         Assert.Equal("", Get(row, "Token"));
         Assert.Equal(false, Get(row, "IsActive"));
         Assert.Equal("Retired", Get(row, "Status"));
+    }
+
+    [Fact]
+    public void A_date_default_sql_server_spells_as_a_number_or_yyyymmdd_starts_a_new_record()
+    {
+        // A5: datetime DEFAULT ((0)) is 1900-01-01 to SQL Server, and ('20200101') is 2020-01-01;
+        // neither was carried, nor said, so a new record started at 0001-01-01.
+        var app = Generate(Database(add => add("Event",
+            [
+                new("EventId", "int", false, IsPrimaryKey: true),
+                new("Logged", "datetime", false, Default: "((0))"),
+                new("Small", "smalldatetime", false, Default: "((1.5))"),
+                new("Starts", "date", false, Default: "('20200101')"),
+                new("Stamped", "datetime2", false, Default: "('20200101 13:45:10')"),
+                new("Grade", "int", false, Default: "('abc')"),
+            ],
+            [["1", "2024-01-01T00:00:00", "2024-01-01T00:00:00", "2024-01-01T00:00:00", "2024-01-01T00:00:00", "3"]])));
+
+        var assembly = Compile(app);
+        var fresh = New(assembly, "Event");
+        object? Get(string name) => fresh.GetType().GetProperty(name)!.GetValue(fresh);
+
+        Assert.Equal(new DateTime(1900, 1, 1), Get("Logged"));
+        Assert.Equal(new DateTime(1900, 1, 2, 12, 0, 0), Get("Small"));
+        Assert.Equal(new DateTime(2020, 1, 1), Get("Starts"));
+        Assert.Equal(new DateTime(2020, 1, 1, 13, 45, 10), Get("Stamped"));
+
+        // A default that fits no value of its type is said, not dropped in silence.
+        Assert.Equal(0, Get("Grade"));
+        Assert.Contains(app.Data.Notes, n => n.Contains("Grade") && n.Contains("('abc')") && n.Contains("not carried"));
+        Assert.DoesNotContain(app.Data.Notes, n => n.Contains("Logged") || n.Contains("Starts"));
     }
 
     // --- S8: CHECK constraints ---
@@ -609,6 +697,108 @@ public class SqlSourceFidelityTests
 
         Assert.Contains(app.Data.Notes, n => n.Contains("CK_Code") && n.Contains("(len([Code])=(3))") && n.Contains("not carried"));
         Assert.All(SeedRows(assembly, app, "Member"), row => Assert.Empty(Validate(assembly, "Member", row)));
+    }
+
+    [Fact]
+    public void A_check_range_on_an_int_foreign_key_is_not_enforced_on_the_renumbered_ids()
+    {
+        // A2: the CHECK bounds the source's key values (100..999); the app holds Ids 1 and 2.
+        var source = Database(add =>
+        {
+            add("Department", [new("DepartmentId", "int", false, IsPrimaryKey: true), new("Title", "nvarchar", false, 20)],
+                [["100", "Ops"], ["200", "Sales"]]);
+            add("Employee",
+                [new("EmployeeId", "int", false, IsPrimaryKey: true), new("Name", "nvarchar", false, 20), new("DepartmentId", "int", false)],
+                [["1", "Ann", "200"], ["2", "Bob", "100"]]);
+        });
+        source.Keys.Add(new TabularForeignKey("DepartmentId", "Department", "DepartmentId", "Employee", "dbo", "dbo"));
+        source.Constraints["Employee"] =
+        [
+            new("CK_Dept", SqlConstraintKind.Check, ["DepartmentId"], "([DepartmentID]>=(100) AND [DepartmentID]<=(999))"),
+        ];
+
+        var app = Generate(source);
+
+        Assert.DoesNotContain(Property(app, "Employee", "DepartmentId").Rules, r => r.Name is "minvalue" or "maxvalue");
+
+        var assembly = Compile(app);
+        var rows = SeedRows(assembly, app, "Employee");
+        Assert.Equal([2, 1], rows.Select(r => (int)r.GetType().GetProperty("DepartmentId")!.GetValue(r)!));
+        Assert.All(rows, row => Assert.Empty(Validate(assembly, "Employee", row)));
+    }
+
+    /// <summary>Customers keyed by text, and Orders naming them in <paramref name="orderKeys"/>,
+    /// through a declared key.</summary>
+    private static FakeSqlSchemaSource CustomersAndOrders(string[] customerKeys, string[] orderKeys)
+    {
+        var source = Database(add =>
+        {
+            add("Customer", [new("CustomerCode", "nvarchar", false, 10, IsPrimaryKey: true), new("Title", "nvarchar", false, 20)],
+                [.. customerKeys.Select(k => new string?[] { k, "Name " + k })]);
+            add("Orders", [new("OrderId", "int", false, IsPrimaryKey: true), new("CustomerCode", "nvarchar", true, 10)],
+                [.. orderKeys.Select((k, i) => new string?[] { (i + 1).ToString(), k })]);
+        });
+        source.Keys.Add(new TabularForeignKey("CustomerCode", "Customer", "CustomerCode", "Orders", "dbo", "dbo"));
+        return source;
+    }
+
+    private static int?[] OrderCustomerIds(Generated app)
+        => [.. Seed(app, "Order").Select(r => r.TryGetProperty("CustomerId", out var id) && id.ValueKind == JsonValueKind.Number
+            ? id.GetInt32() : (int?)null)];
+
+    [Fact]
+    public void A_sql_text_key_links_whatever_its_case_as_the_database_did()
+    {
+        // A3: SQL Server's default collation took c001 as C001; the import left Order 1 unlinked.
+        var app = Generate(CustomersAndOrders(["C001", "C002"], ["c001", "C002"]));
+
+        Assert.Equal([1, 2], OrderCustomerIds(app));
+        Assert.DoesNotContain(app.Data.Notes, n => n.Contains("no row in your data carries"));
+    }
+
+    [Fact]
+    public void A_sql_text_key_that_two_rows_spell_only_by_case_links_the_exact_one()
+    {
+        var app = Generate(CustomersAndOrders(["A1", "a1"], ["a1", "A1"]));
+
+        Assert.Equal([2, 1], OrderCustomerIds(app));
+        Assert.Contains(app.Data.Notes, n => n.Contains("Customer") && n.Contains("only by case"));
+    }
+
+    [Fact]
+    public void A_file_text_key_still_matches_its_case_exactly()
+    {
+        var customers = DataIngestion.Schema.Readers.CsvReader.FromText("Customer", "customer.csv",
+            "CustomerId,Title\r\nC001,Ann\r\nC002,Bob\r\n", ',');
+        var orders = DataIngestion.Schema.Readers.CsvReader.FromText("Orders", "orders.csv",
+            "OrderNo,CustomerId\r\n1,C001\r\n2,c002\r\n", ',');
+
+        var app = Generate([customers, orders]);
+
+        Assert.Equal([1, null], OrderCustomerIds(app));
+    }
+
+    [Fact]
+    public void A_value_the_database_took_ignoring_case_is_seeded_as_its_check_lists_it()
+    {
+        // A4: a case-insensitive database stored "open" under CHECK ('Closed','Open'); the app
+        // compares exactly, so that seeded record could not be saved until retyped.
+        var source = Database(add => add("Ticket",
+            [new("TicketId", "int", false, IsPrimaryKey: true), new("Status", "nvarchar", false, 10)],
+            [["1", "open"], ["2", "Closed"], ["3", "OPEN"], ["4", "Pending"]]));
+        source.Constraints["Ticket"] =
+        [
+            new("CK_Status", SqlConstraintKind.Check, ["Status"], "([Status]='Closed' OR [Status]='Open')"),
+        ];
+
+        var app = Generate(source);
+
+        // A value outside the list even ignoring case stays as the database holds it.
+        Assert.Equal(["Open", "Closed", "Open", "Pending"], Seed(app, "Ticket").Select(r => r.GetProperty("Status").GetString()));
+        Assert.Contains(app.Data.Notes, n => n.Contains("dbo.Ticket") && n.Contains("2 Status value(s) were re-cased"));
+
+        var assembly = Compile(app);
+        Assert.All(SeedRows(assembly, app, "Ticket").Take(3), row => Assert.Empty(Validate(assembly, "Ticket", row)));
     }
 
     [Fact]
@@ -755,6 +945,24 @@ public class SqlSourceFidelityTests
         var rows = SeedRows(assembly, app, "Staff");
         Assert.Contains(Validate(assembly, "Staff", rows[0]), m => m.Contains("HiredOn"));
         Assert.Empty(Validate(assembly, "Staff", rows[1]));
+    }
+
+    [Fact]
+    public void A_file_date_filled_in_every_row_refuses_a_record_left_at_year_one()
+    {
+        // A8: a non-nullable DateTime with no check saved 0001-01-01 for a date never given.
+        var table = DataIngestion.Schema.Readers.CsvReader.FromText("Chores", "chores.csv",
+            "Title,Qty,DueOn\r\nWrite,1,2024-03-01\r\nTest,2,2024-04-15\r\n", ',');
+
+        var app = Generate([table]);
+
+        Assert.Equal("DateTime", Property(app, "Chore", "DueOn").Type);
+        Assert.Contains(Property(app, "Chore", "DueOn").Rules, r => r.Name == "required");
+
+        var assembly = Compile(app);
+        Assert.All(SeedRows(assembly, app, "Chore"), row => Assert.Empty(Validate(assembly, "Chore", row)));
+        Assert.Contains(Validate(assembly, "Chore", New(assembly, "Chore", ("Title", "x"), ("Qty", 1))),
+            m => m.Contains("DueOn"));
     }
 
     // --- S12: a column whose name starts with a digit ---

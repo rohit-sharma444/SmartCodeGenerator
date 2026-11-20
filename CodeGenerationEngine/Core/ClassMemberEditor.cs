@@ -21,7 +21,9 @@ internal static class ClassMemberEditor
     {
         error = string.Empty;
 
-        var source = Validation.SourceFileText.Read(filePath, out var hasBom, out var newline);
+        // In the file's own encoding; a file that is not UTF-8 throws NotUtf8Exception, an
+        // IOException, rather than being decoded wrong and written back changed.
+        var source = Validation.SourceFileText.Load(filePath, out var encoding, out var newline);
         var root = CSharpSyntaxTree.ParseText(source).GetRoot();
 
         // Match by name: a file may hold more than one type, and the member belongs to
@@ -51,7 +53,7 @@ internal static class ClassMemberEditor
         if (classNode is InterfaceDeclarationSyntax iface)
             member = InInterfaceForm(member, iface);
 
-        Validation.SourceFileText.Write(filePath, Insert(source, classNode, member, newline), hasBom);
+        Validation.SourceFileText.Save(filePath, Insert(source, classNode, member, newline), encoding);
         return true;
     }
 
