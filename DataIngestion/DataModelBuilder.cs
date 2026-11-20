@@ -970,7 +970,10 @@ public static class DataModelBuilder
                 // A column a CHECK limits to a list can never hold more distinct values than the
                 // list has: three rows using all three statuses is not uniqueness, and accepting it
                 // would refuse every new record.
-                var fieldMayBeUnique = mayBeUnique && field.Facts?.AllowedValues is null;
+                // Nor is a stamped date (CreatedOn, ModifiedOn) unique: the store sets it to the
+                // time of the save, so two records saved together would refuse each other.
+                var fieldMayBeUnique = mayBeUnique && field.Facts?.AllowedValues is null
+                    && !DomainModelMapper.IsAuditField(field.Name);
 
                 foreach (var proposal in RuleProposals.For(
                              scan, field.Name, field.Type, fieldMayBeUnique))
