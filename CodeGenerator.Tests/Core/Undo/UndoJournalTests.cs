@@ -605,4 +605,29 @@ public sealed class UndoJournalTests
             public void Restore(ISessionState replacing) => Owner.Value = Value;
         }
     }
+
+    // Bug hunt 2, E6: undoing a rename that changed only the case put the old text back under
+    // the new name.
+    [TestMethod]
+    public void Undo_of_a_case_only_rename_gives_the_file_its_old_name_back()
+    {
+        Write("App/customer.cs", "class customer { }");
+        using var journal = new UndoJournal(_root, shadowParent: _shadowParent);
+
+        using (journal.Begin("rename class customer to Customer"))
+        {
+            Tick();
+            File.Move(P("App/customer.cs"), P("App/Customer.cs"));
+            File.WriteAllText(P("App/Customer.cs"), "class Customer { }");
+        }
+        CollectionAssert.AreEqual(new[] { "Customer.cs" }, Directory.GetFiles(P("App")).Select(Path.GetFileName).ToArray());
+
+        Assert.IsTrue(journal.Undo().Done);
+        CollectionAssert.AreEqual(new[] { "customer.cs" }, Directory.GetFiles(P("App")).Select(Path.GetFileName).ToArray());
+        Assert.AreEqual("class customer { }", Read("App/customer.cs"));
+
+        Assert.IsTrue(journal.Redo().Done);
+        CollectionAssert.AreEqual(new[] { "Customer.cs" }, Directory.GetFiles(P("App")).Select(Path.GetFileName).ToArray());
+        Assert.AreEqual("class Customer { }", Read("App/Customer.cs"));
+    }
 }

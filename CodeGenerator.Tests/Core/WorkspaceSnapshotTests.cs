@@ -465,4 +465,22 @@ public class WorkspaceSnapshotTests
         Assert.AreEqual("original other", File.ReadAllText(other));
         Assert.IsTrue(Directory.Exists(path), "the snapshot was deleted although a file was not put back");
     }
+
+    [TestMethod]
+    // Bug hunt 2, E6: a rollback over a rename that changed only the case kept the new name.
+    public void Restore_GivesAFileRenamedOnlyInCaseItsOldName()
+    {
+        var root = NewWorkspace();
+        var lower = Path.Combine(root, "customer.cs");
+        File.WriteAllText(lower, "class customer { }");
+
+        using var snapshot = WorkspaceSnapshot.Capture(root);
+        File.Move(lower, Path.Combine(root, "Customer.cs"));
+        File.WriteAllText(Path.Combine(root, "Customer.cs"), "class Customer { }");
+
+        snapshot.Restore();
+
+        CollectionAssert.AreEqual(new[] { "customer.cs" }, Directory.GetFiles(root).Select(Path.GetFileName).ToArray());
+        Assert.AreEqual("class customer { }", File.ReadAllText(lower));
+    }
 }

@@ -745,7 +745,10 @@ public sealed class UndoJournal : IDisposable
         if (!File.Exists(source))
             return;
         Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
-        File.Copy(source, destination, overwrite: true);
+
+        // With the source's own spelling: the paths compare without case, so an undo of a rename
+        // that changed only the case put the old text back under the new name.
+        FileNameCase.Copy(source, destination);
     }
 
     private static void TryDeleteTree(string path)

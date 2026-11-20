@@ -164,6 +164,9 @@ public sealed class WorkspaceSnapshot : IDisposable
                 var destination = Path.Combine(_workspaceRoot, relative);
                 PutBack(relative, () =>
                 {
+                    // A file renamed only in case is the same path here; it gets its old name back.
+                    FileNameCase.Match(Path.Combine(Path.GetDirectoryName(destination)!, FileNameCase.ActualName(source)));
+
                     if (SameBytes(source, destination))
                         return;
 
