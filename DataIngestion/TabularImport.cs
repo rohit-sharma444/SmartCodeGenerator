@@ -335,6 +335,7 @@ public static class TabularImport
 
             spellings.Add(key);
         }
+
         /// <summary>The row <paramref name="key"/> names, <see cref="None"/>, or
         /// <see cref="Twice"/> when more than one row carries it.</summary>
         public int Find(string key)

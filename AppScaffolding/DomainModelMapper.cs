@@ -1,4 +1,4 @@
-using CodeGenerationEngine.Core;
+﻿using CodeGenerationEngine.Core;
 using CodeGenerationEngine.Core.Relationships;
 using CodeGenerationEngine.Core.Validation;
 using CodeGenerationEngine.Core.Validation.Rules;
