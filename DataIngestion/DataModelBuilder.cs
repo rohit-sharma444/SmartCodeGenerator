@@ -240,6 +240,18 @@ public static class DataModelBuilder
             .Select(c => WithIdSpelledId(NameNormalizer.ToFieldNameFromData(c.Name)))
             .ToList();
 
+        // A header that cannot become a name ("%", "#") is named by its position, as a blank one
+        // is (Column9): dropped, the column's values were lost with only `why` to say so.
+        var positional = new bool[columnNames.Count];
+        for (var i = 0; i < columnNames.Count; i++)
+        {
+            if (NameNormalizer.IsValidIdentifier(columnNames[i]))
+                continue;
+
+            columnNames[i] = $"Column{i + 1}";
+            positional[i] = true;
+        }
+
         // The table's own name, before it was made singular: Customers keyed by CustomersId is
         // as much keyed by itself as by CustomerId, and the keys pointing at it name that column.
         var tableKeyName = NameNormalizer.ToFieldName(table.Name);
@@ -333,7 +345,7 @@ public static class DataModelBuilder
             var fate = string.Equals(resolved, fieldName, StringComparison.Ordinal)
                 ? renamedForLink[i] ? ColumnFate.RenamedForItsLink
                   : column.DuplicateOf is not null ? ColumnFate.RenamedOffADuplicate
-                  : StartsWithADigit(column.Name) ? ColumnFate.RenamedToAUsableName
+                  : StartsWithADigit(column.Name) || positional[i] ? ColumnFate.RenamedToAUsableName
                   : ColumnFate.Kept
                 : ReservedMemberNames.Contains(fieldName)
                     ? ColumnFate.RenamedOffAnInheritedMember
