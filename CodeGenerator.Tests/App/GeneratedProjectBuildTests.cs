@@ -1638,6 +1638,124 @@ public class GeneratedProjectBuildTests
         return model;
     }
 
+    /// <summary>
+    /// The Web API's PUT honours the id in its address, and POST's Location names the new record
+    /// (G6). PUT /order/2 with no id in the body updated nothing (404), and PUT /order/2 with
+    /// {"id":1} overwrote order 1. Driven against the running app, not matched as text.
+    /// </summary>
+    [TestMethod]
+    [TestCategory("Integration")]
+    public void WebApiPut_UsesTheIdInItsAddress()
+    {
+        Assert.IsTrue(TargetScaffolders.TryResolve("webapi", out var target));
+
+        var model = new CandidateDomainModel();
+        model.Entities.Add(new CandidateEntity
+        {
+            Name = "Order",
+            Fields = { new CandidateField { Name = "Title", Type = "string" } }
+        });
+
+        var workspace = Path.Combine(Path.GetTempPath(), "gen_" + Path.GetRandomFileName());
+        Directory.CreateDirectory(workspace);
+        Process? app = null;
+        try
+        {
+            var result = new AppScaffolder().Scaffold(ScaffoldRequest.For(model, "Shop", workspace, target));
+            Assert.IsTrue(result.Success, "scaffold failed: " + result.Message);
+
+            var output = Path.Combine(workspace, "out");
+            var (exit, buildOutput) = RunDotNet($"build \"{result.ProjectPath}\" -c Release -o \"{output}\"");
+            Assert.AreEqual(0, exit, "dotnet build failed:\n" + buildOutput);
+
+            var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+            listener.Start();
+            var port = ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
+            listener.Stop();
+            var url = $"http://127.0.0.1:{port}";
+
+            app = Process.Start(new ProcessStartInfo("dotnet", $"\"{Path.Combine(output, "Shop.Api.dll")}\" --urls {url}")
+            {
+                WorkingDirectory = output,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+            })!;
+            app.OutputDataReceived += (_, _) => { };
+            app.ErrorDataReceived += (_, _) => { };
+            app.BeginOutputReadLine();
+            app.BeginErrorReadLine();
+
+            using var http = new System.Net.Http.HttpClient { BaseAddress = new Uri(url) };
+            WaitUntilUp(http);
+
+            System.Net.Http.HttpResponseMessage Send(System.Net.Http.HttpMethod method, string path, string? json = null)
+                => http.Send(new System.Net.Http.HttpRequestMessage(method, path)
+                {
+                    Content = json is null ? null
+                        : new System.Net.Http.StringContent(json, Encoding.UTF8, "application/json")
+                });
+
+            string Title(int id)
+                => JsonDocument.Parse(Send(System.Net.Http.HttpMethod.Get, $"/order/{id}").Content.ReadAsStringAsync().Result)
+                    .RootElement.GetProperty("title").GetString()!;
+
+            int Created(string title)
+            {
+                var response = Send(System.Net.Http.HttpMethod.Post, "/order", $$"""{"title":"{{title}}"}""");
+                Assert.AreEqual(System.Net.HttpStatusCode.Created, response.StatusCode);
+                var id = JsonDocument.Parse(response.Content.ReadAsStringAsync().Result)
+                    .RootElement.GetProperty("id").GetInt32();
+                Assert.AreEqual($"/order/{id}", response.Headers.Location?.OriginalString,
+                    "Location was " + response.Headers.Location);
+                return id;
+            }
+
+            var one = Created("one");
+            var two = Created("two");
+
+            // No id in the body: the address names the record.
+            var put = Send(System.Net.Http.HttpMethod.Put, $"/order/{two}", """{"title":"two, edited"}""");
+            Assert.AreEqual(System.Net.HttpStatusCode.NoContent, put.StatusCode);
+            Assert.AreEqual("two, edited", Title(two));
+
+            // A body naming another record is refused, and that record is left alone.
+            var clash = Send(System.Net.Http.HttpMethod.Put, $"/order/{two}", $$"""{"id":{{one}},"title":"hijacked"}""");
+            Assert.AreEqual(System.Net.HttpStatusCode.BadRequest, clash.StatusCode);
+            Assert.AreEqual("one", Title(one));
+            Assert.AreEqual("two, edited", Title(two));
+        }
+        finally
+        {
+            if (app is { HasExited: false })
+            {
+                app.Kill(entireProcessTree: true);
+                app.WaitForExit(10_000);
+            }
+            app?.Dispose();
+            TryDeleteDirectory(workspace);
+        }
+    }
+
+    private static void WaitUntilUp(System.Net.Http.HttpClient http)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(60);
+        while (DateTime.UtcNow < deadline)
+        {
+            try
+            {
+                http.GetAsync("/order").Result.Dispose();
+                return;
+            }
+            catch (AggregateException)
+            {
+                Thread.Sleep(250);
+            }
+        }
+
+        Assert.Fail("the generated web API did not start within 60 seconds");
+    }
+
     private static (int ExitCode, string Output) RunDotNet(string arguments)
     {
         var psi = new ProcessStartInfo("dotnet", arguments)
