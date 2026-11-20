@@ -37,7 +37,7 @@ public sealed class RenameClassAllOrNothingTests
     }
 
     private Dictionary<string, byte[]> Bytes() =>
-        Directory.GetFiles(App, "*.cs").ToDictionary(Path.GetFileName, File.ReadAllBytes)!;
+        Directory.GetFiles(App, "*.cs").ToDictionary(f => Path.GetFileName(f), File.ReadAllBytes);
 
     private void AssertUnchanged(Dictionary<string, byte[]> before, string message)
     {
