@@ -359,17 +359,48 @@ public sealed class BuildSession
     /// <returns>The task to await, and whether this caller is the one that started it.</returns>
     public (Task<DiscoveryOutcome> Task, bool Owner) JoinDiscovery(
         Func<Task<DiscoveryOutcome>> discover)
+        => JoinDiscovery(_ => discover());
+
+    /// <summary>
+    /// As <see cref="JoinDiscovery(Func{Task{DiscoveryOutcome}})"/>, handing the call the token
+    /// <see cref="StopDiscovery"/> cancels.
+    /// </summary>
+    /// <remarks>
+    /// The task handed back is cancelled by <see cref="StopDiscovery"/> even when the call itself
+    /// cannot stop: every page waiting on it - the owner and every joiner - stops waiting at once.
+    /// </remarks>
+    public (Task<DiscoveryOutcome> Task, bool Owner) JoinDiscovery(
+        Func<CancellationToken, Task<DiscoveryOutcome>> discover)
     {
         lock (_discoveryGate)
         {
             if (_discoveryInFlight is { } running)
                 return (running, false);
 
-            var task = discover();
+            // Not disposed when the call ends: the call may still be reading the token.
+            var stop = new CancellationTokenSource();
+            var task = discover(stop.Token).WaitAsync(stop.Token);
+            _discoveryStop = stop;
             _discoveryInFlight = task;
 
             return (task, true);
         }
+    }
+
+    /// <summary>Cancels <see cref="_discoveryInFlight"/>; null when none is running.</summary>
+    private CancellationTokenSource? _discoveryStop;
+
+    /// <summary>
+    /// Stops the running discovery, so every page waiting on it stops waiting and nothing is applied.
+    /// </summary>
+    /// <remarks>
+    /// The busy view had no way out: a user who saw the wrong description going in could only wait
+    /// minutes for a model they did not want.
+    /// </remarks>
+    public void StopDiscovery()
+    {
+        lock (_discoveryGate)
+            _discoveryStop?.Cancel();
     }
 
     /// <summary>
@@ -386,6 +417,7 @@ public sealed class BuildSession
         lock (_discoveryGate)
         {
             _discoveryInFlight = null;
+            _discoveryStop = null;
 
             // Cleared with the call itself: the next run starts from nothing found, so a retry
             // after a failure cannot show the previous attempt's classes as though they were this

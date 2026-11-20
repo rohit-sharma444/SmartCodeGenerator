@@ -117,9 +117,16 @@ internal static class DiscoveryStep
     /// show that rather than a blank wait. Called from the background thread the discovery runs
     /// on — the caller marshals.
     /// </param>
+    /// <param name="cancel">
+    /// Checked before the discovery starts. The sources take no token, so a discovery already
+    /// running finishes in the background; the page stops waiting for it at once.
+    /// </param>
     public static DiscoveryOutcome Discover(
-        string description, string workspaceRoot, Action<DiscoveryProgress>? onProgress = null)
+        string description, string workspaceRoot, Action<DiscoveryProgress>? onProgress = null,
+        CancellationToken cancel = default)
     {
+        cancel.ThrowIfCancellationRequested();
+
         var cacheDir = Path.Combine(workspaceRoot, ".dd-cache");
 
         // The store, if one is installed, is tried before the built-in domains; the online API after.
@@ -134,3 +141,9 @@ internal static class DiscoveryStep
         return source.Discover(description, onProgress);
     }
 }
+
+/// <summary>Runs a discovery from a description. A seam: the Discover stage resolves one from DI so a
+/// test can hold a discovery open; with none registered it is <see cref="DiscoveryStep.Discover"/>.</summary>
+internal delegate DiscoveryOutcome DomainDiscoverer(
+    string description, string workspaceRoot, Action<DiscoveryProgress>? onProgress,
+    CancellationToken cancel);
