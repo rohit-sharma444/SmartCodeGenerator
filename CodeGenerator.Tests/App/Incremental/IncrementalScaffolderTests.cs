@@ -430,6 +430,85 @@ public class IncrementalScaffolderTests
         Assert.IsFalse(File.Exists(Path.Combine(folder, "Logging", "AppLog.cs")));
     }
 
+    /// <summary>
+    /// A class the app has on disk and the new model has dropped - renamed, as an LLM does
+    /// ("Member" became "LibraryMember") - stays wired in, and the new classes are wired in
+    /// beside it. The baseline used to be the new model minus the new classes, so Member was in
+    /// neither generate, every composition file differed from it, and each was set aside as .new:
+    /// the new class got no seed, no validator and no screen, and the app still compiled.
+    /// </summary>
+    [TestMethod]
+    [DataRow("wpf")]
+    [DataRow("blazor")]
+    [DataRow("webapi")]
+    public void An_add_after_a_rename_keeps_the_old_class_and_wires_in_the_new_ones(string kind)
+    {
+        ITargetScaffolder target = kind switch
+        {
+            "wpf" => new WpfTarget(),
+            "blazor" => new BlazorTarget(),
+            _ => new WebApiTarget(),
+        };
+
+        var first = new AppScaffolder().Scaffold(
+            ScaffoldRequest.For(Model("Customer", "Member"), "Shop", _root, target));
+
+        Assert.IsTrue(first.Success, first.Message);
+
+        var folder = GeneratedProjectPath.Folder(_root, "Shop", target);
+
+        var result = IncrementalScaffolder.Add(
+            ScaffoldRequest.For(Model("Customer", "LibraryMember", "Supplier"), "Shop", _root, target),
+            ["LibraryMember", "Supplier"]);
+
+        Assert.IsTrue(result.Success, result.Message);
+        Assert.IsEmpty(
+            result.NotMerged, "set aside: " + string.Join(", ", result.NotMerged.Select(n => n.Path)));
+
+        var factory = File.ReadAllText(Path.Combine(folder, "Validation", "ValidatorFactory.cs"));
+        StringAssert.Contains(factory, "SupplierValidator");
+        StringAssert.Contains(factory, "LibraryMemberValidator");
+        StringAssert.Contains(factory, "new MemberValidator()");
+
+        var seed = File.ReadAllText(Path.Combine(folder, "Data", "SeedData.cs"));
+        StringAssert.Contains(seed, "Seed<Supplier>");
+        StringAssert.Contains(seed, "Seed<Member>");
+
+        Assert.IsTrue(File.Exists(Path.Combine(folder, "Models", "Member.cs")));
+        Assert.IsEmpty(
+            Directory.GetFiles(folder, "*" + IncrementalScaffolder.NewVersionSuffix, SearchOption.AllDirectories));
+    }
+
+    /// <summary>The kept classes' links are kept too: an Order on disk that points at a Member on
+    /// disk, both dropped by the new model, still leaves every composition file mergeable.</summary>
+    [TestMethod]
+    public void An_add_after_a_rename_keeps_the_links_between_the_old_classes()
+    {
+        var target = new WebApiTarget();
+
+        var model = Model("Customer", "Member", "Order");
+        var order = model.Entities[2];
+        order.Fields.Add(new CandidateField { Name = "MemberId", Type = "int", Provenance = Provenance.Wiki });
+        order.Relationships.Add(new CandidateRelationship { Target = "Member", Role = "references" });
+
+        Assert.IsTrue(new AppScaffolder().Scaffold(
+            ScaffoldRequest.For(model, "Shop", _root, target)).Success);
+
+        var folder = GeneratedProjectPath.Folder(_root, "Shop", target);
+
+        var result = IncrementalScaffolder.Add(
+            ScaffoldRequest.For(Model("Customer", "LibraryMember", "Supplier"), "Shop", _root, target),
+            ["LibraryMember", "Supplier"]);
+
+        Assert.IsTrue(result.Success, result.Message);
+        Assert.IsEmpty(
+            result.NotMerged, "set aside: " + string.Join(", ", result.NotMerged.Select(n => n.Path)));
+
+        var seed = File.ReadAllText(Path.Combine(folder, "Data", "SeedData.cs"));
+        StringAssert.Contains(seed, "Seed<Supplier>");
+        StringAssert.Contains(seed, "\"MemberId\"", "the kept Order lost its link to Member");
+    }
+
     [TestMethod]
     public void Adding_nothing_writes_nothing()
     {
