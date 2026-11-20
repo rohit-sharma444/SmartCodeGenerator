@@ -107,24 +107,29 @@ public sealed class BuildSession
     /// answers alone would save every stage transition and lose every edit, which is
     /// precisely the work worth keeping.
     /// <para>
-    /// It does not raise <see cref="Changed"/> for the edit itself: the panel that made it has
-    /// already re-rendered, and the other tab is repainted by the edit's own broadcast. It does
-    /// when the edit discards a generated app, because the Generate and Run boxes change too.
+    /// A real edit raises <see cref="Changed"/>, because nothing else repaints a second tab: it
+    /// went on listing a removed field until an edit there was refused against it.
     /// </para>
     /// </remarks>
-    public void ModelEdited()
+    /// <param name="changed">Whether the editor took the edit. A refused one leaves the model as
+    /// it was, so it is saved but discards nothing: it used to drop the generated app.</param>
+    public void ModelEdited(bool changed = true)
     {
-        // A review edit changes what Generate would write, as a changed answer on an earlier node
-        // does - but it never goes through Change, so it has to discard the written app itself.
-        // Without this the old app stayed on the Generate node with no way to write the new one.
-        if (Generated is not null || Started)
+        if (changed)
         {
-            foreach (var stage in StageGraph.Invalidates(BuildStage.Review))
-                if (_states[stage] != StageState.Active)
-                    _states[stage] = StageState.Pending;
+            // A review edit changes what Generate would write, as a changed answer on an earlier
+            // node does - but it never goes through Change, so it has to discard the written app
+            // itself. Without this the old app stayed on the Generate node with no way to write
+            // the new one.
+            if (Generated is not null || Started)
+            {
+                foreach (var stage in StageGraph.Invalidates(BuildStage.Review))
+                    if (_states[stage] != StageState.Active)
+                        _states[stage] = StageState.Pending;
 
-            Generated = null;
-            Started = false;
+                Generated = null;
+                Started = false;
+            }
 
             Changed?.Invoke();
         }
