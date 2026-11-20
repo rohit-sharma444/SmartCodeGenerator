@@ -110,6 +110,75 @@ public class WorkspaceSnapshotTests
         Assert.IsFalse(Directory.Exists(projectDir));
     }
 
+    // B4: a failed run deleted every empty folder in the workspace, the user's own among them
+    // (a VS <Folder Include="Migrations\" />, an empty wwwroot/images).
+    [TestMethod]
+    public void Restore_KeepsAnEmptyFolderThatWasThereAndRemovesANewOne()
+    {
+        var root = NewWorkspace();
+        Directory.CreateDirectory(Path.Combine(root, "Assets", "Images"));
+        Directory.CreateDirectory(Path.Combine(root, "EmptyTop"));
+
+        using var snapshot = WorkspaceSnapshot.Capture(root);
+        Directory.CreateDirectory(Path.Combine(root, "NewFolder"));
+        snapshot.Restore();
+
+        Assert.IsTrue(Directory.Exists(Path.Combine(root, "Assets", "Images")), "Assets/Images was there before");
+        Assert.IsTrue(Directory.Exists(Path.Combine(root, "EmptyTop")), "EmptyTop was there before");
+        Assert.IsFalse(Directory.Exists(Path.Combine(root, "NewFolder")), "NewFolder is the run's");
+    }
+
+    [TestMethod]
+    public void Restore_RemovesANewFolderInsideAnEmptyOneAndKeepsTheOldOne()
+    {
+        var root = NewWorkspace();
+        Directory.CreateDirectory(Path.Combine(root, "A"));
+
+        using var snapshot = WorkspaceSnapshot.Capture(root);
+        Directory.CreateDirectory(Path.Combine(root, "A", "B", "C"));
+        snapshot.Restore();
+
+        Assert.IsTrue(Directory.Exists(Path.Combine(root, "A")), "A was there before");
+        Assert.IsFalse(Directory.Exists(Path.Combine(root, "A", "B")), "A/B is the run's");
+    }
+
+    // B5: a rollback deleted the -wal and -shm files Visual Studio wrote under .vs during the run,
+    // and counted .vs toward the size limit.
+    [TestMethod]
+    public void Restore_LeavesIdeStateFoldersAlone()
+    {
+        var root = NewWorkspace();
+        Directory.CreateDirectory(Path.Combine(root, ".vs", "v17"));
+        Directory.CreateDirectory(Path.Combine(root, ".idea"));
+        File.WriteAllText(Path.Combine(root, ".vs", "v17", "Code.db"), "before");
+        File.WriteAllText(Path.Combine(root, ".idea", "workspace.xml"), "before");
+
+        Assert.AreEqual(0, WorkspaceSnapshot.Measure(root).FileCount, ".vs and .idea are not counted");
+
+        using var snapshot = WorkspaceSnapshot.Capture(root);
+        File.WriteAllText(Path.Combine(root, ".vs", "v17", "Code.db"), "after");
+        File.WriteAllText(Path.Combine(root, ".vs", "v17", "Code.db-wal"), "wal");
+        File.WriteAllText(Path.Combine(root, ".idea", "workspace.xml"), "after");
+        snapshot.Restore();
+
+        Assert.AreEqual("after", File.ReadAllText(Path.Combine(root, ".vs", "v17", "Code.db")));
+        Assert.IsTrue(File.Exists(Path.Combine(root, ".vs", "v17", "Code.db-wal")));
+        Assert.AreEqual("after", File.ReadAllText(Path.Combine(root, ".idea", "workspace.xml")));
+    }
+
+    [TestMethod]
+    public void Restore_PutsBackAnEmptyFolderTheRunDeleted()
+    {
+        var root = NewWorkspace();
+        Directory.CreateDirectory(Path.Combine(root, "Migrations"));
+
+        using var snapshot = WorkspaceSnapshot.Capture(root);
+        Directory.Delete(Path.Combine(root, "Migrations"));
+        snapshot.Restore();
+
+        Assert.IsTrue(Directory.Exists(Path.Combine(root, "Migrations")));
+    }
+
     // S5: a build inside the rolled-back run left Foo/obj behind, so Foo survived the rollback and
     // undo then offered a phantom "Undid: run f" that only removed the leftovers.
     [TestMethod]

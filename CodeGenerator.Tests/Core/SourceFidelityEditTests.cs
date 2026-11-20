@@ -252,9 +252,9 @@ public class SourceFidelityEditTests
     }
 
     [TestMethod]
-    [DataRow("List<string>", "new()")]
-    [DataRow("string[]", "[]")]
-    [DataRow("IReadOnlyList<int>", "[]")]
+    [DataRow("List<string>", "new List<string>()")]
+    [DataRow("string[]", "global::System.Array.Empty<string>()")]
+    [DataRow("IReadOnlyList<int>", "global::System.Array.Empty<int>()")]
     [DataRow("Order", "null!")]
     public void Add_property_of_a_reference_type_in_a_nullable_project_starts_with_a_value(string type, string value)
     {
@@ -350,8 +350,8 @@ public class SourceFidelityEditTests
 
     [TestMethod]
     [DataRow("Status", "string", "= string.Empty;")]
-    [DataRow("Tags", "string[]", "= [];")]
-    [DataRow("Balances", "Dictionary<string, double>", "= new();")]
+    [DataRow("Tags", "string[]", "= global::System.Array.Empty<string>();")]
+    [DataRow("Balances", "Dictionary<string, double>", "= new Dictionary<string, double>();")]
     public void Retype_to_a_reference_type_gives_a_value_when_the_old_one_does_not_fit(
         string property, string type, string initializer)
     {

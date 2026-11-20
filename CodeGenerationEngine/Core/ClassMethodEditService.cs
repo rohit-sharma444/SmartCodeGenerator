@@ -186,15 +186,8 @@ public static class ClassMethodEditService
             if (string.Equals(Path.GetFullPath(other), Path.GetFullPath(file), StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            string text;
-            try
-            {
-                text = File.ReadAllText(other);
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
+            if (!TryReadCandidate(other, out var text, out var notUtf8))
                 continue;
-            }
 
             if (!text.Contains("partial", StringComparison.Ordinal) || !text.Contains(name, StringComparison.Ordinal))
                 continue;
@@ -206,8 +199,19 @@ public static class ClassMethodEditService
                     && c.Modifiers.Any(SyntaxKind.PartialKeyword)
                     && NamespaceOf(c) == ns);
 
-            if (part != null)
-                parts.Add(new ClassPart(other, otherRoot, part));
+            if (part == null)
+                continue;
+
+            // A part of the class an edit may write, in a file that is not UTF-8: refused, not
+            // skipped (the member would be "not found") and not decoded wrong.
+            if (notUtf8 != null)
+            {
+                parts = [];
+                message = notUtf8.Message;
+                return false;
+            }
+
+            parts.Add(new ClassPart(other, otherRoot, part));
         }
 
         return true;
@@ -239,7 +243,10 @@ public static class ClassMethodEditService
             if (found != null)
             {
                 file = found;
-                root = CSharpSyntaxTree.ParseText(File.ReadAllText(file)).GetRoot();
+
+                // Strictly: a file that is not UTF-8 throws NotUtf8Exception, an IOException, and
+                // the edit is refused below with its message.
+                root = CSharpSyntaxTree.ParseText(Validation.SourceFileText.Load(file)).GetRoot();
 
                 if (DeclarationOf(root, className) is { } node)
                 {
@@ -252,15 +259,8 @@ public static class ClassMethodEditService
             // file (OrderLine in Order.cs) is listed by show properties, and was "not found" here.
             foreach (var other in ClassFiles.Under(workspaceRoot))
             {
-                string text;
-                try
-                {
-                    text = File.ReadAllText(other);
-                }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                {
+                if (!TryReadCandidate(other, out var text, out var notUtf8))
                     continue;
-                }
 
                 if (!text.Contains(className, StringComparison.OrdinalIgnoreCase))
                     continue;
@@ -268,6 +268,9 @@ public static class ClassMethodEditService
                 var otherRoot = CSharpSyntaxTree.ParseText(text).GetRoot();
                 if (DeclarationOf(otherRoot, className) is { } node)
                 {
+                    if (notUtf8 != null)
+                        throw notUtf8;
+
                     file = other;
                     root = otherRoot;
                     classNode = node;
@@ -283,6 +286,33 @@ public static class ClassMethodEditService
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             message = ex.Message;
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// A file looked through for a declaration: its text, decoded strictly when it can be. A file
+    /// that is not UTF-8 is still read (leniently), so a search can find the class in it, and
+    /// <paramref name="notUtf8"/> says so: the caller refuses an edit of that file rather than
+    /// skipping it. False only when the file cannot be read at all.
+    /// </summary>
+    private static bool TryReadCandidate(string path, out string text, out Validation.NotUtf8Exception? notUtf8)
+    {
+        notUtf8 = null;
+        try
+        {
+            text = Validation.SourceFileText.Load(path);
+            return true;
+        }
+        catch (Validation.NotUtf8Exception ex)
+        {
+            notUtf8 = ex;
+            text = File.ReadAllText(path);
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            text = string.Empty;
             return false;
         }
     }

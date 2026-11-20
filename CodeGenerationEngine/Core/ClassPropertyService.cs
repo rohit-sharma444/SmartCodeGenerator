@@ -57,7 +57,8 @@ public static class ClassPropertyService
             // With nullable reference types on, a string or a list with no initial value is
             // CS8618: it starts as null.
             var initializer = PropertyInitializers.CanHaveInitializer(part.Node)
-                && PropertyInitializers.NullableOn(workspaceRoot, part.File, part.Root)
+                && PropertyInitializers.NullableOn(workspaceRoot, part.File, part.Root,
+                    PropertyInitializers.InsertionPoint(part.Node))
                 && PropertyInitializers.SafeFor(type, bound) is { } value
                     ? $" = {value};"
                     : string.Empty;

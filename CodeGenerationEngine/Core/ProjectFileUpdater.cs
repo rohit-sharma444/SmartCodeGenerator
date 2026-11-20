@@ -28,7 +28,7 @@ public static class ProjectFileUpdater
             // the project stops building with NETSDK1022. Nothing needs adding: writing the file
             // into the project directory is already enough for it to be compiled. This is what
             // AppScaffolding has always done for `build app:`, and why those projects build.
-            var text = SourceFileText.Read(csproj, out var hasBom, out var newline);
+            var text = SourceFileText.Load(csproj, out var encoding, out var newline);
 
             if (!NeedsAnnotationPackage(XDocument.Parse(text), code))
                 return;
@@ -47,7 +47,7 @@ public static class ProjectFileUpdater
                 ? text[..lineStart] + group + text[lineStart..]
                 : text[..close] + newline + group + text[close..];
 
-            SourceFileText.Write(csproj, edited, hasBom);
+            SourceFileText.Save(csproj, edited, encoding);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Xml.XmlException)
         {

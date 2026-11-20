@@ -36,14 +36,25 @@ public static class JoinClassWriter
             return new RelationshipWritten(
                 false, $"Both '{a}' and '{b}' have to exist first.", []);
 
-        var originals = classes.ToDictionary(c => c.File, c => File.ReadAllText(c.File));
+        var joinFile = Path.Combine(Path.GetDirectoryName(left.File)!, joinName + ".cs");
+
+        // A file of that name that does not declare the class: writing over it would lose it, and
+        // a rollback would then delete it as if it were new.
+        if (File.Exists(joinFile))
+            return new RelationshipWritten(
+                false, $"There is already a file called '{Path.GetFileName(joinFile)}'. Nothing was changed.", []);
+
+        // The two files this writes into, and nothing else (see RelationshipWriter.Originals).
+        if (RelationshipWriter.Unreadable([left.File, right.File]) is { } refusal)
+            return new RelationshipWritten(false, refusal, []);
+
+        var originals = RelationshipWriter.Originals([left.File, right.File]);
+        var baseline = RelationshipWriter.Baseline(workspaceRoot);
         var created = new List<string>();
         var added = new List<string>();
 
         try
         {
-            var joinFile = Path.Combine(Path.GetDirectoryName(left.File)!, joinName + ".cs");
-
             File.WriteAllText(joinFile, RoslynClassGenerator.Generate(Join(joinName, left, right), NamespaceOf(left)));
             created.Add(joinFile);
             added.Add($"new class {joinName}");
@@ -62,7 +73,7 @@ public static class JoinClassWriter
                 added.Add($"{parent.Name}.{collection.Name} ({collection.Type})");
             }
 
-            var verdict = RelationshipWriter.Verify(workspaceRoot);
+            var verdict = RelationshipWriter.Verify(workspaceRoot, baseline);
 
             if (!verdict.Ok)
                 return RelationshipWriter.Restore(originals, created, verdict.Problem);
