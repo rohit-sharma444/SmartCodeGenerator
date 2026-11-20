@@ -396,6 +396,29 @@ public sealed class UndoJournalTests
         Assert.AreEqual("class Book { }", Read("Shop/Book.cs"));
     }
 
+    // Bug hunt 2, E4: one app.log a running app held open made every command unrecorded, and undo
+    // said "Nothing to undo." with no word why.
+    [TestMethod]
+    public void A_file_held_open_is_left_out_and_named_once_and_the_rest_is_still_undoable()
+    {
+        var notes = new List<string>();
+        using var journal = new UndoJournal(_root, notes.Add, shadowParent: _shadowParent);
+        Write("app.log", "started");
+
+        using (new FileStream(P("app.log"), FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            using (journal.Begin("create a Customer class")) { Tick(); Write("Shop/Customer.cs", "class Customer { }"); }
+            using (journal.Begin("add property Age")) { Tick(); Write("Shop/Customer.cs", "class Customer { int Age; }"); }
+
+            var undone = journal.Undo();
+            Assert.IsTrue(undone.Done, undone.Message);
+            Assert.AreEqual("class Customer { }", Read("Shop/Customer.cs"));
+        }
+
+        Assert.HasCount(1, notes, string.Join(Environment.NewLine, notes));
+        StringAssert.Contains(notes[0], "app.log");
+    }
+
     [TestMethod]
     public void An_undo_that_fails_part_way_puts_back_what_it_did_and_can_be_tried_again()
     {
