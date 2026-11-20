@@ -28,7 +28,9 @@ public static class ClassInheritanceService
         message = string.Empty;
 
         // By declaration when no file has its name: an interface declared in another type's file.
-        var file = ClassFiles.FileOf(workspaceRoot, className);
+        if (!ClassFiles.TryFind(workspaceRoot, className, out var file, out message))
+            return false;
+
         if (file == null)
         {
             if (!ClassMethodEditService.TryLoad(workspaceRoot, className, out var declaring, out _, out _, out message))

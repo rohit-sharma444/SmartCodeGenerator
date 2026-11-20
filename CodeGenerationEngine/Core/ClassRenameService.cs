@@ -56,7 +56,9 @@ public static class ClassRenameService
 
         try
         {
-            var file = ClassFiles.FileOf(workspaceRoot, oldClassName);
+            if (!ClassFiles.TryFind(workspaceRoot, oldClassName, out var file, out message))
+                return false;
+
             if (file == null)
             {
                 message = $"Class '{oldClassName}' not found.";
@@ -85,7 +87,7 @@ public static class ClassRenameService
             // The move below overwrote, so renaming onto a class that exists threw that class
             // away; one in another folder would become a second class of the same name. Only the
             // file being renamed may hold the new name (a rename that changes only the case).
-            var taken = ClassFiles.Under(workspaceRoot).FirstOrDefault(f =>
+            var taken = ClassFiles.Under(ClassFiles.SearchRoot(workspaceRoot)).FirstOrDefault(f =>
                 Path.GetFileNameWithoutExtension(f).Equals(newClassName, StringComparison.OrdinalIgnoreCase)
                 && !Path.GetFullPath(f).Equals(Path.GetFullPath(file), StringComparison.OrdinalIgnoreCase));
 
@@ -373,9 +375,12 @@ public static class ClassRenameService
                 continue;
             }
 
+            // A file that declares a type of the old name itself (the namesake in another
+            // project) uses that one, not the class renamed.
             var uses = ext == ".cs"
-                ? CSharpSyntaxTree.ParseText(text).GetRoot().DescendantTokens()
-                    .Any(t => t.IsKind(SyntaxKind.IdentifierToken) && t.Text == oldName)
+                ? CSharpSyntaxTree.ParseText(text).GetRoot() is var root
+                    && !root.DescendantNodes().OfType<BaseTypeDeclarationSyntax>().Any(t => t.Identifier.Text == oldName)
+                    && root.DescendantTokens().Any(t => t.IsKind(SyntaxKind.IdentifierToken) && t.Text == oldName)
                 : word.IsMatch(text);
             if (uses)
                 uncovered.Add(Path.GetRelativePath(workspaceRoot, f));
