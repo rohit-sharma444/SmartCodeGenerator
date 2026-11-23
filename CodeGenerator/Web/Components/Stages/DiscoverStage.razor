@@ -2,6 +2,7 @@
 @using DataIngestion.Normalization
 @using DomainDiscovery
 @implements IDisposable
+@inject IServiceProvider Services
 
 @if (_busy)
 {
@@ -12,6 +13,13 @@
        itself where it has one, since only it knows which of its two passes is running. *@
     <ProgressList Done="Session.Discovered.Done" Pending="Session.Discovered.Pending"
                   Current="@(Session.Discovered.Step ?? _label)" Seconds="_seconds" />
+
+    @* A way out of a wait of minutes. Not "Cancel": that is the button that ends the whole build. *@
+    <div class="actions">
+        <button type="button" class="stop-discovery" @onclick="() => Session.StopDiscovery()">
+            Stop discovering
+        </button>
+    </div>
 }
 else if (_kept)
 {
@@ -154,15 +162,31 @@ else
         // panel for the rest of a generation it is really waiting on. The one-second clock below
         // is what repaints it, so the callback does no rendering of its own — a render per class
         // would be a render for work the timer already covers.
+        //
+        // What it is discovered FROM, kept to check the outcome against: the user can go back to
+        // Describe while it runs and type another description.
+        //
+        // On a thread of its own (LongRunning), not a pool worker: the call blocks for minutes. As
+        // a pool work item it waited behind every busy worker before it even started, and then held
+        // a worker that Blazor's circuits need for the whole wait.
+        var description = Session.Description;
+        var discover = Discoverer;
         var (task, owner) = Session.JoinDiscovery(
-            () => Task.Run(() => DiscoveryStep.Discover(
-                Session.Description, Session.WorkspaceRoot, Session.RecordDiscoveryProgress)));
+            stop => Task.Factory.StartNew(
+                () => discover(description, Session.WorkspaceRoot, Session.RecordDiscoveryProgress, stop),
+                CancellationToken.None,
+                TaskCreationOptions.LongRunning | TaskCreationOptions.DenyChildAttach,
+                TaskScheduler.Default));
 
-        DiscoveryOutcome outcome;
+        DiscoveryOutcome? outcome = null;
 
         try
         {
             outcome = await task;
+        }
+        catch (OperationCanceledException)
+        {
+            // Stopped by the user. Nothing to apply; the panel offers Start again.
         }
         finally
         {
@@ -176,8 +200,18 @@ else
         _busy = false;
         StopClock();
 
-        if (!owner)
+        if (!owner || outcome is null)
             return;
+
+        // Still what the session wants? The user may have left this node, changed the description
+        // or chosen a file, or ended the build. A model for the old description is not applied,
+        // and a user who is reading another node is not pulled off it.
+        if (Session.Phase != SessionPhase.Running
+            || Session.Description != description
+            || Session.HasData)
+            return;
+
+        var here = Session.Current == BuildStage.Discover;
 
         // A failed outcome used to be handed to SetModel anyway — an empty CandidateDomainModel,
         // labelled with the failure text, that Advance() then walked straight past onto Review.
@@ -188,7 +222,10 @@ else
         // set, so there is a way forward without hunting for the right node to click.
         if (!outcome.Succeeded)
         {
-            Session.Fail(outcome.Describe());
+            // Fail marks the open node, which is this one only while the user is still on it.
+            if (here)
+                Session.Fail(outcome.Describe());
+
             return;
         }
 
@@ -201,7 +238,7 @@ else
         // question is on screen instead, asking about a model this call would discard, and
         // advancing past a node that never actually applied its answer would move Current on for
         // work the page never showed.
-        if (!Session.SetModel(outcome.Model, outcome.Describe()))
+        if (!Session.SetModel(outcome.Model, outcome.Describe()) || !here)
             return;
 
         Session.Advance();
@@ -247,6 +284,11 @@ else
     }
 
     public void Dispose() => StopClock();
+
+    private DomainDiscoverer Discoverer
+        => Services.GetService(typeof(DomainDiscoverer)) as DomainDiscoverer
+            ?? ((description, root, onProgress, cancel) =>
+                DiscoveryStep.Discover(description, root, onProgress, cancel));
 
     private void ReadTheFile()
     {

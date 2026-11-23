@@ -52,10 +52,11 @@ public sealed class ScreenPlan
 
     /// <param name="rootNamespace">
     /// The namespace the generated app will declare its code under — the SAME value
-    /// <c>AppScaffolder</c> later passes to every template, not re-derived here. Only its
-    /// outermost dotted segment is reserved: that is the one word every generated file's
-    /// <c>namespace</c> declaration puts in scope at the assembly's global namespace, which is
-    /// what makes a same-named class ambiguous (CS0118) regardless of which file references it.
+    /// <c>AppScaffolder</c> later passes to every template, not re-derived here. EVERY dotted
+    /// segment is reserved: name lookup inside <c>Shop.Api.Data</c> walks <c>Shop.Api</c>,
+    /// <c>Shop</c> and the global namespace in turn, so a class named for any of them (<c>Api</c>
+    /// from api.json, <c>Shop</c>) finds the namespace first and the app does not compile (CS0118).
+    /// "Tests" too: the generated test project declares <c>&lt;root&gt;.Tests</c>.
     /// </param>
     public static ScreenPlan For(
         CandidateDomainModel model, AppCustomization customization, ITargetScaffolder target,
@@ -63,7 +64,7 @@ public sealed class ScreenPlan
     {
         var login = customization.Login && target.HasScreens;
 
-        var reserved = new List<string> { rootNamespace.Split('.', 2)[0] };
+        var reserved = new List<string>(rootNamespace.Split('.', StringSplitOptions.RemoveEmptyEntries)) { "Tests" };
         if (login)
             reserved.AddRange(AuthCoreFiles.ReservedNames);
 

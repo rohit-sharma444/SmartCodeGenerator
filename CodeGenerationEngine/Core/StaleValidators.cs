@@ -26,6 +26,25 @@ public static class StaleValidators
     private const string EmittedSignature = "public System.Collections.Generic.List<string> Validate()";
 
     /// <summary>
+    /// Whether <paramref name="validatorFile"/> exists and was not written by the emitter: a
+    /// hand-written partial, which no command writes over. One that cannot be read counts as one.
+    /// </summary>
+    internal static bool IsHandWritten(string validatorFile)
+    {
+        if (!File.Exists(validatorFile))
+            return false;
+
+        try
+        {
+            return !File.ReadAllText(validatorFile).Contains(EmittedSignature, StringComparison.Ordinal);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return true;
+        }
+    }
+
+    /// <summary>
     /// Writes <c>&lt;Class&gt;.Validation.cs</c> again when <c>generate validator</c> wrote one.
     /// Returns its path, or null when there was none to refresh.
     /// </summary>

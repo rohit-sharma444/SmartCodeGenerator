@@ -331,12 +331,19 @@
     private async Task Continue()
     {
         if (await _navigation.ApplyAsync())
+        {
+            // A step armed by an earlier question is not this click's: left armed, a later
+            // question raised without one of its own would run it on "Change anyway".
+            _afterConfirming = null;
             Session.Advance();
-        else
-            // Not applied. Either the panel refused its own input and is saying why, or the
-            // session is holding the change and wants an answer first — in which case this is
-            // what the answer leads back to.
+        }
+        else if (Session.PendingDiscard is not null)
+            // The session is holding the change and wants an answer first, and this is what the
+            // answer leads back to.
             _afterConfirming = () => { Session.Advance(); return Task.CompletedTask; };
+        else
+            // The panel refused its own input and is saying why. Nothing waits on that.
+            _afterConfirming = null;
 
         Refresh();
     }
@@ -348,7 +355,8 @@
         // not advanced: the node being left is then genuinely answered, which is what GoTo records.
         // The panel itself keeps nothing — each node is keyed, so the next panel starts from the
         // session rather than from whatever the last one had typed in it.
-        if (_navigation.ShouldCommitBeforeLeaving && !await _navigation.ApplyAsync())
+        if (_navigation.ShouldCommitBeforeLeaving && !await _navigation.ApplyAsync()
+            && Session.PendingDiscard is not null)
         {
             // The commit is waiting on the discard question. Going anyway would answer it by
             // walking away — the user would be reading another node while the thing they were
@@ -358,6 +366,10 @@
             Refresh();
             return;
         }
+
+        // Applied, or refused by the panel itself (a missing file, say). A refused draft is
+        // dropped: the next panel starts from the session. Waiting on it trapped the user on the
+        // node with no question to answer.
 
         Session.GoTo(stage);
         Refresh();

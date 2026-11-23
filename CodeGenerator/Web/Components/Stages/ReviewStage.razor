@@ -286,8 +286,8 @@
         // Here rather than at each caller, because this is the one place all of them pass
         // through - and an edit that is not saved is the work a closed tab loses. Called even
         // when the editor refused: changed=false means the model is as it was, and a needless
-        // save is far cheaper than a missed one.
-        Session.ModelEdited();
+        // save is far cheaper than a missed one. Only a real edit discards the generated app.
+        Session.ModelEdited(changed);
     }
 
     private void Remove(string entityName)
@@ -426,17 +426,20 @@
         // always the name typed: promoting a suggestion keeps the suggestion's own spelling.
         _message = BuildAppCommand.AddLine(Model, ["add", _newClass]);
 
+        var added = Model.Entities.Count > before;
+
         // Cleared only when it took: a refused name stays in the box to be corrected.
-        if (Model.Entities.Count > before)
+        if (added)
             _newClass = string.Empty;
 
-        Session.ModelEdited();
+        Session.ModelEdited(added);
     }
 
     private void Promote(string name)
     {
+        var before = Model.Entities.Count;
         _message = BuildAppCommand.AddLine(Model, ["add", name]);
-        Session.ModelEdited();
+        Session.ModelEdited(Model.Entities.Count > before);
     }
 
     private void AddField(CandidateEntity entity)

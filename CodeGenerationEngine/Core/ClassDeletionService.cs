@@ -26,12 +26,15 @@ public static class ClassDeletionService
         if (!Directory.Exists(workspaceRoot))
             return (false, "Workspace does not exist.");
 
-        var files = ClassFiles.Under(workspaceRoot)
-            .Where(f => Path.GetFileNameWithoutExtension(f).Equals(className, StringComparison.OrdinalIgnoreCase))
-            .ToList();
+        // One class, in the selected project: every file of the name in the workspace was moved,
+        // so deleting Beta's Customer deleted Alpha's as well.
+        if (!ClassFiles.TryFind(workspaceRoot, className, out var found, out var ambiguous))
+            return (false, ambiguous);
 
-        if (files.Count == 0)
+        if (found == null)
             return (false, $"Class '{className}' not found.");
+
+        List<string> files = [found];
 
         // The file is moved whole, so whatever else it declares would go with the class: deleting
         // Customer also deleted the CustomerStatus enum and the Money record struct beside it, and

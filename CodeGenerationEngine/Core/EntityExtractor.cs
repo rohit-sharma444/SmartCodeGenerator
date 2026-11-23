@@ -49,6 +49,16 @@ public static class EntityExtractor
             return false;
         }
 
+        // generate validator wrote over a hand-written Person.Validation.cs without a word; the
+        // refresh after a member edit already left such a file alone.
+        var existing = ValidatorPathFor(classFile, DeclaredName(classFile, command.ClassName));
+        if (StaleValidators.IsHandWritten(existing))
+        {
+            Output.Error($"{existing} was not written by generate validator, so it was not replaced. "
+                + "Rename or move it, then generate the validator again.");
+            return false;
+        }
+
         var validatorFile = WriteValidator(classFile, command.ClassName, rules);
 
         Output.Success($"Validator generated: {validatorFile}");

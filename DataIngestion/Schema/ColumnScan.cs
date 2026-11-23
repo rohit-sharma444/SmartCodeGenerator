@@ -58,6 +58,8 @@ public static class ColumnScan
         var seen = new Dictionary<string, int>(StringComparer.Ordinal);
         var order = new List<string>();
 
+        var type = table.Columns[index].Type;
+
         var exceeded = false;
         var longest = 0;
         var nonBlank = 0;
@@ -80,13 +82,15 @@ public static class ColumnScan
             if (value.Length > longest)
                 longest = value.Length;
 
-            if (seen.TryGetValue(value, out var already))
+            var key = TypedKey(value, type);
+
+            if (seen.TryGetValue(key, out var already))
             {
-                seen[value] = already + 1;
+                seen[key] = already + 1;
                 continue;
             }
 
-            seen[value] = 1;
+            seen[key] = 1;
 
             // Past the cap only the LIST stops growing. Every other count carries on, which is
             // what makes a uniqueness proposal possible for a column that is not a status.
@@ -103,5 +107,24 @@ public static class ColumnScan
 
         return new ColumnScanResult(
             order, exceeded, longest, duplicates, nonBlank, table.Rows.Count, table.PartialNote);
+    }
+
+    /// <summary>
+    /// What <paramref name="value"/> is compared by: its parsed value for a number or a date,
+    /// because the generated uniqueness check compares typed values (1.5m equals 1.50m, +5 equals
+    /// 5), and the text itself for anything else. Compared as text, "1.5" and "1.50" were two
+    /// values, a unique rule was offered, and the seeded rows then failed it.
+    /// </summary>
+    private static string TypedKey(string value, string type)
+    {
+        var invariant = System.Globalization.CultureInfo.InvariantCulture;
+
+        return type switch
+        {
+            "int" when AppScaffolding.ImportedValues.TryInt(value, out var n) => n.ToString(invariant),
+            "decimal" when AppScaffolding.ImportedValues.TryPlainDecimal(value, out var d) => d.ToString("G29", invariant),
+            "DateTime" when AppScaffolding.ImportedValues.TryDateTime(value, out var t) => t.Ticks.ToString(invariant),
+            _ => value
+        };
     }
 }

@@ -122,6 +122,60 @@ public class CsvReaderTests
         }
     }
 
+    /// <summary>
+    /// G8: Excel in de/fr/nl/it/es locales saves "CSV" with semicolons. Split on commas, the file
+    /// became one column and lost two of its three rows. The decimal commas inside stay text:
+    /// no culture is guessed.
+    /// </summary>
+    [Theory]
+    [InlineData(';', "';'")]
+    [InlineData('\t', "tab")]
+    public void ASemicolonOrTabCsv_IsSplitOnItsOwnDelimiter(char delimiter, string named)
+    {
+        var path = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName() + ".csv");
+        File.WriteAllText(path, string.Join("\n",
+            new[] { "Name|Price|Qty", "Pen|1,50|3", "Ink|2|4", "Pad|3,25|5" }
+                .Select(line => line.Replace('|', delimiter))) + "\n");
+
+        try
+        {
+            var table = Assert.Single(
+                new CsvReader().Read(new DataSourceSpec(DataSourceKind.Csv, path)));
+
+            Assert.Equal(new[] { "Name", "Price", "Qty" }, table.Columns.Select(c => c.Name));
+            Assert.Equal(3, table.Rows.Count);
+            Assert.Equal("1,50", table.Value(0, "Price"));
+            Assert.Equal("int", table.Columns.Single(c => c.Name == "Qty").Type);
+            Assert.Contains(table.Notes, n => n.Contains(named));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    /// <summary>A comma CSV whose values hold semicolons is still split on commas, silently.</summary>
+    [Fact]
+    public void ACommaCsv_WithSemicolonsInItsValues_IsStillCommaSeparated()
+    {
+        var path = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName() + ".csv");
+        File.WriteAllText(path, "Name,Tags\nPen;Ink,a;b\nPad,c\n");
+
+        try
+        {
+            var table = Assert.Single(
+                new CsvReader().Read(new DataSourceSpec(DataSourceKind.Csv, path)));
+
+            Assert.Equal(new[] { "Name", "Tags" }, table.Columns.Select(c => c.Name));
+            Assert.Equal("Pen;Ink", table.Value(0, "Name"));
+            Assert.Empty(table.Notes);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
     [Fact]
     public void HeaderOnlyFile_IsRejectedWithAMessageThatSaysWhy()
     {

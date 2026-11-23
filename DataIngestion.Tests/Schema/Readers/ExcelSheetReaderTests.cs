@@ -65,6 +65,29 @@ public class ExcelSheetReaderTests
     }
 
     /// <summary>
+    /// G3: Excel stores 2.3 as 2.2999999999999998, and shows it to 15 significant digits. The
+    /// seed must hold what the user typed and sees, not the binary noise; whole numbers and a
+    /// value that already has 15 digits are kept as stored.
+    /// </summary>
+    [Theory]
+    [InlineData("2.2999999999999998", "2.3")]
+    [InlineData("1.1499999999999999", "1.15")]
+    [InlineData("19.989999999999998", "19.99")]
+    [InlineData("2.6749999999999998", "2.675")]
+    [InlineData("0.30000000000000004", "0.3")]
+    [InlineData("-0.30000000000000004", "-0.3")]
+    [InlineData("42", "42")]
+    [InlineData("12345678901234567", "12345678901234567")]
+    [InlineData("1.23456789012345", "1.23456789012345")]
+    [InlineData("1.0000000000000001E-05", "0.00001")]
+    public void ANumericCell_ReadsAsExcelShowsIt(string stored, string expected)
+    {
+        var records = Records(ExcelFixture.Row(1, ExcelFixture.Cell("A1", stored)));
+
+        Assert.Equal(expected, Assert.Single(Assert.Single(records)));
+    }
+
+    /// <summary>
     /// Excel omits an empty cell entirely, so a row's cells must be placed by their reference. Read
     /// in document order instead, every value after the first gap lands one column early — the
     /// single most damaging bug this reader can have, because the file still parses.
@@ -193,6 +216,41 @@ public class ExcelSheetReaderTests
             ExcelFixture.Row(1, ExcelFixture.Cell("A1", "46096", style: 0)), styles: styles);
 
         Assert.Equal("2026-03-15", Assert.Single(records)[0]);
+    }
+
+    /// <summary>
+    /// G7: an elapsed-time format ([h]:mm) is a duration, not a date. 1.5 is 36 hours; read as a
+    /// date it became "1900-01-01 12:00:00" beside "12:00:00" for 0.5, one column of mixed text.
+    /// </summary>
+    [Theory]
+    [InlineData("[h]:mm", "0.5", "12:00:00")]
+    [InlineData("[h]:mm", "1.5", "36:00:00")]
+    [InlineData("[h]:mm:ss", "2.25", "54:00:00")]
+    [InlineData("[mm]:ss", "0.0625", "1:30:00")]
+    [InlineData("[h]:mm", "-0.5", "-12:00:00")]
+    public void AnElapsedTimeCell_IsTotalHours(string code, string stored, string expected)
+    {
+        var styles = "<?xml version=\"1.0\"?>"
+            + "<styleSheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">"
+            + $"<numFmts count=\"1\"><numFmt numFmtId=\"170\" formatCode=\"{code}\"/></numFmts>"
+            + "<cellXfs count=\"1\"><xf numFmtId=\"170\" xfId=\"0\"/></cellXfs></styleSheet>";
+
+        var records = Records(ExcelFixture.Row(1, ExcelFixture.Cell("A1", stored, style: 0)), styles: styles);
+
+        Assert.Equal(expected, Assert.Single(records)[0]);
+    }
+
+    /// <summary>Excel's builtin elapsed format 46 ([h]:mm:ss) is a duration too.</summary>
+    [Fact]
+    public void TheBuiltinElapsedFormat_IsTotalHours()
+    {
+        var styles = "<?xml version=\"1.0\"?>"
+            + "<styleSheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">"
+            + "<cellXfs count=\"1\"><xf numFmtId=\"46\" xfId=\"0\"/></cellXfs></styleSheet>";
+
+        var records = Records(ExcelFixture.Row(1, ExcelFixture.Cell("A1", "1.5", style: 0)), styles: styles);
+
+        Assert.Equal("36:00:00", Assert.Single(records)[0]);
     }
 
     /// <summary>An UNstyled number in the same file stays exactly what it was.</summary>

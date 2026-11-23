@@ -396,6 +396,29 @@ public sealed class UndoJournalTests
         Assert.AreEqual("class Book { }", Read("Shop/Book.cs"));
     }
 
+    // Bug hunt 2, E4: one app.log a running app held open made every command unrecorded, and undo
+    // said "Nothing to undo." with no word why.
+    [TestMethod]
+    public void A_file_held_open_is_left_out_and_named_once_and_the_rest_is_still_undoable()
+    {
+        var notes = new List<string>();
+        using var journal = new UndoJournal(_root, notes.Add, shadowParent: _shadowParent);
+        Write("app.log", "started");
+
+        using (new FileStream(P("app.log"), FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            using (journal.Begin("create a Customer class")) { Tick(); Write("Shop/Customer.cs", "class Customer { }"); }
+            using (journal.Begin("add property Age")) { Tick(); Write("Shop/Customer.cs", "class Customer { int Age; }"); }
+
+            var undone = journal.Undo();
+            Assert.IsTrue(undone.Done, undone.Message);
+            Assert.AreEqual("class Customer { }", Read("Shop/Customer.cs"));
+        }
+
+        Assert.HasCount(1, notes, string.Join(Environment.NewLine, notes));
+        StringAssert.Contains(notes[0], "app.log");
+    }
+
     [TestMethod]
     public void An_undo_that_fails_part_way_puts_back_what_it_did_and_can_be_tried_again()
     {
@@ -581,5 +604,30 @@ public sealed class UndoJournalTests
                 replacing is Snap s && s.Value != Value && Owner.Value != s.Value ? "the state" : null;
             public void Restore(ISessionState replacing) => Owner.Value = Value;
         }
+    }
+
+    // Bug hunt 2, E6: undoing a rename that changed only the case put the old text back under
+    // the new name.
+    [TestMethod]
+    public void Undo_of_a_case_only_rename_gives_the_file_its_old_name_back()
+    {
+        Write("App/customer.cs", "class customer { }");
+        using var journal = new UndoJournal(_root, shadowParent: _shadowParent);
+
+        using (journal.Begin("rename class customer to Customer"))
+        {
+            Tick();
+            File.Move(P("App/customer.cs"), P("App/Customer.cs"));
+            File.WriteAllText(P("App/Customer.cs"), "class Customer { }");
+        }
+        CollectionAssert.AreEqual(new[] { "Customer.cs" }, Directory.GetFiles(P("App")).Select(Path.GetFileName).ToArray());
+
+        Assert.IsTrue(journal.Undo().Done);
+        CollectionAssert.AreEqual(new[] { "customer.cs" }, Directory.GetFiles(P("App")).Select(Path.GetFileName).ToArray());
+        Assert.AreEqual("class customer { }", Read("App/customer.cs"));
+
+        Assert.IsTrue(journal.Redo().Done);
+        CollectionAssert.AreEqual(new[] { "Customer.cs" }, Directory.GetFiles(P("App")).Select(Path.GetFileName).ToArray());
+        Assert.AreEqual("class Customer { }", Read("App/Customer.cs"));
     }
 }

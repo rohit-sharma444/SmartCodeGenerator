@@ -38,6 +38,11 @@
         <p class="notice fix-running">@_busyNotice</p>
     }
 
+    @if (_staleNotice is not null)
+    {
+        <p class="notice stale-write">@_staleNotice</p>
+    }
+
     <div class="actions">
         @* Writing is a real action rather than navigation, so it stays here and stays loud. *@
         <button type="button" class="write" @onclick="Write">Write it</button>
@@ -353,6 +358,11 @@ else
 
     private async Task WriteAndBuild(bool addOnly)
     {
+        // What the session wants at the start. The build takes a minute, and an answer changed
+        // meanwhile (the app type, say) means this app is no longer the one to record.
+        var revision = Session.Revision;
+
+        _staleNotice = null;
         _phase = Phase.Working;
         _report.Clear();
         _stubWarnings.Clear();
@@ -456,6 +466,9 @@ else
         {
             Finished("Could not start `dotnet` — the build was skipped", failed: true);
 
+            if (NoLongerWanted(revision, scaffold))
+                return;
+
             _report.Add(
                 "Could not start `dotnet`, so the project was written but not compiled. "
                 + "The steps below say how to build it yourself.");
@@ -475,6 +488,9 @@ else
 
             return;
         }
+
+        if (NoLongerWanted(revision, scaffold))
+            return;
 
         Finished(BuildReport.Succeeded(result)
             ? "Compiled"
@@ -503,6 +519,38 @@ else
         // Belt as well as braces: the awaited handler re-renders on its own, but the same method
         // is reachable from the overwrite dialog and this is the transition that must not be lost.
         StateHasChanged();
+    }
+
+    /// <summary>Why the last write was not kept, or null when it was.</summary>
+    private string? _staleNotice;
+
+    /// <summary>
+    /// Whether the app just built is no longer the session's: this panel has gone, or an answer
+    /// or the model changed while it built.
+    /// </summary>
+    /// <remarks>
+    /// Such an app is not recorded and nothing is offered: a gone panel's offer lands on the node
+    /// now on screen. Its folder is still recorded as written, because it is on disk.
+    /// </remarks>
+    private bool NoLongerWanted(int revision, ScaffoldResult scaffold)
+    {
+        if (!_disposed && Session.Revision == revision)
+            return false;
+
+        Session.RecordWritten(scaffold.ProjectPath);
+        StopClock();
+
+        if (_disposed)
+            return true;
+
+        _step = null;
+        _name = GenerateStep.NameFor(Session);
+        _staleNotice = "The answers changed while this app was built, so it was not kept. "
+            + "Write it again to build what they say now.";
+        _phase = Phase.Confirm;
+        StateHasChanged();
+
+        return true;
     }
 
     /// <summary>

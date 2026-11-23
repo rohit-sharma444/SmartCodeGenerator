@@ -91,6 +91,39 @@ public sealed class ExcelNumberFormats
     }
 
     /// <summary>
+    /// Whether a cell of this style holds a DURATION: Excel's builtin 46 (<c>[h]:mm:ss</c>), or a
+    /// code with an elapsed-time token (<c>[h]</c>, <c>[mm]</c>, <c>[ss]</c>). Such a number is a
+    /// count of days to show as hours, not a date: 1.5 is 36 hours, never 1 January 1900.
+    /// </summary>
+    public bool IsElapsed(int styleIndex)
+    {
+        var id = FormatId(styleIndex);
+
+        if (id is null)
+            return false;
+
+        if (id.Value == 46)
+            return true;
+
+        if (!codes.TryGetValue(id.Value, out var code))
+            return false;
+
+        var section = code.Split(';')[0];
+        for (var start = section.IndexOf('['); start >= 0; start = section.IndexOf('[', start + 1))
+        {
+            var end = section.IndexOf(']', start + 1);
+            if (end < 0)
+                return false;
+
+            var inner = section[(start + 1)..end];
+            if (inner.Length > 0 && inner.All(x => x is 'h' or 'H' or 'm' or 'M' or 's' or 'S'))
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// The width a cell of this style pads its number to, or null when it does not pad. Deliberately
     /// narrow: the code must be nothing but two or more zeros. Anything else is an ordinary number
     /// format, and padding one would invent digits the file never held.

@@ -97,6 +97,7 @@ public static class DataModelBuilder
         var links = Links(tables);
 
         AddRelationships(model, links, sources);
+        OptionalWhereUnlinked(model, tables);
         AddProposals(model, sources, links);
         AddEntityProposals(model, sources, links);
         RecordNormalization(model, applied);
@@ -239,6 +240,18 @@ public static class DataModelBuilder
             .Select(c => WithIdSpelledId(NameNormalizer.ToFieldNameFromData(c.Name)))
             .ToList();
 
+        // A header that cannot become a name ("%", "#") is named by its position, as a blank one
+        // is (Column9): dropped, the column's values were lost with only `why` to say so.
+        var positional = new bool[columnNames.Count];
+        for (var i = 0; i < columnNames.Count; i++)
+        {
+            if (NameNormalizer.IsValidIdentifier(columnNames[i]))
+                continue;
+
+            columnNames[i] = $"Column{i + 1}";
+            positional[i] = true;
+        }
+
         // The table's own name, before it was made singular: Customers keyed by CustomersId is
         // as much keyed by itself as by CustomerId, and the keys pointing at it name that column.
         var tableKeyName = NameNormalizer.ToFieldName(table.Name);
@@ -332,7 +345,7 @@ public static class DataModelBuilder
             var fate = string.Equals(resolved, fieldName, StringComparison.Ordinal)
                 ? renamedForLink[i] ? ColumnFate.RenamedForItsLink
                   : column.DuplicateOf is not null ? ColumnFate.RenamedOffADuplicate
-                  : StartsWithADigit(column.Name) ? ColumnFate.RenamedToAUsableName
+                  : StartsWithADigit(column.Name) || positional[i] ? ColumnFate.RenamedToAUsableName
                   : ColumnFate.Kept
                 : ReservedMemberNames.Contains(fieldName)
                     ? ColumnFate.RenamedOffAnInheritedMember
@@ -970,12 +983,33 @@ public static class DataModelBuilder
                 // A column a CHECK limits to a list can never hold more distinct values than the
                 // list has: three rows using all three statuses is not uniqueness, and accepting it
                 // would refuse every new record.
-                var fieldMayBeUnique = mayBeUnique && field.Facts?.AllowedValues is null;
+                // Nor is a stamped date (CreatedOn, ModifiedOn) unique: the store sets it to the
+                // time of the save, so two records saved together would refuse each other.
+                var fieldMayBeUnique = mayBeUnique && field.Facts?.AllowedValues is null
+                    && !DomainModelMapper.IsAuditField(field.Name);
 
                 foreach (var proposal in RuleProposals.For(
                              scan, field.Name, field.Type, fieldMayBeUnique))
                     field.Proposals.Add(proposal);
             }
+        }
+    }
+
+    /// <summary>
+    /// A key the import has to leave unset in some row (it names no row, two rows, or a row past
+    /// the seed cap) is not required: that row is seeded with 0, "no parent", and a required key
+    /// refused it on its first unchanged save. It stays an int, as every key does.
+    /// </summary>
+    private static void OptionalWhereUnlinked(CandidateDomainModel model, IReadOnlyList<TabularTable> tables)
+    {
+        foreach (var (entityName, fieldName) in TabularImport.UnlinkedFields(tables))
+        {
+            var field = model.Entities
+                .FirstOrDefault(e => string.Equals(e.Name, entityName, StringComparison.OrdinalIgnoreCase))
+                ?.Fields.FirstOrDefault(f => string.Equals(f.Name, fieldName, StringComparison.OrdinalIgnoreCase));
+
+            if (field is not null)
+                field.Facts = (field.Facts ?? new CodeGenerationEngine.Models.TypeFacts()) with { IsNullable = true };
         }
     }
 

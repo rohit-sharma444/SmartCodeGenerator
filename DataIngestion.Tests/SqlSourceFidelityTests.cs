@@ -93,7 +93,7 @@ public class SqlSourceFidelityTests
     /// The generated models and validators, compiled. Fails the test with the compiler's own
     /// errors when they do not compile.
     /// </summary>
-    private static Assembly Compile(Generated app)
+    private static Assembly Compile(Generated app, bool referencesRequired = false)
     {
         var names = ForeignKeys.ClassNameSet(app.Classes);
 
@@ -114,7 +114,7 @@ public class SqlSourceFidelityTests
             files.Add(($"Models/{definition.Name}.cs", RoslynClassGenerator.Generate(definition, "Acme.Models")));
             files.Add(($"Validation/{definition.Name}Validator.Generated.cs",
                 ValidatorTemplate.GeneratedForLinks("Acme", definition, ForeignKeys.LinksOf(definition, names),
-                    referencesRequired: false,
+                    referencesRequired: referencesRequired,
                     referencedBy: ForeignKeys.ReferencesTo(definition.Name, app.Classes),
                     businessRules: definition.BusinessRules)));
             files.Add(($"Validation/{definition.Name}Validator.Custom.cs",
@@ -963,6 +963,54 @@ public class SqlSourceFidelityTests
         Assert.All(SeedRows(assembly, app, "Chore"), row => Assert.Empty(Validate(assembly, "Chore", row)));
         Assert.Contains(Validate(assembly, "Chore", New(assembly, "Chore", ("Title", "x"), ("Qty", 1))),
             m => m.Contains("DueOn"));
+    }
+
+    [Fact]
+    public void An_imported_audit_date_is_never_required_nor_offered_as_unique()
+    {
+        // G2: the screens and the API never fill CreatedOn/ModifiedOn in (the store stamps them on
+        // save, after validation), so a required rule on them refused every new record.
+        var table = DataIngestion.Schema.Readers.CsvReader.FromText("Notes", "notes.csv",
+            "Id,Title,DueOn,CreatedOn,ModifiedOn\r\n1,Write,2024-03-01,2024-01-01 10:00,2024-01-02 10:00\r\n"
+            + "2,Test,2024-04-15,2024-01-03 11:00,2024-01-04 11:00\r\n", ',');
+
+        var app = Generate([table]);
+
+        foreach (var name in new[] { "CreatedOn", "ModifiedOn" })
+        {
+            Assert.Equal("DateTime", Property(app, "Note", name).Type);
+            Assert.DoesNotContain(Property(app, "Note", name).Rules, r => r.Name is "required" or "unique");
+            Assert.DoesNotContain(app.Model.Entities.Single().Fields.Single(f => f.Name == name).Proposals,
+                p => p.Rule.Name == "unique");
+        }
+
+        // A8 still holds for a date the user does fill in.
+        Assert.Contains(Property(app, "Note", "DueOn").Rules, r => r.Name == "required");
+
+        var assembly = Compile(app);
+        Assert.All(SeedRows(assembly, app, "Note"), row => Assert.Empty(Validate(assembly, "Note", row)));
+        Assert.Empty(Validate(assembly, "Note",
+            New(assembly, "Note", ("Title", "x"), ("DueOn", new DateTime(2024, 5, 1)))));
+    }
+
+    [Fact]
+    public void A_reference_the_import_cleared_is_not_required_so_its_seeded_row_is_valid()
+    {
+        // G9: Order 3 names customer 999, which no row carries. The import leaves it unset (0),
+        // and a required key then refused the seeded row on its first unchanged save.
+        var customers = DataIngestion.Schema.Readers.CsvReader.FromText("Customers", "customers.csv",
+            "CustomerId,Name\r\n101,Ann\r\n102,Bob\r\n103,Cy\r\n", ',');
+        var orders = DataIngestion.Schema.Readers.CsvReader.FromText("Orders", "orders.csv",
+            "OrderId,CustomerId,Total\r\n1,101,5.5\r\n2,102,7\r\n3,999,9\r\n", ',');
+
+        var app = Generate([customers, orders]);
+
+        // Required by kind (an order is a transaction), as the scaffolder emits it.
+        var assembly = Compile(app, referencesRequired: true);
+        Assert.All(SeedRows(assembly, app, "Order"), row => Assert.Empty(Validate(assembly, "Order", row)));
+
+        Assert.Contains(app.Data.Notes, n => n.Contains("could not be linked"));
+        Assert.Contains(app.Data.Notes, n => n.Contains("Order.CustomerId is not required"));
     }
 
     // --- S12: a column whose name starts with a digit ---
