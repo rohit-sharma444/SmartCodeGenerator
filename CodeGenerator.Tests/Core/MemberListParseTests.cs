@@ -122,6 +122,98 @@ public sealed class MemberListParseTests
         Assert.AreEqual("Customer Customer", command.IgnoredProperties[0]);
     }
 
+    // The primitive pattern matched `Email string` inside `Email string?` and `Tags string` inside
+    // `Tags string[]`, so the class got `string Email` and `string Tags`: the user's `?` and `[]`
+    // were lost with no word, while add property kept them.
+    [TestMethod]
+    [DataRow("create class Customer with properties Name string, Email string?", "Email", "string?")]
+    [DataRow("create class Customer with properties Name string, Age int?", "Age", "int?")]
+    [DataRow("create class Customer with properties Name string, Tags string[]", "Tags", "string[]")]
+    [DataRow("create class Customer with properties Name string, Scores List<int>", "Scores", "List<int>")]
+    [DataRow("create class Customer with properties Name string, Joined DateTime?", "Joined", "DateTime?")]
+    public void A_nullable_array_or_list_type_is_kept_as_typed(string sentence, string name, string type)
+    {
+        var command = CommandFront.Parse(sentence, _workspace);
+
+        var property = command.Properties.SingleOrDefault(p => p.Name == name);
+        Assert.IsNotNull(property, sentence);
+        Assert.AreEqual(type, property.Type, sentence);
+        Assert.IsEmpty(command.IgnoredProperties, sentence);
+    }
+
+    // `2x int` was reported as ignored, but the pattern had matched `x int` inside it and the
+    // class got a property X that nobody asked for.
+    [TestMethod]
+    public void An_entry_with_an_invalid_name_is_ignored_and_not_half_read()
+    {
+        var command = CommandFront.Parse(
+            "create class Thing with properties Name string, 2x int", _workspace);
+
+        CollectionAssert.AreEqual(new[] { "Name" }, Names(command));
+        CollectionAssert.AreEqual(new[] { "2x int" }, command.IgnoredProperties);
+    }
+
+    [TestMethod]
+    public void The_ignored_message_says_why_for_an_invalid_name()
+    {
+        var output = Captured(() => Run("create class Thing with properties Name string, 2x int"));
+
+        StringAssert.Contains(output, "Ignored '2x int': '2x' is not a valid property name.");
+        Assert.DoesNotContain("X {", Source("Thing"));
+    }
+
+    // create class wrote `public string Name { get; set; }` with no initial value, and a net10
+    // project (Nullable enable) warned CS8618 for each one; add property writes `= string.Empty`.
+    [TestMethod]
+    public void A_new_class_has_no_nullable_warnings()
+    {
+        var created = false;
+        var output = Captured(() => created = Run(
+            "create class Customer with properties Name string, Email string?, Tags string[], Scores List<int>, Age int"));
+        Assert.IsTrue(created, output);
+
+        var code = Source("Customer");
+        StringAssert.Contains(code, "public string Name { get; set; } = string.Empty;");
+        StringAssert.Contains(code, "public string? Email { get; set; }");
+        Assert.DoesNotContain("Email { get; set; } =", code);
+
+        var result = Compiler.Compile("using System.Collections.Generic;\n" + code);
+        Assert.IsTrue(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
+        Assert.IsEmpty(
+            result.Diagnostics.Where(d => d.Id == "CS8618").ToList(),
+            string.Join(Environment.NewLine, result.Diagnostics));
+    }
+
+    // "and methods Save, Load implements IEntity" read the last method as "Load implements IEntity"
+    // and dropped it; without the implements clause both methods were made.
+    [TestMethod]
+    [DataRow("create class Product with properties Name string and methods Save, Load implements IEntity")]
+    [DataRow("create class Product with properties Name string and methods Save, Load inherits Item")]
+    [DataRow("create class Product with properties Name string and methods Save and Load extends Item")]
+    public void A_trailing_implements_or_inherits_clause_keeps_the_last_method(string sentence)
+    {
+        var command = CommandFront.Parse(sentence, _workspace);
+
+        CollectionAssert.AreEqual(new[] { "Save", "Load" }, command.Methods.Select(m => m.Name).ToArray(), sentence);
+    }
+
+    private static string Captured(Action action)
+    {
+        var output = new StringWriter();
+        var original = Console.Out;
+        Console.SetOut(output);
+        try
+        {
+            action();
+        }
+        finally
+        {
+            Console.SetOut(original);
+        }
+
+        return output.ToString();
+    }
+
     // ----- add property ----------------------------------------------------
 
     // Each of these reported "Property '' already exists.": the quote, the article-like class

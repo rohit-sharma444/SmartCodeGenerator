@@ -293,8 +293,17 @@ public static class CommandHandlingService
     {
         foreach (var ignored in command.IgnoredProperties)
         {
+            // "2x int" was told it had a type that is not primitive, when the name was the fault.
+            var name = ignored.Split(' ', 2)[0];
+            if (!Microsoft.CodeAnalysis.CSharp.SyntaxFacts.IsValidIdentifier(name))
+            {
+                Output.Warning($"Ignored '{ignored}': '{name}' is not a valid property name.");
+                continue;
+            }
+
             Output.Warning(
-                $"Ignored '{ignored}': only primitive property types can be given here. "
+                $"Ignored '{ignored}': only built-in types (string, int, decimal, DateTime and the like, "
+                + "also with ?, [] or in List<>) can be given here. "
                 + "Relationships between classes are set separately — the tool will offer.");
         }
     }
