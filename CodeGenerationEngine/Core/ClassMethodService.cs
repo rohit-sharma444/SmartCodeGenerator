@@ -1,3 +1,4 @@
+using CodeGenerationEngine.Models;
 using Microsoft.CodeAnalysis.CSharp;
 
 namespace CodeGenerationEngine.Core;
@@ -14,7 +15,7 @@ namespace CodeGenerationEngine.Core;
 public static class ClassMethodService
 {
     public static bool AddMethod(string workspaceRoot, string className,
-        string methodName, string returnType, out string message)
+        string methodName, string returnType, IReadOnlyList<ParameterDefinition> parameters, out string message)
     {
         message = string.Empty;
 
@@ -54,7 +55,27 @@ public static class ClassMethodService
                     return false;
             }
 
-            var methodCode = $@"public {returnType} {methodName}()
+            // Each parameter type is bound where the method goes, as the return type is: a type
+            // that does not exist is refused by its parameter, and nothing is written.
+            foreach (var parameter in parameters)
+            {
+                var type = SyntaxFactory.ParseTypeName(parameter.Type);
+                if (type.ContainsDiagnostics)
+                {
+                    message = $"Parameter '{parameter.Name}': '{parameter.Type}' is not a C# type. "
+                        + $"Method '{methodName}' was not added.";
+                    return false;
+                }
+
+                if (!TypeResolution.Resolves(workspaceRoot, part.File, part.Node, type, out var reason))
+                {
+                    message = $"Parameter '{parameter.Name}': {reason} Method '{methodName}' was not added.";
+                    return false;
+                }
+            }
+
+            var parameterList = string.Join(", ", parameters.Select(p => $"{p.Type} {p.Name}"));
+            var methodCode = $@"public {returnType} {methodName}({parameterList})
 {{
 {GenerateBody(returnType)}}}";
 

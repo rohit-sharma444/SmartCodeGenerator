@@ -52,6 +52,12 @@ public sealed class ParsedCommand
     /// </summary>
     public List<(string Entry, string Error)> IgnoredMethods { get; set; } = [];
 
+    /// <summary>
+    /// The <see cref="Metadata"/> key under which <c>add method</c> carries a parameter list that
+    /// could not be read, so the handler refuses the method by that reason.
+    /// </summary>
+    public const string ParameterErrorKey = "ParameterError";
+
     // Single-property member operations (add/remove property on an existing class).
     public string PropertyName { get; set; } = string.Empty;
     public string PropertyType { get; set; } = "string";

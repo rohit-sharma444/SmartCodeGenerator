@@ -403,10 +403,16 @@ public static class CommandHandlingService
 
     private static bool HandleCreateMethod(CommandExecutionContext ctx)
     {
+        if (ctx.Command.Metadata.TryGetValue(ParsedCommand.ParameterErrorKey, out var parameterError))
+        {
+            Output.Error($"Method '{ctx.Command.MethodName}' was not added: {parameterError}");
+            return false;
+        }
+
         UseDeclaredNames(ctx, member: null);
         var ok = ClassMethodService.AddMethod(
             ctx.WorkspaceRoot, ctx.Command.ClassName,
-            ctx.Command.MethodName, ctx.Command.ReturnType, out var message);
+            ctx.Command.MethodName, ctx.Command.ReturnType, ctx.Command.Parameters, out var message);
         Output.Result(ok, message);
         if (ok)
             WarnOfImplementersLacking(ctx, ctx.Command.MethodName);

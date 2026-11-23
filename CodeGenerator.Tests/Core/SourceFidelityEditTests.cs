@@ -287,7 +287,7 @@ public class SourceFidelityEditTests
     [TestMethod]
     public void Add_method_inserts_one_member_and_changes_nothing_else()
     {
-        Assert.IsTrue(ClassMethodService.AddMethod(_root, "Customer", "Close", "void", out var message), message);
+        Assert.IsTrue(ClassMethodService.AddMethod(_root, "Customer", "Close", "void", [], out var message), message);
 
         AssertKeptBomAndCrlf("Customer.cs");
         var text = Text("Customer.cs");
