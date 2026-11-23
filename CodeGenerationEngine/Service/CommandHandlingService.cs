@@ -328,6 +328,10 @@ public static class CommandHandlingService
                 + "also with ?, [] or in List<>) can be given here. "
                 + "Relationships between classes are set separately — the tool will offer.");
         }
+
+        // A method whose parameter list could not be read was left out, not written half-done.
+        foreach (var (entry, error) in command.IgnoredMethods)
+            Output.Warning($"Ignored method '{entry}': {error}");
     }
 
     private static bool HandleShowClass(CommandExecutionContext ctx)
@@ -629,6 +633,8 @@ public static class CommandHandlingService
         }
 
         var ok = GenerateAndSave(ctx);
+        if (ok)
+            ReportIgnoredProperties(ctx.Command);
 
         // Say which name was made when it is not what was typed (InterfaceNaming).
         var typed = System.Text.RegularExpressions.Regex.Match(ctx.RawInput,

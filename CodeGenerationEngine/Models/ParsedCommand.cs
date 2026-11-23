@@ -46,6 +46,12 @@ public sealed class ParsedCommand
     /// </summary>
     public bool ClassFromSession { get; set; }
 
+    /// <summary>
+    /// The methods in a create class / create interface member list whose parameter list could not
+    /// be read, each with the reason. They are left out of <see cref="Methods"/> and reported.
+    /// </summary>
+    public List<(string Entry, string Error)> IgnoredMethods { get; set; } = [];
+
     // Single-property member operations (add/remove property on an existing class).
     public string PropertyName { get; set; } = string.Empty;
     public string PropertyType { get; set; } = "string";
@@ -152,6 +158,7 @@ public sealed class ParsedCommand
         Properties.Clear();
         IgnoredProperties.Clear();
         ClassFromSession = false;
+        IgnoredMethods.Clear();
         Methods.Clear();
         Tags.Clear();
         Metadata.Clear();

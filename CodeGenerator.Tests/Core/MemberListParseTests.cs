@@ -197,6 +197,79 @@ public sealed class MemberListParseTests
         CollectionAssert.AreEqual(new[] { "Save", "Load" }, command.Methods.Select(m => m.Name).ToArray(), sentence);
     }
 
+    // ----- method parameters --------------------------------------------------
+
+    private static string Signatures(ParsedCommand command) =>
+        string.Join(" | ", command.Methods.Select(m =>
+            $"{m.ReturnType} {m.Name}({string.Join(", ", m.Parameters.Select(p => $"{p.Type} {p.Name}"))})"));
+
+    [TestMethod]
+    [DataRow("create class Order with properties Total decimal and methods Apply(decimal rate, string code), Save",
+        "void Apply(decimal rate, string code) | void Save()")]
+    [DataRow("create class Order with methods Ship with parameters address string, express bool",
+        "void Ship(string address, bool express)")]
+    [DataRow("create class Order with methods Ship taking address string, Save",
+        "void Ship(string address) | void Save()")]
+    [DataRow("create class Order with methods Apply(decimal rate) returns decimal implements IEntity",
+        "decimal Apply(decimal rate)")]
+    [DataRow("create class Calc with methods Add(int a, int b) returns int and Clear",
+        "int Add(int a, int b) | void Clear()")]
+    [DataRow("create class Order with methods Lines returns List<string>",
+        "List<string> Lines()")]
+    public void Create_class_reads_method_parameters(string sentence, string expected)
+    {
+        var command = CommandFront.Parse(sentence, _workspace);
+
+        Assert.AreEqual(IntentType.CreateClass, command.Intent, sentence);
+        Assert.AreEqual(expected, Signatures(command), sentence);
+        Assert.IsEmpty(command.IgnoredMethods, sentence);
+    }
+
+    [TestMethod]
+    public void The_implements_clause_after_a_parameter_list_is_kept()
+    {
+        var command = CommandFront.Parse(
+            "create class Order with methods Apply(decimal rate) returns decimal implements IEntity", _workspace);
+
+        CollectionAssert.AreEqual(new[] { "IEntity" }, command.Interfaces);
+    }
+
+    [TestMethod]
+    public void Create_interface_reads_method_parameters()
+    {
+        var command = CommandFront.Parse(
+            "create interface Shape with methods Area(decimal scale) returns decimal", _workspace);
+
+        Assert.AreEqual(IntentType.CreateInterface, command.Intent);
+        Assert.AreEqual("decimal Area(decimal scale)", Signatures(command));
+    }
+
+    [TestMethod]
+    public void A_class_with_method_parameters_is_written_and_compiles()
+    {
+        var created = false;
+        var output = Captured(() => created = Run(
+            "create class Order with methods Apply(decimal rate, string code) returns decimal"));
+        Assert.IsTrue(created, output);
+
+        var code = Source("Order");
+        StringAssert.Contains(code, "public decimal Apply(decimal rate, string code)");
+        AssertCompiles(code);
+    }
+
+    [TestMethod]
+    public void A_method_whose_parameters_do_not_parse_is_left_out_and_named()
+    {
+        var created = false;
+        var output = Captured(() => created = Run("create class Order with methods Apply(decimal), Save"));
+
+        Assert.IsTrue(created, output);
+        StringAssert.Contains(output, "Ignored method 'Apply(decimal)'");
+        var code = Source("Order");
+        Assert.DoesNotContain("Apply", code);
+        StringAssert.Contains(code, "Save()");
+    }
+
     private static string Captured(Action action)
     {
         var output = new StringWriter();
