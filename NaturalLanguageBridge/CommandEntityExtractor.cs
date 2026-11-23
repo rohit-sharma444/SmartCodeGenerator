@@ -146,7 +146,10 @@ public static class CommandEntityExtractor
                 break;
         }
         if (string.IsNullOrWhiteSpace(command.ClassName))
+        {
             command.ClassName = SessionContext.CurrentClass ?? string.Empty;
+            command.ClassFromSession = command.ClassName.Length > 0;
+        }
         return command;
     }
 
@@ -470,7 +473,10 @@ public static class CommandEntityExtractor
     /// </remarks>
     public static void ExtractPropertyInfo(string sentence, ParsedCommand command)
     {
-        var add = AddPropertyRe.Match(sentence);
+        // A delete reads the delete pattern only: "remove property Name from Item and add
+        // property Title string to Item" matched the add pattern first, and so named Title as
+        // the property to remove.
+        var add = command.Intent == IntentType.DeleteProperty ? Match.Empty : AddPropertyRe.Match(sentence);
         if (add.Success)
         {
             var name = add.Groups["name"].Value.Trim('"', '\'');
@@ -483,12 +489,13 @@ public static class CommandEntityExtractor
 
         // remove/delete property <name> from <class>
         var remove = Regex.Match(sentence,
-            @"\b(?:remove|delete|drop)\s+(?:property|field)\s+([A-Za-z_]\w*)\s+(?:from|of|in|on)\s+([A-Za-z_]\w*)",
+            @"\b(?:remove|delete|drop)\s+(?:the\s+)?(?:(?:property|field)\s+(?<property>[A-Za-z_]\w*)|(?<property>[A-Za-z_]\w*)\s+(?:property|field))"
+            + @"\s+(?:from|of|in|on)\s+(?:the\s+)?(?:class\s+)?(?<class>[A-Za-z_]\w*)",
             RegexOptions.IgnoreCase);
         if (remove.Success)
         {
-            command.PropertyName = ToPascalCase(remove.Groups[1].Value);
-            command.ClassName = ToPascalCase(remove.Groups[2].Value);
+            command.PropertyName = ToPascalCase(remove.Groups["property"].Value);
+            command.ClassName = ToPascalCase(remove.Groups["class"].Value);
         }
     }
 

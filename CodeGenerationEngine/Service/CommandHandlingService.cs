@@ -50,6 +50,12 @@ public static class CommandHandlingService
             SetLastCreatedProject = setLastCreatedProject
         };
 
+        // The line did not name the class; say which one the command acts on, before any
+        // "not found" that would otherwise name a class the user never typed on this line.
+        if (command.ClassFromSession && !string.IsNullOrWhiteSpace(command.ClassName)
+            && ClassTargetIntents.Contains(command.Intent))
+            Output.Detail($"Using the current class '{command.ClassName}'.");
+
         bool result = Dispatch(context);
 
         // Feed the outcome back to the learning layer.
@@ -59,6 +65,22 @@ public static class CommandHandlingService
         currentProject = context.CurrentProject;
         return result;
     }
+
+    /// <summary>
+    /// The intents that act on one class. The parser fills the session's class into every command
+    /// that names none, create project included, so the note is kept to these.
+    /// </summary>
+    private static readonly HashSet<IntentType> ClassTargetIntents =
+    [
+        IntentType.CreateProperty, IntentType.DeleteProperty, IntentType.RenameProperty,
+        IntentType.ChangePropertyType, IntentType.ListProperties,
+        IntentType.CreateMethod, IntentType.DeleteMethod, IntentType.RenameMethod, IntentType.ListMethods,
+        IntentType.ShowClass, IntentType.AnalyzeClass, IntentType.DeleteClass, IntentType.RenameClass,
+        IntentType.ClassInherit,
+        IntentType.AddValidation, IntentType.ShowValidation, IntentType.RemoveValidation,
+        IntentType.AddBusinessValidation, IntentType.ShowBusinessValidation,
+        IntentType.RemoveBusinessValidation, IntentType.GenerateValidator,
+    ];
 
     /// <summary>
     /// Maps each intent to its handler. A dictionary keeps registration flat and
@@ -999,8 +1021,17 @@ public static class CommandHandlingService
         {
             // Checked beside the rest of its project, which also fills in the members of the
             // interfaces it implements: compiled alone, a project interface was "CS0246 not found".
-            var completed = NewClassCompletion.Complete(
-                code, ProjectLocator.Resolve(ctx.Command, ctx.CurrentProject, ctx.WorkspaceRoot));
+            var target = ProjectLocator.Resolve(ctx.Command, ctx.CurrentProject, ctx.WorkspaceRoot);
+            var completed = NewClassCompletion.Complete(code, target);
+
+            // Checked with its project's files, an error is the class's own: saved, it made the
+            // project fail dotnet build while create class reported success.
+            if (completed.Errors.Count > 0 && !string.IsNullOrWhiteSpace(target.ProjectFile))
+            {
+                NewClassCompletion.ReportRefused(completed);
+                return false;
+            }
+
             NewClassCompletion.Report(completed);
             code = completed.Code;
         }

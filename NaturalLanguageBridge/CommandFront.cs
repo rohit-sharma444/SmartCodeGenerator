@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using CodeGenerationEngine.Core;
+using CodeGenerationEngine.Helper;
 using CodeIntelligence.Abstractions;
 using CodeGenerationEngine.Models;
 using CodeGenerationEngine.Service;
@@ -142,7 +143,8 @@ public static class CommandFront
     // `remove property <name> from <Class>`. Ahead of the mapper, which recognised it only with a
     // capitalised name: "remove property price from item" was not recognised at all.
     private static readonly Regex DeletePropertyRe =
-        new(@"^(?:remove|delete|drop)\s+property\s+(?<property>\w+)\s+(?:from|in|on|of)\s+(?<class>\w+)$",
+        new(@"^(?:remove|delete|drop)\s+(?:the\s+)?(?:property\s+(?<property>\w+)|(?<property>\w+)\s+property)"
+            + @"\s+(?:from|in|on|of)\s+(?:the\s+)?(?<class>\w+)(?:\s+class)?$",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     // `rename method <old> to <new> in <Class>`, shaped like RenamePropertyRe.
@@ -354,6 +356,7 @@ public static class CommandFront
             renameCmd.ClassName = renamePropertyMatch.Groups["class"].Success
                 ? renamePropertyMatch.Groups["class"].Value.Trim()
                 : SessionContext.CurrentClass ?? string.Empty;
+            renameCmd.ClassFromSession = FromSession(renamePropertyMatch);
 
             return renameCmd;
         }
@@ -365,6 +368,7 @@ public static class CommandFront
                 Intent = IntentType.DeleteMethod,
                 MethodName = deleteMethodMatch.Groups["method"].Value.Trim(),
                 ClassName = ClassOrCurrent(deleteMethodMatch),
+                ClassFromSession = FromSession(deleteMethodMatch),
                 OriginalSentence = input ?? string.Empty,
                 Confidence = 1.0
             };
@@ -388,6 +392,7 @@ public static class CommandFront
                 MethodName = renameMethodMatch.Groups["old"].Value.Trim(),
                 NewMethodName = renameMethodMatch.Groups["new"].Value.Trim(),
                 ClassName = ClassOrCurrent(renameMethodMatch),
+                ClassFromSession = FromSession(renameMethodMatch),
                 OriginalSentence = input ?? string.Empty,
                 Confidence = 1.0
             };
@@ -400,6 +405,7 @@ public static class CommandFront
                 PropertyName = changeTypeMatch.Groups["property"].Value.Trim(),
                 PropertyType = changeTypeMatch.Groups["type"].Value.Trim(),
                 ClassName = ClassOrCurrent(changeTypeMatch),
+                ClassFromSession = FromSession(changeTypeMatch),
                 OriginalSentence = input ?? string.Empty,
                 Confidence = 1.0
             };
@@ -501,6 +507,33 @@ public static class CommandFront
             ? match.Groups["class"].Value.Trim()
             : SessionContext.CurrentClass ?? string.Empty;
 
+    /// <summary>Whether <see cref="ClassOrCurrent"/> took the class from the session.</summary>
+    private static bool FromSession(Match match) =>
+        !match.Groups["class"].Success && !string.IsNullOrEmpty(SessionContext.CurrentClass);
+
+    // "remove property Name from Item and add property Title string to Item": a second command
+    // after "and", "then" or a comma. One line runs one command, so the line is refused whole.
+    private static readonly Regex SecondCommandRe = new(
+        @"(?:\s+(?:and|then)|\s*[,;])\s+(?:then\s+)?(?<second>(?:add|create|remove|delete|drop|rename|change|retype)\s+"
+        + @"(?:(?:a|an|the|new)\s+)?(?:property|field|method|class|interface|project|validation)\b.*)$",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>
+    /// The two commands in <paramref name="text"/>, when it holds two; a build app description is
+    /// prose, and is never split.
+    /// </summary>
+    internal static (string First, string Second)? TwoCommands(string text)
+    {
+        if (text.StartsWith("build app", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        var match = SecondCommandRe.Match(text);
+        if (!match.Success || match.Index == 0)
+            return null;
+
+        return (text[..match.Index].Trim(), match.Groups["second"].Value.Trim());
+    }
+
     /// <summary>Outcome of running one command: whether the action succeeded
     /// (<paramref name="Handled"/>) and, distinctly, whether the input was a
     /// command we understood at all (<paramref name="Recognized"/>). A recognized
@@ -551,6 +584,16 @@ public static class CommandFront
         // session as it found it: otherwise the undo journal sees a changed state, records an empty
         // entry for the refusal and clears redo.
         var before = ParsingStateSnapshot.Capture();
+
+        // Refused before it is parsed: a parse reads one half, and the half it read was not
+        // always the first one.
+        if (TwoCommands((input ?? string.Empty).Trim()) is var (first, second))
+        {
+            Output.Error("This line holds two commands. Type them one at a time:");
+            Output.Detail($"  {first}");
+            Output.Detail($"  {second}");
+            return new RunResult(Handled: false, Recognized: true, NeededAi: false);
+        }
 
         if (onAnalyzed is not null)
             onAnalyzed(NlpActionProvider.Analyze(input ?? string.Empty));
