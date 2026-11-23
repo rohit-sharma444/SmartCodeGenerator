@@ -32,8 +32,11 @@ public class DiscoveryLeftBehindTests
         session.SetDescription("a lending library");
         gate.Set();
 
-        rendered.WaitForAssertion(() => Assert.IsTrue(discoverer.Returned), TimeSpan.FromSeconds(10));
-        rendered.WaitForAssertion(() => Assert.IsNull(Discovering(session)), TimeSpan.FromSeconds(10));
+        // Plain waits: bUnit re-checks a WaitForAssertion only when the panel renders, and these
+        // flags change on the discovery thread with no render after them, so under a loaded test
+        // run the check could miss them and time out.
+        Assert.IsTrue(SpinWait.SpinUntil(() => discoverer.Returned, TimeSpan.FromSeconds(30)), "the discovery never returned");
+        Assert.IsTrue(SpinWait.SpinUntil(() => Discovering(session) is null, TimeSpan.FromSeconds(30)), "the discovery was never finished");
 
         Assert.AreEqual(BuildStage.Describe, session.Current, "the user was pulled off the node");
         Assert.IsNull(session.Model, "the old description's classes were applied");
@@ -49,7 +52,7 @@ public class DiscoveryLeftBehindTests
         session.GoTo(BuildStage.Describe);
         gate.Set();
 
-        rendered.WaitForAssertion(() => Assert.IsNotNull(session.Model), TimeSpan.FromSeconds(10));
+        rendered.WaitForAssertion(() => Assert.IsNotNull(session.Model), TimeSpan.FromSeconds(30));
         Assert.AreEqual(BuildStage.Describe, session.Current, "the user was pulled off the node");
     }
 
@@ -63,7 +66,7 @@ public class DiscoveryLeftBehindTests
         gate.Set();
 
         rendered.WaitForAssertion(
-            () => Assert.AreEqual(BuildStage.Review, session.Current), TimeSpan.FromSeconds(10));
+            () => Assert.AreEqual(BuildStage.Review, session.Current), TimeSpan.FromSeconds(30));
         Assert.IsNotNull(session.Model);
     }
 
@@ -77,16 +80,72 @@ public class DiscoveryLeftBehindTests
         rendered.Find("button.stop-discovery").Click();
 
         rendered.WaitForAssertion(
-            () => Assert.IsEmpty(rendered.FindAll("button.stop-discovery")), TimeSpan.FromSeconds(10));
+            () => Assert.IsEmpty(rendered.FindAll("button.stop-discovery")), TimeSpan.FromSeconds(30));
         Assert.IsNotEmpty(rendered.FindAll("button.start"), "nothing offers to start again");
 
         gate.Set();
-        rendered.WaitForAssertion(() => Assert.IsTrue(discoverer.Returned), TimeSpan.FromSeconds(10));
+        Assert.IsTrue(SpinWait.SpinUntil(() => discoverer.Returned, TimeSpan.FromSeconds(30)), "the discovery never returned");
 
         Assert.IsTrue(discoverer.Cancelled, "the discovery was not told to stop");
 
         Assert.IsNull(session.Model);
         Assert.AreEqual(BuildStage.Discover, session.Current);
+    }
+
+    /// <remarks>
+    /// The call blocks for minutes. As a thread-pool work item it waited behind every other busy
+    /// worker before it even started, and it then held a worker for the whole wait. The bound is the
+    /// assertion: pool thread injection frees a worker after a few seconds, so a wait with no bound
+    /// passes on the old code too.
+    /// </remarks>
+    [TestMethod]
+    [DoNotParallelize]
+    public void The_discovery_starts_when_every_pool_worker_is_busy()
+    {
+        using var context = new BunitContext();
+        using var gate = new ManualResetEventSlim();
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        var discoverer = new Discoverer(gate, entered);
+        context.Services.AddSingleton<DomainDiscoverer>(discoverer.Discover);
+        var session = AtDiscover();
+
+        ThreadPool.GetMinThreads(out var workers, out _);
+        for (var queued = 0; queued < workers + 4; queued++)
+            ThreadPool.UnsafeQueueUserWorkItem(_ => release.Wait(), null);
+
+        bool started;
+        try
+        {
+            context.Render<DiscoverStage>(p => p
+                .Add(c => c.Session, session)
+                .Add(c => c.Navigation, new StageNavigation())
+                .Add(c => c.OnAdvance, () => { }));
+
+            started = entered.Wait(TimeSpan.FromSeconds(1));
+        }
+        finally
+        {
+            release.Set();
+            gate.Set();
+        }
+
+        Assert.IsTrue(started, "the discovery waited for a free pool worker");
+    }
+
+    private static BuildSession AtDiscover()
+    {
+        var session = new BuildSession("a shop", Path.GetTempPath(), AppCustomization.Default);
+        session.SetTarget(new ConsoleTarget());
+        session.Advance();
+        session.SetNoData();
+        session.Advance();
+        session.SetCustomization(AppCustomization.Default);
+        session.Advance();
+
+        Assert.AreEqual(BuildStage.Discover, session.Current);
+
+        return session;
     }
 
     /// <summary>The in-flight discovery the session holds, read the way a joiner would.</summary>
@@ -105,7 +164,7 @@ public class DiscoveryLeftBehindTests
             CancellationToken cancel)
         {
             entered.Set();
-            gate.Wait(TimeSpan.FromSeconds(30));
+            gate.Wait(TimeSpan.FromSeconds(60));
             Cancelled = cancel.IsCancellationRequested;
 
             var model = new CandidateDomainModel();
@@ -125,22 +184,14 @@ public class DiscoveryLeftBehindTests
         var discoverer = new Discoverer(gate, entered);
         context.Services.AddSingleton<DomainDiscoverer>(discoverer.Discover);
 
-        var session = new BuildSession("a shop", Path.GetTempPath(), AppCustomization.Default);
-        session.SetTarget(new ConsoleTarget());
-        session.Advance();
-        session.SetNoData();
-        session.Advance();
-        session.SetCustomization(AppCustomization.Default);
-        session.Advance();
-
-        Assert.AreEqual(BuildStage.Discover, session.Current);
+        var session = AtDiscover();
 
         var rendered = context.Render<DiscoverStage>(p => p
             .Add(c => c.Session, session)
             .Add(c => c.Navigation, new StageNavigation())
             .Add(c => c.OnAdvance, () => { }));
 
-        Assert.IsTrue(entered.Wait(TimeSpan.FromSeconds(10)), "the discovery never started");
+        Assert.IsTrue(entered.Wait(TimeSpan.FromSeconds(30)), "the discovery never started");
 
         return (rendered, session, discoverer);
     }

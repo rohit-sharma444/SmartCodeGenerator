@@ -165,11 +165,18 @@ else
         //
         // What it is discovered FROM, kept to check the outcome against: the user can go back to
         // Describe while it runs and type another description.
+        //
+        // On a thread of its own (LongRunning), not a pool worker: the call blocks for minutes. As
+        // a pool work item it waited behind every busy worker before it even started, and then held
+        // a worker that Blazor's circuits need for the whole wait.
         var description = Session.Description;
         var discover = Discoverer;
         var (task, owner) = Session.JoinDiscovery(
-            stop => Task.Run(() => discover(
-                description, Session.WorkspaceRoot, Session.RecordDiscoveryProgress, stop)));
+            stop => Task.Factory.StartNew(
+                () => discover(description, Session.WorkspaceRoot, Session.RecordDiscoveryProgress, stop),
+                CancellationToken.None,
+                TaskCreationOptions.LongRunning | TaskCreationOptions.DenyChildAttach,
+                TaskScheduler.Default));
 
         DiscoveryOutcome? outcome = null;
 
