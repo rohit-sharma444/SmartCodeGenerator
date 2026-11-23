@@ -295,9 +295,11 @@ public static class CommandDictionary
             Category = "Methods",
             Command = "add method <method name> to <class name>",
             Description = "Adds a method to a class or an interface. Give a return type with "
-                        + "'add method <name> returns <type> to <class name>'. On an interface it "
-                        + "names the implementers that lack the method.",
-            Example = "add method Save to Employee"
+                        + "'add method <name> returns <type> to <class name>'. Give parameters as "
+                        + "'add method <name>(<type> <name>, ...) to <class name>' or "
+                        + "'add method <name> with parameters <name> <type>, ... to <class name>'. "
+                        + "On an interface it names the implementers that lack the method.",
+            Example = "add method ApplyDiscount(decimal percent) returns decimal to Order"
         },
         new()
         {
