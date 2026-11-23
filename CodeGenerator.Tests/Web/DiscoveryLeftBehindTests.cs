@@ -17,8 +17,13 @@ namespace CodeGenerator.Tests.Web;
 /// A local model takes minutes. Before this, a user who went back to Describe meanwhile and typed
 /// another description was pulled off that node when discovery ended, and given the classes of
 /// the old description.
+///
+/// Not run in parallel: after the call returns, the page applies its outcome on a pool thread, as
+/// Blazor always does. With every worker blocked that took 4.3 s on this machine, and in the full
+/// parallel suite it outlasted a 30 s wait.
 /// </remarks>
 [TestClass]
+[DoNotParallelize]
 public class DiscoveryLeftBehindTests
 {
     [TestMethod]
@@ -99,7 +104,6 @@ public class DiscoveryLeftBehindTests
     /// passes on the old code too.
     /// </remarks>
     [TestMethod]
-    [DoNotParallelize]
     public void The_discovery_starts_when_every_pool_worker_is_busy()
     {
         using var context = new BunitContext();
