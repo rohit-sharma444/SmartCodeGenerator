@@ -94,6 +94,8 @@ public sealed class CommandTargetTests
     [TestMethod]
     [DataRow("create class Shop with properties Name string and methods Save")]
     [DataRow("create class Shop with properties Name string and Age int")]
+    [DataRow("create class Employee and add method AddEmployee and EmployeeList method")]
+    [DataRow("Please create a class Employee with properties EmpId int, Name string and add method AddEmployee")]
     public void One_command_with_and_in_it_is_not_refused(string sentence)
     {
         var (result, output) = Run(sentence);

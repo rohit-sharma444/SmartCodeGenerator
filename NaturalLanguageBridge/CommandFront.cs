@@ -518,6 +518,12 @@ public static class CommandFront
         + @"(?:(?:a|an|the|new)\s+)?(?:property|field|method|class|interface|project|validation)\b.*)$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    private static readonly Regex CreatesAType = new(
+        @"\bcreate\s+(?:(?:a|an|new)\s+)?(?:class|interface)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly Regex MemberAddition = new(
+        @"^(?:add|create)\s+(?:(?:a|an|new)\s+)?(?:property|field|method)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     /// <summary>
     /// The two commands in <paramref name="text"/>, when it holds two; a build app description is
     /// prose, and is never split.
@@ -529,6 +535,12 @@ public static class CommandFront
 
         var match = SecondCommandRe.Match(text);
         if (!match.Success || match.Index == 0)
+            return null;
+
+        // "create class Employee and add method AddEmployee": the members of the class being
+        // created, one command that the create-class parser reads whole.
+        if (CreatesAType.IsMatch(text[..match.Index])
+            && MemberAddition.IsMatch(match.Groups["second"].Value))
             return null;
 
         return (text[..match.Index].Trim(), match.Groups["second"].Value.Trim());
