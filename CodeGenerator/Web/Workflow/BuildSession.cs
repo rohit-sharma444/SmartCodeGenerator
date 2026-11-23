@@ -107,24 +107,31 @@ public sealed class BuildSession
     /// answers alone would save every stage transition and lose every edit, which is
     /// precisely the work worth keeping.
     /// <para>
-    /// It does not raise <see cref="Changed"/> for the edit itself: the panel that made it has
-    /// already re-rendered, and the other tab is repainted by the edit's own broadcast. It does
-    /// when the edit discards a generated app, because the Generate and Run boxes change too.
+    /// A real edit raises <see cref="Changed"/>, because nothing else repaints a second tab: it
+    /// went on listing a removed field until an edit there was refused against it.
     /// </para>
     /// </remarks>
-    public void ModelEdited()
+    /// <param name="changed">Whether the editor took the edit. A refused one leaves the model as
+    /// it was, so it is saved but discards nothing: it used to drop the generated app.</param>
+    public void ModelEdited(bool changed = true)
     {
-        // A review edit changes what Generate would write, as a changed answer on an earlier node
-        // does - but it never goes through Change, so it has to discard the written app itself.
-        // Without this the old app stayed on the Generate node with no way to write the new one.
-        if (Generated is not null || Started)
+        if (changed)
         {
-            foreach (var stage in StageGraph.Invalidates(BuildStage.Review))
-                if (_states[stage] != StageState.Active)
-                    _states[stage] = StageState.Pending;
+            Revision++;
 
-            Generated = null;
-            Started = false;
+            // A review edit changes what Generate would write, as a changed answer on an earlier
+            // node does - but it never goes through Change, so it has to discard the written app
+            // itself. Without this the old app stayed on the Generate node with no way to write
+            // the new one.
+            if (Generated is not null || Started)
+            {
+                foreach (var stage in StageGraph.Invalidates(BuildStage.Review))
+                    if (_states[stage] != StageState.Active)
+                        _states[stage] = StageState.Pending;
+
+                Generated = null;
+                Started = false;
+            }
 
             Changed?.Invoke();
         }
@@ -352,17 +359,48 @@ public sealed class BuildSession
     /// <returns>The task to await, and whether this caller is the one that started it.</returns>
     public (Task<DiscoveryOutcome> Task, bool Owner) JoinDiscovery(
         Func<Task<DiscoveryOutcome>> discover)
+        => JoinDiscovery(_ => discover());
+
+    /// <summary>
+    /// As <see cref="JoinDiscovery(Func{Task{DiscoveryOutcome}})"/>, handing the call the token
+    /// <see cref="StopDiscovery"/> cancels.
+    /// </summary>
+    /// <remarks>
+    /// The task handed back is cancelled by <see cref="StopDiscovery"/> even when the call itself
+    /// cannot stop: every page waiting on it - the owner and every joiner - stops waiting at once.
+    /// </remarks>
+    public (Task<DiscoveryOutcome> Task, bool Owner) JoinDiscovery(
+        Func<CancellationToken, Task<DiscoveryOutcome>> discover)
     {
         lock (_discoveryGate)
         {
             if (_discoveryInFlight is { } running)
                 return (running, false);
 
-            var task = discover();
+            // Not disposed when the call ends: the call may still be reading the token.
+            var stop = new CancellationTokenSource();
+            var task = discover(stop.Token).WaitAsync(stop.Token);
+            _discoveryStop = stop;
             _discoveryInFlight = task;
 
             return (task, true);
         }
+    }
+
+    /// <summary>Cancels <see cref="_discoveryInFlight"/>; null when none is running.</summary>
+    private CancellationTokenSource? _discoveryStop;
+
+    /// <summary>
+    /// Stops the running discovery, so every page waiting on it stops waiting and nothing is applied.
+    /// </summary>
+    /// <remarks>
+    /// The busy view had no way out: a user who saw the wrong description going in could only wait
+    /// minutes for a model they did not want.
+    /// </remarks>
+    public void StopDiscovery()
+    {
+        lock (_discoveryGate)
+            _discoveryStop?.Cancel();
     }
 
     /// <summary>
@@ -379,6 +417,7 @@ public sealed class BuildSession
         lock (_discoveryGate)
         {
             _discoveryInFlight = null;
+            _discoveryStop = null;
 
             // Cleared with the call itself: the next run starts from nothing found, so a retry
             // after a failure cannot show the previous attempt's classes as though they were this
@@ -402,12 +441,34 @@ public sealed class BuildSession
         Generated = app;
         Started = false;
 
-        if (app.Scaffold.ProjectPath is { Length: > 0 } path
-            && !_written.Contains(path, StringComparer.OrdinalIgnoreCase))
-            _written.Add(path);
+        RecordWritten(app.Scaffold.ProjectPath);
 
         Changed?.Invoke();
     }
+
+    /// <summary>
+    /// Records a project folder this run wrote, without offering it to the run stage.
+    /// </summary>
+    /// <remarks>
+    /// For a write whose answers changed while it built: the app no longer matches them, so it is
+    /// not <see cref="Generated"/>, but the folder is on disk and a cancel must still name it.
+    /// </remarks>
+    public void RecordWritten(string? path)
+    {
+        if (path is { Length: > 0 } && !_written.Contains(path, StringComparer.OrdinalIgnoreCase))
+            _written.Add(path);
+    }
+
+    /// <summary>
+    /// Goes up by one on every change to an answer or to the model.
+    /// </summary>
+    /// <remarks>
+    /// Read by the generate stage before a write and again after its build: a build takes a
+    /// minute, and an answer changed meanwhile means the app it built is not the one the session
+    /// now wants. It recorded that app anyway, so Generate and Run described a WPF app under a
+    /// Console target.
+    /// </remarks>
+    public int Revision { get; private set; }
 
     /// <summary>
     /// The process the run stage started, while it is still ours to stop. Null before a run, and
@@ -694,6 +755,7 @@ public sealed class BuildSession
         if (!changed)
             return;
 
+        Revision++;
         FailureMessage = null;
 
         foreach (var invalidated in StageGraph.Invalidates(stage))
