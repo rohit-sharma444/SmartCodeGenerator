@@ -20,6 +20,13 @@ public static class MethodParameterParser
     /// <summary>The words that start a parameter list in the English form.</summary>
     public const string EnglishLead = @"(?:with\s+parameters?|taking|that\s+takes)";
 
+    /// <summary>
+    /// A type as a command names it: <c>decimal</c>, <c>int?</c>, <c>string[]</c>,
+    /// <c>Dictionary&lt;string, int&gt;</c>. A space is allowed only inside the angle brackets, so
+    /// "returns decimal value" is not read as the type "decimal value".
+    /// </summary>
+    public const string TypePattern = @"[A-Za-z_][\w\.]*(?:<.+>)?\??(?:\[\])*\??";
+
     public static bool TryParse(
         string text, Order order, out List<ParameterDefinition> parameters, out string? error)
     {

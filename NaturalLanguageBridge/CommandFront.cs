@@ -120,8 +120,11 @@ public static class CommandFront
     private static readonly Regex AddMethodRe =
         new(@"^(?:add|create|generate)\s+(?:(?:a|an|new)\s+)?method\s+(?<method>[A-Za-z_]\w*)"
             + @"(?:\s*\((?<cparams>[^)]*)\))?"
-            + @"(?:\s+returns?\s+(?<returns>[A-Za-z_][\w<>\[\],\.\?]*))?"
-            + $@"(?:\s+{MethodParameterParser.EnglishLead}\s+(?<eparams>.+?))?"
+            + $@"(?:\s+returns?\s+(?<returns>{MethodParameterParser.TypePattern}))?"
+            // "returns" can follow the English list too: "Ship with parameters address string
+            // returns bool to Order" read "string returns bool" as the type of address.
+            + $@"(?:\s+{MethodParameterParser.EnglishLead}\s+(?<eparams>.+?)"
+            + $@"(?:\s+returns?\s+(?<returns>{MethodParameterParser.TypePattern}))?)?"
             + @"\s+(?:to|for|in|on)\s+(?:class\s+(?=\S))?(?<class>[A-Za-z_]\w*)\s*[.!]?$",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 

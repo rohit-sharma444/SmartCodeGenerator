@@ -225,6 +225,51 @@ public sealed class MemberListParseTests
         Assert.IsEmpty(command.IgnoredMethods, sentence);
     }
 
+    // Found by the final review: each lost a method, or made one, without a word.
+    [TestMethod]
+    [DataRow("create class Calc with methods Add with parameters x int, y int",
+        "void Add(int x, int y)")]
+    [DataRow("create class Calc with methods Create taking x int",
+        "void Create(int x)")]
+    [DataRow("create class Order with methods Ship with parameters code string, map Dictionary<string, int>",
+        "void Ship(string code, Dictionary<string, int> map)")]
+    [DataRow("create class Order with methods Ship with parameters count int, a string",
+        "void Ship(int count, string a)")]
+    [DataRow("create class Order with methods Ship with parameters address string and Print method",
+        "void Ship(string address) | void Print()")]
+    [DataRow("create interface Shape with methods Ship with parameters address string and Print method",
+        "void Ship(string address) | void Print()")]
+    [DataRow("create class Order with methods Ship with parameters address string and express bool",
+        "void Ship(string address, bool express)")]
+    [DataRow("create class Order with methods Map returns Dictionary<string, int>",
+        "Dictionary<string, int> Map()")]
+    public void English_parameter_lists_keep_every_method(string sentence, string expected)
+    {
+        var command = CommandFront.Parse(sentence, _workspace);
+
+        Assert.AreEqual(expected, Signatures(command), sentence);
+        Assert.IsEmpty(command.IgnoredMethods, sentence);
+    }
+
+    [TestMethod]
+    public void A_parameter_is_not_also_a_property()
+    {
+        var command = CommandFront.Parse(
+            "create class Order and add method Ship with parameters address string", _workspace);
+
+        Assert.AreEqual("void Ship(string address)", Signatures(command));
+        Assert.IsEmpty(command.Properties, string.Join(", ", command.Properties.Select(p => p.Name)));
+    }
+
+    [TestMethod]
+    public void A_return_type_with_a_space_is_not_read_as_a_type()
+    {
+        var command = CommandFront.Parse(
+            "create class Order with methods Total returns decimal value", _workspace);
+
+        Assert.IsFalse(command.Methods.Any(m => m.ReturnType.Contains(' ')), Signatures(command));
+    }
+
     [TestMethod]
     public void The_implements_clause_after_a_parameter_list_is_kept()
     {

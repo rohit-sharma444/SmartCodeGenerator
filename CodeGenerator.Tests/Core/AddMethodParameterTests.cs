@@ -80,6 +80,10 @@ public sealed class AddMethodParameterTests
     [DataRow("add method Ship(string address, bool express) to Order", "public void Ship(string address, bool express)")]
     [DataRow("add method Assign(Customer customer) to Order", "public void Assign(Customer customer)")]
     [DataRow("add method Save to Order", "public void Save()")]
+    [DataRow("add method Ship with parameters address string returns bool to Order", "public bool Ship(string address)")]
+    // The fixture project has no implicit usings, so the generic type is named in full.
+    [DataRow("add method Lookup(string key) returns System.Collections.Generic.Dictionary<string, int> to Order",
+        "public System.Collections.Generic.Dictionary<string, int> Lookup(string key)")]
     public void The_method_is_written_with_its_parameters(string sentence, string expected)
     {
         Assert.IsTrue(Run(sentence), LastOutput);
