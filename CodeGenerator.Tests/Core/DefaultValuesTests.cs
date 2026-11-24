@@ -97,6 +97,29 @@ public sealed class DefaultValuesTests
     }
 
     [TestMethod]
+    public void TryExpression_SkipsBuildOutputAndWorksInAFolderWithNoProjectFile()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "cg_dv_" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(Path.Combine(folder, "obj"));
+        Directory.CreateDirectory(Path.Combine(folder, "bin"));
+        try
+        {
+            File.WriteAllText(Path.Combine(folder, "Status.cs"), "namespace Shop;\npublic enum Status { Active }\n");
+            // Stale copies in build output would make Status ambiguous (CS0101) if they were read.
+            File.WriteAllText(Path.Combine(folder, "obj", "Status.cs"), "namespace Shop;\npublic enum Status { Gone }\n");
+            File.WriteAllText(Path.Combine(folder, "bin", "Status.cs"), "namespace Shop;\npublic enum Status { Gone }\n");
+
+            Assert.IsTrue(DefaultValues.TryExpression("Status", "Status.Active", folder, out _, out var error), error);
+            Assert.IsFalse(DefaultValues.TryExpression("Status", "Status.Gone", folder, out _, out _));
+            Assert.IsTrue(DefaultValues.TryExpression("int", "1", folder, out _, out error), error);
+        }
+        finally
+        {
+            Directory.Delete(folder, true);
+        }
+    }
+
+    [TestMethod]
     public void Refusal_RequiredWithStaticOrPrivate()
     {
         Assert.AreEqual("'Id' cannot be both required and static.",

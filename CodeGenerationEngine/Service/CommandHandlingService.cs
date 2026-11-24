@@ -308,14 +308,87 @@ public static class CommandHandlingService
             return false;
         }
 
+        // GenerateClass writes a property's Initializer as given, so the default as typed is
+        // replaced here by the checked C# expression - or the command is refused, nothing written.
+        if (PropertyRefusal(ctx) is { } propertyError)
+        {
+            Output.Error(propertyError);
+            return false;
+        }
+
         var saved = GenerateAndSave(ctx);
 
         // After the class is on disk, and only if it got there: a note about what was left out of
         // a class that was never written would be the second confusing thing in a row.
         if (saved)
+        {
             ReportIgnoredProperties(command);
+            ReportIgnoredWords(command);
+        }
 
         return saved;
+    }
+
+    /// <summary>
+    /// Why a property in a create class list cannot be written - modifiers C# does not allow
+    /// together, a default on a struct property, or a default that is not a value of the type -
+    /// or null. Each default that fits is made the C# expression GenerateClass writes.
+    /// </summary>
+    private static string? PropertyRefusal(CommandExecutionContext ctx)
+    {
+        var command = ctx.Command;
+        var staticType = command.Modifier == TypeModifier.Static;
+        string? projectFolder = null;
+        var located = false;
+
+        foreach (var property in command.Properties)
+        {
+            var modifiers = property.Modifiers | (staticType ? PropertyModifiers.Static : PropertyModifiers.None);
+            if (PropertyModifierRules.Refusal(modifiers, property.Name) is { } refusal)
+                return refusal;
+
+            if (property.Initializer is null)
+                continue;
+
+            // C# 11 refuses an initializer in a struct that declares no constructor (CS8983).
+            if (command.Kind == DeclaredKind.Struct)
+                return $"A struct property gets its value in a constructor: add constructor to {command.ClassName}";
+
+            if (!located)
+            {
+                var target = ProjectLocator.Resolve(command, ctx.CurrentProject, ctx.WorkspaceRoot);
+                projectFolder = string.IsNullOrWhiteSpace(target.ProjectFile) ? null : Path.GetDirectoryName(target.ProjectFile);
+                located = true;
+            }
+
+            var type = Core.CodeGenerationEngine.ResolvePropertyType(property);
+            if (!DefaultValues.TryExpression(type, property.Initializer, projectFolder, out var expression, out var error))
+                return $"{property.Name}: {error}";
+
+            property.Initializer = expression;
+        }
+
+        return null;
+    }
+
+    /// <summary>The words a validation rule is given in (<c>min length 3</c>, <c>unique</c>).</summary>
+    private static readonly System.Text.RegularExpressions.Regex ValidationWords = new(
+        @"\b(?:min|max|minimum|maximum|minlength|maxlength|length|greater|less|between|allowed|unique|email|pattern|regex|positive|negative)\b",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>
+    /// Says which words after a property's type nothing read: they were dropped with no word
+    /// before. A validation rule has its own command, which the note gives.
+    /// </summary>
+    private static void ReportIgnoredWords(ParsedCommand command)
+    {
+        foreach (var (property, words) in command.IgnoredWords)
+        {
+            Output.Warning($"Ignored '{words}' after {property}"
+                + (ValidationWords.IsMatch(words)
+                    ? $": use add validation ... on {property} in {command.ClassName}"
+                    : ": only a default value (default <value> or = <value>) and readonly, private, static or required are read after the type."));
+        }
     }
 
     /// <summary>The C# rule a create command breaks, in the kind's terms, or null when it breaks none.</summary>

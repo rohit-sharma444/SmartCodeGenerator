@@ -163,7 +163,8 @@ public static class CommandEntityExtractor
     /// </summary>
     /// <remarks>
     /// The text inside parentheses is a method's parameter list and is kept whole: filler removal
-    /// took the parameter a out of <c>Add(int a, int b)</c>, as it takes the article "a".
+    /// took the parameter a out of <c>Add(int a, int b)</c>, as it takes the article "a". Quoted
+    /// text is a default value (<c>default "a, b"</c>) and is kept whole for the same reason.
     /// </remarks>
     internal static string MemberListText(string? rawSentence)
     {
@@ -174,6 +175,8 @@ public static class CommandEntityExtractor
             kept.Add(m.Value);
             return $"\u0001{kept.Count - 1}\u0001";
         }
+
+        text = Regex.Replace(text, "\"[^\"]*\"", Keep);
 
         // An English parameter list too, up to a property list or a base-type clause: in
         // "Ship with parameters count int, a string" the parameter a was taken as the article.
@@ -965,16 +968,23 @@ public static class CommandEntityExtractor
 
         if (entries.Any(e => e.Matches.Count > 0))
         {
-            foreach (var (_, matches) in entries)
+            foreach (var (entry, matches) in entries)
             {
-                foreach (Match match in matches)
+                for (var i = 0; i < matches.Count; i++)
                 {
-                    command.Properties.Add(
-                        new PropertyDefinition
-                        {
-                            Name = Capitalised(match.Groups["name"].Value),
-                            Type = match.Groups["type"].Value
-                        });
+                    var match = matches[i];
+                    var property = new PropertyDefinition
+                    {
+                        Name = Capitalised(match.Groups["name"].Value),
+                        Type = match.Groups["type"].Value
+                    };
+
+                    // The words up to the next property in the entry, or to its end.
+                    var end = i + 1 < matches.Count ? matches[i + 1].Index : entry.Length;
+                    var ignored = ReadWordsAfterType(entry[(match.Index + match.Length)..end], property);
+                    command.Properties.Add(property);
+                    if (ignored.Length > 0)
+                        command.IgnoredWords.Add((property.Name, ignored));
                 }
             }
 
@@ -1042,16 +1052,78 @@ public static class CommandEntityExtractor
         RegexOptions.IgnoreCase);
 
     /// <summary>The entries of a property list, each with the built-in typed properties in it.</summary>
-    private static List<(string Entry, MatchCollection Matches)> TypedEntries(string section) =>
-    [
-        .. Regex
-            .Split(section, @"\s*(?:,|;|\band\b)\s*", RegexOptions.IgnoreCase)
-            .Select(t => t.Trim())
-            .Where(t => t.Length > 0)
-            .Select(t => (t, TypedEntry.Matches(t)))
-    ];
+    /// <remarks>
+    /// A separator inside quoted text is part of a default value (<c>default "Black and White"</c>),
+    /// not the end of an entry, and a name and type inside it are not a property. A quote left open
+    /// shields nothing: the list is split as it was before quotes were read.
+    /// </remarks>
+    private static List<(string Entry, IReadOnlyList<Match> Matches)> TypedEntries(string section)
+    {
+        var quotesClosed = section.Count(c => c == '"') % 2 == 0;
+        var separator = quotesClosed
+            ? "\\s*(?:,|;|\\band\\b)\\s*(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)"
+            : @"\s*(?:,|;|\band\b)\s*";
 
-    private static IReadOnlyList<string> Ignored(List<(string Entry, MatchCollection Matches)> entries) =>
+        return
+        [
+            .. Regex
+                .Split(section, separator, RegexOptions.IgnoreCase)
+                .Select(t => t.Trim())
+                .Where(t => t.Length > 0)
+                .Select(t => (t, (IReadOnlyList<Match>)
+                    [.. TypedEntry.Matches(t).Where(m => !quotesClosed || t[..m.Index].Count(c => c == '"') % 2 == 0)]))
+        ];
+    }
+
+    /// <summary>A quoted value or a word.</summary>
+    private static readonly Regex WordAfterType = new("\"[^\"]*\"|\\S+");
+
+    /// <summary>
+    /// Reads the words after a property's type: <c>readonly</c>, <c>private</c>, <c>static</c>,
+    /// <c>required</c>, and <c>default &lt;value&gt;</c> or <c>= &lt;value&gt;</c>, where the value is
+    /// one word or one quoted text. Returns the other words, which nothing reads.
+    /// </summary>
+    /// <remarks>
+    /// The value is kept as typed on <see cref="PropertyDefinition.Initializer"/>; the create class
+    /// handler checks it against the type and turns it into a C# expression, or refuses it.
+    /// </remarks>
+    private static string ReadWordsAfterType(string text, PropertyDefinition property)
+    {
+        var words = WordAfterType.Matches(text).Select(m => m.Value).ToList();
+        var ignored = new List<string>();
+
+        for (var i = 0; i < words.Count; i++)
+        {
+            var word = words[i];
+            var modifier = word.ToLowerInvariant() switch
+            {
+                "readonly" => PropertyModifiers.ReadOnly,
+                "private" => PropertyModifiers.Private,
+                "static" => PropertyModifiers.Static,
+                "required" => PropertyModifiers.Required,
+                _ => PropertyModifiers.None
+            };
+
+            if (modifier != PropertyModifiers.None)
+            {
+                property.Modifiers |= modifier;
+                continue;
+            }
+
+            if ((word.Equals("default", StringComparison.OrdinalIgnoreCase) || word == "=")
+                && i + 1 < words.Count && property.Initializer is null)
+            {
+                property.Initializer = words[++i];
+                continue;
+            }
+
+            ignored.Add(word);
+        }
+
+        return string.Join(' ', ignored);
+    }
+
+    private static IReadOnlyList<string> Ignored(List<(string Entry, IReadOnlyList<Match> Matches)> entries) =>
         [.. entries.Where(e => e.Matches.Count == 0).Select(e => e.Entry)];
 
     public static string ExtractPropertySection(string sentence)

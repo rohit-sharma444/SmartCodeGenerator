@@ -76,7 +76,6 @@ public static class CodeGenerationEngine
             _ => "class"
         };
         var memberStatic = isStatic ? "static " : string.Empty;
-        var accessors = isRecord ? "{ get; init; }" : "{ get; set; }";
 
         sb.AppendLine($"public {modifier}{keyword} {className}{inheritanceClause}");
 
@@ -108,14 +107,22 @@ public static class CodeGenerationEngine
                     sb.AppendLine($"    [Range(double.MinValue, {rule.MaxValue.Value})]");
             }
 
-            // The initial value add property gives, so a project with Nullable on does not warn
-            // CS8618 for each string and collection a new class declares.
+            // The default the user gave (the handler has already checked it and made it a C#
+            // expression), else the initial value add property gives, so a project with Nullable
+            // on does not warn CS8618 for each string and collection a new class declares.
             // A struct's property gets none: C# 11 (CS8983) refuses an initializer in a struct with no constructor.
-            var initial = isStruct ? null : PropertyInitializers.SafeFor(
+            var initial = isStruct ? null : property.Initializer ?? PropertyInitializers.SafeFor(
                 Microsoft.CodeAnalysis.CSharp.SyntaxFactory.ParseTypeName(propertyType), bound: null);
             var initializer = initial is null ? string.Empty : $" = {initial};";
 
-            sb.AppendLine($"    public {memberStatic}{propertyType} {propertyName} {accessors}{initializer}");
+            // Each member of a static class is static, and a record's instance properties are
+            // init-only; an init accessor cannot be static, so a record's static property keeps set.
+            var modifiers = property.Modifiers | (isStatic ? PropertyModifiers.Static : PropertyModifiers.None);
+            if (isRecord && !modifiers.HasFlag(PropertyModifiers.Static))
+                modifiers |= PropertyModifiers.ReadOnly;
+
+            sb.AppendLine($"    {PropertyModifierRules.Prefix(modifiers)}{propertyType} {propertyName} "
+                + $"{PropertyModifierRules.Accessors(modifiers)}{initializer}");
             sb.AppendLine();
         }
 
@@ -240,7 +247,9 @@ public static class CodeGenerationEngine
         return sb.ToString();
     }
 
-    private static string ResolvePropertyType(PropertyDefinition? property)
+    /// <summary>The C# type a create class property is written with (<c>datetime</c> becomes
+    /// <c>System.DateTime</c>).</summary>
+    internal static string ResolvePropertyType(PropertyDefinition? property)
     {
         if (property == null)
             return "string";

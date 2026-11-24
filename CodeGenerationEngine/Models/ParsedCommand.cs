@@ -53,6 +53,12 @@ public sealed class ParsedCommand
     public List<(string Entry, string Error)> IgnoredMethods { get; set; } = [];
 
     /// <summary>
+    /// The words typed after a property's type in a create class list that are not a default
+    /// value or a modifier, by property. The property is still written; the words are reported.
+    /// </summary>
+    public List<(string Property, string Words)> IgnoredWords { get; set; } = [];
+
+    /// <summary>
     /// The <see cref="Metadata"/> key under which <c>add method</c> carries a parameter list that
     /// could not be read, so the handler refuses the method by that reason.
     /// </summary>
@@ -183,6 +189,7 @@ public sealed class ParsedCommand
         IgnoredProperties.Clear();
         ClassFromSession = false;
         IgnoredMethods.Clear();
+        IgnoredWords.Clear();
         Methods.Clear();
         Tags.Clear();
         Metadata.Clear();
