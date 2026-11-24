@@ -258,6 +258,22 @@ public sealed class AddConstructorTests
     }
 
     [TestMethod]
+    public void A_name_listed_twice_is_refused()
+    {
+        AssertRefused("add constructor with Name and Name to Order", "'Name' is listed twice.");
+    }
+
+    [TestMethod]
+    [DataRow("create class Cart and add constructor")]
+    [DataRow("create class Cart and add constructor to Cart")]
+    [DataRow("create class Cart with properties Total decimal and add constructor")]
+    public void Create_class_and_add_constructor_is_refused_as_two_commands(string sentence)
+    {
+        AssertRefused(sentence, "This line holds two commands");
+        Assert.IsFalse(File.Exists(Path.Combine(Shop, "Cart.cs")));
+    }
+
+    [TestMethod]
     public void A_constructor_that_does_not_compile_is_refused_with_the_compiler_text()
     {
         Write("Base.cs", "namespace Shop;\n\npublic class Base\n{\n    public Base(int id) { }\n}\n");

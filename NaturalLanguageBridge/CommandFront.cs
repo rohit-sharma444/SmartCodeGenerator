@@ -697,7 +697,7 @@ public static class CommandFront
     // after "and", "then" or a comma. One line runs one command, so the line is refused whole.
     private static readonly Regex SecondCommandRe = new(
         @"(?:\s+(?:and|then)|\s*[,;])\s+(?:then\s+)?(?<second>(?:add|create|remove|delete|drop|rename|change|retype)\s+"
-        + @"(?:(?:a|an|the|new)\s+)?(?:property|field|method|class|interface|project|validation|value)\b.*)$",
+        + @"(?:(?:a|an|the|new)\s+)?(?:property|field|method|class|interface|project|validation|value|constructor)\b.*)$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly Regex CreatesAType = new(

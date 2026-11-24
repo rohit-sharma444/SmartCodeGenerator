@@ -87,7 +87,7 @@ public static class ConstructorService
             // A required property the constructor sets all of makes the attribute right; otherwise
             // the caller still has to set the rest, and the note says which.
             var required = parts.SelectMany(p => p.Node.Members).OfType<PropertyDeclarationSyntax>()
-                .Where(p => p.Modifiers.Any(SyntaxKind.RequiredKeyword) && !p.Modifiers.Any(SyntaxKind.StaticKeyword))
+                .Where(p => IsInstanceAuto(p) && p.Modifiers.Any(SyntaxKind.RequiredKeyword))
                 .Select(p => p.Identifier.Text)
                 .ToList();
             var unset = required.Where(r => parameters.All(p => p.Property != r)).ToList();
