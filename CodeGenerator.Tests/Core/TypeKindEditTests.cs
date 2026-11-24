@@ -97,6 +97,42 @@ public sealed class TypeKindEditTests
     }
 
     [TestMethod]
+    public void An_abstract_method_added_to_a_base_names_the_classes_that_derive_from_it()
+    {
+        Write("Circle.cs", "namespace Shop;\n\npublic class Circle : Shape\n{\n}\n");
+        Write("Square.cs", "namespace Shop;\n\npublic class Square : Shape\n{\n}\n");
+
+        Assert.IsTrue(Run("add abstract method Perimeter returns decimal to Shape"), LastOutput);
+
+        StringAssert.Contains(LastOutput, "Circle");
+        StringAssert.Contains(LastOutput, "Square");
+        StringAssert.Contains(LastOutput, "decimal Perimeter()");
+        StringAssert.Contains(LastOutput, "will not compile");
+    }
+
+    [TestMethod]
+    public void An_abstract_method_warning_follows_an_abstract_class_down_to_the_concrete_ones()
+    {
+        Write("Solid.cs", "namespace Shop;\n\npublic abstract class Solid : Shape\n{\n}\n");
+        Write("Cube.cs", "namespace Shop;\n\npublic class Cube : Solid\n{\n}\n");
+        Write("Ring.cs", "namespace Shop;\n\npublic class Ring : Shape\n{\n    public override decimal Perimeter() => 0m;\n}\n");
+
+        Assert.IsTrue(Run("add abstract method Perimeter returns decimal to Shape"), LastOutput);
+
+        StringAssert.Contains(LastOutput, "Cube");
+        Assert.DoesNotContain("Solid", LastOutput);
+        Assert.DoesNotContain("Ring", LastOutput);
+    }
+
+    [TestMethod]
+    public void An_abstract_method_on_a_base_with_no_derived_class_warns_of_nothing()
+    {
+        Assert.IsTrue(Run("add abstract method Perimeter returns decimal to Shape"), LastOutput);
+
+        Assert.DoesNotContain("will not compile", LastOutput);
+    }
+
+    [TestMethod]
     public void An_abstract_method_on_a_type_that_is_not_abstract_is_refused()
     {
         var before = Read("Order.cs");

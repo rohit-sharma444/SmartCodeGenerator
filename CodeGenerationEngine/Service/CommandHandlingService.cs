@@ -564,7 +564,8 @@ public static class CommandHandlingService
             ctx.Command.MethodName = method;
     }
 
-    // After a member is added to an interface: the classes implementing it that do not have it yet.
+    // After a member is added to an interface: the classes implementing it that do not have it yet;
+    // after an abstract method is added to an abstract class: the classes that do not override it.
     // They are named, not edited - what their member should do is theirs to say.
     private static void WarnOfImplementersLacking(CommandExecutionContext ctx, string member)
     {
