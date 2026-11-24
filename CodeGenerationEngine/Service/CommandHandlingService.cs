@@ -253,7 +253,7 @@ public static class CommandHandlingService
 
         // A kind and modifier C# does not allow together, or a base the kind cannot have: refused
         // before anything is generated, so nothing is written.
-        if (KindRefusal(command) is { } kindError)
+        if ((KindRefusal(command) ?? RecordBaseRefusal(ctx)) is { } kindError)
         {
             Output.Error(kindError);
             return false;
@@ -329,6 +329,41 @@ public static class CommandHandlingService
             return "A static class cannot implement an interface.";
 
         return null;
+    }
+
+    /// <summary>
+    /// A record can inherit only from a record. Names the base and its kind when the project
+    /// declares it as something else; a base the project does not declare is left to the compile.
+    /// </summary>
+    private static string? RecordBaseRefusal(CommandExecutionContext ctx)
+    {
+        var command = ctx.Command;
+        if (command.Kind != DeclaredKind.Record || string.IsNullOrWhiteSpace(command.BaseClass))
+            return null;
+
+        var directory = ProjectLocator.Resolve(command, ctx.CurrentProject, ctx.WorkspaceRoot).Directory;
+        var file = ClassFiles.DeclaringFile(directory, command.BaseClass);
+        if (file is null)
+            return null;
+
+        var declaration = Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(File.ReadAllText(file))
+            .GetRoot().DescendantNodes()
+            .OfType<Microsoft.CodeAnalysis.CSharp.Syntax.BaseTypeDeclarationSyntax>()
+            .FirstOrDefault(d => d.Identifier.Text.Equals(command.BaseClass, StringComparison.OrdinalIgnoreCase));
+
+        var kind = declaration switch
+        {
+            Microsoft.CodeAnalysis.CSharp.Syntax.RecordDeclarationSyntax => null,
+            Microsoft.CodeAnalysis.CSharp.Syntax.ClassDeclarationSyntax => "a class",
+            Microsoft.CodeAnalysis.CSharp.Syntax.StructDeclarationSyntax => "a struct",
+            Microsoft.CodeAnalysis.CSharp.Syntax.EnumDeclarationSyntax => "an enum",
+            Microsoft.CodeAnalysis.CSharp.Syntax.InterfaceDeclarationSyntax => "an interface",
+            _ => null
+        };
+
+        return kind is null
+            ? null
+            : $"A record can inherit only from another record; '{declaration!.Identifier.Text}' is {kind}.";
     }
 
     /// <summary>

@@ -92,6 +92,20 @@ public sealed class TypeKindCreateTests
     }
 
     [TestMethod]
+    [DataRow("create record Child inherits Parent", "Child.cs", "public record Child : Parent")]
+    [DataRow("create abstract class Solid inherits Shape", "Solid.cs", "public abstract class Solid : Shape")]
+    [DataRow("create struct S implements IShape", "S.cs", "public struct S : IShape")]
+    public void A_base_the_kind_allows_is_written_and_compiles(string sentence, string file, string expected)
+    {
+        Write("Parent.cs", "namespace Shop;\n\npublic record Parent { }\n");
+
+        Assert.IsTrue(Run(sentence), LastOutput);
+
+        StringAssert.Contains(Read(file), expected, LastOutput);
+        Assert.IsEmpty(ProjectErrors());
+    }
+
+    [TestMethod]
     public void A_struct_property_has_no_initializer()
     {
         Assert.IsTrue(Run("create struct Label with properties Text string"), LastOutput);
@@ -106,6 +120,7 @@ public sealed class TypeKindCreateTests
     [DataRow("create static class Helpers implements IShape", "A static class cannot implement an interface", "Helpers.cs")]
     [DataRow("create static class Helpers inherits Shape", "A static class cannot inherit", "Helpers.cs")]
     [DataRow("create static struct P", "A struct cannot be static.", "P.cs")]
+    [DataRow("create record R inherits Shape", "A record can inherit only from another record; 'Shape' is a class.", "R.cs")]
     public void What_C_forbids_is_refused_and_nothing_is_written(string sentence, string expected, string file)
     {
         var before = Directory.GetFiles(Shop).Order().ToArray();
