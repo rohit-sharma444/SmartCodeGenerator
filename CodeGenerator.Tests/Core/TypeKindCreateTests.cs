@@ -164,6 +164,48 @@ public sealed class TypeKindCreateTests
     }
 
     [TestMethod]
+    public void An_abstract_class_reports_its_interface_members_as_abstract_declarations()
+    {
+        Write("IShape.cs", "namespace Shop;\n\npublic interface IShape\n{\n    decimal Scale(decimal factor);\n}\n");
+
+        Assert.IsTrue(Run("create abstract class Base implements IShape"), LastOutput);
+
+        StringAssert.Contains(LastOutput, "added as abstract declarations");
+        Assert.DoesNotContain("NotImplementedException", LastOutput);
+    }
+
+    [TestMethod]
+    public void A_class_reports_its_stubs_as_throwing()
+    {
+        Write("IShape.cs", "namespace Shop;\n\npublic interface IShape\n{\n    decimal Scale(decimal factor);\n}\n");
+
+        Assert.IsTrue(Run("create class Circle implements IShape"), LastOutput);
+
+        StringAssert.Contains(LastOutput, "throws NotImplementedException");
+        Assert.DoesNotContain("abstract", LastOutput);
+    }
+
+    [TestMethod]
+    public void Create_class_and_add_abstract_method_is_refused_and_nothing_is_written()
+    {
+        var before = Directory.GetFiles(Shop).Order().ToArray();
+
+        Assert.IsFalse(Run("create class Tri and add abstract method Area returns decimal"), LastOutput);
+
+        StringAssert.Contains(LastOutput, "'Tri' is not abstract; use create abstract class Tri");
+        CollectionAssert.AreEqual(before, Directory.GetFiles(Shop).Order().ToArray());
+    }
+
+    [TestMethod]
+    public void Create_abstract_class_and_add_abstract_method_writes_it_abstract()
+    {
+        Assert.IsTrue(Run("create abstract class Tri and add abstract method Area returns decimal"), LastOutput);
+
+        StringAssert.Contains(Read("Tri.cs"), "public abstract decimal Area();");
+        Assert.IsEmpty(ProjectErrors());
+    }
+
+    [TestMethod]
     public void A_struct_property_has_no_initializer()
     {
         Assert.IsTrue(Run("create struct Label with properties Text string"), LastOutput);

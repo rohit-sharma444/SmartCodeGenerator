@@ -337,8 +337,27 @@ public static class CommandHandlingService
         if (command.Modifier == TypeModifier.Static && hasInterface)
             return "A static class cannot implement an interface.";
 
+        // "create class Tri and add abstract method Area" wrote a concrete Area() with a body: the
+        // word abstract was dropped. Only an abstract type can declare one.
+        if (command.Modifier != TypeModifier.Abstract && AbstractMethodAsked.IsMatch(command.OriginalSentence ?? string.Empty))
+        {
+            var kind = command.Kind switch
+            {
+                DeclaredKind.Record => "record",
+                DeclaredKind.Struct => "struct",
+                _ => "class"
+            };
+            return command.Kind == DeclaredKind.Struct
+                ? $"'{command.ClassName}' is a struct, which cannot have an abstract method."
+                : $"'{command.ClassName}' is not abstract; use create abstract {kind} {command.ClassName} to give it an abstract method.";
+        }
+
         return null;
     }
+
+    private static readonly System.Text.RegularExpressions.Regex AbstractMethodAsked =
+        new(@"\band\s+(?:add|create)\s+(?:(?:a|an|new)\s+)?abstract\s+method\b",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
 
     /// <summary>
     /// A record can inherit only from a record. Names the base and its kind when the project

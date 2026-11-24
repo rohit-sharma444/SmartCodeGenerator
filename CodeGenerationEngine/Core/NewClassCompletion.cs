@@ -26,7 +26,8 @@ public static class NewClassCompletion
         string? ClassName,
         IReadOnlyList<string> Interfaces,
         IReadOnlyList<string> Added,
-        IReadOnlyList<Diagnostic> Errors);
+        IReadOnlyList<Diagnostic> Errors,
+        bool IsAbstract = false);
 
     private static readonly SymbolDisplayFormat TypeFormat =
         SymbolDisplayFormat.MinimallyQualifiedFormat.AddMiscellaneousOptions(
@@ -97,13 +98,16 @@ public static class NewClassCompletion
         if (stubs.Count == 0)
             return new Result(code, first.Class?.Identifier.Text, [], [], Errors(first));
 
+        var isAbstract = first.Class is not null
+            && first.Model.GetDeclaredSymbol(first.Class) is INamedTypeSymbol { IsAbstract: true };
+
         var close = code.LastIndexOf('}');
         var completed = code[..close].TrimEnd() + Environment.NewLine + Environment.NewLine
             + string.Concat(stubs.Select(s => "    " + s + Environment.NewLine))
             + code[close..];
 
         var second = Compile(completed, target);
-        return new Result(completed, first.Class?.Identifier.Text, interfaces, added, Errors(second));
+        return new Result(completed, first.Class?.Identifier.Text, interfaces, added, Errors(second), isAbstract);
     }
 
     /// <summary>
@@ -125,12 +129,14 @@ public static class NewClassCompletion
         if (result.Errors.Count == 0)
             Output.Success(" \n Validate succeeded. ");
 
+        // An abstract class declares them abstract, with no body to fill in.
         if (result.Added.Count > 0)
             Console.WriteLine(
-                $"{result.ClassName} takes members from {string.Join(" and ", result.Interfaces)}: added "
-                + $"{string.Join(", ", result.Added)}, which it lacked. "
-                + "A method added this way throws NotImplementedException until you fill it in "
-                + "(an abstract class leaves it abstract).");
+                $"{result.ClassName} takes members from {string.Join(" and ", result.Interfaces)}: "
+                + $"{string.Join(", ", result.Added)}, which it lacked, "
+                + (result.IsAbstract
+                    ? "added as abstract declarations."
+                    : "added. A method added this way throws NotImplementedException until you fill it in."));
 
         if (result.Errors.Count > 0)
         {
