@@ -32,6 +32,7 @@ public static class ActionFormatter
             IntentType.RenameClass => $"{command.ClassName} -> {command.NewClassName}",
 
             IntentType.CreateClass
+                or IntentType.CreateEnum
                 or IntentType.DeleteClass
                 or IntentType.ShowClass
                 or IntentType.RestoreClass
@@ -52,6 +53,9 @@ public static class ActionFormatter
 
             IntentType.CreateMethod
                 or IntentType.DeleteMethod => command.MethodName,
+
+            IntentType.AddEnumValue
+                or IntentType.RemoveEnumValue => $"{command.ClassName}.{string.Join(", ", command.EnumValues)}",
 
             // The architecture intents each carry their own dedicated name field.
             IntentType.CreateInterface => command.InterfaceName ?? string.Empty,

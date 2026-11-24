@@ -74,6 +74,70 @@ public static class CommandFront
             + @"(?:\s+with\s+.+)?$",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    // `create [abstract|sealed|static] class|record|struct <rest>`: the kind words are read here and
+    // the rest is parsed as `create class <rest>`, so every create-class phrasing works for them.
+    private static readonly Regex TypeKindRe =
+        new(@"^(?<verb>create|add|generate)\s+(?:(?:a|an|new)\s+)?(?<mods>(?:(?:abstract|sealed|static)\s+)*)"
+            + @"(?<kind>class|record|struct)\s+(?<rest>.+)$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    // `create enum <name> [with values|with members|having values|having members|with|having <a, b and c>]`,
+    // ahead of the mapper, which has no enum. The list word alone (`with values`) is an empty list,
+    // not a value called values. An `inherits|implements|extends` tail is kept so the handler can refuse it.
+    private static readonly Regex CreateEnumRe =
+        new(@"^(?:create|add|generate)\s+(?:(?:a|an|new)\s+)?enum\s+(?<name>[A-Za-z_]\w*)"
+            + @"(?:\s+(?<bad>inherits|implements|extends)\b.*"
+            + @"|\s+(?:with|having)\s+(?:values|members)"
+            + @"|\s+(?:(?:with|having)\s+(?:values|members)|with|having)\s+(?<values>.+?))?\s*[.!]?$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    // `add [a|an|the] value <V> to [the] [enum] <Enum>` / `remove|delete [a|an|the] value <V> from ...`,
+    // ahead of the mapper, which has no enum value. The value and the enum are kept as typed.
+    private static readonly Regex EnumValueRe =
+        new(@"^(?:(?<add>add)\s+(?:(?:a|an|the)\s+)?value\s+(?<value>\w+)\s+to"
+            + @"|(?:remove|delete)\s+(?:(?:a|an|the)\s+)?value\s+(?<value>\w+)\s+from)"
+            + @"\s+(?:the\s+)?(?:enum\s+(?=\w))?(?<enum>\w+)(?:\s+enum)?\s*[.!]?$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static void ApplyKind(ParsedCommand cmd, Match match)
+    {
+        var kind = match.Groups["kind"].Value.ToLowerInvariant();
+        cmd.Kind = kind switch
+        {
+            "record" => DeclaredKind.Record,
+            "struct" => DeclaredKind.Struct,
+            _ => DeclaredKind.Class
+        };
+
+        var words = match.Groups["mods"].Value
+            .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
+            .Select(w => w.ToLowerInvariant())
+            .Distinct()
+            .ToList();
+
+        if (words.Count > 1)
+        {
+            cmd.Metadata[ParsedCommand.KindErrorKey] =
+                $"A {kind} cannot be both {words[0]} and {words[1]}.";
+            return;
+        }
+
+        if (words.Count == 1)
+        {
+            cmd.Modifier = words[0] switch
+            {
+                "abstract" => TypeModifier.Abstract,
+                "sealed" => TypeModifier.Sealed,
+                _ => TypeModifier.Static
+            };
+
+            var refused = cmd.Modifier == TypeModifier.Static && cmd.Kind != DeclaredKind.Class
+                || cmd.Modifier != TypeModifier.None && cmd.Kind == DeclaredKind.Struct;
+            if (refused)
+                cmd.Metadata[ParsedCommand.KindErrorKey] = $"A {kind} cannot be {words[0]}.";
+        }
+    }
+
     // `create [<type>] project [<name>]`, `create class library [<name>]`, `create worker service
     // [<name>]`, ahead of the mapper, which did not recognise a lower-case name ("create console
     // project shop" was "Command not recognized"). The name, type, folder and framework are read by
@@ -118,7 +182,7 @@ public static class CommandFront
     // Parameters in the C# form, `Ship(string address)`, or the English form,
     // `Ship with parameters address string`, before ` to <Class>`.
     private static readonly Regex AddMethodRe =
-        new(@"^(?:add|create|generate)\s+(?:(?:a|an|new)\s+)?method\s+(?<method>[A-Za-z_]\w*)"
+        new(@"^(?:add|create|generate)\s+(?:(?:a|an|new)\s+)?(?<abstract>abstract\s+)?method\s+(?<method>[A-Za-z_]\w*)"
             + @"(?:\s*\((?<cparams>[^)]*)\))?"
             + $@"(?:\s+returns?\s+(?<returns>{MethodParameterParser.TypePattern}))?"
             // "returns" can follow the English list too: "Ship with parameters address string
@@ -199,6 +263,9 @@ public static class CommandFront
         IntentType.CreateProject,
         IntentType.CreateClass,
         IntentType.CreateInterface,
+        IntentType.CreateEnum,
+        IntentType.AddEnumValue,
+        IntentType.RemoveEnumValue,
         IntentType.CreateProperty,
         IntentType.ListProperties,
         IntentType.ListMethods,
@@ -266,6 +333,20 @@ public static class CommandFront
             return projectCmd;
         }
 
+        var kindMatch = TypeKindRe.Match(text);
+        if (kindMatch.Success
+            && (kindMatch.Groups["mods"].Value.Length > 0
+                || !kindMatch.Groups["kind"].Value.Equals("class", StringComparison.OrdinalIgnoreCase)))
+        {
+            var plain = Parse($"{kindMatch.Groups["verb"].Value} class {kindMatch.Groups["rest"].Value}", workspace);
+            if (plain.Intent == IntentType.CreateClass)
+            {
+                ApplyKind(plain, kindMatch);
+                plain.OriginalSentence = input ?? string.Empty;
+                return plain;
+            }
+        }
+
         var createClassMatch = CreateClassRe.Match(text);
         if (createClassMatch.Success)
         {
@@ -275,6 +356,54 @@ public static class CommandFront
             createCmd.Confidence = 1.0;
             SessionContext.CurrentClass = createCmd.ClassName;
             return createCmd;
+        }
+
+        var createEnumMatch = CreateEnumRe.Match(text);
+        if (createEnumMatch.Success)
+        {
+            // Fields from this guard's own groups, on the raw text (Normalize rewrites model/entity/object).
+            var name = CommandEntityExtractor.ToPascalCase(createEnumMatch.Groups["name"].Value);
+            var enumCmd = new ParsedCommand
+            {
+                Intent = IntentType.CreateEnum,
+                Kind = DeclaredKind.Enum,
+                ClassName = name,
+                OriginalSentence = input ?? string.Empty,
+                Confidence = 1.0
+            };
+
+            if (createEnumMatch.Groups["bad"].Success)
+                enumCmd.Metadata[ParsedCommand.KindErrorKey] =
+                    "An enum cannot inherit from a type or implement an interface.";
+            else if (EnumValueParser.TryParse(createEnumMatch.Groups["values"].Value, out var enumValues, out var enumError))
+                enumCmd.EnumValues = enumValues;
+            else
+                enumCmd.Metadata[ParsedCommand.KindErrorKey] = enumError!;
+
+            SessionContext.CurrentClass = name;
+            return enumCmd;
+        }
+
+        var enumValueMatch = EnumValueRe.Match(text);
+        if (enumValueMatch.Success)
+        {
+            var adding = enumValueMatch.Groups["add"].Success;
+            var valueCmd = new ParsedCommand
+            {
+                Intent = adding ? IntentType.AddEnumValue : IntentType.RemoveEnumValue,
+                Kind = DeclaredKind.Enum,
+                ClassName = enumValueMatch.Groups["enum"].Value,
+                EnumValues = [enumValueMatch.Groups["value"].Value],
+                OriginalSentence = input ?? string.Empty,
+                Confidence = 1.0
+            };
+
+            // The one rule for a value's name (EnumValueParser), checked here because the service
+            // cannot reach it; a removed value only has to match one, so it is not checked.
+            if (adding && !EnumValueParser.TryParse(valueCmd.EnumValues[0], out _, out var valueError))
+                valueCmd.Metadata[ParsedCommand.KindErrorKey] = valueError!;
+
+            return valueCmd;
         }
 
         var createInterfaceMatch = CreateInterfaceRe.Match(text);
@@ -331,6 +460,8 @@ public static class CommandFront
             var addMethodCmd = ClassCommand(
                 IntentType.CreateMethod, addMethodMatch.Groups["class"].Value, input, workspace);
             addMethodCmd.MethodName = CommandEntityExtractor.ToPascalCase(addMethodMatch.Groups["method"].Value);
+            if (addMethodMatch.Groups["abstract"].Success)
+                addMethodCmd.Modifier = TypeModifier.Abstract;
             addMethodCmd.ReturnType = addMethodMatch.Groups["returns"].Success
                 ? addMethodMatch.Groups["returns"].Value
                 : "void";
@@ -534,11 +665,12 @@ public static class CommandFront
     // after "and", "then" or a comma. One line runs one command, so the line is refused whole.
     private static readonly Regex SecondCommandRe = new(
         @"(?:\s+(?:and|then)|\s*[,;])\s+(?:then\s+)?(?<second>(?:add|create|remove|delete|drop|rename|change|retype)\s+"
-        + @"(?:(?:a|an|the|new)\s+)?(?:property|field|method|class|interface|project|validation)\b.*)$",
+        + @"(?:(?:a|an|the|new)\s+)?(?:property|field|method|class|interface|project|validation|value)\b.*)$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly Regex CreatesAType = new(
-        @"\bcreate\s+(?:(?:a|an|new)\s+)?(?:class|interface)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        @"\bcreate\s+(?:(?:a|an|new)\s+)?(?:(?:abstract|sealed|static)\s+)*(?:class|record|struct|enum|interface)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly Regex MemberAddition = new(
         @"^(?:add|create)\s+(?:(?:a|an|new)\s+)?(?:property|field|method)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);

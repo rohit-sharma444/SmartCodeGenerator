@@ -52,7 +52,13 @@ public static class ClassPropertyService
                 return false;
 
             // A readonly struct cannot have a set accessor (CS8341); init is what it allows.
-            var setter = part.Node.Modifiers.Any(Microsoft.CodeAnalysis.CSharp.SyntaxKind.ReadOnlyKeyword) ? "init" : "set";
+            // A record's properties are init too, as create record writes them.
+            var setter = part.Node is RecordDeclarationSyntax
+                || part.Node.Modifiers.Any(Microsoft.CodeAnalysis.CSharp.SyntaxKind.ReadOnlyKeyword) ? "init" : "set";
+
+            // A static class holds only static members (CS0708).
+            var modifier = part.Node.Modifiers.Any(Microsoft.CodeAnalysis.CSharp.SyntaxKind.StaticKeyword)
+                ? "public static" : "public";
 
             // With nullable reference types on, a string or a list with no initial value is
             // CS8618: it starts as null.
@@ -63,7 +69,7 @@ public static class ClassPropertyService
                     ? $" = {value};"
                     : string.Empty;
 
-            var propertyCode = $@"public {propertyType} {propertyName} {{ get; {setter}; }}{initializer}";
+            var propertyCode = $@"{modifier} {propertyType} {propertyName} {{ get; {setter}; }}{initializer}";
 
             if (!ClassMemberEditor.TryAddMember(part.File, className, propertyCode, out var error))
             {

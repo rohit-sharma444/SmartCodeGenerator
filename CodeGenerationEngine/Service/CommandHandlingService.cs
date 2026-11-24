@@ -124,6 +124,9 @@ public static class CommandHandlingService
             [IntentType.ShowBusinessValidation] = HandleShowBusinessValidation,
             [IntentType.GenerateValidator] = HandleGenerateValidator,
             [IntentType.CreateInterface] = HandleCreateInterface,
+            [IntentType.CreateEnum] = HandleCreateEnum,
+            [IntentType.AddEnumValue] = HandleAddEnumValue,
+            [IntentType.RemoveEnumValue] = HandleRemoveEnumValue,
             [IntentType.ListProperties] = HandleListProperties,
             [IntentType.CreateProperty] = HandleCreateProperty,
             [IntentType.DeleteProperty] = HandleDeleteProperty,
@@ -251,6 +254,14 @@ public static class CommandHandlingService
             return false;
         }
 
+        // A kind and modifier C# does not allow together, or a base the kind cannot have: refused
+        // before anything is generated, so nothing is written.
+        if ((KindRefusal(command) ?? RecordBaseRefusal(ctx)) is { } kindError)
+        {
+            Output.Error(kindError);
+            return false;
+        }
+
         var classDef = new ClassDefinition
         {
             Name = command.ClassName ?? string.Empty,
@@ -278,13 +289,19 @@ public static class CommandHandlingService
             // works on a class's own file, so it is no way to start this one again.
             var ownFile = Path.GetFileNameWithoutExtension(existing).Equals(name, StringComparison.OrdinalIgnoreCase);
 
-            Output.Error(ownFile
+            // An enum takes values, not properties or methods: add property was then refused.
+            var isEnum = EnumValueService.MemberEditRefusalFor(ctx.WorkspaceRoot, name) is not null;
+
+            Output.Error(ownFile && !isEnum
                 ? $"Class '{name}' already exists: {existing}"
                 : $"'{name}' already exists: it is declared in {existing}");
             Console.WriteLine(
-                "  It was left as it is: creating it again would replace its properties and methods."
+                "  It was left as it is: creating it again would replace its "
+                + (isEnum ? "values." : "properties and methods.")
                 + Environment.NewLine
-                + $"  To change it, use add property <name> <type> to {name} or add method <name> to {name}"
+                + (isEnum
+                    ? $"  It is an enum; to change it, use add value <name> to {name}"
+                    : $"  To change it, use add property <name> <type> to {name} or add method <name> to {name}")
                 + (ownFile
                     ? ";" + Environment.NewLine + $"  to start it again, delete class {name} first."
                     : "."));
@@ -299,6 +316,82 @@ public static class CommandHandlingService
             ReportIgnoredProperties(command);
 
         return saved;
+    }
+
+    /// <summary>The C# rule a create command breaks, in the kind's terms, or null when it breaks none.</summary>
+    private static string? KindRefusal(ParsedCommand command)
+    {
+        if (command.Metadata.TryGetValue(ParsedCommand.KindErrorKey, out var parseError)
+            && !string.IsNullOrWhiteSpace(parseError))
+            return parseError;
+
+        var hasBase = !string.IsNullOrWhiteSpace(command.BaseClass);
+        var hasInterface = command.Interfaces.Any(i => !string.IsNullOrWhiteSpace(i));
+
+        if (command.Kind == DeclaredKind.Struct && hasBase)
+            return "A struct cannot inherit from a class; use implements for an interface.";
+
+        if (command.Modifier == TypeModifier.Static && hasBase)
+            return "A static class cannot inherit from another class.";
+
+        if (command.Modifier == TypeModifier.Static && hasInterface)
+            return "A static class cannot implement an interface.";
+
+        // "create class Tri and add abstract method Area" wrote a concrete Area() with a body: the
+        // word abstract was dropped. Only an abstract type can declare one.
+        if (command.Modifier != TypeModifier.Abstract && AbstractMethodAsked.IsMatch(command.OriginalSentence ?? string.Empty))
+        {
+            var kind = command.Kind switch
+            {
+                DeclaredKind.Record => "record",
+                DeclaredKind.Struct => "struct",
+                _ => "class"
+            };
+            return command.Kind == DeclaredKind.Struct
+                ? $"'{command.ClassName}' is a struct, which cannot have an abstract method."
+                : $"'{command.ClassName}' is not abstract; use create abstract {kind} {command.ClassName} to give it an abstract method.";
+        }
+
+        return null;
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex AbstractMethodAsked =
+        new(@"\band\s+(?:add|create)\s+(?:(?:a|an|new)\s+)?abstract\s+method\b",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>
+    /// A record can inherit only from a record. Names the base and its kind when the project
+    /// declares it as something else; a base the project does not declare is left to the compile.
+    /// </summary>
+    private static string? RecordBaseRefusal(CommandExecutionContext ctx)
+    {
+        var command = ctx.Command;
+        if (command.Kind != DeclaredKind.Record || string.IsNullOrWhiteSpace(command.BaseClass))
+            return null;
+
+        var directory = ProjectLocator.Resolve(command, ctx.CurrentProject, ctx.WorkspaceRoot).Directory;
+        var file = ClassFiles.DeclaringFile(directory, command.BaseClass);
+        if (file is null)
+            return null;
+
+        var declaration = Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(File.ReadAllText(file))
+            .GetRoot().DescendantNodes()
+            .OfType<Microsoft.CodeAnalysis.CSharp.Syntax.BaseTypeDeclarationSyntax>()
+            .FirstOrDefault(d => d.Identifier.Text.Equals(command.BaseClass, StringComparison.OrdinalIgnoreCase));
+
+        var kind = declaration switch
+        {
+            Microsoft.CodeAnalysis.CSharp.Syntax.RecordDeclarationSyntax => null,
+            Microsoft.CodeAnalysis.CSharp.Syntax.ClassDeclarationSyntax => "a class",
+            Microsoft.CodeAnalysis.CSharp.Syntax.StructDeclarationSyntax => "a struct",
+            Microsoft.CodeAnalysis.CSharp.Syntax.EnumDeclarationSyntax => "an enum",
+            Microsoft.CodeAnalysis.CSharp.Syntax.InterfaceDeclarationSyntax => "an interface",
+            _ => null
+        };
+
+        return kind is null
+            ? null
+            : $"A record can inherit only from another record; '{declaration!.Identifier.Text}' is {kind}.";
     }
 
     /// <summary>
@@ -412,7 +505,8 @@ public static class CommandHandlingService
         UseDeclaredNames(ctx, member: null);
         var ok = ClassMethodService.AddMethod(
             ctx.WorkspaceRoot, ctx.Command.ClassName,
-            ctx.Command.MethodName, ctx.Command.ReturnType, ctx.Command.Parameters, out var message);
+            ctx.Command.MethodName, ctx.Command.ReturnType, ctx.Command.Parameters,
+            ctx.Command.Modifier == TypeModifier.Abstract, out var message);
         Output.Result(ok, message);
         if (ok)
             WarnOfImplementersLacking(ctx, ctx.Command.MethodName);
@@ -489,7 +583,8 @@ public static class CommandHandlingService
             ctx.Command.MethodName = method;
     }
 
-    // After a member is added to an interface: the classes implementing it that do not have it yet.
+    // After a member is added to an interface: the classes implementing it that do not have it yet;
+    // after an abstract method is added to an abstract class: the classes that do not override it.
     // They are named, not edited - what their member should do is theirs to say.
     private static void WarnOfImplementersLacking(CommandExecutionContext ctx, string member)
     {
@@ -537,6 +632,12 @@ public static class CommandHandlingService
         if (InterfaceImplementers.ValidationRefusalFor(ctx.WorkspaceRoot, ctx.Command.ClassName) is { } refusal)
         {
             Output.Error(refusal);
+            return false;
+        }
+
+        if (EnumValueService.MemberEditRefusalFor(ctx.WorkspaceRoot, ctx.Command.ClassName) is { } enumRefusal)
+        {
+            Output.Error(enumRefusal);
             return false;
         }
 
@@ -650,6 +751,68 @@ public static class CommandHandlingService
             Console.WriteLine($"Named the interface {made}: a name is kept as typed only when it is I followed by a "
                 + $"capital letter, as IShape is; anything else is given the I prefix.");
 
+        return ok;
+    }
+
+    private static bool HandleCreateEnum(CommandExecutionContext ctx)
+    {
+        var command = ctx.Command;
+
+        if (!ClassValidator.IsValidClassName(command.ClassName))
+        {
+            Output.Error("Error: Could not determine a valid enum name from input.");
+            return false;
+        }
+
+        // A value list that cannot be read, or a base the enum cannot have: refused before anything is written.
+        if (command.Metadata.TryGetValue(ParsedCommand.KindErrorKey, out var kindError)
+            && !string.IsNullOrWhiteSpace(kindError))
+        {
+            Output.Error(kindError);
+            return false;
+        }
+
+        if (ExistingTypeFile(ctx) is { } existing)
+        {
+            var name = EntityExtractor.DeclaredName(existing, command.ClassName);
+            Output.Error($"'{name}' already exists: {existing}");
+            Console.WriteLine(
+                "  It was left as it is: creating it again would replace everything in it."
+                + Environment.NewLine
+                + $"  To start it again, delete class {name} first.");
+            return false;
+        }
+
+        return GenerateAndSave(ctx);
+    }
+
+    private static bool HandleAddEnumValue(CommandExecutionContext ctx)
+    {
+        var command = ctx.Command;
+
+        // A value name that is no identifier: refused by the parser's reason, before anything is read.
+        if (command.Metadata.TryGetValue(ParsedCommand.KindErrorKey, out var valueError)
+            && !string.IsNullOrWhiteSpace(valueError))
+        {
+            Output.Error(valueError);
+            return false;
+        }
+
+        var ok = EnumValueService.AddValue(ctx.WorkspaceRoot, command.ClassName, command.EnumValues[0], out var message);
+        Console.WriteLine(message);
+        return ok;
+    }
+
+    private static bool HandleRemoveEnumValue(CommandExecutionContext ctx)
+    {
+        var command = ctx.Command;
+        var ok = EnumValueService.RemoveValue(
+            ctx.WorkspaceRoot, command.ClassName, command.EnumValues[0], out var message, out var removed);
+        Console.WriteLine(message);
+
+        // As remove property: the code the edit left naming the value, which no longer compiles.
+        if (ok)
+            WarnOfUsers(ctx, removed, "Value", "removed");
         return ok;
     }
 
@@ -1029,7 +1192,7 @@ public static class CommandHandlingService
         if (string.IsNullOrWhiteSpace(code))
             return false;
 
-        if (ctx.Command.Intent == IntentType.CreateClass)
+        if (ctx.Command.Intent is IntentType.CreateClass or IntentType.CreateEnum)
         {
             // Checked beside the rest of its project, which also fills in the members of the
             // interfaces it implements: compiled alone, a project interface was "CS0246 not found".

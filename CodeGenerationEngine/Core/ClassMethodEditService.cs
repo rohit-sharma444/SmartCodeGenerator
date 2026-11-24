@@ -279,6 +279,13 @@ public static class ClassMethodEditService
                 }
             }
 
+            // A member edit on an enum: it has values, not members.
+            if (EnumValueService.MemberEditRefusalFor(workspaceRoot, className) is { } enumRefusal)
+            {
+                message = enumRefusal;
+                return false;
+            }
+
             message = found == null
                 ? $"Class '{className}' not found."
                 : $"Class '{className}' not found in {Path.GetFileName(found)}.";

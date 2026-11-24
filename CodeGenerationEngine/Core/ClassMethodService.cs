@@ -1,3 +1,4 @@
+using Microsoft.CodeAnalysis;
 using CodeGenerationEngine.Models;
 using Microsoft.CodeAnalysis.CSharp;
 
@@ -15,7 +16,7 @@ namespace CodeGenerationEngine.Core;
 public static class ClassMethodService
 {
     public static bool AddMethod(string workspaceRoot, string className,
-        string methodName, string returnType, IReadOnlyList<ParameterDefinition> parameters, out string message)
+        string methodName, string returnType, IReadOnlyList<ParameterDefinition> parameters, bool isAbstract, out string message)
     {
         message = string.Empty;
 
@@ -35,6 +36,13 @@ public static class ClassMethodService
 
             var part = parts[0];
             className = part.Node.Identifier.Text;
+
+            // An abstract method needs an abstract class, and nothing is written otherwise.
+            if (isAbstract && !parts.Any(p => p.Node.Modifiers.Any(SyntaxKind.AbstractKeyword)))
+            {
+                message = $"'{className}' is not abstract. Method '{methodName}' was not added.";
+                return false;
+            }
 
             if (MemberNames.Taken(parts, methodName, []) is { } taken)
             {
@@ -75,7 +83,10 @@ public static class ClassMethodService
             }
 
             var parameterList = string.Join(", ", parameters.Select(p => $"{p.Type} {p.Name}"));
-            var methodCode = $@"public {returnType} {methodName}({parameterList})
+            var isStatic = part.Node.Modifiers.Any(SyntaxKind.StaticKeyword);
+            var methodCode = isAbstract
+                ? $"public abstract {returnType} {methodName}({parameterList});"
+                : $@"public {(isStatic ? "static " : string.Empty)}{returnType} {methodName}({parameterList})
 {{
 {GenerateBody(returnType)}}}";
 

@@ -56,12 +56,16 @@
 | Command | Description | Example |
 | --- | --- | --- |
 | `<class name> inherits <base class name>` | Adds a base class to a class, keeping any existing interfaces. Aliases: extends, derives from. | `Order inherits AuditableBase` |
+| `add value <value> to <enum name>` | Adds a value to an enum, after the last. An enum that numbers its values gives it the next number. Refuses a repeated value, a keyword, and a [Flags] enum. | `add value Archived to Status` |
 | `create class` | Creates a new class. Refuses a name that already exists, and leaves that file as it is. | `create class Employee` |
 | `create class <class name> with properties` | Creates a new class with the specified properties. After them you can add 'and methods <list>', 'inherits <base>' and 'implements <interfaces>'. Refuses a name that already exists. | `create class Employee with properties EmpCode int, Name string` |
+| `create enum <name> with values <value>, ...` | Creates a new enum with the values you list, split on commas and 'and'. Refuses a repeated value, a keyword, and a name that already exists. | `create enum Status with values Active, Closed, Pending` |
+| `create record\|struct\|abstract class\|static class\|sealed class <name>` | Creates a record, a struct, or an abstract, static or sealed class. Every create class form works after the kind word ('with properties', 'and methods', 'inherits', 'implements'). A record's properties are init-only; a static class's members are static; an abstract class's listed methods are abstract, and a class that inherits it gets an override of each abstract member. Also 'sealed record' and 'abstract record'. Refuses what C# forbids, such as a static struct. | `create record Money with properties Amount decimal and Code string` |
 | `delete class` | Moves a class to DeletedClasses, every partial file of it. Drops the validation rules saved for it. | `delete class Employee` |
 | `list classes` | Lists all classes in the current project, or in the workspace when none is selected. | `list classes` |
 | `list classes in <project name>` | Lists all classes in a project. | `list classes in EmployeeManagement` |
 | `list deleted classes` | Lists all deleted classes. | `list deleted classes` |
+| `remove value <value> from <enum name>` | Removes a value from an enum, then names the code that still uses it. | `remove value Pending from Status` |
 | `rename class` | Renames a class and every reference to it in the workspace (read by the compiler, so a same-named word in a comment or string is left alone). Refuses a name that already exists. | `rename class Employee to Staff` |
 | `restore class` | Restores a deleted class. | `restore class Employee` |
 | `show class` | Displays the class source code. | `show class Employee` |
@@ -92,7 +96,7 @@
 
 | Command | Description | Example |
 | --- | --- | --- |
-| `add method <method name> to <class name>` | Adds a method to a class or an interface. Give a return type with 'add method <name> returns <type> to <class name>'. Give parameters as 'add method <name>(<type> <name>, ...) to <class name>' or 'add method <name> with parameters <name> <type>, ... to <class name>'. On an interface it names the implementers that lack the method. | `add method ApplyDiscount(decimal percent) returns decimal to Order` |
+| `add method <method name> to <class name>` | Adds a method to a class or an interface. Give a return type with 'add method <name> returns <type> to <class name>'. Give parameters as 'add method <name>(<type> <name>, ...) to <class name>' or 'add method <name> with parameters <name> <type>, ... to <class name>'. On an interface it names the implementers that lack the method. Use 'add abstract method <name> to <class name>' to add a method with no body to an abstract class. | `add method ApplyDiscount(decimal percent) returns decimal to Order` |
 | `remove method <method name> from <class name>` | Removes a method from a class or an interface. When the name is overloaded it lists them and removes none. | `remove method Save from Employee` |
 | `rename method <old> to <new> in <class name>` | Renames a method on a class or an interface, every overload of it. References elsewhere are not updated; the command names the code that still uses the old name. | `rename method Save to Store in Employee` |
 | `show methods <class name>` | Lists all methods in a class. | `show methods of Employee` |

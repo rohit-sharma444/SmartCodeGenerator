@@ -1,3 +1,4 @@
+using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
@@ -66,9 +67,11 @@ public static class InterfaceImplementers
     /// </summary>
     public static string? AddedWarning(string workspaceRoot, string typeName, string member)
     {
-        if (!ClassMethodEditService.TryLoad(workspaceRoot, typeName, out _, out _, out var node, out _)
-            || node is not InterfaceDeclarationSyntax declared)
+        if (!ClassMethodEditService.TryLoad(workspaceRoot, typeName, out _, out _, out var node, out _))
             return null;
+
+        if (node is not InterfaceDeclarationSyntax declared)
+            return AbstractAddedWarning(workspaceRoot, node, member);
 
         var iface = declared.Identifier.Text;
         var wanted = declared.Members.Where(m => DeclaredName(m) == member).Select(SignatureOf).ToList();
@@ -111,6 +114,51 @@ public static class InterfaceImplementers
 
         return warnings.Count == 0 ? null : string.Join(" ", warnings);
     }
+
+    /// <summary>
+    /// After an abstract <paramref name="member"/> was added to the abstract class <paramref name="node"/>:
+    /// the classes that derive from it and do not override it, which now fail with CS0534. An
+    /// abstract class between them passes the member on, so the search goes on below it; a class
+    /// that declares the member is not named, nor is anything below it. Null when there are none.
+    /// </summary>
+    private static string? AbstractAddedWarning(string workspaceRoot, TypeDeclarationSyntax node, string member)
+    {
+        if (!IsAbstract(node))
+            return null;
+
+        var wanted = node.Members
+            .Where(m => DeclaredName(m) == member && m.Modifiers.Any(SyntaxKind.AbstractKeyword))
+            .Select(SignatureOf).ToList();
+        if (wanted.Count == 0)
+            return null;
+
+        var lacking = new List<TypeDeclarationSyntax>();
+        var seen = new HashSet<string>(StringComparer.Ordinal) { node.Identifier.Text };
+        var bases = new Queue<string>([node.Identifier.Text]);
+        while (bases.Count > 0)
+        {
+            // By name, as for an interface: a partial class with the override in its other file is not named.
+            foreach (var group in Of(workspaceRoot, bases.Dequeue()).GroupBy(t => t.Identifier.Text))
+            {
+                if (!seen.Add(group.Key) || group.SelectMany(t => t.Members).Any(m => DeclaredName(m) == member))
+                    continue;
+
+                if (group.Any(IsAbstract))
+                    bases.Enqueue(group.Key);
+                else
+                    lacking.AddRange(group);
+            }
+        }
+
+        if (lacking.Count == 0)
+            return null;
+
+        var one = lacking.Count == 1;
+        return $"{Names(lacking)} {(one ? "derives" : "derive")} from {node.Identifier.Text} but {(one ? "does" : "do")} not "
+            + $"override {(wanted.Count == 1 ? wanted[0] : member)} yet: add the override there, or {(one ? "that class" : "those classes")} will not compile.";
+    }
+
+    private static bool IsAbstract(TypeDeclarationSyntax type) => type.Modifiers.Any(SyntaxKind.AbstractKeyword);
 
     // The return or property type and the parameter types, as written, with whitespace removed:
     // double Perimeter(), int Count.

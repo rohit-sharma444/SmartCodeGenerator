@@ -26,7 +26,8 @@ public static class NewClassCompletion
         string? ClassName,
         IReadOnlyList<string> Interfaces,
         IReadOnlyList<string> Added,
-        IReadOnlyList<Diagnostic> Errors);
+        IReadOnlyList<Diagnostic> Errors,
+        bool IsAbstract = false);
 
     private static readonly SymbolDisplayFormat TypeFormat =
         SymbolDisplayFormat.MinimallyQualifiedFormat.AddMiscellaneousOptions(
@@ -38,12 +39,40 @@ public static class NewClassCompletion
         var first = Compile(code, target);
         var interfaces = new List<string>();
         var added = new List<string>();
+        var keys = new HashSet<string>(StringComparer.Ordinal);
         var stubs = new List<string>();
 
         if (first.Class is { } decl
-            && first.Model.GetDeclaredSymbol(decl) is INamedTypeSymbol { IsAbstract: false } type)
+            && first.Model.GetDeclaredSymbol(decl) is INamedTypeSymbol { TypeKind: not TypeKind.Enum } type)
         {
             var position = decl.SpanStart;
+
+            // A class that is not abstract must override every abstract member of its abstract bases.
+            if (!type.IsAbstract)
+            {
+                for (var baseType = type.BaseType; baseType is { IsAbstract: true }; baseType = baseType.BaseType)
+                {
+                    var any = false;
+                    foreach (var member in baseType.GetMembers())
+                    {
+                        if (member.IsStatic || !member.IsAbstract
+                            || IsOverridden(type, member)
+                            || keys.Contains(Key(member))
+                            || Stub(member, first.Model, position, StubKind.Override) is not { } stub)
+                            continue;
+
+                        stubs.Add(stub);
+                        added.Add(member.Name);
+                        keys.Add(Key(member));
+                        any = true;
+                    }
+
+                    if (any)
+                        interfaces.Add(baseType.Name);
+                }
+            }
+
+            var interfaceKind = type.IsAbstract ? StubKind.Abstract : StubKind.Implement;
             foreach (var iface in type.AllInterfaces)
             {
                 var any = false;
@@ -51,12 +80,13 @@ public static class NewClassCompletion
                 {
                     if (member.IsStatic || !member.IsAbstract
                         || type.FindImplementationForInterfaceMember(member) is not null
-                        || added.Contains(member.Name, StringComparer.Ordinal)
-                        || Stub(member, first.Model, position) is not { } stub)
+                        || keys.Contains(Key(member))
+                        || Stub(member, first.Model, position, interfaceKind) is not { } stub)
                         continue;
 
                     stubs.Add(stub);
                     added.Add(member.Name);
+                    keys.Add(Key(member));
                     any = true;
                 }
 
@@ -68,13 +98,16 @@ public static class NewClassCompletion
         if (stubs.Count == 0)
             return new Result(code, first.Class?.Identifier.Text, [], [], Errors(first));
 
+        var isAbstract = first.Class is not null
+            && first.Model.GetDeclaredSymbol(first.Class) is INamedTypeSymbol { IsAbstract: true };
+
         var close = code.LastIndexOf('}');
         var completed = code[..close].TrimEnd() + Environment.NewLine + Environment.NewLine
             + string.Concat(stubs.Select(s => "    " + s + Environment.NewLine))
             + code[close..];
 
         var second = Compile(completed, target);
-        return new Result(completed, first.Class?.Identifier.Text, interfaces, added, Errors(second));
+        return new Result(completed, first.Class?.Identifier.Text, interfaces, added, Errors(second), isAbstract);
     }
 
     /// <summary>
@@ -96,11 +129,14 @@ public static class NewClassCompletion
         if (result.Errors.Count == 0)
             Output.Success(" \n Validate succeeded. ");
 
+        // An abstract class declares them abstract, with no body to fill in.
         if (result.Added.Count > 0)
             Console.WriteLine(
-                $"{result.ClassName} implements {string.Join(" and ", result.Interfaces)}: added "
-                + $"{string.Join(", ", result.Added)}, which it lacked. "
-                + "A method added this way throws NotImplementedException until you fill it in.");
+                $"{result.ClassName} takes members from {string.Join(" and ", result.Interfaces)}: "
+                + $"{string.Join(", ", result.Added)}, which it lacked, "
+                + (result.IsAbstract
+                    ? "added as abstract declarations."
+                    : "added. A method added this way throws NotImplementedException until you fill it in."));
 
         if (result.Errors.Count > 0)
         {
@@ -115,7 +151,7 @@ public static class NewClassCompletion
         Output.Success(" \n Compiled. \n");
     }
 
-    private sealed record Probe(CSharpCompilation Compilation, SyntaxTree Tree, SemanticModel Model, ClassDeclarationSyntax? Class);
+    private sealed record Probe(CSharpCompilation Compilation, SyntaxTree Tree, SemanticModel Model, BaseTypeDeclarationSyntax? Class);
 
     private static Probe Compile(string code, ProjectLocation target)
     {
@@ -123,7 +159,7 @@ public static class NewClassCompletion
         var formatted = CodeFormatter.Format(code, ProjectNamespace.For(target.ProjectFile));
 
         var className = (CSharpSyntaxTree.ParseText(code, parse).GetRoot()
-            .DescendantNodes().OfType<ClassDeclarationSyntax>().FirstOrDefault())?.Identifier.Text;
+            .DescendantNodes().OfType<BaseTypeDeclarationSyntax>().FirstOrDefault())?.Identifier.Text;
         var path = Path.Combine(target.Directory ?? string.Empty, (className ?? "NewClass") + ".cs");
         var tree = CSharpSyntaxTree.ParseText(formatted, parse, path: Path.GetFileName(path));
 
@@ -144,7 +180,7 @@ public static class NewClassCompletion
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary,
                 nullableContextOptions: NullableContextOptions.Enable));
 
-        var decl = tree.GetRoot().DescendantNodes().OfType<ClassDeclarationSyntax>()
+        var decl = tree.GetRoot().DescendantNodes().OfType<BaseTypeDeclarationSyntax>()
             .FirstOrDefault(c => c.Identifier.Text == className);
         return new Probe(compilation, tree, compilation.GetSemanticModel(tree), decl);
     }
@@ -152,17 +188,64 @@ public static class NewClassCompletion
     private static List<Diagnostic> Errors(Probe probe) =>
         [.. probe.Model.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error)];
 
-    // A public member that implements the interface's one implicitly. Null for what has no plain
-    // stub (an indexer, a by-ref return), which the compile then reports.
-    private static string? Stub(ISymbol member, SemanticModel model, int position)
+    // A method is told apart by its parameter types, so overloads each get a stub.
+    private static string Key(ISymbol member) => member is IMethodSymbol m
+        ? m.Name + "(" + string.Join(",", m.Parameters.Select(p => p.RefKind + p.Type.ToDisplayString())) + ")"
+        : member.Name;
+
+    private enum StubKind { Implement, Abstract, Override }
+
+    // Whether a class already overrides an abstract member with a body, anywhere up to the member's owner.
+    private static bool IsOverridden(INamedTypeSymbol type, ISymbol member)
+    {
+        for (var t = type; t is not null && !SymbolEqualityComparer.Default.Equals(t, member.ContainingType); t = t.BaseType)
+            foreach (var m in t.GetMembers(member.Name))
+            {
+                if (m.IsAbstract || !m.IsOverride)
+                    continue;
+                var overridden = m switch
+                {
+                    IMethodSymbol ms => (ISymbol?)ms.OverriddenMethod,
+                    IPropertySymbol ps => ps.OverriddenProperty,
+                    IEventSymbol es => es.OverriddenEvent,
+                    _ => null
+                };
+                if (overridden is not null
+                    && SymbolEqualityComparer.Default.Equals(overridden.OriginalDefinition, member.OriginalDefinition))
+                    return true;
+            }
+
+        return false;
+    }
+
+    private static string Access(Accessibility a) => a switch
+    {
+        Accessibility.Protected => "protected",
+        Accessibility.Internal => "internal",
+        Accessibility.ProtectedOrInternal => "protected internal",
+        Accessibility.ProtectedAndInternal => "private protected",
+        _ => "public"
+    };
+
+    // A public member that implements the interface's one implicitly (or an abstract one, or an
+    // override of a base class's abstract member). Null for what has no plain stub (an indexer,
+    // a by-ref return), which the compile then reports.
+    private static string? Stub(ISymbol member, SemanticModel model, int position, StubKind kind = StubKind.Implement)
     {
         string Type(ITypeSymbol t) => t.ToMinimalDisplayString(model, position, TypeFormat);
         static string Name(string n) => SyntaxFacts.GetKeywordKind(n) != SyntaxKind.None ? "@" + n : n;
+        var access = kind == StubKind.Override ? Access(member.DeclaredAccessibility) : "public";
+        var modifier = kind switch { StubKind.Abstract => "abstract ", StubKind.Override => "override ", _ => "" };
+        var body = kind == StubKind.Abstract ? ";" : " => throw new System.NotImplementedException();";
 
         switch (member)
         {
             case IPropertySymbol { IsIndexer: false, ReturnsByRef: false, ReturnsByRefReadonly: false } p:
-                return $"public {Type(p.Type)} {Name(p.Name)} {{ get; set; }}";
+                var accessors = kind == StubKind.Override
+                    ? p.IsWriteOnly ? "{ set => throw new System.NotImplementedException(); }"
+                        : p.IsReadOnly ? "{ get; }" : "{ get; set; }"
+                    : "{ get; set; }";
+                return $"{access} {modifier}{Type(p.Type)} {Name(p.Name)} {accessors}";
 
             case IMethodSymbol { MethodKind: MethodKind.Ordinary, ReturnsByRef: false, ReturnsByRefReadonly: false } m:
                 var generics = m.TypeParameters.Length == 0 ? "" : $"<{string.Join(", ", m.TypeParameters.Select(t => t.Name))}>";
@@ -171,10 +254,10 @@ public static class NewClassCompletion
                     + (p.RefKind switch { RefKind.Ref => "ref ", RefKind.Out => "out ", RefKind.In => "in ", _ => "" })
                     + $"{Type(p.Type)} {Name(p.Name)}"));
                 var returns = m.ReturnsVoid ? "void" : Type(m.ReturnType);
-                return $"public {returns} {Name(m.Name)}{generics}({parameters}) => throw new System.NotImplementedException();";
+                return $"{access} {modifier}{returns} {Name(m.Name)}{generics}({parameters}){body}";
 
             case IEventSymbol e:
-                return $"public event {Type(e.Type)}? {Name(e.Name)};";
+                return $"{access} {modifier}event {Type(e.Type)}? {Name(e.Name)};";
 
             default:
                 return null;
