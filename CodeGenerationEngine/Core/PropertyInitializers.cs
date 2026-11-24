@@ -68,7 +68,7 @@ internal static class PropertyInitializers
     public static int InsertionPoint(TypeDeclarationSyntax type) =>
         type.CloseBraceToken.IsKind(SyntaxKind.None) ? type.Span.End : type.CloseBraceToken.SpanStart;
 
-    private static NullableContextOptions ProjectNullable(string workspaceRoot, string file)
+    internal static NullableContextOptions ProjectNullable(string workspaceRoot, string file)
     {
         var folder = TypeResolution.ProjectFolderOf(workspaceRoot, file);
         if (folder is null)

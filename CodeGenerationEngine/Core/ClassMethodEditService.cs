@@ -88,12 +88,14 @@ public static class ClassMethodEditService
             return false;
         }
 
-        foreach (var group in matches.GroupBy(m => m.Part))
+        // One write per file: two parts in one file share its root, and a write per part would
+        // overwrite the first part's rename with the second's.
+        foreach (var group in matches.GroupBy(m => m.Part.File, StringComparer.OrdinalIgnoreCase))
         {
-            var root = group.Key.Root.ReplaceNodes(group.Select(m => m.Member), (original, _) =>
+            var root = group.First().Part.Root.ReplaceNodes(group.Select(m => m.Member), (original, _) =>
                 original.WithIdentifier(SyntaxFactory.Identifier(newName).WithTriviaFrom(original.Identifier)));
 
-            if (!TryWrite(group.Key.File, root, string.Empty, out message))
+            if (!TryWrite(group.Key, root, string.Empty, out message))
                 return false;
         }
 
@@ -165,7 +167,8 @@ public static class ClassMethodEditService
     /// <summary>
     /// The class's declaration in <c>&lt;Class&gt;.cs</c> first, then, when it is partial, its other
     /// partial declarations in the workspace: a member added by hand to Order.Logic.cs is as much the
-    /// class's as one in Order.cs. One per file, in the same namespace.
+    /// class's as one in Order.cs. Every part in the same namespace, a second one in Order.cs
+    /// included; the parts of one file share its root.
     /// </summary>
     internal static bool TryLoadParts(
         string workspaceRoot, string className, out List<ClassPart> parts, out string message)
@@ -181,6 +184,17 @@ public static class ClassMethodEditService
         var name = classNode.Identifier.Text;
         var ns = NamespaceOf(classNode);
 
+        bool IsPart(TypeDeclarationSyntax c) =>
+            c.Kind() == classNode.Kind()
+            && c.Identifier.Text.Equals(name, StringComparison.Ordinal)
+            && c.Modifiers.Any(SyntaxKind.PartialKeyword)
+            && NamespaceOf(c) == ns;
+
+        // The other parts in the class's own file.
+        parts.AddRange(root.DescendantNodes().OfType<TypeDeclarationSyntax>()
+            .Where(c => c != classNode && IsPart(c))
+            .Select(c => new ClassPart(file, root, c)));
+
         // Parts in the class's own project: another project's partial of the same name is
         // another class.
         foreach (var other in ClassFiles.Under(TypeResolution.ProjectFolderOf(workspaceRoot, file) ?? ClassFiles.SearchRoot(workspaceRoot)))
@@ -195,13 +209,9 @@ public static class ClassMethodEditService
                 continue;
 
             var otherRoot = CSharpSyntaxTree.ParseText(text).GetRoot();
-            var part = otherRoot.DescendantNodes().OfType<TypeDeclarationSyntax>()
-                .FirstOrDefault(c => c.Kind() == classNode.Kind()
-                    && c.Identifier.Text.Equals(name, StringComparison.Ordinal)
-                    && c.Modifiers.Any(SyntaxKind.PartialKeyword)
-                    && NamespaceOf(c) == ns);
+            var found = otherRoot.DescendantNodes().OfType<TypeDeclarationSyntax>().Where(IsPart).ToList();
 
-            if (part == null)
+            if (found.Count == 0)
                 continue;
 
             // A part of the class an edit may write, in a file that is not UTF-8: refused, not
@@ -213,7 +223,7 @@ public static class ClassMethodEditService
                 return false;
             }
 
-            parts.Add(new ClassPart(other, otherRoot, part));
+            parts.AddRange(found.Select(part => new ClassPart(other, otherRoot, part)));
         }
 
         return true;

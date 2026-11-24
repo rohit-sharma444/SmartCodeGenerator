@@ -57,6 +57,8 @@ public static class ActionFormatter
             IntentType.AddEnumValue
                 or IntentType.RemoveEnumValue => $"{command.ClassName}.{string.Join(", ", command.EnumValues)}",
 
+            IntentType.AddConstructor => command.ClassName,
+
             // The architecture intents each carry their own dedicated name field.
             IntentType.CreateInterface => command.InterfaceName ?? string.Empty,
             IntentType.CreateService => command.ServiceName ?? string.Empty,

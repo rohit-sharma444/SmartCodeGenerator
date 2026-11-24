@@ -67,8 +67,9 @@ public static class CommandEntityExtractor
                 ExtractMethods(members, command);
                 if (!string.IsNullOrWhiteSpace(command.ClassName))
                     SessionContext.CurrentClass = command.ClassName;
-                ExtractInheritanceInfo(members, command);
-                ExtractInterfaceInfo(members, command);
+                // A base-type word inside a quoted default ("extends the base") is not a clause.
+                ExtractInheritanceInfo(WithoutQuotedText(members), command);
+                ExtractInterfaceInfo(WithoutQuotedText(members), command);
                 break;
             }
 
@@ -163,7 +164,8 @@ public static class CommandEntityExtractor
     /// </summary>
     /// <remarks>
     /// The text inside parentheses is a method's parameter list and is kept whole: filler removal
-    /// took the parameter a out of <c>Add(int a, int b)</c>, as it takes the article "a".
+    /// took the parameter a out of <c>Add(int a, int b)</c>, as it takes the article "a". Quoted
+    /// text is a default value (<c>default "a, b"</c>) and is kept whole for the same reason.
     /// </remarks>
     internal static string MemberListText(string? rawSentence)
     {
@@ -175,10 +177,15 @@ public static class CommandEntityExtractor
             return $"\u0001{kept.Count - 1}\u0001";
         }
 
+        text = QuotedText.Replace(text, Keep);
+
+        // The one-word value after default or =: "default A" lost the A as the article.
+        text = Regex.Replace(text, @"(?<=(?:^|\s)(?:default|=)\s+)[^\s""\u0001]\S*", Keep, RegexOptions.IgnoreCase);
+
         // An English parameter list too, up to a property list or a base-type clause: in
         // "Ship with parameters count int, a string" the parameter a was taken as the article.
         var shielded = Regex.Replace(text,
-            $@"\b{MethodParameterParser.EnglishLead}\s.*?(?=\s+(?:(?:and\s+)?(?:with\s+)?propert(?:y|ies)|implements?|inherits?|extends|derived\s+from|base\s+class)\b|[.!]?$)",
+            $@"\b{MethodParameterParser.EnglishLead}\s.*?(?=\s+(?:(?:and\s+)?(?:with\s+)?propert(?:y|ies)|{BaseTypeClause})\b|[.!]?$)",
             Keep, RegexOptions.IgnoreCase);
         shielded = Regex.Replace(shielded, @"\([^()]*\)", Keep);
 
@@ -188,6 +195,21 @@ public static class CommandEntityExtractor
 
         return cleaned.TrimEnd('.', '!').TrimEnd();
     }
+
+    /// <summary>The words that start a base class or interface clause in a create command.</summary>
+    private const string BaseTypeClause = @"implements?|inherits?|extends|derived\s+from|base\s+class";
+
+    /// <summary>
+    /// A quoted default value: <c>"..."</c>, in which <c>\"</c> is a quote of the text, or
+    /// <c>'...'</c> starting a word (an apostrophe inside a word, as in O'Brien, opens nothing).
+    /// </summary>
+    internal static readonly Regex QuotedText = new(
+        "\"(?:[^\"\\\\]|\\\\.)*\"|(?<!\\S)'[^']*'(?!\\w)", RegexOptions.Compiled);
+
+    /// <summary>The text with each quoted value blanked out, at the same length: a word inside one
+    /// is a value, not a clause.</summary>
+    internal static string WithoutQuotedText(string text) =>
+        QuotedText.Replace(text, m => new string(' ', m.Length));
 
     /// <summary>A member name as typed with its first letter capitalised: new becomes New.</summary>
     internal static string Capitalised(string name) =>
@@ -479,9 +501,15 @@ public static class CommandEntityExtractor
     private const string TypedPropertyType = @"(?:[^\s<]|<[^<>]*(?:<[^<>]*>[^<>]*)*>)+";
 
     internal static readonly Regex AddPropertyRe = new(
-        @"\b(?:add|create)\s+(?:(?:a|an|new)\s+)?(?:property|field)\s+"
+        @"\b(?:add|create)\s+(?:(?:a|an|new)\s+)?(?<modifiers>(?:(?:readonly|private|static|required)\s+)*)(?:property|field)\s+"
         + @"(?<name>""[^""]*""|'[^']*'|\S+)"
         + $@"(?:\s+(?<type>{TypedPropertyType}))?"
+        // `Name string required`: a modifier after the type, as a create class list takes it.
+        + @"(?<late>(?:\s+(?:readonly|private|static|required)(?=\s))*)"
+        // `default 5`, `default "New"`, `default 'New York'`, `= 5`: one word or one quoted text
+        // (in which \" is a quote), read from the raw text so a filler word (A, the) given as the
+        // value is kept.
+        + @"(?:\s+(?:default\s+|=\s*)(?<default>""(?:[^""\\]|\\.)*""|'[^']*'|[^\s""']\S*))?"
         + @"\s+(?:to|in|on|into)\s+(?:class\s+(?=\S))?(?<class>[A-Za-z_]\w*)\s*[.!]?\s*$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
@@ -509,6 +537,17 @@ public static class CommandEntityExtractor
             if (add.Groups["type"].Success)
                 command.PropertyType = add.Groups["type"].Value.Trim();
             command.ClassName = ToPascalCase(add.Groups["class"].Value);
+            foreach (var word in (add.Groups["modifiers"].Value + " " + add.Groups["late"].Value)
+                         .Split(' ', StringSplitOptions.RemoveEmptyEntries))
+                command.PropertyModifiers |= ModifierWord(word);
+            if (add.Groups["default"].Success)
+            {
+                command.PropertyDefault = add.Groups["default"].Value;
+
+                // `add property Qty = 5 to Order`: with no type, the value's own type, not string.
+                if (!add.Groups["type"].Success)
+                    command.PropertyType = TypeOfValue(command.PropertyDefault);
+            }
             return;
         }
 
@@ -522,6 +561,19 @@ public static class CommandEntityExtractor
             command.PropertyName = ToPascalCase(remove.Groups["property"].Value);
             command.ClassName = ToPascalCase(remove.Groups["class"].Value);
         }
+    }
+
+    /// <summary>The type a default value typed with no type is: a whole number is an int, a number
+    /// with a decimal point a decimal, true or false a bool, and anything else (quoted or not) a string.</summary>
+    internal static string TypeOfValue(string value)
+    {
+        if (Regex.IsMatch(value, @"^[+-]?\d+$"))
+            return "int";
+        if (Regex.IsMatch(value, @"^[+-]?\d+\.\d+$"))
+            return "decimal";
+        if (value.Equals("true", StringComparison.OrdinalIgnoreCase) || value.Equals("false", StringComparison.OrdinalIgnoreCase))
+            return "bool";
+        return "string";
     }
 
     public static void ExtractClassInfo(string sentence, ParsedCommand command)
@@ -961,20 +1013,32 @@ public static class CommandEntityExtractor
         if (string.IsNullOrWhiteSpace(propertySection))
             return;
 
-        var entries = TypedEntries(propertySection);
+        var entries = TypedEntries(propertySection, out var quoted);
 
         if (entries.Any(e => e.Matches.Count > 0))
         {
-            foreach (var (_, matches) in entries)
+            foreach (var (entry, matches) in entries)
             {
-                foreach (Match match in matches)
+                for (var i = 0; i < matches.Count; i++)
                 {
-                    command.Properties.Add(
-                        new PropertyDefinition
-                        {
-                            Name = Capitalised(match.Groups["name"].Value),
-                            Type = match.Groups["type"].Value
-                        });
+                    var match = matches[i];
+                    var property = new PropertyDefinition
+                    {
+                        Name = Capitalised(match.Groups["name"].Value),
+                        Type = match.Groups["type"].Value
+                    };
+
+                    // The words before the first name in the entry ("readonly Id int"): the
+                    // modifiers apply to it, any other word is reported.
+                    if (i == 0 && ReadWordsBeforeName(entry[..match.Index], property) is { Length: > 0 } before)
+                        command.IgnoredWordsBefore.Add((property.Name, before));
+
+                    // The words up to the next property in the entry, or to its end.
+                    var end = i + 1 < matches.Count ? matches[i + 1].Index : entry.Length;
+                    var ignored = ReadWordsAfterType(entry[(match.Index + match.Length)..end], property, quoted);
+                    command.Properties.Add(property);
+                    if (ignored.Length > 0)
+                        command.IgnoredWords.Add((property.Name, ignored));
                 }
             }
 
@@ -983,7 +1047,7 @@ public static class CommandEntityExtractor
             // parser below never runs and the rest of the list is never looked at again. The
             // entries that go nowhere are recorded so the handler can say so instead of the user
             // finding out by looking at the file.
-            command.IgnoredProperties.AddRange(Ignored(entries));
+            command.IgnoredProperties.AddRange(Ignored(entries, quoted));
 
             return;
         }
@@ -1019,11 +1083,11 @@ public static class CommandEntityExtractor
         if (string.IsNullOrWhiteSpace(section))
             return [];
 
-        var entries = TypedEntries(section);
+        var entries = TypedEntries(section, out var quoted);
 
         // No built-in type matched means the fallback parser ran and read the whole list, so
         // nothing was skipped over.
-        return entries.Any(e => e.Matches.Count > 0) ? Ignored(entries) : [];
+        return entries.Any(e => e.Matches.Count > 0) ? Ignored(entries, quoted) : [];
     }
 
     private const string BuiltInType = "(?:string|int|long|bool|decimal|double|float|datetime|guid)";
@@ -1042,17 +1106,117 @@ public static class CommandEntityExtractor
         RegexOptions.IgnoreCase);
 
     /// <summary>The entries of a property list, each with the built-in typed properties in it.</summary>
-    private static List<(string Entry, MatchCollection Matches)> TypedEntries(string section) =>
-    [
-        .. Regex
-            .Split(section, @"\s*(?:,|;|\band\b)\s*", RegexOptions.IgnoreCase)
-            .Select(t => t.Trim())
-            .Where(t => t.Length > 0)
-            .Select(t => (t, TypedEntry.Matches(t)))
-    ];
+    /// <remarks>
+    /// A separator inside quoted text is part of a default value (<c>default "Black and White"</c>),
+    /// not the end of an entry, and a name and type inside it are not a property. So each quoted
+    /// value (<see cref="QuotedText"/>) is replaced by a marker before the list is split; the
+    /// entries keep the markers, and <paramref name="quoted"/> holds the values they stand for
+    /// (<see cref="Unquoted"/> puts them back). A quote left open matches nothing and shields nothing.
+    /// </remarks>
+    private static List<(string Entry, IReadOnlyList<Match> Matches)> TypedEntries(
+        string section, out List<string> quoted)
+    {
+        var kept = new List<string>();
+        var shielded = QuotedText.Replace(section, m =>
+        {
+            kept.Add(m.Value);
+            return $"\u0002{kept.Count - 1}\u0002";
+        });
+        quoted = kept;
 
-    private static IReadOnlyList<string> Ignored(List<(string Entry, MatchCollection Matches)> entries) =>
-        [.. entries.Where(e => e.Matches.Count == 0).Select(e => e.Entry)];
+        return
+        [
+            .. Regex
+                .Split(shielded, @"\s*(?:,|;|\band\b)\s*", RegexOptions.IgnoreCase)
+                .Select(t => t.Trim())
+                .Where(t => t.Length > 0)
+                .Select(t => (t, (IReadOnlyList<Match>)[.. TypedEntry.Matches(t).Cast<Match>()]))
+        ];
+    }
+
+    /// <summary>The text with each marker <see cref="TypedEntries"/> put in replaced by its quoted value.</summary>
+    private static string Unquoted(string text, List<string> quoted) =>
+        Regex.Replace(text, "\u0002(\\d+)\u0002", m => quoted[int.Parse(m.Groups[1].Value)]);
+
+    /// <summary>A word (a quoted value is one word: <see cref="TypedEntries"/> made it a marker).</summary>
+    private static readonly Regex WordAfterType = new("\\S+");
+
+    /// <summary>The label words a list may repeat before a name ("property Name string"), which
+    /// say nothing more.</summary>
+    private static readonly Regex ListLabel = new(
+        @"^(?:propert(?:y|ies)|fields?|attributes?)?:?$", RegexOptions.IgnoreCase);
+
+    /// <summary>
+    /// Reads the words before a property's name in a create class list: <c>readonly</c>,
+    /// <c>private</c>, <c>static</c> and <c>required</c> apply to it. Returns the other words,
+    /// which nothing reads.
+    /// </summary>
+    private static string ReadWordsBeforeName(string text, PropertyDefinition property)
+    {
+        var ignored = new List<string>();
+        foreach (var word in text.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var modifier = ModifierWord(word);
+            if (modifier != PropertyModifiers.None)
+                property.Modifiers |= modifier;
+            else if (!ListLabel.IsMatch(word))
+                ignored.Add(word);
+        }
+
+        return string.Join(' ', ignored);
+    }
+
+    /// <summary>The modifier <paramref name="word"/> names, or None.</summary>
+    private static PropertyModifiers ModifierWord(string word) => word.ToLowerInvariant() switch
+    {
+        "readonly" => PropertyModifiers.ReadOnly,
+        "private" => PropertyModifiers.Private,
+        "static" => PropertyModifiers.Static,
+        "required" => PropertyModifiers.Required,
+        _ => PropertyModifiers.None
+    };
+
+    /// <summary>
+    /// Reads the words after a property's type: <c>readonly</c>, <c>private</c>, <c>static</c>,
+    /// <c>required</c>, and <c>default &lt;value&gt;</c> or <c>= &lt;value&gt;</c>, where the value is
+    /// one word or one quoted text. Returns the other words, which nothing reads.
+    /// </summary>
+    /// <remarks>
+    /// The value is kept as typed on <see cref="PropertyDefinition.Initializer"/>; the create class
+    /// handler checks it against the type and turns it into a C# expression, or refuses it.
+    /// </remarks>
+    private static string ReadWordsAfterType(string text, PropertyDefinition property, List<string> quoted)
+    {
+        var words = WordAfterType.Matches(text).Select(m => Unquoted(m.Value, quoted)).ToList();
+        var ignored = new List<string>();
+
+        for (var i = 0; i < words.Count; i++)
+        {
+            var word = words[i];
+            var modifier = ModifierWord(word);
+
+            if (modifier != PropertyModifiers.None)
+            {
+                property.Modifiers |= modifier;
+                continue;
+            }
+
+            if ((word.Equals("default", StringComparison.OrdinalIgnoreCase) || word == "=")
+                && i + 1 < words.Count && property.Initializer is null)
+            {
+                property.Initializer = words[++i];
+                continue;
+            }
+
+            ignored.Add(word);
+        }
+
+        return string.Join(' ', ignored);
+    }
+
+    private static IReadOnlyList<string> Ignored(
+        List<(string Entry, IReadOnlyList<Match> Matches)> entries, List<string> quoted) =>
+        [.. entries.Where(e => e.Matches.Count == 0).Select(e => Unquoted(e.Entry, quoted))];
 
     public static string ExtractPropertySection(string sentence)
     {
@@ -1072,8 +1236,12 @@ public static class CommandEntityExtractor
         section = Regex.Replace(section, @"^(?:propert(?:y|ies)|fields?|attributes?)\s+(?=\S+\s+\S)",
             string.Empty, RegexOptions.IgnoreCase);
 
-        // If the properties section contains a methods/functions clause, cut it off
-        var stopMatch = Regex.Match(section, @"\b(?:and\s+)?(?:with\s+)?(?:having\s+)?(?:methods|functions)\b", RegexOptions.IgnoreCase);
+        // The list ends where a methods clause or a base-type clause starts: those are read by
+        // ExtractMethods and ExtractInheritanceInfo, and their words were reported as ignored.
+        // A clause word inside a quoted default ("extends the base") is part of the value.
+        var stopMatch = Regex.Match(WithoutQuotedText(section),
+            $@"\b(?:(?:and\s+)?(?:with\s+)?(?:having\s+)?(?:methods|functions)|(?:with|and)\s+(?:method|function)|{BaseTypeClause})\b",
+            RegexOptions.IgnoreCase);
         if (stopMatch.Success)
         {
             section = section.Substring(0, stopMatch.Index);

@@ -127,6 +127,7 @@ public static class CommandHandlingService
             [IntentType.CreateEnum] = HandleCreateEnum,
             [IntentType.AddEnumValue] = HandleAddEnumValue,
             [IntentType.RemoveEnumValue] = HandleRemoveEnumValue,
+            [IntentType.AddConstructor] = HandleAddConstructor,
             [IntentType.ListProperties] = HandleListProperties,
             [IntentType.CreateProperty] = HandleCreateProperty,
             [IntentType.DeleteProperty] = HandleDeleteProperty,
@@ -308,14 +309,127 @@ public static class CommandHandlingService
             return false;
         }
 
+        // GenerateClass writes a property's Initializer as given, so the default as typed is
+        // replaced here by the checked C# expression - or the command is refused, nothing written.
+        if (PropertyRefusal(ctx) is { } propertyError)
+        {
+            Output.Error(propertyError);
+            return false;
+        }
+
         var saved = GenerateAndSave(ctx);
 
         // After the class is on disk, and only if it got there: a note about what was left out of
         // a class that was never written would be the second confusing thing in a row.
         if (saved)
+        {
             ReportIgnoredProperties(command);
+            ReportIgnoredWords(command);
+        }
 
         return saved;
+    }
+
+    /// <summary>
+    /// Why a property in a create class list cannot be written - modifiers C# does not allow
+    /// together, a default on a struct property, or a default that is not a value of the type -
+    /// or null. Each default that fits is made the C# expression GenerateClass writes.
+    /// </summary>
+    private static string? PropertyRefusal(CommandExecutionContext ctx)
+    {
+        var command = ctx.Command;
+        var staticType = command.Modifier == TypeModifier.Static;
+        string? projectFolder = null;
+        var located = false;
+
+        foreach (var property in command.Properties)
+        {
+            var modifiers = property.Modifiers | (staticType ? PropertyModifiers.Static : PropertyModifiers.None);
+            if (PropertyModifierRules.Refusal(modifiers, property.Name) is { } refusal)
+                return refusal;
+
+            if (property.Initializer is null)
+                continue;
+
+            // C# 11 refuses an initializer in a struct that declares no constructor (CS8983).
+            if (command.Kind == DeclaredKind.Struct)
+                return DefaultValues.StructRefusal(command.ClassName);
+
+            if (!located)
+            {
+                var target = ProjectLocator.Resolve(command, ctx.CurrentProject, ctx.WorkspaceRoot);
+                projectFolder = string.IsNullOrWhiteSpace(target.ProjectFile) ? null : Path.GetDirectoryName(target.ProjectFile);
+                located = true;
+            }
+
+            var type = Core.CodeGenerationEngine.ResolvePropertyType(property);
+            if (!DefaultValues.TryExpression(type, property.Initializer, projectFolder, out var expression, out var error))
+                return DefaultValues.ValueRefusal(error!, property.Name);
+
+            property.Initializer = expression;
+        }
+
+        return null;
+    }
+
+    /// <summary>The words a validation rule is given in (<c>min length 3</c>, <c>unique</c>).</summary>
+    private static readonly System.Text.RegularExpressions.Regex ValidationWords = new(
+        @"\b(?:min|max|minimum|maximum|minlength|maxlength|length|greater|less|between|range|allowed|unique|email|pattern|regex|custom|positive|negative|nonempty|not\s+empty|not\s+blank)\b|[<>@]",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>"Name string": a property as the list typed it.</summary>
+    private static string TypedProperty(ParsedCommand command, string property) =>
+        command.Properties.FirstOrDefault(p => p.Name == property) is { } found
+            ? $"{property} {found.Type}"
+            : property;
+
+    /// <summary>
+    /// Says which words after a property's type nothing read: they were dropped with no word
+    /// before. A validation rule has its own command, which the note gives - but not on an
+    /// interface, which takes no validation.
+    /// </summary>
+    private static void ReportIgnoredWords(ParsedCommand command, bool isInterface = false)
+    {
+        foreach (var (property, words) in command.IgnoredWordsBefore)
+        {
+            Output.Warning($"Ignored '{words}' before {TypedProperty(command, property)}"
+                + (isInterface
+                    ? ": an interface property is written as its name and type only."
+                    : ": only readonly, private, static or required are read before a property's name."));
+        }
+
+        foreach (var (property, words) in command.IgnoredWords)
+        {
+            Output.Warning($"Ignored '{words}' after {TypedProperty(command, property)}"
+                + (isInterface
+                    ? ": an interface property is written as its name and type only."
+                    : ValidationWords.IsMatch(words)
+                        ? $": use add validation ... on {property} in {command.ClassName}"
+                        : ": only a default value (default <value> or = <value>) and readonly, private, static or required are read after the type."));
+        }
+    }
+
+    /// <summary>
+    /// The default values and modifiers given in a create interface list: an interface property
+    /// has neither, so they are not written, and said so.
+    /// </summary>
+    private static void ReportInterfacePropertyExtras(ParsedCommand command)
+    {
+        foreach (var property in command.Properties)
+        {
+            if (property.Initializer is not null)
+                Output.Warning($"Ignored 'default {property.Initializer}' after {TypedProperty(command, property.Name)}: "
+                    + "an interface property has no default value.");
+
+            if (property.Modifiers != PropertyModifiers.None)
+            {
+                var words = string.Join(' ', Enum.GetValues<PropertyModifiers>()
+                    .Where(m => m != PropertyModifiers.None && property.Modifiers.HasFlag(m))
+                    .Select(m => m.ToString().ToLowerInvariant()));
+                Output.Warning($"Ignored '{words}' after {TypedProperty(command, property.Name)}: "
+                    + "an interface property has no modifier here.");
+            }
+        }
     }
 
     /// <summary>The C# rule a create command breaks, in the kind's terms, or null when it breaks none.</summary>
@@ -741,7 +855,11 @@ public static class CommandHandlingService
 
         var ok = GenerateAndSave(ctx);
         if (ok)
+        {
             ReportIgnoredProperties(ctx.Command);
+            ReportInterfacePropertyExtras(ctx.Command);
+            ReportIgnoredWords(ctx.Command, isInterface: true);
+        }
 
         // Say which name was made when it is not what was typed (InterfaceNaming).
         var typed = System.Text.RegularExpressions.Regex.Match(ctx.RawInput,
@@ -803,6 +921,24 @@ public static class CommandHandlingService
         return ok;
     }
 
+    private static bool HandleAddConstructor(CommandExecutionContext ctx)
+    {
+        if (ctx.Command.Metadata.TryGetValue(ParsedCommand.ConstructorErrorKey, out var constructorError))
+        {
+            Output.Error(constructorError);
+            return false;
+        }
+
+        UseDeclaredNames(ctx, member: null);
+        var ok = ConstructorService.AddConstructor(
+            ctx.WorkspaceRoot, ctx.Command.ClassName, ctx.Command.ConstructorProperties,
+            ctx.Command.ConstructorParameterless, out var message, out var notes);
+        Console.WriteLine(message);
+        foreach (var note in notes)
+            Output.Warning(note);
+        return ok;
+    }
+
     private static bool HandleRemoveEnumValue(CommandExecutionContext ctx)
     {
         var command = ctx.Command;
@@ -860,10 +996,17 @@ public static class CommandHandlingService
 
     private static bool HandleCreateProperty(CommandExecutionContext ctx)
     {
+        if (ctx.Command.Metadata.TryGetValue(ParsedCommand.PropertyErrorKey, out var propertyError))
+        {
+            Output.Error(propertyError);
+            return false;
+        }
+
         UseDeclaredNames(ctx, member: null);
         var ok = ClassPropertyService.AddProperty(
             ctx.WorkspaceRoot, ctx.Command.ClassName,
-            ctx.Command.PropertyName, ctx.Command.PropertyType, out var message);
+            ctx.Command.PropertyName, ctx.Command.PropertyType,
+            ctx.Command.PropertyModifiers, ctx.Command.PropertyDefault, out var message);
         Console.WriteLine(message);
         if (ok)
             WarnOfImplementersLacking(ctx, ctx.Command.PropertyName);

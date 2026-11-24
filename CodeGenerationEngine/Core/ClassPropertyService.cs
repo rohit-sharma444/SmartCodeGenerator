@@ -1,4 +1,5 @@
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using CodeGenerationEngine.Models;
 
@@ -12,8 +13,21 @@ public static class ClassPropertyService
 {
     public static bool AddProperty(string workspaceRoot, string className,
         string propertyName, string propertyType, out string message)
+        => AddProperty(workspaceRoot, className, propertyName, propertyType,
+            PropertyModifiers.None, null, out message);
+
+    /// <summary>
+    /// Adds a property with the modifiers the command gave and, when <paramref name="defaultValue"/>
+    /// is not null, that value as typed: it must be a value of the type, or the property is refused
+    /// and nothing is written. The kind of the class still applies (a static class, a record or a
+    /// readonly struct), with the command's modifiers added to it.
+    /// </summary>
+    public static bool AddProperty(string workspaceRoot, string className,
+        string propertyName, string propertyType, PropertyModifiers modifiers, string? defaultValue,
+        out string message)
     {
         message = string.Empty;
+        var typed = modifiers;
 
         // With no usable name the exists-check below built its pattern from an empty string,
         // matched any property at all and said "Property '' already exists."
@@ -51,25 +65,73 @@ public static class ClassPropertyService
             if (!TypeResolution.Resolves(workspaceRoot, part.File, part.Node, type, out message, out var bound))
                 return false;
 
-            // A readonly struct cannot have a set accessor (CS8341); init is what it allows.
-            // A record's properties are init too, as create record writes them.
-            var setter = part.Node is RecordDeclarationSyntax
-                || part.Node.Modifiers.Any(Microsoft.CodeAnalysis.CSharp.SyntaxKind.ReadOnlyKeyword) ? "init" : "set";
+            // An interface property is a signature: no initializer (CS8053), no modifier.
+            if (part.Node is InterfaceDeclarationSyntax)
+            {
+                if (defaultValue is not null)
+                {
+                    message = DefaultValues.InterfaceDefaultRefusal;
+                    return false;
+                }
+
+                if (typed != PropertyModifiers.None)
+                {
+                    message = DefaultValues.InterfaceModifierRefusal;
+                    return false;
+                }
+            }
 
             // A static class holds only static members (CS0708).
-            var modifier = part.Node.Modifiers.Any(Microsoft.CodeAnalysis.CSharp.SyntaxKind.StaticKeyword)
-                ? "public static" : "public";
+            if (part.Node.Modifiers.Any(Microsoft.CodeAnalysis.CSharp.SyntaxKind.StaticKeyword))
+                modifiers |= PropertyModifiers.Static;
+
+            if (PropertyModifierRules.Refusal(modifiers, propertyName) is { } refusal)
+            {
+                message = refusal;
+                return false;
+            }
+
+            // A readonly struct cannot have a set accessor (CS8341); init is what it allows.
+            // A record's properties are init too, as create record writes them. An init accessor
+            // cannot be static, so a static property keeps set.
+            if ((part.Node is RecordDeclarationSyntax
+                    || part.Node.Modifiers.Any(Microsoft.CodeAnalysis.CSharp.SyntaxKind.ReadOnlyKeyword))
+                && !modifiers.HasFlag(PropertyModifiers.Static))
+                modifiers |= PropertyModifiers.ReadOnly;
+
+            string? initial = null;
+            if (defaultValue is not null)
+            {
+                // C# 11 refuses an initializer in a struct that declares no constructor (CS8983).
+                if (part.Node.Kind() is SyntaxKind.StructDeclaration or SyntaxKind.RecordStructDeclaration)
+                {
+                    message = DefaultValues.StructRefusal(className);
+                    return false;
+                }
+
+                var folder = ProjectFileHelper.FindProjectDirectory(part.File);
+                if (!DefaultValues.TryExpression(propertyType, defaultValue, folder, out var expression, out var valueError))
+                {
+                    message = DefaultValues.ValueRefusal(valueError!, propertyName);
+                    return false;
+                }
+
+                initial = expression;
+            }
 
             // With nullable reference types on, a string or a list with no initial value is
             // CS8618: it starts as null.
-            var initializer = PropertyInitializers.CanHaveInitializer(part.Node)
-                && PropertyInitializers.NullableOn(workspaceRoot, part.File, part.Root,
-                    PropertyInitializers.InsertionPoint(part.Node))
-                && PropertyInitializers.SafeFor(type, bound) is { } value
-                    ? $" = {value};"
-                    : string.Empty;
+            var initializer = initial is not null
+                ? $" = {initial};"
+                : PropertyInitializers.CanHaveInitializer(part.Node)
+                    && PropertyInitializers.NullableOn(workspaceRoot, part.File, part.Root,
+                        PropertyInitializers.InsertionPoint(part.Node))
+                    && PropertyInitializers.SafeFor(type, bound) is { } value
+                        ? $" = {value};"
+                        : string.Empty;
 
-            var propertyCode = $@"{modifier} {propertyType} {propertyName} {{ get; {setter}; }}{initializer}";
+            var propertyCode = $"{PropertyModifierRules.Prefix(modifiers)}{propertyType} {propertyName} "
+                + $"{PropertyModifierRules.Accessors(modifiers)}{initializer}";
 
             if (!ClassMemberEditor.TryAddMember(part.File, className, propertyCode, out var error))
             {
@@ -77,7 +139,13 @@ public static class ClassPropertyService
                 return false;
             }
 
-            message = $"Property '{propertyName}' of type '{propertyType}' added to '{className}'.";
+            var words = string.Join(' ', Enum.GetValues<PropertyModifiers>()
+                .Where(m => m != PropertyModifiers.None && typed.HasFlag(m))
+                .Select(m => m.ToString().ToLowerInvariant()));
+            message = $"Property '{propertyName}' of type '{propertyType}' added to '{className}'"
+                + (initial is null ? string.Empty : $" (default {initial})")
+                + (words.Length == 0 ? string.Empty : $" ({words})")
+                + ".";
             return true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)

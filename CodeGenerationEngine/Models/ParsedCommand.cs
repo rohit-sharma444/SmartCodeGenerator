@@ -53,14 +53,49 @@ public sealed class ParsedCommand
     public List<(string Entry, string Error)> IgnoredMethods { get; set; } = [];
 
     /// <summary>
+    /// The words typed after a property's type in a create class list that are not a default
+    /// value or a modifier, by property. The property is still written; the words are reported.
+    /// </summary>
+    public List<(string Property, string Words)> IgnoredWords { get; set; } = [];
+
+    /// <summary>
+    /// The words typed before a property's name in a create class list that are not a modifier,
+    /// by property. The property is still written; the words are reported.
+    /// </summary>
+    public List<(string Property, string Words)> IgnoredWordsBefore { get; set; } = [];
+
+    /// <summary>
     /// The <see cref="Metadata"/> key under which <c>add method</c> carries a parameter list that
     /// could not be read, so the handler refuses the method by that reason.
     /// </summary>
     public const string ParameterErrorKey = "ParameterError";
 
+    /// <summary>
+    /// The <see cref="Metadata"/> key under which <c>add property</c> carries the reason its line
+    /// could not be read, so the handler refuses it by that reason and writes nothing.
+    /// </summary>
+    public const string PropertyErrorKey = "PropertyError";
+
     // Single-property member operations (add/remove property on an existing class).
     public string PropertyName { get; set; } = string.Empty;
     public string PropertyType { get; set; } = "string";
+
+    // The words before `property` (readonly, private, static, required) and the default value as
+    // typed (`default 5`, `= 5`) of `add property`.
+    public PropertyModifiers PropertyModifiers { get; set; } = PropertyModifiers.None;
+    public string? PropertyDefault { get; set; }
+
+    // The property names after `with` / `taking` in `add constructor`; empty = the default set.
+    public List<string> ConstructorProperties { get; set; } = [];
+
+    // `add default|parameterless|empty constructor`: one that takes no parameters.
+    public bool ConstructorParameterless { get; set; }
+
+    /// <summary>
+    /// The <see cref="Metadata"/> key under which <c>add constructor</c> carries the reason its line
+    /// cannot be done, so the handler refuses it by that reason and writes nothing.
+    /// </summary>
+    public const string ConstructorErrorKey = "ConstructorError";
 
     // Target name for `rename property <old> to <new>`.
     public string NewPropertyName { get; set; } = string.Empty;
@@ -154,6 +189,10 @@ public sealed class ParsedCommand
         MethodName = string.Empty;
         ReturnType = "void";
 
+        PropertyModifiers = PropertyModifiers.None;
+        PropertyDefault = null;
+        ConstructorProperties.Clear();
+        ConstructorParameterless = false;
         NewPropertyName = string.Empty;
         NewMethodName = string.Empty;
         RuleNumber = null;
@@ -183,6 +222,8 @@ public sealed class ParsedCommand
         IgnoredProperties.Clear();
         ClassFromSession = false;
         IgnoredMethods.Clear();
+        IgnoredWords.Clear();
+        IgnoredWordsBefore.Clear();
         Methods.Clear();
         Tags.Clear();
         Metadata.Clear();

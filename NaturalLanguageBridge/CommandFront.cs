@@ -91,6 +91,21 @@ public static class CommandFront
             + @"|\s+(?:(?:with|having)\s+(?:values|members)|with|having)\s+(?<values>.+?))?\s*[.!]?$",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    // `add|create [a|an|new] [default|parameterless|empty] constructor [(with|taking) [the] [properties] <List>]
+    // (to|for|in) [the] [class] <Class> [class] [(with|taking) [the] [properties] <List>]`, ahead of the mapper,
+    // which has no constructor. The class comes after to/for/in, the list after with/taking, before or after
+    // the class; <List> is <P1>(, <P2>| and <P2>|, and <P2>)*.
+    private const string ConstructorList =
+        @"\s+(?:with|taking)\s+(?:the\s+)?(?:(?:properties|property|parameters)\s+)?"
+        + @"(?<props>\w+(?:(?:\s*,\s*(?:and\s+)?|\s+and\s+)\w+)*)";
+
+    private static readonly Regex AddConstructorRe =
+        new(@"^(?:add|create)\s+(?:(?:a|an|new)\s+)*(?:(?<empty>default|parameterless|empty)\s+)?constructor"
+            + $@"(?:{ConstructorList})?"
+            + @"\s+(?:to|for|in)\s+(?:the\s+)?(?:(?:class|record|struct)\s+(?=\w))?(?<class>\w+)(?:\s+(?:class|record|struct))?"
+            + $@"(?:{ConstructorList})?\s*[.!]?$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     // `add [a|an|the] value <V> to [the] [enum] <Enum>` / `remove|delete [a|an|the] value <V> from ...`,
     // ahead of the mapper, which has no enum value. The value and the enum are kept as typed.
     private static readonly Regex EnumValueRe =
@@ -195,8 +210,26 @@ public static class CommandFront
     // The start of `add property ...`; the rest is CommandEntityExtractor.AddPropertyRe, which
     // reads the fields.
     private static readonly Regex AddPropertyStartRe =
-        new(@"^(?:add|create)\s+(?:(?:a|an|new)\s+)?(?:property|field)\s",
+        new(@"^(?:add|create)\s+(?:(?:a|an|new)\s+)?(?:(?:readonly|private|static|required)\s+)*(?:property|field)\s",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    // A word of `add property` that only AddPropertyRe reads (a default or a modifier). When the
+    // line has one and AddPropertyRe does not match it, the line is refused with the form to type:
+    // the mapper read such a line as a property with no name, on the current class.
+    private static readonly Regex AddPropertyWordRe =
+        new(@"(?:^|\s)(?:default|readonly|private|static|required|=)(?=\s|$)",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    // The class at the end of an `add property` line that AddPropertyRe could not read.
+    private static readonly Regex AddPropertyClassRe =
+        new(@"\s(?:to|in|on|into)\s+(?:class\s+)?(?<class>[A-Za-z_]\w*)\s*[.!]?\s*$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>The refusal of an <c>add property</c> line that names a default or a modifier in a
+    /// place it is not read.</summary>
+    internal const string AddPropertyForm =
+        "This add property line could not be read. Type it as: add [readonly|private|static|required] property "
+        + "<Name> <type> [default <value>] to <Class>. A default of more than one word goes in quotes: default \"New York\".";
 
     // `rename property <old> to <new> in <Class>`. The mapper's Table is keyed on
     // (verb, whole remainder), so it cannot match an argument-bearing form; and
@@ -266,6 +299,7 @@ public static class CommandFront
         IntentType.CreateEnum,
         IntentType.AddEnumValue,
         IntentType.RemoveEnumValue,
+        IntentType.AddConstructor,
         IntentType.CreateProperty,
         IntentType.ListProperties,
         IntentType.ListMethods,
@@ -406,6 +440,39 @@ public static class CommandFront
             return valueCmd;
         }
 
+        var constructorMatch = AddConstructorRe.Match(text);
+        if (constructorMatch.Success)
+        {
+            // Fields from this guard's own groups, on the raw text (Normalize rewrites model/entity/object).
+            var constructorCmd = new ParsedCommand
+            {
+                Intent = IntentType.AddConstructor,
+                ClassName = constructorMatch.Groups["class"].Value,
+                OriginalSentence = input ?? string.Empty,
+                Confidence = 1.0
+            };
+
+            // The list may come before the class or after it: each capture is a part of it.
+            constructorCmd.ConstructorProperties =
+            [
+                .. constructorMatch.Groups["props"].Captures
+                    .SelectMany(c => Regex.Split(c.Value, @"\s*(?:,|\band\b)\s*", RegexOptions.IgnoreCase))
+                    .Where(p => p.Length > 0)
+            ];
+
+            // `add a default constructor to Order`: one that takes nothing, not every property.
+            if (constructorMatch.Groups["empty"].Success)
+            {
+                if (constructorCmd.ConstructorProperties.Count > 0)
+                    constructorCmd.Metadata[ParsedCommand.ConstructorErrorKey] =
+                        $"A default constructor takes no properties. Type add default constructor to {constructorCmd.ClassName}, "
+                        + $"or add constructor with {string.Join(" and ", constructorCmd.ConstructorProperties)} to {constructorCmd.ClassName}.";
+                constructorCmd.ConstructorParameterless = true;
+            }
+
+            return constructorCmd;
+        }
+
         var createInterfaceMatch = CreateInterfaceRe.Match(text);
         if (createInterfaceMatch.Success)
         {
@@ -489,6 +556,22 @@ public static class CommandFront
             addPropertyCmd.OriginalSentence = input ?? string.Empty;
             addPropertyCmd.Confidence = 1.0;
             return addPropertyCmd;
+        }
+
+        if (AddPropertyStartRe.IsMatch(text) && AddPropertyWordRe.IsMatch(text))
+        {
+            // Not the current class: the line named one, or the refusal names none.
+            var unread = new ParsedCommand
+            {
+                Intent = IntentType.CreateProperty,
+                ClassName = AddPropertyClassRe.Match(text) is { Success: true } named
+                    ? named.Groups["class"].Value
+                    : string.Empty,
+                OriginalSentence = input ?? string.Empty,
+                Confidence = 1.0
+            };
+            unread.Metadata[ParsedCommand.PropertyErrorKey] = AddPropertyForm;
+            return unread;
         }
 
         var renamePropertyMatch = RenamePropertyRe.Match(text);
@@ -665,7 +748,7 @@ public static class CommandFront
     // after "and", "then" or a comma. One line runs one command, so the line is refused whole.
     private static readonly Regex SecondCommandRe = new(
         @"(?:\s+(?:and|then)|\s*[,;])\s+(?:then\s+)?(?<second>(?:add|create|remove|delete|drop|rename|change|retype)\s+"
-        + @"(?:(?:a|an|the|new)\s+)?(?:property|field|method|class|interface|project|validation|value)\b.*)$",
+        + @"(?:(?:a|an|the|new)\s+)?(?:property|field|method|class|interface|project|validation|value|constructor)\b.*)$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly Regex CreatesAType = new(

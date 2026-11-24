@@ -141,7 +141,9 @@ public static class CommandDictionary
             Command = "create class <class name> with properties",
             Description = "Creates a new class with the specified properties. After them you can add "
                         + "'and methods <list>', 'inherits <base>' and 'implements <interfaces>'. "
-                        + "Refuses a name that already exists.",
+                        + "Refuses a name that already exists. A property can have 'default <value>' "
+                        + "or '= <value>', and the modifiers readonly, private, static and required "
+                        + "(the C# keyword) after its type, as in 'Id int readonly, Tax decimal = 0'.",
             Example = "create class Employee with properties EmpCode int, Name string"
         },
         new()
@@ -277,7 +279,9 @@ public static class CommandDictionary
             Category = "Properties",
             Command = "add property",
             Description = "Adds a property to a class or an interface. On an interface it names the "
-                        + "classes that implement it and now lack the property.",
+                        + "classes that implement it and now lack the property. Add 'default <value>' "
+                        + "or '= <value>' for a default, and readonly, private, static or required "
+                        + "(the C# keyword) before the word property: 'add readonly property Id int to Order'.",
             Example = "add property Name string to Employee"
         },
         new()
@@ -336,6 +340,17 @@ public static class CommandDictionary
                         + "On an interface it names the implementers that lack the method. "
                         + "Use 'add abstract method <name> to <class name>' to add a method with no body to an abstract class.",
             Example = "add method ApplyDiscount(decimal percent) returns decimal to Order"
+        },
+        new()
+        {
+            Category = "Methods",
+            Command = "add constructor [with <property>, ...] to <class name>",
+            Description = "Adds a constructor to a class, record or struct. With no list it takes every "
+                        + "settable instance property the class declares that is not private, in order; "
+                        + "'with Total and Name' takes only those, in that order. Each parameter is "
+                        + "assigned to its property. Refused on a static class, an interface, an enum "
+                        + "and a positional record, and when the result would not compile.",
+            Example = "add constructor with Total and Name to Order"
         },
         new()
         {

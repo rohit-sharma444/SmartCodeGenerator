@@ -26,7 +26,7 @@ namespace CodeGenerationEngine.Core;
 internal static class TypeResolution
 {
     // What `<ImplicitUsings>enable</ImplicitUsings>` adds to a plain SDK project.
-    private static readonly string[] ImplicitUsings =
+    internal static readonly string[] ImplicitUsings =
     [
         "System", "System.Collections.Generic", "System.IO", "System.Linq",
         "System.Net.Http", "System.Threading", "System.Threading.Tasks",
@@ -220,7 +220,12 @@ internal static class TypeResolution
 
         try
         {
-            var project = Directory.EnumerateFiles(folder, "*.csproj").First();
+            // A folder with no project file is the same as no folder (it threw "Sequence contains
+            // no elements" when DefaultValues was given one).
+            var project = Directory.EnumerateFiles(folder, "*.csproj").FirstOrDefault();
+            if (project is null)
+                return true;
+
             var value = XDocument.Load(project).Descendants()
                 .FirstOrDefault(e => e.Name.LocalName == "ImplicitUsings")?.Value.Trim();
             return string.Equals(value, "enable", StringComparison.OrdinalIgnoreCase)
