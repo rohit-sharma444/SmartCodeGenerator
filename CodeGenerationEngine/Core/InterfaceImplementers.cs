@@ -96,7 +96,11 @@ public static class InterfaceImplementers
         if (lacking.Count > 0)
         {
             var one = lacking.Count == 1;
-            warnings.Add($"{Names(lacking)} {(one ? "implements" : "implement")} {iface} but {(one ? "has" : "have")} no {member} yet: "
+
+            // By its signature when there is one: "has no Scale" did not say what to add once a
+            // method could take parameters.
+            var what = wanted.Count == 1 ? wanted[0] : member;
+            warnings.Add($"{Names(lacking)} {(one ? "implements" : "implement")} {iface} but {(one ? "has" : "have")} no {what} yet: "
                 + $"add it there, or {(one ? "that class" : "those classes")} will not compile.");
         }
 

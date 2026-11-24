@@ -161,8 +161,33 @@ public static class CommandEntityExtractor
     /// The sentence a member list is read from: as typed, without filler words ("with a Name and
     /// an Email") and without the full stop that ends it.
     /// </summary>
-    internal static string MemberListText(string? rawSentence) =>
-        CommandParser.RemoveFillerWords(Verbatim(rawSentence)).TrimEnd('.', '!').TrimEnd();
+    /// <remarks>
+    /// The text inside parentheses is a method's parameter list and is kept whole: filler removal
+    /// took the parameter a out of <c>Add(int a, int b)</c>, as it takes the article "a".
+    /// </remarks>
+    internal static string MemberListText(string? rawSentence)
+    {
+        var text = Verbatim(rawSentence);
+        var kept = new List<string>();
+        string Keep(Match m)
+        {
+            kept.Add(m.Value);
+            return $"\u0001{kept.Count - 1}\u0001";
+        }
+
+        // An English parameter list too, up to a property list or a base-type clause: in
+        // "Ship with parameters count int, a string" the parameter a was taken as the article.
+        var shielded = Regex.Replace(text,
+            $@"\b{MethodParameterParser.EnglishLead}\s.*?(?=\s+(?:(?:and\s+)?(?:with\s+)?propert(?:y|ies)|implements?|inherits?|extends|derived\s+from|base\s+class)\b|[.!]?$)",
+            Keep, RegexOptions.IgnoreCase);
+        shielded = Regex.Replace(shielded, @"\([^()]*\)", Keep);
+
+        var cleaned = CommandParser.RemoveFillerWords(shielded);
+        for (var pass = 0; pass < 3 && cleaned.Contains('\u0001'); pass++)
+            cleaned = Regex.Replace(cleaned, "\u0001(\\d+)\u0001", m => kept[int.Parse(m.Groups[1].Value)]);
+
+        return cleaned.TrimEnd('.', '!').TrimEnd();
+    }
 
     /// <summary>A member name as typed with its first letter capitalised: new becomes New.</summary>
     internal static string Capitalised(string name) =>
@@ -560,15 +585,14 @@ public static class CommandEntityExtractor
 
         // Methods can be separated by commas, semicolons, or the word "and"
         // (e.g. "AddEmployee and EmployeeList method").
-        var methodTokens = Regex.Split(
-                methodsText,
-                @"\s*(?:,|;|\band\b)\s*",
-                RegexOptions.IgnoreCase)
-            .Where(t => !string.IsNullOrWhiteSpace(t));
-
-        foreach (var token in methodTokens)
+        foreach (var token in MethodEntries(methodsText))
         {
-            var method = ParseMethod(CleanMethodToken(token));
+            var cleaned = CleanMethodToken(token);
+            if (!TryParseMethod(cleaned, out var method, out var error))
+            {
+                command.IgnoredMethods.Add((cleaned, error!));
+                continue;
+            }
 
             if (method == null)
                 continue;
@@ -596,10 +620,11 @@ public static class CommandEntityExtractor
 
         token = token.Trim();
 
-        // Leading verb ("add EmployeeList" -> "EmployeeList").
+        // Leading verb ("add EmployeeList" -> "EmployeeList"), but not when the verb is the
+        // method's own name: "Add with parameters x int" and "Add returns int" lost their method.
         token = Regex.Replace(
             token,
-            @"^(?:add|create|generate)\s+",
+            $@"^(?:add|create|generate)\s+(?!(?:{MethodParameterParser.EnglishLead}|returns?)\b)",
             string.Empty,
             RegexOptions.IgnoreCase);
 
@@ -620,43 +645,117 @@ public static class CommandEntityExtractor
         return token.Trim();
     }
 
-    public static MethodDefinition? ParseMethod(string token)
+    /// <summary>
+    /// The entries of a method list: split on commas, semicolons and "and", but not inside
+    /// parentheses or angle brackets (<c>Apply(decimal rate, string code)</c>,
+    /// <c>Map returns Dictionary&lt;string, int&gt;</c>), and with the entries of an English parameter
+    /// list kept on their method: in <c>Ship with parameters address string, express bool</c> the
+    /// second entry is a parameter, as it is two words with no parentheses and no "returns".
+    /// </summary>
+    internal static List<string> MethodEntries(string methodsText)
     {
+        var raw = new List<string>();
+        var depth = 0;
+        var start = 0;
+        for (var i = 0; i < methodsText.Length; i++)
+        {
+            var c = methodsText[i];
+            if (c is '(' or '<' or '[') depth++;
+            else if (c is ')' or '>' or ']') depth--;
+            else if (depth == 0 && (c is ',' or ';' || IsAndAt(methodsText, i)))
+            {
+                raw.Add(methodsText[start..i]);
+                start = c is ',' or ';' ? i + 1 : i + 3;
+            }
+        }
+        raw.Add(methodsText[start..]);
+
+        var entries = new List<string>();
+        foreach (var entry in raw.Select(e => e.Trim()).Where(e => e.Length > 0))
+        {
+            var continuesParameters = entries.Count > 0
+                && Regex.IsMatch(entries[^1], $@"\s{MethodParameterParser.EnglishLead}\s", RegexOptions.IgnoreCase)
+                && Regex.IsMatch(entry, EnglishParameterEntry, RegexOptions.IgnoreCase)
+                && !Regex.IsMatch(entry, @"\s+methods?$", RegexOptions.IgnoreCase);
+
+            if (continuesParameters)
+                entries[^1] += ", " + entry;
+            else
+                entries.Add(entry);
+        }
+
+        return entries;
+    }
+
+    // One entry of an English parameter list, "name type", the last one perhaps with the method's
+    // return type: "map Dictionary<string, int>", "express bool returns bool". "Print method" is a
+    // method, not a parameter called Print of the type method.
+    private static readonly string EnglishParameterEntry =
+        $@"^[A-Za-z_]\w*\s+{MethodParameterParser.TypePattern}(?:\s+returns?\s+{MethodParameterParser.TypePattern})?$";
+
+    // " and " as a word, at i.
+    private static bool IsAndAt(string text, int i) =>
+        i + 3 <= text.Length
+        && string.Compare(text, i, "and", 0, 3, StringComparison.OrdinalIgnoreCase) == 0
+        && (i == 0 || char.IsWhiteSpace(text[i - 1]))
+        && (i + 3 == text.Length || char.IsWhiteSpace(text[i + 3]));
+
+    private const string ReturnTypePattern = MethodParameterParser.TypePattern;
+
+    public static MethodDefinition? ParseMethod(string token) =>
+        TryParseMethod(token, out var method, out _) ? method : null;
+
+    /// <summary>
+    /// A method entry: <c>Name</c>, <c>Name returns T</c>, <c>Name(type name, ...) [returns T]</c> or
+    /// <c>Name [returns T] with parameters name type, ...</c>. False, with the reason, when the
+    /// parameter list is there but cannot be read; true with a null method when the entry is no
+    /// method at all.
+    /// </summary>
+    public static bool TryParseMethod(string token, out MethodDefinition? method, out string? error)
+    {
+        method = null;
+        error = null;
+
         if (string.IsNullOrWhiteSpace(token))
-            return null;
+            return true;
 
         token = token.Trim();
 
         // Method(params) returns Type
         var fullMatch = Regex.Match(
             token,
-            @"^(?<name>\w+)\((?<params>.*?)\)\s*(?:returns?\s+(?<type>\w+))?$",
+            $@"^(?<name>\w+)\s*\((?<params>.*)\)\s*(?:returns?\s+(?<type>{ReturnTypePattern}))?$",
             RegexOptions.IgnoreCase);
 
         if (fullMatch.Success)
-        {
-            return new MethodDefinition
-            {
-                Name = fullMatch.Groups["name"].Value,
-                ReturnType = fullMatch.Groups["type"].Success
-                    ? fullMatch.Groups["type"].Value
-                    : "void"
-            };
-        }
+            return WithParameters(fullMatch, fullMatch.Groups["params"].Value,
+                MethodParameterParser.Order.TypeFirst, token, out method, out error);
+
+        // Method [returns Type] with parameters name type, ... [returns Type]
+        var englishMatch = Regex.Match(
+            token,
+            $@"^(?<name>\w+)(?:\s+returns?\s+(?<type>{ReturnTypePattern}))?\s+{MethodParameterParser.EnglishLead}\s+(?<params>.+?)"
+                + $@"(?:\s+returns?\s+(?<type>{ReturnTypePattern}))?$",
+            RegexOptions.IgnoreCase);
+
+        if (englishMatch.Success)
+            return WithParameters(englishMatch, englishMatch.Groups["params"].Value,
+                MethodParameterParser.Order.NameFirst, token, out method, out error);
 
         // Method returns Type
         var returnMatch = Regex.Match(
             token,
-            @"^(?<name>\w+)\s+returns?\s+(?<type>\w+)$",
+            $@"^(?<name>\w+)\s+returns?\s+(?<type>{ReturnTypePattern})$",
             RegexOptions.IgnoreCase);
 
         if (returnMatch.Success)
         {
-            return new MethodDefinition
+            method = new MethodDefinition
             {
                 Name = returnMatch.Groups["name"].Value,
-                ReturnType = returnMatch.Groups["type"].Value
+                ReturnType = returnMatch.Groups["type"].Value.Trim()
             };
+            return true;
         }
 
         // Just method name
@@ -666,14 +765,31 @@ public static class CommandEntityExtractor
 
         if (nameMatch.Success)
         {
-            return new MethodDefinition
+            method = new MethodDefinition
             {
                 Name = nameMatch.Groups["name"].Value,
                 ReturnType = "void"
             };
         }
 
-        return null;
+        return true;
+    }
+
+    private static bool WithParameters(
+        Match match, string parameterText, MethodParameterParser.Order order, string token,
+        out MethodDefinition? method, out string? error)
+    {
+        method = null;
+        if (!MethodParameterParser.TryParse(parameterText, order, out var parameters, out error))
+            return false;
+
+        method = new MethodDefinition
+        {
+            Name = match.Groups["name"].Value,
+            ReturnType = match.Groups["type"].Success ? match.Groups["type"].Value.Trim() : "void",
+            Parameters = parameters,
+        };
+        return true;
     }
 
     public static void ExtractClassName(string sentence, ParsedCommand command)
@@ -809,7 +925,7 @@ public static class CommandEntityExtractor
     public static void ExtractEnglishProperties(string sentence, ParsedCommand command)
     {
         var match = Regex.Match(sentence,
-            @"(?:with|having|containing|contains)\s+(.+)",
+            @"(?:with(?!\s+parameters?\b)|having|containing|contains)\s+(.+)",
             RegexOptions.IgnoreCase);
 
         if (!match.Success)
@@ -941,7 +1057,8 @@ public static class CommandEntityExtractor
     public static string ExtractPropertySection(string sentence)
     {
         var match = Regex.Match(sentence,
-                @"(?:properties|with properties|with|having|contains)\s+(.+)", RegexOptions.IgnoreCase);
+                // "with parameters" starts a method's parameter list, not the properties.
+                @"(?:properties|with properties|with(?!\s+parameters?\b)|having|contains)\s+(.+)", RegexOptions.IgnoreCase);
 
         if (!match.Success)
             return string.Empty;

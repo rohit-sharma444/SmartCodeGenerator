@@ -73,7 +73,7 @@ public sealed class MemberEditGapsTests
     {
         var file = Write("Employee.cs", Employee);
 
-        Assert.IsFalse(ClassMethodService.AddMethod(_workspace, "Employee", "Name", "void", out var message), message);
+        Assert.IsFalse(ClassMethodService.AddMethod(_workspace, "Employee", "Name", "void", [], out var message), message);
 
         StringAssert.Contains(message, "already has a property named 'Name'");
         Assert.AreEqual(Employee, File.ReadAllText(file));
@@ -189,7 +189,7 @@ public sealed class MemberEditGapsTests
     {
         Write("Customer.cs", "namespace Shop { public class Customer { } }");
 
-        Assert.IsTrue(ClassMethodService.AddMethod(_workspace, "customer", "Save", "void", out var message), message);
+        Assert.IsTrue(ClassMethodService.AddMethod(_workspace, "customer", "Save", "void", [], out var message), message);
 
         StringAssert.Contains(message, "'Customer'");
     }
@@ -217,7 +217,7 @@ public sealed class MemberEditGapsTests
         Write("IShape.cs", "namespace Shop { public interface IShape { double Area(); } }");
         Write("Circle.cs", "namespace Shop { public class Circle : IShape { public double Area() => 1; public double Perimeter() => 2; } }");
 
-        Assert.IsTrue(ClassMethodService.AddMethod(_workspace, "IShape", "Perimeter", "void", out var message), message);
+        Assert.IsTrue(ClassMethodService.AddMethod(_workspace, "IShape", "Perimeter", "void", [], out var message), message);
         var warning = InterfaceImplementers.AddedWarning(_workspace, "IShape", "Perimeter");
 
         Assert.IsNotNull(warning);
@@ -232,7 +232,7 @@ public sealed class MemberEditGapsTests
         Write("IShape.cs", "namespace Shop { public interface IShape { double Area(); } }");
         Write("Circle.cs", "namespace Shop { public class Circle : IShape { public double Area() => 1; public double Perimeter() => 2; } }");
 
-        Assert.IsTrue(ClassMethodService.AddMethod(_workspace, "IShape", "Perimeter", "double", out var message), message);
+        Assert.IsTrue(ClassMethodService.AddMethod(_workspace, "IShape", "Perimeter", "double", [], out var message), message);
 
         Assert.IsNull(InterfaceImplementers.AddedWarning(_workspace, "IShape", "Perimeter"));
         AssertWorkspaceCompiles();
@@ -268,7 +268,7 @@ public sealed class MemberEditGapsTests
     {
         var file = Write("Customer.cs", "namespace Shop\n{\n    public class Customer\n    {\n    }\n}\n");
 
-        Assert.IsTrue(ClassMethodService.AddMethod(_workspace, "Customer", "Save", "void", out var message), message);
+        Assert.IsTrue(ClassMethodService.AddMethod(_workspace, "Customer", "Save", "void", [], out var message), message);
 
         var lines = File.ReadAllLines(file);
         var todo = Array.FindIndex(lines, l => l.Contains("// TODO: implement"));

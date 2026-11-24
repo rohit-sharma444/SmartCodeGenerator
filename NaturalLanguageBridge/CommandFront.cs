@@ -115,9 +115,16 @@ public static class CommandFront
 
     // `add method <name> [returns <type>] to <Class>`, for the same reason: "add method save to
     // Circle" was not recognised.
+    // Parameters in the C# form, `Ship(string address)`, or the English form,
+    // `Ship with parameters address string`, before ` to <Class>`.
     private static readonly Regex AddMethodRe =
         new(@"^(?:add|create|generate)\s+(?:(?:a|an|new)\s+)?method\s+(?<method>[A-Za-z_]\w*)"
-            + @"(?:\s+returns?\s+(?<returns>[A-Za-z_][\w<>\[\],\.\?]*))?"
+            + @"(?:\s*\((?<cparams>[^)]*)\))?"
+            + $@"(?:\s+returns?\s+(?<returns>{MethodParameterParser.TypePattern}))?"
+            // "returns" can follow the English list too: "Ship with parameters address string
+            // returns bool to Order" read "string returns bool" as the type of address.
+            + $@"(?:\s+{MethodParameterParser.EnglishLead}\s+(?<eparams>.+?)"
+            + $@"(?:\s+returns?\s+(?<returns>{MethodParameterParser.TypePattern}))?)?"
             + @"\s+(?:to|for|in|on)\s+(?:class\s+(?=\S))?(?<class>[A-Za-z_]\w*)\s*[.!]?$",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
@@ -327,6 +334,18 @@ public static class CommandFront
             addMethodCmd.ReturnType = addMethodMatch.Groups["returns"].Success
                 ? addMethodMatch.Groups["returns"].Value
                 : "void";
+
+            var (parameterText, order) = addMethodMatch.Groups["cparams"].Success
+                ? (addMethodMatch.Groups["cparams"].Value, MethodParameterParser.Order.TypeFirst)
+                : (addMethodMatch.Groups["eparams"].Value, MethodParameterParser.Order.NameFirst);
+
+            // A list that cannot be read is carried to the handler, which refuses the method by
+            // that reason: dropping the list would write a method the user did not ask for.
+            if (MethodParameterParser.TryParse(parameterText, order, out var parameters, out var error))
+                addMethodCmd.Parameters = parameters;
+            else
+                addMethodCmd.Metadata[ParsedCommand.ParameterErrorKey] = error!;
+
             return addMethodCmd;
         }
 
