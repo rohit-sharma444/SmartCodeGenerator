@@ -137,7 +137,7 @@ public sealed class PropertyListModifierTests
         AssertWritten("create class Customer with properties Name string required min length 3", "Customer.cs",
             "public required string Name { get; set; }");
 
-        StringAssert.Contains(LastOutput, "Ignored 'min length 3' after Name");
+        StringAssert.Contains(LastOutput, "Ignored 'min length 3' after Name string");
         StringAssert.Contains(LastOutput, "add validation");
         StringAssert.Contains(LastOutput, "on Name in Customer");
     }
@@ -186,7 +186,7 @@ public sealed class PropertyListModifierTests
     public void A_value_that_does_not_fit_the_type_is_refused()
     {
         AssertRefused("create class Line with properties Qty int default abc", "Line.cs",
-            "'abc' is not a valid int value.");
+            "'abc' is not a valid int value for Qty.");
     }
 
     [TestMethod]
@@ -215,7 +215,7 @@ public sealed class PropertyListModifierTests
         AssertWritten("create class City with properties Name string default New York", "City.cs",
             "public string Name { get; set; } = \"New\";");
 
-        StringAssert.Contains(LastOutput, "Ignored 'York' after Name");
+        StringAssert.Contains(LastOutput, "Ignored 'York' after Name string");
         Assert.DoesNotContain("add validation", LastOutput);
     }
 
@@ -225,7 +225,7 @@ public sealed class PropertyListModifierTests
         AssertWritten("create class Order with properties Total decimal nullable and Name string", "Order.cs",
             "public decimal Total { get; set; }", "public string Name");
 
-        StringAssert.Contains(LastOutput, "Ignored 'nullable' after Total");
+        StringAssert.Contains(LastOutput, "Ignored 'nullable' after Total decimal");
     }
 
     [TestMethod]
@@ -233,7 +233,7 @@ public sealed class PropertyListModifierTests
     {
         AssertWritten("create class Line with properties Qty int default", "Line.cs", "public int Qty { get; set; }");
 
-        StringAssert.Contains(LastOutput, "Ignored 'default' after Qty");
+        StringAssert.Contains(LastOutput, "Ignored 'default' after Qty int");
     }
 
     [TestMethod]
@@ -241,6 +241,64 @@ public sealed class PropertyListModifierTests
     {
         AssertWritten("create class Employee and add method AddEmployee", "Employee.cs",
             "public class Employee", "AddEmployee()");
+    }
+
+    [TestMethod]
+    [DataRow("create class Circle with properties Radius decimal implements IShape", "public class Circle : IShape")]
+    [DataRow("create class Circle with Radius decimal inherits Shape", "public class Circle : Shape")]
+    [DataRow("create class Circle with properties Radius decimal extends Shape", "public class Circle : Shape")]
+    [DataRow("create class Circle with properties Radius decimal derived from Shape", "public class Circle : Shape")]
+    [DataRow("create class Circle with properties Radius decimal base class Shape", "public class Circle : Shape")]
+    [DataRow("create class Circle with properties Radius decimal with method Save", "Save()")]
+    [DataRow("create class Circle with properties Radius decimal and methods Save", "Save()")]
+    public void A_clause_after_the_list_is_applied_and_not_reported(string sentence, string expected)
+    {
+        Write("IShape.cs", "namespace Shop;\n\npublic interface IShape\n{\n}\n");
+
+        AssertWritten(sentence, "Circle.cs", "public decimal Radius { get; set; }", expected);
+        Assert.DoesNotContain("Ignored", LastOutput);
+    }
+
+    [TestMethod]
+    [DataRow("A")]
+    [DataRow("an")]
+    [DataRow("the")]
+    public void A_default_that_is_a_filler_word_is_kept(string value)
+    {
+        AssertWritten($"create class Grade with properties Letter string default {value}", "Grade.cs",
+            $"public string Letter {{ get; set; }} = \"{value}\";");
+        AssertWritten($"create class Mark with properties Letter string = {value}", "Mark.cs",
+            $"public string Letter {{ get; set; }} = \"{value}\";");
+    }
+
+    [TestMethod]
+    [DataRow("range 1 10")]
+    [DataRow("nonempty")]
+    [DataRow("not empty")]
+    [DataRow("unique")]
+    [DataRow("allowed x")]
+    [DataRow("custom: Check")]
+    public void Each_validation_word_gets_the_add_validation_pointer(string words)
+    {
+        AssertWritten($"create class Customer with properties Name string {words}", "Customer.cs", "public string Name");
+
+        StringAssert.Contains(LastOutput, "after Name string: use add validation");
+    }
+
+    [TestMethod]
+    public void An_interface_property_reports_its_default_modifiers_and_other_words()
+    {
+        Assert.IsTrue(Run("create interface IPriced with properties Price decimal required default 5 nullable"), LastOutput);
+
+        var text = Read("IPriced.cs");
+        StringAssert.Contains(text, "decimal Price", LastOutput);
+        Assert.DoesNotContain("required", text);
+        Assert.DoesNotContain("= 5", text);
+        StringAssert.Contains(LastOutput, "Ignored 'default 5' after Price decimal: an interface property has no default value");
+        StringAssert.Contains(LastOutput, "Ignored 'required' after Price decimal: an interface property has no modifier");
+        StringAssert.Contains(LastOutput, "Ignored 'nullable' after Price decimal");
+        Assert.DoesNotContain("add validation", LastOutput);
+        Assert.IsEmpty(ProjectErrors());
     }
 
     [TestMethod]

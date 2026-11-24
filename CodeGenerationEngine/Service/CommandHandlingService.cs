@@ -363,7 +363,7 @@ public static class CommandHandlingService
 
             var type = Core.CodeGenerationEngine.ResolvePropertyType(property);
             if (!DefaultValues.TryExpression(type, property.Initializer, projectFolder, out var expression, out var error))
-                return $"{property.Name}: {error}";
+                return $"{error!.TrimEnd('.')} for {property.Name}.";
 
             property.Initializer = expression;
         }
@@ -373,21 +373,53 @@ public static class CommandHandlingService
 
     /// <summary>The words a validation rule is given in (<c>min length 3</c>, <c>unique</c>).</summary>
     private static readonly System.Text.RegularExpressions.Regex ValidationWords = new(
-        @"\b(?:min|max|minimum|maximum|minlength|maxlength|length|greater|less|between|allowed|unique|email|pattern|regex|positive|negative)\b",
+        @"\b(?:min|max|minimum|maximum|minlength|maxlength|length|greater|less|between|range|allowed|unique|email|pattern|regex|custom|positive|negative|nonempty|not\s+empty|not\s+blank)\b|[<>@]",
         System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>"Name string": a property as the list typed it.</summary>
+    private static string TypedProperty(ParsedCommand command, string property) =>
+        command.Properties.FirstOrDefault(p => p.Name == property) is { } found
+            ? $"{property} {found.Type}"
+            : property;
 
     /// <summary>
     /// Says which words after a property's type nothing read: they were dropped with no word
-    /// before. A validation rule has its own command, which the note gives.
+    /// before. A validation rule has its own command, which the note gives - but not on an
+    /// interface, which takes no validation.
     /// </summary>
-    private static void ReportIgnoredWords(ParsedCommand command)
+    private static void ReportIgnoredWords(ParsedCommand command, bool isInterface = false)
     {
         foreach (var (property, words) in command.IgnoredWords)
         {
-            Output.Warning($"Ignored '{words}' after {property}"
-                + (ValidationWords.IsMatch(words)
-                    ? $": use add validation ... on {property} in {command.ClassName}"
-                    : ": only a default value (default <value> or = <value>) and readonly, private, static or required are read after the type."));
+            Output.Warning($"Ignored '{words}' after {TypedProperty(command, property)}"
+                + (isInterface
+                    ? ": an interface property is written as its name and type only."
+                    : ValidationWords.IsMatch(words)
+                        ? $": use add validation ... on {property} in {command.ClassName}"
+                        : ": only a default value (default <value> or = <value>) and readonly, private, static or required are read after the type."));
+        }
+    }
+
+    /// <summary>
+    /// The default values and modifiers given in a create interface list: an interface property
+    /// has neither, so they are not written, and said so.
+    /// </summary>
+    private static void ReportInterfacePropertyExtras(ParsedCommand command)
+    {
+        foreach (var property in command.Properties)
+        {
+            if (property.Initializer is not null)
+                Output.Warning($"Ignored 'default {property.Initializer}' after {TypedProperty(command, property.Name)}: "
+                    + "an interface property has no default value.");
+
+            if (property.Modifiers != PropertyModifiers.None)
+            {
+                var words = string.Join(' ', Enum.GetValues<PropertyModifiers>()
+                    .Where(m => m != PropertyModifiers.None && property.Modifiers.HasFlag(m))
+                    .Select(m => m.ToString().ToLowerInvariant()));
+                Output.Warning($"Ignored '{words}' after {TypedProperty(command, property.Name)}: "
+                    + "an interface property has no modifier here.");
+            }
         }
     }
 
@@ -814,7 +846,11 @@ public static class CommandHandlingService
 
         var ok = GenerateAndSave(ctx);
         if (ok)
+        {
             ReportIgnoredProperties(ctx.Command);
+            ReportInterfacePropertyExtras(ctx.Command);
+            ReportIgnoredWords(ctx.Command, isInterface: true);
+        }
 
         // Say which name was made when it is not what was typed (InterfaceNaming).
         var typed = System.Text.RegularExpressions.Regex.Match(ctx.RawInput,

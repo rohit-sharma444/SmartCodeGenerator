@@ -178,10 +178,13 @@ public static class CommandEntityExtractor
 
         text = Regex.Replace(text, "\"[^\"]*\"", Keep);
 
+        // The one-word value after default or =: "default A" lost the A as the article.
+        text = Regex.Replace(text, @"(?<=(?:^|\s)(?:default|=)\s+)[^\s""\u0001]\S*", Keep, RegexOptions.IgnoreCase);
+
         // An English parameter list too, up to a property list or a base-type clause: in
         // "Ship with parameters count int, a string" the parameter a was taken as the article.
         var shielded = Regex.Replace(text,
-            $@"\b{MethodParameterParser.EnglishLead}\s.*?(?=\s+(?:(?:and\s+)?(?:with\s+)?propert(?:y|ies)|implements?|inherits?|extends|derived\s+from|base\s+class)\b|[.!]?$)",
+            $@"\b{MethodParameterParser.EnglishLead}\s.*?(?=\s+(?:(?:and\s+)?(?:with\s+)?propert(?:y|ies)|{BaseTypeClause})\b|[.!]?$)",
             Keep, RegexOptions.IgnoreCase);
         shielded = Regex.Replace(shielded, @"\([^()]*\)", Keep);
 
@@ -191,6 +194,9 @@ public static class CommandEntityExtractor
 
         return cleaned.TrimEnd('.', '!').TrimEnd();
     }
+
+    /// <summary>The words that start a base class or interface clause in a create command.</summary>
+    private const string BaseTypeClause = @"implements?|inherits?|extends|derived\s+from|base\s+class";
 
     /// <summary>A member name as typed with its first letter capitalised: new becomes New.</summary>
     internal static string Capitalised(string name) =>
@@ -1144,8 +1150,11 @@ public static class CommandEntityExtractor
         section = Regex.Replace(section, @"^(?:propert(?:y|ies)|fields?|attributes?)\s+(?=\S+\s+\S)",
             string.Empty, RegexOptions.IgnoreCase);
 
-        // If the properties section contains a methods/functions clause, cut it off
-        var stopMatch = Regex.Match(section, @"\b(?:and\s+)?(?:with\s+)?(?:having\s+)?(?:methods|functions)\b", RegexOptions.IgnoreCase);
+        // The list ends where a methods clause or a base-type clause starts: those are read by
+        // ExtractMethods and ExtractInheritanceInfo, and their words were reported as ignored.
+        var stopMatch = Regex.Match(section,
+            $@"\b(?:(?:and\s+)?(?:with\s+)?(?:having\s+)?(?:methods|functions)|(?:with|and)\s+(?:method|function)|{BaseTypeClause})\b",
+            RegexOptions.IgnoreCase);
         if (stopMatch.Success)
         {
             section = section.Substring(0, stopMatch.Index);
