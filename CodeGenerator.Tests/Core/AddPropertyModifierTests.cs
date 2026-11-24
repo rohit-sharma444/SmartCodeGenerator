@@ -218,4 +218,30 @@ public sealed class AddPropertyModifierTests
         StringAssert.Contains(LastOutput, "default 10");
         StringAssert.Contains(LastOutput, "static");
     }
+
+    [TestMethod]
+    public void A_single_quoted_default_is_a_string_without_its_quotes()
+    {
+        AssertWritten("add property Status string default 'New' to Order", "public string Status { get; set; } = \"New\";");
+        Assert.DoesNotContain("'", Read("Order.cs"));
+    }
+
+    [TestMethod]
+    public void A_single_quoted_default_of_two_words_is_kept_whole()
+    {
+        AssertWritten("add property City string default 'New York' to Order", "public string City { get; set; } = \"New York\";");
+    }
+
+    [TestMethod]
+    public void A_single_quoted_char_default_stays_a_char()
+    {
+        AssertWritten("add property Grade char default 'A' to Order", "public char Grade { get; set; } = 'A';");
+    }
+
+    [TestMethod]
+    public void A_quoted_default_may_hold_escaped_quotes()
+    {
+        AssertWritten("add property Text string default \"say \\\"hi\\\"\" to Order",
+            "public string Text { get; set; } = \"say \\\"hi\\\"\";");
+    }
 }

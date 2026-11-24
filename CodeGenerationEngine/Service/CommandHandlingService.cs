@@ -390,6 +390,14 @@ public static class CommandHandlingService
     /// </summary>
     private static void ReportIgnoredWords(ParsedCommand command, bool isInterface = false)
     {
+        foreach (var (property, words) in command.IgnoredWordsBefore)
+        {
+            Output.Warning($"Ignored '{words}' before {TypedProperty(command, property)}"
+                + (isInterface
+                    ? ": an interface property is written as its name and type only."
+                    : ": only readonly, private, static or required are read before a property's name."));
+        }
+
         foreach (var (property, words) in command.IgnoredWords)
         {
             Output.Warning($"Ignored '{words}' after {TypedProperty(command, property)}"

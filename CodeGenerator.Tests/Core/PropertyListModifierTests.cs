@@ -302,6 +302,67 @@ public sealed class PropertyListModifierTests
     }
 
     [TestMethod]
+    public void A_modifier_before_the_name_is_applied()
+    {
+        AssertWritten("create class Order2 with properties readonly Id int, private Secret string", "Order2.cs",
+            "public int Id { get; init; }",
+            "private string Secret { get; set; }");
+        Assert.DoesNotContain("Ignored", LastOutput);
+    }
+
+    [TestMethod]
+    public void Required_before_the_first_name_applies_to_that_property_only()
+    {
+        AssertWritten("create class Order3 with properties required Name string and Age int", "Order3.cs",
+            "public required string Name { get; set; }",
+            "public int Age { get; set; }");
+        Assert.DoesNotContain("required int", Read("Order3.cs"));
+        Assert.DoesNotContain("Ignored", LastOutput);
+    }
+
+    [TestMethod]
+    public void A_word_before_the_name_that_means_nothing_is_reported()
+    {
+        AssertWritten("create class Order4 with properties Id int and mandatory Name string", "Order4.cs",
+            "public int Id { get; set; }", "public string Name { get; set; }");
+
+        StringAssert.Contains(LastOutput, "Ignored 'mandatory' before Name string");
+    }
+
+    [TestMethod]
+    public void A_single_quoted_default_is_a_string_without_its_quotes()
+    {
+        AssertWritten("create class Order5 with properties Status string default 'New'", "Order5.cs",
+            "public string Status { get; set; } = \"New\";");
+        Assert.DoesNotContain("'", Read("Order5.cs"));
+    }
+
+    [TestMethod]
+    public void A_single_quoted_default_of_two_words_is_kept_whole()
+    {
+        AssertWritten("create class City2 with properties Name string default 'New York' and Size int", "City2.cs",
+            "public string Name { get; set; } = \"New York\";", "public int Size");
+        Assert.DoesNotContain("Ignored", LastOutput);
+    }
+
+    [TestMethod]
+    public void A_clause_word_inside_a_quoted_default_does_not_end_the_list()
+    {
+        AssertWritten("create class Note2 with properties Text string default \"extends the base\" and Size int", "Note2.cs",
+            "public string Text { get; set; } = \"extends the base\";", "public int Size");
+        Assert.DoesNotContain("Note2 :", Read("Note2.cs"));
+        Assert.DoesNotContain("Ignored", LastOutput);
+    }
+
+    [TestMethod]
+    public void A_quoted_default_may_hold_escaped_quotes()
+    {
+        AssertWritten("create class Greeting with properties Text string default \"say \\\"hi\\\"\" and Size int", "Greeting.cs",
+            "public string Text { get; set; } = \"say \\\"hi\\\"\";", "public int Size");
+        Assert.DoesNotContain("Ignored", LastOutput);
+    }
+
+    [TestMethod]
     public void The_bridge_carries_the_raw_default_and_the_modifiers()
     {
         var command = CommandEntityExtractor.Extract(

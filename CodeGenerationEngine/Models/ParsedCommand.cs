@@ -59,6 +59,12 @@ public sealed class ParsedCommand
     public List<(string Property, string Words)> IgnoredWords { get; set; } = [];
 
     /// <summary>
+    /// The words typed before a property's name in a create class list that are not a modifier,
+    /// by property. The property is still written; the words are reported.
+    /// </summary>
+    public List<(string Property, string Words)> IgnoredWordsBefore { get; set; } = [];
+
+    /// <summary>
     /// The <see cref="Metadata"/> key under which <c>add method</c> carries a parameter list that
     /// could not be read, so the handler refuses the method by that reason.
     /// </summary>
@@ -201,6 +207,7 @@ public sealed class ParsedCommand
         ClassFromSession = false;
         IgnoredMethods.Clear();
         IgnoredWords.Clear();
+        IgnoredWordsBefore.Clear();
         Methods.Clear();
         Tags.Clear();
         Metadata.Clear();

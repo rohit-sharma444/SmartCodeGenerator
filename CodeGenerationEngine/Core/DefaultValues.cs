@@ -56,10 +56,17 @@ public static class DefaultValues
     {
         var bare = type.Trim().TrimEnd('?');
         if (bare is "string" or "String" or "System.String")
+        {
             // The word null is the C# literal, not the text "null".
-            return value == "null" || (value.Length >= 2 && value[0] == '"' && value[^1] == '"')
-                ? value
-                : SymbolDisplay.FormatLiteral(value, quote: true);
+            if (value == "null" || (value.Length >= 2 && value[0] == '"' && value[^1] == '"'))
+                return value;
+
+            // 'New' is the text New in single quotes, as many people type a string.
+            if (value.Length >= 2 && value[0] == '\'' && value[^1] == '\'')
+                value = value[1..^1];
+
+            return SymbolDisplay.FormatLiteral(value, quote: true);
+        }
 
         if (PlainNumber.IsMatch(value))
             return bare switch
