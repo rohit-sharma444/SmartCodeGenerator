@@ -504,6 +504,8 @@ public static class CommandEntityExtractor
         @"\b(?:add|create)\s+(?:(?:a|an|new)\s+)?(?<modifiers>(?:(?:readonly|private|static|required)\s+)*)(?:property|field)\s+"
         + @"(?<name>""[^""]*""|'[^']*'|\S+)"
         + $@"(?:\s+(?<type>{TypedPropertyType}))?"
+        // `Name string required`: a modifier after the type, as a create class list takes it.
+        + @"(?<late>(?:\s+(?:readonly|private|static|required)(?=\s))*)"
         // `default 5`, `default "New"`, `default 'New York'`, `= 5`: one word or one quoted text
         // (in which \" is a quote), read from the raw text so a filler word (A, the) given as the
         // value is kept.
@@ -535,14 +537,9 @@ public static class CommandEntityExtractor
             if (add.Groups["type"].Success)
                 command.PropertyType = add.Groups["type"].Value.Trim();
             command.ClassName = ToPascalCase(add.Groups["class"].Value);
-            foreach (var word in add.Groups["modifiers"].Value.Split(' ', StringSplitOptions.RemoveEmptyEntries))
-                command.PropertyModifiers |= word.ToLowerInvariant() switch
-                {
-                    "readonly" => PropertyModifiers.ReadOnly,
-                    "private" => PropertyModifiers.Private,
-                    "static" => PropertyModifiers.Static,
-                    _ => PropertyModifiers.Required
-                };
+            foreach (var word in (add.Groups["modifiers"].Value + " " + add.Groups["late"].Value)
+                         .Split(' ', StringSplitOptions.RemoveEmptyEntries))
+                command.PropertyModifiers |= ModifierWord(word);
             if (add.Groups["default"].Success)
                 command.PropertyDefault = add.Groups["default"].Value;
             return;

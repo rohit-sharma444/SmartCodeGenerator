@@ -239,6 +239,34 @@ public sealed class AddPropertyModifierTests
     }
 
     [TestMethod]
+    public void Required_after_the_type_is_applied_as_in_a_list()
+    {
+        AssertWritten("add property Name2 string required to Order", "public required string Name2 { get; set; }");
+    }
+
+    [TestMethod]
+    public void Readonly_after_the_type_is_applied_as_in_a_list()
+    {
+        AssertWritten("add property Total2 decimal readonly to Order", "public decimal Total2 { get; init; }");
+    }
+
+    [TestMethod]
+    [DataRow("add property City string default New York to Order")]
+    [DataRow("add property Qty int with default 1 to Order")]
+    [DataRow("add property Qty int default value 1 to Order")]
+    [DataRow("add property Name2 string required min length 3 to Order")]
+    public void A_phrasing_that_cannot_be_read_is_refused_with_the_form_to_type(string sentence)
+    {
+        SessionContext.CurrentClass = "Line";
+
+        AssertRefused(sentence, "Type it as: add [readonly|private|static|required] property <Name> <type>");
+
+        StringAssert.Contains(LastOutput, "in quotes");
+        Assert.DoesNotContain("Using the current class", LastOutput);
+        Assert.DoesNotContain("A property name is required", LastOutput);
+    }
+
+    [TestMethod]
     public void A_quoted_default_may_hold_escaped_quotes()
     {
         AssertWritten("add property Text string default \"say \\\"hi\\\"\" to Order",

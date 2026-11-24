@@ -990,6 +990,12 @@ public static class CommandHandlingService
 
     private static bool HandleCreateProperty(CommandExecutionContext ctx)
     {
+        if (ctx.Command.Metadata.TryGetValue(ParsedCommand.PropertyErrorKey, out var propertyError))
+        {
+            Output.Error(propertyError);
+            return false;
+        }
+
         UseDeclaredNames(ctx, member: null);
         var ok = ClassPropertyService.AddProperty(
             ctx.WorkspaceRoot, ctx.Command.ClassName,

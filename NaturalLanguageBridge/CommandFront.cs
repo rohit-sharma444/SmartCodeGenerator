@@ -206,6 +206,24 @@ public static class CommandFront
         new(@"^(?:add|create)\s+(?:(?:a|an|new)\s+)?(?:(?:readonly|private|static|required)\s+)*(?:property|field)\s",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    // A word of `add property` that only AddPropertyRe reads (a default or a modifier). When the
+    // line has one and AddPropertyRe does not match it, the line is refused with the form to type:
+    // the mapper read such a line as a property with no name, on the current class.
+    private static readonly Regex AddPropertyWordRe =
+        new(@"(?:^|\s)(?:default|readonly|private|static|required|=)(?=\s|$)",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    // The class at the end of an `add property` line that AddPropertyRe could not read.
+    private static readonly Regex AddPropertyClassRe =
+        new(@"\s(?:to|in|on|into)\s+(?:class\s+)?(?<class>[A-Za-z_]\w*)\s*[.!]?\s*$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>The refusal of an <c>add property</c> line that names a default or a modifier in a
+    /// place it is not read.</summary>
+    internal const string AddPropertyForm =
+        "This add property line could not be read. Type it as: add [readonly|private|static|required] property "
+        + "<Name> <type> [default <value>] to <Class>. A default of more than one word goes in quotes: default \"New York\".";
+
     // `rename property <old> to <new> in <Class>`. The mapper's Table is keyed on
     // (verb, whole remainder), so it cannot match an argument-bearing form; and
     // Normalize maps field -> property, so the fields come from these groups.
@@ -521,6 +539,22 @@ public static class CommandFront
             addPropertyCmd.OriginalSentence = input ?? string.Empty;
             addPropertyCmd.Confidence = 1.0;
             return addPropertyCmd;
+        }
+
+        if (AddPropertyStartRe.IsMatch(text) && AddPropertyWordRe.IsMatch(text))
+        {
+            // Not the current class: the line named one, or the refusal names none.
+            var unread = new ParsedCommand
+            {
+                Intent = IntentType.CreateProperty,
+                ClassName = AddPropertyClassRe.Match(text) is { Success: true } named
+                    ? named.Groups["class"].Value
+                    : string.Empty,
+                OriginalSentence = input ?? string.Empty,
+                Confidence = 1.0
+            };
+            unread.Metadata[ParsedCommand.PropertyErrorKey] = AddPropertyForm;
+            return unread;
         }
 
         var renamePropertyMatch = RenamePropertyRe.Match(text);

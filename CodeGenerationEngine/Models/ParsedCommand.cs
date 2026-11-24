@@ -70,6 +70,12 @@ public sealed class ParsedCommand
     /// </summary>
     public const string ParameterErrorKey = "ParameterError";
 
+    /// <summary>
+    /// The <see cref="Metadata"/> key under which <c>add property</c> carries the reason its line
+    /// could not be read, so the handler refuses it by that reason and writes nothing.
+    /// </summary>
+    public const string PropertyErrorKey = "PropertyError";
+
     // Single-property member operations (add/remove property on an existing class).
     public string PropertyName { get; set; } = string.Empty;
     public string PropertyType { get; set; } = "string";
