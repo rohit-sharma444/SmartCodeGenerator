@@ -34,5 +34,9 @@ public class PropertyDefinition
     /// </summary>
     public string? Initializer { get; set; }
 
+    /// <summary>The <c>readonly</c>, <c>private</c>, <c>static</c> and <c>required</c> words the
+    /// property was given; none by default.</summary>
+    public PropertyModifiers Modifiers { get; set; } = PropertyModifiers.None;
+
     public override string ToString() => $"{Type} {Name}";
 }

@@ -26,7 +26,7 @@ namespace CodeGenerationEngine.Core;
 internal static class TypeResolution
 {
     // What `<ImplicitUsings>enable</ImplicitUsings>` adds to a plain SDK project.
-    private static readonly string[] ImplicitUsings =
+    internal static readonly string[] ImplicitUsings =
     [
         "System", "System.Collections.Generic", "System.IO", "System.Linq",
         "System.Net.Http", "System.Threading", "System.Threading.Tasks",
