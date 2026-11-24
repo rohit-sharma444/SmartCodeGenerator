@@ -40,6 +40,8 @@ public sealed class TypeKindParseTests
     [DataRow("create abstract record Entity", "Entity", DeclaredKind.Record, TypeModifier.Abstract)]
     [DataRow("create sealed record Money", "Money", DeclaredKind.Record, TypeModifier.Sealed)]
     [DataRow("create a record money", "Money", DeclaredKind.Record, TypeModifier.None)]
+    [DataRow("create record Model with properties Amount decimal", "Model", DeclaredKind.Record, TypeModifier.None)]
+    [DataRow("create struct Entity", "Entity", DeclaredKind.Struct, TypeModifier.None)]
     [DataRow("create class Record", "Record", DeclaredKind.Class, TypeModifier.None)]
     [DataRow("create class Struct", "Struct", DeclaredKind.Class, TypeModifier.None)]
     public void Kind_and_modifier_are_read(string sentence, string name, DeclaredKind kind, TypeModifier modifier)
@@ -83,6 +85,7 @@ public sealed class TypeKindParseTests
     [DataRow("create sealed abstract class S", "A class cannot be both sealed and abstract.")]
     [DataRow("create static record R", "A record cannot be static.")]
     [DataRow("create abstract struct P", "A struct cannot be abstract.")]
+    [DataRow("create sealed struct P", "A struct cannot be sealed.")]
     public void Impossible_pairs_are_refused_with_the_rule(string sentence, string rule)
     {
         var cmd = CommandFront.Parse(sentence, _workspace);

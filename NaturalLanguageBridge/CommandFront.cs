@@ -114,7 +114,7 @@ public static class CommandFront
             };
 
             var refused = cmd.Modifier == TypeModifier.Static && cmd.Kind != DeclaredKind.Class
-                || cmd.Modifier == TypeModifier.Abstract && cmd.Kind == DeclaredKind.Struct;
+                || cmd.Modifier != TypeModifier.None && cmd.Kind == DeclaredKind.Struct;
             if (refused)
                 cmd.Metadata[ParsedCommand.KindErrorKey] = $"A {kind} cannot be {words[0]}.";
         }
