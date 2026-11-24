@@ -42,7 +42,7 @@ public static class NewClassCompletion
         var stubs = new List<string>();
 
         if (first.Class is { } decl
-            && first.Model.GetDeclaredSymbol(decl) is INamedTypeSymbol type)
+            && first.Model.GetDeclaredSymbol(decl) is INamedTypeSymbol { TypeKind: not TypeKind.Enum } type)
         {
             var position = decl.SpanStart;
 
@@ -145,7 +145,7 @@ public static class NewClassCompletion
         Output.Success(" \n Compiled. \n");
     }
 
-    private sealed record Probe(CSharpCompilation Compilation, SyntaxTree Tree, SemanticModel Model, TypeDeclarationSyntax? Class);
+    private sealed record Probe(CSharpCompilation Compilation, SyntaxTree Tree, SemanticModel Model, BaseTypeDeclarationSyntax? Class);
 
     private static Probe Compile(string code, ProjectLocation target)
     {
@@ -153,7 +153,7 @@ public static class NewClassCompletion
         var formatted = CodeFormatter.Format(code, ProjectNamespace.For(target.ProjectFile));
 
         var className = (CSharpSyntaxTree.ParseText(code, parse).GetRoot()
-            .DescendantNodes().OfType<TypeDeclarationSyntax>().FirstOrDefault())?.Identifier.Text;
+            .DescendantNodes().OfType<BaseTypeDeclarationSyntax>().FirstOrDefault())?.Identifier.Text;
         var path = Path.Combine(target.Directory ?? string.Empty, (className ?? "NewClass") + ".cs");
         var tree = CSharpSyntaxTree.ParseText(formatted, parse, path: Path.GetFileName(path));
 
@@ -174,7 +174,7 @@ public static class NewClassCompletion
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary,
                 nullableContextOptions: NullableContextOptions.Enable));
 
-        var decl = tree.GetRoot().DescendantNodes().OfType<TypeDeclarationSyntax>()
+        var decl = tree.GetRoot().DescendantNodes().OfType<BaseTypeDeclarationSyntax>()
             .FirstOrDefault(c => c.Identifier.Text == className);
         return new Probe(compilation, tree, compilation.GetSemanticModel(tree), decl);
     }

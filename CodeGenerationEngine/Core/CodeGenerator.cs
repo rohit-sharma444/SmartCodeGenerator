@@ -16,6 +16,7 @@ public static class CodeGenerationEngine
             {
                 IntentType.CreateClass => GenerateClass(command),
                 IntentType.CreateInterface => GenerateInterface(command),
+                IntentType.CreateEnum => GenerateEnum(command),
                 _ => "// Unsupported command"
             };
     }
@@ -163,6 +164,21 @@ public static class CodeGenerationEngine
 
         sb.AppendLine("}");
 
+        return sb.ToString();
+    }
+
+    private static string GenerateEnum(ParsedCommand command)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+
+        var sb = new StringBuilder();
+        sb.AppendLine($"public enum {ToPascalCase(command.ClassName ?? "NewEnum")}");
+        sb.AppendLine("{");
+
+        for (var i = 0; i < command.EnumValues.Count; i++)
+            sb.AppendLine($"    {command.EnumValues[i]}{(i < command.EnumValues.Count - 1 ? "," : string.Empty)}");
+
+        sb.AppendLine("}");
         return sb.ToString();
     }
 

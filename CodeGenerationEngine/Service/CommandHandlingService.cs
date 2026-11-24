@@ -124,6 +124,7 @@ public static class CommandHandlingService
             [IntentType.ShowBusinessValidation] = HandleShowBusinessValidation,
             [IntentType.GenerateValidator] = HandleGenerateValidator,
             [IntentType.CreateInterface] = HandleCreateInterface,
+            [IntentType.CreateEnum] = HandleCreateEnum,
             [IntentType.ListProperties] = HandleListProperties,
             [IntentType.CreateProperty] = HandleCreateProperty,
             [IntentType.DeleteProperty] = HandleDeleteProperty,
@@ -718,6 +719,38 @@ public static class CommandHandlingService
         return ok;
     }
 
+    private static bool HandleCreateEnum(CommandExecutionContext ctx)
+    {
+        var command = ctx.Command;
+
+        if (!ClassValidator.IsValidClassName(command.ClassName))
+        {
+            Output.Error("Error: Could not determine a valid enum name from input.");
+            return false;
+        }
+
+        // A value list that cannot be read, or a base the enum cannot have: refused before anything is written.
+        if (command.Metadata.TryGetValue(ParsedCommand.KindErrorKey, out var kindError)
+            && !string.IsNullOrWhiteSpace(kindError))
+        {
+            Output.Error(kindError);
+            return false;
+        }
+
+        if (ExistingTypeFile(ctx) is { } existing)
+        {
+            var name = EntityExtractor.DeclaredName(existing, command.ClassName);
+            Output.Error($"'{name}' already exists: {existing}");
+            Console.WriteLine(
+                "  It was left as it is: creating it again would replace everything in it."
+                + Environment.NewLine
+                + $"  To start it again, delete class {name} first.");
+            return false;
+        }
+
+        return GenerateAndSave(ctx);
+    }
+
     private static bool HandleListProperties(CommandExecutionContext ctx)
     {
         // Locate the class by name anywhere in the workspace (the old code built
@@ -1094,7 +1127,7 @@ public static class CommandHandlingService
         if (string.IsNullOrWhiteSpace(code))
             return false;
 
-        if (ctx.Command.Intent == IntentType.CreateClass)
+        if (ctx.Command.Intent is IntentType.CreateClass or IntentType.CreateEnum)
         {
             // Checked beside the rest of its project, which also fills in the members of the
             // interfaces it implements: compiled alone, a project interface was "CS0246 not found".

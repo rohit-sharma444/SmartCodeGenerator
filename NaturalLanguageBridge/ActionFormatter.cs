@@ -32,6 +32,7 @@ public static class ActionFormatter
             IntentType.RenameClass => $"{command.ClassName} -> {command.NewClassName}",
 
             IntentType.CreateClass
+                or IntentType.CreateEnum
                 or IntentType.DeleteClass
                 or IntentType.ShowClass
                 or IntentType.RestoreClass

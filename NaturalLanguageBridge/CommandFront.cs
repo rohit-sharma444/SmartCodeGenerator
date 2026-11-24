@@ -81,6 +81,14 @@ public static class CommandFront
             + @"(?<kind>class|record|struct)\s+(?<rest>.+)$",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    // `create enum <name> [with values|with members|with|having <a, b and c>]`, ahead of the mapper,
+    // which has no enum. An `inherits|implements|extends` tail is kept so the handler can refuse it.
+    private static readonly Regex CreateEnumRe =
+        new(@"^(?:create|add|generate)\s+(?:(?:a|an|new)\s+)?enum\s+(?<name>[A-Za-z_]\w*)"
+            + @"(?:\s+(?<bad>inherits|implements|extends)\b.*"
+            + @"|\s+(?:with\s+(?:values|members)|with|having)\s+(?<values>.+?))?\s*[.!]?$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     private static void ApplyKind(ParsedCommand cmd, Match match)
     {
         var kind = match.Groups["kind"].Value.ToLowerInvariant();
@@ -245,6 +253,7 @@ public static class CommandFront
         IntentType.CreateProject,
         IntentType.CreateClass,
         IntentType.CreateInterface,
+        IntentType.CreateEnum,
         IntentType.CreateProperty,
         IntentType.ListProperties,
         IntentType.ListMethods,
@@ -335,6 +344,32 @@ public static class CommandFront
             createCmd.Confidence = 1.0;
             SessionContext.CurrentClass = createCmd.ClassName;
             return createCmd;
+        }
+
+        var createEnumMatch = CreateEnumRe.Match(text);
+        if (createEnumMatch.Success)
+        {
+            // Fields from this guard's own groups, on the raw text (Normalize rewrites model/entity/object).
+            var name = CommandEntityExtractor.ToPascalCase(createEnumMatch.Groups["name"].Value);
+            var enumCmd = new ParsedCommand
+            {
+                Intent = IntentType.CreateEnum,
+                Kind = DeclaredKind.Enum,
+                ClassName = name,
+                OriginalSentence = input ?? string.Empty,
+                Confidence = 1.0
+            };
+
+            if (createEnumMatch.Groups["bad"].Success)
+                enumCmd.Metadata[ParsedCommand.KindErrorKey] =
+                    "An enum cannot inherit from a type or implement an interface.";
+            else if (EnumValueParser.TryParse(createEnumMatch.Groups["values"].Value, out var enumValues, out var enumError))
+                enumCmd.EnumValues = enumValues;
+            else
+                enumCmd.Metadata[ParsedCommand.KindErrorKey] = enumError!;
+
+            SessionContext.CurrentClass = name;
+            return enumCmd;
         }
 
         var createInterfaceMatch = CreateInterfaceRe.Match(text);

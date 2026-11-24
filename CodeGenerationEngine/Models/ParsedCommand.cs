@@ -126,6 +126,9 @@ public sealed class ParsedCommand
     /// <summary>The abstract, sealed or static word in a create command.</summary>
     public TypeModifier Modifier { get; set; } = TypeModifier.None;
 
+    /// <summary>The values of the enum a create enum command declares, in the order typed.</summary>
+    public List<string> EnumValues { get; set; } = [];
+
     /// <summary>
     /// The <see cref="Metadata"/> key under which a create command carries the reason its kind and
     /// modifier cannot go together, so the handler refuses it by that reason.
@@ -137,6 +140,7 @@ public sealed class ParsedCommand
         Intent = IntentType.Unknown;
         Kind = DeclaredKind.Class;
         Modifier = TypeModifier.None;
+        EnumValues.Clear();
 
         ProjectName = string.Empty;
         OutputFolder = string.Empty;

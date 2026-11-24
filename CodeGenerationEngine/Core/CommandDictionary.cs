@@ -147,6 +147,14 @@ public static class CommandDictionary
         new()
         {
             Category = "Class",
+            Command = "create enum <name> with values <value>, ...",
+            Description = "Creates a new enum with the values you list, split on commas and 'and'. "
+                        + "Refuses a repeated value, a keyword, and a name that already exists.",
+            Example = "create enum Status with values Active, Closed, Pending"
+        },
+        new()
+        {
+            Category = "Class",
             Command = "show class",
             Description = "Displays the class source code.",
             Example = "show class Employee"
