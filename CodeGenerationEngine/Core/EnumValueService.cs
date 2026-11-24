@@ -45,6 +45,15 @@ public static class EnumValueService
                 return false;
             }
 
+            // `enum Prio : byte { High = 255 }` took Urgent = 256, which is CS0031.
+            var (typeName, min, max) = UnderlyingRange(node);
+            if (next < min || next > 0 && (ulong)next > max)
+            {
+                message = $"'{enumName}' is stored as {typeName}, and the next number, {next}, does not fit in it. "
+                    + $"'{value}' was not added; give it a number by hand.";
+                return false;
+            }
+
             var number = next is >= int.MinValue and <= int.MaxValue
                 ? SyntaxFactory.Literal((int)next)
                 : SyntaxFactory.Literal(next);
@@ -82,8 +91,33 @@ public static class EnumValueService
         var removed = matches[0];
         removedName = removed.Identifier.Text;
         var newRoot = root.ReplaceNode(node, node.WithMembers(Without(node.Members, removed)));
-        return ClassMethodEditService.TryWrite(
-            file, newRoot, $"Value '{removed.Identifier.Text}' removed from '{enumName}'.", out message);
+
+        // With no numbers written, each value after the removed one moves down by one, so an int
+        // stored for Pending reads back as the value that now has its number.
+        var success = $"Value '{removedName}' removed from '{enumName}'.";
+        if (node.Members.All(m => m.EqualsValue == null) && node.Members.IndexOf(removed) < node.Members.Count - 1)
+            success += Environment.NewLine + $"The values after {removedName} now have numbers one lower; "
+                + "data stored as numbers will read differently.";
+
+        return ClassMethodEditService.TryWrite(file, newRoot, success, out message);
+    }
+
+    // The enum's underlying type as written (int when none), and the numbers it can hold.
+    private static (string Name, long Min, ulong Max) UnderlyingRange(EnumDeclarationSyntax node)
+    {
+        var written = node.BaseList?.Types.FirstOrDefault()?.Type.ToString() ?? "int";
+        var name = written.StartsWith("System.", StringComparison.Ordinal) ? written["System.".Length..] : written;
+        return name switch
+        {
+            "byte" or "Byte" => (written, byte.MinValue, byte.MaxValue),
+            "sbyte" or "SByte" => (written, sbyte.MinValue, (ulong)sbyte.MaxValue),
+            "short" or "Int16" => (written, short.MinValue, (ulong)short.MaxValue),
+            "ushort" or "UInt16" => (written, ushort.MinValue, ushort.MaxValue),
+            "uint" or "UInt32" => (written, uint.MinValue, uint.MaxValue),
+            "long" or "Int64" => (written, long.MinValue, long.MaxValue),
+            "ulong" or "UInt64" => (written, 0, ulong.MaxValue),
+            _ => (written, int.MinValue, int.MaxValue),
+        };
     }
 
     /// <summary>

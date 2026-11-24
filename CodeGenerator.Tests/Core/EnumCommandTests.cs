@@ -236,13 +236,15 @@ public sealed class EnumCommandTests
     }
 
     [TestMethod]
-    public void AddValue_WhenTheNextNumberFitsTheUnderlyingType_NumbersIt()
+    [DataRow("byte", "Low = 1, High = 254", "Urgent = 255")]
+    [DataRow("sbyte", "Low = -5, High = -3", "Urgent = -2")]
+    public void AddValue_WhenTheNextNumberFitsTheUnderlyingType_NumbersIt(string type, string members, string expected)
     {
-        Write("Prio.cs", "namespace Shop;\n\npublic enum Prio : byte { Low = 1, High = 254 }\n");
+        Write("Prio.cs", $"namespace Shop;\n\npublic enum Prio : {type} {{ {members} }}\n");
 
         Assert.IsTrue(Run("add value Urgent to Prio"), LastOutput);
 
-        StringAssert.Contains(Read("Prio.cs"), "Urgent = 255");
+        StringAssert.Contains(Read("Prio.cs"), expected);
         Assert.IsEmpty(ProjectErrors(), string.Join(Environment.NewLine, ProjectErrors()));
     }
 

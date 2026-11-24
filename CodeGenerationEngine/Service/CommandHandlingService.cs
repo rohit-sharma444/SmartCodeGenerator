@@ -289,13 +289,19 @@ public static class CommandHandlingService
             // works on a class's own file, so it is no way to start this one again.
             var ownFile = Path.GetFileNameWithoutExtension(existing).Equals(name, StringComparison.OrdinalIgnoreCase);
 
-            Output.Error(ownFile
+            // An enum takes values, not properties or methods: add property was then refused.
+            var isEnum = EnumValueService.MemberEditRefusalFor(ctx.WorkspaceRoot, name) is not null;
+
+            Output.Error(ownFile && !isEnum
                 ? $"Class '{name}' already exists: {existing}"
                 : $"'{name}' already exists: it is declared in {existing}");
             Console.WriteLine(
-                "  It was left as it is: creating it again would replace its properties and methods."
+                "  It was left as it is: creating it again would replace its "
+                + (isEnum ? "values." : "properties and methods.")
                 + Environment.NewLine
-                + $"  To change it, use add property <name> <type> to {name} or add method <name> to {name}"
+                + (isEnum
+                    ? $"  It is an enum; to change it, use add value <name> to {name}"
+                    : $"  To change it, use add property <name> <type> to {name} or add method <name> to {name}")
                 + (ownFile
                     ? ";" + Environment.NewLine + $"  to start it again, delete class {name} first."
                     : "."));
