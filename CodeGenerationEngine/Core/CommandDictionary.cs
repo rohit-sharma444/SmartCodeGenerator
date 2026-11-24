@@ -155,6 +155,21 @@ public static class CommandDictionary
         new()
         {
             Category = "Class",
+            Command = "add value <value> to <enum name>",
+            Description = "Adds a value to an enum, after the last. An enum that numbers its values gives it "
+                        + "the next number. Refuses a repeated value, a keyword, and a [Flags] enum.",
+            Example = "add value Archived to Status"
+        },
+        new()
+        {
+            Category = "Class",
+            Command = "remove value <value> from <enum name>",
+            Description = "Removes a value from an enum, then names the code that still uses it.",
+            Example = "remove value Pending from Status"
+        },
+        new()
+        {
+            Category = "Class",
             Command = "show class",
             Description = "Displays the class source code.",
             Example = "show class Employee"

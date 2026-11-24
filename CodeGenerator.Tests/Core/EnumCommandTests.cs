@@ -137,6 +137,142 @@ public sealed class EnumCommandTests
         StringAssert.Contains(Read("Status.cs"), "Old");
     }
 
+    private const string StatusSource = "namespace Shop;\n\npublic enum Status\n{\n    Active,\n    Closed,\n    Pending\n}\n";
+
+    private const string OrderSource = "namespace Shop;\n\npublic class Order\n{\n}\n";
+
+    [TestMethod]
+    public void AddValue_AppendsAfterTheLastValue()
+    {
+        Write("Status.cs", StatusSource);
+
+        Assert.IsTrue(Run("add value Archived to Status"), LastOutput);
+
+        AssertValuesInOrder(Read("Status.cs"), "Pending,", "Archived");
+        StringAssert.Contains(LastOutput, "Value 'Archived' added to 'Status'.");
+        Assert.IsEmpty(ProjectErrors(), string.Join(Environment.NewLine, ProjectErrors()));
+    }
+
+    [TestMethod]
+    public void AddValue_OnOneLineEnum_Compiles()
+    {
+        Write("Status.cs", "namespace Shop;\n\npublic enum Status { Active, Closed, Pending }\n");
+
+        Assert.IsTrue(Run("add value Archived to Status"), LastOutput);
+
+        AssertValuesInOrder(Read("Status.cs"), "Pending,", "Archived");
+        Assert.IsEmpty(ProjectErrors(), string.Join(Environment.NewLine, ProjectErrors()));
+    }
+
+    [TestMethod]
+    public void AddValue_ToAnEmptyEnum_Compiles()
+    {
+        Write("Status.cs", "namespace Shop;\n\npublic enum Status\n{\n}\n");
+
+        Assert.IsTrue(Run("add value Active to Status"), LastOutput);
+
+        StringAssert.Contains(Read("Status.cs"), "Active");
+        Assert.IsEmpty(ProjectErrors(), string.Join(Environment.NewLine, ProjectErrors()));
+    }
+
+    [TestMethod]
+    public void AddValue_WhenTheEnumNumbersItsValues_NumbersTheNewOne()
+    {
+        Write("Level.cs", "namespace Shop;\n\npublic enum Level { Low = 1, High = 5 }\n");
+
+        Assert.IsTrue(Run("add value Top to Level"), LastOutput);
+
+        StringAssert.Contains(Read("Level.cs"), "Top = 6");
+        Assert.IsEmpty(ProjectErrors(), string.Join(Environment.NewLine, ProjectErrors()));
+    }
+
+    [TestMethod]
+    public void RemoveValue_RemovesIt()
+    {
+        Write("Status.cs", StatusSource);
+
+        Assert.IsTrue(Run("remove value Pending from Status"), LastOutput);
+
+        var code = Read("Status.cs");
+        Assert.DoesNotContain("Pending", code);
+        StringAssert.Contains(code, "Closed");
+        Assert.IsEmpty(ProjectErrors(), string.Join(Environment.NewLine, ProjectErrors()));
+    }
+
+    [TestMethod]
+    public void RemoveValue_FromTheMiddle_KeepsTheOthers()
+    {
+        Write("Status.cs", StatusSource);
+
+        Assert.IsTrue(Run("delete value Closed from Status"), LastOutput);
+
+        var code = Read("Status.cs");
+        Assert.DoesNotContain("Closed", code);
+        AssertValuesInOrder(code, "Active,", "Pending");
+        Assert.IsEmpty(ProjectErrors(), string.Join(Environment.NewLine, ProjectErrors()));
+    }
+
+    [TestMethod]
+    public void RemoveValue_StillUsedElsewhere_WarnsWhichCodeUsesIt()
+    {
+        Write("Status.cs", StatusSource);
+        Write("Order.cs", "namespace Shop;\n\npublic class Order\n{\n    public bool IsOpen() => Status.Pending == Status.Pending;\n}\n");
+
+        Assert.IsTrue(Run("remove value Pending from Status"), LastOutput);
+
+        StringAssert.Contains(LastOutput, "code may still use it");
+        StringAssert.Contains(LastOutput, "Order.IsOpen()");
+    }
+
+    [TestMethod]
+    public void AddValue_ToAFlagsEnum_IsRefused()
+    {
+        var source = "namespace Shop;\n\n[System.Flags]\npublic enum Access { Read = 1, Write = 2 }\n";
+        Write("Access.cs", source);
+
+        Assert.IsFalse(Run("add value Run to Access"));
+
+        StringAssert.Contains(LastOutput, "is a [Flags] enum");
+        Assert.AreEqual(source, Read("Access.cs"));
+    }
+
+    [TestMethod]
+    [DataRow("add value Active to Status", "already")]
+    [DataRow("add value class to Status", "'class' is not a valid enum value name")]
+    [DataRow("remove value Ghost from Status", "'Ghost' is not a value of 'Status'")]
+    [DataRow("add value X to Ghost", "Enum 'Ghost' not found.")]
+    [DataRow("add value X to Order", "'Order' is not an enum")]
+    [DataRow("remove value X from Order", "'Order' is not an enum")]
+    [DataRow("add property Name string to Status", "'Status' is an enum; use add value <name> to Status.")]
+    [DataRow("add method Save to Status", "'Status' is an enum; use add value <name> to Status.")]
+    public void EnumEdit_Refused_LeavesTheFilesAsTheyAre(string input, string reason)
+    {
+        Write("Status.cs", StatusSource);
+        Write("Order.cs", OrderSource);
+
+        Assert.IsFalse(Run(input));
+
+        StringAssert.Contains(LastOutput, reason);
+        Assert.AreEqual(StatusSource, Read("Status.cs"));
+        Assert.AreEqual(OrderSource, Read("Order.cs"));
+    }
+
+    [TestMethod]
+    public void TwoValueCommandsOnOneLine_AreRefusedWhole()
+    {
+        Write("Status.cs", StatusSource);
+
+        Assert.IsFalse(Run("add value Archived to Status and add value Late to Status"));
+
+        Assert.AreEqual(StatusSource, Read("Status.cs"));
+    }
+
+    [TestMethod]
+    public void CreateClassAndAddMethod_IsStillOneCommand()
+    {
+        Assert.IsNull(CommandFront.TwoCommands("create class Employee and add method AddEmployee"));
+    }
+
     [TestMethod]
     [DataRow("A, B and C", new[] { "A", "B", "C" })]
     [DataRow("A,B", new[] { "A", "B" })]

@@ -1933,12 +1933,15 @@ own shows the shorter overview, and <code>help &lt;topic&gt;</code> shows one se
 <table>
 <tr><th>Command</th><th>Description</th><th>Example</th></tr>
 <tr><td><code>&lt;class name&gt; inherits &lt;base class name&gt;</code></td><td>Adds a base class to a class, keeping any existing interfaces. Aliases: extends, derives from.</td><td><code>Order inherits AuditableBase</code></td></tr>
+<tr><td><code>add value &lt;value&gt; to &lt;enum name&gt;</code></td><td>Adds a value to an enum, after the last. An enum that numbers its values gives it the next number. Refuses a repeated value, a keyword, and a [Flags] enum.</td><td><code>add value Archived to Status</code></td></tr>
 <tr><td><code>create class</code></td><td>Creates a new class. Refuses a name that already exists, and leaves that file as it is.</td><td><code>create class Employee</code></td></tr>
 <tr><td><code>create class &lt;class name&gt; with properties</code></td><td>Creates a new class with the specified properties. After them you can add &#x27;and methods &lt;list&gt;&#x27;, &#x27;inherits &lt;base&gt;&#x27; and &#x27;implements &lt;interfaces&gt;&#x27;. Refuses a name that already exists.</td><td><code>create class Employee with properties EmpCode int, Name string</code></td></tr>
+<tr><td><code>create enum &lt;name&gt; with values &lt;value&gt;, ...</code></td><td>Creates a new enum with the values you list, split on commas and &#x27;and&#x27;. Refuses a repeated value, a keyword, and a name that already exists.</td><td><code>create enum Status with values Active, Closed, Pending</code></td></tr>
 <tr><td><code>delete class</code></td><td>Moves a class to DeletedClasses, every partial file of it. Drops the validation rules saved for it.</td><td><code>delete class Employee</code></td></tr>
 <tr><td><code>list classes</code></td><td>Lists all classes in the current project, or in the workspace when none is selected.</td><td><code>list classes</code></td></tr>
 <tr><td><code>list classes in &lt;project name&gt;</code></td><td>Lists all classes in a project.</td><td><code>list classes in EmployeeManagement</code></td></tr>
 <tr><td><code>list deleted classes</code></td><td>Lists all deleted classes.</td><td><code>list deleted classes</code></td></tr>
+<tr><td><code>remove value &lt;value&gt; from &lt;enum name&gt;</code></td><td>Removes a value from an enum, then names the code that still uses it.</td><td><code>remove value Pending from Status</code></td></tr>
 <tr><td><code>rename class</code></td><td>Renames a class and every reference to it in the workspace (read by the compiler, so a same-named word in a comment or string is left alone). Refuses a name that already exists.</td><td><code>rename class Employee to Staff</code></td></tr>
 <tr><td><code>restore class</code></td><td>Restores a deleted class.</td><td><code>restore class Employee</code></td></tr>
 <tr><td><code>show class</code></td><td>Displays the class source code.</td><td><code>show class Employee</code></td></tr>

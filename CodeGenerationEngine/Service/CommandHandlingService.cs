@@ -125,6 +125,8 @@ public static class CommandHandlingService
             [IntentType.GenerateValidator] = HandleGenerateValidator,
             [IntentType.CreateInterface] = HandleCreateInterface,
             [IntentType.CreateEnum] = HandleCreateEnum,
+            [IntentType.AddEnumValue] = HandleAddEnumValue,
+            [IntentType.RemoveEnumValue] = HandleRemoveEnumValue,
             [IntentType.ListProperties] = HandleListProperties,
             [IntentType.CreateProperty] = HandleCreateProperty,
             [IntentType.DeleteProperty] = HandleDeleteProperty,
@@ -749,6 +751,35 @@ public static class CommandHandlingService
         }
 
         return GenerateAndSave(ctx);
+    }
+
+    private static bool HandleAddEnumValue(CommandExecutionContext ctx)
+    {
+        var command = ctx.Command;
+
+        // A value name that is no identifier: refused by the parser's reason, before anything is read.
+        if (command.Metadata.TryGetValue(ParsedCommand.KindErrorKey, out var valueError)
+            && !string.IsNullOrWhiteSpace(valueError))
+        {
+            Output.Error(valueError);
+            return false;
+        }
+
+        var ok = EnumValueService.AddValue(ctx.WorkspaceRoot, command.ClassName, command.EnumValues[0], out var message);
+        Console.WriteLine(message);
+        return ok;
+    }
+
+    private static bool HandleRemoveEnumValue(CommandExecutionContext ctx)
+    {
+        var command = ctx.Command;
+        var ok = EnumValueService.RemoveValue(ctx.WorkspaceRoot, command.ClassName, command.EnumValues[0], out var message);
+        Console.WriteLine(message);
+
+        // As remove property: the code the edit left naming the value, which no longer compiles.
+        if (ok)
+            WarnOfUsers(ctx, command.EnumValues[0], "Value", "removed");
+        return ok;
     }
 
     private static bool HandleListProperties(CommandExecutionContext ctx)

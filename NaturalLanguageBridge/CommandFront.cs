@@ -89,6 +89,13 @@ public static class CommandFront
             + @"|\s+(?:with\s+(?:values|members)|with|having)\s+(?<values>.+?))?\s*[.!]?$",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    // `add value <V> to <Enum>` / `remove|delete value <V> from <Enum>`, ahead of the mapper, which
+    // has no enum value. The value and the enum are kept as typed.
+    private static readonly Regex EnumValueRe =
+        new(@"^(?:(?<add>add)\s+value\s+(?<value>\w+)\s+to|(?:remove|delete)\s+value\s+(?<value>\w+)\s+from)"
+            + @"\s+(?:the\s+)?(?<enum>\w+)(?:\s+enum)?\s*[.!]?$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     private static void ApplyKind(ParsedCommand cmd, Match match)
     {
         var kind = match.Groups["kind"].Value.ToLowerInvariant();
@@ -254,6 +261,8 @@ public static class CommandFront
         IntentType.CreateClass,
         IntentType.CreateInterface,
         IntentType.CreateEnum,
+        IntentType.AddEnumValue,
+        IntentType.RemoveEnumValue,
         IntentType.CreateProperty,
         IntentType.ListProperties,
         IntentType.ListMethods,
@@ -370,6 +379,28 @@ public static class CommandFront
 
             SessionContext.CurrentClass = name;
             return enumCmd;
+        }
+
+        var enumValueMatch = EnumValueRe.Match(text);
+        if (enumValueMatch.Success)
+        {
+            var adding = enumValueMatch.Groups["add"].Success;
+            var valueCmd = new ParsedCommand
+            {
+                Intent = adding ? IntentType.AddEnumValue : IntentType.RemoveEnumValue,
+                Kind = DeclaredKind.Enum,
+                ClassName = enumValueMatch.Groups["enum"].Value,
+                EnumValues = [enumValueMatch.Groups["value"].Value],
+                OriginalSentence = input ?? string.Empty,
+                Confidence = 1.0
+            };
+
+            // The one rule for a value's name (EnumValueParser), checked here because the service
+            // cannot reach it; a removed value only has to match one, so it is not checked.
+            if (adding && !EnumValueParser.TryParse(valueCmd.EnumValues[0], out _, out var valueError))
+                valueCmd.Metadata[ParsedCommand.KindErrorKey] = valueError!;
+
+            return valueCmd;
         }
 
         var createInterfaceMatch = CreateInterfaceRe.Match(text);
@@ -629,7 +660,7 @@ public static class CommandFront
     // after "and", "then" or a comma. One line runs one command, so the line is refused whole.
     private static readonly Regex SecondCommandRe = new(
         @"(?:\s+(?:and|then)|\s*[,;])\s+(?:then\s+)?(?<second>(?:add|create|remove|delete|drop|rename|change|retype)\s+"
-        + @"(?:(?:a|an|the|new)\s+)?(?:property|field|method|class|interface|project|validation)\b.*)$",
+        + @"(?:(?:a|an|the|new)\s+)?(?:property|field|method|class|interface|project|validation|value)\b.*)$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly Regex CreatesAType = new(

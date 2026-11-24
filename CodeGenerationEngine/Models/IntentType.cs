@@ -41,6 +41,8 @@ public enum IntentType
     // Architecture
     CreateInterface,
     CreateEnum,
+    AddEnumValue,
+    RemoveEnumValue,
     CreateService,
     CreateRepository,
     CreateController,

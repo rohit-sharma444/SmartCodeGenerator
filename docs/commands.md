@@ -56,12 +56,15 @@
 | Command | Description | Example |
 | --- | --- | --- |
 | `<class name> inherits <base class name>` | Adds a base class to a class, keeping any existing interfaces. Aliases: extends, derives from. | `Order inherits AuditableBase` |
+| `add value <value> to <enum name>` | Adds a value to an enum, after the last. An enum that numbers its values gives it the next number. Refuses a repeated value, a keyword, and a [Flags] enum. | `add value Archived to Status` |
 | `create class` | Creates a new class. Refuses a name that already exists, and leaves that file as it is. | `create class Employee` |
 | `create class <class name> with properties` | Creates a new class with the specified properties. After them you can add 'and methods <list>', 'inherits <base>' and 'implements <interfaces>'. Refuses a name that already exists. | `create class Employee with properties EmpCode int, Name string` |
+| `create enum <name> with values <value>, ...` | Creates a new enum with the values you list, split on commas and 'and'. Refuses a repeated value, a keyword, and a name that already exists. | `create enum Status with values Active, Closed, Pending` |
 | `delete class` | Moves a class to DeletedClasses, every partial file of it. Drops the validation rules saved for it. | `delete class Employee` |
 | `list classes` | Lists all classes in the current project, or in the workspace when none is selected. | `list classes` |
 | `list classes in <project name>` | Lists all classes in a project. | `list classes in EmployeeManagement` |
 | `list deleted classes` | Lists all deleted classes. | `list deleted classes` |
+| `remove value <value> from <enum name>` | Removes a value from an enum, then names the code that still uses it. | `remove value Pending from Status` |
 | `rename class` | Renames a class and every reference to it in the workspace (read by the compiler, so a same-named word in a comment or string is left alone). Refuses a name that already exists. | `rename class Employee to Staff` |
 | `restore class` | Restores a deleted class. | `restore class Employee` |
 | `show class` | Displays the class source code. | `show class Employee` |
