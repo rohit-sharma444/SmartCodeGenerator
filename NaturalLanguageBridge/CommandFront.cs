@@ -195,7 +195,7 @@ public static class CommandFront
     // The start of `add property ...`; the rest is CommandEntityExtractor.AddPropertyRe, which
     // reads the fields.
     private static readonly Regex AddPropertyStartRe =
-        new(@"^(?:add|create)\s+(?:(?:a|an|new)\s+)?(?:property|field)\s",
+        new(@"^(?:add|create)\s+(?:(?:a|an|new)\s+)?(?:(?:readonly|private|static|required)\s+)*(?:property|field)\s",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     // `rename property <old> to <new> in <Class>`. The mapper's Table is keyed on

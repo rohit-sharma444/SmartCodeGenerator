@@ -352,7 +352,7 @@ public static class CommandHandlingService
 
             // C# 11 refuses an initializer in a struct that declares no constructor (CS8983).
             if (command.Kind == DeclaredKind.Struct)
-                return $"A struct property gets its value in a constructor: add constructor to {command.ClassName}";
+                return DefaultValues.StructRefusal(command.ClassName);
 
             if (!located)
             {
@@ -363,7 +363,7 @@ public static class CommandHandlingService
 
             var type = Core.CodeGenerationEngine.ResolvePropertyType(property);
             if (!DefaultValues.TryExpression(type, property.Initializer, projectFolder, out var expression, out var error))
-                return $"{error!.TrimEnd('.')} for {property.Name}.";
+                return DefaultValues.ValueRefusal(error!, property.Name);
 
             property.Initializer = expression;
         }
@@ -972,7 +972,8 @@ public static class CommandHandlingService
         UseDeclaredNames(ctx, member: null);
         var ok = ClassPropertyService.AddProperty(
             ctx.WorkspaceRoot, ctx.Command.ClassName,
-            ctx.Command.PropertyName, ctx.Command.PropertyType, out var message);
+            ctx.Command.PropertyName, ctx.Command.PropertyType,
+            ctx.Command.PropertyModifiers, ctx.Command.PropertyDefault, out var message);
         Console.WriteLine(message);
         if (ok)
             WarnOfImplementersLacking(ctx, ctx.Command.PropertyName);

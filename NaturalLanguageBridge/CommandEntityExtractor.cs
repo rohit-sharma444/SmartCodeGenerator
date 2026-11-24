@@ -488,9 +488,12 @@ public static class CommandEntityExtractor
     private const string TypedPropertyType = @"(?:[^\s<]|<[^<>]*(?:<[^<>]*>[^<>]*)*>)+";
 
     internal static readonly Regex AddPropertyRe = new(
-        @"\b(?:add|create)\s+(?:(?:a|an|new)\s+)?(?:property|field)\s+"
+        @"\b(?:add|create)\s+(?:(?:a|an|new)\s+)?(?<modifiers>(?:(?:readonly|private|static|required)\s+)*)(?:property|field)\s+"
         + @"(?<name>""[^""]*""|'[^']*'|\S+)"
         + $@"(?:\s+(?<type>{TypedPropertyType}))?"
+        // `default 5`, `default "New"`, `= 5`: one word or one quoted text, read from the raw text
+        // so a filler word (A, the) given as the value is kept.
+        + @"(?:\s+(?:default\s+|=\s*)(?<default>""[^""]*""|[^\s""]\S*))?"
         + @"\s+(?:to|in|on|into)\s+(?:class\s+(?=\S))?(?<class>[A-Za-z_]\w*)\s*[.!]?\s*$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
@@ -518,6 +521,16 @@ public static class CommandEntityExtractor
             if (add.Groups["type"].Success)
                 command.PropertyType = add.Groups["type"].Value.Trim();
             command.ClassName = ToPascalCase(add.Groups["class"].Value);
+            foreach (var word in add.Groups["modifiers"].Value.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+                command.PropertyModifiers |= word.ToLowerInvariant() switch
+                {
+                    "readonly" => PropertyModifiers.ReadOnly,
+                    "private" => PropertyModifiers.Private,
+                    "static" => PropertyModifiers.Static,
+                    _ => PropertyModifiers.Required
+                };
+            if (add.Groups["default"].Success)
+                command.PropertyDefault = add.Groups["default"].Value;
             return;
         }
 

@@ -68,6 +68,11 @@ public sealed class ParsedCommand
     public string PropertyName { get; set; } = string.Empty;
     public string PropertyType { get; set; } = "string";
 
+    // The words before `property` (readonly, private, static, required) and the default value as
+    // typed (`default 5`, `= 5`) of `add property`.
+    public PropertyModifiers PropertyModifiers { get; set; } = PropertyModifiers.None;
+    public string? PropertyDefault { get; set; }
+
     // Target name for `rename property <old> to <new>`.
     public string NewPropertyName { get; set; } = string.Empty;
 
@@ -160,6 +165,8 @@ public sealed class ParsedCommand
         MethodName = string.Empty;
         ReturnType = "void";
 
+        PropertyModifiers = PropertyModifiers.None;
+        PropertyDefault = null;
         NewPropertyName = string.Empty;
         NewMethodName = string.Empty;
         RuleNumber = null;

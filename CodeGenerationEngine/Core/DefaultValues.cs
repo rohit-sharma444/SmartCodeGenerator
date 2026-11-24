@@ -38,6 +38,14 @@ public static class DefaultValues
         return false;
     }
 
+    /// <summary>The refusal of a default on a struct property (the text create class and add property share).</summary>
+    public static string StructRefusal(string structName)
+        => $"A struct property gets its value in a constructor: add constructor to {structName}";
+
+    /// <summary>The refusal of a default that is not a value of the type, naming the property.</summary>
+    public static string ValueRefusal(string error, string propertyName)
+        => $"{error.TrimEnd('.')} for {propertyName}.";
+
     private static string Expression(string type, string value)
     {
         var bare = type.Trim().TrimEnd('?');
