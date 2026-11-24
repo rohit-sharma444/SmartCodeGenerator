@@ -163,6 +163,36 @@ public sealed class AddPropertyModifierTests
     }
 
     [TestMethod]
+    public void A_default_on_a_record_struct_property_is_refused()
+    {
+        Write("Pair.cs", "namespace Shop;\n\npublic record struct Pair\n{\n}\n");
+        AssertRefused("add property X int default 1 to Pair", "add constructor to Pair");
+    }
+
+    [TestMethod]
+    public void A_default_on_an_interface_property_is_refused()
+    {
+        Write("IPriced.cs", "namespace Shop;\n\npublic interface IPriced\n{\n}\n");
+        AssertRefused("add property X int default 1 to IPriced", "An interface property has no default value.");
+    }
+
+    [TestMethod]
+    public void A_modifier_on_an_interface_property_is_refused()
+    {
+        Write("IPriced.cs", "namespace Shop;\n\npublic interface IPriced\n{\n}\n");
+        AssertRefused("add required property X int to IPriced", "An interface property takes no modifiers.");
+    }
+
+    [TestMethod]
+    public void A_default_on_a_record_property_is_init()
+    {
+        Write("Money.cs", "namespace Shop;\n\npublic record Money\n{\n}\n");
+        Assert.IsTrue(Run("add property Amount int default 5 to Money"), LastOutput);
+        StringAssert.Contains(Read("Money.cs"), "public int Amount { get; init; } = 5;");
+        Assert.IsEmpty(ProjectErrors());
+    }
+
+    [TestMethod]
     public void Required_with_static_is_refused()
     {
         AssertRefused("add required static property X int to Order", "cannot be both required and static");

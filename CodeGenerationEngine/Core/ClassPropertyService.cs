@@ -1,4 +1,5 @@
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using CodeGenerationEngine.Models;
 
@@ -64,6 +65,22 @@ public static class ClassPropertyService
             if (!TypeResolution.Resolves(workspaceRoot, part.File, part.Node, type, out message, out var bound))
                 return false;
 
+            // An interface property is a signature: no initializer (CS8053), no modifier.
+            if (part.Node is InterfaceDeclarationSyntax)
+            {
+                if (defaultValue is not null)
+                {
+                    message = DefaultValues.InterfaceDefaultRefusal;
+                    return false;
+                }
+
+                if (typed != PropertyModifiers.None)
+                {
+                    message = DefaultValues.InterfaceModifierRefusal;
+                    return false;
+                }
+            }
+
             // A static class holds only static members (CS0708).
             if (part.Node.Modifiers.Any(Microsoft.CodeAnalysis.CSharp.SyntaxKind.StaticKeyword))
                 modifiers |= PropertyModifiers.Static;
@@ -86,7 +103,7 @@ public static class ClassPropertyService
             if (defaultValue is not null)
             {
                 // C# 11 refuses an initializer in a struct that declares no constructor (CS8983).
-                if (part.Node is StructDeclarationSyntax)
+                if (part.Node.Kind() is SyntaxKind.StructDeclaration or SyntaxKind.RecordStructDeclaration)
                 {
                     message = DefaultValues.StructRefusal(className);
                     return false;

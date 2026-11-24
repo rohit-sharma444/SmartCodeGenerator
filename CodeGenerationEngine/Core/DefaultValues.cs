@@ -42,6 +42,12 @@ public static class DefaultValues
     public static string StructRefusal(string structName)
         => $"A struct property gets its value in a constructor: add constructor to {structName}";
 
+    /// <summary>The refusal of a default on an interface property.</summary>
+    public const string InterfaceDefaultRefusal = "An interface property has no default value.";
+
+    /// <summary>The refusal of private, static, required or readonly on an interface property.</summary>
+    public const string InterfaceModifierRefusal = "An interface property takes no modifiers.";
+
     /// <summary>The refusal of a default that is not a value of the type, naming the property.</summary>
     public static string ValueRefusal(string error, string propertyName)
         => $"{error.TrimEnd('.')} for {propertyName}.";
