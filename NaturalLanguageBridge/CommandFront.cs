@@ -179,7 +179,7 @@ public static class CommandFront
     // Parameters in the C# form, `Ship(string address)`, or the English form,
     // `Ship with parameters address string`, before ` to <Class>`.
     private static readonly Regex AddMethodRe =
-        new(@"^(?:add|create|generate)\s+(?:(?:a|an|new)\s+)?method\s+(?<method>[A-Za-z_]\w*)"
+        new(@"^(?:add|create|generate)\s+(?:(?:a|an|new)\s+)?(?<abstract>abstract\s+)?method\s+(?<method>[A-Za-z_]\w*)"
             + @"(?:\s*\((?<cparams>[^)]*)\))?"
             + $@"(?:\s+returns?\s+(?<returns>{MethodParameterParser.TypePattern}))?"
             // "returns" can follow the English list too: "Ship with parameters address string
@@ -457,6 +457,8 @@ public static class CommandFront
             var addMethodCmd = ClassCommand(
                 IntentType.CreateMethod, addMethodMatch.Groups["class"].Value, input, workspace);
             addMethodCmd.MethodName = CommandEntityExtractor.ToPascalCase(addMethodMatch.Groups["method"].Value);
+            if (addMethodMatch.Groups["abstract"].Success)
+                addMethodCmd.Modifier = TypeModifier.Abstract;
             addMethodCmd.ReturnType = addMethodMatch.Groups["returns"].Success
                 ? addMethodMatch.Groups["returns"].Value
                 : "void";

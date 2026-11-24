@@ -480,7 +480,8 @@ public static class CommandHandlingService
         UseDeclaredNames(ctx, member: null);
         var ok = ClassMethodService.AddMethod(
             ctx.WorkspaceRoot, ctx.Command.ClassName,
-            ctx.Command.MethodName, ctx.Command.ReturnType, ctx.Command.Parameters, out var message);
+            ctx.Command.MethodName, ctx.Command.ReturnType, ctx.Command.Parameters,
+            ctx.Command.Modifier == TypeModifier.Abstract, out var message);
         Output.Result(ok, message);
         if (ok)
             WarnOfImplementersLacking(ctx, ctx.Command.MethodName);

@@ -321,7 +321,8 @@ public static class CommandDictionary
                         + "'add method <name> returns <type> to <class name>'. Give parameters as "
                         + "'add method <name>(<type> <name>, ...) to <class name>' or "
                         + "'add method <name> with parameters <name> <type>, ... to <class name>'. "
-                        + "On an interface it names the implementers that lack the method.",
+                        + "On an interface it names the implementers that lack the method. "
+                        + "Use 'add abstract method <name> to <class name>' to add a method with no body to an abstract class.",
             Example = "add method ApplyDiscount(decimal percent) returns decimal to Order"
         },
         new()

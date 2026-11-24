@@ -78,7 +78,7 @@ public class ClassMemberInsertionTests
     {
         var path = WriteClass("Gadget");
 
-        var ok = ClassMethodService.AddMethod(_root, "Gadget", "Save", "void", [], out var message);
+        var ok = ClassMethodService.AddMethod(_root, "Gadget", "Save", "void", [], false, out var message);
 
         Assert.IsTrue(ok, message);
         var members = ParseClass(path, "Gadget").Members.OfType<MethodDeclarationSyntax>().ToList();
@@ -97,7 +97,7 @@ public class ClassMemberInsertionTests
         var path = WriteClass("Gadget");
 
         Assert.IsTrue(ClassPropertyService.AddProperty(_root, "Gadget", "Name", "string", out var m1), m1);
-        Assert.IsTrue(ClassMethodService.AddMethod(_root, "Gadget", "Save", "void", [], out var m2), m2);
+        Assert.IsTrue(ClassMethodService.AddMethod(_root, "Gadget", "Save", "void", [], false, out var m2), m2);
         Assert.IsTrue(ClassPropertyService.AddProperty(_root, "Gadget", "Age", "int", out var m3), m3);
 
         var cls = ParseClass(path, "Gadget");
