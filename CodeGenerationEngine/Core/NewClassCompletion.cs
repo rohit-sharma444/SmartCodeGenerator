@@ -77,10 +77,24 @@ public static class NewClassCompletion
         return new Result(completed, first.Class?.Identifier.Text, interfaces, added, Errors(second));
     }
 
+    /// <summary>
+    /// Says why a class checked with its project's files was not written: the errors are its own,
+    /// as only its own file's diagnostics are kept.
+    /// </summary>
+    public static void ReportRefused(Result result)
+    {
+        Output.Error($"{result.ClassName ?? "The class"} was not created: it does not compile in its project.");
+        foreach (var d in result.Errors)
+            Console.WriteLine("  " + d);
+        Output.Detail("  Create the types it names first, or correct the command, then run it again.");
+    }
+
     /// <summary>Says what was added and whether the class compiles, as the old check did.</summary>
     public static void Report(Result result)
     {
-        Output.Success(" \n Validate succeeded. ");
+        // Only once it has compiled: "Validate succeeded" printed just above "Compilation failed".
+        if (result.Errors.Count == 0)
+            Output.Success(" \n Validate succeeded. ");
 
         if (result.Added.Count > 0)
             Console.WriteLine(
@@ -90,7 +104,9 @@ public static class NewClassCompletion
 
         if (result.Errors.Count > 0)
         {
-            Output.Error("Compilation failed. Diagnostics:");
+            // Saved, as it was checked alone: with no project, a type another file declares
+            // looks missing here, and refusing would block a class that does build.
+            Output.Warning("Saved, but it does not compile on its own. Diagnostics:");
             foreach (var d in result.Errors)
                 Console.WriteLine("  " + d);
             return;

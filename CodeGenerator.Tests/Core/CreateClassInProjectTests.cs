@@ -83,7 +83,7 @@ public sealed class CreateClassInProjectTests
         Assert.IsTrue(Run("create class Circle with properties Radius decimal implements IShape"), LastOutput);
 
         Assert.DoesNotContain("CS0246", LastOutput, LastOutput);
-        Assert.DoesNotContain("Compilation failed", LastOutput, LastOutput);
+        Assert.DoesNotContain("does not compile", LastOutput, LastOutput);
         var errors = ProjectErrors();
         Assert.IsEmpty(errors, string.Join(Environment.NewLine, errors) + Environment.NewLine
             + File.ReadAllText(Path.Combine(_workspace, "Shop", "Circle.cs")));
@@ -100,16 +100,35 @@ public sealed class CreateClassInProjectTests
         Assert.IsTrue(Run("create class Square inherits Base1"), LastOutput);
 
         Assert.DoesNotContain("CS0246", LastOutput, LastOutput);
-        Assert.DoesNotContain("Compilation failed", LastOutput, LastOutput);
+        Assert.DoesNotContain("does not compile", LastOutput, LastOutput);
         StringAssert.Contains(File.ReadAllText(Path.Combine(_workspace, "Shop", "Square.cs")), "Base1");
         Assert.IsEmpty(ProjectErrors());
     }
 
+    // It was reported and saved anyway, and "create class" said it had succeeded: the project then
+    // failed dotnet build. Inside a project the class is checked with the project's own files, so
+    // an error is the class's own, and it is not written.
     [TestMethod]
-    public void A_type_that_really_is_missing_is_still_reported()
+    public void A_class_that_does_not_compile_in_its_project_is_not_saved()
     {
-        Assert.IsTrue(Run("create class Square inherits Nowhere1"), LastOutput);
+        Assert.IsFalse(Run("create class Square inherits Nowhere1"), LastOutput);
 
         StringAssert.Contains(LastOutput, "CS0246");
+        StringAssert.Contains(LastOutput, "Square was not created");
+        Assert.DoesNotContain("Validate succeeded", LastOutput, LastOutput);
+        Assert.IsFalse(File.Exists(Path.Combine(_workspace, "Shop", "Square.cs")), LastOutput);
+        Assert.IsEmpty(ProjectErrors());
+    }
+
+    [TestMethod]
+    public void The_class_can_be_created_once_its_base_exists()
+    {
+        Assert.IsFalse(Run("create class Square inherits Shape1"), LastOutput);
+        Assert.IsTrue(Run("create class Shape1"), LastOutput);
+
+        Assert.IsTrue(Run("create class Square inherits Shape1"), LastOutput);
+
+        Assert.IsTrue(File.Exists(Path.Combine(_workspace, "Shop", "Square.cs")), LastOutput);
+        Assert.IsEmpty(ProjectErrors());
     }
 }

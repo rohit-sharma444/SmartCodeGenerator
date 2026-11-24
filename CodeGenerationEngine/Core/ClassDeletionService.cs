@@ -47,6 +47,19 @@ public static class ClassDeletionService
                     + "deleting it would delete them too. Move them to files of their own, then delete the class again.");
         }
 
+        // Deleting Person while Customer inherits it said "deleted" and left a project that failed
+        // with CS0246. Refused, with the files that need it named, as the check above refuses.
+        if (ProjectFileHelper.FindProjectDirectory(found) is { Length: > 0 } ownProject)
+        {
+            var name = DeclaredName(found) ?? Path.GetFileNameWithoutExtension(found);
+            var (parts, _) = PartsOf(ownProject, found, name);
+            var users = FilesThatNeed(ownProject, [found, .. parts]);
+            if (users.Count > 0)
+                return (false, $"'{name}' was not deleted: {string.Join(", ", users)} "
+                    + $"{(users.Count == 1 ? "uses" : "use")} it, and would not compile without it. "
+                    + "Change or delete those first, then delete the class again.");
+        }
+
         var errors = new List<string>();
         var notes = new List<string>();
         var deletedNames = new List<string>();
@@ -118,6 +131,50 @@ public static class ClassDeletionService
             + $" 'restore class {declared}' brings the file{(deletedNames.Count == 1 ? "" : "s")} back.";
 
         return (true, notes.Count == 0 ? message : message + Environment.NewLine + string.Join(Environment.NewLine, notes));
+    }
+
+    /// <summary>
+    /// The project's other files that get a compile error when <paramref name="removed"/> are
+    /// gone - errors the project already had are not counted.
+    /// </summary>
+    /// <remarks>
+    /// By compiling, not by searching for the name: a compile finds a base class, a property type,
+    /// a parameter and a <c>new</c> alike, and does not count a comment or a string.
+    /// </remarks>
+    internal static List<string> FilesThatNeed(string projectDir, IReadOnlyCollection<string> removed)
+    {
+        var gone = removed.Select(Path.GetFullPath).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        List<(string Path, string Code)> sources;
+        try
+        {
+            sources = [.. ClassFiles.Under(projectDir).Select(f => (Path.GetFullPath(f), File.ReadAllText(f)))];
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return [];
+        }
+
+        var remaining = sources.Where(s => !gone.Contains(s.Path)).ToList();
+        if (remaining.Count == 0)
+            return [];
+
+        static HashSet<string> Errors(IEnumerable<(string Path, string Code)> files) =>
+        [
+            .. Compiler.CompileSources(files).Diagnostics
+                .Where(d => d.Severity == DiagnosticSeverity.Error && d.Location.IsInSource)
+                .Select(d => $"{d.Location.SourceTree!.FilePath}|{d.Id}|{d.Location.SourceSpan}")
+        ];
+
+        var before = Errors(sources);
+
+        return
+        [
+            .. Errors(remaining)
+                .Where(e => !before.Contains(e))
+                .Select(e => Path.GetRelativePath(projectDir, e.Split('|')[0]))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Order(StringComparer.OrdinalIgnoreCase)
+        ];
     }
 
     /// <summary>The extension a kept copy gets after <c>.cs</c>.</summary>

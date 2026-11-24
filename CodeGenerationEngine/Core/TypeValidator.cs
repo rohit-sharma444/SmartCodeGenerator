@@ -56,6 +56,23 @@ public static class TypeValidator
     };
 
     /// <summary>
+    /// A supported type made nullable (<c>string?</c>), an array of one (<c>int[]</c>), or a list of
+    /// one (<c>List&lt;int&gt;</c>): what create class reads from its property list, and what add
+    /// property already writes.
+    /// </summary>
+    private static bool IsSupportedComposite(string type)
+    {
+        foreach (var suffix in (string[])["?", "[]"])
+        {
+            if (type.Length > suffix.Length && type.EndsWith(suffix, StringComparison.Ordinal))
+                return SupportedTypes.Contains(type[..^suffix.Length].TrimEnd());
+        }
+
+        var list = System.Text.RegularExpressions.Regex.Match(type, @"^List\s*<\s*(?<item>[^<>,]+?)\s*>$");
+        return list.Success && Validate(list.Groups["item"].Value).IsValid;
+    }
+
+    /// <summary>
     /// Validates that the specified type is supported.
     /// </summary>
     public static ValidationResults Validate(string? type)
@@ -66,7 +83,7 @@ public static class TypeValidator
         var t = type.Trim();
 
         // Check if type is supported
-        if (!SupportedTypes.Contains(t))
+        if (!SupportedTypes.Contains(t) && !IsSupportedComposite(t))
         {
             // Provide helpful suggestions for common mistakes
             string suggestion = "";

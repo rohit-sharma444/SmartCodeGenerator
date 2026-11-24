@@ -86,7 +86,13 @@ public static class CodeGenerationEngine
                     sb.AppendLine($"    [Range(double.MinValue, {rule.MaxValue.Value})]");
             }
 
-            sb.AppendLine($"    public {propertyType} {propertyName} {{ get; set; }}");
+            // The initial value add property gives, so a project with Nullable on does not warn
+            // CS8618 for each string and collection a new class declares.
+            var initial = PropertyInitializers.SafeFor(
+                Microsoft.CodeAnalysis.CSharp.SyntaxFactory.ParseTypeName(propertyType), bound: null);
+            var initializer = initial is null ? string.Empty : $" = {initial};";
+
+            sb.AppendLine($"    public {propertyType} {propertyName} {{ get; set; }}{initializer}");
             sb.AppendLine();
         }
 
@@ -207,7 +213,16 @@ public static class CodeGenerationEngine
         if (string.IsNullOrWhiteSpace(type))
             return "string";
 
-        return type.Trim().ToLowerInvariant() switch
+        // `guid?` and `datetime[]` are the built-in name with a suffix: the name is mapped and
+        // the suffix kept, as `guid` alone becomes System.Guid.
+        var trimmed = type.Trim();
+        foreach (var suffix in (string[])["?", "[]"])
+        {
+            if (trimmed.Length > suffix.Length && trimmed.EndsWith(suffix, StringComparison.Ordinal))
+                return NormalizeType(trimmed[..^suffix.Length]) + suffix;
+        }
+
+        return trimmed.ToLowerInvariant() switch
         {
             "int" or "integer" or "int32" => "int",
             "long" or "int64" or "bigint" => "long",

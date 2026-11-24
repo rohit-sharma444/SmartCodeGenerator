@@ -39,6 +39,13 @@ public sealed class ParsedCommand
     /// </remarks>
     public List<string> IgnoredProperties { get; set; } = [];
 
+    /// <summary>
+    /// True when <see cref="ClassName"/> was not in the sentence and came from the session's
+    /// current class. The handler says so: "delete the Ids property from Item" once answered
+    /// "Class 'Foo' not found." about a class the user had not named on that line.
+    /// </summary>
+    public bool ClassFromSession { get; set; }
+
     // Single-property member operations (add/remove property on an existing class).
     public string PropertyName { get; set; } = string.Empty;
     public string PropertyType { get; set; } = "string";
@@ -144,6 +151,7 @@ public sealed class ParsedCommand
         Parameters.Clear();
         Properties.Clear();
         IgnoredProperties.Clear();
+        ClassFromSession = false;
         Methods.Clear();
         Tags.Clear();
         Metadata.Clear();

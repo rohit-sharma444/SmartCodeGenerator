@@ -146,7 +146,10 @@ public static class CommandEntityExtractor
                 break;
         }
         if (string.IsNullOrWhiteSpace(command.ClassName))
+        {
             command.ClassName = SessionContext.CurrentClass ?? string.Empty;
+            command.ClassFromSession = command.ClassName.Length > 0;
+        }
         return command;
     }
 
@@ -470,7 +473,10 @@ public static class CommandEntityExtractor
     /// </remarks>
     public static void ExtractPropertyInfo(string sentence, ParsedCommand command)
     {
-        var add = AddPropertyRe.Match(sentence);
+        // A delete reads the delete pattern only: "remove property Name from Item and add
+        // property Title string to Item" matched the add pattern first, and so named Title as
+        // the property to remove.
+        var add = command.Intent == IntentType.DeleteProperty ? Match.Empty : AddPropertyRe.Match(sentence);
         if (add.Success)
         {
             var name = add.Groups["name"].Value.Trim('"', '\'');
@@ -483,12 +489,13 @@ public static class CommandEntityExtractor
 
         // remove/delete property <name> from <class>
         var remove = Regex.Match(sentence,
-            @"\b(?:remove|delete|drop)\s+(?:property|field)\s+([A-Za-z_]\w*)\s+(?:from|of|in|on)\s+([A-Za-z_]\w*)",
+            @"\b(?:remove|delete|drop)\s+(?:the\s+)?(?:(?:property|field)\s+(?<property>[A-Za-z_]\w*)|(?<property>[A-Za-z_]\w*)\s+(?:property|field))"
+            + @"\s+(?:from|of|in|on)\s+(?:the\s+)?(?:class\s+)?(?<class>[A-Za-z_]\w*)",
             RegexOptions.IgnoreCase);
         if (remove.Success)
         {
-            command.PropertyName = ToPascalCase(remove.Groups[1].Value);
-            command.ClassName = ToPascalCase(remove.Groups[2].Value);
+            command.PropertyName = ToPascalCase(remove.Groups["property"].Value);
+            command.ClassName = ToPascalCase(remove.Groups["class"].Value);
         }
     }
 
@@ -542,6 +549,14 @@ public static class CommandEntityExtractor
             return;
 
         var methodsText = match.Groups["methods"].Value.Trim();
+
+        // "methods Save, Load implements IEntity": the clause after the last method belongs to
+        // the class. Left in, the last token was "Load implements IEntity" and Load was dropped.
+        var clause = Regex.Match(methodsText,
+            @"\s+(?:implements?|inherits?|extends|derived\s+from|base\s+class)\b",
+            RegexOptions.IgnoreCase);
+        if (clause.Success)
+            methodsText = methodsText[..clause.Index];
 
         // Methods can be separated by commas, semicolons, or the word "and"
         // (e.g. "AddEmployee and EmployeeList method").
@@ -830,29 +845,29 @@ public static class CommandEntityExtractor
         if (string.IsNullOrWhiteSpace(propertySection))
             return;
 
-        var matches = Regex.Matches(
-            propertySection,
-            @"([A-Za-z_]\w*)\s+(string|int|long|bool|decimal|double|float|datetime|guid)\b",
-            RegexOptions.IgnoreCase);
+        var entries = TypedEntries(propertySection);
 
-        if (matches.Count > 0)
+        if (entries.Any(e => e.Matches.Count > 0))
         {
-            foreach (Match match in matches)
+            foreach (var (_, matches) in entries)
             {
-                command.Properties.Add(
-                    new PropertyDefinition
-                    {
-                        Name = Capitalised(match.Groups[1].Value),
-                        Type = match.Groups[2].Value
-                    });
+                foreach (Match match in matches)
+                {
+                    command.Properties.Add(
+                        new PropertyDefinition
+                        {
+                            Name = Capitalised(match.Groups["name"].Value),
+                            Type = match.Groups["type"].Value
+                        });
+                }
             }
 
             // Returning here is what drops `Customer Customer` out of
-            // `CustomerId int, Customer Customer`: one primitive matched, so the fallback parser
-            // below never runs and the rest of the list is never looked at again. The entries
-            // that go nowhere are recorded so the handler can say so instead of the user finding
-            // out by looking at the file.
-            command.IgnoredProperties.AddRange(Ignored(propertySection, matches));
+            // `CustomerId int, Customer Customer`: one built-in type matched, so the fallback
+            // parser below never runs and the rest of the list is never looked at again. The
+            // entries that go nowhere are recorded so the handler can say so instead of the user
+            // finding out by looking at the file.
+            command.IgnoredProperties.AddRange(Ignored(entries));
 
             return;
         }
@@ -888,29 +903,40 @@ public static class CommandEntityExtractor
         if (string.IsNullOrWhiteSpace(section))
             return [];
 
-        var matched = Regex.Matches(
-            section,
-            @"([A-Za-z_]\w*)\s+(string|int|long|bool|decimal|double|float|datetime|guid)\b",
-            RegexOptions.IgnoreCase);
+        var entries = TypedEntries(section);
 
-        // No primitive matched means the fallback parser ran and read the whole list, so nothing
-        // was skipped over.
-        return matched.Count == 0 ? [] : Ignored(section, matched);
+        // No built-in type matched means the fallback parser ran and read the whole list, so
+        // nothing was skipped over.
+        return entries.Any(e => e.Matches.Count > 0) ? Ignored(entries) : [];
     }
 
-    private static IReadOnlyList<string> Ignored(string section, MatchCollection matched)
-    {
-        var kept = matched.Select(m => m.Value.Trim()).ToHashSet(StringComparer.OrdinalIgnoreCase);
+    private const string BuiltInType = "(?:string|int|long|bool|decimal|double|float|datetime|guid)";
 
-        return
-        [
-            .. Regex
-                .Split(section, @"\s*(?:,|;|\band\b)\s*", RegexOptions.IgnoreCase)
-                .Select(t => t.Trim())
-                .Where(t => t.Length > 0
-                            && !kept.Any(k => t.StartsWith(k, StringComparison.OrdinalIgnoreCase)))
-        ];
-    }
+    /// <summary>
+    /// <c>Name type</c>, where the type is built in and may be nullable (<c>string?</c>), an array
+    /// (<c>int[]</c>) or a list (<c>List&lt;int&gt;</c>).
+    /// </summary>
+    /// <remarks>
+    /// The name must start the entry or follow a space, and the type must end it or come before a
+    /// space. Without both, <c>Email string?</c> matched as <c>Email string</c> and lost its
+    /// <c>?</c>, and <c>2x int</c> matched as <c>x int</c> and made a property X nobody typed.
+    /// </remarks>
+    private static readonly Regex TypedEntry = new(
+        $@"(?<!\S)(?<name>[A-Za-z_]\w*)\s+(?<type>{BuiltInType}(?:\?|\[\])?|List<\s*{BuiltInType}\??\s*>)(?!\S)",
+        RegexOptions.IgnoreCase);
+
+    /// <summary>The entries of a property list, each with the built-in typed properties in it.</summary>
+    private static List<(string Entry, MatchCollection Matches)> TypedEntries(string section) =>
+    [
+        .. Regex
+            .Split(section, @"\s*(?:,|;|\band\b)\s*", RegexOptions.IgnoreCase)
+            .Select(t => t.Trim())
+            .Where(t => t.Length > 0)
+            .Select(t => (t, TypedEntry.Matches(t)))
+    ];
+
+    private static IReadOnlyList<string> Ignored(List<(string Entry, MatchCollection Matches)> entries) =>
+        [.. entries.Where(e => e.Matches.Count == 0).Select(e => e.Entry)];
 
     public static string ExtractPropertySection(string sentence)
     {

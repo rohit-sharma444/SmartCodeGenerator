@@ -17,16 +17,16 @@ public static class SemanticCompilerRunner
         // Semantic pre-check removed with the duplicate NLP stack: it ran an
         // English-language analyzer over generated C# and printed success
         // unconditionally, gating nothing. Compilation below is the real gate.
-        Output.Success(" \n Validate succeeded. ");
-
         var result = Compiler.Compile(code);
         if (!result.Success)
         {
+            // No "Validate succeeded" first: it printed just above this failure.
             Output.Error("Compilation failed. Diagnostics:");
             foreach (var d in result.Diagnostics)
                 Console.WriteLine("  " + d);
             return;
         }
+        Output.Success(" \n Validate succeeded. ");
         Output.Success(" \n Compiled. \n");
     }
 }
