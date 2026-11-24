@@ -74,6 +74,52 @@ public static class CommandFront
             + @"(?:\s+with\s+.+)?$",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    // `create [abstract|sealed|static] class|record|struct <rest>`: the kind words are read here and
+    // the rest is parsed as `create class <rest>`, so every create-class phrasing works for them.
+    private static readonly Regex TypeKindRe =
+        new(@"^(?<verb>create|add|generate)\s+(?:(?:a|an|new)\s+)?(?<mods>(?:(?:abstract|sealed|static)\s+)*)"
+            + @"(?<kind>class|record|struct)\s+(?<rest>.+)$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static void ApplyKind(ParsedCommand cmd, Match match)
+    {
+        var kind = match.Groups["kind"].Value.ToLowerInvariant();
+        cmd.Kind = kind switch
+        {
+            "record" => DeclaredKind.Record,
+            "struct" => DeclaredKind.Struct,
+            _ => DeclaredKind.Class
+        };
+
+        var words = match.Groups["mods"].Value
+            .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
+            .Select(w => w.ToLowerInvariant())
+            .Distinct()
+            .ToList();
+
+        if (words.Count > 1)
+        {
+            cmd.Metadata[ParsedCommand.KindErrorKey] =
+                $"A {kind} cannot be both {words[0]} and {words[1]}.";
+            return;
+        }
+
+        if (words.Count == 1)
+        {
+            cmd.Modifier = words[0] switch
+            {
+                "abstract" => TypeModifier.Abstract,
+                "sealed" => TypeModifier.Sealed,
+                _ => TypeModifier.Static
+            };
+
+            var refused = cmd.Modifier == TypeModifier.Static && cmd.Kind != DeclaredKind.Class
+                || cmd.Modifier == TypeModifier.Abstract && cmd.Kind == DeclaredKind.Struct;
+            if (refused)
+                cmd.Metadata[ParsedCommand.KindErrorKey] = $"A {kind} cannot be {words[0]}.";
+        }
+    }
+
     // `create [<type>] project [<name>]`, `create class library [<name>]`, `create worker service
     // [<name>]`, ahead of the mapper, which did not recognise a lower-case name ("create console
     // project shop" was "Command not recognized"). The name, type, folder and framework are read by
@@ -264,6 +310,20 @@ public static class CommandFront
             projectCmd.OriginalSentence = input ?? string.Empty;
             projectCmd.Confidence = 1.0;
             return projectCmd;
+        }
+
+        var kindMatch = TypeKindRe.Match(text);
+        if (kindMatch.Success
+            && (kindMatch.Groups["mods"].Value.Length > 0
+                || !kindMatch.Groups["kind"].Value.Equals("class", StringComparison.OrdinalIgnoreCase)))
+        {
+            var plain = Parse($"{kindMatch.Groups["verb"].Value} class {kindMatch.Groups["rest"].Value}", workspace);
+            if (plain.Intent == IntentType.CreateClass)
+            {
+                ApplyKind(plain, kindMatch);
+                plain.OriginalSentence = input ?? string.Empty;
+                return plain;
+            }
         }
 
         var createClassMatch = CreateClassRe.Match(text);
@@ -538,7 +598,8 @@ public static class CommandFront
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly Regex CreatesAType = new(
-        @"\bcreate\s+(?:(?:a|an|new)\s+)?(?:class|interface)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        @"\bcreate\s+(?:(?:a|an|new)\s+)?(?:(?:abstract|sealed|static)\s+)*(?:class|record|struct|enum|interface)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly Regex MemberAddition = new(
         @"^(?:add|create)\s+(?:(?:a|an|new)\s+)?(?:property|field|method)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);

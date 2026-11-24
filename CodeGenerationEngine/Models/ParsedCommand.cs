@@ -120,9 +120,23 @@ public sealed class ParsedCommand
 
     public string? BaseClass { get; set; }
 
+    /// <summary>The kind of type a create command declares: class, record, struct or enum.</summary>
+    public DeclaredKind Kind { get; set; } = DeclaredKind.Class;
+
+    /// <summary>The abstract, sealed or static word in a create command.</summary>
+    public TypeModifier Modifier { get; set; } = TypeModifier.None;
+
+    /// <summary>
+    /// The <see cref="Metadata"/> key under which a create command carries the reason its kind and
+    /// modifier cannot go together, so the handler refuses it by that reason.
+    /// </summary>
+    public const string KindErrorKey = "KindError";
+
     public void Clear()
     {
         Intent = IntentType.Unknown;
+        Kind = DeclaredKind.Class;
+        Modifier = TypeModifier.None;
 
         ProjectName = string.Empty;
         OutputFolder = string.Empty;

@@ -4,6 +4,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="CodeGenerator.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Contracts only, and this must stay the bridge's ONLY AI reference:
          ArchitectureTests.NaturalLanguageBridge_does_not_reference_onnx guards it.
          Abstractions carries no package dependencies, so the rule-based path gains
