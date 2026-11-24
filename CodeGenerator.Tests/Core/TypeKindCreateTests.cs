@@ -125,6 +125,20 @@ public sealed class TypeKindCreateTests
     }
 
     [TestMethod]
+    public void Each_overload_of_an_abstract_method_is_overridden()
+    {
+        Write("Shape.cs", "namespace Shop;\n\npublic abstract class Shape\n{\n"
+            + "    public abstract decimal Area();\n    public abstract decimal Area(int sides);\n}\n");
+
+        Assert.IsTrue(Run("create class Circle inherits Shape"), LastOutput);
+
+        var text = Read("Circle.cs");
+        StringAssert.Contains(text, "public override decimal Area()");
+        StringAssert.Contains(text, "public override decimal Area(int sides)");
+        Assert.IsEmpty(ProjectErrors());
+    }
+
+    [TestMethod]
     public void A_class_gets_both_the_override_and_the_interface_stub()
     {
         WriteAbstractShape();

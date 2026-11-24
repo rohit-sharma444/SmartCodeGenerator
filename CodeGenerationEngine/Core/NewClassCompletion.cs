@@ -38,6 +38,7 @@ public static class NewClassCompletion
         var first = Compile(code, target);
         var interfaces = new List<string>();
         var added = new List<string>();
+        var keys = new HashSet<string>(StringComparer.Ordinal);
         var stubs = new List<string>();
 
         if (first.Class is { } decl
@@ -55,12 +56,13 @@ public static class NewClassCompletion
                     {
                         if (member.IsStatic || !member.IsAbstract
                             || IsOverridden(type, member)
-                            || added.Contains(member.Name, StringComparer.Ordinal)
+                            || keys.Contains(Key(member))
                             || Stub(member, first.Model, position, StubKind.Override) is not { } stub)
                             continue;
 
                         stubs.Add(stub);
                         added.Add(member.Name);
+                        keys.Add(Key(member));
                         any = true;
                     }
 
@@ -77,12 +79,13 @@ public static class NewClassCompletion
                 {
                     if (member.IsStatic || !member.IsAbstract
                         || type.FindImplementationForInterfaceMember(member) is not null
-                        || added.Contains(member.Name, StringComparer.Ordinal)
+                        || keys.Contains(Key(member))
                         || Stub(member, first.Model, position, interfaceKind) is not { } stub)
                         continue;
 
                     stubs.Add(stub);
                     added.Add(member.Name);
+                    keys.Add(Key(member));
                     any = true;
                 }
 
@@ -178,6 +181,11 @@ public static class NewClassCompletion
 
     private static List<Diagnostic> Errors(Probe probe) =>
         [.. probe.Model.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error)];
+
+    // A method is told apart by its parameter types, so overloads each get a stub.
+    private static string Key(ISymbol member) => member is IMethodSymbol m
+        ? m.Name + "(" + string.Join(",", m.Parameters.Select(p => p.RefKind + p.Type.ToDisplayString())) + ")"
+        : member.Name;
 
     private enum StubKind { Implement, Abstract, Override }
 
