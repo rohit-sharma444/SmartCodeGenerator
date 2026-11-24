@@ -608,6 +608,12 @@ public static class CommandHandlingService
             return false;
         }
 
+        if (EnumValueService.MemberEditRefusalFor(ctx.WorkspaceRoot, ctx.Command.ClassName) is { } enumRefusal)
+        {
+            Output.Error(enumRefusal);
+            return false;
+        }
+
         var parseCtx = new ValidationParseContext
         {
             Fragment = ctx.Command.ValidationText,
@@ -773,12 +779,13 @@ public static class CommandHandlingService
     private static bool HandleRemoveEnumValue(CommandExecutionContext ctx)
     {
         var command = ctx.Command;
-        var ok = EnumValueService.RemoveValue(ctx.WorkspaceRoot, command.ClassName, command.EnumValues[0], out var message);
+        var ok = EnumValueService.RemoveValue(
+            ctx.WorkspaceRoot, command.ClassName, command.EnumValues[0], out var message, out var removed);
         Console.WriteLine(message);
 
         // As remove property: the code the edit left naming the value, which no longer compiles.
         if (ok)
-            WarnOfUsers(ctx, command.EnumValues[0], "Value", "removed");
+            WarnOfUsers(ctx, removed, "Value", "removed");
         return ok;
     }
 

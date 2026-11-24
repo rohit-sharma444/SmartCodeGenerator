@@ -225,6 +225,19 @@ public sealed class EnumCommandTests
     }
 
     [TestMethod]
+    public void RemoveValue_TypedInAnotherCase_WarnsOfUsesOfTheDeclaredName()
+    {
+        Write("Status.cs", StatusSource);
+        Write("Order.cs", "namespace Shop;\n\npublic class Order\n{\n    public bool IsOpen() => Status.Pending == Status.Pending;\n}\n");
+
+        Assert.IsTrue(Run("remove value pending from Status"), LastOutput);
+
+        Assert.DoesNotContain("Pending", Read("Status.cs"));
+        StringAssert.Contains(LastOutput, "code may still use it");
+        StringAssert.Contains(LastOutput, "Order.IsOpen()");
+    }
+
+    [TestMethod]
     public void AddValue_ToAFlagsEnum_IsRefused()
     {
         var source = "namespace Shop;\n\n[System.Flags]\npublic enum Access { Read = 1, Write = 2 }\n";
@@ -245,6 +258,7 @@ public sealed class EnumCommandTests
     [DataRow("remove value X from Order", "'Order' is not an enum")]
     [DataRow("add property Name string to Status", "'Status' is an enum; use add value <name> to Status.")]
     [DataRow("add method Save to Status", "'Status' is an enum; use add value <name> to Status.")]
+    [DataRow("add validation required on Name in Status", "'Status' is an enum; use add value <name> to Status.")]
     public void EnumEdit_Refused_LeavesTheFilesAsTheyAre(string input, string reason)
     {
         Write("Status.cs", StatusSource);

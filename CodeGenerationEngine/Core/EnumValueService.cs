@@ -59,8 +59,14 @@ public static class EnumValueService
     }
 
     /// <summary>Removes <paramref name="value"/>. Code that still uses it is the caller's to warn of.</summary>
-    public static bool RemoveValue(string workspaceRoot, string enumName, string value, out string message)
+    public static bool RemoveValue(string workspaceRoot, string enumName, string value, out string message) =>
+        RemoveValue(workspaceRoot, enumName, value, out message, out _);
+
+    /// <summary>As above, and the removed value's name as the enum declares it (<c>pending</c> found <c>Pending</c>).</summary>
+    public static bool RemoveValue(
+        string workspaceRoot, string enumName, string value, out string message, out string removedName)
     {
+        removedName = value;
         if (!TryLoadEnum(workspaceRoot, enumName, out var file, out var root, out var node, out message))
             return false;
 
@@ -74,10 +80,20 @@ public static class EnumValueService
         }
 
         var removed = matches[0];
+        removedName = removed.Identifier.Text;
         var newRoot = root.ReplaceNode(node, node.WithMembers(Without(node.Members, removed)));
         return ClassMethodEditService.TryWrite(
             file, newRoot, $"Value '{removed.Identifier.Text}' removed from '{enumName}'.", out message);
     }
+
+    /// <summary>
+    /// The refusal for a member edit (property, method, validation) on the enum called
+    /// <paramref name="name"/>, or null when there is no such enum. The one source of the text.
+    /// </summary>
+    public static string? MemberEditRefusalFor(string workspaceRoot, string name) =>
+        FindEnum(workspaceRoot, name, out _, out _, out var node, out _)
+            ? $"'{node.Identifier.Text}' is an enum; use add value <name> to {node.Identifier.Text}."
+            : null;
 
     /// <summary>
     /// The enum called <paramref name="name"/>: in its own file first, else in any file of the
