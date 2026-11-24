@@ -32,7 +32,12 @@ public sealed class DefaultValuesTests
     [DataRow("string", "\"New\"", "\"New\"")]
     [DataRow("bool", "true", "true")]
     [DataRow("string", "a\"b", "\"a\\\"b\"")]
-    [DataRow("string", "C:\temp", "\"C:\\temp\"")]
+    [DataRow("string", "C:\\temp", "\"C:\\\\temp\"")]
+    [DataRow("string", "null", "null")]
+    [DataRow("string?", "null", "null")]
+    [DataRow("String", "null", "null")]
+    [DataRow("System.String", "x", "\"x\"")]
+    [DataRow("String?", "x", "\"x\"")]
     [DataRow("string?", "x", "\"x\"")]
     public void TryExpression_AcceptsValidValues(string type, string raw, string expected)
     {
@@ -43,13 +48,13 @@ public sealed class DefaultValuesTests
     }
 
     [TestMethod]
-    [DataRow("decimal", "9.5", "9.5")]
-    [DataRow("float", "2.5", "2.5")]
+    [DataRow("decimal", "9.5", "9.5m")]
+    [DataRow("float", "1.5", "1.5f")]
     [DataRow("double", "2.5", "2.5")]
     public void TryExpression_NumbersCompileAndKeepTheValue(string type, string raw, string value)
     {
         Assert.IsTrue(DefaultValues.TryExpression(type, raw, null, out var expression, out var error), error);
-        Assert.StartsWith(value, expression);
+        Assert.AreEqual(value, expression);
         Assert.IsTrue(Compiles(type, expression), expression);
     }
 
@@ -57,6 +62,9 @@ public sealed class DefaultValuesTests
     [DataRow("int", "abc")]
     [DataRow("bool", "maybe")]
     [DataRow("decimal", "x1")]
+    [DataRow("int", "1; } class Y { int z = 2")]
+    [DataRow("int", "1; int y")]
+    [DataRow("int", "1, y = 2")]
     public void TryExpression_RefusesAValueThatDoesNotFit(string type, string raw)
     {
         Assert.IsFalse(DefaultValues.TryExpression(type, raw, null, out _, out var error));

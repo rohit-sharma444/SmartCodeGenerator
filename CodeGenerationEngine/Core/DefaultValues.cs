@@ -41,8 +41,9 @@ public static class DefaultValues
     private static string Expression(string type, string value)
     {
         var bare = type.Trim().TrimEnd('?');
-        if (bare is "string" or "String")
-            return value.Length >= 2 && value[0] == '"' && value[^1] == '"'
+        if (bare is "string" or "String" or "System.String")
+            // The word null is the C# literal, not the text "null".
+            return value == "null" || (value.Length >= 2 && value[0] == '"' && value[^1] == '"')
                 ? value
                 : SymbolDisplay.FormatLiteral(value, quote: true);
 
@@ -99,7 +100,7 @@ public static class DefaultValues
 
         // The expression must stay one initializer: no text that closes the field or the class.
         if (probe.GetDiagnostics().Any(d => d.Severity == DiagnosticSeverity.Error)
-            || probe.GetRoot().DescendantNodes().OfType<ClassDeclarationSyntax>().Single().Members.Count != 1)
+            || probe.GetRoot() is not CompilationUnitSyntax { Members: [ClassDeclarationSyntax { Members: [FieldDeclarationSyntax { Declaration.Variables.Count: 1 }] }] })
             return false;
 
         trees.Insert(0, probe);
