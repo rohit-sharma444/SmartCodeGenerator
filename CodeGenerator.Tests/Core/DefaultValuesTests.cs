@@ -33,12 +33,20 @@ public sealed class DefaultValuesTests
     [DataRow("bool", "true", "true")]
     [DataRow("string", "a\"b", "\"a\\\"b\"")]
     [DataRow("string", "C:\\temp", "\"C:\\\\temp\"")]
-    [DataRow("string", "null", "null")]
     [DataRow("string?", "null", "null")]
-    [DataRow("String", "null", "null")]
+    [DataRow("String?", "null", "null")]
+    [DataRow("int?", "null", "null")]
     [DataRow("System.String", "x", "\"x\"")]
     [DataRow("String?", "x", "\"x\"")]
     [DataRow("string?", "x", "\"x\"")]
+    [DataRow("string", "'New'", "\"New\"")]
+    [DataRow("string", "'New York'", "\"New York\"")]
+    [DataRow("string", "\"say \\\"hi\\\"\"", "\"say \\\"hi\\\"\"")]
+    [DataRow("char", "'A'", "'A'")]
+    [DataRow("char", "A", "'A'")]
+    [DataRow("bool", "True", "true")]
+    [DataRow("bool", "FALSE", "false")]
+    [DataRow("bool?", "True", "true")]
     public void TryExpression_AcceptsValidValues(string type, string raw, string expected)
     {
         Assert.IsTrue(DefaultValues.TryExpression(type, raw, null, out var expression, out var error), error);
@@ -69,6 +77,59 @@ public sealed class DefaultValuesTests
     {
         Assert.IsFalse(DefaultValues.TryExpression(type, raw, null, out _, out var error));
         Assert.AreEqual($"'{raw}' is not a valid {type} value.", error);
+    }
+
+    [TestMethod]
+    [DataRow("string")]
+    [DataRow("String")]
+    [DataRow("List<int>")]
+    public void TryExpression_RefusesNullOnANonNullableReferenceType(string type)
+    {
+        // No project: nullable reference types are on, as a new project has them.
+        Assert.IsFalse(DefaultValues.TryExpression(type, "null", null, out _, out var error));
+        Assert.AreEqual($"'null' needs a nullable type: use {type}?", error);
+        Assert.AreEqual($"'null' needs a nullable type: use {type}? for Name.", DefaultValues.ValueRefusal(error!, "Name"));
+    }
+
+    [TestMethod]
+    public void TryExpression_AllowsNullWhereTheProjectHasNullableOff()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "cg_dv_" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(folder);
+        try
+        {
+            File.WriteAllText(Path.Combine(folder, "Shop.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+
+            Assert.IsTrue(DefaultValues.TryExpression("string", "null", folder, out var expression, out var error), error);
+            Assert.AreEqual("null", expression);
+        }
+        finally
+        {
+            Directory.Delete(folder, true);
+        }
+    }
+
+    [TestMethod]
+    public void TryExpression_ReadsAnEnumMemberByItsName()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "cg_dv_" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(folder);
+        try
+        {
+            File.WriteAllText(Path.Combine(folder, "Shop.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+            File.WriteAllText(Path.Combine(folder, "Status.cs"), "namespace Shop;\npublic enum Status { New, Closed }\n");
+
+            Assert.IsTrue(DefaultValues.TryExpression("Status", "New", folder, out var expression, out var error), error);
+            Assert.AreEqual("Status.New", expression);
+            Assert.IsTrue(DefaultValues.TryExpression("Status?", "Closed", folder, out expression, out error), error);
+            Assert.AreEqual("Status.Closed", expression);
+            Assert.IsFalse(DefaultValues.TryExpression("Status", "Gone", folder, out _, out error));
+            Assert.AreEqual("'Gone' is not a valid Status value.", error);
+        }
+        finally
+        {
+            Directory.Delete(folder, true);
+        }
     }
 
     [TestMethod]

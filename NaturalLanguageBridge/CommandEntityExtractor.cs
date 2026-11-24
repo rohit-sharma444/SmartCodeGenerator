@@ -541,7 +541,13 @@ public static class CommandEntityExtractor
                          .Split(' ', StringSplitOptions.RemoveEmptyEntries))
                 command.PropertyModifiers |= ModifierWord(word);
             if (add.Groups["default"].Success)
+            {
                 command.PropertyDefault = add.Groups["default"].Value;
+
+                // `add property Qty = 5 to Order`: with no type, the value's own type, not string.
+                if (!add.Groups["type"].Success)
+                    command.PropertyType = TypeOfValue(command.PropertyDefault);
+            }
             return;
         }
 
@@ -555,6 +561,19 @@ public static class CommandEntityExtractor
             command.PropertyName = ToPascalCase(remove.Groups["property"].Value);
             command.ClassName = ToPascalCase(remove.Groups["class"].Value);
         }
+    }
+
+    /// <summary>The type a default value typed with no type is: a whole number is an int, a number
+    /// with a decimal point a decimal, true or false a bool, and anything else (quoted or not) a string.</summary>
+    internal static string TypeOfValue(string value)
+    {
+        if (Regex.IsMatch(value, @"^[+-]?\d+$"))
+            return "int";
+        if (Regex.IsMatch(value, @"^[+-]?\d+\.\d+$"))
+            return "decimal";
+        if (value.Equals("true", StringComparison.OrdinalIgnoreCase) || value.Equals("false", StringComparison.OrdinalIgnoreCase))
+            return "bool";
+        return "string";
     }
 
     public static void ExtractClassInfo(string sentence, ParsedCommand command)

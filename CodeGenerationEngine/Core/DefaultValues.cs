@@ -28,15 +28,34 @@ public static class DefaultValues
     public static bool TryExpression(
         string type, string rawValue, string? projectFolder, out string expression, out string? error)
     {
-        expression = Expression(type, (rawValue ?? string.Empty).Trim());
+        var value = (rawValue ?? string.Empty).Trim();
+        expression = Expression(type, value);
         error = null;
-        if (expression.Length > 0 && Compiles(type, expression, projectFolder))
+        if (expression.Length > 0 && Compiles(type, expression, projectFolder, out var nullToNonNullable))
+        {
+            // It compiles, with warning CS8625: a property that is not nullable starts as null.
+            if (!nullToNonNullable)
+                return true;
+
+            expression = string.Empty;
+            error = $"'null' needs a nullable type: use {type.Trim()}?";
+            return false;
+        }
+
+        // `default New` for an enum property is its member New.
+        var member = $"{type.Trim().TrimEnd('?')}.{value}";
+        if (Identifier.IsMatch(value) && Compiles(type, member, projectFolder, out _))
+        {
+            expression = member;
             return true;
+        }
 
         expression = string.Empty;
         error = $"'{rawValue}' is not a valid {type} value.";
         return false;
     }
+
+    private static readonly Regex Identifier = new(@"^[A-Za-z_]\w*$", RegexOptions.Compiled);
 
     /// <summary>The refusal of a default on a struct property (the text create class and add property share).</summary>
     public static string StructRefusal(string structName)
@@ -68,6 +87,15 @@ public static class DefaultValues
             return SymbolDisplay.FormatLiteral(value, quote: true);
         }
 
+        // True is how the word is often typed; C# spells it true.
+        if (bare is "bool" or "Boolean" or "System.Boolean"
+            && (value.Equals("true", StringComparison.OrdinalIgnoreCase) || value.Equals("false", StringComparison.OrdinalIgnoreCase)))
+            return value.ToLowerInvariant();
+
+        // A one-letter char typed without its quotes: default A is 'A'.
+        if (bare is "char" or "Char" or "System.Char" && value.Length == 1)
+            return SymbolDisplay.FormatLiteral(value[0], quote: true);
+
         if (PlainNumber.IsMatch(value))
             return bare switch
             {
@@ -79,8 +107,11 @@ public static class DefaultValues
         return value;
     }
 
-    private static bool Compiles(string type, string expression, string? projectFolder)
+    /// <param name="nullToNonNullable">True when it compiles with CS8625: null given to a type that
+    /// is not nullable, with nullable reference types on.</param>
+    private static bool Compiles(string type, string expression, string? projectFolder, out bool nullToNonNullable)
     {
+        nullToNonNullable = false;
         var parse = new CSharpParseOptions(LanguageVersion.Latest);
         var usings = new List<string>();
         var trees = new List<SyntaxTree>();
@@ -129,7 +160,8 @@ public static class DefaultValues
             "DefaultProbe", trees, Compiler.FrameworkReferences,
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: nullable));
 
-        return !compilation.GetSemanticModel(probe).GetDiagnostics()
-            .Any(d => d.Severity == DiagnosticSeverity.Error);
+        var diagnostics = compilation.GetSemanticModel(probe).GetDiagnostics();
+        nullToNonNullable = diagnostics.Any(d => d.Id == "CS8625");
+        return !diagnostics.Any(d => d.Severity == DiagnosticSeverity.Error);
     }
 }

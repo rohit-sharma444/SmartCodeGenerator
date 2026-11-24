@@ -363,6 +363,16 @@ public sealed class PropertyListModifierTests
     }
 
     [TestMethod]
+    public void Null_on_a_non_nullable_string_is_refused_where_nullable_is_on()
+    {
+        File.WriteAllText(Path.Combine(Shop, "Shop.csproj"),
+            "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><Nullable>enable</Nullable></PropertyGroup></Project>");
+
+        AssertRefused("create class Memo with properties Text string default null", "Memo.cs",
+            "'null' needs a nullable type: use string? for Text.");
+    }
+
+    [TestMethod]
     public void The_bridge_carries_the_raw_default_and_the_modifiers()
     {
         var command = CommandEntityExtractor.Extract(

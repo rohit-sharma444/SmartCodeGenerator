@@ -267,6 +267,44 @@ public sealed class AddPropertyModifierTests
     }
 
     [TestMethod]
+    public void Null_on_a_non_nullable_string_is_refused_where_nullable_is_on()
+    {
+        File.WriteAllText(Path.Combine(Shop, "Shop.csproj"),
+            "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><Nullable>enable</Nullable></PropertyGroup></Project>");
+
+        AssertRefused("add property Note string default null to Order", "'null' needs a nullable type: use string? for Note.");
+        AssertWritten("add property Note string? default null to Order", "public string? Note { get; set; } = null;");
+    }
+
+    [TestMethod]
+    [DataRow("add property Qty2 = 5 to Order", "public int Qty2 { get; set; } = 5;")]
+    [DataRow("add property Qty3 default 5 to Order", "public int Qty3 { get; set; } = 5;")]
+    [DataRow("add property Price2 = 9.5 to Order", "public decimal Price2 { get; set; } = 9.5m;")]
+    [DataRow("add property Active2 = true to Order", "public bool Active2 { get; set; } = true;")]
+    [DataRow("add property Label2 = \"5\" to Order", "public string Label2 { get; set; } = \"5\";")]
+    [DataRow("add property Label3 = New to Order", "public string Label3 { get; set; } = \"New\";")]
+    public void With_a_default_and_no_type_the_type_is_the_values(string sentence, string expected)
+    {
+        AssertWritten(sentence, expected);
+    }
+
+    [TestMethod]
+    [DataRow("add property Active3 bool default True to Order", "public bool Active3 { get; set; } = true;")]
+    [DataRow("add property Grade2 char default A to Order", "public char Grade2 { get; set; } = 'A';")]
+    public void A_value_that_needs_only_its_spelling_fixed_is_written(string sentence, string expected)
+    {
+        AssertWritten(sentence, expected);
+    }
+
+    [TestMethod]
+    public void An_enum_default_by_its_member_name_is_written_with_the_enum()
+    {
+        Write("Status.cs", "namespace Shop;\n\npublic enum Status\n{\n    New,\n    Closed\n}\n");
+
+        AssertWritten("add property State Status default New to Order", "public Status State { get; set; } = Status.New;");
+    }
+
+    [TestMethod]
     public void A_quoted_default_may_hold_escaped_quotes()
     {
         AssertWritten("add property Text string default \"say \\\"hi\\\"\" to Order",
