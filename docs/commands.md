@@ -96,6 +96,7 @@
 
 | Command | Description | Example |
 | --- | --- | --- |
+| `add constructor [with <property>, ...] to <class name>` | Adds a constructor to a class, record or struct. With no list it takes every settable instance property the class declares that is not private, in order; 'with Total and Name' takes only those, in that order. Each parameter is assigned to its property. Refused on a static class, an interface, an enum and a positional record, and when the result would not compile. | `add constructor with Total and Name to Order` |
 | `add method <method name> to <class name>` | Adds a method to a class or an interface. Give a return type with 'add method <name> returns <type> to <class name>'. Give parameters as 'add method <name>(<type> <name>, ...) to <class name>' or 'add method <name> with parameters <name> <type>, ... to <class name>'. On an interface it names the implementers that lack the method. Use 'add abstract method <name> to <class name>' to add a method with no body to an abstract class. | `add method ApplyDiscount(decimal percent) returns decimal to Order` |
 | `remove method <method name> from <class name>` | Removes a method from a class or an interface. When the name is overloaded it lists them and removes none. | `remove method Save from Employee` |
 | `rename method <old> to <new> in <class name>` | Renames a method on a class or an interface, every overload of it. References elsewhere are not updated; the command names the code that still uses the old name. | `rename method Save to Store in Employee` |

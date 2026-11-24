@@ -91,6 +91,14 @@ public static class CommandFront
             + @"|\s+(?:(?:with|having)\s+(?:values|members)|with|having)\s+(?<values>.+?))?\s*[.!]?$",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    // `add|create [a|an|new] constructor [(with|taking) <P1>(, <P2>| and <P2>)*] (to|for|in) [the] [class] <Class>`,
+    // ahead of the mapper, which has no constructor. The class comes after to/for/in, the list after with/taking.
+    private static readonly Regex AddConstructorRe =
+        new(@"^(?:add|create)\s+(?:(?:a|an|new)\s+)*constructor"
+            + @"(?:\s+(?:with|taking)\s+(?<props>\w+(?:\s*(?:,|\band\b)\s*\w+)*))?"
+            + @"\s+(?:to|for|in)\s+(?:the\s+)?(?:(?:class|record|struct)\s+(?=\w))?(?<class>\w+)\s*[.!]?$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     // `add [a|an|the] value <V> to [the] [enum] <Enum>` / `remove|delete [a|an|the] value <V> from ...`,
     // ahead of the mapper, which has no enum value. The value and the enum are kept as typed.
     private static readonly Regex EnumValueRe =
@@ -266,6 +274,7 @@ public static class CommandFront
         IntentType.CreateEnum,
         IntentType.AddEnumValue,
         IntentType.RemoveEnumValue,
+        IntentType.AddConstructor,
         IntentType.CreateProperty,
         IntentType.ListProperties,
         IntentType.ListMethods,
@@ -404,6 +413,29 @@ public static class CommandFront
                 valueCmd.Metadata[ParsedCommand.KindErrorKey] = valueError!;
 
             return valueCmd;
+        }
+
+        var constructorMatch = AddConstructorRe.Match(text);
+        if (constructorMatch.Success)
+        {
+            // Fields from this guard's own groups, on the raw text (Normalize rewrites model/entity/object).
+            var constructorCmd = new ParsedCommand
+            {
+                Intent = IntentType.AddConstructor,
+                ClassName = constructorMatch.Groups["class"].Value,
+                OriginalSentence = input ?? string.Empty,
+                Confidence = 1.0
+            };
+
+            if (constructorMatch.Groups["props"].Success)
+                constructorCmd.ConstructorProperties =
+                [
+                    .. Regex.Split(constructorMatch.Groups["props"].Value, @"\s*(?:,|\band\b)\s*",
+                        RegexOptions.IgnoreCase)
+                        .Where(p => p.Length > 0)
+                ];
+
+            return constructorCmd;
         }
 
         var createInterfaceMatch = CreateInterfaceRe.Match(text);

@@ -73,6 +73,9 @@ public sealed class ParsedCommand
     public PropertyModifiers PropertyModifiers { get; set; } = PropertyModifiers.None;
     public string? PropertyDefault { get; set; }
 
+    // The property names after `with` / `taking` in `add constructor`; empty = the default set.
+    public List<string> ConstructorProperties { get; set; } = [];
+
     // Target name for `rename property <old> to <new>`.
     public string NewPropertyName { get; set; } = string.Empty;
 
@@ -167,6 +170,7 @@ public sealed class ParsedCommand
 
         PropertyModifiers = PropertyModifiers.None;
         PropertyDefault = null;
+        ConstructorProperties.Clear();
         NewPropertyName = string.Empty;
         NewMethodName = string.Empty;
         RuleNumber = null;

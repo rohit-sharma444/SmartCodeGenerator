@@ -127,6 +127,7 @@ public static class CommandHandlingService
             [IntentType.CreateEnum] = HandleCreateEnum,
             [IntentType.AddEnumValue] = HandleAddEnumValue,
             [IntentType.RemoveEnumValue] = HandleRemoveEnumValue,
+            [IntentType.AddConstructor] = HandleAddConstructor,
             [IntentType.ListProperties] = HandleListProperties,
             [IntentType.CreateProperty] = HandleCreateProperty,
             [IntentType.DeleteProperty] = HandleDeleteProperty,
@@ -909,6 +910,18 @@ public static class CommandHandlingService
 
         var ok = EnumValueService.AddValue(ctx.WorkspaceRoot, command.ClassName, command.EnumValues[0], out var message);
         Console.WriteLine(message);
+        return ok;
+    }
+
+    private static bool HandleAddConstructor(CommandExecutionContext ctx)
+    {
+        UseDeclaredNames(ctx, member: null);
+        var ok = ConstructorService.AddConstructor(
+            ctx.WorkspaceRoot, ctx.Command.ClassName, ctx.Command.ConstructorProperties,
+            out var message, out var notes);
+        Console.WriteLine(message);
+        foreach (var note in notes)
+            Output.Warning(note);
         return ok;
     }
 

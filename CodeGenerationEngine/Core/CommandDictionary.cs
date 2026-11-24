@@ -340,6 +340,17 @@ public static class CommandDictionary
         new()
         {
             Category = "Methods",
+            Command = "add constructor [with <property>, ...] to <class name>",
+            Description = "Adds a constructor to a class, record or struct. With no list it takes every "
+                        + "settable instance property the class declares that is not private, in order; "
+                        + "'with Total and Name' takes only those, in that order. Each parameter is "
+                        + "assigned to its property. Refused on a static class, an interface, an enum "
+                        + "and a positional record, and when the result would not compile.",
+            Example = "add constructor with Total and Name to Order"
+        },
+        new()
+        {
+            Category = "Methods",
             Command = "show methods <class name>",
             Description = "Lists all methods in a class.",
             Example = "show methods of Employee"

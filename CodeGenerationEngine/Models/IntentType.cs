@@ -43,6 +43,7 @@ public enum IntentType
     CreateEnum,
     AddEnumValue,
     RemoveEnumValue,
+    AddConstructor,
     CreateService,
     CreateRepository,
     CreateController,
