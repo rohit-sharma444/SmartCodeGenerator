@@ -56,7 +56,28 @@ public static class CodeGenerationEngine
                 ? $" : {string.Join(", ", inheritanceParts)}"
                 : string.Empty;
 
-        sb.AppendLine($"public class {className}{inheritanceClause}");
+        var isRecord = command.Kind == DeclaredKind.Record;
+        var isStruct = command.Kind == DeclaredKind.Struct;
+        var isStatic = command.Modifier == TypeModifier.Static;
+        var isAbstract = command.Modifier == TypeModifier.Abstract;
+
+        var modifier = command.Modifier switch
+        {
+            TypeModifier.Abstract => "abstract ",
+            TypeModifier.Sealed => "sealed ",
+            TypeModifier.Static => "static ",
+            _ => string.Empty
+        };
+        var keyword = command.Kind switch
+        {
+            DeclaredKind.Record => "record",
+            DeclaredKind.Struct => "struct",
+            _ => "class"
+        };
+        var memberStatic = isStatic ? "static " : string.Empty;
+        var accessors = isRecord ? "{ get; init; }" : "{ get; set; }";
+
+        sb.AppendLine($"public {modifier}{keyword} {className}{inheritanceClause}");
 
         sb.AppendLine("{");
 
@@ -88,11 +109,12 @@ public static class CodeGenerationEngine
 
             // The initial value add property gives, so a project with Nullable on does not warn
             // CS8618 for each string and collection a new class declares.
-            var initial = PropertyInitializers.SafeFor(
+            // A struct's property gets none: C# 11 (CS8983) refuses an initializer in a struct with no constructor.
+            var initial = isStruct ? null : PropertyInitializers.SafeFor(
                 Microsoft.CodeAnalysis.CSharp.SyntaxFactory.ParseTypeName(propertyType), bound: null);
             var initializer = initial is null ? string.Empty : $" = {initial};";
 
-            sb.AppendLine($"    public {propertyType} {propertyName} {{ get; set; }}{initializer}");
+            sb.AppendLine($"    public {memberStatic}{propertyType} {propertyName} {accessors}{initializer}");
             sb.AppendLine();
         }
 
@@ -113,18 +135,23 @@ public static class CodeGenerationEngine
                     method.Parameters.Select(p =>
                         $"{NormalizeType(p.Type)} {p.Name}"));
 
-                if (returnType.Equals("void",
+                if (isAbstract)
+                {
+                    sb.AppendLine(
+                        $"    public abstract {returnType} {methodName}({parameters});");
+                }
+                else if (returnType.Equals("void",
                     StringComparison.OrdinalIgnoreCase))
                 {
                     sb.AppendLine(
-                        $"    public {returnType} {methodName}({parameters})");
+                        $"    public {memberStatic}{returnType} {methodName}({parameters})");
                     sb.AppendLine("    {");
                     sb.AppendLine("    }");
                 }
                 else
                 {
                     sb.AppendLine(
-                        $"    public {returnType} {methodName}({parameters})");
+                        $"    public {memberStatic}{returnType} {methodName}({parameters})");
                     sb.AppendLine("    {");
                     sb.AppendLine("        return default!;");
                     sb.AppendLine("    }");

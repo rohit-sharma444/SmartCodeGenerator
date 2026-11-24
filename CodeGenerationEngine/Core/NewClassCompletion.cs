@@ -115,7 +115,7 @@ public static class NewClassCompletion
         Output.Success(" \n Compiled. \n");
     }
 
-    private sealed record Probe(CSharpCompilation Compilation, SyntaxTree Tree, SemanticModel Model, ClassDeclarationSyntax? Class);
+    private sealed record Probe(CSharpCompilation Compilation, SyntaxTree Tree, SemanticModel Model, TypeDeclarationSyntax? Class);
 
     private static Probe Compile(string code, ProjectLocation target)
     {
@@ -123,7 +123,7 @@ public static class NewClassCompletion
         var formatted = CodeFormatter.Format(code, ProjectNamespace.For(target.ProjectFile));
 
         var className = (CSharpSyntaxTree.ParseText(code, parse).GetRoot()
-            .DescendantNodes().OfType<ClassDeclarationSyntax>().FirstOrDefault())?.Identifier.Text;
+            .DescendantNodes().OfType<TypeDeclarationSyntax>().FirstOrDefault())?.Identifier.Text;
         var path = Path.Combine(target.Directory ?? string.Empty, (className ?? "NewClass") + ".cs");
         var tree = CSharpSyntaxTree.ParseText(formatted, parse, path: Path.GetFileName(path));
 
@@ -144,7 +144,7 @@ public static class NewClassCompletion
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary,
                 nullableContextOptions: NullableContextOptions.Enable));
 
-        var decl = tree.GetRoot().DescendantNodes().OfType<ClassDeclarationSyntax>()
+        var decl = tree.GetRoot().DescendantNodes().OfType<TypeDeclarationSyntax>()
             .FirstOrDefault(c => c.Identifier.Text == className);
         return new Probe(compilation, tree, compilation.GetSemanticModel(tree), decl);
     }

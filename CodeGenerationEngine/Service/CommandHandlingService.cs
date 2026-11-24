@@ -251,6 +251,14 @@ public static class CommandHandlingService
             return false;
         }
 
+        // A kind and modifier C# does not allow together, or a base the kind cannot have: refused
+        // before anything is generated, so nothing is written.
+        if (KindRefusal(command) is { } kindError)
+        {
+            Output.Error(kindError);
+            return false;
+        }
+
         var classDef = new ClassDefinition
         {
             Name = command.ClassName ?? string.Empty,
@@ -299,6 +307,28 @@ public static class CommandHandlingService
             ReportIgnoredProperties(command);
 
         return saved;
+    }
+
+    /// <summary>The C# rule a create command breaks, in the kind's terms, or null when it breaks none.</summary>
+    private static string? KindRefusal(ParsedCommand command)
+    {
+        if (command.Metadata.TryGetValue(ParsedCommand.KindErrorKey, out var parseError)
+            && !string.IsNullOrWhiteSpace(parseError))
+            return parseError;
+
+        var hasBase = !string.IsNullOrWhiteSpace(command.BaseClass);
+        var hasInterface = command.Interfaces.Any(i => !string.IsNullOrWhiteSpace(i));
+
+        if (command.Kind == DeclaredKind.Struct && hasBase)
+            return "A struct cannot inherit from a class; use implements for an interface.";
+
+        if (command.Modifier == TypeModifier.Static && hasBase)
+            return "A static class cannot inherit from another class.";
+
+        if (command.Modifier == TypeModifier.Static && hasInterface)
+            return "A static class cannot implement an interface.";
+
+        return null;
     }
 
     /// <summary>
