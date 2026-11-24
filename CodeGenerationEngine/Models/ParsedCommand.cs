@@ -88,6 +88,15 @@ public sealed class ParsedCommand
     // The property names after `with` / `taking` in `add constructor`; empty = the default set.
     public List<string> ConstructorProperties { get; set; } = [];
 
+    // `add default|parameterless|empty constructor`: one that takes no parameters.
+    public bool ConstructorParameterless { get; set; }
+
+    /// <summary>
+    /// The <see cref="Metadata"/> key under which <c>add constructor</c> carries the reason its line
+    /// cannot be done, so the handler refuses it by that reason and writes nothing.
+    /// </summary>
+    public const string ConstructorErrorKey = "ConstructorError";
+
     // Target name for `rename property <old> to <new>`.
     public string NewPropertyName { get; set; } = string.Empty;
 
@@ -183,6 +192,7 @@ public sealed class ParsedCommand
         PropertyModifiers = PropertyModifiers.None;
         PropertyDefault = null;
         ConstructorProperties.Clear();
+        ConstructorParameterless = false;
         NewPropertyName = string.Empty;
         NewMethodName = string.Empty;
         RuleNumber = null;

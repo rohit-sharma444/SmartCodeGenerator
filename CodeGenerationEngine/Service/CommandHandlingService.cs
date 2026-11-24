@@ -923,10 +923,16 @@ public static class CommandHandlingService
 
     private static bool HandleAddConstructor(CommandExecutionContext ctx)
     {
+        if (ctx.Command.Metadata.TryGetValue(ParsedCommand.ConstructorErrorKey, out var constructorError))
+        {
+            Output.Error(constructorError);
+            return false;
+        }
+
         UseDeclaredNames(ctx, member: null);
         var ok = ConstructorService.AddConstructor(
             ctx.WorkspaceRoot, ctx.Command.ClassName, ctx.Command.ConstructorProperties,
-            out var message, out var notes);
+            ctx.Command.ConstructorParameterless, out var message, out var notes);
         Console.WriteLine(message);
         foreach (var note in notes)
             Output.Warning(note);

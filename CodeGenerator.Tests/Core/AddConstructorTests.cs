@@ -300,4 +300,99 @@ public sealed class AddConstructorTests
         Assert.AreEqual("Order", command.ClassName);
         CollectionAssert.AreEqual(new[] { "Name", "Total" }, command.ConstructorProperties);
     }
+
+    [TestMethod]
+    [DataRow("add constructor to the Order class")]
+    [DataRow("add a constructor to the class Order")]
+    public void The_class_may_be_named_with_the_and_class(string sentence)
+    {
+        AssertWritten("Order.cs", sentence, "public Order(decimal total, string name)");
+    }
+
+    [TestMethod]
+    [DataRow("add a default constructor to Order")]
+    [DataRow("add a parameterless constructor to Order")]
+    [DataRow("add an empty constructor to Order")]
+    public void A_default_constructor_takes_no_parameters(string sentence)
+    {
+        AssertWritten("Order.cs", sentence, "public Order()");
+        StringAssert.Matches(Read("Order.cs"), new System.Text.RegularExpressions.Regex(@"public Order\(\)\s*\{\s*\}"));
+        Assert.DoesNotContain("decimal total", Read("Order.cs"));
+        StringAssert.Contains(LastOutput, "Constructor Order() added to 'Order'.");
+    }
+
+    [TestMethod]
+    public void A_default_constructor_with_a_list_is_refused()
+    {
+        AssertRefused("add a default constructor with Total to Order", "A default constructor takes no properties");
+    }
+
+    [TestMethod]
+    [DataRow("add constructor for Order with Total and Name")]
+    [DataRow("add constructor with properties Total and Name to Order")]
+    [DataRow("add constructor with Total, and Name to Order")]
+    [DataRow("add constructor to Order with Total and Name")]
+    [DataRow("add constructor taking the properties Total and Name to Order")]
+    public void A_list_may_follow_the_class_or_be_labelled_properties(string sentence)
+    {
+        AssertWritten("Order.cs", sentence, "public Order(decimal total, string name)");
+    }
+
+    [TestMethod]
+    public void The_parts_of_a_partial_class_in_one_file_are_all_read()
+    {
+        Write("Order.cs",
+            "namespace Shop;\n\npublic partial class Order\n{\n    public decimal Total { get; set; }\n}\n\n"
+            + "public partial class Order\n{\n    public string Name { get; set; } = \"\";\n}\n");
+
+        AssertWritten("Order.cs", "add constructor to Order", "public Order(decimal total, string name)", "Name = name;");
+    }
+
+    [TestMethod]
+    public void The_parts_of_a_partial_class_in_other_files_are_all_read()
+    {
+        Write("Order.cs", "namespace Shop;\n\npublic partial class Order\n{\n    public decimal Total { get; set; }\n}\n");
+        Write("Order.More.cs",
+            "namespace Shop;\n\npublic partial class Order\n{\n    public string Name { get; set; } = \"\";\n}\n\n"
+            + "public partial class Order\n{\n    public int Qty { get; set; }\n}\n");
+
+        AssertWritten("Order.cs", "add constructor to Order", "public Order(decimal total, string name, int qty)");
+    }
+
+    [TestMethod]
+    public void A_method_renamed_in_two_parts_of_one_file_is_renamed_in_both()
+    {
+        Write("Order.cs",
+            "namespace Shop;\n\npublic partial class Order\n{\n    public void Save() { }\n}\n\n"
+            + "public partial class Order\n{\n    public void Save(int n) { }\n}\n");
+
+        Assert.IsTrue(Run("rename method Save to Store in Order"), LastOutput);
+
+        var text = Read("Order.cs");
+        Assert.DoesNotContain("Save", text);
+        Assert.AreEqual(2, text.Split("void Store(").Length - 1, text);
+        Assert.IsEmpty(ProjectErrors(), text);
+    }
+
+    [TestMethod]
+    [DataRow("Order.cs", "namespace Shop;\n\npublic class Order\n{\n    public decimal Total { get; set; }\n}\n", "Order")]
+    [DataRow("Pair.cs", "namespace Shop;\n\npublic struct Pair\n{\n    public int A { get; set; }\n}\n", "Pair")]
+    public void A_blank_line_comes_before_the_constructor(string file, string source, string name)
+    {
+        Write(file, source);
+
+        AssertWritten(file, $"add constructor to {name}", $"public {name}(");
+
+        StringAssert.Matches(Read(file), new System.Text.RegularExpressions.Regex(
+            $@"\{{ get; set; \}}\r?\n\r?\n    public {name}\("), Read(file));
+    }
+
+    [TestMethod]
+    public void A_blank_line_comes_before_the_constructor_after_a_computed_property()
+    {
+        AssertWritten("Order.cs", "add constructor to Order", "public Order(");
+
+        StringAssert.Matches(Read("Order.cs"), new System.Text.RegularExpressions.Regex(
+            @"0\.2m;\r?\n\r?\n    public Order\("), Read("Order.cs"));
+    }
 }

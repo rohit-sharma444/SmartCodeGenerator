@@ -91,12 +91,19 @@ public static class CommandFront
             + @"|\s+(?:(?:with|having)\s+(?:values|members)|with|having)\s+(?<values>.+?))?\s*[.!]?$",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-    // `add|create [a|an|new] constructor [(with|taking) <P1>(, <P2>| and <P2>)*] (to|for|in) [the] [class] <Class>`,
-    // ahead of the mapper, which has no constructor. The class comes after to/for/in, the list after with/taking.
+    // `add|create [a|an|new] [default|parameterless|empty] constructor [(with|taking) [the] [properties] <List>]
+    // (to|for|in) [the] [class] <Class> [class] [(with|taking) [the] [properties] <List>]`, ahead of the mapper,
+    // which has no constructor. The class comes after to/for/in, the list after with/taking, before or after
+    // the class; <List> is <P1>(, <P2>| and <P2>|, and <P2>)*.
+    private const string ConstructorList =
+        @"\s+(?:with|taking)\s+(?:the\s+)?(?:(?:properties|property|parameters)\s+)?"
+        + @"(?<props>\w+(?:(?:\s*,\s*(?:and\s+)?|\s+and\s+)\w+)*)";
+
     private static readonly Regex AddConstructorRe =
-        new(@"^(?:add|create)\s+(?:(?:a|an|new)\s+)*constructor"
-            + @"(?:\s+(?:with|taking)\s+(?<props>\w+(?:\s*(?:,|\band\b)\s*\w+)*))?"
-            + @"\s+(?:to|for|in)\s+(?:the\s+)?(?:(?:class|record|struct)\s+(?=\w))?(?<class>\w+)\s*[.!]?$",
+        new(@"^(?:add|create)\s+(?:(?:a|an|new)\s+)*(?:(?<empty>default|parameterless|empty)\s+)?constructor"
+            + $@"(?:{ConstructorList})?"
+            + @"\s+(?:to|for|in)\s+(?:the\s+)?(?:(?:class|record|struct)\s+(?=\w))?(?<class>\w+)(?:\s+(?:class|record|struct))?"
+            + $@"(?:{ConstructorList})?\s*[.!]?$",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     // `add [a|an|the] value <V> to [the] [enum] <Enum>` / `remove|delete [a|an|the] value <V> from ...`,
@@ -445,13 +452,23 @@ public static class CommandFront
                 Confidence = 1.0
             };
 
-            if (constructorMatch.Groups["props"].Success)
-                constructorCmd.ConstructorProperties =
-                [
-                    .. Regex.Split(constructorMatch.Groups["props"].Value, @"\s*(?:,|\band\b)\s*",
-                        RegexOptions.IgnoreCase)
-                        .Where(p => p.Length > 0)
-                ];
+            // The list may come before the class or after it: each capture is a part of it.
+            constructorCmd.ConstructorProperties =
+            [
+                .. constructorMatch.Groups["props"].Captures
+                    .SelectMany(c => Regex.Split(c.Value, @"\s*(?:,|\band\b)\s*", RegexOptions.IgnoreCase))
+                    .Where(p => p.Length > 0)
+            ];
+
+            // `add a default constructor to Order`: one that takes nothing, not every property.
+            if (constructorMatch.Groups["empty"].Success)
+            {
+                if (constructorCmd.ConstructorProperties.Count > 0)
+                    constructorCmd.Metadata[ParsedCommand.ConstructorErrorKey] =
+                        $"A default constructor takes no properties. Type add default constructor to {constructorCmd.ClassName}, "
+                        + $"or add constructor with {string.Join(" and ", constructorCmd.ConstructorProperties)} to {constructorCmd.ClassName}.";
+                constructorCmd.ConstructorParameterless = true;
+            }
 
             return constructorCmd;
         }

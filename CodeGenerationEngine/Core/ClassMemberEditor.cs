@@ -92,11 +92,13 @@ internal static class ClassMemberEditor
         var lineStart = source.LastIndexOf('\n', Math.Max(0, close - 1)) + 1;
 
         // A blank line before it when the members already have them between them, or there is
-        // only one; none when they sit line after line.
+        // only one; none when they sit line after line. A constructor always gets one after the
+        // members: it is a block, as add constructor writes it to a class or a struct alike.
         var blank = type.Members.Count switch
         {
             0 => false,
             1 => true,
+            _ when member is ConstructorDeclarationSyntax => true,
             _ => Enumerable.Range(1, type.Members.Count - 1).Any(i =>
                 BlankLineBetween(source, type.Members[i - 1].Span.End, type.Members[i].SpanStart)),
         };

@@ -23,6 +23,15 @@ public static class ConstructorService
     public static bool AddConstructor(
         string workspaceRoot, string className, IReadOnlyList<string> propertyNames,
         out string message, out IReadOnlyList<string> notes)
+        => AddConstructor(workspaceRoot, className, propertyNames, parameterless: false, out message, out notes);
+
+    /// <summary>
+    /// As the overload above; with <paramref name="parameterless"/> (<c>add default constructor</c>)
+    /// the constructor takes no parameters and sets nothing.
+    /// </summary>
+    public static bool AddConstructor(
+        string workspaceRoot, string className, IReadOnlyList<string> propertyNames, bool parameterless,
+        out string message, out IReadOnlyList<string> notes)
     {
         notes = [];
 
@@ -42,7 +51,11 @@ public static class ConstructorService
             }
 
             var properties = new List<PropertyDeclarationSyntax>();
-            if (propertyNames.Count == 0)
+            if (parameterless)
+            {
+                // It takes nothing and sets nothing.
+            }
+            else if (propertyNames.Count == 0)
             {
                 properties.AddRange(parts.SelectMany(p => p.Node.Members).OfType<PropertyDeclarationSyntax>()
                     .Where(p => IsInstanceAuto(p) && !IsPrivate(p)));
