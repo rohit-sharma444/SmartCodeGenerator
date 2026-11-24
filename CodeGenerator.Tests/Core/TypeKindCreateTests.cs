@@ -105,6 +105,50 @@ public sealed class TypeKindCreateTests
         Assert.IsEmpty(ProjectErrors());
     }
 
+    private void WriteAbstractShape() => Write("Shape.cs",
+        "namespace Shop;\n\npublic abstract class Shape\n{\n"
+        + "    public abstract decimal Area();\n    public abstract string Label { get; }\n}\n");
+
+    [TestMethod]
+    public void A_class_overrides_the_abstract_members_of_its_base()
+    {
+        WriteAbstractShape();
+
+        Assert.IsTrue(Run("create class Circle inherits Shape"), LastOutput);
+
+        var text = Read("Circle.cs");
+        StringAssert.Contains(text, "public override decimal Area() => throw new System.NotImplementedException();");
+        StringAssert.Contains(text, "public override string Label { get; }");
+        StringAssert.Contains(LastOutput, "Area");
+        StringAssert.Contains(LastOutput, "Label");
+        Assert.IsEmpty(ProjectErrors());
+    }
+
+    [TestMethod]
+    public void A_class_gets_both_the_override_and_the_interface_stub()
+    {
+        WriteAbstractShape();
+        Write("IShape.cs", "namespace Shop;\n\npublic interface IShape\n{\n    decimal Scale(decimal factor);\n}\n");
+
+        Assert.IsTrue(Run("create class Circle inherits Shape implements IShape"), LastOutput);
+
+        var text = Read("Circle.cs");
+        StringAssert.Contains(text, "public override decimal Area()");
+        StringAssert.Contains(text, "public decimal Scale(decimal factor)");
+        Assert.IsEmpty(ProjectErrors());
+    }
+
+    [TestMethod]
+    public void An_abstract_class_leaves_the_interface_members_abstract()
+    {
+        Write("IShape.cs", "namespace Shop;\n\npublic interface IShape\n{\n    decimal Scale(decimal factor);\n}\n");
+
+        Assert.IsTrue(Run("create abstract class Base implements IShape"), LastOutput);
+
+        StringAssert.Contains(Read("Base.cs"), "public abstract decimal Scale(decimal factor);");
+        Assert.IsEmpty(ProjectErrors());
+    }
+
     [TestMethod]
     public void A_struct_property_has_no_initializer()
     {
