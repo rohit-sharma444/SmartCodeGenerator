@@ -154,7 +154,7 @@ public static class CommandDictionary
                         + "members are static; an abstract class's listed methods are abstract, and a class "
                         + "that inherits it gets an override of each abstract member. Also 'sealed record' "
                         + "and 'abstract record'. Refuses what C# forbids, such as a static struct.",
-            Example = "create record Money with properties Amount decimal and Currency string"
+            Example = "create record Money with properties Amount decimal and Code string"
         },
         new()
         {
