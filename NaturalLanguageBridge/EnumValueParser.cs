@@ -11,7 +11,7 @@ namespace NaturalLanguageBridge;
 public static class EnumValueParser
 {
     private static readonly Regex Separator =
-        new(@"\s*,\s*|\s+and\s+", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        new(@"\s*,\s*(?:and\s+)?|\s+and\s+", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly Regex Identifier =
         new(@"^[A-Za-z_]\w*$", RegexOptions.Compiled);

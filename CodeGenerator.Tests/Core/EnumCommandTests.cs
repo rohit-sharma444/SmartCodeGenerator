@@ -84,6 +84,9 @@ public sealed class EnumCommandTests
     [DataRow("create enum Status with Active, Closed, Pending")]
     [DataRow("create enum Status having Active, Closed, Pending")]
     [DataRow("create enum Status with values Active, Closed and Pending")]
+    [DataRow("create enum Status with values Active, Closed, and Pending")]
+    [DataRow("create enum Status having values Active, Closed, Pending")]
+    [DataRow("create enum Status having members Active, Closed, Pending")]
     public void CreateEnum_WritesTheValuesInOrder(string input)
     {
         Assert.IsTrue(Run(input), LastOutput);
@@ -101,6 +104,34 @@ public sealed class EnumCommandTests
 
         StringAssert.Contains(Read("Status.cs"), "public enum Status");
         Assert.IsEmpty(ProjectErrors(), string.Join(Environment.NewLine, ProjectErrors()));
+    }
+
+    [TestMethod]
+    [DataRow("create enum Status with values")]
+    [DataRow("create enum Status with members")]
+    [DataRow("create enum Status having values")]
+    public void CreateEnum_WithTheListWordAndNoValues_WritesAnEmptyEnum(string input)
+    {
+        Assert.IsTrue(Run(input), LastOutput);
+
+        var code = Read("Status.cs");
+        StringAssert.Contains(code, "public enum Status");
+        Assert.DoesNotContain("values", code);
+        Assert.DoesNotContain("members", code);
+        Assert.IsEmpty(ProjectErrors(), string.Join(Environment.NewLine, ProjectErrors()));
+    }
+
+    [TestMethod]
+    public void CreateClass_WhenAnEnumHasTheName_RecommendsAddValue()
+    {
+        Write("Status.cs", StatusSource);
+
+        Assert.IsFalse(Run("create class Status"));
+
+        StringAssert.Contains(LastOutput, "already exists");
+        StringAssert.Contains(LastOutput, "add value <name> to Status");
+        Assert.DoesNotContain("add property", LastOutput);
+        Assert.AreEqual(StatusSource, Read("Status.cs"));
     }
 
     [TestMethod]
@@ -184,6 +215,89 @@ public sealed class EnumCommandTests
 
         StringAssert.Contains(Read("Level.cs"), "Top = 6");
         Assert.IsEmpty(ProjectErrors(), string.Join(Environment.NewLine, ProjectErrors()));
+    }
+
+    [TestMethod]
+    [DataRow("byte", "Low = 1, High = 255")]
+    [DataRow("sbyte", "Low = -1, High = 127")]
+    [DataRow("short", "Low = 1, High = 32767")]
+    [DataRow("ushort", "Low = 1, High = 65535")]
+    [DataRow("int", "Low = 1, High = 2147483647")]
+    public void AddValue_WhenTheNextNumberDoesNotFitTheUnderlyingType_IsRefused(string type, string members)
+    {
+        var source = $"namespace Shop;\n\npublic enum Prio : {type} {{ {members} }}\n";
+        Write("Prio.cs", source);
+
+        Assert.IsFalse(Run("add value Urgent to Prio"));
+
+        StringAssert.Contains(LastOutput, "does not fit");
+        StringAssert.Contains(LastOutput, type);
+        Assert.AreEqual(source, Read("Prio.cs"));
+    }
+
+    [TestMethod]
+    public void AddValue_WhenTheNextNumberFitsTheUnderlyingType_NumbersIt()
+    {
+        Write("Prio.cs", "namespace Shop;\n\npublic enum Prio : byte { Low = 1, High = 254 }\n");
+
+        Assert.IsTrue(Run("add value Urgent to Prio"), LastOutput);
+
+        StringAssert.Contains(Read("Prio.cs"), "Urgent = 255");
+        Assert.IsEmpty(ProjectErrors(), string.Join(Environment.NewLine, ProjectErrors()));
+    }
+
+    [TestMethod]
+    [DataRow("add value Archived to enum Status")]
+    [DataRow("add a value Archived to Status")]
+    [DataRow("add the value Archived to Status")]
+    [DataRow("add the value Archived to the enum Status")]
+    public void AddValue_WithAnArticleOrTheWordEnum_AddsIt(string input)
+    {
+        Write("Status.cs", StatusSource);
+
+        Assert.IsTrue(Run(input), LastOutput);
+
+        AssertValuesInOrder(Read("Status.cs"), "Pending,", "Archived");
+        Assert.IsEmpty(ProjectErrors(), string.Join(Environment.NewLine, ProjectErrors()));
+    }
+
+    [TestMethod]
+    [DataRow("remove the value Pending from Status")]
+    [DataRow("remove a value Pending from enum Status")]
+    [DataRow("delete the value Pending from the enum Status")]
+    public void RemoveValue_WithAnArticleOrTheWordEnum_RemovesIt(string input)
+    {
+        Write("Status.cs", StatusSource);
+
+        Assert.IsTrue(Run(input), LastOutput);
+
+        Assert.DoesNotContain("Pending", Read("Status.cs"));
+        Assert.IsEmpty(ProjectErrors(), string.Join(Environment.NewLine, ProjectErrors()));
+    }
+
+    private const string RenumberNote =
+        "The values after Closed now have numbers one lower; data stored as numbers will read differently.";
+
+    [TestMethod]
+    public void RemoveValue_FromTheMiddleOfAnUnnumberedEnum_SaysTheNumbersMoved()
+    {
+        Write("Status.cs", StatusSource);
+
+        Assert.IsTrue(Run("remove value Closed from Status"), LastOutput);
+
+        StringAssert.Contains(LastOutput, RenumberNote);
+    }
+
+    [TestMethod]
+    [DataRow("namespace Shop;\n\npublic enum Status\n{\n    Active,\n    Pending,\n    Closed\n}\n")]
+    [DataRow("namespace Shop;\n\npublic enum Status\n{\n    Active = 1,\n    Closed = 2,\n    Pending = 3\n}\n")]
+    public void RemoveValue_LastOrNumbered_SaysNothingOfNumbers(string source)
+    {
+        Write("Status.cs", source);
+
+        Assert.IsTrue(Run("remove value Closed from Status"), LastOutput);
+
+        Assert.DoesNotContain("numbers one lower", LastOutput);
     }
 
     [TestMethod]
@@ -290,6 +404,7 @@ public sealed class EnumCommandTests
     [TestMethod]
     [DataRow("A, B and C", new[] { "A", "B", "C" })]
     [DataRow("A,B", new[] { "A", "B" })]
+    [DataRow("A, B, and C", new[] { "A", "B", "C" })]
     [DataRow("", new string[0])]
     public void EnumValueParser_SplitsOnCommasAndAnd(string text, string[] expected)
     {

@@ -96,6 +96,60 @@ public sealed class TypeKindParseTests
     }
 
     [TestMethod]
+    [DataRow("create enum Status with values")]
+    [DataRow("create enum Status with members")]
+    [DataRow("create enum Status having values")]
+    public void Create_enum_with_only_the_list_word_has_no_values(string sentence)
+    {
+        var cmd = CommandFront.Parse(sentence, _workspace);
+
+        Assert.AreEqual(IntentType.CreateEnum, cmd.Intent);
+        Assert.IsEmpty(cmd.EnumValues);
+        Assert.IsFalse(cmd.Metadata.ContainsKey(ParsedCommand.KindErrorKey));
+    }
+
+    [TestMethod]
+    [DataRow("create enum Color having values Red, Green", new[] { "Red", "Green" })]
+    [DataRow("create enum Color with values Red, Green, and Blue", new[] { "Red", "Green", "Blue" })]
+    public void Create_enum_reads_the_values(string sentence, string[] values)
+    {
+        var cmd = CommandFront.Parse(sentence, _workspace);
+
+        Assert.AreEqual(IntentType.CreateEnum, cmd.Intent);
+        CollectionAssert.AreEqual(values, cmd.EnumValues);
+    }
+
+    [TestMethod]
+    [DataRow("add value Archived to enum Status", IntentType.AddEnumValue)]
+    [DataRow("add a value Archived to Status", IntentType.AddEnumValue)]
+    [DataRow("add the value Archived to Status", IntentType.AddEnumValue)]
+    [DataRow("remove the value Archived from Status", IntentType.RemoveEnumValue)]
+    [DataRow("delete a value Archived from enum Status", IntentType.RemoveEnumValue)]
+    public void Enum_value_edits_take_an_article_and_the_word_enum(string sentence, IntentType intent)
+    {
+        var cmd = CommandFront.Parse(sentence, _workspace);
+
+        Assert.AreEqual(intent, cmd.Intent);
+        Assert.AreEqual("Status", cmd.ClassName);
+        CollectionAssert.AreEqual(new[] { "Archived" }, cmd.EnumValues);
+    }
+
+    [TestMethod]
+    [DataRow("record")]
+    [DataRow("struct")]
+    [DataRow("abstract class")]
+    [DataRow("static class")]
+    [DataRow("sealed class")]
+    public void Help_names_each_kind(string kind)
+    {
+        StringAssert.Contains(CommandDictionary.GetHelpText(), kind);
+        Assert.IsTrue(
+            CommandDictionary.Commands.Any(c => c.Command.Contains(kind, StringComparison.Ordinal)
+                || c.Description.Contains(kind, StringComparison.Ordinal)),
+            $"no command entry names '{kind}'");
+    }
+
+    [TestMethod]
     public void Record_and_add_method_is_one_command()
     {
         Assert.IsNull(CommandFront.TwoCommands("create record Money and add method Total to Money"));

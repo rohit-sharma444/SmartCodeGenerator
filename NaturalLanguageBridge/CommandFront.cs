@@ -81,19 +81,22 @@ public static class CommandFront
             + @"(?<kind>class|record|struct)\s+(?<rest>.+)$",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-    // `create enum <name> [with values|with members|with|having <a, b and c>]`, ahead of the mapper,
-    // which has no enum. An `inherits|implements|extends` tail is kept so the handler can refuse it.
+    // `create enum <name> [with values|with members|having values|having members|with|having <a, b and c>]`,
+    // ahead of the mapper, which has no enum. The list word alone (`with values`) is an empty list,
+    // not a value called values. An `inherits|implements|extends` tail is kept so the handler can refuse it.
     private static readonly Regex CreateEnumRe =
         new(@"^(?:create|add|generate)\s+(?:(?:a|an|new)\s+)?enum\s+(?<name>[A-Za-z_]\w*)"
             + @"(?:\s+(?<bad>inherits|implements|extends)\b.*"
-            + @"|\s+(?:with\s+(?:values|members)|with|having)\s+(?<values>.+?))?\s*[.!]?$",
+            + @"|\s+(?:with|having)\s+(?:values|members)"
+            + @"|\s+(?:(?:with|having)\s+(?:values|members)|with|having)\s+(?<values>.+?))?\s*[.!]?$",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-    // `add value <V> to <Enum>` / `remove|delete value <V> from <Enum>`, ahead of the mapper, which
-    // has no enum value. The value and the enum are kept as typed.
+    // `add [a|an|the] value <V> to [the] [enum] <Enum>` / `remove|delete [a|an|the] value <V> from ...`,
+    // ahead of the mapper, which has no enum value. The value and the enum are kept as typed.
     private static readonly Regex EnumValueRe =
-        new(@"^(?:(?<add>add)\s+value\s+(?<value>\w+)\s+to|(?:remove|delete)\s+value\s+(?<value>\w+)\s+from)"
-            + @"\s+(?:the\s+)?(?<enum>\w+)(?:\s+enum)?\s*[.!]?$",
+        new(@"^(?:(?<add>add)\s+(?:(?:a|an|the)\s+)?value\s+(?<value>\w+)\s+to"
+            + @"|(?:remove|delete)\s+(?:(?:a|an|the)\s+)?value\s+(?<value>\w+)\s+from)"
+            + @"\s+(?:the\s+)?(?:enum\s+(?=\w))?(?<enum>\w+)(?:\s+enum)?\s*[.!]?$",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static void ApplyKind(ParsedCommand cmd, Match match)
