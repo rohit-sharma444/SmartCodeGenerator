@@ -141,7 +141,9 @@ public static class CommandDictionary
             Command = "create class <class name> with properties",
             Description = "Creates a new class with the specified properties. After them you can add "
                         + "'and methods <list>', 'inherits <base>' and 'implements <interfaces>'. "
-                        + "Refuses a name that already exists.",
+                        + "Refuses a name that already exists. A property can have 'default <value>' "
+                        + "or '= <value>', and the modifiers readonly, private, static and required "
+                        + "(the C# keyword) after its type, as in 'Id int readonly, Tax decimal = 0'.",
             Example = "create class Employee with properties EmpCode int, Name string"
         },
         new()
@@ -277,7 +279,9 @@ public static class CommandDictionary
             Category = "Properties",
             Command = "add property",
             Description = "Adds a property to a class or an interface. On an interface it names the "
-                        + "classes that implement it and now lack the property.",
+                        + "classes that implement it and now lack the property. Add 'default <value>' "
+                        + "or '= <value>' for a default, and readonly, private, static or required "
+                        + "(the C# keyword) before the word property: 'add readonly property Id int to Order'.",
             Example = "add property Name string to Employee"
         },
         new()
