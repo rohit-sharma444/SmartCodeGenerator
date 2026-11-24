@@ -147,6 +147,18 @@ public static class CommandDictionary
         new()
         {
             Category = "Class",
+            Command = "create record|struct|abstract class|static class|sealed class <name>",
+            Description = "Creates a record, a struct, or an abstract, static or sealed class. Every "
+                        + "create class form works after the kind word ('with properties', 'and methods', "
+                        + "'inherits', 'implements'). A record's properties are init-only; a static class's "
+                        + "members are static; an abstract class's listed methods are abstract, and a class "
+                        + "that inherits it gets an override of each abstract member. Also 'sealed record' "
+                        + "and 'abstract record'. Refuses what C# forbids, such as a static struct.",
+            Example = "create record Money with properties Amount decimal and Currency string"
+        },
+        new()
+        {
+            Category = "Class",
             Command = "create enum <name> with values <value>, ...",
             Description = "Creates a new enum with the values you list, split on commas and 'and'. "
                         + "Refuses a repeated value, a keyword, and a name that already exists.",
