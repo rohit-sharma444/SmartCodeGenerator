@@ -367,6 +367,59 @@ public sealed class ClassInheritCommandTests
         AssertCompiles(code);
     }
 
+    // A stub beside a member of the same name that does not implement the interface's one wrote
+    // the name twice: CS0111 for a method, CS0102 for a property.
+    [TestMethod]
+    public void A_private_method_of_the_same_name_is_refused()
+    {
+        var file = WriteOrder("namespace Shop { " + Auditable + "public class Order { public string Who { get; set; } = \"\"; void Stamp() { } } }");
+        var before = File.ReadAllBytes(file);
+
+        Assert.IsFalse(ClassInheritanceService.AddInheritance(_workspace, "Order", ["IAuditable"], interfacesOnly: true, out var message), message);
+
+        StringAssert.Contains(message, "'Order' already has a member 'Stamp' that does not match IAuditable.Stamp");
+        CollectionAssert.AreEqual(before, File.ReadAllBytes(file));
+    }
+
+    [TestMethod]
+    public void A_property_of_the_same_name_and_another_type_is_refused()
+    {
+        var file = WriteOrder("namespace Shop { " + Auditable + "public class Order { public int Who { get; set; } } }");
+        var before = File.ReadAllBytes(file);
+
+        Assert.IsFalse(ClassInheritanceService.AddInheritance(_workspace, "Order", ["IAuditable"], interfacesOnly: true, out var message), message);
+
+        StringAssert.Contains(message, "'Who'");
+        StringAssert.Contains(message, "IAuditable.Who (string Who)");
+        CollectionAssert.AreEqual(before, File.ReadAllBytes(file));
+    }
+
+    [TestMethod]
+    public void A_method_that_hides_the_abstract_one_is_refused()
+    {
+        var file = Write("Sq", "namespace Shop { public abstract class Shape { public abstract double Area(); } "
+            + "public class Sq { public double Area() => 1; } }");
+        var before = File.ReadAllBytes(file);
+
+        Assert.IsFalse(ClassInheritanceService.AddInheritance(_workspace, "Sq", "Shape", out var message), message);
+
+        StringAssert.Contains(message, "'Area'");
+        CollectionAssert.AreEqual(before, File.ReadAllBytes(file));
+    }
+
+    // Another parameter list is an overload, not a clash: the stub is still written.
+    [TestMethod]
+    public void An_overload_of_the_same_name_still_gets_the_stub()
+    {
+        var file = WriteOrder("namespace Shop { " + Auditable + "public class Order { public void Stamp(int at) { } } }");
+
+        Assert.IsTrue(ClassInheritanceService.AddInheritance(_workspace, "Order", ["IAuditable"], interfacesOnly: true, out var message), message);
+
+        var code = File.ReadAllText(file);
+        StringAssert.Contains(code, "public void Stamp() => throw new System.NotImplementedException();");
+        AssertCompiles(code);
+    }
+
     // `create a Customer class that inherits X` resolves to Unknown today: NlpCommandMapper
     // never tags "that inherits" as an Action entity, so no (verb, target) row matches. That
     // is a pre-existing gap, out of scope here, and this test deliberately does NOT pin

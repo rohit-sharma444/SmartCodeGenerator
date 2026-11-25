@@ -133,8 +133,16 @@ public static class ClassInheritanceService
 
         if (stubs.Count > 0)
         {
-            text = WithStubs(text, node, stubs.Select(s => s.Code), newline);
+            (text, var spans) = WithStubs(text, node, [.. stubs.Select(s => s.Code)], newline);
             (compilation, tree, node) = Reparse(compilation, tree, text, start);
+
+            // A stub that only failed to match a member the type already has would declare that
+            // name twice (CS0102, CS0111): refused, so the file is never left uncompilable.
+            if (Clash(compilation, tree, node, stubs, spans) is { } clash)
+            {
+                message = clash;
+                return false;
+            }
         }
 
         Validation.SourceFileText.Rewrite(file, text);
@@ -304,7 +312,9 @@ public static class ClassInheritanceService
 
     // Each stub on its own line before the type's closing brace, indented like the type's first
     // member (the type's indent and four spaces when it has none on a line of its own).
-    private static string WithStubs(string text, TypeDeclarationSyntax node, IEnumerable<string> stubs, string newline)
+    // Also gives back where each stub's code is in the new text.
+    private static (string Text, IReadOnlyList<Microsoft.CodeAnalysis.Text.TextSpan> Spans) WithStubs(
+        string text, TypeDeclarationSyntax node, IReadOnlyList<string> stubs, string newline)
     {
         var declared = node.Modifiers.Count > 0 ? node.Modifiers[0].SpanStart : node.Keyword.SpanStart;
         var typeIndent = IndentOf(text, declared);
@@ -312,18 +322,74 @@ public static class ClassInheritanceService
         var memberIndent = first is { } m && FirstOnLine(text, m) ? IndentOf(text, m) : typeIndent + "    ";
         var block = string.Concat(stubs.Select(s => memberIndent + s + newline));
 
+        string before, after;
         if (!HasBody(node))
         {
             var semicolon = node.SemicolonToken.SpanStart;
-            return text[..SpacesBefore(text, semicolon)] + " {" + newline + block + typeIndent + "}" + text[(semicolon + 1)..];
+            (before, after) = (text[..SpacesBefore(text, semicolon)] + " {" + newline, typeIndent + "}" + text[(semicolon + 1)..]);
+        }
+        else
+        {
+            var close = node.CloseBraceToken.SpanStart;
+            (before, after) = FirstOnLine(text, close)
+                ? (text[..LineStart(text, close)], text[LineStart(text, close)..])
+                : (text[..SpacesBefore(text, close)] + newline, typeIndent + text[close..]);
         }
 
-        var close = node.CloseBraceToken.SpanStart;
-        if (FirstOnLine(text, close))
-            return text.Insert(LineStart(text, close), block);
+        var spans = new List<Microsoft.CodeAnalysis.Text.TextSpan>();
+        var at = before.Length;
+        foreach (var stub in stubs)
+        {
+            spans.Add(new Microsoft.CodeAnalysis.Text.TextSpan(at + memberIndent.Length, stub.Length));
+            at += memberIndent.Length + stub.Length + newline.Length;
+        }
 
-        return text[..SpacesBefore(text, close)] + newline + block + typeIndent + text[close..];
+        return (before + block + after, spans);
     }
+
+    // The first stub whose name the type already declares (in any of its parts) for a member it
+    // does not replace: a property, field or event of that name, or a method with the same
+    // parameter types. A method with other parameter types is an overload and fine.
+    private static string? Clash(
+        CSharpCompilation compilation, SyntaxTree tree, TypeDeclarationSyntax node,
+        IReadOnlyList<MemberStub> stubs, IReadOnlyList<Microsoft.CodeAnalysis.Text.TextSpan> spans)
+    {
+        if (compilation.GetSemanticModel(tree).GetDeclaredSymbol(node) is not INamedTypeSymbol type)
+            return null;
+
+        bool InStub(ISymbol s, int i) =>
+            s.DeclaringSyntaxReferences.Any(r => r.SyntaxTree == tree && spans[i].Contains(r.Span));
+
+        bool InAnyStub(ISymbol s) => Enumerable.Range(0, spans.Count).Any(i => InStub(s, i));
+
+        for (var i = 0; i < stubs.Count; i++)
+        {
+            var members = type.GetMembers(stubs[i].MemberName);
+            var stub = members.FirstOrDefault(s => InStub(s, i));
+            if (stub == null)
+                continue;
+
+            var other = members.FirstOrDefault(s => !InAnyStub(s) && s switch
+            {
+                IMethodSymbol m when stub is IMethodSymbol sm => SameParameters(m, sm),
+                IMethodSymbol { MethodKind: not MethodKind.Ordinary } => false,
+                _ => true,
+            });
+            if (other == null)
+                continue;
+
+            return $"'{type.Name}' already has a member '{other.Name}' that does not match "
+                + $"{stubs[i].From}.{stubs[i].MemberName} ({Signature(stub)}); change or remove it, then run the command again.";
+        }
+
+        return null;
+    }
+
+    private static bool SameParameters(IMethodSymbol a, IMethodSymbol b) =>
+        a.Parameters.Length == b.Parameters.Length
+        && a.TypeParameters.Length == b.TypeParameters.Length
+        && a.Parameters.Zip(b.Parameters).All(p => p.First.RefKind == p.Second.RefKind
+            && p.First.Type.ToDisplayString() == p.Second.Type.ToDisplayString());
 
     private static int LineStart(string text, int position) =>
         position == 0 ? 0 : text.LastIndexOf('\n', position - 1) + 1;
