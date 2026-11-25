@@ -312,12 +312,17 @@ public class SourceFidelityEditTests
     }
 
     [TestMethod]
-    public void Implementing_another_interface_changes_only_the_declaration_line()
+    public void Implementing_another_interface_changes_the_declaration_line_and_adds_only_its_stub()
     {
         Assert.IsTrue(ClassInheritanceService.AddInheritance(_root, "Order", "IDisposable", out var message), message);
 
         Assert.AreEqual(
-            Original(OrderSource).Replace("public class Order : EntityBase\r\n", "public class Order : EntityBase, IDisposable\r\n"),
+            Original(OrderSource)
+                .Replace("public class Order : EntityBase\r\n", "public class Order : EntityBase, IDisposable\r\n")
+                .Replace(
+                    "    public List<OrderLine> Lines { get; set; } = [];\r\n}\r\n",
+                    "    public List<OrderLine> Lines { get; set; } = [];\r\n"
+                    + "    public void Dispose() => throw new System.NotImplementedException();\r\n}\r\n"),
             Text("Order.cs"));
         AssertKeptBomAndCrlf("Order.cs");
     }

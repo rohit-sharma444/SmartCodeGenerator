@@ -484,4 +484,253 @@ public sealed class ClassInheritCommandTests
             IntentType.ClassInherit,
             CommandFront.Parse("create a Customer class that inherits AuditableBase", _workspace).Intent);
     }
+
+    // A set accessor does not implement an init-only one (CS8854).
+    [TestMethod]
+    public void An_init_only_interface_property_gets_an_init_stub()
+    {
+        var file = WriteOrder("namespace Shop { public interface IKeyed { int Id { get; init; } } public class Order { } }");
+
+        Assert.IsTrue(ClassInheritanceService.AddInheritance(_workspace, "Order", ["IKeyed"], interfacesOnly: true, out var message), message);
+
+        var code = File.ReadAllText(file);
+        StringAssert.Contains(code, "public int Id { get; init; }");
+        AssertCompiles(code);
+    }
+
+    // A settable auto-property in a readonly struct is CS8341.
+    [TestMethod]
+    public void A_readonly_struct_gets_a_get_only_property()
+    {
+        var file = Write("Point", "namespace Shop { public interface IShape { double Area { get; } } "
+            + "public readonly struct Point { } public readonly record struct Spot(int X); }");
+
+        Assert.IsTrue(ClassInheritanceService.AddInheritance(_workspace, "Point", ["IShape"], interfacesOnly: true, out var m1), m1);
+        Assert.IsTrue(ClassInheritanceService.AddInheritance(_workspace, "Spot", ["IShape"], interfacesOnly: true, out var m2), m2);
+
+        var code = File.ReadAllText(file);
+        StringAssert.Contains(code, "public double Area { get; }");
+        Assert.IsFalse(code.Contains("Area { get; set; }", StringComparison.Ordinal), code);
+        AssertCompiles(code);
+    }
+
+    [TestMethod]
+    public void A_readonly_struct_cannot_take_a_settable_interface_property()
+    {
+        var file = Write("Point", "namespace Shop { public interface INamed { string Name { get; set; } } public readonly struct Point { } }");
+        var before = File.ReadAllBytes(file);
+
+        Assert.IsFalse(ClassInheritanceService.AddInheritance(_workspace, "Point", ["INamed"], interfacesOnly: true, out var message), message);
+
+        StringAssert.Contains(message, "CS8341");
+        StringAssert.Contains(message, "'Point' was not changed");
+        CollectionAssert.AreEqual(before, File.ReadAllBytes(file));
+    }
+
+    // An implicit implementation must repeat the method's constraints (CS0425).
+    [TestMethod]
+    public void A_constrained_generic_method_keeps_its_constraints()
+    {
+        var file = WriteOrder("using System; namespace Shop { public interface IStore { T Load<T>(int id) where T : class, new(); "
+            + "void Sort<T>(T value) where T : struct, IComparable<T>; void Copy<T>(T value) where T : unmanaged; } "
+            + "public class Order { } }");
+
+        Assert.IsTrue(ClassInheritanceService.AddInheritance(_workspace, "Order", ["IStore"], interfacesOnly: true, out var message), message);
+
+        var code = File.ReadAllText(file);
+        StringAssert.Contains(code, "public T Load<T>(int id) where T : class, new() => throw new System.NotImplementedException();");
+        StringAssert.Contains(code, "public void Sort<T>(T value) where T : struct, IComparable<T> => throw");
+        StringAssert.Contains(code, "public void Copy<T>(T value) where T : unmanaged => throw");
+        AssertCompiles(code);
+    }
+
+    // record Line(int Id) : Base needs Base's arguments (CS1729: no constructor that takes 0
+    // arguments), which the command cannot know.
+    [TestMethod]
+    public void A_positional_record_cannot_inherit_a_positional_record()
+    {
+        var file = WriteOrder("namespace Shop { public record Base(int Id); public record Line(int Id); }");
+        var before = File.ReadAllBytes(file);
+
+        Assert.IsFalse(ClassInheritanceService.AddInheritance(_workspace, "Line", "Base", out var message), message);
+
+        StringAssert.Contains(message, "CS1729");
+        CollectionAssert.AreEqual(before, File.ReadAllBytes(file));
+    }
+
+    // CS8865: a class cannot inherit a record.
+    [TestMethod]
+    public void A_class_cannot_inherit_a_record()
+    {
+        var file = WriteOrder("namespace Shop { public record Base(int Id); public class Order { } }");
+        var before = File.ReadAllBytes(file);
+
+        Assert.IsFalse(ClassInheritanceService.AddInheritance(_workspace, "Order", "Base", out var message), message);
+
+        StringAssert.Contains(message, "'Base' is a record, and only a record can inherit from a record.");
+        CollectionAssert.AreEqual(before, File.ReadAllBytes(file));
+    }
+
+    // add property X to IAuditable leaves Order without X; implements IAuditable again used to
+    // be refused ("already inherits"), so the stubs could not be added.
+    [TestMethod]
+    public void An_interface_already_listed_still_gets_the_stubs_it_lacks()
+    {
+        var file = WriteOrder("namespace Shop { " + Auditable + "public class Order : IAuditable { public string Who { get; set; } = \"\"; } }");
+
+        Assert.IsTrue(ClassInheritanceService.AddInheritance(_workspace, "Order", ["IAuditable"], interfacesOnly: true, out var message), message);
+
+        var code = File.ReadAllText(file);
+        StringAssert.Contains(code, "public void Stamp() => throw new System.NotImplementedException();");
+        StringAssert.Contains(message, "Class 'Order' already implements 'IAuditable'. Added Stamp, which it lacked");
+        AssertCompiles(code);
+    }
+
+    [TestMethod]
+    public void An_interface_already_listed_with_nothing_missing_is_a_no_op()
+    {
+        var file = WriteOrder("namespace Shop { " + Auditable
+            + "public class Order : IAuditable { public string Who { get; set; } = \"\"; public void Stamp() { } } }");
+        var before = File.ReadAllBytes(file);
+
+        Assert.IsFalse(ClassInheritanceService.AddInheritance(_workspace, "Order", ["IAuditable"], interfacesOnly: true, out var message), message);
+
+        Assert.AreEqual("Class 'Order' already implements 'IAuditable'; nothing to add.", message);
+        CollectionAssert.AreEqual(before, File.ReadAllBytes(file));
+    }
+
+    [TestMethod]
+    public void A_list_with_one_listed_and_one_new_interface_adds_the_new_one()
+    {
+        var file = WriteOrder("namespace Shop { " + Auditable + "public interface IExportable { string Export(); } "
+            + "public class Order : IAuditable { public string Who { get; set; } = \"\"; public void Stamp() { } } }");
+
+        Assert.IsTrue(ClassInheritanceService.AddInheritance(_workspace, "Order", ["IAuditable", "IExportable"], interfacesOnly: true, out var message), message);
+
+        var code = File.ReadAllText(file);
+        StringAssert.Contains(code, "class Order : IAuditable, IExportable");
+        StringAssert.Contains(code, "public string Export() => throw new System.NotImplementedException();");
+        StringAssert.Contains(message, "Class 'Order' already implements 'IAuditable'. Class 'Order' now implements interface 'IExportable'.");
+        AssertCompiles(code);
+    }
+
+    // The constructed type is compared: IComparable<Customer> is not IComparable<Order>.
+    [TestMethod]
+    public void Another_construction_of_a_listed_generic_interface_is_added()
+    {
+        var file = WriteOrder("namespace Shop { public class Customer { } "
+            + "public class Order : System.IComparable<Customer> { public int CompareTo(Customer? other) => 0; } }");
+
+        Assert.IsTrue(ClassInheritanceService.AddInheritance(_workspace, "Order", ["System.IComparable<Order>"], interfacesOnly: true, out var message), message);
+
+        var code = File.ReadAllText(file);
+        StringAssert.Contains(code, "class Order : System.IComparable<Customer>, System.IComparable<Order>");
+        StringAssert.Contains(code, "public int CompareTo(Order");
+        AssertCompiles(code);
+    }
+
+    [TestMethod]
+    public void The_same_name_twice_is_added_once()
+    {
+        var file = WriteOrder("namespace Shop { " + Auditable + "public class Order { } }");
+
+        Assert.IsTrue(ClassInheritanceService.AddInheritance(_workspace, "Order", ["IAuditable", "iauditable"], interfacesOnly: true, out var message), message);
+
+        var code = File.ReadAllText(file);
+        StringAssert.Contains(code, "class Order : IAuditable {");
+        Assert.IsFalse(message.Contains("already", StringComparison.Ordinal), message);
+        AssertCompiles(code);
+    }
+
+    [TestMethod]
+    public void A_base_class_already_listed_still_gets_its_overrides_and_says_inherits()
+    {
+        var file = Write("Sq", "namespace Shop { public abstract class Shape { public abstract double Area(); } public class Sq : Shape { } }");
+
+        Assert.IsTrue(ClassInheritanceService.AddInheritance(_workspace, "Sq", "Shape", out var message), message);
+
+        var code = File.ReadAllText(file);
+        StringAssert.Contains(code, "public override double Area() => throw new System.NotImplementedException();");
+        StringAssert.Contains(message, "Class 'Sq' already inherits from 'Shape'. Added Area, which it lacked");
+        AssertCompiles(code);
+    }
+
+    // The hint used to be "use 'IFoo inherits Base'", which is refused too.
+    [TestMethod]
+    public void An_interface_cannot_implement_a_class()
+    {
+        var file = Write("IFoo", "namespace Shop { public class Base { } public interface IFoo { } }");
+        var before = File.ReadAllBytes(file);
+
+        Assert.IsFalse(ClassInheritanceService.AddInheritance(_workspace, "IFoo", ["Base"], interfacesOnly: true, out var message), message);
+
+        Assert.AreEqual("'Base' is a class, and an interface can only extend interfaces.", message);
+        CollectionAssert.AreEqual(before, File.ReadAllBytes(file));
+    }
+
+    [TestMethod]
+    public void Implements_reads_a_qualified_name()
+    {
+        CollectionAssert.AreEqual(new[] { "System.IDisposable" },
+            CommandFront.Parse("Order implements System.IDisposable", _workspace).Interfaces);
+        CollectionAssert.AreEqual(new[] { "System.IComparable<Order>", "IAuditable" },
+            CommandFront.Parse("Order implements System.IComparable<Order>, IAuditable", _workspace).Interfaces);
+    }
+
+    [TestMethod]
+    public void Run_implements_a_qualified_name_end_to_end()
+    {
+        var file = WriteOrder("namespace Shop { public class Order { } }");
+
+        Assert.IsTrue(Run("Order implements System.IDisposable"));
+
+        var code = File.ReadAllText(file);
+        StringAssert.Contains(code, "class Order : System.IDisposable");
+        StringAssert.Contains(code, "public void Dispose() => throw new System.NotImplementedException();");
+        AssertCompiles(code);
+    }
+
+    [TestMethod]
+    [DataRow("struct Point implements IShape", "Point")]
+    [DataRow("record Order implements IA", "Order")]
+    [DataRow("record struct P implements IA", "P")]
+    [DataRow("record class P implements IA", "P")]
+    [DataRow("class Order implements IA", "Order")]
+    [DataRow("Order class implements IA", "Order")]
+    public void Implements_accepts_the_kind_of_type_before_its_name(string sentence, string name)
+    {
+        var command = CommandFront.Parse(sentence, _workspace);
+
+        Assert.AreEqual(IntentType.ClassInherit, command.Intent);
+        Assert.AreEqual(name, command.ClassName);
+        Assert.HasCount(1, command.Interfaces);
+    }
+
+    [TestMethod]
+    public void Interface_extends_is_recognised()
+    {
+        var command = CommandFront.Parse("interface IA extends IB", _workspace);
+
+        Assert.AreEqual(IntentType.ClassInherit, command.Intent);
+        Assert.AreEqual("IA", command.ClassName);
+        Assert.AreEqual("IB", command.BaseClass);
+    }
+
+    [TestMethod]
+    [DataRow("create struct Point implements IShape")]
+    [DataRow("create record Order implements IA")]
+    [DataRow("create interface IA extends IB")]
+    public void Does_not_claim_create_sentences_for_other_kinds(string sentence)
+    {
+        Assert.AreNotEqual(IntentType.ClassInherit, CommandFront.Parse(sentence, _workspace).Intent);
+    }
+
+    [TestMethod]
+    public void Implements_reads_an_oxford_comma()
+    {
+        var command = CommandFront.Parse("Order implements IA, IB, and IC", _workspace);
+
+        Assert.AreEqual(IntentType.ClassInherit, command.Intent);
+        CollectionAssert.AreEqual(new[] { "IA", "IB", "IC" }, command.Interfaces);
+    }
 }
