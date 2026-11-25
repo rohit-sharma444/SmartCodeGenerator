@@ -41,13 +41,14 @@ public static class MemberStubs
         }
 
         var interfaceKind = type.IsAbstract ? StubKind.Abstract : StubKind.Implement;
+        var readOnlyStruct = type is { TypeKind: TypeKind.Struct, IsReadOnly: true };
         foreach (var iface in type.AllInterfaces)
             foreach (var member in iface.GetMembers())
             {
                 if (member.IsStatic || !member.IsAbstract
                     || type.FindImplementationForInterfaceMember(member) is not null
                     || keys.Contains(Key(member))
-                    || Stub(member, model, position, interfaceKind) is not { } stub)
+                    || Stub(member, model, position, interfaceKind, readOnlyStruct) is not { } stub)
                     continue;
 
                 result.Add(new MemberStub(stub, member.Name, iface.Name));
@@ -99,7 +100,11 @@ public static class MemberStubs
     // A public member that implements the interface's one implicitly (or an abstract one, or an
     // override of a base class's abstract member). Null for what has no plain stub (an indexer,
     // a by-ref return), which the compile then reports.
-    private static string? Stub(ISymbol member, SemanticModel model, int position, StubKind kind = StubKind.Implement)
+    // An init-only setter stays init (a set accessor does not implement it: CS8854); in a readonly
+    // struct an interface property with no setter is get-only (a settable auto-property there is
+    // CS8341); an implicit implementation repeats the method's constraints (CS0425), which an
+    // override may not (CS0460), so an override gets none.
+    private static string? Stub(ISymbol member, SemanticModel model, int position, StubKind kind = StubKind.Implement, bool readOnlyStruct = false)
     {
         string Type(ITypeSymbol t) => t.ToMinimalDisplayString(model, position, TypeFormat);
         static string Name(string n) => SyntaxFacts.GetKeywordKind(n) != SyntaxKind.None ? "@" + n : n;
@@ -110,9 +115,13 @@ public static class MemberStubs
         switch (member)
         {
             case IPropertySymbol { IsIndexer: false, ReturnsByRef: false, ReturnsByRefReadonly: false } p:
+                var initOnly = p.SetMethod is { IsInitOnly: true };
                 var accessors = kind == StubKind.Override
                     ? p.IsWriteOnly ? "{ set => throw new System.NotImplementedException(); }"
-                        : p.IsReadOnly ? "{ get; }" : "{ get; set; }"
+                        : p.IsReadOnly ? "{ get; }"
+                        : initOnly ? "{ get; init; }" : "{ get; set; }"
+                    : initOnly ? "{ get; init; }"
+                    : readOnlyStruct && p.SetMethod is null ? "{ get; }"
                     : "{ get; set; }";
                 return $"{access} {modifier}{Type(p.Type)} {Name(p.Name)} {accessors}";
 
@@ -123,7 +132,8 @@ public static class MemberStubs
                     + (p.RefKind switch { RefKind.Ref => "ref ", RefKind.Out => "out ", RefKind.In => "in ", _ => "" })
                     + $"{Type(p.Type)} {Name(p.Name)}"));
                 var returns = m.ReturnsVoid ? "void" : Type(m.ReturnType);
-                return $"{access} {modifier}{returns} {Name(m.Name)}{generics}({parameters}){body}";
+                var constraints = kind == StubKind.Override ? "" : string.Concat(m.TypeParameters.Select(t => Constraint(t, Type)));
+                return $"{access} {modifier}{returns} {Name(m.Name)}{generics}({parameters}){constraints}{body}";
 
             case IEventSymbol e:
                 return $"{access} {modifier}event {Type(e.Type)}? {Name(e.Name)};";
@@ -131,5 +141,28 @@ public static class MemberStubs
             default:
                 return null;
         }
+    }
+
+    // " where T : class, IComparable<T>, new()" for a constrained type parameter; empty otherwise.
+    // The primary constraint first, then the types, then new(), then allows ref struct.
+    private static string Constraint(ITypeParameterSymbol t, Func<ITypeSymbol, string> type)
+    {
+        var parts = new List<string>();
+        if (t.HasReferenceTypeConstraint)
+            parts.Add(t.ReferenceTypeConstraintNullableAnnotation == NullableAnnotation.Annotated ? "class?" : "class");
+        else if (t.HasUnmanagedTypeConstraint)
+            parts.Add("unmanaged");
+        else if (t.HasValueTypeConstraint)
+            parts.Add("struct");
+        else if (t.HasNotNullConstraint)
+            parts.Add("notnull");
+
+        parts.AddRange(t.ConstraintTypes.Select(type));
+        if (t.HasConstructorConstraint)
+            parts.Add("new()");
+        if (t.AllowsRefLikeType)
+            parts.Add("allows ref struct");
+
+        return parts.Count == 0 ? "" : $" where {t.Name} : {string.Join(", ", parts)}";
     }
 }

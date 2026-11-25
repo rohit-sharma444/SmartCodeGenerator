@@ -62,4 +62,43 @@ public sealed class MemberStubsTests
         Assert.HasCount(1, stubs);
         Assert.AreEqual("public int CompareTo(O? other) => throw new System.NotImplementedException();", stubs[0].Code);
     }
+
+    [TestMethod]
+    public void Init_only_property_stays_init()
+    {
+        var stubs = MissingFor("A", "interface I { int Id { get; init; } } class A : I { }");
+
+        Assert.HasCount(1, stubs);
+        Assert.AreEqual("public int Id { get; init; }", stubs[0].Code);
+    }
+
+    [TestMethod]
+    public void Readonly_struct_property_without_a_setter_is_get_only()
+    {
+        var stubs = MissingFor("S", "interface I { int Id { get; } } readonly struct S : I { }");
+
+        Assert.HasCount(1, stubs);
+        Assert.AreEqual("public int Id { get; }", stubs[0].Code);
+    }
+
+    [TestMethod]
+    public void Class_property_without_a_setter_keeps_get_and_set()
+    {
+        var stubs = MissingFor("A", "interface I { int Id { get; } } class A : I { }");
+
+        Assert.HasCount(1, stubs);
+        Assert.AreEqual("public int Id { get; set; }", stubs[0].Code);
+    }
+
+    [TestMethod]
+    public void Implementation_repeats_the_constraints_and_override_does_not()
+    {
+        var implemented = MissingFor("A", "interface I { T Make<T>() where T : class, new(); } class A : I { }");
+        var overridden = MissingFor("B", "abstract class Base { public abstract T Make<T>() where T : class, new(); } class B : Base { }");
+
+        Assert.HasCount(1, implemented);
+        Assert.AreEqual("public T Make<T>() where T : class, new() => throw new System.NotImplementedException();", implemented[0].Code);
+        Assert.HasCount(1, overridden);
+        Assert.AreEqual("public override T Make<T>() => throw new System.NotImplementedException();", overridden[0].Code);
+    }
 }
