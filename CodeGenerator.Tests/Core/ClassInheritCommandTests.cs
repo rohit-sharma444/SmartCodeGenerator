@@ -193,6 +193,180 @@ public sealed class ClassInheritCommandTests
         Assert.AreEqual(code, File.ReadAllText(file));
     }
 
+    private string Write(string name, string code)
+    {
+        var file = Path.Combine(_workspace, name + ".cs");
+        File.WriteAllText(file, code);
+        return file;
+    }
+
+    private const string Auditable = "public interface IAuditable { string Who { get; set; } void Stamp(); } ";
+
+    // Inherits used to add the interface and only warn about its members, so the project no
+    // longer built (CS0535).
+    [TestMethod]
+    public void Implements_adds_the_interface_and_stubs_its_members()
+    {
+        var file = WriteOrder("namespace Shop { " + Auditable + "public class Order { public int Id { get; set; } } }");
+
+        Assert.IsTrue(ClassInheritanceService.AddInheritance(_workspace, "Order", ["IAuditable"], interfacesOnly: true, out var message), message);
+
+        var code = File.ReadAllText(file);
+        StringAssert.Contains(code, "class Order : IAuditable");
+        StringAssert.Contains(code, "public string Who { get; set; }");
+        StringAssert.Contains(code, "public void Stamp() => throw new System.NotImplementedException();");
+        StringAssert.Contains(message, "now implements interface 'IAuditable'");
+        StringAssert.Contains(message, "Added Who, Stamp, which it lacked");
+        AssertCompiles(code);
+    }
+
+    [TestMethod]
+    public void Implements_two_interfaces_in_one_command()
+    {
+        var file = WriteOrder("namespace Shop { " + Auditable + "public interface IExportable { string Export(); } "
+            + "public class Order { public int Id { get; set; } } }");
+
+        Assert.IsTrue(ClassInheritanceService.AddInheritance(_workspace, "Order", ["IAuditable", "IExportable"], interfacesOnly: true, out var message), message);
+
+        var code = File.ReadAllText(file);
+        StringAssert.Contains(code, "class Order : IAuditable, IExportable");
+        StringAssert.Contains(code, "public string Export() => throw new System.NotImplementedException();");
+        StringAssert.Contains(message, "IExportable");
+        AssertCompiles(code);
+    }
+
+    [TestMethod]
+    public void A_bad_name_in_the_list_leaves_the_file_unchanged()
+    {
+        var file = WriteOrder("namespace Shop { " + Auditable + "public class Order { public int Id { get; set; } } }");
+        var before = File.ReadAllBytes(file);
+
+        Assert.IsFalse(ClassInheritanceService.AddInheritance(_workspace, "Order", ["IAuditable", "INope"], interfacesOnly: true, out var message), message);
+
+        StringAssert.Contains(message, "INope");
+        CollectionAssert.AreEqual(before, File.ReadAllBytes(file));
+    }
+
+    [TestMethod]
+    public void Implements_refuses_a_class()
+    {
+        const string code = "namespace Shop { public class AuditableBase { } public class Order { } }";
+        var file = WriteOrder(code);
+
+        Assert.IsFalse(ClassInheritanceService.AddInheritance(_workspace, "Order", ["AuditableBase"], interfacesOnly: true, out var message), message);
+
+        StringAssert.Contains(message, "'AuditableBase' is a class, not an interface; use 'Order inherits AuditableBase'.");
+        Assert.AreEqual(code, File.ReadAllText(file));
+    }
+
+    [TestMethod]
+    public void Inherits_an_abstract_base_adds_overrides()
+    {
+        var file = Write("Sq", "namespace Shop { public abstract class Shape { public abstract double Area(); } public class Sq { } }");
+
+        Assert.IsTrue(ClassInheritanceService.AddInheritance(_workspace, "Sq", "Shape", out var message), message);
+
+        var code = File.ReadAllText(file);
+        StringAssert.Contains(code, "class Sq : Shape");
+        StringAssert.Contains(code, "public override double Area() => throw new System.NotImplementedException();");
+        AssertCompiles(code);
+    }
+
+    [TestMethod]
+    public void Struct_implements_an_interface()
+    {
+        var file = Write("Point", "namespace Shop { public interface IShape { double Area(); } public struct Point { } }");
+
+        Assert.IsTrue(ClassInheritanceService.AddInheritance(_workspace, "Point", ["IShape"], interfacesOnly: true, out var message), message);
+
+        var code = File.ReadAllText(file);
+        StringAssert.Contains(code, "struct Point : IShape");
+        StringAssert.Contains(message, "Struct 'Point' now implements interface 'IShape'.");
+        AssertCompiles(code);
+    }
+
+    [TestMethod]
+    public void A_struct_cannot_inherit_a_class()
+    {
+        const string code = "namespace Shop { public class Shape { } public struct Point { } }";
+        var file = Write("Point", code);
+
+        Assert.IsFalse(ClassInheritanceService.AddInheritance(_workspace, "Point", "Shape", out var message), message);
+
+        StringAssert.Contains(message, "a struct can only implement interfaces");
+        Assert.AreEqual(code, File.ReadAllText(file));
+    }
+
+    [TestMethod]
+    public void A_record_inherits_only_a_record()
+    {
+        const string code = "namespace Shop { public class Entity { } public record Base(int Id); public record Order(int Id) : Base(Id); "
+            + "public record Line(int Id); }";
+        var file = WriteOrder(code);
+
+        Assert.IsFalse(ClassInheritanceService.AddInheritance(_workspace, "Line", "Entity", out var message), message);
+
+        StringAssert.Contains(message, "a record can inherit only from a record");
+        Assert.AreEqual(code, File.ReadAllText(file));
+    }
+
+    [TestMethod]
+    public void Positional_record_without_body_gets_one()
+    {
+        var file = WriteOrder("namespace Shop { " + Auditable + "public record Order(int Id); }");
+
+        Assert.IsTrue(ClassInheritanceService.AddInheritance(_workspace, "Order", ["IAuditable"], interfacesOnly: true, out var message), message);
+
+        var code = File.ReadAllText(file);
+        StringAssert.Contains(code, "record Order(int Id) : IAuditable");
+        StringAssert.Contains(code, "public void Stamp() => throw new System.NotImplementedException();");
+        AssertCompiles(code);
+    }
+
+    [TestMethod]
+    public void Stubs_keep_crlf_and_member_indentation()
+    {
+        var file = WriteOrder(string.Join("\r\n",
+            "namespace Shop",
+            "{",
+            "    public interface IAuditable",
+            "    {",
+            "        string Who { get; set; }",
+            "        void Stamp();",
+            "    }",
+            "",
+            "    public class Order",
+            "    {",
+            "        public int Id { get; set; }",
+            "    }",
+            "}",
+            ""));
+
+        Assert.IsTrue(ClassInheritanceService.AddInheritance(_workspace, "Order", ["IAuditable"], interfacesOnly: true, out var message), message);
+
+        var code = File.ReadAllText(file);
+        StringAssert.DoesNotMatch(code, new System.Text.RegularExpressions.Regex(@"(?<!\r)\n"));
+        StringAssert.Contains(code,
+            "        public int Id { get; set; }\r\n"
+            + "        public string Who { get; set; }\r\n"
+            + "        public void Stamp() => throw new System.NotImplementedException();\r\n"
+            + "    }\r\n}");
+        AssertCompiles(code);
+    }
+
+    [TestMethod]
+    public void Abstract_class_gets_abstract_declarations()
+    {
+        var file = Write("Base", "namespace Shop { " + Auditable + "public abstract class Base { } }");
+
+        Assert.IsTrue(ClassInheritanceService.AddInheritance(_workspace, "Base", ["IAuditable"], interfacesOnly: true, out var message), message);
+
+        var code = File.ReadAllText(file);
+        StringAssert.Contains(code, "public abstract void Stamp();");
+        StringAssert.Contains(message, "as abstract declarations");
+        AssertCompiles(code);
+    }
+
     // `create a Customer class that inherits X` resolves to Unknown today: NlpCommandMapper
     // never tags "that inherits" as an Action entity, so no (verb, target) row matches. That
     // is a pre-existing gap, out of scope here, and this test deliberately does NOT pin
