@@ -57,12 +57,21 @@ public static class CommandFront
     // still routes to CreateClass, which sets a base type at generation time.
     // Fields come from these groups, not from CommandEntityExtractor: Normalize maps
     // entity/model/object -> class, which would rewrite a base type named `Entity`.
+    // The type's kind may lead or follow its name: `struct Point implements IShape`,
+    // `record struct P implements IA`, `interface IA extends IB`, `Order class inherits Base`.
     private static readonly Regex ClassInheritRe =
-        new(@"^(?:class\s+)?(?<class>\w+)(?:\s+class)?\s+(?<verb>implements?|inherits?|extends|derives\s+from)\s+(?<types>.+)$",
+        new(@"^(?:(?:class|struct|interface|record(?:\s+(?:class|struct))?)\s+)?(?<class>\w+)(?:\s+(?:class|struct|interface|record))?"
+            + @"\s+(?<verb>implements?|inherits?|extends|derives\s+from)\s+(?<types>.+)$",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    // A name, qualified or not, with type arguments or not: IAuditable, System.IDisposable,
+    // System.IComparable<Order>.
     private static readonly Regex TypeNameRe =
-        new(@"^[A-Za-z_]\w*(?:<.+>)?$", RegexOptions.Compiled);
+        new(@"^[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*(?:<.+>)?$", RegexOptions.Compiled);
+
+    // ", and" before the last name: "IA, IB, and IC" is "IA, IB and IC".
+    private static readonly Regex OxfordAndRe =
+        new(@",\s*and\s+", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     /// <summary>
     /// The type names in <paramref name="types"/>, split on a comma or the word "and" outside
@@ -71,6 +80,7 @@ public static class CommandFront
     /// </summary>
     private static List<string>? ReadTypeNames(string types, bool single)
     {
+        types = OxfordAndRe.Replace(types, ", ");
         var items = new List<string>();
         var depth = 0;
         var start = 0;
