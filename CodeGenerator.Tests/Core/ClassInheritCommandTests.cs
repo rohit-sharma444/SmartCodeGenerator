@@ -221,6 +221,55 @@ public sealed class ClassInheritCommandTests
     }
 
     [TestMethod]
+    public void Implements_is_recognised()
+    {
+        var command = CommandFront.Parse("Order implements IAuditable", _workspace);
+
+        Assert.AreEqual(IntentType.ClassInherit, command.Intent);
+        Assert.AreEqual("Order", command.ClassName);
+        Assert.HasCount(1, command.Interfaces);
+        Assert.AreEqual("IAuditable", command.Interfaces[0]);
+        Assert.IsTrue(string.IsNullOrEmpty(command.BaseClass));
+    }
+
+    [TestMethod]
+    public void Implements_reads_a_list_with_commas_and_and()
+    {
+        var command = CommandFront.Parse("Order implements IAuditable, IExportable and ITracked", _workspace);
+
+        Assert.AreEqual(IntentType.ClassInherit, command.Intent);
+        CollectionAssert.AreEqual(new[] { "IAuditable", "IExportable", "ITracked" }, command.Interfaces);
+    }
+
+    [TestMethod]
+    public void Implements_reads_a_generic_name()
+    {
+        var command = CommandFront.Parse("Order implements IComparable<Order>, IAuditable", _workspace);
+
+        Assert.AreEqual(IntentType.ClassInherit, command.Intent);
+        CollectionAssert.AreEqual(new[] { "IComparable<Order>", "IAuditable" }, command.Interfaces);
+    }
+
+    [TestMethod]
+    public void Implements_and_a_second_command_is_two_commands()
+    {
+        Assert.IsNotNull(CommandFront.TwoCommands("Order implements IAuditable and add method Save"));
+    }
+
+    [TestMethod]
+    public void Run_implements_end_to_end()
+    {
+        var file = WriteOrder("namespace Shop { " + Auditable + "public class Order { public int Id { get; set; } } }");
+
+        Assert.IsTrue(Run("Order implements IAuditable"));
+
+        var code = File.ReadAllText(file);
+        StringAssert.Contains(code, "class Order : IAuditable");
+        StringAssert.Contains(code, "public void Stamp() => throw new System.NotImplementedException();");
+        AssertCompiles(code);
+    }
+
+    [TestMethod]
     public void Implements_two_interfaces_in_one_command()
     {
         var file = WriteOrder("namespace Shop { " + Auditable + "public interface IExportable { string Export(); } "
