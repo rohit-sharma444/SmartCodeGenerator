@@ -560,14 +560,19 @@ public static class CommandHandlingService
 
     private static bool HandleClassInherit(CommandExecutionContext ctx)
     {
-        if (string.IsNullOrWhiteSpace(ctx.Command.BaseClass))
+        // implements fills Interfaces; inherits / extends fills BaseClass.
+        var interfaces = ctx.Command.Interfaces.Where(i => !string.IsNullOrWhiteSpace(i)).ToList();
+        if (interfaces.Count == 0 && string.IsNullOrWhiteSpace(ctx.Command.BaseClass))
         {
             Console.WriteLine("No base class specified.");
             return false;
         }
 
-        var ok = ClassInheritanceService.AddInheritance(
-            ctx.WorkspaceRoot, ctx.Command.ClassName, ctx.Command.BaseClass, out var message);
+        var ok = interfaces.Count > 0
+            ? ClassInheritanceService.AddInheritance(
+                ctx.WorkspaceRoot, ctx.Command.ClassName, interfaces, interfacesOnly: true, out var message)
+            : ClassInheritanceService.AddInheritance(
+                ctx.WorkspaceRoot, ctx.Command.ClassName, ctx.Command.BaseClass!, out message);
 
         Output.Result(ok, message);
         return ok;

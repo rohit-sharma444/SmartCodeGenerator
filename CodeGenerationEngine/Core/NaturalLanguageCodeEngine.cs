@@ -57,14 +57,16 @@ public static class NaturalLanguageCodeEngine
         if (string.IsNullOrWhiteSpace(command.ClassName))
             return "Class name not specified.";
 
-        if (string.IsNullOrWhiteSpace(command.BaseClass))
+        // implements fills Interfaces; inherits / extends fills BaseClass.
+        var interfaces = command.Interfaces.Where(i => !string.IsNullOrWhiteSpace(i)).ToList();
+        if (interfaces.Count == 0 && string.IsNullOrWhiteSpace(command.BaseClass))
             return "Base class not specified.";
 
-        return ClassInheritanceService.AddInheritance(
-            workspaceRoot, command.ClassName,
-            command.BaseClass, out var message)
-                ? message
-                : message;
+        string message;
+        _ = interfaces.Count > 0
+            ? ClassInheritanceService.AddInheritance(workspaceRoot, command.ClassName, interfaces, interfacesOnly: true, out message)
+            : ClassInheritanceService.AddInheritance(workspaceRoot, command.ClassName, command.BaseClass!, out message);
+        return message;
     }
 
     private static string HandleCreateProperty(ParsedCommand command, string workspaceRoot)

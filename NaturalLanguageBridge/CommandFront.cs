@@ -57,9 +57,61 @@ public static class CommandFront
     // still routes to CreateClass, which sets a base type at generation time.
     // Fields come from these groups, not from CommandEntityExtractor: Normalize maps
     // entity/model/object -> class, which would rewrite a base type named `Entity`.
+    // The type's kind may lead or follow its name: `struct Point implements IShape`,
+    // `record struct P implements IA`, `interface IA extends IB`, `Order class inherits Base`.
     private static readonly Regex ClassInheritRe =
-        new(@"^(?:class\s+)?(?<class>\w+)(?:\s+class)?\s+(?:inherits?|extends|derives\s+from)\s+(?<base>\w+)$",
+        new(@"^(?:(?:class|struct|interface|record(?:\s+(?:class|struct))?)\s+)?(?<class>\w+)(?:\s+(?:class|struct|interface|record))?"
+            + @"\s+(?<verb>implements?|inherits?|extends|derives\s+from)\s+(?<types>.+)$",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    // A name, qualified or not, with type arguments or not: IAuditable, System.IDisposable,
+    // System.IComparable<Order>.
+    private static readonly Regex TypeNameRe =
+        new(@"^[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*(?:<.+>)?$", RegexOptions.Compiled);
+
+    // ", and" before the last name: "IA, IB, and IC" is "IA, IB and IC".
+    private static readonly Regex OxfordAndRe =
+        new(@",\s*and\s+", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>
+    /// The type names in <paramref name="types"/>, split on a comma or the word "and" outside
+    /// angle brackets; null when an item is not a type name, or when a verb that takes one
+    /// name is given a list.
+    /// </summary>
+    private static List<string>? ReadTypeNames(string types, bool single)
+    {
+        types = OxfordAndRe.Replace(types, ", ");
+        var items = new List<string>();
+        var depth = 0;
+        var start = 0;
+        for (var i = 0; i <= types.Length; i++)
+        {
+            var atEnd = i == types.Length;
+            var separatorLength = 0;
+            if (!atEnd)
+            {
+                var c = types[i];
+                if (c == '<') depth++;
+                else if (c == '>') depth--;
+                else if (depth == 0 && c == ',') separatorLength = 1;
+                else if (depth == 0 && char.IsWhiteSpace(c)
+                    && string.Compare(types, i + 1, "and", 0, 3, StringComparison.OrdinalIgnoreCase) == 0
+                    && i + 4 < types.Length && char.IsWhiteSpace(types[i + 4]))
+                    separatorLength = 5;
+            }
+
+            if (!atEnd && separatorLength == 0) continue;
+
+            items.Add(types[start..i].Trim());
+            if (atEnd) break;
+            start = i + separatorLength;
+            i += separatorLength - 1;
+        }
+
+        if (depth != 0 || items.Exists(item => !TypeNameRe.IsMatch(item)) || (single && items.Count != 1))
+            return null;
+        return items;
+    }
 
     // `create class <name>` and `create class <name> with ...`, ahead of the mapper. NLE tags a
     // lower-case name as part of the target, so the mapper looked up "class employee" and
@@ -350,14 +402,20 @@ public static class CommandFront
 
         var inheritMatch = ClassInheritRe.Match(text);
         if (inheritMatch.Success)
-            return new ParsedCommand
-            {
-                Intent = IntentType.ClassInherit,
-                ClassName = inheritMatch.Groups["class"].Value.Trim(),
-                BaseClass = inheritMatch.Groups["base"].Value.Trim(),
-                OriginalSentence = input ?? string.Empty,
-                Confidence = 1.0
-            };
+        {
+            var implements = inheritMatch.Groups["verb"].Value.StartsWith("implement", StringComparison.OrdinalIgnoreCase);
+            var typeNames = ReadTypeNames(inheritMatch.Groups["types"].Value, single: !implements);
+            if (typeNames is not null)
+                return new ParsedCommand
+                {
+                    Intent = IntentType.ClassInherit,
+                    ClassName = inheritMatch.Groups["class"].Value.Trim(),
+                    BaseClass = implements ? string.Empty : typeNames[0],
+                    Interfaces = implements ? typeNames : [],
+                    OriginalSentence = input ?? string.Empty,
+                    Confidence = 1.0
+                };
+        }
 
         if (CreateProjectRe.IsMatch(text))
         {

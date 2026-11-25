@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -16,6 +17,9 @@ namespace CodeGenerationEngine.Core;
 /// are both known. A base class goes first and an interface after the rest; a type that does not
 /// bind, the class itself, one of its own subclasses, a sealed or static class, a struct, an enum,
 /// and a second base class are refused with the file left as it was.
+/// The edited type may be a class, interface, struct, record or record struct. The members it then
+/// lacks used to be only named, so the project no longer built (CS0535); they are now stubbed by
+/// <see cref="MemberStubs"/>, as <c>create class</c> stubs them.
 /// </remarks>
 public static class ClassInheritanceService
 {
@@ -23,6 +27,19 @@ public static class ClassInheritanceService
         string workspaceRoot,
         string className,
         string baseClass,
+        out string message) =>
+        AddInheritance(workspaceRoot, className, [baseClass], interfacesOnly: false, out message);
+
+    /// <summary>
+    /// Adds every type in <paramref name="types"/> to <paramref name="className"/>'s base list, then
+    /// stubs the members it now lacks. All or nothing: the first name refused is the message, and the
+    /// file is left as it was. With <paramref name="interfacesOnly"/> (<c>implements</c>) a class is refused.
+    /// </summary>
+    public static bool AddInheritance(
+        string workspaceRoot,
+        string className,
+        IReadOnlyList<string> types,
+        bool interfacesOnly,
         out string message)
     {
         message = string.Empty;
@@ -39,9 +56,19 @@ public static class ClassInheritanceService
             file = declaring;
         }
 
+        if (types.Count == 0)
+        {
+            message = $"No type was named, so '{className}' was not changed.";
+            return false;
+        }
+
         try
         {
-            return Add(workspaceRoot, file, className, baseClass.Trim(), out message);
+            // The same name twice is one name: "implements IA, IA" adds IA once.
+            var names = types.Select(t => (t ?? string.Empty).Trim())
+                .DistinctBy(t => string.Concat(t.Where(c => !char.IsWhiteSpace(c))), StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            return Add(workspaceRoot, file, className, names, interfacesOnly, out message);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -50,7 +77,8 @@ public static class ClassInheritanceService
         }
     }
 
-    private static bool Add(string workspaceRoot, string file, string className, string baseClass, out string message)
+    private static bool Add(
+        string workspaceRoot, string file, string className, IReadOnlyList<string> types, bool interfacesOnly, out string message)
     {
         var csprojFolder = TypeResolution.ProjectFolderOf(workspaceRoot, file);
         var compilation = ClassRenameService.Compile("InheritProbe", csprojFolder ?? workspaceRoot, csprojFolder, [], out var trees);
@@ -62,12 +90,10 @@ public static class ClassInheritanceService
             return false;
         }
 
-        var root = tree.GetRoot();
-
         // By name: a file may hold several types, and the base type belongs to the one the user
         // named, not to whichever is declared first.
-        var node = root.DescendantNodes().OfType<TypeDeclarationSyntax>()
-            .FirstOrDefault(c => c is ClassDeclarationSyntax or InterfaceDeclarationSyntax
+        var node = tree.GetRoot().DescendantNodes().OfType<TypeDeclarationSyntax>()
+            .FirstOrDefault(c => c is ClassDeclarationSyntax or InterfaceDeclarationSyntax or StructDeclarationSyntax or RecordDeclarationSyntax
                 && c.Identifier.Text.Equals(className, StringComparison.OrdinalIgnoreCase));
         if (node == null)
         {
@@ -75,8 +101,139 @@ public static class ClassInheritanceService
             return false;
         }
 
+        // Every edit is after the type's first character, so it is found again at the same place.
+        var start = node.SpanStart;
+        var text = tree.GetRoot().ToFullString();
+        var newline = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+        var (original, originalTree) = (compilation, tree);
+        var done = new List<string>();
+        var present = new List<string>();
+
+        // Each name is checked against the text the names before it made, so nothing is written
+        // until all of them pass. A name the type already lists is not added again, but the stub
+        // step still runs: a type left without a member (add property X to IAuditable) gets it.
+        foreach (var type in types)
+        {
+            switch (Check(compilation, tree, node, type, interfacesOnly, out var insertAt, out var insert, out var sentence))
+            {
+                case Outcome.Refused:
+                    message = sentence;
+                    return false;
+                case Outcome.Present:
+                    present.Add(sentence);
+                    continue;
+            }
+
+            done.Add(sentence);
+            text = text.Insert(insertAt, insert);
+            (compilation, tree, node) = Reparse(compilation, tree, text, start);
+        }
+
+        // The members the type now lacks, written as create class writes them, so it still compiles.
+        var stubs = new List<MemberStub>();
+        var isAbstract = false;
+        if (node is not InterfaceDeclarationSyntax)
+        {
+            var model = compilation.GetSemanticModel(tree);
+            if (model.GetDeclaredSymbol(node) is INamedTypeSymbol symbol)
+            {
+                isAbstract = symbol.IsAbstract;
+                var position = HasBody(node) ? node.OpenBraceToken.Span.End : node.Identifier.SpanStart;
+                stubs.AddRange(MemberStubs.Missing(symbol, model, position));
+            }
+        }
+
+        if (stubs.Count > 0)
+        {
+            (text, var spans) = WithStubs(text, node, [.. stubs.Select(s => s.Code)], newline);
+            (compilation, tree, node) = Reparse(compilation, tree, text, start);
+
+            // A stub that only failed to match a member the type already has would declare that
+            // name twice (CS0102, CS0111): refused, so the file is never left uncompilable.
+            if (Clash(compilation, tree, node, stubs, spans) is { } clash)
+            {
+                message = clash;
+                return false;
+            }
+        }
+
+        var already = present.Count == 0 ? string.Empty
+            : $"{KindOf(node)} '{node.Identifier.Text}' {AlreadyVerb(node, interfacesOnly)} {string.Join(", ", present.Select(p => $"'{p}'"))}";
+
+        // Nothing to write: every name was already there and nothing was missing. Nothing changed,
+        // so it is reported as a failure, as an already-listed base class always was.
+        if (done.Count == 0 && stubs.Count == 0)
+        {
+            message = already + "; nothing to add." + Missing(compilation, tree, node);
+            return false;
+        }
+
+        // A stub or a base-list entry can still break the file in a way no check above sees: a
+        // positional record's base needs its arguments (CS7036), a settable auto-property in a
+        // readonly struct (CS8341). Only the members left to write by hand (CS0535, CS0534) may be
+        // new, and Missing names them.
+        if (NewErrors(original, originalTree, compilation, tree) is { Count: > 0 } errors)
+        {
+            message = $"'{node.Identifier.Text}' was not changed: the edit would not compile ("
+                + string.Join("; ", errors.Take(3).Select(d => $"{d.Id}: {d.GetMessage(CultureInfo.InvariantCulture)}"))
+                + (errors.Count > 3 ? $"; and {errors.Count - 3} more" : "")
+                + "). Change the type by hand, or name another type.";
+            return false;
+        }
+
+        Validation.SourceFileText.Rewrite(file, text);
+
+        var names = string.Join(", ", stubs.Select(s => s.MemberName).Distinct());
+        message = string.Join(" ", already.Length == 0 ? done : done.Prepend(already + "."))
+            + (stubs.Count == 0 ? string.Empty
+                : isAbstract ? $" Added {names}, which it lacked, as abstract declarations."
+                : $" Added {names}, which it lacked; a method added this way throws NotImplementedException until you fill it in.")
+            + Missing(compilation, tree, node);
+        return true;
+    }
+
+    private enum Outcome { Added, Present, Refused }
+
+    private static string AlreadyVerb(TypeDeclarationSyntax node, bool interfacesOnly) =>
+        !interfacesOnly ? "already inherits from"
+        : node is InterfaceDeclarationSyntax ? "already extends"
+        : "already implements";
+
+    // The errors in the edited file the original did not have, CS0535 and CS0534 aside. Matched by
+    // code and text, as many times as each occurs, since every position after the edit moves.
+    private static List<Diagnostic> NewErrors(
+        CSharpCompilation original, SyntaxTree originalTree, CSharpCompilation edited, SyntaxTree editedTree)
+    {
+        static IEnumerable<Diagnostic> Errors(CSharpCompilation c, SyntaxTree t) =>
+            c.GetSemanticModel(t).GetDiagnostics()
+                .Where(d => d.Severity == DiagnosticSeverity.Error && d.Id is not ("CS0535" or "CS0534"));
+        static string Key(Diagnostic d) => d.Id + ":" + d.GetMessage(CultureInfo.InvariantCulture);
+
+        var before = Errors(original, originalTree).GroupBy(Key).ToDictionary(g => g.Key, g => g.Count());
+        var added = new List<Diagnostic>();
+        foreach (var d in Errors(edited, editedTree))
+        {
+            if (before.TryGetValue(Key(d), out var n) && n > 0)
+                before[Key(d)] = n - 1;
+            else
+                added.Add(d);
+        }
+
+        return added;
+    }
+
+    // Checks one name against the type as it now reads: Added gives where and what to insert,
+    // Present gives the name as shown (the type already lists it), Refused gives why.
+    private static Outcome Check(
+        CSharpCompilation compilation, SyntaxTree tree, TypeDeclarationSyntax node, string baseClass, bool interfacesOnly,
+        out int insertAt, out string insert, out string message)
+    {
+        insertAt = 0;
+        insert = string.Empty;
+        message = string.Empty;
+
         var name = node.Identifier.Text;
-        var kind = node is InterfaceDeclarationSyntax ? "Interface" : "Class";
+        var kind = KindOf(node);
         var model = compilation.GetSemanticModel(tree);
         var self = model.GetDeclaredSymbol(node);
 
@@ -84,7 +241,7 @@ public static class ClassInheritanceService
         if (typeSyntax.ContainsDiagnostics || string.IsNullOrWhiteSpace(baseClass))
         {
             message = $"'{baseClass}' is not a type name.";
-            return false;
+            return Outcome.Refused;
         }
 
         // Bound where the base list would be, so the file's usings and namespace apply.
@@ -94,29 +251,44 @@ public static class ClassInheritanceService
         {
             message = $"'{baseClass}' is not a type this project knows, so '{name}' was not changed. "
                 + "Name a class or interface in the project, or a .NET type such as Exception or IDisposable.";
-            return false;
+            return Outcome.Refused;
         }
 
         var shown = type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
         var existing = node.BaseList?.Types.Select(t => (Syntax: t, Type: model.GetTypeInfo(t.Type).Type)).ToList() ?? [];
 
-        if (existing.Any(e => SymbolEqualityComparer.Default.Equals(e.Type?.OriginalDefinition, type.OriginalDefinition)
+        // The constructed type: IComparable<Order> is not IComparable<Customer>.
+        if (existing.Any(e => SymbolEqualityComparer.Default.Equals(e.Type, type)
                 || e.Syntax.Type.ToString().Equals(baseClass, StringComparison.OrdinalIgnoreCase)))
         {
-            message = $"{kind} '{name}' already inherits from '{shown}'.";
-            return false;
+            message = shown;
+            return Outcome.Present;
         }
 
         if (SymbolEqualityComparer.Default.Equals(type.OriginalDefinition, self))
         {
             message = $"{kind} '{name}' cannot inherit from itself.";
-            return false;
+            return Outcome.Refused;
         }
 
         if (self != null && DerivesFrom(type, self))
         {
             message = $"'{shown}' already derives from '{name}', so '{name}' cannot inherit from it: that would be a cycle.";
-            return false;
+            return Outcome.Refused;
+        }
+
+        // implements names interfaces only: a class there is a slip for inherits, except on an
+        // interface, which cannot inherit a class either.
+        if (interfacesOnly && type.TypeKind != TypeKind.Interface && node is InterfaceDeclarationSyntax)
+        {
+            message = $"'{shown}' is a {Describe(type)}, and an interface can only extend interfaces.";
+            return Outcome.Refused;
+        }
+
+        if (interfacesOnly && type.TypeKind != TypeKind.Interface)
+        {
+            message = $"'{shown}' is a {Describe(type)}, not an interface; use '{name} inherits {typeSyntax}'.";
+            return Outcome.Refused;
         }
 
         // The edit is made in the text, at one place, so nothing else in the file moves: the whole
@@ -124,9 +296,6 @@ public static class ClassInheritanceService
         // #region to column 0 and split one-line statements.
         var written = typeSyntax.ToString();
         var afterName = node.ParameterList?.Span.End ?? node.TypeParameterList?.Span.End ?? node.Identifier.Span.End;
-        int insertAt;
-        string insert;
-        string done;
 
         if (type.TypeKind == TypeKind.Interface)
         {
@@ -134,58 +303,199 @@ public static class ClassInheritanceService
             (insertAt, insert) = node.BaseList is null
                 ? (afterName, " : " + written)
                 : (node.BaseList.Types.Last().Span.End, ", " + written);
-            done = node is InterfaceDeclarationSyntax
+            message = node is InterfaceDeclarationSyntax
                 ? $"Interface '{name}' now extends interface '{shown}'."
-                : $"Class '{name}' now implements interface '{shown}'.";
+                : $"{kind} '{name}' now implements interface '{shown}'.";
+            return Outcome.Added;
         }
-        else if (node is InterfaceDeclarationSyntax)
+
+        if (node is InterfaceDeclarationSyntax)
         {
             message = $"'{shown}' is a {Describe(type)}, and an interface can only extend interfaces.";
-            return false;
+            return Outcome.Refused;
         }
-        else if (type.TypeKind != TypeKind.Class)
+
+        if (IsStruct(node))
+        {
+            message = $"'{shown}' is a {Describe(type)}, and a struct can only implement interfaces.";
+            return Outcome.Refused;
+        }
+
+        if (type.TypeKind != TypeKind.Class)
         {
             message = $"'{shown}' is a {Describe(type)}, so a class cannot inherit from it.";
-            return false;
+            return Outcome.Refused;
         }
-        else if (type.IsSealed || type.IsStatic)
+
+        // CS8864 and CS8865: a record and a class cannot inherit from each other.
+        if (node is RecordDeclarationSyntax && !type.IsRecord)
+        {
+            message = $"'{shown}' is not a record, and a record can inherit only from a record.";
+            return Outcome.Refused;
+        }
+
+        if (node is ClassDeclarationSyntax && type.IsRecord)
+        {
+            message = $"'{shown}' is a record, and only a record can inherit from a record.";
+            return Outcome.Refused;
+        }
+
+        if (type.IsSealed || type.IsStatic)
         {
             message = $"'{shown}' is {(type.IsStatic ? "static" : "sealed")}, so no class can inherit from it.";
-            return false;
+            return Outcome.Refused;
         }
-        else if (existing.FirstOrDefault(e => e.Type is { TypeKind: TypeKind.Class }) is { Type: { } current })
+
+        if (existing.FirstOrDefault(e => e.Type is { TypeKind: TypeKind.Class }) is { Type: { } current })
         {
-            message = $"Class '{name}' already inherits from '{current.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)}', "
-                + $"and a class can have only one base class. '{shown}' was not added.";
-            return false;
+            message = $"{kind} '{name}' already inherits from '{current.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)}', "
+                + $"and a {kind.ToLowerInvariant()} can have only one base class. '{shown}' was not added.";
+            return Outcome.Refused;
+        }
+
+        // A base class goes first: class Order : IAuditable, AuditableBase is CS1722.
+        (insertAt, insert) = node.BaseList is null
+            ? (afterName, " : " + written)
+            : (node.BaseList.Types[0].SpanStart, written + ", ");
+        message = $"{kind} '{name}' now inherits from '{shown}'.";
+        return Outcome.Added;
+    }
+
+    private static (CSharpCompilation, SyntaxTree, TypeDeclarationSyntax) Reparse(
+        CSharpCompilation compilation, SyntaxTree tree, string text, int start)
+    {
+        var edited = CSharpSyntaxTree.ParseText(text, (CSharpParseOptions)tree.Options, tree.FilePath);
+        var node = edited.GetRoot().DescendantNodes().OfType<TypeDeclarationSyntax>().First(t => t.SpanStart == start);
+        return (compilation.ReplaceSyntaxTree(tree, edited), edited, node);
+    }
+
+    private static string KindOf(TypeDeclarationSyntax node) => node switch
+    {
+        InterfaceDeclarationSyntax => "Interface",
+        StructDeclarationSyntax => "Struct",
+        RecordDeclarationSyntax r when r.ClassOrStructKeyword.IsKind(SyntaxKind.StructKeyword) => "Record struct",
+        RecordDeclarationSyntax => "Record",
+        _ => "Class",
+    };
+
+    private static bool IsStruct(TypeDeclarationSyntax node) =>
+        node is StructDeclarationSyntax
+        || node is RecordDeclarationSyntax r && r.ClassOrStructKeyword.IsKind(SyntaxKind.StructKeyword);
+
+    // record Order(int Id); has no braces.
+    private static bool HasBody(TypeDeclarationSyntax node) =>
+        node.OpenBraceToken.IsKind(SyntaxKind.OpenBraceToken) && !node.OpenBraceToken.IsMissing;
+
+    // Each stub on its own line before the type's closing brace, indented like the type's first
+    // member (the type's indent and four spaces when it has none on a line of its own).
+    // Also gives back where each stub's code is in the new text.
+    private static (string Text, IReadOnlyList<Microsoft.CodeAnalysis.Text.TextSpan> Spans) WithStubs(
+        string text, TypeDeclarationSyntax node, IReadOnlyList<string> stubs, string newline)
+    {
+        var declared = node.Modifiers.Count > 0 ? node.Modifiers[0].SpanStart : node.Keyword.SpanStart;
+        var typeIndent = IndentOf(text, declared);
+        var first = node.Members.FirstOrDefault()?.GetFirstToken().SpanStart;
+        var memberIndent = first is { } m && FirstOnLine(text, m) ? IndentOf(text, m) : typeIndent + "    ";
+        var block = string.Concat(stubs.Select(s => memberIndent + s + newline));
+
+        string before, after;
+        if (!HasBody(node))
+        {
+            var semicolon = node.SemicolonToken.SpanStart;
+            (before, after) = (text[..SpacesBefore(text, semicolon)] + " {" + newline, typeIndent + "}" + text[(semicolon + 1)..]);
         }
         else
         {
-            // A base class goes first: class Order : IAuditable, AuditableBase is CS1722.
-            (insertAt, insert) = node.BaseList is null
-                ? (afterName, " : " + written)
-                : (node.BaseList.Types[0].SpanStart, written + ", ");
-            done = $"Class '{name}' now inherits from '{shown}'.";
+            var close = node.CloseBraceToken.SpanStart;
+            (before, after) = FirstOnLine(text, close)
+                ? (text[..LineStart(text, close)], text[LineStart(text, close)..])
+                : (text[..SpacesBefore(text, close)] + newline, typeIndent + text[close..]);
         }
 
-        var text = root.ToFullString().Insert(insertAt, insert);
-        var newRoot = CSharpSyntaxTree.ParseText(text, (CSharpParseOptions)tree.Options).GetRoot();
+        var spans = new List<Microsoft.CodeAnalysis.Text.TextSpan>();
+        var at = before.Length;
+        foreach (var stub in stubs)
+        {
+            spans.Add(new Microsoft.CodeAnalysis.Text.TextSpan(at + memberIndent.Length, stub.Length));
+            at += memberIndent.Length + stub.Length + newline.Length;
+        }
 
-        Validation.SourceFileText.Rewrite(file, text);
-
-        message = done + Missing(compilation, tree, newRoot, name);
-        return true;
+        return (before + block + after, spans);
     }
 
-    // What the class still has to implement now: an interface's members, or a base class's
-    // abstract ones. The edit compiles otherwise, so this is the whole of what is left to do.
-    private static string Missing(CSharpCompilation compilation, SyntaxTree before, SyntaxNode newRoot, string name)
+    // The first stub whose name the type already declares (in any of its parts) for a member it
+    // does not replace: a property, field or event of that name, or a method with the same
+    // parameter types. A method with other parameter types is an overload and fine.
+    private static string? Clash(
+        CSharpCompilation compilation, SyntaxTree tree, TypeDeclarationSyntax node,
+        IReadOnlyList<MemberStub> stubs, IReadOnlyList<Microsoft.CodeAnalysis.Text.TextSpan> spans)
     {
-        var after = before.WithRootAndOptions(newRoot, before.Options);
-        var edited = compilation.ReplaceSyntaxTree(before, after);
-        var node = after.GetRoot().DescendantNodes().OfType<TypeDeclarationSyntax>()
-            .FirstOrDefault(t => t.Identifier.Text == name);
-        if (node is not ClassDeclarationSyntax || edited.GetSemanticModel(after).GetDeclaredSymbol(node) is not { IsAbstract: false } symbol)
+        if (compilation.GetSemanticModel(tree).GetDeclaredSymbol(node) is not INamedTypeSymbol type)
+            return null;
+
+        bool InStub(ISymbol s, int i) =>
+            s.DeclaringSyntaxReferences.Any(r => r.SyntaxTree == tree && spans[i].Contains(r.Span));
+
+        bool InAnyStub(ISymbol s) => Enumerable.Range(0, spans.Count).Any(i => InStub(s, i));
+
+        for (var i = 0; i < stubs.Count; i++)
+        {
+            var members = type.GetMembers(stubs[i].MemberName);
+            var stub = members.FirstOrDefault(s => InStub(s, i));
+            if (stub == null)
+                continue;
+
+            var other = members.FirstOrDefault(s => !InAnyStub(s) && s switch
+            {
+                IMethodSymbol m when stub is IMethodSymbol sm => SameParameters(m, sm),
+                IMethodSymbol { MethodKind: not MethodKind.Ordinary } => false,
+                _ => true,
+            });
+            if (other == null)
+                continue;
+
+            return $"'{type.Name}' already has a member '{other.Name}' that does not match "
+                + $"{stubs[i].From}.{stubs[i].MemberName} ({Signature(stub)}); change or remove it, then run the command again.";
+        }
+
+        return null;
+    }
+
+    private static bool SameParameters(IMethodSymbol a, IMethodSymbol b) =>
+        a.Parameters.Length == b.Parameters.Length
+        && a.TypeParameters.Length == b.TypeParameters.Length
+        && a.Parameters.Zip(b.Parameters).All(p => p.First.RefKind == p.Second.RefKind
+            && p.First.Type.ToDisplayString() == p.Second.Type.ToDisplayString());
+
+    private static int LineStart(string text, int position) =>
+        position == 0 ? 0 : text.LastIndexOf('\n', position - 1) + 1;
+
+    private static string IndentOf(string text, int position)
+    {
+        var start = LineStart(text, position);
+        var end = start;
+        while (end < text.Length && text[end] is ' ' or '\t')
+            end++;
+        return text[start..end];
+    }
+
+    private static bool FirstOnLine(string text, int position) =>
+        text[LineStart(text, position)..position].All(c => c is ' ' or '\t');
+
+    private static int SpacesBefore(string text, int position)
+    {
+        while (position > 0 && text[position - 1] is ' ' or '\t')
+            position--;
+        return position;
+    }
+
+    // What the type still lacks after the stubs: a member MemberStubs cannot write (an indexer, a
+    // by-ref return). The edit compiles otherwise, so this is the whole of what is left to do.
+    private static string Missing(CSharpCompilation compilation, SyntaxTree tree, TypeDeclarationSyntax node)
+    {
+        var name = node.Identifier.Text;
+        if (node is InterfaceDeclarationSyntax
+            || compilation.GetSemanticModel(tree).GetDeclaredSymbol(node) is not INamedTypeSymbol { IsAbstract: false } symbol)
             return string.Empty;
 
         var missing = new List<string>();

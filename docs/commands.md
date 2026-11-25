@@ -55,7 +55,8 @@
 
 | Command | Description | Example |
 | --- | --- | --- |
-| `<class name> inherits <base class name>` | Adds a base class to a class, keeping any existing interfaces. Aliases: extends, derives from. | `Order inherits AuditableBase` |
+| `<class name> inherits <base class name>` | Adds a base type, keeping any existing interfaces; an abstract base's members get override stubs. Aliases: extends, derives from. | `Order inherits AuditableBase` |
+| `<type name> implements <interface>[, <interface> ...]` | Adds interfaces to an existing type (a struct or record too) and a stub for each member it lacks; a stub method throws NotImplementedException until you fill it in. Name interfaces only. | `Order implements IAuditable, IExportable` |
 | `add value <value> to <enum name>` | Adds a value to an enum, after the last. An enum that numbers its values gives it the next number. Refuses a repeated value, a keyword, and a [Flags] enum. | `add value Archived to Status` |
 | `create class` | Creates a new class. Refuses a name that already exists, and leaves that file as it is. | `create class Employee` |
 | `create class <class name> with properties` | Creates a new class with the specified properties. After them you can add 'and methods <list>', 'inherits <base>' and 'implements <interfaces>'. Refuses a name that already exists. A property can have 'default <value>' or '= <value>', and the modifiers readonly, private, static and required (the C# keyword) after its type, as in 'Id int readonly, Tax decimal = 0'. | `create class Employee with properties EmpCode int, Name string` |
