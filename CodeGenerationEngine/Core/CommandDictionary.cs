@@ -237,17 +237,16 @@ public static class CommandDictionary
         {
             Category = "Class",
             Command = "<class name> inherits <base class name>",
-            Description = "Adds a base class to a class, keeping any existing interfaces. The members of an abstract base "
-                        + "are added as overrides. Aliases: extends, derives from.",
+            Description = "Adds a base type, keeping any existing interfaces; an abstract base's members get override stubs. "
+                        + "Aliases: extends, derives from.",
             Example = "Order inherits AuditableBase"
         },
         new()
         {
             Category = "Class",
-            Command = "<class name> implements <interface>[, <interface> ...]",
-            Description = "Adds the interfaces to a class, struct or record and adds a stub for each member it lacks "
-                        + "(a method throws NotImplementedException until you fill it in). "
-                        + "A class name is refused: use inherits.",
+            Command = "<type name> implements <interface>[, <interface> ...]",
+            Description = "Adds interfaces to an existing type (a struct or record too) and a stub for each member it lacks; "
+                        + "a stub method throws NotImplementedException until you fill it in. Name interfaces only.",
             Example = "Order implements IAuditable, IExportable"
         },
 #endregion
