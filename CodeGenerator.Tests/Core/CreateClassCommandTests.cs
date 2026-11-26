@@ -87,6 +87,39 @@ public sealed class CreateClassCommandTests
         Assert.IsFalse(Directory.Exists(GeneratedDir) && Directory.GetFiles(GeneratedDir, "*.cs").Length > 0, output);
     }
 
+    // Only the END of the line was checked for another class, so a member for another class in the
+    // middle went onto the new class: Size was written on Kart with "Ignored 'to Shape'".
+    [TestMethod]
+    [DataRow("create class Kart and add property Size int to Shape and add method Roll",
+        "create class Kart and add method Roll|add property Size int to Shape")]
+    [DataRow("create class Kart and add method Roll to Shape and add property Size int",
+        "create class Kart and add property Size int|add method Roll to Shape")]
+    [DataRow("create class Kart and add property Size int to Shape and add method Roll to Shape",
+        "create class Kart|add property Size int to Shape|add method Roll to Shape")]
+    [DataRow("create class Kart and add property Size int and remove property Name from Shape",
+        "create class Kart and add property Size int|remove property Name from Shape")]
+    [DataRow("create class Kart and add required property Size int to Shape and add method Roll",
+        "create class Kart and add method Roll|add required property Size int to Shape")]
+    public void A_member_for_another_class_in_the_middle_is_refused_and_nothing_written(string line, string expected)
+    {
+        CollectionAssert.AreEqual(expected.Split('|'), CommandFront.TwoCommands(line)?.ToArray(), line);
+
+        var (handled, output) = RunCapturing(line);
+
+        Assert.IsFalse(handled, output);
+        StringAssert.Contains(output, expected.Split('|').Length == 3 ? "This line holds three commands" : "This line holds two commands");
+        foreach (var part in expected.Split('|'))
+            StringAssert.Contains(output, part, output);
+        Assert.IsFalse(Directory.Exists(GeneratedDir) && Directory.GetFiles(GeneratedDir, "*.cs").Length > 0, output);
+    }
+
+    [TestMethod]
+    [DataRow("create class Kart and add property Size int to Kart and add method Roll")]
+    [DataRow("create class Kart and add required property Size int and add method Roll to Kart")]
+    [DataRow("create class Kart : Shape and add property Size int and add property Label string")]
+    public void Every_member_for_the_new_class_is_one_command(string line) =>
+        Assert.IsNull(CommandFront.TwoCommands(line), line);
+
     [TestMethod]
     [DataRow("create class Cart with properties Total decimal and add method Ship to Cart")]
     [DataRow("create class cart with properties Total decimal and add method Ship to Cart")]

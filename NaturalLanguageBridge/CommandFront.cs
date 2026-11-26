@@ -852,7 +852,18 @@ public static class CommandFront
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly Regex MemberAddition = new(
-        @"^(?:add|create)\s+(?:(?:a|an|new)\s+)?(?:property|field|method)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        @"^(?:add|create|generate)\s+(?:(?:a|an|new)\s+)?(?:(?:abstract|readonly|private|static|required)\s+)*"
+        + @"(?:property|field|method|function)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    // Where a further command starts inside the rest of a line: the separator SecondCommandRe reads,
+    // before a command verb, or before a member addition with modifiers ("and add required property").
+    private static readonly Regex NextCommandRe = new(
+        @"(?:\s+(?:and|then)|\s*[,;])\s+(?:then\s+)?(?=(?:(?:add|create|remove|delete|drop|rename|change|retype)\s+"
+        + @"(?:(?:a|an|the|new)\s+)?(?:property|field|method|class|interface|project|validation|value|constructor)\b"
+        + @"|(?:add|create|generate)\s+(?:(?:a|an|new)\s+)?(?:(?:abstract|readonly|private|static|required)\s+)+"
+        + @"(?:property|field|method|function)\b))",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     // The class a member addition names at its end: "... to [the] [class] Customer".
     private static readonly Regex MemberTarget = new(
@@ -864,33 +875,67 @@ public static class CommandFront
         @"\G\s+(?:(?:called|named)\s+)?(?<name>[A-Za-z_]\w*)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     /// <summary>
-    /// The two commands in <paramref name="text"/>, when it holds two; a build app description is
-    /// prose, and is never split.
+    /// The commands in <paramref name="text"/>, when it holds more than one; a build app description
+    /// is prose, and is never split.
     /// </summary>
-    internal static (string First, string Second)? TwoCommands(string text)
+    /// <remarks>
+    /// "create class Employee and add method AddEmployee": the members of the class being created
+    /// are one command that the create-class parser reads whole. Each part after the create is
+    /// checked on its own: a member for another class ("and add property Size int to Shape") or any
+    /// other command is a command of its own, wherever it is in the line - only the end of the line
+    /// was checked, so a member for another class in the middle went onto the new class.
+    /// </remarks>
+    internal static IReadOnlyList<string>? TwoCommands(string text)
     {
         if (text.StartsWith("build app", StringComparison.OrdinalIgnoreCase))
             return null;
 
         var match = SecondCommandRe.Match(text);
+        var created = CreatesAType.Match(match.Success ? text[..match.Index] : text);
+        if (created.Success)
+        {
+            var parts = Parts(text);
+            if (parts.Count < 2)
+                return null;
+
+            var name = CreatedName.Match(text, created.Index + created.Length);
+            bool OwnMember(string part)
+            {
+                if (!MemberAddition.IsMatch(part))
+                    return false;
+                var target = MemberTarget.Match(part);
+                return !target.Success
+                    || (name.Success && target.Groups["name"].Value.Equals(name.Groups["name"].Value, StringComparison.OrdinalIgnoreCase));
+            }
+
+            var own = parts.Skip(1).Where(OwnMember).ToList();
+            if (own.Count == parts.Count - 1)
+                return null;
+
+            return [string.Join(" and ", [parts[0], .. own]), .. parts.Skip(1).Where(p => !OwnMember(p))];
+        }
+
         if (!match.Success || match.Index == 0)
             return null;
 
-        // "create class Employee and add method AddEmployee": the members of the class being
-        // created, one command that the create-class parser reads whole - unless the member is
-        // for another class ("... and add method Ship to Customer"): that is a second command.
-        var created = CreatesAType.Match(text[..match.Index]);
-        var second = match.Groups["second"].Value;
-        if (created.Success && MemberAddition.IsMatch(second))
+        return [text[..match.Index].Trim(), match.Groups["second"].Value.Trim()];
+    }
+
+    /// <summary><paramref name="text"/> cut where each further command starts (<see cref="NextCommandRe"/>).</summary>
+    private static List<string> Parts(string text)
+    {
+        var parts = new List<string>();
+        var start = 0;
+        foreach (Match next in NextCommandRe.Matches(text))
         {
-            var target = MemberTarget.Match(second);
-            var name = CreatedName.Match(text, created.Index + created.Length);
-            if (!target.Success
-                || (name.Success && target.Groups["name"].Value.Equals(name.Groups["name"].Value, StringComparison.OrdinalIgnoreCase)))
-                return null;
+            if (next.Index == 0)
+                continue;
+            parts.Add(text[start..next.Index].Trim());
+            start = next.Index + next.Length;
         }
 
-        return (text[..match.Index].Trim(), match.Groups["second"].Value.Trim());
+        parts.Add(text[start..].Trim());
+        return parts;
     }
 
     /// <summary>Outcome of running one command: whether the action succeeded
@@ -946,11 +991,15 @@ public static class CommandFront
 
         // Refused before it is parsed: a parse reads one half, and the half it read was not
         // always the first one.
-        if (TwoCommands((input ?? string.Empty).Trim()) is var (first, second))
+        if (TwoCommands((input ?? string.Empty).Trim()) is { } commands)
         {
-            Output.Error("This line holds two commands. Type them one at a time:");
-            Output.Detail($"  {first}");
-            Output.Detail($"  {second}");
+            string[] counts = ["two", "three", "four", "five", "six", "seven", "eight", "nine"];
+            var count = commands.Count - 2 < counts.Length
+                ? counts[commands.Count - 2]
+                : commands.Count.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            Output.Error($"This line holds {count} commands. Type them one at a time:");
+            foreach (var part in commands)
+                Output.Detail($"  {part}");
             return new RunResult(Handled: false, Recognized: true, NeededAi: false);
         }
 
