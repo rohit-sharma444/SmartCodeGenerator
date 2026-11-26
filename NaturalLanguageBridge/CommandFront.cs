@@ -123,7 +123,12 @@ public static class CommandFront
     private static readonly Regex CreateClassRe =
         new(@"^(?:create|add|generate)\s+(?:(?:a|an|new)\s+)?class\s+"
             + @"(?!(?:library|with|called|named|that|which|for|to|in|of|from)\b)(?<class>[A-Za-z_]\w*)"
-            + @"(?:\s+with\s+.+)?$",
+            + @"(?:(?:(?<colon>\s*:\s*)|\s+(?<clause>inherits|inherit|extends|derives\s+from|derived\s+from|implements|implement)\s+)"
+            + @"(?<types>[A-Za-z_][\w.<>]*(?:(?:\s*,\s*|\s+and\s+)[A-Za-z_][\w.<>]*)*))?"
+            + @"(?:\s+with\s+.+)?"
+            // `create class Sled : Shape and add method Slide`: without this tail the line fell to the
+            // mapper, which wrote the class with the method and no base.
+            + @"(?:\s+and\s+(?:add|create|generate)\s+(?:(?:a|an|new)\s+)?(?:abstract\s+)?(?:method|function)\b.*)?$",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     // `create [abstract|sealed|static] class|record|struct <rest>`: the kind words are read here and
@@ -433,6 +438,15 @@ public static class CommandFront
             var plain = Parse($"{kindMatch.Groups["verb"].Value} class {kindMatch.Groups["rest"].Value}", workspace);
             if (plain.Intent == IntentType.CreateClass)
             {
+                // A struct has no base: after `:` every name is an interface (C# says the same).
+                if (kindMatch.Groups["kind"].Value.Equals("struct", StringComparison.OrdinalIgnoreCase)
+                    && plain.BaseClass is { Length: > 0 }
+                    && Regex.IsMatch(kindMatch.Groups["rest"].Value, @"^[A-Za-z_]\w*\s*:"))
+                {
+                    plain.Interfaces.Insert(0, plain.BaseClass);
+                    plain.BaseClass = null;
+                }
+
                 ApplyKind(plain, kindMatch);
                 plain.OriginalSentence = input ?? string.Empty;
                 return plain;
@@ -442,7 +456,23 @@ public static class CommandFront
         var createClassMatch = CreateClassRe.Match(text);
         if (createClassMatch.Success)
         {
-            var createCmd = CommandEntityExtractor.Extract(text, IntentType.CreateClass, workspace);
+            // `B : Shape` reads as `B inherits Shape`; the extractor already reads the inherits form.
+            var colon = createClassMatch.Groups["colon"];
+            var extractText = colon.Success
+                ? string.Concat(text.AsSpan(0, colon.Index), " inherits ", text.AsSpan(colon.Index + colon.Length))
+                : text;
+            var createCmd = CommandEntityExtractor.Extract(extractText, IntentType.CreateClass, workspace);
+            // After `:`, inherits, extends or derives from, the first name is the base and the rest are
+            // interfaces, as typed (the project compile refuses a wrong kind). `implements` keeps all as interfaces.
+            var clause = createClassMatch.Groups["clause"].Value;
+            if (createClassMatch.Groups["types"].Success
+                && !clause.StartsWith("implement", StringComparison.OrdinalIgnoreCase))
+            {
+                var names = Regex.Split(createClassMatch.Groups["types"].Value, @"\s*,\s*|\s+and\s+", RegexOptions.IgnoreCase);
+                createCmd.BaseClass = CommandEntityExtractor.ToPascalCase(names[0]);
+                createCmd.Interfaces.Clear();
+                createCmd.Interfaces.AddRange(names.Skip(1));
+            }
             createCmd.ClassName = CommandEntityExtractor.ToPascalCase(createClassMatch.Groups["class"].Value);
             createCmd.OriginalSentence = input ?? string.Empty;
             createCmd.Confidence = 1.0;
@@ -816,6 +846,15 @@ public static class CommandFront
     private static readonly Regex MemberAddition = new(
         @"^(?:add|create)\s+(?:(?:a|an|new)\s+)?(?:property|field|method)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    // The class a member addition names at its end: "... to [the] [class] Customer".
+    private static readonly Regex MemberTarget = new(
+        @"\s(?:to|for|in|on)\s+(?:the\s+)?(?:(?:class|record|struct|interface)\s+)?(?<name>[A-Za-z_]\w*)\s*[.!]?$",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    // The name of the type a create command makes, right after its kind word.
+    private static readonly Regex CreatedName = new(
+        @"\G\s+(?:(?:called|named)\s+)?(?<name>[A-Za-z_]\w*)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     /// <summary>
     /// The two commands in <paramref name="text"/>, when it holds two; a build app description is
     /// prose, and is never split.
@@ -830,10 +869,18 @@ public static class CommandFront
             return null;
 
         // "create class Employee and add method AddEmployee": the members of the class being
-        // created, one command that the create-class parser reads whole.
-        if (CreatesAType.IsMatch(text[..match.Index])
-            && MemberAddition.IsMatch(match.Groups["second"].Value))
-            return null;
+        // created, one command that the create-class parser reads whole - unless the member is
+        // for another class ("... and add method Ship to Customer"): that is a second command.
+        var created = CreatesAType.Match(text[..match.Index]);
+        var second = match.Groups["second"].Value;
+        if (created.Success && MemberAddition.IsMatch(second))
+        {
+            var target = MemberTarget.Match(second);
+            var name = CreatedName.Match(text, created.Index + created.Length);
+            if (!target.Success
+                || (name.Success && target.Groups["name"].Value.Equals(name.Groups["name"].Value, StringComparison.OrdinalIgnoreCase)))
+                return null;
+        }
 
         return (text[..match.Index].Trim(), match.Groups["second"].Value.Trim());
     }

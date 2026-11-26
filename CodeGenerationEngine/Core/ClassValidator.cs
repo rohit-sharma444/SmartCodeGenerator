@@ -9,7 +9,10 @@ namespace CodeGenerationEngine.Core;
 /// </summary>
 public static class ClassValidator
 {
-    public static List<string> Validate(ClassDefinition classDef)
+    /// <param name="classDef">The class to check.</param>
+    /// <param name="projectTyped">Properties whose type the project declares (checked by the
+    /// caller): their type is not one <see cref="TypeValidator"/> knows, and is not refused for it.</param>
+    public static List<string> Validate(ClassDefinition classDef, IReadOnlySet<PropertyDefinition>? projectTyped = null)
     {
         var errors = new List<string>();
 
@@ -24,6 +27,9 @@ public static class ClassValidator
 
             if (!result.IsValid)
                 errors.Add(result.Message);
+
+            if (projectTyped?.Contains(property) == true)
+                continue;
 
             result = TypeValidator.Validate(property.Type);
 

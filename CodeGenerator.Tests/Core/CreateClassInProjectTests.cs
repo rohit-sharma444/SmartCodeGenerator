@@ -58,10 +58,16 @@ public sealed class CreateClassInProjectTests
 
     private void Write(string name, string text) => File.WriteAllText(Path.Combine(_workspace, "Shop", name), text);
 
+    /// <summary>The project's files, with the SDK's implicit usings as a project with
+    /// ImplicitUsings on gets them.</summary>
+    private IEnumerable<(string, string)> ProjectSources(string prefix = "") =>
+        Directory.GetFiles(Path.Combine(_workspace, "Shop"), "*.cs", SearchOption.AllDirectories)
+            .Select(f => (f, prefix + File.ReadAllText(f)))
+            .Append(("GlobalUsings.g.cs", "global using System; global using System.Collections.Generic; global using System.Linq;"));
+
     private string[] ProjectErrors() =>
     [
-        .. Compiler.CompileSources(Directory.GetFiles(Path.Combine(_workspace, "Shop"), "*.cs")
-                .Select(f => (f, File.ReadAllText(f))))
+        .. Compiler.CompileSources(ProjectSources())
             .Diagnostics.Where(d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error)
             .Select(d => d.ToString())
     ];
@@ -93,6 +99,69 @@ public sealed class CreateClassInProjectTests
     }
 
     [TestMethod]
+    public void Create_class_with_a_base_after_any_name_writes_the_base()
+    {
+        Write("Base1.cs", "namespace Shop;\n\npublic class Base1 { public int Id { get; set; } }\n");
+
+        Assert.IsTrue(Run("create class A inherits Base1"), LastOutput);
+        Assert.IsTrue(Run("create class B : Base1"), LastOutput);
+
+        StringAssert.Contains(File.ReadAllText(Path.Combine(_workspace, "Shop", "A.cs")), "class A : Base1");
+        StringAssert.Contains(File.ReadAllText(Path.Combine(_workspace, "Shop", "B.cs")), "class B : Base1");
+        Assert.IsEmpty(ProjectErrors());
+    }
+
+    [TestMethod]
+    public void Create_class_with_a_colon_base_and_a_method_writes_both()
+    {
+        Write("Shape1.cs", "namespace Shop;\n\npublic class Shape1 { }\n");
+
+        Assert.IsTrue(Run("create class Sled : Shape1 and add method Slide"), LastOutput);
+
+        var code = Read("Sled.cs");
+        StringAssert.Contains(code, "class Sled : Shape1", code);
+        StringAssert.Contains(code, "Slide()", code);
+        Assert.IsEmpty(ProjectErrors(), code);
+    }
+
+    // It printed "Ignored method 'Amount decimal'" and wrote a void String() method.
+    [TestMethod]
+    public void A_property_called_Method_is_written_as_a_property_with_no_warning()
+    {
+        Assert.IsTrue(Run("create class Payment with properties Method string, Amount decimal"), LastOutput);
+
+        var code = Read("Payment.cs");
+        StringAssert.Contains(code, "public string Method { get; set; }", code);
+        StringAssert.Contains(code, "public decimal Amount { get; set; }", code);
+        Assert.DoesNotContain("String()", code, code);
+        Assert.DoesNotContain("Ignored", LastOutput, LastOutput);
+        Assert.IsEmpty(ProjectErrors(), code);
+    }
+
+    [TestMethod]
+    public void Create_class_with_base_and_interface_writes_both_in_order()
+    {
+        Write("Base1.cs", "namespace Shop;\n\npublic class Base1 { public int Id { get; set; } }\n");
+        Write("IMark1.cs", "namespace Shop;\n\npublic interface IMark1 { }\n");
+
+        Assert.IsTrue(Run("create class B : Base1, IMark1"), LastOutput);
+
+        StringAssert.Contains(File.ReadAllText(Path.Combine(_workspace, "Shop", "B.cs")), "class B : Base1, IMark1");
+        Assert.IsEmpty(ProjectErrors());
+    }
+
+    [TestMethod]
+    public void Create_struct_with_a_colon_interface_compiles()
+    {
+        Write("IShape1.cs", "namespace Shop;\n\npublic interface IShape1 { }\n");
+
+        Assert.IsTrue(Run("create struct P : IShape1"), LastOutput);
+
+        StringAssert.Contains(File.ReadAllText(Path.Combine(_workspace, "Shop", "P.cs")), "struct P : IShape1");
+        Assert.IsEmpty(ProjectErrors());
+    }
+
+    [TestMethod]
     public void A_class_inheriting_a_project_class_is_not_reported_as_unknown()
     {
         Write("Base1.cs", "namespace Shop;\n\npublic class Base1 { public int Id { get; set; } }\n");
@@ -120,6 +189,226 @@ public sealed class CreateClassInProjectTests
         Assert.IsEmpty(ProjectErrors());
     }
 
+    /// <summary>The project's files compiled with nullable on: its errors and its CS8618 warnings.</summary>
+    private string[] NullableProblems() =>
+    [
+        .. Compiler.CompileSources(ProjectSources("#nullable enable\n"))
+            .Diagnostics.Where(d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error || d.Id == "CS8618")
+            .Select(d => d.ToString())
+    ];
+
+    private void WriteProjectTypes()
+    {
+        File.WriteAllText(Path.Combine(_workspace, "Shop", "Shop.csproj"),
+            "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings></PropertyGroup></Project>");
+        Write("Buyer.cs", "namespace Shop;\n\npublic enum Buyer { Retail }\n");
+        Write("Shape.cs", "namespace Shop;\n\npublic class Shape { }\n");
+    }
+
+    private string Read(string name) => File.ReadAllText(Path.Combine(_workspace, "Shop", name));
+
+    [TestMethod]
+    public void Create_class_with_project_enum_and_class()
+    {
+        WriteProjectTypes();
+
+        Assert.IsTrue(Run("create class Customer with properties Kind Buyer, Home Shape"), LastOutput);
+
+        var code = Read("Customer.cs");
+        StringAssert.Contains(code, "public Buyer Kind { get; set; }");
+        Assert.DoesNotContain("Buyer Kind { get; set; } =", code);
+        StringAssert.Contains(code, "public Shape Home { get; set; } = null!;");
+        Assert.DoesNotContain("Ignored", LastOutput, LastOutput);
+        var problems = NullableProblems();
+        Assert.IsEmpty(problems, string.Join(Environment.NewLine, problems) + Environment.NewLine + code);
+    }
+
+    [TestMethod]
+    public void Create_class_with_built_in_and_project_types_mixed()
+    {
+        WriteProjectTypes();
+
+        Assert.IsTrue(Run("create class Customer with properties Name string, Kind Buyer, Home Shape, Data byte[]"), LastOutput);
+
+        var code = Read("Customer.cs");
+        StringAssert.Contains(code, "public Buyer Kind { get; set; }");
+        StringAssert.Contains(code, "public Shape Home { get; set; } = null!;");
+        StringAssert.Contains(code, "public byte[] Data { get; set; } = global::System.Array.Empty<byte>();");
+        Assert.DoesNotContain("Ignored", LastOutput, LastOutput);
+        Assert.IsEmpty(NullableProblems(), code);
+    }
+
+    [TestMethod]
+    public void Create_class_with_untyped_name_and_project_enum()
+    {
+        WriteProjectTypes();
+
+        // The bare name beside a typed entry is given the type an all-untyped list gives it, not
+        // dropped: dropping it wrote the class without it.
+        Assert.IsTrue(Run("create class Customer with properties Name, Kind Buyer"), LastOutput);
+
+        var code = Read("Customer.cs");
+        StringAssert.Contains(code, "public string Name { get; set; } = string.Empty;");
+        StringAssert.Contains(code, "public Buyer Kind { get; set; }");
+        Assert.DoesNotContain("Ignored", LastOutput, LastOutput);
+        Assert.IsEmpty(NullableProblems(), code);
+    }
+
+    [TestMethod]
+    [DataRow("create class Customer", "Customer.cs")]
+    [DataRow("create record Customer", "Customer.cs")]
+    [DataRow("create static class Registry", "Registry.cs")]
+    public void Wrapped_project_and_dotnet_types_compile_with_no_CS8618(string start, string file)
+    {
+        WriteProjectTypes();
+
+        var properties = start.Contains("static")
+            ? "Main Shape, Created DateTimeOffset"
+            : "Homes List<Shape>, Old Shape[], Spare Shape?, Created DateTimeOffset, Map Dictionary<string, int>, "
+                + "Link System.Uri, Maybe Shape?[], Kinds List<Buyer>, Main Shape";
+        Assert.IsTrue(Run($"{start} with properties {properties}"), LastOutput);
+
+        var code = Read(file);
+        StringAssert.Contains(code, "Main");
+        StringAssert.Contains(code, "Shape Main { get; ");
+        StringAssert.Contains(code, "} = null!;");
+        Assert.DoesNotContain("Ignored", LastOutput, LastOutput);
+        var problems = NullableProblems();
+        Assert.IsEmpty(problems, string.Join(Environment.NewLine, problems) + Environment.NewLine + code);
+        if (!start.Contains("static"))
+        {
+            StringAssert.Contains(code, "Dictionary<string, int> Map");
+            StringAssert.Contains(code, "System.Uri Link");
+            StringAssert.Contains(code, "Maybe { get; ");
+        }
+    }
+
+    [TestMethod]
+    public void A_project_type_in_another_folder_of_the_project_is_accepted()
+    {
+        WriteProjectTypes();
+        Directory.CreateDirectory(Path.Combine(_workspace, "Shop", "Models"));
+        Write(Path.Combine("Models", "Tag.cs"), "namespace Shop.Models;\n\npublic class Tag { }\n");
+
+        Assert.IsTrue(Run("create class Post with properties Title string, Label Shop.Models.Tag"), LastOutput);
+
+        StringAssert.Contains(Read("Post.cs"), "Shop.Models.Tag Label");
+        Assert.IsEmpty(NullableProblems(), Read("Post.cs"));
+    }
+
+    [TestMethod]
+    public void A_modifier_read_as_the_name_asks_for_the_type()
+    {
+        WriteProjectTypes();
+
+        Assert.IsFalse(Run("create class Customer with properties Title string, required Email"), LastOutput);
+
+        StringAssert.Contains(LastOutput, "Did you leave out the type?");
+        Assert.IsFalse(File.Exists(Path.Combine(_workspace, "Shop", "Customer.cs")), LastOutput);
+    }
+
+    [TestMethod]
+    public void A_refusal_with_no_project_leaves_no_generated_folder()
+    {
+        ProjectManager.CurrentProject = null;
+        Directory.Delete(Path.Combine(_workspace, "Shop"), recursive: true);
+
+        Assert.IsFalse(Run("create class Customer with properties Kind Buyr"), LastOutput);
+
+        StringAssert.Contains(LastOutput, "Type 'Buyr' of 'Kind' is not a built-in type");
+        Assert.IsFalse(Directory.Exists(Path.Combine(_workspace, "Generated")), LastOutput);
+    }
+
+    [TestMethod]
+    public void An_untyped_entry_beside_a_typed_one_is_given_string()
+    {
+        Assert.IsTrue(Run("create class Customer with properties Name string, Notes"), LastOutput);
+
+        StringAssert.Contains(Read("Customer.cs"), "public string Notes { get; set; } = string.Empty;");
+        Assert.DoesNotContain("Ignored", LastOutput, LastOutput);
+        Assert.IsEmpty(ProjectErrors());
+    }
+
+    [TestMethod]
+    public void An_unreadable_entry_beside_a_typed_one_is_reported_without_the_relationship_note()
+    {
+        Assert.IsTrue(Run("create class Customer with properties Name string, Price 9.99"), LastOutput);
+
+        StringAssert.Contains(LastOutput, "Ignored 'Price 9.99': it is not a property name followed by its type");
+        Assert.DoesNotContain("Relationships between classes", LastOutput, LastOutput);
+    }
+
+    [TestMethod]
+    public void Create_struct_with_project_class()
+    {
+        WriteProjectTypes();
+
+        Assert.IsTrue(Run("create struct P with properties Owner Shape"), LastOutput);
+
+        var code = Read("P.cs");
+        StringAssert.Contains(code, "public Shape Owner { get; set; }");
+        Assert.DoesNotContain("null!", code);
+        Assert.IsEmpty(ProjectErrors(), code);
+    }
+
+    [TestMethod]
+    public void Create_class_with_unknown_type_is_refused()
+    {
+        WriteProjectTypes();
+
+        Assert.IsFalse(Run("create class Customer with properties Kind Buyr"), LastOutput);
+
+        StringAssert.Contains(LastOutput, "Type 'Buyr' of 'Kind' is not a built-in type and the project does not declare it.");
+        Assert.IsFalse(File.Exists(Path.Combine(_workspace, "Shop", "Customer.cs")), LastOutput);
+    }
+
+    [TestMethod]
+    public void Create_class_with_unknown_type_beside_a_built_in_is_refused()
+    {
+        WriteProjectTypes();
+
+        Assert.IsFalse(Run("create class Customer with properties Name string, Owner Shap"), LastOutput);
+
+        StringAssert.Contains(LastOutput, "Type 'Shap' of 'Owner' is not a built-in type and the project does not declare it.");
+        Assert.IsFalse(File.Exists(Path.Combine(_workspace, "Shop", "Customer.cs")), LastOutput);
+    }
+
+    [TestMethod]
+    public void Create_interface_with_project_class()
+    {
+        WriteProjectTypes();
+
+        Assert.IsTrue(Run("create interface INamed with properties Name string, Owner Shape"), LastOutput);
+
+        var code = Read("INamed.cs");
+        StringAssert.Contains(code, "Shape Owner { get; set; }");
+        StringAssert.Contains(code, "string Name { get; set; }");
+        Assert.DoesNotContain("Ignored", LastOutput, LastOutput);
+        Assert.IsEmpty(ProjectErrors(), code);
+    }
+
+    [TestMethod]
+    public void Create_interface_with_a_dotnet_type()
+    {
+        WriteProjectTypes();
+
+        Assert.IsTrue(Run("create interface IStamped with properties Created DateTimeOffset"), LastOutput);
+
+        StringAssert.Contains(Read("IStamped.cs"), "DateTimeOffset Created { get; set; }");
+        Assert.IsEmpty(ProjectErrors(), Read("IStamped.cs"));
+    }
+
+    [TestMethod]
+    public void Create_interface_with_unknown_type_is_refused()
+    {
+        WriteProjectTypes();
+
+        Assert.IsFalse(Run("create interface INamed with properties Name string, Owner Shap"), LastOutput);
+
+        StringAssert.Contains(LastOutput, "Type 'Shap' of 'Owner' is not a built-in type and the project does not declare it.");
+        Assert.IsFalse(File.Exists(Path.Combine(_workspace, "Shop", "INamed.cs")), LastOutput);
+    }
+
     [TestMethod]
     public void The_class_can_be_created_once_its_base_exists()
     {
@@ -129,6 +418,127 @@ public sealed class CreateClassInProjectTests
         Assert.IsTrue(Run("create class Square inherits Shape1"), LastOutput);
 
         Assert.IsTrue(File.Exists(Path.Combine(_workspace, "Shop", "Square.cs")), LastOutput);
+        Assert.IsEmpty(ProjectErrors());
+    }
+
+    [TestMethod]
+    public void Create_class_implementing_an_interface_starts_its_properties_so_nullable_builds_clean()
+    {
+        WriteProjectTypes();
+        Write("INamed.cs", "namespace Shop;\n\npublic interface INamed { string Title { get; set; } List<string> Tags { get; set; } }\n");
+
+        Assert.IsTrue(Run("create class Doc implements INamed"), LastOutput);
+
+        var code = Read("Doc.cs");
+        StringAssert.Contains(code, "Title { get; set; } = string.Empty;");
+        StringAssert.Contains(code, "Tags { get; set; } = new List<string>();");
+        Assert.IsEmpty(NullableProblems(), code);
+    }
+
+    [TestMethod]
+    public void Implements_on_an_existing_class_starts_its_properties_so_nullable_builds_clean()
+    {
+        WriteProjectTypes();
+        Write("INamed.cs", "namespace Shop;\n\npublic interface INamed { string Title { get; set; } List<string> Tags { get; set; } }\n");
+        Write("Doc.cs", "namespace Shop;\n\npublic class Doc\n{\n}\n");
+
+        Assert.IsTrue(Run("Doc implements INamed"), LastOutput);
+
+        var code = Read("Doc.cs");
+        StringAssert.Contains(code, "Title { get; set; } = string.Empty;");
+        Assert.IsEmpty(NullableProblems(), code);
+    }
+
+    [TestMethod]
+    public void An_interface_is_checked_with_its_project_and_not_reported_as_failed()
+    {
+        // As dotnet new makes it: ImplicitUsings on, so List<string> needs no using.
+        File.WriteAllText(Path.Combine(_workspace, "Shop", "Shop.csproj"),
+            "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><ImplicitUsings>enable</ImplicitUsings></PropertyGroup></Project>");
+
+        Assert.IsTrue(Run("create interface INamed with properties Title string, Tags List<string>"), LastOutput);
+
+        Assert.DoesNotContain("Compilation failed", LastOutput);
+        StringAssert.Contains(LastOutput, "Compiled");
+        Assert.IsTrue(File.Exists(Path.Combine(_workspace, "Shop", "INamed.cs")));
+        Assert.IsEmpty(ProjectErrors());
+    }
+
+    [TestMethod]
+    public void An_interface_that_extends_another_gets_no_member_stubs()
+    {
+        Write("IBase.cs", """
+            namespace Shop;
+
+            public interface IBase
+            {
+                string Name { get; }
+                void Run();
+            }
+            """);
+
+        Assert.IsTrue(Run("create interface IDerived extends IBase with properties Age int"), LastOutput);
+
+        var text = File.ReadAllText(Path.Combine(_workspace, "Shop", "IDerived.cs"));
+        Assert.DoesNotContain("NotImplementedException", text);
+        Assert.DoesNotContain("Run", text);
+        Assert.IsEmpty(ProjectErrors());
+    }
+
+    // A method whose return type is unknown reaches the project compile (CS0246); an unknown
+    // property type is refused earlier, at validation.
+    [TestMethod]
+    public void An_interface_with_a_real_compile_error_is_refused_and_not_written()
+    {
+        Assert.IsFalse(Run("create interface IBad with methods Load returns Nowhere1"), LastOutput);
+
+        StringAssert.Contains(LastOutput, "IBad was not created");
+        StringAssert.Contains(LastOutput, "Nowhere1");
+        Assert.IsFalse(File.Exists(Path.Combine(_workspace, "Shop", "IBad.cs")));
+    }
+
+    // A type that names itself was refused: the probe that binds the list's types declared
+    // __NewTypeProbe, so the new type did not exist yet when its own name was bound.
+    [TestMethod]
+    [DataRow("create class Employee with properties Name string, Manager Employee", "Employee.cs", "public Employee Manager { get; set; } = null!;")]
+    [DataRow("create class Category with properties Name string, Children List<Category>", "Category.cs", "public List<Category> Children { get; set; } = new List<Category>();")]
+    [DataRow("create record Node with properties Next Node?", "Node.cs", "Node? Next { get; ")]
+    public void A_class_whose_property_is_of_its_own_type_compiles(string line, string file, string expected)
+    {
+        WriteProjectTypes();
+
+        Assert.IsTrue(Run(line), LastOutput);
+
+        var code = Read(file);
+        StringAssert.Contains(code, expected, code);
+        Assert.DoesNotContain("not a built-in type", LastOutput, LastOutput);
+        var problems = NullableProblems();
+        Assert.IsEmpty(problems, string.Join(Environment.NewLine, problems) + Environment.NewLine + code);
+    }
+
+    [TestMethod]
+    public void An_interface_whose_property_is_of_its_own_type_compiles()
+    {
+        WriteProjectTypes();
+
+        Assert.IsTrue(Run("create interface INode with properties Next INode"), LastOutput);
+
+        var code = Read("INode.cs");
+        StringAssert.Contains(code, "INode Next { get; set; }");
+        var problems = NullableProblems();
+        Assert.IsEmpty(problems, string.Join(Environment.NewLine, problems) + Environment.NewLine + code);
+    }
+
+    // A struct cannot hold itself by value (CS0523): the project compile refuses it, and nothing is written.
+    [TestMethod]
+    public void A_struct_that_holds_itself_is_refused_and_not_written()
+    {
+        WriteProjectTypes();
+
+        Assert.IsFalse(Run("create struct Cell with properties Next Cell"), LastOutput);
+
+        StringAssert.Contains(LastOutput, "CS0523");
+        Assert.IsFalse(File.Exists(Path.Combine(_workspace, "Shop", "Cell.cs")), LastOutput);
         Assert.IsEmpty(ProjectErrors());
     }
 }

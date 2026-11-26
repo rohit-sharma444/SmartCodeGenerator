@@ -270,7 +270,15 @@ public static class CommandHandlingService
             Methods = command.Methods?.ToList() ?? new List<MethodDefinition>()
         };
 
-        var classErrors = ClassValidator.Validate(classDef);
+        // A type that is not built in must bind in the project, as add property takes it; refused
+        // here, before anything is written, when it does not.
+        if (ProjectTypeRefusal(ctx, out var projectTyped, out var initials) is { } typeError)
+        {
+            Output.Error(typeError);
+            return false;
+        }
+
+        var classErrors = ClassValidator.Validate(classDef, projectTyped);
         if (classErrors.Count > 0)
         {
             foreach (var err in classErrors)
@@ -315,6 +323,15 @@ public static class CommandHandlingService
         {
             Output.Error(propertyError);
             return false;
+        }
+
+        // The initial value add property gives such a property in a project with nullable on
+        // (null! for a class, none for an enum or a struct), so it is not CS8618. A struct's
+        // properties take none (CS8983).
+        if (command.Kind != DeclaredKind.Struct)
+        {
+            foreach (var (property, initial) in initials)
+                property.Initializer ??= initial;
         }
 
         var saved = GenerateAndSave(ctx);
@@ -371,6 +388,114 @@ public static class CommandHandlingService
 
         return null;
     }
+
+    /// <summary>
+    /// Why a property in a create class or create interface list cannot be written because of its
+    /// type, or null. A type <see cref="TypeValidator"/> does not know is parsed and bound in the
+    /// target project as add property binds it (<see cref="TypeResolution.Resolves(string, string, Microsoft.CodeAnalysis.CSharp.Syntax.TypeDeclarationSyntax, Microsoft.CodeAnalysis.CSharp.Syntax.TypeSyntax, out string, out Microsoft.CodeAnalysis.ITypeSymbol?)"/>):
+    /// a class or enum of the project in any of its folders, a .NET type such as DateTimeOffset or
+    /// <c>Dictionary&lt;string, int&gt;</c>, with any <c>?</c>, <c>[]</c> or <c>List&lt;&gt;</c>.
+    /// </summary>
+    /// <param name="ctx">The command and where it runs.</param>
+    /// <param name="projectTyped">The properties whose type was bound so.</param>
+    /// <param name="initials">The initial value add property gives each of them in a project with
+    /// nullable annotations on (<see cref="PropertyInitializers.SafeFor"/> of the bound type).</param>
+    private static string? ProjectTypeRefusal(CommandExecutionContext ctx,
+        out HashSet<PropertyDefinition> projectTyped, out List<(PropertyDefinition Property, string Initial)> initials)
+    {
+        projectTyped = [];
+        initials = [];
+
+        // A missing type is inferred from the name, and a built-in one is checked as before. Each
+        // other type is parsed as add property parses it; null when it is not a C# type at all.
+        var checkedTypes = ctx.Command.Properties
+            .Where(p => !string.IsNullOrWhiteSpace(p.Type) && !TypeValidator.Validate(p.Type).IsValid)
+            .Select(p =>
+            {
+                var written = p.Type.Trim();
+                var type = Microsoft.CodeAnalysis.CSharp.SyntaxFactory.ParseTypeName(written);
+                return (Property: p, Type: !type.ContainsDiagnostics && type.ToString() == written ? type : null);
+            })
+            .ToList();
+
+        if (checkedTypes.Count == 0)
+            return null;
+
+        // ProjectLocator.Resolve makes <workspace>\Generated when there is no project; a refused
+        // command should not leave it behind.
+        var generated = Path.Combine(ctx.WorkspaceRoot, "Generated");
+        var generatedExisted = Directory.Exists(generated);
+
+        // Bound where the new type will be written, in the namespace it will declare, all in one
+        // compilation of the project.
+        var parsed = checkedTypes.Where(c => c.Type is not null).Select(c => c.Type!).ToList();
+        IReadOnlyList<TypeResolution.Resolution> resolutions = [];
+        var nullableOn = false;
+        if (parsed.Count > 0)
+        {
+            var target = ProjectLocator.Resolve(ctx.Command, ctx.CurrentProject, ctx.WorkspaceRoot);
+            // The stub is the new type itself, with its own name and kind, so a property of the type
+            // being created (Manager Employee, Children List<Category>, Next INode) binds to it.
+            var name = ctx.Command.Intent == IntentType.CreateInterface && !string.IsNullOrWhiteSpace(ctx.Command.InterfaceName)
+                ? ctx.Command.InterfaceName
+                : ctx.Command.ClassName;
+            if (string.IsNullOrWhiteSpace(name) || !Microsoft.CodeAnalysis.CSharp.SyntaxFacts.IsValidIdentifier(name))
+                name = "__NewTypeProbe";
+            var kind = ctx.Command.Intent == IntentType.CreateInterface
+                ? "interface"
+                : ctx.Command.Kind switch
+                {
+                    DeclaredKind.Record => "record",
+                    DeclaredKind.Struct => "struct",
+                    _ => "class"
+                };
+            var probeFile = Path.Combine(target.Directory, name + ".cs");
+            var stub = CodeFormatter.Format($"public {kind} {name} {{ }}", ProjectNamespace.For(target.ProjectFile));
+            var probeNode = Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(stub, path: probeFile).GetRoot()
+                .DescendantNodes().OfType<Microsoft.CodeAnalysis.CSharp.Syntax.TypeDeclarationSyntax>().First();
+            nullableOn = PropertyInitializers.ProjectNullable(ctx.WorkspaceRoot, probeFile)
+                is Microsoft.CodeAnalysis.NullableContextOptions.Enable or Microsoft.CodeAnalysis.NullableContextOptions.Annotations;
+            resolutions = TypeResolution.ResolveAll(ctx.WorkspaceRoot, probeFile, probeNode, parsed);
+        }
+
+        var next = 0;
+        foreach (var (property, type) in checkedTypes)
+        {
+            var reason = string.Empty;
+            if (type is not null)
+            {
+                var resolution = resolutions[next++];
+                if (resolution.Resolves)
+                {
+                    projectTyped.Add(property);
+                    if (nullableOn && PropertyInitializers.SafeFor(type, resolution.Bound) is { } initial)
+                        initials.Add((property, initial));
+                    continue;
+                }
+
+                reason = resolution.Reason;
+            }
+
+            if (!generatedExisted && Directory.Exists(generated) && !Directory.EnumerateFileSystemEntries(generated).Any())
+                Directory.Delete(generated);
+
+            // "required Name": the name was left out, so the modifier was read as the name.
+            var hint = ModifierWords.Contains(property.Name)
+                ? " Did you leave out the type?"
+                : reason.IndexOf("Did you mean", StringComparison.Ordinal) is var at and >= 0
+                    ? " " + reason[at..]
+                    : string.Empty;
+            return $"Type '{property.Type}' of '{property.Name}' is not a built-in type and the project does not declare it.{hint}";
+        }
+
+        return null;
+    }
+
+    /// <summary>The words a property list gives before or after a property, never as its name.</summary>
+    private static readonly HashSet<string> ModifierWords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "readonly", "private", "static", "required", "unique",
+    };
 
     /// <summary>The words a validation rule is given in (<c>min length 3</c>, <c>unique</c>).</summary>
     private static readonly System.Text.RegularExpressions.Regex ValidationWords = new(
@@ -509,7 +634,7 @@ public static class CommandHandlingService
     }
 
     /// <summary>
-    /// Says which entries in a property list went nowhere, and where they are handled instead.
+    /// Says which entries in a property list went nowhere: an entry that is not a name and a type.
     /// </summary>
     /// <remarks>
     /// The list is carried on the command rather than re-derived here: it is found in
@@ -530,10 +655,11 @@ public static class CommandHandlingService
                 continue;
             }
 
-            Output.Warning(
-                $"Ignored '{ignored}': only built-in types (string, int, decimal, DateTime and the like, "
-                + "also with ?, [] or in List<>) can be given here. "
-                + "Relationships between classes are set separately — the tool will offer.");
+            // A name and a type is read as a property (a type of the project included), so what is
+            // left is a name with no type ("Email" beside "Name string") or words that are neither.
+            Output.Warning(name == ignored
+                ? $"Ignored '{ignored}': it has no type; give one after the name, as in {ignored} string."
+                : $"Ignored '{ignored}': it is not a property name followed by its type, as in Name string.");
         }
 
         // A method whose parameter list could not be read was left out, not written half-done.
@@ -855,6 +981,13 @@ public static class CommandHandlingService
                 "  It was left as it is: creating it again would replace everything in it."
                 + Environment.NewLine
                 + $"  To start it again, delete class {name} first.");
+            return false;
+        }
+
+        // The same rule for a property's type as create class and add property follow.
+        if (ProjectTypeRefusal(ctx, out _, out _) is { } typeError)
+        {
+            Output.Error(typeError);
             return false;
         }
 
@@ -1332,7 +1465,7 @@ public static class CommandHandlingService
 
     /// <summary>
     /// Generates code for the current command, runs semantic/compile checks,
-    /// and persists the result. Shared by CreateClass and CreateInterface.
+    /// and persists the result. Shared by CreateClass, CreateEnum and CreateInterface.
     /// </summary>
     private static bool GenerateAndSave(CommandExecutionContext ctx)
     {
@@ -1340,7 +1473,7 @@ public static class CommandHandlingService
         if (string.IsNullOrWhiteSpace(code))
             return false;
 
-        if (ctx.Command.Intent is IntentType.CreateClass or IntentType.CreateEnum)
+        if (ctx.Command.Intent is IntentType.CreateClass or IntentType.CreateEnum or IntentType.CreateInterface)
         {
             // Checked beside the rest of its project, which also fills in the members of the
             // interfaces it implements: compiled alone, a project interface was "CS0246 not found".

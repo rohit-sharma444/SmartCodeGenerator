@@ -110,16 +110,19 @@ public sealed class MemberListParseTests
     }
 
     // The ignored-entry report splits the list on commas, which the normaliser had removed, so on
-    // the real command path nothing was ever reported.
+    // the real command path nothing was ever reported. A name and a type that is not built in is
+    // now a property, as add property takes it (the handler binds the type in the project), and a
+    // bare name is given string; an entry that is neither is what is reported.
     [TestMethod]
-    public void A_non_primitive_entry_is_reported_from_the_command_line()
+    public void A_non_primitive_entry_is_read_and_an_unreadable_one_reported_from_the_command_line()
     {
         var command = CommandFront.Parse(
-            "create class Order with properties CustomerId int, Customer Customer", _workspace);
+            "create class Order with properties CustomerId int, Customer Customer, Notes, Price 9.99", _workspace);
 
-        CollectionAssert.AreEqual(new[] { "CustomerId" }, Names(command));
-        Assert.HasCount(1, command.IgnoredProperties);
-        Assert.AreEqual("Customer Customer", command.IgnoredProperties[0]);
+        CollectionAssert.AreEqual(new[] { "CustomerId", "Customer", "Notes" }, Names(command));
+        Assert.AreEqual("Customer", command.Properties[1].Type);
+        Assert.AreEqual("string", command.Properties[2].Type);
+        CollectionAssert.AreEqual(new[] { "Price 9.99" }, command.IgnoredProperties);
     }
 
     // The primitive pattern matched `Email string` inside `Email string?` and `Tags string` inside

@@ -58,7 +58,7 @@ public static class CommandEntityExtractor
                 // rewrote a property called New to Create, manager to Service and entity to Class,
                 // and removed the commas the ignored-entry report splits the list on.
                 var members = MemberListText(rawSentence);
-                ExtractClassName(sentence, command);
+                ExtractClassName(WithoutAddMethodClause(sentence), command);
                 ExtractProperties(members, command);
                 if (command.Properties.Count == 0)
                 {
@@ -81,7 +81,7 @@ public static class CommandEntityExtractor
             case IntentType.CreateInterface:
             {
                 var members = MemberListText(rawSentence);
-                ExtractInterfaceName(sentence, command);
+                ExtractInterfaceName(WithoutAddMethodClause(sentence), command);
                 ExtractProperties(members, command);
                 if (command.Properties.Count == 0)
                     ExtractEnglishProperties(members, command);
@@ -610,22 +610,36 @@ public static class CommandEntityExtractor
         }
     }
 
+    // "create class Order ... and add method Ship to Customer": the name patterns read the "to
+    // Customer" as the class, so the clause is cut off before the name is read.
+    private static string WithoutAddMethodClause(string sentence)
+    {
+        var clause = Regex.Match(sentence,
+            @"\s+and\s+(?:add|create|generate)\s+(?:(?:an?|new)\s+)?(?:abstract\s+)?(?:method|function)\b",
+            RegexOptions.IgnoreCase);
+        return clause.Success ? sentence[..clause.Index] : sentence;
+    }
+
     public static void ExtractMethods(string sentence, ParsedCommand command)
     {
         if (string.IsNullOrWhiteSpace(sentence))
             return;
 
-        var match = Regex.Match(
+        // The methods clause starts outside the property list: "with properties Method string,
+        // Amount decimal" has a property called Method, not the methods "string, Amount decimal".
+        var (sectionStart, sectionLength) = PropertySectionSpan(sentence);
+        var match = Regex.Matches(
             sentence,
             // functions/operations too: the member list is read as typed, so the normaliser no
             // longer rewrites them to methods first.
-            @"\b(?:methods?|functions?|operations?)\b\s+(?<methods>.+)$",
-            RegexOptions.IgnoreCase);
+            @"\b(?:methods?|functions?|operations?)\b\s+(?=\S)",
+            RegexOptions.IgnoreCase)
+            .FirstOrDefault(m => m.Index < sectionStart || m.Index >= sectionStart + sectionLength);
 
-        if (!match.Success)
+        if (match is null)
             return;
 
-        var methodsText = match.Groups["methods"].Value.Trim();
+        var methodsText = sentence[(match.Index + match.Length)..].Trim();
 
         // "methods Save, Load implements IEntity": the clause after the last method belongs to
         // the class. Left in, the last token was "Load implements IEntity" and Load was dropped.
@@ -642,8 +656,28 @@ public static class CommandEntityExtractor
             var cleaned = CleanMethodToken(token);
             if (!TryParseMethod(cleaned, out var method, out var error))
             {
-                command.IgnoredMethods.Add((cleaned, error!));
-                continue;
+                // "add method Ship to Order" inside create class Order: the "to Order" names the
+                // class being created, or another one, which this command cannot change.
+                var target = Regex.Match(cleaned,
+                    @"^(?<entry>.+?)\s+(?:to|for|in|on)\s+(?:the\s+)?(?:class\s+)?(?<name>\w+)$",
+                    RegexOptions.IgnoreCase);
+                if (target.Success
+                    && TryParseMethod(target.Groups["entry"].Value, out method, out error) && method != null)
+                {
+                    var name = target.Groups["name"].Value;
+                    var own = !string.IsNullOrWhiteSpace(command.ClassName) ? command.ClassName : command.InterfaceName;
+                    if (!name.Equals(own, StringComparison.OrdinalIgnoreCase))
+                    {
+                        command.IgnoredMethods.Add((cleaned,
+                            $"it names another class, '{name}'; this command creates '{own}'."));
+                        continue;
+                    }
+                }
+                else
+                {
+                    command.IgnoredMethods.Add((cleaned, error!));
+                    continue;
+                }
             }
 
             if (method == null)
@@ -760,8 +794,8 @@ public static class CommandEntityExtractor
     /// <summary>
     /// A method entry: <c>Name</c>, <c>Name returns T</c>, <c>Name(type name, ...) [returns T]</c> or
     /// <c>Name [returns T] with parameters name type, ...</c>. False, with the reason, when the
-    /// parameter list is there but cannot be read; true with a null method when the entry is no
-    /// method at all.
+    /// entry cannot be read (a parameter list that does not parse, or words that fit no form); true
+    /// with a null method only for an empty entry.
     /// </summary>
     public static bool TryParseMethod(string token, out MethodDefinition? method, out string? error)
     {
@@ -822,9 +856,11 @@ public static class CommandEntityExtractor
                 Name = nameMatch.Groups["name"].Value,
                 ReturnType = "void"
             };
+            return true;
         }
 
-        return true;
+        error = $"'{token}' is not a method; type a name, Name(type param), or Name returns Type.";
+        return false;
     }
 
     private static bool WithParameters(
@@ -1015,10 +1051,22 @@ public static class CommandEntityExtractor
 
         var entries = TypedEntries(propertySection, out var quoted);
 
+        // Any entry read as a name and a type - built in or not - means the list is typed, as
+        // "Name string, Email" or "Name, Kind Buyer" are. A bare name beside one is given the type
+        // the fallback parser gives it (ParseProperty: string), not dropped: dropping it wrote the
+        // class without it. Only a list with no typed entry at all goes to the fallback parser.
         if (entries.Any(e => e.Matches.Count > 0))
         {
             foreach (var (entry, matches) in entries)
             {
+                if (matches.Count == 0 && IsBareName(entry))
+                {
+                    var untyped = ParseProperty(entry);
+                    untyped.Name = Capitalised(untyped.Name);
+                    command.Properties.Add(untyped);
+                    continue;
+                }
+
                 for (var i = 0; i < matches.Count; i++)
                 {
                     var match = matches[i];
@@ -1030,7 +1078,7 @@ public static class CommandEntityExtractor
 
                     // The words before the first name in the entry ("readonly Id int"): the
                     // modifiers apply to it, any other word is reported.
-                    if (i == 0 && ReadWordsBeforeName(entry[..match.Index], property) is { Length: > 0 } before)
+                    if (i == 0 && ReadWordsBeforeName(entry[..match.Groups["name"].Index], property) is { Length: > 0 } before)
                         command.IgnoredWordsBefore.Add((property.Name, before));
 
                     // The words up to the next property in the entry, or to its end.
@@ -1042,21 +1090,16 @@ public static class CommandEntityExtractor
                 }
             }
 
-            // Returning here is what drops `Customer Customer` out of
-            // `CustomerId int, Customer Customer`: one built-in type matched, so the fallback
-            // parser below never runs and the rest of the list is never looked at again. The
-            // entries that go nowhere are recorded so the handler can say so instead of the user
-            // finding out by looking at the file.
+            // A typed entry was read, so the fallback parser below never runs: an entry that is
+            // neither a name and a type nor a bare name goes nowhere. It is recorded so the handler
+            // can say so instead of the user finding out by looking at the file.
             command.IgnoredProperties.AddRange(Ignored(entries, quoted));
 
             return;
         }
 
         // fallback to old logic
-        var tokens = Regex.Split(
-            propertySection,
-            @"\s*(?:,|;|\band\b)\s*",
-            RegexOptions.IgnoreCase);
+        var tokens = SplitEntries(propertySection);
 
         foreach (var token in tokens)
         {
@@ -1069,13 +1112,9 @@ public static class CommandEntityExtractor
     }
 
     /// <summary>
-    /// The entries in a property list that the primitive-matching path threw away.
+    /// The entries in a property list that the typed path could not read: not a built-in typed
+    /// property, a <c>Name Type</c> one or a bare name.
     /// </summary>
-    /// <remarks>
-    /// Reporting one is not the same as emitting it. A property typed as another class cannot
-    /// compile in the single-file check the create-class path runs, so it stays dropped - the
-    /// relationship offer is where the two classes are joined up, and the message says so.
-    /// </remarks>
     public static IReadOnlyList<string> IgnoredPropertyEntries(string sentence)
     {
         var section = ExtractPropertySection(sentence);
@@ -1085,12 +1124,71 @@ public static class CommandEntityExtractor
 
         var entries = TypedEntries(section, out var quoted);
 
-        // No built-in type matched means the fallback parser ran and read the whole list, so
-        // nothing was skipped over.
+        // No typed entry means the fallback parser ran and read the whole list, so nothing was
+        // skipped over.
         return entries.Any(e => e.Matches.Count > 0) ? Ignored(entries, quoted) : [];
     }
 
-    private const string BuiltInType = "(?:string|int|long|bool|decimal|double|float|datetime|guid)";
+    /// <summary>The built-in types a create class list reads: the ones <c>TypeValidator</c> supports
+    /// that name a type on their own (a bare <c>list</c> or <c>array</c> names no element type).</summary>
+    /// <remarks>
+    /// <c>byte[]</c> was reported as "only built-in types (... also with ?, [] or in List&lt;&gt;)",
+    /// because byte was not in this list while add property accepted it.
+    /// </remarks>
+    private const string BuiltInType =
+        "(?:string|int|long|short|byte|sbyte|ushort|uint|ulong|char|bool|boolean|decimal|double|float"
+        + "|datetime|date|timespan|time|guid|uuid)";
+
+    /// <summary>
+    /// A type that is not built in, as a create class list may give it: a name, qualified or not
+    /// (<c>Shape</c>, <c>System.Uri</c>), generic (<c>Dictionary&lt;string, int&gt;</c>, two levels
+    /// deep at most), then any <c>?</c> and <c>[]</c> (<c>Shape?[]</c>). Whether it names a type is
+    /// the handler's to check, by binding it in the project as add property does: the extractor
+    /// does not know the project.
+    /// </summary>
+    private const string NamedType = @"(?:[A-Za-z_][\w.]*(?:<(?:[^<>]|<[^<>]*>)*>)?(?:\?|\[,*\])*)";
+
+    /// <summary>
+    /// An entry with no built-in type that is <c>Name Type</c>, after any modifiers: a property of
+    /// a type add property also takes (<c>Kind Buyer</c>, <c>Home Shape</c>,
+    /// <c>Created DateTimeOffset</c>).
+    /// </summary>
+    /// <remarks>
+    /// A name that is itself a type word (<c>int Id</c>, <c>datetime Created</c>) is the other
+    /// order, which the fallback parser reads; see <see cref="IsTypeWord"/>.
+    /// </remarks>
+    private static readonly Regex NamedTypeEntry = new(
+        $@"^(?:(?:propert(?:y|ies)|fields?|attributes?):?\s+)?(?:(?:readonly|private|static|required)\s+)*(?<name>[A-Za-z_]\w*)\s+(?<type>{NamedType})(?!\S)",
+        RegexOptions.IgnoreCase);
+
+    private static readonly Regex BuiltInTypeWord = new($"^{BuiltInType}$", RegexOptions.IgnoreCase);
+
+    /// <summary>Whether <paramref name="word"/> is a built-in type word or a C# keyword, and so
+    /// cannot be a property's name.</summary>
+    private static bool IsTypeWord(string word) =>
+        BuiltInTypeWord.IsMatch(word)
+        || Microsoft.CodeAnalysis.CSharp.SyntaxFacts.GetKeywordKind(word) != Microsoft.CodeAnalysis.CSharp.SyntaxKind.None;
+
+    /// <summary>
+    /// The entries of a property list: split at a comma, a semicolon or <c>and</c>, but not at a
+    /// comma inside angle brackets, which belongs to a generic type (<c>Dictionary&lt;string, int&gt;</c>).
+    /// </summary>
+    private static string[] SplitEntries(string section)
+    {
+        var shielded = new System.Text.StringBuilder(section.Length);
+        var depth = 0;
+        foreach (var c in section)
+        {
+            depth = c switch { '<' => depth + 1, '>' when depth > 0 => depth - 1, _ => depth };
+            shielded.Append(c == ',' && depth > 0 ? '\u0003' : c);
+        }
+
+        return
+        [
+            .. Regex.Split(shielded.ToString(), @"\s*(?:,|;|\band\b)\s*", RegexOptions.IgnoreCase)
+                .Select(t => t.Replace('\u0003', ','))
+        ];
+    }
 
     /// <summary>
     /// <c>Name type</c>, where the type is built in and may be nullable (<c>string?</c>), an array
@@ -1105,7 +1203,10 @@ public static class CommandEntityExtractor
         $@"(?<!\S)(?<name>[A-Za-z_]\w*)\s+(?<type>{BuiltInType}(?:\?|\[\])?|List<\s*{BuiltInType}\??\s*>)(?!\S)",
         RegexOptions.IgnoreCase);
 
-    /// <summary>The entries of a property list, each with the built-in typed properties in it.</summary>
+    /// <summary>
+    /// The entries of a property list, each with the built-in typed properties in it - or, for an
+    /// entry with none, its <c>Name Type</c> property (<see cref="NamedTypeEntry"/>).
+    /// </summary>
     /// <remarks>
     /// A separator inside quoted text is part of a default value (<c>default "Black and White"</c>),
     /// not the end of an entry, and a name and type inside it are not a property. So each quoted
@@ -1126,11 +1227,15 @@ public static class CommandEntityExtractor
 
         return
         [
-            .. Regex
-                .Split(shielded, @"\s*(?:,|;|\band\b)\s*", RegexOptions.IgnoreCase)
+            .. SplitEntries(shielded)
                 .Select(t => t.Trim())
                 .Where(t => t.Length > 0)
                 .Select(t => (t, (IReadOnlyList<Match>)[.. TypedEntry.Matches(t).Cast<Match>()]))
+                .Select(e => e.Item2.Count > 0
+                    || NamedTypeEntry.Match(e.t) is not { Success: true } named
+                    || IsTypeWord(named.Groups["name"].Value)
+                    ? e
+                    : (e.t, (IReadOnlyList<Match>)[named]))
         ];
     }
 
@@ -1216,38 +1321,59 @@ public static class CommandEntityExtractor
 
     private static IReadOnlyList<string> Ignored(
         List<(string Entry, IReadOnlyList<Match> Matches)> entries, List<string> quoted) =>
-        [.. entries.Where(e => e.Matches.Count == 0).Select(e => Unquoted(e.Entry, quoted))];
+        [.. entries.Where(e => e.Matches.Count == 0 && !IsBareName(e.Entry)).Select(e => Unquoted(e.Entry, quoted))];
+
+    private static readonly Regex BareName = new(@"^[A-Za-z_]\w*$");
+
+    /// <summary>
+    /// Whether <paramref name="entry"/> is one name and nothing else (<c>Email</c>): a property
+    /// whose type the fallback parser infers. A modifier, a list label or a type word alone is not
+    /// a name.
+    /// </summary>
+    private static bool IsBareName(string entry) =>
+        BareName.IsMatch(entry)
+        && ModifierWord(entry) == PropertyModifiers.None
+        && !ListLabel.IsMatch(entry)
+        && !IsTypeWord(entry);
 
     public static string ExtractPropertySection(string sentence)
+    {
+        var (start, length) = PropertySectionSpan(sentence);
+        return sentence.Substring(start, length).Trim().TrimEnd('.', ';');
+    }
+
+    /// <summary>Where the property list is in <paramref name="sentence"/>: its start and its
+    /// length, which is 0 when there is no list.</summary>
+    private static (int Start, int Length) PropertySectionSpan(string sentence)
     {
         var match = Regex.Match(sentence,
                 // "with parameters" starts a method's parameter list, not the properties.
                 @"(?:properties|with properties|with(?!\s+parameters?\b)|having|contains)\s+(.+)", RegexOptions.IgnoreCase);
 
         if (!match.Success)
-            return string.Empty;
+            return (0, 0);
 
+        var start = match.Groups[1].Index;
         var section = match.Groups[1].Value;
 
         // "with property Name string" and "with fields ...": the leading noun is the list's
         // label, not its first entry. It was read as one ("property Name string" ignored, as a
         // non-primitive) - but only when a name and a type follow, so a property that is itself
         // called Property is kept.
-        section = Regex.Replace(section, @"^(?:propert(?:y|ies)|fields?|attributes?)\s+(?=\S+\s+\S)",
-            string.Empty, RegexOptions.IgnoreCase);
+        var label = Regex.Match(section, @"^(?:propert(?:y|ies)|fields?|attributes?)\s+(?=\S+\s+\S)", RegexOptions.IgnoreCase);
+        if (label.Success)
+        {
+            start += label.Length;
+            section = section[label.Length..];
+        }
 
         // The list ends where a methods clause or a base-type clause starts: those are read by
         // ExtractMethods and ExtractInheritanceInfo, and their words were reported as ignored.
         // A clause word inside a quoted default ("extends the base") is part of the value.
         var stopMatch = Regex.Match(WithoutQuotedText(section),
-            $@"\b(?:(?:and\s+)?(?:with\s+)?(?:having\s+)?(?:methods|functions)|(?:with|and)\s+(?:method|function)|{BaseTypeClause})\b",
+            $@"\b(?:(?:and\s+)?(?:with\s+)?(?:having\s+)?(?:methods|functions)|(?:with|and)\s+(?:method|function)|and\s+(?:add|create|generate)\s+(?:(?:an?|new)\s+)?(?:abstract\s+)?(?:method|function)|{BaseTypeClause})\b",
             RegexOptions.IgnoreCase);
-        if (stopMatch.Success)
-        {
-            section = section.Substring(0, stopMatch.Index);
-        }
-
-        return section.Trim().TrimEnd('.', ';');
+        return (start, stopMatch.Success ? stopMatch.Index : section.Length);
     }
 
     public static PropertyDefinition ParseProperty(string token)

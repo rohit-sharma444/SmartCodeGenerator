@@ -28,4 +28,149 @@ public class CommandEntityExtractorTests
         var cmd = CommandEntityExtractor.Extract("create a class called Customer", IntentType.CreateClass, "");
         Assert.AreEqual("create a class called Customer", cmd.OriginalSentence);
     }
+
+    private static ParsedCommand CreateClass(string sentence) =>
+        CommandEntityExtractor.Extract(sentence, IntentType.CreateClass, "");
+
+    [TestMethod]
+    public void And_add_method_to_same_class_is_a_method()
+    {
+        var cmd = CreateClass("create class Order with properties Total decimal and add method Ship to Order");
+        CollectionAssert.AreEqual(new[] { "Total" }, cmd.Properties.Select(p => p.Name).ToArray());
+        CollectionAssert.AreEqual(new[] { "Ship" }, cmd.Methods.Select(m => m.Name).ToArray());
+        Assert.IsEmpty(cmd.IgnoredProperties);
+        Assert.IsEmpty(cmd.IgnoredMethods);
+    }
+
+    [TestMethod]
+    public void And_add_method_without_class()
+    {
+        var cmd = CreateClass("create class Order with properties Name string and add method Ship");
+        CollectionAssert.AreEqual(new[] { "Ship" }, cmd.Methods.Select(m => m.Name).ToArray());
+        Assert.IsEmpty(cmd.IgnoredProperties);
+        Assert.IsEmpty(cmd.IgnoredMethods);
+    }
+
+    [TestMethod]
+    public void And_create_method_with_returns()
+    {
+        var cmd = CreateClass("create class Order with properties Total decimal and create method Total2 returns int to Order");
+        Assert.HasCount(1, cmd.Methods);
+        Assert.AreEqual("Total2", cmd.Methods[0].Name);
+        Assert.AreEqual("int", cmd.Methods[0].ReturnType);
+        Assert.IsEmpty(cmd.IgnoredProperties);
+        Assert.IsEmpty(cmd.IgnoredMethods);
+    }
+
+    [TestMethod]
+    public void And_add_method_to_other_class_is_refused()
+    {
+        var cmd = CreateClass("create class Order with properties Total decimal and add method Ship to Customer");
+        Assert.IsEmpty(cmd.Methods);
+        Assert.HasCount(1, cmd.IgnoredMethods);
+        StringAssert.Contains(cmd.IgnoredMethods[0].Error, "Customer");
+        // CommandFront refuses the whole line before this runs; the backstop names the other class
+        // and gives no advice that is wrong when Customer exists.
+        Assert.DoesNotContain("create it first", cmd.IgnoredMethods[0].Error);
+        Assert.IsNotNull(CommandFront.TwoCommands("create class Order with properties Total decimal and add method Ship to Customer"));
+    }
+
+    // A property called Method was read as the start of a methods list: 'Amount decimal' was
+    // reported as an ignored method and a void String() was written.
+    [TestMethod]
+    [DataRow("create class Payment with properties Method string, Amount decimal", "Method")]
+    [DataRow("create class Payment with properties Function string, Amount decimal", "Function")]
+    [DataRow("create class Payment with properties Operation string, Amount decimal", "Operation")]
+    public void A_property_named_method_is_a_property(string sentence, string name)
+    {
+        var cmd = CreateClass(sentence);
+        CollectionAssert.AreEqual(new[] { name, "Amount" }, cmd.Properties.Select(p => p.Name).ToArray(), sentence);
+        CollectionAssert.AreEqual(new[] { "string", "decimal" }, cmd.Properties.Select(p => p.Type).ToArray(), sentence);
+        Assert.IsEmpty(cmd.Methods, sentence);
+        Assert.IsEmpty(cmd.IgnoredMethods, sentence);
+        Assert.IsEmpty(cmd.IgnoredProperties, sentence);
+    }
+
+    [TestMethod]
+    [DataRow("create class Order with methods Load, Save returns bool", "Load,Save")]
+    [DataRow("create class Employee and add method AddEmployee", "AddEmployee")]
+    [DataRow("create class Order with properties Name string and methods Save, Load implements IEntity", "Save,Load")]
+    [DataRow("create class Order with functions Save", "Save")]
+    [DataRow("create class Order with properties Method string and add method Ship", "Ship")]
+    [DataRow("create class Order with properties Method string, Amount decimal and methods Ship", "Ship")]
+    public void A_methods_clause_is_still_read(string sentence, string methods)
+    {
+        var cmd = CreateClass(sentence);
+        CollectionAssert.AreEqual(methods.Split(','), cmd.Methods.Select(m => m.Name).ToArray(), sentence);
+        Assert.IsEmpty(cmd.IgnoredMethods, sentence);
+    }
+
+    [TestMethod]
+    public void Unreadable_method_entry_is_reported()
+    {
+        var cmd = CreateClass("create class Order with methods Ship quickly now");
+        Assert.IsEmpty(cmd.Methods);
+        Assert.HasCount(1, cmd.IgnoredMethods);
+        Assert.AreEqual("Ship quickly now", cmd.IgnoredMethods[0].Entry);
+    }
+    [TestMethod]
+    [DataRow("Data byte[]", "Data", "byte[]")]
+    [DataRow("Count short", "Count", "short")]
+    [DataRow("Letter char", "Letter", "char")]
+    [DataRow("Size uint?", "Size", "uint?")]
+    [DataRow("Ids List<long>", "Ids", "List<long>")]
+    public void Byte_array_property_is_read(string entry, string name, string type)
+    {
+        var cmd = CreateClass($"create class Note with properties Title string, {entry}");
+        var property = cmd.Properties.SingleOrDefault(p => p.Name == name);
+        Assert.IsNotNull(property, entry);
+        Assert.AreEqual(type, property.Type, entry);
+        Assert.IsEmpty(cmd.IgnoredProperties, entry);
+    }
+
+    [TestMethod]
+    public void Project_type_entry_is_a_property()
+    {
+        var cmd = CreateClass("create class Customer with properties Name string, Kind Buyer, Home Shape");
+        CollectionAssert.AreEqual(new[] { "Name", "Kind", "Home" }, cmd.Properties.Select(p => p.Name).ToArray());
+        CollectionAssert.AreEqual(new[] { "string", "Buyer", "Shape" }, cmd.Properties.Select(p => p.Type).ToArray());
+        Assert.IsEmpty(cmd.IgnoredProperties);
+    }
+
+    [TestMethod]
+    public void Project_type_entry_keeps_wrappers_and_modifiers()
+    {
+        var cmd = CreateClass("create class Customer with properties Name string, Homes List<Shape>, Spare Shape?, Old Shape[], Main Shape required");
+        CollectionAssert.AreEqual(new[] { "string", "List<Shape>", "Shape?", "Shape[]", "Shape" },
+            cmd.Properties.Select(p => p.Type).ToArray());
+        Assert.AreEqual(PropertyModifiers.Required, cmd.Properties[4].Modifiers);
+        Assert.IsEmpty(cmd.IgnoredProperties);
+    }
+
+    [TestMethod]
+    public void Dotnet_and_generic_types_are_properties()
+    {
+        var cmd = CreateClass("create class Note with properties Created DateTimeOffset, Map Dictionary<string, int>, Link System.Uri, Maybe Shape?[], Title string");
+        CollectionAssert.AreEqual(new[] { "Created", "Map", "Link", "Maybe", "Title" }, cmd.Properties.Select(p => p.Name).ToArray());
+        CollectionAssert.AreEqual(new[] { "DateTimeOffset", "Dictionary<string, int>", "System.Uri", "Shape?[]", "string" },
+            cmd.Properties.Select(p => p.Type).ToArray());
+        Assert.IsEmpty(cmd.IgnoredProperties);
+    }
+
+    [TestMethod]
+    public void Type_first_entries_still_go_to_the_fallback()
+    {
+        var cmd = CreateClass("create class Note with properties int Id, Name");
+        CollectionAssert.AreEqual(new[] { "Id", "Name" }, cmd.Properties.Select(p => p.Name).ToArray());
+        Assert.AreEqual("int", cmd.Properties[0].Type);
+    }
+
+    [TestMethod]
+    public void Untyped_list_still_infers()
+    {
+        var cmd = CreateClass("create class Customer with properties Name, Email");
+        CollectionAssert.AreEqual(new[] { "Name", "Email" }, cmd.Properties.Select(p => p.Name).ToArray());
+        Assert.AreEqual("string", cmd.Properties[0].Type);
+        Assert.IsEmpty(cmd.IgnoredProperties);
+    }
 }

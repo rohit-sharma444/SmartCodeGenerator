@@ -4,25 +4,35 @@ using NaturalLanguageBridge;
 namespace CodeGenerator.Tests.Bridge;
 
 /// <summary>
-/// A property whose type is not one of the primitives the extractor knows.
+/// An entry beside a built-in typed property that is not one itself.
 /// </summary>
 /// <remarks>
-/// The primary regex matches primitives and returns the moment one of them does, so anything else
-/// in the list never reaches the fallback parser. It was dropped in silence. It is still dropped —
-/// emitting a property typed as another class fails the isolated per-class compile — but the user
-/// is told, and told where it is handled instead.
+/// The primary regex matches built-in types and returns the moment one of them does, so anything
+/// else in the list never reaches the fallback parser. It was dropped in silence, then reported.
+/// A name and a type of the project (<c>Customer Customer</c>) is now read as a property, as add
+/// property takes it - the handler checks the project declares the type - so what is reported is
+/// an entry that is not a name and a type.
 /// </remarks>
 [TestClass]
 public class IgnoredPropertyTypeTests
 {
     [TestMethod]
-    public void A_non_primitive_entry_beside_a_primitive_one_is_reported()
+    public void A_non_primitive_entry_beside_a_primitive_one_is_not_reported()
+        => Assert.IsEmpty(CommandEntityExtractor.IgnoredPropertyEntries(
+            "create class Order with properties CustomerId int, Customer Customer"));
+
+    [TestMethod]
+    public void An_untyped_name_beside_a_typed_one_is_not_reported()
+        => Assert.IsEmpty(CommandEntityExtractor.IgnoredPropertyEntries(
+            "create class Order with properties CustomerId int, Notes"));
+
+    [TestMethod]
+    public void An_unreadable_entry_beside_a_typed_one_is_reported()
     {
         var ignored = CommandEntityExtractor.IgnoredPropertyEntries(
-            "create class Order with properties CustomerId int, Customer Customer");
+            "create class Order with properties CustomerId int, Price 9.99");
 
-        Assert.HasCount(1, ignored);
-        Assert.Contains("Customer", ignored[0]);
+        CollectionAssert.AreEqual(new[] { "Price 9.99" }, ignored.ToArray());
     }
 
     [TestMethod]
@@ -52,24 +62,26 @@ public class IgnoredPropertyTypeTests
         var command = new ParsedCommand();
 
         CommandEntityExtractor.ExtractProperties(
-            "create class Order with properties CustomerId int, Customer Customer", command);
+            "create class Order with properties CustomerId int, Customer Customer, Notes, Price 9.99", command);
 
-        Assert.HasCount(1, command.Properties);
-        Assert.AreEqual("CustomerId", command.Properties[0].Name);
+        CollectionAssert.AreEqual(new[] { "CustomerId", "Customer", "Notes" }, command.Properties.Select(p => p.Name).ToArray());
+        Assert.AreEqual("Customer", command.Properties[1].Type);
 
-        Assert.HasCount(1, command.IgnoredProperties);
-        Assert.Contains("Customer", command.IgnoredProperties[0]);
+        CollectionAssert.AreEqual(new[] { "Price 9.99" }, command.IgnoredProperties);
     }
 
     [TestMethod]
     public void An_entry_containing_the_word_and_is_not_split_down_the_middle()
     {
         // The separator is `\band\b`, not `and`: a property called Brand would otherwise be cut
-        // into "Br" and "d" and reported as two things nobody typed.
-        var ignored = CommandEntityExtractor.IgnoredPropertyEntries(
-            "create class Product with properties Price decimal, Brand Brand");
+        // into "Br" and "d" and read as two things nobody typed.
+        var command = new ParsedCommand();
 
-        Assert.HasCount(1, ignored);
-        Assert.AreEqual("Brand Brand", ignored[0]);
+        CommandEntityExtractor.ExtractProperties(
+            "create class Product with properties Price decimal, Brand Brand", command);
+
+        CollectionAssert.AreEqual(new[] { "Price", "Brand" }, command.Properties.Select(p => p.Name).ToArray());
+        Assert.AreEqual("Brand", command.Properties[1].Type);
+        Assert.IsEmpty(command.IgnoredProperties);
     }
 }
