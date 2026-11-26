@@ -100,6 +100,20 @@ public sealed class CreateClassCommandTests
         "create class Kart and add property Size int|remove property Name from Shape")]
     [DataRow("create class Kart and add required property Size int to Shape and add method Roll",
         "create class Kart and add method Roll|add required property Size int to Shape")]
+    [DataRow("create class Kart and add property Size int to Shape and add function Roll",
+        "create class Kart and add function Roll|add property Size int to Shape")]
+    [DataRow("create class Kart and add property Size int to Shape and generate method Roll",
+        "create class Kart and generate method Roll|add property Size int to Shape")]
+    [DataRow("create class Kart and add function Roll to Shape and add property Size int",
+        "create class Kart and add property Size int|add function Roll to Shape")]
+    [DataRow("create class Kart and add property Size int to the Shape class and add method Roll",
+        "create class Kart and add method Roll|add property Size int to the Shape class")]
+    [DataRow("create class Kart and add property Size int into Shape and add method Roll",
+        "create class Kart and add method Roll|add property Size int into Shape")]
+    [DataRow("create class Kart, and add property Size int to Shape",
+        "create class Kart|add property Size int to Shape")]
+    [DataRow("create class Kart and add property Note string default \"x, add property y\" and add property Size int to Shape",
+        "create class Kart and add property Note string default \"x, add property y\"|add property Size int to Shape")]
     public void A_member_for_another_class_in_the_middle_is_refused_and_nothing_written(string line, string expected)
     {
         CollectionAssert.AreEqual(expected.Split('|'), CommandFront.TwoCommands(line)?.ToArray(), line);
@@ -113,8 +127,20 @@ public sealed class CreateClassCommandTests
         Assert.IsFalse(Directory.Exists(GeneratedDir) && Directory.GetFiles(GeneratedDir, "*.cs").Length > 0, output);
     }
 
+    // A line that creates nothing was split once, at its first second command, and a second command
+    // with a modifier was not seen at all, so the parser read one half.
+    [TestMethod]
+    [DataRow("remove property Name from Item and add property Title string to Item and rename property Code to Sku in Item",
+        "remove property Name from Item|add property Title string to Item|rename property Code to Sku in Item")]
+    [DataRow("remove property X from Item and add required property Y int to Shape",
+        "remove property X from Item|add required property Y int to Shape")]
+    public void Every_command_in_a_line_that_creates_nothing_is_listed(string line, string expected) =>
+        CollectionAssert.AreEqual(expected.Split('|'), CommandFront.TwoCommands(line)?.ToArray(), line);
+
     [TestMethod]
     [DataRow("create class Kart and add property Size int to Kart and add method Roll")]
+    [DataRow("create class Kart and add property Size int to the Kart class and add function Roll")]
+    [DataRow("create class Kart and add property Note string default \"a, add property b to Shape\"")]
     [DataRow("create class Kart and add required property Size int and add method Roll to Kart")]
     [DataRow("create class Kart : Shape and add property Size int and add property Label string")]
     public void Every_member_for_the_new_class_is_one_command(string line) =>

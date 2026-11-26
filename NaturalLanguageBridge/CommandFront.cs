@@ -840,13 +840,6 @@ public static class CommandFront
     private static bool FromSession(Match match) =>
         !match.Groups["class"].Success && !string.IsNullOrEmpty(SessionContext.CurrentClass);
 
-    // "remove property Name from Item and add property Title string to Item": a second command
-    // after "and", "then" or a comma. One line runs one command, so the line is refused whole.
-    private static readonly Regex SecondCommandRe = new(
-        @"(?:\s+(?:and|then)|\s*[,;])\s+(?:then\s+)?(?<second>(?:add|create|remove|delete|drop|rename|change|retype)\s+"
-        + @"(?:(?:a|an|the|new)\s+)?(?:property|field|method|class|interface|project|validation|value|constructor)\b.*)$",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
-
     private static readonly Regex CreatesAType = new(
         @"\bcreate\s+(?:(?:a|an|new)\s+)?(?:(?:abstract|sealed|static)\s+)*(?:class|record|struct|enum|interface)\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -856,18 +849,22 @@ public static class CommandFront
         + @"(?:property|field|method|function)\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-    // Where a further command starts inside the rest of a line: the separator SecondCommandRe reads,
-    // before a command verb, or before a member addition with modifiers ("and add required property").
+    // "remove property Name from Item and add property Title string to Item": one line runs one
+    // command, so a line that holds more is refused whole, with each command listed.
+    // Where a further command starts inside a line: "and", "then", a comma or a semicolon before a
+    // command verb and what it acts on, or before a member addition with modifiers ("and add required
+    // property"). The verbs and kinds of a member addition are the create-class parser's (MemberTail).
     private static readonly Regex NextCommandRe = new(
-        @"(?:\s+(?:and|then)|\s*[,;])\s+(?:then\s+)?(?=(?:(?:add|create|remove|delete|drop|rename|change|retype)\s+"
-        + @"(?:(?:a|an|the|new)\s+)?(?:property|field|method|class|interface|project|validation|value|constructor)\b"
+        @"(?:\s+(?:and|then)|\s*[,;])\s+(?:then\s+)?(?=(?:(?:add|create|generate|remove|delete|drop|rename|change|retype)\s+"
+        + @"(?:(?:a|an|the|new)\s+)?(?:property|field|method|function|class|interface|project|validation|value|constructor)\b"
         + @"|(?:add|create|generate)\s+(?:(?:a|an|new)\s+)?(?:(?:abstract|readonly|private|static|required)\s+)+"
         + @"(?:property|field|method|function)\b))",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-    // The class a member addition names at its end: "... to [the] [class] Customer".
+    // The class a member addition names at its end: "... to|for|in|on|into [the] [class] Customer [class]".
     private static readonly Regex MemberTarget = new(
-        @"\s(?:to|for|in|on)\s+(?:the\s+)?(?:(?:class|record|struct|interface)\s+)?(?<name>[A-Za-z_]\w*)\s*[.!]?$",
+        @"\s(?:to|for|in|on|into)\s+(?:the\s+)?(?:(?:class|record|struct|interface)\s+)?(?<name>[A-Za-z_]\w*)"
+        + @"(?:\s+(?:class|record|struct|interface))?\s*[.!]?$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     // The name of the type a create command makes, right after its kind word.
@@ -890,47 +887,45 @@ public static class CommandFront
         if (text.StartsWith("build app", StringComparison.OrdinalIgnoreCase))
             return null;
 
-        var match = SecondCommandRe.Match(text);
-        var created = CreatesAType.Match(match.Success ? text[..match.Index] : text);
-        if (created.Success)
-        {
-            var parts = Parts(text);
-            if (parts.Count < 2)
-                return null;
-
-            var name = CreatedName.Match(text, created.Index + created.Length);
-            bool OwnMember(string part)
-            {
-                if (!MemberAddition.IsMatch(part))
-                    return false;
-                var target = MemberTarget.Match(part);
-                return !target.Success
-                    || (name.Success && target.Groups["name"].Value.Equals(name.Groups["name"].Value, StringComparison.OrdinalIgnoreCase));
-            }
-
-            var own = parts.Skip(1).Where(OwnMember).ToList();
-            if (own.Count == parts.Count - 1)
-                return null;
-
-            return [string.Join(" and ", [parts[0], .. own]), .. parts.Skip(1).Where(p => !OwnMember(p))];
-        }
-
-        if (!match.Success || match.Index == 0)
+        var parts = Parts(text);
+        if (parts.Count < 2)
             return null;
 
-        return [text[..match.Index].Trim(), match.Groups["second"].Value.Trim()];
+        var created = CreatesAType.Match(parts[0]);
+        if (!created.Success)
+            return parts;
+
+        var name = CreatedName.Match(parts[0], created.Index + created.Length);
+        bool OwnMember(string part)
+        {
+            if (!MemberAddition.IsMatch(part))
+                return false;
+            var target = MemberTarget.Match(part);
+            return !target.Success
+                || (name.Success && target.Groups["name"].Value.Equals(name.Groups["name"].Value, StringComparison.OrdinalIgnoreCase));
+        }
+
+        var own = parts.Skip(1).Where(OwnMember).ToList();
+        if (own.Count == parts.Count - 1)
+            return null;
+
+        return [string.Join(" and ", [parts[0], .. own]), .. parts.Skip(1).Where(p => !OwnMember(p))];
     }
 
-    /// <summary><paramref name="text"/> cut where each further command starts (<see cref="NextCommandRe"/>).</summary>
+    /// <summary>
+    /// <paramref name="text"/> cut where each further command starts (<see cref="NextCommandRe"/>).
+    /// The cuts are found on the text with each quoted value masked at the same length, so a
+    /// separator inside a default ("x, add property y") is part of the value.
+    /// </summary>
     private static List<string> Parts(string text)
     {
         var parts = new List<string>();
         var start = 0;
-        foreach (Match next in NextCommandRe.Matches(text))
+        foreach (Match next in NextCommandRe.Matches(CommandEntityExtractor.WithQuotedTextMasked(text)))
         {
             if (next.Index == 0)
                 continue;
-            parts.Add(text[start..next.Index].Trim());
+            parts.Add(text[start..next.Index].Trim().TrimEnd(',', ';').TrimEnd());
             start = next.Index + next.Length;
         }
 

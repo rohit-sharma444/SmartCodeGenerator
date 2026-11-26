@@ -217,6 +217,15 @@ public static class CommandEntityExtractor
     internal static string WithoutQuotedText(string text) =>
         QuotedText.Replace(text, m => new string(' ', m.Length));
 
+    /// <summary>
+    /// The text with each quoted value masked at the same length by a character that is neither
+    /// white space nor a word character, for a match whose position cuts the text as typed: with
+    /// <see cref="WithoutQuotedText"/>, a separator's <c>\s+</c> ran into a blanked value next to it,
+    /// and the cut took part of the value.
+    /// </summary>
+    internal static string WithQuotedTextMasked(string text) =>
+        QuotedText.Replace(text, m => new string('\u0003', m.Length));
+
     /// <summary>A member name as typed with its first letter capitalised: new becomes New.</summary>
     internal static string Capitalised(string name) =>
         string.IsNullOrEmpty(name) ? name : char.ToUpperInvariant(name[0]) + name[1..];
@@ -632,7 +641,7 @@ public static class CommandEntityExtractor
     /// create class or create interface line, up to the next <c>and add|create|generate</c> or the end.
     /// </summary>
     private static readonly Regex AddPropertyClause = new(
-        @"\s+(?<and>and)\s+(?:add|create|generate)\s+(?:(?:an?|new)\s+)?"
+        @"\s+and\s+(?:add|create|generate)\s+(?:(?:an?|new)\s+)?"
         + @"(?<mods>(?:(?:readonly|private|static|required)\s+)*)(?:property|field)\s+"
         + @"(?<entry>.+?)(?=\s+and\s+(?:add|create|generate)\b|$)",
         RegexOptions.IgnoreCase);
@@ -651,9 +660,9 @@ public static class CommandEntityExtractor
     /// </remarks>
     private static string ReadAddPropertyClauses(string members, string? ownName, ParsedCommand command)
     {
-        // Matched on the text with each quoted value blanked at the same length, so a clause word
+        // Matched on the text with each quoted value masked at the same length, so a clause word
         // inside a default ("x and add property y") is part of the value; cut from the text as typed.
-        var clauses = AddPropertyClause.Matches(WithoutQuotedText(members)).Cast<Match>().ToList();
+        var clauses = AddPropertyClause.Matches(WithQuotedTextMasked(members)).Cast<Match>().ToList();
         if (clauses.Count == 0)
             return members;
 
@@ -665,15 +674,8 @@ public static class CommandEntityExtractor
             MergeAddedProperties(read, command);
         }
 
-        // Cut from the white space before "and" in the text as typed: in the blanked text a quoted
-        // value just before the clause is spaces too, and `\s+` took it ("default "x" and add ...").
         for (var i = clauses.Count - 1; i >= 0; i--)
-        {
-            var start = clauses[i].Groups["and"].Index;
-            while (start > 0 && char.IsWhiteSpace(members[start - 1]))
-                start--;
-            members = members.Remove(start, clauses[i].Index + clauses[i].Length - start);
-        }
+            members = members.Remove(clauses[i].Index, clauses[i].Length);
         return members;
     }
 

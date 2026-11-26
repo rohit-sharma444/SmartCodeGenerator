@@ -117,6 +117,17 @@ public class CommandFrontParseTests
         Assert.AreEqual("\"x and add property y\"", title.Initializer);
     }
 
+    // The entry of an `and add property` clause ended inside a quoted value that held a separator:
+    // Note lost its default ("Ignored 'default'").
+    [TestMethod]
+    public void A_quoted_default_holding_a_separator_in_an_add_property_clause_is_kept()
+    {
+        var cmd = CommandFront.Parse("create class Kart and add property Note string default \"x, add property y\" and add function Roll", "");
+        Assert.AreEqual("\"x, add property y\"", cmd.Properties.Single().Initializer);
+        CollectionAssert.AreEqual(new[] { "Roll" }, cmd.Methods.Select(m => m.Name).ToArray());
+        Assert.IsEmpty(cmd.IgnoredWords);
+    }
+
     // The quoted value just before the clause was cut with it: Title lost its default.
     [TestMethod]
     [DataRow("create class Tom with properties Title string default \"x\" and add property Size int", "\"x\"")]
