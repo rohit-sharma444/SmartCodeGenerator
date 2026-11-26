@@ -421,4 +421,52 @@ public sealed class CreateClassInProjectTests
         StringAssert.Contains(code, "Title { get; set; } = string.Empty;");
         Assert.IsEmpty(NullableProblems(), code);
     }
+
+    [TestMethod]
+    public void An_interface_is_checked_with_its_project_and_not_reported_as_failed()
+    {
+        // As dotnet new makes it: ImplicitUsings on, so List<string> needs no using.
+        File.WriteAllText(Path.Combine(_workspace, "Shop", "Shop.csproj"),
+            "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><ImplicitUsings>enable</ImplicitUsings></PropertyGroup></Project>");
+
+        Assert.IsTrue(Run("create interface INamed with properties Title string, Tags List<string>"), LastOutput);
+
+        Assert.DoesNotContain("Compilation failed", LastOutput);
+        StringAssert.Contains(LastOutput, "Compiled");
+        Assert.IsTrue(File.Exists(Path.Combine(_workspace, "Shop", "INamed.cs")));
+        Assert.IsEmpty(ProjectErrors());
+    }
+
+    [TestMethod]
+    public void An_interface_that_extends_another_gets_no_member_stubs()
+    {
+        Write("IBase.cs", """
+            namespace Shop;
+
+            public interface IBase
+            {
+                string Name { get; }
+                void Run();
+            }
+            """);
+
+        Assert.IsTrue(Run("create interface IDerived extends IBase with properties Age int"), LastOutput);
+
+        var text = File.ReadAllText(Path.Combine(_workspace, "Shop", "IDerived.cs"));
+        Assert.DoesNotContain("NotImplementedException", text);
+        Assert.DoesNotContain("Run", text);
+        Assert.IsEmpty(ProjectErrors());
+    }
+
+    // A method whose return type is unknown reaches the project compile (CS0246); an unknown
+    // property type is refused earlier, at validation.
+    [TestMethod]
+    public void An_interface_with_a_real_compile_error_is_refused_and_not_written()
+    {
+        Assert.IsFalse(Run("create interface IBad with methods Load returns Nowhere1"), LastOutput);
+
+        StringAssert.Contains(LastOutput, "IBad was not created");
+        StringAssert.Contains(LastOutput, "Nowhere1");
+        Assert.IsFalse(File.Exists(Path.Combine(_workspace, "Shop", "IBad.cs")));
+    }
 }

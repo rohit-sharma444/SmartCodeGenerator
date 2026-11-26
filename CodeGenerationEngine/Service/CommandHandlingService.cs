@@ -1450,7 +1450,7 @@ public static class CommandHandlingService
 
     /// <summary>
     /// Generates code for the current command, runs semantic/compile checks,
-    /// and persists the result. Shared by CreateClass and CreateInterface.
+    /// and persists the result. Shared by CreateClass, CreateEnum and CreateInterface.
     /// </summary>
     private static bool GenerateAndSave(CommandExecutionContext ctx)
     {
@@ -1458,7 +1458,7 @@ public static class CommandHandlingService
         if (string.IsNullOrWhiteSpace(code))
             return false;
 
-        if (ctx.Command.Intent is IntentType.CreateClass or IntentType.CreateEnum)
+        if (ctx.Command.Intent is IntentType.CreateClass or IntentType.CreateEnum or IntentType.CreateInterface)
         {
             // Checked beside the rest of its project, which also fills in the members of the
             // interfaces it implements: compiled alone, a project interface was "CS0246 not found".

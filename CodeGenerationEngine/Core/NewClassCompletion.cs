@@ -37,8 +37,9 @@ public static class NewClassCompletion
         var added = new List<string>();
         var stubs = new List<string>();
 
+        // An interface that extends another declares members only: it takes no stubs.
         if (first.Class is { } decl
-            && first.Model.GetDeclaredSymbol(decl) is INamedTypeSymbol { TypeKind: not TypeKind.Enum } type)
+            && first.Model.GetDeclaredSymbol(decl) is INamedTypeSymbol { TypeKind: not (TypeKind.Enum or TypeKind.Interface) } type)
         {
             foreach (var stub in MemberStubs.Missing(type, first.Model, decl.SpanStart,
                        pos => PropertyInitializers.NullableOn(
