@@ -64,6 +64,98 @@ public class CommandFrontParseTests
         Assert.IsNull(CommandFront.TwoCommands(line), line);
     }
 
+    // An `and add property` part was lost with no message: the line fell to the mapper, which read
+    // no property from it (and, after a colon, no base), or the words stayed in the property list.
+    [TestMethod]
+    [DataRow("create class Kart : Shape and add property Size int", "Shape", "Size:int")]
+    [DataRow("create class Kart inherits Shape and add property Size int", "Shape", "Size:int")]
+    [DataRow("create class Kart and add property Size int", "", "Size:int")]
+    [DataRow("create class Kart and add property Size int to Kart", "", "Size:int")]
+    [DataRow("create class Kart and add a property Size int to the Kart class", "", "Size:int")]
+    [DataRow("create class Kart and create field Size int", "", "Size:int")]
+    [DataRow("create class Kart with properties Name string and add property Size int", "", "Name:string,Size:int")]
+    [DataRow("create class Kart and add property Size int and add property Label string", "", "Size:int,Label:string")]
+    [DataRow("create class Kart : Shape and add property Size int and add method Roll", "Shape", "Size:int")]
+    public void Create_class_and_add_property_reads_the_property(string line, string baseClass, string properties)
+    {
+        var cmd = CommandFront.Parse(line, "");
+        Assert.AreEqual(IntentType.CreateClass, cmd.Intent, line);
+        Assert.AreEqual("Kart", cmd.ClassName, line);
+        Assert.AreEqual(baseClass, cmd.BaseClass ?? string.Empty, line);
+        Assert.AreEqual(properties, string.Join(",", cmd.Properties.Select(p => $"{p.Name}:{p.Type}")), line);
+        Assert.IsEmpty(cmd.IgnoredProperties, line);
+        Assert.IsEmpty(cmd.IgnoredWords, line);
+        Assert.IsEmpty(cmd.IgnoredWordsBefore, line);
+        Assert.IsNull(CommandFront.TwoCommands(line), line);
+        if (line.EndsWith("Roll", StringComparison.Ordinal))
+            CollectionAssert.AreEqual(new[] { "Roll" }, cmd.Methods.Select(m => m.Name).ToArray(), line);
+        else
+            Assert.IsEmpty(cmd.Methods, line);
+    }
+
+    // The class's own name as the property's TYPE is a self-reference, not the target: the strip of
+    // a trailing own name made `Next Node` a string property called Next.
+    [TestMethod]
+    [DataRow("create class Node and add property Next Node", "Next:Node")]
+    [DataRow("create class Node and add property Next Node to Node", "Next:Node")]
+    [DataRow("create class Node and add property Children List<Node> for Node", "Children:List<Node>")]
+    [DataRow("create class Node and add property Size int for Node", "Size:int")]
+    public void Create_class_and_add_property_of_its_own_type(string line, string properties)
+    {
+        var cmd = CommandFront.Parse(line, "");
+        Assert.AreEqual("Node", cmd.ClassName, line);
+        Assert.AreEqual(properties, string.Join(",", cmd.Properties.Select(p => $"{p.Name}:{p.Type}")), line);
+        Assert.IsEmpty(cmd.IgnoredWords, line);
+    }
+
+    [TestMethod]
+    public void A_quoted_default_holding_and_add_property_is_one_value()
+    {
+        var cmd = CommandFront.Parse("create class Tom and add property Title string default \"x and add property y\"", "");
+        var title = cmd.Properties.Single();
+        Assert.AreEqual("Title", title.Name);
+        Assert.AreEqual("\"x and add property y\"", title.Initializer);
+    }
+
+    // The quoted value just before the clause was cut with it: Title lost its default.
+    [TestMethod]
+    [DataRow("create class Tom with properties Title string default \"x\" and add property Size int", "\"x\"")]
+    [DataRow("create class Tom with properties Title string default 'x' and add property Size int", "'x'")]
+    public void A_quoted_default_before_and_add_property_is_kept(string line, string initializer)
+    {
+        var cmd = CommandFront.Parse(line, "");
+        Assert.AreEqual("Title:string,Size:int", string.Join(",", cmd.Properties.Select(p => $"{p.Name}:{p.Type}")), line);
+        Assert.AreEqual(initializer, cmd.Properties[0].Initializer, line);
+        Assert.IsEmpty(cmd.IgnoredWords, line);
+    }
+
+    [TestMethod]
+    public void Create_interface_and_add_method_reads_the_method()
+    {
+        var cmd = CommandFront.Parse("create interface IX and add method Load", "");
+        Assert.AreEqual(IntentType.CreateInterface, cmd.Intent);
+        Assert.AreEqual("IX", cmd.InterfaceName);
+        CollectionAssert.AreEqual(new[] { "Load" }, cmd.Methods.Select(m => m.Name).ToArray());
+    }
+
+    [TestMethod]
+    public void Create_class_and_add_required_property_keeps_the_modifier()
+    {
+        var cmd = CommandFront.Parse("create class Kart and add required property Size int", "");
+        Assert.AreEqual("Size", cmd.Properties.Single().Name);
+        Assert.IsTrue(cmd.Properties.Single().Modifiers.HasFlag(PropertyModifiers.Required));
+    }
+
+    [TestMethod]
+    public void Create_interface_and_add_property_reads_the_property()
+    {
+        var cmd = CommandFront.Parse("create interface IKart and add property Size int", "");
+        Assert.AreEqual(IntentType.CreateInterface, cmd.Intent);
+        Assert.AreEqual("IKart", cmd.InterfaceName);
+        Assert.AreEqual("Size:int", string.Join(",", cmd.Properties.Select(p => $"{p.Name}:{p.Type}")));
+        Assert.IsNull(CommandFront.TwoCommands("create interface IKart and add property Size int"));
+    }
+
     [TestMethod]
     public void Create_a_class_a_inherits()
     {

@@ -124,6 +124,23 @@ public sealed class CreateClassInProjectTests
         Assert.IsEmpty(ProjectErrors(), code);
     }
 
+    // It wrote `public class Kart` with no base and no property, and said nothing.
+    [TestMethod]
+    public void Create_class_with_a_colon_base_and_a_property_writes_both()
+    {
+        Write("Shape1.cs", "namespace Shop;\n\npublic class Shape1 { }\n");
+
+        Assert.IsTrue(Run("create class Kart : Shape1 and add property Size int"), LastOutput);
+        Assert.IsTrue(Run("create class Cart and add property Label string to Cart"), LastOutput);
+
+        var kart = Read("Kart.cs");
+        StringAssert.Contains(kart, "class Kart : Shape1", kart);
+        StringAssert.Contains(kart, "public int Size { get; set; }", kart);
+        StringAssert.Contains(Read("Cart.cs"), "public string Label { get; set; }");
+        Assert.DoesNotContain("Ignored", LastOutput, LastOutput);
+        Assert.IsEmpty(ProjectErrors(), kart);
+    }
+
     // It printed "Ignored method 'Amount decimal'" and wrote a void String() method.
     [TestMethod]
     public void A_property_called_Method_is_written_as_a_property_with_no_warning()

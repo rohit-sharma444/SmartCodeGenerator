@@ -59,11 +59,14 @@ public static class CommandEntityExtractor
                 // and removed the commas the ignored-entry report splits the list on.
                 var members = MemberListText(rawSentence);
                 ExtractClassName(WithoutAddMethodClause(sentence), command);
+                var added = new ParsedCommand { Intent = command.Intent };
+                members = ReadAddPropertyClauses(members, command.ClassName, added);
                 ExtractProperties(members, command);
                 if (command.Properties.Count == 0)
                 {
                     ExtractEnglishProperties(members, command);
                 }
+                MergeAddedProperties(added, command);
                 ExtractMethods(members, command);
                 if (!string.IsNullOrWhiteSpace(command.ClassName))
                     SessionContext.CurrentClass = command.ClassName;
@@ -82,9 +85,12 @@ public static class CommandEntityExtractor
             {
                 var members = MemberListText(rawSentence);
                 ExtractInterfaceName(WithoutAddMethodClause(sentence), command);
+                var added = new ParsedCommand { Intent = command.Intent };
+                members = ReadAddPropertyClauses(members, command.InterfaceName, added);
                 ExtractProperties(members, command);
                 if (command.Properties.Count == 0)
                     ExtractEnglishProperties(members, command);
+                MergeAddedProperties(added, command);
                 ExtractMethods(members, command);
                 if (!string.IsNullOrWhiteSpace(command.InterfaceName))
                     SessionContext.CurrentClass = command.InterfaceName;
@@ -615,9 +621,92 @@ public static class CommandEntityExtractor
     private static string WithoutAddMethodClause(string sentence)
     {
         var clause = Regex.Match(sentence,
-            @"\s+and\s+(?:add|create|generate)\s+(?:(?:an?|new)\s+)?(?:abstract\s+)?(?:method|function)\b",
+            @"\s+and\s+(?:add|create|generate)\s+(?:(?:an?|new)\s+)?"
+            + @"(?:(?:abstract|readonly|private|static|required)\s+)*(?:method|function|property|field)\b",
             RegexOptions.IgnoreCase);
         return clause.Success ? sentence[..clause.Index] : sentence;
+    }
+
+    /// <summary>
+    /// <c>and add [a|an|new] [readonly|private|static|required] property|field &lt;entry&gt;</c> in a
+    /// create class or create interface line, up to the next <c>and add|create|generate</c> or the end.
+    /// </summary>
+    private static readonly Regex AddPropertyClause = new(
+        @"\s+(?<and>and)\s+(?:add|create|generate)\s+(?:(?:an?|new)\s+)?"
+        + @"(?<mods>(?:(?:readonly|private|static|required)\s+)*)(?:property|field)\s+"
+        + @"(?<entry>.+?)(?=\s+and\s+(?:add|create|generate)\b|$)",
+        RegexOptions.IgnoreCase);
+
+    /// <summary>
+    /// Reads each <see cref="AddPropertyClause"/> out of <paramref name="members"/> as a property of
+    /// the type being created, with the same reader as a property list, and returns the text without
+    /// them. A trailing <c>to|in|on|into [class] &lt;own name&gt; [class]</c> (or the bare name, when
+    /// "for" was removed as a filler word) is dropped; another class's name was refused earlier as a
+    /// second command, and if one gets here, it is left on the entry and reported as ignored words.
+    /// </summary>
+    /// <remarks>
+    /// <c>create class Kart : Shape and add property Size int</c> wrote <c>class Kart</c> with no
+    /// property, and in <c>with properties Name string and add property Size int</c> the words were
+    /// read as part of the list ("Ignored 'add' before Size int").
+    /// </remarks>
+    private static string ReadAddPropertyClauses(string members, string? ownName, ParsedCommand command)
+    {
+        // Matched on the text with each quoted value blanked at the same length, so a clause word
+        // inside a default ("x and add property y") is part of the value; cut from the text as typed.
+        var clauses = AddPropertyClause.Matches(WithoutQuotedText(members)).Cast<Match>().ToList();
+        if (clauses.Count == 0)
+            return members;
+
+        foreach (var clause in clauses)
+        {
+            var entry = members.Substring(clause.Groups["entry"].Index, clause.Groups["entry"].Length).Trim().TrimEnd('.', '!');
+            var read = new ParsedCommand { Intent = command.Intent };
+            ExtractProperties("with properties " + (clause.Groups["mods"].Value + WithoutOwnTarget(entry, ownName)).Trim(), read);
+            MergeAddedProperties(read, command);
+        }
+
+        // Cut from the white space before "and" in the text as typed: in the blanked text a quoted
+        // value just before the clause is spaces too, and `\s+` took it ("default "x" and add ...").
+        for (var i = clauses.Count - 1; i >= 0; i--)
+        {
+            var start = clauses[i].Groups["and"].Index;
+            while (start > 0 && char.IsWhiteSpace(members[start - 1]))
+                start--;
+            members = members.Remove(start, clauses[i].Index + clauses[i].Length - start);
+        }
+        return members;
+    }
+
+    /// <summary>
+    /// <paramref name="entry"/> without a trailing <c>to|in|on|into [class] &lt;own name&gt; [class]</c>,
+    /// or without a bare trailing own name (what "for &lt;own name&gt;" leaves after "for" is removed as a
+    /// filler word) when a name and a type are still left: in <c>Next Node</c> on class Node, Node is
+    /// the property's type, not the target.
+    /// </summary>
+    private static string WithoutOwnTarget(string entry, string? ownName)
+    {
+        if (string.IsNullOrWhiteSpace(ownName))
+            return entry;
+
+        var own = Regex.Escape(ownName);
+        var withPreposition = Regex.Match(entry,
+            $@"\s+(?:to|in|on|into)\s+(?:class\s+)?{own}(?:\s+class)?$", RegexOptions.IgnoreCase);
+        if (withPreposition.Success)
+            return entry[..withPreposition.Index];
+
+        var bare = Regex.Match(entry, $@"\s+(?:class\s+)?{own}(?:\s+class)?$", RegexOptions.IgnoreCase);
+        var left = bare.Success ? entry[..bare.Index].Trim() : string.Empty;
+        return bare.Success && left.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length >= 2 ? left : entry;
+    }
+
+    /// <summary>Appends what <see cref="ReadAddPropertyClauses"/> read after the list's own
+    /// properties, so the list's reading (and its untyped fallback) is the same with or without them.</summary>
+    private static void MergeAddedProperties(ParsedCommand added, ParsedCommand command)
+    {
+        command.Properties.AddRange(added.Properties);
+        command.IgnoredProperties.AddRange(added.IgnoredProperties);
+        command.IgnoredWords.AddRange(added.IgnoredWords);
+        command.IgnoredWordsBefore.AddRange(added.IgnoredWordsBefore);
     }
 
     public static void ExtractMethods(string sentence, ParsedCommand command)
