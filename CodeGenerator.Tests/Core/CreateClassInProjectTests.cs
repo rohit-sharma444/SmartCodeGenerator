@@ -124,6 +124,20 @@ public sealed class CreateClassInProjectTests
         Assert.IsEmpty(ProjectErrors(), code);
     }
 
+    // It printed "Ignored method 'Amount decimal'" and wrote a void String() method.
+    [TestMethod]
+    public void A_property_called_Method_is_written_as_a_property_with_no_warning()
+    {
+        Assert.IsTrue(Run("create class Payment with properties Method string, Amount decimal"), LastOutput);
+
+        var code = Read("Payment.cs");
+        StringAssert.Contains(code, "public string Method { get; set; }", code);
+        StringAssert.Contains(code, "public decimal Amount { get; set; }", code);
+        Assert.DoesNotContain("String()", code, code);
+        Assert.DoesNotContain("Ignored", LastOutput, LastOutput);
+        Assert.IsEmpty(ProjectErrors(), code);
+    }
+
     [TestMethod]
     public void Create_class_with_base_and_interface_writes_both_in_order()
     {

@@ -625,17 +625,21 @@ public static class CommandEntityExtractor
         if (string.IsNullOrWhiteSpace(sentence))
             return;
 
-        var match = Regex.Match(
+        // The methods clause starts outside the property list: "with properties Method string,
+        // Amount decimal" has a property called Method, not the methods "string, Amount decimal".
+        var (sectionStart, sectionLength) = PropertySectionSpan(sentence);
+        var match = Regex.Matches(
             sentence,
             // functions/operations too: the member list is read as typed, so the normaliser no
             // longer rewrites them to methods first.
-            @"\b(?:methods?|functions?|operations?)\b\s+(?<methods>.+)$",
-            RegexOptions.IgnoreCase);
+            @"\b(?:methods?|functions?|operations?)\b\s+(?=\S)",
+            RegexOptions.IgnoreCase)
+            .FirstOrDefault(m => m.Index < sectionStart || m.Index >= sectionStart + sectionLength);
 
-        if (!match.Success)
+        if (match is null)
             return;
 
-        var methodsText = match.Groups["methods"].Value.Trim();
+        var methodsText = sentence[(match.Index + match.Length)..].Trim();
 
         // "methods Save, Load implements IEntity": the clause after the last method belongs to
         // the class. Left in, the last token was "Load implements IEntity" and Load was dropped.
@@ -1334,21 +1338,34 @@ public static class CommandEntityExtractor
 
     public static string ExtractPropertySection(string sentence)
     {
+        var (start, length) = PropertySectionSpan(sentence);
+        return sentence.Substring(start, length).Trim().TrimEnd('.', ';');
+    }
+
+    /// <summary>Where the property list is in <paramref name="sentence"/>: its start and its
+    /// length, which is 0 when there is no list.</summary>
+    private static (int Start, int Length) PropertySectionSpan(string sentence)
+    {
         var match = Regex.Match(sentence,
                 // "with parameters" starts a method's parameter list, not the properties.
                 @"(?:properties|with properties|with(?!\s+parameters?\b)|having|contains)\s+(.+)", RegexOptions.IgnoreCase);
 
         if (!match.Success)
-            return string.Empty;
+            return (0, 0);
 
+        var start = match.Groups[1].Index;
         var section = match.Groups[1].Value;
 
         // "with property Name string" and "with fields ...": the leading noun is the list's
         // label, not its first entry. It was read as one ("property Name string" ignored, as a
         // non-primitive) - but only when a name and a type follow, so a property that is itself
         // called Property is kept.
-        section = Regex.Replace(section, @"^(?:propert(?:y|ies)|fields?|attributes?)\s+(?=\S+\s+\S)",
-            string.Empty, RegexOptions.IgnoreCase);
+        var label = Regex.Match(section, @"^(?:propert(?:y|ies)|fields?|attributes?)\s+(?=\S+\s+\S)", RegexOptions.IgnoreCase);
+        if (label.Success)
+        {
+            start += label.Length;
+            section = section[label.Length..];
+        }
 
         // The list ends where a methods clause or a base-type clause starts: those are read by
         // ExtractMethods and ExtractInheritanceInfo, and their words were reported as ignored.
@@ -1356,12 +1373,7 @@ public static class CommandEntityExtractor
         var stopMatch = Regex.Match(WithoutQuotedText(section),
             $@"\b(?:(?:and\s+)?(?:with\s+)?(?:having\s+)?(?:methods|functions)|(?:with|and)\s+(?:method|function)|and\s+(?:add|create|generate)\s+(?:(?:an?|new)\s+)?(?:abstract\s+)?(?:method|function)|{BaseTypeClause})\b",
             RegexOptions.IgnoreCase);
-        if (stopMatch.Success)
-        {
-            section = section.Substring(0, stopMatch.Index);
-        }
-
-        return section.Trim().TrimEnd('.', ';');
+        return (start, stopMatch.Success ? stopMatch.Index : section.Length);
     }
 
     public static PropertyDefinition ParseProperty(string token)

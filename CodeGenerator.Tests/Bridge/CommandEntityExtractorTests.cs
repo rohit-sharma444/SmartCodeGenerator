@@ -75,6 +75,36 @@ public class CommandEntityExtractorTests
         Assert.IsNotNull(CommandFront.TwoCommands("create class Order with properties Total decimal and add method Ship to Customer"));
     }
 
+    // A property called Method was read as the start of a methods list: 'Amount decimal' was
+    // reported as an ignored method and a void String() was written.
+    [TestMethod]
+    [DataRow("create class Payment with properties Method string, Amount decimal", "Method")]
+    [DataRow("create class Payment with properties Function string, Amount decimal", "Function")]
+    [DataRow("create class Payment with properties Operation string, Amount decimal", "Operation")]
+    public void A_property_named_method_is_a_property(string sentence, string name)
+    {
+        var cmd = CreateClass(sentence);
+        CollectionAssert.AreEqual(new[] { name, "Amount" }, cmd.Properties.Select(p => p.Name).ToArray(), sentence);
+        CollectionAssert.AreEqual(new[] { "string", "decimal" }, cmd.Properties.Select(p => p.Type).ToArray(), sentence);
+        Assert.IsEmpty(cmd.Methods, sentence);
+        Assert.IsEmpty(cmd.IgnoredMethods, sentence);
+        Assert.IsEmpty(cmd.IgnoredProperties, sentence);
+    }
+
+    [TestMethod]
+    [DataRow("create class Order with methods Load, Save returns bool", "Load,Save")]
+    [DataRow("create class Employee and add method AddEmployee", "AddEmployee")]
+    [DataRow("create class Order with properties Name string and methods Save, Load implements IEntity", "Save,Load")]
+    [DataRow("create class Order with functions Save", "Save")]
+    [DataRow("create class Order with properties Method string and add method Ship", "Ship")]
+    [DataRow("create class Order with properties Method string, Amount decimal and methods Ship", "Ship")]
+    public void A_methods_clause_is_still_read(string sentence, string methods)
+    {
+        var cmd = CreateClass(sentence);
+        CollectionAssert.AreEqual(methods.Split(','), cmd.Methods.Select(m => m.Name).ToArray(), sentence);
+        Assert.IsEmpty(cmd.IgnoredMethods, sentence);
+    }
+
     [TestMethod]
     public void Unreadable_method_entry_is_reported()
     {
