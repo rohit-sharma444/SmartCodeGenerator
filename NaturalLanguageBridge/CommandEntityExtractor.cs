@@ -1047,9 +1047,12 @@ public static class CommandEntityExtractor
 
         var entries = TypedEntries(propertySection, out var quoted);
 
-        if (entries.Any(e => e.BuiltIn))
+        // Any entry read as a name and a type - built in or not - means the list is typed, as
+        // "Name string, Email" or "Name, Kind Buyer" are: an untyped entry beside one is reported.
+        // Only a list with no typed entry at all goes to the fallback parser, which infers types.
+        if (entries.Any(e => e.Matches.Count > 0))
         {
-            foreach (var (entry, matches, _) in entries)
+            foreach (var (entry, matches) in entries)
             {
                 for (var i = 0; i < matches.Count; i++)
                 {
@@ -1074,20 +1077,16 @@ public static class CommandEntityExtractor
                 }
             }
 
-            // One built-in type matched, so the fallback parser below never runs: an entry that is
-            // neither a built-in typed property nor a `Name Type` one (a type of the project, which
-            // the handler checks) goes nowhere. It is recorded so the handler can say so instead
-            // of the user finding out by looking at the file.
+            // A typed entry was read, so the fallback parser below never runs: an entry that is not
+            // a name and a type goes nowhere. It is recorded so the handler can say so instead of
+            // the user finding out by looking at the file.
             command.IgnoredProperties.AddRange(Ignored(entries, quoted));
 
             return;
         }
 
         // fallback to old logic
-        var tokens = Regex.Split(
-            propertySection,
-            @"\s*(?:,|;|\band\b)\s*",
-            RegexOptions.IgnoreCase);
+        var tokens = SplitEntries(propertySection);
 
         foreach (var token in tokens)
         {
@@ -1112,9 +1111,9 @@ public static class CommandEntityExtractor
 
         var entries = TypedEntries(section, out var quoted);
 
-        // No built-in type matched means the fallback parser ran and read the whole list, so
-        // nothing was skipped over.
-        return entries.Any(e => e.BuiltIn) ? Ignored(entries, quoted) : [];
+        // No typed entry means the fallback parser ran and read the whole list, so nothing was
+        // skipped over.
+        return entries.Any(e => e.Matches.Count > 0) ? Ignored(entries, quoted) : [];
     }
 
     /// <summary>The built-in types a create class list reads: the ones <c>TypeValidator</c> supports
@@ -1128,19 +1127,55 @@ public static class CommandEntityExtractor
         + "|datetime|date|timespan|time|guid|uuid)";
 
     /// <summary>
-    /// A type that is not built in, as a create class list may give it: a name, made nullable
-    /// (<c>Shape?</c>), an array (<c>Shape[]</c>) or a list (<c>List&lt;Shape&gt;</c>). Whether the
-    /// project declares it is the handler's to check: the extractor does not know the project.
+    /// A type that is not built in, as a create class list may give it: a name, qualified or not
+    /// (<c>Shape</c>, <c>System.Uri</c>), generic (<c>Dictionary&lt;string, int&gt;</c>, two levels
+    /// deep at most), then any <c>?</c> and <c>[]</c> (<c>Shape?[]</c>). Whether it names a type is
+    /// the handler's to check, by binding it in the project as add property does: the extractor
+    /// does not know the project.
     /// </summary>
-    private const string NamedType = @"(?:List<\s*[A-Za-z_]\w*\??\s*>|[A-Za-z_]\w*(?:\?|\[\])?)";
+    private const string NamedType = @"(?:[A-Za-z_][\w.]*(?:<(?:[^<>]|<[^<>]*>)*>)?(?:\?|\[,*\])*)";
 
     /// <summary>
     /// An entry with no built-in type that is <c>Name Type</c>, after any modifiers: a property of
-    /// a type the project may declare (<c>Kind Buyer</c>, <c>Home Shape</c>), as add property takes.
+    /// a type add property also takes (<c>Kind Buyer</c>, <c>Home Shape</c>,
+    /// <c>Created DateTimeOffset</c>).
     /// </summary>
+    /// <remarks>
+    /// A name that is itself a type word (<c>int Id</c>, <c>datetime Created</c>) is the other
+    /// order, which the fallback parser reads; see <see cref="IsTypeWord"/>.
+    /// </remarks>
     private static readonly Regex NamedTypeEntry = new(
         $@"^(?:(?:propert(?:y|ies)|fields?|attributes?):?\s+)?(?:(?:readonly|private|static|required)\s+)*(?<name>[A-Za-z_]\w*)\s+(?<type>{NamedType})(?!\S)",
         RegexOptions.IgnoreCase);
+
+    private static readonly Regex BuiltInTypeWord = new($"^{BuiltInType}$", RegexOptions.IgnoreCase);
+
+    /// <summary>Whether <paramref name="word"/> is a built-in type word or a C# keyword, and so
+    /// cannot be a property's name.</summary>
+    private static bool IsTypeWord(string word) =>
+        BuiltInTypeWord.IsMatch(word)
+        || Microsoft.CodeAnalysis.CSharp.SyntaxFacts.GetKeywordKind(word) != Microsoft.CodeAnalysis.CSharp.SyntaxKind.None;
+
+    /// <summary>
+    /// The entries of a property list: split at a comma, a semicolon or <c>and</c>, but not at a
+    /// comma inside angle brackets, which belongs to a generic type (<c>Dictionary&lt;string, int&gt;</c>).
+    /// </summary>
+    private static string[] SplitEntries(string section)
+    {
+        var shielded = new System.Text.StringBuilder(section.Length);
+        var depth = 0;
+        foreach (var c in section)
+        {
+            depth = c switch { '<' => depth + 1, '>' when depth > 0 => depth - 1, _ => depth };
+            shielded.Append(c == ',' && depth > 0 ? '\u0003' : c);
+        }
+
+        return
+        [
+            .. Regex.Split(shielded.ToString(), @"\s*(?:,|;|\band\b)\s*", RegexOptions.IgnoreCase)
+                .Select(t => t.Replace('\u0003', ','))
+        ];
+    }
 
     /// <summary>
     /// <c>Name type</c>, where the type is built in and may be nullable (<c>string?</c>), an array
@@ -1157,8 +1192,7 @@ public static class CommandEntityExtractor
 
     /// <summary>
     /// The entries of a property list, each with the built-in typed properties in it - or, for an
-    /// entry with none, its <c>Name Type</c> property (<see cref="NamedTypeEntry"/>); BuiltIn says
-    /// which.
+    /// entry with none, its <c>Name Type</c> property (<see cref="NamedTypeEntry"/>).
     /// </summary>
     /// <remarks>
     /// A separator inside quoted text is part of a default value (<c>default "Black and White"</c>),
@@ -1167,7 +1201,7 @@ public static class CommandEntityExtractor
     /// entries keep the markers, and <paramref name="quoted"/> holds the values they stand for
     /// (<see cref="Unquoted"/> puts them back). A quote left open matches nothing and shields nothing.
     /// </remarks>
-    private static List<(string Entry, IReadOnlyList<Match> Matches, bool BuiltIn)> TypedEntries(
+    private static List<(string Entry, IReadOnlyList<Match> Matches)> TypedEntries(
         string section, out List<string> quoted)
     {
         var kept = new List<string>();
@@ -1180,16 +1214,15 @@ public static class CommandEntityExtractor
 
         return
         [
-            .. Regex
-                .Split(shielded, @"\s*(?:,|;|\band\b)\s*", RegexOptions.IgnoreCase)
+            .. SplitEntries(shielded)
                 .Select(t => t.Trim())
                 .Where(t => t.Length > 0)
                 .Select(t => (t, (IReadOnlyList<Match>)[.. TypedEntry.Matches(t).Cast<Match>()]))
                 .Select(e => e.Item2.Count > 0
-                    ? (e.t, e.Item2, true)
-                    : NamedTypeEntry.Match(e.t) is { Success: true } named
-                        ? (e.t, (IReadOnlyList<Match>)[named], false)
-                        : (e.t, e.Item2, false))
+                    || NamedTypeEntry.Match(e.t) is not { Success: true } named
+                    || IsTypeWord(named.Groups["name"].Value)
+                    ? e
+                    : (e.t, (IReadOnlyList<Match>)[named]))
         ];
     }
 
@@ -1274,7 +1307,7 @@ public static class CommandEntityExtractor
     }
 
     private static IReadOnlyList<string> Ignored(
-        List<(string Entry, IReadOnlyList<Match> Matches, bool BuiltIn)> entries, List<string> quoted) =>
+        List<(string Entry, IReadOnlyList<Match> Matches)> entries, List<string> quoted) =>
         [.. entries.Where(e => e.Matches.Count == 0).Select(e => Unquoted(e.Entry, quoted))];
 
     public static string ExtractPropertySection(string sentence)

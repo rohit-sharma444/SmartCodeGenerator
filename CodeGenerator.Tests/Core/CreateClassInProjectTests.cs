@@ -58,10 +58,16 @@ public sealed class CreateClassInProjectTests
 
     private void Write(string name, string text) => File.WriteAllText(Path.Combine(_workspace, "Shop", name), text);
 
+    /// <summary>The project's files, with the SDK's implicit usings as a project with
+    /// ImplicitUsings on gets them.</summary>
+    private IEnumerable<(string, string)> ProjectSources(string prefix = "") =>
+        Directory.GetFiles(Path.Combine(_workspace, "Shop"), "*.cs", SearchOption.AllDirectories)
+            .Select(f => (f, prefix + File.ReadAllText(f)))
+            .Append(("GlobalUsings.g.cs", "global using System; global using System.Collections.Generic; global using System.Linq;"));
+
     private string[] ProjectErrors() =>
     [
-        .. Compiler.CompileSources(Directory.GetFiles(Path.Combine(_workspace, "Shop"), "*.cs")
-                .Select(f => (f, File.ReadAllText(f))))
+        .. Compiler.CompileSources(ProjectSources())
             .Diagnostics.Where(d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error)
             .Select(d => d.ToString())
     ];
@@ -159,8 +165,7 @@ public sealed class CreateClassInProjectTests
     /// <summary>The project's files compiled with nullable on: its errors and its CS8618 warnings.</summary>
     private string[] NullableProblems() =>
     [
-        .. Compiler.CompileSources(Directory.GetFiles(Path.Combine(_workspace, "Shop"), "*.cs")
-                .Select(f => (f, "#nullable enable\n" + File.ReadAllText(f))))
+        .. Compiler.CompileSources(ProjectSources("#nullable enable\n"))
             .Diagnostics.Where(d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error || d.Id == "CS8618")
             .Select(d => d.ToString())
     ];
@@ -168,7 +173,7 @@ public sealed class CreateClassInProjectTests
     private void WriteProjectTypes()
     {
         File.WriteAllText(Path.Combine(_workspace, "Shop", "Shop.csproj"),
-            "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><Nullable>enable</Nullable></PropertyGroup></Project>");
+            "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings></PropertyGroup></Project>");
         Write("Buyer.cs", "namespace Shop;\n\npublic enum Buyer { Retail }\n");
         Write("Shape.cs", "namespace Shop;\n\npublic class Shape { }\n");
     }
@@ -211,11 +216,79 @@ public sealed class CreateClassInProjectTests
     {
         WriteProjectTypes();
 
+        // A typed entry makes the list a typed one, as "Name, Age int" always was: the untyped
+        // name is reported, not given an inferred type.
         Assert.IsTrue(Run("create class Customer with properties Name, Kind Buyer"), LastOutput);
 
         var code = Read("Customer.cs");
         StringAssert.Contains(code, "public Buyer Kind { get; set; }");
+        StringAssert.Contains(LastOutput, "Ignored 'Name': it has no type");
         Assert.IsEmpty(NullableProblems(), code);
+    }
+
+    [TestMethod]
+    [DataRow("create class Customer", "Customer.cs")]
+    [DataRow("create record Customer", "Customer.cs")]
+    [DataRow("create static class Registry", "Registry.cs")]
+    public void Wrapped_project_and_dotnet_types_compile_with_no_CS8618(string start, string file)
+    {
+        WriteProjectTypes();
+
+        var properties = start.Contains("static")
+            ? "Main Shape, Created DateTimeOffset"
+            : "Homes List<Shape>, Old Shape[], Spare Shape?, Created DateTimeOffset, Map Dictionary<string, int>, "
+                + "Link System.Uri, Maybe Shape?[], Kinds List<Buyer>, Main Shape";
+        Assert.IsTrue(Run($"{start} with properties {properties}"), LastOutput);
+
+        var code = Read(file);
+        StringAssert.Contains(code, "Main");
+        StringAssert.Contains(code, "Shape Main { get; ");
+        StringAssert.Contains(code, "} = null!;");
+        Assert.DoesNotContain("Ignored", LastOutput, LastOutput);
+        var problems = NullableProblems();
+        Assert.IsEmpty(problems, string.Join(Environment.NewLine, problems) + Environment.NewLine + code);
+        if (!start.Contains("static"))
+        {
+            StringAssert.Contains(code, "Dictionary<string, int> Map");
+            StringAssert.Contains(code, "System.Uri Link");
+            StringAssert.Contains(code, "Maybe { get; ");
+        }
+    }
+
+    [TestMethod]
+    public void A_project_type_in_another_folder_of_the_project_is_accepted()
+    {
+        WriteProjectTypes();
+        Directory.CreateDirectory(Path.Combine(_workspace, "Shop", "Models"));
+        Write(Path.Combine("Models", "Tag.cs"), "namespace Shop.Models;\n\npublic class Tag { }\n");
+
+        Assert.IsTrue(Run("create class Post with properties Title string, Label Shop.Models.Tag"), LastOutput);
+
+        StringAssert.Contains(Read("Post.cs"), "Shop.Models.Tag Label");
+        Assert.IsEmpty(NullableProblems(), Read("Post.cs"));
+    }
+
+    [TestMethod]
+    public void A_modifier_read_as_the_name_asks_for_the_type()
+    {
+        WriteProjectTypes();
+
+        Assert.IsFalse(Run("create class Customer with properties Title string, required Email"), LastOutput);
+
+        StringAssert.Contains(LastOutput, "Did you leave out the type?");
+        Assert.IsFalse(File.Exists(Path.Combine(_workspace, "Shop", "Customer.cs")), LastOutput);
+    }
+
+    [TestMethod]
+    public void A_refusal_with_no_project_leaves_no_generated_folder()
+    {
+        ProjectManager.CurrentProject = null;
+        Directory.Delete(Path.Combine(_workspace, "Shop"), recursive: true);
+
+        Assert.IsFalse(Run("create class Customer with properties Kind Buyr"), LastOutput);
+
+        StringAssert.Contains(LastOutput, "Type 'Buyr' of 'Kind' is not a built-in type");
+        Assert.IsFalse(Directory.Exists(Path.Combine(_workspace, "Generated")), LastOutput);
     }
 
     [TestMethod]
@@ -274,6 +347,17 @@ public sealed class CreateClassInProjectTests
         StringAssert.Contains(code, "string Name { get; set; }");
         Assert.DoesNotContain("Ignored", LastOutput, LastOutput);
         Assert.IsEmpty(ProjectErrors(), code);
+    }
+
+    [TestMethod]
+    public void Create_interface_with_a_dotnet_type()
+    {
+        WriteProjectTypes();
+
+        Assert.IsTrue(Run("create interface IStamped with properties Created DateTimeOffset"), LastOutput);
+
+        StringAssert.Contains(Read("IStamped.cs"), "DateTimeOffset Created { get; set; }");
+        Assert.IsEmpty(ProjectErrors(), Read("IStamped.cs"));
     }
 
     [TestMethod]

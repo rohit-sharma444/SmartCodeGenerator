@@ -115,6 +115,24 @@ public class CommandEntityExtractorTests
     }
 
     [TestMethod]
+    public void Dotnet_and_generic_types_are_properties()
+    {
+        var cmd = CreateClass("create class Note with properties Created DateTimeOffset, Map Dictionary<string, int>, Link System.Uri, Maybe Shape?[], Title string");
+        CollectionAssert.AreEqual(new[] { "Created", "Map", "Link", "Maybe", "Title" }, cmd.Properties.Select(p => p.Name).ToArray());
+        CollectionAssert.AreEqual(new[] { "DateTimeOffset", "Dictionary<string, int>", "System.Uri", "Shape?[]", "string" },
+            cmd.Properties.Select(p => p.Type).ToArray());
+        Assert.IsEmpty(cmd.IgnoredProperties);
+    }
+
+    [TestMethod]
+    public void Type_first_entries_still_go_to_the_fallback()
+    {
+        var cmd = CreateClass("create class Note with properties int Id, Name");
+        CollectionAssert.AreEqual(new[] { "Id", "Name" }, cmd.Properties.Select(p => p.Name).ToArray());
+        Assert.AreEqual("int", cmd.Properties[0].Type);
+    }
+
+    [TestMethod]
     public void Untyped_list_still_infers()
     {
         var cmd = CreateClass("create class Customer with properties Name, Email");

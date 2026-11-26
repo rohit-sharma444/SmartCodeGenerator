@@ -270,9 +270,9 @@ public static class CommandHandlingService
             Methods = command.Methods?.ToList() ?? new List<MethodDefinition>()
         };
 
-        // A type that is not built in must be one the project declares, as add property takes it;
-        // refused here, before anything is written, when the project does not declare it.
-        if (ProjectTypeRefusal(ctx, out var projectTyped, out var referenceTyped) is { } typeError)
+        // A type that is not built in must bind in the project, as add property takes it; refused
+        // here, before anything is written, when it does not.
+        if (ProjectTypeRefusal(ctx, out var projectTyped, out var initials) is { } typeError)
         {
             Output.Error(typeError);
             return false;
@@ -325,13 +325,13 @@ public static class CommandHandlingService
             return false;
         }
 
-        // The initial value add property gives a property of a project class, record or interface
-        // in a project with nullable on: it starts as null until it is set (CS8618 otherwise). An
-        // enum or a struct needs none, and a struct's properties take none (CS8983).
+        // The initial value add property gives such a property in a project with nullable on
+        // (null! for a class, none for an enum or a struct), so it is not CS8618. A struct's
+        // properties take none (CS8983).
         if (command.Kind != DeclaredKind.Struct)
         {
-            foreach (var property in referenceTyped)
-                property.Initializer ??= "null!";
+            foreach (var (property, initial) in initials)
+                property.Initializer ??= initial;
         }
 
         var saved = GenerateAndSave(ctx);
@@ -391,21 +391,28 @@ public static class CommandHandlingService
 
     /// <summary>
     /// Why a property in a create class or create interface list cannot be written because of its
-    /// type, or null: a type that is not built in (<see cref="TypeValidator"/>) must be one the
-    /// target project declares, also made nullable, an array or in a <c>List&lt;&gt;</c> - the rule
-    /// add property follows.
+    /// type, or null. A type <see cref="TypeValidator"/> does not know is parsed and bound in the
+    /// target project as add property binds it (<see cref="TypeResolution.Resolves(string, string, Microsoft.CodeAnalysis.CSharp.Syntax.TypeDeclarationSyntax, Microsoft.CodeAnalysis.CSharp.Syntax.TypeSyntax, out string, out Microsoft.CodeAnalysis.ITypeSymbol?)"/>):
+    /// a class or enum of the project in any of its folders, a .NET type such as DateTimeOffset or
+    /// <c>Dictionary&lt;string, int&gt;</c>, with any <c>?</c>, <c>[]</c> or <c>List&lt;&gt;</c>.
     /// </summary>
     /// <param name="ctx">The command and where it runs.</param>
-    /// <param name="projectTyped">The properties whose type the project declares.</param>
-    /// <param name="referenceTyped">Those of them typed as a project class, record or interface
-    /// itself (not wrapped), in a project with nullable annotations on: add property gives them
-    /// <c>null!</c>.</param>
+    /// <param name="projectTyped">The properties whose type was bound so.</param>
+    /// <param name="initials">The initial value add property gives each of them in a project with
+    /// nullable annotations on (<see cref="PropertyInitializers.SafeFor"/> of the bound type).</param>
     private static string? ProjectTypeRefusal(CommandExecutionContext ctx,
-        out HashSet<PropertyDefinition> projectTyped, out List<PropertyDefinition> referenceTyped)
+        out HashSet<PropertyDefinition> projectTyped, out List<(PropertyDefinition Property, string Initial)> initials)
     {
         projectTyped = [];
-        referenceTyped = [];
-        string? directory = null;
+        initials = [];
+
+        // ProjectLocator.Resolve makes <workspace>\Generated when there is no project; a refused
+        // command should not leave it behind.
+        var generated = Path.Combine(ctx.WorkspaceRoot, "Generated");
+        var generatedExisted = Directory.Exists(generated);
+        string? probeFile = null;
+        Microsoft.CodeAnalysis.CSharp.Syntax.TypeDeclarationSyntax? probeNode = null;
+        var nullableOn = false;
 
         foreach (var property in ctx.Command.Properties)
         {
@@ -413,58 +420,52 @@ public static class CommandHandlingService
             if (string.IsNullOrWhiteSpace(property.Type) || TypeValidator.Validate(property.Type).IsValid)
                 continue;
 
-            var type = property.Type.Trim();
-            var element = ElementTypeOf(type);
-            directory ??= ProjectLocator.Resolve(ctx.Command, ctx.CurrentProject, ctx.WorkspaceRoot).Directory;
+            var written = property.Type.Trim();
+            var type = Microsoft.CodeAnalysis.CSharp.SyntaxFactory.ParseTypeName(written);
+            var reason = string.Empty;
+            if (!type.ContainsDiagnostics && type.ToString() == written)
+            {
+                if (probeNode is null)
+                {
+                    // Bound where the new type will be written, in the namespace it will declare.
+                    var target = ProjectLocator.Resolve(ctx.Command, ctx.CurrentProject, ctx.WorkspaceRoot);
+                    probeFile = Path.Combine(target.Directory, "__NewTypeProbe.cs");
+                    var stub = CodeFormatter.Format("public class __NewTypeProbe { }", ProjectNamespace.For(target.ProjectFile));
+                    probeNode = Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(stub, path: probeFile).GetRoot()
+                        .DescendantNodes().OfType<Microsoft.CodeAnalysis.CSharp.Syntax.TypeDeclarationSyntax>().First();
+                    nullableOn = PropertyInitializers.ProjectNullable(ctx.WorkspaceRoot, probeFile)
+                        is Microsoft.CodeAnalysis.NullableContextOptions.Enable or Microsoft.CodeAnalysis.NullableContextOptions.Annotations;
+                }
 
-            var file = Microsoft.CodeAnalysis.CSharp.SyntaxFacts.IsValidIdentifier(element)
-                ? ClassFiles.DeclaringFile(directory, element)
-                : null;
-            if (file is null)
-                return $"Type '{property.Type}' of '{property.Name}' is not a built-in type and the project does not declare it.";
+                if (TypeResolution.Resolves(ctx.WorkspaceRoot, probeFile!, probeNode, type, out reason, out var bound))
+                {
+                    projectTyped.Add(property);
+                    if (nullableOn && PropertyInitializers.SafeFor(type, bound) is { } initial)
+                        initials.Add((property, initial));
+                    continue;
+                }
+            }
 
-            projectTyped.Add(property);
+            if (!generatedExisted && Directory.Exists(generated) && !Directory.EnumerateFileSystemEntries(generated).Any())
+                Directory.Delete(generated);
 
-            if (type == element && IsReferenceDeclaration(file, element)
-                && PropertyInitializers.ProjectNullable(ctx.WorkspaceRoot, file)
-                    is Microsoft.CodeAnalysis.NullableContextOptions.Enable or Microsoft.CodeAnalysis.NullableContextOptions.Annotations)
-                referenceTyped.Add(property);
+            // "required Name": the name was left out, so the modifier was read as the name.
+            var hint = ModifierWords.Contains(property.Name)
+                ? " Did you leave out the type?"
+                : reason.IndexOf("Did you mean", StringComparison.Ordinal) is var at and >= 0
+                    ? " " + reason[at..]
+                    : string.Empty;
+            return $"Type '{property.Type}' of '{property.Name}' is not a built-in type and the project does not declare it.{hint}";
         }
 
         return null;
     }
 
-    /// <summary>The type a property type is made of: <c>Shape</c> from <c>Shape?</c>,
-    /// <c>Shape[]</c> or <c>List&lt;Shape&gt;</c>.</summary>
-    private static string ElementTypeOf(string type)
+    /// <summary>The words a property list gives before or after a property, never as its name.</summary>
+    private static readonly HashSet<string> ModifierWords = new(StringComparer.OrdinalIgnoreCase)
     {
-        var list = System.Text.RegularExpressions.Regex.Match(type, @"^List\s*<\s*(?<item>[^<>,]+?)\s*>$");
-        if (list.Success)
-            type = list.Groups["item"].Value;
-
-        foreach (var suffix in (string[])["?", "[]"])
-        {
-            if (type.Length > suffix.Length && type.EndsWith(suffix, StringComparison.Ordinal))
-                return type[..^suffix.Length].TrimEnd();
-        }
-
-        return type;
-    }
-
-    /// <summary>Whether <paramref name="file"/> declares <paramref name="name"/> as a class, a
-    /// record class or an interface: a reference type, which starts as null.</summary>
-    private static bool IsReferenceDeclaration(string file, string name) =>
-        Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(File.ReadAllText(file)).GetRoot()
-            .DescendantNodes(n => n is not Microsoft.CodeAnalysis.CSharp.Syntax.BaseTypeDeclarationSyntax)
-            .OfType<Microsoft.CodeAnalysis.CSharp.Syntax.BaseTypeDeclarationSyntax>()
-            .FirstOrDefault(t => t.Identifier.Text == name) switch
-        {
-            Microsoft.CodeAnalysis.CSharp.Syntax.RecordDeclarationSyntax r =>
-                !Microsoft.CodeAnalysis.CSharpExtensions.IsKind(r.ClassOrStructKeyword, Microsoft.CodeAnalysis.CSharp.SyntaxKind.StructKeyword),
-            Microsoft.CodeAnalysis.CSharp.Syntax.ClassDeclarationSyntax
-                or Microsoft.CodeAnalysis.CSharp.Syntax.InterfaceDeclarationSyntax => true,
-            _ => false
-        };
+        "readonly", "private", "static", "required", "unique",
+    };
 
     /// <summary>The words a validation rule is given in (<c>min length 3</c>, <c>unique</c>).</summary>
     private static readonly System.Text.RegularExpressions.Regex ValidationWords = new(
