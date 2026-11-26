@@ -12,6 +12,59 @@ namespace CodeGenerator.Tests.Bridge;
 public class CommandFrontParseTests
 {
     [TestMethod]
+    public void Create_class_named_A_inherits_keeps_the_name()
+    {
+        var cmd = CommandFront.Parse("create class A inherits Shape", "");
+        Assert.AreEqual(IntentType.CreateClass, cmd.Intent);
+        Assert.AreEqual("A", cmd.ClassName);
+        Assert.AreEqual("Shape", cmd.BaseClass);
+    }
+
+    [TestMethod]
+    public void Create_class_extends_reads_the_base()
+    {
+        var cmd = CommandFront.Parse("create class A extends Shape", "");
+        Assert.AreEqual(IntentType.CreateClass, cmd.Intent);
+        Assert.AreEqual("A", cmd.ClassName);
+        Assert.AreEqual("Shape", cmd.BaseClass);
+    }
+
+    [TestMethod]
+    public void Create_class_colon_reads_the_base()
+    {
+        var cmd = CommandFront.Parse("create class B : Shape", "");
+        Assert.AreEqual(IntentType.CreateClass, cmd.Intent);
+        Assert.AreEqual("B", cmd.ClassName);
+        Assert.AreEqual("Shape", cmd.BaseClass);
+    }
+
+    [TestMethod]
+    public void Create_class_colon_with_properties()
+    {
+        var cmd = CommandFront.Parse("create class B : Shape with properties Size int", "");
+        Assert.AreEqual("B", cmd.ClassName);
+        Assert.AreEqual("Shape", cmd.BaseClass);
+        Assert.HasCount(1, cmd.Properties);
+        Assert.AreEqual("Size", cmd.Properties[0].Name);
+    }
+
+    [TestMethod]
+    public void Create_a_class_a_inherits()
+    {
+        var cmd = CommandFront.Parse("create a class a inherits Shape", "");
+        Assert.AreEqual("A", cmd.ClassName);
+        Assert.AreEqual("Shape", cmd.BaseClass);
+    }
+
+    [TestMethod]
+    public void Create_class_implements_after_name()
+    {
+        var cmd = CommandFront.Parse("create class A implements IShape, IOther", "");
+        Assert.AreEqual("A", cmd.ClassName);
+        CollectionAssert.AreEqual(new[] { "IShape", "IOther" }, cmd.Interfaces.ToArray());
+    }
+
+    [TestMethod]
     public void Create_class_resolves_intent_and_name()
     {
         var cmd = CommandFront.Parse("create a class called Customer", "");

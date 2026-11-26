@@ -123,6 +123,8 @@ public static class CommandFront
     private static readonly Regex CreateClassRe =
         new(@"^(?:create|add|generate)\s+(?:(?:a|an|new)\s+)?class\s+"
             + @"(?!(?:library|with|called|named|that|which|for|to|in|of|from)\b)(?<class>[A-Za-z_]\w*)"
+            + @"(?:(?:(?<colon>\s*:\s*)|\s+(?:inherits|inherit|extends|derives\s+from|derived\s+from|implements|implement)\s+)"
+            + @"[A-Za-z_][^\s]*(?:\s*,\s*[A-Za-z_]\S*)*)?"
             + @"(?:\s+with\s+.+)?$",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
@@ -442,7 +444,12 @@ public static class CommandFront
         var createClassMatch = CreateClassRe.Match(text);
         if (createClassMatch.Success)
         {
-            var createCmd = CommandEntityExtractor.Extract(text, IntentType.CreateClass, workspace);
+            // `B : Shape` reads as `B inherits Shape`; the extractor already reads the inherits form.
+            var colon = createClassMatch.Groups["colon"];
+            var extractText = colon.Success
+                ? string.Concat(text.AsSpan(0, colon.Index), " inherits ", text.AsSpan(colon.Index + colon.Length))
+                : text;
+            var createCmd = CommandEntityExtractor.Extract(extractText, IntentType.CreateClass, workspace);
             createCmd.ClassName = CommandEntityExtractor.ToPascalCase(createClassMatch.Groups["class"].Value);
             createCmd.OriginalSentence = input ?? string.Empty;
             createCmd.Confidence = 1.0;

@@ -93,6 +93,19 @@ public sealed class CreateClassInProjectTests
     }
 
     [TestMethod]
+    public void Create_class_with_a_base_after_any_name_writes_the_base()
+    {
+        Write("Base1.cs", "namespace Shop;\n\npublic class Base1 { public int Id { get; set; } }\n");
+
+        Assert.IsTrue(Run("create class A inherits Base1"), LastOutput);
+        Assert.IsTrue(Run("create class B : Base1"), LastOutput);
+
+        StringAssert.Contains(File.ReadAllText(Path.Combine(_workspace, "Shop", "A.cs")), "class A : Base1");
+        StringAssert.Contains(File.ReadAllText(Path.Combine(_workspace, "Shop", "B.cs")), "class B : Base1");
+        Assert.IsEmpty(ProjectErrors());
+    }
+
+    [TestMethod]
     public void A_class_inheriting_a_project_class_is_not_reported_as_unknown()
     {
         Write("Base1.cs", "namespace Shop;\n\npublic class Base1 { public int Id { get; set; } }\n");
