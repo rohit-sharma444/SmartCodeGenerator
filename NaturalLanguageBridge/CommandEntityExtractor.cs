@@ -58,7 +58,7 @@ public static class CommandEntityExtractor
                 // rewrote a property called New to Create, manager to Service and entity to Class,
                 // and removed the commas the ignored-entry report splits the list on.
                 var members = MemberListText(rawSentence);
-                ExtractClassName(sentence, command);
+                ExtractClassName(WithoutAddMethodClause(sentence), command);
                 ExtractProperties(members, command);
                 if (command.Properties.Count == 0)
                 {
@@ -81,7 +81,7 @@ public static class CommandEntityExtractor
             case IntentType.CreateInterface:
             {
                 var members = MemberListText(rawSentence);
-                ExtractInterfaceName(sentence, command);
+                ExtractInterfaceName(WithoutAddMethodClause(sentence), command);
                 ExtractProperties(members, command);
                 if (command.Properties.Count == 0)
                     ExtractEnglishProperties(members, command);
@@ -610,6 +610,16 @@ public static class CommandEntityExtractor
         }
     }
 
+    // "create class Order ... and add method Ship to Customer": the name patterns read the "to
+    // Customer" as the class, so the clause is cut off before the name is read.
+    private static string WithoutAddMethodClause(string sentence)
+    {
+        var clause = Regex.Match(sentence,
+            @"\s+and\s+(?:add|create|generate)\s+(?:(?:an?|new)\s+)?(?:abstract\s+)?(?:method|function)\b",
+            RegexOptions.IgnoreCase);
+        return clause.Success ? sentence[..clause.Index] : sentence;
+    }
+
     public static void ExtractMethods(string sentence, ParsedCommand command)
     {
         if (string.IsNullOrWhiteSpace(sentence))
@@ -642,8 +652,28 @@ public static class CommandEntityExtractor
             var cleaned = CleanMethodToken(token);
             if (!TryParseMethod(cleaned, out var method, out var error))
             {
-                command.IgnoredMethods.Add((cleaned, error!));
-                continue;
+                // "add method Ship to Order" inside create class Order: the "to Order" names the
+                // class being created, or another one, which this command cannot change.
+                var target = Regex.Match(cleaned,
+                    @"^(?<entry>.+?)\s+(?:to|for|in|on)\s+(?:the\s+)?(?:class\s+)?(?<name>\w+)$",
+                    RegexOptions.IgnoreCase);
+                if (target.Success
+                    && TryParseMethod(target.Groups["entry"].Value, out method, out error) && method != null)
+                {
+                    var name = target.Groups["name"].Value;
+                    var own = !string.IsNullOrWhiteSpace(command.ClassName) ? command.ClassName : command.InterfaceName;
+                    if (!name.Equals(own, StringComparison.OrdinalIgnoreCase))
+                    {
+                        command.IgnoredMethods.Add((cleaned,
+                            $"this command creates '{own}', not '{name}'; create it first, then type 'add method {method.Name} to {name}'."));
+                        continue;
+                    }
+                }
+                else
+                {
+                    command.IgnoredMethods.Add((cleaned, error!));
+                    continue;
+                }
             }
 
             if (method == null)
@@ -760,8 +790,8 @@ public static class CommandEntityExtractor
     /// <summary>
     /// A method entry: <c>Name</c>, <c>Name returns T</c>, <c>Name(type name, ...) [returns T]</c> or
     /// <c>Name [returns T] with parameters name type, ...</c>. False, with the reason, when the
-    /// parameter list is there but cannot be read; true with a null method when the entry is no
-    /// method at all.
+    /// entry cannot be read (a parameter list that does not parse, or words that fit no form); true
+    /// with a null method only for an empty entry.
     /// </summary>
     public static bool TryParseMethod(string token, out MethodDefinition? method, out string? error)
     {
@@ -822,9 +852,11 @@ public static class CommandEntityExtractor
                 Name = nameMatch.Groups["name"].Value,
                 ReturnType = "void"
             };
+            return true;
         }
 
-        return true;
+        error = $"'{token}' is not a method; type a name, Name(type param), or Name returns Type.";
+        return false;
     }
 
     private static bool WithParameters(
@@ -1240,7 +1272,7 @@ public static class CommandEntityExtractor
         // ExtractMethods and ExtractInheritanceInfo, and their words were reported as ignored.
         // A clause word inside a quoted default ("extends the base") is part of the value.
         var stopMatch = Regex.Match(WithoutQuotedText(section),
-            $@"\b(?:(?:and\s+)?(?:with\s+)?(?:having\s+)?(?:methods|functions)|(?:with|and)\s+(?:method|function)|{BaseTypeClause})\b",
+            $@"\b(?:(?:and\s+)?(?:with\s+)?(?:having\s+)?(?:methods|functions)|(?:with|and)\s+(?:method|function)|and\s+(?:add|create|generate)\s+(?:(?:an?|new)\s+)?(?:abstract\s+)?(?:method|function)|{BaseTypeClause})\b",
             RegexOptions.IgnoreCase);
         if (stopMatch.Success)
         {

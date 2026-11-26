@@ -57,6 +57,20 @@ public sealed class CreateClassCommandTests
     }
 
     [TestMethod]
+    // "... and add method Ship to Order" wrote Order without Ship and said the method was ignored.
+    public void And_add_method_to_the_same_class_writes_the_method()
+    {
+        var (handled, output) = RunCapturing("create class Order with properties Total decimal and add method Ship to Order");
+
+        Assert.IsTrue(handled, output);
+        Assert.DoesNotContain("Ignored", output);
+        var file = Path.Combine(GeneratedDir, "Order.cs");
+        AssertCompilesAndDeclares(file, out var properties);
+        CollectionAssert.AreEqual(new[] { "Total" }, properties);
+        StringAssert.Contains(File.ReadAllText(file), "void Ship()");
+    }
+
+    [TestMethod]
     // "create class employee" printed "Command not recognized".
     [DataRow("create class employee", "Employee")]
     [DataRow("create class manager", "Manager")]
