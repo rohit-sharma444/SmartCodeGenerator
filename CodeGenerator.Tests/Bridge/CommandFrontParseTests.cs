@@ -48,6 +48,22 @@ public class CommandFrontParseTests
         Assert.AreEqual("Size", cmd.Properties[0].Name);
     }
 
+    // The colon form with a method tail fell to the mapper, which wrote the class with no base.
+    [TestMethod]
+    [DataRow("create class Sled : Shape and add method Slide")]
+    [DataRow("create class Sled : Shape and create a method Slide")]
+    [DataRow("create class Sled : Shape with properties Size int and add method Slide")]
+    public void Create_class_colon_and_add_method_reads_base_and_method(string line)
+    {
+        var cmd = CommandFront.Parse(line, "");
+        Assert.AreEqual(IntentType.CreateClass, cmd.Intent, line);
+        Assert.AreEqual("Sled", cmd.ClassName, line);
+        Assert.AreEqual("Shape", cmd.BaseClass, line);
+        Assert.IsEmpty(cmd.Interfaces, line);
+        CollectionAssert.AreEqual(new[] { "Slide" }, cmd.Methods.Select(m => m.Name).ToArray(), line);
+        Assert.IsNull(CommandFront.TwoCommands(line), line);
+    }
+
     [TestMethod]
     public void Create_a_class_a_inherits()
     {

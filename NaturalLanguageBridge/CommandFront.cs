@@ -125,7 +125,10 @@ public static class CommandFront
             + @"(?!(?:library|with|called|named|that|which|for|to|in|of|from)\b)(?<class>[A-Za-z_]\w*)"
             + @"(?:(?:(?<colon>\s*:\s*)|\s+(?<clause>inherits|inherit|extends|derives\s+from|derived\s+from|implements|implement)\s+)"
             + @"(?<types>[A-Za-z_][\w.<>]*(?:(?:\s*,\s*|\s+and\s+)[A-Za-z_][\w.<>]*)*))?"
-            + @"(?:\s+with\s+.+)?$",
+            + @"(?:\s+with\s+.+)?"
+            // `create class Sled : Shape and add method Slide`: without this tail the line fell to the
+            // mapper, which wrote the class with the method and no base.
+            + @"(?:\s+and\s+(?:add|create|generate)\s+(?:(?:a|an|new)\s+)?(?:abstract\s+)?(?:method|function)\b.*)?$",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     // `create [abstract|sealed|static] class|record|struct <rest>`: the kind words are read here and

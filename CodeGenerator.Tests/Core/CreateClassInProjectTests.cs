@@ -112,6 +112,19 @@ public sealed class CreateClassInProjectTests
     }
 
     [TestMethod]
+    public void Create_class_with_a_colon_base_and_a_method_writes_both()
+    {
+        Write("Shape1.cs", "namespace Shop;\n\npublic class Shape1 { }\n");
+
+        Assert.IsTrue(Run("create class Sled : Shape1 and add method Slide"), LastOutput);
+
+        var code = Read("Sled.cs");
+        StringAssert.Contains(code, "class Sled : Shape1", code);
+        StringAssert.Contains(code, "Slide()", code);
+        Assert.IsEmpty(ProjectErrors(), code);
+    }
+
+    [TestMethod]
     public void Create_class_with_base_and_interface_writes_both_in_order()
     {
         Write("Base1.cs", "namespace Shop;\n\npublic class Base1 { public int Id { get; set; } }\n");
