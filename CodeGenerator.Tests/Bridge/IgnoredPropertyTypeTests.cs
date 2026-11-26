@@ -22,12 +22,17 @@ public class IgnoredPropertyTypeTests
             "create class Order with properties CustomerId int, Customer Customer"));
 
     [TestMethod]
-    public void An_untyped_entry_beside_a_typed_one_is_reported()
+    public void An_untyped_name_beside_a_typed_one_is_not_reported()
+        => Assert.IsEmpty(CommandEntityExtractor.IgnoredPropertyEntries(
+            "create class Order with properties CustomerId int, Notes"));
+
+    [TestMethod]
+    public void An_unreadable_entry_beside_a_typed_one_is_reported()
     {
         var ignored = CommandEntityExtractor.IgnoredPropertyEntries(
-            "create class Order with properties CustomerId int, Notes");
+            "create class Order with properties CustomerId int, Price 9.99");
 
-        CollectionAssert.AreEqual(new[] { "Notes" }, ignored.ToArray());
+        CollectionAssert.AreEqual(new[] { "Price 9.99" }, ignored.ToArray());
     }
 
     [TestMethod]
@@ -57,12 +62,12 @@ public class IgnoredPropertyTypeTests
         var command = new ParsedCommand();
 
         CommandEntityExtractor.ExtractProperties(
-            "create class Order with properties CustomerId int, Customer Customer, Notes", command);
+            "create class Order with properties CustomerId int, Customer Customer, Notes, Price 9.99", command);
 
-        CollectionAssert.AreEqual(new[] { "CustomerId", "Customer" }, command.Properties.Select(p => p.Name).ToArray());
+        CollectionAssert.AreEqual(new[] { "CustomerId", "Customer", "Notes" }, command.Properties.Select(p => p.Name).ToArray());
         Assert.AreEqual("Customer", command.Properties[1].Type);
 
-        CollectionAssert.AreEqual(new[] { "Notes" }, command.IgnoredProperties);
+        CollectionAssert.AreEqual(new[] { "Price 9.99" }, command.IgnoredProperties);
     }
 
     [TestMethod]

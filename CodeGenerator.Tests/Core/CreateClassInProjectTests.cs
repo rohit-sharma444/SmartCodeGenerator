@@ -216,13 +216,14 @@ public sealed class CreateClassInProjectTests
     {
         WriteProjectTypes();
 
-        // A typed entry makes the list a typed one, as "Name, Age int" always was: the untyped
-        // name is reported, not given an inferred type.
+        // The bare name beside a typed entry is given the type an all-untyped list gives it, not
+        // dropped: dropping it wrote the class without it.
         Assert.IsTrue(Run("create class Customer with properties Name, Kind Buyer"), LastOutput);
 
         var code = Read("Customer.cs");
+        StringAssert.Contains(code, "public string Name { get; set; } = string.Empty;");
         StringAssert.Contains(code, "public Buyer Kind { get; set; }");
-        StringAssert.Contains(LastOutput, "Ignored 'Name': it has no type");
+        Assert.DoesNotContain("Ignored", LastOutput, LastOutput);
         Assert.IsEmpty(NullableProblems(), code);
     }
 
@@ -292,11 +293,21 @@ public sealed class CreateClassInProjectTests
     }
 
     [TestMethod]
-    public void An_untyped_entry_beside_a_typed_one_is_reported_without_the_relationship_note()
+    public void An_untyped_entry_beside_a_typed_one_is_given_string()
     {
         Assert.IsTrue(Run("create class Customer with properties Name string, Notes"), LastOutput);
 
-        StringAssert.Contains(LastOutput, "Ignored 'Notes': it has no type; give one after the name, as in Notes string.");
+        StringAssert.Contains(Read("Customer.cs"), "public string Notes { get; set; } = string.Empty;");
+        Assert.DoesNotContain("Ignored", LastOutput, LastOutput);
+        Assert.IsEmpty(ProjectErrors());
+    }
+
+    [TestMethod]
+    public void An_unreadable_entry_beside_a_typed_one_is_reported_without_the_relationship_note()
+    {
+        Assert.IsTrue(Run("create class Customer with properties Name string, Price 9.99"), LastOutput);
+
+        StringAssert.Contains(LastOutput, "Ignored 'Price 9.99': it is not a property name followed by its type");
         Assert.DoesNotContain("Relationships between classes", LastOutput, LastOutput);
     }
 

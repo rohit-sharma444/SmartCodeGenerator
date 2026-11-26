@@ -406,44 +406,59 @@ public static class CommandHandlingService
         projectTyped = [];
         initials = [];
 
+        // A missing type is inferred from the name, and a built-in one is checked as before. Each
+        // other type is parsed as add property parses it; null when it is not a C# type at all.
+        var checkedTypes = ctx.Command.Properties
+            .Where(p => !string.IsNullOrWhiteSpace(p.Type) && !TypeValidator.Validate(p.Type).IsValid)
+            .Select(p =>
+            {
+                var written = p.Type.Trim();
+                var type = Microsoft.CodeAnalysis.CSharp.SyntaxFactory.ParseTypeName(written);
+                return (Property: p, Type: !type.ContainsDiagnostics && type.ToString() == written ? type : null);
+            })
+            .ToList();
+
+        if (checkedTypes.Count == 0)
+            return null;
+
         // ProjectLocator.Resolve makes <workspace>\Generated when there is no project; a refused
         // command should not leave it behind.
         var generated = Path.Combine(ctx.WorkspaceRoot, "Generated");
         var generatedExisted = Directory.Exists(generated);
-        string? probeFile = null;
-        Microsoft.CodeAnalysis.CSharp.Syntax.TypeDeclarationSyntax? probeNode = null;
+
+        // Bound where the new type will be written, in the namespace it will declare, all in one
+        // compilation of the project.
+        var parsed = checkedTypes.Where(c => c.Type is not null).Select(c => c.Type!).ToList();
+        IReadOnlyList<TypeResolution.Resolution> resolutions = [];
         var nullableOn = false;
-
-        foreach (var property in ctx.Command.Properties)
+        if (parsed.Count > 0)
         {
-            // A missing type is inferred from the name, and a built-in one is checked as before.
-            if (string.IsNullOrWhiteSpace(property.Type) || TypeValidator.Validate(property.Type).IsValid)
-                continue;
+            var target = ProjectLocator.Resolve(ctx.Command, ctx.CurrentProject, ctx.WorkspaceRoot);
+            var probeFile = Path.Combine(target.Directory, "__NewTypeProbe.cs");
+            var stub = CodeFormatter.Format("public class __NewTypeProbe { }", ProjectNamespace.For(target.ProjectFile));
+            var probeNode = Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(stub, path: probeFile).GetRoot()
+                .DescendantNodes().OfType<Microsoft.CodeAnalysis.CSharp.Syntax.TypeDeclarationSyntax>().First();
+            nullableOn = PropertyInitializers.ProjectNullable(ctx.WorkspaceRoot, probeFile)
+                is Microsoft.CodeAnalysis.NullableContextOptions.Enable or Microsoft.CodeAnalysis.NullableContextOptions.Annotations;
+            resolutions = TypeResolution.ResolveAll(ctx.WorkspaceRoot, probeFile, probeNode, parsed);
+        }
 
-            var written = property.Type.Trim();
-            var type = Microsoft.CodeAnalysis.CSharp.SyntaxFactory.ParseTypeName(written);
+        var next = 0;
+        foreach (var (property, type) in checkedTypes)
+        {
             var reason = string.Empty;
-            if (!type.ContainsDiagnostics && type.ToString() == written)
+            if (type is not null)
             {
-                if (probeNode is null)
-                {
-                    // Bound where the new type will be written, in the namespace it will declare.
-                    var target = ProjectLocator.Resolve(ctx.Command, ctx.CurrentProject, ctx.WorkspaceRoot);
-                    probeFile = Path.Combine(target.Directory, "__NewTypeProbe.cs");
-                    var stub = CodeFormatter.Format("public class __NewTypeProbe { }", ProjectNamespace.For(target.ProjectFile));
-                    probeNode = Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(stub, path: probeFile).GetRoot()
-                        .DescendantNodes().OfType<Microsoft.CodeAnalysis.CSharp.Syntax.TypeDeclarationSyntax>().First();
-                    nullableOn = PropertyInitializers.ProjectNullable(ctx.WorkspaceRoot, probeFile)
-                        is Microsoft.CodeAnalysis.NullableContextOptions.Enable or Microsoft.CodeAnalysis.NullableContextOptions.Annotations;
-                }
-
-                if (TypeResolution.Resolves(ctx.WorkspaceRoot, probeFile!, probeNode, type, out reason, out var bound))
+                var resolution = resolutions[next++];
+                if (resolution.Resolves)
                 {
                     projectTyped.Add(property);
-                    if (nullableOn && PropertyInitializers.SafeFor(type, bound) is { } initial)
+                    if (nullableOn && PropertyInitializers.SafeFor(type, resolution.Bound) is { } initial)
                         initials.Add((property, initial));
                     continue;
                 }
+
+                reason = resolution.Reason;
             }
 
             if (!generatedExisted && Directory.Exists(generated) && !Directory.EnumerateFileSystemEntries(generated).Any())

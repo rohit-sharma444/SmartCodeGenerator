@@ -1048,12 +1048,21 @@ public static class CommandEntityExtractor
         var entries = TypedEntries(propertySection, out var quoted);
 
         // Any entry read as a name and a type - built in or not - means the list is typed, as
-        // "Name string, Email" or "Name, Kind Buyer" are: an untyped entry beside one is reported.
-        // Only a list with no typed entry at all goes to the fallback parser, which infers types.
+        // "Name string, Email" or "Name, Kind Buyer" are. A bare name beside one is given the type
+        // the fallback parser gives it (ParseProperty: string), not dropped: dropping it wrote the
+        // class without it. Only a list with no typed entry at all goes to the fallback parser.
         if (entries.Any(e => e.Matches.Count > 0))
         {
             foreach (var (entry, matches) in entries)
             {
+                if (matches.Count == 0 && IsBareName(entry))
+                {
+                    var untyped = ParseProperty(entry);
+                    untyped.Name = Capitalised(untyped.Name);
+                    command.Properties.Add(untyped);
+                    continue;
+                }
+
                 for (var i = 0; i < matches.Count; i++)
                 {
                     var match = matches[i];
@@ -1077,9 +1086,9 @@ public static class CommandEntityExtractor
                 }
             }
 
-            // A typed entry was read, so the fallback parser below never runs: an entry that is not
-            // a name and a type goes nowhere. It is recorded so the handler can say so instead of
-            // the user finding out by looking at the file.
+            // A typed entry was read, so the fallback parser below never runs: an entry that is
+            // neither a name and a type nor a bare name goes nowhere. It is recorded so the handler
+            // can say so instead of the user finding out by looking at the file.
             command.IgnoredProperties.AddRange(Ignored(entries, quoted));
 
             return;
@@ -1099,8 +1108,8 @@ public static class CommandEntityExtractor
     }
 
     /// <summary>
-    /// The entries in a property list that the built-in-matching path could not read: neither a
-    /// built-in typed property nor a <c>Name Type</c> one.
+    /// The entries in a property list that the typed path could not read: not a built-in typed
+    /// property, a <c>Name Type</c> one or a bare name.
     /// </summary>
     public static IReadOnlyList<string> IgnoredPropertyEntries(string sentence)
     {
@@ -1308,7 +1317,20 @@ public static class CommandEntityExtractor
 
     private static IReadOnlyList<string> Ignored(
         List<(string Entry, IReadOnlyList<Match> Matches)> entries, List<string> quoted) =>
-        [.. entries.Where(e => e.Matches.Count == 0).Select(e => Unquoted(e.Entry, quoted))];
+        [.. entries.Where(e => e.Matches.Count == 0 && !IsBareName(e.Entry)).Select(e => Unquoted(e.Entry, quoted))];
+
+    private static readonly Regex BareName = new(@"^[A-Za-z_]\w*$");
+
+    /// <summary>
+    /// Whether <paramref name="entry"/> is one name and nothing else (<c>Email</c>): a property
+    /// whose type the fallback parser infers. A modifier, a list label or a type word alone is not
+    /// a name.
+    /// </summary>
+    private static bool IsBareName(string entry) =>
+        BareName.IsMatch(entry)
+        && ModifierWord(entry) == PropertyModifiers.None
+        && !ListLabel.IsMatch(entry)
+        && !IsTypeWord(entry);
 
     public static string ExtractPropertySection(string sentence)
     {

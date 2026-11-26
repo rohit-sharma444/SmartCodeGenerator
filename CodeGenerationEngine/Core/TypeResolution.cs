@@ -63,14 +63,40 @@ internal static class TypeResolution
         string workspaceRoot, string classFile, TypeDeclarationSyntax classNode, TypeSyntax type,
         out string reason, out ITypeSymbol? bound)
     {
-        reason = string.Empty;
-        bound = null;
+        var result = ResolveAll(workspaceRoot, classFile, classNode, [type])[0];
+        reason = result.Reason;
+        bound = result.Bound;
+        return result.Resolves;
+    }
+
+    /// <summary>What binding one type gave: whether it binds, why not, and what it binds to (null
+    /// for a keyword type, which is not bound).</summary>
+    public readonly record struct Resolution(bool Resolves, string Reason, ITypeSymbol? Bound);
+
+    /// <summary>
+    /// <see cref="Resolves(string, string, TypeDeclarationSyntax, TypeSyntax, out string, out ITypeSymbol?)"/>
+    /// for several types at once, in their order: the project is read and compiled once, with one
+    /// probe field for each type, rather than once for each type.
+    /// </summary>
+    public static IReadOnlyList<Resolution> ResolveAll(
+        string workspaceRoot, string classFile, TypeDeclarationSyntax classNode, IReadOnlyList<TypeSyntax> types)
+    {
+        var results = new Resolution[types.Count];
 
         // A keyword never needs binding, and this keeps the common case free of a compilation.
-        if (type is PredefinedTypeSyntax
-            || type is NullableTypeSyntax { ElementType: PredefinedTypeSyntax }
-            || type is ArrayTypeSyntax { ElementType: PredefinedTypeSyntax })
-            return true;
+        var probed = new List<int>();
+        for (var i = 0; i < types.Count; i++)
+        {
+            if (types[i] is PredefinedTypeSyntax
+                || types[i] is NullableTypeSyntax { ElementType: PredefinedTypeSyntax }
+                || types[i] is ArrayTypeSyntax { ElementType: PredefinedTypeSyntax })
+                results[i] = new Resolution(true, string.Empty, null);
+            else
+                probed.Add(i);
+        }
+
+        if (probed.Count == 0)
+            return results;
 
         var csprojFolder = ProjectFolderOf(workspaceRoot, classFile);
         var projectFolder = csprojFolder ?? workspaceRoot;
@@ -85,7 +111,8 @@ internal static class TypeResolution
             .Reverse().Select(n => n.Name.ToString()).ToList();
         var nsName = ns.Count == 0 ? null : string.Join(".", ns);
 
-        var body = $"file class __TypeProbe {{ public {type} __Probe = default!; }}";
+        var fields = string.Concat(probed.Select(i => $" public {types[i]} __Probe{i} = default!;"));
+        var body = $"file class __TypeProbe {{{fields} }}";
         var probeSource = string.Join(Environment.NewLine, usings.Distinct()) + Environment.NewLine
             + (nsName == null ? body : $"namespace {nsName} {{ {body} }}");
 
@@ -112,18 +139,29 @@ internal static class TypeResolution
             "TypeProbe", trees, Compiler.FrameworkReferences,
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary,
                 nullableContextOptions: NullableContextOptions.Enable));
+        var model = compilation.GetSemanticModel(probe);
 
-        var field = probe.GetRoot().DescendantNodes().OfType<FieldDeclarationSyntax>().Single();
-        var errors = compilation.GetSemanticModel(probe).GetDiagnostics(field.Declaration.Type.Span)
-            .Where(d => d.Severity == DiagnosticSeverity.Error)
-            .ToList();
-
-        if (errors.Count == 0)
+        var declarations = probe.GetRoot().DescendantNodes().OfType<FieldDeclarationSyntax>().ToList();
+        for (var k = 0; k < probed.Count; k++)
         {
-            bound = compilation.GetSemanticModel(probe).GetTypeInfo(field.Declaration.Type).Type;
-            return true;
+            var i = probed[k];
+            var probeType = declarations[k].Declaration.Type;
+            var errors = model.GetDiagnostics(probeType.Span)
+                .Where(d => d.Severity == DiagnosticSeverity.Error)
+                .ToList();
+
+            results[i] = errors.Count == 0
+                ? new Resolution(true, string.Empty, model.GetTypeInfo(probeType).Type)
+                : new Resolution(false, Refusal(types[i], trees, errors[0]), null);
         }
 
+        return results;
+    }
+
+    /// <summary>Why <paramref name="type"/> did not bind, with a suggestion when it is a known
+    /// misspelling or a project type in another case.</summary>
+    private static string Refusal(TypeSyntax type, List<SyntaxTree> trees, Diagnostic error)
+    {
         var written = type.ToString();
 
         // A project type typed in another case - customer for Customer - is suggested as datetime
@@ -134,16 +172,15 @@ internal static class TypeResolution
             .Select(t => t.Identifier.Text)
             .FirstOrDefault(n => n.Equals(bare, StringComparison.OrdinalIgnoreCase) && n != bare);
 
-        reason = Meant.TryGetValue(written, out var meant)
+        return Meant.TryGetValue(written, out var meant)
             ? $"'{written}' is not a C# type. Did you mean {meant}?"
             : projectType != null
                 ? $"'{written}' is not a type this project knows. Did you mean {projectType}{written[bare.Length..]}?"
             : Keywords.FirstOrDefault(k => k.Equals(written, StringComparison.OrdinalIgnoreCase)) is { } keyword
                 ? $"'{written}' is not a C# type. Did you mean {keyword}?"
-                : $"'{written}' is not a type this project knows ({errors[0].GetMessage()}). "
+                : $"'{written}' is not a type this project knows ({error.GetMessage()}). "
                     + "Use a C# type, a .NET type such as DateTime or List<string>, or a class in this project; "
                     + "a type from a package has to be typed into the file by hand.";
-        return false;
     }
 
     /// <summary>
