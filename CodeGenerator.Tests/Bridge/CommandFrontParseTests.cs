@@ -57,6 +57,32 @@ public class CommandFrontParseTests
     }
 
     [TestMethod]
+    public void Create_class_derives_from_reads_the_base()
+    {
+        var cmd = CommandFront.Parse("create class A derives from Shape", "");
+        Assert.AreEqual("A", cmd.ClassName);
+        Assert.AreEqual("Shape", cmd.BaseClass);
+    }
+
+    [TestMethod]
+    public void Create_class_colon_list_is_base_then_interfaces()
+    {
+        var cmd = CommandFront.Parse("create class B : Shape, IFoo", "");
+        Assert.AreEqual("B", cmd.ClassName);
+        Assert.AreEqual("Shape", cmd.BaseClass);
+        CollectionAssert.AreEqual(new[] { "IFoo" }, cmd.Interfaces.ToArray());
+    }
+
+    [TestMethod]
+    public void Create_class_inherits_and_list_is_base_then_interfaces()
+    {
+        var cmd = CommandFront.Parse("create class A inherits Shape and IFoo", "");
+        Assert.AreEqual("A", cmd.ClassName);
+        Assert.AreEqual("Shape", cmd.BaseClass);
+        CollectionAssert.AreEqual(new[] { "IFoo" }, cmd.Interfaces.ToArray());
+    }
+
+    [TestMethod]
     public void Create_class_implements_after_name()
     {
         var cmd = CommandFront.Parse("create class A implements IShape, IOther", "");

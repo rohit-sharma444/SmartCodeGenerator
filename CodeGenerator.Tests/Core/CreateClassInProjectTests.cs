@@ -106,6 +106,29 @@ public sealed class CreateClassInProjectTests
     }
 
     [TestMethod]
+    public void Create_class_with_base_and_interface_writes_both_in_order()
+    {
+        Write("Base1.cs", "namespace Shop;\n\npublic class Base1 { public int Id { get; set; } }\n");
+        Write("IMark1.cs", "namespace Shop;\n\npublic interface IMark1 { }\n");
+
+        Assert.IsTrue(Run("create class B : Base1, IMark1"), LastOutput);
+
+        StringAssert.Contains(File.ReadAllText(Path.Combine(_workspace, "Shop", "B.cs")), "class B : Base1, IMark1");
+        Assert.IsEmpty(ProjectErrors());
+    }
+
+    [TestMethod]
+    public void Create_struct_with_a_colon_interface_compiles()
+    {
+        Write("IShape1.cs", "namespace Shop;\n\npublic interface IShape1 { }\n");
+
+        Assert.IsTrue(Run("create struct P : IShape1"), LastOutput);
+
+        StringAssert.Contains(File.ReadAllText(Path.Combine(_workspace, "Shop", "P.cs")), "struct P : IShape1");
+        Assert.IsEmpty(ProjectErrors());
+    }
+
+    [TestMethod]
     public void A_class_inheriting_a_project_class_is_not_reported_as_unknown()
     {
         Write("Base1.cs", "namespace Shop;\n\npublic class Base1 { public int Id { get; set; } }\n");

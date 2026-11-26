@@ -123,8 +123,8 @@ public static class CommandFront
     private static readonly Regex CreateClassRe =
         new(@"^(?:create|add|generate)\s+(?:(?:a|an|new)\s+)?class\s+"
             + @"(?!(?:library|with|called|named|that|which|for|to|in|of|from)\b)(?<class>[A-Za-z_]\w*)"
-            + @"(?:(?:(?<colon>\s*:\s*)|\s+(?:inherits|inherit|extends|derives\s+from|derived\s+from|implements|implement)\s+)"
-            + @"[A-Za-z_][^\s]*(?:\s*,\s*[A-Za-z_]\S*)*)?"
+            + @"(?:(?:(?<colon>\s*:\s*)|\s+(?<clause>inherits|inherit|extends|derives\s+from|derived\s+from|implements|implement)\s+)"
+            + @"(?<types>[A-Za-z_][\w.<>]*(?:(?:\s*,\s*|\s+and\s+)[A-Za-z_][\w.<>]*)*))?"
             + @"(?:\s+with\s+.+)?$",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
@@ -435,6 +435,15 @@ public static class CommandFront
             var plain = Parse($"{kindMatch.Groups["verb"].Value} class {kindMatch.Groups["rest"].Value}", workspace);
             if (plain.Intent == IntentType.CreateClass)
             {
+                // A struct has no base: after `:` every name is an interface (C# says the same).
+                if (kindMatch.Groups["kind"].Value.Equals("struct", StringComparison.OrdinalIgnoreCase)
+                    && plain.BaseClass is { Length: > 0 }
+                    && Regex.IsMatch(kindMatch.Groups["rest"].Value, @"^[A-Za-z_]\w*\s*:"))
+                {
+                    plain.Interfaces.Insert(0, plain.BaseClass);
+                    plain.BaseClass = null;
+                }
+
                 ApplyKind(plain, kindMatch);
                 plain.OriginalSentence = input ?? string.Empty;
                 return plain;
@@ -450,6 +459,17 @@ public static class CommandFront
                 ? string.Concat(text.AsSpan(0, colon.Index), " inherits ", text.AsSpan(colon.Index + colon.Length))
                 : text;
             var createCmd = CommandEntityExtractor.Extract(extractText, IntentType.CreateClass, workspace);
+            // After `:`, inherits, extends or derives from, the first name is the base and the rest are
+            // interfaces, as typed (the project compile refuses a wrong kind). `implements` keeps all as interfaces.
+            var clause = createClassMatch.Groups["clause"].Value;
+            if (createClassMatch.Groups["types"].Success
+                && !clause.StartsWith("implement", StringComparison.OrdinalIgnoreCase))
+            {
+                var names = Regex.Split(createClassMatch.Groups["types"].Value, @"\s*,\s*|\s+and\s+", RegexOptions.IgnoreCase);
+                createCmd.BaseClass = CommandEntityExtractor.ToPascalCase(names[0]);
+                createCmd.Interfaces.Clear();
+                createCmd.Interfaces.AddRange(names.Skip(1));
+            }
             createCmd.ClassName = CommandEntityExtractor.ToPascalCase(createClassMatch.Groups["class"].Value);
             createCmd.OriginalSentence = input ?? string.Empty;
             createCmd.Confidence = 1.0;
