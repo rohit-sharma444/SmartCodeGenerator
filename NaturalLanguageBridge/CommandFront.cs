@@ -113,6 +113,13 @@ public static class CommandFront
         return items;
     }
 
+    // `and add|create|generate [a|an|new] [modifiers] method|function|property|field ...` after a
+    // created type: its members, read by the extractor (a member for another type is refused first,
+    // by TwoCommands).
+    private const string MemberTail =
+        @"(?:\s+and\s+(?:add|create|generate)\s+(?:(?:a|an|new)\s+)?"
+        + @"(?:(?:abstract|readonly|private|static|required)\s+)*(?:method|function|property|field)\b.*)?";
+
     // `create class <name>` and `create class <name> with ...`, ahead of the mapper. NLE tags a
     // lower-case name as part of the target, so the mapper looked up "class employee" and
     // "create class employee" was not recognised at all, with or without properties. The name
@@ -128,7 +135,8 @@ public static class CommandFront
             + @"(?:\s+with\s+.+)?"
             // `create class Sled : Shape and add method Slide`: without this tail the line fell to the
             // mapper, which wrote the class with the method and no base.
-            + @"(?:\s+and\s+(?:add|create|generate)\s+(?:(?:a|an|new)\s+)?(?:abstract\s+)?(?:method|function)\b.*)?$",
+            // `... and add property Size int` too: it fell to the mapper, which read no property.
+            + MemberTail + "$",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     // `create [abstract|sealed|static] class|record|struct <rest>`: the kind words are read here and
@@ -225,7 +233,7 @@ public static class CommandFront
     private static readonly Regex CreateInterfaceRe =
         new(@"^(?:create|generate|build)\s+(?:(?:a|an|new)\s+)?interface\s+"
             + @"(?!(?:with|called|named|that|which|for|to|in|of|from)\b)(?<name>[A-Za-z_]\w*)"
-            + @"(?:\s+with\s+.+)?$",
+            + @"(?:\s+with\s+.+)?" + MemberTail + "$",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     // `list|show properties|methods [of|in|for] [class] <Class>`. The mapper took the third word as
