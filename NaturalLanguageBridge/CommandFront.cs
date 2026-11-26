@@ -891,25 +891,37 @@ public static class CommandFront
         if (parts.Count < 2)
             return null;
 
-        var created = CreatesAType.Match(parts[0]);
-        if (!created.Success)
-            return parts;
-
-        var name = CreatedName.Match(parts[0], created.Index + created.Length);
-        bool OwnMember(string part)
+        // Each command, as a list of parts: a member for the type the latest create makes (no class
+        // named, or that type's name) joins that create, wherever it is in the line.
+        var commands = new List<List<string>>();
+        List<string>? latestCreate = null;
+        Match? createdName = null;
+        foreach (var part in parts)
         {
-            if (!MemberAddition.IsMatch(part))
-                return false;
-            var target = MemberTarget.Match(part);
-            return !target.Success
-                || (name.Success && target.Groups["name"].Value.Equals(name.Groups["name"].Value, StringComparison.OrdinalIgnoreCase));
+            var created = CreatesAType.Match(part);
+            if (created.Success)
+            {
+                latestCreate = [part];
+                createdName = CreatedName.Match(part, created.Index + created.Length);
+                commands.Add(latestCreate);
+            }
+            else if (latestCreate is not null && MemberAddition.IsMatch(part) && IsFor(part, createdName!))
+                latestCreate.Add(part);
+            else
+                commands.Add([part]);
         }
 
-        var own = parts.Skip(1).Where(OwnMember).ToList();
-        if (own.Count == parts.Count - 1)
-            return null;
+        return commands.Count < 2 ? null : [.. commands.Select(c => string.Join(" and ", c))];
+    }
 
-        return [string.Join(" and ", [parts[0], .. own]), .. parts.Skip(1).Where(p => !OwnMember(p))];
+    /// <summary>Whether the member addition <paramref name="part"/> is for the type <paramref name="createdName"/>
+    /// read: it names no class, or that one.</summary>
+    private static bool IsFor(string part, Match createdName)
+    {
+        var target = MemberTarget.Match(part);
+        return !target.Success
+            || (createdName.Success
+                && target.Groups["name"].Value.Equals(createdName.Groups["name"].Value, StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>

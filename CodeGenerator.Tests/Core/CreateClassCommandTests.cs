@@ -134,6 +134,10 @@ public sealed class CreateClassCommandTests
         "remove property Name from Item|add property Title string to Item|rename property Code to Sku in Item")]
     [DataRow("remove property X from Item and add required property Y int to Shape",
         "remove property X from Item|add required property Y int to Shape")]
+    // A create later in the line keeps its own members: "add method Roll" listed alone would go onto
+    // the current class if typed.
+    [DataRow("remove property X from Item and create class Kart and add method Roll",
+        "remove property X from Item|create class Kart and add method Roll")]
     public void Every_command_in_a_line_that_creates_nothing_is_listed(string line, string expected) =>
         CollectionAssert.AreEqual(expected.Split('|'), CommandFront.TwoCommands(line)?.ToArray(), line);
 
