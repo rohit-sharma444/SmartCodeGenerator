@@ -846,6 +846,15 @@ public static class CommandFront
     private static readonly Regex MemberAddition = new(
         @"^(?:add|create)\s+(?:(?:a|an|new)\s+)?(?:property|field|method)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    // The class a member addition names at its end: "... to [the] [class] Customer".
+    private static readonly Regex MemberTarget = new(
+        @"\s(?:to|for|in|on)\s+(?:the\s+)?(?:(?:class|record|struct|interface)\s+)?(?<name>[A-Za-z_]\w*)\s*[.!]?$",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    // The name of the type a create command makes, right after its kind word.
+    private static readonly Regex CreatedName = new(
+        @"\G\s+(?:(?:called|named)\s+)?(?<name>[A-Za-z_]\w*)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     /// <summary>
     /// The two commands in <paramref name="text"/>, when it holds two; a build app description is
     /// prose, and is never split.
@@ -860,10 +869,18 @@ public static class CommandFront
             return null;
 
         // "create class Employee and add method AddEmployee": the members of the class being
-        // created, one command that the create-class parser reads whole.
-        if (CreatesAType.IsMatch(text[..match.Index])
-            && MemberAddition.IsMatch(match.Groups["second"].Value))
-            return null;
+        // created, one command that the create-class parser reads whole - unless the member is
+        // for another class ("... and add method Ship to Customer"): that is a second command.
+        var created = CreatesAType.Match(text[..match.Index]);
+        var second = match.Groups["second"].Value;
+        if (created.Success && MemberAddition.IsMatch(second))
+        {
+            var target = MemberTarget.Match(second);
+            var name = CreatedName.Match(text, created.Index + created.Length);
+            if (!target.Success
+                || (name.Success && target.Groups["name"].Value.Equals(name.Groups["name"].Value, StringComparison.OrdinalIgnoreCase)))
+                return null;
+        }
 
         return (text[..match.Index].Trim(), match.Groups["second"].Value.Trim());
     }

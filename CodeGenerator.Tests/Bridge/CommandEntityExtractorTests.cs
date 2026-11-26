@@ -69,7 +69,10 @@ public class CommandEntityExtractorTests
         Assert.IsEmpty(cmd.Methods);
         Assert.HasCount(1, cmd.IgnoredMethods);
         StringAssert.Contains(cmd.IgnoredMethods[0].Error, "Customer");
-        StringAssert.Contains(cmd.IgnoredMethods[0].Error, "add method Ship to Customer");
+        // CommandFront refuses the whole line before this runs; the backstop names the other class
+        // and gives no advice that is wrong when Customer exists.
+        Assert.DoesNotContain("create it first", cmd.IgnoredMethods[0].Error);
+        Assert.IsNotNull(CommandFront.TwoCommands("create class Order with properties Total decimal and add method Ship to Customer"));
     }
 
     [TestMethod]

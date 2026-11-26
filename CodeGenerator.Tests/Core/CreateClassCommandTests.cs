@@ -70,6 +70,36 @@ public sealed class CreateClassCommandTests
         StringAssert.Contains(File.ReadAllText(file), "void Ship()");
     }
 
+    // It wrote Cart without Ship and then said to create Customer first. The method is for
+    // another class, so the line holds two commands: refused whole, nothing written.
+    [TestMethod]
+    [DataRow("create class Cart with properties Total decimal and add method Ship to Customer")]
+    [DataRow("create class Cart and add method Ship to the class Customer")]
+    [DataRow("create class Cart and add method Ship for Customer")]
+    public void And_add_method_to_another_class_is_refused_and_nothing_written(string line)
+    {
+        var (handled, output) = RunCapturing(line);
+
+        Assert.IsFalse(handled, output);
+        StringAssert.Contains(output, "This line holds two commands");
+        StringAssert.Contains(output, "add method Ship");
+        Assert.DoesNotContain("create it first", output);
+        Assert.IsFalse(Directory.Exists(GeneratedDir) && Directory.GetFiles(GeneratedDir, "*.cs").Length > 0, output);
+    }
+
+    [TestMethod]
+    [DataRow("create class Cart with properties Total decimal and add method Ship to Cart")]
+    [DataRow("create class cart with properties Total decimal and add method Ship to Cart")]
+    [DataRow("create class Cart with properties Total decimal and add method Ship")]
+    public void And_add_method_to_the_class_itself_or_no_class_is_one_command(string line)
+    {
+        Assert.IsNull(CommandFront.TwoCommands(line), line);
+        var (handled, output) = RunCapturing(line);
+
+        Assert.IsTrue(handled, output);
+        StringAssert.Contains(File.ReadAllText(Path.Combine(GeneratedDir, "Cart.cs")), "void Ship()");
+    }
+
     [TestMethod]
     // "create class employee" printed "Command not recognized".
     [DataRow("create class employee", "Employee")]

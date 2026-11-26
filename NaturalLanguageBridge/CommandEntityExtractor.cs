@@ -665,7 +665,7 @@ public static class CommandEntityExtractor
                     if (!name.Equals(own, StringComparison.OrdinalIgnoreCase))
                     {
                         command.IgnoredMethods.Add((cleaned,
-                            $"this command creates '{own}', not '{name}'; create it first, then type 'add method {method.Name} to {name}'."));
+                            $"it names another class, '{name}'; this command creates '{own}'."));
                         continue;
                     }
                 }
