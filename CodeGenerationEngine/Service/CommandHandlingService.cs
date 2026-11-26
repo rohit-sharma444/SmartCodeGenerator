@@ -270,7 +270,15 @@ public static class CommandHandlingService
             Methods = command.Methods?.ToList() ?? new List<MethodDefinition>()
         };
 
-        var classErrors = ClassValidator.Validate(classDef);
+        // A type that is not built in must be one the project declares, as add property takes it;
+        // refused here, before anything is written, when the project does not declare it.
+        if (ProjectTypeRefusal(ctx, out var projectTyped, out var referenceTyped) is { } typeError)
+        {
+            Output.Error(typeError);
+            return false;
+        }
+
+        var classErrors = ClassValidator.Validate(classDef, projectTyped);
         if (classErrors.Count > 0)
         {
             foreach (var err in classErrors)
@@ -315,6 +323,15 @@ public static class CommandHandlingService
         {
             Output.Error(propertyError);
             return false;
+        }
+
+        // The initial value add property gives a property of a project class, record or interface
+        // in a project with nullable on: it starts as null until it is set (CS8618 otherwise). An
+        // enum or a struct needs none, and a struct's properties take none (CS8983).
+        if (command.Kind != DeclaredKind.Struct)
+        {
+            foreach (var property in referenceTyped)
+                property.Initializer ??= "null!";
         }
 
         var saved = GenerateAndSave(ctx);
@@ -371,6 +388,83 @@ public static class CommandHandlingService
 
         return null;
     }
+
+    /// <summary>
+    /// Why a property in a create class or create interface list cannot be written because of its
+    /// type, or null: a type that is not built in (<see cref="TypeValidator"/>) must be one the
+    /// target project declares, also made nullable, an array or in a <c>List&lt;&gt;</c> - the rule
+    /// add property follows.
+    /// </summary>
+    /// <param name="ctx">The command and where it runs.</param>
+    /// <param name="projectTyped">The properties whose type the project declares.</param>
+    /// <param name="referenceTyped">Those of them typed as a project class, record or interface
+    /// itself (not wrapped), in a project with nullable annotations on: add property gives them
+    /// <c>null!</c>.</param>
+    private static string? ProjectTypeRefusal(CommandExecutionContext ctx,
+        out HashSet<PropertyDefinition> projectTyped, out List<PropertyDefinition> referenceTyped)
+    {
+        projectTyped = [];
+        referenceTyped = [];
+        string? directory = null;
+
+        foreach (var property in ctx.Command.Properties)
+        {
+            // A missing type is inferred from the name, and a built-in one is checked as before.
+            if (string.IsNullOrWhiteSpace(property.Type) || TypeValidator.Validate(property.Type).IsValid)
+                continue;
+
+            var type = property.Type.Trim();
+            var element = ElementTypeOf(type);
+            directory ??= ProjectLocator.Resolve(ctx.Command, ctx.CurrentProject, ctx.WorkspaceRoot).Directory;
+
+            var file = Microsoft.CodeAnalysis.CSharp.SyntaxFacts.IsValidIdentifier(element)
+                ? ClassFiles.DeclaringFile(directory, element)
+                : null;
+            if (file is null)
+                return $"Type '{property.Type}' of '{property.Name}' is not a built-in type and the project does not declare it.";
+
+            projectTyped.Add(property);
+
+            if (type == element && IsReferenceDeclaration(file, element)
+                && PropertyInitializers.ProjectNullable(ctx.WorkspaceRoot, file)
+                    is Microsoft.CodeAnalysis.NullableContextOptions.Enable or Microsoft.CodeAnalysis.NullableContextOptions.Annotations)
+                referenceTyped.Add(property);
+        }
+
+        return null;
+    }
+
+    /// <summary>The type a property type is made of: <c>Shape</c> from <c>Shape?</c>,
+    /// <c>Shape[]</c> or <c>List&lt;Shape&gt;</c>.</summary>
+    private static string ElementTypeOf(string type)
+    {
+        var list = System.Text.RegularExpressions.Regex.Match(type, @"^List\s*<\s*(?<item>[^<>,]+?)\s*>$");
+        if (list.Success)
+            type = list.Groups["item"].Value;
+
+        foreach (var suffix in (string[])["?", "[]"])
+        {
+            if (type.Length > suffix.Length && type.EndsWith(suffix, StringComparison.Ordinal))
+                return type[..^suffix.Length].TrimEnd();
+        }
+
+        return type;
+    }
+
+    /// <summary>Whether <paramref name="file"/> declares <paramref name="name"/> as a class, a
+    /// record class or an interface: a reference type, which starts as null.</summary>
+    private static bool IsReferenceDeclaration(string file, string name) =>
+        Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(File.ReadAllText(file)).GetRoot()
+            .DescendantNodes(n => n is not Microsoft.CodeAnalysis.CSharp.Syntax.BaseTypeDeclarationSyntax)
+            .OfType<Microsoft.CodeAnalysis.CSharp.Syntax.BaseTypeDeclarationSyntax>()
+            .FirstOrDefault(t => t.Identifier.Text == name) switch
+        {
+            Microsoft.CodeAnalysis.CSharp.Syntax.RecordDeclarationSyntax r =>
+                !Microsoft.CodeAnalysis.CSharpExtensions.IsKind(r.ClassOrStructKeyword, Microsoft.CodeAnalysis.CSharp.SyntaxKind.StructKeyword),
+            Microsoft.CodeAnalysis.CSharp.Syntax.ClassDeclarationSyntax
+                or Microsoft.CodeAnalysis.CSharp.Syntax.InterfaceDeclarationSyntax => true,
+            _ => false
+        };
 
     /// <summary>The words a validation rule is given in (<c>min length 3</c>, <c>unique</c>).</summary>
     private static readonly System.Text.RegularExpressions.Regex ValidationWords = new(
@@ -509,7 +603,7 @@ public static class CommandHandlingService
     }
 
     /// <summary>
-    /// Says which entries in a property list went nowhere, and where they are handled instead.
+    /// Says which entries in a property list went nowhere: an entry that is not a name and a type.
     /// </summary>
     /// <remarks>
     /// The list is carried on the command rather than re-derived here: it is found in
@@ -530,10 +624,11 @@ public static class CommandHandlingService
                 continue;
             }
 
-            Output.Warning(
-                $"Ignored '{ignored}': only built-in types (string, int, decimal, DateTime and the like, "
-                + "also with ?, [] or in List<>) can be given here. "
-                + "Relationships between classes are set separately — the tool will offer.");
+            // A name and a type is read as a property (a type of the project included), so what is
+            // left is a name with no type ("Email" beside "Name string") or words that are neither.
+            Output.Warning(name == ignored
+                ? $"Ignored '{ignored}': it has no type; give one after the name, as in {ignored} string."
+                : $"Ignored '{ignored}': it is not a property name followed by its type, as in Name string.");
         }
 
         // A method whose parameter list could not be read was left out, not written half-done.
@@ -855,6 +950,13 @@ public static class CommandHandlingService
                 "  It was left as it is: creating it again would replace everything in it."
                 + Environment.NewLine
                 + $"  To start it again, delete class {name} first.");
+            return false;
+        }
+
+        // The same rule for a property's type as create class and add property follow.
+        if (ProjectTypeRefusal(ctx, out _, out _) is { } typeError)
+        {
+            Output.Error(typeError);
             return false;
         }
 

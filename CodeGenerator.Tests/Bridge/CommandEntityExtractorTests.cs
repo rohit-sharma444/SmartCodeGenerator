@@ -80,4 +80,46 @@ public class CommandEntityExtractorTests
         Assert.HasCount(1, cmd.IgnoredMethods);
         Assert.AreEqual("Ship quickly now", cmd.IgnoredMethods[0].Entry);
     }
+    [TestMethod]
+    [DataRow("Data byte[]", "Data", "byte[]")]
+    [DataRow("Count short", "Count", "short")]
+    [DataRow("Letter char", "Letter", "char")]
+    [DataRow("Size uint?", "Size", "uint?")]
+    [DataRow("Ids List<long>", "Ids", "List<long>")]
+    public void Byte_array_property_is_read(string entry, string name, string type)
+    {
+        var cmd = CreateClass($"create class Note with properties Title string, {entry}");
+        var property = cmd.Properties.SingleOrDefault(p => p.Name == name);
+        Assert.IsNotNull(property, entry);
+        Assert.AreEqual(type, property.Type, entry);
+        Assert.IsEmpty(cmd.IgnoredProperties, entry);
+    }
+
+    [TestMethod]
+    public void Project_type_entry_is_a_property()
+    {
+        var cmd = CreateClass("create class Customer with properties Name string, Kind Buyer, Home Shape");
+        CollectionAssert.AreEqual(new[] { "Name", "Kind", "Home" }, cmd.Properties.Select(p => p.Name).ToArray());
+        CollectionAssert.AreEqual(new[] { "string", "Buyer", "Shape" }, cmd.Properties.Select(p => p.Type).ToArray());
+        Assert.IsEmpty(cmd.IgnoredProperties);
+    }
+
+    [TestMethod]
+    public void Project_type_entry_keeps_wrappers_and_modifiers()
+    {
+        var cmd = CreateClass("create class Customer with properties Name string, Homes List<Shape>, Spare Shape?, Old Shape[], Main Shape required");
+        CollectionAssert.AreEqual(new[] { "string", "List<Shape>", "Shape?", "Shape[]", "Shape" },
+            cmd.Properties.Select(p => p.Type).ToArray());
+        Assert.AreEqual(PropertyModifiers.Required, cmd.Properties[4].Modifiers);
+        Assert.IsEmpty(cmd.IgnoredProperties);
+    }
+
+    [TestMethod]
+    public void Untyped_list_still_infers()
+    {
+        var cmd = CreateClass("create class Customer with properties Name, Email");
+        CollectionAssert.AreEqual(new[] { "Name", "Email" }, cmd.Properties.Select(p => p.Name).ToArray());
+        Assert.AreEqual("string", cmd.Properties[0].Type);
+        Assert.IsEmpty(cmd.IgnoredProperties);
+    }
 }
