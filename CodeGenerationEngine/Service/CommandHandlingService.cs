@@ -434,8 +434,23 @@ public static class CommandHandlingService
         if (parsed.Count > 0)
         {
             var target = ProjectLocator.Resolve(ctx.Command, ctx.CurrentProject, ctx.WorkspaceRoot);
-            var probeFile = Path.Combine(target.Directory, "__NewTypeProbe.cs");
-            var stub = CodeFormatter.Format("public class __NewTypeProbe { }", ProjectNamespace.For(target.ProjectFile));
+            // The stub is the new type itself, with its own name and kind, so a property of the type
+            // being created (Manager Employee, Children List<Category>, Next INode) binds to it.
+            var name = ctx.Command.Intent == IntentType.CreateInterface && !string.IsNullOrWhiteSpace(ctx.Command.InterfaceName)
+                ? ctx.Command.InterfaceName
+                : ctx.Command.ClassName;
+            if (string.IsNullOrWhiteSpace(name) || !Microsoft.CodeAnalysis.CSharp.SyntaxFacts.IsValidIdentifier(name))
+                name = "__NewTypeProbe";
+            var kind = ctx.Command.Intent == IntentType.CreateInterface
+                ? "interface"
+                : ctx.Command.Kind switch
+                {
+                    DeclaredKind.Record => "record",
+                    DeclaredKind.Struct => "struct",
+                    _ => "class"
+                };
+            var probeFile = Path.Combine(target.Directory, name + ".cs");
+            var stub = CodeFormatter.Format($"public {kind} {name} {{ }}", ProjectNamespace.For(target.ProjectFile));
             var probeNode = Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(stub, path: probeFile).GetRoot()
                 .DescendantNodes().OfType<Microsoft.CodeAnalysis.CSharp.Syntax.TypeDeclarationSyntax>().First();
             nullableOn = PropertyInitializers.ProjectNullable(ctx.WorkspaceRoot, probeFile)

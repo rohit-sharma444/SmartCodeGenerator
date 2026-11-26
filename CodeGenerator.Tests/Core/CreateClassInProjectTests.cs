@@ -469,4 +469,49 @@ public sealed class CreateClassInProjectTests
         StringAssert.Contains(LastOutput, "Nowhere1");
         Assert.IsFalse(File.Exists(Path.Combine(_workspace, "Shop", "IBad.cs")));
     }
+
+    // A type that names itself was refused: the probe that binds the list's types declared
+    // __NewTypeProbe, so the new type did not exist yet when its own name was bound.
+    [TestMethod]
+    [DataRow("create class Employee with properties Name string, Manager Employee", "Employee.cs", "public Employee Manager { get; set; } = null!;")]
+    [DataRow("create class Category with properties Name string, Children List<Category>", "Category.cs", "public List<Category> Children { get; set; } = new List<Category>();")]
+    [DataRow("create record Node with properties Next Node?", "Node.cs", "Node? Next { get; ")]
+    public void A_class_whose_property_is_of_its_own_type_compiles(string line, string file, string expected)
+    {
+        WriteProjectTypes();
+
+        Assert.IsTrue(Run(line), LastOutput);
+
+        var code = Read(file);
+        StringAssert.Contains(code, expected, code);
+        Assert.DoesNotContain("not a built-in type", LastOutput, LastOutput);
+        var problems = NullableProblems();
+        Assert.IsEmpty(problems, string.Join(Environment.NewLine, problems) + Environment.NewLine + code);
+    }
+
+    [TestMethod]
+    public void An_interface_whose_property_is_of_its_own_type_compiles()
+    {
+        WriteProjectTypes();
+
+        Assert.IsTrue(Run("create interface INode with properties Next INode"), LastOutput);
+
+        var code = Read("INode.cs");
+        StringAssert.Contains(code, "INode Next { get; set; }");
+        var problems = NullableProblems();
+        Assert.IsEmpty(problems, string.Join(Environment.NewLine, problems) + Environment.NewLine + code);
+    }
+
+    // A struct cannot hold itself by value (CS0523): the project compile refuses it, and nothing is written.
+    [TestMethod]
+    public void A_struct_that_holds_itself_is_refused_and_not_written()
+    {
+        WriteProjectTypes();
+
+        Assert.IsFalse(Run("create struct Cell with properties Next Cell"), LastOutput);
+
+        StringAssert.Contains(LastOutput, "CS0523");
+        Assert.IsFalse(File.Exists(Path.Combine(_workspace, "Shop", "Cell.cs")), LastOutput);
+        Assert.IsEmpty(ProjectErrors());
+    }
 }

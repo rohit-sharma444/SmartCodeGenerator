@@ -120,13 +120,14 @@ internal static class TypeResolution
         var probe = CSharpSyntaxTree.ParseText(probeSource, parse);
 
         var trees = new List<SyntaxTree> { probe };
+        var classFileSeen = false;
         foreach (var file in ClassFiles.Under(projectFolder))
         {
             try
             {
-                var text = string.Equals(Path.GetFullPath(file), Path.GetFullPath(classFile), StringComparison.OrdinalIgnoreCase)
-                    ? classTree.GetText().ToString()
-                    : File.ReadAllText(file);
+                var own = string.Equals(Path.GetFullPath(file), Path.GetFullPath(classFile), StringComparison.OrdinalIgnoreCase);
+                classFileSeen |= own;
+                var text = own ? classTree.GetText().ToString() : File.ReadAllText(file);
                 trees.Add(CSharpSyntaxTree.ParseText(text, parse, path: file));
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -134,6 +135,11 @@ internal static class TypeResolution
                 // An unreadable neighbour costs only the types it declares.
             }
         }
+
+        // A type not written yet (create class, create interface): its stub is compiled with the
+        // project, so a property of its own type binds to it.
+        if (!classFileSeen)
+            trees.Add(CSharpSyntaxTree.ParseText(classTree.GetText().ToString(), parse, path: classFile));
 
         var compilation = CSharpCompilation.Create(
             "TypeProbe", trees, Compiler.FrameworkReferences,
