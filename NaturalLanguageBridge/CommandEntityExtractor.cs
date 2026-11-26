@@ -651,26 +651,45 @@ public static class CommandEntityExtractor
     /// </remarks>
     private static string ReadAddPropertyClauses(string members, string? ownName, ParsedCommand command)
     {
-        var entries = new List<string>();
-        var rest = AddPropertyClause.Replace(members, m =>
-        {
-            var entry = m.Groups["entry"].Value.Trim().TrimEnd('.', '!');
-            if (!string.IsNullOrWhiteSpace(ownName))
-                entry = Regex.Replace(entry,
-                    $@"(?:\s+(?:to|in|on|into))?\s+(?:class\s+)?{Regex.Escape(ownName)}(?:\s+class)?$",
-                    string.Empty, RegexOptions.IgnoreCase);
-            entries.Add((m.Groups["mods"].Value + entry).Trim());
-            return string.Empty;
-        });
+        // Matched on the text with each quoted value blanked at the same length, so a clause word
+        // inside a default ("x and add property y") is part of the value; cut from the text as typed.
+        var clauses = AddPropertyClause.Matches(WithoutQuotedText(members)).Cast<Match>().ToList();
+        if (clauses.Count == 0)
+            return members;
 
-        foreach (var entry in entries)
+        foreach (var clause in clauses)
         {
+            var entry = members.Substring(clause.Groups["entry"].Index, clause.Groups["entry"].Length).Trim().TrimEnd('.', '!');
             var read = new ParsedCommand { Intent = command.Intent };
-            ExtractProperties("with properties " + entry, read);
+            ExtractProperties("with properties " + (clause.Groups["mods"].Value + WithoutOwnTarget(entry, ownName)).Trim(), read);
             MergeAddedProperties(read, command);
         }
 
-        return rest;
+        for (var i = clauses.Count - 1; i >= 0; i--)
+            members = members.Remove(clauses[i].Index, clauses[i].Length);
+        return members;
+    }
+
+    /// <summary>
+    /// <paramref name="entry"/> without a trailing <c>to|in|on|into [class] &lt;own name&gt; [class]</c>,
+    /// or without a bare trailing own name (what "for &lt;own name&gt;" leaves after "for" is removed as a
+    /// filler word) when a name and a type are still left: in <c>Next Node</c> on class Node, Node is
+    /// the property's type, not the target.
+    /// </summary>
+    private static string WithoutOwnTarget(string entry, string? ownName)
+    {
+        if (string.IsNullOrWhiteSpace(ownName))
+            return entry;
+
+        var own = Regex.Escape(ownName);
+        var withPreposition = Regex.Match(entry,
+            $@"\s+(?:to|in|on|into)\s+(?:class\s+)?{own}(?:\s+class)?$", RegexOptions.IgnoreCase);
+        if (withPreposition.Success)
+            return entry[..withPreposition.Index];
+
+        var bare = Regex.Match(entry, $@"\s+(?:class\s+)?{own}(?:\s+class)?$", RegexOptions.IgnoreCase);
+        var left = bare.Success ? entry[..bare.Index].Trim() : string.Empty;
+        return bare.Success && left.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length >= 2 ? left : entry;
     }
 
     /// <summary>Appends what <see cref="ReadAddPropertyClauses"/> read after the list's own

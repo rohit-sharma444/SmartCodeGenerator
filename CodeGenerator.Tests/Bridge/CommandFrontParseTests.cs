@@ -93,6 +93,39 @@ public class CommandFrontParseTests
             Assert.IsEmpty(cmd.Methods, line);
     }
 
+    // The class's own name as the property's TYPE is a self-reference, not the target: the strip of
+    // a trailing own name made `Next Node` a string property called Next.
+    [TestMethod]
+    [DataRow("create class Node and add property Next Node", "Next:Node")]
+    [DataRow("create class Node and add property Next Node to Node", "Next:Node")]
+    [DataRow("create class Node and add property Children List<Node> for Node", "Children:List<Node>")]
+    [DataRow("create class Node and add property Size int for Node", "Size:int")]
+    public void Create_class_and_add_property_of_its_own_type(string line, string properties)
+    {
+        var cmd = CommandFront.Parse(line, "");
+        Assert.AreEqual("Node", cmd.ClassName, line);
+        Assert.AreEqual(properties, string.Join(",", cmd.Properties.Select(p => $"{p.Name}:{p.Type}")), line);
+        Assert.IsEmpty(cmd.IgnoredWords, line);
+    }
+
+    [TestMethod]
+    public void A_quoted_default_holding_and_add_property_is_one_value()
+    {
+        var cmd = CommandFront.Parse("create class Tom and add property Title string default \"x and add property y\"", "");
+        var title = cmd.Properties.Single();
+        Assert.AreEqual("Title", title.Name);
+        Assert.AreEqual("\"x and add property y\"", title.Initializer);
+    }
+
+    [TestMethod]
+    public void Create_interface_and_add_method_reads_the_method()
+    {
+        var cmd = CommandFront.Parse("create interface IX and add method Load", "");
+        Assert.AreEqual(IntentType.CreateInterface, cmd.Intent);
+        Assert.AreEqual("IX", cmd.InterfaceName);
+        CollectionAssert.AreEqual(new[] { "Load" }, cmd.Methods.Select(m => m.Name).ToArray());
+    }
+
     [TestMethod]
     public void Create_class_and_add_required_property_keeps_the_modifier()
     {
