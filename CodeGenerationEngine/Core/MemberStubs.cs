@@ -1,5 +1,6 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using SemanticModel = Microsoft.CodeAnalysis.SemanticModel;
 
 namespace CodeGenerationEngine.Core;
@@ -18,8 +19,17 @@ public static class MemberStubs
             SymbolDisplayMiscellaneousOptions.IncludeNullableReferenceTypeModifier);
 
     /// <summary>The stubs <paramref name="type"/> lacks, named as they read at <paramref name="position"/> in <paramref name="model"/>.</summary>
-    public static IReadOnlyList<MemberStub> Missing(INamedTypeSymbol type, SemanticModel model, int position)
+    /// <param name="nullableAt">Whether nullable annotations are on at a position of the type's file; a property stub then starts with the value <see cref="PropertyInitializers.SafeFor"/> gives, as <c>add property</c> writes it (CS8618). Null: they are off.</param>
+    public static IReadOnlyList<MemberStub> Missing(
+        INamedTypeSymbol type, SemanticModel model, int position, Func<int, bool>? nullableAt = null)
     {
+        // The same three checks add property makes: the type can take an initializer, nullable is on, the type has a safe value.
+        var initialise = nullableAt is not null
+            && type.DeclaringSyntaxReferences.Select(r => r.GetSyntax()).OfType<TypeDeclarationSyntax>().FirstOrDefault()
+                is { } declaration
+            && PropertyInitializers.CanHaveInitializer(declaration)
+            && nullableAt(position);
+
         var keys = new HashSet<string>(StringComparer.Ordinal);
         var result = new List<MemberStub>();
 
@@ -32,7 +42,7 @@ public static class MemberStubs
                     if (member.IsStatic || !member.IsAbstract
                         || IsOverridden(type, member)
                         || keys.Contains(Key(member))
-                        || Stub(member, model, position, StubKind.Override) is not { } stub)
+                        || Stub(member, model, position, StubKind.Override, initialise: initialise) is not { } stub)
                         continue;
 
                     result.Add(new MemberStub(stub, member.Name, baseType.Name));
@@ -48,7 +58,7 @@ public static class MemberStubs
                 if (member.IsStatic || !member.IsAbstract
                     || type.FindImplementationForInterfaceMember(member) is not null
                     || keys.Contains(Key(member))
-                    || Stub(member, model, position, interfaceKind, readOnlyStruct) is not { } stub)
+                    || Stub(member, model, position, interfaceKind, readOnlyStruct, initialise) is not { } stub)
                     continue;
 
                 result.Add(new MemberStub(stub, member.Name, iface.Name));
@@ -104,7 +114,7 @@ public static class MemberStubs
     // struct an interface property with no setter is get-only (a settable auto-property there is
     // CS8341); an implicit implementation repeats the method's constraints (CS0425), which an
     // override may not (CS0460), so an override gets none.
-    private static string? Stub(ISymbol member, SemanticModel model, int position, StubKind kind = StubKind.Implement, bool readOnlyStruct = false)
+    private static string? Stub(ISymbol member, SemanticModel model, int position, StubKind kind = StubKind.Implement, bool readOnlyStruct = false, bool initialise = false)
     {
         string Type(ITypeSymbol t) => t.ToMinimalDisplayString(model, position, TypeFormat);
         static string Name(string n) => SyntaxFacts.GetKeywordKind(n) != SyntaxKind.None ? "@" + n : n;
@@ -123,7 +133,12 @@ public static class MemberStubs
                     : initOnly ? "{ get; init; }"
                     : readOnlyStruct && p.SetMethod is null ? "{ get; }"
                     : "{ get; set; }";
-                return $"{access} {modifier}{Type(p.Type)} {Name(p.Name)} {accessors}";
+                var typeText = Type(p.Type);
+                var initial = initialise && kind != StubKind.Abstract && !accessors.Contains("=>")
+                    ? PropertyInitializers.SafeFor(SyntaxFactory.ParseTypeName(typeText), p.Type)
+                    : null;
+                return $"{access} {modifier}{typeText} {Name(p.Name)} {accessors}"
+                    + (initial is null ? "" : $" = {initial};");
 
             case IMethodSymbol { MethodKind: MethodKind.Ordinary, ReturnsByRef: false, ReturnsByRefReadonly: false } m:
                 var generics = m.TypeParameters.Length == 0 ? "" : $"<{string.Join(", ", m.TypeParameters.Select(t => t.Name))}>";

@@ -14,7 +14,10 @@ public sealed class MemberStubsTests
         [.. ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!).Split(Path.PathSeparator)
             .Select(p => MetadataReference.CreateFromFile(p))];
 
-    private static IReadOnlyList<MemberStub> MissingFor(string typeName, params string[] sources)
+    private static IReadOnlyList<MemberStub> MissingFor(string typeName, params string[] sources) =>
+        MissingFor(typeName, null, sources);
+
+    private static IReadOnlyList<MemberStub> MissingFor(string typeName, Func<int, bool>? nullableAt, params string[] sources)
     {
         var trees = sources.Select(s => CSharpSyntaxTree.ParseText(s, new CSharpParseOptions(LanguageVersion.Latest))).ToList();
         var compilation = CSharpCompilation.Create("Probe", trees, References,
@@ -26,7 +29,7 @@ public sealed class MemberStubsTests
             var decl = tree.GetRoot().DescendantNodes().OfType<BaseTypeDeclarationSyntax>()
                 .FirstOrDefault(d => d.Identifier.Text == typeName);
             if (decl is not null && model.GetDeclaredSymbol(decl) is INamedTypeSymbol type)
-                return MemberStubs.Missing(type, model, decl.SpanStart);
+                return MemberStubs.Missing(type, model, decl.SpanStart, nullableAt);
         }
 
         throw new InvalidOperationException("type not found");
@@ -100,5 +103,43 @@ public sealed class MemberStubsTests
         Assert.AreEqual("public T Make<T>() where T : class, new() => throw new System.NotImplementedException();", implemented[0].Code);
         Assert.HasCount(1, overridden);
         Assert.AreEqual("public override T Make<T>() => throw new System.NotImplementedException();", overridden[0].Code);
+    }
+
+    private const string Named = "interface INamed { string Title { get; set; } List<string> Tags { get; set; } string? Note { get; set; } int Count { get; set; } Kind K { get; set; } } enum Kind { A } ";
+
+    [TestMethod]
+    public void Property_stubs_get_the_initialiser_add_property_gives_when_nullable_is_on()
+    {
+        var stubs = MissingFor("Doc", _ => true, "using System.Collections.Generic; " + Named + "class Doc : INamed { }");
+
+        Assert.AreEqual("public string Title { get; set; } = string.Empty;", stubs.Single(s => s.MemberName == "Title").Code);
+        Assert.AreEqual("public List<string> Tags { get; set; } = new List<string>();", stubs.Single(s => s.MemberName == "Tags").Code);
+        Assert.AreEqual("public string? Note { get; set; }", stubs.Single(s => s.MemberName == "Note").Code);
+        Assert.AreEqual("public int Count { get; set; }", stubs.Single(s => s.MemberName == "Count").Code);
+        Assert.AreEqual("public Kind K { get; set; }", stubs.Single(s => s.MemberName == "K").Code);
+    }
+
+    [TestMethod]
+    public void Property_stubs_get_no_initialiser_when_nullable_is_off()
+    {
+        var stubs = MissingFor("Doc", _ => false, "using System.Collections.Generic; " + Named + "class Doc : INamed { }");
+
+        Assert.IsTrue(stubs.All(s => !s.Code.Contains(" = ")), string.Join(Environment.NewLine, stubs.Select(s => s.Code)));
+    }
+
+    [TestMethod]
+    public void A_struct_stub_gets_no_initialiser()
+    {
+        var stubs = MissingFor("S", _ => true, "using System.Collections.Generic; " + Named + "struct S : INamed { }");
+
+        Assert.IsTrue(stubs.All(s => !s.Code.Contains(" = ")), string.Join(Environment.NewLine, stubs.Select(s => s.Code)));
+    }
+
+    [TestMethod]
+    public void An_abstract_type_property_stub_gets_no_initialiser()
+    {
+        var stubs = MissingFor("D", _ => true, "interface I { string Title { get; set; } } abstract class D : I { }");
+
+        Assert.AreEqual("public abstract string Title { get; set; }", stubs.Single().Code);
     }
 }

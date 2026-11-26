@@ -40,7 +40,10 @@ public static class NewClassCompletion
         if (first.Class is { } decl
             && first.Model.GetDeclaredSymbol(decl) is INamedTypeSymbol { TypeKind: not TypeKind.Enum } type)
         {
-            foreach (var stub in MemberStubs.Missing(type, first.Model, decl.SpanStart))
+            foreach (var stub in MemberStubs.Missing(type, first.Model, decl.SpanStart,
+                       pos => PropertyInitializers.NullableOn(
+                           string.IsNullOrWhiteSpace(target.ProjectFile) ? target.Directory : Path.GetDirectoryName(target.ProjectFile)!,
+                           Path.Combine(target.Directory, decl.Identifier.Text + ".cs"), first.Tree.GetRoot(), pos)))
             {
                 stubs.Add(stub.Code);
                 added.Add(stub.MemberName);

@@ -139,7 +139,8 @@ public static class ClassInheritanceService
             {
                 isAbstract = symbol.IsAbstract;
                 var position = HasBody(node) ? node.OpenBraceToken.Span.End : node.Identifier.SpanStart;
-                stubs.AddRange(MemberStubs.Missing(symbol, model, position));
+                stubs.AddRange(MemberStubs.Missing(symbol, model, position,
+                    pos => PropertyInitializers.NullableOn(workspaceRoot, file, tree.GetRoot(), pos)));
             }
         }
 

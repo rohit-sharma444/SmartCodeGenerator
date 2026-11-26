@@ -393,4 +393,32 @@ public sealed class CreateClassInProjectTests
         Assert.IsTrue(File.Exists(Path.Combine(_workspace, "Shop", "Square.cs")), LastOutput);
         Assert.IsEmpty(ProjectErrors());
     }
+
+    [TestMethod]
+    public void Create_class_implementing_an_interface_starts_its_properties_so_nullable_builds_clean()
+    {
+        WriteProjectTypes();
+        Write("INamed.cs", "namespace Shop;\n\npublic interface INamed { string Title { get; set; } List<string> Tags { get; set; } }\n");
+
+        Assert.IsTrue(Run("create class Doc implements INamed"), LastOutput);
+
+        var code = Read("Doc.cs");
+        StringAssert.Contains(code, "Title { get; set; } = string.Empty;");
+        StringAssert.Contains(code, "Tags { get; set; } = new List<string>();");
+        Assert.IsEmpty(NullableProblems(), code);
+    }
+
+    [TestMethod]
+    public void Implements_on_an_existing_class_starts_its_properties_so_nullable_builds_clean()
+    {
+        WriteProjectTypes();
+        Write("INamed.cs", "namespace Shop;\n\npublic interface INamed { string Title { get; set; } List<string> Tags { get; set; } }\n");
+        Write("Doc.cs", "namespace Shop;\n\npublic class Doc\n{\n}\n");
+
+        Assert.IsTrue(Run("Doc implements INamed"), LastOutput);
+
+        var code = Read("Doc.cs");
+        StringAssert.Contains(code, "Title { get; set; } = string.Empty;");
+        Assert.IsEmpty(NullableProblems(), code);
+    }
 }
