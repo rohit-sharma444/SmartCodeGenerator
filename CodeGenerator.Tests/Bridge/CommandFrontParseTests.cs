@@ -117,6 +117,18 @@ public class CommandFrontParseTests
         Assert.AreEqual("\"x and add property y\"", title.Initializer);
     }
 
+    // The quoted value just before the clause was cut with it: Title lost its default.
+    [TestMethod]
+    [DataRow("create class Tom with properties Title string default \"x\" and add property Size int", "\"x\"")]
+    [DataRow("create class Tom with properties Title string default 'x' and add property Size int", "'x'")]
+    public void A_quoted_default_before_and_add_property_is_kept(string line, string initializer)
+    {
+        var cmd = CommandFront.Parse(line, "");
+        Assert.AreEqual("Title:string,Size:int", string.Join(",", cmd.Properties.Select(p => $"{p.Name}:{p.Type}")), line);
+        Assert.AreEqual(initializer, cmd.Properties[0].Initializer, line);
+        Assert.IsEmpty(cmd.IgnoredWords, line);
+    }
+
     [TestMethod]
     public void Create_interface_and_add_method_reads_the_method()
     {

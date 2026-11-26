@@ -632,7 +632,7 @@ public static class CommandEntityExtractor
     /// create class or create interface line, up to the next <c>and add|create|generate</c> or the end.
     /// </summary>
     private static readonly Regex AddPropertyClause = new(
-        @"\s+and\s+(?:add|create|generate)\s+(?:(?:an?|new)\s+)?"
+        @"\s+(?<and>and)\s+(?:add|create|generate)\s+(?:(?:an?|new)\s+)?"
         + @"(?<mods>(?:(?:readonly|private|static|required)\s+)*)(?:property|field)\s+"
         + @"(?<entry>.+?)(?=\s+and\s+(?:add|create|generate)\b|$)",
         RegexOptions.IgnoreCase);
@@ -665,8 +665,15 @@ public static class CommandEntityExtractor
             MergeAddedProperties(read, command);
         }
 
+        // Cut from the white space before "and" in the text as typed: in the blanked text a quoted
+        // value just before the clause is spaces too, and `\s+` took it ("default "x" and add ...").
         for (var i = clauses.Count - 1; i >= 0; i--)
-            members = members.Remove(clauses[i].Index, clauses[i].Length);
+        {
+            var start = clauses[i].Groups["and"].Index;
+            while (start > 0 && char.IsWhiteSpace(members[start - 1]))
+                start--;
+            members = members.Remove(start, clauses[i].Index + clauses[i].Length - start);
+        }
         return members;
     }
 
